@@ -1,0 +1,15 @@
+{
+  "name": "@vesper/inventory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Node CLI: catalogue a DS cartridge's filesystem. Local use only; its output is ROM-derived and must never be committed.",
+  "bin": {
+    "inventory": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@vesper/nitrofs": "workspace:*",
+    "@vesper/nitro-comp": "workspace:*"
+  }
+}

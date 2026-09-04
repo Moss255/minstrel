@@ -1,0 +1,11 @@
+{
+  "name": "@vesper/nitro-comp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Nintendo DS BIOS-format decompression (LZ77/LZ10). Game-agnostic, browser-safe.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
