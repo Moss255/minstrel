@@ -20,7 +20,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { decompressLz10, isLz10 } from '@vesper/nitro-comp'
+import { tryDecompressLz10 } from '@vesper/nitro-comp'
 import {
   checkHeaderIntegrity,
   gameCodeRegion,
@@ -210,7 +210,6 @@ async function main(): Promise<void> {
     let namelessArchives = 0
     let failed = 0
     let compressedMembers = 0
-    let decompressionFailures = 0
 
     for (const c of catalogued) {
       if (c.category !== 'archive') continue
@@ -224,19 +223,10 @@ async function main(): Promise<void> {
           // Identify what the member *is*, not how it is stored: nearly half of
           // them are LZ10 streams whose first four bytes say nothing useful.
           let payload = member.data
-          if (isLz10(payload)) {
-            try {
-              payload = decompressLz10(payload)
-              compressedMembers++
-            } catch (error) {
-              decompressionFailures++
-              if (decompressionFailures <= 5) {
-                console.error(
-                  `  ! ${c.file.path}#${member.index}: ${error instanceof Error ? error.message : String(error)}`,
-                )
-              }
-              continue
-            }
+          const decompressed = tryDecompressLz10(payload)
+          if (decompressed !== undefined) {
+            payload = decompressed
+            compressedMembers++
           }
           const id = identify(payload.subarray(0, 4))
           bump(memberCategories, id.category, payload.length)
@@ -266,9 +256,7 @@ async function main(): Promise<void> {
     console.log(
       `\nInside ${archives} NARC archives (${namelessArchives} nameless, ${failed} failed to parse)`,
     )
-    console.log(
-      `  ${compressedMembers} members were LZ10-compressed and decompressed first (${decompressionFailures} failed)`,
-    )
+    console.log(`  ${compressedMembers} members were LZ10-compressed and decompressed first`)
     histogram(memberCategories, '  Members by identified container')
     histogram(memberExtensions, '  Members by extension')
     const topUnknownMembers = [...unknownMembers].sort((a, b) => b[1] - a[1]).slice(0, 10)

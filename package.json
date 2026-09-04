@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --pretty",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "inventory": "node tools/inventory/src/cli.ts"
+    "inventory": "node tools/inventory/src/cli.ts",
+    "extract": "node tools/inventory/src/extract.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.14",

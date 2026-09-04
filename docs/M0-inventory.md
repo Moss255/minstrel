@@ -21,11 +21,43 @@ Its filesystem: 7,481 named files in 23 directories, plus 35 ARM9 overlays.
 |---|---|
 | `@vesper/nitrofs` | cartridge header, FAT, FNT, ARM9/ARM7 overlay tables, NARC archives |
 | `@vesper/nitro-comp` | LZ10 decompression (and a compressor, for round-trip tests) |
-| `tools/inventory` | CLI that catalogues a cartridge, optionally recursing into archives |
+| `tools/inventory` | CLIs that catalogue a cartridge and extract it wholesale |
 
 All 4,129 NARC archives on the reference cartridge parse, and all 11,179
 LZ10-compressed members inside them decompress to exactly their declared length.
 See each package's `FORMAT.md` for the evidence.
+
+## Full extraction
+
+`pnpm extract` unpacks the entire cartridge in about three seconds:
+
+| | |
+|---|---|
+| cartridge files processed | 7,481 |
+| archives unpacked (including nested) | 4,181 |
+| members decompressed | 11,181 |
+| files written | 28,016 |
+| bytes written | 278.3 MiB |
+| failures | 0 |
+
+Output mirrors the cartridge tree under `out/files/`, with every archive
+replaced by a directory of its members, so an asset that was an LZ10 stream
+inside a NARC lands as a plain `.nsbmd`. `out/system/` holds the ARM9 and ARM7
+binaries and all 35 overlays — useful later for the disassembly work that has to
+happen outside this repository. `out/manifest.json` records provenance for every
+file written.
+
+Two things the extractor has to get right, both learned from real data:
+
+- **A leading `0x10` is not proof of compression.** 173 `.spr` files begin
+  `10 00 03 00`, where the `0x10` is a width. Identification is therefore by
+  successful decode to the declared length, not by signature — see
+  `tryDecompressLz10`. Inside archives the signature happens to be exact
+  (11,179 of 11,179), which is a property of this cartridge, not of the format.
+- **Output paths can collide.** 139 collisions occur, some between a member that
+  needs to be a file and one that needs to be a directory. Names are also
+  escaped reversibly (4 of them), since cartridge names are bytes and two here
+  contain Shift-JIS.
 
 ## Asset inventory
 
@@ -163,10 +195,10 @@ extraction machinery is ready, but not the knowledge of what to point it at.
 | M0 task | status |
 |---|---|
 | NitroFS parser and file dump | **done** — parser, CLI, and gated integration tests |
-| Identify and extract slice assets | **blocked on area identification**, machinery ready |
-| Run apicula; record what converts | not started; models are stock NSBMD, so expected to convert |
+| Identify and extract slice assets | **extraction done for everything**; *which* files the slice needs is still open |
+| Run apicula; record what converts | **not started** — needs a Rust toolchain installed locally |
 | Locate the slice's event scripts | **partly** — candidate files located, format not yet open |
 
-The extraction *capability* is essentially complete and proven against the whole
-cartridge. What remains is knowing which files the slice needs, and one custom
-container.
+Extraction is complete and proven against the whole cartridge: every stock asset
+is now a plain file on disk. What remains is knowing which of them the slice
+needs, one custom container, and an apicula run.

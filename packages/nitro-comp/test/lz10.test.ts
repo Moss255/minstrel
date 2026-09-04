@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { NitroCompError } from '../src/errors.ts'
 import { readCompressionHeader } from '../src/header.ts'
-import { compressLz10, decompressLz10, isLz10 } from '../src/lz10.ts'
+import { compressLz10, decompressLz10, isLz10, tryDecompressLz10 } from '../src/lz10.ts'
 
 /** Deterministic pseudo-random bytes: worst case, nothing compresses. */
 function noise(length: number, seed: number): Uint8Array {
@@ -146,5 +146,34 @@ describe('isLz10', () => {
     expect(isLz10(stream(0, []))).toBe(true)
     expect(isLz10(Uint8Array.from([0x11, 0, 0, 0]))).toBe(false)
     expect(isLz10(Uint8Array.from([0x10]))).toBe(false)
+  })
+})
+
+describe('tryDecompressLz10', () => {
+  it('decodes a genuine stream', () => {
+    const original = noise(500, 7)
+    const out = tryDecompressLz10(compressLz10(original))
+    expect(out && Array.from(out)).toEqual(Array.from(original))
+  })
+
+  it('returns undefined for data that merely starts with 0x10', () => {
+    // The shape that made this necessary: a sprite header whose first byte is a
+    // width. 173 files on the reference cartridge look like this.
+    const sprite = Uint8Array.from([0x10, 0x00, 0x03, 0x00, 0x20, 0x00, 0x28, 0x00, 0x02, 0x00])
+    expect(isLz10(sprite)).toBe(true)
+    expect(tryDecompressLz10(sprite)).toBeUndefined()
+  })
+
+  it('returns undefined rather than throwing on a truncated stream', () => {
+    expect(tryDecompressLz10(stream(64, [0x00, 1, 2, 3]))).toBeUndefined()
+  })
+
+  it('returns undefined for data with a different header byte', () => {
+    expect(tryDecompressLz10(Uint8Array.from([0x11, 4, 0, 0, 0x00, 1, 2, 3, 4]))).toBeUndefined()
+  })
+
+  it('rejects a stream whose output is not the declared length', () => {
+    // Declares 64 bytes but the payload only ever produces 8.
+    expect(tryDecompressLz10(stream(64, [0x00, 1, 2, 3, 4, 5, 6, 7, 8]))).toBeUndefined()
   })
 })

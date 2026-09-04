@@ -1,6 +1,6 @@
 import { NitroCompError } from './errors.ts'
 import { CompressionType, readCompressionHeader } from './header.ts'
-import { decompressLz10, isLz10 } from './lz10.ts'
+import { decompressLz10, tryDecompressLz10 } from './lz10.ts'
 
 export { NitroCompError } from './errors.ts'
 export {
@@ -10,7 +10,7 @@ export {
   looksCompressed,
   readCompressionHeader,
 } from './header.ts'
-export { compressLz10, decompressLz10, isLz10 } from './lz10.ts'
+export { compressLz10, decompressLz10, isLz10, tryDecompressLz10 } from './lz10.ts'
 
 /**
  * Decompress any supported Nintendo-compressed stream, dispatching on the
@@ -36,10 +36,13 @@ export function decompress(data: Uint8Array): Uint8Array {
 }
 
 /**
- * Decompress if the data carries a supported compression header, otherwise
- * return it unchanged. Convenient for archive members that may or may not be
- * packed; the returned buffer is the input itself when nothing was done.
+ * Decompress if the data really is a supported compressed stream, otherwise
+ * return it unchanged.
+ *
+ * Identification is by successful decode, not by signature — see
+ * {@link tryDecompressLz10} for why a four-byte header is not enough. The
+ * returned buffer is the input itself when nothing was done.
  */
 export function decompressIfNeeded(data: Uint8Array): Uint8Array {
-  return isLz10(data) ? decompressLz10(data) : data
+  return tryDecompressLz10(data) ?? data
 }

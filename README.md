@@ -15,7 +15,7 @@ Early. Working through M0 of `docs/PLAN.md` — see [`docs/M0-inventory.md`](doc
 |---|---|---|
 | [`@vesper/nitrofs`](packages/nitrofs) | MIT | cartridge header, FAT/FNT, overlay tables, NARC archives |
 | [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ10 decompression |
-| `tools/inventory` | MIT | CLI that catalogues a cartridge |
+| `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 
 The `nitro-*` packages are game-agnostic and browser-safe: no Node built-ins, no
@@ -44,16 +44,32 @@ You supply your own cartridge dump. This repository contains none, and never
 will — no cartridge files, no extracted assets, no data tables, no test fixtures
 built from real bytes. Every test fixture is constructed in code.
 
+Catalogue what a cartridge holds:
+
 ```sh
 pnpm inventory path/to/your.nds                 # header, hashes, what's inside
 pnpm inventory path/to/your.nds --deep          # recurse into archives, decompress
 pnpm inventory path/to/your.nds --tree
 pnpm inventory path/to/your.nds --kind model --limit 20
 pnpm inventory path/to/your.nds --json out/catalogue.json
-pnpm inventory path/to/your.nds --extract /data/sound/bgm.sdat --out out
 ```
 
-Everything it prints or writes is derived from your cartridge. `out/` is
+Or unpack the whole thing to disk:
+
+```sh
+pnpm extract path/to/your.nds --dry-run         # report, write nothing
+pnpm extract path/to/your.nds --out out
+pnpm extract path/to/your.nds --out out --filter /data/map/
+```
+
+`extract` mirrors the cartridge filesystem into `out/files/`, replacing every
+archive with a directory of its members — recursively, and decompressing as it
+goes — so a model that was an LZ10 stream inside a NARC inside the cartridge
+ends up as a plain `.nsbmd` on disk. `out/system/` gets the ARM binaries and
+overlays, and `out/manifest.json` records where each output file came from,
+including the original name bytes of any name that had to be escaped.
+
+Everything these print or write is derived from your cartridge. `out/` is
 gitignored; keep it that way.
 
 To run the integration tests, point them at your own dump. They are skipped by

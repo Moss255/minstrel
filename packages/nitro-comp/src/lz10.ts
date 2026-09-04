@@ -30,7 +30,19 @@ import { CompressionType, readCompressionHeader } from './header.ts'
 const MIN_MATCH = 3
 const WINDOW_SIZE = 4096
 
-/** True when `data` carries an LZ10 header. Does not validate the payload. */
+/**
+ * True when `data` starts with the LZ10 header byte. This is a *weak* test and
+ * must not be used on its own to decide whether to decompress something.
+ *
+ * A one-byte signature collides: on this project's reference cartridge, 173
+ * sprite files begin `10 00 03 00`, where the `0x10` is a width and not a
+ * compression type. None of them is a valid LZ10 stream. Inside archives the
+ * test happens to be exact (11,179 of 11,179), but that is a property of that
+ * cartridge, not of the format.
+ *
+ * Use {@link tryDecompressLz10} when the answer matters: decoding successfully
+ * to the declared length is the only reliable evidence a stream is LZ10.
+ */
 export function isLz10(data: Uint8Array): boolean {
   return data.length >= 4 && data[0] === 0x10
 }
@@ -104,6 +116,31 @@ export function decompressLz10(data: Uint8Array): Uint8Array {
   }
 
   return out
+}
+
+/**
+ * Decompress if `data` really is an LZ10 stream, otherwise return `undefined`.
+ *
+ * This is the reliable way to ask the question. The four-byte header carries
+ * too little information to identify the format on its own (see {@link isLz10}),
+ * so this attempts the decode and additionally requires the output to be
+ * exactly the declared length — a check that no observed non-LZ10 file has ever
+ * passed by accident, and that every one of the reference cartridge's 11,179
+ * genuine streams passes.
+ *
+ * Returning `undefined` means "not an LZ10 stream", which is an ordinary
+ * answer, not an error. Callers wanting a hard failure should use
+ * {@link decompressLz10} directly.
+ */
+export function tryDecompressLz10(data: Uint8Array): Uint8Array | undefined {
+  if (!isLz10(data)) return undefined
+  try {
+    const declared = readCompressionHeader(data).decompressedSize
+    const out = decompressLz10(data)
+    return out.length === declared ? out : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /**
