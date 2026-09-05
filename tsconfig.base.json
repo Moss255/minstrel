@@ -25,7 +25,8 @@
       "@vesper/nitro-comp": ["./packages/nitro-comp/src/index.ts"],
       "@vesper/l5-gpc": ["./packages/l5-gpc/src/index.ts"],
       "@vesper/nitro-gfx": ["./packages/nitro-gfx/src/index.ts"],
-      "@vesper/nitro-snd": ["./packages/nitro-snd/src/index.ts"]
+      "@vesper/nitro-snd": ["./packages/nitro-snd/src/index.ts"],
+      "@vesper/game-formats": ["./packages/game-formats/src/index.ts"]
     }
   }
 }

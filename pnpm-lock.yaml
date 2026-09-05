@@ -40,6 +40,8 @@ importers:
         specifier: ^7.1.9
         version: 7.3.6(@types/node@22.20.1)
 
+  packages/game-formats: {}
+
   packages/l5-gpc:
     dependencies:
       '@vesper/nitro-comp':
@@ -56,6 +58,9 @@ importers:
 
   tools/harness:
     dependencies:
+      '@vesper/game-formats':
+        specifier: workspace:*
+        version: link:../../packages/game-formats
       '@vesper/l5-gpc':
         specifier: workspace:*
         version: link:../../packages/l5-gpc

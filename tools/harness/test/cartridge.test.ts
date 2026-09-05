@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { isBitmapFont, readBitmapFont } from '@vesper/game-formats'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import { decompressLz10, isLz10, readCompressionHeader } from '@vesper/nitro-comp'
 import { isNsbmd, readNsbmd } from '@vesper/nitro-gfx'
@@ -323,6 +324,59 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(archives).toBeGreaterThan(0)
     expect(resolved).toBeGreaterThan(1000)
     expect(chains).toBeGreaterThan(0)
+  })
+
+  it('reads every bitmap font it contains', () => {
+    // The font has no magic number, so this doubles as a check on the header
+    // shape test: it must accept every font and nothing else in the cartridge.
+    const failures: string[] = []
+    let fonts = 0
+    let glyphs = 0
+    let falsePositives = 0
+
+    const visit = (bytes: Uint8Array, path: string): void => {
+      if (!isBitmapFont(bytes)) return
+      const looksLikeFont = path.endsWith('.mes')
+      if (!looksLikeFont) {
+        falsePositives++
+        return
+      }
+      fonts++
+      try {
+        const font = readBitmapFont(bytes)
+        glyphs += font.glyphCount
+        if (font.glyphCount > 0) {
+          font.glyph(0)
+          font.glyph(font.glyphCount - 1)
+        }
+      } catch (error) {
+        failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isGpc(bytes)) continue
+      let archive: ReturnType<typeof readGpc>
+      try {
+        archive = readGpc(bytes)
+      } catch {
+        continue
+      }
+      for (const member of archive.members) {
+        if (!member.readable) continue
+        try {
+          visit(archive.read(member), `${file.path}/${member.name}`)
+        } catch {
+          // A member whose codec is not identified is covered by its own test.
+        }
+      }
+    }
+
+    expect(failures).toEqual([])
+    expect(fonts).toBeGreaterThan(500)
+    expect(glyphs).toBeGreaterThan(50000)
+    expect(falsePositives).toBe(0)
   })
 
   it('produces the container magic each member extension implies', () => {

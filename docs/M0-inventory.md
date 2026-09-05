@@ -263,10 +263,29 @@ catalogued — is met.
 question as the map codes were: an answer that probably lives in a table rather
 than in a disassembler.
 
-**The font.** There is no NFTR resource anywhere on the cartridge — the standard
-Nintendo font format is not used. `data/pack/font.gp2` holds `.mes` files whose
-leading bytes look like small dimensions (`12 00 0C 0C`), which suggests a custom
-bitmap font, but nothing is established. M3 needs this.
+**The font — format read, Latin glyphs still missing.** There is no NFTR
+resource anywhere on the cartridge; the standard Nintendo font format is not
+used. The `.mes` files in `data/pack/font.gp2` are a custom bitmap font, and
+that format is now fully read by `@vesper/game-formats`: **all 529 fonts parse
+and 70,604 glyphs decode**, verified by rendering them and checking they look
+like the characters their Shift-JIS codepoints name.
+
+But every one of those fonts is **Japanese**. 70,540 of their codepoints are in
+the kanji range and not one is a single-byte Latin codepoint. The
+`f12C01B`-style names match scenario area codes, so these are per-scenario kanji
+subsets — the cartridge ships only the characters each scene needs.
+
+**The European build's Latin font has not been found.** Searched without
+success: every file matching the font header's shape across the whole
+extraction; files named like fonts; the NCGR and NCLR graphics including the
+per-language `tf_*` set, which are 512-byte UI graphics far too small for an
+alphabet; and `data/bin`, the ARM9 binary and all 35 overlays scanned for runs
+of fixed-size 1bpp cells at seven geometries.
+
+Untested hypotheses: the Latin font is anti-aliased at 2 or 4 bits per pixel and
+so invisible to a 1bpp scan; or it is a tile bank whose ordering lives in a
+separate table; or it is compiled into an overlay in a shape that scan missed.
+M3 needs it, so this is now M0's one open item.
 
 ### On apicula
 
