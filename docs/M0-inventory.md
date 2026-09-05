@@ -175,19 +175,29 @@ container. Treat it as open but no longer risky.
 
 ## What is needed from outside
 
-These need the emulator and disassembly work that is human, GUI-driven, and out
-of scope for code in this repository:
+Much less than before. The area-code question is answered from `maplist9.bin`,
+and the event files are extracted and readable, so the remaining outside work is
+confirmation rather than discovery:
 
-1. **Which area code the slice opens in.** Reach the village in an emulator and
-   observe which map archive loads. This single fact narrows the slice's map,
-   scenario and event assets from thousands of files to tens.
-2. **Which `ev#####` events belong to the opening.** Same method.
-3. **Whether an event VM exists.** A breakpoint on the code that consumes a
-   `data/event` file answers the G1 question directly, and would say far more
-   than further static analysis of GPC2.
+1. **Which `ev#####` events belong to the opening.** The event text is now
+   readable, so this can largely be answered by reading the extracted strings;
+   an emulator would confirm ordering and triggers.
+2. **Whether an event VM exists.** A breakpoint on the code that consumes a
+   `data/event` file would settle G1 outright. Static analysis of the `SB2`
+   container may get there first.
 
-Until (1) lands, M0's "extract the seven or so maps" cannot be finished — the
-extraction machinery is ready, but not the knowledge of what to point it at.
+Neither blocks further work.
+
+## Text
+
+Dialogue is plain ASCII with inline markup — `<,>` for a pause, `<1>` for an
+apostrophe — in per-language files (`_de`, `_en`, `_es`, `_fr`, `_it`) beside
+each event's `.stb`. No custom encoding, no lookup table.
+
+**About 16% of it is currently unreachable**, in members using GPC2 codec 4:
+1,467 English string tables, including roughly half of the slice's own events.
+Since the accuracy posture matches dialogue exactly, codec 4 is on the critical
+path for M3.
 
 ## M0 status
 
