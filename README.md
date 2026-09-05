@@ -93,8 +93,15 @@ VESPER_TEST_ROM=rom/your.nds pnpm test
 pnpm dev        # then open the viewer and drop in your own dump
 ```
 
-Drag to orbit, wheel to zoom, `W` for wireframe. The cartridge is read in your
-browser and nothing is uploaded.
+Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. The
+cartridge is read in your browser and nothing is uploaded.
+
+**Reference mode** renders at the DS's own 256×192 and 5-bit colour, then scales
+that up by a whole number so each hardware pixel stays a visible block. It is
+the validation tool: a 1080p render with 8-bit colour hides exactly the
+differences that are worth catching. It matches the hardware's resolution and
+colour depth, not its rasterisation rules — toon shading and edge marking are
+not implemented.
 
 Models are posed and textured: bones and render commands are read, each vertex is
 placed by the matrix its display list bound it to, and each shape is drawn with

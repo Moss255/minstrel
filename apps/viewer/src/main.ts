@@ -11,6 +11,7 @@ import {
   textureNameForMaterial,
 } from '@vesper/nitro-gfx'
 import { isNarc, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
+import { DS_HEIGHT, DS_WIDTH, ReferenceTarget } from './reference.ts'
 import { type Camera, ModelRenderer, type Piece } from './renderer.ts'
 
 /**
@@ -62,8 +63,14 @@ try {
   throw error
 }
 
+// Reference mode renders at the DS's own 256x192 and 5-bit colour, then scales
+// that up. It is the validation tool: differences from hardware only show at
+// hardware's size and precision.
+const referenceTarget = new ReferenceTarget(renderer.context)
+
 const camera: Camera = { yaw: 0.7, pitch: 0.35, distance: 4, target: [0, 0, 0] }
 let wireframe = false
+let referenceMode = false
 let entries: Entry[] = []
 let selected = -1
 
@@ -225,7 +232,8 @@ function select(index: number): void {
     entry.path,
     `${model.numShapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
     `${uploaded.textured}/${model.numShapes} shapes textured, from ${texturesByName.size} textures found`,
-    'drag to orbit · wheel to zoom · W for wireframe',
+    referenceMode ? `reference mode: ${DS_WIDTH}x${DS_HEIGHT}, 5-bit colour` : 'full resolution',
+    'drag to orbit · wheel to zoom · W wireframe · R reference mode',
   ].join('\n')
 
   renderList()
@@ -297,10 +305,28 @@ canvas.addEventListener(
 )
 addEventListener('keydown', (event) => {
   if (event.key === 'w' || event.key === 'W') wireframe = !wireframe
+  if (event.key === 'r' || event.key === 'R') {
+    referenceMode = !referenceMode
+    if (selected >= 0) select(selected)
+  }
 })
 
 function frame(): void {
-  renderer.draw(camera, wireframe)
+  const canvas = renderer.context.canvas as HTMLCanvasElement
+  const width = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))
+  const height = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio))
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width
+    canvas.height = height
+  }
+
+  if (referenceMode) {
+    referenceTarget.bind()
+    renderer.draw(camera, wireframe, { width: DS_WIDTH, height: DS_HEIGHT })
+    referenceTarget.present(width, height, true)
+  } else {
+    renderer.draw(camera, wireframe)
+  }
   requestAnimationFrame(frame)
 }
 frame()
@@ -318,6 +344,7 @@ if (romUrl) {
     try {
       const response = await fetch(romUrl)
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
+      if (params.get('reference') === '1') referenceMode = true
       await load(new File([await response.blob()], romUrl), params.get('path') ?? undefined)
       const wanted = params.get('model')
       if (wanted) {

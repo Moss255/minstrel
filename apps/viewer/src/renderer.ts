@@ -253,16 +253,33 @@ export class ModelRenderer {
     return { vertices: total, triangles: indices.length / 3, textured }
   }
 
-  draw(camera: Camera, wireframe: boolean): void {
+  /** The context, so a caller can build its own render targets against it. */
+  get context(): WebGL2RenderingContext {
+    return this.gl
+  }
+
+  /**
+   * Draw the scene.
+   *
+   * `viewport` overrides the size drawn at and the aspect the camera is framed
+   * for; reference mode passes the DS's 256x192 so the projection matches what
+   * the hardware would produce, rather than being a letterboxed crop of a
+   * widescreen frame.
+   */
+  draw(camera: Camera, wireframe: boolean, viewport?: { width: number; height: number }): void {
     const gl = this.gl
     const canvas = gl.canvas as HTMLCanvasElement
-    const width = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))
-    const height = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio))
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width
-      canvas.height = height
+    if (!viewport) {
+      const w = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))
+      const h = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio))
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w
+        canvas.height = h
+      }
+      gl.viewport(0, 0, w, h)
     }
-    gl.viewport(0, 0, width, height)
+    const width = viewport?.width ?? canvas.width
+    const height = viewport?.height ?? canvas.height
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     if (this.batches.length === 0) return
 
