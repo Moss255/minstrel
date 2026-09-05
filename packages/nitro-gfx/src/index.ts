@@ -12,6 +12,16 @@ export { FX16_ONE, FX32_ONE, fx10ToFloat, fx16ToFloat, fx32ToFloat, signExtend }
 export { blend, identity, type Mat4, multiply, transformPoint } from './matrix.ts'
 export { type NodeTransform, readNode } from './node.ts'
 export {
+  ANIMATION_STAMP,
+  type Animation,
+  type BoneTrack,
+  boneTrackSize,
+  isNsbca,
+  NSBCA_MAGIC,
+  type Nsbca,
+  readNsbca,
+} from './nsbca.ts'
+export {
   isNsbmd,
   type Model,
   type ModelBounds,

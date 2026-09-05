@@ -5,13 +5,31 @@ Against the milestone's own list.
 | M1 task | status |
 |---|---|
 | WebGPU renderer with WebGL2 fallback | **WebGL2 only.** No WebGPU path yet |
-| NSBMD / NSBTX / NSBCA import | **NSBMD and NSBTX done.** NSBCA not started |
+| NSBMD / NSBTX / NSBCA import | **NSBMD and NSBTX done. NSBCA structure read, tracks not decoded** |
 | DS toon shading, edge marking, 5-bit colour | **5-bit colour done**, in reference mode. Toon shading and edge marking not started |
 | Reference mode (256×192) plus scaled output | **done** |
-| Debug overlay: asset browser, animation scrubber, wireframe | **browser and wireframe done.** No scrubber, since there is no animation yet |
+| Debug overlay: asset browser, animation scrubber, wireframe | **browser and wireframe done.** Animations are listed with their frame counts; no scrubber, because nothing plays yet |
 
 **Done when:** you can browse and animate every slice model in a browser at any
 resolution. Browsing works; animating does not.
+
+## Where NSBCA stands
+
+The container, the animation list and the per-bone entries all read, and the
+entry-size formula is exact: a track's computed length lands on the next
+track's offset 144,379 times out of 144,379, across 10,473 animations.
+
+What is missing is the **contents** of those entries — which section is
+translation, rotation or scale, and how a frame selects a key. Until that is
+established nothing can be played, and guessing at it would produce animation
+that looks approximately right and is wrong, which is worse than none. The
+viewer therefore lists a model's animations and their frame counts and says
+plainly that it does not play them.
+
+The obstacle to cracking it is that an animation's archive usually does not
+contain the model it drives, so the obvious oracle — does frame 0 resemble the
+bind pose — is not directly available. Pairing them through the map or character
+manifests is the way in.
 
 ## What reference mode is for
 

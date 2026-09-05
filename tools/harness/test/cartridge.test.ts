@@ -8,7 +8,16 @@ import {
   looksBlz,
   readCompressionHeader,
 } from '@vesper/nitro-comp'
-import { isNsbmd, isNsbtx, readNsbmd, readTex0, texelDataSize } from '@vesper/nitro-gfx'
+import {
+  boneTrackSize,
+  isNsbca,
+  isNsbmd,
+  isNsbtx,
+  readNsbca,
+  readNsbmd,
+  readTex0,
+  texelDataSize,
+} from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -608,6 +617,51 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(textures).toBeGreaterThan(10000)
     // Textures pack tightly; the few gaps are alignment.
     expect(tiled / tiledTotal).toBeGreaterThan(0.95)
+  })
+
+  it('reads every animation, and its track sizes lay end to end', () => {
+    // The size formula is fitted from the flag bits, so the check that it is
+    // right is that a track's computed length lands exactly on the next
+    // track's offset — the file's own numbers, not this code's.
+    const failures: string[] = []
+    let animations = 0
+    let tracks = 0
+    let adjacent = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isNsbca(data)) continue
+        try {
+          for (const animation of readNsbca(data).animations) {
+            animations++
+            const sorted = [...animation.tracks].sort((a, b) => a.offset - b.offset)
+            tracks += sorted.length
+            for (let i = 0; i < sorted.length - 1; i++) {
+              const here = sorted[i] as (typeof sorted)[number]
+              const next = sorted[i + 1] as (typeof sorted)[number]
+              adjacent++
+              if (here.offset + boneTrackSize(here.flags) !== next.offset) {
+                failures.push(
+                  `${file.path}#${animation.name}: track ${i} of ${boneTrackSize(here.flags)} bytes does not reach ${next.offset - here.offset}`,
+                )
+              }
+            }
+          }
+        } catch (error) {
+          failures.push(
+            `${file.path}#${member.name ?? member.index}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(animations).toBeGreaterThan(1000)
+    expect(tracks).toBeGreaterThan(10000)
+    expect(adjacent).toBeGreaterThan(10000)
   })
 
   it('produces the container magic each member extension implies', () => {

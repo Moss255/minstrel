@@ -291,6 +291,57 @@ A map's textures are frequently in a different archive from its models, so a
 caller has to resolve against everything it has loaded rather than assuming the
 sibling file holds them.
 
+## NSBCA — joint animation
+
+Stamp `BCA0`, holding a `JNT0` block: a resource dictionary of animations.
+
+Each animation:
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u8[4]` | `4A 00 41 43` — the only stamp observed |
+| `+0x04` | `u16` | frame count |
+| `+0x06` | `u16` | bone count |
+| `+0x08` | `u32` | `unknown_0x08` |
+| `+0x0C` | `u32` | end of the per-bone entries; a value pool follows |
+| `+0x10` | `u32` | a second pool offset |
+| `+0x14` | `u16[bones]` | per-bone entry offsets, relative to the animation |
+
+A per-bone entry begins `u16 flags`, `u8 unknown` (always 0), `u8 bone index`.
+**The index always equals the entry's own position** — 154,852 of 154,852.
+
+### The entry size formula
+
+An entry's length is fully determined by its flags: across the reference
+cartridge every distinct flags value maps to exactly one length. A least-squares
+fit of length against the flag bits gives whole numbers, and they reproduce the
+length for all 202 distinct values:
+
+```
+length = 60 - 12*bit1 - 4*(bit3 + bit4 + bit5 + bit6 + bit8) - 24*bit9
+```
+
+The weights say what the sections are — one 12-byte block, five 4-byte fields
+and one 24-byte block — without saying what they hold.
+
+**Confirmed by the files' own numbers:** a track's computed length lands exactly
+on the next track's offset, **144,379 of 144,379**, across 10,473 files and
+10,473 animations.
+
+### What is not established
+
+**The track contents.** Which section is translation, which is rotation, which
+is scale, whether a field holds a value inline or an index into one of the two
+pools, and how a frame maps onto a key — none of that is established, so nothing
+here plays an animation. `readNsbca` reports an animation's name, frame count,
+bones and per-bone flags, and hands back each entry's bytes untouched.
+
+Two leads for whoever continues. The 24-byte block is the right size for scale
+held as three values and three reciprocals, which is how a model's bind-pose
+nodes store it. And the 12-byte block is the size of three `fx32`, which is how
+those nodes store translation. Neither has been checked against a model, because
+the archives that hold an animation frequently do not hold the model it drives.
+
 ## Not implemented
 
 - **The `0x40` flag's parameter on node-transform commands.** Its meaning is not

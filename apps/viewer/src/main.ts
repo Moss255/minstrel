@@ -1,10 +1,12 @@
 import { isGpc, readGpc } from '@vesper/l5-gpc'
 import { tryDecompressLz10 } from '@vesper/nitro-comp'
 import {
+  isNsbca,
   isNsbmd,
   isNsbtx,
   type Model,
   measureBounds,
+  readNsbca,
   readNsbmd,
   readTex0,
   type TextureSet,
@@ -37,6 +39,14 @@ interface Entry {
  * pairing.
  */
 const texturesByName = new Map<string, { set: TextureSet; name: string }>()
+
+/**
+ * Animations found in the scan, by the archive path they came from.
+ *
+ * Listing them is as far as this goes: NSBCA's per-bone track *contents* are
+ * not decoded, so nothing plays yet. See `packages/nitro-gfx/FORMAT.md`.
+ */
+const animationsByArchive = new Map<string, { name: string; frames: number }[]>()
 
 function must<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector)
@@ -98,6 +108,19 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
       collectTextures(payload)
       return
     }
+    if (isNsbca(payload)) {
+      try {
+        const archive = path.slice(0, path.lastIndexOf('/'))
+        const list = animationsByArchive.get(archive) ?? []
+        for (const animation of readNsbca(payload).animations) {
+          list.push({ name: animation.name, frames: animation.frameCount })
+        }
+        animationsByArchive.set(archive, list)
+      } catch {
+        // An animation container that will not read is not fatal to the scan.
+      }
+      return
+    }
     if (isNarc(payload)) {
       try {
         for (const member of readNarc(payload).entries()) {
@@ -122,6 +145,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   }
 
   texturesByName.clear()
+  animationsByArchive.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -171,6 +195,18 @@ function textureFor(materialName: string): DecodedTexture | undefined {
   } catch {
     return undefined
   }
+}
+
+/** Animations alongside a model, as a line for the overlay. */
+function describeAnimations(path: string): string {
+  const list = animationsByArchive.get(path.slice(0, path.lastIndexOf('/'))) ?? []
+  if (list.length === 0) return 'no animations in this archive'
+  const shown = list
+    .slice(0, 4)
+    .map((a) => `${a.name} (${a.frames}f)`)
+    .join(', ')
+  const more = list.length > 4 ? `, +${list.length - 4} more` : ''
+  return `animations: ${shown}${more} — not played yet`
 }
 
 function renderList(): void {
@@ -233,6 +269,7 @@ function select(index: number): void {
     `${model.numShapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
     `${uploaded.textured}/${model.numShapes} shapes textured, from ${texturesByName.size} textures found`,
     referenceMode ? `reference mode: ${DS_WIDTH}x${DS_HEIGHT}, 5-bit colour` : 'full resolution',
+    describeAnimations(entry.path),
     'drag to orbit · wheel to zoom · W wireframe · R reference mode',
   ].join('\n')
 
