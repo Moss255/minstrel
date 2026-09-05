@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { NitroCompError } from '../src/errors.ts'
 import { compressLz10 } from '../src/lz10.ts'
-import { decompressHuffman, decompressRawLz77 } from '../src/raw.ts'
+import {
+  compressRawRle,
+  decompressHuffman,
+  decompressRawLz77,
+  decompressRawRle,
+} from '../src/raw.ts'
 
 function noise(length: number, seed: number): Uint8Array {
   const out = new Uint8Array(length)
@@ -148,5 +153,77 @@ describe('decompressHuffman', () => {
 
   it('throws when the stream starts past the buffer', () => {
     expect(() => decompressHuffman(new Uint8Array(4), 4, 8, 99)).toThrow(/past the end/)
+  })
+})
+
+describe('decompressRawRle', () => {
+  const cases: [string, Uint8Array][] = [
+    ['empty', new Uint8Array(0)],
+    ['one byte', Uint8Array.from([0x42])],
+    ['two bytes, too short to run', Uint8Array.from([1, 1])],
+    ['a minimum-length run', Uint8Array.from([7, 7, 7])],
+    ['a maximum-length run', new Uint8Array(130).fill(0xab)],
+    ['a run past the maximum', new Uint8Array(400).fill(0xcd)],
+    ['pure literals', noise(300, 5)],
+    ['a maximum-length literal block', noise(128, 6)],
+    [
+      'alternating runs and literals',
+      Uint8Array.from([...noise(20, 7), ...new Array(50).fill(9), ...noise(20, 8)]),
+    ],
+    ['trailing run', Uint8Array.from([1, 2, 3, ...new Array(40).fill(0)])],
+    ['leading run', Uint8Array.from([...new Array(40).fill(0xff), 1, 2, 3])],
+  ]
+
+  for (const [label, original] of cases) {
+    it(`round-trips: ${label}`, () => {
+      const packed = compressRawRle(original)
+      const result = decompressRawRle(packed, original.length)
+      expect(Array.from(result.data)).toEqual(Array.from(original))
+      expect(result.bytesRead).toBe(packed.length)
+    })
+  }
+
+  it('decodes the documented unit encoding', () => {
+    // 0x00 -> 1 literal; 0x80 -> 3 copies; 0x84 -> 7 copies; 0x02 -> 3 literals
+    const stream = Uint8Array.from([0x00, 0x01, 0x80, 0x00, 0x84, 0xff, 0x02, 0x61, 0x62, 0x63])
+    expect(Array.from(decompressRawRle(stream, 14).data)).toEqual([
+      0x01, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x61, 0x62, 0x63,
+    ])
+  })
+
+  it('actually compresses a long run', () => {
+    expect(compressRawRle(new Uint8Array(1000).fill(3)).length).toBeLessThan(30)
+  })
+
+  it('decodes from an offset inside a larger buffer', () => {
+    const original = Uint8Array.from([...new Array(20).fill(5), 1, 2])
+    const packed = compressRawRle(original)
+    const framed = new Uint8Array(9 + packed.length)
+    framed.set(packed, 9)
+    expect(Array.from(decompressRawRle(framed, original.length, 9).data)).toEqual(
+      Array.from(original),
+    )
+  })
+
+  it('throws on a truncated stream', () => {
+    expect(() => decompressRawRle(Uint8Array.from([0x00, 1]), 64)).toThrow(/stream ended/)
+  })
+
+  it('throws when the run byte is missing', () => {
+    expect(() => decompressRawRle(Uint8Array.from([0x80]), 8)).toThrow(/before the run byte/)
+  })
+
+  it('throws when a run would overrun the output', () => {
+    expect(() => decompressRawRle(Uint8Array.from([0xff, 0x00]), 4)).toThrow(/would overrun/)
+  })
+
+  it('throws when literals run past the end of the stream', () => {
+    expect(() => decompressRawRle(Uint8Array.from([0x7f, 1, 2, 3]), 128)).toThrow(/past the end/)
+  })
+
+  it('throws when literals would overrun the output', () => {
+    expect(() => decompressRawRle(Uint8Array.from([0x05, 1, 2, 3, 4, 5, 6]), 3)).toThrow(
+      /would overrun/,
+    )
   })
 })

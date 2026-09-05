@@ -12,8 +12,10 @@ export {
 } from './header.ts'
 export { compressLz10, decompressLz10, isLz10, tryDecompressLz10 } from './lz10.ts'
 export {
+  compressRawRle,
   decompressHuffman,
   decompressRawLz77,
+  decompressRawRle,
   type RawResult,
 } from './raw.ts'
 

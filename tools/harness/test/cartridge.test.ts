@@ -189,6 +189,32 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(failures.length).toBeLessThan(10)
     expect(decoded).toBeGreaterThan(0)
     expect(unidentified).toBeGreaterThan(0)
+    // The overwhelming majority of members must be readable; a codec regression
+    // would show up here as a collapse in this ratio rather than as an error.
+    expect(decoded / (decoded + unidentified)).toBeGreaterThan(0.95)
+  })
+
+  it('offers raw bytes for GPC2 members whose codec is unidentified', () => {
+    // Some members are stored with no region prefix and are archives outright.
+    // They must survive as bytes rather than being dropped.
+    let raw = 0
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isGpc(bytes)) continue
+      let archive: ReturnType<typeof readGpc>
+      try {
+        archive = readGpc(bytes)
+      } catch {
+        continue
+      }
+      for (const member of archive.members) {
+        if (member.readable) continue
+        const stored = archive.readRaw(member)
+        expect(stored.length, `${file.path}#${member.name}`).toBe(member.storedLength)
+        raw++
+      }
+    }
+    expect(raw).toBeGreaterThan(0)
   })
 
   it('produces the container magic each member extension implies', () => {

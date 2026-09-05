@@ -114,16 +114,29 @@ table and yields an index whose hashes are in ascending order and whose 50,742
 filenames all match their stored CRC-32 — checks a wrong tree walk does not
 pass. See `packages/l5-gpc/FORMAT.md`.
 
+### Run-length
+
+| flag bit 7 | meaning |
+|---|---|
+| 0 | `(flag & 0x7F) + 1` literal bytes follow |
+| 1 | `(flag & 0x7F) + 3` copies of the single byte that follows |
+
+**Confirmed by observation.** All 7,743 GPC2 regions on the reference cartridge
+that select this codec decode to exactly their declared size *and* consume
+exactly their stored payload — two independent exact matches on every sample.
+
+An earlier revision of this file claimed the run-length format did not appear on
+this cartridge, on the strength of a test that decoded 3 of 334 candidate
+regions. That test was pointed at the wrong regions: it assumed the container
+numbered its codecs the way the BIOS does. It does not — it gives each codec
+*variant* its own number, so Huffman-4 and Huffman-8 take 2 and 3, and
+run-length is 4. Tested against codec 4, it matches 7,743 of 7,743.
+
 ## Not implemented
 
-Run-length (`0x3`) and the diff filter (`0x8`).
-
-This is a decision, not an omission: neither appears on the reference cartridge.
-The BIOS run-length format was specifically tested against the 334 candidate
-regions of a container that numbers a codec `3`, and decoded 3 of them — chance,
-not a match. Writing a codec from documentation alone with no sample to verify
-against would put untested code that looks correct into a package other code
-trusts.
+The diff filter (`0x8`), which does not appear on the reference cartridge.
+Writing a codec from documentation alone with no sample to verify against would
+put untested code that looks correct into a package other code trusts.
 
 ## The compressor
 

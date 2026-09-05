@@ -7,7 +7,8 @@ import { buildGpc, fill, repeating } from './fixture.ts'
 const members = [
   { name: 'ev01320.stb', data: repeating(400, 1) },
   { name: 'ev01320_de.bin', data: repeating(120, 2) },
-  { name: 'ev01320_en.bin', data: fill(64, 3), stored: true },
+  { name: 'ev01320_en.bin', data: fill(64, 3), codec: 'stored' as const },
+  { name: 'ev01320_it.bin', data: repeating(300, 5), codec: 'rle' as const },
   { name: 'ev01320_fr.bin', data: repeating(900, 4) },
 ]
 
@@ -29,7 +30,7 @@ describe('crc32', () => {
 describe('readGpc', () => {
   it('lists every member with its name', () => {
     const archive = readGpc(buildGpc(members))
-    expect(archive.header.count).toBe(4)
+    expect(archive.header.count).toBe(5)
     expect(archive.header.version).toBe(5)
     expect([...archive.members].map((m) => m.name).sort()).toEqual(
       members.map((m) => m.name).sort(),
@@ -43,14 +44,46 @@ describe('readGpc', () => {
     }
   })
 
-  it('reads stored and compressed members alike', () => {
+  it('reads every codec it implements', () => {
     const archive = readGpc(buildGpc(members))
     const stored = archive.member('ev01320_en.bin')
     const packed = archive.member('ev01320_fr.bin')
+    const runLength = archive.member('ev01320_it.bin')
     expect(stored?.method).toBe(0)
     expect(packed?.method).toBe(1)
+    expect(runLength?.method).toBe(4)
     expect(stored?.size).toBe(64)
     expect(packed?.size).toBe(900)
+    expect(runLength?.size).toBe(300)
+  })
+
+  it('offers the stored bytes of any member verbatim', () => {
+    const raw = buildGpc(members)
+    const archive = readGpc(raw)
+    const member = archive.member('ev01320_fr.bin')
+    if (!member) throw new Error('fixture member missing')
+    const verbatim = archive.readRaw(member)
+    expect(verbatim.length).toBe(member.storedLength)
+    expect(Array.from(verbatim)).toEqual(
+      Array.from(raw.subarray(member.offset, member.offset + member.storedLength)),
+    )
+  })
+
+  it('offers raw bytes for a member whose codec is not identified', () => {
+    // The shape that matters: two archives on the reference cartridge store
+    // members with no region prefix at all, and their bytes must survive.
+    const raw = buildGpc(members)
+    const first = readGpc(raw).members[0]
+    if (!first) throw new Error('fixture is empty')
+    const view = new DataView(raw.buffer)
+    view.setUint32(first.offset, ((view.getUint32(first.offset, true) & ~7) | 6) >>> 0, true)
+
+    const archive = readGpc(raw)
+    const broken = archive.members.find((m) => m.offset === first.offset)
+    if (!broken) throw new Error('member vanished')
+    expect(broken.readable).toBe(false)
+    expect(() => archive.read(broken)).toThrow(/not identified/)
+    expect(archive.readRaw(broken).length).toBe(broken.storedLength)
   })
 
   it('indexes members by the CRC-32 of their name', () => {

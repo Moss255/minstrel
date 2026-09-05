@@ -189,3 +189,103 @@ export function decompressHuffman(
 
   return { data: out, bytesRead: bitPos - start }
 }
+
+/**
+ * Run-length with the size supplied externally.
+ *
+ * Per GBATEK: a flag byte, then either literals or a run.
+ *
+ * | flag bit 7 | meaning |
+ * |---|---|
+ * | 0 | `(flag & 0x7F) + 1` literal bytes follow |
+ * | 1 | `(flag & 0x7F) + 3` copies of the single byte that follows |
+ *
+ * **Confirmed by observation.** On this project's reference cartridge, all
+ * 7,743 regions of the Level-5 GPC2 container that select this codec decode to
+ * exactly their declared size *and* consume exactly their stored payload — two
+ * independent exact matches, on every sample.
+ */
+export function decompressRawRle(
+  source: Uint8Array,
+  decompressedSize: number,
+  start = 0,
+): RawResult {
+  if (!Number.isInteger(decompressedSize) || decompressedSize < 0) {
+    throw new NitroCompError(`invalid decompressed size ${decompressedSize}`, start)
+  }
+  const out = new Uint8Array(decompressedSize)
+  let src = start
+  let dst = 0
+
+  while (dst < out.length) {
+    if (src >= source.length) {
+      throw new NitroCompError(`stream ended after ${dst} of ${out.length} bytes`, src)
+    }
+    const flag = source[src++] as number
+
+    if ((flag & 0x80) !== 0) {
+      const length = (flag & 0x7f) + 3
+      if (src >= source.length) {
+        throw new NitroCompError(`stream ended before the run byte at output ${dst}`, src)
+      }
+      if (dst + length > out.length) {
+        throw new NitroCompError(
+          `run of ${length} at output byte ${dst} would overrun the ${out.length}-byte output`,
+          src - 1,
+        )
+      }
+      const value = source[src++] as number
+      for (let i = 0; i < length; i++) out[dst++] = value
+    } else {
+      const length = (flag & 0x7f) + 1
+      if (src + length > source.length) {
+        throw new NitroCompError(
+          `run of ${length} literals at output byte ${dst} runs past the end of the stream`,
+          src,
+        )
+      }
+      if (dst + length > out.length) {
+        throw new NitroCompError(
+          `${length} literals at output byte ${dst} would overrun the ${out.length}-byte output`,
+          src - 1,
+        )
+      }
+      for (let i = 0; i < length; i++) out[dst++] = source[src++] as number
+    }
+  }
+
+  return { data: out, bytesRead: src - start }
+}
+
+/** Compress to the run-length format above. Provided for round-trip testing. */
+export function compressRawRle(data: Uint8Array): Uint8Array {
+  const out: number[] = []
+  let i = 0
+
+  while (i < data.length) {
+    // Longest run at i, capped at the format's maximum of 0x7F + 3.
+    let run = 1
+    while (run < 130 && i + run < data.length && data[i + run] === data[i]) run++
+
+    if (run >= 3) {
+      out.push(0x80 | (run - 3), data[i] as number)
+      i += run
+      continue
+    }
+
+    // Otherwise gather literals until a run of 3 or more begins, or the block
+    // reaches the format's maximum of 0x7F + 1.
+    const startLiteral = i
+    while (i < data.length && i - startLiteral < 128) {
+      let ahead = 1
+      while (ahead < 3 && i + ahead < data.length && data[i + ahead] === data[i]) ahead++
+      if (ahead >= 3) break
+      i++
+    }
+    const length = i - startLiteral
+    out.push(length - 1)
+    for (let j = 0; j < length; j++) out.push(data[startLiteral + j] as number)
+  }
+
+  return Uint8Array.from(out)
+}

@@ -1,4 +1,4 @@
-import { decompressHuffman, decompressRawLz77 } from '@vesper/nitro-comp'
+import { decompressHuffman, decompressRawLz77, decompressRawRle } from '@vesper/nitro-comp'
 import { crc32OfName } from './crc32.ts'
 import { GpcError } from './errors.ts'
 
@@ -40,6 +40,11 @@ import { GpcError } from './errors.ts'
  * The name table and each member are "regions": a `u32` prefix whose low three
  * bits select a codec and whose upper 29 bits give the decompressed size,
  * followed by the payload. The name table decodes to NUL-separated names.
+ *
+ * Two archives on the reference cartridge hold members with no region prefix,
+ * whose bytes are their content directly. There is no header flag that
+ * distinguishes them, so they are reported `readable: false` and their bytes
+ * offered through {@link GpcArchive.readRaw} rather than guessed at.
  */
 
 export const GPC_MAGIC = 'GPC2'
@@ -52,6 +57,7 @@ export const GpcMethod = {
   Lz77: 1,
   Huffman4: 2,
   Huffman8: 3,
+  RunLength: 4,
 } as const
 
 export interface GpcHeader {
@@ -94,6 +100,16 @@ export interface GpcArchive {
    * uses a codec this package does not implement.
    */
   read(target: string | number | GpcMember): Uint8Array
+  /**
+   * The member's stored bytes, verbatim and undecoded, including the four that
+   * would be its region prefix.
+   *
+   * Useful for a member whose `readable` is false: two archives on the
+   * reference cartridge hold members with no region prefix at all, whose bytes
+   * are simply their content. This hands them to a caller that can identify
+   * them, rather than discarding them. See `FORMAT.md`.
+   */
+  readRaw(target: string | number | GpcMember): Uint8Array
 }
 
 function u16(d: Uint8Array, at: number): number {
@@ -163,6 +179,13 @@ function readRegion(data: Uint8Array, at: number): Region {
         size,
         readable: true,
         decode: () => decompressHuffman(data, size, 8, payload).data,
+      }
+    case GpcMethod.RunLength:
+      return {
+        method,
+        size,
+        readable: true,
+        decode: () => decompressRawRle(data, size, payload).data,
       }
     default:
       return {
@@ -239,6 +262,9 @@ export function readGpc(data: Uint8Array): GpcArchive {
       read: () => {
         throw new GpcError('archive is empty')
       },
+      readRaw: () => {
+        throw new GpcError('archive is empty')
+      },
     }
   }
 
@@ -290,12 +316,14 @@ export function readGpc(data: Uint8Array): GpcArchive {
 
   const byName = new Map(members.map((m) => [m.name, m]))
 
-  const read = (target: string | number | GpcMember): Uint8Array => {
+  const read = (target: string | number | GpcMember): Uint8Array =>
+    readRegion(data, resolve(target).offset).decode()
+
+  const resolve = (target: string | number | GpcMember): GpcMember => {
     let member: GpcMember | undefined
     if (typeof target === 'string') member = byName.get(target)
     else if (typeof target === 'number') member = members[target]
     else member = target
-
     if (!member) {
       throw new GpcError(
         typeof target === 'number'
@@ -303,8 +331,13 @@ export function readGpc(data: Uint8Array): GpcArchive {
           : `no such member: '${String(target)}'`,
       )
     }
-    return readRegion(data, member.offset).decode()
+    return member
   }
 
-  return { header, members, member: (name) => byName.get(name), read }
+  const readRaw = (target: string | number | GpcMember): Uint8Array => {
+    const member = resolve(target)
+    return data.subarray(member.offset, member.offset + member.storedLength)
+  }
+
+  return { header, members, member: (name) => byName.get(name), read, readRaw }
 }

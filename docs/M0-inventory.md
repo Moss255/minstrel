@@ -39,11 +39,13 @@ See each package's `FORMAT.md` for the evidence.
 | members decompressed | 12,371 |
 | files written | 83,621 |
 | bytes written | 340.9 MiB |
-| GPC2 members with an unidentified codec | 8,349 |
+| GPC2 members with an unidentified codec | 606 |
+| — of those, stored with no prefix and recovered intact | 601 |
 | failures | 16 |
 
-A member whose codec is not identified is written with a `.gpc-codecN` suffix:
-its bytes are preserved without being passed off as decoded content.
+Five files across the whole cartridge remain undecoded. A member whose codec is
+not identified is written with a `.gpc-codecN` suffix: its bytes are preserved
+without being passed off as decoded content.
 
 Output mirrors the cartridge tree under `out/files/`, with every archive
 replaced by a directory of its members, so an asset that was an LZ10 stream
@@ -136,10 +138,19 @@ An earlier reading of this document described the name table as "a trie with
 interleaved control bytes". That was wrong — it was compressed data. The name
 table is a plain NUL-separated list.
 
-**What remains:** codecs 4, 6 and 7 (8,349 members, about 16%) are
-unidentified. They are not the BIOS run-length format, which was tested and
-decoded 3 of 334 candidate regions. Eleven large archives use an index shape the
-parser does not yet read. Four header fields are still `unknown_*`.
+**Codec 4 is run-length**, and with it **50,135 of 50,746 members decode — 98.8%**.
+
+An earlier revision of this document said codec 4 was *not* the BIOS run-length
+format, citing a test that decoded 3 of 334 regions. That test was pointed at
+codec 3. The container does not number its codecs the way the BIOS does: each
+codec *variant* gets a number, so the two Huffman symbol widths take 2 and 3 and
+run-length lands on 4. Against codec 4 it matches 7,743 of 7,743 regions, each
+decoding to exactly its declared size and consuming exactly its stored payload.
+
+**What remains:** codec 7 (5 members, one non-slice file); 601 members in
+`enemy.gp2` stored with no region prefix, which are recovered as raw bytes since
+they are `NARC` archives outright; 11 large archives using an index shape the
+parser does not yet read; and four `unknown_*` header fields.
 
 ### 2. `.ambl` / `.amdj` members
 
@@ -194,10 +205,14 @@ Dialogue is plain ASCII with inline markup — `<,>` for a pause, `<1>` for an
 apostrophe — in per-language files (`_de`, `_en`, `_es`, `_fr`, `_it`) beside
 each event's `.stb`. No custom encoding, no lookup table.
 
-**About 16% of it is currently unreachable**, in members using GPC2 codec 4:
-1,467 English string tables, including roughly half of the slice's own events.
-Since the accuracy posture matches dialogue exactly, codec 4 is on the critical
-path for M3.
+All of it is now readable. Codec 4 — which had held 1,467 English string tables,
+including roughly half of the slice's own events — is run-length, and decodes.
+
+The text carries a script markup language alongside the prose: `<Cap>` to
+capitalise, `<HERO>` for the player's name, `<SE_014>` for a sound effect,
+`<ALL_RECOVER=1,1,999>` for an effect with arguments. That is a substantial hint
+about how events are driven, and it is worth reading before designing the M3
+dialogue system.
 
 ## M0 status
 

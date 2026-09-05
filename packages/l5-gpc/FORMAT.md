@@ -75,14 +75,29 @@ then the payload.
 | 1 | LZ77, LZ10 unit encoding, no BIOS header | 39,559 |
 | 2 | Huffman, 4-bit symbols | 368 |
 | 3 | Huffman, 8-bit symbols | 2,438 |
-| 4 | **unidentified** | 7,743 |
-| 6 | **unidentified** | 601 |
+| 4 | run-length | 7,743 |
 | 7 | **unidentified** | 5 |
 
-Codecs 4, 6 and 7 are not implemented. They are not the BIOS run-length format —
-that was tested against all 334 candidate regions and decoded 3, which is
-chance. Rather than guess, `readGpc` marks such members `readable: false` and
-`read` throws naming the codec.
+Note that the numbering is **not** the BIOS's. Each codec *variant* gets its own
+number, so the two Huffman symbol widths take 2 and 3 and run-length lands on 4.
+An earlier revision of this file asserted that codec 4 was not run-length, on
+the strength of a test that had been pointed at codec 3. Against codec 4,
+run-length matches 7,743 of 7,743 regions exactly.
+
+Codec 7 (5 members, all in one non-slice file) is not identified. `readGpc`
+marks such members `readable: false` and `read` throws naming the codec.
+
+### Members with no region prefix
+
+Two archives — `enemy.gp2` (601 members) and `actdt_a.gp2` — hold members whose
+bytes are their content directly, with no region prefix. Reading the first four
+bytes as a prefix yields a nonsense size and a codec number of 6.
+
+No header field distinguishes these, so the parser does not guess: it reports
+them `readable: false` and offers their bytes verbatim through `readRaw`. In
+practice they identify themselves — every one observed begins with `NARC` — so a
+caller that can recognise a container recovers them intact. `tools/inventory`
+does exactly that.
 
 The name table decodes to plain NUL-separated names. There is no trie: earlier
 readings that appeared to show one were looking at compressed bytes.
@@ -95,9 +110,9 @@ Against a retail cartridge, which is not in this repository:
 |---|---|
 | archives parsed | 1,660 / 1,671 |
 | members indexed | 50,746 |
-| **member names whose CRC-32 matches the stored hash** | **50,742 / 50,742, zero mismatches** |
-| members whose codec is implemented | 42,397 |
-| those decoding to exactly the declared size | 42,392 |
+| **member names whose CRC-32 matches the stored hash** | **50,746 / 50,746, zero mismatches** |
+| members whose codec is implemented | 50,140 |
+| those decoding to exactly the declared size | 50,135 |
 
 The CRC-32 result is the strongest single piece of evidence. The hash is stored,
 the name is recovered from a separately-compressed table, and the two are
@@ -112,11 +127,15 @@ between the header and the name table, and yields hashes in ascending order.
 
 ## Known gaps
 
-- Codecs 4, 6 and 7 (8,349 members, about 16%).
+98.8% of members decode. What is left:
+
+- Codec 7: 5 members, all in `data/prm/actdt_a.gp2`.
+- 601 members stored with no region prefix, recoverable via `readRaw` as
+  described above.
 - 11 archives where an entry names a byte that is not a name-table entry. All
-  are large (`chara_pc`, `chara_pd`, `enemy`, and a few scenario files), which
-  suggests the name offset is wider still than 16 bits in some variant, or that
-  those archives use a differently-shaped index.
+  are large (`chara_pc`, `chara_pd`, and a few scenario files), which suggests
+  the name offset is wider still than 16 bits in some variant, or that those
+  archives use a differently-shaped index.
 - 5 members whose 8-bit Huffman stream ends early — possibly a third symbol
   width, possibly a different codec sharing the number.
 - `unknown_0x05`, `unknown_0x0e`, `unknown_0x10`, `unknown_0x14`.

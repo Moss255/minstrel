@@ -1,4 +1,4 @@
-import { compressLz10 } from '@vesper/nitro-comp'
+import { compressLz10, compressRawRle } from '@vesper/nitro-comp'
 import { crc32OfName } from '../src/crc32.ts'
 
 /**
@@ -8,17 +8,17 @@ import { crc32OfName } from '../src/crc32.ts'
  * tested against is constructed here from a plain description, implementing the
  * layout independently of the reader.
  *
- * Only the stored and LZ77 codecs are produced: the package has no Huffman
- * *encoder*, and inventing one to test the decoder would be testing two guesses
- * against each other. The Huffman path's evidence is the integration test
- * against a real cartridge.
+ * The stored, LZ77 and run-length codecs are produced. Huffman is not: the
+ * package has no Huffman *encoder*, and inventing one to test the decoder would
+ * be testing two guesses against each other. The Huffman path's evidence is the
+ * integration test against a real cartridge.
  */
 
 export interface GpcFixtureMember {
   name: string
   data: Uint8Array
-  /** Store verbatim rather than LZ77-compressing. */
-  stored?: boolean
+  /** Codec to store this member with. Defaults to LZ77. */
+  codec?: 'stored' | 'lz77' | 'rle'
 }
 
 export interface GpcFixtureOptions {
@@ -48,11 +48,16 @@ export function repeating(length: number, seed: number): Uint8Array {
 const align4 = (n: number) => (n + 3) & ~3
 
 /** Build a region: u32 prefix of (size << 3 | method), then the payload. */
-function buildRegion(payload: Uint8Array, stored: boolean): Uint8Array {
+function buildRegion(payload: Uint8Array, codec: 'stored' | 'lz77' | 'rle'): Uint8Array {
   // compressLz10 emits the 4-byte BIOS header; GPC2 regions carry the payload
   // bare, so drop it.
-  const body = stored ? payload : compressLz10(payload).subarray(4)
-  const method = stored ? 0 : 1
+  const body =
+    codec === 'stored'
+      ? payload
+      : codec === 'rle'
+        ? compressRawRle(payload)
+        : compressLz10(payload).subarray(4)
+  const method = codec === 'stored' ? 0 : codec === 'rle' ? 4 : 1
   const region = new Uint8Array(4 + body.length)
   new DataView(region.buffer).setUint32(0, ((payload.length << 3) | method) >>> 0, true)
   region.set(body, 4)
@@ -71,7 +76,7 @@ export function buildGpc(members: GpcFixtureMember[], options: GpcFixtureOptions
     nameBytes.push(0)
   }
   while (nameBytes.length % 4 !== 0) nameBytes.push(0)
-  const nameRegion = buildRegion(Uint8Array.from(nameBytes), false)
+  const nameRegion = buildRegion(Uint8Array.from(nameBytes), 'lz77')
 
   const headerSize = 0x18
   const entryTableSize = count * 12
@@ -82,7 +87,7 @@ export function buildGpc(members: GpcFixtureMember[], options: GpcFixtureOptions
   const regions: { member: GpcFixtureMember; at: number; bytes: Uint8Array }[] = []
   let cursor = dataOffset
   for (const m of members) {
-    const bytes = buildRegion(m.data, m.stored ?? false)
+    const bytes = buildRegion(m.data, m.codec ?? 'lz77')
     regions.push({ member: m, at: cursor, bytes })
     cursor = align4(cursor + bytes.length)
   }

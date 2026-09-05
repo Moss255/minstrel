@@ -206,6 +206,7 @@ async function main(): Promise<void> {
   let archivesUnpacked = 0
   let gpcUnpacked = 0
   let gpcUnreadable = 0
+  let gpcPrefixless = 0
   let membersDecompressed = 0
   let escapedNames = 0
   const failures: string[] = []
@@ -258,13 +259,18 @@ async function main(): Promise<void> {
           const safe = toSafeName(member.name)
           if (safe.escaped) escapedNames++
           if (!member.readable) {
-            // Preserve the bytes rather than lose them, but do not pretend they
-            // are the member's real content: the codec is not identified.
+            // The codec is not identified, so the bytes are preserved rather
+            // than lost. Some of these members turn out to have no region
+            // prefix at all and to be archives outright; where the raw bytes
+            // identify themselves, keep the member's real name so the recursion
+            // below can unpack them, and only mark the rest.
             gpcUnreadable++
-            const stored = payload.subarray(member.offset, member.offset + member.storedLength)
+            const stored = archive.readRaw(member)
+            const identifiable = isNarc(stored) || isGpc(stored)
+            if (identifiable) gpcPrefixless++
             await emit(
               stored,
-              join(outPath, `${safe.safe}.gpc-codec${member.method}`),
+              join(outPath, identifiable ? safe.safe : `${safe.safe}.gpc-codec${member.method}`),
               source,
               [...within, member.name],
               safe.originalHex,
@@ -406,6 +412,7 @@ async function main(): Promise<void> {
       archivesUnpacked,
       gpcUnpacked,
       gpcUnreadable,
+      gpcPrefixless,
       membersDecompressed,
       escapedNames,
       collisions,
@@ -424,6 +431,7 @@ async function main(): Promise<void> {
     ['archives unpacked', String(archivesUnpacked)],
     ['gpc2 archives unpacked', String(gpcUnpacked)],
     ['gpc2 members with an unidentified codec', String(gpcUnreadable)],
+    ['  of those, stored with no prefix and recovered', String(gpcPrefixless)],
     ['members decompressed', String(membersDecompressed)],
     ['names escaped', String(escapedNames)],
     ['name collisions resolved', String(collisions)],
