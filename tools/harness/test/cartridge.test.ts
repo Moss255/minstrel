@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import { decompressLz10, isLz10, readCompressionHeader } from '@vesper/nitro-comp'
+import { isNsbmd, readNsbmd } from '@vesper/nitro-gfx'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -215,6 +216,60 @@ describe.skipIf(!romPath)('a real cartridge', () => {
       }
     }
     expect(raw).toBeGreaterThan(0)
+  })
+
+  it('parses every model on the cartridge and decodes its geometry', () => {
+    // Two independent oracles, both from the model's own header: the number of
+    // vertices the display list yields, and the number of triangles once quads
+    // are split. A display-list interpreter that is subtly wrong — a mistaken
+    // parameter count, a missed partial-vertex command — desynchronises and
+    // fails both.
+    const failures: string[] = []
+    let models = 0
+    let vertexMatches = 0
+    let triangleMatches = 0
+
+    const eachModel = (bytes: Uint8Array, path: string): void => {
+      if (!isNsbmd(bytes)) return
+      try {
+        for (const model of readNsbmd(bytes).models) {
+          models++
+          let vertices = 0
+          let triangles = 0
+          for (const shape of model.shapes) {
+            const geometry = model.geometry(shape)
+            vertices += geometry.vertices.length
+            triangles += geometry.indices.length / 3
+          }
+          if (vertices === model.numVertices) vertexMatches++
+          else
+            failures.push(
+              `${path}#${model.name}: ${vertices} vertices, header says ${model.numVertices}`,
+            )
+          if (triangles === model.numTriangles + model.numQuads * 2) triangleMatches++
+          else
+            failures.push(
+              `${path}#${model.name}: ${triangles} triangles, header says ${model.numTriangles} + 2*${model.numQuads}`,
+            )
+        }
+      } catch (error) {
+        failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        eachModel(data, `${file.path}#${member.name ?? member.index}`)
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(models).toBeGreaterThan(1000)
+    expect(vertexMatches).toBe(models)
+    expect(triangleMatches).toBe(models)
   })
 
   it('produces the container magic each member extension implies', () => {

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>vesper — model viewer</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <aside id="panel">
+      <h1>vesper</h1>
+      <p class="hint">Drop a DS cartridge dump here, or choose one. Nothing leaves your machine.</p>
+      <input type="file" id="file" accept=".nds" />
+      <div id="status" class="status"></div>
+      <input type="search" id="filter" placeholder="filter models…" hidden />
+      <ul id="models"></ul>
+    </aside>
+    <main>
+      <canvas id="gl"></canvas>
+      <div id="overlay"></div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

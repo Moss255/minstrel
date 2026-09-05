@@ -9,11 +9,13 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --pretty",
+    "typecheck": "tsc -p tsconfig.json --pretty && tsc -p apps/viewer/tsconfig.json --pretty",
     "lint": "biome check .",
     "format": "biome check --write .",
     "inventory": "node tools/inventory/src/cli.ts",
-    "extract": "node tools/inventory/src/extract.ts"
+    "extract": "node tools/inventory/src/extract.ts",
+    "dev": "pnpm --filter @vesper/viewer dev",
+    "build": "pnpm --filter @vesper/viewer build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.14",

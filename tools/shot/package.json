@@ -1,0 +1,8 @@
+{
+  "name": "@vesper/shot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Headless verification: serve the built viewer with a local cartridge and screenshot a model. Local-only; uses no dependencies."
+}

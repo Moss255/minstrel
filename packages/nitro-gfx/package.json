@@ -1,0 +1,11 @@
+{
+  "name": "@vesper/nitro-gfx",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "NSBMD model and NSBTX texture parsing, and the DS geometry-engine display list. Game-agnostic, browser-safe.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

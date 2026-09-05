@@ -16,8 +16,11 @@ Early. Working through M0 of `docs/PLAN.md` — see [`docs/M0-inventory.md`](doc
 | [`@vesper/nitrofs`](packages/nitrofs) | MIT | cartridge header, FAT/FNT, overlay tables, NARC archives |
 | [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ77 and Huffman decompression |
 | [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
+| [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models and the geometry display list |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
+| `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
+| `apps/viewer` | GPL-3.0+ | browser model viewer |
 
 The `nitro-*` packages are game-agnostic and browser-safe: no Node built-ins, no
 DOM, no WebGL, and no reference to any particular title. They take
@@ -82,6 +85,21 @@ default and never run in CI.
 VESPER_TEST_ROM=rom/your.nds pnpm test
 ```
 
+## Looking at models
+
+```sh
+pnpm dev        # then open the viewer and drop in your own dump
+```
+
+Drag to orbit, wheel to zoom, `W` for wireframe. The cartridge is read in your
+browser and nothing is uploaded.
+
+Models that use a single matrix render correctly today. Skinned models — 766 of
+the reference cartridge's 6,889 — decode correctly but are positioned wrongly,
+because the bone transforms in a model's render commands are not applied yet.
+Textures are not read yet either. See
+[`packages/nitro-gfx/FORMAT.md`](packages/nitro-gfx/FORMAT.md).
+
 ## Layout
 
 ```
@@ -89,9 +107,13 @@ packages/
   nitrofs/        NitroFS, NARC, cartridge header      MIT, game-agnostic
   nitro-comp/     Nintendo compression                 MIT, game-agnostic
   l5-gpc/         GPC2, a Level-5 container            MIT, game-agnostic
+  nitro-gfx/      NSBMD models, display lists          MIT, game-agnostic
 tools/
   inventory/      cartridge cataloguing CLI
   harness/        local-only integration tests
+  shot/           headless render verification
+apps/
+  viewer/         browser model viewer
 docs/
 ```
 

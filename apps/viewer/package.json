@@ -1,0 +1,22 @@
+{
+  "name": "@vesper/viewer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Model viewer: load a cartridge in the browser and render its models.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vesper/l5-gpc": "workspace:*",
+    "@vesper/nitro-comp": "workspace:*",
+    "@vesper/nitro-gfx": "workspace:*",
+    "@vesper/nitrofs": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^7.1.9"
+  }
+}

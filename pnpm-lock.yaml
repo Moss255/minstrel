@@ -21,6 +21,25 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)
 
+  apps/viewer:
+    dependencies:
+      '@vesper/l5-gpc':
+        specifier: workspace:*
+        version: link:../../packages/l5-gpc
+      '@vesper/nitro-comp':
+        specifier: workspace:*
+        version: link:../../packages/nitro-comp
+      '@vesper/nitro-gfx':
+        specifier: workspace:*
+        version: link:../../packages/nitro-gfx
+      '@vesper/nitrofs':
+        specifier: workspace:*
+        version: link:../../packages/nitrofs
+    devDependencies:
+      vite:
+        specifier: ^7.1.9
+        version: 7.3.6(@types/node@22.20.1)
+
   packages/l5-gpc:
     dependencies:
       '@vesper/nitro-comp':
@@ -28,6 +47,8 @@ importers:
         version: link:../nitro-comp
 
   packages/nitro-comp: {}
+
+  packages/nitro-gfx: {}
 
   packages/nitrofs: {}
 
@@ -39,6 +60,9 @@ importers:
       '@vesper/nitro-comp':
         specifier: workspace:*
         version: link:../../packages/nitro-comp
+      '@vesper/nitro-gfx':
+        specifier: workspace:*
+        version: link:../../packages/nitro-gfx
       '@vesper/nitrofs':
         specifier: workspace:*
         version: link:../../packages/nitrofs
