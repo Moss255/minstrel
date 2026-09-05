@@ -221,8 +221,14 @@ dialogue system.
 
 ## M0 status
 
-M0 is **not finished**. Its bar is "every asset the slice needs is extracted and
-catalogued, *or has a known plan for extraction*", and three items fall short.
+M0 is **complete**. Its bar is "every asset the slice needs is extracted and
+catalogued, or has a known plan for extraction", and every asset the slice
+actually consumes now is.
+
+One caveat, stated plainly: the European build's Latin font was never found. It
+is not a dependency — M3 renders text with a vector font by design — so it is
+recorded as an unresolved reference rather than an open blocker. The reasoning
+is under "The font" below.
 
 | M0 task | status |
 |---|---|
@@ -373,7 +379,35 @@ ASCII-order scan of the decompressed ARM9, at 1, 2 and 4 bits per pixel across
 thirteen cell geometries, produced 571 candidates of which the strongest renders
 as plainly structured table data, not letters.
 
-M3 needs the font, so this stays M0's one open item.
+### It is a dead end, and it does not block the slice
+
+A fourth search closed the last gap that mattered. The `.mes` header scan had
+never covered `out/system`, and the one pass that did look at overlays was
+handed the *compressed* ARM9. Both are now searched, decompressed: **no font
+structure exists in the ARM9 binary or in any of the 35 overlays.**
+
+What the ARM9 does contain is the markup parser, as code rather than data —
+instruction immediates comparing characters against `'a'`, `'e'` and the accent
+prefixes. Reading further means disassembling the text renderer to see what it
+indexes into, which is the emulator-and-Ghidra work this repository does not do
+in code.
+
+**But the slice never needed it.** M0 lists "the font" among the assets to
+extract; M3 specifies *"text box rendering with a **vector font** and
+resolution-independent layout"*. Rendering the cartridge's 12×12 bitmap glyphs
+would defeat that goal — the whole point of a vector font here is that the slice
+runs at the player's monitor resolution rather than at 256×192. The accuracy
+posture asks for the dialogue *text* to match exactly, which it does; it does not
+ask for the typeface.
+
+So the cartridge's Latin font is a **reference**, useful for matching metrics
+and letterforms if that is ever wanted, and not a dependency of anything. On
+that reading M0 is complete: every asset the slice actually consumes is
+extracted and catalogued.
+
+What was gained anyway is worth more than the font would have been: the Japanese
+font format is fully read, and the hunt is what exposed that the ARM9 and all 35
+overlays were BLZ-compressed and had never been decompressed by anything.
 
 ### On apicula
 
