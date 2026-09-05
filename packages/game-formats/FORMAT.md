@@ -108,3 +108,75 @@ ordering lives in a separate table; or it is compiled into an overlay in a form
 that scan missed.
 
 M3 needs it. This is the open question.
+
+---
+
+# The tagged data table
+
+Used by the map descriptors (`.bmdj`), the map attribute tables (`.bats`), and
+standalone tables such as `data/bin/mapbgm.bin`. One container, several uses.
+
+## Header
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32` | `unknown_0x00` |
+| `+0x04` | `u32` | string table offset — the file size when there is no table |
+| `+0x08` | `u32` | string table size |
+| `+0x0C` | `u32` | string count |
+| `+0x10` | | the record stream, running up to the string table |
+
+## Records
+
+A `u16` tag, a `u8` value count, a `u8` type, then that many 4-byte values.
+
+Type `0x02` means the values are IEEE floats — confirmed by reading them: the
+first record of a map descriptor is tag `0x71`, type `0x02`, value `1.2`. The
+other type bytes seen (`0x00`, `0x01`, `0x51`, `0xA5`, `0x55`) are not
+identified.
+
+`0xFF` fill appears **between** records as alignment padding, as well as after
+the last one. It has to be skipped a word at a time rather than treated as an
+end: three files carry eight bytes of it mid-stream and are silently truncated
+by a parser that stops at the first run. The fill is `0xFF`, not zero, so
+stopping on zeroes reads rubbish first.
+
+The stream ends on a record with tag `0x6E` and type `0xFF`, or by reaching the
+string table.
+
+## Evidence
+
+| check | result |
+|---|---|
+| tables parsed | **1,260 / 1,260**, no failures |
+| string count matching the header | 1,260 / 1,260 |
+| record stream reaching the string table | 1,260 / 1,260 |
+| resource names listed | 5,342 |
+
+Two independent checks hold on every file: the string section decodes to exactly
+the count the header declares, and the record stream — walked by nothing but its
+own length fields — arrives precisely at the string table rather than before or
+past it.
+
+## What a `.bmdj` is for
+
+The string table lists a map's resources by name: `M01M0000.imd`,
+`M01M00D1.imd`, and so on, `.imd` being the source-format name for what ships as
+NSBMD. That makes the map descriptor the **map-to-model manifest**, which is what
+tells an engine which models compose a given map — needed for M2.
+
+## What the tags mean is not established
+
+They are exposed as numbers, with values as raw `u32`s alongside their float
+reading, so a caller that works one out can use it without this package having
+guessed.
+
+Two tags occur exactly once per map descriptor and hold small integers —
+`0x6A` in 1..47 and `0x6D` in 1..57 — which is the shape a music id would have.
+**They are not music.** The two track each other almost everywhere, and their
+values vary from map to map *within a single village*, which a background track
+does not. They are more likely counts.
+
+No field in either file has been shown to select a BGM track. Together with
+`mapbgm.bin`, whose values do not fall in the sequence archive's 0–81 index
+range either, the map-to-music link remains unfound.

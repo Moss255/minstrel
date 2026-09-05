@@ -6,3 +6,11 @@ export {
   isBitmapFont,
   readBitmapFont,
 } from './font.ts'
+export {
+  type DataTable,
+  isDataTable,
+  readDataTable,
+  TABLE_TAG_END,
+  TABLE_TYPE_FLOAT,
+  type TableRecord,
+} from './table.ts'

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { isBitmapFont, readBitmapFont } from '@vesper/game-formats'
+import { isBitmapFont, isDataTable, readBitmapFont, readDataTable } from '@vesper/game-formats'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import { decompressLz10, isLz10, readCompressionHeader } from '@vesper/nitro-comp'
 import { isNsbmd, readNsbmd } from '@vesper/nitro-gfx'
@@ -377,6 +377,43 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(fonts).toBeGreaterThan(500)
     expect(glyphs).toBeGreaterThan(50000)
     expect(falsePositives).toBe(0)
+  })
+
+  it('reads every map descriptor and attribute table', () => {
+    // Two checks the files make of themselves: the string section must decode
+    // to exactly the count the header declares, and the record stream — walked
+    // by nothing but its own length fields — must arrive precisely at the
+    // string table.
+    const failures: string[] = []
+    let tables = 0
+    let resources = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const name = member.name ?? ''
+        if (!name.endsWith('.bmdj') && !name.endsWith('.bats')) continue
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isDataTable(data)) {
+          failures.push(`${file.path}#${name}: failed the table shape test`)
+          continue
+        }
+        try {
+          const table = readDataTable(data)
+          tables++
+          resources += table.strings.filter((s) => s.endsWith('.imd')).length
+        } catch (error) {
+          failures.push(
+            `${file.path}#${name}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(tables).toBeGreaterThan(1000)
+    expect(resources).toBeGreaterThan(1000)
   })
 
   it('produces the container magic each member extension implies', () => {

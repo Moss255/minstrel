@@ -153,18 +153,22 @@ decoding to exactly its declared size and consuming exactly its stored payload.
 they are `NARC` archives outright; 11 large archives using an index shape the
 parser does not yet read; and four `unknown_*` header fields.
 
-### 2. `.ambl` / `.amdj` members
+### 2. `.ambl` / `.amdj` members — now read
 
-Both are NARCs, so the container is solved. Inside:
+Both are NARCs. Inside:
 
 - `.amdj` holds `.nsbmd` map geometry (plus `L1`..`L4` and `N1`..`N4` variants,
-  probably level-of-detail or day/night) and a small `.bmdj` alongside.
-- `.ambl` holds `.bats` files, uniformly 736 bytes for most maps.
+  probably level-of-detail or day/night) and a `.bmdj` descriptor alongside.
+- `.ambl` holds `.bats` attribute tables.
 
-`.bmdj` and `.bats` are unidentified. Their leading bytes are small integers
-(`04 00 00 00`, `03 00 00 00`, …) that look like counts rather than magic, which
-suggests plain headerless record tables rather than a container. Collision and
-per-map attributes are the obvious candidates. **Not yet investigated.**
+`.bmdj` and `.bats` share a tagged-record container, now parsed by
+`@vesper/game-formats` — 1,260 of 1,260 files, including `mapbgm.bin`, which
+turns out to use the same format. A `.bmdj`'s string table lists the map's
+resources by name (`M01M0000.imd`, `M01M00D1.imd`, …), which makes it the
+**map-to-model manifest**: the thing that says which models compose a map.
+
+What the individual record tags mean is not established, and is the next
+question if map assembly needs more than the manifest.
 
 ### 3. `.col2`
 
@@ -284,9 +288,21 @@ would sit in 0–81; the second `u16` instead takes values from `0x0580` to
 sequence list, and 68 records is far too few to cover the cartridge's ~1,400
 maps, so at best this is a table of exceptions.
 
-**Recorded as an unsolved lead, not an answer.** The link between a map and its
-music may equally live in the per-map `.bats` or `.bmdj` data, which is also
-still unidentified.
+**Recorded as an unsolved lead, not an answer.**
+
+The per-map `.bats` and `.bmdj` files were the other candidate, and they are now
+read: they share one tagged-record container with `mapbgm.bin`, and
+`@vesper/game-formats` parses **1,260 of 1,260** of them with the string count
+matching the header every time. That turned up something useful — a `.bmdj`'s
+string table lists the map's resources by name, making it the map-to-model
+manifest M2 needs — but no music field. Two tags looked promising, occurring
+once per map with small integer values, and both fail on inspection: they track
+each other and vary between maps inside a single village, which a background
+track does not.
+
+So the map-to-music link is still unfound. All 82 sequences are extracted and
+named, so this is a selection problem rather than an extraction one, and an
+emulator would settle it in minutes.
 
 **The font — format read, Latin glyphs still missing.** There is no NFTR
 resource anywhere on the cartridge; the standard Nintendo font format is not
