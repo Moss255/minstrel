@@ -259,9 +259,34 @@ TypeScript-specific problem in the project. Having the resources named,
 extracted and chained is its prerequisite, and M0's bar — extracted and
 catalogued — is met.
 
-*Which* six tracks the slice needs is still open, and is the same shape of
-question as the map codes were: an answer that probably lives in a table rather
-than in a disassembler.
+*Which* six tracks the slice needs is still open.
+
+`data/bin/mapbgm.bin` looked like the answer and, on inspection, is not — or at
+least not in any way yet established. Its container is unambiguous:
+
+```
+0x00  u32  record count, 68
+0x04  u32  file size, 560
+0x08  u32  zero
+0x0C  u32  zero
+0x10  ..   68 records of 8 bytes
+```
+
+68 × 8 + 16 lands exactly on the file size. Each record is a `u8` kind (1 for
+the first, 2 for the rest), three constant bytes `00 01 01`, and two `u16`s.
+The second `u16` takes only **14 distinct values** and stays constant across
+runs of consecutive first values, which is the shape a "this range of things
+shares one tune" table would have.
+
+But neither field is a BGM index. The archive holds 82 sequences, so an index
+would sit in 0–81; the second `u16` instead takes values from `0x0580` to
+`0x0857`, two of them with bit 15 set. Nothing tried maps those onto the
+sequence list, and 68 records is far too few to cover the cartridge's ~1,400
+maps, so at best this is a table of exceptions.
+
+**Recorded as an unsolved lead, not an answer.** The link between a map and its
+music may equally live in the per-map `.bats` or `.bmdj` data, which is also
+still unidentified.
 
 **The font — format read, Latin glyphs still missing.** There is no NFTR
 resource anywhere on the cartridge; the standard Nintendo font format is not
