@@ -216,13 +216,58 @@ dialogue system.
 
 ## M0 status
 
+M0 is **not finished**. Its bar is "every asset the slice needs is extracted and
+catalogued, *or has a known plan for extraction*", and three items fall short.
+
 | M0 task | status |
 |---|---|
-| NitroFS parser and file dump | **done** — parser, CLI, and gated integration tests |
-| Identify and extract slice assets | **extraction done for everything readable**; *which* files the slice needs is still open |
-| Run apicula; record what converts | **not started** — needs a Rust toolchain installed locally |
-| Locate the slice's event scripts | **located and extracted** — `data/event/ev#####.gp2` now unpack to an `SB2` container plus per-language string tables |
+| NitroFS parser and file dump | **done**, and beyond: NARC, GPC2, LZ77, Huffman, run-length |
+| Maps | **done** — `F01`, `M01`, `D01`, 273 files, identified from the cartridge's own index |
+| ~10 monster models | **done** — 601 recovered from `enemy.gp2` |
+| String tables for the chapter | **done** — plain ASCII with script markup |
+| Locate the slice's event scripts | **done** — one archive per event, `.stb` plus per-language text |
+| ~20 character models | **partly** — 428 NPC models are out, but the player-character models are not |
+| UI tilesets | **partly** — the files are extracted; nothing decodes NCGR/NCLR to images yet |
+| 6 BGM tracks | **not done** — the SDAT is an unopened 38 MB blob |
+| The font | **not done** — and not yet identified |
+| Run apicula | **not done** — see below |
 
-Extraction is complete and proven against the whole cartridge: every stock asset
-is now a plain file on disk. What remains is knowing which of them the slice
-needs, one custom container, and an apicula run.
+### The three real gaps
+
+**Player-character models.** `chara_pc.gp2` (1.7 MB) and `chara_pd.gp2`
+(3.7 MB) are two of the eleven archives whose index the GPC2 reader cannot
+follow: `entry 0 names byte 12289, which is not a name-table entry`, so the name
+offset is wider than the 16 bits the format otherwise uses, or those archives
+carry a differently-shaped index. These hold the Hero and party models — what M2
+needs to put a character in the village. No plan yet beyond "look at the index
+again", so this does not meet the milestone's bar.
+
+**Audio.** `bgm.sdat` is 38 MB and has never been opened. This one *does* have a
+known plan: SDAT is a documented Nintendo container (`SDAT`, little-endian BOM,
+four blocks) holding SSEQ sequences, SBNK banks and SWAR wave archives, all
+published formats. It needs a `nitro-snd` package. Note the slice plan's warning
+that audio is the hardest TypeScript-specific problem and must not be discovered
+late.
+
+**The font.** There is no NFTR resource anywhere on the cartridge — the standard
+Nintendo font format is not used. `data/pack/font.gp2` holds `.mes` files whose
+leading bytes look like small dimensions (`12 00 0C 0C`), which suggests a custom
+bitmap font, but nothing is established. M3 needs this.
+
+### On apicula
+
+Not run: it is a Rust tool and there is no toolchain on this machine. It is also
+largely superseded. Its purpose was to tell us which models convert cleanly;
+`@vesper/nitro-gfx` now parses all 6,889 of them with two independent
+self-consistency checks passing on every one, which is a stronger answer than a
+conversion report. It remains worth running eventually as an independent
+cross-check of geometry, and that is the reason to keep it on the list.
+
+### What "done" would take
+
+1. Open `chara_pc.gp2` — the Hero model is on the critical path for M2.
+2. Write `nitro-snd` far enough to list and extract the six BGM tracks.
+3. Identify the font.
+
+UI tileset decoding (NCGR/NCLR) is a published format with a clear plan, so it
+meets the milestone's bar as it stands.
