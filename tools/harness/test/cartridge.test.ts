@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs'
 import { isBitmapFont, isDataTable, readBitmapFont, readDataTable } from '@vesper/game-formats'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
-import { decompressLz10, isLz10, readCompressionHeader } from '@vesper/nitro-comp'
+import {
+  decompressBlz,
+  decompressLz10,
+  isLz10,
+  looksBlz,
+  readCompressionHeader,
+} from '@vesper/nitro-comp'
 import { isNsbmd, readNsbmd } from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
@@ -59,6 +65,54 @@ describe.skipIf(!romPath)('a real cartridge', () => {
       expect(byId.byteOffset, file.path).toBe(byPath.byteOffset)
       expect(byId.length, file.path).toBe(byPath.length)
     }
+  })
+
+  it('decompresses every BLZ overlay to the size its table declares', () => {
+    // Three independent checks. The declared size is the obvious one; the
+    // backwards walk consuming its input to exactly where the verbatim prefix
+    // ends is the one a wrong decoder fails; and entropy falling sharply says
+    // the output is code rather than more compressed data.
+    const failures: string[] = []
+    let expanded = 0
+
+    const entropy = (bytes: Uint8Array): number => {
+      const counts = new Array(256).fill(0)
+      const n = Math.min(bytes.length, 0x8000)
+      for (let i = 0; i < n; i++) counts[bytes[i] as number]++
+      let e = 0
+      for (const c of counts) {
+        if (c === 0) continue
+        const p = c / n
+        e -= p * Math.log2(p)
+      }
+      return e
+    }
+
+    for (const overlay of fs.arm9Overlays) {
+      const stored = fs.read(overlay.fileId)
+      if (!overlay.compressed || !looksBlz(stored)) continue
+      try {
+        const out = decompressBlz(stored)
+        if (out.length !== overlay.ramSize) {
+          failures.push(
+            `overlay ${overlay.overlayId}: ${out.length} bytes, table says ${overlay.ramSize}`,
+          )
+          continue
+        }
+        if (out.length > 0x8000 && entropy(out) >= entropy(stored)) {
+          failures.push(`overlay ${overlay.overlayId}: entropy did not fall`)
+          continue
+        }
+        expanded++
+      } catch (error) {
+        failures.push(
+          `overlay ${overlay.overlayId}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
+    expect(failures).toEqual([])
+    expect(expanded).toBe(fs.arm9Overlays.length)
   })
 
   it('points every overlay at a real FAT entry', () => {

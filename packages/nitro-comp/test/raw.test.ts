@@ -3,9 +3,11 @@ import { NitroCompError } from '../src/errors.ts'
 import { compressLz10 } from '../src/lz10.ts'
 import {
   compressRawRle,
+  decompressBlz,
   decompressHuffman,
   decompressRawLz77,
   decompressRawRle,
+  looksBlz,
 } from '../src/raw.ts'
 
 function noise(length: number, seed: number): Uint8Array {
@@ -225,5 +227,86 @@ describe('decompressRawRle', () => {
     expect(() => decompressRawRle(Uint8Array.from([0x05, 1, 2, 3, 4, 5, 6]), 3)).toThrow(
       /would overrun/,
     )
+  })
+})
+
+describe('decompressBlz', () => {
+  /**
+   * Encode a BLZ stream carrying only literals.
+   *
+   * The decoder walks backwards, so the encoding has to be built backwards
+   * too: within a group, the flag byte sits *above* its literals in memory,
+   * and the literal consumed first sits directly below the flag. Groups run
+   * from high address to low in consumption order. Writing that out by hand
+   * gets it wrong, so it is generated here by mirroring the decoder.
+   */
+  function literalBlz(prefix: number[], payload: number[]): Uint8Array {
+    const consumed = [...payload].reverse() // the decoder fills output top-down
+    const encoded: number[] = []
+    for (let i = 0; i < consumed.length; i += 8) {
+      const group = consumed.slice(i, i + 8)
+      // Memory order within a group: last-consumed literal lowest, flag highest.
+      encoded.unshift(...[...group].reverse(), 0x00)
+    }
+
+    const headerLength = 8
+    const total = prefix.length + encoded.length + headerLength
+    const out = new Uint8Array(total)
+    out.set(Uint8Array.from(prefix), 0)
+    out.set(Uint8Array.from(encoded), prefix.length)
+
+    const view = new DataView(out.buffer)
+    view.setUint32(total - 8, ((headerLength << 24) | (total - prefix.length)) >>> 0, true)
+    view.setUint32(total - 4, 0, true)
+    return out
+  }
+
+  it('copies the verbatim prefix through unchanged', () => {
+    const prefix = [1, 2, 3, 4, 5, 6, 7, 8]
+    const out = decompressBlz(literalBlz(prefix, [0xaa, 0xbb, 0xcc, 0xdd]))
+    expect(Array.from(out.subarray(0, 8))).toEqual(prefix)
+  })
+
+  it('decodes literals into the tail of the output', () => {
+    const payload = [0x11, 0x22, 0x33, 0x44, 0x55]
+    const out = decompressBlz(literalBlz([0, 0, 0, 0], payload))
+    expect(Array.from(out.subarray(out.length - payload.length))).toEqual(payload)
+  })
+
+  it('grows the output by the footer increase length', () => {
+    const data = literalBlz([1, 2, 3, 4], [9, 9])
+    new DataView(data.buffer).setUint32(data.length - 4, 64, true)
+    expect(decompressBlz(data)).toHaveLength(data.length + 64)
+  })
+
+  it('rejects a stream too short for a footer', () => {
+    expect(() => decompressBlz(new Uint8Array(4))).toThrow(/too short for a BLZ footer/)
+  })
+
+  it('rejects an encoded region larger than the stream', () => {
+    const data = literalBlz([1, 2, 3, 4], [9, 9])
+    new DataView(data.buffer).setUint32(data.length - 8, 0x08ff_ffff >>> 0, true)
+    expect(() => decompressBlz(data)).toThrow(/encoded region/)
+  })
+
+  it('rejects an oversized header length', () => {
+    const data = literalBlz([1, 2, 3, 4], [9, 9])
+    new DataView(data.buffer).setUint32(data.length - 8, (0xff << 24) | 4, true)
+    expect(() => decompressBlz(data)).toThrow(/header/)
+  })
+})
+
+describe('looksBlz', () => {
+  it('rejects a stream with no plausible footer', () => {
+    expect(looksBlz(new Uint8Array(4))).toBe(false)
+    expect(looksBlz(new Uint8Array(64))).toBe(false)
+  })
+
+  it('accepts a self-consistent footer', () => {
+    const data = new Uint8Array(128)
+    const view = new DataView(data.buffer)
+    view.setUint32(120, (8 << 24) | 64, true)
+    view.setUint32(124, 32, true)
+    expect(looksBlz(data)).toBe(true)
   })
 })

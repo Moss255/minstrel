@@ -323,10 +323,32 @@ per-language `tf_*` set, which are 512-byte UI graphics far too small for an
 alphabet; and `data/bin`, the ARM9 binary and all 35 overlays scanned for runs
 of fixed-size 1bpp cells at seven geometries.
 
-Untested hypotheses: the Latin font is anti-aliased at 2 or 4 bits per pixel and
-so invisible to a 1bpp scan; or it is a tile bank whose ordering lives in a
-separate table; or it is compiled into an overlay in a shape that scan missed.
-M3 needs it, so this is now M0's one open item.
+A second search, at 1, 2 and 4 bits per pixel across every extracted file and
+every plausible cell geometry, found nothing either. Its only candidates were
+text files — ASCII prose misread as pixels lands in the same ink-coverage band
+as glyphs, and so does ARM code.
+
+That search did expose a real gap, since fixed: **all 35 ARM9 overlays are
+BLZ-compressed and were being scanned raw.** They are now decompressed on
+extraction, and searched — no font there either, but they are readable at last,
+which the Ghidra work will want.
+
+Three further leads, all dead ends worth recording so they are not retried:
+
+- `data/ani/tf.gp2` holds per-language `NCGR` files, 17 per language. Decoded
+  as 4bpp tiles they are noise, not glyphs.
+- `data/pack_lv5/fd_*.bin` and `fi_*.bin` are font *metrics*, not glyphs.
+  `fd_me.bin` is a packed table of 1600 twelve-bit values — 1600 × 12 / 8 = 2400
+  bytes, exactly its data section — and `fi_me.bin` holds 242 four-byte entries
+  that read like kerning pairs.
+- The ARM9 binary contains the byte run `f82.mes`, which looks like a font
+  filename and is not one: no such file exists, and the surrounding bytes are
+  not a string.
+
+Remaining hypotheses, untested: the glyphs are stored without a fixed cell
+stride, as a proportional font with a separate offset table — which the `fd_`
+and `fi_` metrics files would fit; or they live in a container this project does
+not yet identify. M3 needs it, so this stays M0's one open item.
 
 ### On apicula
 

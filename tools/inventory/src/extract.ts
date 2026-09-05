@@ -27,7 +27,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isGpc, readGpc } from '@vesper/l5-gpc'
-import { tryDecompressLz10 } from '@vesper/nitro-comp'
+import { decompressBlz, looksBlz, tryDecompressLz10 } from '@vesper/nitro-comp'
 import { isSdat, readSdat } from '@vesper/nitro-snd'
 import {
   checkHeaderIntegrity,
@@ -210,6 +210,7 @@ async function main(): Promise<void> {
   let gpcPrefixless = 0
   let sdatUnpacked = 0
   let sdatFiles = 0
+  let overlaysExpanded = 0
   let membersDecompressed = 0
   let escapedNames = 0
   const failures: string[] = []
@@ -394,15 +395,38 @@ async function main(): Promise<void> {
   )
   for (const overlay of fs.arm9Overlays) {
     const name = `overlay_${String(overlay.overlayId).padStart(4, '0')}.bin`
-    const data = fs.read(overlay.fileId)
+    const stored = fs.read(overlay.fileId)
+
+    // Overlays are BLZ-compressed. Writing them out raw leaves them unreadable
+    // to anything downstream, so decompress when the footer says to and the
+    // result is the size the overlay table declares.
+    let data = stored
+    let packedSize: number | undefined
+    if (overlay.compressed && looksBlz(stored)) {
+      try {
+        const expanded = decompressBlz(stored)
+        if (expanded.length === overlay.ramSize) {
+          packedSize = stored.length
+          data = expanded
+          overlaysExpanded++
+        }
+      } catch (error) {
+        failures.push(
+          `(arm9 overlay ${overlay.overlayId}): ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
     await queue.write(join(options.out, 'system', 'overlay9', name), data)
-    manifest.push({
+    const entry: ManifestEntry = {
       out: `system/overlay9/${name}`,
       source: `(arm9 overlay ${overlay.overlayId})`,
       within: [],
       size: data.length,
-      container: overlay.compressed ? 'compressed overlay' : 'overlay',
-    })
+      container: packedSize === undefined ? 'overlay' : 'overlay, BLZ-decompressed',
+    }
+    if (packedSize !== undefined) entry.packedSize = packedSize
+    manifest.push(entry)
   }
 
   // --- The filesystem ------------------------------------------------------
@@ -454,6 +478,7 @@ async function main(): Promise<void> {
       gpcPrefixless,
       sdatUnpacked,
       sdatFiles,
+      overlaysExpanded,
       membersDecompressed,
       escapedNames,
       collisions,
@@ -475,6 +500,7 @@ async function main(): Promise<void> {
     ['  of those, stored with no prefix and recovered', String(gpcPrefixless)],
     ['sdat archives unpacked', String(sdatUnpacked)],
     ['sound files written', String(sdatFiles)],
+    ['overlays BLZ-decompressed', String(overlaysExpanded)],
     ['members decompressed', String(membersDecompressed)],
     ['names escaped', String(escapedNames)],
     ['name collisions resolved', String(collisions)],

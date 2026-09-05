@@ -132,6 +132,40 @@ numbered its codecs the way the BIOS does. It does not — it gives each codec
 *variant* its own number, so Huffman-4 and Huffman-8 take 2 and 3, and
 run-length is 4. Tested against codec 4, it matches 7,743 of 7,743.
 
+## BLZ — backwards LZ
+
+Used for the ARM binaries and overlays. It runs from the end of the buffer
+towards the beginning, which is what lets a binary decompress in place at load
+time, and it keeps its parameters in a footer rather than a header:
+
+| offset from end | type | meaning |
+|---|---|---|
+| `-8` | `u24` | encoded length: the compressed region, measured back from the end |
+| `-5` | `u8` | header length: trailing bytes that are footer, not data |
+| `-4` | `u32` | increase length: how much larger the decompressed data is |
+
+Everything before the compressed region is copied through verbatim. The rest is
+decoded backwards: a flag byte read from the top down, most significant bit
+first; a clear bit is a literal, a set bit a two-byte back-reference with
+`length = (high >> 4) + 3` and
+`displacement = ((high & 0x0F) << 8 | low) + 3`.
+
+**The displacement bias is 3**, where the forward LZ77 uses 1.
+
+**Confirmed by observation.** All 35 ARM9 overlays on the reference cartridge
+decode with three independent checks passing:
+
+| check | result |
+|---|---|
+| output is the length the overlay table declares | 35 / 35 |
+| the backwards walk consumes input to exactly where the verbatim prefix ends | 35 / 35 |
+| byte entropy falls, ~7.2 bits to ~5.9 | 34 / 35 (the exception is a 20-byte overlay) |
+
+The second is the one a wrong decoder fails: it has to land on the boundary
+precisely, having taken a different number of steps for every overlay. The first
+decoded overlay opens `E92D4010 E1A04001` — `push {r4, lr}` then a register
+move, an ordinary ARM function prologue.
+
 ## Not implemented
 
 The diff filter (`0x8`), which does not appear on the reference cartridge.

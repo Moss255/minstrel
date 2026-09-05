@@ -13,9 +13,11 @@ export {
 export { compressLz10, decompressLz10, isLz10, tryDecompressLz10 } from './lz10.ts'
 export {
   compressRawRle,
+  decompressBlz,
   decompressHuffman,
   decompressRawLz77,
   decompressRawRle,
+  looksBlz,
   type RawResult,
 } from './raw.ts'
 
