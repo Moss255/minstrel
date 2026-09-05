@@ -9,16 +9,22 @@ Neither app exists yet. What does exist is the parser layer underneath them.
 
 ## Status
 
-Early. Working through M0 of `docs/PLAN.md` — see [`docs/M0-inventory.md`](docs/M0-inventory.md) for where that stands.
+Early. M0 (extraction and inventory) is complete; M1 (renderer and model viewer)
+is most of the way there.
+
+- [`docs/findings.md`](docs/findings.md) — what has been established about the
+  cartridge's formats, by what evidence, and what is still unknown.
+- [`docs/M0-inventory.md`](docs/M0-inventory.md) and
+  [`docs/M1-renderer.md`](docs/M1-renderer.md) — milestone status.
 
 | package | licence | what it does |
 |---|---|---|
 | [`@vesper/nitrofs`](packages/nitrofs) | MIT | cartridge header, FAT/FNT, overlay tables, NARC archives |
-| [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ77 and Huffman decompression |
+| [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ77, Huffman, run-length and BLZ decompression |
 | [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
-| [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models and the geometry display list |
+| [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
 | [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
-| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font |
+| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
@@ -103,11 +109,14 @@ differences that are worth catching. It matches the hardware's resolution and
 colour depth, not its rasterisation rules — toon shading and edge marking are
 not implemented.
 
-Models are posed and textured: bones and render commands are read, each vertex is
-placed by the matrix its display list bound it to, and each shape is drawn with
-the texture its material names. Blended vertices are placed approximately, since
-inverse bind matrices are not applied yet. See
-[`packages/nitro-gfx/FORMAT.md`](packages/nitro-gfx/FORMAT.md).
+Models are posed, textured and animated. Bones and render commands are read;
+each vertex is placed by the matrix its display list bound it to, taken from the
+stack as it stood when that shape was drawn and scaled by the model's position
+scale; blended vertices are composed with the named node's inverse bind
+transform. Pick an animation from the archive beside the model, scrub the frame,
+or let it run. See
+[`packages/nitro-gfx/FORMAT.md`](packages/nitro-gfx/FORMAT.md) for the format
+and [`docs/findings.md`](docs/findings.md) for the evidence.
 
 ## Layout
 

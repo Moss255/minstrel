@@ -249,15 +249,15 @@ A node-transform command names a node and its parent, so a node's world
 transform is its parent's composed with its own local one; with the `0x20` flag
 its fourth parameter is the matrix stack slot to leave the result in. A blend
 command mixes stack slots by weight, where `0x100` is one — and the weights sum
-to exactly `0x100` for all 722 blends on the cartridge.
+to exactly `0x100` for all 6,093 blends on the cartridge.
 
 ### A blend term is a slot, a node, and a weight
 
 The middle parameter of each three is the node whose **inverse bind** transform
-the term is composed with. It is a valid node index for all 1,471 terms on the
-cartridge, and it differs from the stack slot beside it in 893 of them, so it is
-not the slot restated. In the bind pose the slot holds exactly that node's world
-transform — 12,504 of 12,543 terms — so `slot * inverseBind[node]` is the
+the term is composed with. It is a valid node index for all 12,543 terms on the
+cartridge, and it differs from the stack slot beside it in 7,061 of them, so it
+is not the slot restated. In the bind pose the slot holds exactly that node's
+world transform — 12,504 of 12,543 — so `slot * inverseBind[node]` is the
 identity there, and a blended vertex, which is stored in bind-pose space, stays
 where the display list put it.
 
