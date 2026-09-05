@@ -7,9 +7,10 @@ import type { Mat4 } from './matrix.ts'
 import { type NodeTransform, readNode } from './node.ts'
 import { readTex0, type TextureSet } from './nsbtx.ts'
 import {
+  inverseBindMatrices,
   type RenderCommand,
   readRenderCommands,
-  resolveMatrices,
+  resolvePose,
   resolveShapeMaterials,
 } from './render.ts'
 
@@ -133,6 +134,18 @@ export interface Model {
    */
   readonly matrices: readonly Mat4[]
   /**
+   * Each node's bind-pose world transform, inverted.
+   *
+   * Pass these back to `resolveMatrices` alongside animated node transforms;
+   * a blend needs them to undo the bind pose before applying the new one.
+   */
+  readonly inverseBind: readonly Mat4[]
+  /**
+   * The matrix stack as it stood when each shape was drawn, indexed by shape.
+   * This, not `matrices`, is what a shape must be posed against.
+   */
+  readonly shapeMatrices: readonly (readonly Mat4[])[]
+  /**
    * Material index each shape is drawn with, by shape index.
    *
    * A shape uses whichever material the render commands bound most recently
@@ -157,6 +170,39 @@ export interface Nsbmd {
   readonly textures: TextureSet | undefined
   block(stamp: string): NitroBlock | undefined
   model(name: string): Model | undefined
+}
+
+/**
+ * Place each vertex by the matrix its display list bound it to.
+ *
+ * The matrices are the resolved stack — `Model.matrices` for the bind pose, or
+ * the same stack resolved against animated node transforms for a posed frame.
+ * A vertex whose slot no command wrote is left where the display list put it.
+ */
+export function poseGeometry(geometry: Geometry, matrices: readonly Mat4[]): Geometry {
+  const vertices = geometry.vertices.map((v) => {
+    const m = matrices[v.matrixId]
+    if (!m) return v
+    return {
+      ...v,
+      x:
+        (m[0] as number) * v.x +
+        (m[4] as number) * v.y +
+        (m[8] as number) * v.z +
+        (m[12] as number),
+      y:
+        (m[1] as number) * v.x +
+        (m[5] as number) * v.y +
+        (m[9] as number) * v.z +
+        (m[13] as number),
+      z:
+        (m[2] as number) * v.x +
+        (m[6] as number) * v.y +
+        (m[10] as number) * v.z +
+        (m[14] as number),
+    }
+  })
+  return { vertices, indices: geometry.indices, matrixIds: geometry.matrixIds }
 }
 
 /** Cheap check for the `BMD0` stamp; does not validate the body. */
@@ -283,34 +329,11 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
   } catch (error) {
     renderCommandError = error instanceof Error ? error.message : String(error)
   }
-  const matrices = resolveMatrices(renderCommands, nodes)
+  const inverseBind = inverseBindMatrices(renderCommands, nodes)
+  const pose = resolvePose(renderCommands, nodes, inverseBind)
+  const matrices = pose.stack
+  const shapeMatrices = pose.shapeStacks
   const shapeMaterials = resolveShapeMaterials(renderCommands)
-
-  const pose = (geometry: Geometry): Geometry => {
-    const vertices = geometry.vertices.map((v) => {
-      const m = matrices[v.matrixId]
-      if (!m) return v
-      return {
-        ...v,
-        x:
-          (m[0] as number) * v.x +
-          (m[4] as number) * v.y +
-          (m[8] as number) * v.z +
-          (m[12] as number),
-        y:
-          (m[1] as number) * v.x +
-          (m[5] as number) * v.y +
-          (m[9] as number) * v.z +
-          (m[13] as number),
-        z:
-          (m[2] as number) * v.x +
-          (m[6] as number) * v.y +
-          (m[10] as number) * v.z +
-          (m[14] as number),
-      }
-    })
-    return { vertices, indices: geometry.indices, matrixIds: geometry.matrixIds }
-  }
 
   return {
     name,
@@ -334,6 +357,8 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     renderCommands,
     renderCommandError,
     matrices,
+    shapeMatrices,
+    inverseBind,
     shapeMaterials,
     geometry: (target) => {
       const shape = typeof target === 'number' ? shapes[target] : target
@@ -341,9 +366,11 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
       return runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`)
     },
     posedGeometry: (target) => {
-      const shape = typeof target === 'number' ? shapes[target] : target
+      const index = typeof target === 'number' ? target : shapes.indexOf(target)
+      const shape = shapes[index]
       if (!shape) throw new NitroGfxError(`no shape ${String(target)} in model '${name}'`)
-      return pose(runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`))
+      const geometry = runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`)
+      return poseGeometry(geometry, shapeMatrices[index] ?? matrices)
     },
   }
 }

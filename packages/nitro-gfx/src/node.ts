@@ -2,6 +2,7 @@ import { u16, u32 } from './bytes.ts'
 import { NitroGfxError } from './errors.ts'
 import { fx16ToFloat, fx32ToFloat } from './fixed.ts'
 import { identity, type Mat4 } from './matrix.ts'
+import { pivotRotation } from './rotation.ts'
 
 /**
  * A model's objects — its bones — and the local transform each carries.
@@ -40,42 +41,6 @@ export interface NodeTransform {
   readonly flags: number
   /** Local transform, ready to compose with a parent's. */
   readonly local: Mat4
-}
-
-/**
- * Build the 3x3 of a pivot rotation.
- *
- * The compact form stores a rotation about one axis: a single cell is ±1, its
- * row and column are otherwise zero, and the two remaining rows and columns
- * carry `[[a, b], [-b, a]]`, where `a` and `b` are the cosine and sine of the
- * angle. The pivot index selects the cell in row-major order.
- *
- * **The pivot cell's sign is not free.** Expanding the determinant along that
- * cell gives `det = (-1)^(row + col) * sign * 1`, so a rotation — determinant
- * +1 — forces `sign = (-1)^(row + col)`. That, with the fixed 2x2 above, makes
- * every one of the reference cartridge's 4,644 pivot nodes come out orthonormal
- * with determinant +1. Flag bits 8 and 9 are set on many of them and turn out
- * not to affect the rotation at all; what they mean is not established.
- *
- * `a * a + b * b == 1` holds for all 4,644, which is what confirms the two
- * values are read correctly and only their placement was ever in question.
- */
-function pivotRotation(out: Mat4, pivot: number, a: number, b: number): void {
-  const row = Math.floor(pivot / 3)
-  const col = pivot % 3
-  const set = (r: number, c: number, v: number) => {
-    out[c * 4 + r] = v
-  }
-
-  for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) set(r, c, 0)
-  set(row, col, (row + col) % 2 === 0 ? 1 : -1)
-
-  const rows = [0, 1, 2].filter((r) => r !== row)
-  const cols = [0, 1, 2].filter((c) => c !== col)
-  set(rows[0] as number, cols[0] as number, a)
-  set(rows[0] as number, cols[1] as number, b)
-  set(rows[1] as number, cols[0] as number, -b)
-  set(rows[1] as number, cols[1] as number, a)
 }
 
 /** Read one node's transform, returning it and the number of bytes it occupied. */

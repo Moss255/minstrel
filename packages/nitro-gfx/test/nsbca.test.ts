@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { NitroGfxError } from '../src/errors.ts'
-import { ANIMATION_STAMP, boneTrackSize, isNsbca, readNsbca } from '../src/nsbca.ts'
+import { identity } from '../src/matrix.ts'
+import {
+  ANIMATION_STAMP,
+  type Animation,
+  type BoneTrack,
+  boneTrackSize,
+  isNsbca,
+  readNsbca,
+  sampleAnimation,
+} from '../src/nsbca.ts'
 
 /** Build an NSBCA holding one animation with the given per-bone flags. */
 function buildNsbca(name: string, frames: number, trackFlags: number[]): Uint8Array {
@@ -129,11 +138,13 @@ describe('readNsbca', () => {
     expect(animation?.tracks.map((t) => t.flags)).toEqual([0x3a38, 0x3b7b, 0x3a00])
   })
 
-  it('sizes each track payload from its flags', () => {
+  it('sizes each track from its flags', () => {
     const animation = readNsbca(sample()).animations[0]
-    expect(animation?.tracks[0]?.payload).toHaveLength(boneTrackSize(0x3a38) - 4)
-    expect(animation?.tracks[1]?.payload).toHaveLength(0)
-    expect(animation?.tracks[2]?.payload).toHaveLength(boneTrackSize(0x3a00) - 4)
+    expect(animation?.tracks.map((t) => t.size)).toEqual([
+      boneTrackSize(0x3a38),
+      boneTrackSize(0x3b7b),
+      boneTrackSize(0x3a00),
+    ])
   })
 
   it('lays tracks end to end', () => {
@@ -197,5 +208,227 @@ describe('readNsbca on malformed input', () => {
     expect(animOffset).toBeGreaterThan(0)
     data[animOffset + 1] = 0xff
     expect(() => readNsbca(data)).toThrow(NitroGfxError)
+  })
+})
+
+/**
+ * An animation with content rather than filler: three bones covering a constant
+ * transform, curves of both kinds, and a bone the animation does not touch.
+ *
+ * Everything is assembled here from the format's own rules, so the fixture is
+ * synthetic — no cartridge bytes.
+ */
+function buildAnimated(): Uint8Array {
+  const anim: number[] = []
+  const au16 = (v: number) => anim.push(v & 0xff, (v >>> 8) & 0xff)
+  const au32 = (v: number) =>
+    anim.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+  const fx32 = (v: number) => au32(Math.round(v * 4096) >>> 0)
+  const fx16 = (v: number) => au16(Math.round(v * 4096) & 0xffff)
+  const unit = (v: number) => au16(Math.round(v * 32768) & 0xffff)
+
+  const flags = [
+    // constant translation, constant rotation, constant scale
+    (1 << 3) | (1 << 4) | (1 << 5) | (1 << 8) | (1 << 11) | (1 << 12) | (1 << 13),
+    // X translation on a curve, Y and Z constant; rotation on a curve; no scale
+    (1 << 4) | (1 << 5) | (1 << 9),
+    // untouched
+    0x3b7b,
+  ]
+
+  anim.push(...ANIMATION_STAMP)
+  au16(4) // frames
+  au16(3) // bones
+  au32(0)
+  const poolsAt = anim.length
+  au32(0)
+  au32(0)
+  const trackOffsetsAt = anim.length
+  for (let i = 0; i < 3; i++) au16(0)
+
+  const patch32 = (at: number, v: number) => {
+    for (let k = 0; k < 4; k++) anim[at + k] = (v >>> (k * 8)) & 0xff
+  }
+  const trackOffsets: number[] = []
+  const holes: Record<string, number> = {}
+
+  // bone 0
+  trackOffsets.push(anim.length)
+  au16(flags[0] as number)
+  anim.push(0, 0)
+  fx32(1)
+  fx32(2)
+  fx32(3)
+  au16(0x8000) // pivot pool entry 0
+  au16(0)
+  for (let axis = 0; axis < 3; axis++) {
+    fx32(2)
+    fx32(0.5)
+  }
+
+  // bone 1
+  trackOffsets.push(anim.length)
+  au16(flags[1] as number)
+  anim.push(0, 1)
+  au16(0) // curve start frame
+  au16(4) // curve end frame, code 0
+  holes.translationX = anim.length
+  au32(0)
+  fx32(-1)
+  fx32(-2)
+  au16(0)
+  au16(4)
+  holes.rotation = anim.length
+  au32(0)
+
+  // bone 2
+  trackOffsets.push(anim.length)
+  au16(flags[2] as number)
+  anim.push(0, 2)
+
+  trackOffsets.forEach((offset, i) => {
+    anim[trackOffsetsAt + i * 2] = offset & 0xff
+    anim[trackOffsetsAt + i * 2 + 1] = (offset >>> 8) & 0xff
+  })
+
+  patch32(poolsAt, anim.length)
+  au16(4) // pivot index: the centre cell
+  fx16(0)
+  fx16(1)
+
+  // A turn of 60 degrees about z. 1.0.15 cannot hold 1, so an axis-aligned
+  // basis would not round-trip; this one does.
+  patch32(poolsAt + 4, anim.length)
+  unit(0.5)
+  unit(-Math.sqrt(3) / 2)
+  unit(0)
+  unit(Math.sqrt(3) / 2)
+  unit(0.5)
+
+  patch32(holes.rotation as number, anim.length)
+  au16(0) // basis pool entry 0
+  au16(0x8000) // pivot pool entry 0
+  au16(0x8000)
+  au16(0)
+
+  patch32(holes.translationX as number, anim.length)
+  for (const v of [10, 20, 30, 40]) fx32(v)
+
+  // --- wrap it in a JNT0 block and a BCA0 container ---
+  const name = 'anim'
+  const dict: number[] = []
+  const du16 = (v: number) => dict.push(v & 0xff, (v >>> 8) & 0xff)
+  const du32 = (v: number) =>
+    dict.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+  const patricia = 4 + 8 + 4
+  dict.push(0, 1)
+  du16(patricia + 4 + 4 + 16)
+  du16(8)
+  du16(patricia)
+  du32(0x0000017f)
+  du32(0)
+  du16(4)
+  du16(8)
+  const animOffsetAt = dict.length
+  du32(0)
+  for (let i = 0; i < 16; i++) dict.push(i < name.length ? name.charCodeAt(i) : 0)
+  const animOffset = 8 + dict.length
+  for (let k = 0; k < 4; k++) dict[animOffsetAt + k] = (animOffset >>> (k * 8)) & 0xff
+
+  const blockSize = 8 + dict.length + anim.length
+  const bytes: number[] = []
+  const u16 = (v: number) => bytes.push(v & 0xff, (v >>> 8) & 0xff)
+  const u32 = (v: number) =>
+    bytes.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+  bytes.push(0x42, 0x43, 0x41, 0x30)
+  u16(0xfeff)
+  u16(1)
+  u32(0x14 + blockSize)
+  u16(0x10)
+  u16(1)
+  u32(0x14)
+  bytes.push(0x4a, 0x4e, 0x54, 0x30)
+  u32(blockSize)
+  bytes.push(...dict, ...anim)
+  return Uint8Array.from(bytes)
+}
+
+describe('bone track fields', () => {
+  const animation = () => readNsbca(buildAnimated()).animations[0] as Animation
+
+  it('reads a constant transform', () => {
+    const track = animation().tracks[0] as BoneTrack
+    expect(track.translation?.map((c) => c.kind === 'constant' && c.value)).toEqual([1, 2, 3])
+    expect(track.rotation).toEqual({ kind: 'constant', ref: 0x8000 })
+    expect(track.scale?.map((c) => c.kind === 'constant' && c.reciprocal)).toEqual([0.5, 0.5, 0.5])
+  })
+
+  it('mixes curves and constants across the axes', () => {
+    const track = animation().tracks[1] as BoneTrack
+    expect(track.translation?.map((c) => c.kind)).toEqual(['curve', 'constant', 'constant'])
+    expect(track.rotation?.kind).toBe('curve')
+    expect(track.scale).toBeUndefined()
+  })
+
+  it('leaves an untouched bone with no components', () => {
+    const track = animation().tracks[2] as BoneTrack
+    expect(track.translation).toBeUndefined()
+    expect(track.rotation).toBeUndefined()
+    expect(track.scale).toBeUndefined()
+  })
+
+  it('takes the sample count and width from the curve header', () => {
+    const track = animation().tracks[1] as BoneTrack
+    const channel = track.translation?.[0]
+    if (channel?.kind !== 'curve') throw new Error('expected a curve')
+    expect(channel.curve).toMatchObject({ startFrame: 0, endFrame: 4, count: 4, step: 1 })
+    expect(channel.curve.narrow).toBe(false)
+  })
+})
+
+describe('sampleAnimation', () => {
+  const animation = () => readNsbca(buildAnimated()).animations[0] as Animation
+
+  it('holds a constant transform across every frame', () => {
+    const anim = animation()
+    for (const frame of [0, 1, 2, 3]) {
+      const local = sampleAnimation(anim, frame)[0] as Float32Array
+      expect([local[12], local[13], local[14]]).toEqual([1, 2, 3])
+      // Pivot 4 with a = 0, b = 1 turns the x and z axes into each other.
+      expect(Array.from(local.subarray(0, 3))).toEqual([0, 0, -2])
+      expect(Array.from(local.subarray(8, 11))).toEqual([2, 0, 0])
+    }
+  })
+
+  it('walks a translation curve one sample per frame', () => {
+    const anim = animation()
+    expect([0, 1, 2, 3].map((f) => (sampleAnimation(anim, f)[1] as Float32Array)[12])).toEqual([
+      10, 20, 30, 40,
+    ])
+  })
+
+  it('clamps past the end of a curve rather than reading beyond it', () => {
+    const anim = animation()
+    expect((sampleAnimation(anim, 99)[1] as Float32Array)[12]).toBe(40)
+    expect((sampleAnimation(anim, -5)[1] as Float32Array)[12]).toBe(10)
+  })
+
+  it('resolves rotation samples through whichever pool the reference names', () => {
+    const anim = animation()
+    // Frame 0 names the basis pool, whose only entry turns 60 degrees about z.
+    const first = sampleAnimation(anim, 0)[1] as Float32Array
+    expect(first[0]).toBeCloseTo(0.5, 4)
+    expect(first[1]).toBeCloseTo(Math.sqrt(3) / 2, 4)
+    expect(first[2]).toBeCloseTo(0, 4)
+    // The row the format does not store comes back as the cross product.
+    expect(Array.from(first.subarray(8, 11)).map((v) => Math.round(v))).toEqual([0, 0, 1])
+    // Frame 1 names the pivot pool.
+    const second = sampleAnimation(anim, 1)[1] as Float32Array
+    expect(Array.from(second.subarray(0, 3))).toEqual([0, 0, -1])
+  })
+
+  it('leaves an untouched bone at the identity', () => {
+    const local = sampleAnimation(animation(), 2)[2] as Float32Array
+    expect(Array.from(local)).toEqual(Array.from(identity()))
   })
 })

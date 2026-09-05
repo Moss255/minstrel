@@ -18,6 +18,12 @@
     <main>
       <canvas id="gl"></canvas>
       <div id="overlay"></div>
+      <div id="scrubber" hidden>
+        <select id="animation" aria-label="animation"></select>
+        <button type="button" id="play" aria-label="play or pause">pause</button>
+        <input type="range" id="frame" min="0" max="0" step="1" value="0" aria-label="frame" />
+        <span id="frameLabel" class="status"></span>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

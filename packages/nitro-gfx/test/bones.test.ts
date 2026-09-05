@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { blend, identity, multiply, transformPoint } from '../src/matrix.ts'
-import { readNode } from '../src/node.ts'
-import { RenderOp, readRenderCommands, resolveMatrices } from '../src/render.ts'
+import { blend, identity, invertAffine, multiply, transformPoint } from '../src/matrix.ts'
+import { type NodeTransform, readNode } from '../src/node.ts'
+import {
+  inverseBindMatrices,
+  type RenderCommand,
+  RenderOp,
+  readRenderCommands,
+  resolveMatrices,
+  resolvePose,
+} from '../src/render.ts'
 
 /** Assemble a node record from flags and payload words. */
 function node(flags: number, firstRotationCell: number, payload: number[]): Uint8Array {
@@ -201,5 +208,64 @@ describe('resolveMatrices', () => {
     const matrices = resolveMatrices(commands, nodes)
     // Half of x = 0 and half of x = 10.
     expect(matrices[2]?.[12]).toBeCloseTo(5)
+  })
+})
+
+describe('invertAffine', () => {
+  it('undoes a transform with rotation, scale and translation', () => {
+    const m = new Float32Array([0, 2, 0, 0, -3, 0, 0, 0, 0, 0, 4, 0, 5, -6, 7, 1])
+    const round = multiply(m, invertAffine(m))
+    expect(Array.from(round).map((v) => Math.round(v * 1e4) / 1e4 + 0)).toEqual(
+      Array.from(identity()),
+    )
+  })
+
+  it('returns the identity for a matrix that cannot be inverted', () => {
+    const flat = identity()
+    flat[10] = 0
+    expect(Array.from(invertAffine(flat))).toEqual(Array.from(identity()))
+  })
+})
+
+describe('resolvePose', () => {
+  it('snapshots the stack for each shape, because slots are reused', () => {
+    const nodes: NodeTransform[] = [0, 1].map((index) => {
+      const local = identity()
+      local[12] = index + 1
+      return { index, name: `n${index}`, flags: 0, local }
+    })
+    // Bind node 0 into slot 0, draw shape 0, then overwrite slot 0 with node 1
+    // and draw shape 1. Reading the final stack would place both shapes on
+    // node 1.
+    const commands: RenderCommand[] = [
+      { op: RenderOp.NodeDescription, opcode: 0x26, offset: 0, params: [0, 0x3f, 0, 0] },
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [0] },
+      { op: RenderOp.NodeDescription, opcode: 0x26, offset: 0, params: [1, 0x3f, 0, 0] },
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [1] },
+    ]
+    const { stack, shapeStacks } = resolvePose(commands, nodes)
+    expect(stack[0]?.[12]).toBe(2)
+    expect(shapeStacks[0]?.[0]?.[12]).toBe(1)
+    expect(shapeStacks[1]?.[0]?.[12]).toBe(2)
+  })
+
+  it('collapses a blend to the identity when given the inverse bind matrices', () => {
+    const nodes: NodeTransform[] = [0, 1].map((index) => {
+      const local = identity()
+      local[12] = index * 4
+      local[13] = index
+      return { index, name: `n${index}`, flags: 0, local }
+    })
+    const commands: RenderCommand[] = [
+      { op: RenderOp.NodeDescription, opcode: 0x26, offset: 0, params: [0, 0x3f, 0, 0] },
+      { op: RenderOp.NodeDescription, opcode: 0x26, offset: 0, params: [1, 0x3f, 0, 1] },
+      // Half of slot 0 against node 0, half of slot 1 against node 1.
+      { op: RenderOp.NodeMix, opcode: 0x09, offset: 0, params: [2, 2, 0, 0, 128, 1, 1, 128] },
+    ]
+    const inverseBind = inverseBindMatrices(commands, nodes)
+    const { stack } = resolvePose(commands, nodes, inverseBind)
+    expect(Array.from(stack[2] as Float32Array).map((v) => Math.round(v * 1e4) / 1e4 + 0)).toEqual(
+      Array.from(identity()),
+    )
   })
 })

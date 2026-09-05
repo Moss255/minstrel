@@ -111,6 +111,32 @@ canvas {
   pointer-events: none;
   white-space: pre-line;
 }
+#scrubber {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+#scrubber select,
+#scrubber button {
+  background: #1b1b1f;
+  color: inherit;
+  border: 1px solid #33333a;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+}
+#scrubber input[type="range"] {
+  width: 200px;
+  accent-color: var(--accent);
+}
+#scrubber .status {
+  min-width: 5.5em;
+}
+
 body.dragging {
   outline: 2px dashed var(--accent);
   outline-offset: -8px;

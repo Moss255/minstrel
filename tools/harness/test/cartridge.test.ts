@@ -9,13 +9,19 @@ import {
   readCompressionHeader,
 } from '@vesper/nitro-comp'
 import {
+  type Animation,
   boneTrackSize,
   isNsbca,
   isNsbmd,
   isNsbtx,
+  type Model,
+  poseGeometry,
+  RenderOp,
   readNsbca,
   readNsbmd,
   readTex0,
+  resolvePose,
+  sampleAnimation,
   texelDataSize,
 } from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
@@ -662,6 +668,216 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(animations).toBeGreaterThan(1000)
     expect(tracks).toBeGreaterThan(10000)
     expect(adjacent).toBeGreaterThan(10000)
+  })
+
+  it('leaves a blended vertex where it was, when the model is in its bind pose', () => {
+    // A blended vertex is stored in bind-pose space, so composing each blend
+    // term with the named node's inverse bind transform has to give back the
+    // identity, and the vertex has to land exactly where the display list put
+    // it. That is the check on both the inverse bind matrices and the per-shape
+    // matrix stack — a model that reuses a stack slot fails it without them.
+    let models = 0
+    let exact = 0
+    let exactNaive = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isNsbmd(data)) continue
+        let model: Model | undefined
+        try {
+          model = readNsbmd(data).models[0]
+        } catch {
+          continue
+        }
+        if (!model) continue
+        const blended = new Set(
+          model.renderCommands
+            .filter((c) => c.op === RenderOp.NodeMix)
+            .map((c) => c.params[0] as number),
+        )
+        if (blended.size === 0) continue
+
+        // What the same model gives when posed against the stack as it stands
+        // after the last command, with no inverse bind matrices — the two
+        // things this checks, measured on the same models.
+        const naive = resolvePose(model.renderCommands, model.nodes).stack
+        let worst = 0
+        let worstNaive = 0
+        let any = false
+        try {
+          model.shapes.forEach((shape, index) => {
+            const rest = (model as Model).geometry(shape)
+            const posed = (model as Model).posedGeometry(index)
+            const other = poseGeometry(rest, naive)
+            rest.vertices.forEach((v, k) => {
+              if (!blended.has(v.matrixId)) return
+              const q = posed.vertices[k]
+              const p = other.vertices[k]
+              if (!q || !p) return
+              any = true
+              worst = Math.max(worst, Math.hypot(q.x - v.x, q.y - v.y, q.z - v.z))
+              worstNaive = Math.max(worstNaive, Math.hypot(p.x - v.x, p.y - v.y, p.z - v.z))
+            })
+          })
+        } catch {
+          continue
+        }
+        if (!any) continue
+        models++
+        if (worst < 0.01) exact++
+        if (worstNaive < 0.01) exactNaive++
+      }
+    }
+
+    expect(models).toBeGreaterThan(100)
+    expect(exact).toBeGreaterThan(exactNaive * 4)
+    // The shortfall is models whose stack slots the `0x40` node-description
+    // parameter assigns, which is not decoded — see `FORMAT.md`.
+    expect(exact / models).toBeGreaterThan(0.3)
+  })
+
+  it('lays every animation curve out without overlapping another', () => {
+    // A curve header says where its samples start but not how many bytes they
+    // take; that comes from the frame span, the sample width and, for scale,
+    // the reciprocal stored beside each value. If any of those were wrong the
+    // curves would run into each other, so the check is that none does.
+    const failures: string[] = []
+    let curves = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isNsbca(data)) continue
+        let parsed: readonly Animation[]
+        try {
+          parsed = readNsbca(data).animations
+        } catch (error) {
+          failures.push(`${file.path}: ${error instanceof Error ? error.message : String(error)}`)
+          continue
+        }
+        for (const animation of parsed) {
+          const ends = new Map<number, number>()
+          const claim = (at: number, size: number) => {
+            curves++
+            ends.set(at, Math.max(ends.get(at) ?? 0, at + size))
+          }
+          for (const track of animation.tracks) {
+            for (const channel of track.translation ?? []) {
+              if (channel.kind === 'curve') {
+                claim(channel.curve.offset, channel.curve.count * (channel.curve.narrow ? 2 : 4))
+              }
+            }
+            for (const channel of track.scale ?? []) {
+              if (channel.kind === 'curve') {
+                claim(channel.curve.offset, channel.curve.count * (channel.curve.narrow ? 4 : 8))
+              }
+            }
+            if (track.rotation?.kind === 'curve') {
+              claim(track.rotation.curve.offset, track.rotation.curve.count * 2)
+            }
+          }
+          const starts = [...ends.keys()].sort((a, b) => a - b)
+          for (let i = 0; i < starts.length - 1; i++) {
+            const stop = ends.get(starts[i] as number) as number
+            const next = starts[i + 1] as number
+            if (stop > next) {
+              failures.push(
+                `${file.path}#${animation.name}: curve at ${starts[i]} runs ${stop - next} bytes into the next`,
+              )
+            }
+          }
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(curves).toBeGreaterThan(10000)
+  })
+
+  it('poses every animation without reading outside it', () => {
+    const failures: string[] = []
+    let posed = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isNsbca(data)) continue
+        try {
+          for (const animation of readNsbca(data).animations) {
+            const last = Math.max(0, animation.frameCount - 1)
+            for (const frame of [0, 1, animation.frameCount >> 1, last, animation.frameCount]) {
+              sampleAnimation(animation, frame)
+            }
+            posed++
+          }
+        } catch (error) {
+          failures.push(
+            `${file.path}#${member.name ?? member.index}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(posed).toBeGreaterThan(1000)
+  })
+
+  it("starts an animation on its model's bind pose", () => {
+    // The strongest check available on the whole chain: a model and the
+    // animation beside it are independent files, and if the flags, the field
+    // layout, the curve headers or either rotation pool were read wrongly, the
+    // transforms sampled at frame zero would not land back on the pose the
+    // model itself stores.
+    let bones = 0
+    let matched = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      const narc = readNarc(bytes)
+      const members = [...narc.entries()]
+      for (const member of members) {
+        if (!member.name?.endsWith('.nsbmd')) continue
+        const base = member.name.slice(0, -6)
+        const beside = members.find((m) => m.name === `${base}.nsbca`)
+        if (!beside) continue
+        const modelBytes = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        const animBytes = isLz10(beside.data) ? decompressLz10(beside.data) : beside.data
+        if (!isNsbmd(modelBytes) || !isNsbca(animBytes)) continue
+
+        const model = readNsbmd(modelBytes).models[0]
+        if (!model) continue
+        for (const animation of readNsbca(animBytes).animations) {
+          if (animation.boneCount !== model.nodes.length) continue
+          const local = sampleAnimation(animation, 0)
+          for (const track of animation.tracks) {
+            const node = model.nodes[track.index]
+            const posedLocal = local[track.index]
+            if (!node || !posedLocal) continue
+            bones++
+            let worst = 0
+            for (let k = 0; k < 16; k++) {
+              worst = Math.max(
+                worst,
+                Math.abs((posedLocal[k] as number) - (node.local[k] as number)),
+              )
+            }
+            if (worst < 0.02) matched++
+          }
+        }
+      }
+    }
+
+    expect(bones).toBeGreaterThan(10000)
+    // The shortfall is animations that genuinely do not open on the bind pose.
+    expect(matched / bones).toBeGreaterThan(0.95)
   })
 
   it('produces the container magic each member extension implies', () => {

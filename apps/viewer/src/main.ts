@@ -1,14 +1,20 @@
 import { isGpc, readGpc } from '@vesper/l5-gpc'
 import { tryDecompressLz10 } from '@vesper/nitro-comp'
 import {
+  type Animation,
+  type Geometry,
   isNsbca,
   isNsbmd,
   isNsbtx,
   type Model,
   measureBounds,
+  type NodeTransform,
+  poseGeometry,
   readNsbca,
   readNsbmd,
   readTex0,
+  resolveMatrices,
+  sampleAnimation,
   type TextureSet,
   textureNameForMaterial,
 } from '@vesper/nitro-gfx'
@@ -43,10 +49,11 @@ const texturesByName = new Map<string, { set: TextureSet; name: string }>()
 /**
  * Animations found in the scan, by the archive path they came from.
  *
- * Listing them is as far as this goes: NSBCA's per-bone track *contents* are
- * not decoded, so nothing plays yet. See `packages/nitro-gfx/FORMAT.md`.
+ * An animation names no model, so the pairing is by proximity and bone count:
+ * the animations offered for a model are the ones beside it that drive the same
+ * number of bones.
  */
-const animationsByArchive = new Map<string, { name: string; frames: number }[]>()
+const animationsByArchive = new Map<string, Animation[]>()
 
 function must<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector)
@@ -60,6 +67,34 @@ const listEl = must<HTMLUListElement>('#models')
 const filterEl = must<HTMLInputElement>('#filter')
 const canvas = must<HTMLCanvasElement>('#gl')
 const overlay = must<HTMLDivElement>('#overlay')
+const scrubber = must<HTMLDivElement>('#scrubber')
+const animationEl = must<HTMLSelectElement>('#animation')
+const frameEl = must<HTMLInputElement>('#frame')
+const frameLabelEl = must<HTMLSpanElement>('#frameLabel')
+const playEl = must<HTMLButtonElement>('#play')
+
+animationEl.addEventListener('change', () => {
+  if (!shown) return
+  const index = animationEl.value === '' ? -1 : Number(animationEl.value)
+  shown.animation = shown.animations[index]
+  shown.frame = 0
+  renderScrubber()
+  pose()
+})
+
+frameEl.addEventListener('input', () => {
+  if (!shown?.animation) return
+  playing = false
+  playEl.textContent = 'play'
+  shown.frame = Number(frameEl.value)
+  frameLabelEl.textContent = `${shown.frame} / ${shown.animation.frameCount - 1}`
+  pose()
+})
+
+playEl.addEventListener('click', () => {
+  playing = !playing
+  playEl.textContent = playing ? 'pause' : 'play'
+})
 
 const status = (text: string) => {
   statusEl.textContent = text
@@ -112,9 +147,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
       try {
         const archive = path.slice(0, path.lastIndexOf('/'))
         const list = animationsByArchive.get(archive) ?? []
-        for (const animation of readNsbca(payload).animations) {
-          list.push({ name: animation.name, frames: animation.frameCount })
-        }
+        list.push(...readNsbca(payload).animations)
         animationsByArchive.set(archive, list)
       } catch {
         // An animation container that will not read is not fatal to the scan.
@@ -197,16 +230,10 @@ function textureFor(materialName: string): DecodedTexture | undefined {
   }
 }
 
-/** Animations alongside a model, as a line for the overlay. */
-function describeAnimations(path: string): string {
+/** The animations beside a model that drive the same skeleton. */
+function animationsFor(model: Model, path: string): Animation[] {
   const list = animationsByArchive.get(path.slice(0, path.lastIndexOf('/'))) ?? []
-  if (list.length === 0) return 'no animations in this archive'
-  const shown = list
-    .slice(0, 4)
-    .map((a) => `${a.name} (${a.frames}f)`)
-    .join(', ')
-  const more = list.length > 4 ? `, +${list.length - 4} more` : ''
-  return `animations: ${shown}${more} — not played yet`
+  return list.filter((a) => a.boneCount === model.nodes.length)
 }
 
 function renderList(): void {
@@ -223,33 +250,88 @@ function renderList(): void {
   })
 }
 
+/**
+ * What the viewer is currently showing: the model, its shapes' geometry before
+ * posing, and the animation playing over it.
+ *
+ * Keeping the unposed geometry means a frame change is one pass of matrix
+ * resolution and one pass over the vertices, with no display list re-run.
+ */
+interface Shown {
+  model: Model
+  path: string
+  rest: Geometry[]
+  textures: (DecodedTexture | undefined)[]
+  animations: Animation[]
+  animation: Animation | undefined
+  frame: number
+}
+
+let shown: Shown | undefined
+let playing = true
+
+/** Upload the current frame, posing against the animation if one is playing. */
+function pose(): void {
+  if (!shown) return
+  const { model, animation } = shown
+
+  let matrices = model.matrices
+  if (animation) {
+    const local = sampleAnimation(animation, shown.frame)
+    const nodes: NodeTransform[] = model.nodes.map((node, i) => {
+      const posed = local[i]
+      return posed ? { ...node, local: posed } : node
+    })
+    matrices = resolveMatrices(model.renderCommands, nodes, model.inverseBind)
+  }
+
+  const pieces: Piece[] = shown.rest.map((geometry, i) => {
+    const texture = shown?.textures[i]
+    const posed = poseGeometry(geometry, matrices)
+    return texture ? { geometry: posed, ...texture } : { geometry: posed }
+  })
+  const uploaded = renderer.upload(pieces)
+  describe(uploaded)
+}
+
 function select(index: number): void {
   const entry = entries[index]
   if (!entry) return
   selected = index
 
-  let model: Model | undefined
-  let pieces: Piece[] = []
   try {
-    const nsbmd = readNsbmd(entry.bytes)
-    model = nsbmd.models[0]
+    const model = readNsbmd(entry.bytes).models[0]
     if (!model) throw new Error('container holds no model')
-    const resolved = model
-    pieces = resolved.shapes.map((shape, index) => {
-      // Posed: each vertex placed by the matrix its display list bound it to,
-      // which is what a skinned model needs and is the identity for the rest.
-      const geometry = resolved.posedGeometry(shape)
-      const materialIndex = resolved.shapeMaterials[index]
-      const material = materialIndex === undefined ? undefined : resolved.materials[materialIndex]
-      const texture = material ? textureFor(material.name) : undefined
-      return texture ? { geometry, ...texture } : { geometry }
-    })
+    const animations = animationsFor(model, entry.path)
+    shown = {
+      model,
+      path: entry.path,
+      rest: model.shapes.map((shape) => model.geometry(shape)),
+      textures: model.shapes.map((_, i) => {
+        const materialIndex = model.shapeMaterials[i]
+        const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
+        return material ? textureFor(material.name) : undefined
+      }),
+      animations,
+      animation: animations[0],
+      frame: 0,
+    }
   } catch (error) {
+    shown = undefined
     overlay.textContent = `${entry.name}\n${error instanceof Error ? error.message : String(error)}`
     return
   }
 
+  const model = shown.model
+  const pieces: Piece[] = shown.rest.map((geometry, i) => {
+    const texture = shown?.textures[i]
+    const posed = poseGeometry(geometry, model.matrices)
+    return texture ? { geometry: posed, ...texture } : { geometry: posed }
+  })
+
   const uploaded = renderer.upload(pieces)
+  // Frame the model on its bind pose, so the camera does not jump about as an
+  // animation moves the geometry.
   const bounds = measureBounds(pieces.map((p) => p.geometry))
   const size = Math.max(
     bounds.maxX - bounds.minX,
@@ -264,16 +346,67 @@ function select(index: number): void {
   ]
   camera.distance = size * 2.2
 
+  describe(uploaded)
+  renderScrubber()
+  renderList()
+  if (shown.animation) pose()
+}
+
+/** The overlay text for whatever is on screen. */
+function describe(uploaded: { vertices: number; triangles: number; textured: number }): void {
+  if (!shown) return
+  const { model, animation } = shown
   overlay.textContent = [
-    entry.path,
+    shown.path,
     `${model.numShapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
     `${uploaded.textured}/${model.numShapes} shapes textured, from ${texturesByName.size} textures found`,
     referenceMode ? `reference mode: ${DS_WIDTH}x${DS_HEIGHT}, 5-bit colour` : 'full resolution',
-    describeAnimations(entry.path),
-    'drag to orbit · wheel to zoom · W wireframe · R reference mode',
+    animation
+      ? `${animation.name} — frame ${shown.frame} of ${animation.frameCount}, ${animation.boneCount} bones`
+      : shown.animations.length > 0
+        ? 'bind pose'
+        : 'no animation in this archive drives this skeleton',
+    'drag to orbit · wheel to zoom · W wireframe · R reference mode · space play/pause',
   ].join('\n')
+}
 
-  renderList()
+/** Fill the animation picker and the frame slider for the current model. */
+function renderScrubber(): void {
+  const list = shown?.animations ?? []
+  scrubber.hidden = list.length === 0
+  if (!shown || list.length === 0) return
+
+  animationEl.replaceChildren()
+  const rest = document.createElement('option')
+  rest.value = ''
+  rest.textContent = 'bind pose'
+  animationEl.append(rest)
+  list.forEach((animation, index) => {
+    const option = document.createElement('option')
+    option.value = String(index)
+    option.textContent = `${animation.name} (${animation.frameCount}f)`
+    animationEl.append(option)
+  })
+  animationEl.value = shown.animation ? String(list.indexOf(shown.animation)) : ''
+  frameEl.max = String(Math.max(0, (shown.animation?.frameCount ?? 1) - 1))
+  frameEl.value = String(shown.frame)
+  frameLabelEl.textContent = shown.animation
+    ? `${shown.frame} / ${shown.animation.frameCount - 1}`
+    : ''
+  playEl.textContent = playing ? 'pause' : 'play'
+}
+
+/** Step the animation on, at the DS's 30 frames a second. */
+function advance(elapsed: number): void {
+  if (!shown?.animation || !playing) return
+  const count = shown.animation.frameCount
+  if (count <= 1) return
+  const next = Math.floor(elapsed / (1000 / 30)) % count
+  if (next === shown.frame) return
+  shown.frame = next
+  frameEl.value = String(next)
+  frameLabelEl.textContent = `${next} / ${count - 1}`
+  pose()
 }
 
 async function load(file: File, pathFilter?: string): Promise<void> {
@@ -341,14 +474,21 @@ canvas.addEventListener(
   { passive: false },
 )
 addEventListener('keydown', (event) => {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
   if (event.key === 'w' || event.key === 'W') wireframe = !wireframe
   if (event.key === 'r' || event.key === 'R') {
     referenceMode = !referenceMode
     if (selected >= 0) select(selected)
   }
+  if (event.key === ' ') {
+    event.preventDefault()
+    playing = !playing
+    playEl.textContent = playing ? 'pause' : 'play'
+  }
 })
 
-function frame(): void {
+function frame(now: number = 0): void {
+  advance(now)
   const canvas = renderer.context.canvas as HTMLCanvasElement
   const width = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))
   const height = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio))
@@ -388,6 +528,23 @@ if (romUrl) {
         const index = entries.findIndex((e) => e.path.toLowerCase().includes(wanted.toLowerCase()))
         if (index >= 0) select(index)
         else status(`no model matching '${wanted}'`)
+      }
+      const wantedAnimation = params.get('animation')
+      if (wantedAnimation !== null && shown) {
+        const index = shown.animations.findIndex((a) =>
+          a.name.toLowerCase().includes(wantedAnimation.toLowerCase()),
+        )
+        shown.animation = index >= 0 ? shown.animations[index] : undefined
+        shown.frame = 0
+        renderScrubber()
+        pose()
+      }
+      const wantedFrame = params.get('frame')
+      if (wantedFrame !== null && shown?.animation) {
+        playing = false
+        shown.frame = Number(wantedFrame)
+        renderScrubber()
+        pose()
       }
       const yaw = params.get('yaw')
       const pitch = params.get('pitch')

@@ -1,6 +1,6 @@
 import { u8 } from './bytes.ts'
 import { NitroGfxError } from './errors.ts'
-import { blend, identity, type Mat4, multiply } from './matrix.ts'
+import { blend, identity, invertAffine, type Mat4, multiply } from './matrix.ts'
 import type { NodeTransform } from './node.ts'
 
 /**
@@ -141,8 +141,26 @@ export function resolveShapeMaterials(commands: readonly RenderCommand[]): (numb
   return materials
 }
 
+/** What resolving a model's render commands produces. */
+export interface ResolvedPose {
+  /** The matrix stack as it stands after the last command. */
+  readonly stack: Mat4[]
+  /** Each node's world transform, indexed by node. */
+  readonly world: Mat4[]
+  /**
+   * The stack as it stood when each shape was drawn, indexed by shape.
+   *
+   * **Slots are reused.** A model draws a shape, overwrites the slots it bound,
+   * and draws the next — so the stack left at the end is not the one most
+   * shapes saw. Posing a shape against the final stack puts its vertices
+   * wherever the last shape's bones happened to leave them.
+   */
+  readonly shapeStacks: Mat4[][]
+}
+
 /**
- * Resolve the matrix stack a model's render commands build.
+ * Resolve the matrix stack and the node world transforms a model's render
+ * commands build.
  *
  * A node-description command names a node and its parent, so a node's world
  * transform is its parent's composed with its own local one; the command's flag
@@ -150,16 +168,26 @@ export function resolveShapeMaterials(commands: readonly RenderCommand[]): (numb
  * several stack slots by weight.
  *
  * Weights are eighths of a unit: two terms of `0x80` sum to `0x100`, which is
- * one. Blending matrices componentwise is what the hardware does — it is not a
- * proper interpolation of rotations, and for the small angles between adjacent
- * bones that is exactly the intent.
+ * one — and they do, for all 722 blends on the reference cartridge. Blending
+ * matrices componentwise is what the hardware does: it is not a proper
+ * interpolation of rotations, and for the small angles between adjacent bones
+ * that is exactly the intent.
+ *
+ * **A blend term is a stack slot, a node, and a weight.** The middle parameter
+ * names the node whose *inverse bind* transform the term is composed with, and
+ * it is a valid node index for all 1,471 terms on the cartridge while differing
+ * from the slot beside it in 893 of them, so it is not the slot restated. Pass
+ * `inverseBind` — from `inverseBindMatrices` — to apply it. Without it a blend
+ * is only correct where the pose equals the bind pose.
  */
-export function resolveMatrices(
+export function resolvePose(
   commands: readonly RenderCommand[],
   nodes: readonly NodeTransform[],
-): Mat4[] {
+  inverseBind?: readonly Mat4[],
+): ResolvedPose {
   const stack: Mat4[] = Array.from({ length: MATRIX_STACK_SIZE }, () => identity())
   const world: Mat4[] = nodes.map(() => identity())
+  const shapeStacks: Mat4[][] = []
   const seen = new Set<number>()
 
   for (const command of commands) {
@@ -190,8 +218,11 @@ export function resolveMatrices(
         const weights: number[] = []
         for (let i = 0; i < terms; i++) {
           const slot = command.params[2 + i * 3] as number
+          const node = command.params[3 + i * 3] as number
           const weight = command.params[4 + i * 3] as number
-          sources.push((stack[slot] ?? identity()) as Mat4)
+          const posed = (stack[slot] ?? identity()) as Mat4
+          const bind = inverseBind?.[node]
+          sources.push(bind ? multiply(posed, bind) : posed)
           weights.push(weight / 256)
         }
         if (destination < MATRIX_STACK_SIZE) {
@@ -199,10 +230,41 @@ export function resolveMatrices(
         }
         break
       }
+      case RenderOp.Shape: {
+        const shape = command.params[0] as number
+        shapeStacks[shape] = stack.map((m) => new Float32Array(m))
+        break
+      }
       default:
         break
     }
   }
 
-  return stack
+  return { stack, world, shapeStacks }
+}
+
+/**
+ * The matrix stack alone, for callers that do not need the node transforms.
+ */
+export function resolveMatrices(
+  commands: readonly RenderCommand[],
+  nodes: readonly NodeTransform[],
+  inverseBind?: readonly Mat4[],
+): Mat4[] {
+  return resolvePose(commands, nodes, inverseBind).stack
+}
+
+/**
+ * Invert each node's world transform in the bind pose.
+ *
+ * A blended vertex is stored in the space the bind pose put it in, so a term of
+ * a blend has to undo that before applying the posed transform. In the bind
+ * pose the two cancel exactly, which is the check on this: with them applied,
+ * every blend slot a bind-pose model resolves comes out as the identity.
+ */
+export function inverseBindMatrices(
+  commands: readonly RenderCommand[],
+  nodes: readonly NodeTransform[],
+): Mat4[] {
+  return resolvePose(commands, nodes).world.map((m) => invertAffine(m))
 }
