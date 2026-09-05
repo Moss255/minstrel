@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import { decompressLz10, isLz10, readCompressionHeader } from '@vesper/nitro-comp'
 import { isNsbmd, readNsbmd } from '@vesper/nitro-gfx'
+import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -270,6 +271,58 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(models).toBeGreaterThan(1000)
     expect(vertexMatches).toBe(models)
     expect(triangleMatches).toBe(models)
+  })
+
+  it('parses its sound archives and resolves every audio resource', () => {
+    // The load-bearing check: a record's file id must land on a file whose
+    // stamp is the one that record kind implies. Reading the leading u16 of
+    // every record as a file id looks plausible and is wrong for three of the
+    // eight kinds, so this is what separates a correct reading from a lucky one.
+    const expected: Record<number, string> = {
+      [RecordKind.Sequence]: 'SSEQ',
+      [RecordKind.SequenceArchive]: 'SSAR',
+      [RecordKind.Bank]: 'SBNK',
+      [RecordKind.WaveArchive]: 'SWAR',
+      [RecordKind.Stream]: 'STRM',
+    }
+    const failures: string[] = []
+    let archives = 0
+    let resolved = 0
+    let chains = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isSdat(bytes)) continue
+      archives++
+      const sdat = readSdat(bytes)
+
+      for (const [kind, stamp] of Object.entries(expected)) {
+        for (const record of sdat.records[Number(kind)] ?? []) {
+          if (record.fileId === undefined) continue
+          resolved++
+          const data = sdat.read(record)
+          const actual = String.fromCharCode(...data.subarray(0, 4))
+          if (actual !== stamp) {
+            failures.push(`${file.path}#${record.name ?? record.index}: '${actual}' not '${stamp}'`)
+          }
+        }
+      }
+
+      // Walk each sequence to its bank and on to that bank's wave archives —
+      // three lookups through separately-parsed tables.
+      for (const sequence of sdat.sequences) {
+        if (sequence.fileId === undefined) continue
+        const bank = sdat.banks[sdat.sequenceInfo(sequence).bankId]
+        if (!bank || bank.fileId === undefined) continue
+        const waves = sdat.bankInfo(bank).waveArchiveIds.filter((id) => id !== 0xffff)
+        if (waves.every((id) => sdat.waveArchives[id]?.fileId !== undefined)) chains++
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(archives).toBeGreaterThan(0)
+    expect(resolved).toBeGreaterThan(1000)
+    expect(chains).toBeGreaterThan(0)
   })
 
   it('produces the container magic each member extension implies', () => {

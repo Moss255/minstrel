@@ -17,6 +17,7 @@ Early. Working through M0 of `docs/PLAN.md` — see [`docs/M0-inventory.md`](doc
 | [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ77 and Huffman decompression |
 | [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
 | [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models and the geometry display list |
+| [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
@@ -108,6 +109,7 @@ packages/
   nitro-comp/     Nintendo compression                 MIT, game-agnostic
   l5-gpc/         GPC2, a Level-5 container            MIT, game-agnostic
   nitro-gfx/      NSBMD models, display lists          MIT, game-agnostic
+  nitro-snd/      SDAT sound archives                  MIT, game-agnostic
 tools/
   inventory/      cartridge cataloguing CLI
   harness/        local-only integration tests

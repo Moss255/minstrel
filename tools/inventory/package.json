@@ -11,6 +11,7 @@
   "dependencies": {
     "@vesper/nitrofs": "workspace:*",
     "@vesper/nitro-comp": "workspace:*",
-    "@vesper/l5-gpc": "workspace:*"
+    "@vesper/l5-gpc": "workspace:*",
+    "@vesper/nitro-snd": "workspace:*"
   }
 }

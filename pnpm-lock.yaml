@@ -50,6 +50,8 @@ importers:
 
   packages/nitro-gfx: {}
 
+  packages/nitro-snd: {}
+
   packages/nitrofs: {}
 
   tools/harness:
@@ -63,6 +65,9 @@ importers:
       '@vesper/nitro-gfx':
         specifier: workspace:*
         version: link:../../packages/nitro-gfx
+      '@vesper/nitro-snd':
+        specifier: workspace:*
+        version: link:../../packages/nitro-snd
       '@vesper/nitrofs':
         specifier: workspace:*
         version: link:../../packages/nitrofs
@@ -75,9 +80,14 @@ importers:
       '@vesper/nitro-comp':
         specifier: workspace:*
         version: link:../../packages/nitro-comp
+      '@vesper/nitro-snd':
+        specifier: workspace:*
+        version: link:../../packages/nitro-snd
       '@vesper/nitrofs':
         specifier: workspace:*
         version: link:../../packages/nitrofs
+
+  tools/shot: {}
 
 packages:
 

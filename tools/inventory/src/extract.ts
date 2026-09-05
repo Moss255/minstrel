@@ -28,6 +28,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isGpc, readGpc } from '@vesper/l5-gpc'
 import { tryDecompressLz10 } from '@vesper/nitro-comp'
+import { isSdat, readSdat } from '@vesper/nitro-snd'
 import {
   checkHeaderIntegrity,
   isNarc,
@@ -207,6 +208,8 @@ async function main(): Promise<void> {
   let gpcUnpacked = 0
   let gpcUnreadable = 0
   let gpcPrefixless = 0
+  let sdatUnpacked = 0
+  let sdatFiles = 0
   let membersDecompressed = 0
   let escapedNames = 0
   const failures: string[] = []
@@ -292,6 +295,42 @@ async function main(): Promise<void> {
           }
         }
         return
+      }
+    }
+
+    if (options.unpack && isSdat(payload)) {
+      // A sound archive names most of its files through its symbol block; the
+      // rest are numbered. The stamp gives the extension, so an SSEQ lands as
+      // BG_001.sseq rather than as an anonymous blob.
+      try {
+        const sdat = readSdat(payload)
+        sdatUnpacked++
+        const namesById = new Map<number, string>()
+        for (const list of sdat.records) {
+          for (const record of list) {
+            if (record.fileId === undefined || !record.name) continue
+            if (!namesById.has(record.fileId)) namesById.set(record.fileId, record.name)
+          }
+        }
+        for (const file of sdat.files) {
+          const bytes = sdat.read(file.id)
+          const extension =
+            bytes.length >= 4
+              ? Array.from(bytes.subarray(0, 4), (c) =>
+                  c >= 0x41 && c <= 0x5a ? String.fromCharCode(c + 32) : '',
+                ).join('')
+              : ''
+          const stem = namesById.get(file.id) ?? `${String(file.id).padStart(4, '0')}`
+          const safe = toSafeName(`${stem}.${extension || 'bin'}`)
+          if (safe.escaped) escapedNames++
+          sdatFiles++
+          await emit(bytes, join(outPath, safe.safe), source, [...within, stem], safe.originalHex)
+        }
+        return
+      } catch (error) {
+        failures.push(
+          `${source}${within.length ? ` [${within.join(' > ')}]` : ''}: ${error instanceof Error ? error.message : String(error)}`,
+        )
       }
     }
 
@@ -413,6 +452,8 @@ async function main(): Promise<void> {
       gpcUnpacked,
       gpcUnreadable,
       gpcPrefixless,
+      sdatUnpacked,
+      sdatFiles,
       membersDecompressed,
       escapedNames,
       collisions,
@@ -432,6 +473,8 @@ async function main(): Promise<void> {
     ['gpc2 archives unpacked', String(gpcUnpacked)],
     ['gpc2 members with an unidentified codec', String(gpcUnreadable)],
     ['  of those, stored with no prefix and recovered', String(gpcPrefixless)],
+    ['sdat archives unpacked', String(sdatUnpacked)],
+    ['sound files written', String(sdatFiles)],
     ['members decompressed', String(membersDecompressed)],
     ['names escaped', String(escapedNames)],
     ['name collisions resolved', String(collisions)],

@@ -79,6 +79,7 @@ Recursing into every archive and decompressing, the cartridge holds:
 | NSBMA material animation | 2,106 | 1.7 MiB |
 | NSBTP texture-pattern animation | 570 | 295.8 KiB |
 | SDAT sound archive | 3 | 66.0 MiB |
+| — sequences, banks and wave archives inside them | 1,714 | |
 
 **This is the single most important M0 result.** The entire 3D and audio asset
 pipeline is stock Nitro SDK formats. No custom model container, no custom
@@ -242,12 +243,25 @@ carry a differently-shaped index. These hold the Hero and party models — what 
 needs to put a character in the village. No plan yet beyond "look at the index
 again", so this does not meet the milestone's bar.
 
-**Audio.** `bgm.sdat` is 38 MB and has never been opened. This one *does* have a
-known plan: SDAT is a documented Nintendo container (`SDAT`, little-endian BOM,
-four blocks) holding SSEQ sequences, SBNK banks and SWAR wave archives, all
-published formats. It needs a `nitro-snd` package. Note the slice plan's warning
-that audio is the hardest TypeScript-specific problem and must not be discovered
-late.
+**Audio — now done.** `@vesper/nitro-snd` reads SDAT, and all three archives on
+the cartridge open. `bgm.sdat` holds **82 named sequences (`BG_001`…, `ME_*`),
+82 banks, 81 wave archives and 3 streams**, 186 files in all, and they now
+extract to disk under their own names — `BG_001.sseq`, `BANK_BG_001.sbnk`,
+`WAVE_BG_001.swar`.
+
+The resource chain resolves end to end: every sequence reaches its bank and that
+bank's wave archives, 64 of 64, and the names agree along the way.
+
+What remains is **playback**, which is a different job: nothing decodes SSEQ's
+sequence commands, SBNK's instruments or SWAR's ADPCM waveforms. That is the
+AudioWorklet sequencer the plan schedules for M8 and calls the hardest
+TypeScript-specific problem in the project. Having the resources named,
+extracted and chained is its prerequisite, and M0's bar — extracted and
+catalogued — is met.
+
+*Which* six tracks the slice needs is still open, and is the same shape of
+question as the map codes were: an answer that probably lives in a table rather
+than in a disassembler.
 
 **The font.** There is no NFTR resource anywhere on the cartridge — the standard
 Nintendo font format is not used. `data/pack/font.gp2` holds `.mes` files whose

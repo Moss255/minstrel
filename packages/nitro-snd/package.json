@@ -1,0 +1,11 @@
+{
+  "name": "@vesper/nitro-snd",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "SDAT sound archive parsing: symbols, info records, and the file table. Game-agnostic, browser-safe.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
