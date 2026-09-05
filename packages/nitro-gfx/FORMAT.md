@@ -108,7 +108,8 @@ failing visibly.
 
 | command | meaning |
 |---|---|
-| `0x14` | `MTX_RESTORE`; recorded as the vertex's matrix id |
+| `0x14` | `MTX_RESTORE`; recorded as the vertex's matrix id, and drops the scale |
+| `0x1B` | `MTX_SCALE`; **applied** to the positions that follow — see below |
 | `0x20` | `COLOR`, 5 bits per channel |
 | `0x21` | `NORMAL` |
 | `0x22` | `TEXCOORD`, 1.11.4 texels |
@@ -122,6 +123,43 @@ failing visibly.
 Quads split on the `a-c` diagonal. Triangle strips alternate winding, so every
 other triangle is flipped back to give the run one consistent winding.
 
+### The position scale
+
+A model's positions are stored small and scaled up when they are drawn. The
+scale is the model header's `upScale`, and `downScale` — always exactly its
+reciprocal — takes the result back to model space afterwards. Ignoring it leaves
+a model whose bones carry large translations spread across the world: `s107`,
+four thin strands, comes out 113 units long against the 7.36 its own header
+declares.
+
+Three things carry the scale, and all three are needed:
+
+- **`MTX_SCALE` in the display list is always the model's `upScale`**, uniform
+  on all three axes — 126,616 of 126,616 on the reference cartridge. Since the
+  bone transform is deferred, folding it into the positions as they are emitted
+  is the same thing the hardware does by folding it into the current matrix.
+- **The `PositionScale` render command applies it before the shape is drawn**,
+  outside the display list. A model emits that command exactly when its
+  `upScale` is not one: of the 2,901 models that never emit it, 2,898 have an
+  `upScale` of 1.
+- **`MTX_RESTORE` drops the scale**, because it loads a stored matrix over the
+  current one. A display list that restores mid-shape re-applies `MTX_SCALE`
+  immediately; one that does not never emits another vertex — **0 of 1,637,744**
+  across the 4,719 models whose lists carry no `MTX_SCALE` at all. So no vertex
+  is ever left at the wrong scale, which is what confirms the reading.
+
+The evidence that the scale belongs on the vertices and its reciprocal on the
+matrices, rather than the other way about, is `s107` again: with them that way
+round its geometry measures 7.358 x 0.189 x 0.200 against a declared
+7.360 x 0.187 x 0.198. With the scale on the vertices alone it is sixteen times
+too big.
+
+### A shape starts on the matrix the render commands left current
+
+**Every** shape on the cartridge emits vertices before its own display list's
+first `MTX_RESTORE` — 1,864,237 of them. Those belong to the slot the render
+stream last restored, which for 3,610 shapes is not slot 0.
+
 ## Evidence
 
 Against a retail cartridge, which is not in this repository:
@@ -132,6 +170,7 @@ Against a retail cartridge, which is not in this repository:
 | shapes decoded | 57,192 |
 | **decoded vertex count == the model header's own count** | **6,889 / 6,889** |
 | **decoded triangles == `numTriangles + 2 × numQuads`** | **6,889 / 6,889** |
+| **a blended vertex stays put in the bind pose** | **1,018 / 1,138 models exactly; nothing anywhere out by more than 0.03** |
 
 Those two are independent, and both come from the file rather than from this
 code. An interpreter with a wrong parameter count or a missed partial-vertex
@@ -232,9 +271,16 @@ A model draws a shape, overwrites the slots it bound, and draws the next, so the
 stack left after the last command is not the one most shapes saw. Each shape has
 to be posed against the stack as it stood when its own draw command appeared.
 
-Together with the inverse bind matrices, that takes the models whose every
-blended vertex stays exactly put in the bind pose from almost none to **718 of
-1,138**. The rest are the `0x40` parameter's business, below.
+Together with the inverse bind matrices and the position scale, every genuinely
+blended vertex on the cartridge stays where the display list put it: **1,018 of
+1,138 models exactly, and nothing anywhere out by more than 0.03** — a
+fixed-point rounding, against models tens of units across.
+
+*Genuinely* blended has to be judged per shape. A slot holding a blend when one
+shape is drawn often holds a plain node's transform by the time the next one is,
+and counting every slot that is a blend destination somewhere makes correct
+output look wrong: on `s107` that reads a 113-unit error into vertices whose
+slot had been reused.
 
 ## Textures — `TEX0` and NSBTX
 
@@ -485,9 +531,14 @@ none of it was fitted against the models.
 ## Not implemented
 
 - **The `0x40` flag's parameter on node-transform commands.** Its meaning is not
-  established, and it is skipped. It is the remaining suspect for the 420
-  skinned models whose blended vertices still move in the bind pose, since the
-  inverse bind matrices and the per-shape stack account for the other 718.
+  established, and it is skipped. Nothing now measurably depends on it: with the
+  inverse bind matrices, the per-shape stack and the position scale, skinning
+  reproduces the bind pose to within a rounding.
+- **What the header's bounding box describes.** Posed geometry comes out either
+  the same size as the box or twice it, in two clear peaks — 3,132 models at ~1
+  and 2,657 at ~2, on both sides of the `upScale` divide, so it is a property of
+  the box rather than of the scaling. Nothing reads it, so nothing is wrong
+  because of it; `measureBounds` over real geometry is what the viewer frames on.
 - **4x4 block compression.** Implemented from documentation, but the reference
   cartridge contains no texture that uses it, so it is unverified.
 - **Normals and lighting.** `NORMAL` is stepped over rather than captured.

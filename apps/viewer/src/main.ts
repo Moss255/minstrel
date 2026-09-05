@@ -13,7 +13,6 @@ import {
   readNsbca,
   readNsbmd,
   readTex0,
-  resolveMatrices,
   sampleAnimation,
   type TextureSet,
   textureNameForMaterial,
@@ -275,19 +274,21 @@ function pose(): void {
   if (!shown) return
   const { model, animation } = shown
 
-  let matrices = model.matrices
+  // Each shape has its own matrix stack, because a model reuses slots between
+  // shapes; `Model.pose` resolves them against the frame's node transforms.
+  let stacks = model.shapeMatrices
   if (animation) {
     const local = sampleAnimation(animation, shown.frame)
     const nodes: NodeTransform[] = model.nodes.map((node, i) => {
       const posed = local[i]
       return posed ? { ...node, local: posed } : node
     })
-    matrices = resolveMatrices(model.renderCommands, nodes, model.inverseBind)
+    stacks = model.pose(nodes)
   }
 
   const pieces: Piece[] = shown.rest.map((geometry, i) => {
     const texture = shown?.textures[i]
-    const posed = poseGeometry(geometry, matrices)
+    const posed = poseGeometry(geometry, stacks[i] ?? model.matrices)
     return texture ? { geometry: posed, ...texture } : { geometry: posed }
   })
   const uploaded = renderer.upload(pieces)
@@ -325,7 +326,7 @@ function select(index: number): void {
   const model = shown.model
   const pieces: Piece[] = shown.rest.map((geometry, i) => {
     const texture = shown?.textures[i]
-    const posed = poseGeometry(geometry, model.matrices)
+    const posed = poseGeometry(geometry, model.shapeMatrices[i] ?? model.matrices)
     return texture ? { geometry: posed, ...texture } : { geometry: posed }
   })
 

@@ -1,6 +1,7 @@
 export { checkRange, resourceName, u8, u16, u32 } from './bytes.ts'
 export { type Dict, type DictEntry, readDict } from './dict.ts'
 export {
+  type DisplayListState,
   GeomCommand,
   type Geometry,
   PrimitiveType,
@@ -66,5 +67,7 @@ export {
   resolveMatrices,
   resolvePose,
   resolveShapeMaterials,
+  resolveShapeStates,
+  type ShapeState,
 } from './render.ts'
 export { basisRotation, pivotRotation } from './rotation.ts'

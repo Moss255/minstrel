@@ -8,6 +8,7 @@ import {
   readRenderCommands,
   resolveMatrices,
   resolvePose,
+  resolveShapeStates,
 } from '../src/render.ts'
 
 /** Assemble a node record from flags and payload words. */
@@ -267,5 +268,35 @@ describe('resolvePose', () => {
     expect(Array.from(stack[2] as Float32Array).map((v) => Math.round(v * 1e4) / 1e4 + 0)).toEqual(
       Array.from(identity()),
     )
+  })
+})
+
+describe('resolveShapeStates', () => {
+  it('gives a shape the matrix the render stream last restored', () => {
+    const states = resolveShapeStates([
+      { op: RenderOp.RestoreMatrix, opcode: 0x03, offset: 0, params: [6] },
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [0] },
+      { op: RenderOp.RestoreMatrix, opcode: 0x03, offset: 0, params: [11] },
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [1] },
+    ])
+    expect(states.map((s) => s.matrixId)).toEqual([6, 11])
+  })
+
+  it('marks a shape drawn after a position scale, and only until the next restore', () => {
+    const states = resolveShapeStates([
+      { op: RenderOp.RestoreMatrix, opcode: 0x03, offset: 0, params: [1] },
+      { op: RenderOp.PositionScale, opcode: 0x0b, offset: 0, params: [] },
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [0] },
+      { op: RenderOp.RestoreMatrix, opcode: 0x03, offset: 0, params: [2] },
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [1] },
+    ])
+    expect(states.map((s) => s.positionScaled)).toEqual([true, false])
+  })
+
+  it('defaults to slot 0 and no scale', () => {
+    const states = resolveShapeStates([
+      { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [0] },
+    ])
+    expect(states[0]).toEqual({ matrixId: 0, positionScaled: false })
   })
 })

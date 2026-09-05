@@ -158,6 +158,51 @@ export interface ResolvedPose {
   readonly shapeStacks: Mat4[][]
 }
 
+/** The geometry-engine state a model's render commands leave for one shape. */
+export interface ShapeState {
+  /** The matrix slot current when the shape is drawn. */
+  readonly matrixId: number
+  /** Whether a `PositionScale` command has scaled that matrix. */
+  readonly positionScaled: boolean
+}
+
+/**
+ * What the render commands leave current before each shape is drawn.
+ *
+ * Every shape on the reference cartridge emits vertices before its display
+ * list's own first `MTX_RESTORE` — 1,864,237 of them — so the slot those
+ * vertices belong to comes from here, not from the list. For 3,610 shapes it is
+ * not slot 0.
+ *
+ * `PositionScale` carries no parameters; the scale it applies is the model's
+ * `upScale`. A model emits it exactly when that scale is not one — 2,898 of the
+ * 2,901 models that never emit it have an `upScale` of 1.
+ */
+export function resolveShapeStates(commands: readonly RenderCommand[]): ShapeState[] {
+  const states: ShapeState[] = []
+  let matrixId = 0
+  let positionScaled = false
+  for (const command of commands) {
+    switch (command.op) {
+      case RenderOp.RestoreMatrix:
+        matrixId = command.params[0] as number
+        // Restoring loads a stored matrix, dropping the scale applied to the
+        // one it replaces.
+        positionScaled = false
+        break
+      case RenderOp.PositionScale:
+        positionScaled = true
+        break
+      case RenderOp.Shape:
+        states[command.params[0] as number] = { matrixId, positionScaled }
+        break
+      default:
+        break
+    }
+  }
+  return states
+}
+
 /**
  * Resolve the matrix stack and the node world transforms a model's render
  * commands build.

@@ -1,6 +1,6 @@
 import { u8, u32 } from './bytes.ts'
 import { NitroGfxError } from './errors.ts'
-import { fx16ToFloat, signExtend } from './fixed.ts'
+import { fx16ToFloat, fx32ToFloat, signExtend } from './fixed.ts'
 
 /**
  * The DS geometry-engine display list.
@@ -174,20 +174,49 @@ function emitPrimitive(
 }
 
 /**
+ * The geometry engine's state where a display list begins.
+ *
+ * A model's render commands run before its shapes and leave the current matrix
+ * set — a `RestoreMatrix` names the slot, and a `PositionScale` scales it by
+ * the model's `upScale`. Neither is in the display list, so a caller that has
+ * the render commands passes what they left behind. The defaults are what a
+ * display list read on its own should assume.
+ */
+export interface DisplayListState {
+  /** The matrix slot in effect before the list's own first `MTX_RESTORE`. */
+  readonly matrixId?: number
+  /** The scale in effect, likewise. */
+  readonly scale?: number
+}
+
+/**
  * Interpret a display list into triangles.
  *
  * The interpreter tracks the geometry engine's vertex state — current colour,
- * texture coordinate, position and matrix id — exactly as the hardware does,
+ * texture coordinate, position, scale and matrix id — as the hardware does,
  * because the position commands are deliberately partial: `VTX_XY` sets only
  * two coordinates and keeps the third, and `VTX_DIFF` adds a small delta to
  * whatever came before.
  *
- * Matrix commands are recorded but not applied. A model's bone transforms come
- * from its render commands, which live outside the display list; a caller that
- * has them can transform by `Vertex.matrixId`. For a static model the identity
- * is correct.
+ * **`MTX_SCALE` is applied; the other matrix commands are only recorded.** The
+ * scale is uniform and always the model's `upScale` — 126,616 of 126,616 on the
+ * reference cartridge — so folding it into the positions as they are emitted is
+ * the same thing the hardware does by folding it into the current matrix, and
+ * it keeps the deferred bone transform free of it. `MTX_RESTORE` loads a stored
+ * matrix and so drops the scale, exactly as on hardware; a list that restores
+ * mid-shape re-applies `MTX_SCALE` immediately, and one that does not never
+ * emits another vertex — 0 of 1,637,744 — so no vertex is ever left at the
+ * wrong scale.
+ *
+ * A model's bone transforms come from its render commands, which live outside
+ * the display list; a caller that has them can transform by `Vertex.matrixId`.
+ * For a static model the identity is correct.
  */
-export function runDisplayList(list: Uint8Array, what = 'display list'): Geometry {
+export function runDisplayList(
+  list: Uint8Array,
+  what = 'display list',
+  start: DisplayListState = {},
+): Geometry {
   const vertices: Vertex[] = []
   const indices: number[] = []
   const matrixIds: number[] = []
@@ -201,7 +230,10 @@ export function runDisplayList(list: Uint8Array, what = 'display list'): Geometr
   let r = 1
   let g = 1
   let b = 1
-  let matrixId = 0
+  let matrixId = start.matrixId ?? 0
+  let scaleX = start.scale ?? 1
+  let scaleY = scaleX
+  let scaleZ = scaleX
 
   let primitive = -1
   let run: number[] = []
@@ -213,7 +245,7 @@ export function runDisplayList(list: Uint8Array, what = 'display list'): Geometr
       return
     }
     run.push(vertices.length)
-    vertices.push({ x, y, z, s, t, r, g, b, matrixId })
+    vertices.push({ x: x * scaleX, y: y * scaleY, z: z * scaleZ, s, t, r, g, b, matrixId })
   }
 
   let at = 0
@@ -248,6 +280,16 @@ export function runDisplayList(list: Uint8Array, what = 'display list'): Geometr
         case GeomCommand.MatrixRestore:
           matrixId = p0 & 0x1f
           if (!matrixIds.includes(matrixId)) matrixIds.push(matrixId)
+          // Restoring loads a stored matrix over the current one, so whatever
+          // MTX_SCALE had done to it is gone.
+          scaleX = 1
+          scaleY = 1
+          scaleZ = 1
+          break
+        case GeomCommand.MatrixScale:
+          scaleX = fx32ToFloat(p0)
+          scaleY = fx32ToFloat(u32(list, at - 8, what))
+          scaleZ = fx32ToFloat(u32(list, at - 4, what))
           break
         case GeomCommand.Color: {
           // 5 bits per channel, blue in the high bits.

@@ -35,19 +35,29 @@ the same bone count. Posing a model with frame 0 of its own animation reproduces
 the model's **own bind pose for 21,306 of 21,808 bones**, and the remainder are
 animations that legitimately do not open on the bind pose.
 
-Cracking it also forced two long-standing renderer bugs into the open, because
-they are invisible in the bind pose and glaring once a model moves: blend terms
-need the named node's inverse bind transform, and each shape must be posed
-against the matrix stack as it stood when that shape was drawn, not the stack
-left at the end. Both are fixed.
+Cracking it also forced three long-standing renderer bugs into the open, two of
+them invisible in the bind pose and glaring once a model moves:
+
+- Blend terms need the named node's inverse bind transform.
+- Each shape must be posed against the matrix stack as it stood when *that*
+  shape was drawn, not the stack left at the end.
+- The display list's `MTX_SCALE` — always the model's `upScale` — has to be
+  applied, along with the `PositionScale` render command that sets it before the
+  list starts and the `RestoreMatrix` that says which slot the list opens on.
+
+All three are fixed, and together they make skinning exact: every genuinely
+blended vertex on the cartridge now stays where the display list put it, 1,018
+of 1,138 models to the last bit and none out by more than a rounding.
 
 ### What is still open
 
 - The three-bit code in a curve header takes a frame step of 2 or 4 on about 1%
   of curves; only step 1 is confirmed. The sample count used for the others is
   inferred and never over-reads.
-- 420 of 1,138 skinned models still shift their blended vertices in the bind
-  pose. The `0x40` node-transform parameter is the remaining suspect.
+- The `0x40` node-transform parameter is still undecoded, though nothing
+  measurably depends on it now.
+- The header's bounding box describes either the model's size or half of it, in
+  two clear peaks. Nothing reads it, so nothing depends on the answer.
 - Samples are not interpolated; a frame takes the sample that covers it.
 
 ## What reference mode is for
@@ -71,7 +81,8 @@ pixel — it is the frame you would compare *in*.
 
 - One draw call per shape, with the texture its material names bound.
 - Vertices posed by the matrix their display list bound them to, taken from the
-  stack as it stood when that shape was drawn.
+  stack as it stood when that shape was drawn, and scaled by the model's
+  position scale.
 - Skinned vertices blended across stack slots, each composed with the named
   node's inverse bind transform.
 - Animation: pick one from the archive beside the model, scrub it, or let it run

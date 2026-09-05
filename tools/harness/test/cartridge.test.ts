@@ -15,12 +15,10 @@ import {
   isNsbmd,
   isNsbtx,
   type Model,
-  poseGeometry,
   RenderOp,
   readNsbca,
   readNsbmd,
   readTex0,
-  resolvePose,
   sampleAnimation,
   texelDataSize,
 } from '@vesper/nitro-gfx'
@@ -674,11 +672,14 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // A blended vertex is stored in bind-pose space, so composing each blend
     // term with the named node's inverse bind transform has to give back the
     // identity, and the vertex has to land exactly where the display list put
-    // it. That is the check on both the inverse bind matrices and the per-shape
-    // matrix stack — a model that reuses a stack slot fails it without them.
+    // it — bar the model's own `downScale`, which posing folds in.
+    //
+    // Which vertices those are has to be worked out per shape: a model reuses
+    // stack slots, so a slot holding a blend when one shape is drawn may hold a
+    // plain node's transform by the time the next one is.
     let models = 0
     let exact = 0
-    let exactNaive = 0
+    let worstAnywhere = 0
 
     for (const file of walkFiles(fs.root)) {
       const bytes = fs.read(file)
@@ -693,33 +694,41 @@ describe.skipIf(!romPath)('a real cartridge', () => {
           continue
         }
         if (!model) continue
-        const blended = new Set(
-          model.renderCommands
-            .filter((c) => c.op === RenderOp.NodeMix)
-            .map((c) => c.params[0] as number),
-        )
-        if (blended.size === 0) continue
 
-        // What the same model gives when posed against the stack as it stands
-        // after the last command, with no inverse bind matrices — the two
-        // things this checks, measured on the same models.
-        const naive = resolvePose(model.renderCommands, model.nodes).stack
+        const blendedPerShape: Set<number>[] = []
+        const live = new Set<number>()
+        for (const command of model.renderCommands) {
+          if (command.op === RenderOp.NodeMix) live.add(command.params[0] as number)
+          else if (
+            command.op === RenderOp.NodeDescription &&
+            (command.opcode & 0x20) !== 0 &&
+            command.params[3] !== undefined
+          ) {
+            live.delete(command.params[3] as number)
+          } else if (command.op === RenderOp.Shape) {
+            blendedPerShape[command.params[0] as number] = new Set(live)
+          }
+        }
+        if (!blendedPerShape.some((s) => s && s.size > 0)) continue
+
         let worst = 0
-        let worstNaive = 0
         let any = false
         try {
           model.shapes.forEach((shape, index) => {
+            const blended = blendedPerShape[index]
+            if (!blended || blended.size === 0) return
             const rest = (model as Model).geometry(shape)
             const posed = (model as Model).posedGeometry(index)
-            const other = poseGeometry(rest, naive)
+            const scale = (model as Model).downScale
             rest.vertices.forEach((v, k) => {
               if (!blended.has(v.matrixId)) return
               const q = posed.vertices[k]
-              const p = other.vertices[k]
-              if (!q || !p) return
+              if (!q) return
               any = true
-              worst = Math.max(worst, Math.hypot(q.x - v.x, q.y - v.y, q.z - v.z))
-              worstNaive = Math.max(worstNaive, Math.hypot(p.x - v.x, p.y - v.y, p.z - v.z))
+              worst = Math.max(
+                worst,
+                Math.hypot(q.x - v.x * scale, q.y - v.y * scale, q.z - v.z * scale),
+              )
             })
           })
         } catch {
@@ -727,16 +736,15 @@ describe.skipIf(!romPath)('a real cartridge', () => {
         }
         if (!any) continue
         models++
-        if (worst < 0.01) exact++
-        if (worstNaive < 0.01) exactNaive++
+        worstAnywhere = Math.max(worstAnywhere, worst)
+        if (worst < 0.001) exact++
       }
     }
 
     expect(models).toBeGreaterThan(100)
-    expect(exact).toBeGreaterThan(exactNaive * 4)
-    // The shortfall is models whose stack slots the `0x40` node-description
-    // parameter assigns, which is not decoded — see `FORMAT.md`.
-    expect(exact / models).toBeGreaterThan(0.3)
+    // Nothing on the cartridge is out by more than a fixed-point rounding.
+    expect(worstAnywhere).toBeLessThan(0.1)
+    expect(exact / models).toBeGreaterThan(0.85)
   })
 
   it('lays every animation curve out without overlapping another', () => {

@@ -3,7 +3,7 @@ import { readDict } from './dict.ts'
 import { type Geometry, runDisplayList } from './displaylist.ts'
 import { NitroGfxError } from './errors.ts'
 import { fx16ToFloat, fx32ToFloat } from './fixed.ts'
-import type { Mat4 } from './matrix.ts'
+import { identity, type Mat4, multiply } from './matrix.ts'
 import { type NodeTransform, readNode } from './node.ts'
 import { readTex0, type TextureSet } from './nsbtx.ts'
 import {
@@ -12,6 +12,7 @@ import {
   readRenderCommands,
   resolvePose,
   resolveShapeMaterials,
+  resolveShapeStates,
 } from './render.ts'
 
 /**
@@ -145,6 +146,12 @@ export interface Model {
    * This, not `matrices`, is what a shape must be posed against.
    */
   readonly shapeMatrices: readonly (readonly Mat4[])[]
+  /**
+   * Resolve per-shape matrix stacks against a different set of node transforms
+   * — an animation's, sampled for a frame. `shapeMatrices` is this for the
+   * model's own bind pose.
+   */
+  pose(nodes: readonly NodeTransform[]): Mat4[][]
   /**
    * Material index each shape is drawn with, by shape index.
    *
@@ -330,9 +337,42 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     renderCommandError = error instanceof Error ? error.message : String(error)
   }
   const inverseBind = inverseBindMatrices(renderCommands, nodes)
-  const pose = resolvePose(renderCommands, nodes, inverseBind)
-  const matrices = pose.stack
-  const shapeMatrices = pose.shapeStacks
+  const shapeStates = resolveShapeStates(renderCommands)
+  const upScale = fx32ToFloat(u32(model, 0x1c, 'model.upScale'))
+  const downScale = fx32ToFloat(u32(model, 0x20, 'model.downScale'))
+
+  const readGeometry = (index: number): Geometry => {
+    const shape = shapes[index]
+    if (!shape) throw new NitroGfxError(`no shape ${index} in model '${name}'`)
+    const state = shapeStates[index]
+    return runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`, {
+      matrixId: state?.matrixId ?? 0,
+      scale: state?.positionScaled ? upScale : 1,
+    })
+  }
+
+  /**
+   * The display list's positions are in the model's up-scaled space, and so are
+   * the node translations that place them; `downScale` brings the result back
+   * to model space. Folding it into the matrices keeps it in one place and
+   * leaves a model with an `upScale` of one completely unaffected.
+   */
+  const toModelSpace = (stack: readonly Mat4[]): Mat4[] => {
+    if (downScale === 1) return stack as Mat4[]
+    const shrink = identity()
+    shrink[0] = downScale
+    shrink[5] = downScale
+    shrink[10] = downScale
+    return stack.map((m) => multiply(shrink, m))
+  }
+
+  const posed = (source: readonly NodeTransform[]): Mat4[][] => {
+    const resolved = resolvePose(renderCommands, source, inverseBind)
+    return shapes.map((_, index) => toModelSpace(resolved.shapeStacks[index] ?? resolved.stack))
+  }
+
+  const shapeMatrices = posed(nodes)
+  const matrices = toModelSpace(resolvePose(renderCommands, nodes, inverseBind).stack)
   const shapeMaterials = resolveShapeMaterials(renderCommands)
 
   return {
@@ -345,8 +385,8 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     numSurfaces: u16(model, 0x26, 'model.numSurfaces'),
     numTriangles: u16(model, 0x28, 'model.numTriangles'),
     numQuads: u16(model, 0x2a, 'model.numQuads'),
-    upScale: fx32ToFloat(u32(model, 0x1c, 'model.upScale')),
-    downScale: fx32ToFloat(u32(model, 0x20, 'model.downScale')),
+    upScale,
+    downScale,
     bounds,
     objects: objectDict.entries.map((e, index) => ({ name: e.name, index })),
     materials: materialDict.entries.map((e, index) => ({ name: e.name, index })),
@@ -360,18 +400,13 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     shapeMatrices,
     inverseBind,
     shapeMaterials,
-    geometry: (target) => {
-      const shape = typeof target === 'number' ? shapes[target] : target
-      if (!shape) throw new NitroGfxError(`no shape ${String(target)} in model '${name}'`)
-      return runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`)
-    },
+    geometry: (target) =>
+      readGeometry(typeof target === 'number' ? target : shapes.indexOf(target)),
     posedGeometry: (target) => {
       const index = typeof target === 'number' ? target : shapes.indexOf(target)
-      const shape = shapes[index]
-      if (!shape) throw new NitroGfxError(`no shape ${String(target)} in model '${name}'`)
-      const geometry = runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`)
-      return poseGeometry(geometry, shapeMatrices[index] ?? matrices)
+      return poseGeometry(readGeometry(index), shapeMatrices[index] ?? matrices)
     },
+    pose: posed,
   }
 }
 

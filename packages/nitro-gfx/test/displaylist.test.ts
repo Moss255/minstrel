@@ -261,3 +261,78 @@ describe('runDisplayList', () => {
     expect(geometry().indices).toEqual([])
   })
 })
+
+const SCALE = (x: number, y: number, z: number): [number, number, number, number] => [
+  0x1b,
+  Math.round(x * 4096),
+  Math.round(y * 4096),
+  Math.round(z * 4096),
+]
+const RESTORE = (slot: number): [number, number] => [0x14, slot]
+
+describe('the position scale', () => {
+  it('applies MTX_SCALE to the vertices that follow', () => {
+    const geometry = runDisplayList(
+      list(
+        SCALE(2, 4, 8),
+        BEGIN(PrimitiveType.Triangles),
+        VTX16(ONE, ONE, ONE),
+        VTX16(ONE, ONE, ONE),
+        VTX16(ONE, ONE, ONE),
+        END,
+      ),
+    )
+    const v = geometry.vertices[0]
+    expect([v?.x, v?.y, v?.z]).toEqual([2, 4, 8])
+  })
+
+  it('takes the scale the caller says is already in effect', () => {
+    const geometry = runDisplayList(
+      list(
+        BEGIN(PrimitiveType.Triangles),
+        VTX16(ONE, ONE, ONE),
+        VTX16(0, 0, 0),
+        VTX16(0, 0, 0),
+        END,
+      ),
+      'list',
+      { scale: 16 },
+    )
+    const v = geometry.vertices[0]
+    expect([v?.x, v?.y, v?.z]).toEqual([16, 16, 16])
+  })
+
+  it('drops the scale on MTX_RESTORE, as loading a stored matrix does', () => {
+    const geometry = runDisplayList(
+      list(
+        BEGIN(PrimitiveType.Triangles),
+        VTX16(ONE, 0, 0),
+        RESTORE(3),
+        VTX16(ONE, 0, 0),
+        VTX16(ONE, 0, 0),
+        END,
+      ),
+      'list',
+      { scale: 16 },
+    )
+    expect(geometry.vertices[0]?.x).toBe(16)
+    expect(geometry.vertices[1]?.x).toBe(1)
+  })
+
+  it('starts on the matrix slot the caller says is current', () => {
+    const geometry = runDisplayList(
+      list(
+        BEGIN(PrimitiveType.Triangles),
+        VTX16(0, 0, 0),
+        RESTORE(3),
+        VTX16(0, 0, 0),
+        VTX16(0, 0, 0),
+        END,
+      ),
+      'list',
+      { matrixId: 6 },
+    )
+    expect(geometry.vertices[0]?.matrixId).toBe(6)
+    expect(geometry.vertices[1]?.matrixId).toBe(3)
+  })
+})
