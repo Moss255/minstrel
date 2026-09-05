@@ -152,6 +152,11 @@ first; a clear bit is a literal, a set bit a two-byte back-reference with
 
 **The displacement bias is 3**, where the forward LZ77 uses 1.
 
+It compresses the **ARM9 binary as well as the overlays** — 638 KB expanding to
+1,000,984 on the reference cartridge, with entropy falling from 6.83 bits to
+6.09. That is easy to miss, and a megabyte of the game's code and strings stays
+unreadable until it is handled.
+
 **Confirmed by observation.** All 35 ARM9 overlays on the reference cartridge
 decode with three independent checks passing:
 

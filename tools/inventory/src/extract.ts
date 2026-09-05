@@ -211,6 +211,7 @@ async function main(): Promise<void> {
   let sdatUnpacked = 0
   let sdatFiles = 0
   let overlaysExpanded = 0
+  let armsExpanded = 0
   let membersDecompressed = 0
   let escapedNames = 0
   const failures: string[] = []
@@ -375,24 +376,37 @@ async function main(): Promise<void> {
   }
 
   // --- ARM binaries and overlays -----------------------------------------
-  await queue.write(join(options.out, 'system', 'arm9.bin'), fs.readArm9())
-  await queue.write(join(options.out, 'system', 'arm7.bin'), fs.readArm7())
-  manifest.push(
-    {
-      out: 'system/arm9.bin',
-      source: '(arm9)',
+  // The ARM9 binary is BLZ-compressed too, not only the overlays. Written raw
+  // it is a megabyte of unreadable data; its strings and code only appear once
+  // it is expanded.
+  const writeArm = async (label: 'arm9' | 'arm7', stored: Uint8Array): Promise<void> => {
+    let data = stored
+    let packedSize: number | undefined
+    if (looksBlz(stored)) {
+      try {
+        const expanded = decompressBlz(stored)
+        if (expanded.length > stored.length) {
+          packedSize = stored.length
+          data = expanded
+          armsExpanded++
+        }
+      } catch (error) {
+        failures.push(`(${label}): ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    await queue.write(join(options.out, 'system', `${label}.bin`), data)
+    const entry: ManifestEntry = {
+      out: `system/${label}.bin`,
+      source: `(${label})`,
       within: [],
-      size: fs.header.arm9.size,
-      container: 'ARM9 binary',
-    },
-    {
-      out: 'system/arm7.bin',
-      source: '(arm7)',
-      within: [],
-      size: fs.header.arm7.size,
-      container: 'ARM7 binary',
-    },
-  )
+      size: data.length,
+      container: packedSize === undefined ? `${label} binary` : `${label} binary, BLZ-decompressed`,
+    }
+    if (packedSize !== undefined) entry.packedSize = packedSize
+    manifest.push(entry)
+  }
+  await writeArm('arm9', fs.readArm9())
+  await writeArm('arm7', fs.readArm7())
   for (const overlay of fs.arm9Overlays) {
     const name = `overlay_${String(overlay.overlayId).padStart(4, '0')}.bin`
     const stored = fs.read(overlay.fileId)
@@ -479,6 +493,7 @@ async function main(): Promise<void> {
       sdatUnpacked,
       sdatFiles,
       overlaysExpanded,
+      armsExpanded,
       membersDecompressed,
       escapedNames,
       collisions,
@@ -501,6 +516,7 @@ async function main(): Promise<void> {
     ['sdat archives unpacked', String(sdatUnpacked)],
     ['sound files written', String(sdatFiles)],
     ['overlays BLZ-decompressed', String(overlaysExpanded)],
+    ['arm binaries BLZ-decompressed', String(armsExpanded)],
     ['members decompressed', String(membersDecompressed)],
     ['names escaped', String(escapedNames)],
     ['name collisions resolved', String(collisions)],

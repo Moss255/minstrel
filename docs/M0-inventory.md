@@ -345,10 +345,35 @@ Three further leads, all dead ends worth recording so they are not retried:
   filename and is not one: no such file exists, and the surrounding bytes are
   not a string.
 
-Remaining hypotheses, untested: the glyphs are stored without a fixed cell
-stride, as a proportional font with a separate offset table — which the `fd_`
-and `fi_` metrics files would fit; or they live in a container this project does
-not yet identify. M3 needs it, so this stays M0's one open item.
+A third search added two facts that constrain the problem sharply, and a third
+that widens where to look.
+
+**Accents are ASCII markup, not high bytes.** French reads
+`B<'e>rang<`e>re` for Bérangère, German `Gef<:u>hl` for Gefühl, Spanish
+`<^?>no?` for ¿no?. So the Latin font needs only about 95 plain ASCII glyphs —
+at 12×12 and one bit per pixel, roughly 1.7 KB. It is small enough to hide
+almost anywhere, which is why size-based searching has not found it.
+
+**The ARM9 binary is BLZ-compressed as well**, which nothing had noticed: 638 KB
+expanding to 1,000,984. Everything that had searched it, including both earlier
+font hunts, was reading compressed bytes. It is now decompressed on extraction.
+
+**The only font resources the code names are the Japanese ones.** With the ARM9
+readable, its strings give `pack/font.gp2`, `pack_lv5/font_lv5.gp2` and
+`f8.mes`, and nothing else font-shaped. So either the Latin glyphs sit inside
+those archives under a scheme being misread, or they are reached by a path built
+at runtime, or they are compiled into a binary in a form these scans cannot tell
+from code.
+
+Two more dead ends, recorded so they are not retried: `tf_%d_<LG>.NCGR` in
+`data/ani/tf.gp2` is per-language and referenced by the ARM9, but it decodes to
+noise as both tiles and a linear bitmap, and its neighbours in the string table
+are minimap and treasure-map resources rather than text ones. And a 95-glyph
+ASCII-order scan of the decompressed ARM9, at 1, 2 and 4 bits per pixel across
+thirteen cell geometries, produced 571 candidates of which the strongest renders
+as plainly structured table data, not letters.
+
+M3 needs the font, so this stays M0's one open item.
 
 ### On apicula
 
