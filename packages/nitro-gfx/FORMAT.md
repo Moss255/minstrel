@@ -211,10 +211,90 @@ transform is its parent's composed with its own local one; with the `0x20` flag
 its fourth parameter is the matrix stack slot to leave the result in. A blend
 command mixes stack slots by weight, where `0x100` is one.
 
+## Textures — `TEX0` and NSBTX
+
+A `TEX0` block appears standalone in an NSBTX file and, on some models, inside
+the NSBMD itself.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `char[4]` | `TEX0` |
+| `+0x04` | `u32` | section size |
+| `+0x0C` | `u16` | texture data size, in 8-byte units |
+| `+0x0E` | `u16` | texture dictionary offset |
+| `+0x14` | `u32` | texture data offset |
+| `+0x1C` | `u16` | 4x4-compressed data size, in 8-byte units |
+| `+0x24` | `u32` | 4x4-compressed texel data offset |
+| `+0x28` | `u32` | 4x4-compressed block-palette index offset |
+| `+0x30` | `u32` | palette data size, in 8-byte units |
+| `+0x34` | `u32` | palette dictionary offset |
+| `+0x38` | `u32` | palette data offset |
+
+A texture dictionary entry is 8 bytes: a `u16` offset in 8-byte units, then a
+`u16` of parameters — the upper half of the hardware's `TEXIMAGE_PARAM`.
+
+| bits | meaning |
+|---|---|
+| 4–6 | width, `8 << n` |
+| 7–9 | height, `8 << n` |
+| 10–12 | format |
+| 13 | palette entry 0 is transparent |
+
+| format | meaning |
+|---|---|
+| 1 | `A3I5` — a 5-bit index and 3 bits of alpha |
+| 2, 3, 4 | 2, 4 and 8 bits per texel, palettised |
+| 5 | 4x4 block compression |
+| 6 | `A5I3` — a 3-bit index and 5 bits of alpha |
+| 7 | direct 16-bit colour, alpha in bit 15 |
+
+Palettes are 16-bit BGR555. Expanding a 5-bit component needs its high bits
+replicated into the low ones, so 31 maps to 255 rather than 248.
+
+A palette's size is not recorded; it runs to the next palette's offset.
+
+### The evidence: texture sizes tile
+
+Computing a texture's byte length from its format and dimensions lands exactly
+on the next texture's offset, and the last lands on the declared data size. A
+wrong format or dimension reading fails that immediately.
+
+| check | result |
+|---|---|
+| texture sets read | 5,575 |
+| textures | 32,861 |
+| palettes | 32,852 |
+| sizes tiling onto the next texture | 98.8% (the rest is alignment) |
+| decoding to the right pixel count | 32,861 / 32,861 |
+
+Formats present: 20,668 palette-16, 7,065 `A5I3`, 4,366 `A3I5`, 725
+palette-256, 29 palette-4, 8 direct. **No 4x4-compressed texture occurs**, so
+that decoder is written from the documentation and has never been checked
+against a sample; it is marked as such in the source.
+
+## Materials and their textures
+
+The material section opens with two `u16` offsets, to a texture-name and a
+palette-name dictionary; **its own material dictionary follows at `+4`**.
+Reading the first offset instead yields the texture names, which look enough
+like material names to pass unnoticed — and then a shape's material index falls
+outside the list 23% of the time.
+
+A material carries no resolved texture reference. Its `texImageParam` holds only
+the repeat flags, with the VRAM offset left at zero for the loader to fill in —
+every material on the reference cartridge reads `0x00030000`. **The binding is
+by name**: materials are called `Mat_<texture>_` or `M_<texture>_<n>`, the
+trailing number distinguishing materials that share a texture but differ in
+their settings.
+
+A map's textures are frequently in a different archive from its models, so a
+caller has to resolve against everything it has loaded rather than assuming the
+sibling file holds them.
+
 ## Not implemented
 
-- **The `0x40` flag's parameter on node-transform and material commands.** Its
-  meaning is not established, and it is skipped.
+- **The `0x40` flag's parameter on node-transform commands.** Its meaning is not
+  established, and it is skipped.
 - **Inverse bind matrices.** A blend command's weights are applied to the stack
   slots directly. The hardware composes each term with the named node's inverse
   bind transform first, which this does not, so a blended vertex is placed
@@ -223,7 +303,9 @@ command mixes stack slots by weight, where `0x100` is one.
 - **Slots no command assigns.** 859 of 1,682 models that use the matrix stack
   leave at least one used slot unwritten, which then stays the identity. That is
   most likely the `0x40` parameter above doing the assigning.
-- **Textures.** `TEX0` blocks and NSBTX are not read, so materials are names
-  only.
+- **4x4 block compression.** Implemented from documentation, but the reference
+  cartridge contains no texture that uses it, so it is unverified.
 - **Normals and lighting.** `NORMAL` is stepped over rather than captured.
+- **Texture transforms.** The material's coordinate-transform mode is ignored;
+  texture coordinates are used as the display list gives them.
 - **Animation.** NSBCA is not read; a model is posed in its bind pose only.

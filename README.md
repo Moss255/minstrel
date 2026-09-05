@@ -96,10 +96,10 @@ pnpm dev        # then open the viewer and drop in your own dump
 Drag to orbit, wheel to zoom, `W` for wireframe. The cartridge is read in your
 browser and nothing is uploaded.
 
-Skinned models are posed: a model's bones and render commands are read, and each
-vertex is placed by the matrix its display list bound it to. Blended vertices are
-placed approximately, since inverse bind matrices are not applied yet, and
-textures are not read at all. See
+Models are posed and textured: bones and render commands are read, each vertex is
+placed by the matrix its display list bound it to, and each shape is drawn with
+the texture its material names. Blended vertices are placed approximately, since
+inverse bind matrices are not applied yet. See
 [`packages/nitro-gfx/FORMAT.md`](packages/nitro-gfx/FORMAT.md).
 
 ## Layout

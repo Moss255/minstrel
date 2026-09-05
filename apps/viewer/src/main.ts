@@ -1,8 +1,17 @@
 import { isGpc, readGpc } from '@vesper/l5-gpc'
 import { tryDecompressLz10 } from '@vesper/nitro-comp'
-import { type Geometry, isNsbmd, type Model, measureBounds, readNsbmd } from '@vesper/nitro-gfx'
+import {
+  isNsbmd,
+  isNsbtx,
+  type Model,
+  measureBounds,
+  readNsbmd,
+  readTex0,
+  type TextureSet,
+  textureNameForMaterial,
+} from '@vesper/nitro-gfx'
 import { isNarc, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
-import { type Camera, ModelRenderer } from './renderer.ts'
+import { type Camera, ModelRenderer, type Piece } from './renderer.ts'
 
 /**
  * Load a cartridge in the browser, find every model in it, and draw one.
@@ -17,6 +26,16 @@ interface Entry {
   name: string
   bytes: Uint8Array
 }
+
+/**
+ * Every texture the cartridge scan turned up, by name.
+ *
+ * A material names its texture but does not say which file holds it, and a
+ * map's textures are routinely in a different archive from its models — so the
+ * viewer resolves against everything it has loaded rather than guessing at the
+ * pairing.
+ */
+const texturesByName = new Map<string, { set: TextureSet; name: string }>()
 
 function must<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector)
@@ -65,6 +84,11 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
 
     if (isNsbmd(payload)) {
       found.push({ path, name: path.slice(path.lastIndexOf('/') + 1), bytes: payload })
+      collectTextures(payload)
+      return
+    }
+    if (isNsbtx(payload)) {
+      collectTextures(payload)
       return
     }
     if (isNarc(payload)) {
@@ -90,6 +114,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
     }
   }
 
+  texturesByName.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -97,6 +122,48 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
     visit(fs.read(file), file.path, 0)
   }
   return found
+}
+
+/** Index a container's textures by name, if it carries any. */
+function collectTextures(bytes: Uint8Array): void {
+  try {
+    let set: TextureSet | undefined
+    if (isNsbtx(bytes)) {
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      const offset = view.getUint32(0x10, true)
+      set = readTex0(bytes.subarray(offset, offset + view.getUint32(offset + 4, true)))
+    } else {
+      set = readNsbmd(bytes).textures
+    }
+    if (!set) return
+    for (const texture of set.textures) {
+      if (!texturesByName.has(texture.name))
+        texturesByName.set(texture.name, { set, name: texture.name })
+    }
+  } catch {
+    // A container whose textures will not read is not fatal to the scan.
+  }
+}
+
+/** Decode the texture a material names, if the scan found one. */
+interface DecodedTexture {
+  pixels: Uint8Array
+  width: number
+  height: number
+}
+
+function textureFor(materialName: string): DecodedTexture | undefined {
+  const wanted = textureNameForMaterial(materialName)
+  const found = texturesByName.get(wanted)
+  if (!found) return undefined
+  const info = found.set.texture(found.name)
+  if (!info) return undefined
+  try {
+    const palette = found.set.palette(`${info.name}_pl`) ?? found.set.palettes[info.index]
+    return { pixels: found.set.decode(info, palette), width: info.width, height: info.height }
+  } catch {
+    return undefined
+  }
 }
 
 function renderList(): void {
@@ -119,21 +186,28 @@ function select(index: number): void {
   selected = index
 
   let model: Model | undefined
-  let geometries: Geometry[] = []
+  let pieces: Piece[] = []
   try {
     const nsbmd = readNsbmd(entry.bytes)
     model = nsbmd.models[0]
     if (!model) throw new Error('container holds no model')
-    // Posed: each vertex placed by the matrix its display list bound it to,
-    // which is what a skinned model needs and is the identity for the rest.
-    geometries = model.shapes.map((shape) => (model as Model).posedGeometry(shape))
+    const resolved = model
+    pieces = resolved.shapes.map((shape, index) => {
+      // Posed: each vertex placed by the matrix its display list bound it to,
+      // which is what a skinned model needs and is the identity for the rest.
+      const geometry = resolved.posedGeometry(shape)
+      const materialIndex = resolved.shapeMaterials[index]
+      const material = materialIndex === undefined ? undefined : resolved.materials[materialIndex]
+      const texture = material ? textureFor(material.name) : undefined
+      return texture ? { geometry, ...texture } : { geometry }
+    })
   } catch (error) {
     overlay.textContent = `${entry.name}\n${error instanceof Error ? error.message : String(error)}`
     return
   }
 
-  const uploaded = renderer.upload(geometries)
-  const bounds = measureBounds(geometries)
+  const uploaded = renderer.upload(pieces)
+  const bounds = measureBounds(pieces.map((p) => p.geometry))
   const size = Math.max(
     bounds.maxX - bounds.minX,
     bounds.maxY - bounds.minY,
@@ -150,7 +224,7 @@ function select(index: number): void {
   overlay.textContent = [
     entry.path,
     `${model.numShapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
-    `materials: ${model.materials.map((m) => m.name).join(', ') || '(none)'}`,
+    `${uploaded.textured}/${model.numShapes} shapes textured, from ${texturesByName.size} textures found`,
     'drag to orbit · wheel to zoom · W for wireframe',
   ].join('\n')
 

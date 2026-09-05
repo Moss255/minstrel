@@ -27,7 +27,9 @@ describe('readNsbmd', () => {
     const model = readNsbmd(simple()).models[0]
     expect(model?.name).toBe('model0')
     expect(model?.objects.map((o) => o.name)).toEqual(['bone0', 'bone1'])
-    expect(model?.materials.map((m) => m.name)).toEqual(['mat0'])
+    expect(model?.materials.map((m) => m.name)).toEqual(['Mat_mat0_'])
+    expect(model?.textureNames).toEqual(['mat0'])
+    expect(model?.paletteNames).toEqual(['mat0_pl'])
     expect(model?.shapes.map((s) => s.name)).toEqual(['polygon0'])
     expect(model?.numObjects).toBe(2)
   })

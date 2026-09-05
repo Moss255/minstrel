@@ -8,7 +8,7 @@ import {
   looksBlz,
   readCompressionHeader,
 } from '@vesper/nitro-comp'
-import { isNsbmd, readNsbmd } from '@vesper/nitro-gfx'
+import { isNsbmd, isNsbtx, readNsbmd, readTex0, texelDataSize } from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -535,6 +535,79 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(failures.slice(0, 10)).toEqual([])
     expect(nodes).toBeGreaterThan(10000)
     expect(rotations).toBeGreaterThan(1000)
+  })
+
+  it('reads every texture set and decodes every texture', () => {
+    // The oracle is that texture sizes tile: computing a texture's byte length
+    // from its format and dimensions must land on the next texture's offset,
+    // and the last must land on the declared data size. A wrong format table
+    // fails that immediately.
+    const failures: string[] = []
+    let sets = 0
+    let textures = 0
+    let tiled = 0
+    let tiledTotal = 0
+
+    const visit = (bytes: Uint8Array, path: string): void => {
+      let set: ReturnType<typeof readTex0> | undefined
+      try {
+        if (isNsbtx(bytes)) {
+          const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+          const offset = view.getUint32(0x10, true)
+          set = readTex0(bytes.subarray(offset, offset + view.getUint32(offset + 4, true)))
+        } else if (isNsbmd(bytes)) {
+          set = readNsbmd(bytes).textures
+        }
+      } catch (error) {
+        failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
+        return
+      }
+      if (!set) return
+      sets++
+
+      const sorted = [...set.textures]
+        .filter((t) => t.dataSize > 0)
+        .sort((a, b) => a.dataOffset - b.dataOffset)
+      for (let i = 0; i < sorted.length - 1; i++) {
+        tiledTotal++
+        const here = sorted[i] as (typeof sorted)[number]
+        const next = sorted[i + 1] as (typeof sorted)[number]
+        if (here.dataOffset + here.dataSize === next.dataOffset) tiled++
+      }
+
+      for (const texture of set.textures) {
+        textures++
+        expect(texture.dataSize, `${path}#${texture.name}`).toBe(
+          texelDataSize(texture.format, texture.width, texture.height),
+        )
+        try {
+          const palette = set.palette(`${texture.name}_pl`) ?? set.palettes[texture.index]
+          const pixels = set.decode(texture, palette)
+          if (pixels.length !== texture.width * texture.height * 4) {
+            failures.push(`${path}#${texture.name}: decoded ${pixels.length} bytes`)
+          }
+        } catch (error) {
+          failures.push(
+            `${path}#${texture.name}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+    }
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        visit(data, `${file.path}#${member.name ?? member.index}`)
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(sets).toBeGreaterThan(1000)
+    expect(textures).toBeGreaterThan(10000)
+    // Textures pack tightly; the few gaps are alignment.
+    expect(tiled / tiledTotal).toBeGreaterThan(0.95)
   })
 
   it('produces the container magic each member extension implies', () => {

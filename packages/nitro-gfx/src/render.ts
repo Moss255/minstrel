@@ -7,18 +7,25 @@ import type { NodeTransform } from './node.ts'
  * The render commands — a model's "SBC", the byte-code that drives the DS
  * geometry engine's matrix stack and issues its shapes.
  *
- * An opcode's low five bits select the operation and its top three bits add
- * optional parameters. The parameter counts below were fitted against the
- * reference cartridge rather than assumed: every one of its 8,804 models parses
- * to a clean `End` under them, and no other combination tried does.
+ * An opcode's low five bits select the operation; its top three bits add
+ * parameters to some operations and are mode bits on others.
+ *
+ * The counts were fitted against the reference cartridge, and the oracle
+ * matters: "does the stream reach an `End`" is not enough, because a wrong
+ * count desynchronises onto a byte that happens to be `0x01` and stops early,
+ * which looks clean. The test used instead is that the `End` must land on the
+ * material section that follows, within its 4-byte alignment padding. Under
+ * these counts 8,797 of 8,804 models do; under the counts a weaker oracle
+ * accepted, the visibility opcode took one parameter instead of two and models
+ * silently lost every shape they drew.
  *
  * | opcode | operation | parameters |
  * |---|---|---|
  * | `0x00` | no-op | 0 |
  * | `0x01` | end | 0 |
- * | `0x02` | node visibility | 1 |
+ * | `0x02` | node visibility | 2 |
  * | `0x03` | restore matrix | 1 |
- * | `0x04` | bind material | 1, +1 per flag bit |
+ * | `0x04` | bind material | 1; its flag bits are modes, not parameters |
  * | `0x05` | draw shape | 1 |
  * | `0x06` | node transform | 3, +1 per flag bit |
  * | `0x07` | billboard | 1 |
@@ -67,7 +74,6 @@ function paramCount(data: Uint8Array, at: number, opcode: number): number {
     case RenderOp.End:
     case RenderOp.PositionScale:
       return 0
-    case RenderOp.Visibility:
     case RenderOp.RestoreMatrix:
     case RenderOp.Shape:
     case RenderOp.Billboard:
@@ -76,8 +82,12 @@ function paramCount(data: Uint8Array, at: number, opcode: number): number {
     case RenderOp.EnvironmentMap:
     case RenderOp.ProjectionMap:
       return 1
+    case RenderOp.Visibility:
+      return 2
     case RenderOp.Material:
-      return 1 + (flags & 0x20 ? 1 : 0) + (flags & 0x40 ? 1 : 0)
+      // The flag bits select a mode; they do not add operands. Treating them as
+      // operands desynchronises 404 models.
+      return 1
     case RenderOp.NodeDescription:
       return 3 + (flags & 0x20 ? 1 : 0) + (flags & 0x40 ? 1 : 0)
     case RenderOp.NodeMix:
@@ -109,6 +119,26 @@ export function readRenderCommands(
     if ((opcode & 0x1f) === RenderOp.End) return commands
   }
   throw new NitroGfxError('render commands ended without an End opcode', at)
+}
+
+/**
+ * Which material each shape is drawn with.
+ *
+ * The command stream binds a material and then issues shapes; a shape uses
+ * whichever material was bound most recently. Returns a material index per
+ * shape index, or `undefined` where a shape is never drawn.
+ */
+export function resolveShapeMaterials(commands: readonly RenderCommand[]): (number | undefined)[] {
+  const materials: (number | undefined)[] = []
+  let current: number | undefined
+  for (const command of commands) {
+    if (command.op === RenderOp.Material) current = command.params[0]
+    else if (command.op === RenderOp.Shape) {
+      const shape = command.params[0] as number
+      materials[shape] = current
+    }
+  }
+  return materials
 }
 
 /**

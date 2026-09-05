@@ -5,7 +5,13 @@ import { NitroGfxError } from './errors.ts'
 import { fx16ToFloat, fx32ToFloat } from './fixed.ts'
 import type { Mat4 } from './matrix.ts'
 import { type NodeTransform, readNode } from './node.ts'
-import { type RenderCommand, readRenderCommands, resolveMatrices } from './render.ts'
+import { readTex0, type TextureSet } from './nsbtx.ts'
+import {
+  type RenderCommand,
+  readRenderCommands,
+  resolveMatrices,
+  resolveShapeMaterials,
+} from './render.ts'
 
 /**
  * NSBMD — the Nitro model container, stamp `BMD0`.
@@ -97,11 +103,28 @@ export interface Model {
   readonly bounds: ModelBounds
   readonly objects: readonly ModelObject[]
   readonly materials: readonly ModelMaterial[]
+  /**
+   * Texture names the material section references, in its own order.
+   *
+   * These are *not* index-parallel with {@link Model.materials} — that holds on
+   * only 42% of models. Use {@link textureNameForMaterial} to go from a
+   * material to its texture.
+   */
+  readonly textureNames: readonly string[]
+  /** Palette names the material section references, in the same order. */
+  readonly paletteNames: readonly string[]
   readonly shapes: readonly ModelShape[]
   /** The bones, with their local transforms. */
   readonly nodes: readonly NodeTransform[]
-  /** The model's render commands, already parsed. */
+  /** The model's render commands, already parsed. Empty if they would not read. */
   readonly renderCommands: readonly RenderCommand[]
+  /**
+   * Why the render commands could not be read, when they could not.
+   *
+   * The model is still usable: its shapes decode, but every matrix is the
+   * identity and no shape is bound to a material.
+   */
+  readonly renderCommandError: string | undefined
   /**
    * The matrix stack the render commands build, 32 slots.
    *
@@ -109,6 +132,13 @@ export interface Model {
    * the stack at the identity and need no transform; skinned ones do not.
    */
   readonly matrices: readonly Mat4[]
+  /**
+   * Material index each shape is drawn with, by shape index.
+   *
+   * A shape uses whichever material the render commands bound most recently
+   * before issuing it.
+   */
+  readonly shapeMaterials: readonly (number | undefined)[]
   /** Decode one shape's display list into triangles, in model space. */
   geometry(shape: ModelShape | number): Geometry
   /**
@@ -123,6 +153,8 @@ export interface Nsbmd {
   readonly version: number
   readonly blocks: readonly NitroBlock[]
   readonly models: readonly Model[]
+  /** Textures, when the container carries a `TEX0` block. */
+  readonly textures: TextureSet | undefined
   block(stamp: string): NitroBlock | undefined
   model(name: string): Model | undefined
 }
@@ -180,12 +212,20 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
   // rather than guessed at.
   const objectDict = readDict(model, 0x40, `model '${name}' objects`)
 
-  // The material section opens with two u16 offsets to its own dictionaries;
-  // the first names the materials.
-  const materialDict = readDict(
+  // The material section opens with two u16 offsets, to a texture-name and a
+  // palette-name dictionary, and its own material dictionary follows at +4.
+  // Reading the first offset instead yields the *texture* names, which look
+  // enough like material names to pass unnoticed.
+  const materialDict = readDict(model, materialOffset + 4, `model '${name}' materials`)
+  const textureNameDict = readDict(
     model,
-    materialOffset + u16(model, materialOffset, `model '${name}' material dict offset`),
-    `model '${name}' materials`,
+    materialOffset + u16(model, materialOffset, `model '${name}' texture dict offset`),
+    `model '${name}' material textures`,
+  )
+  const paletteNameDict = readDict(
+    model,
+    materialOffset + u16(model, materialOffset + 2, `model '${name}' palette dict offset`),
+    `model '${name}' material palettes`,
   )
 
   const shapeDict = readDict(model, shapeOffset, `model '${name}' shapes`)
@@ -228,12 +268,23 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     const at = objectSection + u32(entry.data, 0, `object[${index}] offset`)
     return readNode(model, at, index, entry.name).node
   })
-  const renderCommands = readRenderCommands(
-    model,
-    u32(model, 0x04, 'model.renderCommandOffset'),
-    materialOffset,
-  )
+  // Render commands are supplementary to geometry: they arrange the matrix
+  // stack and bind materials. A model whose stream cannot be read still has
+  // usable shapes, so a failure here degrades rather than throws. Three effect
+  // models on the reference cartridge use opcodes not identified here.
+  let renderCommands: RenderCommand[] = []
+  let renderCommandError: string | undefined
+  try {
+    renderCommands = readRenderCommands(
+      model,
+      u32(model, 0x04, 'model.renderCommandOffset'),
+      materialOffset,
+    )
+  } catch (error) {
+    renderCommandError = error instanceof Error ? error.message : String(error)
+  }
   const matrices = resolveMatrices(renderCommands, nodes)
+  const shapeMaterials = resolveShapeMaterials(renderCommands)
 
   const pose = (geometry: Geometry): Geometry => {
     const vertices = geometry.vertices.map((v) => {
@@ -276,10 +327,14 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     bounds,
     objects: objectDict.entries.map((e, index) => ({ name: e.name, index })),
     materials: materialDict.entries.map((e, index) => ({ name: e.name, index })),
+    textureNames: textureNameDict.entries.map((e) => e.name),
+    paletteNames: paletteNameDict.entries.map((e) => e.name),
     shapes,
     nodes,
     renderCommands,
+    renderCommandError,
     matrices,
+    shapeMaterials,
     geometry: (target) => {
       const shape = typeof target === 'number' ? shapes[target] : target
       if (!shape) throw new NitroGfxError(`no shape ${String(target)} in model '${name}'`)
@@ -294,6 +349,28 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
 }
 
 /** Parse an NSBMD container. Returns views into `data`; nothing is copied. */
+/**
+ * The texture a material names.
+ *
+ * A material carries no resolved texture reference: its `texImageParam` holds
+ * only the repeat flags, with the VRAM offset left at zero for the loader to
+ * fill in — every material on the reference cartridge reads `0x00030000`. The
+ * binding is therefore by name.
+ *
+ * Materials are named `Mat_<texture>_` or `M_<texture>_<n>`, the trailing
+ * number distinguishing materials that share a texture but differ in their
+ * settings.
+ */
+export function textureNameForMaterial(materialName: string): string {
+  let name = materialName
+  // Two prefixes are used, `Mat_` and `M_`.
+  if (name.startsWith('Mat_')) name = name.slice(4)
+  else if (name.startsWith('M_')) name = name.slice(2)
+  // The suffix is a bare underscore, or an underscore and a disambiguating
+  // number when one texture is bound with different material settings.
+  return name.replace(/_\d*$/, '')
+}
+
 /** Measure the actual bounds of decoded geometry. Reliable, unlike the declared box. */
 export function measureBounds(geometries: readonly Geometry[]): ModelBounds {
   let minX = Number.POSITIVE_INFINITY
@@ -359,10 +436,13 @@ export function readNsbmd(data: Uint8Array): Nsbmd {
     }
   }
 
+  const tex0 = blocks.find((b) => b.stamp === 'TEX0')
+
   return {
     version,
     blocks,
     models,
+    textures: tex0 ? readTex0(tex0.data) : undefined,
     block: (stamp) => blocks.find((b) => b.stamp === stamp),
     model: (name) => models.find((m) => m.name === name),
   }

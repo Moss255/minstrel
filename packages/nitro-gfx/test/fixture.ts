@@ -120,16 +120,33 @@ function buildModelBody(model: FixtureModel): Uint8Array {
 
   const sbcOffset = align4(0x40 + objectDict.length)
   const materialOffset = align4(sbcOffset + sbc.length)
-  // The material section starts with a u16 offset to its dictionary.
+  // The material section: two u16 offsets to the texture-name and palette-name
+  // dictionaries, then the material dictionary itself at +4.
   const materialDict = new Writer()
   writeDict(
     materialDict,
+    materials.map((name, i) => ({ name: `Mat_${name}_`, data: u32le(i) })),
+    4,
+  )
+  const textureDict = new Writer()
+  writeDict(
+    textureDict,
     materials.map((name, i) => ({ name, data: u32le(i) })),
     4,
   )
+  const paletteDict = new Writer()
+  writeDict(
+    paletteDict,
+    materials.map((name, i) => ({ name: `${name}_pl`, data: u32le(i) })),
+    4,
+  )
+  const textureDictOffset = 4 + materialDict.length
+  const paletteDictOffset = textureDictOffset + textureDict.length
   const materialSection = new Writer()
-  materialSection.u16(4).u16(0)
+  materialSection.u16(textureDictOffset).u16(paletteDictOffset)
   materialSection.raw(materialDict.bytes)
+  materialSection.raw(textureDict.bytes)
+  materialSection.raw(paletteDict.bytes)
 
   const shapeOffset = align4(materialOffset + materialSection.length)
 

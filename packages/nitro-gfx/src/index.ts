@@ -23,11 +23,24 @@ export {
   NSBMD_MAGIC,
   type Nsbmd,
   readNsbmd,
+  textureNameForMaterial,
 } from './nsbmd.ts'
+export {
+  isNsbtx,
+  NSBTX_MAGIC,
+  type PaletteInfo,
+  readTex0,
+  TEXTURE_FORMAT_NAMES,
+  TextureFormat,
+  type TextureInfo,
+  type TextureSet,
+  texelDataSize,
+} from './nsbtx.ts'
 export {
   MATRIX_STACK_SIZE,
   type RenderCommand,
   RenderOp,
   readRenderCommands,
   resolveMatrices,
+  resolveShapeMaterials,
 } from './render.ts'
