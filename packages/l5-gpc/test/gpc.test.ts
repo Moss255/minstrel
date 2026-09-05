@@ -195,3 +195,38 @@ describe('readGpc on malformed input', () => {
     expect(() => archive.read(99)).toThrow(/outside the/)
   })
 })
+
+describe('a compressed entry table', () => {
+  // Larger archives compress their index, and nothing in the header says so or
+  // says with which codec. The reader has to identify it by decoding and
+  // checking the result reads as a valid index.
+  const compressed = () => buildGpc(members, { compressIndex: true })
+
+  it('is identified and read without a marker', () => {
+    const archive = readGpc(compressed())
+    expect(archive.members).toHaveLength(members.length)
+    expect([...archive.members].map((m) => m.name).sort()).toEqual(
+      members.map((m) => m.name).sort(),
+    )
+  })
+
+  it('yields the same members as the stored form', () => {
+    const packed = readGpc(compressed())
+    const stored = readGpc(buildGpc(members))
+    for (const m of members) {
+      expect(Array.from(packed.read(m.name)), m.name).toEqual(Array.from(stored.read(m.name)))
+    }
+  })
+
+  it('keeps the index sorted by hash', () => {
+    const hashes = readGpc(compressed()).members.map((m) => m.hash)
+    expect(hashes).toEqual([...hashes].sort((a, b) => a - b))
+  })
+
+  it('reports clearly when no codec produces a valid index', () => {
+    const archive = compressed()
+    // Corrupt the compressed table so nothing decodes to a sorted index.
+    archive.fill(0xa5, 0x18, 0x18 + 24)
+    expect(() => readGpc(archive)).toThrow(/could not be decoded/)
+  })
+})

@@ -35,7 +35,8 @@ import { GpcError } from './errors.ts'
  *            high 8 bits: high byte of the name's offset
  *
  * The entry table is stored plainly when it exactly fills the space before the
- * name table, and 4-bit Huffman compressed otherwise.
+ * name table, and Huffman compressed otherwise — with either 4-bit or 8-bit
+ * symbols, and nothing in the header to say which. See {@link readEntryTable}.
  *
  * The name table and each member are "regions": a `u32` prefix whose low three
  * bits select a codec and whose upper 29 bits give the decompressed size,
@@ -110,6 +111,69 @@ export interface GpcArchive {
    * them, rather than discarding them. See `FORMAT.md`.
    */
   readRaw(target: string | number | GpcMember): Uint8Array
+}
+
+/**
+ * Read the entry table, whose encoding the format does not record.
+ *
+ * It is stored plainly when it exactly fills the space between the header and
+ * the name table. Otherwise it is compressed — observed as LZ77, 4-bit Huffman
+ * and 8-bit Huffman across the reference cartridge — and **nothing in the
+ * header says which**. Small archives tend to use 4-bit Huffman and large ones
+ * 8-bit, but that is a tendency, not a rule, and byte counts alone do not
+ * separate them reliably: a correct decode may leave a few bytes of alignment
+ * padding unread.
+ *
+ * So the decoded table is checked rather than the decoder guessed at. A valid
+ * index has two properties that a wrong decode does not reproduce: the hashes
+ * are in strictly ascending order, because the table is a binary-search index,
+ * and every entry's data offset lands inside the archive. The first candidate
+ * satisfying both is accepted.
+ *
+ * This is corroborated independently once parsing continues: every member's
+ * filename, recovered from a separately-compressed name table, must match the
+ * CRC-32 stored in the entry the offset came from.
+ */
+function readEntryTable(data: Uint8Array, header: GpcHeader, count: number): Uint8Array {
+  const area = header.nameTableOffset - HEADER_SIZE
+  const size = count * ENTRY_SIZE
+  if (area === size) return data.subarray(HEADER_SIZE, header.nameTableOffset)
+
+  /** A decoded table is an index only if it reads as one. */
+  const isPlausibleIndex = (table: Uint8Array): boolean => {
+    let previous = -1
+    for (let i = 0; i < count; i++) {
+      const at = i * ENTRY_SIZE
+      const hash = u32(table, at)
+      if (hash <= previous) return false
+      previous = hash
+      const offset = header.dataOffset + (u32(table, at + 4) & 0x00ffffff) * 4
+      if (offset + 4 > data.length) return false
+    }
+    return true
+  }
+
+  const candidates: [string, () => Uint8Array][] = [
+    ['lz77', () => decompressRawLz77(data, size, HEADER_SIZE).data],
+    ['huffman-4', () => decompressHuffman(data, size, 4, HEADER_SIZE).data],
+    ['huffman-8', () => decompressHuffman(data, size, 8, HEADER_SIZE).data],
+    ['run-length', () => decompressRawRle(data, size, HEADER_SIZE).data],
+  ]
+
+  const tried: string[] = []
+  for (const [name, decode] of candidates) {
+    try {
+      const table = decode()
+      if (isPlausibleIndex(table)) return table
+      tried.push(`${name}: decoded but not a valid index`)
+    } catch (error) {
+      tried.push(`${name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  throw new GpcError(
+    `entry table of ${size} bytes could not be decoded from its ${area}-byte area (${tried.join('; ')})`,
+    HEADER_SIZE,
+  )
 }
 
 function u16(d: Uint8Array, at: number): number {
@@ -268,13 +332,7 @@ export function readGpc(data: Uint8Array): GpcArchive {
     }
   }
 
-  // The entry table is stored plainly when it exactly fills the space before
-  // the name table, and 4-bit Huffman compressed otherwise.
-  const entryArea = header.nameTableOffset - HEADER_SIZE
-  const entryBytes =
-    entryArea === count * ENTRY_SIZE
-      ? data.subarray(HEADER_SIZE, header.nameTableOffset)
-      : decompressHuffman(data, count * ENTRY_SIZE, 4, HEADER_SIZE).data
+  const entryBytes = readEntryTable(data, header, count)
 
   const names = splitNames(readRegion(data, header.nameTableOffset).decode())
 

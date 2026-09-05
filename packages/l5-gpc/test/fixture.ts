@@ -26,6 +26,12 @@ export interface GpcFixtureOptions {
   version?: number
   /** Write a deliberately wrong entry-word count. */
   entryWords?: number
+  /**
+   * LZ77-compress the entry table, as larger archives do. The format records
+   * nothing about the table's encoding, so this exercises the reader's
+   * identify-by-validating path.
+   */
+  compressIndex?: boolean
 }
 
 export function fill(length: number, seed: number): Uint8Array {
@@ -78,30 +84,50 @@ export function buildGpc(members: GpcFixtureMember[], options: GpcFixtureOptions
   while (nameBytes.length % 4 !== 0) nameBytes.push(0)
   const nameRegion = buildRegion(Uint8Array.from(nameBytes), 'lz77')
 
-  const headerSize = 0x18
-  const entryTableSize = count * 12
-  const nameTableOffset = headerSize + entryTableSize
-  const dataOffset = align4(nameTableOffset + nameRegion.length)
-
-  // --- member regions, laid out in the order given ---
-  const regions: { member: GpcFixtureMember; at: number; bytes: Uint8Array }[] = []
-  let cursor = dataOffset
-  for (const m of members) {
-    const bytes = buildRegion(m.data, m.codec ?? 'lz77')
-    regions.push({ member: m, at: cursor, bytes })
-    cursor = align4(cursor + bytes.length)
+  // --- member regions, laid out in the order given, positions relative to the
+  // data region so the entry table can be built before its own size is known ---
+  const regions = members.map((member) => buildRegion(member.data, member.codec ?? 'lz77'))
+  const relativeOffsets: number[] = []
+  let cursor = 0
+  for (const region of regions) {
+    relativeOffsets.push(cursor)
+    cursor = align4(cursor + region.length)
   }
-  const total = cursor
+  const dataLength = cursor
 
   // --- entry table, sorted ascending by hash as real archives are ---
-  const entries = regions
-    .map(({ member, at, bytes }) => ({
+  const entries = members
+    .map((member, i) => ({
       hash: crc32OfName(member.name),
       nameOffset: nameOffsets.get(member.name) as number,
-      words: (at - dataOffset) / 4,
-      storedLength: bytes.length,
+      words: (relativeOffsets[i] as number) / 4,
+      storedLength: (regions[i] as Uint8Array).length,
     }))
     .sort((a, b) => a.hash - b.hash)
+
+  const entryBytes = new Uint8Array(count * 12)
+  const entryView = new DataView(entryBytes.buffer)
+  entries.forEach((e, i) => {
+    entryView.setUint32(i * 12 + 0, e.hash >>> 0, true)
+    entryView.setUint32(
+      i * 12 + 4,
+      (((e.nameOffset & 0xff) << 24) | (e.words & 0xffffff)) >>> 0,
+      true,
+    )
+    entryView.setUint32(
+      i * 12 + 8,
+      ((((e.nameOffset >>> 8) & 0xff) << 24) | (e.storedLength & 0xffffff)) >>> 0,
+      true,
+    )
+  })
+  // A compressed table carries no marker; the reader identifies it by decoding
+  // and checking the result reads as an index.
+  const storedEntries = options.compressIndex ? compressLz10(entryBytes).subarray(4) : entryBytes
+
+  const headerSize = 0x18
+  const nameTableOffset = align4(headerSize + storedEntries.length)
+  const dataOffset = align4(nameTableOffset + nameRegion.length)
+  const total = dataOffset + dataLength
 
   const archive = new Uint8Array(total)
   const view = new DataView(archive.buffer)
@@ -117,19 +143,11 @@ export function buildGpc(members: GpcFixtureMember[], options: GpcFixtureOptions
   view.setUint32(0x10, 0, true)
   view.setUint32(0x14, 0, true)
 
-  entries.forEach((e, i) => {
-    const at = headerSize + i * 12
-    view.setUint32(at + 0, e.hash >>> 0, true)
-    view.setUint32(at + 4, (((e.nameOffset & 0xff) << 24) | (e.words & 0xffffff)) >>> 0, true)
-    view.setUint32(
-      at + 8,
-      ((((e.nameOffset >>> 8) & 0xff) << 24) | (e.storedLength & 0xffffff)) >>> 0,
-      true,
-    )
-  })
-
+  archive.set(storedEntries, headerSize)
   archive.set(nameRegion, nameTableOffset)
-  for (const r of regions) archive.set(r.bytes, r.at)
+  regions.forEach((region, i) => {
+    archive.set(region, dataOffset + (relativeOffsets[i] as number))
+  })
 
   return archive
 }

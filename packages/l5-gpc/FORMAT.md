@@ -55,9 +55,23 @@ The name offset is split across two words. Reading only the byte in `+4` works
 for small archives and breaks on any whose names exceed 255 bytes in total —
 which is most of the large ones.
 
-**The entry table is itself compressed** when it does not exactly fill the space
-between the header and the name table: 4-bit Huffman, starting at `0x18`, with
-the decompressed size known to be `12 * count`.
+### The entry table's own encoding is not recorded
+
+The table is stored plainly when it exactly fills the space between the header
+and the name table. Otherwise it is compressed, starting at `0x18`, with the
+decompressed size known to be `12 * count` — but **nothing in the header says
+which codec**. All three of LZ77, 4-bit Huffman and 8-bit Huffman occur.
+
+Byte counts do not separate them: a correct decode may leave a few bytes of
+alignment padding unread, and a wrong one can consume a plausible number.
+
+So the reader checks the *result*. A valid index has two properties a wrong
+decode does not reproduce — the hashes are strictly ascending, because the table
+is a binary-search index, and every entry's data offset lands inside the
+archive. The first candidate satisfying both is accepted, and the choice is
+corroborated immediately afterwards: every filename recovered from the
+separately-compressed name table must match the CRC-32 in the entry its offset
+came from.
 
 ## Regions
 
@@ -108,11 +122,11 @@ Against a retail cartridge, which is not in this repository:
 
 | check | result |
 |---|---|
-| archives parsed | 1,660 / 1,671 |
-| members indexed | 50,746 |
-| **member names whose CRC-32 matches the stored hash** | **50,746 / 50,746, zero mismatches** |
-| members whose codec is implemented | 50,140 |
-| those decoding to exactly the declared size | 50,135 |
+| archives parsed | **1,671 / 1,671** |
+| members indexed | 53,639 |
+| **member names whose CRC-32 matches the stored hash** | **53,639 / 53,639, zero mismatches** |
+| members whose codec is implemented | 53,033 |
+| those decoding to exactly the declared size | 53,028 |
 
 The CRC-32 result is the strongest single piece of evidence. The hash is stored,
 the name is recovered from a separately-compressed table, and the two are
@@ -127,15 +141,14 @@ between the header and the name table, and yields hashes in ascending order.
 
 ## Known gaps
 
-98.8% of members decode. What is left:
+Every archive parses and 98.9% of members decode. What is left:
 
 - Codec 7: 5 members, all in `data/prm/actdt_a.gp2`.
 - 601 members stored with no region prefix, recoverable via `readRaw` as
   described above.
-- 11 archives where an entry names a byte that is not a name-table entry. All
-  are large (`chara_pc`, `chara_pd`, and a few scenario files), which suggests
-  the name offset is wider still than 16 bits in some variant, or that those
-  archives use a differently-shaped index.
-- 5 members whose 8-bit Huffman stream ends early — possibly a third symbol
-  width, possibly a different codec sharing the number.
 - `unknown_0x05`, `unknown_0x0e`, `unknown_0x10`, `unknown_0x14`.
+
+An earlier revision listed eleven archives whose index could not be followed,
+and guessed the name offset must be wider than 16 bits in some variant. That was
+wrong: the name offset is 16 bits throughout. Those archives simply encoded
+their entry table with a codec the reader did not try.
