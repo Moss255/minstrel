@@ -26,6 +26,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { isGpc, readGpc } from '@vesper/l5-gpc'
 import { tryDecompressLz10 } from '@vesper/nitro-comp'
 import {
   checkHeaderIntegrity,
@@ -203,6 +204,8 @@ async function main(): Promise<void> {
     }
   }
   let archivesUnpacked = 0
+  let gpcUnpacked = 0
+  let gpcUnreadable = 0
   let membersDecompressed = 0
   let escapedNames = 0
   const failures: string[] = []
@@ -233,6 +236,56 @@ async function main(): Promise<void> {
         packedSize = payload.length
         payload = decompressed
         membersDecompressed++
+      }
+    }
+
+    if (options.unpack && isGpc(payload)) {
+      // Parsing the index and unpacking members are separated deliberately: a
+      // single member with an unidentified codec must not cost the whole
+      // archive, and once any member has been written the output path is a
+      // directory and can no longer fall back to being a file.
+      let archive: ReturnType<typeof readGpc> | undefined
+      try {
+        archive = readGpc(payload)
+      } catch (error) {
+        failures.push(
+          `${source}${within.length ? ` [${within.join(' > ')}]` : ''}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+      if (archive) {
+        gpcUnpacked++
+        for (const member of archive.members) {
+          const safe = toSafeName(member.name)
+          if (safe.escaped) escapedNames++
+          if (!member.readable) {
+            // Preserve the bytes rather than lose them, but do not pretend they
+            // are the member's real content: the codec is not identified.
+            gpcUnreadable++
+            const stored = payload.subarray(member.offset, member.offset + member.storedLength)
+            await emit(
+              stored,
+              join(outPath, `${safe.safe}.gpc-codec${member.method}`),
+              source,
+              [...within, member.name],
+              safe.originalHex,
+            )
+            continue
+          }
+          try {
+            await emit(
+              archive.read(member),
+              join(outPath, safe.safe),
+              source,
+              [...within, member.name],
+              safe.originalHex,
+            )
+          } catch (error) {
+            failures.push(
+              `${source} [${[...within, member.name].join(' > ')}]: ${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
+        }
+        return
       }
     }
 
@@ -351,6 +404,8 @@ async function main(): Promise<void> {
       cartridgeFiles: files.length,
       written: queue.count,
       archivesUnpacked,
+      gpcUnpacked,
+      gpcUnreadable,
       membersDecompressed,
       escapedNames,
       collisions,
@@ -367,6 +422,8 @@ async function main(): Promise<void> {
   const rows: [string, string][] = [
     ['cartridge files', String(files.length)],
     ['archives unpacked', String(archivesUnpacked)],
+    ['gpc2 archives unpacked', String(gpcUnpacked)],
+    ['gpc2 members with an unidentified codec', String(gpcUnreadable)],
     ['members decompressed', String(membersDecompressed)],
     ['names escaped', String(escapedNames)],
     ['name collisions resolved', String(collisions)],

@@ -14,7 +14,8 @@ Early. Working through M0 of `docs/PLAN.md` — see [`docs/M0-inventory.md`](doc
 | package | licence | what it does |
 |---|---|---|
 | [`@vesper/nitrofs`](packages/nitrofs) | MIT | cartridge header, FAT/FNT, overlay tables, NARC archives |
-| [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ10 decompression |
+| [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ77 and Huffman decompression |
+| [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 
@@ -63,9 +64,11 @@ pnpm extract path/to/your.nds --out out --filter /data/map/
 ```
 
 `extract` mirrors the cartridge filesystem into `out/files/`, replacing every
-archive with a directory of its members — recursively, and decompressing as it
-goes — so a model that was an LZ10 stream inside a NARC inside the cartridge
-ends up as a plain `.nsbmd` on disk. `out/system/` gets the ARM binaries and
+archive — NARC or GPC2 — with a directory of its members, recursively, and
+decompressing as it goes, so a model that was an LZ10 stream inside a NARC
+inside the cartridge ends up as a plain `.nsbmd` on disk. A member whose codec
+is not identified is written with a `.gpc-codecN` suffix so its bytes are kept
+without being passed off as decoded content. `out/system/` gets the ARM binaries and
 overlays, and `out/manifest.json` records where each output file came from,
 including the original name bytes of any name that had to be escaped.
 
@@ -85,6 +88,7 @@ VESPER_TEST_ROM=rom/your.nds pnpm test
 packages/
   nitrofs/        NitroFS, NARC, cartridge header      MIT, game-agnostic
   nitro-comp/     Nintendo compression                 MIT, game-agnostic
+  l5-gpc/         GPC2, a Level-5 container            MIT, game-agnostic
 tools/
   inventory/      cartridge cataloguing CLI
   harness/        local-only integration tests

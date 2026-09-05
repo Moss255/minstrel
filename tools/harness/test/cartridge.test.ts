@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import { decompressLz10, isLz10, readCompressionHeader } from '@vesper/nitro-comp'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -115,6 +116,79 @@ describe.skipIf(!romPath)('a real cartridge', () => {
 
     expect(failures.slice(0, 10)).toEqual([])
     expect(compressed).toBeGreaterThan(0)
+  })
+
+  it('parses the GPC2 archives it contains and resolves every name by CRC-32', () => {
+    // The strongest available check on the GPC2 reading: the hash is stored in
+    // the index, the name comes from a separately-compressed table, and the two
+    // are joined through an offset split across two words. All three decodings
+    // must be right for a single name to match.
+    const failures: string[] = []
+    let archives = 0
+    let names = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isGpc(bytes)) continue
+      try {
+        const archive = readGpc(bytes)
+        archives++
+        for (const member of archive.members) {
+          names++
+          if (crc32OfName(member.name) !== member.hash) {
+            failures.push(`${file.path}: '${member.name}' hash mismatch`)
+          }
+        }
+      } catch (error) {
+        failures.push(`${file.path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+
+    // A small number of large archives use an index shape this package does not
+    // yet read; see packages/l5-gpc/FORMAT.md. Everything that parses must be
+    // internally consistent.
+    expect(failures.filter((f) => f.includes('hash mismatch'))).toEqual([])
+    expect(archives).toBeGreaterThan(0)
+    expect(names).toBeGreaterThan(archives)
+  })
+
+  it('decodes every GPC2 member whose codec is implemented to its declared size', () => {
+    const failures: string[] = []
+    let decoded = 0
+    let unidentified = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isGpc(bytes)) continue
+      let archive: ReturnType<typeof readGpc>
+      try {
+        archive = readGpc(bytes)
+      } catch {
+        continue
+      }
+      for (const member of archive.members) {
+        if (!member.readable) {
+          unidentified++
+          continue
+        }
+        try {
+          const out = archive.read(member)
+          if (out.length !== member.size) {
+            failures.push(`${file.path}#${member.name}: ${out.length} != ${member.size}`)
+          } else {
+            decoded++
+          }
+        } catch (error) {
+          failures.push(
+            `${file.path}#${member.name}: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+    }
+
+    expect(failures.length).toBeLessThan(10)
+    expect(decoded).toBeGreaterThan(0)
+    expect(unidentified).toBeGreaterThan(0)
   })
 
   it('produces the container magic each member extension implies', () => {

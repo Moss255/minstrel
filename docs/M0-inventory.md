@@ -29,16 +29,21 @@ See each package's `FORMAT.md` for the evidence.
 
 ## Full extraction
 
-`pnpm extract` unpacks the entire cartridge in about three seconds:
+`pnpm extract` unpacks the entire cartridge in about seven seconds:
 
 | | |
 |---|---|
 | cartridge files processed | 7,481 |
-| archives unpacked (including nested) | 4,181 |
-| members decompressed | 11,181 |
-| files written | 28,016 |
-| bytes written | 278.3 MiB |
-| failures | 0 |
+| archives unpacked (NARC and GPC2, including nested) | 6,013 |
+| GPC2 archives unpacked | 1,660 |
+| members decompressed | 12,371 |
+| files written | 83,621 |
+| bytes written | 340.9 MiB |
+| GPC2 members with an unidentified codec | 8,349 |
+| failures | 16 |
+
+A member whose codec is not identified is written with a `.gpc-codecN` suffix:
+its bytes are preserved without being passed off as decoded content.
 
 Output mirrors the cartridge tree under `out/files/`, with every archive
 replaced by a directory of its members, so an asset that was an LZ10 stream
@@ -106,45 +111,35 @@ Determining that needs the emulator work this project does not do in code. See
 
 ## Open questions
 
-### 1. GPC2 — Level-5's archive container
+### 1. GPC2 — mostly solved
 
-1,671 files, 72.6 MiB, extension `.gp2`, magic `GPC2`. It holds the event
-scripts, the scenario data, the font, and the bulk of the monster models. It is
-the one format standing between here and most of M3.
+1,671 files, 72.6 MiB, magic `GPC2`. A Level-5 archive container holding the
+event scripts, the scenario data, the font, and the bulk of the monster models.
+It is now read by `@vesper/l5-gpc`; the format is documented in that package's
+`FORMAT.md`.
 
-Observed so far, from two samples:
+Against the reference cartridge: **1,660 of 1,671 archives parse, and all 50,742
+member names match their stored CRC-32 with no mismatches.** 42,392 members
+decode to exactly their declared size.
 
-```
-0x00  char[4]  'GPC2'
-0x04  u8       member count      (6 and 5 in the two samples; both agree with
-                                  the entry-table length below)
-0x05  u8       0x30              (same in both samples; meaning unknown)
-0x06  u16      0x0005            (same in both samples; meaning unknown)
-0x08  u16      unknown_0x08      (0x18 / 0x15)
-0x0A  u16      unknown_0x0a      (0x24 / 0x20)
-0x0C  u16      unknown_0x0c      (0x12 / 0x0F)
-0x0E  u16      unknown_0x0e      (0x16 / 0x12)
-0x10  u32      unknown_0x10
-0x14  u32      unknown_0x14
-0x18  entry table, 12 bytes per member:
-        +0  u32  looks like a name hash (dense, no obvious structure)
-        +4  u32  unknown
-        +8  u32  unknown
-      followed immediately by a name table that is not a flat string list but
-      a trie with interleaved control bytes.
-```
+Three things made it hard, and all three are the kind of mistake that produces a
+parser that works on small files and fails silently on large ones:
 
-The member count at `0x04` is confirmed twice: the entry table ends exactly
-where the name table begins in both samples. Everything else above is an
-observation, not an interpretation, and is recorded as `unknown_*` rather than
-guessed at.
+- The member count is 12-bit, not 8-bit. The extra nibble sits in the high half
+  of byte 5.
+- A member's name offset is split across two words, a byte in each. Reading only
+  the first byte works until an archive's names exceed 255 bytes.
+- The index table is itself Huffman-compressed whenever it does not exactly fill
+  the space before the name table.
 
-**Plan.** Gather headers across all 1,671 files and correlate the unknown fields
-against member count and file size before attempting any interpretation. The
-name hash is not needed to extract — index order plus offsets would be enough —
-so the trie can stay unsolved for a while. If GPC2 resists, the slice's ~40
-events are hand-authorable, which is exactly why the plan chose a slice this
-size.
+An earlier reading of this document described the name table as "a trie with
+interleaved control bytes". That was wrong — it was compressed data. The name
+table is a plain NUL-separated list.
+
+**What remains:** codecs 4, 6 and 7 (8,349 members, about 16%) are
+unidentified. They are not the BIOS run-length format, which was tested and
+decoded 3 of 334 candidate regions. Eleven large archives use an index shape the
+parser does not yet read. Four header fields are still `unknown_*`.
 
 ### 2. `.ambl` / `.amdj` members
 
@@ -166,13 +161,17 @@ collision. **Not yet investigated.**
 
 ### 4. Event scripts — the G1 test
 
-`data/event` holds 523 `.gp2` files named `ev#####.gp2`, and `data/evspt_lv5`
-another 165. The naming and count are consistent with one file per event. That
-is a strong signal that per-event data exists as data rather than as compiled
-code — but whether it is an interpreted script for a VM, or parameters for
-hardcoded routines, is **not established** and cannot be until GPC2 opens.
+`data/event` holds 523 `.gp2` archives named `ev#####.gp2`, and `data/evspt_lv5`
+another 165. Each now unpacks to a `.stb` file carrying the magic `SB2\0`, plus
+one `.bin` string table per language (de, en, es, fr, it).
 
-Treat the G1 question as open, not answered.
+So per-event data does exist as data, one file per event, with its text
+separated from its structure. That is a strong signal — but `SB2` itself has not
+been examined, and whether it is bytecode for an interpreter or parameters for
+hardcoded routines is **still not established**.
+
+The G1 question is now answerable by static analysis rather than blocked on a
+container. Treat it as open but no longer risky.
 
 ## What is needed from outside
 
@@ -195,9 +194,9 @@ extraction machinery is ready, but not the knowledge of what to point it at.
 | M0 task | status |
 |---|---|
 | NitroFS parser and file dump | **done** — parser, CLI, and gated integration tests |
-| Identify and extract slice assets | **extraction done for everything**; *which* files the slice needs is still open |
+| Identify and extract slice assets | **extraction done for everything readable**; *which* files the slice needs is still open |
 | Run apicula; record what converts | **not started** — needs a Rust toolchain installed locally |
-| Locate the slice's event scripts | **partly** — candidate files located, format not yet open |
+| Locate the slice's event scripts | **located and extracted** — `data/event/ev#####.gp2` now unpack to an `SB2` container plus per-language string tables |
 
 Extraction is complete and proven against the whole cartridge: every stock asset
 is now a plain file on disk. What remains is knowing which of them the slice

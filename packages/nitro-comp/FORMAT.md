@@ -81,15 +81,49 @@ A decoder that were subtly wrong would not land on the right four-byte stamp
 7,274 times running. `tools/harness/test/cartridge.test.ts` reproduces both
 checks.
 
+## Headerless streams
+
+Some containers record the decompressed size in their own index and store the
+codec payload bare, with no 4-byte header. `decompressRawLz77` and
+`decompressHuffman` in `src/raw.ts` take the size from the caller for that case.
+The unit encodings are unchanged; only the framing differs.
+
+### Huffman
+
+| offset | meaning |
+|---|---|
+| `+0` | `u8` tree table size / 2 - 1 |
+| `+1` | tree table, root node first |
+| `+(n+1)*2` | bit stream, 32-bit little-endian words, most significant bit first |
+
+A node's low six bits give the offset to its child pair; bit 6 marks the
+1-child as a leaf, bit 7 the 0-child. The child pair sits at
+`(currentOffset & ~1) + (offset + 1) * 2`, where offsets are measured **from the
+tree-size byte**. GBATEK leaves that base implicit; this one is what the data
+confirms.
+
+Symbol width is 4 or 8 bits. With 4, two symbols make a byte, low nibble first.
+A bare stream has no header nibble to declare the width, so the caller supplies
+it.
+
+**Confirmed by observation.** Huffman was previously left unimplemented here for
+want of samples. Samples turned up: the Level-5 GPC2 container on the reference
+cartridge uses it for both index tables and member payloads. On 4-bit index
+tables the decode consumes *exactly* the bytes between the header and the name
+table and yields an index whose hashes are in ascending order and whose 50,742
+filenames all match their stored CRC-32 — checks a wrong tree walk does not
+pass. See `packages/l5-gpc/FORMAT.md`.
+
 ## Not implemented
 
-Huffman (`0x2`), run-length (`0x3`) and the diff filter (`0x8`).
+Run-length (`0x3`) and the diff filter (`0x8`).
 
-This is a decision, not an omission: LZ10 is the **only** codec present on the
-reference cartridge (11,179 members; the others appear zero times). Writing the
-other three from documentation alone, with no sample to verify against, would
-put untested code that looks correct into a package other code trusts. They can
-be added when a cartridge that uses them provides the samples to prove them.
+This is a decision, not an omission: neither appears on the reference cartridge.
+The BIOS run-length format was specifically tested against the 334 candidate
+regions of a container that numbers a codec `3`, and decoded 3 of them — chance,
+not a match. Writing a codec from documentation alone with no sample to verify
+against would put untested code that looks correct into a package other code
+trusts.
 
 ## The compressor
 

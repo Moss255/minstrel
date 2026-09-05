@@ -21,12 +21,21 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.1)
 
+  packages/l5-gpc:
+    dependencies:
+      '@vesper/nitro-comp':
+        specifier: workspace:*
+        version: link:../nitro-comp
+
   packages/nitro-comp: {}
 
   packages/nitrofs: {}
 
   tools/harness:
     dependencies:
+      '@vesper/l5-gpc':
+        specifier: workspace:*
+        version: link:../../packages/l5-gpc
       '@vesper/nitro-comp':
         specifier: workspace:*
         version: link:../../packages/nitro-comp
@@ -36,6 +45,9 @@ importers:
 
   tools/inventory:
     dependencies:
+      '@vesper/l5-gpc':
+        specifier: workspace:*
+        version: link:../../packages/l5-gpc
       '@vesper/nitro-comp':
         specifier: workspace:*
         version: link:../../packages/nitro-comp

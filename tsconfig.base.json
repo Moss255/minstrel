@@ -22,7 +22,8 @@
 
     "paths": {
       "@vesper/nitrofs": ["./packages/nitrofs/src/index.ts"],
-      "@vesper/nitro-comp": ["./packages/nitro-comp/src/index.ts"]
+      "@vesper/nitro-comp": ["./packages/nitro-comp/src/index.ts"],
+      "@vesper/l5-gpc": ["./packages/l5-gpc/src/index.ts"]
     }
   }
 }

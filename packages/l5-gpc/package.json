@@ -1,0 +1,14 @@
+{
+  "name": "@vesper/l5-gpc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "GPC2 archive reader. A Level-5 container format found on their DS titles. Game-agnostic, browser-safe.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vesper/nitro-comp": "workspace:*"
+  }
+}

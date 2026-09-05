@@ -11,6 +11,11 @@ export {
   readCompressionHeader,
 } from './header.ts'
 export { compressLz10, decompressLz10, isLz10, tryDecompressLz10 } from './lz10.ts'
+export {
+  decompressHuffman,
+  decompressRawLz77,
+  type RawResult,
+} from './raw.ts'
 
 /**
  * Decompress any supported Nintendo-compressed stream, dispatching on the

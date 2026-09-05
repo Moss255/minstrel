@@ -7,6 +7,7 @@
   "description": "Local-only integration tests that run the parsers against a real cartridge. Skipped unless VESPER_TEST_ROM is set; never runs in CI.",
   "dependencies": {
     "@vesper/nitro-comp": "workspace:*",
-    "@vesper/nitrofs": "workspace:*"
+    "@vesper/nitrofs": "workspace:*",
+    "@vesper/l5-gpc": "workspace:*"
   }
 }
