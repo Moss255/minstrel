@@ -96,10 +96,10 @@ pnpm dev        # then open the viewer and drop in your own dump
 Drag to orbit, wheel to zoom, `W` for wireframe. The cartridge is read in your
 browser and nothing is uploaded.
 
-Models that use a single matrix render correctly today. Skinned models — 766 of
-the reference cartridge's 6,889 — decode correctly but are positioned wrongly,
-because the bone transforms in a model's render commands are not applied yet.
-Textures are not read yet either. See
+Skinned models are posed: a model's bones and render commands are read, and each
+vertex is placed by the matrix its display list bound it to. Blended vertices are
+placed approximately, since inverse bind matrices are not applied yet, and
+textures are not read at all. See
 [`packages/nitro-gfx/FORMAT.md`](packages/nitro-gfx/FORMAT.md).
 
 ## Layout

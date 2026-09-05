@@ -105,7 +105,21 @@ function buildModelBody(model: FixtureModel): Uint8Array {
     4,
   )
 
-  const materialOffset = align4(0x40 + objectDict.length)
+  // Render commands: one node-description per object, storing each into the
+  // matrix stack slot of the same number, then the end opcode.
+  const sbc = new Writer()
+  objects.forEach((_, i) => {
+    sbc
+      .u8(0x26)
+      .u8(i)
+      .u8(i === 0 ? 0 : i - 1)
+      .u8(0)
+      .u8(i)
+  })
+  sbc.u8(0x01)
+
+  const sbcOffset = align4(0x40 + objectDict.length)
+  const materialOffset = align4(sbcOffset + sbc.length)
   // The material section starts with a u16 offset to its dictionary.
   const materialDict = new Writer()
   writeDict(
@@ -145,7 +159,7 @@ function buildModelBody(model: FixtureModel): Uint8Array {
   const totalVertices = 0
   const body = new Writer()
   body.u32(0) // size, patched below
-  body.u32(0x6c) // render command offset, unused by the reader
+  body.u32(sbcOffset)
   body.u32(materialOffset)
   body.u32(shapeOffset)
   body.u32(0) // matrix offset, patched to the end below
@@ -159,6 +173,8 @@ function buildModelBody(model: FixtureModel): Uint8Array {
   body.u32(4096).u32(4096)
   body.padTo(0x40)
   body.raw(objectDict.bytes)
+  body.padTo(sbcOffset)
+  body.raw(sbc.bytes)
   body.padTo(materialOffset)
   body.raw(materialSection.bytes)
   body.padTo(shapeOffset)

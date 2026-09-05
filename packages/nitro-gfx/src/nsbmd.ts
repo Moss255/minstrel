@@ -3,6 +3,9 @@ import { readDict } from './dict.ts'
 import { type Geometry, runDisplayList } from './displaylist.ts'
 import { NitroGfxError } from './errors.ts'
 import { fx16ToFloat, fx32ToFloat } from './fixed.ts'
+import type { Mat4 } from './matrix.ts'
+import { type NodeTransform, readNode } from './node.ts'
+import { type RenderCommand, readRenderCommands, resolveMatrices } from './render.ts'
 
 /**
  * NSBMD — the Nitro model container, stamp `BMD0`.
@@ -95,8 +98,25 @@ export interface Model {
   readonly objects: readonly ModelObject[]
   readonly materials: readonly ModelMaterial[]
   readonly shapes: readonly ModelShape[]
-  /** Decode one shape's display list into triangles. */
+  /** The bones, with their local transforms. */
+  readonly nodes: readonly NodeTransform[]
+  /** The model's render commands, already parsed. */
+  readonly renderCommands: readonly RenderCommand[]
+  /**
+   * The matrix stack the render commands build, 32 slots.
+   *
+   * A vertex's `matrixId` indexes this. Models that use a single matrix leave
+   * the stack at the identity and need no transform; skinned ones do not.
+   */
+  readonly matrices: readonly Mat4[]
+  /** Decode one shape's display list into triangles, in model space. */
   geometry(shape: ModelShape | number): Geometry
+  /**
+   * Decode a shape and place each vertex by the matrix its display list bound
+   * it to. This is what a skinned model needs; for a single-matrix model it is
+   * the identity and returns the same geometry.
+   */
+  posedGeometry(shape: ModelShape | number): Geometry
 }
 
 export interface Nsbmd {
@@ -202,6 +222,45 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     maxZ: originZ + extentZ,
   }
 
+  // Bones, then the render commands that arrange them.
+  const objectSection = 0x40
+  const nodes: NodeTransform[] = objectDict.entries.map((entry, index) => {
+    const at = objectSection + u32(entry.data, 0, `object[${index}] offset`)
+    return readNode(model, at, index, entry.name).node
+  })
+  const renderCommands = readRenderCommands(
+    model,
+    u32(model, 0x04, 'model.renderCommandOffset'),
+    materialOffset,
+  )
+  const matrices = resolveMatrices(renderCommands, nodes)
+
+  const pose = (geometry: Geometry): Geometry => {
+    const vertices = geometry.vertices.map((v) => {
+      const m = matrices[v.matrixId]
+      if (!m) return v
+      return {
+        ...v,
+        x:
+          (m[0] as number) * v.x +
+          (m[4] as number) * v.y +
+          (m[8] as number) * v.z +
+          (m[12] as number),
+        y:
+          (m[1] as number) * v.x +
+          (m[5] as number) * v.y +
+          (m[9] as number) * v.z +
+          (m[13] as number),
+        z:
+          (m[2] as number) * v.x +
+          (m[6] as number) * v.y +
+          (m[10] as number) * v.z +
+          (m[14] as number),
+      }
+    })
+    return { vertices, indices: geometry.indices, matrixIds: geometry.matrixIds }
+  }
+
   return {
     name,
     numObjects: objectDict.entries.length,
@@ -218,10 +277,18 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     objects: objectDict.entries.map((e, index) => ({ name: e.name, index })),
     materials: materialDict.entries.map((e, index) => ({ name: e.name, index })),
     shapes,
+    nodes,
+    renderCommands,
+    matrices,
     geometry: (target) => {
       const shape = typeof target === 'number' ? shapes[target] : target
       if (!shape) throw new NitroGfxError(`no shape ${String(target)} in model '${name}'`)
       return runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`)
+    },
+    posedGeometry: (target) => {
+      const shape = typeof target === 'number' ? shapes[target] : target
+      if (!shape) throw new NitroGfxError(`no shape ${String(target)} in model '${name}'`)
+      return pose(runDisplayList(shape.displayList, `model '${name}' shape '${shape.name}'`))
     },
   }
 }

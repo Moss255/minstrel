@@ -470,6 +470,73 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(resources).toBeGreaterThan(1000)
   })
 
+  it("reads every model's bones and render commands", () => {
+    // Two checks the files make of themselves. A node's size depends on its
+    // flags, so computing it wrongly desynchronises from the object
+    // dictionary's offsets; and a rotation that is read wrongly is not
+    // orthonormal.
+    const failures: string[] = []
+    let nodes = 0
+    let rotations = 0
+
+    const check = (bytes: Uint8Array, path: string): void => {
+      if (!isNsbmd(bytes)) return
+      let parsed: ReturnType<typeof readNsbmd>
+      try {
+        parsed = readNsbmd(bytes)
+      } catch {
+        return
+      }
+      for (const model of parsed.models) {
+        for (const node of model.nodes) {
+          nodes++
+          // A pure rotation — no scale — must have orthonormal columns.
+          if ((node.flags & 0x02) !== 0 || (node.flags & 0x04) === 0) continue
+          rotations++
+          const m = node.local
+          const col = (c: number) => [
+            m[c * 4] as number,
+            m[c * 4 + 1] as number,
+            m[c * 4 + 2] as number,
+          ]
+          const dot = (x: number[], y: number[]) =>
+            (x[0] as number) * (y[0] as number) +
+            (x[1] as number) * (y[1] as number) +
+            (x[2] as number) * (y[2] as number)
+          for (const c of [0, 1, 2]) {
+            if (Math.abs(Math.sqrt(dot(col(c), col(c))) - 1) > 0.02) {
+              failures.push(`${path}#${model.name}/${node.name}: column ${c} is not unit length`)
+            }
+          }
+          if (Math.abs(dot(col(0), col(1))) > 0.03 || Math.abs(dot(col(1), col(2))) > 0.03) {
+            failures.push(`${path}#${model.name}/${node.name}: columns are not perpendicular`)
+          }
+        }
+        // Posing must not throw and must preserve the vertex count.
+        for (const shape of model.shapes) {
+          const raw = model.geometry(shape)
+          const posed = model.posedGeometry(shape)
+          if (raw.vertices.length !== posed.vertices.length) {
+            failures.push(`${path}#${model.name}: posing changed the vertex count`)
+          }
+        }
+      }
+    }
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        check(data, `${file.path}#${member.name ?? member.index}`)
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(nodes).toBeGreaterThan(10000)
+    expect(rotations).toBeGreaterThan(1000)
+  })
+
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly
     // wrong would not reliably land on the right four-byte stamp thousands of

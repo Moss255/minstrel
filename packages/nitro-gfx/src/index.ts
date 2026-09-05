@@ -9,6 +9,8 @@ export {
 } from './displaylist.ts'
 export { NitroGfxError } from './errors.ts'
 export { FX16_ONE, FX32_ONE, fx10ToFloat, fx16ToFloat, fx32ToFloat, signExtend } from './fixed.ts'
+export { blend, identity, type Mat4, multiply, transformPoint } from './matrix.ts'
+export { type NodeTransform, readNode } from './node.ts'
 export {
   isNsbmd,
   type Model,
@@ -22,3 +24,10 @@ export {
   type Nsbmd,
   readNsbmd,
 } from './nsbmd.ts'
+export {
+  MATRIX_STACK_SIZE,
+  type RenderCommand,
+  RenderOp,
+  readRenderCommands,
+  resolveMatrices,
+} from './render.ts'

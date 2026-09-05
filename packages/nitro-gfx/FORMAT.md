@@ -139,14 +139,91 @@ command desynchronises and fails both.
 
 `tools/harness/test/cartridge.test.ts` reproduces them.
 
+## Nodes — the bones
+
+The object dictionary at `+0x40` names them; each entry's offset is relative to
+`+0x40`, and the first lands exactly where the dictionary ends.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u16` | flags |
+| `+0x02` | `u16` | the rotation's `[0][0]` cell, as `fx16` |
+| then | `fx32[3]` | translation, unless flag bit 0 |
+| then | | rotation, unless flag bit 1 — pivot form if bit 3, else eight `fx16` |
+| then | `fx32[3]`×2 | scale and its reciprocal, unless flag bit 2 |
+
+| flag bit | meaning |
+|---|---|
+| 0 | translation is zero |
+| 1 | rotation is the identity |
+| 2 | scale is one |
+| 3 | rotation uses the compact pivot form |
+| 4–7 | pivot index: which cell holds ±1 |
+| 8, 9 | set on many pivot nodes; they do **not** affect the rotation |
+
+### A full rotation is eight cells, not nine
+
+Cell `[0][0]` is the `u16` at `+0x02`, which looks like padding. Read nine
+consecutive cells instead and every such node is two bytes too long: 4,578 nodes
+then land off the dictionary's own offsets. With eight, **all 69,336 nodes on
+the reference cartridge end exactly where the next begins**.
+
+### The pivot cell's sign is forced
+
+The compact form stores a rotation about one axis: one cell is ±1, its row and
+column are otherwise zero, and the remaining two rows and columns carry
+`[[a, b], [-b, a]]`.
+
+Expanding the determinant along the pivot cell gives
+`det = (-1)^(row + col) × sign`, so a rotation — determinant +1 — forces
+`sign = (-1)^(row + col)`. Nothing else is free. Under that rule **all 4,644
+pivot nodes come out orthonormal with determinant +1**, as do all 1,269 nodes
+using the full form. That `a² + b² = 1` holds for every pivot node is what
+confirms the two values were being read correctly all along, and that only their
+placement was ever in question.
+
+## Render commands
+
+The low five bits of an opcode select the operation; the top three add
+parameters. The counts were **fitted, not assumed**: every one of the reference
+cartridge's 8,804 models parses to a clean `End` under them, and no other
+combination tried does.
+
+| opcode | operation | parameters |
+|---|---|---|
+| `0x00` | no-op | 0 |
+| `0x01` | end | 0 |
+| `0x02` | node visibility | 1 |
+| `0x03` | restore matrix | 1 |
+| `0x04` | bind material | 1, +1 per flag bit |
+| `0x05` | draw shape | 1 |
+| `0x06` | node transform | 3, +1 per flag bit |
+| `0x07` | billboard | 1 |
+| `0x08` | billboard about Y | 1 |
+| `0x09` | blend matrices | 2, then 3 per term |
+| `0x0A` | call display list | 1 |
+| `0x0B` | scale by the model's position scale | 0 |
+| `0x0C` | environment map | 1 |
+| `0x0D` | projection map | 1 |
+
+A node-transform command names a node and its parent, so a node's world
+transform is its parent's composed with its own local one; with the `0x20` flag
+its fourth parameter is the matrix stack slot to leave the result in. A blend
+command mixes stack slots by weight, where `0x100` is one.
+
 ## Not implemented
 
-- **Bone transforms.** A model's render commands drive the matrix stack, and
-  skinned models bind vertices to it with `MTX_RESTORE`. The display list
-  records each vertex's matrix id but nothing applies the transforms, so a
-  skinned model's geometry is decoded correctly but positioned wrongly. 5,968 of
-  the reference cartridge's 6,889 models use a single matrix and render
-  correctly today; 766 are skinned and need this; 155 have no geometry at all.
-- **Textures.** `TEX0` blocks and NSBTX are not read yet, so materials are names
+- **The `0x40` flag's parameter on node-transform and material commands.** Its
+  meaning is not established, and it is skipped.
+- **Inverse bind matrices.** A blend command's weights are applied to the stack
+  slots directly. The hardware composes each term with the named node's inverse
+  bind transform first, which this does not, so a blended vertex is placed
+  approximately rather than exactly. On the reference cartridge that shows up as
+  a few stray polygons on heavily-blended models.
+- **Slots no command assigns.** 859 of 1,682 models that use the matrix stack
+  leave at least one used slot unwritten, which then stays the identity. That is
+  most likely the `0x40` parameter above doing the assigning.
+- **Textures.** `TEX0` blocks and NSBTX are not read, so materials are names
   only.
 - **Normals and lighting.** `NORMAL` is stepped over rather than captured.
+- **Animation.** NSBCA is not read; a model is posed in its bind pose only.

@@ -124,7 +124,9 @@ function select(index: number): void {
     const nsbmd = readNsbmd(entry.bytes)
     model = nsbmd.models[0]
     if (!model) throw new Error('container holds no model')
-    geometries = model.shapes.map((shape) => (model as Model).geometry(shape))
+    // Posed: each vertex placed by the matrix its display list bound it to,
+    // which is what a skinned model needs and is the identity for the rest.
+    geometries = model.shapes.map((shape) => (model as Model).posedGeometry(shape))
   } catch (error) {
     overlay.textContent = `${entry.name}\n${error instanceof Error ? error.message : String(error)}`
     return
