@@ -235,6 +235,39 @@ carry *more* placements than resources. Pairing positionally through those would
 place every piece after the extra one confidently in the wrong spot, so those
 maps are left unplaced instead. A wrong placement is worse than none.
 
+### The exterior on its own terms
+
+Focusing on `M01` alone, and using only what is in it, here is everything the
+exterior says about its own scale:
+
+| | units |
+|---|---|
+| Village ground, by its collision | 8.96 × 5.75, with **1.00** of relief |
+| Whole exterior, all pieces | 12.0 × 9.1 |
+| Building facades — the two tall shapes of the `hus` models | **1.50** and **1.57**, standing from y 0.38 to 1.88 |
+| Whole building models, roofs and trees included | 2.19 and 2.18 |
+| Waterfall | 4.41 |
+| Doorway models, all ten | **1.54** |
+| Doorway trigger boxes, in collision | **2.50** |
+
+Two of those do not belong with the rest.
+
+**A doorway is as tall as the wall it is in.** The facades are 1.50 and 1.57;
+the doors are 1.54. A door should be perhaps two thirds of the wall it opens.
+
+**A doorway's trigger box is taller than any building on the map.** At 2.50 it
+is above the 1.88 the tallest facade reaches, and two and a half times the whole
+map's terrain relief.
+
+The doors are the piece that does not fit, and they are also the piece the
+format marks out: every placed piece on the cartridge is `upScale` 1 (276 of
+283) while the map geometry around them runs 16, 8, 32, 4, 2 and 1. Nothing in
+the manifest asks for them to be resized — its scale field is 1, 1, 1
+everywhere — so nothing resizes them, and the viewer reports what it would look
+like at any multiplier instead. Walking a map, the overlay now gives the placed
+pieces' height in units and as a fraction of the tallest wall, so the value can
+be found by eye and then written down.
+
 ### Interiors and the exterior are not at the same scale
 
 This is the finding that explains a run of confusing results, and it means an

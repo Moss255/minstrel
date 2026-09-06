@@ -591,6 +591,9 @@ let sizeTrim = 1
 let propTrim = 1
 /** The tallest house in the shown map, for reporting the ratio. */
 let houseHeight = 0
+/** The tallest wall of the shown map's buildings, and the tallest placed piece. */
+let wallHeight = 0
+let propHeight = 0
 const TICK_MS = 1000 / 60
 
 let shown: Shown | undefined
@@ -680,11 +683,26 @@ function select(index: number): void {
       // house, and its tallest shape is that house. Reported so the character's
       // size can be read against something rather than in bare units.
       houseHeight = 0
+      wallHeight = 0
+      propHeight = 0
       for (const model of models) {
+        const place = placeByModel.get(model)
+        const moved = place !== undefined && (place.x !== 0 || place.y !== 0 || place.z !== 0)
+        if (moved) {
+          // A placed piece — a doorway, a sign. Its height is the thing to read
+          // against the buildings it stands among.
+          const bounds = measureBounds(model.shapes.map((_, shape) => model.posedGeometry(shape)))
+          propHeight = Math.max(propHeight, bounds.maxY - bounds.minY)
+          continue
+        }
         if (!model.nodes.some((node) => /^hus\d*$/.test(node.name))) continue
         for (let shape = 0; shape < model.numShapes; shape++) {
           const bounds = measureBounds([model.posedGeometry(shape)])
-          houseHeight = Math.max(houseHeight, bounds.maxY - bounds.minY)
+          const height = bounds.maxY - bounds.minY
+          houseHeight = Math.max(houseHeight, height)
+          // A wall rather than the ground it stands on: tall, and starting
+          // above the base of the model rather than at it.
+          if (height > 0.6 && bounds.minY > 0.2) wallHeight = Math.max(wallHeight, height)
         }
       }
       shown = {
@@ -777,7 +795,13 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
           ? ` (${((toFloat(PERSON.height) * sizeTrim) / houseHeight).toFixed(2)} of a ${houseHeight.toFixed(2)} house)`
           : '') +
         (sizeTrim !== 1 ? ` · trim ${sizeTrim.toFixed(2)} — [ and ] to adjust` : '') +
-        (propTrim !== 1 ? ` · placed pieces x${propTrim.toFixed(2)}` : '') +
+        (propHeight > 0
+          ? ` · placed pieces ${(propHeight * propTrim).toFixed(2)} tall` +
+            (wallHeight > 0
+              ? ` (${((propHeight * propTrim) / wallHeight).toFixed(2)} of a ${wallHeight.toFixed(2)} wall)`
+              : '') +
+            (propTrim !== 1 ? ` x${propTrim.toFixed(2)}` : '')
+          : '') +
         (walker.inside ? ' · indoors' : '') +
         (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : '')
       : shown.world
