@@ -2771,6 +2771,87 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(stillWet).toBeLessThan(hadWater / 4)
   }, 180_000)
 
+  it("spreads a character's motions across a family of packs", () => {
+    // The `.bcfg` beside a part names one pack, and taking that pack and
+    // stopping gives a character that can walk and cannot stand still:
+    // `mp0200ne` holds exactly one animation, `walk`. Standing is in
+    // `mp0200n` and `mp0200f` beside it.
+    const packs = new Map<string, string[]>()
+    for (const asset of animations) {
+      if (!asset.archive.includes('#chara_mp.gp2#')) continue
+      try {
+        packs.set(
+          asset.archive.slice(asset.archive.lastIndexOf('#') + 1),
+          readNsbca(asset.bytes).animations.map((a) => a.name),
+        )
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+    expect(packs.size).toBeGreaterThan(100)
+
+    let withStand = 0
+    let withWalk = 0
+    let withBoth = 0
+    for (const names of packs.values()) {
+      const stand = names.includes('stand')
+      const walk = names.includes('walk')
+      if (stand) withStand++
+      if (walk) withWalk++
+      if (stand && walk) withBoth++
+    }
+    expect(withStand).toBeGreaterThan(40)
+    expect(withWalk).toBeGreaterThan(5)
+    // The finding: not one pack on the cartridge holds both.
+    expect(withBoth).toBe(0)
+
+    // The family the slice's stand-in belongs to does hold both between them.
+    const family = [...packs].filter(([name]) => name.startsWith('mp0200'))
+    expect(family.length).toBeGreaterThan(5)
+    const together = new Set(family.flatMap(([, names]) => names))
+    expect(together.has('walk')).toBe(true)
+    expect(together.has('stand')).toBe(true)
+  })
+
+  it('draws the stand-in figure once, not twice', () => {
+    // The three `p_test` parts are not three pieces of one figure. `p_test0` is
+    // a whole figure of four shapes; `p_test1` is its upper two and `p_test2`
+    // its lower two, to the same bounds. Drawing all three draws the character
+    // twice, which shows first on the head.
+    const parts: { name: string; model: Model; bounds: ReturnType<typeof measureBounds> }[] = []
+    for (const asset of models) {
+      if (!asset.archive.endsWith('#chara_pc.gp2')) continue
+      if (!/^p_test\d+$/.test(asset.stem)) continue
+      try {
+        const model = readNsbmd(asset.bytes).models[0]
+        if (!model?.numShapes) continue
+        parts.push({
+          name: asset.stem,
+          model,
+          bounds: measureBounds(model.shapes.map((_, shape) => model.posedGeometry(shape))),
+        })
+      } catch {
+        // Reported by the model test.
+      }
+    }
+    expect(parts.length).toBe(3)
+
+    // One of them covers the other two.
+    const whole = parts.reduce((best, part) =>
+      part.model.numShapes > best.model.numShapes ? part : best,
+    )
+    expect(whole.model.numShapes).toBe(4)
+    for (const part of parts) {
+      if (part === whole) continue
+      expect(part.bounds.minY).toBeGreaterThanOrEqual(whole.bounds.minY - 1e-3)
+      expect(part.bounds.maxY).toBeLessThanOrEqual(whole.bounds.maxY + 1e-3)
+      expect(part.bounds.minX).toBeGreaterThanOrEqual(whole.bounds.minX - 1e-3)
+      expect(part.bounds.maxX).toBeLessThanOrEqual(whole.bounds.maxX + 1e-3)
+    }
+    // Together they hold twice the shapes the whole figure needs.
+    expect(parts.reduce((n, part) => n + part.model.numShapes, 0)).toBe(8)
+  })
+
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly
     // wrong would not reliably land on the right four-byte stamp thousands of

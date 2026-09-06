@@ -386,3 +386,35 @@ describe('following the ground at walking speed', () => {
     }
   })
 })
+
+describe('how fast a person walks', () => {
+  /**
+   * The viewer moves the character in world units a tick, derived from its
+   * height. What that has to satisfy is the controller's own limits, which are
+   * derived from the same speed — so if the two ever disagree the character
+   * cannot climb what it is allowed to stand on.
+   */
+  const heightsPerSecond = 4
+  const speed = (toFloat(PERSON.height) * heightsPerSecond) / 60
+
+  it('moves a sane number of its own heights a second', () => {
+    // A person manages about one; a game character rather more. Sixteen, which
+    // is what a fixed 0.05 units gave once the character was resized, is a
+    // sprint that reads as sliding.
+    expect(heightsPerSecond).toBeGreaterThan(1)
+    expect(heightsPerSecond).toBeLessThan(8)
+  })
+
+  it('cannot outrun its own step and snap heights', () => {
+    const gradient = Math.sqrt(1 - toFloat(PERSON.maxSlope) ** 2) / toFloat(PERSON.maxSlope)
+    expect(toFloat(PERSON.snapDown)).toBeGreaterThan(speed * gradient)
+    expect(toFloat(PERSON.stepUp)).toBeGreaterThan(speed * gradient)
+  })
+
+  it("crosses the slice's village in a sensible time", () => {
+    // The village is about twelve units across.
+    const seconds = 12 / (speed * 60)
+    expect(seconds).toBeGreaterThan(8)
+    expect(seconds).toBeLessThan(40)
+  })
+})

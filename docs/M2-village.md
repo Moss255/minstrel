@@ -299,6 +299,35 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### The character: one figure, a family of packs, and a walking pace
+
+Three things, all the same kind of mistake — taking the first thing the data
+offered and stopping.
+
+**It was being drawn twice.** The three `p_test` parts are not three pieces of
+one figure. `p_test0` is a whole figure of four shapes; `p_test1` is its upper
+two and `p_test2` its lower two, to the same bounds exactly. All three were
+drawn, so the character was doubled, and it showed on the head first. A part
+whose geometry another part already covers is now dropped — which on a real
+character, assembled one part per slot, drops nothing.
+
+**Its motions live in a family of packs, not one.** The `.bcfg` beside a part
+names `mp0200ne`, and that pack holds exactly one animation: `walk`. Standing is
+in `mp0200n` and `mp0200f`; smiling in `mp0200b`, attacking in `mp0200be`, items
+in `mp0200bi`, casting in `mp0200bm`. Of the cartridge's 136 packs, **56 carry a
+`stand`, 13 carry a `walk`, and not one carries both** — so reading the pack the
+config names and stopping gives a character that can walk and cannot stand
+still, which is why standing fell back to the T-pose. Every pack of the family
+is read now.
+
+**It was sprinting.** The speed was a fixed 0.05 units a tick, chosen when a
+person was 0.9 units tall. At 0.18 that is **sixteen of its own heights a
+second**, which reads as sliding rather than walking. Speed is now given in
+character heights — four a second, brisk for a game where a person manages about
+one — so it survives the next resize. That puts the village, twelve units
+across, at seventeen seconds corner to corner, and it stays inside the step and
+snap heights, which are derived from the same speed.
+
 ### The doors' scale was the placement divisor all along
 
 A placed piece is authored in a space an order of magnitude larger than the map

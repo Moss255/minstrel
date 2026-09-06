@@ -121,7 +121,20 @@ const manifestsByArchive = new Map<string, MapManifest>()
 const characterParts: Model[] = []
 const characterMotions = new Map<string, Animation>()
 const STAND_IN_PARTS = /\/chara_pc\.gp2\/p_test\d+\.nsbmd$/
-const MOTION_PACK = '/chara_mp.gp2/mp0200ne.chr'
+/**
+ * The motion packs a character draws on.
+ *
+ * **One character's motions are spread across a family of packs**, not held in
+ * one. The `.bcfg` beside a part names `mp0200ne`, and that pack holds exactly
+ * one animation: `walk`. Standing is in `mp0200n` and `mp0200f`; `smile` is in
+ * `mp0200b`, attacking in `mp0200be`, using an item in `mp0200bi`, casting in
+ * `mp0200bm`. Of the cartridge's 136 packs, 56 carry a `stand` and 13 a `walk`,
+ * and **not one carries both** — so a reader that takes the pack the config
+ * names and stops has a character that can walk and cannot stand still.
+ *
+ * The family is the name without its trailing suffix.
+ */
+const MOTION_FAMILY = 'mp0200'
 const membersByArchive = new Map<string, Map<string, Uint8Array>>()
 
 function must<T extends Element>(selector: string): T {
@@ -235,7 +248,10 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
         const list = animationsByArchive.get(archive) ?? []
         const read = readNsbca(payload).animations
         list.push(...read)
-        if (archive.endsWith(MOTION_PACK)) {
+        // Every pack of the character's family, not only the one its config
+        // names: the motions are spread across them.
+        const pack = archive.slice(archive.lastIndexOf('/') + 1)
+        if (archive.includes('/chara_mp.gp2/') && pack.startsWith(MOTION_FAMILY)) {
           for (const motion of read) characterMotions.set(motion.name, motion)
         }
         animationsByArchive.set(archive, list)
@@ -509,6 +525,42 @@ interface Walker {
 }
 
 /**
+ * The stand-in parts worth drawing.
+ *
+ * The three `p_test` parts are not three pieces of one figure. `p_test0` is a
+ * whole figure of four shapes; `p_test1` is its upper two and `p_test2` its
+ * lower two, to the same bounds exactly. Drawing all three draws the character
+ * twice, which shows up first on the head.
+ *
+ * A part is dropped when another part already covers everything it covers. On
+ * a real character, assembled one part per slot, nothing is dropped.
+ */
+function usefulParts(): Model[] {
+  const measured = characterParts.map((model) => ({
+    model,
+    bounds: measureBounds(model.shapes.map((_, shape) => model.posedGeometry(shape))),
+    shapes: model.numShapes,
+  }))
+  return measured
+    .filter(
+      (part) =>
+        !measured.some(
+          (other) =>
+            other !== part &&
+            // Bigger, or the same size and listed first, so two identical parts
+            // do not each drop the other and leave nothing.
+            (other.shapes > part.shapes ||
+              (other.shapes === part.shapes && measured.indexOf(other) < measured.indexOf(part))) &&
+            other.bounds.minY <= part.bounds.minY + 1e-3 &&
+            other.bounds.maxY >= part.bounds.maxY - 1e-3 &&
+            other.bounds.minX <= part.bounds.minX + 1e-3 &&
+            other.bounds.maxX >= part.bounds.maxX - 1e-3,
+        ),
+    )
+    .map((part) => part.model)
+}
+
+/**
  * Build the character's pieces and work out how big it should be.
  *
  * The parts are modelled at their own scale, so they are shrunk to the height
@@ -528,7 +580,7 @@ interface Walker {
  * character walking around too small. Its frames vary by under 2%.
  */
 function buildCharacter(): { body: Piece_[]; scale: number } {
-  const body = characterParts.flatMap(piecesOf)
+  const body = usefulParts().flatMap(piecesOf)
   if (body.length === 0) return { body, scale: 1 }
 
   const heightOf = (stacks: Map<Model, Mat4[][]>): number => {
@@ -564,7 +616,7 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
 /** Every part's matrix stacks for one frame of a motion, or its bind pose. */
 function characterStacks(motion: Animation | undefined, frame: number): Map<Model, Mat4[][]> {
   const stacks = new Map<Model, Mat4[][]>()
-  for (const part of characterParts) {
+  for (const part of usefulParts()) {
     if (motion && motion.boneCount === part.nodes.length) {
       const local = sampleAnimation(motion, frame)
       const nodes: NodeTransform[] = part.nodes.map((node, i) => {
@@ -604,8 +656,20 @@ let mapBoxes: Box[] = []
  * it can be asked.
  */
 let mapBackdrop: boolean[] = []
-/** Movement per tick, about three world units a second at 60Hz. */
-const WALK_SPEED = Math.round(0.05 * FX32_ONE)
+/**
+ * Movement per tick, as a fraction of the character's own height.
+ *
+ * A speed in world units does not survive the character being resized, and the
+ * character has been resized by a factor of ten over this milestone. At 0.05
+ * units a tick the 0.18-unit character crossed **sixteen of its own heights a
+ * second**, which is a sprint by any measure and read as sliding.
+ *
+ * Four heights a second is a brisk walk for a game — a person manages about
+ * one — and puts the village, twelve units across, at seventeen seconds corner
+ * to corner.
+ */
+const WALK_HEIGHTS_PER_SECOND = 4
+const WALK_SPEED = Math.round((toFloat(PERSON.height) * WALK_HEIGHTS_PER_SECOND * FX32_ONE) / 60)
 /** How much clear air there has to be past a piece for it to count as in the way. */
 const CLEARANCE = toFloat(PERSON.radius)
 /** How many map pieces the last frame left out, for the overlay. */
