@@ -210,6 +210,33 @@ consecutive cells instead and every such node is two bytes too long: 4,578 nodes
 then land off the dictionary's own offsets. With eight, **all 69,336 nodes on
 the reference cartridge end exactly where the next begins**.
 
+### The cells are stored column by column
+
+Both forms — the full 3x3 above and the two compact ones — store their cells
+**column-major**, which is the order the DS keeps a matrix in. Read as rows they
+come out transposed, and a rotation's transpose is its inverse, so every
+rotation on the cartridge comes out backwards.
+
+Almost nothing catches it. Both readings are orthonormal, both have determinant
++1, and the two sides of the strongest check available — an animation's first
+frame against its model's own bind pose — transpose together, so that agrees at
+95% either way. It only says the *two* readings match each other, not which one
+is right.
+
+**What settles it is a character standing up.** The slice's player model is
+built in a T-pose 7.68 units tall, and every one of its nodes is the identity,
+so its bind pose is the same either way. Posed, it should stand about as tall as
+it was built:
+
+| motion | read as rows | read as columns |
+|---|---|---|
+| `stand` frame 0 | 9.71 | **7.89** |
+| `walk` frame 2 | 9.98 | **7.77** |
+
+Read as rows the figure is a quarter taller than the body it is posing, because
+it has raised both arms straight over its head; read as columns it stands with
+its arms at its sides. The same holds for `run` and every other `mp0200` motion.
+
 ### The pivot cell's sign is forced
 
 The compact form stores a rotation about one axis: one cell is ±1, its row and
@@ -501,9 +528,9 @@ the bit set land inside the pool, and every one of the 93,811 entries reachable
 that way satisfies `a² + b² == 1`.
 
 **Bit clear — the basis pool**, ten bytes per entry: five values in **1.0.15**,
-not the 1.3.12 the geometry engine takes. The five are the whole of row 0 and
-the first two cells of row 1. Row 1's third cell is recovered, and row 2 is the
-cross product of the two.
+not the 1.3.12 the geometry engine takes. The five are the whole of the **first
+column** and the first two cells of the second. The second column's third cell
+is recovered, and the third column is the cross product of the two.
 
 All 6,963 constant references with the bit clear land inside the pool at a
 stride of ten, and all 6,963 have a unit vector in their first three values.

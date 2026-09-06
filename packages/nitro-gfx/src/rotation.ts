@@ -8,6 +8,26 @@ import type { Mat4 } from './matrix.ts'
  * is part of what confirms them — see `FORMAT.md`.
  */
 
+/**
+ * Place a cell of the 3x3.
+ *
+ * **The file's five stored values are a column and part of the next, not a row
+ * and part of the next.** The DS keeps a matrix column by column, and reading
+ * the same bytes as rows builds the transpose — which, a rotation being
+ * orthonormal, is its inverse. Nothing about the shape of the data says which
+ * way round it is: both readings are orthonormal, both have determinant one,
+ * and a model whose node rotations are all identity — as the slice's character
+ * is — poses identically either way.
+ *
+ * What says it is the animation. Read as rows, the character's idle raises its
+ * arms straight over its head and stands 9.71 units where its bind pose is
+ * 7.68; read as columns it stands at 7.89 with its arms at its sides. Every
+ * `mp0200` motion is nearer the bind pose's height read this way, which is what
+ * `FORMAT.md` records.
+ *
+ * So `row` and `col` here name the cell of the logical matrix, and the callers
+ * hand their stored values in transposed.
+ */
 function set(out: Mat4, row: number, col: number, value: number): void {
   out[col * 4 + row] = value
 }
@@ -29,14 +49,16 @@ export function pivotRotation(out: Mat4, pivot: number, a: number, b: number): v
   const col = pivot % 3
 
   for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) set(out, r, c, 0)
-  set(out, row, col, (row + col) % 2 === 0 ? 1 : -1)
+  // Stored column-major, so the selected cell and the block around it are
+  // placed transposed — see `set`.
+  set(out, col, row, (row + col) % 2 === 0 ? 1 : -1)
 
   const rows = [0, 1, 2].filter((r) => r !== row)
   const cols = [0, 1, 2].filter((c) => c !== col)
-  set(out, rows[0] as number, cols[0] as number, a)
-  set(out, rows[0] as number, cols[1] as number, b)
-  set(out, rows[1] as number, cols[0] as number, -b)
-  set(out, rows[1] as number, cols[1] as number, a)
+  set(out, cols[0] as number, rows[0] as number, a)
+  set(out, cols[1] as number, rows[0] as number, b)
+  set(out, cols[0] as number, rows[1] as number, -b)
+  set(out, cols[1] as number, rows[1] as number, a)
 }
 
 /**
@@ -86,10 +108,12 @@ export function basisRotation(
     r0[0] * r1[1] - r0[1] * r1[0],
   ]
 
-  for (let col = 0; col < 3; col++) {
-    set(out, 0, col, r0[col] as number)
-    set(out, 1, col, r1[col] as number)
-    set(out, 2, col, r2[col] as number)
+  // The stored triples are columns of the rotation, so they go down the
+  // matrix rather than across it.
+  for (let k = 0; k < 3; k++) {
+    set(out, k, 0, r0[k] as number)
+    set(out, k, 1, r1[k] as number)
+    set(out, k, 2, r2[k] as number)
   }
 }
 

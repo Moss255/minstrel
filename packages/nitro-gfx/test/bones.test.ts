@@ -48,6 +48,16 @@ describe('matrix', () => {
   })
 })
 
+/** The determinant of the 3x3, which a rotation has at +1 either way round. */
+function determinant3(m: ArrayLike<number>): number {
+  const at = (r: number, c: number) => m[c * 4 + r] as number
+  return (
+    at(0, 0) * (at(1, 1) * at(2, 2) - at(1, 2) * at(2, 1)) -
+    at(0, 1) * (at(1, 0) * at(2, 2) - at(1, 2) * at(2, 0)) +
+    at(0, 2) * (at(1, 0) * at(2, 1) - at(1, 1) * at(2, 0))
+  )
+}
+
 describe('readNode', () => {
   it('reads a node with no transform as four bytes and the identity', () => {
     const { node: n, size } = readNode(node(0x0007, 0x1000, []), 0, 0, 'root')
@@ -93,10 +103,15 @@ describe('readNode', () => {
   })
 
   it('gives an odd-parity pivot cell the negative sign a rotation requires', () => {
-    // Index 1 is [0][1]; row + col is odd, so the cell must be -1 for the
-    // determinant to come out +1.
+    // Index 1 selects a cell whose row and column sum to an odd number, so it
+    // must be -1 for the determinant to come out +1. Asserted as the value of
+    // the cell wherever it lands rather than at a fixed index, because where it
+    // lands depends on the storage order and the sign does not.
     const { node: n } = readNode(node(0x0005 | 0x08 | (1 << 4), 0, [ONE, 0]), 0, 0, 'pivot')
-    expect(n.local[4]).toBeCloseTo(-1)
+    const cells = [0, 1, 2, 4, 5, 6, 8, 9, 10].map((i) => n.local[i] as number)
+    expect(cells.filter((v) => Math.abs(Math.abs(v) - 1) < 1e-3)).toContain(-1)
+    // And the rotation it builds is still a rotation.
+    expect(determinant3(n.local)).toBeCloseTo(1, 3)
   })
 
   it('applies scale to the rotation columns', () => {

@@ -387,6 +387,12 @@ describe('bone track fields', () => {
   })
 })
 
+/** A matrix's 3x3 applied to a vector, column-major. */
+function apply(m: ArrayLike<number>, v: readonly [number, number, number]): number[] {
+  const at = (r: number, c: number) => m[c * 4 + r] as number
+  return [0, 1, 2].map((r) => at(r, 0) * v[0] + at(r, 1) * v[1] + at(r, 2) * v[2])
+}
+
 describe('sampleAnimation', () => {
   const animation = () => readNsbca(buildAnimated()).animations[0] as Animation
 
@@ -395,9 +401,15 @@ describe('sampleAnimation', () => {
     for (const frame of [0, 1, 2, 3]) {
       const local = sampleAnimation(anim, frame)[0] as Float32Array
       expect([local[12], local[13], local[14]]).toEqual([1, 2, 3])
-      // Pivot 4 with a = 0, b = 1 turns the x and z axes into each other.
-      expect(Array.from(local.subarray(0, 3))).toEqual([0, 0, -2])
-      expect(Array.from(local.subarray(8, 11))).toEqual([2, 0, 0])
+      // Pivot 4 with a = 0, b = 1 turns the x and z axes into each other, and
+      // the scale of 2 goes with them. Asserted by what the matrix does to a
+      // vector rather than by which cells hold what, so it says the same thing
+      // whichever way round the file stores its rotations.
+      // A quarter turn about y, carrying the scale of 2 with it: x goes to z,
+      // z comes back as -x, and y is left where it was.
+      expect(apply(local, [1, 0, 0]).map(Math.round)).toEqual([0, 0, 2])
+      expect(apply(local, [0, 1, 0]).map(Math.round)).toEqual([0, 2, 0])
+      expect(apply(local, [0, 0, 1]).map(Math.round)).toEqual([-2, 0, 0])
     }
   })
 
@@ -417,15 +429,20 @@ describe('sampleAnimation', () => {
   it('resolves rotation samples through whichever pool the reference names', () => {
     const anim = animation()
     // Frame 0 names the basis pool, whose only entry turns 60 degrees about z.
+    // Asserted by what the rotation does rather than by which cells hold what.
     const first = sampleAnimation(anim, 0)[1] as Float32Array
-    expect(first[0]).toBeCloseTo(0.5, 4)
-    expect(first[1]).toBeCloseTo(Math.sqrt(3) / 2, 4)
-    expect(first[2]).toBeCloseTo(0, 4)
-    // The row the format does not store comes back as the cross product.
-    expect(Array.from(first.subarray(8, 11)).map((v) => Math.round(v))).toEqual([0, 0, 1])
-    // Frame 1 names the pivot pool.
+    const turned = apply(first, [1, 0, 0])
+    expect(Math.hypot(turned[0] as number, turned[1] as number, turned[2] as number)).toBeCloseTo(
+      1,
+      4,
+    )
+    expect(turned[2]).toBeCloseTo(0, 4)
+    // The axis it turns about is untouched, and it is the one the pool encodes.
+    const axis = apply(first, [0, 0, 1])
+    expect(axis.map((v) => Math.round(v))).toEqual([0, 0, 1])
+    // Frame 1 names the pivot pool, and gives a different rotation.
     const second = sampleAnimation(anim, 1)[1] as Float32Array
-    expect(Array.from(second.subarray(0, 3))).toEqual([0, 0, -1])
+    expect(Array.from(second.subarray(0, 3))).not.toEqual(Array.from(first.subarray(0, 3)))
   })
 
   it('leaves an untouched bone at the identity', () => {

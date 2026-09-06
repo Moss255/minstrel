@@ -299,6 +299,47 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### Every rotation on the cartridge was inverted
+
+The heels pointed upwards, and rendering the figure to look at it showed why:
+posed, it raised both arms straight over its head.
+
+Nitro stores a rotation's cells **column by column**, the order the DS keeps a
+matrix in. They were being read as rows, which builds the transpose — and a
+rotation's transpose is its inverse. So every rotation in every model and every
+animation came out backwards.
+
+Almost nothing catches that. Both readings are orthonormal, both have
+determinant +1, and the strongest check in the harness — an animation's first
+frame against its model's own bind pose — **transposes on both sides at once**,
+so it agrees at 95% either way. It says the two readings match each other, not
+which one is right.
+
+What settles it is a character standing up. The player model is built in a
+T-pose 7.68 units tall and every one of its nodes is the identity, so its bind
+pose is identical either way. Posed, it should stand about as tall as it was
+built:
+
+| motion | read as rows | read as columns |
+|---|---|---|
+| `stand` frame 0 | 9.71 | **7.89** |
+| `walk` frame 2 | 9.98 | **7.77** |
+
+That is now the harness check: a posed figure stands within 15% of its bind
+pose's height. The test that used to assert the *opposite* — that the posed
+figure is a fifth taller, which is what a T-pose measured against a broken pose
+gives — was pinning the bug, and is replaced.
+
+One inconsistency had to be fixed with it. A node may store its 3x3 in full
+rather than compactly, and that path was reading row-major while the compact
+pools now read columns. With both on columns the bind-pose agreement returns to
+where it was, which is the check that they still describe the same rotation.
+
+**How it was found:** by rendering the posed figure to an image from Node — a
+flat-shaded orthographic rasteriser over the same `poseGeometry` output — and
+looking at it. Numbers had been saying for several rounds that something was
+0.2 units out; the picture said the arms were over the head.
+
 ### The legs did not reach the floor
 
 A character is placed by putting its model's origin at its feet. That assumes

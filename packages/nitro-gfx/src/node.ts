@@ -71,21 +71,24 @@ export function readNode(
       pivotRotation(local, (flags >> 4) & 0x0f, a, b)
       cursor += 4
     } else {
-      // Cell [0][0] came from the header word; the other eight follow in
-      // row-major order.
+      // Cell [0][0] came from the header word; the other eight follow, and
+      // they follow **column by column**, the order the DS keeps a matrix in.
+      // See `rotation.ts`: the compact pools store columns too, and the two
+      // have to agree — an animation's first frame lands back on its model's
+      // own pose for 95% of the cartridge's bones only when they do.
       local[0] = fx16ToFloat(firstRotationCell)
       const cells: [number, number][] = [
-        [0, 1],
-        [0, 2],
         [1, 0],
-        [1, 1],
-        [1, 2],
         [2, 0],
+        [0, 1],
+        [1, 1],
         [2, 1],
+        [0, 2],
+        [1, 2],
         [2, 2],
       ]
-      for (const [r, c] of cells) {
-        local[c * 4 + r] = fx16ToFloat(u16(data, cursor, `node[${index}].rot`))
+      for (const [row, col] of cells) {
+        local[col * 4 + row] = fx16ToFloat(u16(data, cursor, `node[${index}].rot`))
         cursor += 2
       }
     }

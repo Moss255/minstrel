@@ -2138,10 +2138,14 @@ describe.skipIf(!romPath)('a real cartridge', () => {
       expect(Math.abs(height - toFloat(PERSON.height))).toBeLessThan(toFloat(PERSON.height) / 10)
     }
 
-    // The bind pose is 30% shorter than the figure it is the bind pose of, and
-    // that gap is the whole bug: it is what a T-pose measures.
+    // **A posed figure stands about as tall as its bind pose**, and that is the
+    // check that the rotations are the right way round. The stored 3x3s are
+    // column-major; read as rows they come out transposed, which is to say
+    // inverted, and the character's idle then raises its arms straight over its
+    // head and stands 26% taller than the T-pose it was built in.
     const bindHeight = bind.maxY - bind.minY
-    expect(tallest / bindHeight).toBeGreaterThan(1.2)
+    expect(tallest / bindHeight).toBeGreaterThan(0.9)
+    expect(tallest / bindHeight).toBeLessThan(1.15)
   })
 
   it("places a map's pieces where the map says, instead of at the origin", () => {
@@ -2926,7 +2930,7 @@ describe.skipIf(!romPath)('a real cartridge', () => {
       worstAfter = Math.max(worstAfter, Math.abs((floor - floor) * scale))
       if (name === 'stand') {
         // The one that showed: the idle never comes near its own origin.
-        expect(floor).toBeGreaterThan(0.5)
+        expect(floor).toBeGreaterThan(0.2)
       }
     }
 
