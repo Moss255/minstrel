@@ -45,6 +45,7 @@ import {
   readNsbca,
   readNsbmd,
   readTex0,
+  resolvePose,
   resolveShapeStates,
   rotationFromRef,
   runDisplayList,
@@ -3002,6 +3003,123 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(loopFrames(walk)).toBe(walk.frameCount - 1)
     expect(loopFrames(stand)).toBe(stand.frameCount - 1)
     expect(loopFrames(walk)).toBeGreaterThan(0)
+  })
+
+  it('assembles a character with a head on it', () => {
+    // A character is not one model. `chara_pc.gp2` holds parts whose names say
+    // what they are, and **only the bodies and legs carry the shared rig**. The
+    // rest have a single bone of their own and sit at the origin until
+    // something hangs them off the figure — which is why a character built from
+    // the rigged parts alone ends at the neck.
+    const parts = new Map<string, Model>()
+    for (const asset of models) {
+      if (!asset.archive.endsWith('#chara_pc.gp2')) continue
+      try {
+        const model = readNsbmd(asset.bytes).models[0]
+        if (model?.numShapes) parts.set(asset.stem, model)
+      } catch {
+        // Reported by the model test.
+      }
+    }
+    expect(parts.size).toBeGreaterThan(700)
+
+    const kinds = new Map<string, { total: number; rigged: number }>()
+    for (const [name, model] of parts) {
+      const prefix = /^p_([a-z]+)/.exec(name)?.[1]
+      if (prefix === undefined) continue
+      const stat = kinds.get(prefix) ?? { total: 0, rigged: 0 }
+      stat.total++
+      if (model.nodes.length === 14) stat.rigged++
+      kinds.set(prefix, stat)
+    }
+    // Bodies and legs carry the rig; hair, faces, shoes and weapons do not.
+    expect(kinds.get('b')?.rigged).toBe(kinds.get('b')?.total)
+    expect(kinds.get('p')?.rigged).toBe(kinds.get('p')?.total)
+    for (const prefix of ['h', 'f', 's', 'w']) {
+      expect(kinds.get(prefix)?.rigged).toBe(0)
+      expect(kinds.get(prefix)?.total).toBeGreaterThan(10)
+    }
+
+    const motions: Animation[] = []
+    for (const asset of animations) {
+      if (!asset.archive.includes('#chara_mp.gp2#')) continue
+      const pack = asset.archive.slice(asset.archive.lastIndexOf('#') + 1)
+      if (!pack.startsWith('mp0200')) continue
+      try {
+        motions.push(...readNsbca(asset.bytes).animations)
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+    const stand = motions.find((m) => m.name === 'stand') as Animation
+    expect(stand).toBeDefined()
+
+    const named = [...parts.keys()].sort()
+    const firstOf = (prefix: string, rigged: boolean) =>
+      named.find((name) => {
+        if (!name.startsWith(`p_${prefix}`) || name.startsWith('p_test')) return false
+        const model = parts.get(name) as Model
+        return rigged ? model.nodes.length === 14 : model.nodes.length < 14
+      })
+    const body = parts.get(firstOf('b', true) as string) as Model
+    const legs = parts.get(firstOf('p', true) as string) as Model
+    const face = parts.get(firstOf('f', false) as string) as Model
+    expect(body).toBeDefined()
+    expect(legs).toBeDefined()
+    expect(face).toBeDefined()
+
+    const posed = (model: Model) => {
+      const local = sampleAnimation(stand, 0)
+      const nodes: NodeTransform[] = model.nodes.map((node, i) =>
+        local[i] ? { ...node, local: local[i] as Mat4 } : node,
+      )
+      const stacks = model.pose(nodes)
+      return measureBounds(
+        model.shapes.map((_, shape) =>
+          poseGeometry(
+            model.geometry(shape),
+            stacks[shape] ?? (model.shapeMatrices[shape] as Mat4[]),
+          ),
+        ),
+      )
+    }
+    const rigged = { body: posed(body), legs: posed(legs) }
+    // Body and legs meet at the waist and together make a headless figure.
+    expect(rigged.legs.minY).toBeLessThan(rigged.body.minY)
+    expect(rigged.body.minY).toBeLessThan(rigged.legs.maxY)
+    const neck = rigged.body.maxY
+
+    // The head bone sits at the top of the body.
+    const local = sampleAnimation(stand, 0)
+    const nodes: NodeTransform[] = body.nodes.map((node, i) =>
+      local[i] ? { ...node, local: local[i] as Mat4 } : node,
+    )
+    const headIndex = body.nodes.findIndex((node) => node.name === 'head')
+    expect(headIndex).toBeGreaterThanOrEqual(0)
+    const at = resolvePose(body.renderCommands, nodes).world[headIndex] as Mat4
+    // Near the top of the body rather than exactly at it: a body may carry a
+    // hood or a high collar that reaches above the bone the head hangs from.
+    const shoulders = rigged.body.minY + (neck - rigged.body.minY) * 0.7
+    expect(at[13] as number).toBeGreaterThan(shoulders)
+    expect(at[13] as number).toBeLessThan(neck + 1)
+
+    // A face put through that bone lands on the neck, and takes the figure to a
+    // head that is a fifth of its height — the proportion this game draws.
+    const raw = measureBounds(
+      face.shapes.map((_, shape) =>
+        poseGeometry(face.geometry(shape), face.shapeMatrices[shape] as Mat4[]),
+      ),
+    )
+    const placed = {
+      minY: raw.minY + (at[13] as number),
+      maxY: raw.maxY + (at[13] as number),
+    }
+    // It sits above the shoulders and reaches past the waist of the body.
+    expect(placed.minY).toBeGreaterThan(rigged.legs.maxY)
+    expect(placed.maxY).toBeGreaterThan(shoulders)
+    const whole = Math.max(placed.maxY, neck) - rigged.legs.minY
+    expect((placed.maxY - placed.minY) / whole).toBeGreaterThan(0.1)
+    expect((placed.maxY - placed.minY) / whole).toBeLessThan(0.35)
   })
 
   it('produces the container magic each member extension implies', () => {

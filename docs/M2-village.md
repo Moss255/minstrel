@@ -340,6 +340,41 @@ flat-shaded orthographic rasteriser over the same `poseGeometry` output — and
 looking at it. Numbers had been saying for several rounds that something was
 0.2 units out; the picture said the arms were over the head.
 
+### The character had no head, because a head is not part of the rig
+
+Rendering the figure's top showed a collar and a small neck tab and nothing
+above it.
+
+A character is not one model. `chara_pc.gp2` holds **796 parts** whose names say
+what they are, and the vocabulary reads straight off the counts:
+
+| prefix | count | | prefix | count |
+|---|---|---|---|---|
+| `p_w` weapon | 200 | | `p_p` legs | 79 |
+| `p_b` body | 192 | | `p_s` shoes | 35 |
+| `p_m` | 142 | | `p_f` face | 24 |
+| `p_h` hair | 121 | | `p_test` | 3 |
+
+**Only the bodies and legs carry the shared fourteen-bone rig** — 274 of the
+796. Those pose themselves and, put together, make a figure that ends at the
+neck. Everything else carries a single bone of its own and sits at the origin
+until something hangs it off the skeleton.
+
+So the head is an attachment. The rig's `head` bone sits at y 16.27 on a body
+reaching 16.57, and a face put through that bone lands at 15.94 to 20.26 — on
+the neck, and a fifth of the finished figure's height, which is the proportion
+this game draws.
+
+The `p_test` parts that had been standing in for a character are skipped now.
+They are a **half-scale test figure** — 7.68 units where a real body reaches
+16.57 — and they have no head at all, which is why one could not be found on
+them.
+
+Which parts make the Hero is still not known, so the viewer takes the first of
+each kind by name: arbitrary, reproducible, and a complete figure. Shoes and
+weapons are not placed — a shoe belongs to two feet and a weapon to a hand that
+is holding it, and neither is established.
+
 ### The walk held one pose twice a cycle
 
 Rendering the nine frames of the walk side by side, with a ground line to judge

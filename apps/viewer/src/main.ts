@@ -29,6 +29,7 @@ import {
   readNsbca,
   readNsbmd,
   readTex0,
+  resolvePose,
   sampleAnimation,
   type TextureSet,
   textureNameForMaterial,
@@ -120,9 +121,39 @@ const manifestsByArchive = new Map<string, MapManifest>()
  * the preset that names his is not decoded. The three `p_test` models are whole
  * figures on the same rig, so they stand in.
  */
+/** Every character part read, by name. */
+const characterPartsByName = new Map<string, Model>()
+/** The rigged parts of the chosen figure: they pose themselves. */
 const characterParts: Model[] = []
+/** Its unrigged parts, each with the bone it hangs from. */
+const characterAttachments: { model: Model; bone: string }[] = []
 const characterMotions = new Map<string, Animation>()
-const STAND_IN_PARTS = /\/chara_pc\.gp2\/p_test\d+\.nsbmd$/
+/**
+ * The parts a character is assembled from, and what each kind is.
+ *
+ * A character is not one model. `chara_pc.gp2` holds 796 parts whose names say
+ * what they are — 192 `p_b` bodies, 200 `p_w` weapons, 142 `p_m`, 121 `p_h`
+ * hair, 79 `p_p` legs, 35 `p_s` shoes, 24 `p_f` faces — and **only the bodies
+ * and legs carry the shared fourteen-bone rig**, 274 parts of the 796. Those
+ * pose themselves.
+ *
+ * The rest carry a single bone of their own and sit at the origin until
+ * something puts them on the figure. That is why the character had no head: the
+ * rigged parts are a body and a pair of legs, and they end at the neck.
+ */
+const CHARACTER_PARTS = /\/chara_pc\.gp2\/(p_[a-z]+\w*)\.nsbmd$/
+/**
+ * Which bone an unrigged part hangs from, by what its name says it is.
+ *
+ * **INFERRED from the naming and confirmed by where it lands.** The rig's `head`
+ * bone sits at y 16.27 on a body reaching 16.57, and a face put through it lands
+ * at 15.94 to 20.26 — on the neck, at a fifth of the figure's height, which is
+ * the proportion this game draws.
+ *
+ * Shoes (`p_s`) and weapons (`p_w`) are not placed: a shoe belongs to two feet
+ * and a weapon to a hand that is holding it, and neither is established.
+ */
+const ATTACHMENT_BONES: Record<string, string> = { h: 'head', f: 'head' }
 /**
  * The motion packs a character draws on.
  *
@@ -219,10 +250,11 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
     const payload = tryDecompressLz10(bytes) ?? bytes
 
     if (isNsbmd(payload)) {
-      if (STAND_IN_PARTS.test(path)) {
+      const named = CHARACTER_PARTS.exec(path)
+      if (named) {
         try {
           const part = readNsbmd(payload).models[0]
-          if (part?.numShapes) characterParts.push(part)
+          if (part?.numShapes) characterPartsByName.set(named[1] as string, part)
         } catch {
           // A part that will not read simply is not drawn.
         }
@@ -295,7 +327,9 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   animationsByArchive.clear()
   manifestsByArchive.clear()
   membersByArchive.clear()
+  characterPartsByName.clear()
   characterParts.length = 0
+  characterAttachments.length = 0
   characterMotions.clear()
   loopLengths.clear()
   const fs = readNitroFs(rom)
@@ -304,6 +338,8 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
     if (needle && !file.path.toLowerCase().includes(needle)) continue
     visit(fs.read(file), file.path, 0)
   }
+
+  chooseCharacter()
 
   // A map is worth offering as one thing. Its pieces stay in the list too,
   // because looking at one of them on its own is often what you want.
@@ -530,6 +566,42 @@ interface Walker {
 }
 
 /**
+ * Pick one figure out of the cartridge's 796 parts.
+ *
+ * **Which parts make the Hero is not known** — the preset table has not been
+ * found — so this takes the first of each kind by name, which is arbitrary but
+ * reproducible, and gives a complete figure: a body and legs that carry the rig
+ * and pose themselves, and a face and hair hung from the `head` bone.
+ *
+ * The `p_test` parts are skipped. They are a half-scale test figure — 7.68
+ * units where a real body reaches 16.57 — and they have no head at all.
+ */
+function chooseCharacter(): void {
+  characterParts.length = 0
+  characterAttachments.length = 0
+  const names = [...characterPartsByName.keys()].sort()
+  const rig = characterMotions.get('walk')?.boneCount ?? 14
+
+  const firstOf = (prefix: string, rigged: boolean) =>
+    names.find((name) => {
+      if (!name.startsWith(`p_${prefix}`) || name.startsWith('p_test')) return false
+      const model = characterPartsByName.get(name) as Model
+      return rigged ? model.nodes.length === rig : model.nodes.length < rig
+    })
+
+  for (const prefix of ['b', 'p']) {
+    const name = firstOf(prefix, true)
+    const model = name === undefined ? undefined : characterPartsByName.get(name)
+    if (model) characterParts.push(model)
+  }
+  for (const [prefix, bone] of Object.entries(ATTACHMENT_BONES)) {
+    const name = firstOf(prefix, false)
+    const model = name === undefined ? undefined : characterPartsByName.get(name)
+    if (model) characterAttachments.push({ model, bone })
+  }
+}
+
+/**
  * The stand-in parts worth drawing.
  *
  * The three `p_test` parts are not three pieces of one figure. `p_test0` is a
@@ -588,17 +660,25 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
   const body = usefulParts().flatMap(piecesOf)
   if (body.length === 0) return { body, scale: 1 }
 
-  const heightOf = (stacks: Map<Model, Mat4[][]>): number => {
-    const bounds = measureBounds(
-      body.map((piece) =>
-        poseGeometry(
-          piece.geometry,
-          stacks.get(piece.model)?.[piece.shape] ??
-            piece.model.shapeMatrices[piece.shape] ??
-            piece.model.matrices,
-        ),
+  const heightOf = (stacks: Map<Model, Mat4[][]>, motion?: Animation, frame = 0): number => {
+    const drawn = body.map((piece) =>
+      poseGeometry(
+        piece.geometry,
+        stacks.get(piece.model)?.[piece.shape] ??
+          piece.model.shapeMatrices[piece.shape] ??
+          piece.model.matrices,
       ),
     )
+    // The head counts towards the height, so it has to be measured with the
+    // rest rather than added afterwards.
+    for (const { model, bone } of characterAttachments) {
+      const at = boneWorld(motion, frame, bone)
+      if (!at) continue
+      for (let shape = 0; shape < model.numShapes; shape++) {
+        drawn.push(attachedGeometry(model, shape, at))
+      }
+    }
+    const bounds = measureBounds(drawn)
     return bounds.maxY - bounds.minY
   }
 
@@ -609,7 +689,7 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
   let tallest = 0
   if (upright) {
     for (let frame = 0; frame < loopLengthOf(upright); frame++) {
-      tallest = Math.max(tallest, heightOf(characterStacks(upright, frame)))
+      tallest = Math.max(tallest, heightOf(characterStacks(upright, frame), upright, frame))
     }
   }
   // No motion read: the bind pose is all there is, and it is better than
@@ -632,6 +712,54 @@ function loopLengthOf(motion: Animation): number {
   const frames = loopFrames(motion)
   loopLengths.set(motion, frames)
   return frames
+}
+
+/**
+ * Where a rig bone is, in the space the posed parts are drawn in.
+ *
+ * The rigged parts all carry the same skeleton, so any of them answers for all
+ * of them — and it is what an unrigged part needs to be hung from.
+ */
+function boneWorld(motion: Animation | undefined, frame: number, bone: string): Mat4 | undefined {
+  const part = characterParts[0]
+  if (!part) return undefined
+  const index = part.nodes.findIndex((node) => node.name === bone)
+  if (index < 0) return undefined
+  let nodes: readonly NodeTransform[] = part.nodes
+  if (motion && motion.boneCount === part.nodes.length) {
+    const local = sampleAnimation(motion, frame)
+    nodes = part.nodes.map((node, i) => {
+      const posed = local[i]
+      return posed ? { ...node, local: posed } : node
+    })
+  }
+  return resolvePose(part.renderCommands, nodes).world[index]
+}
+
+/** One shape of an unrigged part, put where its bone is. */
+function attachedGeometry(model: Model, shape: number, at: Mat4): Geometry {
+  const geometry = poseGeometry(model.geometry(shape), model.shapeMatrices[shape] ?? model.matrices)
+  return {
+    ...geometry,
+    vertices: geometry.vertices.map((v) => ({
+      ...v,
+      x:
+        (at[0] as number) * v.x +
+        (at[4] as number) * v.y +
+        (at[8] as number) * v.z +
+        (at[12] as number),
+      y:
+        (at[1] as number) * v.x +
+        (at[5] as number) * v.y +
+        (at[9] as number) * v.z +
+        (at[13] as number),
+      z:
+        (at[2] as number) * v.x +
+        (at[6] as number) * v.y +
+        (at[10] as number) * v.z +
+        (at[14] as number),
+    })),
+  }
 }
 
 /** Every part's matrix stacks for one frame of a motion, or its bind pose. */
@@ -1183,14 +1311,32 @@ function characterPieces(walker: Walker, motion: Animation | undefined): Piece[]
   const atY = toFloat(walker.state.y)
   const atZ = toFloat(walker.state.z)
 
-  const stacks = characterStacks(motion, Math.floor(walker.motionFrame))
-  const posedPieces = walker.body.map((piece) => ({
+  const frame = Math.floor(walker.motionFrame)
+  const stacks = characterStacks(motion, frame)
+  const posedPieces: { piece: Piece_; posed: Geometry }[] = walker.body.map((piece) => ({
     piece,
     posed: poseGeometry(
       piece.geometry,
       stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices,
     ),
   }))
+  // A head is not part of the rig; it hangs from it.
+  for (const { model, bone } of characterAttachments) {
+    const at = boneWorld(motion, frame, bone)
+    if (!at) continue
+    for (let shape = 0; shape < model.numShapes; shape++) {
+      const material = model.materials[model.shapeMaterials[shape] ?? -1]
+      posedPieces.push({
+        piece: {
+          model,
+          shape,
+          geometry: model.geometry(shape),
+          texture: material ? textureFor(material) : undefined,
+        },
+        posed: attachedGeometry(model, shape, at),
+      })
+    }
+  }
 
   /**
    * Stand the figure on the ground **this frame**, not once for the motion.
