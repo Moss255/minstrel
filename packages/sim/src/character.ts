@@ -233,18 +233,29 @@ function pushOutOfWalls(
 /**
  * A character the size of a person, in the cartridge's units.
  *
- * A world unit is 4096, and a map is a handful of units across, so a person is
- * a fraction of one. These are a starting point tuned by eye rather than the
- * game's own constants: those live in code this repository does not read, and
- * inventing numbers and calling them original would be worse than saying so.
+ * **The height is derived, not guessed.** Every interior in the slice's village
+ * has a ceiling at almost exactly two units — 1.97 to 2.06 across nine rooms —
+ * and a room is about twice a person, which puts a person at one unit. The
+ * village outside is twelve units across, so it is a dozen people wide, which
+ * is the right order for a DS town.
+ *
+ * The rest follow from that height at ordinary human proportions: a little over
+ * a fifth of it as a radius, a third as the tallest step. Gravity is per tick
+ * squared at 60Hz, so 0.004 is about fourteen units per second per second —
+ * brisker than the real thing, as games generally are.
+ *
+ * These are **not** the game's own constants, which live in code this
+ * repository does not read. What is derived is the scale they sit at; the
+ * proportions within it are tuned by eye, and they are gathered here so one
+ * edit replaces them when the real numbers turn up.
  */
 export const PERSON: CharacterShape = {
-  radius: fx32(Math.round(0.08 * FX32_ONE)),
-  height: fx32(Math.round(0.35 * FX32_ONE)),
-  stepUp: fx32(Math.round(0.12 * FX32_ONE)),
+  height: fx32(Math.round(1.0 * FX32_ONE)),
+  radius: fx32(Math.round(0.22 * FX32_ONE)),
+  stepUp: fx32(Math.round(0.3 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
-  gravity: fx32(Math.round(0.012 * FX32_ONE)),
-  terminalSpeed: fx32(Math.round(0.35 * FX32_ONE)),
-  snapDown: fx32(Math.round(0.06 * FX32_ONE)),
+  gravity: fx32(Math.round(0.004 * FX32_ONE)),
+  terminalSpeed: fx32(Math.round(0.3 * FX32_ONE)),
+  snapDown: fx32(Math.round(0.15 * FX32_ONE)),
 }

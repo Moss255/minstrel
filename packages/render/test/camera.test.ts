@@ -1,10 +1,13 @@
 import { fromInt, fx32 } from '@vesper/fixed'
 import { describe, expect, it } from 'vitest'
 import {
+  applyStyle,
   DS_ASPECT,
   DS_VERTICAL_FOV,
   followCamera,
   frustumAt,
+  INDOORS,
+  OUTDOORS,
   perspective,
   updateFollowCamera,
   viewMatrix,
@@ -175,5 +178,47 @@ describe('a camera with no world', () => {
     expect(() =>
       updateFollowCamera(camera, { x: fx32(0), y: fx32(0), z: fx32(0) }, 1 / 60),
     ).not.toThrow()
+  })
+})
+
+describe('the camera the game actually uses', () => {
+  it('looks down within the range the game does', () => {
+    // Between 25 and 40 degrees, depending on context: outdoors nearer the
+    // shallow end, indoors nearer the steep one.
+    const degrees = (radians: number) => (radians * 180) / Math.PI
+    expect(degrees(OUTDOORS.pitch)).toBeGreaterThanOrEqual(25)
+    expect(degrees(OUTDOORS.pitch)).toBeLessThanOrEqual(40)
+    expect(degrees(INDOORS.pitch)).toBeGreaterThan(degrees(OUTDOORS.pitch))
+  })
+
+  it('tucks in closer indoors than out', () => {
+    expect(INDOORS.distance).toBeLessThan(OUTDOORS.distance)
+    expect(INDOORS.maxPitch).toBeGreaterThan(OUTDOORS.maxPitch)
+  })
+
+  it('leaves the character small in the frame', () => {
+    // A party of four in a line plus a radius of ground around them: the
+    // character should be a small part of the picture, not fill it.
+    const camera = followCamera(OUTDOORS, 1)
+    const { halfHeight } = frustumAt(camera.distance, 16 / 9)
+    // One character height against the visible height at that distance.
+    expect(1 / (halfHeight * 2)).toBeLessThan(0.4)
+  })
+
+  it('scales its framing with the character', () => {
+    const small = followCamera(OUTDOORS, 1)
+    const large = followCamera(OUTDOORS, 2)
+    expect(large.distance).toBeCloseTo(small.distance * 2, 6)
+    expect(large.height).toBeCloseTo(small.height * 2, 6)
+  })
+
+  it('re-styles without losing where it is looking', () => {
+    const camera = followCamera(OUTDOORS, 1)
+    camera.yaw = 1.23
+    camera.focus = [3, 4, 5]
+    const indoors = applyStyle(camera, INDOORS, 1)
+    expect(indoors.yaw).toBe(1.23)
+    expect(indoors.focus).toEqual([3, 4, 5])
+    expect(indoors.distance).toBe(INDOORS.distance)
   })
 })

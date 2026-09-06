@@ -116,6 +116,13 @@ The camera never shows *less* of the world than the hardware did: on a wide
 screen the vertical framing is held and the view widens; on a tall one the
 horizontal framing is held and it heightens.
 
+It also frames like the game does: pulled back and raised, the character small
+and low, and — walking under a roof — tucked in, tilted further down, and with
+whatever stands between it and the character no longer drawn. That last part is
+geometric rather than a guess about which piece is a roof, and the property it
+has to satisfy is that it never removes the ground you are standing on, checked
+over 485 maps from eight angles each.
+
 **Reference mode** renders at the DS's own 256×192 and 5-bit colour, then scales
 that up by a whole number so each hardware pixel stays a visible block. It is
 the validation tool: a 1080p render with 8-bit colour hides exactly the

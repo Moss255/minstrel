@@ -30,7 +30,17 @@ import {
   textureNameForMaterial,
 } from '@vesper/nitro-gfx'
 import { isNarc, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
-import { followCamera, updateFollowCamera } from '@vesper/render'
+import {
+  applyStyle,
+  type Box,
+  cameraEye,
+  covered,
+  followCamera,
+  INDOORS,
+  OUTDOORS,
+  occluders,
+  updateFollowCamera,
+} from '@vesper/render'
 import {
   type CharacterState,
   type CollisionWorld,
@@ -167,7 +177,7 @@ try {
 // hardware's size and precision.
 const referenceTarget = new ReferenceTarget(renderer.context)
 
-const camera: Camera = followCamera()
+const camera: Camera = followCamera(OUTDOORS, toFloat(PERSON.height))
 let wireframe = false
 let referenceMode = false
 let entries: Entry[] = []
@@ -451,6 +461,8 @@ interface Walker {
   /** The character's pieces, and how much to shrink them into the world. */
   readonly body: Piece_[]
   readonly scale: number
+  /** Whether there is a roof overhead, which is what picks the camera style. */
+  inside: boolean
 }
 
 /**
@@ -479,8 +491,14 @@ let walker: Walker | undefined
 let lastUpload = { vertices: 0, triangles: 0, textured: 0 }
 /** The scene without the character, kept so only the character is rebuilt. */
 let mapPieces: Piece[] = []
+/** One box per map piece, measured once, for deciding what is in the way. */
+let mapBoxes: Box[] = []
 /** Movement per tick, about three world units a second at 60Hz. */
 const WALK_SPEED = Math.round(0.05 * FX32_ONE)
+/** How much clear air there has to be past a piece for it to count as in the way. */
+const CLEARANCE = toFloat(PERSON.radius)
+/** How many map pieces the last frame left out, for the overlay. */
+let hiddenPieces = 0
 const TICK_MS = 1000 / 60
 
 let shown: Shown | undefined
@@ -581,6 +599,7 @@ function select(index: number): void {
   })
 
   mapPieces = drawn
+  mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
   const uploaded = renderer.upload(drawn)
   lastUpload = uploaded
   // Frame on the bind pose, so the camera does not jump about as an animation
@@ -622,7 +641,9 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
         (walker.state.grounded ? '' : ' (falling)') +
         (walker.body.length > 0
           ? ` · ${characterParts.length} character parts, stand-in`
-          : ' · no character loaded (scan the whole cartridge to get one)')
+          : ' · no character loaded (scan the whole cartridge to get one)') +
+        (walker.inside ? ' · indoors' : '') +
+        (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : '')
       : shown.world
         ? 'press G to walk this map'
         : undefined,
@@ -693,6 +714,7 @@ function startWalking(): void {
     motionFrame: 0,
     body,
     scale,
+    inside: false,
   }
 }
 
@@ -789,14 +811,35 @@ function walk(elapsedMs: number): void {
   const motion = characterMotions.get(moved ? 'walk' : 'stand')
   if (motion && motion.frameCount > 0) walker.motionFrame %= motion.frameCount
 
-  // The camera watches the character rather than the map's centre, trailing
-  // it and coming forward when a building is in the way.
-  updateFollowCamera(camera, walker.state, elapsedMs / 1000, shown.world, PERSON)
+  // Indoors the camera comes in and tilts further down. What counts as indoors
+  // is whether there is a roof over the character's head, checked as they walk,
+  // so the camera tucks in on the way through a door rather than on a guess
+  // about how big the map is.
+  const feet: [number, number, number] = [
+    toFloat(walker.state.x),
+    toFloat(walker.state.y),
+    toFloat(walker.state.z),
+  ]
+  const inside = covered(mapBoxes, feet, toFloat(PERSON.height))
+  if (inside !== walker.inside) {
+    walker.inside = inside
+    Object.assign(camera, applyStyle(camera, inside ? INDOORS : OUTDOORS, toFloat(PERSON.height)))
+  }
+
+  // The camera watches the character rather than the map's centre. The world
+  // is deliberately not passed: the camera stays where it is and the roof comes
+  // off instead, which is what the game does and the only thing that works in a
+  // room, where there is nowhere to pull the camera to.
+  updateFollowCamera(camera, walker.state, elapsedMs / 1000)
 
   // Redraw the scene with the character in it. The map's pieces are already
-  // posed; only the character changes from frame to frame.
+  // posed; only the character changes from frame to frame, and which pieces
+  // stand between the camera and the character.
   if (walker.body.length > 0) {
-    lastUpload = renderer.upload([...mapPieces, ...characterPieces(walker, motion)])
+    const hidden = new Set(occluders(mapBoxes, cameraEye(camera), camera.focus, CLEARANCE))
+    const visible = mapPieces.filter((_, index) => !hidden.has(index))
+    hiddenPieces = hidden.size
+    lastUpload = renderer.upload([...visible, ...characterPieces(walker, motion)])
   }
   describe(lastUpload)
 }

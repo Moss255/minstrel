@@ -94,19 +94,95 @@ export interface FollowCamera {
   readonly maxPitch: number
 }
 
-/** A camera set up for walking around a village. */
-export function followCamera(): FollowCamera {
+/**
+ * How the game's own camera behaves, as described by someone who has played it.
+ *
+ * Not derived from the cartridge — the camera's constants live in code this
+ * repository does not read — but not invented either. Recorded here because the
+ * shape of the behaviour is what matters and it is easy to get wrong by
+ * defaulting to the conventions of a console game of the same era:
+ *
+ * - A third-person chase camera, but **pulled back further and raised higher**
+ *   than that era would suggest, because the DS's screen is small and the
+ *   player needs to see wandering monsters before they see the party.
+ * - Behind and above, angled down by roughly **25 to 40 degrees**. True
+ *   perspective, but the elevation gives it a three-quarters, near-isometric
+ *   feel.
+ * - The character sits **centred and low in the frame and occupies little of
+ *   it**, with the horizon visible in the upper part of the screen outdoors.
+ *   The framing holds a party of four in a line plus a good radius of ground.
+ * - Free, smooth orbit about the character. No snapping to increments.
+ * - Indoors and in tight streets it **tucks in closer and tilts down more
+ *   steeply**, towards overhead, so it does not push through walls.
+ * - The field and the towns are one continuous world at character scale, so the
+ *   camera does not change behaviour between them. There is no miniature
+ *   overworld to switch to.
+ */
+export interface CameraStyle {
+  /** How far back, in character heights. */
+  readonly distance: number
+  /** Downward tilt, in radians. */
+  readonly pitch: number
+  /** How far up the character to look, as a fraction of its height. */
+  readonly height: number
+  readonly minPitch: number
+  readonly maxPitch: number
+}
+
+/** Outdoors: pulled back, and the character small in the frame. */
+export const OUTDOORS: CameraStyle = {
+  distance: 4.5,
+  pitch: (32 * Math.PI) / 180,
+  height: 0.8,
+  minPitch: (15 * Math.PI) / 180,
+  maxPitch: (60 * Math.PI) / 180,
+}
+
+/** Indoors and in tight streets: closer in, and looking down more steeply. */
+export const INDOORS: CameraStyle = {
+  distance: 3,
+  pitch: (45 * Math.PI) / 180,
+  height: 0.7,
+  minPitch: (25 * Math.PI) / 180,
+  maxPitch: (75 * Math.PI) / 180,
+}
+
+/**
+ * A camera in one of the styles above, sized to the character it follows.
+ *
+ * Distance and look-at height are given in character heights rather than world
+ * units, so the framing survives the character's dimensions being revised —
+ * which they have been once already.
+ */
+export function followCamera(style: CameraStyle = OUTDOORS, characterHeight = 1): FollowCamera {
   return {
     focus: [0, 0, 0],
     yaw: 0.7,
-    pitch: 0.35,
-    distance: 2.5,
-    actualDistance: 2.5,
-    height: 0.3,
-    follow: 8,
-    minPitch: -0.2,
-    maxPitch: 1.2,
+    pitch: style.pitch,
+    distance: style.distance * characterHeight,
+    actualDistance: style.distance * characterHeight,
+    height: style.height * characterHeight,
+    follow: 6,
+    minPitch: style.minPitch,
+    maxPitch: style.maxPitch,
   }
+}
+
+/** Re-style a camera in place, keeping where it is looking and which way. */
+export function applyStyle(
+  camera: FollowCamera,
+  style: CameraStyle,
+  characterHeight = 1,
+): FollowCamera {
+  const restyled: FollowCamera = {
+    ...camera,
+    pitch: style.pitch,
+    distance: style.distance * characterHeight,
+    height: style.height * characterHeight,
+    minPitch: style.minPitch,
+    maxPitch: style.maxPitch,
+  }
+  return restyled
 }
 
 /**
@@ -117,9 +193,12 @@ export function followCamera(): FollowCamera {
  * fraction is per second and converted with an exponential. `follow` is then a
  * rate rather than a magic number that only works at one frame rate.
  *
- * `world` is optional. Given one, the camera will not sit through a wall: it
- * comes forward to just in front of whatever is between it and the character,
- * which is what stops a building swallowing the view when you walk behind it.
+ * `world` is optional, and mostly should be left out. Given one, the camera
+ * comes forward to just in front of whatever is between it and the character.
+ * That is the usual answer to a building swallowing the view, but it is not
+ * this game's: the game keeps the camera where it is and stops drawing what is
+ * in the way — see {@link occludes} — which is the only answer that works in a
+ * room, where there is nowhere to pull the camera to.
  */
 export function updateFollowCamera(
   camera: FollowCamera,
@@ -166,6 +245,13 @@ export function updateFollowCamera(
 }
 
 /** Where the camera sits, given how far back it is. */
+export function cameraEye(
+  camera: FollowCamera,
+  distance = camera.actualDistance,
+): [number, number, number] {
+  return eyeOf(camera, distance)
+}
+
 function eyeOf(camera: FollowCamera, distance: number): [number, number, number] {
   const cosPitch = Math.cos(camera.pitch)
   return [

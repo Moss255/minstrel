@@ -5,8 +5,8 @@ Against the milestone's own list.
 | M2 task | status |
 |---|---|
 | Map assembly and collision | **both done** |
-| Character controller with original movement constants | **done**, with constants tuned by eye — see below |
-| Camera behaviour, extended for widescreen | **done**, with the field of view tuned by eye |
+| Character controller with original movement constants | **done**; the character's size is measured off the rooms, the rest tuned — see below |
+| Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
 | Interior/exterior transitions, doors, stairs | not started; the link data is not located |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
 
@@ -141,18 +141,25 @@ world** — no tunnelling, no position the format cannot hold. About two thirds 
 those walks travel somewhere; the rest are stopped by a wall or go over an edge
 and fall, which is the world working rather than the controller failing.
 
-The viewer will walk an assembled map: press **G**, then WASD. There is no
-character model yet, so the camera follows the feet and the overlay reports
-where they are. Movement is relative to the view, which is what a third-person
-camera needs.
+The viewer will walk an assembled map: press **G**, then WASD. Movement is
+relative to the view, which is what a third-person camera needs.
 
-### The constants are tuned by eye
+### How big a person is
 
-`PERSON` — radius, height, step-up height, slope limit, gravity — is a starting
-point, not the game's own numbers. Those live in code this repository does not
-read. Inventing values and presenting them as original would be worse than
-saying so, which is why they are named as tuned and kept in one exported
-constant that is easy to replace when the real ones turn up.
+The controller's first `PERSON` was about a third of the right size, which made
+the collision and the camera both look wrong before anything else could be
+judged. The fix was to stop guessing and measure the rooms: every Angel Falls
+interior has its ceiling between **1.97 and 2.06 units** across nine rooms, and
+the village exterior is 11.98 by 9.09. A room is about twice a person, so a
+person is about **1.0 units** — and the character model is then scaled to that
+height rather than to a number, so the model and the collision capsule agree by
+construction.
+
+The rest of `PERSON` — radius, step-up height, slope limit, gravity — is still a
+starting point rather than the game's own numbers. Those live in code this
+repository does not read. Inventing values and presenting them as original would
+be worse than saying so, which is why they are kept in one exported constant
+that is easy to replace when the real ones turn up.
 
 ## The camera
 
@@ -174,9 +181,66 @@ invariant has a test at eight aspect ratios from 1:2 to 4:1.
 The follow camera trails the character rather than being welded to it, and the
 lag is a rate per second rather than a fraction per frame — a fraction per frame
 makes the camera tighter on a fast machine and looser on a slow one, so the game
-would feel different depending on the hardware. It also comes forward when a
-building stands between it and the character, using the same "too steep to stand
-on" test that walking uses to decide what a wall is.
+would feel different depending on the hardware.
+
+### How the game frames it
+
+The first attempt at this was wrong in the ordinary way: a chase camera of the
+console-RPG kind, close in and shallow, coming forward when something got in the
+way. The game does something else, and it is recorded in `camera.ts` in the
+words it was described in rather than paraphrased into constants:
+
+- Pulled **back further and raised higher** than the era suggests, because the
+  screen is small and you must see wandering monsters before they see you.
+- Angled down **25 to 40 degrees**. True perspective, but the elevation gives it
+  a three-quarters, near-isometric feel.
+- The character sits **centred, low, and small in the frame** — the framing
+  holds a party of four in a line plus a good radius of ground.
+- Free, smooth orbit. No snapping to increments.
+- Indoors and in tight streets it **tucks in closer and tilts down further**.
+- Field and town are one continuous world at character scale, so the camera does
+  not change behaviour between them.
+
+Those become two styles, `OUTDOORS` and `INDOORS`, whose distance and look-at
+height are given **in character heights** rather than world units — so the
+framing survived the character's dimensions being revised, which they were.
+
+### Taking the roof off
+
+The last point is the one that changes the code rather than a constant. The game
+does not answer a building standing between the camera and the party by moving
+the camera; it stops drawing the building. Roofs come off as you walk in, and
+the near-side walls of a room are simply absent. Pulling the camera forward is
+the usual answer and it cannot work indoors, because there is nowhere to pull it
+to.
+
+`occludes` decides this geometrically — nothing on the cartridge marks a piece
+as a roof, and a rule that guessed from a name or a height would be inventing
+one. A piece is in the way if the segment from the eye to the character enters
+its box **and leaves again** before reaching them. That last clause is the whole
+trick: the ground the character is standing on is a box the segment *ends
+inside*, so it is never removed, and neither is terrain whose bounding box
+reaches up into a hill somewhere else on the map. Without it the rule deletes
+the world the moment the camera looks across a slope.
+
+Indoors is decided the same way, by fact rather than threshold: `covered` asks
+whether any piece's **underside** is above the character's head. The obvious
+proxy — a map's footprint, since a room is smaller than a village — cuts through
+a continuum, and the cartridge's maps measure 7, 10, 11, 12 and 13 units across
+with no gap to put a line in.
+
+Measured over 485 assembled maps, from eight camera angles each:
+
+| | |
+|---|---|
+| Pieces removed that the character was standing on | **0** |
+| Angles with something in the way, under a roof | 88.8% |
+| Angles with something in the way, in the open | 11.2% |
+| Share of a map's pieces removed | under 20% |
+
+The first row is the assertion the rule exists to satisfy. The gap between the
+second and third is the described behaviour: decisive indoors, occasional
+outdoors, which is what walking behind a building looks like.
 
 The reference mode benefits: rendering at 256x192 now goes through the same
 projection, so it is the hardware's framing by construction rather than a

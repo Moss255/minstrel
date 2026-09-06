@@ -302,12 +302,23 @@ describe('a badly shaped character', () => {
 })
 
 describe('PERSON', () => {
-  it('is sized for a map a handful of units across', () => {
-    // Sanity, not accuracy: the numbers are tuned by eye because the game's own
-    // constants live in code this repository does not read.
-    expect(toFloat(PERSON.radius)).toBeLessThan(0.5)
-    expect(toFloat(PERSON.height)).toBeLessThan(1)
-    expect(toFloat(PERSON.stepUp)).toBeLessThan(toFloat(PERSON.height))
+  it('is about half the height of the rooms it walks through', () => {
+    // Every interior in the village has a ceiling at almost exactly two units,
+    // which is what puts a person at one.
+    expect(toFloat(PERSON.height)).toBeGreaterThan(0.8)
+    expect(toFloat(PERSON.height)).toBeLessThan(1.3)
+  })
+
+  it('has proportions a person would have', () => {
+    const height = toFloat(PERSON.height)
+    expect(toFloat(PERSON.radius) / height).toBeGreaterThan(0.1)
+    expect(toFloat(PERSON.radius) / height).toBeLessThan(0.35)
+    expect(toFloat(PERSON.stepUp)).toBeLessThan(height / 2)
     expect(add(PERSON.gravity, fx32(0))).toBeGreaterThan(0)
+  })
+
+  it('fits through a two-unit doorway with room to spare', () => {
+    expect(toFloat(PERSON.height)).toBeLessThan(2)
+    expect(toFloat(PERSON.radius) * 2).toBeLessThan(1)
   })
 })

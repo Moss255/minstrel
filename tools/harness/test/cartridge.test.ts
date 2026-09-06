@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { fx32 } from '@vesper/fixed'
+import { fx32, toFloat } from '@vesper/fixed'
 import {
   isBitmapFont,
   isCollisionMesh,
@@ -46,6 +46,15 @@ import {
 } from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
+import {
+  cameraEye,
+  covered,
+  followCamera,
+  INDOORS,
+  OUTDOORS,
+  occluders,
+  updateFollowCamera,
+} from '@vesper/render'
 import { type CharacterState, createCollisionWorld, groundBelow, PERSON, step } from '@vesper/sim'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -1799,6 +1808,165 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // or gone over an edge, both of which are the world working.
     expect(moved / walks).toBeGreaterThan(0.6)
     // A quarter of a million ticks over real geometry is not a five-second job.
+  }, 60_000)
+
+  it('never takes the ground out from under the camera', () => {
+    // The game does not solve a building standing between the camera and the
+    // party by moving the camera; it stops drawing the building. The rule that
+    // decides what to leave out is geometric, and its failure mode is severe:
+    // a rule that is slightly too eager deletes the terrain the character is
+    // standing on and the map disappears.
+    //
+    // So the check is a safety property on real maps rather than a picture. On
+    // every assembled map, from every camera angle: the pieces the character is
+    // standing on and in are still drawn, and what is left out stays a minority
+    // of the map.
+    let maps = 0
+    let views = 0
+    let pieces = 0
+    let removed = 0
+    const groundRemoved: string[] = []
+    let enclosed = 0
+    let indoorViews = 0
+    let indoorAny = 0
+    let outdoorViews = 0
+    let outdoorAny = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      const members = new Map<string, Uint8Array>()
+      try {
+        for (const member of readNarc(bytes).entries()) {
+          const name = String(member.name ?? member.index)
+          members.set(name, isLz10(member.data) ? decompressLz10(member.data) : member.data)
+        }
+      } catch {
+        continue
+      }
+
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        let manifest: ReturnType<typeof readMapManifest>
+        try {
+          manifest = readMapManifest(data)
+        } catch {
+          continue
+        }
+
+        const boxes: ReturnType<typeof measureBounds>[] = []
+        const meshes: ReturnType<typeof readCollisionMesh>[] = []
+        for (const entry of resolveMapResources(manifest, members.keys())) {
+          for (const built of entry.files) {
+            const resource = members.get(built) as Uint8Array
+            if (isCollisionMesh(resource)) {
+              try {
+                meshes.push(readCollisionMesh(resource))
+              } catch {
+                // Reported by the collision test.
+              }
+            } else if (isNsbmd(resource)) {
+              try {
+                const model = readNsbmd(resource).models[0]
+                if (!model) continue
+                for (let shape = 0; shape < model.numShapes; shape++) {
+                  boxes.push(measureBounds([model.posedGeometry(shape)]))
+                }
+              } catch {
+                // Reported by the model test.
+              }
+            }
+          }
+        }
+        if (boxes.length < 4 || meshes.length === 0) continue
+        const world = createCollisionWorld(meshes)
+        if (world.triangles.length < 20) continue
+
+        // Stand on the walkable triangle nearest the middle of the map, which
+        // is the viewer's own spawn rule.
+        const { bounds } = world
+        const midX = (bounds.minX + bounds.maxX) / 2
+        const midZ = (bounds.minZ + bounds.maxZ) / 2
+        let stand: { x: number; z: number; y: number } | undefined
+        let nearest = Number.POSITIVE_INFINITY
+        for (const triangle of world.triangles) {
+          if (triangle.normal[1] === 0) continue
+          const [a, b, c] = triangle.vertices
+          const cx = Math.round((a[0] + b[0] + c[0]) / 3)
+          const cz = Math.round((a[2] + b[2] + c[2]) / 3)
+          const away = Math.hypot(cx - midX, cz - midZ)
+          if (away >= nearest) continue
+          const hit = groundBelow(world, fx32(cx), fx32(cz), fx32(bounds.maxY + 4096))
+          if (!hit) continue
+          nearest = away
+          stand = { x: cx, z: cz, y: hit.y }
+        }
+        if (!stand) continue
+        maps++
+
+        const at = { x: fx32(stand.x), y: fx32(stand.y), z: fx32(stand.z) }
+        const feet = { x: stand.x / 4096, y: stand.y / 4096, z: stand.z / 4096 }
+        // Indoors is decided by what is over the character's head, not by how
+        // big the map is.
+        const inside = covered(boxes, [feet.x, feet.y, feet.z], toFloat(PERSON.height))
+        if (inside) enclosed++
+        const camera = followCamera(inside ? INDOORS : OUTDOORS, toFloat(PERSON.height))
+
+        // The pieces the character is inside the footprint of and standing on
+        // top of: the ground under their feet, whatever else it is part of.
+        const underfoot = new Set<number>()
+        boxes.forEach((box, index) => {
+          const inside =
+            feet.x >= box.minX &&
+            feet.x <= box.maxX &&
+            feet.z >= box.minZ &&
+            feet.z <= box.maxZ &&
+            feet.y >= box.minY - 0.1 &&
+            feet.y <= box.maxY + 0.1
+          if (inside) underfoot.add(index)
+        })
+
+        for (let turn = 0; turn < 8; turn++) {
+          camera.yaw = (turn * Math.PI) / 4
+          updateFollowCamera(camera, at, 0)
+          const hidden = occluders(boxes, cameraEye(camera), camera.focus, toFloat(PERSON.radius))
+          views++
+          pieces += boxes.length
+          removed += hidden.length
+          if (inside) {
+            indoorViews++
+            if (hidden.length > 0) indoorAny++
+          } else {
+            outdoorViews++
+            if (hidden.length > 0) outdoorAny++
+          }
+          for (const index of hidden) {
+            if (underfoot.has(index)) {
+              groundRemoved.push(`${file.path}#${name}: piece ${index} is under the feet`)
+            }
+          }
+        }
+      }
+    }
+
+    // The ground is never taken away, on any map, from any angle. This is the
+    // assertion the rule exists to satisfy.
+    expect(groundRemoved.slice(0, 10)).toEqual([])
+    expect(maps).toBeGreaterThan(100)
+    expect(views).toBeGreaterThan(800)
+    // Enough of the spawns are under a roof to exercise the indoor case at all.
+    // Most are not, because the spawn is the walkable ground nearest the middle
+    // of the map, which in a village is a street.
+    expect(enclosed).toBeGreaterThan(20)
+    // And the two cases behave as differently as the description says they do.
+    // Under a roof there is almost always something in the way — the roof —
+    // which is the behaviour the whole rule exists for. Out in the open it is
+    // occasional, which is walking behind a building.
+    expect(indoorAny / indoorViews).toBeGreaterThan(0.75)
+    expect(outdoorAny / outdoorViews).toBeGreaterThan(0.05)
+    expect(outdoorAny / outdoorViews).toBeLessThan(indoorAny / indoorViews)
+    // What is left out is a minority of the map, not a curtain over it.
+    expect(removed / pieces).toBeLessThan(0.2)
   }, 60_000)
 
   it('produces the container magic each member extension implies', () => {

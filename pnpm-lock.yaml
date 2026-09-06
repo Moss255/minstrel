@@ -111,6 +111,9 @@ importers:
       '@vesper/nitrofs':
         specifier: workspace:*
         version: link:../../packages/nitrofs
+      '@vesper/render':
+        specifier: workspace:*
+        version: link:../../packages/render
       '@vesper/sim':
         specifier: workspace:*
         version: link:../../packages/sim

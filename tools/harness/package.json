@@ -13,6 +13,7 @@
     "@vesper/nitro-gfx": "workspace:*",
     "@vesper/nitro-snd": "workspace:*",
     "@vesper/nitrofs": "workspace:*",
+    "@vesper/render": "workspace:*",
     "@vesper/sim": "workspace:*"
   }
 }
