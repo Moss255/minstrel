@@ -3122,6 +3122,88 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect((placed.maxY - placed.minY) / whole).toBeLessThan(0.35)
   })
 
+  it("keeps a motion's own rise and fall instead of flattening it", () => {
+    // A character is placed by putting its model's origin at its feet, and the
+    // motions do not keep it there, so the offset has to be measured. The
+    // question is how often. The lowest point moves through a cycle and it
+    // should: over the walk it is a foot leaving the ground and coming back.
+    // Subtracting it each frame pins that foot down and translates the whole
+    // body instead, which is seen as the head bobbing.
+    const parts = new Map<string, Model>()
+    for (const asset of models) {
+      if (!asset.archive.endsWith('#chara_pc.gp2')) continue
+      try {
+        const model = readNsbmd(asset.bytes).models[0]
+        if (model?.numShapes) parts.set(asset.stem, model)
+      } catch {
+        // Reported by the model test.
+      }
+    }
+    const motions = new Map<string, Animation>()
+    for (const asset of animations) {
+      if (!asset.archive.includes('#chara_mp.gp2#')) continue
+      const pack = asset.archive.slice(asset.archive.lastIndexOf('#') + 1)
+      if (!pack.startsWith('mp0200')) continue
+      try {
+        for (const animation of readNsbca(asset.bytes).animations)
+          motions.set(animation.name, animation)
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+
+    const named = [...parts.keys()].sort()
+    const firstRigged = (prefix: string) =>
+      parts.get(
+        named.find(
+          (name) =>
+            name.startsWith(`p_${prefix}`) &&
+            !name.startsWith('p_test') &&
+            (parts.get(name) as Model).nodes.length === 14,
+        ) as string,
+      ) as Model
+    const figure = [firstRigged('b'), firstRigged('p')]
+
+    for (const name of ['walk', 'stand']) {
+      const motion = motions.get(name) as Animation
+      const lows: number[] = []
+      let tallest = 0
+      for (let frame = 0; frame < loopFrames(motion); frame++) {
+        const local = sampleAnimation(motion, frame)
+        const drawn = figure.flatMap((model) => {
+          const nodes: NodeTransform[] = model.nodes.map((node, i) =>
+            local[i] ? { ...node, local: local[i] as Mat4 } : node,
+          )
+          const stacks = model.pose(nodes)
+          return model.shapes.map((_, shape) =>
+            poseGeometry(
+              model.geometry(shape),
+              stacks[shape] ?? (model.shapeMatrices[shape] as Mat4[]),
+            ),
+          )
+        })
+        const bounds = measureBounds(drawn)
+        lows.push(bounds.minY)
+        tallest = Math.max(tallest, bounds.maxY - bounds.minY)
+      }
+
+      const swing = Math.max(...lows) - Math.min(...lows)
+      // The lowest point really does move — otherwise there would be nothing
+      // to get wrong — but by a small fraction of the figure, which is a foot
+      // lifting or a breath rather than the body jumping.
+      expect(swing).toBeGreaterThan(0)
+      // Measured on the rigged parts alone, so against a figure shorter than
+      // the finished one — with its head on, the same swing is 4% of the walk
+      // and 7% of the idle.
+      expect(swing / tallest).toBeLessThan(0.15)
+      if (name === 'walk') {
+        // And it comes back: the cycle returns to its lowest, which is what
+        // makes one offset for the whole motion the right one.
+        expect(lows[0] as number).toBeCloseTo(Math.min(...lows), 5)
+      }
+    }
+  })
+
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly
     // wrong would not reliably land on the right four-byte stamp thousands of

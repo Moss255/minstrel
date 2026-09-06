@@ -397,19 +397,23 @@ both loop one frame shorter than they are stored.
 Two more, both from the same habit of taking a measurement once and assuming it
 holds.
 
-**The floor is per frame, not per motion.** A character is placed by putting its
-model's origin at its feet, which assumes the model's lowest point is that
-origin. It is not, and it moves: the idle carries the whole body from 0.39 up to
-1.25 in model units and back, while the figure's own height changes by 0.05 —
-so it rises **an eighth of the character's height** and settles again, seventeen
-frames to the cycle. Anchoring to the lowest frame of the cycle, which was the
-first fix, plants the feet on one frame in seventeen and floats for the other
-sixteen. The figure is now placed by its own lowest point **that frame**, taken
-from the geometry actually being drawn.
+**The floor is measured once per motion.** A character is placed by putting its
+model's origin at its feet, and the motions do not keep it there — `walk`
+reaches down to −1.05 in model units while `stand` never comes below 0.79 — so
+the offset has to be measured. How often turned out to matter more than the
+measurement.
 
-The cost is that a motion with both feet genuinely off the ground — a jump, or
-the flight phase of a run — would be pinned down. Walking and standing both keep
-a foot planted throughout, and they are what is played.
+The lowest point *moves* through a cycle, and it should. Over the walk it runs
+−1.05, −0.38, −0.16, −0.22 and back: a foot leaving the ground and returning.
+Through the idle it is a smooth arc, 0.79 up to 2.50 and down again — breathing.
+Measuring each frame and subtracting it pins that foot to the floor and
+translates the whole body instead, so the figure jerks 0.90 units, **4% of its
+height, several times a second**. On screen that is the head bobbing and the
+feet snapping, which is exactly how it was reported.
+
+Taken once over the cycle, the offset is the planted foot at its lowest and
+everything the motion does above it survives: the walk rises 4% between steps,
+the idle breathes through 7%.
 
 **Walking is a fact about the keys, not about the clock.** Whether the character
 was moving was taken from inside the simulation loop, so it was only true on a

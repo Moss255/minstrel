@@ -332,6 +332,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   characterAttachments.length = 0
   characterMotions.clear()
   loopLengths.clear()
+  motionFloors.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -712,6 +713,55 @@ function loopLengthOf(motion: Animation): number {
   const frames = loopFrames(motion)
   loopLengths.set(motion, frames)
   return frames
+}
+
+/**
+ * How far a motion holds the figure off its own origin, over the whole cycle.
+ *
+ * A character is placed by putting its model's origin at its feet, and the
+ * motions do not keep it there — `walk` reaches down to −1.05 in model units
+ * while `stand` never comes below 0.79 — so the offset has to be measured
+ * rather than assumed.
+ *
+ * **Once per motion, not once per frame.** The lowest point moves through a
+ * cycle, and it should: over the walk it runs −1.05, −0.38, −0.16, −0.22, which
+ * is a foot leaving the ground and coming back. Measuring each frame and
+ * subtracting it pins that foot down and translates the whole body instead —
+ * the figure jerks 0.90 units, 4% of its height, several times a second, and
+ * what you see is the head bobbing.
+ *
+ * Taken over the cycle, the offset is the planted foot at its lowest and the
+ * rest of the motion keeps its shape: the walk rises 4% of the figure's height
+ * between steps and the idle breathes through 7%.
+ */
+const motionFloors = new Map<Animation | undefined, number>()
+function floorOf(motion: Animation | undefined, body: readonly Piece_[]): number {
+  const known = motionFloors.get(motion)
+  if (known !== undefined) return known
+  let lowest = Number.POSITIVE_INFINITY
+  const frames = motion ? loopLengthOf(motion) : 1
+  for (let frame = 0; frame < frames; frame++) {
+    const stacks = characterStacks(motion, frame)
+    const drawn = body.map((piece) =>
+      poseGeometry(
+        piece.geometry,
+        stacks.get(piece.model)?.[piece.shape] ??
+          piece.model.shapeMatrices[piece.shape] ??
+          piece.model.matrices,
+      ),
+    )
+    for (const { model, bone } of characterAttachments) {
+      const at = boneWorld(motion, frame, bone)
+      if (!at) continue
+      for (let shape = 0; shape < model.numShapes; shape++) {
+        drawn.push(attachedGeometry(model, shape, at))
+      }
+    }
+    lowest = Math.min(lowest, measureBounds(drawn).minY)
+  }
+  if (!Number.isFinite(lowest)) lowest = 0
+  motionFloors.set(motion, lowest)
+  return lowest
 }
 
 /**
@@ -1338,21 +1388,8 @@ function characterPieces(walker: Walker, motion: Animation | undefined): Piece[]
     }
   }
 
-  /**
-   * Stand the figure on the ground **this frame**, not once for the motion.
-   *
-   * A character is otherwise hung from its model's origin, and the motions do
-   * not keep the figure there: the idle carries the whole body smoothly from
-   * 0.39 up to 1.25 in model units and back, a rise of an eighth of the
-   * character's own height, while its height changes by 0.05. Anchoring to the
-   * lowest frame of the cycle plants the feet on one frame in seventeen and
-   * floats for the other sixteen.
-   *
-   * The cost is that a motion with both feet genuinely off the ground — a jump,
-   * or the flight phase of `run` — would be pinned down. Walking and standing
-   * both keep a foot planted throughout, and they are what is played.
-   */
-  const floor = Math.min(...posedPieces.map(({ posed }) => measureBounds([posed]).minY))
+  // Stand the figure on the ground, by one offset for the whole motion.
+  const floor = floorOf(motion, walker.body)
 
   return posedPieces.map(({ piece, posed }) => {
     const vertices = posed.vertices.map((v) => {
