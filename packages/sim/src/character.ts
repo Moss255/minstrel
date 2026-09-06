@@ -253,10 +253,23 @@ function pushOutOfWalls(
  * of the 1.57-unit house facade they walk past, and about the same height as
  * the village's doorways once those are at `PLACED_PIECE_SCALE`.
  *
- * Everything else scales with the height, so a fall reads the same however it
- * is revised. One consequence of a figure this small is worth knowing: gravity
- * lands on **three** `fx32` words a tick, so it is quantised at a few per cent.
- * If the height is revised upwards that goes away on its own.
+ * The radius scales with the height, being a fact about the character. **The
+ * step and snap heights do not**, and that distinction cost a lot to learn: a
+ * step in the world is the same size whoever is climbing it, and a character
+ * shrunk to a fifth with its tolerances shrunk alongside could walk almost
+ * nowhere. In the slice's village, 12% of the reachable ground.
+ *
+ * What sets them is the movement rather than the body. Walking at 0.05 units a
+ * tick down the steepest surface `maxSlope` allows — 50 degrees, so a gradient
+ * of 1.19 — drops the ground **0.06 units under the feet in one tick**. A snap
+ * height below that means the character leaves the ground on every downhill
+ * step, and a step height below it means it cannot climb the steepest slope it
+ * is allowed to stand on. Both are set above that with margin, which takes the
+ * village from 12% reachable to 24%.
+ *
+ * Gravity does scale with the height, so a fall reads the same however it is
+ * revised; at this size it lands on three `fx32` words a tick, quantised at a
+ * few per cent.
  *
  * **The interiors are not at the exterior's scale**, so a ceiling measured
  * inside says nothing about a house measured outside: a single house's interior
@@ -285,10 +298,10 @@ function pushOutOfWalls(
 export const PERSON: CharacterShape = {
   height: fx32(Math.round(0.18 * FX32_ONE)),
   radius: fx32(Math.round(0.04 * FX32_ONE)),
-  stepUp: fx32(Math.round(0.056 * FX32_ONE)),
+  stepUp: fx32(Math.round(0.1 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
   gravity: fx32(Math.round(0.0008 * FX32_ONE)),
   terminalSpeed: fx32(Math.round(0.06 * FX32_ONE)),
-  snapDown: fx32(Math.round(0.032 * FX32_ONE)),
+  snapDown: fx32(Math.round(0.15 * FX32_ONE)),
 }

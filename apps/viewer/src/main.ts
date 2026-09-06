@@ -317,6 +317,7 @@ function assembleMap(archive: string): {
   const missing: string[] = []
   const meshes: PlacedMesh[] = []
   placeByModel = new Map()
+  animationByModel = new Map()
   for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
     if (files.length === 0) {
       missing.push(resource.name)
@@ -355,6 +356,21 @@ function assembleMap(archive: string): {
         if (model?.numShapes) {
           models.push(model)
           placeByModel.set(model, place)
+          // The animation compiled from the same authored resource, which is
+          // the one that drives this model's own bones.
+          for (const sibling of files) {
+            if (sibling === file) continue
+            const beside = members.get(sibling)
+            if (!beside || !isNsbca(beside)) continue
+            try {
+              const found = readNsbca(beside).animations.find(
+                (a) => a.boneCount === model.nodes.length,
+              )
+              if (found) animationByModel.set(model, found)
+            } catch {
+              // An animation that will not read simply is not played.
+            }
+          }
         }
       } catch {
         missing.push(file)
@@ -604,6 +620,17 @@ let playing = true
 
 /** Where the current map puts each of its models. */
 let placeByModel = new Map<Model, { x: number; y: number; z: number }>()
+/**
+ * The animation a map model drives itself with, when it ships one.
+ *
+ * A map is not a still life. The village's sky model carries a 541-frame joint
+ * animation, and without it its four cloud nodes sit at one point — the bind
+ * pose puts them all in the same place and the animation is what drifts them
+ * apart across the sky. Same for the waterfall.
+ */
+let animationByModel = new Map<Model, Animation>()
+/** Which frame the map's own animations are on, at the DS's 30 a second. */
+let mapFrame = 0
 
 /**
  * A posed shape moved to where the map puts the model it belongs to.
@@ -652,8 +679,12 @@ function pose(): void {
   // shapes; `Model.pose` resolves them against the frame's node transforms.
   const stacks = new Map<Model, Mat4[][]>()
   for (const model of shown.models) {
-    if (animation && animation.boneCount === model.nodes.length) {
-      const local = sampleAnimation(animation, shown.frame)
+    // A map's models each drive themselves; a single model uses the animation
+    // picked in the scrubber.
+    const own = animationByModel.get(model)
+    const playing = own ?? animation
+    if (playing && playing.boneCount === model.nodes.length) {
+      const local = sampleAnimation(playing, own ? mapFrame % playing.frameCount : shown.frame)
       const nodes: NodeTransform[] = model.nodes.map((node, i) => {
         const posed = local[i]
         return posed ? { ...node, local: posed } : node
@@ -669,8 +700,14 @@ function pose(): void {
     const posed = placed(poseGeometry(piece.geometry, stack), piece.model)
     return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
-  lastUpload = renderer.upload(drawn)
-  lastShapes = drawn.length
+  // The scene the walker draws against, so a map that animates itself keeps
+  // moving while it is being walked.
+  mapPieces = drawn
+  mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
+  if (!walker) {
+    lastUpload = renderer.upload(drawn)
+    lastShapes = drawn.length
+  }
   describe(lastUpload)
 }
 
@@ -983,9 +1020,9 @@ function walk(elapsedMs: number): void {
   // culling must not remove, so a camera inside a hill sees through the world.
   updateFollowCamera(camera, walker.state, elapsedMs / 1000, shown.world, PERSON)
 
-  // Redraw the scene with the character in it. The map's pieces are already
-  // posed; only the character changes from frame to frame, and which pieces
-  // stand between the camera and the character.
+  // Redraw the scene with the character in it. The map's pieces are re-posed
+  // only when the map animates itself; otherwise only the character changes
+  // from frame to frame, along with which pieces are in the way.
   if (walker.body.length > 0) {
     const hidden = new Set(occluders(mapBoxes, cameraEye(camera), camera.focus, CLEARANCE))
     const visible = mapPieces.filter((_, index) => !hidden.has(index))
@@ -1025,6 +1062,14 @@ function renderScrubber(): void {
 
 /** Step the animation on, at the DS's 30 frames a second. */
 function advance(elapsed: number): void {
+  // A map's models animate themselves whether or not the scrubber is showing.
+  if (animationByModel.size > 0 && playing) {
+    const next = Math.floor(elapsed / (1000 / 30))
+    if (next !== mapFrame) {
+      mapFrame = next
+      pose()
+    }
+  }
   if (!shown?.animation || !playing) return
   const count = shown.animation.frameCount
   if (count <= 1) return

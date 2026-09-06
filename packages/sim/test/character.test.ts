@@ -320,16 +320,69 @@ describe('PERSON', () => {
     expect(toFloat(PERSON.height)).toBeLessThan(2.29 / 2)
   })
 
-  it('has proportions a person would have', () => {
+  it('has the proportions of a body where those are body proportions', () => {
+    // The radius is a fact about the character and scales with it. The step and
+    // snap heights are not — they are set by how fast it walks and how steep a
+    // surface it may stand on, so they are deliberately *not* checked against
+    // the height here, and at this size they are larger than half of it.
     const height = toFloat(PERSON.height)
     expect(toFloat(PERSON.radius) / height).toBeGreaterThan(0.1)
     expect(toFloat(PERSON.radius) / height).toBeLessThan(0.35)
-    expect(toFloat(PERSON.stepUp)).toBeLessThan(height / 2)
     expect(add(PERSON.gravity, fx32(0))).toBeGreaterThan(0)
   })
 
   it('fits through a two-unit doorway with room to spare', () => {
     expect(toFloat(PERSON.height)).toBeLessThan(2)
     expect(toFloat(PERSON.radius) * 2).toBeLessThan(1)
+  })
+})
+
+describe('following the ground at walking speed', () => {
+  /**
+   * The invariant that stops a character stuttering downhill: walking at its
+   * own speed down the steepest surface it is allowed to stand on, it must
+   * stay on the ground. Get this wrong and it leaves the surface every tick,
+   * lands, and leaves again — which reads as being stuck.
+   */
+  const gradient = Math.sqrt(1 - toFloat(PERSON.maxSlope) ** 2) / toFloat(PERSON.maxSlope)
+  const speed = 0.05
+
+  it('can follow the steepest slope it is allowed to stand on', () => {
+    expect(toFloat(PERSON.snapDown)).toBeGreaterThan(speed * gradient)
+  })
+
+  it('can climb the steepest slope it is allowed to stand on', () => {
+    expect(toFloat(PERSON.stepUp)).toBeGreaterThan(speed * gradient)
+  })
+
+  it('does that in fact, on a slope at the limit', () => {
+    // Rises 1.19 over 1, which is exactly `maxSlope`.
+    const rise = gradient * 20
+    const world = createCollisionWorld(
+      mesh([
+        [
+          [0, 0, -20 * U],
+          [20 * U, Math.round(rise * U), -20 * U],
+          [0, 0, 20 * U],
+        ],
+        [
+          [20 * U, Math.round(rise * U), -20 * U],
+          [20 * U, Math.round(rise * U), 20 * U],
+          [0, 0, 20 * U],
+        ],
+      ]),
+    )
+    let state: CharacterState = { ...standing(4, 0, 0), y: fx32(Math.round(gradient * 4 * U)) }
+    state = step(world, state, fx32(0), fx32(0), PERSON)
+    expect(state.grounded).toBe(true)
+    const walk = fx32(Math.round(speed * U))
+    for (let i = 0; i < 20; i++) {
+      state = step(world, state, walk, fx32(0), PERSON)
+      expect(state.grounded).toBe(true)
+    }
+    for (let i = 0; i < 20; i++) {
+      state = step(world, state, fx32(-Math.round(speed * U)), fx32(0), PERSON)
+      expect(state.grounded).toBe(true)
+    }
   })
 })

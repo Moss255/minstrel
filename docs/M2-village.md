@@ -235,6 +235,55 @@ carry *more* placements than resources. Pairing positionally through those would
 place every piece after the extra one confidently in the wrong spot, so those
 maps are left unplaced instead. A wrong placement is worse than none.
 
+### The village was barely walkable
+
+Reported as getting stuck, and worse than it sounded. Flood-filling the
+exterior from its spawn, over a grid of the map's own walkable ground:
+
+| | reachable |
+|---|---|
+| As it was | **12%** |
+| Snap height 0.15 instead of 0.032 | 23% |
+| …and step height 0.10 instead of 0.056 | **24%** |
+| …and a point-sized character | 36% |
+
+The cause was a distinction this document got wrong twice. The radius is a fact
+about the character and scales with it. **The step and snap heights are not**: a
+step in the world is the same size whoever is climbing it, and shrinking the
+character to a fifth with its tolerances shrunk alongside left it able to reach
+an eighth of the village.
+
+What sets them is the *movement*, not the body. Walking at 0.05 units a tick
+down the steepest surface `maxSlope` allows — 50 degrees, a gradient of 1.19 —
+drops the ground **0.06 units under the feet in one tick**. A snap height below
+that means leaving the ground on every downhill step; a step height below it
+means being unable to climb the steepest slope one is allowed to stand on. Both
+are now above that with margin, and both have a test that walks a slope at
+exactly the limit and requires the character never to leave it.
+
+The doorway collisions were the first suspect and are not the cause: they are
+two vertical triangles each, but removing them *lowers* reachability, from 24%
+to 17%.
+
+**36% is where it stops with a point-sized character**, so a fifth of the ground
+is still not reachable for reasons the tolerances do not explain. That is the
+next thing to look at, and it may be the same scale tension as everywhere else:
+terrain tessellated for a character rather larger than 0.18 units.
+
+### The clouds needed their animation, not a placement
+
+The village sky, `M01M0002`, has four cloud nodes `s_1_` to `s_4_` and all four
+carry **the same translation**, so in the bind pose the four cloud shapes sit
+exactly on top of one another. Nothing is misplaced: the model ships a
+**541-frame joint animation** that drifts them apart, and at frame 270 they are
+at x −2.10, −2.60, −3.60 and −4.10.
+
+The viewer played animations only for a single model chosen in the scrubber, so
+an assembled map stood still. Each map model now plays the animation compiled
+from its own authored resource — the one beside it under the same stem, matched
+by bone count — driven at the DS's 30 frames a second, and it keeps running
+while the map is being walked.
+
 ### The rainbow, the trees, and the current matrix
 
 A node description in a model's render-command stream computes that node's world
