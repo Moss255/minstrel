@@ -63,20 +63,57 @@ const MAX_CELLS = 64
  * every cell their footprint touches, so a query never has to look at
  * neighbours.
  */
+/** A mesh together with where the map puts it, in whole `fx32` words. */
+export interface PlacedMesh {
+  readonly mesh: CollisionMesh
+  readonly offset: { readonly x: number; readonly y: number; readonly z: number } | undefined
+}
+
+/** One triangle moved by an offset, normal untouched — a translation cannot turn it. */
+function shift(
+  triangle: CollisionTriangle,
+  offset: { x: number; y: number; z: number },
+): CollisionTriangle {
+  return {
+    ...triangle,
+    vertices: triangle.vertices.map((v) => [
+      v[0] + offset.x,
+      v[1] + offset.y,
+      v[2] + offset.z,
+    ]) as unknown as CollisionTriangle['vertices'],
+  }
+}
+
 export function createCollisionWorld(
-  source: CollisionMesh | readonly CollisionMesh[],
+  source: CollisionMesh | PlacedMesh | readonly (CollisionMesh | PlacedMesh)[],
 ): CollisionWorld {
-  const meshes = Array.isArray(source)
-    ? (source as readonly CollisionMesh[])
-    : [source as CollisionMesh]
-  const triangles = meshes.flatMap((mesh) => mesh.triangles)
+  const given = Array.isArray(source)
+    ? (source as readonly (CollisionMesh | PlacedMesh)[])
+    : [source as CollisionMesh | PlacedMesh]
+  // A map's pieces are authored at their own origin and placed, so a mesh may
+  // arrive with an offset. Applying it here rather than asking every caller to
+  // rebuild the triangles keeps the placed and unplaced cases the same shape.
+  const placed = given.map((entry) =>
+    'mesh' in entry ? entry : { mesh: entry, offset: undefined },
+  )
+  const triangles = placed.flatMap(({ mesh, offset }) =>
+    offset === undefined ? mesh.triangles : mesh.triangles.map((t) => shift(t, offset)),
+  )
+  const shifted = placed.map(({ mesh, offset }) => ({
+    minX: mesh.bounds.minX + (offset?.x ?? 0),
+    minY: mesh.bounds.minY + (offset?.y ?? 0),
+    minZ: mesh.bounds.minZ + (offset?.z ?? 0),
+    maxX: mesh.bounds.maxX + (offset?.x ?? 0),
+    maxY: mesh.bounds.maxY + (offset?.y ?? 0),
+    maxZ: mesh.bounds.maxZ + (offset?.z ?? 0),
+  }))
   const bounds: CollisionBounds = {
-    minX: Math.min(...meshes.map((m) => m.bounds.minX), 0),
-    minY: Math.min(...meshes.map((m) => m.bounds.minY), 0),
-    minZ: Math.min(...meshes.map((m) => m.bounds.minZ), 0),
-    maxX: Math.max(...meshes.map((m) => m.bounds.maxX), 0),
-    maxY: Math.max(...meshes.map((m) => m.bounds.maxY), 0),
-    maxZ: Math.max(...meshes.map((m) => m.bounds.maxZ), 0),
+    minX: Math.min(...shifted.map((m) => m.minX), 0),
+    minY: Math.min(...shifted.map((m) => m.minY), 0),
+    minZ: Math.min(...shifted.map((m) => m.minZ), 0),
+    maxX: Math.max(...shifted.map((m) => m.maxX), 0),
+    maxY: Math.max(...shifted.map((m) => m.maxY), 0),
+    maxZ: Math.max(...shifted.map((m) => m.maxZ), 0),
   }
   const { minX, minZ, maxX, maxZ } = bounds
   const spanX = Math.max(maxX - minX, 1)

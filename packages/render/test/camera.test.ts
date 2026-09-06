@@ -1,7 +1,10 @@
 import { fromInt, fx32 } from '@vesper/fixed'
+import type { CollisionMesh } from '@vesper/game-formats'
+import { createCollisionWorld, PERSON } from '@vesper/sim'
 import { describe, expect, it } from 'vitest'
 import {
   applyStyle,
+  cameraEye,
   DS_ASPECT,
   DS_VERTICAL_FOV,
   followCamera,
@@ -169,6 +172,73 @@ describe('the view matrix', () => {
       // Column-major, so its y component is element 4, not element 1.
       expect(view[4]).toBeCloseTo(0, 6)
     }
+  })
+})
+
+describe('keeping the eye out of the ground', () => {
+  // A flat floor at y = 0, ten units square, in the units collision uses.
+  const U = 4096
+  const floor: CollisionMesh = {
+    kind: 3,
+    bounds: { minX: -10 * U, minY: 0, minZ: -10 * U, maxX: 10 * U, maxY: 0, maxZ: 10 * U },
+    cellSize: U,
+    gridX: 1,
+    gridZ: 1,
+    triangles: [
+      {
+        vertices: [
+          [-10 * U, 0, -10 * U],
+          [10 * U, 0, -10 * U],
+          [-10 * U, 0, 10 * U],
+        ],
+        normal: [0, 1, 0],
+        attributes: 0,
+      },
+      {
+        vertices: [
+          [10 * U, 0, -10 * U],
+          [10 * U, 0, 10 * U],
+          [-10 * U, 0, 10 * U],
+        ],
+        normal: [0, 1, 0],
+        attributes: 0,
+      },
+    ],
+    cells: [],
+    cellTriangles: [],
+    trailing: [],
+    unknown_0x04: 0,
+    unknown_0x1a: 0,
+    cell: () => [],
+  }
+  const world = createCollisionWorld(floor)
+
+  it('leaves a camera well clear of the ground alone', () => {
+    const camera = followCamera(OUTDOORS, 1)
+    updateFollowCamera(camera, at(0, 0, 0), 0, world, PERSON)
+    expect(camera.lift).toBe(0)
+  })
+
+  it('raises an eye that would sit under the floor', () => {
+    // Looking almost level, so the boom puts the eye below the surface.
+    const camera = followCamera(OUTDOORS, 1)
+    updateFollowCamera(camera, { x: fromInt(0), y: fromInt(-3), z: fromInt(0) }, 0, world, PERSON)
+    expect(camera.lift).toBeGreaterThan(0)
+    expect(cameraEye(camera)[1]).toBeGreaterThan(0)
+  })
+
+  it('puts the eye back down once the ground is no longer in the way', () => {
+    const camera = followCamera(OUTDOORS, 1)
+    updateFollowCamera(camera, { x: fromInt(0), y: fromInt(-3), z: fromInt(0) }, 0, world, PERSON)
+    expect(camera.lift).toBeGreaterThan(0)
+    updateFollowCamera(camera, at(0, 0, 0), 0, world, PERSON)
+    expect(camera.lift).toBe(0)
+  })
+
+  it('still sits at its full distance — it lifts rather than pulling in', () => {
+    const camera = followCamera(OUTDOORS, 1)
+    updateFollowCamera(camera, { x: fromInt(0), y: fromInt(-3), z: fromInt(0) }, 0, world, PERSON)
+    expect(camera.actualDistance).toBe(camera.distance)
   })
 })
 

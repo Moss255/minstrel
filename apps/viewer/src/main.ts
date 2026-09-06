@@ -1,9 +1,9 @@
 import { FX32_ONE, fx32, toFloat } from '@vesper/fixed'
 import {
-  type CollisionMesh,
   isCollisionMesh,
   isMapManifest,
   type MapManifest,
+  placementOf,
   readCollisionMesh,
   readMapManifest,
   resolveMapResources,
@@ -47,6 +47,7 @@ import {
   createCollisionWorld,
   groundBelow,
   PERSON,
+  type PlacedMesh,
   step as stepCharacter,
 } from '@vesper/sim'
 import { DS_HEIGHT, DS_WIDTH, ReferenceTarget } from './reference.ts'
@@ -304,7 +305,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
 function assembleMap(archive: string): {
   models: Model[]
   missing: string[]
-  meshes: CollisionMesh[]
+  meshes: PlacedMesh[]
 } {
   const manifest = manifestsByArchive.get(archive)
   const members = membersByArchive.get(archive)
@@ -312,12 +313,19 @@ function assembleMap(archive: string): {
 
   const models: Model[] = []
   const missing: string[] = []
-  const meshes: CollisionMesh[] = []
+  const meshes: PlacedMesh[] = []
+  placeByModel = new Map()
   for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
     if (files.length === 0) {
       missing.push(resource.name)
       continue
     }
+    // Where the map puts this piece. A door is modelled at its own origin and
+    // placed at the building it belongs to; drawing it unplaced leaves all ten
+    // of them stacked in the middle of the map, in the air, with their
+    // collision boxes stacked there too — which is walls where there is nothing
+    // and nothing where there are walls.
+    const place = placementOf(manifest, resource)
     // One authored resource compiles to several files under the same stem, so
     // take each for what it is rather than picking one and hoping.
     for (const file of files) {
@@ -325,7 +333,15 @@ function assembleMap(archive: string): {
       if (!bytes) continue
       if (isCollisionMesh(bytes)) {
         try {
-          meshes.push(readCollisionMesh(bytes))
+          meshes.push({
+            mesh: readCollisionMesh(bytes),
+            // Collision is in whole fx32 words; the placement is in units.
+            offset: {
+              x: Math.round(place.x * FX32_ONE),
+              y: Math.round(place.y * FX32_ONE),
+              z: Math.round(place.z * FX32_ONE),
+            },
+          })
         } catch {
           missing.push(file)
         }
@@ -334,7 +350,10 @@ function assembleMap(archive: string): {
       if (!isNsbmd(bytes)) continue
       try {
         const model = readNsbmd(bytes).models[0]
-        if (model?.numShapes) models.push(model)
+        if (model?.numShapes) {
+          models.push(model)
+          placeByModel.set(model, place)
+        }
       } catch {
         missing.push(file)
       }
@@ -566,6 +585,24 @@ const TICK_MS = 1000 / 60
 let shown: Shown | undefined
 let playing = true
 
+/** Where the current map puts each of its models. */
+let placeByModel = new Map<Model, { x: number; y: number; z: number }>()
+
+/** A posed shape moved to where the map puts the model it belongs to. */
+function placed(geometry: Geometry, model: Model): Geometry {
+  const place = placeByModel.get(model)
+  if (!place || (place.x === 0 && place.y === 0 && place.z === 0)) return geometry
+  return {
+    ...geometry,
+    vertices: geometry.vertices.map((v) => ({
+      ...v,
+      x: v.x + place.x,
+      y: v.y + place.y,
+      z: v.z + place.z,
+    })),
+  }
+}
+
 /** Every drawable shape of a model, with the texture its material binds. */
 function piecesOf(model: Model): Piece_[] {
   return model.shapes.map((shape, index) => {
@@ -603,7 +640,7 @@ function pose(): void {
 
   const drawn: Piece[] = shown.pieces.map((piece) => {
     const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices
-    const posed = poseGeometry(piece.geometry, stack)
+    const posed = placed(poseGeometry(piece.geometry, stack), piece.model)
     return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
   lastUpload = renderer.upload(drawn)
@@ -667,7 +704,7 @@ function select(index: number): void {
 
   const drawn: Piece[] = shown.pieces.map((piece) => {
     const stack = piece.model.shapeMatrices[piece.shape] ?? piece.model.matrices
-    const posed = poseGeometry(piece.geometry, stack)
+    const posed = placed(poseGeometry(piece.geometry, stack), piece.model)
     return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
 
@@ -892,11 +929,11 @@ function walk(elapsedMs: number): void {
     Object.assign(camera, applyStyle(camera, inside ? INDOORS : OUTDOORS, toFloat(PERSON.height)))
   }
 
-  // The camera watches the character rather than the map's centre. The world
-  // is deliberately not passed: the camera stays where it is and the roof comes
-  // off instead, which is what the game does and the only thing that works in a
-  // room, where there is nowhere to pull the camera to.
-  updateFollowCamera(camera, walker.state, elapsedMs / 1000)
+  // The camera watches the character rather than the map's centre. The world is
+  // passed so the eye is kept above the ground: it is never pulled forward for
+  // a building — the roof comes off instead — but the ground is the one thing
+  // culling must not remove, so a camera inside a hill sees through the world.
+  updateFollowCamera(camera, walker.state, elapsedMs / 1000, shown.world, PERSON)
 
   // Redraw the scene with the character in it. The map's pieces are already
   // posed; only the character changes from frame to frame, and which pieces

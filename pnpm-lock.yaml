@@ -75,6 +75,9 @@ importers:
       '@vesper/fixed':
         specifier: workspace:*
         version: link:../fixed
+      '@vesper/game-formats':
+        specifier: workspace:*
+        version: link:../game-formats
       '@vesper/sim':
         specifier: workspace:*
         version: link:../sim

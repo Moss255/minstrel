@@ -21,6 +21,54 @@ import { type DataTable, readDataTable } from './table.ts'
  */
 const TAG_RESOURCE_COUNT = 0x6a
 const TAG_RESOURCE = 0x6c
+/** One per resource, in the same order: where to put it. */
+const TAG_PLACEMENT = 0x6f
+
+/**
+ * What a placement's translation is divided by to reach world units.
+ *
+ * **INFERRED**, and the one number here that is fitted rather than read. The
+ * translations are floats an order of magnitude larger than the map they place
+ * things in: the village's doors sit at x -28.56 and 26.10 in a village that
+ * runs -4.38 to 7.61. Dividing brings them inside it, and the divisor is fitted
+ * by asking, over every map that has both placed objects and unplaced ground,
+ * how many objects authored to sit at their own origin end up standing on that
+ * ground. That peaks at 8 to 8.5 across the cartridge and at 7.5 to 8.5 on the
+ * slice's village, and 8 is a power of two, which is what a DS pipeline would
+ * use. It is not read from the file, so it is recorded as a guess with its
+ * evidence rather than as a fact.
+ */
+export const PLACEMENT_SCALE = 8
+
+/**
+ * Where a map puts one of its resources.
+ *
+ * Map pieces are authored in their own space and placed: the village's ten
+ * doorways are ten models each spanning about a unit and a half from the
+ * origin, and without this they are drawn stacked on top of each other in the
+ * middle of the map, in the air, with their collision boxes stacked there too.
+ */
+export interface MapPlacement {
+  /** Translation in world units — the file's value divided by {@link PLACEMENT_SCALE}. */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  /** Scale. One on every resource of the reference cartridge. */
+  readonly scaleX: number
+  readonly scaleY: number
+  readonly scaleZ: number
+  /**
+   * The resource this one is attached to, by {@link MapResource.slot}, or
+   * `undefined` for one placed in its own right.
+   *
+   * A door's collision carries no translation of its own; it names the door
+   * model and goes where that goes. Placing it without following the link
+   * leaves the collision at the origin while the model stands in the doorway.
+   */
+  readonly parent: number | undefined
+  /** The record, for the six values whose meaning is not established. */
+  readonly values: Uint32Array
+}
 
 /** One entry in a map's resource list. */
 export interface MapResource {
@@ -33,6 +81,15 @@ export interface MapResource {
   /** Third and fourth values of the record. Their meaning is not established. */
   readonly unknown_2: number
   readonly unknown_3: number
+  /**
+   * Which slot the resource occupies, as other resources refer to it.
+   *
+   * Not its position in the list: a resource's parent names this, and the two
+   * do not track each other.
+   */
+  readonly slot: number
+  /** Where the map puts it, when it carries a placement record. */
+  readonly placement: MapPlacement | undefined
 }
 
 export interface MapManifest {
@@ -47,6 +104,14 @@ export interface MapManifest {
    * here, and both are reachable through this for anyone who wants to look.
    */
   readonly table: DataTable
+  /**
+   * Whether the placement records pair one-to-one with the resources.
+   *
+   * False for the minority of manifests carrying more placements than
+   * resources; those resources are left unplaced rather than placed by a
+   * positional guess that could be off by one all the way down.
+   */
+  readonly placementsPair: boolean
 }
 
 /**
@@ -76,6 +141,15 @@ export function readMapManifest(data: Uint8Array): MapManifest {
     )
   }
 
+  // Placements pair with resources by position, so they are only trusted when
+  // there is exactly one for each. A minority of manifests carry more
+  // placements than resources — things placed in the map that are not in its
+  // resource list — and pairing positionally through those would put pieces
+  // confidently in the wrong places. No placement is better than a wrong one,
+  // so those maps get none and say so.
+  const placements = table.withTag(TAG_PLACEMENT)
+  const placementsPair = placements.length === entries.length
+
   const resources = entries.map((entry, position) => {
     const index = entry.values[0] ?? position
     const offset = entry.values[1]
@@ -89,16 +163,34 @@ export function readMapManifest(data: Uint8Array): MapManifest {
       )
     }
     const dot = name.lastIndexOf('.')
+    const record = placementsPair ? placements[position] : undefined
+    const at = record?.floats
+    // A parent of -1 means none, and reads as NaN through the float view.
+    const parent = record?.values[6]
     return {
       index,
       name,
       stem: dot > 0 ? name.slice(0, dot) : name,
       unknown_2: entry.values[2] ?? 0,
       unknown_3: entry.values[3] ?? 0,
+      slot: record?.values[1] ?? position,
+      placement:
+        record && at
+          ? {
+              x: (at[3] ?? 0) / PLACEMENT_SCALE,
+              y: (at[4] ?? 0) / PLACEMENT_SCALE,
+              z: (at[5] ?? 0) / PLACEMENT_SCALE,
+              scaleX: at[8] ?? 1,
+              scaleY: at[9] ?? 1,
+              scaleZ: at[10] ?? 1,
+              parent: parent === undefined || parent === 0xffffffff ? undefined : parent,
+              values: record.values,
+            }
+          : undefined,
     }
   })
 
-  return { resources, table }
+  return { resources, table, placementsPair }
 }
 
 /**
@@ -137,4 +229,51 @@ export function resolveMapResources(
     resource,
     files: byStem.get(resource.stem.toLowerCase()) ?? [],
   }))
+}
+
+/**
+ * Where a resource actually goes, following the chain of parents.
+ *
+ * A resource attached to another carries no translation of its own and takes
+ * the one it is attached to. Returns the origin for a resource with no
+ * placement at all, so a caller can place everything uniformly.
+ *
+ * The chain is followed to a bounded depth: a manifest that named a cycle would
+ * otherwise hang the caller, and a malformed file should not be able to do that.
+ */
+export function placementOf(
+  manifest: MapManifest,
+  resource: MapResource,
+): { x: number; y: number; z: number; scaleX: number; scaleY: number; scaleZ: number } {
+  const bySlot = new Map<number, MapResource>()
+  for (const entry of manifest.resources) if (!bySlot.has(entry.slot)) bySlot.set(entry.slot, entry)
+
+  let at: MapResource | undefined = resource
+  for (let depth = 0; at && depth < 8; depth++) {
+    const placement: MapPlacement | undefined = at.placement
+    if (!placement) break
+    if (placement.x !== 0 || placement.y !== 0 || placement.z !== 0) {
+      return {
+        x: placement.x,
+        y: placement.y,
+        z: placement.z,
+        scaleX: placement.scaleX,
+        scaleY: placement.scaleY,
+        scaleZ: placement.scaleZ,
+      }
+    }
+    if (placement.parent === undefined) break
+    const next: MapResource | undefined = bySlot.get(placement.parent)
+    if (!next || next === at) break
+    at = next
+  }
+  const own = resource.placement
+  return {
+    x: 0,
+    y: 0,
+    z: 0,
+    scaleX: own?.scaleX ?? 1,
+    scaleY: own?.scaleY ?? 1,
+    scaleZ: own?.scaleZ ?? 1,
+  }
 }

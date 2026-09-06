@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { isMapManifest, readMapManifest, resolveMapResources } from '../src/mapmanifest.ts'
+import {
+  isMapManifest,
+  PLACEMENT_SCALE,
+  placementOf,
+  readMapManifest,
+  resolveMapResources,
+} from '../src/mapmanifest.ts'
 
 /**
  * Build a `.bmdj`: a tagged record stream then a string table.
@@ -9,7 +15,14 @@ import { isMapManifest, readMapManifest, resolveMapResources } from '../src/mapm
  * section, which is the detail the reader exists to get right — an ordinal
  * would work on the first name and drift on every one after it.
  */
-function buildManifest(names: readonly string[], options: { declared?: number } = {}): Uint8Array {
+function buildManifest(
+  names: readonly string[],
+  options: {
+    declared?: number
+    /** One per name: where the map puts it, and what it hangs off. */
+    places?: readonly { at?: [number, number, number]; slot: number; parent?: number }[]
+  } = {},
+): Uint8Array {
   const strings: number[] = []
   const offsets: number[] = []
   for (const name of names) {
@@ -32,6 +45,32 @@ function buildManifest(names: readonly string[], options: { declared?: number } 
   names.forEach((_, i) => {
     record(0x6c, 81, [i, offsets[i] as number, 0, 0])
   })
+  if (options.places) {
+    const asWord = (value: number) => {
+      const buffer = new ArrayBuffer(4)
+      new DataView(buffer).setFloat32(0, value, true)
+      return new DataView(buffer).getUint32(0, true)
+    }
+    for (const place of options.places) {
+      const [x, y, z] = place.at ?? [0, 0, 0]
+      record(0x6f, 165, [
+        0,
+        place.slot,
+        0,
+        asWord(x),
+        asWord(y),
+        asWord(z),
+        place.parent ?? 0xffffffff,
+        0,
+        asWord(1),
+        asWord(1),
+        asWord(1),
+        0,
+        0,
+        0,
+      ])
+    }
+  }
   record(0x6e, 0xff, [])
 
   const header: number[] = []
@@ -121,5 +160,73 @@ describe('isMapManifest', () => {
   it('rejects one that does not', () => {
     expect(isMapManifest(buildManifest([]))).toBe(false)
     expect(isMapManifest(new Uint8Array(8))).toBe(false)
+  })
+})
+
+describe('placement', () => {
+  // A map with a ground plane at the origin, a door placed away from it, and
+  // the door's collision, which carries no placement of its own and hangs off
+  // the door by slot.
+  const placedManifest = () =>
+    buildManifest(['M00M0000.imd', 'M00M00D1.imd', 'M00A00D1.imd'], {
+      places: [{ slot: 0 }, { slot: 7, at: [-28.56, -0.5, -9.472] }, { slot: 9, parent: 7 }],
+    })
+
+  it("reads a placement in world units, not the file's", () => {
+    const manifest = readMapManifest(placedManifest())
+    const door = manifest.resources[1] as (typeof manifest.resources)[number]
+    expect(door.placement?.x).toBeCloseTo(-28.56 / PLACEMENT_SCALE, 5)
+    expect(door.placement?.y).toBeCloseTo(-0.5 / PLACEMENT_SCALE, 5)
+    expect(door.placement?.z).toBeCloseTo(-9.472 / PLACEMENT_SCALE, 5)
+    expect(door.placement?.scaleX).toBe(1)
+  })
+
+  it('gives a piece attached to another the place that other one has', () => {
+    // The bug this exists for: the door stands in the doorway and its collision
+    // stays at the origin, so there is a wall in the middle of the map and none
+    // in the doorway.
+    const manifest = readMapManifest(placedManifest())
+    const collision = manifest.resources[2] as (typeof manifest.resources)[number]
+    expect(collision.placement?.x).toBe(0)
+    expect(placementOf(manifest, collision).x).toBeCloseTo(-28.56 / PLACEMENT_SCALE, 5)
+    expect(placementOf(manifest, collision).z).toBeCloseTo(-9.472 / PLACEMENT_SCALE, 5)
+  })
+
+  it('leaves a piece with no placement at the origin', () => {
+    const manifest = readMapManifest(placedManifest())
+    const ground = manifest.resources[0] as (typeof manifest.resources)[number]
+    expect(placementOf(manifest, ground)).toMatchObject({ x: 0, y: 0, z: 0 })
+  })
+
+  it('is happy with a manifest that carries no placements at all', () => {
+    const manifest = readMapManifest(sample())
+    expect(manifest.resources[0]?.placement).toBeUndefined()
+    expect(
+      placementOf(manifest, manifest.resources[0] as (typeof manifest.resources)[number]),
+    ).toMatchObject({ x: 0, y: 0, z: 0 })
+  })
+
+  it('places nothing when the placements do not pair with the resources', () => {
+    // Placements pair by position, so one extra or one missing would put every
+    // piece after it in the wrong place with complete confidence. Some of the
+    // cartridge's maps carry more placements than resources.
+    const uneven = buildManifest(['a.imd', 'b.imd'], { places: [{ slot: 0 }] })
+    const manifest = readMapManifest(uneven)
+    expect(manifest.placementsPair).toBe(false)
+    expect(manifest.resources[0]?.placement).toBeUndefined()
+    expect(manifest.resources[1]?.placement).toBeUndefined()
+  })
+
+  it('does not hang on a chain that names itself', () => {
+    const cyclic = buildManifest(['a.imd', 'b.imd'], {
+      places: [
+        { slot: 1, parent: 2 },
+        { slot: 2, parent: 1 },
+      ],
+    })
+    const manifest = readMapManifest(cyclic)
+    expect(
+      placementOf(manifest, manifest.resources[0] as (typeof manifest.resources)[number]),
+    ).toMatchObject({ x: 0, z: 0 })
   })
 })

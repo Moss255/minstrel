@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@vesper/fixed": "workspace:*",
+    "@vesper/game-formats": "workspace:*",
     "@vesper/sim": "workspace:*"
   }
 }

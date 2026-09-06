@@ -308,6 +308,7 @@ resource records are what this reads.
 |---|---|
 | `0x6A` | number of resources |
 | `0x6C` | one per resource: position, **byte offset into the string table**, two unknowns |
+| `0x6F` | one per resource, in the same order: where the map puts it |
 
 The offset is the detail that matters. Records address a string by where it
 begins, not by its position in the list, so a reader that counts names instead
@@ -323,6 +324,54 @@ needs, and they all keep its stem: `C01M0300.imd` is `C01M0300.nsbmd` *and*
 Choosing looks harmless and is not: taking the first match on the reference
 cartridge loses a map's **main geometry** to the manifest file sitting beside it
 under the same stem, and the map still assembles — just without most of itself.
+
+## Placement — `0x6F`
+
+A map piece is authored **at its own origin** and moved into place. The
+village's ten doorways are ten models each spanning about a unit and a half from
+the origin; drawn unplaced they stack on top of each other in the air in the
+middle of the map, with their collision boxes stacked there too.
+
+Fourteen values per record. Three are established:
+
+| value | meaning |
+|---|---|
+| 3, 4, 5 | translation, as floats |
+| 6 | the slot of the resource this one is attached to, or `0xFFFFFFFF` for none |
+| 8, 9, 10 | scale, as floats. `1, 1, 1` on every resource of the reference cartridge |
+
+The rest are carried and not read.
+
+**Attachment matters.** A door's collision has no translation of its own: value 6
+names the door model's slot (value 1 of that resource's record) and it goes
+wherever the door goes. Following that link is what puts the wall in the doorway
+rather than leaving it at the origin while the door moves away. Checked on the
+village: each of `M01A00D1`..`DA` names the slot of the `M01M00D1`..`DA` beside
+it, and none carries a translation.
+
+**The unit is INFERRED.** The translations are an order of magnitude larger than
+the map: the doors sit at x −28.56 and 26.10 in a village running −4.38 to 7.61.
+Nothing in the file gives the divisor, so it is fitted — over every map with
+both placed pieces and unplaced ground, counting the pieces authored to sit at
+their own origin (local `minY` ≈ 0) that end up standing on that ground:
+
+| divisor | on the ground, cartridge-wide | on the village |
+|---|---|---|
+| 5 | 62.2% | — |
+| 7 | 67.9% | 9/10 |
+| **8** | **74.4%** | **10/10** |
+| 8.5 | 74.8% | 10/10 |
+| 10 | 71.1% | 8/10 |
+| 12 | 65.4% | 5/10 |
+
+`PLACEMENT_SCALE` is **8**: the peak in both, and a power of two, which is what
+a DS pipeline would use. It is a fit, not a reading, and is marked as such.
+
+**Placements are only used when they pair one-to-one.** They match resources by
+position, and 696 of the 755 manifests have exactly one per resource; the other
+59 carry *more* placements than resources. Pairing positionally through an extra
+record would place every piece after it confidently in the wrong spot, so those
+maps are left unplaced and `MapManifest.placementsPair` says so.
 
 ## Evidence
 

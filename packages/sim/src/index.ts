@@ -10,6 +10,7 @@ export {
   createCollisionWorld,
   type GroundHit,
   groundBelow,
+  type PlacedMesh,
   slopeOf,
   triangleAt,
   wallBetween,

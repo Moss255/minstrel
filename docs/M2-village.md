@@ -201,6 +201,54 @@ result in units and as a fraction of the map's own house — which it finds by t
 | Drawn walking | 0.45 | 0.90 | 0.45 |
 | Against a 1.50 house | 0.30 | 0.60 | **0.30** |
 
+### A map's pieces are placed, and were not being placed
+
+The village's ten doorways were drawn stacked on top of each other in mid-air at
+the middle of the map, and their collision boxes were stacked there with them.
+
+A map piece is authored at **its own origin** and moved into place by the map:
+`M01M00D1.nsbmd` spans −0.50 to 0.01 across and 0 to 1.52 up, and so do the
+other nine. The manifest carries the placement and it was not being read — the
+`0x6F` record, one per resource in the same order, fourteen values of which
+three are a translation and three a scale (1, 1, 1 on every resource of the
+reference cartridge).
+
+Two things had to be worked out beyond reading the floats.
+
+**Pieces attached to other pieces.** A door's collision carries no translation
+of its own. It names the door model — value 6 is the other resource's slot — and
+goes wherever that goes. Following the link is what puts the wall in the doorway
+instead of leaving it at the origin while the door itself moves away.
+
+**The unit.** The translations are an order of magnitude larger than the map
+they place things in: the doors sit at x −28.56 and 26.10 in a village running
+−4.38 to 7.61. The divisor is not in the file, so it is **fitted** and recorded
+as such, with the fit: over every map that has both placed pieces and unplaced
+ground, count the pieces authored to sit at their own origin that end up
+standing on that ground. It peaks at 8 to 8.5 across the cartridge and 7.5 to
+8.5 on the village, and 8 is a power of two, which is what a DS pipeline would
+use. `PLACEMENT_SCALE` is 8, marked inferred.
+
+Placements are only trusted when there is exactly one per resource, because they
+pair by position: 696 of the 755 manifests pair one-to-one, and the other 59
+carry *more* placements than resources. Pairing positionally through those would
+place every piece after the extra one confidently in the wrong spot, so those
+maps are left unplaced instead. A wrong placement is worse than none.
+
+### The camera was sinking into the ground
+
+A second regression, from the previous commit rather than this one. Taking the
+roof off replaced the old answer to geometry in the way — pulling the camera
+forward — and the ground is the one thing the culling rule must never remove.
+So an eye that ended up inside a hill looked straight through the world.
+
+Halving the character halved the camera's boom and its height with it, which is
+what made a latent problem visible. The fix is not to pull in: the eye is
+**raised** to stay a clearance above whatever ground is under it, so the camera
+keeps its distance and the framing survives. Falling was scaled to the character
+at the same time — a terminal speed near a character's own height per tick reads
+as teleporting rather than falling.
+
 ### The cartridge's own characters cannot settle it
 
 Worth recording, because it looks as though they should.
@@ -378,8 +426,8 @@ that is a stated deviation from the milestone's wording rather than an oversight
 
 ## Still to establish
 
-- **What places a `G1` resource.** Every other piece of a map carries its own
-  coordinates; that one does not.
+- **What the six remaining placement values mean.** Three of the fourteen are
+  the translation, three the scale, one the parent; the rest are unread.
 - **Interior and exterior links.** Which door leads where is still not located,
   and three candidates have now been ruled out. A fourth is now in view: `M01`
   carries ten single-shape models `M01M00D1`..`DA`, each 1.54 units tall with a

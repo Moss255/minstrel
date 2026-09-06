@@ -5,6 +5,7 @@ import {
   isCollisionMesh,
   isDataTable,
   isMapManifest,
+  placementOf,
   readBitmapFont,
   readCollisionMesh,
   readDataTable,
@@ -2120,6 +2121,109 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // that gap is the whole bug: it is what a T-pose measures.
     const bindHeight = bind.maxY - bind.minY
     expect(tallest / bindHeight).toBeGreaterThan(1.2)
+  })
+
+  it("places a map's pieces where the map says, instead of at the origin", () => {
+    // The bug: a map's pieces are authored at their own origin and placed by
+    // the manifest, and the placement was not read. The village's ten doorways
+    // are ten models each about a unit and a half tall, all sitting at the
+    // origin — drawn stacked in mid-air in the middle of the map, with their
+    // collision boxes stacked there too, which is walls where there is nothing.
+    let unplacedAtOrigin = 0
+    let placedApart = 0
+    let onGround = 0
+    let standers = 0
+    const misses: number[] = []
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes) || !/\.amdj$/.test(file.path)) continue
+      const members = new Map<string, Uint8Array>()
+      try {
+        for (const member of readNarc(bytes).entries()) {
+          const data = member.data
+          members.set(
+            String(member.name ?? member.index),
+            isLz10(data) ? decompressLz10(data) : data,
+          )
+        }
+      } catch {
+        continue
+      }
+
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        let manifest: ReturnType<typeof readMapManifest>
+        try {
+          manifest = readMapManifest(data)
+        } catch {
+          continue
+        }
+
+        // The map's own ground: the pieces it does not move.
+        const ground: ReturnType<typeof readCollisionMesh>[] = []
+        const movable: { place: ReturnType<typeof placementOf>; minY: number }[] = []
+        for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
+          const place = placementOf(manifest, resource)
+          const moved = place.x !== 0 || place.z !== 0
+          for (const built of files) {
+            const resourceBytes = members.get(built) as Uint8Array
+            if (!moved && isCollisionMesh(resourceBytes)) {
+              try {
+                ground.push(readCollisionMesh(resourceBytes))
+              } catch {
+                // Reported by the collision test.
+              }
+            }
+            if (!isNsbmd(resourceBytes)) continue
+            try {
+              const model = readNsbmd(resourceBytes).models[0]
+              if (!model?.numShapes) continue
+              const bounds = measureBounds(
+                model.shapes.map((_, shape) => model.posedGeometry(shape)),
+              )
+              // Authored at their own origin, so the placement y is where the
+              // base goes and "does it meet the ground" is a real question.
+              if (Math.abs(bounds.minY) > 0.05) continue
+              if (moved) movable.push({ place, minY: bounds.minY })
+            } catch {
+              // Reported by the model test.
+            }
+          }
+        }
+        if (ground.length === 0 || movable.length === 0) continue
+
+        const world = createCollisionWorld(ground)
+        for (const { place } of movable) {
+          const before = Math.hypot(place.x, place.z)
+          if (before > 0.5) placedApart++
+          else unplacedAtOrigin++
+          const hit = groundBelow(
+            world,
+            fx32(Math.round(place.x * 4096)),
+            fx32(Math.round(place.z * 4096)),
+            fx32(Math.round((place.y + 0.4) * 4096)),
+          )
+          standers++
+          if (!hit) continue
+          const miss = Math.abs(hit.y / 4096 - place.y)
+          misses.push(miss)
+          if (miss < 0.05) onGround++
+        }
+      }
+    }
+
+    // The pieces really are moved: nearly all of them end up away from the
+    // origin, which is the whole point.
+    expect(placedApart).toBeGreaterThan(200)
+    expect(placedApart).toBeGreaterThan(unplacedAtOrigin * 4)
+    // And they land on the ground rather than anywhere: the divisor in
+    // PLACEMENT_SCALE is fitted on exactly this, so what this pins is that the
+    // value in the source still matches the cartridge.
+    expect(standers).toBeGreaterThan(200)
+    expect(onGround / standers).toBeGreaterThan(0.7)
+    misses.sort((a, b) => a - b)
+    expect(misses[misses.length >> 1] as number).toBeLessThan(0.05)
   })
 
   it('produces the container magic each member extension implies', () => {

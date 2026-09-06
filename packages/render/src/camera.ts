@@ -1,5 +1,5 @@
 import { type Fx32, fx32, toFloat } from '@vesper/fixed'
-import { type CharacterShape, type CollisionWorld, wallBetween } from '@vesper/sim'
+import { type CharacterShape, type CollisionWorld, groundBelow } from '@vesper/sim'
 
 /**
  * The camera, and how the DS's framing survives a screen that is not the DS's.
@@ -86,6 +86,14 @@ export interface FollowCamera {
   distance: number
   /** How far back it actually sits, after anything in the way. */
   actualDistance: number
+  /**
+   * How far the eye is raised to keep it out of the ground.
+   *
+   * Culling answers a building standing in the way, but not the camera sinking
+   * into the hill behind the character — the ground is the one thing culling
+   * must never remove, so an eye below it looks straight through the world.
+   */
+  lift: number
   /** How high above the feet to look. */
   height: number
   /** Fraction of the remaining gap closed per second. */
@@ -161,6 +169,7 @@ export function followCamera(style: CameraStyle = OUTDOORS, characterHeight = 1)
     pitch: style.pitch,
     distance: style.distance * characterHeight,
     actualDistance: style.distance * characterHeight,
+    lift: 0,
     height: style.height * characterHeight,
     follow: 6,
     minPitch: style.minPitch,
@@ -193,12 +202,14 @@ export function applyStyle(
  * fraction is per second and converted with an exponential. `follow` is then a
  * rate rather than a magic number that only works at one frame rate.
  *
- * `world` is optional, and mostly should be left out. Given one, the camera
- * comes forward to just in front of whatever is between it and the character.
- * That is the usual answer to a building swallowing the view, but it is not
- * this game's: the game keeps the camera where it is and stops drawing what is
- * in the way — see {@link occludes} — which is the only answer that works in a
- * room, where there is nowhere to pull the camera to.
+ * `world` is optional. Given one, the camera is kept **above the ground** — not
+ * pulled forward. A building standing between the camera and the character is
+ * answered by not drawing the building (see {@link occludes}), which is what
+ * the game does and the only thing that works in a room. But the ground is the
+ * one piece culling must never remove, so an eye that sinks into the hill
+ * behind the character looks straight through the world instead. That is a
+ * different problem and this is its fix: the eye is raised to stay clear of
+ * whatever is under it.
  */
 export function updateFollowCamera(
   camera: FollowCamera,
@@ -223,26 +234,35 @@ export function updateFollowCamera(
   }
 
   camera.actualDistance = camera.distance
+  camera.lift = 0
   if (world && shape) {
     const eye = eyeOf(camera, camera.distance)
     const scale = 4096
-    const hit = wallBetween(
+    // The ground under the eye, looked for from well above it so a camera
+    // already buried in a hill still finds the surface it is under.
+    const hit = groundBelow(
       world,
-      {
-        x: fx32(Math.round((camera.focus[0] as number) * scale)),
-        z: fx32(Math.round((camera.focus[2] as number) * scale)),
-      },
-      { x: fx32(Math.round(eye[0] * scale)), z: fx32(Math.round(eye[2] * scale)) },
-      fx32(Math.round(((camera.focus[1] as number) - 0.05) * scale)),
-      fx32(Math.round(((camera.focus[1] as number) + 0.05) * scale)),
-      shape.maxSlope,
+      fx32(Math.round(eye[0] * scale)),
+      fx32(Math.round(eye[2] * scale)),
+      fx32(Math.round((eye[1] + GROUND_SEARCH) * scale)),
     )
     if (hit !== undefined) {
-      // Just in front of the wall, so the near plane does not clip into it.
-      camera.actualDistance = Math.max(0.1, camera.distance * hit - 0.1)
+      const surface = toFloat(hit.y)
+      // A clearance proportional to the character, so this scales with the
+      // world the way the rest of the framing does.
+      const clearance = camera.height * 0.5
+      if (eye[1] < surface + clearance) camera.lift = surface + clearance - eye[1]
     }
   }
 }
+
+/**
+ * How far above the eye to start looking for the ground under it.
+ *
+ * Fixed rather than proportional: it only has to clear the tallest hill the
+ * camera can be inside, and looking from too far up costs nothing.
+ */
+const GROUND_SEARCH = 8
 
 /** Where the camera sits, given how far back it is. */
 export function cameraEye(
@@ -256,7 +276,7 @@ function eyeOf(camera: FollowCamera, distance: number): [number, number, number]
   const cosPitch = Math.cos(camera.pitch)
   return [
     (camera.focus[0] as number) + distance * cosPitch * Math.sin(camera.yaw),
-    (camera.focus[1] as number) + distance * Math.sin(camera.pitch),
+    (camera.focus[1] as number) + distance * Math.sin(camera.pitch) + camera.lift,
     (camera.focus[2] as number) + distance * cosPitch * Math.cos(camera.yaw),
   ]
 }

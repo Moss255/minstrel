@@ -258,9 +258,10 @@ function pushOutOfWalls(
  * character agrees with every other, not how big any of them should be.
  *
  * The rest follow from that height at ordinary human proportions: a little over
- * a fifth of it as a radius, a third as the tallest step. Gravity is per tick
- * squared at 60Hz, so 0.004 is about fourteen units per second per second —
- * brisker than the real thing, as games generally are.
+ * a fifth of it as a radius, a third as the tallest step. Gravity and the
+ * terminal speed are proportional to it too, so a fall reads the same however
+ * the height is revised — a terminal speed near a character's own height per
+ * tick would look like teleporting rather than falling.
  *
  * These are **not** the game's own constants, which live in code this
  * repository does not read. What is measured is the scale they sit at; the
@@ -273,7 +274,7 @@ export const PERSON: CharacterShape = {
   stepUp: fx32(Math.round(0.14 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
-  gravity: fx32(Math.round(0.004 * FX32_ONE)),
-  terminalSpeed: fx32(Math.round(0.3 * FX32_ONE)),
+  gravity: fx32(Math.round(0.002 * FX32_ONE)),
+  terminalSpeed: fx32(Math.round(0.15 * FX32_ONE)),
   snapDown: fx32(Math.round(0.08 * FX32_ONE)),
 }

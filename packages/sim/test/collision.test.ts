@@ -235,3 +235,39 @@ describe('a world built from several meshes', () => {
     expect(one.triangles).toHaveLength(2)
   })
 })
+
+describe('a world built from placed meshes', () => {
+  // A map's pieces are authored at their own origin and moved into place, so a
+  // mesh can arrive with an offset. Before this, every door's collision box sat
+  // stacked at the world origin: walls in the middle of the map and none in the
+  // doorways.
+  const local = mesh(floor(4, 0))
+
+  it('puts a mesh where the map says, not where it was modelled', () => {
+    const world = createCollisionWorld([{ mesh: local, offset: { x: 40 * U, y: 0, z: 40 * U } }])
+    expect(groundBelow(world, fromInt(42), fromInt(42), fromInt(10))).toBeDefined()
+    expect(groundBelow(world, fromInt(2), fromInt(2), fromInt(10))).toBeUndefined()
+  })
+
+  it('moves the bounds with the triangles', () => {
+    const world = createCollisionWorld([{ mesh: local, offset: { x: 40 * U, y: 2 * U, z: 0 } }])
+    expect(world.bounds.maxX).toBe(44 * U)
+    expect(world.bounds.maxY).toBe(2 * U)
+  })
+
+  it('mixes placed and unplaced meshes', () => {
+    const world = createCollisionWorld([local, { mesh: local, offset: { x: 40 * U, y: 0, z: 0 } }])
+    expect(groundBelow(world, fromInt(2), fromInt(2), fromInt(10))).toBeDefined()
+    expect(groundBelow(world, fromInt(42), fromInt(2), fromInt(10))).toBeDefined()
+  })
+
+  it('takes an offset of undefined as no offset', () => {
+    const world = createCollisionWorld([{ mesh: local, offset: undefined }])
+    expect(groundBelow(world, fromInt(2), fromInt(2), fromInt(10))?.y).toBe(0)
+  })
+
+  it('leaves the surface normals alone, because a shift cannot turn one', () => {
+    const world = createCollisionWorld([{ mesh: local, offset: { x: 40 * U, y: 0, z: 0 } }])
+    expect(groundBelow(world, fromInt(42), fromInt(2), fromInt(10))?.slope).toBe(FX32_ONE)
+  })
+})

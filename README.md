@@ -133,6 +133,12 @@ differences that are worth catching. It matches the hardware's resolution and
 colour depth, not its rasterisation rules — toon shading and edge marking are
 not implemented.
 
+A map is assembled from its manifest and its pieces are **placed**: a doorway is
+modelled at its own origin and moved to the building it belongs to, and its
+collision follows the model it is attached to. Unplaced, all ten of a village's
+doorways stack in mid-air at the map's centre with their collision boxes on top
+of each other.
+
 Models are posed, textured and animated. Bones and render commands are read;
 each vertex is placed by the matrix its display list bound it to, taken from the
 stack as it stood when that shape was drawn and scaled by the model's position

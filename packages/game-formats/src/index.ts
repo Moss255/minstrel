@@ -24,7 +24,10 @@ export {
 export {
   isMapManifest,
   type MapManifest,
+  type MapPlacement,
   type MapResource,
+  PLACEMENT_SCALE,
+  placementOf,
   readMapManifest,
   resolveMapResources,
 } from './mapmanifest.ts'
