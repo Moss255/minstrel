@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { fx32, toFloat } from '@vesper/fixed'
+import { type Fx32, fx32, toFloat } from '@vesper/fixed'
 import {
   isBitmapFont,
   isCollisionMesh,
@@ -59,7 +59,14 @@ import {
   occluders,
   updateFollowCamera,
 } from '@vesper/render'
-import { type CharacterState, createCollisionWorld, groundBelow, PERSON, step } from '@vesper/sim'
+import {
+  type CharacterState,
+  createCollisionWorld,
+  groundBelow,
+  PERSON,
+  type PlacedMesh,
+  step,
+} from '@vesper/sim'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 /**
@@ -2237,6 +2244,133 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     misses.sort((a, b) => a - b)
     expect(misses[misses.length >> 1] as number).toBeLessThan(0.05)
   })
+
+  it('can walk away from where it puts a character down', () => {
+    // Somewhere to stand and somewhere to walk are different questions. The
+    // village's spawn was a spot with standable ground in all sixteen
+    // directions that the character could not leave, because it sat inside a
+    // two-and-a-half-unit wall: the character shuffled 0.03 units in forty
+    // ticks whichever way it was pushed.
+    const speed = fx32(Math.round(0.05 * 4096))
+    const canLeave = (
+      world: ReturnType<typeof createCollisionWorld>,
+      x: Fx32,
+      y: Fx32,
+      z: Fx32,
+    ) => {
+      let open = 0
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4
+        let state: CharacterState = { x, y, z, fallSpeed: fx32(0), grounded: true }
+        for (let tick = 0; tick < 16; tick++) {
+          state = step(
+            world,
+            state,
+            fx32(Math.round(Math.cos(angle) * speed)),
+            fx32(Math.round(Math.sin(angle) * speed)),
+            PERSON,
+          )
+        }
+        const moved = Math.hypot(toFloat(state.x) - toFloat(x), toFloat(state.z) - toFloat(z))
+        if (moved > (toFloat(speed) * 16) / 2) open++
+      }
+      return open
+    }
+
+    let maps = 0
+    let stuck = 0
+    let free = 0
+    const trapped: string[] = []
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes) || !/\.amdj$/.test(file.path)) continue
+      const members = new Map<string, Uint8Array>()
+      try {
+        for (const member of readNarc(bytes).entries()) {
+          const data = member.data
+          members.set(
+            String(member.name ?? member.index),
+            isLz10(data) ? decompressLz10(data) : data,
+          )
+        }
+      } catch {
+        continue
+      }
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        let manifest: ReturnType<typeof readMapManifest>
+        try {
+          manifest = readMapManifest(data)
+        } catch {
+          continue
+        }
+        const meshes: PlacedMesh[] = []
+        for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
+          const place = placementOf(manifest, resource)
+          for (const built of files) {
+            const resourceBytes = members.get(built) as Uint8Array
+            if (!isCollisionMesh(resourceBytes)) continue
+            try {
+              meshes.push({
+                mesh: readCollisionMesh(resourceBytes),
+                offset: {
+                  x: Math.round(place.x * 4096),
+                  y: Math.round(place.y * 4096),
+                  z: Math.round(place.z * 4096),
+                },
+              })
+            } catch {
+              // Reported by the collision test.
+            }
+          }
+        }
+        if (meshes.length === 0) continue
+        const world = createCollisionWorld(meshes)
+        if (world.triangles.length < 40) continue
+
+        // The viewer's rule: walkable ground nearest the middle that the
+        // character can leave, trying the nearest first.
+        const midX = (world.bounds.minX + world.bounds.maxX) / 2
+        const midZ = (world.bounds.minZ + world.bounds.maxZ) / 2
+        const candidates = world.triangles
+          .filter((t) => t.normal[1] !== 0)
+          .map((t) => {
+            const [a, b, c] = t.vertices
+            const cx = Math.round((a[0] + b[0] + c[0]) / 3)
+            const cz = Math.round((a[2] + b[2] + c[2]) / 3)
+            return { x: fx32(cx), z: fx32(cz), away: Math.hypot(cx - midX, cz - midZ) }
+          })
+          .sort((p, q) => p.away - q.away)
+          .slice(0, 120)
+
+        let bestOpen = -1
+        for (const candidate of candidates) {
+          const hit = groundBelow(world, candidate.x, candidate.z, fx32(world.bounds.maxY + 4096))
+          if (!hit || hit.slope < PERSON.maxSlope) continue
+          const open = canLeave(world, candidate.x, hit.y, candidate.z)
+          bestOpen = Math.max(bestOpen, open)
+          if (open >= 6) break
+        }
+        if (bestOpen < 0) continue
+        maps++
+        if (bestOpen >= 6) free++
+        else {
+          stuck++
+          if (trapped.length < 6)
+            trapped.push(`${file.path}#${name}: best spawn opens ${bestOpen}/8 ways`)
+        }
+      }
+    }
+
+    expect(maps).toBeGreaterThan(200)
+    // Nearly every map offers somewhere the character can walk away from. The
+    // rule is "try until one works", so what this pins is that such a spot
+    // exists to be found.
+    expect(free / maps).toBeGreaterThan(0.9)
+    expect(stuck).toBeLessThan(maps / 10)
+    expect(trapped.length).toBeLessThan(7)
+  }, 120_000)
 
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly

@@ -284,6 +284,40 @@ from its own authored resource — the one beside it under the same stem, matche
 by bone count — driven at the DS's 30 frames a second, and it keeps running
 while the map is being walked.
 
+### The trees were in a pile at the model's origin
+
+The rainbow fix below introduced this one, which is a fair trade only because
+the measurement caught it. Making a node description set the current matrix was
+right; also moving the **slot the next shape reads** when a node *stores* its
+matrix was not. Storing keeps a matrix for later. Only a restore changes which
+slot a shape's vertices look up.
+
+With both, a model's tree billboards — twelve flat quads in `M01M0003`, one per
+`tre` node — read slot 0 while their own matrices had been written to another,
+so all twelve drew on top of each other at the model's origin, in the air. With
+only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
+`tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
+and they sit within 0.08 units of the ground under them.
+
+### Somewhere to stand is not somewhere to walk
+
+The village's spawn had standable ground in all sixteen directions around it and
+the character could not leave: 0.03 units in forty ticks, whichever of eight
+ways it was pushed. It sat inside a wall 2.5 units tall spanning x 1.55 to 2.34,
+with a dozen more faces at eighty degrees within a third of a unit.
+
+The spawn rule was "walkable ground nearest the middle of the map", which asks
+whether a spot can be *stood* on. It now asks whether it can be *walked away
+from*: candidates nearest the middle first, each tried by walking eight ways for
+sixteen ticks, and the first that gets somewhere in six of them wins. Across the
+cartridge more than nine maps in ten offer such a spot, and the harness pins
+that.
+
+Of the village's 77 walkable triangles, 24 are open in six directions or more.
+The other 53 are places a character can stand and not leave, which is the same
+finding as the 36% reachability ceiling seen from the other side, and still
+unexplained.
+
 ### The rainbow, the trees, and the current matrix
 
 A node description in a model's render-command stream computes that node's world

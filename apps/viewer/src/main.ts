@@ -1,4 +1,4 @@
-import { FX32_ONE, fx32, toFloat } from '@vesper/fixed'
+import { FX32_ONE, type Fx32, fx32, toFloat } from '@vesper/fixed'
 import {
   isCollisionMesh,
   isMapManifest,
@@ -872,6 +872,37 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
  * the cartridge's own start positions are found; if there is no ground there,
  * the first walkable triangle will do.
  */
+/**
+ * Can the character actually walk away from here?
+ *
+ * The ground being standable is not enough: the village's spawn was a spot with
+ * open ground in all sixteen directions that the character could not leave,
+ * because it sat inside a two-and-a-half-unit wall and a thicket of eighty-
+ * degree faces. Somewhere to stand and somewhere to walk are different
+ * questions, and only the second one matters for a spawn.
+ */
+function canLeave(world: CollisionWorld, x: Fx32, y: Fx32, z: Fx32): number {
+  let open = 0
+  for (let i = 0; i < 8; i++) {
+    const angle = (i * Math.PI) / 4
+    const dx = fx32(Math.round(Math.cos(angle) * WALK_SPEED))
+    const dz = fx32(Math.round(Math.sin(angle) * WALK_SPEED))
+    let state: CharacterState = { x, y, z, fallSpeed: fx32(0), grounded: true }
+    for (let tick = 0; tick < 16; tick++) state = stepCharacter(world, state, dx, dz, PERSON)
+    const moved = Math.hypot(toFloat(state.x) - toFloat(x), toFloat(state.z) - toFloat(z))
+    // Half of what it asked for, which a wall taken at an angle still passes.
+    if (moved > (toFloat(fx32(WALK_SPEED)) * 16) / 2) open++
+  }
+  return open
+}
+
+/**
+ * Put a walker on the map, somewhere it can walk from.
+ *
+ * Candidates are the map's own walkable triangles, tried nearest the middle
+ * first, and the first one the character can leave in most directions wins. If
+ * none can be left the least bad is used rather than refusing to walk at all.
+ */
 function startWalking(): void {
   const world = shown?.world
   if (!world) {
@@ -879,39 +910,43 @@ function startWalking(): void {
     return
   }
   const { bounds } = world
-  const midX = fx32(Math.round((bounds.minX + bounds.maxX) / 2))
-  const midZ = fx32(Math.round((bounds.minZ + bounds.maxZ) / 2))
-  let hit = groundBelow(world, midX, midZ, fx32(bounds.maxY + FX32_ONE))
-  let x = midX
-  let z = midZ
+  const midX = (bounds.minX + bounds.maxX) / 2
+  const midZ = (bounds.minZ + bounds.maxZ) / 2
 
-  if (!hit) {
-    // The middle of a village is usually a building. Fall back to the walkable
-    // ground nearest the middle rather than to whichever triangle comes first,
-    // which could be a rooftop at the far edge of the map.
-    let nearest = Number.POSITIVE_INFINITY
-    for (const triangle of world.triangles) {
-      if (triangle.normal[1] === 0) continue
-      const [a, b, c] = triangle.vertices
-      const cx = fx32(Math.round((a[0] + b[0] + c[0]) / 3))
-      const cz = fx32(Math.round((a[2] + b[2] + c[2]) / 3))
-      const away = Math.hypot(cx - midX, cz - midZ)
-      if (away >= nearest) continue
-      const found = groundBelow(world, cx, cz, fx32(bounds.maxY + FX32_ONE))
-      if (!found) continue
-      nearest = away
-      hit = found
-      x = cx
-      z = cz
-    }
+  const candidates: { x: Fx32; z: Fx32; away: number }[] = []
+  const middle = groundBelow(
+    world,
+    fx32(Math.round(midX)),
+    fx32(Math.round(midZ)),
+    fx32(bounds.maxY + FX32_ONE),
+  )
+  if (middle) candidates.push({ x: fx32(Math.round(midX)), z: fx32(Math.round(midZ)), away: 0 })
+  for (const triangle of world.triangles) {
+    if (triangle.normal[1] === 0) continue
+    const [a, b, c] = triangle.vertices
+    const cx = Math.round((a[0] + b[0] + c[0]) / 3)
+    const cz = Math.round((a[2] + b[2] + c[2]) / 3)
+    candidates.push({ x: fx32(cx), z: fx32(cz), away: Math.hypot(cx - midX, cz - midZ) })
   }
-  if (!hit) {
+  candidates.sort((p, q) => p.away - q.away)
+
+  let best: { x: Fx32; y: Fx32; z: Fx32; open: number } | undefined
+  // Enough to cross a map's walkable ground without stalling the key press.
+  for (const candidate of candidates.slice(0, 400)) {
+    const found = groundBelow(world, candidate.x, candidate.z, fx32(bounds.maxY + FX32_ONE))
+    if (!found || found.slope < PERSON.maxSlope) continue
+    const open = canLeave(world, candidate.x, found.y, candidate.z)
+    if (!best || open > best.open) best = { x: candidate.x, y: found.y, z: candidate.z, open }
+    if (open >= 6) break
+  }
+  if (!best) {
     walker = undefined
     return
   }
+
   const { body, scale } = buildCharacter()
   walker = {
-    state: { x, y: hit.y, z, fallSpeed: fx32(0), grounded: true },
+    state: { x: best.x, y: best.y, z: best.z, fallSpeed: fx32(0), grounded: true },
     held: new Set(),
     carry: 0,
     facing: 0,

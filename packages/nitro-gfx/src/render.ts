@@ -272,12 +272,14 @@ export function resolvePose(
 
         // With the 0x20 flag the fourth parameter names a stack slot to store
         // the result in; the 0x40 flag's parameter is not identified.
+        // Storing keeps the matrix for later; it does not change which slot
+        // the next shape's vertices read. Only a restore does that. Moving the
+        // read slot here left a model's tree billboards looking up an untouched
+        // slot while their own matrices sat in another, so twelve trees drew in
+        // one pile at the model's origin.
         if ((command.opcode & 0x20) !== 0) {
           const slot = command.params[3]
-          if (slot !== undefined && slot < MATRIX_STACK_SIZE) {
-            stack[slot] = result
-            currentSlot = slot
-          }
+          if (slot !== undefined && slot < MATRIX_STACK_SIZE) stack[slot] = result
         }
         break
       }
