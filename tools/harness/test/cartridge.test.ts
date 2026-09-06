@@ -6,6 +6,7 @@ import {
   isDataTable,
   isMapManifest,
   isMarkerVolume,
+  isWaterTexture,
   placementOf,
   readBitmapFont,
   readCollisionMesh,
@@ -2626,6 +2627,149 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(open).toBeGreaterThan(0.55)
     expect(open).toBeGreaterThan(sealed * 2)
   }, 120_000)
+
+  it('does not put a character down in the water', () => {
+    // The village's river is two flat planes across the middle of the map, and
+    // a spawn that looks for the map's centre lands in one of them. The map's
+    // own textures say where the water is: `m01m00wtr01` beside
+    // `m01m00grs01`, a convention holding across 419 of the cartridge's map
+    // models.
+    let maps = 0
+    let hadWater = 0
+    let wouldSpawnWet = 0
+    let stillWet = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes) || !/\.amdj$/.test(file.path)) continue
+      const members = new Map<string, Uint8Array>()
+      try {
+        for (const member of readNarc(bytes).entries()) {
+          const data = member.data
+          members.set(
+            String(member.name ?? member.index),
+            isLz10(data) ? decompressLz10(data) : data,
+          )
+        }
+      } catch {
+        continue
+      }
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        let manifest: ReturnType<typeof readMapManifest>
+        try {
+          manifest = readMapManifest(data)
+        } catch {
+          continue
+        }
+        const meshes: PlacedMesh[] = []
+        const water: { minX: number; maxX: number; minZ: number; maxZ: number; surface: number }[] =
+          []
+        for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
+          const place = placementOf(manifest, resource)
+          const offset = {
+            x: Math.round(place.x * 4096),
+            y: Math.round(place.y * 4096),
+            z: Math.round(place.z * 4096),
+          }
+          for (const built of files) {
+            const resourceBytes = members.get(built) as Uint8Array
+            if (isCollisionMesh(resourceBytes)) {
+              try {
+                const mesh = readCollisionMesh(resourceBytes)
+                if (!isMarkerVolume(mesh)) meshes.push({ mesh, offset })
+              } catch {
+                // Reported by the collision test.
+              }
+            } else if (isNsbmd(resourceBytes)) {
+              try {
+                const model = readNsbmd(resourceBytes).models[0]
+                if (!model?.numShapes) continue
+                for (let shape = 0; shape < model.numShapes; shape++) {
+                  const materialIndex = model.shapeMaterials[shape]
+                  const material =
+                    materialIndex === undefined ? undefined : model.materials[materialIndex]
+                  if (material?.texture === undefined || !isWaterTexture(material.texture)) continue
+                  const b = measureBounds([model.posedGeometry(shape)])
+                  water.push({
+                    minX: b.minX + place.x,
+                    maxX: b.maxX + place.x,
+                    minZ: b.minZ + place.z,
+                    maxZ: b.maxZ + place.z,
+                    surface: b.maxY + place.y,
+                  })
+                }
+              } catch {
+                // Reported by the model test.
+              }
+            }
+          }
+        }
+        if (meshes.length === 0) continue
+        const world = createCollisionWorld(meshes)
+        if (world.triangles.length < 40) continue
+        maps++
+        if (water.length === 0) continue
+        hadWater++
+
+        const wet = (x: number, y: number, z: number) =>
+          water.some(
+            (w) =>
+              x >= w.minX &&
+              x <= w.maxX &&
+              z >= w.minZ &&
+              z <= w.maxZ &&
+              y <= w.surface + toFloat(PERSON.height),
+          )
+
+        const midX = (world.bounds.minX + world.bounds.maxX) / 2
+        const midZ = (world.bounds.minZ + world.bounds.maxZ) / 2
+        const candidates = world.triangles
+          .filter((t) => t.normal[1] !== 0)
+          .map((t) => {
+            const [a, b, c] = t.vertices
+            const cx = Math.round((a[0] + b[0] + c[0]) / 3)
+            const cz = Math.round((a[2] + b[2] + c[2]) / 3)
+            return { x: fx32(cx), z: fx32(cz), away: Math.hypot(cx - midX, cz - midZ) }
+          })
+          .sort((p, q) => p.away - q.away)
+          .slice(0, 200)
+
+        // Where the old rule went: nearest the middle, water or not.
+        for (const candidate of candidates) {
+          const hit = groundBelow(world, candidate.x, candidate.z, fx32(world.bounds.maxY + 4096))
+          if (!hit || hit.slope < PERSON.maxSlope) continue
+          if (wet(toFloat(candidate.x), toFloat(hit.y), toFloat(candidate.z))) wouldSpawnWet++
+          break
+        }
+        // And where it goes now, skipping the water.
+        for (const candidate of candidates) {
+          const hit = groundBelow(world, candidate.x, candidate.z, fx32(world.bounds.maxY + 4096))
+          if (!hit || hit.slope < PERSON.maxSlope) continue
+          if (wet(toFloat(candidate.x), toFloat(hit.y), toFloat(candidate.z))) continue
+          break
+        }
+        // Whether any dry candidate exists at all.
+        const dry = candidates.some((candidate) => {
+          const hit = groundBelow(world, candidate.x, candidate.z, fx32(world.bounds.maxY + 4096))
+          return (
+            hit !== undefined &&
+            hit.slope >= PERSON.maxSlope &&
+            !wet(toFloat(candidate.x), toFloat(hit.y), toFloat(candidate.z))
+          )
+        })
+        if (!dry) stillWet++
+      }
+    }
+
+    expect(maps).toBeGreaterThan(200)
+    expect(hadWater).toBeGreaterThan(20)
+    // The old rule put a character in the water on a real share of the maps
+    // that have any — which is what happened in the village.
+    expect(wouldSpawnWet).toBeGreaterThan(0)
+    // And nearly every watery map has dry ground near its middle to use instead.
+    expect(stillWet).toBeLessThan(hadWater / 4)
+  }, 180_000)
 
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly

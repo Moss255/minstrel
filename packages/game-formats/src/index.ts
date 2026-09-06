@@ -33,6 +33,7 @@ export {
   readMapManifest,
   resolveMapResources,
 } from './mapmanifest.ts'
+export { isWaterTexture, textureTag } from './materials.ts'
 export {
   type DataTable,
   isDataTable,

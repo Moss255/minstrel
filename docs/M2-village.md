@@ -299,6 +299,35 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### Spawning in the river
+
+The village's spawn landed on a sandbank in the middle of the river.
+
+The map's own textures say where the water is, and the naming is a convention
+worth having: a map texture is the map's code, then **three letters saying what
+the surface is**, then a number. `m01m00wtr01` is water; `m01m00grs01` is the
+grass beside it. Across the 4,337 models under `/data/map` the tags come out as
+a level artist's vocabulary — `grd` 3,694, `wal` 2,332, `clf` 2,124, `grs`
+1,934, `tre` 1,632, `stn` 1,451, `sdw` 868, `dor` 739, **`wtr` 726**, `hus` 694,
+`sky` 606. `hus` and `tre` are also node names in the same models, which is how
+the houses and trees were found earlier, so this is the same convention seen
+from the other side.
+
+The village has eight water surfaces: the river straight across the middle of
+the map, and the pools at the falls.
+
+The catch was the threshold. The spawn stood at y −0.14 on a riverbed whose
+water surface is at −0.31 — **above** the water, so a test for "below the
+surface" called it dry. For a character 0.18 units tall, standing 0.17 above the
+surface of a river is standing knee-deep in it. Within a character's height of a
+water surface is in the water, and with that the village's spawn moves from
+(1.62, −0.14, 0.08) to (2.94, −0.14, −0.04), clear of the river and still open
+in seven of eight directions.
+
+**Only the `wtr` tag is used, and only for this.** What the tags mean to the
+game — which surfaces are solid, which sound different underfoot, which are the
+Hexagon's poison marshes — is not established and nothing here claims it.
+
 ### The doorways were sealed
 
 The character could walk a few steps and then met something. Not the step

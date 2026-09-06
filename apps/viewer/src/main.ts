@@ -3,6 +3,7 @@ import {
   isCollisionMesh,
   isMapManifest,
   isMarkerVolume,
+  isWaterTexture,
   type MapManifest,
   PLACED_PIECE_SCALE,
   placementOf,
@@ -634,6 +635,16 @@ let houseHeight = 0
 /** The tallest wall of the shown map's buildings, and the tallest placed piece. */
 let wallHeight = 0
 let propHeight = 0
+/**
+ * Where the shown map's water is, as a footprint and a surface height.
+ *
+ * A map's textures are named for what they are (`m01m00wtr01` is water beside
+ * `m01m00grs01`), and the village's water is two flat planes straight across
+ * the middle — which is exactly where a spawn looking for the map's centre
+ * lands. Nothing else is read from it: this is only for not standing a
+ * character in the sea.
+ */
+let waterAreas: { minX: number; maxX: number; minZ: number; maxZ: number; surface: number }[] = []
 const TICK_MS = 1000 / 60
 
 let shown: Shown | undefined
@@ -756,6 +767,7 @@ function select(index: number): void {
       houseHeight = 0
       wallHeight = 0
       propHeight = 0
+      waterAreas = []
       for (const model of models) {
         const place = placeByModel.get(model)
         const moved = place !== undefined && (place.x !== 0 || place.y !== 0 || place.z !== 0)
@@ -765,6 +777,21 @@ function select(index: number): void {
           const bounds = measureBounds(model.shapes.map((_, shape) => model.posedGeometry(shape)))
           propHeight = Math.max(propHeight, bounds.maxY - bounds.minY)
           continue
+        }
+        for (let shape = 0; shape < model.numShapes; shape++) {
+          const materialIndex = model.shapeMaterials[shape]
+          const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
+          const texture = material?.texture
+          if (texture === undefined || !isWaterTexture(texture)) continue
+          const bounds = measureBounds([model.posedGeometry(shape)])
+          const at = place ?? { x: 0, y: 0, z: 0 }
+          waterAreas.push({
+            minX: bounds.minX + at.x,
+            maxX: bounds.maxX + at.x,
+            minZ: bounds.minZ + at.z,
+            maxZ: bounds.maxZ + at.z,
+            surface: bounds.maxY + at.y,
+          })
         }
         if (!model.nodes.some((node) => /^hus\d*$/.test(node.name))) continue
         for (let shape = 0; shape < model.numShapes; shape++) {
@@ -912,6 +939,28 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
  * the first walkable triangle will do.
  */
 /**
+ * Is this spot in the water?
+ *
+ * The map's own textures say where the water is; what matters here is only that
+ * the ground at a spawn is not under it. The village's river runs straight
+ * across the middle of the map, so a spawn that looks for the map's centre
+ * lands in it.
+ */
+function isUnderWater(x: number, y: number, z: number): boolean {
+  return waterAreas.some(
+    (water) =>
+      x >= water.minX &&
+      x <= water.maxX &&
+      z >= water.minZ &&
+      z <= water.maxZ &&
+      // Within a character's height of the surface, not just below it. The
+      // village's spawn stood on a sandbank 0.17 above a river surface at
+      // -0.31, which for a character 0.18 tall is knee-deep in it.
+      y <= water.surface + toFloat(PERSON.height),
+  )
+}
+
+/**
  * Can the character actually walk away from here?
  *
  * The ground being standable is not enough: the village's spawn was a spot with
@@ -974,6 +1023,7 @@ function startWalking(): void {
   for (const candidate of candidates.slice(0, 400)) {
     const found = groundBelow(world, candidate.x, candidate.z, fx32(bounds.maxY + FX32_ONE))
     if (!found || found.slope < PERSON.maxSlope) continue
+    if (isUnderWater(toFloat(candidate.x), toFloat(found.y), toFloat(candidate.z))) continue
     const open = canLeave(world, candidate.x, found.y, candidate.z)
     if (!best || open > best.open) best = { x: candidate.x, y: found.y, z: candidate.z, open }
     if (open >= 6) break

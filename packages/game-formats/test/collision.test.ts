@@ -7,6 +7,7 @@ import {
   readCollisionMesh,
 } from '../src/collision.ts'
 import { GameFormatError } from '../src/errors.ts'
+import { isWaterTexture, textureTag } from '../src/materials.ts'
 
 interface TriangleSpec {
   readonly points: readonly [
@@ -284,5 +285,29 @@ describe('marker volumes', () => {
 
   it('says nothing about an empty mesh either way, without throwing', () => {
     expect(isMarkerVolume(meshOf([]))).toBe(true)
+  })
+})
+
+describe('what a map texture is named', () => {
+  it('reads the three-letter tag', () => {
+    expect(textureTag('m01m00wtr01')).toBe('wtr')
+    expect(textureTag('m01m00grs06')).toBe('grs')
+    expect(textureTag('c01m03hus02')).toBe('hus')
+  })
+
+  it('says nothing about a name that does not follow the convention', () => {
+    expect(textureTag('')).toBeUndefined()
+    expect(textureTag('texture')).toBeUndefined()
+    expect(textureTag('wtr')).toBeUndefined()
+    expect(textureTag('m01m00wtr')).toBeUndefined()
+  })
+
+  it('knows water from the ground beside it', () => {
+    expect(isWaterTexture('m01m00wtr01')).toBe(true)
+    expect(isWaterTexture('m01m00wtr03')).toBe(true)
+    expect(isWaterTexture('m01m00grs01')).toBe(false)
+    expect(isWaterTexture('m01m00clf01')).toBe(false)
+    // Not a substring match: a texture merely containing the letters is not it.
+    expect(isWaterTexture('m01wtr00grs01')).toBe(false)
   })
 })
