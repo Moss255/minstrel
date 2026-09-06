@@ -235,6 +235,58 @@ carry *more* placements than resources. Pairing positionally through those would
 place every piece after the extra one confidently in the wrong spot, so those
 maps are left unplaced instead. A wrong placement is worse than none.
 
+### Interiors and the exterior are not at the same scale
+
+This is the finding that explains a run of confusing results, and it means an
+earlier derivation in this document was measuring the wrong thing.
+
+Every Angel Falls map, by its own collision:
+
+| map | | height | width |
+|---|---|---|---|
+| `M01` | Exterior | 1.00 | **8.96** |
+| `M01M01` | House A | 2.46 | 7.30 |
+| `M01M02` | Inn | 2.29 | 5.45 |
+| `M01M03` | Item Shop | 2.46 | 7.75 |
+| `M01M04` | Stable | 2.44 | 7.50 |
+| `M01M05` | Mayor's House Lv 1 | 2.63 | 10.16 |
+| `M01M06` | Church | 2.50 | 5.00 |
+| `M01M07` | Erinn's House Lv 1 | 2.56 | 6.13 |
+| `M01M09` | Mayor's House Lv 2 | **5.60** | 10.91 |
+| `M01M10` | Erinn's House Lv 2 | **5.85** | 11.99 |
+
+Two things fall out of that table and neither survives the assumption that the
+village and its rooms share a scale.
+
+**A single house's interior is wider than half the village.** House A's interior
+is 7.30 across; the whole village exterior is 8.96. The Mayor's house is 10.16
+inside — wider than the village it stands in.
+
+**The two-storey houses need 5.6 to 5.9 units of interior**, and the tallest
+building on the exterior map is 2.19 units from ground to roof. A building
+cannot hold two floors it is less than half the height of.
+
+So the exterior is drawn at roughly **two and a half times smaller** than the
+interiors, which is ordinary for a game of this kind — interiors are separate
+maps and are built at whatever scale reads well on a small screen — but it means
+a measurement taken in one does not transfer to the other.
+
+That is exactly the mistake made earlier here. The character's height was
+derived from "every interior has its ceiling at almost exactly two units", and
+then judged against houses on the *exterior* map. The two numbers were never
+comparable, which is why the figure kept having to be halved by eye and never
+settled.
+
+It also explains the doors. They are `upScale` 1 and 1.54 units tall — the
+interior scale — and they are placed on the exterior map, whose terrain is
+`upScale` 8 and comes out small. A door built to interior scale standing against
+a house built to exterior scale is a door nearly as tall as the house it opens.
+
+**What follows:** a character needs a scale per map rather than one constant,
+and the exterior's own scale relative to its interiors has to be established
+before either the character or the doors can be given a number. Neither is
+guessed in the meantime; both are adjustable in the viewer.
+
 ### Forward was backwards
 
 The camera sits at `focus + (sin yaw, cos yaw) · distance`, so the direction the

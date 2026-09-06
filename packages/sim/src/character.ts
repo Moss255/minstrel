@@ -251,6 +251,13 @@ function pushOutOfWalls(
  * what it is rather than dressed up as a derivation: a person is a little under
  * a third of a house, which at a 1.50-unit house is **0.45 units**.
  *
+ * **The interiors are not at the exterior's scale**, so a ceiling measured
+ * inside says nothing about a house measured outside: a single house's interior
+ * is 7.30 units across where the whole exterior village is 8.96, and the
+ * two-storey houses need 5.6 to 5.9 units of interior where the tallest
+ * exterior building is 2.19. Reading one against the other is what made this
+ * constant need revising twice. A character will need a scale per map.
+ *
  * The cartridge's own characters cannot settle it either, which is worth
  * recording because it looks as though they should. The village's NPCs are
  * modelled in the same space as the player — `s001.nsbmd` stands 10.03 units,

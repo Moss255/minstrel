@@ -311,11 +311,13 @@ describe('PERSON', () => {
     expect(toFloat(PERSON.height) / 1.5).toBeLessThan(0.35)
   })
 
-  it('fits easily under the ceilings it walks beneath', () => {
-    // Interiors have ceilings between 1.97 and 2.06 units. Whatever the ratio
-    // to a house turns out to be, a person has to fit under those with room to
-    // spare, or the camera is inside the roof.
-    expect(toFloat(PERSON.height)).toBeLessThan(1.97 / 2)
+  it('fits under the lowest ceiling in the village', () => {
+    // The village's own rooms, by their collision, run 2.29 to 2.63 units — and
+    // those are NOT at the exterior's scale, so this is a floor on the value
+    // rather than the derivation it was once mistaken for. What it still pins
+    // is that a person fits indoors with room to spare, which is the property
+    // the camera depends on.
+    expect(toFloat(PERSON.height)).toBeLessThan(2.29 / 2)
   })
 
   it('has proportions a person would have', () => {
