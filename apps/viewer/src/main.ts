@@ -54,6 +54,7 @@ import {
   type PlacedMesh,
   step as stepCharacter,
 } from '@vesper/sim'
+import { motionAdvance } from './motion.ts'
 import { DS_HEIGHT, DS_WIDTH, ReferenceTarget } from './reference.ts'
 import { type Camera, ModelRenderer, type Piece } from './renderer.ts'
 
@@ -515,8 +516,10 @@ interface Walker {
   carry: number
   /** Which way the character is facing, in radians about the vertical. */
   facing: number
-  /** Frame of the motion playing. */
+  /** Frame of the motion playing, which is fractional between two frames. */
   motionFrame: number
+  /** Which motion that frame belongs to, so a change can reset it. */
+  motion: string | undefined
   /** The character's pieces, and how much to shrink them into the world. */
   readonly body: Piece_[]
   readonly scale: number
@@ -1104,10 +1107,36 @@ function startWalking(): void {
     carry: 0,
     facing: 0,
     motionFrame: 0,
+    motion: undefined,
     body,
     scale,
     inside: false,
   }
+}
+
+/**
+ * Move the character's animation on. The rates are in `motion.ts`.
+ *
+ * The frame resets when the motion changes, because a count left over from a
+ * nine-frame walk means something else in a seventeen-frame idle.
+ */
+function advanceMotion(walker: Walker, moving: boolean, ticks: number, travelled: number): void {
+  const wanted = moving ? 'walk' : 'stand'
+  if (wanted !== walker.motion) {
+    walker.motion = wanted
+    walker.motionFrame = 0
+  }
+  const motion = characterMotions.get(wanted)
+  if (!motion || motion.frameCount <= 0) return
+
+  walker.motionFrame += motionAdvance({
+    moving,
+    ticks,
+    travelled,
+    frameCount: motion.frameCount,
+    unitsPerTick: toFloat(fx32(WALK_SPEED)),
+  })
+  walker.motionFrame %= motion.frameCount
 }
 
 /**
@@ -1127,7 +1156,7 @@ function characterPieces(walker: Walker, motion: Animation | undefined): Piece[]
   const atY = toFloat(walker.state.y)
   const atZ = toFloat(walker.state.z)
 
-  const stacks = characterStacks(motion, walker.motionFrame)
+  const stacks = characterStacks(motion, Math.floor(walker.motionFrame))
 
   return walker.body.map((piece) => {
     const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices
@@ -1162,8 +1191,14 @@ function walk(elapsedMs: number): void {
 
   walker.carry = Math.min(walker.carry + elapsedMs, TICK_MS * 8)
   let moved = false
+  let ticks = 0
+  // How far the character actually got, which is not how far it was asked to
+  // go: a wall takes most of it away.
+  let travelled = 0
   while (walker.carry >= TICK_MS) {
     walker.carry -= TICK_MS
+    ticks++
+    const from = walker.state
     let dx = 0
     let dz = 0
     if (forward !== 0 || right !== 0) {
@@ -1179,13 +1214,13 @@ function walk(elapsedMs: number): void {
       walker.facing += turn * 0.25
     }
     walker.state = stepCharacter(shown.world, walker.state, fx32(dx), fx32(dz), PERSON)
-    walker.motionFrame++
+    travelled += Math.hypot(
+      toFloat(walker.state.x) - toFloat(from.x),
+      toFloat(walker.state.z) - toFloat(from.z),
+    )
   }
 
-  // `walk` while moving, `stand` otherwise. Both come from the motion pack the
-  // parts name, which is where a character's animation lives on this cartridge.
-  const motion = characterMotions.get(moved ? 'walk' : 'stand')
-  if (motion && motion.frameCount > 0) walker.motionFrame %= motion.frameCount
+  advanceMotion(walker, moved, ticks, travelled)
 
   // Indoors the camera comes in and tilts further down. What counts as indoors
   // is whether there is a roof over the character's head, checked as they walk,
@@ -1219,7 +1254,10 @@ function walk(elapsedMs: number): void {
     const hidden = new Set(occluders(mapBoxes, cameraEye(camera), camera.focus, CLEARANCE))
     const visible = mapPieces.filter((_, index) => !hidden.has(index))
     hiddenPieces = hidden.size
-    const uploading = [...visible, ...characterPieces(walker, motion)]
+    const uploading = [
+      ...visible,
+      ...characterPieces(walker, characterMotions.get(walker.motion ?? '')),
+    ]
     lastUpload = renderer.upload(uploading)
     lastShapes = uploading.length
   }

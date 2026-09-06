@@ -299,6 +299,33 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### The animation ran on the clock, at the wrong clock
+
+Two complaints, one cause. The character shuddered while standing still, and
+its legs did not agree with the ground it was covering.
+
+The frame was advanced **once per simulation tick**. At 60Hz that runs the
+nine-frame walk cycle nearly seven times a second, and the idle with it — which
+is not a walk or a breath but a shake, and it happened whether or not the
+character was going anywhere.
+
+Standing now runs at the DS's 30 frames a second. **Walking runs on distance
+covered** rather than on time: one cycle to a stride, so a character held
+against a wall stops stepping instead of running on the spot, and one slowed by
+a slope slows with it. The stride is set so that at full speed the cycle plays
+at that same 30 frames a second, which is what keeps the two cases consistent
+rather than two unrelated rates. The frame resets when the motion changes,
+because a count left over from a nine-frame walk means something else in a
+seventeen-frame idle.
+
+The maths is in `apps/viewer/src/motion.ts` with tests, rather than four lines
+in the middle of the movement loop, because the last two versions of it were
+wrong in ways that were only visible on screen.
+
+Ruled out on the way: **there is no root motion to fight**. The root node's
+translation is zero on every frame of `walk`, `run` and all three `stand`
+variants, so nothing in the animation was moving the character.
+
 ### The character: one figure, a family of packs, and a walking pace
 
 Three things, all the same kind of mistake — taking the first thing the data
