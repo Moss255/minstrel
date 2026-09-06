@@ -5,6 +5,7 @@ import {
   isCollisionMesh,
   isDataTable,
   isMapManifest,
+  isMarkerVolume,
   placementOf,
   readBitmapFont,
   readCollisionMesh,
@@ -2504,6 +2505,126 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(villageSpots).toBeGreaterThan(15)
     expect(villageWithSky).toBe(villageSpots)
     expect(villageWithoutSky / villageSpots).toBeLessThan(0.3)
+  }, 120_000)
+
+  it('can walk the village once its doorway markers stop being walls', () => {
+    // A map's collision arrives as several meshes, and a few are one quad
+    // standing vertically with nothing to stand on. The village has eleven:
+    // one across each of its ten doorways, plus a four-by-six quad standing in
+    // the middle of the map. Treated as walls, every doorway is sealed and the
+    // map is cut in half.
+    const speed = Math.round(0.05 * 4096)
+    const reach = (world: ReturnType<typeof createCollisionWorld>) => {
+      const cell = Math.round(0.15 * 4096)
+      const key = (x: number, z: number) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`
+      const walkable = new Map<string, { x: number; z: number; y: Fx32 }>()
+      for (let x = world.bounds.minX; x <= world.bounds.maxX; x += cell) {
+        for (let z = world.bounds.minZ; z <= world.bounds.maxZ; z += cell) {
+          const hit = groundBelow(
+            world,
+            fx32(Math.round(x)),
+            fx32(Math.round(z)),
+            fx32(world.bounds.maxY + 4096),
+          )
+          if (hit && hit.slope >= PERSON.maxSlope) {
+            walkable.set(key(x, z), { x: Math.round(x), z: Math.round(z), y: hit.y })
+          }
+        }
+      }
+      if (walkable.size === 0) return 0
+      const midX = (world.bounds.minX + world.bounds.maxX) / 2
+      const midZ = (world.bounds.minZ + world.bounds.maxZ) / 2
+      let start = [...walkable.values()][0] as { x: number; z: number; y: Fx32 }
+      let near = Number.POSITIVE_INFINITY
+      for (const spot of walkable.values()) {
+        const away = Math.hypot(spot.x - midX, spot.z - midZ)
+        if (away < near) {
+          near = away
+          start = spot
+        }
+      }
+      const seen = new Set([key(start.x, start.z)])
+      const queue: CharacterState[] = [
+        { x: fx32(start.x), y: start.y, z: fx32(start.z), fallSpeed: fx32(0), grounded: true },
+      ]
+      while (queue.length > 0 && seen.size < 8000) {
+        const at = queue.pop() as CharacterState
+        for (let d = 0; d < 8; d++) {
+          const angle = (d * Math.PI) / 4
+          let state = at
+          for (let i = 0; i < 4; i++) {
+            state = step(
+              world,
+              state,
+              fx32(Math.round(Math.cos(angle) * speed)),
+              fx32(Math.round(Math.sin(angle) * speed)),
+              PERSON,
+            )
+          }
+          if (!state.grounded) continue
+          const k = key(state.x, state.z)
+          if (seen.has(k)) continue
+          seen.add(k)
+          queue.push(state)
+        }
+      }
+      let reached = 0
+      for (const k of walkable.keys()) if (seen.has(k)) reached++
+      return reached / walkable.size
+    }
+
+    let markers = 0
+    let standless = 0
+    let sealed = 0
+    let open = 0
+    for (const file of walkFiles(fs.root)) {
+      if (file.path !== '/data/map/M01.amdj') continue
+      const members = new Map<string, Uint8Array>()
+      for (const member of readNarc(fs.read(file)).entries()) {
+        const data = member.data
+        members.set(String(member.name ?? member.index), isLz10(data) ? decompressLz10(data) : data)
+      }
+      let manifest: ReturnType<typeof readMapManifest> | undefined
+      for (const [name, data] of members) {
+        if (name.endsWith('.bmdj') && isMapManifest(data)) manifest = readMapManifest(data)
+      }
+      if (!manifest) continue
+      const all: PlacedMesh[] = []
+      const kept: PlacedMesh[] = []
+      for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
+        const place = placementOf(manifest, resource)
+        const offset = {
+          x: Math.round(place.x * 4096),
+          y: Math.round(place.y * 4096),
+          z: Math.round(place.z * 4096),
+        }
+        for (const built of files) {
+          const bytes = members.get(built) as Uint8Array
+          if (!isCollisionMesh(bytes)) continue
+          const mesh = readCollisionMesh(bytes)
+          all.push({ mesh, offset })
+          if (isMarkerVolume(mesh)) {
+            markers++
+            if (!mesh.triangles.some((t) => t.normal[1] !== 0)) standless++
+          } else {
+            kept.push({ mesh, offset })
+          }
+        }
+      }
+      sealed = reach(createCollisionWorld(all))
+      open = reach(createCollisionWorld(kept))
+    }
+
+    // Ten doorways and one more, every one of them nothing but wall.
+    expect(markers).toBe(11)
+    expect(standless).toBe(11)
+    // Sealed, most of the village cannot be reached from its middle. Open,
+    // most of it can — and no walkable ground is lost with them, because they
+    // held none. Measured from the middle; the largest connected region of the
+    // village is 93% of its ground either way you start.
+    expect(sealed).toBeLessThan(0.4)
+    expect(open).toBeGreaterThan(0.55)
+    expect(open).toBeGreaterThan(sealed * 2)
   }, 120_000)
 
   it('produces the container magic each member extension implies', () => {

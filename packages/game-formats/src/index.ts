@@ -5,6 +5,7 @@ export {
   type CollisionMesh,
   type CollisionTriangle,
   isCollisionMesh,
+  isMarkerVolume,
   readCollisionMesh,
 } from './collision.ts'
 export { GameFormatError } from './errors.ts'

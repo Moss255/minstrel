@@ -223,3 +223,37 @@ export function readCollisionMesh(data: Uint8Array): CollisionMesh {
     },
   }
 }
+
+/**
+ * Whether a collision mesh is a **marker volume** rather than ground.
+ *
+ * **INFERRED**, and worth stating plainly because it decides what a character
+ * can walk through.
+ *
+ * A map's collision arrives as several meshes. Most are terrain. A few are two
+ * triangles — one quad — standing vertically with no surface anyone could stand
+ * on, and in the slice's village there are eleven of them: one across each of
+ * the ten doorways, plus a quad four units by six standing 2.5 units tall in
+ * the middle of the map. They are taller than any building on that map, they
+ * are invisible, and each doorway one is attached by the manifest to its own
+ * doorway model.
+ *
+ * Treated as walls they are catastrophic: the village goes from **93% of its
+ * walkable ground reachable to 24%**, because every doorway is sealed and the
+ * map is cut in half. Treated as volumes to pass through, nothing is lost —
+ * they hold no standable surface, so no ground disappears with them — and
+ * across the cartridge's 124 maps that have one, reachable ground rises from
+ * 66.8% to 72.7%.
+ *
+ * What they *are* is not established. Doorways are the obvious guess for the
+ * ten, and a trigger of some kind for the eleventh, but nothing read so far
+ * says so, and the attribute word does not distinguish them: the values on
+ * these are drawn from the same set as the terrain's, and look like packed
+ * orderings — `0x543210` and its permutations — rather than surface flags.
+ *
+ * So this is a rule about **shape**, not meaning: two triangles or fewer, and
+ * nothing to stand on.
+ */
+export function isMarkerVolume(mesh: CollisionMesh): boolean {
+  return mesh.triangles.length <= 2 && !mesh.triangles.some((t) => t.normal[1] !== 0)
+}

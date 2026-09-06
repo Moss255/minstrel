@@ -299,6 +299,38 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### The doorways were sealed
+
+The character could walk a few steps and then met something. Not the step
+tolerances, not the wall resolver — at a trapped spot the push code fired on
+zero triangles — but geometry very close by, everywhere.
+
+A map's collision arrives as several meshes. The village has thirteen, and
+**eleven of them are a single quad**: two triangles, standing vertically, with
+no surface anyone could stand on. Ten sit one across each doorway; the eleventh
+is four units by six, standing 2.5 units tall in the middle of the map. They are
+taller than any building there and they are invisible.
+
+| village collision | walkable ground reachable from the middle |
+|---|---|
+| with them as walls | **24%** |
+| without them | **61%** |
+
+The largest connected region goes from 24% to **93%**. Nothing is lost by
+dropping them — they hold no standable surface, so no ground goes with them —
+and across the cartridge's 124 maps that have at least one, reachable ground
+rises from 66.8% to 72.7%.
+
+**What they are is not established**, and `isMarkerVolume` says so. Doorways are
+the obvious guess for the ten and a trigger of some kind for the eleventh, but
+nothing read so far says it, and the attribute word does not distinguish them:
+the values on these come from the same set as the terrain's and look like packed
+orderings — `0x543210` and its permutations — rather than surface flags. So the
+rule is about **shape** rather than meaning: two triangles or fewer, and nothing
+to stand on. It is marked inferred.
+
+Of 358 such meshes on the cartridge, 335 have no standable surface.
+
 ### The sky was the ceiling
 
 The exterior kept reading as **indoors**, so the camera tucked in and tilted

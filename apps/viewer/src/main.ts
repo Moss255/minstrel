@@ -2,6 +2,7 @@ import { FX32_ONE, type Fx32, fx32, toFloat } from '@vesper/fixed'
 import {
   isCollisionMesh,
   isMapManifest,
+  isMarkerVolume,
   type MapManifest,
   PLACED_PIECE_SCALE,
   placementOf,
@@ -336,8 +337,12 @@ function assembleMap(archive: string): {
       if (!bytes) continue
       if (isCollisionMesh(bytes)) {
         try {
+          const mesh = readCollisionMesh(bytes)
+          // A doorway's marker is not a wall. Left in, the village's ten
+          // doorways are sealed and its walkable ground drops from 93% to 24%.
+          if (isMarkerVolume(mesh)) continue
           meshes.push({
-            mesh: readCollisionMesh(bytes),
+            mesh,
             // Collision is in whole fx32 words; the placement is in units.
             offset: {
               x: Math.round(place.x * FX32_ONE),

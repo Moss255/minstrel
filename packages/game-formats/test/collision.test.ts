@@ -3,6 +3,7 @@ import {
   COLLISION_KIND,
   type CollisionMesh,
   isCollisionMesh,
+  isMarkerVolume,
   readCollisionMesh,
 } from '../src/collision.ts'
 import { GameFormatError } from '../src/errors.ts'
@@ -220,5 +221,68 @@ describe('readCollisionMesh on malformed input', () => {
     const data = buildCollision([flat], [[0]])
     new DataView(data.buffer).setUint32(0x28, data.length, true)
     expect(() => readCollisionMesh(data)).toThrow(/not in order/)
+  })
+})
+
+describe('marker volumes', () => {
+  /** A mesh of `triangles`, each given by its normal. */
+  const meshOf = (normals: readonly (readonly [number, number, number])[]): CollisionMesh =>
+    ({
+      kind: 3,
+      bounds: { minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 1, maxZ: 1 },
+      cellSize: 4096,
+      gridX: 1,
+      gridZ: 1,
+      triangles: normals.map((normal) => ({
+        vertices: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [0, 0, 1],
+        ],
+        normal,
+        attributes: 0,
+      })),
+      cells: [],
+      cellTriangles: [],
+      trailing: [],
+      unknown_0x04: 0,
+      unknown_0x1a: 0,
+      cell: () => [],
+    }) as unknown as CollisionMesh
+
+  it('calls a standing quad with nothing to stand on a marker', () => {
+    expect(
+      isMarkerVolume(
+        meshOf([
+          [1, 0, 0],
+          [1, 0, 0],
+        ]),
+      ),
+    ).toBe(true)
+  })
+
+  it('leaves a mesh with any standable surface alone', () => {
+    expect(
+      isMarkerVolume(
+        meshOf([
+          [1, 0, 0],
+          [0, 1, 0],
+        ]),
+      ),
+    ).toBe(false)
+  })
+
+  it('leaves a large mesh alone even if it is all wall', () => {
+    // A building's walls belong to the terrain they are part of, and a rule
+    // that removed them would open every building on the map.
+    expect(isMarkerVolume(meshOf(Array.from({ length: 12 }, () => [1, 0, 0] as const)))).toBe(false)
+  })
+
+  it('is not fooled by a single standing triangle', () => {
+    expect(isMarkerVolume(meshOf([[0, 0, 1]]))).toBe(true)
+  })
+
+  it('says nothing about an empty mesh either way, without throwing', () => {
+    expect(isMarkerVolume(meshOf([]))).toBe(true)
   })
 })
