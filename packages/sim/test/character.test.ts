@@ -302,11 +302,18 @@ describe('a badly shaped character', () => {
 })
 
 describe('PERSON', () => {
-  it('is about half the height of the rooms it walks through', () => {
-    // Every interior in the village has a ceiling at almost exactly two units,
-    // which is what puts a person at one.
-    expect(toFloat(PERSON.height)).toBeGreaterThan(0.8)
-    expect(toFloat(PERSON.height)).toBeLessThan(1.3)
+  it('is three fifths the height of a house', () => {
+    // The village's houses measure 1.50 and 1.57 units, and a person is about
+    // three fifths of one. Stated as a range because the two houses differ.
+    expect(toFloat(PERSON.height) / 1.5).toBeGreaterThan(0.55)
+    expect(toFloat(PERSON.height) / 1.5).toBeLessThan(0.65)
+  })
+
+  it('is under half the height of the rooms it walks through', () => {
+    // The independent check: interiors have ceilings between 1.97 and 2.06
+    // units, and the height measured off the houses has to fit under them.
+    expect(toFloat(PERSON.height)).toBeLessThan(1.97 / 2)
+    expect(toFloat(PERSON.height)).toBeGreaterThan(1.97 / 3)
   })
 
   it('has proportions a person would have', () => {

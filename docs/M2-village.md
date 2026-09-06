@@ -5,7 +5,7 @@ Against the milestone's own list.
 | M2 task | status |
 |---|---|
 | Map assembly and collision | **both done** |
-| Character controller with original movement constants | **done**; the character's size is measured off the rooms, the rest tuned — see below |
+| Character controller with original movement constants | **done**; the character's size is measured off the houses, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
 | Interior/exterior transitions, doors, stairs | not started; the link data is not located |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
@@ -146,14 +146,46 @@ relative to the view, which is what a third-person camera needs.
 
 ### How big a person is
 
-The controller's first `PERSON` was about a third of the right size, which made
-the collision and the camera both look wrong before anything else could be
-judged. The fix was to stop guessing and measure the rooms: every Angel Falls
-interior has its ceiling between **1.97 and 2.06 units** across nine rooms, and
-the village exterior is 11.98 by 9.09. A room is about twice a person, so a
-person is about **1.0 units** — and the character model is then scaled to that
-height rather than to a number, so the model and the collision capsule agree by
-construction.
+Twice wrong before it was right, and the second time was the interesting one.
+
+The first `PERSON` was a guess and about a third of the right size. Measuring
+the rooms fixed the order of magnitude: every Angel Falls interior has its
+ceiling between **1.97 and 2.06 units** across nine rooms.
+
+The second was subtler and survived that fix, because it was in the *renderer*
+rather than the constant. The character is scaled to the controller's height, so
+model and capsule agree by construction — but the scale was derived from the
+model's **bind pose**, and the bind pose is a T-pose: arms straight out, **9.23
+units across and only 7.68 tall**. That is the height of a figure holding itself
+flat, not the height of the figure, which stands **10.03** once posed. Scaling
+by one and drawing the other made the character 30% larger than the capsule
+walking it — and made it *grow as it set off*, because the motion pack it uses
+has no `stand`, so standing fell back to the bind pose and walking did not.
+
+The scale now comes from the walk cycle, whose nine frames vary by under 2%. Not
+from the tallest frame of every motion: reaching up a ladder is legitimately
+taller than standing, and sizing by that leaves the character walking too small.
+
+The height itself is now measured against the buildings, which is the comparison
+a player actually makes. In `M01` the house is one shape of `M01M0003.nsbmd` —
+4.50 wide, standing from y 0.38 to 1.88, so **1.50 units tall**, with its
+neighbour in `M01M0004` at 1.57. Which model holds a house is not guessed: the
+cartridge names its own nodes, and those two carry `hus` and `hus1` beside their
+trees (`tre20`..) and their ground (`base`). Sizing off "the tallest thing in
+the map" instead measures the waterfall at 4.41 units, or the sky backdrop at
+2.13.
+
+A person is three fifths of a house, so **0.90 units**:
+
+| | before | now |
+|---|---|---|
+| Scale derived from | bind pose, 7.68 | walk cycle, 10.03 |
+| Drawn height, standing | 1.00 | 0.89 |
+| Drawn height, walking | 1.31 | 0.90 |
+| Against a 1.50 house | 0.87 | **0.60** |
+
+That also agrees with the rooms: 0.90 is a little under half a 1.97-unit
+ceiling, which is what a person is.
 
 The rest of `PERSON` — radius, step-up height, slope limit, gravity — is still a
 starting point rather than the game's own numbers. Those live in code this

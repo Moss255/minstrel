@@ -468,22 +468,72 @@ interface Walker {
 /**
  * Build the character's pieces and work out how big it should be.
  *
- * The parts are modelled at their own scale — a figure is about 7.7 units tall
- * where a village is a dozen across — so they are shrunk to the height the
- * controller already assumes a person is. Deriving the scale that way rather
- * than picking a number means the model and the collision capsule agree by
- * construction.
+ * The parts are modelled at their own scale, so they are shrunk to the height
+ * the controller assumes a person is. Deriving the scale rather than picking a
+ * number means the model and the collision capsule agree by construction.
+ *
+ * **Measure a pose the character is drawn in, not the bind pose.** The bind
+ * pose is a T-pose: arms straight out, 9.2 units across and only 7.7 tall. Its
+ * height is the height of a figure holding itself flat, not the height of the
+ * figure — once posed it stands 10.0 tall. Scaling by the T-pose and drawing
+ * the posed figure made the character 30% larger than the capsule walking it,
+ * and it grew as it set off, because standing fell back to the bind pose.
+ *
+ * The **walk cycle** is what to measure, not the tallest pose of every motion:
+ * reaching up a ladder or bending to pick something up are legitimately taller
+ * and shorter than standing, and sizing by the extreme of those would leave the
+ * character walking around too small. Its frames vary by under 2%.
  */
 function buildCharacter(): { body: Piece_[]; scale: number } {
   const body = characterParts.flatMap(piecesOf)
   if (body.length === 0) return { body, scale: 1 }
-  const bounds = measureBounds(
-    body.map((piece) =>
-      poseGeometry(piece.geometry, piece.model.shapeMatrices[piece.shape] ?? piece.model.matrices),
-    ),
-  )
-  const height = Math.max(bounds.maxY - bounds.minY, 0.001)
-  return { body, scale: toFloat(PERSON.height) / height }
+
+  const heightOf = (stacks: Map<Model, Mat4[][]>): number => {
+    const bounds = measureBounds(
+      body.map((piece) =>
+        poseGeometry(
+          piece.geometry,
+          stacks.get(piece.model)?.[piece.shape] ??
+            piece.model.shapeMatrices[piece.shape] ??
+            piece.model.matrices,
+        ),
+      ),
+    )
+    return bounds.maxY - bounds.minY
+  }
+
+  const upright =
+    characterMotions.get('walk') ??
+    characterMotions.get('stand') ??
+    characterMotions.values().next().value
+  let tallest = 0
+  if (upright) {
+    for (let frame = 0; frame < upright.frameCount; frame++) {
+      tallest = Math.max(tallest, heightOf(characterStacks(upright, frame)))
+    }
+  }
+  // No motion read: the bind pose is all there is, and it is better than
+  // refusing to draw the character.
+  if (tallest <= 0) tallest = heightOf(new Map())
+  return { body, scale: toFloat(PERSON.height) / Math.max(tallest, 0.001) }
+}
+
+/** Every part's matrix stacks for one frame of a motion, or its bind pose. */
+function characterStacks(motion: Animation | undefined, frame: number): Map<Model, Mat4[][]> {
+  const stacks = new Map<Model, Mat4[][]>()
+  for (const part of characterParts) {
+    if (motion && motion.boneCount === part.nodes.length) {
+      const local = sampleAnimation(motion, frame)
+      const nodes: NodeTransform[] = part.nodes.map((node, i) => {
+        const posed = local[i]
+        return posed ? { ...node, local: posed } : node
+      })
+      stacks.set(part, part.pose(nodes))
+    } else {
+      stacks.set(part, part.shapeMatrices as Mat4[][])
+    }
+  }
+  return stacks
 }
 
 let walker: Walker | undefined
@@ -735,19 +785,7 @@ function characterPieces(walker: Walker, motion: Animation | undefined): Piece[]
   const atY = toFloat(walker.state.y)
   const atZ = toFloat(walker.state.z)
 
-  const stacks = new Map<Model, Mat4[][]>()
-  for (const part of characterParts) {
-    if (motion && motion.boneCount === part.nodes.length) {
-      const local = sampleAnimation(motion, walker.motionFrame)
-      const nodes: NodeTransform[] = part.nodes.map((node, i) => {
-        const posed = local[i]
-        return posed ? { ...node, local: posed } : node
-      })
-      stacks.set(part, part.pose(nodes))
-    } else {
-      stacks.set(part, part.shapeMatrices as Mat4[][])
-    }
-  }
+  const stacks = characterStacks(motion, walker.motionFrame)
 
   return walker.body.map((piece) => {
     const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices

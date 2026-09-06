@@ -31,9 +31,12 @@ import {
   isNsbmd,
   isNsbtx,
   MATRIX_STACK_SIZE,
+  type Mat4,
   type Model,
   measureBounds,
   multiply,
+  type NodeTransform,
+  poseGeometry,
   RenderOp,
   readNsbca,
   readNsbmd,
@@ -1968,6 +1971,154 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // What is left out is a minority of the map, not a curtain over it.
     expect(removed / pieces).toBeLessThan(0.2)
   }, 60_000)
+
+  it('draws a character three fifths the height of a house, in every frame', () => {
+    // The bug this pins: the character was scaled by its **bind pose**, which
+    // is a T-pose — arms straight out, 9.2 units across and only 7.7 tall. That
+    // is the height of a figure holding itself flat, not the height of the
+    // figure, which stands 10.0 once posed. Scaling by one and drawing the
+    // other made the character 30% too large, and made it grow as it set off,
+    // because standing fell back to the bind pose and walking did not.
+    //
+    // Both halves are checked here: the size it is drawn at, against a house
+    // measured off the same cartridge, and that the size does not change from
+    // frame to frame.
+    const parts: Model[] = []
+    for (const asset of models) {
+      if (!asset.archive.endsWith('#chara_pc.gp2')) continue
+      if (!/^p_test\d+$/.test(asset.stem)) continue
+      try {
+        const model = readNsbmd(asset.bytes).models[0]
+        if (model?.numShapes) parts.push(model)
+      } catch {
+        // Reported by the model test.
+      }
+    }
+    expect(parts.length).toBeGreaterThan(0)
+
+    const motions: Animation[] = []
+    for (const asset of animations) {
+      if (!asset.archive.endsWith('#chara_mp.gp2#mp0200ne.chr')) continue
+      try {
+        motions.push(...readNsbca(asset.bytes).animations)
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+    expect(motions.length).toBeGreaterThan(0)
+
+    const pieces = parts.flatMap((model) => model.shapes.map((_, shape) => ({ model, shape })))
+    const heightOf = (stacks: Map<Model, Mat4[][]>) => {
+      const bounds = measureBounds(
+        pieces.map(({ model, shape }) =>
+          poseGeometry(
+            model.geometry(shape),
+            stacks.get(model)?.[shape] ?? (model.shapeMatrices[shape] as Mat4[]),
+          ),
+        ),
+      )
+      return bounds.maxY - bounds.minY
+    }
+    const stacksFor = (motion: Animation | undefined, frame: number) => {
+      const stacks = new Map<Model, Mat4[][]>()
+      for (const part of parts) {
+        if (motion && motion.boneCount === part.nodes.length) {
+          const local = sampleAnimation(motion, frame)
+          const nodes: NodeTransform[] = part.nodes.map((node, i) => {
+            const posed = local[i]
+            return posed ? { ...node, local: posed } : node
+          })
+          stacks.set(part, part.pose(nodes))
+        } else {
+          stacks.set(part, part.shapeMatrices as Mat4[][])
+        }
+      }
+      return stacks
+    }
+
+    // The bind pose really is wider than it is tall, which is why its height
+    // cannot be the figure's height.
+    const bind = measureBounds(
+      pieces.map(({ model, shape }) =>
+        poseGeometry(model.geometry(shape), model.shapeMatrices[shape] as Mat4[]),
+      ),
+    )
+    expect(bind.maxX - bind.minX).toBeGreaterThan(bind.maxY - bind.minY)
+
+    // The scale the viewer derives: the tallest frame of the walk cycle. Not
+    // the tallest of every motion — reaching up a ladder is legitimately taller
+    // than standing, and sizing by that leaves the character walking too small.
+    const walk = motions.find((motion) => motion.name === 'walk') as Animation
+    expect(walk).toBeDefined()
+    let tallest = 0
+    for (let frame = 0; frame < walk.frameCount; frame++) {
+      tallest = Math.max(tallest, heightOf(stacksFor(walk, frame)))
+    }
+    const scale = toFloat(PERSON.height) / tallest
+    const drawn: number[] = []
+    for (let frame = 0; frame < walk.frameCount; frame++) {
+      drawn.push(heightOf(stacksFor(walk, frame)) * scale)
+    }
+    expect(drawn.length).toBeGreaterThan(4)
+
+    // A house in the slice's village, measured off the cartridge: the tallest
+    // shape of the models the map's own manifest names.
+    let house = 0
+    let houses = 0
+    for (const file of walkFiles(fs.root)) {
+      if (!/\/M01\.amdj$/.test(file.path)) continue
+      const members = new Map<string, Uint8Array>()
+      for (const member of readNarc(fs.read(file)).entries()) {
+        const bytes = member.data
+        members.set(
+          String(member.name ?? member.index),
+          isLz10(bytes) ? decompressLz10(bytes) : bytes,
+        )
+      }
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        for (const entry of resolveMapResources(readMapManifest(data), members.keys())) {
+          for (const built of entry.files) {
+            const resource = members.get(built) as Uint8Array
+            if (!isNsbmd(resource)) continue
+            const model = readNsbmd(resource).models[0]
+            if (!model) continue
+            // Which model holds the houses is not guessed: the cartridge names
+            // its own nodes, and the village's two scenery models carry one
+            // called `hus` and `hus1` beside their trees (`tre20`..) and their
+            // ground (`base`). Sizing off "the tallest shape in the map" instead
+            // measures the waterfall, at 4.4 units, or the sky backdrop at 2.1.
+            if (!model.nodes.some((node) => /^hus\d*$/.test(node.name))) continue
+            houses++
+            for (let shape = 0; shape < model.numShapes; shape++) {
+              const bounds = measureBounds([model.posedGeometry(shape)])
+              house = Math.max(house, bounds.maxY - bounds.minY)
+            }
+          }
+        }
+      }
+    }
+    // Houses of 1.50 and 1.57 units, so the tallest is a little over 1.5.
+    expect(houses).toBe(2)
+    expect(house).toBeGreaterThan(1.4)
+    expect(house).toBeLessThan(1.7)
+
+    // Drawn at three fifths of a house, in every frame of the walk cycle. The
+    // village has two houses, 1.50 and 1.57, and the height is three fifths of
+    // the shorter, so the ratio against the taller is a little under.
+    for (const height of drawn) {
+      expect(height / house).toBeGreaterThan(0.5)
+      expect(height / house).toBeLessThan(0.7)
+    }
+    // And the same size throughout: a character that changed height as it moved
+    // is the failure this replaces.
+    expect(Math.max(...drawn) - Math.min(...drawn)).toBeLessThan(0.05)
+
+    // The bind pose is 30% shorter than the figure it is the bind pose of, and
+    // that gap is the whole bug: it is what a T-pose measures.
+    const bindHeight = bind.maxY - bind.minY
+    expect(tallest / bindHeight).toBeGreaterThan(1.2)
+  })
 
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly

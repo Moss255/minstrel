@@ -233,11 +233,16 @@ function pushOutOfWalls(
 /**
  * A character the size of a person, in the cartridge's units.
  *
- * **The height is derived, not guessed.** Every interior in the slice's village
- * has a ceiling at almost exactly two units — 1.97 to 2.06 across nine rooms —
- * and a room is about twice a person, which puts a person at one unit. The
- * village outside is twelve units across, so it is a dozen people wide, which
- * is the right order for a DS town.
+ * **The height is measured against the buildings, not guessed.** The village's
+ * houses are the thing to scale a person against, and they can be measured
+ * exactly: in `M01`, the slice's village, the house is one shape of
+ * `M01M0003.nsbmd`, 4.50 units wide and standing from y 0.38 to 1.88 — **1.50
+ * units tall**, with its neighbour in `M01M0004` at 1.57. A person is about
+ * three fifths of a house, which puts them at **0.90 units**.
+ *
+ * That agrees with the other measurement available: every interior in the
+ * village has its ceiling between 1.97 and 2.06 units across nine rooms, and
+ * 0.90 is a little under half a room's height, which is what a person is.
  *
  * The rest follow from that height at ordinary human proportions: a little over
  * a fifth of it as a radius, a third as the tallest step. Gravity is per tick
@@ -245,14 +250,14 @@ function pushOutOfWalls(
  * brisker than the real thing, as games generally are.
  *
  * These are **not** the game's own constants, which live in code this
- * repository does not read. What is derived is the scale they sit at; the
+ * repository does not read. What is measured is the scale they sit at; the
  * proportions within it are tuned by eye, and they are gathered here so one
  * edit replaces them when the real numbers turn up.
  */
 export const PERSON: CharacterShape = {
-  height: fx32(Math.round(1.0 * FX32_ONE)),
-  radius: fx32(Math.round(0.22 * FX32_ONE)),
-  stepUp: fx32(Math.round(0.3 * FX32_ONE)),
+  height: fx32(Math.round(0.9 * FX32_ONE)),
+  radius: fx32(Math.round(0.2 * FX32_ONE)),
+  stepUp: fx32(Math.round(0.27 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
   gravity: fx32(Math.round(0.004 * FX32_ONE)),
