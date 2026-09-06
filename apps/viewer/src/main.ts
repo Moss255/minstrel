@@ -560,6 +560,8 @@ function characterStacks(motion: Animation | undefined, frame: number): Map<Mode
 let walker: Walker | undefined
 /** What the renderer last took, so the overlay can be redrawn without re-uploading. */
 let lastUpload = { vertices: 0, triangles: 0, textured: 0 }
+/** How many shapes the last upload held, which is not the map's shape count. */
+let lastShapes = 0
 /** The scene without the character, kept so only the character is rebuilt. */
 let mapPieces: Piece[] = []
 /** One box per map piece, measured once, for deciding what is in the way. */
@@ -668,6 +670,7 @@ function pose(): void {
     return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
   lastUpload = renderer.upload(drawn)
+  lastShapes = drawn.length
   describe(lastUpload)
 }
 
@@ -751,6 +754,7 @@ function select(index: number): void {
   mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
   const uploaded = renderer.upload(drawn)
   lastUpload = uploaded
+  lastShapes = drawn.length
   // Frame on the bind pose, so the camera does not jump about as an animation
   // moves the geometry.
   const bounds = measureBounds(drawn.map((p) => p.geometry))
@@ -779,7 +783,9 @@ function select(index: number): void {
 function describe(uploaded: { vertices: number; triangles: number; textured: number }): void {
   if (!shown) return
   const { animation } = shown
-  const shapes = shown.pieces.length
+  // What was drawn, not what the map holds: the character's shapes are in the
+  // upload too and some of the map's may have been left out of the way.
+  const shapes = lastShapes
   overlay.textContent = [
     shown.path,
     `${shapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
@@ -984,7 +990,9 @@ function walk(elapsedMs: number): void {
     const hidden = new Set(occluders(mapBoxes, cameraEye(camera), camera.focus, CLEARANCE))
     const visible = mapPieces.filter((_, index) => !hidden.has(index))
     hiddenPieces = hidden.size
-    lastUpload = renderer.upload([...visible, ...characterPieces(walker, motion)])
+    const uploading = [...visible, ...characterPieces(walker, motion)]
+    lastUpload = renderer.upload(uploading)
+    lastShapes = uploading.length
   }
   describe(lastUpload)
 }

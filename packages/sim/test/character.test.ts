@@ -305,10 +305,10 @@ describe('PERSON', () => {
   it('is the size that was chosen against the village', () => {
     // How large a person is against a building is set by eye against the
     // original rather than derived — see the note on PERSON. This pins the
-    // value that was chosen so it cannot drift unnoticed, and it is the same
-    // fifth that the village's placed pieces needed.
-    expect(toFloat(PERSON.height)).toBeGreaterThan(0.08)
-    expect(toFloat(PERSON.height)).toBeLessThan(0.1)
+    // value that was chosen so it cannot drift unnoticed: 0.18 units, which is
+    // 0.11 of the 1.57-unit house facade the character walks past.
+    expect(toFloat(PERSON.height)).toBeGreaterThan(0.17)
+    expect(toFloat(PERSON.height)).toBeLessThan(0.19)
   })
 
   it('fits under the lowest ceiling in the village', () => {

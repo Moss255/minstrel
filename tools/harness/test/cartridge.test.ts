@@ -2119,8 +2119,8 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // capsule walking it, which is the property the code guarantees, and that
     // the chosen fraction has not drifted.
     for (const height of drawn) {
-      expect(height / house).toBeGreaterThan(0.04)
-      expect(height / house).toBeLessThan(0.08)
+      expect(height / house).toBeGreaterThan(0.1)
+      expect(height / house).toBeLessThan(0.13)
     }
     // And the same size throughout: a character that changed height as it moved
     // is the failure this replaces.

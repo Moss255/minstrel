@@ -270,24 +270,28 @@ against a tolerance.
 
 ### The sizes, set by eye
 
-Two constants, both chosen by looking at the village rather than derived, and
-both recorded as such:
+Two constants, both chosen by resizing them in the viewer against the village
+until they looked right, and both recorded as chosen rather than derived:
 
-| | |
-|---|---|
-| `PLACED_PIECE_SCALE` | **0.2** — doorway models go from 1.54 units to 0.31 against facades of 1.50 and 1.57 |
-| `PERSON.height` | **0.09** — a fifth of what it was |
+| | value | what it gives |
+|---|---|---|
+| `PLACED_PIECE_SCALE` | **0.12** | a doorway of 0.19 units, 0.12 of the 1.57 facade it is set into |
+| `PERSON.height` | **0.18** | a person 0.11 of that same facade, and about a doorway's height |
 
-The same fifth in both places is the one encouraging sign: it suggests a single
-misjudgement about how non-map content sits in this map rather than two
-independent ones.
+A person about as tall as a doorway is the sanity check that the two agree.
 
-One consequence of a person this small is worth knowing. Gravity lands on **two**
-`fx32` words a tick, so it is quantised at about 20%; if the height is revised
-upwards that goes away on its own. The camera's boom is measured in character
-heights too, so indoors the eye now sits under a roof more often than behind it,
-and the share of angles with something in the way falls from 89% to about 65% —
-the same rule, a smaller camera.
+Two consequences of a person this small. Gravity lands on three `fx32` words a
+tick, so it is quantised at a few per cent; if the height is revised upwards
+that goes away on its own. And the camera's boom is measured in character
+heights, so indoors the eye sits under a roof more often than behind it, and the
+share of angles with something in the way falls from 89% at 0.90 units to about
+65% — the same rule, a smaller camera.
+
+Two harness checks had been measuring the character against fixed tolerances
+larger than the character now is, and one of them called a roof over the
+character's head "the ground under its feet". Under the feet now means **below**
+them — inside the piece's footprint with its top at or below where the character
+stands — rather than merely near them.
 
 ### The exterior on its own terms
 

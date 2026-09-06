@@ -57,12 +57,13 @@ const TINY = 1e-6
  * resized. Unresized they are absurd: a doorway 1.54 units tall set into a
  * building facade of 1.50.
  *
- * A fifth is what looks right in the slice's village, judged against the
- * buildings there. It is recorded here as a number someone chose, and the
- * viewer keeps `,` and `.` for changing it, so revising it is a one-line edit
- * rather than an excavation.
+ * **0.12** is what looks right in the slice's village, found by resizing them
+ * against the buildings until they did: it takes a doorway from 1.54 units to
+ * **0.19**, which is 0.12 of the 1.57-unit facade it is set into. It is
+ * recorded here as a number someone chose, and the viewer keeps `,` and `.` for
+ * changing it, so revising it is a one-line edit rather than an excavation.
  */
-export const PLACED_PIECE_SCALE = 0.2
+export const PLACED_PIECE_SCALE = 0.12
 
 /**
  * Where a map puts one of its resources.

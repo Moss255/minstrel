@@ -249,15 +249,14 @@ function pushOutOfWalls(
  *
  * So the ratio is **set by eye against the original**, and recorded here as
  * what it is rather than dressed up as a derivation. Judged against the slice's
- * village, a person is **0.09 units** — a fifth of what an earlier guess here
- * had, and the same fifth that the village's placed pieces needed
- * (`PLACED_PIECE_SCALE`), which is the one encouraging sign that the two are
- * the same misjudgement rather than two.
+ * village by resizing until it looked right, a person is **0.18 units** — 0.11
+ * of the 1.57-unit house facade they walk past, and about the same height as
+ * the village's doorways once those are at `PLACED_PIECE_SCALE`.
  *
  * Everything else scales with the height, so a fall reads the same however it
  * is revised. One consequence of a figure this small is worth knowing: gravity
- * lands on **two** `fx32` words a tick, so it is quantised at about 20%. If the
- * height is revised again upwards that goes away on its own.
+ * lands on **three** `fx32` words a tick, so it is quantised at a few per cent.
+ * If the height is revised upwards that goes away on its own.
  *
  * **The interiors are not at the exterior's scale**, so a ceiling measured
  * inside says nothing about a house measured outside: a single house's interior
@@ -284,12 +283,12 @@ function pushOutOfWalls(
  * edit replaces them when the real numbers turn up.
  */
 export const PERSON: CharacterShape = {
-  height: fx32(Math.round(0.09 * FX32_ONE)),
-  radius: fx32(Math.round(0.02 * FX32_ONE)),
-  stepUp: fx32(Math.round(0.028 * FX32_ONE)),
+  height: fx32(Math.round(0.18 * FX32_ONE)),
+  radius: fx32(Math.round(0.04 * FX32_ONE)),
+  stepUp: fx32(Math.round(0.056 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
-  gravity: fx32(Math.round(0.0004 * FX32_ONE)),
-  terminalSpeed: fx32(Math.round(0.03 * FX32_ONE)),
-  snapDown: fx32(Math.round(0.016 * FX32_ONE)),
+  gravity: fx32(Math.round(0.0008 * FX32_ONE)),
+  terminalSpeed: fx32(Math.round(0.06 * FX32_ONE)),
+  snapDown: fx32(Math.round(0.032 * FX32_ONE)),
 }
