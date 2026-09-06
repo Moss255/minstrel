@@ -22,6 +22,7 @@ export {
   type Channel,
   type CurveHeader,
   isNsbca,
+  loopFrames,
   NSBCA_MAGIC,
   type Nsbca,
   PIVOT_ENTRY_SIZE,

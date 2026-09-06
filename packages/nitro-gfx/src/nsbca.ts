@@ -438,3 +438,35 @@ export function sampleAnimation(animation: Animation, frame: number, out: Mat4[]
   }
   return out
 }
+
+/**
+ * How many frames of an animation to play before looping.
+ *
+ * **An animation may end on a repeat of its first frame.** Playing all of them
+ * and wrapping then shows that pose twice running — a hitch once per cycle,
+ * which on a nine-frame walk at a normal pace is several times a second.
+ *
+ * It is a property of the data rather than a convention to assume: **2,654 of
+ * the cartridge's 6,230 animations close this way and the rest do not**, so it
+ * has to be asked of each one. The pattern behind it is visible in the frame
+ * counts, which are overwhelmingly odd — 9, 7, 11, 13, 5, 17, 3 — as a whole
+ * number of segments plus the frame that closes the last one. Every one of the
+ * 140 three-frame animations closes.
+ *
+ * Sampling both ends is not free, so a caller playing an animation repeatedly
+ * should ask once and keep the answer.
+ */
+export function loopFrames(animation: Animation): number {
+  if (animation.frameCount < 3) return Math.max(animation.frameCount, 1)
+  const first = sampleAnimation(animation, 0)
+  const last = sampleAnimation(animation, animation.frameCount - 1)
+  for (let bone = 0; bone < first.length; bone++) {
+    const a = first[bone]
+    const b = last[bone]
+    if (!a || !b) continue
+    for (let cell = 0; cell < 16; cell++) {
+      if (Math.abs((a[cell] as number) - (b[cell] as number)) > 1e-5) return animation.frameCount
+    }
+  }
+  return animation.frameCount - 1
+}

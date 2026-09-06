@@ -527,6 +527,22 @@ nodes use, down to the forced sign of the pivot cell. All 9,543 references with
 the bit set land inside the pool, and every one of the 93,811 entries reachable
 that way satisfies `a² + b² == 1`.
 
+### An animation may end where it began
+
+**2,654 of the cartridge's 6,230 animations end on a repeat of their first
+frame**, and the rest do not, so it is a property of each one rather than a
+convention to assume. Playing every frame and wrapping shows that pose twice
+running — a hitch once per cycle, which on a nine-frame walk at a normal pace is
+several times a second.
+
+The pattern behind it shows in the frame counts, which are overwhelmingly odd —
+9, 7, 11, 13, 5, 17, 3 — a whole number of segments plus the frame that closes
+the last one. All 140 of the three-frame animations close.
+
+`loopFrames` answers it by sampling both ends. The slice's character `walk` (9
+frames) and `stand` (17) both close, and both loop one frame shorter than they
+are stored.
+
 **Bit clear — the basis pool**, ten bytes per entry: five values in **1.0.15**,
 not the 1.3.12 the geometry engine takes. The five are the whole of the **first
 column** and the first two cells of the second. The second column's third cell

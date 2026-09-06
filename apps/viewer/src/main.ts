@@ -19,6 +19,7 @@ import {
   isNsbca,
   isNsbmd,
   isNsbtx,
+  loopFrames,
   type Mat4,
   type Model,
   type ModelMaterial,
@@ -296,6 +297,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   membersByArchive.clear()
   characterParts.length = 0
   characterMotions.clear()
+  loopLengths.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -606,7 +608,7 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
     characterMotions.values().next().value
   let tallest = 0
   if (upright) {
-    for (let frame = 0; frame < upright.frameCount; frame++) {
+    for (let frame = 0; frame < loopLengthOf(upright); frame++) {
       tallest = Math.max(tallest, heightOf(characterStacks(upright, frame)))
     }
   }
@@ -614,6 +616,22 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
   // refusing to draw the character.
   if (tallest <= 0) tallest = heightOf(new Map())
   return { body, scale: (toFloat(PERSON.height) * sizeTrim) / Math.max(tallest, 0.001) }
+}
+
+/**
+ * How many frames of a motion to play before looping, asked once and kept.
+ *
+ * Nearly half the cartridge's animations end on a repeat of their first frame.
+ * Playing all of them shows that pose twice running, which on the nine-frame
+ * walk at a normal pace is a hitch several times a second.
+ */
+const loopLengths = new Map<Animation, number>()
+function loopLengthOf(motion: Animation): number {
+  const known = loopLengths.get(motion)
+  if (known !== undefined) return known
+  const frames = loopFrames(motion)
+  loopLengths.set(motion, frames)
+  return frames
 }
 
 /** Every part's matrix stacks for one frame of a motion, or its bind pose. */
@@ -1134,16 +1152,18 @@ function advanceMotion(
   const motion = characterMotions.get(wanted)
   if (!motion || motion.frameCount <= 0) return
 
+  // The frames that make up the loop, which is not always all of them.
+  const frameCount = loopLengthOf(motion)
   walker.motionFrame += motionAdvance({
     moving,
     // Real time rather than whole ticks, so an idle does not run in steps of
     // however many ticks happened to fall in a frame.
     ticks: (elapsedMs * 60) / 1000,
     travelled,
-    frameCount: motion.frameCount,
+    frameCount,
     unitsPerTick: toFloat(fx32(WALK_SPEED)),
   })
-  walker.motionFrame %= motion.frameCount
+  walker.motionFrame %= frameCount
 }
 
 /**

@@ -340,6 +340,23 @@ flat-shaded orthographic rasteriser over the same `poseGeometry` output — and
 looking at it. Numbers had been saying for several rounds that something was
 0.2 units out; the picture said the arms were over the head.
 
+### The walk held one pose twice a cycle
+
+Rendering the nine frames of the walk side by side, with a ground line to judge
+them against, showed frames 0, 4 and 8 in the same pose. The last frame is a
+repeat of the first.
+
+That is common and it is not universal: **2,654 of the cartridge's 6,230
+animations end that way and the rest do not**, so it has to be asked of each one
+rather than assumed. The pattern shows in the frame counts, which are
+overwhelmingly odd — 9, 7, 11, 13, 5, 17, 3 — a whole number of segments plus
+the frame closing the last one, and all 140 three-frame animations close.
+
+Played over all nine frames, the walk holds one pose for two frames every cycle.
+At three cycles a second that is a hitch three times a second. `loopFrames` in
+`@vesper/nitro-gfx` asks the animation, and the character's `walk` and `stand`
+both loop one frame shorter than they are stored.
+
 ### The legs did not reach the floor, and the walk stuttered
 
 Two more, both from the same habit of taking a measurement once and assuming it

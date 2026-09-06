@@ -7,6 +7,7 @@ import {
   type BoneTrack,
   boneTrackSize,
   isNsbca,
+  loopFrames,
   readNsbca,
   sampleAnimation,
 } from '../src/nsbca.ts'
@@ -501,5 +502,43 @@ describe('basisRotation', () => {
 
   it('returns a rotation even where both solves are degenerate', () => {
     expect(orthonormal(build(0.9988, -0.05, 0, 0.0502, 0.9988))).toBe(true)
+  })
+})
+
+describe('loopFrames', () => {
+  /**
+   * Nearly half the cartridge's animations end on a repeat of their first
+   * frame. Playing every frame and wrapping shows that pose twice running,
+   * which is a hitch once per cycle — several times a second on a walk.
+   */
+  const varying = () => readNsbca(buildAnimated()).animations[0] as Animation
+
+  it('keeps every frame of an animation that does not close', () => {
+    // Its translation curve walks 10, 20, 30, 40, so the last frame is nothing
+    // like the first.
+    const anim = varying()
+    expect(loopFrames(anim)).toBe(anim.frameCount)
+  })
+
+  it('drops the closing frame when the last frame repeats the first', () => {
+    // No tracks at all: every frame is the identity, so the last repeats the
+    // first exactly, which is the shape of a closing frame.
+    const anim = readNsbca(buildNsbca('closed', 9, [])).animations[0] as Animation
+    expect(anim.frameCount).toBe(9)
+    expect(loopFrames(anim)).toBe(8)
+  })
+
+  it('leaves a very short animation alone rather than emptying it', () => {
+    for (const frames of [1, 2]) {
+      const anim = readNsbca(buildNsbca('brief', frames, [])).animations[0] as Animation
+      expect(loopFrames(anim)).toBe(frames)
+    }
+  })
+
+  it('never returns zero, which a caller would divide by', () => {
+    for (const frames of [1, 2, 3, 9]) {
+      const anim = readNsbca(buildNsbca('any', frames, [])).animations[0] as Animation
+      expect(loopFrames(anim)).toBeGreaterThan(0)
+    }
   })
 })

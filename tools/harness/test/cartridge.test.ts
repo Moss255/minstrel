@@ -33,6 +33,7 @@ import {
   isNsbca,
   isNsbmd,
   isNsbtx,
+  loopFrames,
   MATRIX_STACK_SIZE,
   type Mat4,
   type Model,
@@ -2945,6 +2946,62 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // viewer does: the drawn figure's own lowest point sits at the feet.
     expect(byOrigin).toBeGreaterThan(toFloat(PERSON.height) / 20)
     expect(byCycle).toBeGreaterThan(toFloat(PERSON.height) / 20)
+  })
+
+  it('tells a closing frame from a real one', () => {
+    // An animation may end on a repeat of its first frame. Playing every frame
+    // and wrapping then shows that pose twice running — a hitch once per cycle,
+    // several times a second on a nine-frame walk.
+    let total = 0
+    let closes = 0
+    let odd = 0
+    for (const asset of animations) {
+      let parsed: readonly Animation[]
+      try {
+        parsed = readNsbca(asset.bytes).animations
+      } catch {
+        continue
+      }
+      for (const animation of parsed) {
+        if (animation.frameCount < 3) continue
+        total++
+        if (animation.frameCount % 2 === 1) odd++
+        if (loopFrames(animation) === animation.frameCount - 1) closes++
+      }
+    }
+
+    expect(total).toBeGreaterThan(4000)
+    // It is a property of each animation, not a convention to assume: a good
+    // share close and the rest do not, so both branches carry real data.
+    expect(closes / total).toBeGreaterThan(0.3)
+    expect(closes / total).toBeLessThan(0.7)
+    // And the pattern behind it shows in the frame counts, which are mostly a
+    // whole number of segments plus the frame that closes the last one.
+    expect(odd / total).toBeGreaterThan(0.7)
+  }, 120_000)
+
+  it("plays the character's walk without holding a pose twice", () => {
+    const motions = new Map<string, Animation>()
+    for (const asset of animations) {
+      if (!asset.archive.includes('#chara_mp.gp2#')) continue
+      const pack = asset.archive.slice(asset.archive.lastIndexOf('#') + 1)
+      if (!pack.startsWith('mp0200')) continue
+      try {
+        for (const animation of readNsbca(asset.bytes).animations)
+          motions.set(animation.name, animation)
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+    const walk = motions.get('walk') as Animation
+    const stand = motions.get('stand') as Animation
+    expect(walk).toBeDefined()
+    expect(stand).toBeDefined()
+    // Both of the motions the viewer plays end on a repeat of their first
+    // frame, so both loop one frame shorter than they are stored.
+    expect(loopFrames(walk)).toBe(walk.frameCount - 1)
+    expect(loopFrames(stand)).toBe(stand.frameCount - 1)
+    expect(loopFrames(walk)).toBeGreaterThan(0)
   })
 
   it('produces the container magic each member extension implies', () => {
