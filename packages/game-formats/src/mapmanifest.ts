@@ -41,6 +41,30 @@ const TAG_PLACEMENT = 0x6f
 export const PLACEMENT_SCALE = 8
 
 /**
+ * A translation smaller than this is no translation.
+ *
+ * Well under a thousandth of a world unit, so it cannot swallow a real one.
+ */
+const TINY = 1e-6
+
+/**
+ * What a map's **placed** pieces are drawn at, relative to the map around them.
+ *
+ * **Set by eye against the original, not derived.** The doorway models are
+ * `upScale` 1 while the terrain they stand in is `upScale` 8 — as is every
+ * placed piece on the cartridge, 276 of 283 — and the manifest's own scale
+ * field is 1, 1, 1 everywhere, so nothing in the data asks for them to be
+ * resized. Unresized they are absurd: a doorway 1.54 units tall set into a
+ * building facade of 1.50.
+ *
+ * A fifth is what looks right in the slice's village, judged against the
+ * buildings there. It is recorded here as a number someone chose, and the
+ * viewer keeps `,` and `.` for changing it, so revising it is a one-line edit
+ * rather than an excavation.
+ */
+export const PLACED_PIECE_SCALE = 0.2
+
+/**
  * Where a map puts one of its resources.
  *
  * Map pieces are authored in their own space and placed: the village's ten
@@ -252,7 +276,15 @@ export function placementOf(
   for (let depth = 0; at && depth < 8; depth++) {
     const placement: MapPlacement | undefined = at.placement
     if (!placement) break
-    if (placement.x !== 0 || placement.y !== 0 || placement.z !== 0) {
+    // Not `!== 0`: one of the village's ten doorway collisions carries a
+    // denormal of about -1e-9 where the other nine carry a clean zero, and
+    // reading that as a translation of its own left that one doorway's wall at
+    // the map's origin while its door stood in the doorway.
+    if (
+      Math.abs(placement.x) > TINY ||
+      Math.abs(placement.y) > TINY ||
+      Math.abs(placement.z) > TINY
+    ) {
       return {
         x: placement.x,
         y: placement.y,

@@ -224,6 +224,13 @@ export function resolveShapeStates(commands: readonly RenderCommand[]): ShapeSta
  * from the slot beside it in 893 of them, so it is not the slot restated. Pass
  * `inverseBind` — from `inverseBindMatrices` — to apply it. Without it a blend
  * is only correct where the pose equals the bind pose.
+ *
+ * **A node description also makes its matrix the current one**, whether or not
+ * it stores it. The stack slot is where a matrix is *kept* for later; the
+ * current matrix is what the next shape is drawn with. Reading only the stored
+ * ones leaves every shape under an unstored node drawn at the model's origin —
+ * which is a village whose trees are all in one pile and whose rainbow sits on
+ * the ground, because the nodes carrying those translations do not store.
  */
 export function resolvePose(
   commands: readonly RenderCommand[],
@@ -234,9 +241,23 @@ export function resolvePose(
   const world: Mat4[] = nodes.map(() => identity())
   const shapeStacks: Mat4[][] = []
   const seen = new Set<number>()
+  // The hardware's current matrix, and the slot a shape's vertices will look
+  // it up in. Vertices here index the stack, so the current matrix is written
+  // into that slot in a shape's own copy rather than into the stack itself,
+  // which would clobber a matrix stored for something else.
+  let current: Mat4 = identity()
+  let currentSlot = 0
 
   for (const command of commands) {
     switch (command.op) {
+      case RenderOp.RestoreMatrix: {
+        const slot = command.params[0] as number
+        if (slot < MATRIX_STACK_SIZE) {
+          currentSlot = slot
+          current = stack[slot] as Mat4
+        }
+        break
+      }
       case RenderOp.NodeDescription: {
         const nodeId = command.params[0] as number
         const parentId = command.params[1] as number
@@ -247,12 +268,16 @@ export function resolvePose(
         const result = multiply(parent, node.local)
         world[nodeId] = result
         seen.add(nodeId)
+        current = result
 
         // With the 0x20 flag the fourth parameter names a stack slot to store
         // the result in; the 0x40 flag's parameter is not identified.
         if ((command.opcode & 0x20) !== 0) {
           const slot = command.params[3]
-          if (slot !== undefined && slot < MATRIX_STACK_SIZE) stack[slot] = result
+          if (slot !== undefined && slot < MATRIX_STACK_SIZE) {
+            stack[slot] = result
+            currentSlot = slot
+          }
         }
         break
       }
@@ -277,7 +302,9 @@ export function resolvePose(
       }
       case RenderOp.Shape: {
         const shape = command.params[0] as number
-        shapeStacks[shape] = stack.map((m) => new Float32Array(m))
+        const snapshot = stack.map((m) => new Float32Array(m))
+        snapshot[currentSlot] = new Float32Array(current)
+        shapeStacks[shape] = snapshot
         break
       }
       default:

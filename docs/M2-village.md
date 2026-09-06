@@ -235,6 +235,60 @@ carry *more* placements than resources. Pairing positionally through those would
 place every piece after the extra one confidently in the wrong spot, so those
 maps are left unplaced instead. A wrong placement is worse than none.
 
+### The rainbow, the trees, and the current matrix
+
+A node description in a model's render-command stream computes that node's world
+transform, and its flag bits say which stack slot to leave the result in. What
+was missed is that it also makes that matrix **the current one**, whether or not
+it stores it: the stack slot is where a matrix is *kept* for later, and the
+current matrix is what the next shape is drawn with.
+
+Reading only the stored ones leaves every shape under an unstored node drawn at
+the model's own origin. In `M01` that is the rainbow: `M01M00L1` has a node
+called `rai` carrying a translation of (12.50, 1.50, −18.71), and its shape came
+out at exactly its raw position divided by eight — the node's translation never
+reached it, so the rainbow sat on the ground at the map's origin.
+
+`resolvePose` now tracks the current matrix, set by a node description and by a
+restore command, and writes it into a shape's own copy of the stack at the slot
+that shape will look up. The stack itself is untouched, so a matrix stored for
+something else cannot be clobbered. `M01M00L1` goes from 8.13 × 0.44 × 2.63 to
+8.13 × 0.51 × 3.01 as the rainbow moves off the origin.
+
+The trees turned out to be fine already — the `tre20`..`tre39` nodes of
+`M01M0003` do store, and their shapes were spread across 4.07 units, matching
+their translations. The whole cartridge's 38 integration checks still pass,
+including the two that pin vertex placement and blend resolution.
+
+### One doorway's wall was left at the origin
+
+Nine of the village's ten doorway collisions carry a clean zero translation and
+take their door's. The tenth, `M01A00D1`, carries a **denormal of about −1e−9**,
+and the check for "no translation of its own" was `!== 0`. So that one wall
+stayed at the map's origin while its door stood in the doorway. The test is now
+against a tolerance.
+
+### The sizes, set by eye
+
+Two constants, both chosen by looking at the village rather than derived, and
+both recorded as such:
+
+| | |
+|---|---|
+| `PLACED_PIECE_SCALE` | **0.2** — doorway models go from 1.54 units to 0.31 against facades of 1.50 and 1.57 |
+| `PERSON.height` | **0.09** — a fifth of what it was |
+
+The same fifth in both places is the one encouraging sign: it suggests a single
+misjudgement about how non-map content sits in this map rather than two
+independent ones.
+
+One consequence of a person this small is worth knowing. Gravity lands on **two**
+`fx32` words a tick, so it is quantised at about 20%; if the height is revised
+upwards that goes away on its own. The camera's boom is measured in character
+heights too, so indoors the eye now sits under a roof more often than behind it,
+and the share of angles with something in the way falls from 89% to about 65% —
+the same rule, a smaller camera.
+
 ### The exterior on its own terms
 
 Focusing on `M01` alone, and using only what is in it, here is everything the

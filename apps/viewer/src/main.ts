@@ -3,6 +3,7 @@ import {
   isCollisionMesh,
   isMapManifest,
   type MapManifest,
+  PLACED_PIECE_SCALE,
   placementOf,
   readCollisionMesh,
   readMapManifest,
@@ -588,7 +589,7 @@ let sizeTrim = 1
  * and nothing here does by default. This exists to find out whether they should
  * be, without a constant being invented to hold the answer.
  */
-let propTrim = 1
+let propTrim = PLACED_PIECE_SCALE
 /** The tallest house in the shown map, for reporting the ratio. */
 let houseHeight = 0
 /** The tallest wall of the shown map's buildings, and the tallest placed piece. */
@@ -800,7 +801,7 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
             (wallHeight > 0
               ? ` (${((propHeight * propTrim) / wallHeight).toFixed(2)} of a ${wallHeight.toFixed(2)} wall)`
               : '') +
-            (propTrim !== 1 ? ` x${propTrim.toFixed(2)}` : '')
+            ` x${propTrim.toFixed(2)}`
           : '') +
         (walker.inside ? ' · indoors' : '') +
         (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : '')

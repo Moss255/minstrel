@@ -302,13 +302,13 @@ describe('a badly shaped character', () => {
 })
 
 describe('PERSON', () => {
-  it('is a little under a third of a house', () => {
-    // The village's houses measure 1.50 and 1.57 units. How large a person is
-    // against one is set by eye against the original rather than derived — see
-    // the note on PERSON — so this pins the value that was chosen, and will
-    // fail if someone changes it without meaning to.
-    expect(toFloat(PERSON.height) / 1.5).toBeGreaterThan(0.25)
-    expect(toFloat(PERSON.height) / 1.5).toBeLessThan(0.35)
+  it('is the size that was chosen against the village', () => {
+    // How large a person is against a building is set by eye against the
+    // original rather than derived — see the note on PERSON. This pins the
+    // value that was chosen so it cannot drift unnoticed, and it is the same
+    // fifth that the village's placed pieces needed.
+    expect(toFloat(PERSON.height)).toBeGreaterThan(0.08)
+    expect(toFloat(PERSON.height)).toBeLessThan(0.1)
   })
 
   it('fits under the lowest ceiling in the village', () => {

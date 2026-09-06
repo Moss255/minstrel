@@ -1918,6 +1918,11 @@ describe.skipIf(!romPath)('a real cartridge', () => {
 
         // The pieces the character is inside the footprint of and standing on
         // top of: the ground under their feet, whatever else it is part of.
+        // Under the feet means **below** them, not merely near them: the
+        // character is inside the piece's footprint and the piece's top is at
+        // or below where it is standing. A piece whose box merely spans the
+        // character's height can be the roof over its head, and taking that
+        // away is the rule working rather than failing.
         const underfoot = new Set<number>()
         boxes.forEach((box, index) => {
           const inside =
@@ -1925,8 +1930,7 @@ describe.skipIf(!romPath)('a real cartridge', () => {
             feet.x <= box.maxX &&
             feet.z >= box.minZ &&
             feet.z <= box.maxZ &&
-            feet.y >= box.minY - 0.1 &&
-            feet.y <= box.maxY + 0.1
+            box.maxY <= feet.y + toFloat(PERSON.height) / 4
           if (inside) underfoot.add(index)
         })
 
@@ -1963,17 +1967,23 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // of the map, which in a village is a street.
     expect(enclosed).toBeGreaterThan(20)
     // And the two cases behave as differently as the description says they do.
-    // Under a roof there is almost always something in the way — the roof —
-    // which is the behaviour the whole rule exists for. Out in the open it is
+    // Under a roof there is usually something in the way — the roof — which is
+    // the behaviour the whole rule exists for. Out in the open it is
     // occasional, which is walking behind a building.
-    expect(indoorAny / indoorViews).toBeGreaterThan(0.75)
+    //
+    // The indoor rate depends on how big the character is, because the camera's
+    // boom is measured in character heights: a small character puts the eye
+    // under the roof rather than behind it, and then there is nothing between
+    // the two to remove. It was 89% when a person was 0.90 units and is around
+    // 65% at 0.09, so this is a floor rather than a target.
+    expect(indoorAny / indoorViews).toBeGreaterThan(0.5)
     expect(outdoorAny / outdoorViews).toBeGreaterThan(0.05)
     expect(outdoorAny / outdoorViews).toBeLessThan(indoorAny / indoorViews)
     // What is left out is a minority of the map, not a curtain over it.
     expect(removed / pieces).toBeLessThan(0.2)
   }, 60_000)
 
-  it('draws a character three fifths the height of a house, in every frame', () => {
+  it('draws a character the size it is meant to be, in every frame', () => {
     // The bug this pins: the character was scaled by its **bind pose**, which
     // is a T-pose — arms straight out, 9.2 units across and only 7.7 tall. That
     // is the height of a figure holding itself flat, not the height of the
@@ -2104,18 +2114,20 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(house).toBeGreaterThan(1.4)
     expect(house).toBeLessThan(1.7)
 
-    // Drawn at the chosen fraction of a house, in every frame of the walk
-    // cycle. The fraction itself is set by eye against the original — see the
-    // note on PERSON — so what this pins is that the drawn figure matches the
-    // capsule walking it, which is the property the code guarantees.
+    // The fraction of a house is set by eye against the original — see the note
+    // on PERSON — so what this pins is that the drawn figure matches the
+    // capsule walking it, which is the property the code guarantees, and that
+    // the chosen fraction has not drifted.
     for (const height of drawn) {
-      expect(height / house).toBeGreaterThan(0.2)
-      expect(height / house).toBeLessThan(0.4)
+      expect(height / house).toBeGreaterThan(0.04)
+      expect(height / house).toBeLessThan(0.08)
     }
     // And the same size throughout: a character that changed height as it moved
     // is the failure this replaces.
-    expect(Math.max(...drawn) - Math.min(...drawn)).toBeLessThan(0.05)
-    for (const height of drawn) expect(Math.abs(height - toFloat(PERSON.height))).toBeLessThan(0.02)
+    expect(Math.max(...drawn) - Math.min(...drawn)).toBeLessThan(toFloat(PERSON.height) / 10)
+    for (const height of drawn) {
+      expect(Math.abs(height - toFloat(PERSON.height))).toBeLessThan(toFloat(PERSON.height) / 10)
+    }
 
     // The bind pose is 30% shorter than the figure it is the bind pose of, and
     // that gap is the whole bug: it is what a T-pose measures.
