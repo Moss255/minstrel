@@ -582,6 +582,22 @@ let lastShapes = 0
 let mapPieces: Piece[] = []
 /** One box per map piece, measured once, for deciding what is in the way. */
 let mapBoxes: Box[] = []
+/**
+ * Which of those are backdrop rather than part of the place.
+ *
+ * The village's sky is a single piece 15.70 by 12.08 units, wrapped around a
+ * map whose walkable ground is 12.0 by 9.1. It is over the character's head
+ * everywhere, so without this the open street reads as indoors and the camera
+ * tucks in under the sky.
+ *
+ * The test is containment rather than size: a piece that reaches past the map's
+ * collision **on all four sides** is not part of the place being stood in. A
+ * room's ceiling sits within its own walls and is not caught. No map on the
+ * cartridge has collision above head height — not one downward-facing raised
+ * triangle anywhere — so the geometry has to answer this, and this is the least
+ * it can be asked.
+ */
+let mapBackdrop: boolean[] = []
 /** Movement per tick, about three world units a second at 60Hz. */
 const WALK_SPEED = Math.round(0.05 * FX32_ONE)
 /** How much clear air there has to be past a piece for it to count as in the way. */
@@ -704,6 +720,15 @@ function pose(): void {
   // moving while it is being walked.
   mapPieces = drawn
   mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
+  const ground = shown.world?.bounds
+  mapBackdrop = mapBoxes.map((box) =>
+    ground === undefined
+      ? false
+      : box.minX < ground.minX / FX32_ONE &&
+        box.maxX > ground.maxX / FX32_ONE &&
+        box.minZ < ground.minZ / FX32_ONE &&
+        box.maxZ > ground.maxZ / FX32_ONE,
+  )
   if (!walker) {
     lastUpload = renderer.upload(drawn)
     lastShapes = drawn.length
@@ -789,6 +814,15 @@ function select(index: number): void {
 
   mapPieces = drawn
   mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
+  const ground = shown.world?.bounds
+  mapBackdrop = mapBoxes.map((box) =>
+    ground === undefined
+      ? false
+      : box.minX < ground.minX / FX32_ONE &&
+        box.maxX > ground.maxX / FX32_ONE &&
+        box.minZ < ground.minZ / FX32_ONE &&
+        box.maxZ > ground.maxZ / FX32_ONE,
+  )
   const uploaded = renderer.upload(drawn)
   lastUpload = uploaded
   lastShapes = drawn.length
@@ -1043,7 +1077,11 @@ function walk(elapsedMs: number): void {
     toFloat(walker.state.y),
     toFloat(walker.state.z),
   ]
-  const inside = covered(mapBoxes, feet, toFloat(PERSON.height))
+  const inside = covered(
+    mapBoxes.filter((_, index) => !mapBackdrop[index]),
+    feet,
+    toFloat(PERSON.height),
+  )
   if (inside !== walker.inside) {
     walker.inside = inside
     Object.assign(camera, applyStyle(camera, inside ? INDOORS : OUTDOORS, toFloat(PERSON.height)))

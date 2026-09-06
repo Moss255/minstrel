@@ -2372,6 +2372,140 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(trapped.length).toBeLessThan(7)
   }, 120_000)
 
+  it("does not call a map's open ground indoors because of its sky", () => {
+    // The village's sky is one piece 15.70 by 12.08 units around a map whose
+    // walkable ground is 12.3 by 9.1. It is over the character's head
+    // everywhere, so counted as a ceiling every spot in the village reads as
+    // indoors and the camera tucks in under the open sky. All 41 of them did.
+    //
+    // No map on the cartridge has collision above head height, so the geometry
+    // has to answer this; a piece reaching past the map's own collision on all
+    // four sides is not part of the place being stood in.
+    let maps = 0
+    let withSky = 0
+    let withoutSky = 0
+    let spots = 0
+    let villageSpots = 0
+    let villageWithSky = 0
+    let villageWithoutSky = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes) || !/\.amdj$/.test(file.path)) continue
+      const members = new Map<string, Uint8Array>()
+      try {
+        for (const member of readNarc(bytes).entries()) {
+          const data = member.data
+          members.set(
+            String(member.name ?? member.index),
+            isLz10(data) ? decompressLz10(data) : data,
+          )
+        }
+      } catch {
+        continue
+      }
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        let manifest: ReturnType<typeof readMapManifest>
+        try {
+          manifest = readMapManifest(data)
+        } catch {
+          continue
+        }
+        const boxes: ReturnType<typeof measureBounds>[] = []
+        const meshes: PlacedMesh[] = []
+        for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
+          const place = placementOf(manifest, resource)
+          const offset = {
+            x: Math.round(place.x * 4096),
+            y: Math.round(place.y * 4096),
+            z: Math.round(place.z * 4096),
+          }
+          for (const built of files) {
+            const resourceBytes = members.get(built) as Uint8Array
+            if (isCollisionMesh(resourceBytes)) {
+              try {
+                meshes.push({ mesh: readCollisionMesh(resourceBytes), offset })
+              } catch {
+                // Reported by the collision test.
+              }
+            } else if (isNsbmd(resourceBytes)) {
+              try {
+                const model = readNsbmd(resourceBytes).models[0]
+                if (!model?.numShapes) continue
+                for (let shape = 0; shape < model.numShapes; shape++) {
+                  const b = measureBounds([model.posedGeometry(shape)])
+                  boxes.push({
+                    minX: b.minX + place.x,
+                    maxX: b.maxX + place.x,
+                    minY: b.minY + place.y,
+                    maxY: b.maxY + place.y,
+                    minZ: b.minZ + place.z,
+                    maxZ: b.maxZ + place.z,
+                  })
+                }
+              } catch {
+                // Reported by the model test.
+              }
+            }
+          }
+        }
+        if (meshes.length === 0 || boxes.length === 0) continue
+        const world = createCollisionWorld(meshes)
+        const ground = world.bounds
+        const kept = boxes.filter(
+          (b) =>
+            !(
+              b.minX < ground.minX / 4096 &&
+              b.maxX > ground.maxX / 4096 &&
+              b.minZ < ground.minZ / 4096 &&
+              b.maxZ > ground.maxZ / 4096
+            ),
+        )
+        if (kept.length === boxes.length) continue
+        maps++
+        const village = file.path === '/data/map/M01.amdj'
+
+        for (let i = 0; i < 100; i++) {
+          const x = ground.minX + ((ground.maxX - ground.minX) * (i % 10)) / 9
+          const z = ground.minZ + ((ground.maxZ - ground.minZ) * Math.floor(i / 10)) / 9
+          const hit = groundBelow(
+            world,
+            fx32(Math.round(x)),
+            fx32(Math.round(z)),
+            fx32(ground.maxY + 4096),
+          )
+          if (!hit) continue
+          spots++
+          const feet: [number, number, number] = [x / 4096, toFloat(hit.y), z / 4096]
+          const under = covered(boxes, feet, toFloat(PERSON.height))
+          const open = covered(kept, feet, toFloat(PERSON.height))
+          if (under) withSky++
+          if (open) withoutSky++
+          if (village) {
+            villageSpots++
+            if (under) villageWithSky++
+            if (open) villageWithoutSky++
+          }
+        }
+      }
+    }
+
+    expect(maps).toBeGreaterThan(50)
+    expect(spots).toBeGreaterThan(500)
+    // Across the cartridge the effect is real but moderate, because most maps
+    // are interiors where a ceiling overhead is the truth. Counting the
+    // backdrop still turns a quarter of all open ground into ceiling.
+    expect(withSky / spots).toBeGreaterThan(0.25)
+    expect(withoutSky).toBeLessThan(withSky * 0.85)
+
+    // The slice's village is the severe case, and the one to pin: counting its
+    // sky, every spot on it is indoors.
+    expect(villageSpots).toBeGreaterThan(15)
+    expect(villageWithSky).toBe(villageSpots)
+    expect(villageWithoutSky / villageSpots).toBeLessThan(0.3)
+  }, 120_000)
+
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly
     // wrong would not reliably land on the right four-byte stamp thousands of

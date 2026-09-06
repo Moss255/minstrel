@@ -299,6 +299,33 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### The sky was the ceiling
+
+The exterior kept reading as **indoors**, so the camera tucked in and tilted
+down in the open street. Standing anywhere on the village, the piece over the
+character's head was `M01M00E3` shape 2: a single piece **15.70 by 12.08 units**
+wrapped around a map whose walkable ground is 12.3 by 9.1. Every one of the 41
+spots sampled across the village read as indoors, and always for that reason.
+
+An earlier attempt at this looked for a piece covering most of the map and
+sitting above everything else in it, and found **none**, because the waterfall
+at 3.75 pokes above the sky at 2.63. Being the tallest thing was never the
+point.
+
+The test now is containment: a piece reaching past the map's own collision **on
+all four sides** is not part of the place being stood in. That is the least the
+geometry can be asked, and it has to be the geometry — no map on the cartridge
+has collision above head height, not one downward-facing raised triangle
+anywhere, so there is nothing to cast a ray at.
+
+The village goes from 41 of 41 spots indoors to 7. Across the cartridge the
+effect is real but milder — a quarter of all open ground stops being ceiling —
+because most maps are interiors, where something overhead is the truth.
+
+The seven that remain are under a piece 3.83 by 1.59 units and half a unit
+thick, sitting 0.02 above the character's head. That is a canopy, and being
+under it is not a bug.
+
 ### Somewhere to stand is not somewhere to walk
 
 The village's spawn had standable ground in all sixteen directions around it and
