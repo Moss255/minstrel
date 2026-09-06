@@ -23,6 +23,9 @@ importers:
 
   apps/viewer:
     dependencies:
+      '@vesper/fixed':
+        specifier: workspace:*
+        version: link:../../packages/fixed
       '@vesper/game-formats':
         specifier: workspace:*
         version: link:../../packages/game-formats
@@ -38,6 +41,9 @@ importers:
       '@vesper/nitrofs':
         specifier: workspace:*
         version: link:../../packages/nitrofs
+      '@vesper/sim':
+        specifier: workspace:*
+        version: link:../../packages/sim
     devDependencies:
       vite:
         specifier: ^7.1.9

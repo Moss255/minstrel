@@ -5,7 +5,7 @@ Against the milestone's own list.
 | M2 task | status |
 |---|---|
 | Map assembly and collision | **both done** |
-| Character controller with original movement constants | not started, and see below |
+| Character controller with original movement constants | **done**, with constants tuned by eye — see below |
 | Camera behaviour, extended for widescreen | not started |
 | Interior/exterior transitions, doors, stairs | not started; the link data is not located |
 | Fixed-preset Hero model with the minstrel outfit | not started, and see below |
@@ -82,6 +82,43 @@ One resource resists this. `G1` is centred on the origin rather than placed, and
 comes with a joint animation and a `.bcfg`. Something instances it, and the
 manifest is not what.
 
+## The character controller
+
+`@vesper/sim` walks a character over a collision world: horizontal movement
+resolved against walls, ground followed underneath, gravity when there is none.
+Everything is `fx32` at a fixed 60Hz tick.
+
+**A wall is a surface too steep to stand on.** That is the same test the ground
+query uses, so a cliff face and a building stop a character identically without
+either being a special case, and the slope limit is one number rather than two
+systems.
+
+**Which side of a wall to leave by comes from where the character was, not from
+where it is.** Resolving from the current position has no answer when a step
+lands exactly on a wall's plane and gives the wrong one when a fast step carries
+the character through — both push it out of the far side, which reads as walking
+through the wall. It was the first thing the tests caught.
+
+Checked on real geometry, not only on the squares and ramps its own tests build:
+a quarter of a million ticks across more than 300 map collision meshes, walking
+in four directions from several starting points on each. **Nothing ever left the
+world** — no tunnelling, no position the format cannot hold. About two thirds of
+those walks travel somewhere; the rest are stopped by a wall or go over an edge
+and fall, which is the world working rather than the controller failing.
+
+The viewer will walk an assembled map: press **G**, then WASD. There is no
+character model yet, so the camera follows the feet and the overlay reports
+where they are. Movement is relative to the view, which is what a third-person
+camera needs.
+
+### The constants are tuned by eye
+
+`PERSON` — radius, height, step-up height, slope limit, gravity — is a starting
+point, not the game's own numbers. Those live in code this repository does not
+read. Inventing values and presenting them as original would be worse than
+saying so, which is why they are named as tuned and kept in one exported
+constant that is easy to replace when the real ones turn up.
+
 ## Two things that change the plan
 
 **The Hero is a parts library, not a model.** `chara_pc.gp2` holds 796 parts —
@@ -111,3 +148,5 @@ that is a stated deviation from the milestone's wording rather than an oversight
   poison marshes — is very likely in it. Not needed to walk.
 - **`gridX` and `gridZ`.** Understanding them would let the sim use the file's
   own index instead of building one.
+- **Where a map starts.** The walker spawns at the middle of the collision mesh
+  because the cartridge's own start positions have not been located.

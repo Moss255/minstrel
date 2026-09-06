@@ -168,12 +168,17 @@ export function groundBelow(
 /**
  * How close a triangle is to horizontal, as the `fx32` cosine of its tilt.
  *
+ * `FX32_ONE` is flat and zero is a wall, so a slope limit is a comparison. The
+ * character controller uses the same value to decide what is a wall, which is
+ * what makes an unclimbable slope and a building behave alike without either
+ * being a special case.
+ *
  * Taken from the triangle's own vertices rather than from the normal the file
  * stores, because the vertices are integers and the arithmetic stays exact:
  * the cosine is the projected area over the true area, and both come from the
  * same cross product.
  */
-function slopeOf(triangle: CollisionTriangle): Fx32 {
+export function slopeOf(triangle: CollisionTriangle): Fx32 {
   const [a, b, c] = triangle.vertices
   const ux = b[0] - a[0]
   const uy = b[1] - a[1]

@@ -45,7 +45,7 @@ import {
 } from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
-import { createCollisionWorld, groundBelow } from '@vesper/sim'
+import { type CharacterState, createCollisionWorld, groundBelow, PERSON, step } from '@vesper/sim'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 /**
@@ -1677,6 +1677,93 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // is the minority of it, and the slivers skipped are a small part of that.
     expect(skipped).toBeLessThan(tested)
   })
+
+  it('walks a character over every map without losing it', () => {
+    // The controller is exercised on squares and ramps built for the purpose in
+    // its own tests. This is the other half: real map collision, which is
+    // 78% wall, full of slivers, and not built to be walked on by this code.
+    //
+    // What must hold is a safety property rather than a behavioural one. A
+    // character may be stopped by a wall, and may walk off an edge and fall —
+    // both are correct. What it may never do is leave the world: tunnel through
+    // geometry, or reach a position the fixed-point format cannot hold.
+    let maps = 0
+    let walks = 0
+    let ticks = 0
+    let moved = 0
+    let escaped = 0
+    const speed = fx32(Math.round(0.05 * 4096))
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        if (!member.name?.endsWith('.col2')) continue
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isCollisionMesh(data)) continue
+        let mesh: ReturnType<typeof readCollisionMesh>
+        try {
+          mesh = readCollisionMesh(data)
+        } catch {
+          continue
+        }
+        if (mesh.triangles.length < 20) continue
+        const world = createCollisionWorld(mesh)
+        maps++
+
+        // Start on a few walkable triangles and set off in eight directions.
+        const floors = mesh.triangles.filter((t) => t.normal[1] !== 0).slice(0, 3)
+        for (const triangle of floors) {
+          const [a, b, c] = triangle.vertices
+          const cx = Math.round((a[0] + b[0] + c[0]) / 3)
+          const cy = Math.round((a[1] + b[1] + c[1]) / 3)
+          const cz = Math.round((a[2] + b[2] + c[2]) / 3)
+          const ground = groundBelow(world, fx32(cx), fx32(cz), fx32(cy + 4096))
+          if (ground === undefined) continue
+
+          for (let direction = 0; direction < 4; direction++) {
+            const angle = (direction * Math.PI) / 2
+            const dx = fx32(Math.round(Math.cos(angle) * speed))
+            const dz = fx32(Math.round(Math.sin(angle) * speed))
+            let state: CharacterState = {
+              x: fx32(cx),
+              y: ground.y,
+              z: fx32(cz),
+              fallSpeed: fx32(0),
+              grounded: true,
+            }
+            const startX = state.x
+            const startZ = state.z
+            walks++
+            for (let tick = 0; tick < 90; tick++) {
+              state = step(world, state, dx, dz, PERSON)
+              ticks++
+              if (
+                !Number.isSafeInteger(state.x) ||
+                !Number.isSafeInteger(state.y) ||
+                !Number.isSafeInteger(state.z) ||
+                Math.abs(state.y) > 0x7fffffff
+              ) {
+                escaped++
+                break
+              }
+            }
+            if (Math.hypot(state.x - startX, state.z - startZ) > 512) moved++
+          }
+        }
+      }
+    }
+
+    expect(maps).toBeGreaterThan(300)
+    expect(ticks).toBeGreaterThan(200000)
+    // Never lost: no tunnelling out of the world, no position the format
+    // cannot hold.
+    expect(escaped).toBe(0)
+    // And it is walking, not merely surviving. The rest is stopped by a wall
+    // or gone over an edge, both of which are the world working.
+    expect(moved / walks).toBeGreaterThan(0.6)
+    // A quarter of a million ticks over real geometry is not a five-second job.
+  }, 60_000)
 
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly

@@ -1,7 +1,10 @@
+import { FX32_ONE, fx32, toFloat } from '@vesper/fixed'
 import {
+  type CollisionMesh,
   isCollisionMesh,
   isMapManifest,
   type MapManifest,
+  readCollisionMesh,
   readMapManifest,
   resolveMapResources,
 } from '@vesper/game-formats'
@@ -27,6 +30,14 @@ import {
   textureNameForMaterial,
 } from '@vesper/nitro-gfx'
 import { isNarc, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
+import {
+  type CharacterState,
+  type CollisionWorld,
+  createCollisionWorld,
+  groundBelow,
+  PERSON,
+  step as stepCharacter,
+} from '@vesper/sim'
 import { DS_HEIGHT, DS_WIDTH, ReferenceTarget } from './reference.ts'
 import { type Camera, ModelRenderer, type Piece } from './renderer.ts'
 
@@ -248,14 +259,18 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
  * to. Nothing is placed: a map's pieces already carry their own world
  * coordinates, which is why they can simply be drawn together.
  */
-function assembleMap(archive: string): { models: Model[]; missing: string[]; collision: number } {
+function assembleMap(archive: string): {
+  models: Model[]
+  missing: string[]
+  meshes: CollisionMesh[]
+} {
   const manifest = manifestsByArchive.get(archive)
   const members = membersByArchive.get(archive)
-  if (!manifest || !members) return { models: [], missing: [], collision: 0 }
+  if (!manifest || !members) return { models: [], missing: [], meshes: [] }
 
   const models: Model[] = []
   const missing: string[] = []
-  let collision = 0
+  const meshes: CollisionMesh[] = []
   for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
     if (files.length === 0) {
       missing.push(resource.name)
@@ -267,7 +282,11 @@ function assembleMap(archive: string): { models: Model[]; missing: string[]; col
       const bytes = members.get(file)
       if (!bytes) continue
       if (isCollisionMesh(bytes)) {
-        collision++
+        try {
+          meshes.push(readCollisionMesh(bytes))
+        } catch {
+          missing.push(file)
+        }
         continue
       }
       if (!isNsbmd(bytes)) continue
@@ -279,7 +298,7 @@ function assembleMap(archive: string): { models: Model[]; missing: string[]; col
       }
     }
   }
-  return { models, missing, collision }
+  return { models, missing, meshes }
 }
 
 /** Index a container's textures by name, if it carries any. */
@@ -374,7 +393,33 @@ interface Shown {
   frame: number
   /** An extra line for the overlay, when there is something to say. */
   note: string | undefined
+  /** Set when the thing on screen has collision to walk on. */
+  world: CollisionWorld | undefined
 }
+
+/**
+ * Walking the map, when there is collision under it.
+ *
+ * The character is simulated at a fixed 60Hz in the cartridge's own fixed-point
+ * units; only the camera it drives is in floats. The position is not rendered
+ * as a model yet — the Hero exists on the cartridge only as a library of parts,
+ * and which of them make him is not known — so for now walking moves the
+ * camera and the overlay reports where the feet are.
+ */
+interface Walker {
+  state: CharacterState
+  /** Which movement keys are down. */
+  readonly held: Set<string>
+  /** Left over from the last frame, so a slow frame is still 60Hz of ticks. */
+  carry: number
+}
+
+let walker: Walker | undefined
+/** What the renderer last took, so the overlay can be redrawn without re-uploading. */
+let lastUpload = { vertices: 0, triangles: 0, textured: 0 }
+/** Movement per tick, about three world units a second at 60Hz. */
+const WALK_SPEED = Math.round(0.05 * FX32_ONE)
+const TICK_MS = 1000 / 60
 
 let shown: Shown | undefined
 let playing = true
@@ -419,7 +464,8 @@ function pose(): void {
     const posed = poseGeometry(piece.geometry, stack)
     return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
-  describe(renderer.upload(drawn))
+  lastUpload = renderer.upload(drawn)
+  describe(lastUpload)
 }
 
 function select(index: number): void {
@@ -429,7 +475,7 @@ function select(index: number): void {
 
   try {
     if (entry.archive !== undefined) {
-      const { models, missing, collision } = assembleMap(entry.archive)
+      const { models, missing, meshes } = assembleMap(entry.archive)
       if (models.length === 0) throw new Error('the manifest names no model that reads')
       shown = {
         path: entry.path,
@@ -440,8 +486,9 @@ function select(index: number): void {
         frame: 0,
         note:
           `assembled from ${models.length} models` +
-          (collision > 0 ? ` and ${collision} collision meshes` : '') +
+          (meshes.length > 0 ? ` and ${meshes.length} collision meshes` : '') +
           (missing.length > 0 ? `, ${missing.length} missing` : ''),
+        world: meshes[0] ? createCollisionWorld(meshes[0]) : undefined,
       }
     } else {
       const model = readNsbmd(entry.bytes as Uint8Array).models[0]
@@ -455,6 +502,7 @@ function select(index: number): void {
         animation: animations[0],
         frame: 0,
         note: undefined,
+        world: undefined,
       }
     }
   } catch (error) {
@@ -470,6 +518,7 @@ function select(index: number): void {
   })
 
   const uploaded = renderer.upload(drawn)
+  lastUpload = uploaded
   // Frame on the bind pose, so the camera does not jump about as an animation
   // moves the geometry.
   const bounds = measureBounds(drawn.map((p) => p.geometry))
@@ -489,6 +538,7 @@ function select(index: number): void {
   describe(uploaded)
   renderScrubber()
   renderList()
+  walker = undefined
   if (shown.animation) pose()
 }
 
@@ -502,16 +552,115 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
     `${shapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
     `${uploaded.textured}/${shapes} shapes textured, from ${texturesByName.size} textures found`,
     shown.note,
+    walker
+      ? `walking — ${toFloat(walker.state.x).toFixed(2)}, ${toFloat(walker.state.y).toFixed(2)}, ${toFloat(walker.state.z).toFixed(2)}` +
+        (walker.state.grounded ? '' : ' (falling)')
+      : shown.world
+        ? 'press G to walk this map'
+        : undefined,
     referenceMode ? `reference mode: ${DS_WIDTH}x${DS_HEIGHT}, 5-bit colour` : 'full resolution',
     animation
       ? `${animation.name} — frame ${shown.frame} of ${animation.frameCount}, ${animation.boneCount} bones`
       : shown.animations.length > 0
         ? 'bind pose'
         : undefined,
-    'drag to orbit · wheel to zoom · W wireframe · R reference mode · space play/pause',
+    walker
+      ? 'WASD to walk · drag to turn · G to stop'
+      : 'drag to orbit · wheel to zoom · W wireframe · R reference mode · space play/pause',
   ]
     .filter((line) => line !== undefined)
     .join('\n')
+}
+
+/**
+ * Put a walker on the map, at the centre of the collision it stands on.
+ *
+ * Somewhere near the middle of the mesh is as good a spawn as anything until
+ * the cartridge's own start positions are found; if there is no ground there,
+ * the first walkable triangle will do.
+ */
+function startWalking(): void {
+  const world = shown?.world
+  if (!world) {
+    walker = undefined
+    return
+  }
+  const { bounds } = world.mesh
+  const midX = fx32(Math.round((bounds.minX + bounds.maxX) / 2))
+  const midZ = fx32(Math.round((bounds.minZ + bounds.maxZ) / 2))
+  let hit = groundBelow(world, midX, midZ, fx32(bounds.maxY + FX32_ONE))
+  let x = midX
+  let z = midZ
+
+  if (!hit) {
+    for (const triangle of world.mesh.triangles) {
+      if (triangle.normal[1] === 0) continue
+      const [a, b, c] = triangle.vertices
+      const cx = fx32(Math.round((a[0] + b[0] + c[0]) / 3))
+      const cz = fx32(Math.round((a[2] + b[2] + c[2]) / 3))
+      const found = groundBelow(world, cx, cz, fx32(bounds.maxY + FX32_ONE))
+      if (found) {
+        hit = found
+        x = cx
+        z = cz
+        break
+      }
+    }
+  }
+  if (!hit) {
+    walker = undefined
+    return
+  }
+  walker = {
+    state: { x, y: hit.y, z, fallSpeed: fx32(0), grounded: true },
+    held: new Set(),
+    carry: 0,
+  }
+}
+
+/**
+ * Run the simulation forward by however much real time has passed.
+ *
+ * Fixed 60Hz, with the remainder carried, so the character covers the same
+ * ground whatever the frame rate does. The camera's yaw decides which way
+ * "forward" is, so walking is relative to the view rather than to the world.
+ */
+function walk(elapsedMs: number): void {
+  if (!walker || !shown?.world) return
+  const held = walker.held
+  let forward = 0
+  let right = 0
+  if (held.has('w')) forward += 1
+  if (held.has('s')) forward -= 1
+  if (held.has('d')) right += 1
+  if (held.has('a')) right -= 1
+
+  walker.carry = Math.min(walker.carry + elapsedMs, TICK_MS * 8)
+  let moved = false
+  while (walker.carry >= TICK_MS) {
+    walker.carry -= TICK_MS
+    let dx = 0
+    let dz = 0
+    if (forward !== 0 || right !== 0) {
+      const length = Math.hypot(forward, right)
+      const sin = Math.sin(camera.yaw)
+      const cos = Math.cos(camera.yaw)
+      const fx = (forward / length) * WALK_SPEED
+      const rx = (right / length) * WALK_SPEED
+      dx = Math.round(fx * sin + rx * cos)
+      dz = Math.round(fx * cos - rx * sin)
+      moved = true
+    }
+    walker.state = stepCharacter(shown.world, walker.state, fx32(dx), fx32(dz), PERSON)
+  }
+
+  // The camera watches the character rather than the map's centre.
+  camera.target = [
+    toFloat(walker.state.x),
+    toFloat(walker.state.y) + toFloat(PERSON.height),
+    toFloat(walker.state.z),
+  ]
+  if (moved) describe(lastUpload)
 }
 
 /** Fill the animation picker and the frame slider for the current model. */
@@ -617,8 +766,26 @@ canvas.addEventListener(
   },
   { passive: false },
 )
+addEventListener('keyup', (event) => {
+  walker?.held.delete(event.key.toLowerCase())
+})
+
 addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
+  const key = event.key.toLowerCase()
+
+  if (key === 'g') {
+    if (walker) walker = undefined
+    else startWalking()
+    describe(lastUpload)
+    return
+  }
+  // While walking, WASD drives the character rather than toggling views.
+  if (walker && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
+    walker.held.add(key)
+    event.preventDefault()
+    return
+  }
   if (event.key === 'w' || event.key === 'W') wireframe = !wireframe
   if (event.key === 'r' || event.key === 'R') {
     referenceMode = !referenceMode
@@ -631,7 +798,10 @@ addEventListener('keydown', (event) => {
   }
 })
 
+let lastFrame = 0
 function frame(now: number = 0): void {
+  walk(lastFrame === 0 ? 0 : now - lastFrame)
+  lastFrame = now
   advance(now)
   const canvas = renderer.context.canvas as HTMLCanvasElement
   const width = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))

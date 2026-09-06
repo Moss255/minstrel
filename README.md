@@ -26,7 +26,7 @@ is most of the way there.
 | [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
 | [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest |
 | [`@vesper/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
-| [`@vesper/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world and collision |
+| [`@vesper/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
@@ -105,7 +105,9 @@ The list offers each map as one entry as well as its individual models: a map
 archive holds a dozen loose files and a `.bmdj` beside them saying which of them
 the map is made of, so picking the map draws the whole scene.
 
-Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. The
+Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. On a
+map, `G` puts a character on the collision mesh and WASD walks it — there is no
+character model yet, so the camera follows the feet. The
 cartridge is read in your browser and nothing is uploaded.
 
 **Reference mode** renders at the DS's own 256×192 and 5-bit colour, then scales

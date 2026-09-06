@@ -29,7 +29,9 @@ function buildManifest(names: readonly string[], options: { declared?: number } 
   }
 
   record(0x6a, 1, [options.declared ?? names.length])
-  names.forEach((_, i) => record(0x6c, 81, [i, offsets[i] as number, 0, 0]))
+  names.forEach((_, i) => {
+    record(0x6c, 81, [i, offsets[i] as number, 0, 0])
+  })
   record(0x6e, 0xff, [])
 
   const header: number[] = []
