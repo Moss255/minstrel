@@ -1,4 +1,4 @@
-import { checkRange, resourceName, u16, u32 } from './bytes.ts'
+import { checkRange, resourceName, u8, u16, u32 } from './bytes.ts'
 import { readDict } from './dict.ts'
 import { type Geometry, runDisplayList } from './displaylist.ts'
 import { NitroGfxError } from './errors.ts'
@@ -54,6 +54,17 @@ export interface ModelObject {
 export interface ModelMaterial {
   readonly name: string
   readonly index: number
+  /**
+   * The texture this material binds, or `undefined` if it binds none.
+   *
+   * **Read from the file, not guessed from the name.** The texture dictionary's
+   * entries each carry a run of material indices, so the binding is exact; a
+   * material's own name is usually unrelated to its texture's, which is why the
+   * name heuristic this replaced resolved only 41% of them.
+   */
+  readonly texture: string | undefined
+  /** The palette this material binds, read the same way. */
+  readonly palette: string | undefined
 }
 
 /** One drawable piece of a model: a named display list. */
@@ -108,8 +119,8 @@ export interface Model {
   /**
    * Texture names the material section references, in its own order.
    *
-   * These are *not* index-parallel with {@link Model.materials} — that holds on
-   * only 42% of models. Use {@link textureNameForMaterial} to go from a
+   * These are *not* index-parallel with {@link Model.materials}. Use
+   * {@link ModelMaterial.texture} to go from a
    * material to its texture.
    */
   readonly textureNames: readonly string[]
@@ -286,6 +297,31 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     `model '${name}' material palettes`,
   )
 
+  /**
+   * Bind each material to the texture and palette that claim it.
+   *
+   * A texture-name dictionary entry is a `u16` offset and a `u8` count naming a
+   * run of material indices, packed just before the material records and
+   * relative to the material section. That is the file's own statement of which
+   * materials use a texture, and it is exact: every index it names is in range
+   * on all 8,804 models, no material is claimed twice, and 52,380 of 52,512 are
+   * claimed at all.
+   */
+  const bind = (dict: ReturnType<typeof readDict>, what: string): (string | undefined)[] => {
+    const out: (string | undefined)[] = []
+    for (const entry of dict.entries) {
+      const at = u16(entry.data, 0, `${what} run offset`)
+      const count = u8(entry.data, 2, `${what} run count`)
+      for (let i = 0; i < count; i++) {
+        const index = u8(model, materialOffset + at + i, `${what} material index`)
+        if (index < materialDict.entries.length) out[index] = entry.name
+      }
+    }
+    return out
+  }
+  const materialTextures = bind(textureNameDict, 'texture')
+  const materialPalettes = bind(paletteNameDict, 'palette')
+
   const shapeDict = readDict(model, shapeOffset, `model '${name}' shapes`)
 
   const shapes: ModelShape[] = shapeDict.entries.map((entry, index) => {
@@ -394,7 +430,12 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
     downScale,
     bounds,
     objects: objectDict.entries.map((e, index) => ({ name: e.name, index })),
-    materials: materialDict.entries.map((e, index) => ({ name: e.name, index })),
+    materials: materialDict.entries.map((e, index) => ({
+      name: e.name,
+      index,
+      texture: materialTextures[index],
+      palette: materialPalettes[index],
+    })),
     textureNames: textureNameDict.entries.map((e) => e.name),
     paletteNames: paletteNameDict.entries.map((e) => e.name),
     shapes,

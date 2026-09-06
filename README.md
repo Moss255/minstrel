@@ -24,7 +24,7 @@ is most of the way there.
 | [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
 | [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
 | [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
-| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables |
+| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
@@ -113,7 +113,8 @@ Models are posed, textured and animated. Bones and render commands are read;
 each vertex is placed by the matrix its display list bound it to, taken from the
 stack as it stood when that shape was drawn and scaled by the model's position
 scale; blended vertices are composed with the named node's inverse bind
-transform. Pick an animation from the archive beside the model, scrub the frame,
+transform; and each shape is drawn with the texture its material actually binds,
+read from the file rather than guessed from the material's name. Pick an animation from the archive beside the model, scrub the frame,
 or let it run. See
 [`packages/nitro-gfx/FORMAT.md`](packages/nitro-gfx/FORMAT.md) for the format
 and [`docs/findings.md`](docs/findings.md) for the evidence.

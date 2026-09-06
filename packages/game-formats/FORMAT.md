@@ -180,3 +180,118 @@ does not. They are more likely counts.
 No field in either file has been shown to select a BGM track. Together with
 `mapbgm.bin`, whose values do not fall in the sequence archive's 0–81 index
 range either, the map-to-music link remains unfound.
+
+---
+
+# `.col2` — the map collision mesh
+
+No magic. A header, a triangle list, a grid index over it, and a short trailing
+section. 1,178 files, 4.3 MiB, one or more per map archive.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32` | `3` on all 1,178 files |
+| `+0x04` | `u32` | `unknown_0x04`, 0–5 |
+| `+0x08` | `s16[6]` | bounding box: min x, y, z then max x, y, z |
+| `+0x14` | `u32` | triangle count |
+| `+0x18` | `u16` | grid cell size |
+| `+0x1A` | `u16` | `unknown_0x1a` |
+| `+0x1C` | `u32` | `gridX` |
+| `+0x20` | `u32` | `gridZ` |
+| `+0x24` | `u32` | offset of the triangles |
+| `+0x28` | `u32` | offset of the per-cell counts |
+| `+0x2C` | `u32` | offset of the per-cell starts |
+| `+0x30` | `u32` | offset of the triangle indices |
+| `+0x34` | `u32` | count of the trailing records |
+| `+0x38` | `u32` | offset of them |
+
+The five offsets ascend on 1,177 of 1,178 files, and the last section runs to
+the end. Which words were offsets at all came from asking which of the leading
+sixteen are word-aligned values inside the file: indices 9–12 and 14 are, on
+1,006 files, and no other index is on more than 159.
+
+## The triangle
+
+Twenty-eight bytes. The count at `+0x14` divides the section exactly on
+**1,178 of 1,178** files, which is what fixes the stride.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `s16[3]` | vertex 0 |
+| `+0x06` | `s16[3]` | vertex 1 |
+| `+0x0C` | `s16[3]` | vertex 2 |
+| `+0x12` | `fx16[3]` | face normal |
+| `+0x18` | `u32` | attributes |
+
+**The normal is the check.** A triangle stores both a normal and the three
+points it was computed from, so the stored value must be the normalised cross
+product of the triangle's own edges — and it is, for **108,471 of 108,471**
+triangles that have any area. The remaining 651 are degenerate, with no normal
+to store and none stored. Nothing about that can be satisfied by a wrong field
+layout: the normal is read from one place, the points from another, and they
+have to agree.
+
+That also fixes the fixed-point format. The normal is 1.3.12 — `-4096` reads as
+`-1.0` — while the positions are plain integers in the same units as the
+bounding box.
+
+**Positions are integers, not fixed point.** The header box is `s16[6]` in those
+same units, and it encloses every triangle on **1,178 of 1,178** files, exactly
+on 1,038. The other 140 are snapped outward to round numbers, never inward.
+
+### The attribute word is not established
+
+Its values look like packed nibbles — `0x21`, `0x24`, `0x51`, `0x221` in the
+high half, `0x213`, `0x3210`, `0x513` in the low — and terrain kind is very
+likely among them, which is what a walkable/water/marsh distinction would need.
+Reading it properly means watching what the game does with it, which is the
+emulator work this repository does not do. It is carried through whole.
+
+## The grid index
+
+Three parallel sections:
+
+- **counts**, `u8` per cell
+- **starts**, `u16` per cell, indexing the third
+- **indices**, `u16` triangle numbers
+
+**They tile.** `start[i] + count[i] == start[i + 1]` for every cell, and the last
+pair lands on the end of the index list, on **1,178 of 1,178** files — allowing
+for the one `u16` of alignment padding the list may carry. Every one of those
+indices names a real triangle, again on all 1,178.
+
+**How many cells there are is read, not computed.** The obvious answer,
+`gridX * gridZ`, holds for only 511 files. `(2·gridX + 1) · gridZ / 2` accounts
+for another 328, and neither that nor any grid derived from the box and the cell
+size explains the remaining 339. Since the tiling identifies the end of the list
+unambiguously, the parser walks it rather than deriving a count it cannot
+justify — and the walk is self-checking, because a wrong length breaks the
+tiling.
+
+What `gridX` and `gridZ` do mean is therefore **not established**. They are
+plausible grid dimensions — `ceil(extent / cellSize)` matches `gridX` on 963
+files and `gridZ` on 1,024 — but "plausible on 82%" is not a reading.
+
+The cell size is a power of two on **1,178 of 1,178**: 8192 on 667 files, 2048
+on 262, 4096 on 173 and 1024 on 76.
+
+## The trailing records
+
+Eight bytes each, counted at `+0x34`, which divides the section exactly on
+**1,178 of 1,178**. 1,699 records in all, and they repeat: `0,0,0,0` on 488,
+`23254,0,0,0` on 240, `23254,9513,32767,0` on 115. `32767` is the largest
+positive `s16`, which suggests a sentinel. **Not established.**
+
+## Evidence
+
+| check | result |
+|---|---|
+| files parsed | **1,178 / 1,178** |
+| triangles | 109,122 |
+| **stored normal == the normalised cross product of its own triangle** | **108,471 / 108,471 with area** |
+| **the header box encloses every triangle** | **1,178 / 1,178** (exact on 1,038) |
+| **the cells tile the triangle-index list** | **1,178 / 1,178** |
+| every index names a real triangle | 1,178 / 1,178 |
+| cell size is a power of two | 1,178 / 1,178 |
+
+`tools/harness/test/cartridge.test.ts` reproduces them.

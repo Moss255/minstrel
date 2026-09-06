@@ -7,6 +7,7 @@ import {
   isNsbmd,
   isNsbtx,
   type Model,
+  type ModelMaterial,
   measureBounds,
   type NodeTransform,
   poseGeometry,
@@ -215,14 +216,19 @@ interface DecodedTexture {
   height: number
 }
 
-function textureFor(materialName: string): DecodedTexture | undefined {
-  const wanted = textureNameForMaterial(materialName)
+function textureFor(material: ModelMaterial): DecodedTexture | undefined {
+  // The material says which texture and palette it binds. Falling back to the
+  // name heuristic only matters for the few materials that declare neither.
+  const wanted = material.texture ?? textureNameForMaterial(material.name)
   const found = texturesByName.get(wanted)
   if (!found) return undefined
   const info = found.set.texture(found.name)
   if (!info) return undefined
   try {
-    const palette = found.set.palette(`${info.name}_pl`) ?? found.set.palettes[info.index]
+    const palette =
+      (material.palette === undefined ? undefined : found.set.palette(material.palette)) ??
+      found.set.palette(`${info.name}_pl`) ??
+      found.set.palettes[info.index]
     return { pixels: found.set.decode(info, palette), width: info.width, height: info.height }
   } catch {
     return undefined
@@ -311,7 +317,7 @@ function select(index: number): void {
       textures: model.shapes.map((_, i) => {
         const materialIndex = model.shapeMaterials[i]
         const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
-        return material ? textureFor(material.name) : undefined
+        return material ? textureFor(material) : undefined
       }),
       animations,
       animation: animations[0],

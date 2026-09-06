@@ -1,5 +1,12 @@
 import { readFileSync } from 'node:fs'
-import { isBitmapFont, isDataTable, readBitmapFont, readDataTable } from '@vesper/game-formats'
+import {
+  isBitmapFont,
+  isCollisionMesh,
+  isDataTable,
+  readBitmapFont,
+  readCollisionMesh,
+  readDataTable,
+} from '@vesper/game-formats'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import {
   decompressBlz,
@@ -1292,6 +1299,166 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(bones).toBeGreaterThan(10000)
     // The shortfall is animations that genuinely do not open on the bind pose.
     expect(matched / bones).toBeGreaterThan(0.95)
+  })
+
+  it('binds every material to the texture the file says, not the one its name suggests', () => {
+    // A texture-name dictionary entry names a run of material indices. That is
+    // the file's own statement of the binding, and it has to be internally
+    // consistent: every index in range, and no material claimed by two
+    // textures. Guessing the texture from the material's name instead resolves
+    // 41% of them, because the two names are usually unrelated.
+    const failures: string[] = []
+    let parsedModels = 0
+    let materials = 0
+    let bound = 0
+    let paletted = 0
+
+    for (const asset of models) {
+      let parsed: ReturnType<typeof readNsbmd>
+      try {
+        parsed = readNsbmd(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const model of parsed.models) {
+        parsedModels++
+        const claimed = new Map<string, string>()
+        for (const material of model.materials) {
+          materials++
+          if (material.texture !== undefined) {
+            bound++
+            if (!model.textureNames.includes(material.texture)) {
+              failures.push(
+                `${asset.path}#${model.name}: '${material.texture}' is not a texture name`,
+              )
+            }
+            const already = claimed.get(material.name)
+            if (already !== undefined && already !== material.texture) {
+              failures.push(`${asset.path}#${model.name}: '${material.name}' claimed twice`)
+            }
+            claimed.set(material.name, material.texture)
+          }
+          if (material.palette !== undefined) {
+            paletted++
+            if (!model.paletteNames.includes(material.palette)) {
+              failures.push(
+                `${asset.path}#${model.name}: '${material.palette}' is not a palette name`,
+              )
+            }
+          }
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(parsedModels).toBeGreaterThan(1000)
+    expect(materials).toBeGreaterThan(10000)
+    // Nearly every material binds a texture; the few that do not are untextured.
+    expect(bound / materials).toBeGreaterThan(0.95)
+    expect(paletted).toBeGreaterThan(materials * 0.9)
+  })
+
+  it('reads every collision mesh, and its normals agree with its own triangles', () => {
+    // `.col2` has no magic, so the checks have to come from inside. The strong
+    // one is that each triangle stores a normal *and* the three points it was
+    // computed from: the stored normal must be the normalised cross product of
+    // the triangle's own edges, which a wrong field layout cannot satisfy.
+    //
+    // The index is checked the same way — the per-cell starts and counts have
+    // to tile the triangle-index list, and every index has to name a triangle.
+    const failures: string[] = []
+    let meshes = 0
+    let triangles = 0
+    let degenerate = 0
+    let normals = 0
+    let enclosed = 0
+    let tiled = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!member.name?.endsWith('.col2')) continue
+        const path = `${file.path}#${member.name}`
+        if (!isCollisionMesh(data)) {
+          failures.push(`${path}: not recognised as a collision mesh`)
+          continue
+        }
+        let mesh: ReturnType<typeof readCollisionMesh>
+        try {
+          mesh = readCollisionMesh(data)
+        } catch (error) {
+          failures.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
+          continue
+        }
+        meshes++
+
+        const low = [Infinity, Infinity, Infinity]
+        const high = [-Infinity, -Infinity, -Infinity]
+        for (const triangle of mesh.triangles) {
+          triangles++
+          for (const point of triangle.vertices) {
+            for (let c = 0; c < 3; c++) {
+              low[c] = Math.min(low[c] as number, point[c] as number)
+              high[c] = Math.max(high[c] as number, point[c] as number)
+            }
+          }
+          const [a, b, c] = triangle.vertices
+          const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+          const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
+          const cross = [
+            (e1[1] as number) * (e2[2] as number) - (e1[2] as number) * (e2[1] as number),
+            (e1[2] as number) * (e2[0] as number) - (e1[0] as number) * (e2[2] as number),
+            (e1[0] as number) * (e2[1] as number) - (e1[1] as number) * (e2[0] as number),
+          ]
+          const length = Math.hypot(cross[0] as number, cross[1] as number, cross[2] as number)
+          if (length === 0) {
+            degenerate++
+            continue
+          }
+          const dot =
+            ((cross[0] as number) / length) * (triangle.normal[0] as number) +
+            ((cross[1] as number) / length) * (triangle.normal[1] as number) +
+            ((cross[2] as number) / length) * (triangle.normal[2] as number)
+          if (dot > 0.999) normals++
+          else failures.push(`${path}: a stored normal does not match its own triangle`)
+        }
+
+        const box = mesh.bounds
+        if (
+          mesh.triangles.length === 0 ||
+          (box.minX <= (low[0] as number) &&
+            box.minY <= (low[1] as number) &&
+            box.minZ <= (low[2] as number) &&
+            box.maxX >= (high[0] as number) &&
+            box.maxY >= (high[1] as number) &&
+            box.maxZ >= (high[2] as number))
+        ) {
+          enclosed++
+        } else {
+          failures.push(`${path}: the header box does not enclose the triangles`)
+        }
+
+        const listed = mesh.cells.reduce((n, cell) => n + cell.count, 0)
+        // The list is padded to a word, so it may carry one entry past the end.
+        if (listed >= mesh.cellTriangles.length - 1 && listed <= mesh.cellTriangles.length) tiled++
+        else failures.push(`${path}: the cells do not tile the index list`)
+        for (const index of mesh.cellTriangles.slice(0, listed)) {
+          if (index >= mesh.triangles.length) {
+            failures.push(`${path}: index ${index} names no triangle`)
+            break
+          }
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(meshes).toBeGreaterThan(500)
+    expect(triangles).toBeGreaterThan(50000)
+    expect(normals).toBe(triangles - degenerate)
+    expect(enclosed).toBe(meshes)
+    expect(tiled).toBe(meshes)
   })
 
   it('produces the container magic each member extension implies', () => {

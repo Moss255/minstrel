@@ -173,6 +173,7 @@ Against a retail cartridge, which is not in this repository:
 | **a blended vertex stays put in the bind pose** | **1,018 / 1,138 models exactly; nothing anywhere out by more than 0.03** |
 | **every rotation reference resolves to an orthonormal matrix** | **16,506 constant and 1,662,623 curve samples** |
 | **every `MTX_SCALE` carries the model's own `upScale`** | no exception |
+| **every material's texture run names real materials, none claimed twice** | **8,804 / 8,804 models** |
 
 Those two are independent, and both come from the file rather than from this
 code. An interpreter with a wrong parameter count or a missed partial-vertex
@@ -347,22 +348,30 @@ against a sample; it is marked as such in the source.
 
 ## Materials and their textures
 
-The material section opens with two `u16` offsets, to a texture-name and a
-palette-name dictionary; **its own material dictionary follows at `+4`**.
-Reading the first offset instead yields the texture names, which look enough
-like material names to pass unnoticed — and then a shape's material index falls
-outside the list 23% of the time.
+The material section opens with two `u16` offsets — to a texture-name
+dictionary and a palette-name dictionary — and its own material dictionary
+follows at `+4`. Reading the first offset as the material dictionary yields the
+*texture* names, which look enough like material names to pass unnoticed; the
+symptom is shape material indices that run out of range.
 
-A material carries no resolved texture reference. Its `texImageParam` holds only
-the repeat flags, with the VRAM offset left at zero for the loader to fill in —
-every material on the reference cartridge reads `0x00030000`. **The binding is
-by name**: materials are called `Mat_<texture>_` or `M_<texture>_<n>`, the
-trailing number distinguishing materials that share a texture but differ in
-their settings.
+### The binding is in the file, not in the names
 
-A map's textures are frequently in a different archive from its models, so a
-caller has to resolve against everything it has loaded rather than assuming the
-sibling file holds them.
+A texture-name dictionary entry is a `u16` offset and a `u8` count naming a run
+of `u8` material indices, packed just before the material records and relative
+to the material section start. Palettes are bound the same way.
+
+That is exact, and it is self-consistent in two ways that a wrong reading would
+break: every index named is a real material — **8,804 of 8,804 models** — and no
+material is claimed by two different textures, on all 8,804. **52,380 of 52,512
+materials** are claimed by some texture.
+
+**An earlier revision guessed the texture from the material's name**, stripping a
+`Mat_` or `M_` prefix and a trailing `_\d*`. That resolves **41%** of them, and
+the failures are not edge cases: a material is as likely to be called
+`Material3166` and bind `eb0000_3`, or `a1_flash1` and bind `kaisin_1`. Reading
+the run instead takes the shapes that can be drawn with their own texture from
+41% to **99.3%**. `textureNameForMaterial` is kept only as a fallback for the
+few materials that bind nothing.
 
 ## NSBCA — joint animation
 

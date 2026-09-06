@@ -1,3 +1,12 @@
+export {
+  COLLISION_KIND,
+  type CollisionBounds,
+  type CollisionCell,
+  type CollisionMesh,
+  type CollisionTriangle,
+  isCollisionMesh,
+  readCollisionMesh,
+} from './collision.ts'
 export { GameFormatError } from './errors.ts'
 export {
   type BitmapFont,

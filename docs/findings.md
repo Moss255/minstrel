@@ -320,6 +320,35 @@ hand when the format was first read, then the whole set by eye.
 kanji range and not one is a single-byte Latin codepoint. See
 [Still open](#still-open) for where the European build's Latin font is not.
 
+### The collision mesh
+
+`.col2`, one or more per map archive: 1,178 files, 4.3 MiB, no magic. A triangle
+soup with a grid index over it.
+
+A triangle is 28 bytes — three `s16` points, an `fx16` normal, and a `u32` of
+attributes. **The normal is the oracle**: the file stores both the normal and the
+three points it was computed from, so the stored value must be the normalised
+cross product of the triangle's own edges. It is, for **108,471 of 108,471**
+triangles that have any area; the other 651 are degenerate, with no normal to
+store and none stored. Nothing about that can be satisfied by a wrong field
+layout.
+
+The header's `s16[6]` bounding box encloses every triangle on **1,178 of 1,178**
+files, exactly on 1,038 — the rest are snapped outward, never inward. The grid
+index is three parallel arrays: a `u8` count and a `u16` start per cell, into a
+`u16` list of triangle indices. They tile exactly on **1,178 of 1,178**, and
+every index names a real triangle.
+
+How many cells there are is **read, not computed**. `gridX * gridZ` accounts for
+511 files, `(2·gridX + 1)·gridZ / 2` for another 328, and nothing tried explains
+the remaining 339 — so the parser walks the tiling, which identifies the end
+unambiguously and checks itself while doing it. What `gridX` and `gridZ` mean is
+therefore not established.
+
+The attribute word is not established either. Its values look like packed
+nibbles, and terrain kind is very likely among them — which is what walkable,
+water and poison marsh will need. It is carried through whole.
+
 ### The tagged record table
 
 `.bmdj`, `.bats` and `mapbgm.bin` share one container of tagged records followed
@@ -371,6 +400,11 @@ that use this form then land off the dictionary's offsets.
 **The material dictionary is not the texture-name dictionary.** Reading the
 wrong one put 23% of shape material indices out of range; the material dictionary
 sits at `materialSection + 4`.
+
+**A material's texture is named by the file, not by the material's name.** A
+texture-name dictionary entry carries a run of material indices — the file's own
+statement of which materials use it. Every index it names is a real material on
+**8,804 of 8,804** models and none is claimed twice.
 
 Render-command parameter counts were *fitted, not assumed*: every one of the
 8,804 models parses to a clean `End` under them, and no other combination tried
@@ -543,7 +577,7 @@ on models tens of units across.
 
 ## Where the method caught a wrong answer
 
-Five times, so far. Each is recorded here because the failure mode is more
+Six times, so far. Each is recorded here because the failure mode is more
 instructive than the fix.
 
 ### GPC2 codec 4 was declared "not run-length" on a test pointed at codec 3
@@ -579,6 +613,16 @@ Two distinct failure modes, both from quantisation, and each in the regime where
 the other solve is fine — see the basis pool section above. Both are fixed;
 every reference on the cartridge now resolves. *A check that passes on the
 subset you happened to sample is a statement about the sample.*
+
+### The texture a material uses was inferred from its name
+
+Materials were matched to textures by stripping a prefix and a numeric suffix
+from the material's own name. It resolved 41% of them and looked like a property
+of the cartridge rather than of the guess. The file states the binding outright,
+in a run of material indices attached to each texture-name dictionary entry; a
+material is as likely to be called `Material3166` and bind `eb0000_3`. Reading
+it takes drawable-with-their-own-texture shapes from 41% to 99.3%. *A heuristic
+that half works is indistinguishable from a format that is half understood.*
 
 ### A skinning measurement counted the wrong vertices
 
@@ -645,9 +689,6 @@ with its text separated from its structure — a strong signal — but whether `
 is bytecode for an interpreter or parameters for hardcoded routines has not been
 examined.
 
-**`.col2`.** 1,178 members, 4.3 MiB. The name suggests collision. Not
-investigated.
-
 **SSEQ/SBNK/SWAR playback.** Resources are named, extracted and chained;
 nothing decodes sequence commands, instruments or ADPCM.
 
@@ -680,6 +721,10 @@ included. Models and animations are collected once and shared between checks.
 | SDAT | overlapping file ranges | 0 |
 | font | fonts parsed, glyphs decoded | 529 / 529, 70,604 |
 | tables | tagged tables parsed | 1,260 / 1,260 |
+| collision | stored normal == the cross product of its own triangle | every triangle with area |
+| collision | header box encloses every triangle | every mesh |
+| collision | cells tiling the triangle-index list | every mesh |
+| NSBMD | material texture runs naming real materials, none twice | every model |
 | tables | record stream reaching the string table | 1,260 / 1,260 |
 | NSBMD | decoded vertex count == the header's own | every model |
 | NSBMD | decoded triangles == `numTriangles + 2 × numQuads` | every model |
