@@ -30,6 +30,7 @@ import {
   textureNameForMaterial,
 } from '@vesper/nitro-gfx'
 import { isNarc, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
+import { followCamera, updateFollowCamera } from '@vesper/render'
 import {
   type CharacterState,
   type CollisionWorld,
@@ -149,7 +150,7 @@ try {
 // hardware's size and precision.
 const referenceTarget = new ReferenceTarget(renderer.context)
 
-const camera: Camera = { yaw: 0.7, pitch: 0.35, distance: 4, target: [0, 0, 0] }
+const camera: Camera = followCamera()
 let wireframe = false
 let referenceMode = false
 let entries: Entry[] = []
@@ -528,12 +529,13 @@ function select(index: number): void {
     bounds.maxZ - bounds.minZ,
     0.001,
   )
-  camera.target = [
+  camera.focus = [
     (bounds.minX + bounds.maxX) / 2,
     (bounds.minY + bounds.maxY) / 2,
     (bounds.minZ + bounds.maxZ) / 2,
   ]
   camera.distance = size * 2.2
+  camera.actualDistance = camera.distance
 
   describe(uploaded)
   renderScrubber()
@@ -654,12 +656,9 @@ function walk(elapsedMs: number): void {
     walker.state = stepCharacter(shown.world, walker.state, fx32(dx), fx32(dz), PERSON)
   }
 
-  // The camera watches the character rather than the map's centre.
-  camera.target = [
-    toFloat(walker.state.x),
-    toFloat(walker.state.y) + toFloat(PERSON.height),
-    toFloat(walker.state.z),
-  ]
+  // The camera watches the character rather than the map's centre, trailing
+  // it and coming forward when a building is in the way.
+  updateFollowCamera(camera, walker.state, elapsedMs / 1000, shown.world, PERSON)
   if (moved) describe(lastUpload)
 }
 
@@ -754,7 +753,10 @@ canvas.addEventListener('pointerup', (event) => {
 canvas.addEventListener('pointermove', (event) => {
   if (!dragging) return
   camera.yaw -= (event.clientX - lastX) * 0.01
-  camera.pitch = Math.max(-1.5, Math.min(1.5, camera.pitch + (event.clientY - lastY) * 0.01))
+  // The camera's own limits apply while walking; free look otherwise.
+  camera.pitch = walker
+    ? camera.pitch + (event.clientY - lastY) * 0.01
+    : Math.max(-1.5, Math.min(1.5, camera.pitch + (event.clientY - lastY) * 0.01))
   lastX = event.clientX
   lastY = event.clientY
 })
@@ -763,6 +765,7 @@ canvas.addEventListener(
   (event) => {
     event.preventDefault()
     camera.distance = Math.max(0.05, camera.distance * (event.deltaY > 0 ? 1.1 : 1 / 1.1))
+    if (!walker) camera.actualDistance = camera.distance
   },
   { passive: false },
 )

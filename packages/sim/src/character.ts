@@ -1,6 +1,12 @@
 import { add, FX32_ONE, type Fx32, fx32, sub } from '@vesper/fixed'
 import type { CollisionTriangle } from '@vesper/game-formats'
-import { type CollisionWorld, groundBelow, slopeOf, triangleAt } from './collision.ts'
+import {
+  type CollisionWorld,
+  groundBelow,
+  longestProjectedEdge,
+  slopeOf,
+  triangleAt,
+} from './collision.ts'
 import { SimError } from './errors.ts'
 
 /**
@@ -222,31 +228,6 @@ function pushOutOfWalls(
 
   if (deepest === 0) return undefined
   return { x: fx32(Math.round(x + pushX)), z: fx32(Math.round(z + pushZ)) }
-}
-
-/** The two ends of a triangle's longest edge, projected onto the ground. */
-function longestProjectedEdge(triangle: CollisionTriangle): {
-  ax: number
-  az: number
-  bx: number
-  bz: number
-} {
-  const [a, b, c] = triangle.vertices
-  const pairs: [number, number, number, number][] = [
-    [a[0], a[2], b[0], b[2]],
-    [b[0], b[2], c[0], c[2]],
-    [c[0], c[2], a[0], a[2]],
-  ]
-  let best = pairs[0] as [number, number, number, number]
-  let longest = -1
-  for (const pair of pairs) {
-    const length = Math.hypot(pair[2] - pair[0], pair[3] - pair[1])
-    if (length > longest) {
-      longest = length
-      best = pair
-    }
-  }
-  return { ax: best[0], az: best[1], bx: best[2], bz: best[3] }
 }
 
 /**

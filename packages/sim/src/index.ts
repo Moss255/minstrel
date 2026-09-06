@@ -12,5 +12,6 @@ export {
   groundBelow,
   slopeOf,
   triangleAt,
+  wallBetween,
 } from './collision.ts'
 export { SimError } from './errors.ts'

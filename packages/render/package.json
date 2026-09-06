@@ -1,0 +1,15 @@
+{
+  "name": "@vesper/render",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Rendering-side concerns: the camera, and how the DS's framing extends to other screens.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vesper/fixed": "workspace:*",
+    "@vesper/sim": "workspace:*"
+  }
+}

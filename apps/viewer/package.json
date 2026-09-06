@@ -17,6 +17,7 @@
     "@vesper/nitro-comp": "workspace:*",
     "@vesper/nitro-gfx": "workspace:*",
     "@vesper/nitrofs": "workspace:*",
+    "@vesper/render": "workspace:*",
     "@vesper/sim": "workspace:*"
   },
   "devDependencies": {

@@ -6,7 +6,7 @@ Against the milestone's own list.
 |---|---|
 | Map assembly and collision | **both done** |
 | Character controller with original movement constants | **done**, with constants tuned by eye — see below |
-| Camera behaviour, extended for widescreen | not started |
+| Camera behaviour, extended for widescreen | **done**, with the field of view tuned by eye |
 | Interior/exterior transitions, doors, stairs | not started; the link data is not located |
 | Fixed-preset Hero model with the minstrel outfit | not started, and see below |
 
@@ -146,6 +146,38 @@ point, not the game's own numbers. Those live in code this repository does not
 read. Inventing values and presenting them as original would be worse than
 saying so, which is why they are named as tuned and kept in one exported
 constant that is easy to replace when the real ones turn up.
+
+## The camera
+
+`@vesper/render` holds the camera and, more importantly, the rule for what a
+screen that is not the DS's should show.
+
+**A wider screen never shows less than the hardware did.** Above 4:3 the
+vertical field of view is held and the width follows the aspect, so a widescreen
+player sees further to the sides. Below it — a tall window — the same principle
+reverses and the horizontal field is held instead, so the sides are not cropped.
+Either way the visible frustum contains the DS's.
+
+That is worth stating because the other convention is just as common and is
+wrong here: holding the *horizontal* field and letting height follow crops the
+top and bottom on a wide monitor, which for a game whose maps were composed for
+a particular vertical framing is not a widescreen mode but a worse one. The
+invariant has a test at eight aspect ratios from 1:2 to 4:1.
+
+The follow camera trails the character rather than being welded to it, and the
+lag is a rate per second rather than a fraction per frame — a fraction per frame
+makes the camera tighter on a fast machine and looser on a slow one, so the game
+would feel different depending on the hardware. It also comes forward when a
+building stands between it and the character, using the same "too steep to stand
+on" test that walking uses to decide what a wall is.
+
+The reference mode benefits: rendering at 256x192 now goes through the same
+projection, so it is the hardware's framing by construction rather than a
+letterboxed crop of a widescreen one.
+
+The field of view itself, 50 degrees vertical, is **tuned by eye** like the
+character's dimensions. What is faithful here is the framing rule, which does
+not depend on knowing the original number.
 
 ## Two things that change the plan
 

@@ -28,7 +28,8 @@
       "@vesper/nitro-snd": ["./packages/nitro-snd/src/index.ts"],
       "@vesper/game-formats": ["./packages/game-formats/src/index.ts"],
       "@vesper/fixed": ["./packages/fixed/src/index.ts"],
-      "@vesper/sim": ["./packages/sim/src/index.ts"]
+      "@vesper/sim": ["./packages/sim/src/index.ts"],
+      "@vesper/render": ["./packages/render/src/index.ts"]
     }
   }
 }

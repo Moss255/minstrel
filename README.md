@@ -27,6 +27,7 @@ is most of the way there.
 | [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest, the map index |
 | [`@vesper/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
 | [`@vesper/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
+| [`@vesper/render`](packages/render) | GPL-3.0+ | the camera, and how the DS's framing extends to other screens |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
@@ -109,6 +110,10 @@ Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. On a
 map, `G` puts a character on the collision mesh and WASD walks it — there is no
 character model yet, so the camera follows the feet. The
 cartridge is read in your browser and nothing is uploaded.
+
+The camera never shows *less* of the world than the hardware did: on a wide
+screen the vertical framing is held and the view widens; on a tall one the
+horizontal framing is held and it heightens.
 
 **Reference mode** renders at the DS's own 256×192 and 5-bit colour, then scales
 that up by a whole number so each hardware pixel stays a visible block. It is

@@ -1,10 +1,12 @@
 import type { Geometry } from '@vesper/nitro-gfx'
+import { type FollowCamera, perspective, viewMatrix } from '@vesper/render'
 
 /**
  * A minimal WebGL2 renderer for decoded model geometry.
  *
- * Deliberately plain: one draw call per shape, its texture bound, depth test,
- * an orbit camera. DS toon shading, edge marking and the 5-bit colour pipeline
+ * Deliberately plain: one draw call per shape, its texture bound, depth test.
+ * The camera and the framing come from `@vesper/render`, so the viewer sees
+ * what the game will see. DS toon shading, edge marking and the 5-bit colour pipeline
  * belong to the reference renderer and are not attempted here — the job of this
  * one is to prove the parsers put correct geometry and pixels on screen.
  */
@@ -65,12 +67,8 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
   return shader
 }
 
-export interface Camera {
-  yaw: number
-  pitch: number
-  distance: number
-  target: [number, number, number]
-}
+/** The camera the renderer draws from; see `@vesper/render`. */
+export type Camera = FollowCamera
 
 /** One shape, with the texture it is drawn with. */
 export interface Piece {
@@ -283,52 +281,11 @@ export class ModelRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     if (this.batches.length === 0) return
 
-    const aspect = width / height
-    const fov = (50 * Math.PI) / 180
-    const near = 0.01
-    const far = 1000
-    const f = 1 / Math.tan(fov / 2)
-    const projection = new Float32Array(16)
-    projection[0] = f / aspect
-    projection[5] = f
-    projection[10] = (far + near) / (near - far)
-    projection[11] = -1
-    projection[14] = (2 * far * near) / (near - far)
-
-    const cy = Math.cos(camera.yaw)
-    const sy = Math.sin(camera.yaw)
-    const cp = Math.cos(camera.pitch)
-    const sp = Math.sin(camera.pitch)
-    const eye: [number, number, number] = [
-      (camera.target[0] as number) + camera.distance * cp * sy,
-      (camera.target[1] as number) + camera.distance * sp,
-      (camera.target[2] as number) + camera.distance * cp * cy,
-    ]
-    const zAxis = normalize([
-      eye[0] - camera.target[0],
-      eye[1] - camera.target[1],
-      eye[2] - camera.target[2],
-    ])
-    const xAxis = normalize(cross([0, 1, 0], zAxis))
-    const yAxis = cross(zAxis, xAxis)
-    const view = new Float32Array([
-      xAxis[0],
-      yAxis[0],
-      zAxis[0],
-      0,
-      xAxis[1],
-      yAxis[1],
-      zAxis[1],
-      0,
-      xAxis[2],
-      yAxis[2],
-      zAxis[2],
-      0,
-      -dot(xAxis, eye),
-      -dot(yAxis, eye),
-      -dot(zAxis, eye),
-      1,
-    ])
+    // Framing and the view come from `@vesper/render`, so what the viewer
+    // shows at any window shape is the same rule the game will use — never
+    // less of the world than the hardware showed.
+    const projection = perspective(width / height, 0.01, 1000)
+    const view = viewMatrix(camera)
     const mvp = multiply(projection, view, new Float32Array(16))
 
     gl.useProgram(this.program)
@@ -353,27 +310,4 @@ export class ModelRenderer {
     }
     gl.bindVertexArray(null)
   }
-}
-
-type Vec3 = readonly [number, number, number] | number[]
-
-function normalize(v: Vec3): [number, number, number] {
-  const length = Math.hypot(v[0] as number, v[1] as number, v[2] as number) || 1
-  return [(v[0] as number) / length, (v[1] as number) / length, (v[2] as number) / length]
-}
-
-function cross(a: Vec3, b: Vec3): [number, number, number] {
-  return [
-    (a[1] as number) * (b[2] as number) - (a[2] as number) * (b[1] as number),
-    (a[2] as number) * (b[0] as number) - (a[0] as number) * (b[2] as number),
-    (a[0] as number) * (b[1] as number) - (a[1] as number) * (b[0] as number),
-  ]
-}
-
-function dot(a: Vec3, b: Vec3): number {
-  return (
-    (a[0] as number) * (b[0] as number) +
-    (a[1] as number) * (b[1] as number) +
-    (a[2] as number) * (b[2] as number)
-  )
 }

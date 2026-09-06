@@ -226,3 +226,90 @@ function isqrt(n: number): number {
 
 /** Re-exported so callers need not reach for the fixed-point package for these. */
 export { add, mul, sub }
+
+/**
+ * How far along a horizontal segment the first wall stands, as a fraction.
+ *
+ * For a camera boom: the eye wants to sit a distance behind the character, and
+ * where a building is in the way it should sit in front of the building
+ * instead. Returns `undefined` when the way is clear.
+ *
+ * A wall is a surface too steep to stand on, the same test walking uses, and it
+ * only counts if the segment's height band overlaps it — so a camera looking
+ * over a low fence is not pulled in by it.
+ *
+ * Candidates come from the cells at both ends and the middle of the segment. A
+ * boom is short next to a cell, so that covers it; a longer ray would want the
+ * cells walked properly.
+ */
+export function wallBetween(
+  world: CollisionWorld,
+  from: { x: Fx32; z: Fx32 },
+  to: { x: Fx32; z: Fx32 },
+  low: Fx32,
+  high: Fx32,
+  maxSlope: Fx32,
+): number | undefined {
+  const midX = fx32(Math.round((from.x + to.x) / 2))
+  const midZ = fx32(Math.round((from.z + to.z) / 2))
+  const candidates = new Set<number>()
+  for (const cell of [
+    triangleAt(world, from.x, from.z),
+    triangleAt(world, midX, midZ),
+    triangleAt(world, to.x, to.z),
+  ]) {
+    for (const index of cell) candidates.add(index)
+  }
+
+  const rx = to.x - from.x
+  const rz = to.z - from.z
+  let nearest: number | undefined
+
+  for (const index of candidates) {
+    const triangle = world.mesh.triangles[index] as CollisionTriangle
+    if (slopeOf(triangle) >= maxSlope) continue
+    const [a, b, c] = triangle.vertices
+    if (Math.max(a[1], b[1], c[1]) <= low) continue
+    if (Math.min(a[1], b[1], c[1]) >= high) continue
+
+    // The face as a segment on the ground, and where the two segments cross.
+    const wall = longestProjectedEdge(triangle)
+    const wx = wall.bx - wall.ax
+    const wz = wall.bz - wall.az
+    const denominator = rx * wz - rz * wx
+    if (denominator === 0) continue
+    const dx = wall.ax - from.x
+    const dz = wall.az - from.z
+    const alongRay = (dx * wz - dz * wx) / denominator
+    const alongWall = (dx * rz - dz * rx) / denominator
+    if (alongRay < 0 || alongRay > 1) continue
+    if (alongWall < 0 || alongWall > 1) continue
+    if (nearest === undefined || alongRay < nearest) nearest = alongRay
+  }
+  return nearest
+}
+
+/** The two ends of a triangle's longest edge, projected onto the ground. */
+export function longestProjectedEdge(triangle: CollisionTriangle): {
+  ax: number
+  az: number
+  bx: number
+  bz: number
+} {
+  const [a, b, c] = triangle.vertices
+  const pairs: [number, number, number, number][] = [
+    [a[0], a[2], b[0], b[2]],
+    [b[0], b[2], c[0], c[2]],
+    [c[0], c[2], a[0], a[2]],
+  ]
+  let best = pairs[0] as [number, number, number, number]
+  let longest = -1
+  for (const pair of pairs) {
+    const length = Math.hypot(pair[2] - pair[0], pair[3] - pair[1])
+    if (length > longest) {
+      longest = length
+      best = pair
+    }
+  }
+  return { ax: best[0], az: best[1], bx: best[2], bz: best[3] }
+}
