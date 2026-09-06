@@ -296,6 +296,7 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   membersByArchive.clear()
   characterParts.length = 0
   characterMotions.clear()
+  motionFloors.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -614,6 +615,45 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
   // refusing to draw the character.
   if (tallest <= 0) tallest = heightOf(new Map())
   return { body, scale: (toFloat(PERSON.height) * sizeTrim) / Math.max(tallest, 0.001) }
+}
+
+/**
+ * How far a motion holds the figure off its own origin, at its lowest.
+ *
+ * A character is placed by putting its model's origin at its feet, which
+ * assumes the model's lowest point is that origin. It is not: `walk` poses the
+ * figure down to −0.27 in model units, while `stand` and `run` never come below
+ * **0.73**, so an idle drawn that way floats an eighth of the character's own
+ * height above the floor.
+ *
+ * The offset is per motion and taken over the whole cycle, not per frame: the
+ * lowest the figure ever gets is the planted foot, and anchoring that to the
+ * ground leaves everything the animation does above it intact. Anchoring each
+ * frame separately would flatten the cycle instead.
+ */
+const motionFloors = new Map<Animation | undefined, number>()
+function floorOf(motion: Animation | undefined, body: readonly Piece_[]): number {
+  const known = motionFloors.get(motion)
+  if (known !== undefined) return known
+  let lowest = Number.POSITIVE_INFINITY
+  const frames = motion ? Math.max(motion.frameCount, 1) : 1
+  for (let frame = 0; frame < frames; frame++) {
+    const stacks = characterStacks(motion, frame)
+    const bounds = measureBounds(
+      body.map((piece) =>
+        poseGeometry(
+          piece.geometry,
+          stacks.get(piece.model)?.[piece.shape] ??
+            piece.model.shapeMatrices[piece.shape] ??
+            piece.model.matrices,
+        ),
+      ),
+    )
+    lowest = Math.min(lowest, bounds.minY)
+  }
+  if (!Number.isFinite(lowest)) lowest = 0
+  motionFloors.set(motion, lowest)
+  return lowest
 }
 
 /** Every part's matrix stacks for one frame of a motion, or its bind pose. */
@@ -1157,13 +1197,15 @@ function characterPieces(walker: Walker, motion: Animation | undefined): Piece[]
   const atZ = toFloat(walker.state.z)
 
   const stacks = characterStacks(motion, Math.floor(walker.motionFrame))
+  // Stand the figure on the ground rather than hanging it from its origin.
+  const floor = floorOf(motion, walker.body)
 
   return walker.body.map((piece) => {
     const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices
     const posed = poseGeometry(piece.geometry, stack)
     const vertices = posed.vertices.map((v) => {
       const x = v.x * scale
-      const y = v.y * scale
+      const y = (v.y - floor) * scale
       const z = v.z * scale
       return { ...v, x: atX + x * cos + z * sin, y: atY + y, z: atZ - x * sin + z * cos }
     })

@@ -299,6 +299,28 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### The legs did not reach the floor
+
+A character is placed by putting its model's origin at its feet. That assumes
+the model's lowest point *is* its origin, and it is not — it depends on the
+motion:
+
+| motion | lowest point of the posed figure, in model units | drawn |
+|---|---|---|
+| `walk` | −0.268 … 0.011 | on the floor |
+| `stand` | **0.731 … 1.569** | 0.013 to 0.028 above it |
+| `run` | 0.792 … 1.569 | the same |
+
+The character is 0.18 units tall, so standing still floated it about **an eighth
+of its own height** off the ground. Walking looked right, which is why this
+survived until standing existed to compare it with.
+
+The figure is now placed by **the lowest point the motion ever reaches**, taken
+over the whole cycle and cached per motion. That is the planted foot, and
+anchoring it to the ground leaves everything the animation does above it intact.
+Anchoring each frame separately would put the foot down every frame and flatten
+the cycle.
+
 ### The animation ran on the clock, at the wrong clock
 
 Two complaints, one cause. The character shuddered while standing still, and

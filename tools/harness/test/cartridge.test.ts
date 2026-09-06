@@ -2852,6 +2852,90 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(parts.reduce((n, part) => n + part.model.numShapes, 0)).toBe(8)
   })
 
+  it("stands the character's feet on the floor, in every motion", () => {
+    // A character is placed by putting its model's origin at its feet, which
+    // assumes the model's lowest point is that origin. It is not: `walk` poses
+    // the figure down to -0.27 in model units while `stand` and `run` never
+    // come below 0.73, so an idle drawn that way floats an eighth of the
+    // character's own height above the floor.
+    const parts: Model[] = []
+    for (const asset of models) {
+      if (!asset.archive.endsWith('#chara_pc.gp2')) continue
+      if (!/^p_test\d+$/.test(asset.stem)) continue
+      try {
+        const model = readNsbmd(asset.bytes).models[0]
+        if (model?.numShapes) parts.push(model)
+      } catch {
+        // Reported by the model test.
+      }
+    }
+    expect(parts.length).toBeGreaterThan(0)
+    // The viewer keeps the one part no other part covers.
+    const whole = parts.reduce((best, part) => (part.numShapes > best.numShapes ? part : best))
+
+    const motions = new Map<string, Animation>()
+    for (const asset of animations) {
+      if (!asset.archive.includes('#chara_mp.gp2#')) continue
+      const pack = asset.archive.slice(asset.archive.lastIndexOf('#') + 1)
+      if (!pack.startsWith('mp0200')) continue
+      try {
+        for (const animation of readNsbca(asset.bytes).animations)
+          motions.set(animation.name, animation)
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+    expect(motions.has('walk')).toBe(true)
+    expect(motions.has('stand')).toBe(true)
+
+    const boundsAt = (motion: Animation, frame: number) => {
+      const local = sampleAnimation(motion, frame)
+      const nodes: NodeTransform[] = whole.nodes.map((node, i) =>
+        local[i] ? { ...node, local: local[i] as Mat4 } : node,
+      )
+      const stacks = whole.pose(nodes)
+      return measureBounds(
+        whole.shapes.map((_, shape) =>
+          poseGeometry(
+            whole.geometry(shape),
+            stacks[shape] ?? (whole.shapeMatrices[shape] as Mat4[]),
+          ),
+        ),
+      )
+    }
+
+    // The scale the viewer derives, from the tallest frame of the walk.
+    const walk = motions.get('walk') as Animation
+    let tallest = 0
+    for (let frame = 0; frame < walk.frameCount; frame++) {
+      const b = boundsAt(walk, frame)
+      tallest = Math.max(tallest, b.maxY - b.minY)
+    }
+    const scale = toFloat(PERSON.height) / tallest
+
+    let worstBefore = 0
+    let worstAfter = 0
+    for (const [name, motion] of motions) {
+      const lows: number[] = []
+      for (let frame = 0; frame < motion.frameCount; frame++)
+        lows.push(boundsAt(motion, frame).minY)
+      const floor = Math.min(...lows)
+      // Placed by the origin, the gap is whatever the lowest point is.
+      worstBefore = Math.max(worstBefore, Math.abs(floor * scale))
+      // Placed by the motion's own floor, the planted foot is on the ground.
+      worstAfter = Math.max(worstAfter, Math.abs((floor - floor) * scale))
+      if (name === 'stand') {
+        // The one that showed: the idle never comes near its own origin.
+        expect(floor).toBeGreaterThan(0.5)
+      }
+    }
+
+    // Before, some motion held the character a tenth of its height off the
+    // floor; after, every motion's lowest frame is on it.
+    expect(worstBefore).toBeGreaterThan(toFloat(PERSON.height) / 20)
+    expect(worstAfter).toBe(0)
+  })
+
   it('produces the container magic each member extension implies', () => {
     // Independent cross-check on the decompressor: a decoder that is subtly
     // wrong would not reliably land on the right four-byte stamp thousands of
