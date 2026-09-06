@@ -2103,16 +2103,18 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(house).toBeGreaterThan(1.4)
     expect(house).toBeLessThan(1.7)
 
-    // Drawn at three fifths of a house, in every frame of the walk cycle. The
-    // village has two houses, 1.50 and 1.57, and the height is three fifths of
-    // the shorter, so the ratio against the taller is a little under.
+    // Drawn at the chosen fraction of a house, in every frame of the walk
+    // cycle. The fraction itself is set by eye against the original — see the
+    // note on PERSON — so what this pins is that the drawn figure matches the
+    // capsule walking it, which is the property the code guarantees.
     for (const height of drawn) {
-      expect(height / house).toBeGreaterThan(0.5)
-      expect(height / house).toBeLessThan(0.7)
+      expect(height / house).toBeGreaterThan(0.2)
+      expect(height / house).toBeLessThan(0.4)
     }
     // And the same size throughout: a character that changed height as it moved
     // is the failure this replaces.
     expect(Math.max(...drawn) - Math.min(...drawn)).toBeLessThan(0.05)
+    for (const height of drawn) expect(Math.abs(height - toFloat(PERSON.height))).toBeLessThan(0.02)
 
     // The bind pose is 30% shorter than the figure it is the bind pose of, and
     // that gap is the whole bug: it is what a T-pose measures.

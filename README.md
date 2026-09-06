@@ -107,7 +107,10 @@ archive holds a dozen loose files and a `.bmdj` beside them saying which of them
 the map is made of, so picking the map draws the whole scene.
 
 Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. On a
-map, `G` puts a character on the collision mesh and WASD walks it. The figure is
+map, `G` puts a character on the collision mesh and WASD walks it; `[` and `]`
+resize it, and the overlay reports its height as a fraction of the map's own
+houses — how large a person is against a building is the one part of the scale
+that is not in the data. The figure is
 a stand-in: a character on this cartridge is assembled from parts sharing one
 rig, and which parts make the Hero is not yet known. The
 cartridge is read in your browser and nothing is uploaded.

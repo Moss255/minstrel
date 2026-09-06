@@ -233,16 +233,29 @@ function pushOutOfWalls(
 /**
  * A character the size of a person, in the cartridge's units.
  *
- * **The height is measured against the buildings, not guessed.** The village's
- * houses are the thing to scale a person against, and they can be measured
- * exactly: in `M01`, the slice's village, the house is one shape of
- * `M01M0003.nsbmd`, 4.50 units wide and standing from y 0.38 to 1.88 — **1.50
- * units tall**, with its neighbour in `M01M0004` at 1.57. A person is about
- * three fifths of a house, which puts them at **0.90 units**.
+ * **The buildings are measured; the ratio to them is not.** The village's
+ * houses can be measured exactly: in `M01`, the slice's village, the house is
+ * one shape of `M01M0003.nsbmd`, 4.50 units wide and standing from y 0.38 to
+ * 1.88 — **1.50 units tall**, with its neighbour in `M01M0004` at 1.57. The
+ * doorway models are 1.54 and the interiors' ceilings 1.97 to 2.06.
  *
- * That agrees with the other measurement available: every interior in the
- * village has its ceiling between 1.97 and 2.06 units across nine rooms, and
- * 0.90 is a little under half a room's height, which is what a person is.
+ * What those *cannot* settle is how tall a person is against them. Reasoning
+ * from architecture — a real door is about two metres, so a unit is about 1.3
+ * metres, so a person is about 1.3 units — gives a figure noticeably larger
+ * than the game draws. Like many games of its kind this one draws its people
+ * small against its buildings, and how small is a fact about the original that
+ * this repository cannot measure: it is not in any data table read so far, and
+ * seeing it needs the game running.
+ *
+ * So the ratio is **set by eye against the original**, and recorded here as
+ * what it is rather than dressed up as a derivation: a person is a little under
+ * a third of a house, which at a 1.50-unit house is **0.45 units**.
+ *
+ * The cartridge's own characters cannot settle it either, which is worth
+ * recording because it looks as though they should. The village's NPCs are
+ * modelled in the same space as the player — `s001.nsbmd` stands 10.03 units,
+ * the same as the player's posed figure — so placing them shows whether every
+ * character agrees with every other, not how big any of them should be.
  *
  * The rest follow from that height at ordinary human proportions: a little over
  * a fifth of it as a radius, a third as the tallest step. Gravity is per tick
@@ -255,12 +268,12 @@ function pushOutOfWalls(
  * edit replaces them when the real numbers turn up.
  */
 export const PERSON: CharacterShape = {
-  height: fx32(Math.round(0.9 * FX32_ONE)),
-  radius: fx32(Math.round(0.2 * FX32_ONE)),
-  stepUp: fx32(Math.round(0.27 * FX32_ONE)),
+  height: fx32(Math.round(0.45 * FX32_ONE)),
+  radius: fx32(Math.round(0.1 * FX32_ONE)),
+  stepUp: fx32(Math.round(0.14 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
   gravity: fx32(Math.round(0.004 * FX32_ONE)),
   terminalSpeed: fx32(Math.round(0.3 * FX32_ONE)),
-  snapDown: fx32(Math.round(0.15 * FX32_ONE)),
+  snapDown: fx32(Math.round(0.08 * FX32_ONE)),
 }

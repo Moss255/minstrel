@@ -515,7 +515,7 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
   // No motion read: the bind pose is all there is, and it is better than
   // refusing to draw the character.
   if (tallest <= 0) tallest = heightOf(new Map())
-  return { body, scale: toFloat(PERSON.height) / Math.max(tallest, 0.001) }
+  return { body, scale: (toFloat(PERSON.height) * sizeTrim) / Math.max(tallest, 0.001) }
 }
 
 /** Every part's matrix stacks for one frame of a motion, or its bind pose. */
@@ -549,6 +549,18 @@ const WALK_SPEED = Math.round(0.05 * FX32_ONE)
 const CLEARANCE = toFloat(PERSON.radius)
 /** How many map pieces the last frame left out, for the overlay. */
 let hiddenPieces = 0
+/**
+ * A live multiplier on the character's size, driven by `[` and `]`.
+ *
+ * How large a person is against a building is the one part of the character's
+ * scale this repository cannot measure — see `PERSON` — so it is adjustable
+ * here, against the village, with the resulting number shown in the overlay.
+ * Finding it by eye and then writing it down is honest; guessing it and calling
+ * it derived would not be.
+ */
+let sizeTrim = 1
+/** The tallest house in the shown map, for reporting the ratio. */
+let houseHeight = 0
 const TICK_MS = 1000 / 60
 
 let shown: Shown | undefined
@@ -607,6 +619,17 @@ function select(index: number): void {
     if (entry.archive !== undefined) {
       const { models, missing, meshes } = assembleMap(entry.archive)
       if (models.length === 0) throw new Error('the manifest names no model that reads')
+      // The cartridge names its own nodes: a model carrying `hus` holds a
+      // house, and its tallest shape is that house. Reported so the character's
+      // size can be read against something rather than in bare units.
+      houseHeight = 0
+      for (const model of models) {
+        if (!model.nodes.some((node) => /^hus\d*$/.test(node.name))) continue
+        for (let shape = 0; shape < model.numShapes; shape++) {
+          const bounds = measureBounds([model.posedGeometry(shape)])
+          houseHeight = Math.max(houseHeight, bounds.maxY - bounds.minY)
+        }
+      }
       shown = {
         path: entry.path,
         models,
@@ -692,6 +715,11 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
         (walker.body.length > 0
           ? ` · ${characterParts.length} character parts, stand-in`
           : ' · no character loaded (scan the whole cartridge to get one)') +
+        ` · ${(toFloat(PERSON.height) * sizeTrim).toFixed(2)} units tall` +
+        (houseHeight > 0
+          ? ` (${((toFloat(PERSON.height) * sizeTrim) / houseHeight).toFixed(2)} of a ${houseHeight.toFixed(2)} house)`
+          : '') +
+        (sizeTrim !== 1 ? ` · trim ${sizeTrim.toFixed(2)} — [ and ] to adjust` : '') +
         (walker.inside ? ' · indoors' : '') +
         (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : '')
       : shown.world
@@ -704,7 +732,7 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
         ? 'bind pose'
         : undefined,
     walker
-      ? 'WASD to walk · drag to turn · G to stop'
+      ? 'WASD to walk · drag to turn · [ ] resize · G to stop'
       : 'drag to orbit · wheel to zoom · W wireframe · R reference mode · space play/pause',
   ]
     .filter((line) => line !== undefined)
@@ -997,6 +1025,12 @@ addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
   const key = event.key.toLowerCase()
 
+  if (key === '[' || key === ']') {
+    sizeTrim = Math.min(4, Math.max(0.05, sizeTrim * (key === '[' ? 1 / 1.1 : 1.1)))
+    if (walker) walker = { ...walker, ...buildCharacter() }
+    describe(lastUpload)
+    return
+  }
   if (key === 'g') {
     if (walker) walker = undefined
     else startWalking()

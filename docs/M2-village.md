@@ -166,8 +166,8 @@ The scale now comes from the walk cycle, whose nine frames vary by under 2%. Not
 from the tallest frame of every motion: reaching up a ladder is legitimately
 taller than standing, and sizing by that leaves the character walking too small.
 
-The height itself is now measured against the buildings, which is the comparison
-a player actually makes. In `M01` the house is one shape of `M01M0003.nsbmd` —
+The house is what to measure against, being the comparison a player actually
+makes. In `M01` the house is one shape of `M01M0003.nsbmd` —
 4.50 wide, standing from y 0.38 to 1.88, so **1.50 units tall**, with its
 neighbour in `M01M0004` at 1.57. Which model holds a house is not guessed: the
 cartridge names its own nodes, and those two carry `hus` and `hus1` beside their
@@ -175,17 +175,67 @@ trees (`tre20`..) and their ground (`base`). Sizing off "the tallest thing in
 the map" instead measures the waterfall at 4.41 units, or the sky backdrop at
 2.13.
 
-A person is three fifths of a house, so **0.90 units**:
+### How big a person is against a house
 
-| | before | now |
-|---|---|---|
-| Scale derived from | bind pose, 7.68 | walk cycle, 10.03 |
-| Drawn height, standing | 1.00 | 0.89 |
-| Drawn height, walking | 1.31 | 0.90 |
-| Against a 1.50 house | 0.87 | **0.60** |
+That is the part the cartridge does not answer.
 
-That also agrees with the rooms: 0.90 is a little under half a 1.97-unit
-ceiling, which is what a person is.
+Reasoning from architecture puts a person at about 1.3 units: a real door is
+about two metres, the doorway models are 1.54 units, so a unit is about 1.3
+metres. The game draws its people noticeably smaller than that — as games of its
+kind usually do — and how much smaller is a fact about the original that is not
+in any data table read so far. Seeing it needs the game running, which is on the
+list of things this repository cannot do.
+
+So the ratio is **set by eye against the original and written down as such**,
+rather than dressed up as a derivation. A person is a little under a third of a
+house: **0.45 units**.
+
+To make finding it cheap rather than a round trip through a constant, the viewer
+adjusts it live with `[` and `]` while walking, and the overlay reports the
+result in units and as a fraction of the map's own house — which it finds by the
+`hus` node, the same way the measurement above does.
+
+| | first guess | measured off rooms | now |
+|---|---|---|---|
+| Height | 0.35 | 0.90 | 0.45 |
+| Drawn walking | 0.45 | 0.90 | 0.45 |
+| Against a 1.50 house | 0.30 | 0.60 | **0.30** |
+
+### The cartridge's own characters cannot settle it
+
+Worth recording, because it looks as though they should.
+
+The village has its own cast, and it is all there: `/data/scenario/M01.npc` is a
+NARC holding `M01npc.bin`, which names **49 NPCs** for Angel Falls (`n003a`,
+`s017`, `n001a`, …), and `M01place.bin`, which places them.
+
+The placement file is not a tagged table — `isDataTable` says yes because its
+string offset happens to equal its length, and it is not. It is a stream of
+blocks, each led by the word `0xA5060003` followed by `-246`. Cartridge-wide
+there are **1297** such blocks across 74 `.npc` archives, and:
+
+- the block count matches the name count exactly in 45 of the 74, and never
+  exceeds it, which is what you would expect if some NPCs are placed by events
+  rather than by the file;
+- each block carries an index and four floats, and the fourth is **in 0 to 2π in
+  all 1297 cases**, with **71% landing on an exact multiple of 90°**. That is a
+  facing angle beyond reasonable doubt — authored data, not bytes that happen to
+  decode.
+
+**The three floats before it are not established.** They look like a position
+and are in the right range for one, but the ones belonging to the village
+exterior do not stand on the village's collision, so something about the frame
+they are in is still missing. They are not parsed, and no parser claims them.
+
+What the NPCs do settle is a different question. `s001.nsbmd` stands **10.03
+units** — exactly the player's posed height. Every character on the cartridge is
+modelled in one space, so placing NPCs shows whether the characters agree with
+each other, not how big any of them should be against a house. The reference had
+to come from outside the data either way.
+
+Eight of the village's 33 distinct NPCs ship as whole models in
+`/data/chara_sub/*.chr`; the other 25 are `n###a` names that assemble from
+`chara_pc` parts — the same unsolved preset problem as the Hero.
 
 The rest of `PERSON` — radius, step-up height, slope limit, gravity — is still a
 starting point rather than the game's own numbers. Those live in code this
@@ -331,7 +381,12 @@ that is a stated deviation from the milestone's wording rather than an oversight
 - **What places a `G1` resource.** Every other piece of a map carries its own
   coordinates; that one does not.
 - **Interior and exterior links.** Which door leads where is still not located,
-  and three candidates have now been ruled out. The map list carries no link
+  and three candidates have now been ruled out. A fourth is now in view: `M01`
+  carries ten single-shape models `M01M00D1`..`DA`, each 1.54 units tall with a
+  two-triangle collision box beside it — one per building entrance. Flat planes
+  standing in doorways are what a trigger volume looks like.
+- **What the placement floats are in.** See the NPC section: the facing angle is
+  established, the three floats before it are not. The map list carries no link
   field; its eighteen numeric values do not include one that indexes another
   map. The per-map `.bats` attribute tables are float-valued — fog and lighting,
   four and seven records for a village with ten doors. And `apinfo.bin`, which
