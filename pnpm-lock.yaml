@@ -40,6 +40,8 @@ importers:
         specifier: ^7.1.9
         version: 7.3.6(@types/node@22.20.1)
 
+  packages/fixed: {}
+
   packages/game-formats: {}
 
   packages/l5-gpc:
@@ -56,8 +58,20 @@ importers:
 
   packages/nitrofs: {}
 
+  packages/sim:
+    dependencies:
+      '@vesper/fixed':
+        specifier: workspace:*
+        version: link:../fixed
+      '@vesper/game-formats':
+        specifier: workspace:*
+        version: link:../game-formats
+
   tools/harness:
     dependencies:
+      '@vesper/fixed':
+        specifier: workspace:*
+        version: link:../../packages/fixed
       '@vesper/game-formats':
         specifier: workspace:*
         version: link:../../packages/game-formats
@@ -76,6 +90,9 @@ importers:
       '@vesper/nitrofs':
         specifier: workspace:*
         version: link:../../packages/nitrofs
+      '@vesper/sim':
+        specifier: workspace:*
+        version: link:../../packages/sim
 
   tools/inventory:
     dependencies:

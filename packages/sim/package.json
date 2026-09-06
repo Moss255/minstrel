@@ -1,0 +1,15 @@
+{
+  "name": "@vesper/sim",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Headless simulation: the world, collision, and the character controller.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@vesper/fixed": "workspace:*",
+    "@vesper/game-formats": "workspace:*"
+  }
+}

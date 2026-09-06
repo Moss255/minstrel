@@ -1,0 +1,11 @@
+{
+  "name": "@vesper/fixed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Fixed-point arithmetic for the simulation. No floats reach gameplay.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

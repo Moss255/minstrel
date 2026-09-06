@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { fx32 } from '@vesper/fixed'
 import {
   isBitmapFont,
   isCollisionMesh,
@@ -40,6 +41,7 @@ import {
 } from '@vesper/nitro-gfx'
 import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
 import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
+import { createCollisionWorld, groundBelow } from '@vesper/sim'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 /**
@@ -1459,6 +1461,101 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(normals).toBe(triangles - degenerate)
     expect(enclosed).toBe(meshes)
     expect(tiled).toBe(meshes)
+  })
+
+  it('stands on every collision triangle it can walk onto', () => {
+    // The sharpest self-check available on the world: for each triangle in each
+    // map, ask what the ground is directly above its own centroid. The answer
+    // has to be that triangle, or something above it — never nothing.
+    //
+    // That exercises the index, the containment test and the height
+    // interpolation at once, on real map geometry rather than on squares built
+    // for the purpose. A containment test that is off by a rounding loses the
+    // centroid of a thin triangle; an index that files a triangle under the
+    // wrong cell loses it outright.
+    const failures: string[] = []
+    let meshes = 0
+    let tested = 0
+    let found = 0
+    let skipped = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        if (!member.name?.endsWith('.col2')) continue
+        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
+        if (!isCollisionMesh(data)) continue
+        let mesh: ReturnType<typeof readCollisionMesh>
+        try {
+          mesh = readCollisionMesh(data)
+        } catch {
+          continue
+        }
+        if (mesh.triangles.length === 0) continue
+        const world = createCollisionWorld(mesh)
+        meshes++
+
+        mesh.triangles.forEach((triangle, index) => {
+          // A vertical face has no ground to stand on, and a degenerate one has
+          // no centroid worth asking about.
+          if (triangle.normal[1] === 0) return
+          const [a, b, c] = triangle.vertices
+          // The query takes whole fx32 words, so the centroid has to be
+          // rounded to one, and on a sliver that rounding can land outside the
+          // triangle itself. `twiceArea / longestEdge` is the triangle's
+          // shortest height in the projection; where that is comfortably more
+          // than the half-word the rounding moves, the centroid is safely
+          // inside. Slivers below it are skipped, because the question there
+          // would be about the rounding rather than about the world.
+          const twiceArea = Math.abs((b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0]))
+          const longestEdge = Math.max(
+            Math.hypot(b[0] - a[0], b[2] - a[2]),
+            Math.hypot(c[0] - b[0], c[2] - b[2]),
+            Math.hypot(a[0] - c[0], a[2] - c[2]),
+          )
+          if (longestEdge === 0 || twiceArea / longestEdge < 8) {
+            skipped++
+            return
+          }
+          const cx = Math.round((a[0] + b[0] + c[0]) / 3)
+          const cy = Math.round((a[1] + b[1] + c[1]) / 3)
+          const cz = Math.round((a[2] + b[2] + c[2]) / 3)
+          tested++
+          // Start a whole unit above the surface, so the query is looking down
+          // at it rather than starting exactly on it.
+          const hit = groundBelow(world, fx32(cx), fx32(cz), fx32(cy + 4096))
+          if (hit === undefined) {
+            if (failures.length < 10) {
+              failures.push(`${file.path}#${member.name}: no ground over triangle ${index}`)
+            }
+            return
+          }
+          found++
+          // Rounding the centroid sideways moves the query along the slope, so
+          // the height found is not the centroid's height. What must hold is
+          // that it is not *below* the triangle: the triangle's own surface is
+          // a candidate everywhere within it, and the query returns the highest
+          // candidate, so anything lower means the triangle was missed and
+          // something beneath it answered instead.
+          const lowest = Math.min(a[1], b[1], c[1])
+          if (hit.y < lowest - 8) {
+            failures.push(
+              `${file.path}#${member.name}: triangle ${index} bottoms out at ${lowest} but the ground is ${hit.y}`,
+            )
+          }
+        })
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(meshes).toBeGreaterThan(500)
+    expect(tested).toBeGreaterThan(5000)
+    expect(found).toBe(tested)
+    // Most of a collision mesh is wall — 85,349 of the cartridge's 109,122
+    // triangles are exactly vertical — so the walkable surface this walks over
+    // is the minority of it, and the slivers skipped are a small part of that.
+    expect(skipped).toBeLessThan(tested)
   })
 
   it('produces the container magic each member extension implies', () => {

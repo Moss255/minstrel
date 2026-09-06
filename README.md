@@ -25,6 +25,8 @@ is most of the way there.
 | [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
 | [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
 | [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh |
+| [`@vesper/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
+| [`@vesper/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world and collision |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
