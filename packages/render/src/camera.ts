@@ -329,3 +329,31 @@ function cross(a: Vec3, b: Vec3): Vec3 {
 function dot(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
+
+/**
+ * Turn "forward" and "right" as the player means them into world movement.
+ *
+ * The camera sits at `focus + (sin yaw, cos yaw) · distance`, so the direction
+ * the player is looking — into the screen, away from the camera — is the
+ * **negative** of that. Getting the sign wrong here inverts the controls while
+ * leaving everything else looking correct, which is why this is a named
+ * function with a test rather than four lines inside a key handler.
+ *
+ * `forward` and `right` are each -1, 0 or 1. The result is a unit vector, or
+ * zero when nothing is pressed, for the caller to scale by its own speed.
+ */
+export function moveRelativeToCamera(
+  yaw: number,
+  forward: number,
+  right: number,
+): { x: number; z: number } {
+  const length = Math.hypot(forward, right)
+  if (length === 0) return { x: 0, z: 0 }
+  const f = forward / length
+  const r = right / length
+  const sin = Math.sin(yaw)
+  const cos = Math.cos(yaw)
+  // Into the screen is -(sin, cos); screen-right is (cos, -sin), which is the
+  // same right vector the view matrix builds.
+  return { x: -f * sin + r * cos, z: -f * cos - r * sin }
+}

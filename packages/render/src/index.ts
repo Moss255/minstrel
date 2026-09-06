@@ -8,6 +8,7 @@ export {
   followCamera,
   frustumAt,
   INDOORS,
+  moveRelativeToCamera,
   OUTDOORS,
   perspective,
   updateFollowCamera,

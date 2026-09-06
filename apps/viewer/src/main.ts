@@ -37,6 +37,7 @@ import {
   covered,
   followCamera,
   INDOORS,
+  moveRelativeToCamera,
   OUTDOORS,
   occluders,
   updateFollowCamera,
@@ -578,6 +579,16 @@ let hiddenPieces = 0
  * it derived would not be.
  */
 let sizeTrim = 1
+/**
+ * A live multiplier on the size of a map's **placed** pieces, on `,` and `.`.
+ *
+ * The doors are the case in point. They are authored at `upScale` 1 while the
+ * terrain around them is at 8, and the manifest's own scale field is 1, 1, 1 on
+ * every resource of the cartridge — so nothing in the data says to resize them,
+ * and nothing here does by default. This exists to find out whether they should
+ * be, without a constant being invented to hold the answer.
+ */
+let propTrim = 1
 /** The tallest house in the shown map, for reporting the ratio. */
 let houseHeight = 0
 const TICK_MS = 1000 / 60
@@ -588,17 +599,26 @@ let playing = true
 /** Where the current map puts each of its models. */
 let placeByModel = new Map<Model, { x: number; y: number; z: number }>()
 
-/** A posed shape moved to where the map puts the model it belongs to. */
+/**
+ * A posed shape moved to where the map puts the model it belongs to.
+ *
+ * A placed piece is scaled about its own base rather than its centre, so
+ * resizing it slides it up or down the wall it stands against instead of
+ * sinking it into the ground.
+ */
 function placed(geometry: Geometry, model: Model): Geometry {
   const place = placeByModel.get(model)
-  if (!place || (place.x === 0 && place.y === 0 && place.z === 0)) return geometry
+  if (!place) return geometry
+  const moved = place.x !== 0 || place.y !== 0 || place.z !== 0
+  const scale = moved ? propTrim : 1
+  if (!moved && scale === 1) return geometry
   return {
     ...geometry,
     vertices: geometry.vertices.map((v) => ({
       ...v,
-      x: v.x + place.x,
-      y: v.y + place.y,
-      z: v.z + place.z,
+      x: v.x * scale + place.x,
+      y: v.y * scale + place.y,
+      z: v.z * scale + place.z,
     })),
   }
 }
@@ -757,6 +777,7 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
           ? ` (${((toFloat(PERSON.height) * sizeTrim) / houseHeight).toFixed(2)} of a ${houseHeight.toFixed(2)} house)`
           : '') +
         (sizeTrim !== 1 ? ` · trim ${sizeTrim.toFixed(2)} — [ and ] to adjust` : '') +
+        (propTrim !== 1 ? ` · placed pieces x${propTrim.toFixed(2)}` : '') +
         (walker.inside ? ' · indoors' : '') +
         (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : '')
       : shown.world
@@ -769,7 +790,7 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
         ? 'bind pose'
         : undefined,
     walker
-      ? 'WASD to walk · drag to turn · [ ] resize · G to stop'
+      ? 'WASD to walk · drag to turn · [ ] resize player · , . resize placed pieces · G to stop'
       : 'drag to orbit · wheel to zoom · W wireframe · R reference mode · space play/pause',
   ]
     .filter((line) => line !== undefined)
@@ -890,13 +911,9 @@ function walk(elapsedMs: number): void {
     let dx = 0
     let dz = 0
     if (forward !== 0 || right !== 0) {
-      const length = Math.hypot(forward, right)
-      const sin = Math.sin(camera.yaw)
-      const cos = Math.cos(camera.yaw)
-      const fx = (forward / length) * WALK_SPEED
-      const rx = (right / length) * WALK_SPEED
-      dx = Math.round(fx * sin + rx * cos)
-      dz = Math.round(fx * cos - rx * sin)
+      const step = moveRelativeToCamera(camera.yaw, forward, right)
+      dx = Math.round(step.x * WALK_SPEED)
+      dz = Math.round(step.z * WALK_SPEED)
       moved = true
       // Turn towards where it is going, by the shorter way round.
       const wanted = Math.atan2(dx, dz)
@@ -1062,6 +1079,11 @@ addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return
   const key = event.key.toLowerCase()
 
+  if (key === ',' || key === '.') {
+    propTrim = Math.min(4, Math.max(0.05, propTrim * (key === ',' ? 1 / 1.1 : 1.1)))
+    if (selected >= 0) select(selected)
+    return
+  }
   if (key === '[' || key === ']') {
     sizeTrim = Math.min(4, Math.max(0.05, sizeTrim * (key === '[' ? 1 / 1.1 : 1.1)))
     if (walker) walker = { ...walker, ...buildCharacter() }

@@ -10,6 +10,7 @@ import {
   followCamera,
   frustumAt,
   INDOORS,
+  moveRelativeToCamera,
   OUTDOORS,
   perspective,
   updateFollowCamera,
@@ -290,5 +291,89 @@ describe('the camera the game actually uses', () => {
     expect(indoors.yaw).toBe(1.23)
     expect(indoors.focus).toEqual([3, 4, 5])
     expect(indoors.distance).toBe(INDOORS.distance)
+  })
+})
+
+describe('moving the way the player is looking', () => {
+  /** Where a world point lands in the camera's own space. */
+  const inView = (camera: ReturnType<typeof followCamera>, p: [number, number, number]) => {
+    const view = viewMatrix(camera)
+    const at = (row: number) =>
+      (view[row] as number) * p[0] +
+      (view[row + 4] as number) * p[1] +
+      (view[row + 8] as number) * p[2] +
+      (view[row + 12] as number)
+    return { x: at(0), y: at(1), z: at(2) }
+  }
+
+  it('walks into the screen, not out of it', () => {
+    // The oracle is the view matrix rather than the sign of a sine: pressing
+    // forward must take the character further from the eye and deeper into the
+    // picture. Getting this backwards inverts the controls and leaves
+    // everything else looking right, which is exactly what happened.
+    for (const yaw of [0, 0.7, 1.6, 3, 4.5, 6]) {
+      const camera = followCamera(OUTDOORS, 1)
+      camera.yaw = yaw
+      updateFollowCamera(camera, at(0, 0, 0), 0)
+      const step = moveRelativeToCamera(yaw, 1, 0)
+      const focus = camera.focus as [number, number, number]
+      const before = inView(camera, focus)
+      const after = inView(camera, [focus[0] + step.x, focus[1], focus[2] + step.z])
+      // Deeper into the screen is more negative z in view space.
+      expect(after.z).toBeLessThan(before.z)
+      // And further from the camera.
+      const eye = cameraEye(camera)
+      expect(Math.hypot(focus[0] + step.x - eye[0], focus[2] + step.z - eye[2])).toBeGreaterThan(
+        Math.hypot(focus[0] - eye[0], focus[2] - eye[2]),
+      )
+    }
+  })
+
+  it('walks backwards out of the screen', () => {
+    for (const yaw of [0, 0.7, 2.2, 5]) {
+      const camera = followCamera(OUTDOORS, 1)
+      camera.yaw = yaw
+      updateFollowCamera(camera, at(0, 0, 0), 0)
+      const step = moveRelativeToCamera(yaw, -1, 0)
+      const focus = camera.focus as [number, number, number]
+      expect(inView(camera, [focus[0] + step.x, focus[1], focus[2] + step.z]).z).toBeGreaterThan(
+        inView(camera, focus).z,
+      )
+    }
+  })
+
+  it('strafes right towards the right of the screen', () => {
+    for (const yaw of [0, 0.7, 2.2, 5]) {
+      const camera = followCamera(OUTDOORS, 1)
+      camera.yaw = yaw
+      updateFollowCamera(camera, at(0, 0, 0), 0)
+      const step = moveRelativeToCamera(yaw, 0, 1)
+      const focus = camera.focus as [number, number, number]
+      expect(inView(camera, [focus[0] + step.x, focus[1], focus[2] + step.z]).x).toBeGreaterThan(
+        inView(camera, focus).x,
+      )
+    }
+  })
+
+  it('strafes left towards the left of the screen', () => {
+    const camera = followCamera(OUTDOORS, 1)
+    camera.yaw = 0.7
+    updateFollowCamera(camera, at(0, 0, 0), 0)
+    const step = moveRelativeToCamera(0.7, 0, -1)
+    const focus = camera.focus as [number, number, number]
+    expect(inView(camera, [focus[0] + step.x, focus[1], focus[2] + step.z]).x).toBeLessThan(
+      inView(camera, focus).x,
+    )
+  })
+
+  it('gives the same speed diagonally as straight on', () => {
+    const straight = moveRelativeToCamera(0.7, 1, 0)
+    const diagonal = moveRelativeToCamera(0.7, 1, 1)
+    expect(Math.hypot(straight.x, straight.z)).toBeCloseTo(1, 9)
+    expect(Math.hypot(diagonal.x, diagonal.z)).toBeCloseTo(1, 9)
+  })
+
+  it('stands still when nothing is pressed', () => {
+    expect(moveRelativeToCamera(0.7, 0, 0)).toEqual({ x: 0, z: 0 })
   })
 })

@@ -235,6 +235,47 @@ carry *more* placements than resources. Pairing positionally through those would
 place every piece after the extra one confidently in the wrong spot, so those
 maps are left unplaced instead. A wrong placement is worse than none.
 
+### Forward was backwards
+
+The camera sits at `focus + (sin yaw, cos yaw) · distance`, so the direction the
+player is looking — into the screen, away from the camera — is the **negative**
+of that. The movement code used the positive, so W walked towards the camera.
+Strafing was right, which is why it read as "inverted" rather than as scrambled.
+
+It was wrong from the first day of walking and only became obvious once there
+was a character on screen to watch: with the camera following the feet, walking
+backwards away from the view looks much like walking forwards.
+
+That math now lives in `moveRelativeToCamera` in `@vesper/render` rather than in
+four lines inside a key handler, and it is tested against the **view matrix**
+rather than against the sign of a sine: pressing forward has to put the
+character deeper into the picture and further from the eye, at six different
+camera angles. A sign error cannot pass that.
+
+### The doors are placed, and their size is unresolved
+
+Placing them was the fix above. Whether they are the right *size* is not
+settled, and nothing in the data settles it:
+
+- The door models decode at **1.54 units** tall, at `upScale` 1, while the
+  terrain around them is at `upScale` 8 — and placed pieces are almost all at 1
+  (276 of the 283 on the cartridge) while unplaced map geometry runs 16, 8, 32,
+  4, 2 and 1.
+- The manifest's own scale field is **1, 1, 1 on every resource of the
+  cartridge**, so the file does not ask for them to be resized.
+- The divisor for the *translation* really is a constant 8 and not the map's own
+  scale: scored against the ground, a constant 8 puts 74.1% of placed pieces on
+  it, the map's up scale 65.5%, the piece's own up scale 12.5%.
+
+So no scale is applied, and the viewer resizes placed pieces live on `,` and `.`
+instead — the same approach as the character, for the same reason.
+
+The two are linked, and the link is worth stating. A door is the best
+human-scale reference a village has. If the doors at 1.54 units are right, a
+person is about 1.3 units. If the person at 0.45 is right, the doors should be
+about 0.53. Those are the two self-consistent worlds and the data does not
+choose between them.
+
 ### The camera was sinking into the ground
 
 A second regression, from the previous commit rather than this one. Taking the
