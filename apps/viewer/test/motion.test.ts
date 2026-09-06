@@ -103,3 +103,60 @@ describe('a motion with no frames', () => {
     ).toBe(0)
   })
 })
+
+describe('what decides which motion plays', () => {
+  /**
+   * The frame count resets when the motion changes, so anything that flips the
+   * motion spuriously restarts the cycle. Whether the character is walking is a
+   * fact about the keys held, not about whether a simulation tick happened to
+   * fall inside this rendered frame — and at a 60Hz tick with 60Hz rendering,
+   * most other frames run no tick at all.
+   */
+  it('runs no simulation tick on a frame shorter than one', () => {
+    // The shape of the bug: 8ms of real time at a 60Hz tick is no ticks.
+    const tickMs = 1000 / 60
+    let carry = 0
+    const ticksIn = (ms: number) => {
+      carry += ms
+      let n = 0
+      while (carry >= tickMs) {
+        carry -= tickMs
+        n++
+      }
+      return n
+    }
+    const counts = [8, 8, 8, 8, 8, 8].map(ticksIn)
+    expect(counts).toContain(0)
+    expect(counts).toContain(1)
+  })
+
+  it('advances an idle by the same amount however the ticks fall', () => {
+    // Driven by elapsed time rather than whole ticks, so the quantisation
+    // above cannot reach the animation.
+    const frameCount = 17
+    const unitsPerTick = 0.012
+    const one = motionAdvance({
+      moving: false,
+      ticks: (16 * 60) / 1000,
+      travelled: 0,
+      frameCount,
+      unitsPerTick,
+    })
+    const split =
+      motionAdvance({
+        moving: false,
+        ticks: (8 * 60) / 1000,
+        travelled: 0,
+        frameCount,
+        unitsPerTick,
+      }) +
+      motionAdvance({
+        moving: false,
+        ticks: (8 * 60) / 1000,
+        travelled: 0,
+        frameCount,
+        unitsPerTick,
+      })
+    expect(split).toBeCloseTo(one, 9)
+  })
+})

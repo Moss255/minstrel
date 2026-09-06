@@ -296,7 +296,6 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   membersByArchive.clear()
   characterParts.length = 0
   characterMotions.clear()
-  motionFloors.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -615,45 +614,6 @@ function buildCharacter(): { body: Piece_[]; scale: number } {
   // refusing to draw the character.
   if (tallest <= 0) tallest = heightOf(new Map())
   return { body, scale: (toFloat(PERSON.height) * sizeTrim) / Math.max(tallest, 0.001) }
-}
-
-/**
- * How far a motion holds the figure off its own origin, at its lowest.
- *
- * A character is placed by putting its model's origin at its feet, which
- * assumes the model's lowest point is that origin. It is not: `walk` poses the
- * figure down to −0.27 in model units, while `stand` and `run` never come below
- * **0.73**, so an idle drawn that way floats an eighth of the character's own
- * height above the floor.
- *
- * The offset is per motion and taken over the whole cycle, not per frame: the
- * lowest the figure ever gets is the planted foot, and anchoring that to the
- * ground leaves everything the animation does above it intact. Anchoring each
- * frame separately would flatten the cycle instead.
- */
-const motionFloors = new Map<Animation | undefined, number>()
-function floorOf(motion: Animation | undefined, body: readonly Piece_[]): number {
-  const known = motionFloors.get(motion)
-  if (known !== undefined) return known
-  let lowest = Number.POSITIVE_INFINITY
-  const frames = motion ? Math.max(motion.frameCount, 1) : 1
-  for (let frame = 0; frame < frames; frame++) {
-    const stacks = characterStacks(motion, frame)
-    const bounds = measureBounds(
-      body.map((piece) =>
-        poseGeometry(
-          piece.geometry,
-          stacks.get(piece.model)?.[piece.shape] ??
-            piece.model.shapeMatrices[piece.shape] ??
-            piece.model.matrices,
-        ),
-      ),
-    )
-    lowest = Math.min(lowest, bounds.minY)
-  }
-  if (!Number.isFinite(lowest)) lowest = 0
-  motionFloors.set(motion, lowest)
-  return lowest
 }
 
 /** Every part's matrix stacks for one frame of a motion, or its bind pose. */
@@ -1160,7 +1120,12 @@ function startWalking(): void {
  * The frame resets when the motion changes, because a count left over from a
  * nine-frame walk means something else in a seventeen-frame idle.
  */
-function advanceMotion(walker: Walker, moving: boolean, ticks: number, travelled: number): void {
+function advanceMotion(
+  walker: Walker,
+  moving: boolean,
+  elapsedMs: number,
+  travelled: number,
+): void {
   const wanted = moving ? 'walk' : 'stand'
   if (wanted !== walker.motion) {
     walker.motion = wanted
@@ -1171,7 +1136,9 @@ function advanceMotion(walker: Walker, moving: boolean, ticks: number, travelled
 
   walker.motionFrame += motionAdvance({
     moving,
-    ticks,
+    // Real time rather than whole ticks, so an idle does not run in steps of
+    // however many ticks happened to fall in a frame.
+    ticks: (elapsedMs * 60) / 1000,
     travelled,
     frameCount: motion.frameCount,
     unitsPerTick: toFloat(fx32(WALK_SPEED)),
@@ -1197,12 +1164,31 @@ function characterPieces(walker: Walker, motion: Animation | undefined): Piece[]
   const atZ = toFloat(walker.state.z)
 
   const stacks = characterStacks(motion, Math.floor(walker.motionFrame))
-  // Stand the figure on the ground rather than hanging it from its origin.
-  const floor = floorOf(motion, walker.body)
+  const posedPieces = walker.body.map((piece) => ({
+    piece,
+    posed: poseGeometry(
+      piece.geometry,
+      stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices,
+    ),
+  }))
 
-  return walker.body.map((piece) => {
-    const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices
-    const posed = poseGeometry(piece.geometry, stack)
+  /**
+   * Stand the figure on the ground **this frame**, not once for the motion.
+   *
+   * A character is otherwise hung from its model's origin, and the motions do
+   * not keep the figure there: the idle carries the whole body smoothly from
+   * 0.39 up to 1.25 in model units and back, a rise of an eighth of the
+   * character's own height, while its height changes by 0.05. Anchoring to the
+   * lowest frame of the cycle plants the feet on one frame in seventeen and
+   * floats for the other sixteen.
+   *
+   * The cost is that a motion with both feet genuinely off the ground — a jump,
+   * or the flight phase of `run` — would be pinned down. Walking and standing
+   * both keep a foot planted throughout, and they are what is played.
+   */
+  const floor = Math.min(...posedPieces.map(({ posed }) => measureBounds([posed]).minY))
+
+  return posedPieces.map(({ piece, posed }) => {
     const vertices = posed.vertices.map((v) => {
       const x = v.x * scale
       const y = (v.y - floor) * scale
@@ -1231,15 +1217,18 @@ function walk(elapsedMs: number): void {
   if (held.has('d')) right += 1
   if (held.has('a')) right -= 1
 
+  // Whether the character is walking is a fact about the keys, not about
+  // whether a simulation tick happened to fall in this frame. Taking it from
+  // the loop meant that on any frame short enough to run no tick — which at
+  // 60Hz is most other frames — the motion flipped to standing and the frame
+  // count reset, so the character stuttered between two poses.
+  const moving = forward !== 0 || right !== 0
   walker.carry = Math.min(walker.carry + elapsedMs, TICK_MS * 8)
-  let moved = false
-  let ticks = 0
   // How far the character actually got, which is not how far it was asked to
   // go: a wall takes most of it away.
   let travelled = 0
   while (walker.carry >= TICK_MS) {
     walker.carry -= TICK_MS
-    ticks++
     const from = walker.state
     let dx = 0
     let dz = 0
@@ -1247,7 +1236,6 @@ function walk(elapsedMs: number): void {
       const step = moveRelativeToCamera(camera.yaw, forward, right)
       dx = Math.round(step.x * WALK_SPEED)
       dz = Math.round(step.z * WALK_SPEED)
-      moved = true
       // Turn towards where it is going, by the shorter way round.
       const wanted = Math.atan2(dx, dz)
       let turn = wanted - walker.facing
@@ -1262,7 +1250,7 @@ function walk(elapsedMs: number): void {
     )
   }
 
-  advanceMotion(walker, moved, ticks, travelled)
+  advanceMotion(walker, moving, elapsedMs, travelled)
 
   // Indoors the camera comes in and tilts further down. What counts as indoors
   // is whether there is a roof over the character's head, checked as they walk,

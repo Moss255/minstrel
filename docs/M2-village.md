@@ -340,27 +340,33 @@ flat-shaded orthographic rasteriser over the same `poseGeometry` output — and
 looking at it. Numbers had been saying for several rounds that something was
 0.2 units out; the picture said the arms were over the head.
 
-### The legs did not reach the floor
+### The legs did not reach the floor, and the walk stuttered
 
-A character is placed by putting its model's origin at its feet. That assumes
-the model's lowest point *is* its origin, and it is not — it depends on the
-motion:
+Two more, both from the same habit of taking a measurement once and assuming it
+holds.
 
-| motion | lowest point of the posed figure, in model units | drawn |
-|---|---|---|
-| `walk` | −0.268 … 0.011 | on the floor |
-| `stand` | **0.731 … 1.569** | 0.013 to 0.028 above it |
-| `run` | 0.792 … 1.569 | the same |
+**The floor is per frame, not per motion.** A character is placed by putting its
+model's origin at its feet, which assumes the model's lowest point is that
+origin. It is not, and it moves: the idle carries the whole body from 0.39 up to
+1.25 in model units and back, while the figure's own height changes by 0.05 —
+so it rises **an eighth of the character's height** and settles again, seventeen
+frames to the cycle. Anchoring to the lowest frame of the cycle, which was the
+first fix, plants the feet on one frame in seventeen and floats for the other
+sixteen. The figure is now placed by its own lowest point **that frame**, taken
+from the geometry actually being drawn.
 
-The character is 0.18 units tall, so standing still floated it about **an eighth
-of its own height** off the ground. Walking looked right, which is why this
-survived until standing existed to compare it with.
+The cost is that a motion with both feet genuinely off the ground — a jump, or
+the flight phase of a run — would be pinned down. Walking and standing both keep
+a foot planted throughout, and they are what is played.
 
-The figure is now placed by **the lowest point the motion ever reaches**, taken
-over the whole cycle and cached per motion. That is the planted foot, and
-anchoring it to the ground leaves everything the animation does above it intact.
-Anchoring each frame separately would put the foot down every frame and flatten
-the cycle.
+**Walking is a fact about the keys, not about the clock.** Whether the character
+was moving was taken from inside the simulation loop, so it was only true on a
+frame in which a tick actually ran. At a 60Hz tick with 60Hz rendering, most
+other frames run none — and on those the motion flipped to standing, which
+**resets the frame count**, so the character stuttered between two poses several
+times a second. It now comes from the keys held, and the idle advances on
+elapsed time rather than on whole ticks so the same quantisation cannot reach
+it by another route.
 
 ### The animation ran on the clock, at the wrong clock
 

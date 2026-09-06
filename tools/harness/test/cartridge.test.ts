@@ -2856,7 +2856,7 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(parts.reduce((n, part) => n + part.model.numShapes, 0)).toBe(8)
   })
 
-  it("stands the character's feet on the floor, in every motion", () => {
+  it('has motions that do not keep the character on its own origin', () => {
     // A character is placed by putting its model's origin at its feet, which
     // assumes the model's lowest point is that origin. It is not: `walk` poses
     // the figure down to -0.27 in model units while `stand` and `run` never
@@ -2917,27 +2917,34 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     }
     const scale = toFloat(PERSON.height) / tallest
 
-    let worstBefore = 0
-    let worstAfter = 0
+    let byOrigin = 0
+    let byCycle = 0
     for (const [name, motion] of motions) {
       const lows: number[] = []
       for (let frame = 0; frame < motion.frameCount; frame++)
         lows.push(boundsAt(motion, frame).minY)
-      const floor = Math.min(...lows)
-      // Placed by the origin, the gap is whatever the lowest point is.
-      worstBefore = Math.max(worstBefore, Math.abs(floor * scale))
-      // Placed by the motion's own floor, the planted foot is on the ground.
-      worstAfter = Math.max(worstAfter, Math.abs((floor - floor) * scale))
+      const lowest = Math.min(...lows)
+      for (const low of lows) {
+        // Hung from the model's origin, the gap is wherever the figure is.
+        byOrigin = Math.max(byOrigin, Math.abs(low * scale))
+        // Anchored once per cycle, it is planted on the lowest frame only.
+        byCycle = Math.max(byCycle, (low - lowest) * scale)
+      }
       if (name === 'stand') {
-        // The one that showed: the idle never comes near its own origin.
-        expect(floor).toBeGreaterThan(0.2)
+        // The idle carries the whole body up and back down through its cycle,
+        // 0.39 to 1.25 in model units, while its own height changes by 0.05.
+        // One offset for the whole motion cannot keep the feet down.
+        expect(lowest).toBeGreaterThan(0.2)
+        expect(Math.max(...lows) - lowest).toBeGreaterThan(0.5)
       }
     }
 
-    // Before, some motion held the character a tenth of its height off the
-    // floor; after, every motion's lowest frame is on it.
-    expect(worstBefore).toBeGreaterThan(toFloat(PERSON.height) / 20)
-    expect(worstAfter).toBe(0)
+    // Hung from the origin, some motion holds the character a twentieth of its
+    // height off the floor. Anchored once per cycle it still rides a twentieth
+    // up mid-cycle. Only anchoring every frame puts it down, which is what the
+    // viewer does: the drawn figure's own lowest point sits at the feet.
+    expect(byOrigin).toBeGreaterThan(toFloat(PERSON.height) / 20)
+    expect(byCycle).toBeGreaterThan(toFloat(PERSON.height) / 20)
   })
 
   it('produces the container magic each member extension implies', () => {
