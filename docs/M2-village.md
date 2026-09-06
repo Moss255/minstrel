@@ -8,7 +8,7 @@ Against the milestone's own list.
 | Character controller with original movement constants | **done**, with constants tuned by eye — see below |
 | Camera behaviour, extended for widescreen | **done**, with the field of view tuned by eye |
 | Interior/exterior transitions, doors, stairs | not started; the link data is not located |
-| Fixed-preset Hero model with the minstrel outfit | not started, and see below |
+| Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
 
 **Done when:** you can walk the whole village and enter every building.
 
@@ -179,19 +179,44 @@ The field of view itself, 50 degrees vertical, is **tuned by eye** like the
 character's dimensions. What is faithful here is the framing rule, which does
 not depend on knowing the original number.
 
-## Two things that change the plan
+## The character system
 
-**The Hero is a parts library, not a model.** `chara_pc.gp2` holds 796 parts —
-192 bodies and 79 leg pieces on a shared 14-bone skeleton, plus 121 heads, 142
-faces, 200 weapons and 24 others at one bone each — and no whole characters
-except three `p_test` models. The slice excluded equipment-on-model to keep
-*runtime* assembly off the critical path, and that still holds: nothing has to
-re-assemble when equipment changes. But a fixed preset still has to be assembled
-once, and **which part ids make the minstrel Hero is not known**. The 27 `.bcfg`
-files beside the parts are float-valued configs, not a parts list.
+Found, and it is a system rather than a model.
 
-The three `p_test` models are full bodies on the same skeleton, so they are the
-obvious way to get a character walking while the preset is worked out.
+- **Parts** live in `chara_pc.gp2`: 796 of them, sharing one fourteen-bone
+  humanoid rig whose bones are named `root`, `waist`, `chest`, `arm0L`, `arm1L`,
+  `arm0R`, `arm1R`, `head`, `usiro`, `leg0L`, `leg1L`, `leg0R`, `leg1R` — plus a
+  second bone named after the part itself, which is where it attaches.
+- **Motions** live apart, in `chara_mp.gp2`: 137 packs, 29 distinct motion names
+  on that rig. `walk`, `run` and `stand`, and beside them `attack0a`, `guard`,
+  `damage`, `death`, `dance`, `sleep`, `smile`.
+- The `.bcfg` files beside the parts name the pack: `mp0200ne` sits in both
+  archives, so a part knows which motions drive it.
+
+A character is therefore several models drawn together and posed by one
+animation — which the renderer already did for maps, so no new machinery was
+needed beyond placing and scaling it.
+
+**The scale is derived, not chosen.** Parts are modelled at about 7.7 units tall
+where a village is a dozen across, so they are shrunk to the height the
+character controller already assumes a person is. That way the model and the
+collision capsule agree by construction rather than by a number someone tuned
+twice.
+
+### Which parts make the Hero is still unknown
+
+The three `p_test` models — whole figures on the same rig — stand in, and the
+overlay says so rather than implying the Hero is on screen.
+
+`charapreset.bin` looked like the answer and does not survive inspection. It is
+a data table carrying 29 of something and records of 102 values holding
+five-digit ids with prefixes 12, 13, 15, 16, 17, 20 and 21 — which look exactly
+like a category and a part number until you check: several of them, `13083`,
+`20591`, `20692`, match no part in any group. They are more likely equipment
+ids, which would make the preset a description of what the Hero *wears* rather
+than what he is built from, with another table in between.
+
+## One thing that changes the plan
 
 **"Original movement constants" are not available.** They are not in any data
 table read so far; they live in code, and reaching them means the disassembly

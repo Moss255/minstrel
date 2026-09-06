@@ -90,6 +90,23 @@ const animationsByArchive = new Map<string, Animation[]>()
  * assembled map as well as its individual pieces.
  */
 const manifestsByArchive = new Map<string, MapManifest>()
+
+/**
+ * The character parts and the motions that drive them.
+ *
+ * A character on this cartridge is not a model but a set of them: several
+ * pieces, each an NSBMD carrying the same fourteen-bone rig — `waist`, `chest`,
+ * `arm0L`, `head`, `leg1R` and so on — drawn together and posed by one
+ * animation. The motions live apart from the parts, in a pack of their own.
+ *
+ * Which parts make the Hero is **not known**: they are a library of 796, and
+ * the preset that names his is not decoded. The three `p_test` models are whole
+ * figures on the same rig, so they stand in.
+ */
+const characterParts: Model[] = []
+const characterMotions = new Map<string, Animation>()
+const STAND_IN_PARTS = /\/chara_pc\.gp2\/p_test\d+\.nsbmd$/
+const MOTION_PACK = '/chara_mp.gp2/mp0200ne.chr'
 const membersByArchive = new Map<string, Map<string, Uint8Array>>()
 
 function must<T extends Element>(selector: string): T {
@@ -172,6 +189,14 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
     const payload = tryDecompressLz10(bytes) ?? bytes
 
     if (isNsbmd(payload)) {
+      if (STAND_IN_PARTS.test(path)) {
+        try {
+          const part = readNsbmd(payload).models[0]
+          if (part?.numShapes) characterParts.push(part)
+        } catch {
+          // A part that will not read simply is not drawn.
+        }
+      }
       found.push({ path, name: path.slice(path.lastIndexOf('/') + 1), bytes: payload })
       collectTextures(payload)
       return
@@ -193,7 +218,11 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
       try {
         const archive = path.slice(0, path.lastIndexOf('/'))
         const list = animationsByArchive.get(archive) ?? []
-        list.push(...readNsbca(payload).animations)
+        const read = readNsbca(payload).animations
+        list.push(...read)
+        if (archive.endsWith(MOTION_PACK)) {
+          for (const motion of read) characterMotions.set(motion.name, motion)
+        }
         animationsByArchive.set(archive, list)
       } catch {
         // An animation container that will not read is not fatal to the scan.
@@ -233,6 +262,8 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
   animationsByArchive.clear()
   manifestsByArchive.clear()
   membersByArchive.clear()
+  characterParts.length = 0
+  characterMotions.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
@@ -413,11 +444,41 @@ interface Walker {
   readonly held: Set<string>
   /** Left over from the last frame, so a slow frame is still 60Hz of ticks. */
   carry: number
+  /** Which way the character is facing, in radians about the vertical. */
+  facing: number
+  /** Frame of the motion playing. */
+  motionFrame: number
+  /** The character's pieces, and how much to shrink them into the world. */
+  readonly body: Piece_[]
+  readonly scale: number
+}
+
+/**
+ * Build the character's pieces and work out how big it should be.
+ *
+ * The parts are modelled at their own scale — a figure is about 7.7 units tall
+ * where a village is a dozen across — so they are shrunk to the height the
+ * controller already assumes a person is. Deriving the scale that way rather
+ * than picking a number means the model and the collision capsule agree by
+ * construction.
+ */
+function buildCharacter(): { body: Piece_[]; scale: number } {
+  const body = characterParts.flatMap(piecesOf)
+  if (body.length === 0) return { body, scale: 1 }
+  const bounds = measureBounds(
+    body.map((piece) =>
+      poseGeometry(piece.geometry, piece.model.shapeMatrices[piece.shape] ?? piece.model.matrices),
+    ),
+  )
+  const height = Math.max(bounds.maxY - bounds.minY, 0.001)
+  return { body, scale: toFloat(PERSON.height) / height }
 }
 
 let walker: Walker | undefined
 /** What the renderer last took, so the overlay can be redrawn without re-uploading. */
 let lastUpload = { vertices: 0, triangles: 0, textured: 0 }
+/** The scene without the character, kept so only the character is rebuilt. */
+let mapPieces: Piece[] = []
 /** Movement per tick, about three world units a second at 60Hz. */
 const WALK_SPEED = Math.round(0.05 * FX32_ONE)
 const TICK_MS = 1000 / 60
@@ -518,6 +579,7 @@ function select(index: number): void {
     return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
 
+  mapPieces = drawn
   const uploaded = renderer.upload(drawn)
   lastUpload = uploaded
   // Frame on the bind pose, so the camera does not jump about as an animation
@@ -556,7 +618,10 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
     shown.note,
     walker
       ? `walking — ${toFloat(walker.state.x).toFixed(2)}, ${toFloat(walker.state.y).toFixed(2)}, ${toFloat(walker.state.z).toFixed(2)}` +
-        (walker.state.grounded ? '' : ' (falling)')
+        (walker.state.grounded ? '' : ' (falling)') +
+        (walker.body.length > 0
+          ? ` · ${characterParts.length} character parts, stand-in`
+          : ' · no character loaded (scan the whole cartridge to get one)')
       : shown.world
         ? 'press G to walk this map'
         : undefined,
@@ -613,11 +678,61 @@ function startWalking(): void {
     walker = undefined
     return
   }
+  const { body, scale } = buildCharacter()
   walker = {
     state: { x, y: hit.y, z, fallSpeed: fx32(0), grounded: true },
     held: new Set(),
     carry: 0,
+    facing: 0,
+    motionFrame: 0,
+    body,
+    scale,
   }
+}
+
+/**
+ * The character's pieces, posed and put where it is standing.
+ *
+ * Every part carries the same rig, so one motion drives all of them: each is
+ * posed against its own copy of that skeleton and they move together. The
+ * result is then scaled into the world, turned to face the way it is walking,
+ * and set down at the feet.
+ */
+function characterPieces(walker: Walker, motion: Animation | undefined): Piece[] {
+  if (walker.body.length === 0) return []
+  const sin = Math.sin(walker.facing)
+  const cos = Math.cos(walker.facing)
+  const scale = walker.scale
+  const atX = toFloat(walker.state.x)
+  const atY = toFloat(walker.state.y)
+  const atZ = toFloat(walker.state.z)
+
+  const stacks = new Map<Model, Mat4[][]>()
+  for (const part of characterParts) {
+    if (motion && motion.boneCount === part.nodes.length) {
+      const local = sampleAnimation(motion, walker.motionFrame)
+      const nodes: NodeTransform[] = part.nodes.map((node, i) => {
+        const posed = local[i]
+        return posed ? { ...node, local: posed } : node
+      })
+      stacks.set(part, part.pose(nodes))
+    } else {
+      stacks.set(part, part.shapeMatrices as Mat4[][])
+    }
+  }
+
+  return walker.body.map((piece) => {
+    const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices
+    const posed = poseGeometry(piece.geometry, stack)
+    const vertices = posed.vertices.map((v) => {
+      const x = v.x * scale
+      const y = v.y * scale
+      const z = v.z * scale
+      return { ...v, x: atX + x * cos + z * sin, y: atY + y, z: atZ - x * sin + z * cos }
+    })
+    const geometry = { ...posed, vertices }
+    return piece.texture ? { geometry, ...piece.texture } : { geometry }
+  })
 }
 
 /**
@@ -652,14 +767,32 @@ function walk(elapsedMs: number): void {
       dx = Math.round(fx * sin + rx * cos)
       dz = Math.round(fx * cos - rx * sin)
       moved = true
+      // Turn towards where it is going, by the shorter way round.
+      const wanted = Math.atan2(dx, dz)
+      let turn = wanted - walker.facing
+      while (turn > Math.PI) turn -= Math.PI * 2
+      while (turn < -Math.PI) turn += Math.PI * 2
+      walker.facing += turn * 0.25
     }
     walker.state = stepCharacter(shown.world, walker.state, fx32(dx), fx32(dz), PERSON)
+    walker.motionFrame++
   }
+
+  // `walk` while moving, `stand` otherwise. Both come from the motion pack the
+  // parts name, which is where a character's animation lives on this cartridge.
+  const motion = characterMotions.get(moved ? 'walk' : 'stand')
+  if (motion && motion.frameCount > 0) walker.motionFrame %= motion.frameCount
 
   // The camera watches the character rather than the map's centre, trailing
   // it and coming forward when a building is in the way.
   updateFollowCamera(camera, walker.state, elapsedMs / 1000, shown.world, PERSON)
-  if (moved) describe(lastUpload)
+
+  // Redraw the scene with the character in it. The map's pieces are already
+  // posed; only the character changes from frame to frame.
+  if (walker.body.length > 0) {
+    lastUpload = renderer.upload([...mapPieces, ...characterPieces(walker, motion)])
+  }
+  describe(lastUpload)
 }
 
 /** Fill the animation picker and the frame slider for the current model. */

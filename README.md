@@ -107,8 +107,9 @@ archive holds a dozen loose files and a `.bmdj` beside them saying which of them
 the map is made of, so picking the map draws the whole scene.
 
 Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. On a
-map, `G` puts a character on the collision mesh and WASD walks it — there is no
-character model yet, so the camera follows the feet. The
+map, `G` puts a character on the collision mesh and WASD walks it. The figure is
+a stand-in: a character on this cartridge is assembled from parts sharing one
+rig, and which parts make the Hero is not yet known. The
 cartridge is read in your browser and nothing is uploaded.
 
 The camera never shows *less* of the world than the hardware did: on a wide
