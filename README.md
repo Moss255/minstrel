@@ -24,7 +24,7 @@ is most of the way there.
 | [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
 | [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
 | [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
-| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest |
+| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest, the map index |
 | [`@vesper/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
 | [`@vesper/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |

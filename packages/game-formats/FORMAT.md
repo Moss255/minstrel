@@ -361,3 +361,53 @@ regions of one space. Assembly is drawing what the manifest lists.
 The exception is the `G1` resource, which is centred on the origin and comes
 with a joint animation and a config file. Something places that, and it is not
 the manifest.
+
+---
+
+# `maplist9.bin` — the cartridge's index of every map
+
+Another tagged data table, and the one that says what the maps *are*.
+
+| tag | meaning |
+|---|---|
+| `0x66` | number of map entries |
+| `0x67` | one per map, 22 values |
+
+Four of the twenty-two values are byte offsets into the string table:
+
+| slot | meaning |
+|---|---|
+| 4 | region — "Angel Falls", "Gleeba" |
+| 6 | **map code**, which is also the name of the map's archive |
+| 7 | the name whoever built it wrote — "Inn", "Church", "Erinn's House Lv 1" |
+| 13 | a second code, usually one with a real attribute table, but not this map's |
+
+**Zero means empty, not "the first string".** A blank field holds zero, and zero
+is also the offset of the build stamp that opens the string table, so a reader
+that resolves it produces a list in which every unset field is a date. That is
+the one trap in this file and it looks entirely plausible until you notice every
+map was apparently built at 10:39:39.
+
+## What it gives
+
+1,010 entries, 872 distinct codes. The code names the archive — `M01` is
+`M01.amdj` — so this is the bridge from a place to the files that draw it. 667
+of the codes name an archive that ships; the rest are development maps the
+cartridge kept an entry for, with names like "Debug Floor", "Bed Test" and
+"For Encounter Testing".
+
+## The other eighteen values are not established
+
+They are carried on `MapEntry.values`. One reading was tried and **disproved**:
+slots 10 and 12 look like an exterior/interior pair on the ten maps of one
+village, and are not — across the whole list, 48 maps labelled "Exterior" and 49
+labelled "Interior" share the same combination of them.
+
+## Evidence
+
+| check | result |
+|---|---|
+| map entries read | **1,010** |
+| entries carrying a code | **1,010 / 1,010** |
+| distinct codes naming an archive that ships | 667 / 872 |
+| entries carrying an archive code with a real `.bats` | 722 / 731 |

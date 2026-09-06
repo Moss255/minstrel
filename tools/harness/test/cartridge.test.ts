@@ -8,6 +8,7 @@ import {
   readBitmapFont,
   readCollisionMesh,
   readDataTable,
+  readMapList,
   readMapManifest,
   resolveMapResources,
 } from '@vesper/game-formats'
@@ -1465,6 +1466,41 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(normals).toBe(triangles - degenerate)
     expect(enclosed).toBe(meshes)
     expect(tiled).toBe(meshes)
+  })
+
+  it('reads the map index, and its codes name real archives', () => {
+    // `maplist9.bin` is what turns a code into a place: it carries a region, a
+    // map code and the name whoever built it wrote down. The code is also the
+    // name of the map's archive, which is the check — a reading that resolved
+    // the string offsets wrongly would not land on directories that exist.
+    const entry = fs.file('/data/map/maplist9.bin')
+    expect(entry).toBeDefined()
+    const list = readMapList(fs.read(entry as NonNullable<typeof entry>))
+    expect(list.maps.length).toBeGreaterThan(500)
+
+    // Every archive the cartridge holds, by name.
+    const archives = new Set<string>()
+    for (const file of walkFiles(fs.root)) {
+      const name = file.path.slice(file.path.lastIndexOf('/') + 1)
+      const dot = name.lastIndexOf('.')
+      if (dot > 0) archives.add(name.slice(0, dot).toUpperCase())
+    }
+
+    let named = 0
+    const codes = new Set<string>()
+    for (const entry of list.maps) {
+      expect(entry.code.length).toBeGreaterThan(0)
+      codes.add(entry.code.toUpperCase())
+    }
+    for (const code of codes) if (archives.has(code)) named++
+
+    // Most codes name an archive. The rest are development maps the cartridge
+    // kept an entry for without shipping the files.
+    expect(named / codes.size).toBeGreaterThan(0.6)
+    // The regions are real text, not offsets misread as one.
+    const regions = new Set(list.maps.map((m) => m.region).filter(Boolean))
+    expect(regions.size).toBeGreaterThan(20)
+    for (const region of regions) expect(region).not.toMatch(/^\d{4}\//)
   })
 
   it('assembles a map from the resources its manifest names', () => {

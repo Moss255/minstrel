@@ -16,6 +16,12 @@ export {
   readBitmapFont,
 } from './font.ts'
 export {
+  isMapList,
+  type MapEntry,
+  type MapList,
+  readMapList,
+} from './maplist.ts'
+export {
   isMapManifest,
   type MapManifest,
   type MapResource,

@@ -49,6 +49,34 @@ a cosine so a slope limit is a comparison rather than an angle. Every walkable
 triangle on the cartridge can be stood on: querying above each one's own
 centroid never falls through to something beneath it.
 
+## The slice's maps, by name
+
+`maplist9.bin` is the cartridge's own index, and it decodes. **Angel Falls is
+`M01`**, and every map the slice needs is named in it:
+
+| index | code | what it is |
+|---|---|---|
+| 140 | `M01` | Exterior |
+| 141 | `M01M01` | House A |
+| 142 | `M01M02` | Inn |
+| 143 | `M01M03` | Item Shop |
+| 144 | `M01M04` | Stable |
+| 145 | `M01M05` | Mayor's House Lv 1 |
+| 146 | `M01M06` | Church |
+| 147 | `M01M07` | Erinn's House Lv 1 |
+| 148 | `M01M08` | Well |
+| 149 | `M01M09` | Mayor's House Lv 2 |
+| 150 | `M01M10` | Erinn's House Lv 2 |
+| 151 | `M01M11` | Opening Event |
+| 152 | `M01M12` | Opening (Background) |
+
+The region maps are `F01` (Angel Falls Region), with `F01M01` the opening and
+`F01M02` the ending.
+
+That closes a question M0 left open — which area code the slice opens in — and
+it closes it from the cartridge rather than from an emulator. The code names the
+archive directly: `M01` is `M01.amdj`.
+
 ## Where map assembly stands
 
 Done, and simpler than expected: **a map needs no placement data.**
@@ -142,8 +170,16 @@ that is a stated deviation from the milestone's wording rather than an oversight
 
 - **What places a `G1` resource.** Every other piece of a map carries its own
   coordinates; that one does not.
-- **Interior and exterior links.** Which door leads where is not located.
-  Most likely in the event scripts, which are extracted but not decoded.
+- **Interior and exterior links.** Which door leads where is still not located,
+  and three candidates have now been ruled out. The map list carries no link
+  field; its eighteen numeric values do not include one that indexes another
+  map. The per-map `.bats` attribute tables are float-valued — fog and lighting,
+  four and seven records for a village with ten doors. And `apinfo.bin`, which
+  looked promising at 144 KB, is battle-road and network data.
+
+  What remains is the event scripts. Doors in this kind of game are usually
+  events rather than geometry, which fits: it is `SB2` bytecode that is not yet
+  examined, and that makes transitions an M3 problem wearing an M2 hat.
 - **The collision attribute word.** Terrain kind — water, and the Hexagon's
   poison marshes — is very likely in it. Not needed to walk.
 - **`gridX` and `gridZ`.** Understanding them would let the sim use the file's

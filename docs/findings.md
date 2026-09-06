@@ -349,6 +349,26 @@ The attribute word is not established either. Its values look like packed
 nibbles, and terrain kind is very likely among them — which is what walkable,
 water and poison marsh will need. It is carried through whole.
 
+### The map index
+
+`maplist9.bin` is a tagged data table too, and it is the one that says what the
+maps *are*: **1,010 entries**, each with a region, a code and the name whoever
+built it wrote — "Inn", "Church", "Erinn's House Lv 1". The code also names the
+map's archive, so the file is the bridge from a place to the files that draw it.
+667 of the 872 distinct codes name an archive that ships; the rest are
+development maps like "Debug Floor" and "For Encounter Testing".
+
+One trap, and it is a quiet one. **Zero means empty, and zero is also the offset
+of the build stamp** that opens the string table — so a reader that resolves it
+produces a list where every unset field is a date, and looks entirely plausible
+until you notice all 1,010 maps were apparently built at 10:39:39.
+
+Eighteen of the twenty-two values per entry are not established, and one reading
+of them was tried and disproved: slots 10 and 12 look exactly like an
+exterior/interior pair across the ten maps of one village, and across the whole
+list 48 maps labelled "Exterior" and 49 labelled "Interior" share the same
+combination of them.
+
 ### The tagged record table
 
 `.bmdj`, `.bats` and `mapbgm.bin` share one container of tagged records followed
@@ -683,6 +703,12 @@ a sequence index would sit in 0–81, and 68 records is far too few to cover ~1,
 maps. The per-map `.bats` and `.bmdj` files parse completely and carry no music
 field. Recorded as an unsolved lead, not an answer.
 
+**Where a door leads.** Not located, with three candidates ruled out: the map
+index carries no link field, the per-map `.bats` tables are float-valued fog and
+lighting, and `apinfo.bin` is battle-road and network data. The remaining
+candidate is the event scripts, which fits — doors in this kind of game are
+events rather than geometry.
+
 **`SB2` event script bytecode.** Every event unpacks to one `.stb` carrying
 magic `SB2\0` plus one string table per language. Per-event data exists as data,
 with its text separated from its structure — a strong signal — but whether `SB2`
@@ -721,6 +747,7 @@ included. Models and animations are collected once and shared between checks.
 | SDAT | overlapping file ranges | 0 |
 | font | fonts parsed, glyphs decoded | 529 / 529, 70,604 |
 | tables | tagged tables parsed | 1,260 / 1,260 |
+| map index | entries read, all carrying a code | 1,010 / 1,010 |
 | collision | stored normal == the cross product of its own triangle | every triangle with area |
 | collision | header box encloses every triangle | every mesh |
 | collision | cells tiling the triangle-index list | every mesh |
