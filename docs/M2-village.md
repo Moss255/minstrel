@@ -37,6 +37,13 @@ are exactly vertical. Walls and floors are distinguished geometrically rather
 than by a flag, so wall collision needs no attribute decoding — which is
 fortunate, because the attribute word is not decoded.
 
+**A map's collision is several meshes, not one.** The village has thirteen, one
+per piece, and any single one of them is a handful of triangles with nowhere to
+stand. A world is built from all of a map's collision or from none of it. That
+was found the way such things usually are: the key that starts walking appeared
+to do nothing, because the first mesh had two triangles and the spawn silently
+failed to find ground.
+
 **The world builds its own spatial index.** `.col2` carries a grid, and its
 cells tile the triangle list exactly, but which region each cell covers is not
 established: neither header field that looks like a grid dimension accounts for

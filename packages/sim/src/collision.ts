@@ -1,5 +1,5 @@
 import { add, type Fx32, fx32, mul, sub } from '@vesper/fixed'
-import type { CollisionMesh, CollisionTriangle } from '@vesper/game-formats'
+import type { CollisionBounds, CollisionMesh, CollisionTriangle } from '@vesper/game-formats'
 
 /**
  * The world the player walks on.
@@ -8,6 +8,11 @@ import type { CollisionMesh, CollisionTriangle } from '@vesper/game-formats'
  * world in the same 1.19.12 the simulation runs in — so nothing here converts
  * anything. Positions in and out are `Fx32`, and the arithmetic is integer
  * arithmetic throughout.
+ *
+ * **A map's collision is several meshes, not one.** An archive carries one per
+ * piece — the village has thirteen — and taking any single one gives a world
+ * with a few triangles in it and no ground to stand on. They are merged here,
+ * so a world is built from all of a map's collision or from none of it.
  *
  * **The index is ours, not the file's.** `.col2` carries a grid of its own, and
  * that grid's cells tile its triangle list exactly, but which region of the map
@@ -18,7 +23,10 @@ import type { CollisionMesh, CollisionTriangle } from '@vesper/game-formats'
  * dimensions are understood.
  */
 export interface CollisionWorld {
-  readonly mesh: CollisionMesh
+  /** Every triangle, from every mesh the world was built from. */
+  readonly triangles: readonly CollisionTriangle[]
+  /** The extent of all of them together. */
+  readonly bounds: CollisionBounds
   /** Cell size in `fx32` units. */
   readonly cellSize: number
   readonly cellsX: number
@@ -55,8 +63,22 @@ const MAX_CELLS = 64
  * every cell their footprint touches, so a query never has to look at
  * neighbours.
  */
-export function createCollisionWorld(mesh: CollisionMesh): CollisionWorld {
-  const { minX, minZ, maxX, maxZ } = mesh.bounds
+export function createCollisionWorld(
+  source: CollisionMesh | readonly CollisionMesh[],
+): CollisionWorld {
+  const meshes = Array.isArray(source)
+    ? (source as readonly CollisionMesh[])
+    : [source as CollisionMesh]
+  const triangles = meshes.flatMap((mesh) => mesh.triangles)
+  const bounds: CollisionBounds = {
+    minX: Math.min(...meshes.map((m) => m.bounds.minX), 0),
+    minY: Math.min(...meshes.map((m) => m.bounds.minY), 0),
+    minZ: Math.min(...meshes.map((m) => m.bounds.minZ), 0),
+    maxX: Math.max(...meshes.map((m) => m.bounds.maxX), 0),
+    maxY: Math.max(...meshes.map((m) => m.bounds.maxY), 0),
+    maxZ: Math.max(...meshes.map((m) => m.bounds.maxZ), 0),
+  }
+  const { minX, minZ, maxX, maxZ } = bounds
   const spanX = Math.max(maxX - minX, 1)
   const spanZ = Math.max(maxZ - minZ, 1)
   const target = Math.max(spanX, spanZ) / 32
@@ -72,7 +94,7 @@ export function createCollisionWorld(mesh: CollisionMesh): CollisionWorld {
   }
 
   const cells: number[][] = Array.from({ length: cellsX * cellsZ }, () => [])
-  mesh.triangles.forEach((triangle, index) => {
+  triangles.forEach((triangle, index) => {
     const xs = triangle.vertices.map((v) => v[0])
     const zs = triangle.vertices.map((v) => v[2])
     const x0 = cellOf(Math.min(...xs), minX, cellSize, cellsX)
@@ -84,7 +106,7 @@ export function createCollisionWorld(mesh: CollisionMesh): CollisionWorld {
     }
   })
 
-  return { mesh, cellSize, cellsX, cellsZ, originX: minX, originZ: minZ, cells }
+  return { triangles, bounds, cellSize, cellsX, cellsZ, originX: minX, originZ: minZ, cells }
 }
 
 function cellOf(value: number, origin: number, size: number, count: number): number {
@@ -133,7 +155,7 @@ export function groundBelow(
   const ceiling = add(y, stepUp)
 
   for (const index of triangleAt(world, x, z)) {
-    const triangle = world.mesh.triangles[index] as CollisionTriangle
+    const triangle = world.triangles[index] as CollisionTriangle
     const [a, b, c] = triangle.vertices
     const [ax, ay, az] = a
     const [bx, by, bz] = b
@@ -266,7 +288,7 @@ export function wallBetween(
   let nearest: number | undefined
 
   for (const index of candidates) {
-    const triangle = world.mesh.triangles[index] as CollisionTriangle
+    const triangle = world.triangles[index] as CollisionTriangle
     if (slopeOf(triangle) >= maxSlope) continue
     const [a, b, c] = triangle.vertices
     if (Math.max(a[1], b[1], c[1]) <= low) continue

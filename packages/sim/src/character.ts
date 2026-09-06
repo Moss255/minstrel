@@ -171,7 +171,7 @@ function pushOutOfWalls(
   let pushZ = 0
 
   for (const index of triangleAt(world, x, z)) {
-    const triangle = world.mesh.triangles[index] as CollisionTriangle
+    const triangle = world.triangles[index] as CollisionTriangle
     if (slopeOf(triangle) >= shape.maxSlope) continue
     const [a, b, c] = triangle.vertices
     if (Math.max(a[1], b[1], c[1]) <= low) continue

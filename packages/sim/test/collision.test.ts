@@ -200,3 +200,38 @@ describe('the world index', () => {
     expect(groundBelow(world, fx32(0), fx32(-1000), fromInt(10))).toBeDefined()
   })
 })
+
+describe('a world built from several meshes', () => {
+  // A map's collision arrives as one mesh per piece — the village has thirteen
+  // — and taking any single one gives a world with a handful of triangles and
+  // nowhere to stand. This is the shape of that bug.
+  const eastern = mesh(floor(10, 0))
+  const western = mesh([
+    [
+      [-20 * U, 0, -10 * U],
+      [-10 * U, 0, -10 * U],
+      [-20 * U, 0, 10 * U],
+    ],
+  ])
+
+  it('stands on ground that belongs to a later mesh', () => {
+    const partial = createCollisionWorld(eastern)
+    expect(groundBelow(partial, fromInt(-15), fx32(0), fromInt(10))).toBeUndefined()
+
+    const whole = createCollisionWorld([eastern, western])
+    expect(groundBelow(whole, fromInt(-15), fx32(0), fromInt(10))).toBeDefined()
+    expect(groundBelow(whole, fromInt(5), fromInt(5), fromInt(10))).toBeDefined()
+  })
+
+  it('takes its bounds and its triangles from all of them', () => {
+    const whole = createCollisionWorld([eastern, western])
+    expect(whole.triangles).toHaveLength(3)
+    expect(whole.bounds.minX).toBe(-20 * U)
+    expect(whole.bounds.maxX).toBe(10 * U)
+  })
+
+  it('accepts a single mesh as it always did', () => {
+    const one = createCollisionWorld(eastern)
+    expect(one.triangles).toHaveLength(2)
+  })
+})

@@ -550,7 +550,8 @@ function select(index: number): void {
           `assembled from ${models.length} models` +
           (meshes.length > 0 ? ` and ${meshes.length} collision meshes` : '') +
           (missing.length > 0 ? `, ${missing.length} missing` : ''),
-        world: meshes[0] ? createCollisionWorld(meshes[0]) : undefined,
+        // A map's collision is all of its meshes; the village has thirteen.
+        world: meshes.length > 0 ? createCollisionWorld(meshes) : undefined,
       }
     } else {
       const model = readNsbmd(entry.bytes as Uint8Array).models[0]
@@ -652,7 +653,7 @@ function startWalking(): void {
     walker = undefined
     return
   }
-  const { bounds } = world.mesh
+  const { bounds } = world
   const midX = fx32(Math.round((bounds.minX + bounds.maxX) / 2))
   const midZ = fx32(Math.round((bounds.minZ + bounds.maxZ) / 2))
   let hit = groundBelow(world, midX, midZ, fx32(bounds.maxY + FX32_ONE))
@@ -660,18 +661,23 @@ function startWalking(): void {
   let z = midZ
 
   if (!hit) {
-    for (const triangle of world.mesh.triangles) {
+    // The middle of a village is usually a building. Fall back to the walkable
+    // ground nearest the middle rather than to whichever triangle comes first,
+    // which could be a rooftop at the far edge of the map.
+    let nearest = Number.POSITIVE_INFINITY
+    for (const triangle of world.triangles) {
       if (triangle.normal[1] === 0) continue
       const [a, b, c] = triangle.vertices
       const cx = fx32(Math.round((a[0] + b[0] + c[0]) / 3))
       const cz = fx32(Math.round((a[2] + b[2] + c[2]) / 3))
+      const away = Math.hypot(cx - midX, cz - midZ)
+      if (away >= nearest) continue
       const found = groundBelow(world, cx, cz, fx32(bounds.maxY + FX32_ONE))
-      if (found) {
-        hit = found
-        x = cx
-        z = cz
-        break
-      }
+      if (!found) continue
+      nearest = away
+      hit = found
+      x = cx
+      z = cz
     }
   }
   if (!hit) {
