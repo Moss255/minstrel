@@ -50,20 +50,24 @@ const TINY = 1e-6
 /**
  * What a map's **placed** pieces are drawn at, relative to the map around them.
  *
- * **Set by eye against the original, not derived.** The doorway models are
- * `upScale` 1 while the terrain they stand in is `upScale` 8 — as is every
- * placed piece on the cartridge, 276 of 283 — and the manifest's own scale
- * field is 1, 1, 1 everywhere, so nothing in the data asks for them to be
- * resized. Unresized they are absurd: a doorway 1.54 units tall set into a
- * building facade of 1.50.
+ * **The same divisor as the translation, and for the same reason.** A placed
+ * piece is authored in a space an order of magnitude larger than the map it
+ * goes into — that is why {@link PLACEMENT_SCALE} exists — and its *geometry*
+ * is in that space too, not only its position. Dividing one and not the other
+ * is what put a doorway 1.54 units tall into a building facade of 1.57.
  *
- * **0.12** is what looks right in the slice's village, found by resizing them
- * against the buildings until they did: it takes a doorway from 1.54 units to
- * **0.19**, which is 0.12 of the 1.57-unit facade it is set into. It is
- * recorded here as a number someone chose, and the viewer keeps `,` and `.` for
- * changing it, so revising it is a one-line edit rather than an excavation.
+ * That it is the same number is not assumed, it is what the village says: the
+ * value was found by resizing the doors against the buildings until they
+ * looked right, twice, landing on 0.12 and then 0.13. One eighth is 0.125,
+ * between the two, and it is exactly the divisor the translations need. A
+ * doorway comes out **0.19 units** tall — about the height of the character
+ * walking through it, which is the check that wanted making.
+ *
+ * The pieces are still resizable in the viewer with `,` and `.`, because a
+ * derivation that agrees with the eye twice is worth being able to disagree
+ * with a third time.
  */
-export const PLACED_PIECE_SCALE = 0.12
+export const PLACED_PIECE_SCALE = 1 / PLACEMENT_SCALE
 
 /**
  * Where a map puts one of its resources.

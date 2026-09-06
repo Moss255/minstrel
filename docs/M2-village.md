@@ -299,6 +299,33 @@ only the current-matrix part, shape 36 lands at (−3.25, −1.88), which is
 `tre20`'s translation over eight exactly, 37 at `tre21`'s and 38 at `tre22`'s,
 and they sit within 0.08 units of the ground under them.
 
+### The doors' scale was the placement divisor all along
+
+A placed piece is authored in a space an order of magnitude larger than the map
+it goes into. That is why the translation is divided by eight. Its **geometry is
+in that space too**, and dividing one and not the other is what put a doorway
+1.54 units tall into a building facade of 1.57.
+
+That the two are the same number was not assumed. The value was found by
+resizing the doors against the buildings until they looked right, twice,
+landing on 0.12 and then 0.13. One eighth is 0.125 — between them, and exactly
+the divisor the translations need. `PLACED_PIECE_SCALE` is now
+`1 / PLACEMENT_SCALE` rather than a number someone chose.
+
+A doorway comes out **0.19 units** tall, which is the height of the character
+walking through it. That was the check worth making and it passes.
+
+Three other explanations were tested and are not it:
+
+- **A rotation in the placement.** There is none. Across all 4,242 placement
+  records on the cartridge, values 11 to 13 — where a rotation would sit — are
+  zero every time. The record is now fully accounted for: three values of
+  translation, one parent, three of scale, and the rest zero or integers.
+- **Sinking or floating.** The doors' bases sit 0.015 units under the ground
+  beneath them, and that figure does not change with the scale.
+- **A wrong height.** 0.12, 0.125 and 0.13 all ground equally well; the scale
+  is not what decides whether a door meets the floor.
+
 ### Spawning in the river
 
 The village's spawn landed on a sandbank in the middle of the river.
@@ -446,7 +473,7 @@ until they looked right, and both recorded as chosen rather than derived:
 
 | | value | what it gives |
 |---|---|---|
-| `PLACED_PIECE_SCALE` | **0.12** | a doorway of 0.19 units, 0.12 of the 1.57 facade it is set into |
+| `PLACED_PIECE_SCALE` | **1/8** | a doorway of 0.19 units — see below |
 | `PERSON.height` | **0.18** | a person 0.11 of that same facade, and about a doorway's height |
 
 A person about as tall as a doorway is the sanity check that the two agree.
