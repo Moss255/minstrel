@@ -7,18 +7,27 @@ import {
   isLz10,
   looksBlz,
   readCompressionHeader,
+  tryDecompressLz10,
 } from '@vesper/nitro-comp'
 import {
   type Animation,
+  blend,
   boneTrackSize,
+  identity,
+  inverseBindMatrices,
   isNsbca,
   isNsbmd,
   isNsbtx,
+  MATRIX_STACK_SIZE,
   type Model,
+  multiply,
   RenderOp,
   readNsbca,
   readNsbmd,
   readTex0,
+  resolveShapeStates,
+  rotationFromRef,
+  runDisplayList,
   sampleAnimation,
   texelDataSize,
 } from '@vesper/nitro-gfx'
@@ -41,14 +50,92 @@ import { beforeAll, describe, expect, it } from 'vitest'
  */
 const romPath = process.env.VESPER_TEST_ROM
 
+/**
+ * One asset, and the archive it came out of.
+ *
+ * Members are collected once and shared, because several checks need the same
+ * pass and because pairing a model with the animation beside it needs to know
+ * which archive each came from.
+ */
+interface Asset {
+  /** Path of the archive holding it, so siblings can be found. */
+  readonly archive: string
+  /** Member name with any extension stripped, for pairing by name. */
+  readonly stem: string
+  /** Full path, for failure messages. */
+  readonly path: string
+  readonly bytes: Uint8Array
+}
+
 describe.skipIf(!romPath)('a real cartridge', () => {
   let rom: Uint8Array
   let fs: NitroFs
+  /** Every NSBMD on the cartridge, including those inside GPC2 archives. */
+  let models: Asset[]
+  /** Every NSBCA, likewise. */
+  let animations: Asset[]
+  /** Every container that carries textures: NSBTX, and NSBMD with a TEX0. */
+  let textured: Asset[]
 
   beforeAll(() => {
     const raw = readFileSync(romPath as string)
     rom = new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
     fs = readNitroFs(rom)
+
+    // Walk every archive the cartridge holds, NARC and GPC2 alike, recursing
+    // through nesting and decompressing on the way. Tests that only walked
+    // NARCs saw a smaller cartridge than it has: the monster and character
+    // models live inside `.gp2`.
+    models = []
+    animations = []
+    textured = []
+    const stemOf = (name: string) => {
+      const dot = name.lastIndexOf('.')
+      return dot > 0 ? name.slice(0, dot) : name
+    }
+    const visit = (raw: Uint8Array, archive: string, name: string, depth: number): void => {
+      if (depth > 4) return
+      const bytes = tryDecompressLz10(raw) ?? raw
+      const path = `${archive}#${name}`
+      if (isNsbmd(bytes)) {
+        models.push({ archive, stem: stemOf(name), path, bytes })
+        textured.push({ archive, stem: stemOf(name), path, bytes })
+        return
+      }
+      if (isNsbtx(bytes)) {
+        textured.push({ archive, stem: stemOf(name), path, bytes })
+        return
+      }
+      if (isNsbca(bytes)) {
+        animations.push({ archive, stem: stemOf(name), path, bytes })
+        return
+      }
+      if (isNarc(bytes)) {
+        try {
+          for (const member of readNarc(bytes).entries()) {
+            visit(member.data, path, String(member.name ?? member.index), depth + 1)
+          }
+        } catch {
+          // An archive that will not open is reported by the tests that read it.
+        }
+        return
+      }
+      if (isGpc(bytes)) {
+        try {
+          const gpc = readGpc(bytes)
+          for (const member of gpc.members) {
+            if (!member.readable) continue
+            visit(gpc.read(member), path, member.name, depth + 1)
+          }
+        } catch {
+          // Likewise.
+        }
+      }
+    }
+    for (const file of walkFiles(fs.root)) {
+      const slash = file.path.lastIndexOf('/')
+      visit(fs.read(file), file.path.slice(0, Math.max(slash, 0)), file.path.slice(slash + 1), 0)
+    }
   })
 
   it('has a header whose checksums verify', () => {
@@ -294,15 +381,14 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // parameter count, a missed partial-vertex command — desynchronises and
     // fails both.
     const failures: string[] = []
-    let models = 0
+    let parsed = 0
     let vertexMatches = 0
     let triangleMatches = 0
 
     const eachModel = (bytes: Uint8Array, path: string): void => {
-      if (!isNsbmd(bytes)) return
       try {
         for (const model of readNsbmd(bytes).models) {
-          models++
+          parsed++
           let vertices = 0
           let triangles = 0
           for (const shape of model.shapes) {
@@ -326,19 +412,12 @@ describe.skipIf(!romPath)('a real cartridge', () => {
       }
     }
 
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      for (const member of readNarc(bytes).entries()) {
-        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        eachModel(data, `${file.path}#${member.name ?? member.index}`)
-      }
-    }
+    for (const asset of models) eachModel(asset.bytes, asset.path)
 
     expect(failures.slice(0, 10)).toEqual([])
-    expect(models).toBeGreaterThan(1000)
-    expect(vertexMatches).toBe(models)
-    expect(triangleMatches).toBe(models)
+    expect(parsed).toBeGreaterThan(1000)
+    expect(vertexMatches).toBe(parsed)
+    expect(triangleMatches).toBe(parsed)
   })
 
   it('parses its sound archives and resolves every audio resource', () => {
@@ -550,6 +629,298 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(rotations).toBeGreaterThan(1000)
   })
 
+  it('reads every render-command stream to a clean End', () => {
+    // The parameter counts were fitted, not taken from documentation, so the
+    // check on them is that the stream terminates where it should. A wrong
+    // count desynchronises and either runs off the end or stops on a byte that
+    // happens to be an End opcode partway through.
+    const failures: string[] = []
+    let streams = 0
+
+    for (const asset of models) {
+      let parsed: ReturnType<typeof readNsbmd>
+      try {
+        parsed = readNsbmd(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const model of parsed.models) {
+        streams++
+        if (model.renderCommandError !== undefined) {
+          failures.push(`${asset.path}#${model.name}: ${model.renderCommandError}`)
+        }
+      }
+    }
+
+    expect(streams).toBeGreaterThan(1000)
+    // A handful of effect models use opcodes this package does not identify;
+    // they degrade to no render commands rather than throwing.
+    expect(failures.length).toBeLessThan(streams / 100)
+  })
+
+  it('composes every blend term against a real node', () => {
+    // A blend term is three values, and the middle one had been read as
+    // padding. It is the node whose inverse bind transform the term composes
+    // with: it indexes a node every time, and differs from the stack slot
+    // beside it often enough that it cannot be the slot restated.
+    const failures: string[] = []
+    let terms = 0
+    let differing = 0
+    let blends = 0
+    let weighted = 0
+
+    for (const asset of models) {
+      let parsed: ReturnType<typeof readNsbmd>
+      try {
+        parsed = readNsbmd(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const model of parsed.models) {
+        for (const command of model.renderCommands) {
+          if (command.op !== RenderOp.NodeMix) continue
+          blends++
+          let sum = 0
+          const count = command.params[1] as number
+          for (let i = 0; i < count; i++) {
+            const slot = command.params[2 + i * 3] as number
+            const node = command.params[3 + i * 3] as number
+            sum += command.params[4 + i * 3] as number
+            terms++
+            if (node >= model.nodes.length) {
+              failures.push(`${asset.path}#${model.name}: blend term names node ${node}`)
+            }
+            if (node !== slot) differing++
+          }
+          // Weights are 256ths of a unit and a blend is a weighted average.
+          if (Math.abs(sum - 256) < 2) weighted++
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(terms).toBeGreaterThan(1000)
+    expect(weighted).toBe(blends)
+    // If the middle parameter were the slot restated it would never differ.
+    expect(differing / terms).toBeGreaterThan(0.25)
+  })
+
+  it('resolves every blend to the identity when the model is in its bind pose', () => {
+    // A blended vertex is stored in bind-pose space. Composing each term with
+    // the named node's inverse bind transform therefore has to give back the
+    // identity in the bind pose, at the point the blend is computed — before a
+    // later command reuses the slot it landed in.
+    const failures: string[] = []
+    let blends = 0
+
+    for (const asset of models) {
+      let parsed: ReturnType<typeof readNsbmd>
+      try {
+        parsed = readNsbmd(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const model of parsed.models) {
+        if (!model.renderCommands.some((c) => c.op === RenderOp.NodeMix)) continue
+        const inverseBind = inverseBindMatrices(model.renderCommands, model.nodes)
+        const stack: Float32Array[] = Array.from({ length: MATRIX_STACK_SIZE }, () => identity())
+        const world: Float32Array[] = model.nodes.map(() => identity())
+        const seen = new Set<number>()
+
+        for (const command of model.renderCommands) {
+          if (command.op === RenderOp.NodeDescription) {
+            const id = command.params[0] as number
+            const parentId = command.params[1] as number
+            const node = model.nodes[id]
+            if (!node) continue
+            const parent = seen.has(parentId) ? (world[parentId] as Float32Array) : identity()
+            const result = multiply(parent, node.local)
+            world[id] = result
+            seen.add(id)
+            const slot = command.params[3]
+            if ((command.opcode & 0x20) !== 0 && slot !== undefined && slot < MATRIX_STACK_SIZE) {
+              stack[slot] = result
+            }
+          } else if (command.op === RenderOp.NodeMix) {
+            const count = command.params[1] as number
+            const sources: Float32Array[] = []
+            const weights: number[] = []
+            for (let i = 0; i < count; i++) {
+              const slot = command.params[2 + i * 3] as number
+              const node = command.params[3 + i * 3] as number
+              const posed = (stack[slot] ?? identity()) as Float32Array
+              const bind = inverseBind[node]
+              sources.push(bind ? multiply(posed, bind) : posed)
+              weights.push((command.params[4 + i * 3] as number) / 256)
+            }
+            const result = blend(sources, weights)
+            blends++
+            let worst = 0
+            const I = identity()
+            for (let k = 0; k < 16; k++) {
+              worst = Math.max(worst, Math.abs((result[k] as number) - (I[k] as number)))
+            }
+            if (worst > 0.01) {
+              failures.push(`${asset.path}#${model.name}: a blend is ${worst.toFixed(3)} off`)
+            }
+            const destination = command.params[0] as number
+            if (destination < MATRIX_STACK_SIZE) stack[destination] = result
+          }
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(blends).toBeGreaterThan(1000)
+  })
+
+  it("scales every vertex by the model's own position scale, and nothing else", () => {
+    // A model's positions are stored small. Two things scale them: the
+    // `PositionScale` render command, before the display list starts, and
+    // `MTX_SCALE` inside it, which re-applies the same factor after an
+    // `MTX_RESTORE` drops it.
+    //
+    // Both claims are checked here. Every `MTX_SCALE` the decoder meets must
+    // carry the model's own `upScale` — that is the first assertion. And
+    // decoding a shape a second time with the initial scale forced to one must
+    // move each vertex by either that scale or nothing at all: a vertex whose
+    // position is unchanged was already under an `MTX_SCALE`, and one whose
+    // position moved took the initial scale. Any third ratio would be a vertex
+    // left at a scale of its own.
+    const failures: string[] = []
+    let scaledShapes = 0
+    let plainShapes = 0
+    let scaleCommands = 0
+
+    for (const asset of models) {
+      let parsed: ReturnType<typeof readNsbmd>
+      try {
+        parsed = readNsbmd(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const model of parsed.models) {
+        const states = resolveShapeStates(model.renderCommands)
+        model.shapes.forEach((shape, index) => {
+          const expected = states[index]?.positionScaled ? model.upScale : 1
+          let unscaled: ReturnType<typeof runDisplayList>
+          let applied: ReturnType<typeof runDisplayList>
+          try {
+            unscaled = runDisplayList(shape.displayList, shape.name, { scale: 1 })
+            applied = model.geometry(index)
+          } catch {
+            return
+          }
+          for (const value of applied.scales) {
+            scaleCommands++
+            if (value !== model.upScale) {
+              failures.push(
+                `${asset.path}#${model.name}/${shape.name}: MTX_SCALE is ${value}, upScale is ${model.upScale}`,
+              )
+            }
+          }
+          if (expected === 1) plainShapes++
+          else scaledShapes++
+          for (let k = 0; k < unscaled.vertices.length; k++) {
+            const a = unscaled.vertices[k]
+            const b = applied.vertices[k]
+            if (!a || !b) continue
+            const same =
+              Math.abs(b.x - a.x) < 1e-4 && Math.abs(b.y - a.y) < 1e-4 && Math.abs(b.z - a.z) < 1e-4
+            const scaled =
+              Math.abs(b.x - a.x * expected) < 1e-4 &&
+              Math.abs(b.y - a.y * expected) < 1e-4 &&
+              Math.abs(b.z - a.z * expected) < 1e-4
+            if (!same && !scaled) {
+              failures.push(
+                `${asset.path}#${model.name}/${shape.name}: vertex ${k} is neither unchanged nor ${expected}x`,
+              )
+              return
+            }
+          }
+        })
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(scaleCommands).toBeGreaterThan(500)
+    expect(scaledShapes).toBeGreaterThan(1000)
+    expect(plainShapes).toBeGreaterThan(100)
+  })
+
+  it('leaves a blended vertex where it was, when the model is in its bind pose', () => {
+    // The same invariant as above, carried through to the vertices: a blended
+    // vertex has to land exactly where the display list put it, bar the model's
+    // own downScale, which posing folds in.
+    //
+    // Which vertices those are has to be worked out per shape. A model reuses
+    // stack slots, so a slot holding a blend when one shape is drawn may hold a
+    // plain node's transform by the time the next one is; counting every slot
+    // that is ever a blend destination scores correct output as broken.
+    let count = 0
+    let exact = 0
+    let worstAnywhere = 0
+
+    for (const asset of models) {
+      let model: Model | undefined
+      try {
+        model = readNsbmd(asset.bytes).models[0]
+      } catch {
+        continue
+      }
+      if (!model) continue
+
+      const blendedPerShape: Set<number>[] = []
+      const live = new Set<number>()
+      for (const command of model.renderCommands) {
+        if (command.op === RenderOp.NodeMix) live.add(command.params[0] as number)
+        else if (
+          command.op === RenderOp.NodeDescription &&
+          (command.opcode & 0x20) !== 0 &&
+          command.params[3] !== undefined
+        ) {
+          live.delete(command.params[3] as number)
+        } else if (command.op === RenderOp.Shape) {
+          blendedPerShape[command.params[0] as number] = new Set(live)
+        }
+      }
+      if (!blendedPerShape.some((s) => s && s.size > 0)) continue
+
+      let worst = 0
+      let any = false
+      try {
+        model.shapes.forEach((shape, index) => {
+          const blended = blendedPerShape[index]
+          if (!blended || blended.size === 0) return
+          const rest = (model as Model).geometry(shape)
+          const posed = (model as Model).posedGeometry(index)
+          const scale = (model as Model).downScale
+          rest.vertices.forEach((v, k) => {
+            if (!blended.has(v.matrixId)) return
+            const q = posed.vertices[k]
+            if (!q) return
+            any = true
+            worst = Math.max(
+              worst,
+              Math.hypot(q.x - v.x * scale, q.y - v.y * scale, q.z - v.z * scale),
+            )
+          })
+        })
+      } catch {
+        continue
+      }
+      if (!any) continue
+      count++
+      worstAnywhere = Math.max(worstAnywhere, worst)
+      if (worst < 0.001) exact++
+    }
+
+    expect(count).toBeGreaterThan(500)
+    // Nothing on the cartridge is out by more than a fixed-point rounding.
+    expect(worstAnywhere).toBeLessThan(0.1)
+    expect(exact / count).toBeGreaterThan(0.85)
+  })
+
   it('reads every texture set and decodes every texture', () => {
     // The oracle is that texture sizes tile: computing a texture's byte length
     // from its format and dimensions must land on the next texture's offset,
@@ -607,14 +978,7 @@ describe.skipIf(!romPath)('a real cartridge', () => {
       }
     }
 
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      for (const member of readNarc(bytes).entries()) {
-        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        visit(data, `${file.path}#${member.name ?? member.index}`)
-      }
-    }
+    for (const asset of textured) visit(asset.bytes, asset.path)
 
     expect(failures.slice(0, 10)).toEqual([])
     expect(sets).toBeGreaterThan(1000)
@@ -628,123 +992,177 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // right is that a track's computed length lands exactly on the next
     // track's offset — the file's own numbers, not this code's.
     const failures: string[] = []
-    let animations = 0
+    let count = 0
     let tracks = 0
     let adjacent = 0
 
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      for (const member of readNarc(bytes).entries()) {
-        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        if (!isNsbca(data)) continue
-        try {
-          for (const animation of readNsbca(data).animations) {
-            animations++
-            const sorted = [...animation.tracks].sort((a, b) => a.offset - b.offset)
-            tracks += sorted.length
-            for (let i = 0; i < sorted.length - 1; i++) {
-              const here = sorted[i] as (typeof sorted)[number]
-              const next = sorted[i + 1] as (typeof sorted)[number]
-              adjacent++
-              if (here.offset + boneTrackSize(here.flags) !== next.offset) {
-                failures.push(
-                  `${file.path}#${animation.name}: track ${i} of ${boneTrackSize(here.flags)} bytes does not reach ${next.offset - here.offset}`,
-                )
-              }
+    for (const asset of animations) {
+      try {
+        for (const animation of readNsbca(asset.bytes).animations) {
+          count++
+          const sorted = [...animation.tracks].sort((a, b) => a.offset - b.offset)
+          tracks += sorted.length
+          for (let i = 0; i < sorted.length - 1; i++) {
+            const here = sorted[i] as (typeof sorted)[number]
+            const next = sorted[i + 1] as (typeof sorted)[number]
+            adjacent++
+            if (here.offset + boneTrackSize(here.flags) !== next.offset) {
+              failures.push(
+                `${asset.path}#${animation.name}: track ${i} of ${boneTrackSize(here.flags)} bytes does not reach ${next.offset - here.offset}`,
+              )
             }
           }
-        } catch (error) {
-          failures.push(
-            `${file.path}#${member.name ?? member.index}: ${error instanceof Error ? error.message : String(error)}`,
-          )
+        }
+      } catch (error) {
+        failures.push(`${asset.path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(count).toBeGreaterThan(1000)
+    expect(tracks).toBeGreaterThan(10000)
+    expect(adjacent).toBeGreaterThan(10000)
+  })
+
+  it('predicts a constant scale axis from its flag bit', () => {
+    // Flag bits 11 to 13 do not change an entry's length — a constant scale
+    // axis and an animated one both take eight bytes — so the size fit could
+    // not see them. What identifies them is that a constant axis holds a value
+    // beside its reciprocal and an animated one holds a curve header.
+    //
+    // The direction that carries the weight is the negative one: an axis whose
+    // bit is clear must *never* look like a reciprocal pair. Reading the same
+    // eight bytes both ways is what makes that checkable.
+    let constantAxes = 0
+    let pairs = 0
+    let animatedAxes = 0
+    let falsePositives = 0
+
+    for (const asset of animations) {
+      let parsed: ReturnType<typeof readNsbca>
+      try {
+        parsed = readNsbca(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const animation of parsed.animations) {
+        const view = new DataView(
+          animation.data.buffer,
+          animation.data.byteOffset,
+          animation.data.byteLength,
+        )
+        const reciprocalPair = (at: number): boolean => {
+          if (at + 8 > animation.data.length) return false
+          const value = view.getInt32(at, true) / 4096
+          const other = view.getInt32(at + 4, true) / 4096
+          return value !== 0 && Math.abs(value * other - 1) < 0.02
+        }
+        for (const track of animation.tracks) {
+          for (const channel of track.scale ?? []) {
+            if (channel.kind === 'constant') {
+              constantAxes++
+              if (reciprocalPair(channel.at)) pairs++
+            } else {
+              animatedAxes++
+              if (reciprocalPair(channel.at)) falsePositives++
+            }
+          }
+        }
+      }
+    }
+
+    expect(constantAxes).toBeGreaterThan(10000)
+    expect(animatedAxes).toBeGreaterThan(10000)
+    // Zero-valued axes account for the shortfall on the positive side; the
+    // negative side has to be clean.
+    expect(pairs / constantAxes).toBeGreaterThan(0.99)
+    expect(falsePositives).toBe(0)
+  })
+
+  it('resolves every rotation reference to an orthonormal matrix', () => {
+    // A rotation reference's top bit picks between two pools that store
+    // rotations completely differently — a pivot form of three values and a
+    // basis form of five. Neither stores a full matrix, so both reconstruct
+    // one, and mathematics supplies the check the format does not: the result
+    // has to be orthonormal with determinant +1.
+    const failures: string[] = []
+    let pivot = 0
+    let basis = 0
+    const out = new Float32Array(16)
+
+    const orthonormal = (m: Float32Array): boolean => {
+      const col = (c: number) => [m[c * 4], m[c * 4 + 1], m[c * 4 + 2]] as number[]
+      const dot = (x: number[], y: number[]) =>
+        (x[0] as number) * (y[0] as number) +
+        (x[1] as number) * (y[1] as number) +
+        (x[2] as number) * (y[2] as number)
+      const a = col(0)
+      const b = col(1)
+      const c = col(2)
+      const det =
+        (a[0] as number) *
+          ((b[1] as number) * (c[2] as number) - (b[2] as number) * (c[1] as number)) -
+        (b[0] as number) *
+          ((a[1] as number) * (c[2] as number) - (a[2] as number) * (c[1] as number)) +
+        (c[0] as number) *
+          ((a[1] as number) * (b[2] as number) - (a[2] as number) * (b[1] as number))
+      return (
+        Math.abs(dot(a, a) - 1) < 0.02 &&
+        Math.abs(dot(b, b) - 1) < 0.02 &&
+        Math.abs(dot(c, c) - 1) < 0.02 &&
+        Math.abs(dot(a, b)) < 0.02 &&
+        Math.abs(dot(a, c)) < 0.02 &&
+        Math.abs(dot(b, c)) < 0.02 &&
+        Math.abs(det - 1) < 0.05
+      )
+    }
+
+    for (const asset of animations) {
+      let parsed: ReturnType<typeof readNsbca>
+      try {
+        parsed = readNsbca(asset.bytes)
+      } catch {
+        continue
+      }
+      for (const animation of parsed.animations) {
+        const refs = new Set<number>()
+        for (const track of animation.tracks) {
+          if (!track.rotation) continue
+          if (track.rotation.kind === 'constant') refs.add(track.rotation.ref)
+          else {
+            const curve = track.rotation.curve
+            const dv = new DataView(
+              animation.data.buffer,
+              animation.data.byteOffset,
+              animation.data.byteLength,
+            )
+            for (let i = 0; i < curve.count; i++) {
+              const at = curve.offset + i * 2
+              if (at + 2 <= animation.data.length) refs.add(dv.getUint16(at, true))
+            }
+          }
+        }
+        for (const ref of refs) {
+          try {
+            rotationFromRef(animation, ref, out)
+          } catch (error) {
+            failures.push(
+              `${asset.path}#${animation.name}: ${error instanceof Error ? error.message : String(error)}`,
+            )
+            continue
+          }
+          if (ref & 0x8000) pivot++
+          else basis++
+          if (!orthonormal(out)) {
+            failures.push(`${asset.path}#${animation.name}: reference ${ref} is not a rotation`)
+          }
         }
       }
     }
 
     expect(failures.slice(0, 10)).toEqual([])
-    expect(animations).toBeGreaterThan(1000)
-    expect(tracks).toBeGreaterThan(10000)
-    expect(adjacent).toBeGreaterThan(10000)
-  })
-
-  it('leaves a blended vertex where it was, when the model is in its bind pose', () => {
-    // A blended vertex is stored in bind-pose space, so composing each blend
-    // term with the named node's inverse bind transform has to give back the
-    // identity, and the vertex has to land exactly where the display list put
-    // it — bar the model's own `downScale`, which posing folds in.
-    //
-    // Which vertices those are has to be worked out per shape: a model reuses
-    // stack slots, so a slot holding a blend when one shape is drawn may hold a
-    // plain node's transform by the time the next one is.
-    let models = 0
-    let exact = 0
-    let worstAnywhere = 0
-
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      for (const member of readNarc(bytes).entries()) {
-        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        if (!isNsbmd(data)) continue
-        let model: Model | undefined
-        try {
-          model = readNsbmd(data).models[0]
-        } catch {
-          continue
-        }
-        if (!model) continue
-
-        const blendedPerShape: Set<number>[] = []
-        const live = new Set<number>()
-        for (const command of model.renderCommands) {
-          if (command.op === RenderOp.NodeMix) live.add(command.params[0] as number)
-          else if (
-            command.op === RenderOp.NodeDescription &&
-            (command.opcode & 0x20) !== 0 &&
-            command.params[3] !== undefined
-          ) {
-            live.delete(command.params[3] as number)
-          } else if (command.op === RenderOp.Shape) {
-            blendedPerShape[command.params[0] as number] = new Set(live)
-          }
-        }
-        if (!blendedPerShape.some((s) => s && s.size > 0)) continue
-
-        let worst = 0
-        let any = false
-        try {
-          model.shapes.forEach((shape, index) => {
-            const blended = blendedPerShape[index]
-            if (!blended || blended.size === 0) return
-            const rest = (model as Model).geometry(shape)
-            const posed = (model as Model).posedGeometry(index)
-            const scale = (model as Model).downScale
-            rest.vertices.forEach((v, k) => {
-              if (!blended.has(v.matrixId)) return
-              const q = posed.vertices[k]
-              if (!q) return
-              any = true
-              worst = Math.max(
-                worst,
-                Math.hypot(q.x - v.x * scale, q.y - v.y * scale, q.z - v.z * scale),
-              )
-            })
-          })
-        } catch {
-          continue
-        }
-        if (!any) continue
-        models++
-        worstAnywhere = Math.max(worstAnywhere, worst)
-        if (worst < 0.001) exact++
-      }
-    }
-
-    expect(models).toBeGreaterThan(100)
-    // Nothing on the cartridge is out by more than a fixed-point rounding.
-    expect(worstAnywhere).toBeLessThan(0.1)
-    expect(exact / models).toBeGreaterThan(0.85)
+    expect(pivot).toBeGreaterThan(1000)
+    expect(basis).toBeGreaterThan(1000)
   })
 
   it('lays every animation curve out without overlapping another', () => {
@@ -755,49 +1173,43 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     const failures: string[] = []
     let curves = 0
 
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      for (const member of readNarc(bytes).entries()) {
-        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        if (!isNsbca(data)) continue
-        let parsed: readonly Animation[]
-        try {
-          parsed = readNsbca(data).animations
-        } catch (error) {
-          failures.push(`${file.path}: ${error instanceof Error ? error.message : String(error)}`)
-          continue
+    for (const asset of animations) {
+      let parsed: readonly Animation[]
+      try {
+        parsed = readNsbca(asset.bytes).animations
+      } catch (error) {
+        failures.push(`${asset.path}: ${error instanceof Error ? error.message : String(error)}`)
+        continue
+      }
+      for (const animation of parsed) {
+        const ends = new Map<number, number>()
+        const claim = (at: number, size: number) => {
+          curves++
+          ends.set(at, Math.max(ends.get(at) ?? 0, at + size))
         }
-        for (const animation of parsed) {
-          const ends = new Map<number, number>()
-          const claim = (at: number, size: number) => {
-            curves++
-            ends.set(at, Math.max(ends.get(at) ?? 0, at + size))
-          }
-          for (const track of animation.tracks) {
-            for (const channel of track.translation ?? []) {
-              if (channel.kind === 'curve') {
-                claim(channel.curve.offset, channel.curve.count * (channel.curve.narrow ? 2 : 4))
-              }
-            }
-            for (const channel of track.scale ?? []) {
-              if (channel.kind === 'curve') {
-                claim(channel.curve.offset, channel.curve.count * (channel.curve.narrow ? 4 : 8))
-              }
-            }
-            if (track.rotation?.kind === 'curve') {
-              claim(track.rotation.curve.offset, track.rotation.curve.count * 2)
+        for (const track of animation.tracks) {
+          for (const channel of track.translation ?? []) {
+            if (channel.kind === 'curve') {
+              claim(channel.curve.offset, channel.curve.count * (channel.curve.narrow ? 2 : 4))
             }
           }
-          const starts = [...ends.keys()].sort((a, b) => a - b)
-          for (let i = 0; i < starts.length - 1; i++) {
-            const stop = ends.get(starts[i] as number) as number
-            const next = starts[i + 1] as number
-            if (stop > next) {
-              failures.push(
-                `${file.path}#${animation.name}: curve at ${starts[i]} runs ${stop - next} bytes into the next`,
-              )
+          for (const channel of track.scale ?? []) {
+            if (channel.kind === 'curve') {
+              claim(channel.curve.offset, channel.curve.count * (channel.curve.narrow ? 4 : 8))
             }
+          }
+          if (track.rotation?.kind === 'curve') {
+            claim(track.rotation.curve.offset, track.rotation.curve.count * 2)
+          }
+        }
+        const starts = [...ends.keys()].sort((a, b) => a - b)
+        for (let i = 0; i < starts.length - 1; i++) {
+          const stop = ends.get(starts[i] as number) as number
+          const next = starts[i + 1] as number
+          if (stop > next) {
+            failures.push(
+              `${asset.path}#${animation.name}: curve at ${starts[i]} runs ${stop - next} bytes into the next`,
+            )
           }
         }
       }
@@ -811,25 +1223,17 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     const failures: string[] = []
     let posed = 0
 
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      for (const member of readNarc(bytes).entries()) {
-        const data = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        if (!isNsbca(data)) continue
-        try {
-          for (const animation of readNsbca(data).animations) {
-            const last = Math.max(0, animation.frameCount - 1)
-            for (const frame of [0, 1, animation.frameCount >> 1, last, animation.frameCount]) {
-              sampleAnimation(animation, frame)
-            }
-            posed++
+    for (const asset of animations) {
+      try {
+        for (const animation of readNsbca(asset.bytes).animations) {
+          const last = Math.max(0, animation.frameCount - 1)
+          for (const frame of [0, 1, animation.frameCount >> 1, last, animation.frameCount]) {
+            sampleAnimation(animation, frame)
           }
-        } catch (error) {
-          failures.push(
-            `${file.path}#${member.name ?? member.index}: ${error instanceof Error ? error.message : String(error)}`,
-          )
+          posed++
         }
+      } catch (error) {
+        failures.push(`${asset.path}: ${error instanceof Error ? error.message : String(error)}`)
       }
     }
 
@@ -845,44 +1249,46 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     // model itself stores.
     let bones = 0
     let matched = 0
+    let pairs = 0
 
-    for (const file of walkFiles(fs.root)) {
-      const bytes = fs.read(file)
-      if (!isNarc(bytes)) continue
-      const narc = readNarc(bytes)
-      const members = [...narc.entries()]
-      for (const member of members) {
-        if (!member.name?.endsWith('.nsbmd')) continue
-        const base = member.name.slice(0, -6)
-        const beside = members.find((m) => m.name === `${base}.nsbca`)
-        if (!beside) continue
-        const modelBytes = isLz10(member.data) ? decompressLz10(member.data) : member.data
-        const animBytes = isLz10(beside.data) ? decompressLz10(beside.data) : beside.data
-        if (!isNsbmd(modelBytes) || !isNsbca(animBytes)) continue
+    const byArchive = new Map<string, Asset[]>()
+    for (const asset of animations) {
+      const list = byArchive.get(asset.archive) ?? []
+      list.push(asset)
+      byArchive.set(asset.archive, list)
+    }
 
-        const model = readNsbmd(modelBytes).models[0]
-        if (!model) continue
-        for (const animation of readNsbca(animBytes).animations) {
-          if (animation.boneCount !== model.nodes.length) continue
-          const local = sampleAnimation(animation, 0)
-          for (const track of animation.tracks) {
-            const node = model.nodes[track.index]
-            const posedLocal = local[track.index]
-            if (!node || !posedLocal) continue
-            bones++
-            let worst = 0
-            for (let k = 0; k < 16; k++) {
-              worst = Math.max(
-                worst,
-                Math.abs((posedLocal[k] as number) - (node.local[k] as number)),
-              )
-            }
-            if (worst < 0.02) matched++
+    for (const asset of models) {
+      const beside = byArchive.get(asset.archive)?.find((a) => a.stem === asset.stem)
+      if (!beside) continue
+      let model: Model | undefined
+      let parsed: readonly Animation[]
+      try {
+        model = readNsbmd(asset.bytes).models[0]
+        parsed = readNsbca(beside.bytes).animations
+      } catch {
+        continue
+      }
+      if (!model) continue
+      for (const animation of parsed) {
+        if (animation.boneCount !== model.nodes.length) continue
+        pairs++
+        const local = sampleAnimation(animation, 0)
+        for (const track of animation.tracks) {
+          const node = model.nodes[track.index]
+          const posedLocal = local[track.index]
+          if (!node || !posedLocal) continue
+          bones++
+          let worst = 0
+          for (let k = 0; k < 16; k++) {
+            worst = Math.max(worst, Math.abs((posedLocal[k] as number) - (node.local[k] as number)))
           }
+          if (worst < 0.02) matched++
         }
       }
     }
 
+    expect(pairs).toBeGreaterThan(100)
     expect(bones).toBeGreaterThan(10000)
     // The shortfall is animations that genuinely do not open on the bind pose.
     expect(matched / bones).toBeGreaterThan(0.95)

@@ -10,6 +10,7 @@ import {
   readNsbca,
   sampleAnimation,
 } from '../src/nsbca.ts'
+import { basisRotation } from '../src/rotation.ts'
 
 /** Build an NSBCA holding one animation with the given per-bone flags. */
 function buildNsbca(name: string, frames: number, trackFlags: number[]): Uint8Array {
@@ -430,5 +431,58 @@ describe('sampleAnimation', () => {
   it('leaves an untouched bone at the identity', () => {
     const local = sampleAnimation(animation(), 2)[2] as Float32Array
     expect(Array.from(local)).toEqual(Array.from(identity()))
+  })
+})
+
+describe('basisRotation', () => {
+  const build = (a: number, b: number, c: number, d: number, e: number) => {
+    const out = identity()
+    basisRotation(out, a, b, c, d, e)
+    return out
+  }
+  const orthonormal = (m: Float32Array) => {
+    const col = (i: number) => [m[i * 4] as number, m[i * 4 + 1] as number, m[i * 4 + 2] as number]
+    const dot = (x: number[], y: number[]) =>
+      (x[0] as number) * (y[0] as number) +
+      (x[1] as number) * (y[1] as number) +
+      (x[2] as number) * (y[2] as number)
+    const [u, v, w] = [col(0), col(1), col(2)]
+    return (
+      Math.abs(dot(u, u) - 1) < 1e-3 &&
+      Math.abs(dot(v, v) - 1) < 1e-3 &&
+      Math.abs(dot(w, w) - 1) < 1e-3 &&
+      Math.abs(dot(u, v)) < 1e-3 &&
+      Math.abs(dot(u, w)) < 1e-3 &&
+      Math.abs(dot(v, w)) < 1e-3
+    )
+  }
+
+  it('recovers the cell the format does not store', () => {
+    // A turn of 60 degrees about z: row 1's third cell is zero.
+    const s = Math.sqrt(3) / 2
+    const m = build(0.5, -s, 0, s, 0.5)
+    expect(orthonormal(m)).toBe(true)
+    expect(m[8]).toBeCloseTo(0, 5)
+    expect(m[9]).toBeCloseTo(0, 5)
+    expect(m[10]).toBeCloseTo(1, 5)
+  })
+
+  it('holds up when the row it would divide by is zero', () => {
+    // row0[2] == 0 makes the dot-product solve divide by zero; the magnitude
+    // form has to carry it.
+    expect(orthonormal(build(-0.2456, 0.9695, 0, -0.9695, -0.2456))).toBe(true)
+  })
+
+  it('holds up when the cell it recovers is zero and the inputs are quantised', () => {
+    // A turn about y, with the neighbouring cell quantised to 0.9998 — the
+    // closest 1.0.15 comes to one. Taking the magnitude there would invent a
+    // third cell of 0.02 out of the rounding.
+    const m = build(0.0776, 0, 0.9971, -0.0015, 0.9998)
+    expect(orthonormal(m)).toBe(true)
+    expect(m[9]).toBeCloseTo(0, 2)
+  })
+
+  it('returns a rotation even where both solves are degenerate', () => {
+    expect(orthonormal(build(0.9988, -0.05, 0, 0.0502, 0.9988))).toBe(true)
   })
 })

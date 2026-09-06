@@ -209,7 +209,12 @@ export function poseGeometry(geometry: Geometry, matrices: readonly Mat4[]): Geo
         (m[14] as number),
     }
   })
-  return { vertices, indices: geometry.indices, matrixIds: geometry.matrixIds }
+  return {
+    vertices,
+    indices: geometry.indices,
+    matrixIds: geometry.matrixIds,
+    scales: geometry.scales,
+  }
 }
 
 /** Cheap check for the `BMD0` stamp; does not validate the body. */

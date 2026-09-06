@@ -171,6 +171,8 @@ Against a retail cartridge, which is not in this repository:
 | **decoded vertex count == the model header's own count** | **6,889 / 6,889** |
 | **decoded triangles == `numTriangles + 2 × numQuads`** | **6,889 / 6,889** |
 | **a blended vertex stays put in the bind pose** | **1,018 / 1,138 models exactly; nothing anywhere out by more than 0.03** |
+| **every rotation reference resolves to an orthonormal matrix** | **16,506 constant and 1,662,623 curve samples** |
+| **every `MTX_SCALE` carries the model's own `upScale`** | no exception |
 
 Those two are independent, and both come from the file rather than from this
 code. An interpreter with a wrong parameter count or a missed partial-vertex
@@ -491,14 +493,34 @@ that way satisfies `a² + b² == 1`.
 
 **Bit clear — the basis pool**, ten bytes per entry: five values in **1.0.15**,
 not the 1.3.12 the geometry engine takes. The five are the whole of row 0 and
-the first two cells of row 1. Row 1's third cell is recovered from `|row1| == 1`
-and `row0 . row1 == 0`; row 2 is the cross product of the two.
+the first two cells of row 1. Row 1's third cell is recovered, and row 2 is the
+cross product of the two.
 
-All 6,963 references with the bit clear land inside the pool at a stride of ten,
-all 6,963 have a unit vector in their first three values, and all 6,963
-reconstruct to an orthonormal 3x3. Recovering the missing cell straight from
-`row0 . row1 == 0` instead divides by `row0[2]` and loses 525 of them, which is
-what the magnitude-first form in `rotation.ts` avoids.
+All 6,963 constant references with the bit clear land inside the pool at a
+stride of ten, and all 6,963 have a unit vector in their first three values.
+
+**Recovering the missing cell is the delicate part.** A rotation gives two ways
+to do it and both are unstable, in opposite regimes, against values this
+coarsely quantised:
+
+- `row0 . row1 == 0` fixes the cell directly, but divides by `row0[2]`. That
+  loses the matrix when the cell is near zero — 525 stored rotations.
+- `|row1| == 1` fixes its magnitude, with the dot product supplying only the
+  sign. That divides the error by the cell itself, so it fails when the true
+  value is near zero: a rotation about one axis stores its neighbour as 0.9998,
+  the closest 1.0.15 comes to 1, and `sqrt(1 - d² - e²)` turns that rounding
+  into a spurious 0.022 where the dot product says 0.0001 — 300 more.
+
+So pick by conditioning, taking whichever denominator is larger, and where both
+are zero — a turn about the z axis whose `d² + e²` quantises to just over one —
+the magnitude form gives the right answer of zero while the other divides by it.
+Then normalise: the stored values are a quantised rotation, and the nearest true
+rotation is what they mean.
+
+With that, **every rotation reference on the cartridge resolves to an
+orthonormal matrix** — all 16,506 constant ones and all 1,662,623 samples of the
+curves, which reach far more of the pools than the constants do. Checking only
+the constants, as an earlier revision did, missed both failure modes entirely.
 
 ### What an absent component means
 

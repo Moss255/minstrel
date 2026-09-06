@@ -126,6 +126,14 @@ export interface Geometry {
   readonly indices: readonly number[]
   /** Distinct `MTX_RESTORE` ids seen, in first-use order. */
   readonly matrixIds: readonly number[]
+  /**
+   * Distinct `MTX_SCALE` values seen, in first-use order.
+   *
+   * On the reference cartridge this is always empty or a single value equal to
+   * the model's `upScale`; it is reported so that can be checked rather than
+   * assumed.
+   */
+  readonly scales: readonly number[]
 }
 
 /** How many indices a primitive run of `n` vertices contributes. */
@@ -220,6 +228,7 @@ export function runDisplayList(
   const vertices: Vertex[] = []
   const indices: number[] = []
   const matrixIds: number[] = []
+  const scales: number[] = []
 
   // Geometry engine vertex state.
   let x = 0
@@ -269,7 +278,7 @@ export function runDisplayList(
       if (at + params * 4 > list.length) {
         // A packed list is padded to a multiple of four commands, so trailing
         // no-ops that run off the end are normal and mean the list is finished.
-        if (command === GeomCommand.Nop) return { vertices, indices, matrixIds }
+        if (command === GeomCommand.Nop) return { vertices, indices, matrixIds, scales }
         throw new NitroGfxError(`${what}: command 0x${command.toString(16)} lacks parameters`, at)
       }
       const p0 = params > 0 ? u32(list, at, what) : 0
@@ -290,6 +299,9 @@ export function runDisplayList(
           scaleX = fx32ToFloat(p0)
           scaleY = fx32ToFloat(u32(list, at - 8, what))
           scaleZ = fx32ToFloat(u32(list, at - 4, what))
+          for (const value of [scaleX, scaleY, scaleZ]) {
+            if (!scales.includes(value)) scales.push(value)
+          }
           break
         case GeomCommand.Color: {
           // 5 bits per channel, blue in the high bits.
@@ -365,5 +377,5 @@ export function runDisplayList(
   // A list may end without an explicit END_VTXS; flush whatever is open.
   if (primitive >= 0) emitPrimitive(primitive, run, indices, what, at)
 
-  return { vertices, indices, matrixIds }
+  return { vertices, indices, matrixIds, scales }
 }

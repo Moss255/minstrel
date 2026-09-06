@@ -43,15 +43,26 @@ export function pivotRotation(out: Mat4, pivot: number, a: number, b: number): v
  * Build the 3x3 of a *basis* rotation from the five values stored for it.
  *
  * The five are the whole of row 0 and the first two cells of row 1. Row 1's
- * third cell is recovered from the two constraints a rotation must satisfy:
- * `|row1| == 1` fixes its magnitude and `row0 . row1 == 0` fixes its sign.
- * Row 2 is then the cross product of the first two.
+ * third cell is not stored, and a rotation gives two ways to recover it:
+ * `row0 . row1 == 0` fixes it directly, and `|row1| == 1` fixes its magnitude
+ * with the dot product supplying only the sign.
  *
- * Solving for the magnitude rather than straight from `row0 . row1 == 0` is
- * what makes this stable: the direct solution divides by `row0[2]`, and on the
- * reference cartridge 525 of 6,963 stored rotations have a `row0[2]` small
- * enough for that to lose the matrix. Taking the magnitude first brings all
- * 6,963 out orthonormal.
+ * **Both are unstable, in opposite regimes, and the values are quantised.**
+ * Solving from the dot product divides by `row0[2]`, so it loses the matrix
+ * when that cell is near zero — 525 of the cartridge's stored rotations.
+ * Solving from the magnitude divides the error by `f` itself, so it fails when
+ * the true `f` is near zero: a rotation about one axis stores the neighbouring
+ * cell as 0.9998, the closest 1.0.15 comes to 1, and `sqrt(1 - d² - e²)` turns
+ * that quantisation into a spurious 0.022 where the dot product says 0.0001.
+ * That accounts for 300 more.
+ *
+ * So pick by conditioning: whichever of `|row0[2]|` and the magnitude estimate
+ * is larger is the better-conditioned denominator, and where they are equal —
+ * both zero, on a rotation about the z axis whose `d² + e²` quantises to just
+ * over one — the magnitude form gives the right answer of zero while the other
+ * divides by it. Then normalise, because the stored values are a quantised
+ * rotation and the nearest true rotation is what they mean; row 2 is the cross
+ * product of the first two either way.
  */
 export function basisRotation(
   out: Mat4,
@@ -63,15 +74,28 @@ export function basisRotation(
 ): void {
   const magnitude = Math.sqrt(Math.max(0, 1 - d * d - e * e))
   const error = (f: number) => Math.abs(a * d + b * e + c * f)
-  const f = error(magnitude) <= error(-magnitude) ? magnitude : -magnitude
+  let f: number
+  if (Math.abs(c) > magnitude && c !== 0) f = -(a * d + b * e) / c
+  else f = error(magnitude) <= error(-magnitude) ? magnitude : -magnitude
 
-  set(out, 0, 0, a)
-  set(out, 0, 1, b)
-  set(out, 0, 2, c)
-  set(out, 1, 0, d)
-  set(out, 1, 1, e)
-  set(out, 1, 2, f)
-  set(out, 2, 0, b * f - c * e)
-  set(out, 2, 1, c * d - a * f)
-  set(out, 2, 2, a * e - b * d)
+  const r0 = normalise(a, b, c)
+  const r1 = normalise(d, e, f)
+  const r2: [number, number, number] = [
+    r0[1] * r1[2] - r0[2] * r1[1],
+    r0[2] * r1[0] - r0[0] * r1[2],
+    r0[0] * r1[1] - r0[1] * r1[0],
+  ]
+
+  for (let col = 0; col < 3; col++) {
+    set(out, 0, col, r0[col] as number)
+    set(out, 1, col, r1[col] as number)
+    set(out, 2, col, r2[col] as number)
+  }
+}
+
+/** Scale a vector to unit length, leaving a zero vector alone. */
+function normalise(x: number, y: number, z: number): [number, number, number] {
+  const length = Math.hypot(x, y, z)
+  if (length === 0 || !Number.isFinite(length)) return [x, y, z]
+  return [x / length, y / length, z / length]
 }

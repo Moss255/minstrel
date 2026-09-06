@@ -71,15 +71,23 @@ export interface CurveHeader {
   readonly count: number
 }
 
-/** One animated quantity: either the same every frame, or a curve. */
+/**
+ * One animated quantity: either the same every frame, or a curve.
+ *
+ * `at` is the field's own byte offset within the animation. A constant scale
+ * axis and an animated one occupy the same eight bytes, so which they are is
+ * decided by a flag bit rather than by size, and `at` is what lets that be
+ * checked against the bytes rather than taken on trust.
+ */
 export type Channel =
   | {
       readonly kind: 'constant'
+      readonly at: number
       readonly value: number
       /** Present on scale, which stores each value beside its reciprocal. */
       readonly reciprocal?: number
     }
-  | { readonly kind: 'curve'; readonly curve: CurveHeader }
+  | { readonly kind: 'curve'; readonly at: number; readonly curve: CurveHeader }
 
 /** A rotation channel's samples are references into the animation's two pools. */
 export type RotationChannel =
@@ -252,11 +260,16 @@ export function readNsbca(data: Uint8Array): Nsbca {
           if (bit(3 + axis)) {
             axes.push({
               kind: 'constant',
+              at: cursor,
               value: fx32ToFloat(u32(body, cursor, 'track.translation')),
             })
             cursor += 4
           } else {
-            axes.push({ kind: 'curve', curve: readCurve(body, cursor, false, 'track.translation') })
+            axes.push({
+              kind: 'curve',
+              at: cursor,
+              curve: readCurve(body, cursor, false, 'track.translation'),
+            })
             cursor += 8
           }
         }
@@ -281,11 +294,16 @@ export function readNsbca(data: Uint8Array): Nsbca {
           if (bit(11 + axis)) {
             axes.push({
               kind: 'constant',
+              at: cursor,
               value: fx32ToFloat(u32(body, cursor, 'track.scale')),
               reciprocal: fx32ToFloat(u32(body, cursor + 4, 'track.scaleReciprocal')),
             })
           } else {
-            axes.push({ kind: 'curve', curve: readCurve(body, cursor, false, 'track.scale') })
+            axes.push({
+              kind: 'curve',
+              at: cursor,
+              curve: readCurve(body, cursor, false, 'track.scale'),
+            })
           }
           cursor += 8
         }

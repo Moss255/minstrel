@@ -122,8 +122,9 @@ Where the data is geometry, mathematics supplies checks the format does not.
   sign of the pivot cell — expanding the determinant along it gives
   `det = (-1)^(row+col) · sign`, so the sign is not a free parameter to guess.
 - The five-value "basis" rotation stores row 0 and two cells of row 1; the
-  missing cell is recovered from `|row1| == 1` and `row0 · row1 == 0`.
-  **6,963 of 6,963** reconstruct orthonormal.
+  missing cell is recovered from `|row1| == 1` and `row0 · row1 == 0`, choosing
+  between them by which is better conditioned. **Every rotation reference on the
+  cartridge** reconstructs orthonormal — 16,506 constant, 1,662,623 sampled.
 - Scale is stored as a value beside its reciprocal, so `v × next == 1` identifies
   the field: **367,707 of 367,811** sixteen-bit scale samples.
 
@@ -456,14 +457,20 @@ it.
   to the forced sign. All 9,543 such references land inside the pool, and every
   one of the 93,811 reachable entries satisfies `a² + b² == 1`.
 - **Bit clear — the basis pool**, ten bytes: five values in **1.0.15**, not the
-  1.3.12 the geometry engine takes. All 6,963 land in the pool at a stride of
-  ten, all have a unit vector in their first three values, and all reconstruct
-  to an orthonormal 3×3.
+  1.3.12 the geometry engine takes. All land in the pool at a stride of ten and
+  all have a unit vector in their first three values.
 
-Recovering the basis's missing cell straight from `row0 · row1 == 0` divides by
-`row0[2]` and loses 525 of them to precision. Taking the magnitude first —
-`|row1| == 1` fixes the size, the dot product fixes only the sign — brings all
-6,963 out clean.
+Recovering the basis's missing cell is the delicate part, because a rotation
+gives two ways to do it and both are unstable against values this coarsely
+quantised, in opposite regimes. Solving from `row0 · row1 == 0` divides by
+`row0[2]`, losing 525 rotations where that cell is near zero. Solving from
+`|row1| == 1` divides the error by the missing cell itself, so a turn about one
+axis — which stores its neighbour as 0.9998, the closest 1.0.15 comes to 1 —
+yields a spurious 0.022 where the dot product says 0.0001, losing 300 more.
+
+Picking whichever denominator is larger, and normalising the result because the
+stored values are a quantised rotation, resolves every reference on the
+cartridge.
 
 ### What an absent component means
 
@@ -536,7 +543,7 @@ on models tens of units across.
 
 ## Where the method caught a wrong answer
 
-Four times, so far. Each is recorded here because the failure mode is more
+Five times, so far. Each is recorded here because the failure mode is more
 instructive than the fix.
 
 ### GPC2 codec 4 was declared "not run-length" on a test pointed at codec 3
@@ -559,6 +566,19 @@ the data supports.*
 
 It is a plain NUL-separated list. It was compressed. *Structure inferred from
 the shape of undecompressed data is not structure.*
+
+### Only the constant rotations were ever checked
+
+The basis rotation pool was reported as `6,963 / 6,963` reconstructing
+orthonormal, and that number was true — of the references this project had
+looked at, which were the *constant* rotations only. Moving the check into the
+harness extended it to the samples inside animation curves, 1,662,623 of them,
+which reach far more of the pool. 332 did not reconstruct.
+
+Two distinct failure modes, both from quantisation, and each in the regime where
+the other solve is fine — see the basis pool section above. Both are fixed;
+every reference on the cartridge now resolves. *A check that passes on the
+subset you happened to sample is a statement about the sample.*
 
 ### A skinning measurement counted the wrong vertices
 
@@ -635,16 +655,13 @@ nothing decodes sequence commands, instruments or ADPCM.
 
 ## Evidence ledger
 
-### Reproduced by the harness
+Every check below runs in `tools/harness/test/cartridge.test.ts` against a real
+dump. They are skipped by default and never run in CI.
 
-`tools/harness/test/cartridge.test.ts` runs these against a real dump. They are
-skipped by default and never run in CI.
-
-The harness walks the cartridge filesystem and the NARC archives in it. It does
-**not** recurse into GPC2, which is why its model population is 6,889 files
-where a scan over the full extraction sees 8,804 models — the difference is the
-monster and character models that live inside `.gp2` archives. Both populations
-are stated where they are used; neither is a superset of the other by accident.
+The harness walks the cartridge filesystem and recurses through **both** archive
+kinds — NARC and GPC2 — decompressing as it goes, so it sees the same assets a
+full extraction does: the monster and character models inside `.gp2` archives
+included. Models and animations are collected once and shared between checks.
 
 | area | check | result |
 |---|---|---|
@@ -664,53 +681,47 @@ are stated where they are used; neither is a superset of the other by accident.
 | font | fonts parsed, glyphs decoded | 529 / 529, 70,604 |
 | tables | tagged tables parsed | 1,260 / 1,260 |
 | tables | record stream reaching the string table | 1,260 / 1,260 |
-| NSBMD | files parsed | 6,889 / 6,889 |
-| NSBMD | decoded vertex count == the header's own | 6,889 / 6,889 |
-| NSBMD | decoded triangles == `numTriangles + 2 × numQuads` | 6,889 / 6,889 |
-| NSBMD | bones and render commands read without failure | all models walked |
+| NSBMD | decoded vertex count == the header's own | every model |
+| NSBMD | decoded triangles == `numTriangles + 2 × numQuads` | every model |
+| NSBMD | render-command streams reaching a clean `End` | all but a handful of effect models |
+| NSBMD | blend terms naming a real node | every term |
+| NSBMD | blend weights summing to `0x100` | every blend |
+| NSBMD | blend terms whose node differs from the slot beside it | over a quarter |
+| NSBMD | blends resolving to the identity in the bind pose | every blend |
+| NSBMD | `MTX_SCALE` carrying the model's own `upScale` | every one |
+| NSBMD | vertices left at a scale of their own | none |
 | NSBMD | blended vertices staying put in the bind pose | nothing over 0.1; over 85% of models exact |
 | NSBTX | texture data sizes tiling their block | over 95% |
 | NSBCA | track sizes landing on the next track's offset | 144,379 / 144,379 |
+| NSBCA | an animated scale axis looking like a reciprocal pair | none |
+| NSBCA | rotation references resolving to an orthonormal matrix | every one, constant and sampled |
 | NSBCA | curves overlapping another curve | 0 |
 | NSBCA | files sampling without an out-of-range read | every animation, five frames each |
 | NSBCA | frame 0 reproducing the model's own bind pose | over 95% of bones |
 
-The harness asserts thresholds rather than exact counts where a count would
-change with the dump — a different regional build has a different number of
-files, and a test that hard-codes one is a test that fails for the next person
-who runs it.
+Where a count would change with the dump — a different regional build has a
+different number of files — the harness asserts a floor and a failure count of
+zero rather than the exact figure. A test that hard-codes one cartridge's totals
+is a test that fails for the next person who runs it.
 
-### From scans over the full extraction
-
-These reach into GPC2 as well, so they see more models. They are one-off
-measurements rather than standing tests; the figures are what the fits and
-oracles were established against.
-
-| area | check | result |
-|---|---|---|
-| NSBMD | render-command streams reaching a clean `End` | 8,804 / 8,804 |
-| NSBMD | blend commands resolving to the identity in the bind pose | 6,093 / 6,093 |
-| NSBMD | blend terms whose middle parameter is a valid node index | 12,543 / 12,543 |
-| NSBMD | blended vertices staying put in the bind pose | 1,018 / 1,138 models; nothing over 0.03 |
-| NSBMD | `MTX_SCALE` values equal to the model's `upScale` | 126,616 / 126,616 |
-| NSBMD | vertices left at the wrong scale after a restore | 0 / 1,637,744 |
-| NSBCA | pivot pool entries satisfying `a² + b² == 1` | 93,811 / 93,811 |
-| NSBCA | basis pool entries reconstructing orthonormal | 6,963 / 6,963 |
-| NSBCA | frame 0 reproducing the model's own bind pose | 21,306 / 21,808 bones, 1,795 pairs |
-| NSBCA | scale axes whose flag bit predicts a reciprocal pair | 0 false positives in 66,712 |
-
----
+The exact figures each reading was established against are in the relevant
+package's `FORMAT.md`.
 
 ## What the record is for
 
 Two things.
 
 Every claim above is falsifiable against a dump anyone can supply, and the
-harness reproduces the standing ones. If a future change breaks a reading, one of
-those checks stops passing and says so immediately — which is the entire reason
-they are counted rather than spot-checked. The one-off scans are not standing
-tests; where a figure from one matters enough to defend, it belongs in the
-harness, and moving them there is worth doing.
+harness reproduces all of them. If a future change breaks a reading, one of those
+checks stops passing and says so immediately — which is the entire reason they
+are counted rather than spot-checked.
+
+That is not hypothetical. Several of these checks began as one-off scans written
+while a format was being worked out, and moving them into the harness was not
+bookkeeping: extending the rotation check from the constants it had been run
+against to every sample in every curve broke it immediately, on 332 references
+and two separate causes. A measurement that only ever ran once has told you
+about the run, not about the cartridge.
 
 And the corrections are kept deliberately. Three of the four wrong answers above
 were written down as established fact before they were disproved, and each was
