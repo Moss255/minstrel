@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vesper/game-formats": "workspace:*",
     "@vesper/l5-gpc": "workspace:*",
     "@vesper/nitro-comp": "workspace:*",
     "@vesper/nitro-gfx": "workspace:*",

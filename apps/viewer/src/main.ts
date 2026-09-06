@@ -1,3 +1,10 @@
+import {
+  isCollisionMesh,
+  isMapManifest,
+  type MapManifest,
+  readMapManifest,
+  resolveMapResources,
+} from '@vesper/game-formats'
 import { isGpc, readGpc } from '@vesper/l5-gpc'
 import { tryDecompressLz10 } from '@vesper/nitro-comp'
 import {
@@ -6,6 +13,7 @@ import {
   isNsbca,
   isNsbmd,
   isNsbtx,
+  type Mat4,
   type Model,
   type ModelMaterial,
   measureBounds,
@@ -30,10 +38,17 @@ import { type Camera, ModelRenderer, type Piece } from './renderer.ts'
  * scan takes, and is the thing to move into a Worker when the explorer grows.
  */
 
+/**
+ * Something the list can show: one model, or a whole map assembled from the
+ * resources its manifest names.
+ */
 interface Entry {
   path: string
   name: string
-  bytes: Uint8Array
+  /** Set for a single model. */
+  bytes?: Uint8Array
+  /** Set for an assembled map: the archive whose manifest describes it. */
+  archive?: string
 }
 
 /**
@@ -54,6 +69,16 @@ const texturesByName = new Map<string, { set: TextureSet; name: string }>()
  * number of bones.
  */
 const animationsByArchive = new Map<string, Animation[]>()
+
+/**
+ * Map manifests found in the scan, and what each archive holds.
+ *
+ * A map is not one model. Its archive holds a dozen loose files and a `.bmdj`
+ * beside them saying which of them the map is made of, so the viewer offers the
+ * assembled map as well as its individual pieces.
+ */
+const manifestsByArchive = new Map<string, MapManifest>()
+const membersByArchive = new Map<string, Map<string, Uint8Array>>()
 
 function must<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector)
@@ -139,8 +164,17 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
       collectTextures(payload)
       return
     }
+    if (isCollisionMesh(payload)) return
     if (isNsbtx(payload)) {
       collectTextures(payload)
+      return
+    }
+    if (isMapManifest(payload)) {
+      try {
+        manifestsByArchive.set(path.slice(0, path.lastIndexOf('/')), readMapManifest(payload))
+      } catch {
+        // A manifest that will not read is not fatal to the scan.
+      }
       return
     }
     if (isNsbca(payload)) {
@@ -156,9 +190,15 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
     }
     if (isNarc(payload)) {
       try {
+        const members = new Map<string, Uint8Array>()
         for (const member of readNarc(payload).entries()) {
-          visit(member.data, `${path}/${member.name ?? member.index}`, depth + 1)
+          const name = String(member.name ?? member.index)
+          const data = tryDecompressLz10(member.data) ?? member.data
+          members.set(name, data)
+          visit(member.data, `${path}/${name}`, depth + 1)
         }
+        // Kept so a map's manifest can resolve its resources by stem.
+        if (members.size > 0) membersByArchive.set(path, members)
       } catch {
         // A container that will not open is not fatal to the scan.
       }
@@ -179,13 +219,67 @@ function collectModels(rom: Uint8Array, pathFilter?: string): Entry[] {
 
   texturesByName.clear()
   animationsByArchive.clear()
+  manifestsByArchive.clear()
+  membersByArchive.clear()
   const fs = readNitroFs(rom)
   const needle = pathFilter?.toLowerCase()
   for (const file of walkFiles(fs.root)) {
     if (needle && !file.path.toLowerCase().includes(needle)) continue
     visit(fs.read(file), file.path, 0)
   }
-  return found
+
+  // A map is worth offering as one thing. Its pieces stay in the list too,
+  // because looking at one of them on its own is often what you want.
+  const maps: Entry[] = []
+  for (const [archive] of manifestsByArchive) {
+    maps.push({
+      path: archive,
+      name: `${archive.slice(archive.lastIndexOf('/') + 1)} (map)`,
+      archive,
+    })
+  }
+  return [...maps, ...found]
+}
+
+/**
+ * Load every model a map's manifest names.
+ *
+ * The manifest lists authoring names; the archive holds what they were built
+ * to. Nothing is placed: a map's pieces already carry their own world
+ * coordinates, which is why they can simply be drawn together.
+ */
+function assembleMap(archive: string): { models: Model[]; missing: string[]; collision: number } {
+  const manifest = manifestsByArchive.get(archive)
+  const members = membersByArchive.get(archive)
+  if (!manifest || !members) return { models: [], missing: [], collision: 0 }
+
+  const models: Model[] = []
+  const missing: string[] = []
+  let collision = 0
+  for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
+    if (files.length === 0) {
+      missing.push(resource.name)
+      continue
+    }
+    // One authored resource compiles to several files under the same stem, so
+    // take each for what it is rather than picking one and hoping.
+    for (const file of files) {
+      const bytes = members.get(file)
+      if (!bytes) continue
+      if (isCollisionMesh(bytes)) {
+        collision++
+        continue
+      }
+      if (!isNsbmd(bytes)) continue
+      try {
+        const model = readNsbmd(bytes).models[0]
+        if (model?.numShapes) models.push(model)
+      } catch {
+        missing.push(file)
+      }
+    }
+  }
+  return { models, missing, collision }
 }
 
 /** Index a container's textures by name, if it carries any. */
@@ -254,51 +348,78 @@ function renderList(): void {
     listEl.append(li)
   })
 }
-
 /**
- * What the viewer is currently showing: the model, its shapes' geometry before
- * posing, and the animation playing over it.
+ * What the viewer is currently showing: one model, or a whole map assembled
+ * from the resources its manifest names.
  *
- * Keeping the unposed geometry means a frame change is one pass of matrix
- * resolution and one pass over the vertices, with no display list re-run.
+ * A piece is one shape of one model, with its geometry as the display list gave
+ * it. Keeping it unposed means a frame change is one pass of matrix resolution
+ * and one pass over the vertices, with no display list re-run — and it is what
+ * lets several models share a scene, because each piece remembers which model
+ * to pose it against.
  */
+interface Piece_ {
+  readonly model: Model
+  readonly shape: number
+  readonly geometry: Geometry
+  readonly texture: DecodedTexture | undefined
+}
+
 interface Shown {
-  model: Model
   path: string
-  rest: Geometry[]
-  textures: (DecodedTexture | undefined)[]
+  models: Model[]
+  pieces: Piece_[]
   animations: Animation[]
   animation: Animation | undefined
   frame: number
+  /** An extra line for the overlay, when there is something to say. */
+  note: string | undefined
 }
 
 let shown: Shown | undefined
 let playing = true
 
+/** Every drawable shape of a model, with the texture its material binds. */
+function piecesOf(model: Model): Piece_[] {
+  return model.shapes.map((shape, index) => {
+    const materialIndex = model.shapeMaterials[index]
+    const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
+    return {
+      model,
+      shape: index,
+      geometry: model.geometry(shape),
+      texture: material ? textureFor(material) : undefined,
+    }
+  })
+}
+
 /** Upload the current frame, posing against the animation if one is playing. */
 function pose(): void {
   if (!shown) return
-  const { model, animation } = shown
+  const { animation } = shown
 
   // Each shape has its own matrix stack, because a model reuses slots between
   // shapes; `Model.pose` resolves them against the frame's node transforms.
-  let stacks = model.shapeMatrices
-  if (animation) {
-    const local = sampleAnimation(animation, shown.frame)
-    const nodes: NodeTransform[] = model.nodes.map((node, i) => {
-      const posed = local[i]
-      return posed ? { ...node, local: posed } : node
-    })
-    stacks = model.pose(nodes)
+  const stacks = new Map<Model, Mat4[][]>()
+  for (const model of shown.models) {
+    if (animation && animation.boneCount === model.nodes.length) {
+      const local = sampleAnimation(animation, shown.frame)
+      const nodes: NodeTransform[] = model.nodes.map((node, i) => {
+        const posed = local[i]
+        return posed ? { ...node, local: posed } : node
+      })
+      stacks.set(model, model.pose(nodes))
+    } else {
+      stacks.set(model, model.shapeMatrices as Mat4[][])
+    }
   }
 
-  const pieces: Piece[] = shown.rest.map((geometry, i) => {
-    const texture = shown?.textures[i]
-    const posed = poseGeometry(geometry, stacks[i] ?? model.matrices)
-    return texture ? { geometry: posed, ...texture } : { geometry: posed }
+  const drawn: Piece[] = shown.pieces.map((piece) => {
+    const stack = stacks.get(piece.model)?.[piece.shape] ?? piece.model.matrices
+    const posed = poseGeometry(piece.geometry, stack)
+    return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
-  const uploaded = renderer.upload(pieces)
-  describe(uploaded)
+  describe(renderer.upload(drawn))
 }
 
 function select(index: number): void {
@@ -307,21 +428,34 @@ function select(index: number): void {
   selected = index
 
   try {
-    const model = readNsbmd(entry.bytes).models[0]
-    if (!model) throw new Error('container holds no model')
-    const animations = animationsFor(model, entry.path)
-    shown = {
-      model,
-      path: entry.path,
-      rest: model.shapes.map((shape) => model.geometry(shape)),
-      textures: model.shapes.map((_, i) => {
-        const materialIndex = model.shapeMaterials[i]
-        const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
-        return material ? textureFor(material) : undefined
-      }),
-      animations,
-      animation: animations[0],
-      frame: 0,
+    if (entry.archive !== undefined) {
+      const { models, missing, collision } = assembleMap(entry.archive)
+      if (models.length === 0) throw new Error('the manifest names no model that reads')
+      shown = {
+        path: entry.path,
+        models,
+        pieces: models.flatMap(piecesOf),
+        animations: [],
+        animation: undefined,
+        frame: 0,
+        note:
+          `assembled from ${models.length} models` +
+          (collision > 0 ? ` and ${collision} collision meshes` : '') +
+          (missing.length > 0 ? `, ${missing.length} missing` : ''),
+      }
+    } else {
+      const model = readNsbmd(entry.bytes as Uint8Array).models[0]
+      if (!model) throw new Error('container holds no model')
+      const animations = animationsFor(model, entry.path)
+      shown = {
+        path: entry.path,
+        models: [model],
+        pieces: piecesOf(model),
+        animations,
+        animation: animations[0],
+        frame: 0,
+        note: undefined,
+      }
     }
   } catch (error) {
     shown = undefined
@@ -329,17 +463,16 @@ function select(index: number): void {
     return
   }
 
-  const model = shown.model
-  const pieces: Piece[] = shown.rest.map((geometry, i) => {
-    const texture = shown?.textures[i]
-    const posed = poseGeometry(geometry, model.shapeMatrices[i] ?? model.matrices)
-    return texture ? { geometry: posed, ...texture } : { geometry: posed }
+  const drawn: Piece[] = shown.pieces.map((piece) => {
+    const stack = piece.model.shapeMatrices[piece.shape] ?? piece.model.matrices
+    const posed = poseGeometry(piece.geometry, stack)
+    return piece.texture ? { geometry: posed, ...piece.texture } : { geometry: posed }
   })
 
-  const uploaded = renderer.upload(pieces)
-  // Frame the model on its bind pose, so the camera does not jump about as an
-  // animation moves the geometry.
-  const bounds = measureBounds(pieces.map((p) => p.geometry))
+  const uploaded = renderer.upload(drawn)
+  // Frame on the bind pose, so the camera does not jump about as an animation
+  // moves the geometry.
+  const bounds = measureBounds(drawn.map((p) => p.geometry))
   const size = Math.max(
     bounds.maxX - bounds.minX,
     bounds.maxY - bounds.minY,
@@ -362,19 +495,23 @@ function select(index: number): void {
 /** The overlay text for whatever is on screen. */
 function describe(uploaded: { vertices: number; triangles: number; textured: number }): void {
   if (!shown) return
-  const { model, animation } = shown
+  const { animation } = shown
+  const shapes = shown.pieces.length
   overlay.textContent = [
     shown.path,
-    `${model.numShapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
-    `${uploaded.textured}/${model.numShapes} shapes textured, from ${texturesByName.size} textures found`,
+    `${shapes} shapes · ${uploaded.vertices} vertices · ${uploaded.triangles} triangles`,
+    `${uploaded.textured}/${shapes} shapes textured, from ${texturesByName.size} textures found`,
+    shown.note,
     referenceMode ? `reference mode: ${DS_WIDTH}x${DS_HEIGHT}, 5-bit colour` : 'full resolution',
     animation
       ? `${animation.name} — frame ${shown.frame} of ${animation.frameCount}, ${animation.boneCount} bones`
       : shown.animations.length > 0
         ? 'bind pose'
-        : 'no animation in this archive drives this skeleton',
+        : undefined,
     'drag to orbit · wheel to zoom · W wireframe · R reference mode · space play/pause',
-  ].join('\n')
+  ]
+    .filter((line) => line !== undefined)
+    .join('\n')
 }
 
 /** Fill the animation picker and the frame slider for the current model. */

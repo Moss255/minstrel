@@ -295,3 +295,69 @@ positive `s16`, which suggests a sentinel. **Not established.**
 | cell size is a power of two | 1,178 / 1,178 |
 
 `tools/harness/test/cartridge.test.ts` reproduces them.
+
+---
+
+# `.bmdj` — what a map is made of
+
+A map archive holds a dozen loose files with no index between them. The `.bmdj`
+beside them is the list, and it is an ordinary tagged data table (above) whose
+resource records are what this reads.
+
+| tag | meaning |
+|---|---|
+| `0x6A` | number of resources |
+| `0x6C` | one per resource: position, **byte offset into the string table**, two unknowns |
+
+The offset is the detail that matters. Records address a string by where it
+begins, not by its position in the list, so a reader that counts names instead
+gets the first one right and drifts thereafter.
+
+Names are **authoring** names — `C01M0300.imd` — and the built files beside the
+manifest carry the same stem with whatever extension they were compiled to.
+
+**A resource is not one file.** One authored `.imd` compiles to everything it
+needs, and they all keep its stem: `C01M0300.imd` is `C01M0300.nsbmd` *and*
+`C01M0300.nsbta`, and `C01M03G1.imd` is a model, a joint animation and a config.
+`resolveMapResources` therefore returns every match rather than choosing one.
+Choosing looks harmless and is not: taking the first match on the reference
+cartridge loses a map's **main geometry** to the manifest file sitting beside it
+under the same stem, and the map still assembles — just without most of itself.
+
+## Evidence
+
+| check | result |
+|---|---|
+| manifests parsed | **755 / 755** |
+| the `0x6A` count equals the number of `0x6C` records | 755 / 755 |
+| every resource record resolves a string by its offset | 755 / 755 |
+| every name so resolved ends in `.imd` | 755 / 755 |
+| **resources present in their own archive** | **5,342 / 5,342** |
+
+What they turn out to be: 2,985 models, 1,133 collision meshes, 702 `.nsbta`
+texture animations, 521 `.nsbtp` pattern animations.
+
+**Assembly is worth doing, measurably.** A map's collision mesh should sit inside
+the ground the map draws. Across the cartridge it does so for 939 of 1,133
+meshes against the whole assembly, and 798 against the largest single model in
+it — so the pieces beyond the main geometry account for real walkable ground.
+The remainder is collision that extends past what the archive draws, which is
+what an invisible boundary at a map edge looks like.
+
+## Not established
+
+The manifest also carries a `0x6F` record per resource with fourteen values, and
+a small tag after each. Neither is read. The trailing tag is **not** a resource
+kind: `.nsbmd` and `.col2` alike are followed by `0x3F` most of the time, and
+the `0x6F` records are numbered in order on only 534 of 755 files.
+
+## Placement
+
+**There is none, and none is needed.** A manifest carries no transforms, and a
+map's pieces already hold their own world coordinates — on `C01M03` the main
+geometry, a lamp and a night overlay occupy three distinct, non-overlapping
+regions of one space. Assembly is drawing what the manifest lists.
+
+The exception is the `G1` resource, which is centred on the origin and comes
+with a joint animation and a config file. Something places that, and it is not
+the manifest.

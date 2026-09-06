@@ -23,6 +23,9 @@ importers:
 
   apps/viewer:
     dependencies:
+      '@vesper/game-formats':
+        specifier: workspace:*
+        version: link:../../packages/game-formats
       '@vesper/l5-gpc':
         specifier: workspace:*
         version: link:../../packages/l5-gpc

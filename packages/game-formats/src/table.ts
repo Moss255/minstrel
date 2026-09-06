@@ -61,6 +61,13 @@ export interface DataTable {
   readonly terminated: boolean
   /** Every record with a given tag. */
   withTag(tag: number): TableRecord[]
+  /**
+   * The string beginning at `offset` bytes into the string section.
+   *
+   * Records name a string by its byte offset, not by its position in the list,
+   * so this is how a record's reference is resolved.
+   */
+  stringAt(offset: number): string | undefined
 }
 
 function u32(d: Uint8Array, at: number, what: string): number {
@@ -111,6 +118,9 @@ export function readDataTable(data: Uint8Array): DataTable {
 
   // Strings are bytes, decoded byte-transparently; they are resource names.
   const strings: string[] = []
+  // Where each string begins, relative to the section. Records address strings
+  // by that offset rather than by ordinal, so both are kept.
+  const byOffset = new Map<number, string>()
   let start = stringOffset
   for (let i = stringOffset; i < stringOffset + stringSize; i++) {
     if (data[i] !== 0) continue
@@ -118,6 +128,7 @@ export function readDataTable(data: Uint8Array): DataTable {
       let name = ''
       for (let j = start; j < i; j++) name += String.fromCharCode(data[j] as number)
       strings.push(name)
+      byOffset.set(start - stringOffset, name)
     }
     start = i + 1
   }
@@ -172,6 +183,7 @@ export function readDataTable(data: Uint8Array): DataTable {
   return {
     unknown_0x00,
     strings,
+    stringAt: (offset) => byOffset.get(offset),
     records,
     terminated,
     withTag: (tag) => records.filter((r) => r.tag === tag),

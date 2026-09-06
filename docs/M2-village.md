@@ -4,7 +4,7 @@ Against the milestone's own list.
 
 | M2 task | status |
 |---|---|
-| Map assembly and collision | **collision done**; map assembly not started |
+| Map assembly and collision | **both done** |
 | Character controller with original movement constants | not started, and see below |
 | Camera behaviour, extended for widescreen | not started |
 | Interior/exterior transitions, doors, stairs | not started; the link data is not located |
@@ -49,6 +49,39 @@ a cosine so a slope limit is a comparison rather than an angle. Every walkable
 triangle on the cartridge can be stood on: querying above each one's own
 centroid never falls through to something beneath it.
 
+## Where map assembly stands
+
+Done, and simpler than expected: **a map needs no placement data.**
+
+The `.bmdj` beside a map's files is its resource list — an ordinary tagged table
+whose `0x6C` records name each resource by a byte offset into the string table.
+Every one of the **5,342** resources named by the cartridge's **755** manifests
+is present in its own archive. They are authoring names, `C01M0300.imd`, and the
+built files carry the same stem.
+
+A resource compiles to *several* files under that stem — geometry, a material
+animation, a texture animation — so resolution returns all of them and the
+caller takes what it wants. That is not a nicety: choosing one arbitrarily loses
+a map's main geometry to the manifest file sitting beside it under the same
+stem, and the map still assembles, just without most of itself. It cost a
+measurement to notice, because a check that every resource resolved to *a* file
+passed at 100% while resolving many of them to the wrong one.
+
+No transforms anywhere, and none needed: a map's pieces already carry their own
+world coordinates. On `C01M03` the main geometry, a lamp and a night overlay sit
+in three distinct regions of one space, and the collision mesh lands inside all
+of it.
+
+The measure that assembly is doing something real: a map's collision should sit
+within the ground the map draws, and it does for 939 of 1,133 meshes against the
+whole assembly versus 798 against the largest single model. The rest is
+collision reaching past what the archive draws — an invisible boundary at a map
+edge.
+
+One resource resists this. `G1` is centred on the origin rather than placed, and
+comes with a joint animation and a `.bcfg`. Something instances it, and the
+manifest is not what.
+
 ## Two things that change the plan
 
 **The Hero is a parts library, not a model.** `chara_pc.gp2` holds 796 parts —
@@ -70,10 +103,8 @@ that is a stated deviation from the milestone's wording rather than an oversight
 
 ## Still to establish
 
-- **The map-to-model manifest in practice.** `.bmdj` lists a map's resources by
-  name, and 1,260 of them parse, but assembling a map from one has not been
-  tried. Whether it also carries placement, or whether every model is simply
-  drawn at the origin, is unknown.
+- **What places a `G1` resource.** Every other piece of a map carries its own
+  coordinates; that one does not.
 - **Interior and exterior links.** Which door leads where is not located.
   Most likely in the event scripts, which are extracted but not decoded.
 - **The collision attribute word.** Terrain kind — water, and the Hexagon's

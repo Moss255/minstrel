@@ -16,6 +16,13 @@ export {
   readBitmapFont,
 } from './font.ts'
 export {
+  isMapManifest,
+  type MapManifest,
+  type MapResource,
+  readMapManifest,
+  resolveMapResources,
+} from './mapmanifest.ts'
+export {
   type DataTable,
   isDataTable,
   readDataTable,

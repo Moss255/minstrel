@@ -4,9 +4,12 @@ import {
   isBitmapFont,
   isCollisionMesh,
   isDataTable,
+  isMapManifest,
   readBitmapFont,
   readCollisionMesh,
   readDataTable,
+  readMapManifest,
+  resolveMapResources,
 } from '@vesper/game-formats'
 import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
 import {
@@ -28,6 +31,7 @@ import {
   isNsbtx,
   MATRIX_STACK_SIZE,
   type Model,
+  measureBounds,
   multiply,
   RenderOp,
   readNsbca,
@@ -1461,6 +1465,122 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     expect(normals).toBe(triangles - degenerate)
     expect(enclosed).toBe(meshes)
     expect(tiled).toBe(meshes)
+  })
+
+  it('assembles a map from the resources its manifest names', () => {
+    // A map archive is a dozen loose files with no index between them; the
+    // `.bmdj` is the list. Two things have to hold for that to be usable.
+    //
+    // Every resource it names must be present — it names them by authoring
+    // name, so each is found by stem against whatever the archive built it to.
+    //
+    // And assembling must be worth doing: the collision mesh should sit inside
+    // the ground the map draws, and it does so far more often for the whole
+    // assembly than for any single model in it. That is the check that the
+    // manifest is describing a scene rather than listing unrelated files.
+    const failures: string[] = []
+    let manifests = 0
+    let named = 0
+    let resolved = 0
+    let checked = 0
+    let insideAssembly = 0
+    let insideLargest = 0
+
+    for (const file of walkFiles(fs.root)) {
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      const members = new Map<string, Uint8Array>()
+      try {
+        for (const member of readNarc(bytes).entries()) {
+          const name = String(member.name ?? member.index)
+          members.set(name, isLz10(member.data) ? decompressLz10(member.data) : member.data)
+        }
+      } catch {
+        continue
+      }
+
+      for (const [name, data] of members) {
+        if (!name.endsWith('.bmdj') || !isMapManifest(data)) continue
+        let manifest: ReturnType<typeof readMapManifest>
+        try {
+          manifest = readMapManifest(data)
+        } catch (error) {
+          failures.push(`${file.path}#${name}: ${error instanceof Error ? error.message : error}`)
+          continue
+        }
+        manifests++
+
+        const models: Model[] = []
+        const meshes: ReturnType<typeof readCollisionMesh>[] = []
+        for (const entry of resolveMapResources(manifest, members.keys())) {
+          named++
+          if (entry.files.length === 0) {
+            failures.push(`${file.path}#${name}: nothing in the archive is ${entry.resource.name}`)
+            continue
+          }
+          resolved++
+          for (const built of entry.files) {
+            const resource = members.get(built) as Uint8Array
+            if (isCollisionMesh(resource)) {
+              try {
+                meshes.push(readCollisionMesh(resource))
+              } catch {
+                // Reported by the collision test.
+              }
+            } else if (isNsbmd(resource)) {
+              try {
+                const model = readNsbmd(resource).models[0]
+                if (model?.numShapes) models.push(model)
+              } catch {
+                // Reported by the model test.
+              }
+            }
+          }
+        }
+        if (models.length === 0) continue
+
+        const boundsOf = (list: readonly Model[]) =>
+          measureBounds(list.flatMap((m) => m.shapes.map((_, i) => m.posedGeometry(i))))
+        const whole = boundsOf(models)
+        // The single model that covers the most ground, as the comparison.
+        let largest = boundsOf([models[0] as Model])
+        let largestSpan = 0
+        for (const model of models) {
+          const b = boundsOf([model])
+          const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ)
+          if (span > largestSpan) {
+            largestSpan = span
+            largest = b
+          }
+        }
+        const pad = 0.05 * Math.max(whole.maxX - whole.minX, whole.maxZ - whole.minZ)
+        const fits = (b: typeof whole, mesh: (typeof meshes)[number]) =>
+          mesh.bounds.minX / 4096 >= b.minX - pad &&
+          mesh.bounds.maxX / 4096 <= b.maxX + pad &&
+          mesh.bounds.minZ / 4096 >= b.minZ - pad &&
+          mesh.bounds.maxZ / 4096 <= b.maxZ + pad
+
+        for (const mesh of meshes) {
+          if (mesh.triangles.length === 0) continue
+          checked++
+          if (fits(whole, mesh)) insideAssembly++
+          if (fits(largest, mesh)) insideLargest++
+        }
+      }
+    }
+
+    expect(failures.slice(0, 10)).toEqual([])
+    expect(manifests).toBeGreaterThan(300)
+    // Every resource a manifest names is in the archive beside it.
+    expect(resolved).toBe(named)
+    expect(checked).toBeGreaterThan(300)
+    // Assembling has to account for more of the walkable ground than the
+    // biggest single piece does, or the manifest is not describing a scene.
+    // The margin is not large, because the biggest piece is usually the map's
+    // main geometry and already covers most of it; what assembly adds is the
+    // rest, and it must never take any away.
+    expect(insideAssembly).toBeGreaterThan(insideLargest)
+    expect(insideAssembly / checked).toBeGreaterThan(0.75)
   })
 
   it('stands on every collision triangle it can walk onto', () => {
