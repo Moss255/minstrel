@@ -4,7 +4,10 @@ import { dirname, extname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const ROOT = resolve(here, '../../apps/viewer/dist')
+// Which app to serve. Both take the same `?rom=` parameters, so either can be
+// driven headlessly: `APP=game` to look at the village, the explorer otherwise.
+const APP = process.env.APP ?? 'explorer'
+const ROOT = resolve(here, `../../apps/${APP}/dist`)
 const ROM = resolve(process.argv[2] ?? 'rom/rom.nds')
 const PORT = Number(process.env.PORT ?? 8765)
 const TYPES = {

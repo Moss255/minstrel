@@ -4,6 +4,8 @@ import { ANIMATION_FPS, motionAdvance, strideOf, TICK_RATE } from '../src/motion
 /** The village's walk cycle and the speed the character walks it at. */
 const frameCount = 9
 const unitsPerTick = 0.012
+/** Ground one cycle covers. A length, not a rate — see `STRIDE_HEIGHTS`. */
+const stride = strideOf(0.18)
 
 describe('standing', () => {
   it('runs at the rate the hardware plays an animation, not the simulation rate', () => {
@@ -14,20 +16,20 @@ describe('standing', () => {
       ticks: TICK_RATE,
       travelled: 0,
       frameCount,
-      unitsPerTick,
+      stride,
     })
     expect(perSecond).toBeCloseTo(ANIMATION_FPS, 6)
     expect(perSecond / frameCount).toBeLessThan(4)
   })
 
   it('ignores any distance it is given', () => {
-    const still = motionAdvance({ moving: false, ticks: 6, travelled: 0, frameCount, unitsPerTick })
+    const still = motionAdvance({ moving: false, ticks: 6, travelled: 0, frameCount, stride })
     const shoved = motionAdvance({
       moving: false,
       ticks: 6,
       travelled: 5,
       frameCount,
-      unitsPerTick,
+      stride,
     })
     expect(shoved).toBe(still)
   })
@@ -35,37 +37,57 @@ describe('standing', () => {
 
 describe('walking', () => {
   it('plays one cycle per stride', () => {
-    const stride = strideOf(frameCount, unitsPerTick)
     const advance = motionAdvance({
       moving: true,
       ticks: 60,
       travelled: stride,
       frameCount,
-      unitsPerTick,
+      stride,
     })
     expect(advance).toBeCloseTo(frameCount, 6)
   })
 
-  it('matches the standing rate when it is moving at full speed', () => {
-    // The two cases are consistent by construction: at full speed the cycle
-    // plays at the same frames a second as an idle does.
+  it('steps faster when the character moves faster', () => {
+    // The property the old stride could not have. It was derived from the
+    // character's speed, so the speed cancelled and the walk played at exactly
+    // `ANIMATION_FPS` however fast the character went — which is why an
+    // eight-frame cycle ran 7.5 steps a second and slowing the character down
+    // did nothing to it. A stride is a length, so the cadence follows the pace.
     const ticks = TICK_RATE
-    const advance = motionAdvance({
+    const brisk = motionAdvance({
       moving: true,
       ticks,
       travelled: unitsPerTick * ticks,
       frameCount,
-      unitsPerTick,
+      stride,
     })
-    expect(advance).toBeCloseTo(ANIMATION_FPS, 6)
+    const strolling = motionAdvance({
+      moving: true,
+      ticks,
+      travelled: unitsPerTick * ticks * 0.5,
+      frameCount,
+      stride,
+    })
+    expect(strolling).toBeCloseTo(brisk / 2, 6)
+  })
+
+  it('covers one stride of ground per cycle, whatever the frame rate is', () => {
+    // The cadence is ground over stride, and nothing else: two strides of
+    // ground is two cycles of animation.
+    const advance = motionAdvance({
+      moving: true,
+      ticks: 999,
+      travelled: stride * 2,
+      frameCount,
+      stride,
+    })
+    expect(advance).toBeCloseTo(frameCount * 2, 6)
   })
 
   it('stops stepping when a wall stops the character', () => {
     // Pressed into a wall: the keys are down and the ticks pass, but no ground
     // is covered, so the legs stop rather than running on the spot.
-    expect(motionAdvance({ moving: true, ticks: 60, travelled: 0, frameCount, unitsPerTick })).toBe(
-      0,
-    )
+    expect(motionAdvance({ moving: true, ticks: 60, travelled: 0, frameCount, stride })).toBe(0)
   })
 
   it('slows with the character rather than with the clock', () => {
@@ -74,14 +96,14 @@ describe('walking', () => {
       ticks: 60,
       travelled: unitsPerTick * 60,
       frameCount,
-      unitsPerTick,
+      stride,
     })
     const half = motionAdvance({
       moving: true,
       ticks: 60,
       travelled: unitsPerTick * 30,
       frameCount,
-      unitsPerTick,
+      stride,
     })
     expect(half).toBeCloseTo(full / 2, 6)
   })
@@ -89,18 +111,12 @@ describe('walking', () => {
 
 describe('a motion with no frames', () => {
   it('advances by nothing rather than dividing by zero', () => {
-    expect(
-      motionAdvance({ moving: true, ticks: 60, travelled: 1, frameCount: 0, unitsPerTick }),
-    ).toBe(0)
-    expect(
-      motionAdvance({ moving: false, ticks: 60, travelled: 0, frameCount: 0, unitsPerTick }),
-    ).toBe(0)
+    expect(motionAdvance({ moving: true, ticks: 60, travelled: 1, frameCount: 0, stride })).toBe(0)
+    expect(motionAdvance({ moving: false, ticks: 60, travelled: 0, frameCount: 0, stride })).toBe(0)
   })
 
-  it('does not divide by a standing-still speed', () => {
-    expect(
-      motionAdvance({ moving: true, ticks: 60, travelled: 1, frameCount, unitsPerTick: 0 }),
-    ).toBe(0)
+  it('does not divide by a stride of nothing', () => {
+    expect(motionAdvance({ moving: true, ticks: 60, travelled: 1, frameCount, stride: 0 })).toBe(0)
   })
 })
 
@@ -134,13 +150,14 @@ describe('what decides which motion plays', () => {
     // Driven by elapsed time rather than whole ticks, so the quantisation
     // above cannot reach the animation.
     const frameCount = 17
-    const unitsPerTick = 0.012
+    /** Ground one cycle covers. A length, not a rate — see `STRIDE_HEIGHTS`. */
+    const stride = strideOf(0.18)
     const one = motionAdvance({
       moving: false,
       ticks: (16 * 60) / 1000,
       travelled: 0,
       frameCount,
-      unitsPerTick,
+      stride,
     })
     const split =
       motionAdvance({
@@ -148,14 +165,14 @@ describe('what decides which motion plays', () => {
         ticks: (8 * 60) / 1000,
         travelled: 0,
         frameCount,
-        unitsPerTick,
+        stride,
       }) +
       motionAdvance({
         moving: false,
         ticks: (8 * 60) / 1000,
         travelled: 0,
         frameCount,
-        unitsPerTick,
+        stride,
       })
     expect(split).toBeCloseTo(one, 9)
   })

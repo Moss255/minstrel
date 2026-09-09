@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>minstrel</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <canvas id="gl"></canvas>
+      <div id="overlay"></div>
+      <div id="start">
+        <h1>minstrel</h1>
+        <p>
+          Reads a village out of your own Nintendo DS cartridge dump and lets you walk it. The
+          cartridge is read on this machine and never uploaded, and nothing is saved.
+        </p>
+        <input type="file" id="file" accept=".nds" />
+        <p class="hint">Drop a dump anywhere on this page, or choose one.</p>
+      </div>
+      <div id="status" class="status"></div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

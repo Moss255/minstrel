@@ -111,7 +111,15 @@ canvas {
   pointer-events: none;
   white-space: pre-line;
 }
-#scrubber {
+/*
+ * Elements hidden from script set `display` below, and an author rule beats the
+ * user-agent stylesheet's `[hidden] { display: none }` however specific that
+ * one looks. So the display rule is written not to apply while the element is
+ * hidden, rather than fighting it afterwards. Anything given a `display` here
+ * toggled through the `hidden` attribute needs the same guard.
+ */
+
+#scrubber:not([hidden]) {
   position: absolute;
   right: 12px;
   bottom: 12px;

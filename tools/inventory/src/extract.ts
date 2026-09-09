@@ -26,9 +26,9 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { isGpc, readGpc } from '@vesper/l5-gpc'
-import { decompressBlz, looksBlz, tryDecompressLz10 } from '@vesper/nitro-comp'
-import { isSdat, readSdat } from '@vesper/nitro-snd'
+import { isGpc, readGpc } from '@minstrel/l5-gpc'
+import { decompressBlz, looksBlz, tryDecompressLz10 } from '@minstrel/nitro-comp'
+import { isSdat, readSdat } from '@minstrel/nitro-snd'
 import {
   checkHeaderIntegrity,
   isNarc,
@@ -36,7 +36,7 @@ import {
   readNarc,
   readNitroFs,
   walkFiles,
-} from '@vesper/nitrofs'
+} from '@minstrel/nitrofs'
 import { toSafeName, toSafePath } from './paths.ts'
 import { identify } from './signatures.ts'
 

@@ -14,7 +14,7 @@ must work on any DS cartridge) nor specific to one title (so it does not belong
 in `game-formats`). It is a vendor format that appears across Level-5's DS
 output. It is kept MIT and game-agnostic on that basis.
 
-The codecs it uses are Nintendo's, so they live in `@vesper/nitro-comp`; this
+The codecs it uses are Nintendo's, so they live in `@minstrel/nitro-comp`; this
 package supplies only the framing.
 
 ## Header

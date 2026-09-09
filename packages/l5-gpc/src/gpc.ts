@@ -1,4 +1,4 @@
-import { decompressHuffman, decompressRawLz77, decompressRawRle } from '@vesper/nitro-comp'
+import { decompressHuffman, decompressRawLz77, decompressRawRle } from '@minstrel/nitro-comp'
 import { crc32OfName } from './crc32.ts'
 import { GpcError } from './errors.ts'
 

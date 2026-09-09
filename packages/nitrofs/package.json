@@ -1,11 +1,12 @@
 {
-  "name": "@vesper/nitrofs",
+  "name": "@minstrel/nitrofs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "description": "Nintendo DS cartridge header, FAT/FNT and overlay-table parser. Game-agnostic, browser-safe.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test/fixture.ts": "./test/fixture.ts"
   }
 }

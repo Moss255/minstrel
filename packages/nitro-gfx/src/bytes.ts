@@ -39,7 +39,7 @@ export function u32(d: Uint8Array, at: number, what = 'u32'): number {
  * Read a fixed-length Nitro resource name.
  *
  * Names are 16 bytes, NUL-padded. They are bytes rather than text — see the
- * same note in `@vesper/nitrofs` — so they are decoded byte-transparently and
+ * same note in `@minstrel/nitrofs` — so they are decoded byte-transparently and
  * trimmed at the first NUL.
  */
 export function resourceName(d: Uint8Array, at: number, length = 16): string {

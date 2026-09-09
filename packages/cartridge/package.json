@@ -1,0 +1,20 @@
+{
+  "name": "@minstrel/cartridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Walk a DS cartridge, unwrap every container it holds, and index what comes out.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@minstrel/l5-gpc": "workspace:*",
+    "@minstrel/nitro-comp": "workspace:*",
+    "@minstrel/nitro-gfx": "workspace:*",
+    "@minstrel/nitrofs": "workspace:*"
+  },
+  "devDependencies": {
+    "@minstrel/nitrofs": "workspace:*"
+  }
+}

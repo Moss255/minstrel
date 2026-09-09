@@ -1,0 +1,27 @@
+{
+  "name": "@minstrel/game",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Walk a village read from your own DS cartridge dump.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@minstrel/actor": "workspace:*",
+    "@minstrel/cartridge": "workspace:*",
+    "@minstrel/fixed": "workspace:*",
+    "@minstrel/game-formats": "workspace:*",
+    "@minstrel/gl": "workspace:*",
+    "@minstrel/nitro-gfx": "workspace:*",
+    "@minstrel/render": "workspace:*",
+    "@minstrel/sim": "workspace:*",
+    "@minstrel/world": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^7.1.9"
+  }
+}

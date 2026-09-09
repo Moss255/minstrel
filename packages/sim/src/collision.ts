@@ -1,5 +1,5 @@
-import { add, type Fx32, fx32, mul, sub } from '@vesper/fixed'
-import type { CollisionBounds, CollisionMesh, CollisionTriangle } from '@vesper/game-formats'
+import { add, type Fx32, fx32, mul, sub } from '@minstrel/fixed'
+import type { CollisionBounds, CollisionMesh, CollisionTriangle } from '@minstrel/game-formats'
 
 /**
  * The world the player walks on.
@@ -67,19 +67,37 @@ const MAX_CELLS = 64
 export interface PlacedMesh {
   readonly mesh: CollisionMesh
   readonly offset: { readonly x: number; readonly y: number; readonly z: number } | undefined
+  /**
+   * Uniform scale about the piece's own origin, applied before the offset.
+   *
+   * A placed piece is authored in a space an order of magnitude larger than the
+   * map it goes into, and **its collision is in that space too, not only its
+   * geometry**. Leaving this out left 139 of the cartridge's collision meshes
+   * standing at eight times the size of the thing they belong to — a doorway
+   * blocker the size of the building.
+   */
+  readonly scale?: number
 }
 
-/** One triangle moved by an offset, normal untouched — a translation cannot turn it. */
+const ZERO = { x: 0, y: 0, z: 0 }
+
+/**
+ * One triangle scaled about its own origin and moved by an offset.
+ *
+ * The normal is untouched: neither a translation nor a positive uniform scale
+ * can turn a face, and the normal is already a unit vector.
+ */
 function shift(
   triangle: CollisionTriangle,
   offset: { x: number; y: number; z: number },
+  scale: number,
 ): CollisionTriangle {
   return {
     ...triangle,
     vertices: triangle.vertices.map((v) => [
-      v[0] + offset.x,
-      v[1] + offset.y,
-      v[2] + offset.z,
+      v[0] * scale + offset.x,
+      v[1] * scale + offset.y,
+      v[2] * scale + offset.z,
     ]) as unknown as CollisionTriangle['vertices'],
   }
 }
@@ -93,20 +111,25 @@ export function createCollisionWorld(
   // A map's pieces are authored at their own origin and placed, so a mesh may
   // arrive with an offset. Applying it here rather than asking every caller to
   // rebuild the triangles keeps the placed and unplaced cases the same shape.
-  const placed = given.map((entry) =>
+  const placed: PlacedMesh[] = given.map((entry) =>
     'mesh' in entry ? entry : { mesh: entry, offset: undefined },
   )
-  const triangles = placed.flatMap(({ mesh, offset }) =>
-    offset === undefined ? mesh.triangles : mesh.triangles.map((t) => shift(t, offset)),
+  const triangles = placed.flatMap(({ mesh, offset, scale }) =>
+    offset === undefined && (scale ?? 1) === 1
+      ? mesh.triangles
+      : mesh.triangles.map((t) => shift(t, offset ?? ZERO, scale ?? 1)),
   )
-  const shifted = placed.map(({ mesh, offset }) => ({
-    minX: mesh.bounds.minX + (offset?.x ?? 0),
-    minY: mesh.bounds.minY + (offset?.y ?? 0),
-    minZ: mesh.bounds.minZ + (offset?.z ?? 0),
-    maxX: mesh.bounds.maxX + (offset?.x ?? 0),
-    maxY: mesh.bounds.maxY + (offset?.y ?? 0),
-    maxZ: mesh.bounds.maxZ + (offset?.z ?? 0),
-  }))
+  const shifted = placed.map(({ mesh, offset, scale }) => {
+    const k = scale ?? 1
+    return {
+      minX: mesh.bounds.minX * k + (offset?.x ?? 0),
+      minY: mesh.bounds.minY * k + (offset?.y ?? 0),
+      minZ: mesh.bounds.minZ * k + (offset?.z ?? 0),
+      maxX: mesh.bounds.maxX * k + (offset?.x ?? 0),
+      maxY: mesh.bounds.maxY * k + (offset?.y ?? 0),
+      maxZ: mesh.bounds.maxZ * k + (offset?.z ?? 0),
+    }
+  })
   const bounds: CollisionBounds = {
     minX: Math.min(...shifted.map((m) => m.minX), 0),
     minY: Math.min(...shifted.map((m) => m.minY), 0),

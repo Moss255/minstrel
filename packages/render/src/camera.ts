@@ -1,5 +1,5 @@
-import { type Fx32, fx32, toFloat } from '@vesper/fixed'
-import { type CharacterShape, type CollisionWorld, groundBelow } from '@vesper/sim'
+import { type Fx32, fx32, toFloat } from '@minstrel/fixed'
+import { type CharacterShape, type CollisionWorld, groundBelow } from '@minstrel/sim'
 
 /**
  * The camera, and how the DS's framing survives a screen that is not the DS's.

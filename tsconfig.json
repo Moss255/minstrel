@@ -7,5 +7,7 @@
     "tools/*/src/**/*.ts",
     "tools/*/test/**/*.ts",
     "*.ts"
-  ]
+  ],
+  "//": "packages/gl is excluded: it is the WebGL backend and needs DOM types. It has its own tsconfig, so the parser packages stay DOM-free at the type level.",
+  "exclude": ["packages/gl/**"]
 }

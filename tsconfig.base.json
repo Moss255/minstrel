@@ -21,15 +21,20 @@
     "forceConsistentCasingInFileNames": true,
 
     "paths": {
-      "@vesper/nitrofs": ["./packages/nitrofs/src/index.ts"],
-      "@vesper/nitro-comp": ["./packages/nitro-comp/src/index.ts"],
-      "@vesper/l5-gpc": ["./packages/l5-gpc/src/index.ts"],
-      "@vesper/nitro-gfx": ["./packages/nitro-gfx/src/index.ts"],
-      "@vesper/nitro-snd": ["./packages/nitro-snd/src/index.ts"],
-      "@vesper/game-formats": ["./packages/game-formats/src/index.ts"],
-      "@vesper/fixed": ["./packages/fixed/src/index.ts"],
-      "@vesper/sim": ["./packages/sim/src/index.ts"],
-      "@vesper/render": ["./packages/render/src/index.ts"]
+      "@minstrel/nitrofs": ["./packages/nitrofs/src/index.ts"],
+      "@minstrel/nitrofs/test/fixture.ts": ["./packages/nitrofs/test/fixture.ts"],
+      "@minstrel/nitro-comp": ["./packages/nitro-comp/src/index.ts"],
+      "@minstrel/l5-gpc": ["./packages/l5-gpc/src/index.ts"],
+      "@minstrel/nitro-gfx": ["./packages/nitro-gfx/src/index.ts"],
+      "@minstrel/nitro-snd": ["./packages/nitro-snd/src/index.ts"],
+      "@minstrel/game-formats": ["./packages/game-formats/src/index.ts"],
+      "@minstrel/fixed": ["./packages/fixed/src/index.ts"],
+      "@minstrel/sim": ["./packages/sim/src/index.ts"],
+      "@minstrel/render": ["./packages/render/src/index.ts"],
+      "@minstrel/gl": ["./packages/gl/src/index.ts"],
+      "@minstrel/cartridge": ["./packages/cartridge/src/index.ts"],
+      "@minstrel/world": ["./packages/world/src/index.ts"],
+      "@minstrel/actor": ["./packages/actor/src/index.ts"]
     }
   }
 }

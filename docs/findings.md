@@ -33,7 +33,7 @@ structure and counts.
 
 A European release, game code ending `P`, 256 MiB. Header and Nintendo-logo
 CRC-16 both verify. It is not in this repository and never will be; point
-`VESPER_TEST_ROM` at your own dump to reproduce any of this.
+`MINSTREL_TEST_ROM` at your own dump to reproduce any of this.
 
 | | |
 |---|---|
@@ -194,7 +194,11 @@ Every LZ10 stream inside every NARC decompresses to *exactly* its declared
 length: **11,179 of 11,179**.
 
 The practical trap: **a leading `0x10` is not proof of compression.** 173 `.spr`
-files begin `10 00 03 00`, where the `0x10` is a width. Identification is
+files begin `10 00 03 00`, where the `0x10` is the file's own first field rather
+than an LZ10 header. (That field is the **frame count**, not a width as an
+earlier revision said here — see the `.spr` entry under "Still open". `arrow3.spr`
+carries `01 00` and holds one 8x8 frame; `n003a.spr` carries `10 00` and holds
+sixteen 32x40 ones. The width is at `0x04`.) Identification is
 therefore by successful decode to the declared length, not by signature. Inside
 archives the signature happens to be exact — that is a property of this
 cartridge, not of the format, and code that relies on it will break elsewhere.
@@ -660,6 +664,121 @@ as the code it tests.*
 ## Still open
 
 Honest list. None of these blocks current work.
+
+**`.bmbl` — map connectivity, and a record stream still undecoded.** A file type
+this document had not recorded at all. 667 of them, one per map archive, in
+`/data/map/*.ambl` beside `.nsbtx` (737), `.dat` (657) and `.bpos` (5) — so the
+earlier reading of `.ambl` as holding the `.bats` attribute tables was wrong:
+what is in there is a map's **textures**, which is why a map assembled from the
+`.amdj` alone has none.
+
+They use the same container as `.bmdj` and `.bats`. **The string table reads on
+667 of 667**, and the header's own string count matches the names found on 667
+of 667 — so the container header is right, and the earlier note here that the
+shared parser "cannot read them" was too broad. It is the *record stream* that
+is not read: a walk of `M01M0000.bmbl` desynchronises after five records, and
+`readDataTable` throws on 387 of the 667 for that reason.
+
+What the string table holds is the useful part. `M01M0000.bmbl` names twelve:
+its own two textures (`M01M00T1`, `M01M00T2`), the map itself (`M01M0000`), and
+**nine other map codes** — `M01M01`..`M01M08` and `F01` — every one of which is
+a code the map index knows and an archive that ships.
+
+**Cartridge-wide, 858 of 898 such links are reciprocal (95.5%).** Each interior
+names exactly its exterior and nothing else: `M01M01`, `M01M02` and `M01M08` all
+name `M01` alone. `F01` names `M01`, `D01` and `S01M01`. That is a connectivity
+graph, and it is the first thing found that says which maps reach which — the
+map index carries no link field, and this was presumed to be in the event
+bytecode.
+
+**It is adjacency, not per-door targeting.** `M01` has ten doorway models
+(`M01M00D1`..`DA`) and names nine maps; across the cartridge the two counts
+agree on only 60 of the 172 maps that have both. So the set of neighbours is
+here; which doorway leads to which of them is not, and would have to come from
+the record stream.
+
+Nothing is parsed from them yet and no parser claims them. What the record tags
+mean is not established: the one reading that looked clean — tag `0x6c`, two
+values `0` and `9`, the byte offsets of the two texture names — is not
+trustworthy on its own, because offset `0` is a valid name and zero-valued
+fields are everywhere, so any scan for "values that resolve to a string" reports
+the first name constantly. That trap is why the record stream is being left
+alone rather than guessed at.
+
+**`.spr` — the format most of a village's cast is drawn from.** 1,316 files in
+`/data/ani`, a directory nothing had opened. **24 of the slice's 33 villagers
+are sprites**, not models: every `kind` 0 character in `<map>npc.bin` has a
+`<name>.spr` here and no 3D model anywhere on the cartridge, and every `kind` 2
+has a model and no sprite. So the "which parts make a named character" problem
+was never theirs.
+
+Established by decoding and looking at the result:
+
+| offset | type | meaning |
+|---|---|---|
+| `0x00` | `u16` | frame count — **not** the width, as the compression section here used to say |
+| `0x02` | `u16` | version; `3` on 1,315 of 1,316 |
+| `0x04` | `u16` | frame width |
+| `0x06` | `u16` | frame height |
+| `0x08` | `u32` | frames per row of the sheet |
+| `0x0C` | `u32` | zero on every file seen |
+| `0x10` | | 4bpp pixel indices, linear, sheet width = width x columns |
+
+`n003a.spr` is 16 frames of 32x40 laid out two across, and rendering it at 64
+pixels wide from `0x10` gives a clean two-column grid of villagers — head, body,
+arms, aligned on a grid with transparent margins. At 32 or 40 wide it shears
+into noise, which is what makes the layout a reading rather than a guess. 1,314
+of the 1,316 files fit 4bpp pixels inside their own length.
+
+The tail carries an animation table of 16-byte records — `(1, 0, 60, frame)` —
+eight of them for `n003a`, which is what a walk cycle with a frame duration
+looks like.
+
+**The palette is found.** It sits at the end of the pixel data behind a count
+word: a `u32` equal to `16`, then 16 `u16` in BGR555 with bit 15 clear.
+`n003a.spr` has it at `0x2984`, and the colours that come out — `#209c83`
+teal, `#392018` and `#4a2920` browns, `#eeb473` skin, `#f6f6f6` white — decode
+the sheet into a bearded villager in a purple robe and olive tunic, in several
+facings. Five of six village characters decode to recognisable, sensibly
+coloured people this way.
+
+Finding it needs the size equation, not a scan: a backward search for the count
+word lands on stray `16`s in the animation table. Enumerating every candidate
+and keeping the one where `palette - frames x width x height / 8bpp` lands at or
+after the header solves **1,265 of the 1,316** files, and puts the pixels at
+`0x2c` on 1,011 of them.
+
+The animation names are readable too, in a string table before the tables:
+`walk_down`, `walk_left`, `walk_up`, `walk_right`, and eight `stand_*` — an
+eight-direction character.
+
+**What is still not resolved is where each frame begins**, and the reason now
+looks structural rather than like a missing constant.
+
+`n003a` holds 663 rows of 32 pixels between the header and the palette. Its
+header says 16 frames of 32x40, and 16 x 40 = 640, so seven rows are unaccounted
+for. Autocorrelation of the row-ink profile peaks at a lag of **41** (0.812),
+not 40 — and 16 x 41 = 656 still leaves seven.
+
+Cutting on measured seams says why. Rows quieter than 45% of the sheet mean fall
+at rows 40, 81, 124, 164, 206, 247, 289, 330, 371, 413, 454, 496, 537, 579 and
+620 — **fifteen seams, so sixteen frames, agreeing with the header** — but their
+spacings are 40, 41, 43, 40, 42, 41, 42, 41, 41, 42, 41, 42, 41, 42, 41, 43.
+**The frames are not uniformly pitched.** No single stride explains them, which
+is why every fixed-pitch reading drifts across the sheet, and why 17 frames of
+39 — which divides 663 exactly — shears worse rather than better.
+
+If the heights vary, something must record them, and it has not been found. The
+region between the header and the pixels is four bytes on this file, too small
+for a table. The tables in the tail hold frame *indices* (0 to 11) and records
+of `(1, 0, 60, index)`, not row offsets. Two further readings were tried and
+disproved: rows stored bottom-up, and a per-frame table before the pixels — that
+region is pixel data.
+
+So the sheet decodes, the palette is right, and individual villagers are legible
+and correctly coloured; what is missing is the per-frame geometry. Until it is
+found a billboard would show a figure sliced across two frames, so nothing draws
+them yet.
 
 **GPC2 codec 7.** Five members, one archive, one per language. The only files on
 the cartridge that do not come out.

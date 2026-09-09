@@ -1,4 +1,4 @@
-import { NitroFsError } from '@vesper/nitrofs'
+import { NitroFsError } from '@minstrel/nitrofs'
 
 /**
  * Turn a cartridge filename into one that is safe to create on a host

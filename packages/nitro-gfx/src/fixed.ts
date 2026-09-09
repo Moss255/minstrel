@@ -2,7 +2,7 @@
  * Fixed-point conversions for the DS geometry engine.
  *
  * These produce **floats, for rendering only**. Gameplay maths lives in
- * `@vesper/fixed` and must never take a value from here.
+ * `@minstrel/fixed` and must never take a value from here.
  */
 
 /** fx16 is 1.3.12: one sign bit, three integer bits, twelve fractional. */

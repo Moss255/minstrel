@@ -1,5 +1,5 @@
 {
-  "name": "@vesper/sim",
+  "name": "@minstrel/sim",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vesper/fixed": "workspace:*",
-    "@vesper/game-formats": "workspace:*"
+    "@minstrel/fixed": "workspace:*",
+    "@minstrel/game-formats": "workspace:*"
   }
 }

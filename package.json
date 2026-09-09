@@ -1,5 +1,5 @@
 {
-  "name": "vesper",
+  "name": "minstrel",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.2",
@@ -9,13 +9,14 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --pretty && tsc -p apps/viewer/tsconfig.json --pretty",
+    "typecheck": "tsc -p tsconfig.json --pretty && tsc -p packages/gl/tsconfig.json --pretty && tsc -p apps/explorer/tsconfig.json --pretty && tsc -p apps/game/tsconfig.json --pretty",
     "lint": "biome check .",
     "format": "biome check --write .",
     "inventory": "node tools/inventory/src/cli.ts",
     "extract": "node tools/inventory/src/extract.ts",
-    "dev": "pnpm --filter @vesper/viewer dev",
-    "build": "pnpm --filter @vesper/viewer build"
+    "dev": "pnpm --filter @minstrel/game dev",
+    "build": "pnpm --filter @minstrel/game build && pnpm --filter @minstrel/explorer build",
+    "dev:explorer": "pnpm --filter @minstrel/explorer dev"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.14",

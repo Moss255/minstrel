@@ -275,6 +275,157 @@ files and `gridZ` on 1,024 — but "plausible on 82%" is not a reading.
 The cell size is a power of two on **1,178 of 1,178**: 8192 on 667 files, 2048
 on 262, 4096 on 173 and 1024 on 76.
 
+## An indoor map is authored an eighth larger than it looks
+
+**Established.** A map's own geometry is not always in the space a character
+stands in. An *outdoor* map is authored at its final size, and only the pieces
+it places are instanced from the larger space that `PLACED_PIECE_SCALE` divides.
+An **indoor** map is authored in that larger space *entirely* — its terrain, its
+collision, its furniture and its placements — and wants the same eighth before
+anyone can stand in it.
+
+`maplist9.bin` is what says which, in slot 17: `1` indoors, `2` outdoors, `0`
+neither. The labels in slot 5 are what establish it — of the 520 entries with
+`1` they read "Interior", "Church", "Well", "Inn", "Item Shop", "Interior - B1";
+of the 119 with `2`, "Exterior" and the named regions. **Nothing inside a map's
+own archive distinguishes the two**: the descriptor's scale field is `1, 1, 1`
+on every resource of the cartridge, and its per-map float is `1.20` on 728 maps
+and `1.00` on 18, neither of which tracks this.
+
+### Why an eighth, and how it was settled
+
+The doorway table cannot answer it, and this is worth stating plainly because it
+is the obvious place to look: a map and its own doorways are in the same space,
+so scaling both together changes nothing either can see. Measured, the doorways
+stand over their own floor on **95.6% before and 95.6% after**. Any similarity
+transform is invisible from inside.
+
+It takes a reference from outside that space, and there are three. All say the
+same eighth.
+
+**The furniture.** The inn's model draws its contents as separate shapes:
+
+| shape | as shipped | divided |
+|---|---|---|
+| a stool, 0.31 x 0.34 x 0.27 | **1.9 character-heights tall** | 0.24 |
+| a wardrobe, 1.35 x 1.54 x 0.77 | 8.6 tall | 1.07 |
+| a bed, 1.32 x 0.99 x 1.75 | 7.3 x 5.5 x 9.7 | 0.9 x 0.7 x 1.2 |
+
+A stool taller than the person sitting on it is not a reading of the data.
+
+**The doorway models**, which are placed and so already divided, and therefore
+sit in the character's space whatever the map does. The inn is **36 of its own
+doors wide** as shipped and 4.5 divided; `M01M08` goes from 105 to 13.
+
+**The village outside**, whose own props are already right undivided — its
+fences stand 0.9 of a character, its low walls 0.44 — so the two cannot be in
+one space. Undivided, the inn's floor covers **1,395 square character-heights
+against the whole village's 796**, and `M01M08` covers 4,627: a single room with
+nearly six times the floor of the village around it.
+
+### Two maps, two spaces
+
+A doorway's position and volume are in the map that holds it; its **arrival is a
+spot in the map it leads to** and takes that map's scale instead. Scaling both
+by the map that holds them puts the character an eighth of the way to the
+village every time they leave a house.
+
+### A doorway's volume is not in its map's space
+
+The three numbers a doorway stores are in **three different spaces**, and this
+is the one that is easy to get wrong:
+
+| | space | scales with the map? |
+|---|---|---|
+| where it stands | the map that holds it | **yes** |
+| where it comes out | the map it leads to | **yes, by that map's scale** |
+| how big it is | the character's | **no** |
+
+The volume being in neither map's space is measured, not assumed. The ruler is
+the **doorway model** standing at the trigger: a model is a placed piece, so it
+is already in the character's space whatever its map is doing. 154 of the
+cartridge's doorways have one, matched by position, and they say:
+
+| | height | width |
+|---|---|---|
+| outdoors, 74 of them | 1.30 | 1.42 |
+| indoors, volume left alone, 80 of them | **1.12** | **1.49** |
+| indoors, volume scaled with the map | 0.14 | 0.19 |
+
+A trigger about half again the size of its own door, indoors and out. Scaled
+with the map, an indoor one comes out at a seventh of its door and **narrower
+than the character** — 0.13 to 0.43 of their height across, against the 0.44
+they measure — so they would have to thread it dead centre to get out.
+
+Left at its own size an indoor trigger covers 4.3% to 31.5% of the room's
+walkable floor, against 3.4% for the village outside. That is a large share of a
+small room and it is meant to be: a doorway is a large share of a small room's
+wall. It still leaves two thirds of the worst of them free, which is what the
+character needs to step clear of a doorway they arrived in — see `doors.ts`.
+
+## A field's collision does not reach its own doorways
+
+**This is a known gap, and it is systematic.** Whether a map's own doorway has
+walkable collision under it, by the kind of map:
+
+| map code | doorways over their own collision |
+|---|---|
+| `C` `D` `H` `M` `R` `S` `T` | 92.8% – 100% |
+| `X` | 87% |
+| **`F` — fields** | **19.2%** (23 / 120) |
+
+Every other kind is 87% or better. Fields are 19%. That is not noise and it is
+not a few bad maps: 53 field maps carry doorways and the failure is spread
+across them.
+
+The Angel Falls field is the worked example. It ships **one** `.col2`, 826
+triangles, and its own header box says the mesh spans x −6.00 to 6.42 — which is
+what we read, exactly. Its three doorways stand at x −8.68 (the road to the
+village), 6.38 and 11.06. All three are at or beyond the edges of that mesh, and
+none has ground under it. The village's road arrives at x −8.23, agreeing with
+the field's own door back at −8.68, so the two independently stored coordinates
+agree with each other and disagree with the collision.
+
+### What it is not
+
+Recorded so the next person does not repeat them. Each was measured, not
+reasoned about:
+
+- **Not a scale.** Dividing the doorway coordinates by 4, 8, 12, 16, 20, 24 or
+  32 gives fields 4.8%, 19.0%, 42.1%, 76.2%, 73.0%, 76.2%, 83.3% — no peak, just
+  a climb, which is what collapsing every point onto a central mesh looks like.
+  Every other kind of map peaks cleanly at 8, which is how `PLACEMENT_SCALE` was
+  fixed in the first place.
+- **Not a translation.** The field's doorways span 19.7 units and its collision
+  spans 12.4. No offset fits one inside the other.
+- **Not missing files.** The archive holds exactly one `.col2` and 24 `.nsbmd`,
+  and the manifest names all 25. A search of the whole cartridge finds no other
+  collision file for this field. Only 13 of the 1,178 `.col2` sit in an archive
+  whose name they do not match, and they look like development leftovers.
+- **Not the neighbouring archives.** `F01M01` and `F01M02` exist, but they are
+  small separate places centred on their own origins — 2 collision triangles and
+  none — not the missing part of the field.
+- **Not `.bats`.** The attribute tables are 736–1,072 bytes of what read as
+  colour and lighting settings, four to seven records deep. There is no grid in
+  them.
+- **Not `.dat`.** 48 to 64 bytes. Too small to be terrain of any kind.
+- **Not the drawn terrain standing in for collision.** Treating every triangle
+  the field draws as ground gets 25.4% against the collision's 18.5%, and both
+  together 30.2%. The field's own doorways have no drawn geometry under them
+  either.
+
+### What it means for now
+
+The walkable ground a field actually uses is **not established**, and finding it
+means watching what the game does — the emulator work this repository does not
+do. What is established is that it is not in any file read here.
+
+Callers should expect a doorway onto a field to name an arrival with no floor.
+`apps/game` puts the character on the walkable ground nearest the arrival
+instead, which keeps which side of the map they came in on. Across the cartridge
+136 of 1,132 arrivals need that, 87 of them onto a field, and the ground found is
+a median 3.5 units from the arrival.
+
 ## The trailing records
 
 Eight bytes each, counted at `+0x34`, which divides the section exactly on
@@ -460,3 +611,458 @@ labelled "Interior" share the same combination of them.
 | entries carrying a code | **1,010 / 1,010** |
 | distinct codes naming an archive that ships | 667 / 872 |
 | entries carrying an archive code with a real `.bats` | 722 / 731 |
+
+---
+
+# `.bmbl` — a map's textures, and the maps it connects to
+
+One per map archive, in the `.ambl` beside the `.amdj` that holds the geometry.
+667 of them, 144 to 4,320 bytes, median 432. They share the tagged container
+above, and the same `.ambl` also holds the map's `.nsbtx` textures (737), a
+`.dat` (657) and, on five maps, a `.bpos`.
+
+There are 681 `.ambl` in all: these 667 per-map ones, and 14 grouping archives
+named `ats_B`..`ats_Z` that hold the cartridge's 504 `.bats` attribute tables
+instead. Only the per-map ones carry a `.bmbl`.
+
+An earlier revision of `docs/M0-inventory.md` said `.ambl` holds the `.bats`
+attribute tables. It does not, and the consequence is not cosmetic: a map's
+**textures** are in the `.ambl`, so a map assembled from its `.amdj` alone has
+none.
+
+## Header
+
+Identical to the shared table's.
+
+| offset | type | meaning |
+|---|---|---|
+| `0x00` | `u32` | `unknown_0x00` |
+| `0x04` | `u32` | string table offset |
+| `0x08` | `u32` | string table size |
+| `0x0C` | `u32` | string count |
+| `0x10` | | the record stream, running up to the string table |
+
+## Two readers, and why there are two
+
+`readMapLinks` reads the header and the string table and stops. `readMapTransitions`
+and `mapDoorways` walk the records.
+
+The split is historical but still earns its place. The records did not decode at
+first — a walk of `M01M0000.bmbl` desynchronised after five records and the shared
+`readDataTable` threw on **387 of the 667** files — because the record header was
+being measured wrong. It is `u16 tag, u8 count, two type bits per value, padded to
+four bytes`; the padding was the missing part. With it the records walk on **667 of
+667**. The earlier note in this file that "the record stream is not decoded" is
+superseded, and so is the conclusion drawn from it, below.
+
+`readMapLinks` survives because the names alone answer the question "what does this
+map connect to" without walking anything, and because it is the reader the map index
+already uses.
+
+`nameAt` is kept because records address strings by byte offset rather than by
+ordinal, as `.bmdj`'s do.
+
+## What the names are
+
+`M01M0000.bmbl` names twelve: its own two textures (`M01M00T1`, `M01M00T2`), the
+map itself (`M01M0000`), and **nine other map codes** — `M01M01`..`M01M08` and
+`F01`. Every one is a code `maplist9.bin` knows and an archive that ships.
+
+**A name cannot be classified from the file alone.** `M01M00T1` is this map's
+texture and `M01M01` is a neighbouring map, and both begin with the map's own
+code. So `linksTo` takes the caller's own test for what is a map code — in
+practice `readMapList`'s index — and the map's own code, which is dropped.
+
+## The doorways — `0x72`, and `0x73` + `0x74`
+
+A doorway is a volume you walk into, the map it leads to, and where you come out.
+Two record forms carry one, and both are live.
+
+| | trigger volume | destination | arrival | tail |
+|---|---|---|---|---|
+| `0x72`, 25 values | slots 0-6 | slot 8 | slots 11-14 | 15-24 |
+| `0x73` + `0x74` | `0x73` slots 1-7 | `0x74` slot 4 | `0x74` slots 7-10 | 11-23 |
+
+The trigger volume is `x, y, z, width, height, depth, angle`. The arrival is
+`x, y, z, facing`. Positions are in the same eighth-scale units `.bmdj` placements
+use — divided by `PLACEMENT_SCALE`, and confirmed by landing on the destination
+map's own collision floor. Angles are radians and are not scaled.
+
+**`width`, `height` and `depth` are the whole size of the volume, not half of
+it.** Measured against the doorway models the triggers guard, which is the one
+reference that does not favour a bigger answer:
+
+| | doorway model, as drawn | its trigger, as stored | ratio |
+|---|---|---|---|
+| the village's nine doors | 0.193 tall, every one | 0.250, every one | 1.30 |
+| the inn, from the inside | 0.179 tall | 0.188 | 1.05 |
+
+A trigger a little bigger than its own door is what a trigger is. Read as half,
+the village's would stand 0.50 tall — two and a half doors, and nearly three
+times the height of the character walking through.
+
+The `height` is a nominal doorway height rather than a measurement: 2 raw units
+on almost every doorway on the cartridge. Nothing should test against it.
+
+### The test that got this wrong
+
+An earlier revision of this file called these half-extents, on the strength of
+how often a doorway contains the point you arrive at coming back through it —
+45.2% read as half-extents against 8.0% read as full sizes.
+
+**That comparison cannot decide the question.** A box twice as big contains more
+points whatever the truth is, so the count favours the larger reading by
+construction; the two numbers measure the size ratio and nothing else. It was
+also the wrong question, because you arrive *in front of* a doorway rather than
+inside it, so neither number should be near 100%.
+
+The consequence was not cosmetic. Every trigger volume stood twice as wide and
+twice as deep as it should, which in a room the size of the village inn puts the
+way out most of the way across the floor.
+
+**Arrival is always three slots past the destination**, in both forms, and so is
+the rest of the tail. That is what makes these one structure rather than two.
+
+A `0x73` is a trigger and the `0x74` that follows it says what the trigger does.
+They are adjacent on **2,301 of 2,301** records, and no `0x74` naming a map lacks
+a `0x73` before it. Most `0x74` do something other than change map; those are
+skipped rather than guessed at, which is why 415 of the 440 read here are the
+24-value shape and the rest are shorter.
+
+The destination is taken from a fixed slot rather than by searching, and checked
+against the header's type bits. It holds up: **1,418 records mark that slot a
+string and none marks a second slot one**, so there is nothing to choose between.
+Two `0x72` mark it a string and store `0xFFFFFFFF` — a doorway with no destination,
+which reads as `undefined` rather than as a name.
+
+### The tail is not established
+
+Past the arrival each form has a marker and then **three further positions**. On
+847 of 1,393 records they repeat the arrival exactly, which invites reading them
+as somewhere for the party to stand. On 407 they are more than four units from it
+and on one they are 170, which no line-up explains. They are named `unknown` and
+carried nowhere.
+
+### Where the two forms overlap
+
+106 maps carry both forms; 315 carry only `0x72` and 23 only `0x74`, so neither is
+dead data. Where both describe the same doorway they do not coincide: across the
+village's seven shared doors the `0x73` trigger stands **one raw unit from the
+`0x72` one every time**, and is a unit deeper. The two agree on the angle exactly,
+which is what identifies them as one door rather than two.
+
+`mapDoorways` merges them, keeping the `0x73`/`0x74` arrival, because it is the
+better of the two by both measures available:
+
+| | arrival stands on the destination's floor | arrival is within half a unit of the door back |
+|---|---|---|
+| `0x72` | 736/958 (76.8%) | 755/935 (80.7%) |
+| `0x74` | 376/440 (85.5%) | **404/424 (95.3%)** |
+
+A form also repeats a doorway within itself — the village lists three of its ten
+`0x74` twice, alike but for two integers this parser does not read — and the
+repeat is dropped too. Doors that lead to the same map from different places are
+kept: of 196 same-destination pairs, 87 stand within 0.3 units and the rest are
+over three times as far apart.
+
+## Superseded: "adjacency, not per-door targeting"
+
+An earlier revision of this file concluded that which doorway leads to which
+neighbour "is not here — it would have to come from the record stream." It is
+here, and it did.
+
+The observation behind that conclusion was sound: `M01` has ten doorway *models*
+(`M01M00D1`..`DA`) against nine named maps, and across the cartridge those two
+counts agree on only 60 of the 172 maps that have both. A doorway model is scenery
+and a doorway record is a trigger, and there is no reason for them to be in
+correspondence — one arch can be decoration and one trigger can have no arch.
+
+The trap recorded alongside it stands, and is worth keeping: scanning records for
+values that happen to resolve to a string offset appears to work and does not.
+Offset `0` is a valid name and zero-valued fields are everywhere, so the first name
+in the table comes back as referenced by almost everything. The type bits are what
+make the destination slot readable; without them there is no way to tell a name
+from a coordinate.
+
+## Evidence
+
+Reproduced by `tools/harness`; the fixtures in `test/maplinks.test.ts` and
+`test/transitions.test.ts` are built in code.
+
+| check | result |
+|---|---|
+| files whose string table reads | **667 / 667** |
+| declared string count matches names found | **667 / 667** |
+| files whose records walk exactly to the string table | **667 / 667** |
+| `isMapLinks` accepts | 667 / 667 |
+| directed links to a known map code | 898 |
+| **links that are reciprocal** | **858 / 898 (95.5%)** |
+| `0x73` immediately followed by a `0x74` | **2,301 / 2,301** |
+| records marking the destination slot a string | 1,418 |
+| records marking a *second* slot a string | **0** |
+| transitions read | 1,416 — 976 `0x72`, 440 `0x74` |
+| doorways after merging the two forms | 1,150, across 444 maps |
+| doorways naming a code `maplist9.bin` knows | **1,149 / 1,150** |
+| **maps whose doorways match the map codes in their own string table** | **442 / 444** |
+| arrival stands on the destination map's collision floor | 884 / 1,132 (78.1%) |
+| arrival within half a unit of the door back | 932 / 1,099 (84.8%) |
+
+Two things make the reading trustworthy, and they are independent of each other.
+
+Reciprocity: each interior names exactly its exterior and nothing else — `M01M01`,
+`M01M02` and `M01M08` all name `M01` alone — and `F01` names `M01`, `D01` and
+`S01M01`. Names that happened to look like map codes would not agree with each
+other in both directions 858 times.
+
+Agreement between the two halves of the file: the doorways read out of the record
+stream name exactly the map codes found in the string table, on 442 of the 444
+maps that have any. Angel Falls' nine doorways are its nine named neighbours —
+eight houses and the road out to the field — and their trigger volumes stand where
+its doorway models stand. The two exceptions are both explicable: `M07` has a door
+to `M07M07` that its string table does not name, and `X05M10` has a door leading
+back into itself, which the name test excludes by design.
+
+The arrival checks are the weaker evidence and are reported as found. They fail
+where the destination map has no collision mesh assembled, where the arrival stands
+on something the mesh does not cover, and — for the door-back check — where a map
+is reached from somewhere that does not lead back to it.
+
+---
+
+# `<map>.npc` — who stands in a map, and where
+
+A NARC beside the map data in `/data/scenario`, holding two files: `<map>npc.bin`
+names the cast and `<map>place.bin` puts them. 74 archives, 1,385 names and
+1,285 placements between them.
+
+## The cast — `<map>npc.bin`
+
+An ordinary tagged data table (above). Its `0x03` records are the characters,
+five values each.
+
+| slot | meaning |
+|---|---|
+| 0 | `0xFFFFFF01` on every character record of the cartridge |
+| 1 | the character's id, which is what a placement refers to |
+| 2 | what it is drawn as — see below |
+| 3 | `0xFFFFFFFF`, unset |
+| 4 | byte offset into the string table, or `0xFFFFFFFF` for no name |
+
+**Slot 2 says whether a character is a model or a sprite.** Across the 33
+distinct names of the slice's village the split is exact and it is the byte that
+decides:
+
+| value | count | what it is |
+|---|---|---|
+| `0` | 901 | a 2D sprite: `/data/ani/<name>.spr` exists, and no 3D model of that name exists anywhere |
+| `1` | 317 | carried only by records with no name |
+| `2` | 132 | a 3D model: `/data/chara_sub/<name>.chr` exists, and no `.spr` does |
+| `5` | 35 | not established — the village's one example, `z015d`, has neither |
+
+Every `kind` 0 of the village has a sprite and no model; every `kind` 2 has a
+model and no sprite. 24 and 8 of the 33.
+
+## The placements — `<map>place.bin`
+
+**Not a tagged table**, though `isDataTable` says it is: its string offset
+happens to equal its length, which is exactly what that check tests. It is a
+stream of **variable-length** blocks — the gaps between them run from 76 to 924
+bytes — found by a two-word signature.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32` | `0xA5060003` |
+| `+0x04` | `u32` | `0xFFFFFF0A` |
+| `+0x08` | `u32` | not established; `0x44C` on only 1 of the 74 archives |
+| `+0x0C` | `u32` | the id of the character this places |
+| `+0x10` | `f32` | x, divided by `PLACEMENT_SCALE` |
+| `+0x14` | `f32` | y, likewise |
+| `+0x18` | `f32` | z, likewise |
+| `+0x1C` | `f32` | facing, in radians |
+
+What follows before the next block is not decoded, and nothing needs it.
+
+**The divisor is the same 8 that map placements need.** Raw, only 23 of the
+village's 49 characters fall inside its collision at all; divided by 8, **49 of
+49** do. The earlier reading of this data — that the positions "do not stand on
+the village's collision" — was measuring against a map whose doorway markers
+were still being read as walls.
+
+**The facing angle is established beyond reasonable doubt**: across all 1,285
+blocks it lies within 0 to 2π, and 71% sit on an exact multiple of 90°.
+
+## A cast list is not only that map's characters
+
+The village's file places five copies of `s097a` inside a circle 0.8 units
+across, all at one height, and that height is 0.157 above the ground beneath
+them — nine tenths of a character. They are standing on a shop floor, in the
+shop's own coordinates; the shop is a different map archive.
+
+Nothing in the file says which map a placement belongs to. Asking the map's own
+collision separates them cleanly: the characters that belong outside miss the
+ground by **0.006 to 0.030**, and the rest by **0.156 to 0.175**. Any threshold
+in that gap gives the same answer.
+
+## Evidence
+
+Reproduced by `tools/harness`; the fixtures in `test/npc.test.ts` are built in
+code.
+
+| check | result |
+|---|---|
+| archives holding both files | 74 |
+| cast lists read | 73 / 74 (one is zero bytes) |
+| placement blocks read | 1,285 |
+| **every block's id is an id in the cast list** | **73 / 74** |
+| placements joined to a character | 1,283 of 1,285 |
+| archives with fewer placements than names | 26 |
+| archives with as many placements as names | 45 |
+| archives with **more** placements than names | 1 (`R01`, by one) |
+| village characters inside its collision, raw | 23 / 49 |
+| **village characters inside its collision, ÷ 8** | **49 / 49** |
+| facing within 0 to 2π | 1,285 / 1,285 |
+| kind 0 with a sprite and no model (village) | 24 / 24 |
+| kind 2 with a model and no sprite (village) | 8 / 8 |
+
+---
+
+# `.spr` — the 2D characters
+
+1,316 files in `/data/ani`, a directory nothing had opened. **24 of the slice's
+33 villagers are sprites**, not models: every `kind` 0 character in a cast list
+has a `<name>.spr` here and no 3D model anywhere on the cartridge, and every
+`kind` 2 has a model and no sprite.
+
+## Header
+
+| offset | type | meaning |
+|---|---|---|
+| `0x00` | `u16` | frame count |
+| `0x02` | `u16` | version; `3` on 1,315 of 1,316 |
+| `0x04` | `u16` | frame width — **overstates the stride on most files, see below** |
+| `0x06` | `u16` | nominal frame height — one short of the pitch |
+| `0x08` | `u32` | `unknown_0x08` |
+| `0x0C` | `u32` | zero on every file seen |
+
+An earlier note in `docs/findings.md` said the leading `0x10` on these files was
+a width. It is the frame count: `arrow3.spr` carries `01 00` and holds one 8x8
+frame, `n003a.spr` carries `10 00` and holds sixteen.
+
+## The palette, and how it is found
+
+At the end of the pixel data behind a count word: a `u32` equal to `16`, then 16
+`u16` in BGR555 with bit 15 clear.
+
+**It has to be found by the size equation, not by scanning.** A backward search
+for the count word lands on stray `16`s in the animation tables at the end of
+the file. Enumerating candidates and keeping the one where the pixels implied by
+the header fit between the header and the candidate resolves **1,265 of the
+1,316** files.
+
+## The stride is not always the header's width
+
+On sheets whose `0x08` is `2` it is: **186 of the 187** such files read cleanly
+at the header's width. On the rest it overstates by exactly eight pixels —
+**1,001 of the 1,063** files with `0x08` of `4` are coherent at `width - 8` and
+none at `width`. The village's one such character, `n099a`, is a 32-wide sheet
+whose header claims 40; read at 40 it is diagonal noise.
+
+Keying off `0x08` would be wrong on the sixty-odd exceptions, so the two
+candidates are put to the data instead. A sheet read at its true stride has
+pixels that agree with the one below far more often than one read at the wrong
+stride, where every row is offset from the last and the image shears. The
+margin is not fine: `n099a` scores 0.79 at 32 against 0.53 at 40, and `n003a`
+0.69 at its header's 32 against 0.53 at 24.
+
+What the header's field means on those files, if not the stride, is not
+established.
+
+## Pixels
+
+4bpp indices, one row of the stride at a time, ending exactly where the count
+word begins. The start is a whole number of rows before it — anything else
+shears the sheet sideways rather than shifting it up, which is what made this
+look unreadable for a long time.
+
+Index 0 is transparent whatever colour the palette gives it.
+
+## Frames are not the header's height — INFERRED
+
+`n003a` holds **663 rows for 16 frames**, or 41.4375 each, and the header says
+40. Every fixed pitch drifts across the sheet.
+
+Cutting on rows where the sheet goes quiet gives seams at 40, 81, 124, 164, 206,
+247, 289, 330, 371, 413, 454, 496, 537, 579 and 620 — fifteen seams, so sixteen
+frames, agreeing with the header — and their spacings run 40, 41, 43, 40, 42 …
+averaging 41.4. Each of those fifteen sits within two rows of `k x rows /
+frames`, with a **constant** offset rather than a drifting one.
+
+So frame `k` runs from `round(k x rows / frames)` to `round((k + 1) x rows /
+frames)`, which alternates 41 and 42. **Nothing in the file has been found that
+states this**, so it is marked inferred: it is a reading that agrees with the
+measured seams and puts a complete, correctly coloured villager in every cell
+for 22 of the village's 24 sprite characters.
+
+Two other readings were tried and disproved: rows stored bottom-up, and 17
+frames of 39 — which divides 663 exactly and shears worse.
+
+## Animations
+
+Names first, in fixed slots written over a longer string — fragments of
+"…create an Animation" survive between them, and a real name is told from them
+by having an underscore. Then one record each:
+
+```
+u32 steps
+u32 order[steps]      // 0..steps-1, rotated; meaning not established
+u32 duration[steps]   // 8 on a walk step, 60 on a stand
+u32 frame[steps]      // which frame of the sheet to show
+```
+
+The records are found by trying every aligned start and keeping the run that
+consumes the file exactly, names a frame that exists at every step, and yields
+as many records as there are names. A wrong start fails on the first record or
+two.
+
+A villager carries twelve: four walks of four steps, and eight one-frame
+stands.
+
+| animation | frames |
+|---|---|
+| `walk_down` | 0, 1, 2, 1 |
+| `walk_up` | 3, 4, 5, 4 |
+| `walk_left` | 6, 7, 8, 7 |
+| `walk_right` | 9, 10, 11, 10 |
+| `stand_down` / `stand_l_down` | 1 / 12 |
+| `stand_left` / `stand_l_up` | 7 / 14 |
+| `stand_up` / `stand_r_up` | 4 / 15 |
+| `stand_right` / `stand_r_down` | 10 / 13 |
+
+Every one of the sixteen frames is reached, and a stand is the middle frame of
+the walk that faces the same way — `stand_down` is frame 1, the neutral pose of
+`walk_down`. The four diagonals have no walk and take frames 12 to 15.
+
+**Which way round the eight go is established by looking, not by the data.**
+They are listed in a consistent rotation, but nothing in the file says whether
+it turns through the character's left or its right. Drawn one way the village
+dog stands with its head where its tail should be; drawn the other it is a dog.
+`down` and `up` are identical under the mirror, so only a side-on character can
+settle it — which is why an animal did and the people did not.
+
+## Evidence
+
+Fixtures in `test/sprite.test.ts` are built in code.
+
+| check | result |
+|---|---|
+| `.spr` files | 1,316 |
+| version `3` | 1,315 / 1,316 |
+| palette located by the size equation | **1,265 / 1,316** |
+| village sprite characters that read | **14 / 14 placed outdoors** |
+| **village sprite characters that decode to a recognisable figure** | **24 / 24** |
+| sheets where the header's width is the stride (`0x08` = 2) | 186 / 187 |
+| sheets where it overstates by eight (`0x08` = 4) | 1,001 / 1,063 |
+| village sprite characters with a decoded animation table | **24 / 24** |
+| …with all eight standing directions | **24 / 24** |
+| readable sheets cartridge-wide carrying an animation table | 181 / 1,317 |
+| frame heights summing to the sheet's rows | by construction |

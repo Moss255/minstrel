@@ -1,0 +1,14 @@
+{
+  "name": "@minstrel/actor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Assemble a character out of the cartridge's parts, pose it, and stand it on the ground.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@minstrel/nitro-gfx": "workspace:*"
+  }
+}

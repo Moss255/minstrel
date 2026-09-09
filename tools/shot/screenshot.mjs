@@ -14,7 +14,7 @@ const out = process.argv[3]
 const width = Number(process.argv[4] ?? 1280)
 const height = Number(process.argv[5] ?? 800)
 
-const profile = mkdtempSync(join(tmpdir(), 'vesper-chrome-'))
+const profile = mkdtempSync(join(tmpdir(), 'minstrel-chrome-'))
 const chrome = spawn(
   CHROME,
   [

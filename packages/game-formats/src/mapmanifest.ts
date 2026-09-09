@@ -195,23 +195,26 @@ export function readMapManifest(data: Uint8Array): MapManifest {
     const record = placementsPair ? placements[position] : undefined
     const at = record?.floats
     // A parent of -1 means none, and reads as NaN through the float view.
-    const parent = record?.values[6]
+    // Placement records carry fourteen values, so their header is eight bytes
+    // rather than four — see `table.ts`. Every index here is one lower than it
+    // was while the extra type word was being read as a phantom record.
+    const parent = record?.values[5]
     return {
       index,
       name,
       stem: dot > 0 ? name.slice(0, dot) : name,
       unknown_2: entry.values[2] ?? 0,
       unknown_3: entry.values[3] ?? 0,
-      slot: record?.values[1] ?? position,
+      slot: record?.values[0] ?? position,
       placement:
         record && at
           ? {
-              x: (at[3] ?? 0) / PLACEMENT_SCALE,
-              y: (at[4] ?? 0) / PLACEMENT_SCALE,
-              z: (at[5] ?? 0) / PLACEMENT_SCALE,
-              scaleX: at[8] ?? 1,
-              scaleY: at[9] ?? 1,
-              scaleZ: at[10] ?? 1,
+              x: (at[2] ?? 0) / PLACEMENT_SCALE,
+              y: (at[3] ?? 0) / PLACEMENT_SCALE,
+              z: (at[4] ?? 0) / PLACEMENT_SCALE,
+              scaleX: at[7] ?? 1,
+              scaleY: at[8] ?? 1,
+              scaleZ: at[9] ?? 1,
               parent: parent === undefined || parent === 0xffffffff ? undefined : parent,
               values: record.values,
             }

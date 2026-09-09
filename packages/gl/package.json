@@ -1,0 +1,15 @@
+{
+  "name": "@minstrel/gl",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "WebGL2 backend: draws decoded geometry, and renders at the DS's own resolution and colour depth for comparison against hardware.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@minstrel/nitro-gfx": "workspace:*",
+    "@minstrel/render": "workspace:*"
+  }
+}

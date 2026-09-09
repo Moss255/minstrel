@@ -1,6 +1,6 @@
-import { fromInt, fx32 } from '@vesper/fixed'
-import type { CollisionMesh } from '@vesper/game-formats'
-import { createCollisionWorld, PERSON } from '@vesper/sim'
+import { fromInt, fx32 } from '@minstrel/fixed'
+import type { CollisionMesh } from '@minstrel/game-formats'
+import { createCollisionWorld, PERSON } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import {
   applyStyle,

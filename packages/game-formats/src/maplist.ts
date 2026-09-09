@@ -20,12 +20,34 @@ import { type DataTable, readDataTable } from './table.ts'
 const TAG_ENTRY = 0x67
 const TAG_COUNT = 0x66
 
-/** Value slots in an entry that hold a string offset. */
-const SLOT_UNKNOWN_2 = 2
-const SLOT_REGION = 4
-const SLOT_CODE = 6
-const SLOT_LABEL = 7
-const SLOT_UNKNOWN_13 = 13
+/**
+ * Value slots in an entry that hold a string offset.
+ *
+ * Each is **two** lower than it was while the record header was being read as
+ * four bytes. How far the slots move depends on the value count: two bits of
+ * type per value, padded to a word, so an entry's 22 values need six type bytes
+ * and a twelve-byte header. What looked like two leading values were those type
+ * bytes. See `table.ts`.
+ */
+const SLOT_UNKNOWN_2 = 0
+const SLOT_REGION = 2
+const SLOT_CODE = 4
+const SLOT_LABEL = 5
+const SLOT_UNKNOWN_13 = 11
+/**
+ * Which space the map is built in. `1` indoors, `2` outdoors, `0` neither.
+ *
+ * Established by what the labels say. Of the 520 entries with `1`, the labels
+ * are "Interior", "Church", "Well", "Inn", "Item Shop", "Interior - B1",
+ * "Treasure Map - Lv 1"; of the 119 with `2` they are "Exterior" (34 of them)
+ * and the named regions. The remaining 371 carry `0` and are mostly entries for
+ * maps that do not ship.
+ *
+ * **It is a scale, not a label.** See {@link MapEntry.indoors}.
+ */
+const SLOT_SPACE = 17
+/** The value of {@link SLOT_SPACE} that means indoors. */
+const SPACE_INDOORS = 1
 
 /** One map. */
 export interface MapEntry {
@@ -50,6 +72,30 @@ export interface MapEntry {
   readonly unknown_13: string | undefined
   /** Occasionally another map's code. Not established. */
   readonly unknown_2: string | undefined
+  /**
+   * Whether the map is built indoors, which decides **how big it is**.
+   *
+   * An indoor map is authored in the same space a placed piece is — the one an
+   * order of magnitude larger than the map goes into — so the whole of it wants
+   * `PLACED_PIECE_SCALE` before a character can stand in it. An outdoor map is
+   * authored at its final size and only its placed pieces are scaled.
+   *
+   * Undivided, the village inn's floor covers **1,395 square character-heights
+   * against the whole village's 796**, and one of its houses covers 4,627 — a
+   * single room with nearly six times the floor of the village around it.
+   *
+   * Three independent references say the same eighth, and none of them is the
+   * doorway table, which cannot answer it: scaling a map and its own doorways
+   * together changes nothing either can see, and reads 95.6% both ways.
+   *
+   * - **The furniture.** A stool in the inn stands 1.9 character-heights tall
+   *   as shipped and 0.24 divided; its beds go from 7.3 x 9.7 to 0.9 x 1.2.
+   * - **The doorway models**, which are placed and so already divided: the inn
+   *   is 36 of its own doors wide as shipped, and 4.5 divided.
+   * - **The village around it**, whose own props are already right undivided —
+   *   its fences stand 0.9 of a character — so the two cannot share a space.
+   */
+  readonly indoors: boolean
   /** The whole record, for anything the fields above do not cover. */
   readonly values: Uint32Array
 }
@@ -102,6 +148,7 @@ export function readMapList(data: Uint8Array): MapList {
       label: at(SLOT_LABEL, record),
       unknown_13: at(SLOT_UNKNOWN_13, record),
       unknown_2: at(SLOT_UNKNOWN_2, record),
+      indoors: record.values[SLOT_SPACE] === SPACE_INDOORS,
       values: record.values,
     }
   })

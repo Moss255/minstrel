@@ -1,0 +1,97 @@
+:root {
+  color-scheme: dark;
+  --ink: #e8e6e1;
+  --dim: #8d8a84;
+  --ground: #14161a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font:
+    13px / 1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+main {
+  position: relative;
+  height: 100vh;
+}
+
+#gl {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#overlay,
+#status {
+  position: absolute;
+  left: 12px;
+  white-space: pre-wrap;
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 80%);
+}
+
+#overlay {
+  top: 12px;
+}
+
+#status {
+  bottom: 12px;
+  color: var(--dim);
+}
+
+/*
+ * Elements hidden from script set `display` below, and an author rule beats the
+ * user-agent stylesheet's `[hidden] { display: none }` however specific that
+ * one looks. So the display rule is written not to apply while the element is
+ * hidden, rather than fighting it afterwards. Anything given a `display` here
+ * toggled through the `hidden` attribute needs the same guard.
+ */
+
+#start:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: rgb(20 22 26 / 92%);
+}
+
+#start p {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--dim);
+}
+
+#start h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.08em;
+}
+
+.hint {
+  font-size: 12px;
+}
+
+body.dragging::after {
+  content: "";
+  position: fixed;
+  inset: 8px;
+  border: 1px dashed var(--dim);
+  pointer-events: none;
+}

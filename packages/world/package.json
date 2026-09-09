@@ -1,0 +1,17 @@
+{
+  "name": "@minstrel/world",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Assemble a map from the resources its descriptor names, and decide where a character can start.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@minstrel/fixed": "workspace:*",
+    "@minstrel/game-formats": "workspace:*",
+    "@minstrel/nitro-gfx": "workspace:*",
+    "@minstrel/sim": "workspace:*"
+  }
+}

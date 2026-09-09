@@ -1,5 +1,5 @@
 {
-  "name": "@vesper/inventory",
+  "name": "@minstrel/inventory",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
     "inventory": "./src/cli.ts"
   },
   "dependencies": {
-    "@vesper/nitrofs": "workspace:*",
-    "@vesper/nitro-comp": "workspace:*",
-    "@vesper/l5-gpc": "workspace:*",
-    "@vesper/nitro-snd": "workspace:*"
+    "@minstrel/nitrofs": "workspace:*",
+    "@minstrel/nitro-comp": "workspace:*",
+    "@minstrel/l5-gpc": "workspace:*",
+    "@minstrel/nitro-snd": "workspace:*"
   }
 }

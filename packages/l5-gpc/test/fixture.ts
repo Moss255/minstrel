@@ -1,4 +1,4 @@
-import { compressLz10, compressRawRle } from '@vesper/nitro-comp'
+import { compressLz10, compressRawRle } from '@minstrel/nitro-comp'
 import { crc32OfName } from '../src/crc32.ts'
 
 /**

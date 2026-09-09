@@ -198,7 +198,7 @@ export function buildRom(root: FixtureDir, options: FixtureOptions = {}): Uint8A
     for (let i = 0; i < length; i++) rom[offset + i] = i < text.length ? text.charCodeAt(i) : 0
   }
 
-  ascii(0x000, options.title ?? 'VESPERFIXTUR', 12)
+  ascii(0x000, options.title ?? 'MINSTRELFIXT', 12)
   ascii(0x00c, options.gameCode ?? 'ZZZP', 4)
   ascii(0x010, options.makerCode ?? '01', 2)
   rom[0x012] = 0x00

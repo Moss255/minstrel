@@ -7,8 +7,9 @@ Against the milestone's own list.
 | Map assembly and collision | **both done** |
 | Character controller with original movement constants | **done**; the character's size is measured off the houses, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
-| Interior/exterior transitions, doors, stairs | not started; the link data is not located |
+| Interior/exterior transitions, doors, stairs | not started; the map-to-map graph is now located in `.bmbl`, the per-door binding is not |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
+| The village's own cast, placed | **partly** — 4 of the 49 draw; 32 are 2D sprites, which nothing here renders |
 
 **Done when:** you can walk the whole village and enter every building.
 
@@ -48,7 +49,7 @@ failed to find ground.
 cells tile the triangle list exactly, but which region each cell covers is not
 established: neither header field that looks like a grid dimension accounts for
 the cell count on most files. Using it would mean guessing the mapping, so
-`@vesper/sim` grids the mesh itself. The file's index is parsed and unused.
+`@minstrel/sim` grids the mesh itself. The file's index is parsed and unused.
 
 `groundBelow` answers the question walking asks — the highest surface at or
 below a point, with a step-up allowance — and reports the surface's steepness as
@@ -119,7 +120,7 @@ manifest is not what.
 
 ## The character controller
 
-`@vesper/sim` walks a character over a collision world: horizontal movement
+`@minstrel/sim` walks a character over a collision world: horizontal movement
 resolved against walls, ground followed underneath, gravity when there is none.
 Everything is `fx32` at a fixed 60Hz tick.
 
@@ -389,7 +390,7 @@ the frame closing the last one, and all 140 three-frame animations close.
 
 Played over all nine frames, the walk holds one pose for two frames every cycle.
 At three cycles a second that is a hitch three times a second. `loopFrames` in
-`@vesper/nitro-gfx` asks the animation, and the character's `walk` and `stand`
+`@minstrel/nitro-gfx` asks the animation, and the character's `walk` and `stand`
 both loop one frame shorter than they are stored.
 
 ### The legs did not reach the floor, and the walk stuttered
@@ -413,7 +414,13 @@ feet snapping, which is exactly how it was reported.
 
 Taken once over the cycle, the offset is the planted foot at its lowest and
 everything the motion does above it survives: the walk rises 4% between steps,
-the idle breathes through 7%.
+the idle holds it still to within 0.0001 units — 0.0% of its height.
+
+**That last number was 7%, and it was this bug wearing a plausible name.** An
+earlier revision recorded the idle as "breathing through 7%" and left it. It was
+not breathing: every part of the figure moved 1.7 model units in lockstep, feet
+included, which is the whole character lifting off the floor. See "Three
+animations are called `stand`" below.
 
 **Walking is a fact about the keys, not about the clock.** Whether the character
 was moving was taken from inside the simulation loop, so it was only true on a
@@ -472,13 +479,84 @@ config names and stopping gives a character that can walk and cannot stand
 still, which is why standing fell back to the T-pose. Every pack of the family
 is read now.
 
+**Three animations are called `stand`, and the name does not pick between
+them.** `mp0200n` and `mp0200f` hold an eight-frame idle each; `mp0200n2` holds
+a sixteen-frame one. Keeping only the last one read chose between them by
+archive order, and the one it chose was `mp0200n2` — which lifts the whole
+figure **1.706 model units, 7.5% of its own height**, off the floor. Since a
+character is placed by putting the lowest point of its whole motion at its feet,
+that left it standing in the air for most of the cycle.
+
+Measured rather than assumed: the variant that translates the figure least is
+the one authored to be played in place. `mp0200n` holds it to 0.009 units,
+`mp0200f` to 0.227, `mp0200n2` to 1.706. Whole-figure lows are compared rather
+than a root bone, because the lift is in every part at once and the rig's root
+is still on every frame — which is why the earlier "there is no root motion"
+check did not catch it.
+
+The walk is untouched by this and always was correct: only the lower-leg part
+travels (0.899 against 0.17–0.41 for the body), which is one foot leaving the
+ground and coming back. Walking, a foot is within 0.002 units of the floor on 43
+of any 180 frames — twice a cycle, as a gait should be.
+
 **It was sprinting.** The speed was a fixed 0.05 units a tick, chosen when a
 person was 0.9 units tall. At 0.18 that is **sixteen of its own heights a
 second**, which reads as sliding rather than walking. Speed is now given in
-character heights — four a second, brisk for a game where a person manages about
-one — so it survives the next resize. That puts the village, twelve units
-across, at seventeen seconds corner to corner, and it stays inside the step and
-snap heights, which are derived from the same speed.
+character heights, so it survives the next resize, and it stays inside the step
+and snap heights, which are derived from the same speed.
+
+**And then it was still stepping too fast, for a reason no speed could fix.**
+The stride — the ground one gait cycle covers — was *derived from the speed*:
+`unitsPerTick * TICK_RATE * frameCount / ANIMATION_FPS`. The speed therefore
+appeared on both sides of the cadence and cancelled, so the walk played at
+exactly 30fps however fast the character moved. On an eight-frame cycle that is
+3.75 cycles a second — **7.5 steps a second**, against the two a person manages
+— and halving the walking speed changed it by nothing at all, which is how the
+circularity was noticed.
+
+A stride is a length, so it is one now: `STRIDE_HEIGHTS`. Cadence is ground over
+stride and follows the pace, which makes the two independent: raising both
+together moves the character faster without the legs churning. At three heights
+a second and a stride of one and a half, the cycle runs 2.0 a second — 4.0 steps
+— and the village, twelve units across, takes about twenty-two seconds corner to
+corner.
+
+Both numbers were needed. Halving the speed alone changed the cadence by exactly
+nothing, because of the circularity above; it was the measurement, not the eye,
+that caught that.
+
+**What the feet actually do is measured.** Over the walk cycle the animation's
+feet sweep **0.402 of the character's height** front to back, so anything
+covering more ground than that per cycle is sliding them to keep up. Declaring
+one and a half heights per cycle slides them 3.7x, against the 2.6x the old
+derived stride happened to give. Declaring the measured 0.402 instead would
+plant the feet exactly and demand **ten cycles a second** at any ordinary pace,
+which is worse than the sliding. So the stride is a tuned compromise, like the
+speed it works with, and the number it is compromising against is written down.
+
+### The village ships twice: a day copy and a night one
+
+Beside the terrain sit two resources the descriptor names together,
+`M01M00L1` and `M01M00N1`, both at the origin and both 8.1 units across. They
+are the same buildings lit two ways. `L1` binds `m01m00win01` and the rainbow;
+`N1` binds `m01m00win02` and nothing else, and the two window textures cover
+**the same 840 opaque pixels** and differ only in colour — `win02` is brighter
+and yellower, luminance 165 against 123. That is a lit window, so `N` is night
+and `L` is day.
+
+Assembling both, which is what was happening, draws a village whose windows are
+lit and unlit at once.
+
+**It is a paired set, cartridge-wide.** 234 archives carry both an `L` and an
+`N` resource, and on 168 of them the two counts are equal. The suffixes run
+`L1`..`L6` and `N1`..`N6`, with `L1` (255) and `N1` (239) much the commonest. An
+earlier note guessed these were "level-of-detail or day/night"; the window
+textures settle it.
+
+`assembleMap` now takes a lighting and builds one, defaulting to day. The game
+takes `?lighting=night`. What the *rest* of night is — whether the sky, the fog
+in the `.bats` attribute tables and the lamps change too — is not established,
+so this changes the buildings and nothing else.
 
 ### The doors' scale was the placement divisor all along
 
@@ -768,7 +846,7 @@ It was wrong from the first day of walking and only became obvious once there
 was a character on screen to watch: with the camera following the feet, walking
 backwards away from the view looks much like walking forwards.
 
-That math now lives in `moveRelativeToCamera` in `@vesper/render` rather than in
+That math now lives in `moveRelativeToCamera` in `@minstrel/render` rather than in
 four lines inside a key handler, and it is tested against the **view matrix**
 rather than against the sign of a sine: pressing forward has to put the
 character deeper into the picture and further from the eye, at six different
@@ -833,10 +911,26 @@ there are **1297** such blocks across 74 `.npc` archives, and:
   facing angle beyond reasonable doubt — authored data, not bytes that happen to
   decode.
 
-**The three floats before it are not established.** They look like a position
-and are in the right range for one, but the ones belonging to the village
-exterior do not stand on the village's collision, so something about the frame
-they are in is still missing. They are not parsed, and no parser claims them.
+**The three floats are a position, divided by the same 8 the map's own
+placements need.** Raw, only 23 of the 49 fall inside the village's collision;
+divided by 8, **49 of 49** do. The earlier reading here — that they "do not
+stand on the village's collision" — was measured against a map whose doorway
+markers were still being read as walls, and it is wrong. `readNpcPlacements` in
+`@minstrel/game-formats` parses them.
+
+**Most of the cast is not 3D.** Slot 2 of a character record says what it is
+drawn as, and the split across the village's 33 names is exact: `kind` 0 has a
+`.spr` in `/data/ani` and no model anywhere (24 names), `kind` 2 has a `.chr` in
+`/data/chara_sub` and no sprite (8). So the "unsolved preset problem" those 24
+were thought to share with the Hero is not their problem at all — they are
+sprites, and want a decoder and a billboarding pass rather than a parts list.
+
+**And a cast list is not only that map's characters.** Five copies of `s097a`
+sit inside a circle 0.8 units across at one height, 0.157 above the ground
+beneath them — nine tenths of a character. They are on a shop floor, in the
+shop's coordinates. Asking the map's own collision separates them cleanly: the
+ones that belong outside miss the ground by 0.006 to 0.030 and the rest by 0.156
+to 0.175. Four of the village's characters draw.
 
 What the NPCs do settle is a different question. `s001.nsbmd` stands **10.03
 units** — exactly the player's posed height. Every character on the cartridge is
@@ -856,7 +950,7 @@ that is easy to replace when the real ones turn up.
 
 ## The camera
 
-`@vesper/render` holds the camera and, more importantly, the rule for what a
+`@minstrel/render` holds the camera and, more importantly, the rule for what a
 screen that is not the DS's should show.
 
 **A wider screen never shows less than the hardware did.** Above 4:3 the
@@ -991,11 +1085,20 @@ that is a stated deviation from the milestone's wording rather than an oversight
 
 - **What the six remaining placement values mean.** Three of the fourteen are
   the translation, three the scale, one the parent; the rest are unread.
-- **Interior and exterior links.** Which door leads where is still not located,
-  and three candidates have now been ruled out. A fourth is now in view: `M01`
-  carries ten single-shape models `M01M00D1`..`DA`, each 1.54 units tall with a
-  two-triangle collision box beside it — one per building entrance. Flat planes
-  standing in doorways are what a trigger volume looks like.
+- **Interior and exterior links.** Half-answered, by a file that was not known
+  to exist. `M01.ambl` holds `M01M0000.bmbl`, whose string table names the map's
+  own textures and then **nine other map codes** — `M01M01`..`M01M08` and `F01`.
+  Cartridge-wide **858 of 898 such links are reciprocal**: each interior names
+  exactly its exterior, and `F01` names `M01`, `D01` and `S01M01`, which is this
+  slice's own route. So the connectivity graph is data after all, not bytecode.
+
+  **It does not say which door leads where.** `M01` has ten doorway models
+  (`M01M00D1`..`DA`) against nine named maps, and the counts agree on only 60 of
+  the 172 maps that have both. Binding a doorway to a destination would have to
+  come from the `.bmbl` record stream, which is not decoded — see
+  `findings.md`. The ten single-shape doorway models, each 1.54 units tall with
+  a two-triangle collision box beside it, remain the candidate for the trigger
+  side of that pairing.
 - **What the placement floats are in.** See the NPC section: the facing angle is
   established, the three floats before it are not. The map list carries no link
   field; its eighteen numeric values do not include one that indexes another

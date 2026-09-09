@@ -38,16 +38,23 @@ function buildMapList(
     records.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
   const record = (tag: number, type: number, values: readonly number[]) => {
     u16(tag)
+    // Tag, count, then two bits of type per value, padded to a word: a record
+    // of five or more values has an eight-byte head, not four.
+    const typeBytes = Math.max(1, Math.ceil(values.length / 4))
+    const header = Math.ceil((3 + typeBytes) / 4) * 4
     records.push(values.length, type)
+    for (let i = 4; i < header; i++) records.push(0)
     for (const v of values) u32(v)
   }
 
   record(0x66, 1, [options.declared ?? entries.length])
   for (const entry of entries) {
+    // Where the strings really sit, now the header's six type bytes are counted
+    // rather than being read as two leading values.
     const values = new Array(22).fill(0)
-    values[4] = entry.region === undefined ? 0 : intern(entry.region)
-    values[6] = intern(entry.code)
-    values[7] = entry.label === undefined ? 0 : intern(entry.label)
+    values[2] = entry.region === undefined ? 0 : intern(entry.region)
+    values[4] = intern(entry.code)
+    values[5] = entry.label === undefined ? 0 : intern(entry.label)
     record(0x67, 69, values)
   }
   record(0x6e, 0xff, [])

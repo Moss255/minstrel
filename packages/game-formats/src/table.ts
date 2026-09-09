@@ -15,8 +15,20 @@ import { GameFormatError } from './errors.ts'
  * | `+0x0C` | `u32` | string count |
  * | `+0x10` | | the record stream, running up to the string table |
  *
- * A record is a `u16` tag, a `u8` value count and a `u8` type, followed by that
- * many 4-byte values.
+ * A record is a `u16` tag, a `u8` value count, then **two bits of type per
+ * value**, then that many 4-byte values. The header is padded to a multiple of
+ * four, so a record of up to four values has the familiar four-byte head and
+ * one of five to eight values has an eight-byte one.
+ *
+ * The type bits were read as a single `u8` for a long time, which is right
+ * whenever a record has four values or fewer — and on `.bmdj` it is right even
+ * when it does not, by luck: the extra type word is read as a phantom record of
+ * zero values, which consumes exactly the same four bytes and leaves the walk
+ * back in step. `.bmbl` is not so forgiving, and **387 of its 667 files could
+ * not be read at all** until the header was counted properly.
+ *
+ * With it counted, every file of all three kinds walks to its string table
+ * exactly: **667 of 667 `.bmbl`, 755 of 755 `.bmdj`, 504 of 504 `.bats`**.
  *
  * `0xFF` fill appears both between records, as alignment padding, and after the
  * last one. It is skipped a word at a time rather than treated as an end: three
@@ -50,6 +62,14 @@ export interface TableRecord {
   readonly values: Uint32Array
   /** The same values read as IEEE floats, for records whose type is 2. */
   readonly floats: Float32Array
+  /**
+   * What each value is, two bits from the header per value.
+   *
+   * `0` is a byte offset into the string table, `1` an integer and `2` a float.
+   * `3` has not been seen. Reading a record without this means guessing which
+   * of its values are floats, which is why the map manifest used to.
+   */
+  readonly kinds: Uint8Array
 }
 
 export interface DataTable {
@@ -153,6 +173,8 @@ export function readDataTable(data: Uint8Array): DataTable {
     const tag = (data[at] as number) | ((data[at + 1] as number) << 8)
     const count = data[at + 2] as number
     const type = data[at + 3] as number
+    // Tag, count, then two bits of type per value, rounded up to a word.
+    const header = Math.ceil((3 + Math.ceil(count / 4)) / 4) * 4
     if (tag === TABLE_TAG_END && type === 0xff) {
       terminated = true
       at += 4
@@ -162,7 +184,7 @@ export function readDataTable(data: Uint8Array): DataTable {
       at += 4
       continue
     }
-    const end = at + 4 + count * 4
+    const end = at + header + count * 4
     if (end > stringOffset) {
       throw new GameFormatError(
         `table record at 0x${at.toString(16)} (tag 0x${tag.toString(16)}) needs ${count * 4} bytes but the record stream ends at 0x${stringOffset.toString(16)}`,
@@ -171,12 +193,15 @@ export function readDataTable(data: Uint8Array): DataTable {
     }
     const values = new Uint32Array(count)
     const floats = new Float32Array(count)
+    const kinds = new Uint8Array(count)
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
     for (let i = 0; i < count; i++) {
-      values[i] = view.getUint32(at + 4 + i * 4, true)
-      floats[i] = view.getFloat32(at + 4 + i * 4, true)
+      values[i] = view.getUint32(at + header + i * 4, true)
+      floats[i] = view.getFloat32(at + header + i * 4, true)
+      // Two bits each, low pair first, running on into the following bytes.
+      kinds[i] = ((data[at + 3 + (i >> 2)] as number) >> ((i & 3) * 2)) & 3
     }
-    records.push({ tag, type, offset: at, values, floats })
+    records.push({ tag, type, offset: at, values, floats, kinds })
     at = end
   }
 

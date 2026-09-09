@@ -37,7 +37,12 @@ function buildManifest(
     records.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
   const record = (tag: number, type: number, values: readonly number[]) => {
     u16(tag)
+    // Tag, count, then two bits of type per value, padded to a word: a record
+    // of five or more values has an eight-byte head, not four.
+    const typeBytes = Math.max(1, Math.ceil(values.length / 4))
+    const header = Math.ceil((3 + typeBytes) / 4) * 4
     records.push(values.length, type)
+    for (let i = 4; i < header; i++) records.push(0)
     for (const v of values) u32(v)
   }
 
@@ -53,8 +58,10 @@ function buildManifest(
     }
     for (const place of options.places) {
       const [x, y, z] = place.at ?? [0, 0, 0]
+      // The real layout, now that the record's header is counted properly: the
+      // slot leads, the translation is at 2 to 4 and the parent at 5. What used
+      // to look like a leading value was the record's second type byte.
       record(0x6f, 165, [
-        0,
         place.slot,
         0,
         asWord(x),
@@ -65,6 +72,7 @@ function buildManifest(
         asWord(1),
         asWord(1),
         asWord(1),
+        0,
         0,
         0,
         0,

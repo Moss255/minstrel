@@ -2,7 +2,7 @@
  * 4x4 column-major matrices, as WebGL expects them.
  *
  * Floats, for rendering only. The DS computes these in fixed point; gameplay
- * maths lives in `@vesper/fixed` and must never take a value from here.
+ * maths lives in `@minstrel/fixed` and must never take a value from here.
  */
 
 export type Mat4 = Float32Array

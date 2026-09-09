@@ -20,7 +20,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { tryDecompressLz10 } from '@vesper/nitro-comp'
+import { tryDecompressLz10 } from '@minstrel/nitro-comp'
 import {
   checkHeaderIntegrity,
   gameCodeRegion,
@@ -30,7 +30,7 @@ import {
   readNarc,
   readNitroFs,
   walkFiles,
-} from '@vesper/nitrofs'
+} from '@minstrel/nitrofs'
 import { identify, type SignatureCategory } from './signatures.ts'
 
 interface Options {

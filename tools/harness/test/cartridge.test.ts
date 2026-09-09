@@ -1,21 +1,31 @@
 import { readFileSync } from 'node:fs'
-import { type Fx32, fx32, toFloat } from '@vesper/fixed'
+import { chooseFigure, figurePieces, poseFigure } from '@minstrel/actor'
+import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
 import {
   isBitmapFont,
   isCollisionMesh,
   isDataTable,
+  isMapLinks,
   isMapManifest,
   isMarkerVolume,
+  isNpcList,
+  isNpcPlacements,
   isWaterTexture,
+  mapDoorways,
+  NPC_KIND,
   placementOf,
+  placeNpcs,
   readBitmapFont,
   readCollisionMesh,
   readDataTable,
+  readMapLinks,
   readMapList,
   readMapManifest,
+  readNpcList,
+  readNpcPlacements,
   resolveMapResources,
-} from '@vesper/game-formats'
-import { crc32OfName, isGpc, readGpc } from '@vesper/l5-gpc'
+} from '@minstrel/game-formats'
+import { crc32OfName, isGpc, readGpc } from '@minstrel/l5-gpc'
 import {
   decompressBlz,
   decompressLz10,
@@ -23,7 +33,7 @@ import {
   looksBlz,
   readCompressionHeader,
   tryDecompressLz10,
-} from '@vesper/nitro-comp'
+} from '@minstrel/nitro-comp'
 import {
   type Animation,
   blend,
@@ -51,9 +61,9 @@ import {
   runDisplayList,
   sampleAnimation,
   texelDataSize,
-} from '@vesper/nitro-gfx'
-import { isSdat, RecordKind, readSdat } from '@vesper/nitro-snd'
-import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@vesper/nitrofs'
+} from '@minstrel/nitro-gfx'
+import { isSdat, RecordKind, readSdat } from '@minstrel/nitro-snd'
+import { isNarc, type NitroFs, readNarc, readNitroFs, walkFiles } from '@minstrel/nitrofs'
 import {
   cameraEye,
   covered,
@@ -62,7 +72,7 @@ import {
   OUTDOORS,
   occluders,
   updateFollowCamera,
-} from '@vesper/render'
+} from '@minstrel/render'
 import {
   type CharacterState,
   createCollisionWorld,
@@ -70,23 +80,24 @@ import {
   PERSON,
   type PlacedMesh,
   step,
-} from '@vesper/sim'
+} from '@minstrel/sim'
+import { assembleMap } from '@minstrel/world'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 /**
  * Integration tests against a real cartridge.
  *
  * These never run in CI and their inputs are never committed. Point
- * `VESPER_TEST_ROM` at your own dump to run them:
+ * `MINSTREL_TEST_ROM` at your own dump to run them:
  *
- *   VESPER_TEST_ROM=rom/your.nds pnpm test
+ *   MINSTREL_TEST_ROM=rom/your.nds pnpm test
  *
  * The assertions are deliberately about *self-consistency* rather than about
  * specific offsets in one title, so they hold for any DS cartridge. They are
  * the evidence behind the claims in each package's FORMAT.md: a parser that
  * agrees with several thousand independent samples is not guessing.
  */
-const romPath = process.env.VESPER_TEST_ROM
+const romPath = process.env.MINSTREL_TEST_ROM
 
 /**
  * One asset, and the archive it came out of.
@@ -105,7 +116,14 @@ interface Asset {
   readonly bytes: Uint8Array
 }
 
-describe.skipIf(!romPath)('a real cartridge', () => {
+/**
+ * These read a 256 MiB cartridge and walk every file in it, so they are seconds
+ * each rather than milliseconds — and slower again when anything else is using
+ * the machine. Vitest's default five seconds fails them spuriously the moment a
+ * second test run, a build, or a browser is sharing the CPU, which reads as six
+ * broken parsers rather than a loaded laptop.
+ */
+describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
   let rom: Uint8Array
   let fs: NitroFs
   /** Every NSBMD on the cartridge, including those inside GPC2 archives. */
@@ -1527,6 +1545,372 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     for (const region of regions) expect(region).not.toMatch(/^\d{4}\//)
   })
 
+  it('reads every `.bmbl` string table, and their links agree in both directions', () => {
+    // `.bmbl` is the only thing found that says which maps reach which: the map
+    // index carries no link field. This reads the header and the names only —
+    // the check is that doing so works on every file, and that what comes out
+    // is a graph rather than noise. The test below reads the same file's
+    // records and checks the two halves against each other.
+    const indexEntry = fs.file('/data/map/maplist9.bin')
+    const codes = new Set(
+      readMapList(fs.read(indexEntry as NonNullable<typeof indexEntry>)).maps.map((m) =>
+        m.code.toUpperCase(),
+      ),
+    )
+    const isMapCode = (name: string) => codes.has(name.toUpperCase())
+
+    const linksOf = new Map<string, string[]>()
+    let files = 0
+    for (const file of walkFiles(fs.root)) {
+      const stem = /\/([^/]+)\.ambl$/i.exec(file.path)?.[1]?.toUpperCase()
+      if (!stem) continue
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const name = String(member.name ?? member.index)
+        if (!name.toLowerCase().endsWith('.bmbl')) continue
+        const data = tryDecompressLz10(member.data) ?? member.data
+        files++
+        // Every one is readable: this is the claim the parser rests on.
+        expect(isMapLinks(data), file.path).toBe(true)
+        const links = readMapLinks(data)
+        // The declared count matching the names found is what makes the string
+        // section a real reading rather than bytes that happen to split.
+        const declared = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(
+          12,
+          true,
+        )
+        expect(links.names.length, file.path).toBe(declared)
+        linksOf.set(
+          stem,
+          links.linksTo(stem, isMapCode).map((n) => n.toUpperCase()),
+        )
+      }
+    }
+    expect(files).toBeGreaterThan(600)
+
+    // A map never links to itself.
+    for (const [code, links] of linksOf) expect(links, code).not.toContain(code)
+
+    // The real check. Names that merely looked like map codes would not agree
+    // with each other in both directions: each interior names exactly its
+    // exterior, and the exterior names it back.
+    let pairs = 0
+    let reciprocal = 0
+    for (const [from, links] of linksOf) {
+      for (const to of links) {
+        pairs++
+        if (linksOf.get(to)?.includes(from)) reciprocal++
+      }
+    }
+    expect(pairs).toBeGreaterThan(800)
+    expect(reciprocal / pairs).toBeGreaterThan(0.9)
+
+    // The village's own neighbours: its interiors, and the field east of it.
+    // `M01M00T1` is a texture of this map and `M01M01` is the map next door —
+    // both begin with the map's own code, which is why the caller supplies the
+    // test for what counts as a code, and why this checks the textures are out.
+    const village = linksOf.get('M01') as string[]
+    expect(village).toBeDefined()
+    expect(village).not.toContain('M01M00T1')
+    expect(village).not.toContain('M01M0000')
+    expect(village).toContain('M01M01')
+    expect(village).toContain('F01')
+    expect(village.length).toBeGreaterThan(5)
+  })
+
+  it("reads every `.bmbl`'s doorways, and they agree with its own names", () => {
+    // The claim: the record stream says which doorway leads where, and the
+    // string table above says which maps this one connects to. They are read by
+    // different code from different halves of the file, so their agreeing is
+    // evidence neither could give alone.
+    const indexEntry = fs.file('/data/map/maplist9.bin')
+    const codes = new Set(
+      readMapList(fs.read(indexEntry as NonNullable<typeof indexEntry>)).maps.map((m) =>
+        m.code.toUpperCase(),
+      ),
+    )
+
+    let files = 0
+    let walked = 0
+    let paired = 0
+    let triggers = 0
+    let secondName = 0
+    const doorsOf = new Map<string, ReturnType<typeof mapDoorways>>()
+    const namesOf = new Map<string, Set<string>>()
+    for (const file of walkFiles(fs.root)) {
+      const stem = /\/([^/]+)\.ambl$/i.exec(file.path)?.[1]?.toUpperCase()
+      if (!stem) continue
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        const name = String(member.name ?? member.index)
+        if (!name.toLowerCase().endsWith('.bmbl')) continue
+        const data = tryDecompressLz10(member.data) ?? member.data
+        files++
+
+        // Every file's records walk exactly to the string table. This is what
+        // the record header's padding bought; before it, 387 threw.
+        const table = readDataTable(data)
+        walked++
+
+        table.records.forEach((record, i) => {
+          // A trigger is always followed by the action that says what it does.
+          if (record.tag === 0x73) {
+            triggers++
+            if (table.records[i + 1]?.tag === 0x74) paired++
+          }
+          // The destination slot is fixed per form, and nothing else in a
+          // transition record is marked a name — so there is no ambiguity to
+          // resolve and no searching to get wrong.
+          const slot = record.tag === 0x72 ? 8 : record.tag === 0x74 ? 4 : -1
+          if (slot < 0 || record.kinds[slot] !== 0) return
+          const names = Array.from(record.kinds.slice(0, record.values.length)).filter(
+            (k) => k === 0,
+          ).length
+          if (names > 1) secondName++
+        })
+
+        doorsOf.set(stem, mapDoorways(data))
+        namesOf.set(
+          stem,
+          new Set(
+            readMapLinks(data)
+              .names.map((n) => n.toUpperCase())
+              .filter((n) => codes.has(n) && n !== stem),
+          ),
+        )
+      }
+    }
+    expect(files).toBeGreaterThan(600)
+    expect(walked).toBe(files)
+    expect(triggers).toBeGreaterThan(2000)
+    expect(paired).toBe(triggers)
+    expect(secondName).toBe(0)
+
+    // The agreement. Two maps differ and both are explained in `FORMAT.md`:
+    // `M07` has a door its string table does not name, and `X05M10` has one
+    // leading back into itself, which the name test excludes by design.
+    const withDoors = [...doorsOf].filter(([, doors]) => doors.length > 0)
+    expect(withDoors.length).toBeGreaterThan(400)
+    let agreed = 0
+    for (const [stem, doors] of withDoors) {
+      const named = namesOf.get(stem) as Set<string>
+      const led = new Set(doors.map((d) => d.to.toUpperCase()))
+      if (led.size === named.size && [...led].every((d) => named.has(d))) agreed++
+    }
+    expect(agreed / withDoors.length).toBeGreaterThan(0.98)
+
+    // Nearly every doorway names a map the index knows.
+    const all = withDoors.flatMap(([, doors]) => doors)
+    const known = all.filter((d) => codes.has(d.to.toUpperCase())).length
+    expect(known / all.length).toBeGreaterThan(0.99)
+
+    // The village: eight houses and the road out to the field, once each. The
+    // two forms describe seven of these twice and `mapDoorways` merges them.
+    const village = doorsOf.get('M01') as ReturnType<typeof mapDoorways>
+    expect(village.map((d) => d.to).sort()).toEqual([
+      'F01',
+      'M01M01',
+      'M01M02',
+      'M01M03',
+      'M01M04',
+      'M01M05',
+      'M01M06',
+      'M01M07',
+      'M01M08',
+    ])
+    // Every door stands somewhere in the village and leads somewhere in it.
+    for (const door of village) {
+      expect(Math.hypot(door.x, door.z), door.to).toBeLessThan(8)
+      expect(door.width, door.to).toBeGreaterThan(0)
+      expect(door.height, door.to).toBeGreaterThan(0)
+    }
+    // The road out is the outlier: the field is a hundred times the village's
+    // area, and you arrive far from its origin.
+    const field = village.find((d) => d.to === 'F01') as ReturnType<typeof mapDoorways>[number]
+    expect(Math.abs(field.arriveX)).toBeGreaterThan(4)
+  })
+
+  it("builds one of a map's two lightings, not both at once", () => {
+    // A map ships its lit pieces twice. The village's `M01M00L1` carries the
+    // rainbow and `m01m00win01`; `M01M00N1` carries `m01m00win02`, the same 840
+    // opaque pixels in a brighter, yellower colour — a lit window. Assembling
+    // both draws them lit and unlit at the same time.
+    const map = fs.file('/data/map/M01.amdj')
+    expect(map).toBeDefined()
+    const members = new Map<string, Uint8Array>()
+    for (const member of readNarc(fs.read(map as NonNullable<typeof map>)).entries()) {
+      members.set(
+        String(member.name ?? member.index),
+        tryDecompressLz10(member.data) ?? member.data,
+      )
+    }
+    const manifestBytes = [...members.values()].find((b) => isMapManifest(b))
+    expect(manifestBytes).toBeDefined()
+    const manifest = readMapManifest(manifestBytes as Uint8Array)
+
+    const day = assembleMap(manifest, members, { lighting: 'day' })
+    const night = assembleMap(manifest, members, { lighting: 'night' })
+    const both = assembleMap(manifest, members)
+
+    const named = (m: typeof day) =>
+      m.pieces.map((p) => p.model.name ?? '').filter((n) => /[LN]\d$/i.test(n))
+    expect(named(day)).toEqual(['M01M00L1'])
+    expect(named(night)).toEqual(['M01M00N1'])
+    // Default is day, and it is one variant rather than both.
+    expect(named(both)).toEqual(['M01M00L1'])
+
+    // The two builds differ only by that piece: the terrain, the doorways and
+    // the collision belong to neither lighting and must survive both.
+    expect(night.pieces.length).toBe(day.pieces.length)
+    expect(night.meshes.length).toBe(day.meshes.length)
+    expect(day.meshes.length).toBeGreaterThan(0)
+
+    // Cartridge-wide the two are a paired set, which is why this is a choice
+    // and not a filter that happens to drop something.
+    let withBoth = 0
+    let equalCounts = 0
+    for (const file of walkFiles(fs.root)) {
+      if (!/\.amdj$/i.test(file.path)) continue
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      let l = 0
+      let n = 0
+      for (const member of readNarc(bytes).entries()) {
+        const suffix = /([LN])(\d)\.nsbmd$/i.exec(String(member.name ?? ''))
+        if (!suffix) continue
+        if ((suffix[1] as string).toUpperCase() === 'L') l++
+        else n++
+      }
+      if (l > 0 && n > 0) {
+        withBoth++
+        if (l === n) equalCounts++
+      }
+    }
+    expect(withBoth).toBeGreaterThan(200)
+    expect(equalCounts / withBoth).toBeGreaterThan(0.6)
+  })
+
+  it("reads a map's cast, and its ids join to its placements", () => {
+    // Two files, joined by an id. The check is that the join is real: an id
+    // that meant something else would not land on an entry 1,283 times.
+    let archives = 0
+    let entries = 0
+    let blocks = 0
+    let joined = 0
+    let idsLandOnEntries = 0
+    const kinds = new Map<number, number>()
+
+    for (const file of walkFiles(fs.root)) {
+      if (!file.path.toLowerCase().endsWith('.npc')) continue
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      let list: Uint8Array | undefined
+      let places: Uint8Array | undefined
+      for (const member of readNarc(bytes).entries()) {
+        const name = String(member.name ?? member.index).toLowerCase()
+        const data = tryDecompressLz10(member.data) ?? member.data
+        if (name.endsWith('npc.bin')) list = data
+        if (name.endsWith('place.bin')) places = data
+      }
+      if (!list || !places) continue
+      archives++
+      // One archive on the cartridge carries a zero-byte list.
+      if (!isNpcList(list) || !isNpcPlacements(places)) continue
+
+      // A placement file is not a tagged table, whatever the cheap check for
+      // one says: its string offset happens to equal its length.
+      expect(isNpcPlacements(places), file.path).toBe(true)
+
+      const cast = readNpcList(list)
+      const placements = readNpcPlacements(places)
+      entries += cast.length
+      blocks += placements.length
+      joined += placeNpcs(cast, placements).length
+      for (const entry of cast) kinds.set(entry.kind, (kinds.get(entry.kind) ?? 0) + 1)
+
+      const ids = new Set(cast.map((e) => e.id))
+      if (placements.every((p) => ids.has(p.id))) idsLandOnEntries++
+
+      // Fewer placements than names on 26 archives and equal on 45, which is
+      // what you would expect if events place the rest. **One archive has one
+      // more placement than it has names** — `R01` — so this is a tendency,
+      // not the invariant an earlier note in `docs/` called it.
+      expect(placements.length, file.path).toBeLessThanOrEqual(cast.length + 1)
+
+      for (const placement of placements) {
+        // Authored data, not bytes that happen to decode.
+        expect(placement.facing, file.path).toBeGreaterThanOrEqual(0)
+        expect(placement.facing, file.path).toBeLessThanOrEqual(Math.PI * 2 + 1e-3)
+      }
+    }
+
+    expect(archives).toBeGreaterThan(70)
+    expect(entries).toBeGreaterThan(1300)
+    expect(blocks).toBeGreaterThan(1200)
+    expect(joined / blocks).toBeGreaterThan(0.99)
+    expect(idsLandOnEntries / archives).toBeGreaterThan(0.95)
+    // The kind byte takes a small set of values, not arbitrary ones.
+    expect([...kinds.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2, 5])
+  })
+
+  it("puts a village's cast inside the village, once the placements are scaled", () => {
+    // The divisor is the same 8 the map's own placements need. Raw, half the
+    // village's characters fall outside its collision entirely.
+    const archive = [...walkFiles(fs.root)].find((f) => /\/M01\.npc$/i.test(f.path))
+    expect(archive).toBeDefined()
+    const narc = readNarc(fs.read(archive as NonNullable<typeof archive>))
+    let list: Uint8Array | undefined
+    let places: Uint8Array | undefined
+    for (const member of narc.entries()) {
+      const name = String(member.name ?? member.index).toLowerCase()
+      const data = tryDecompressLz10(member.data) ?? member.data
+      if (name.endsWith('npc.bin')) list = data
+      if (name.endsWith('place.bin')) places = data
+    }
+    expect(list).toBeDefined()
+    expect(places).toBeDefined()
+
+    const cast = readNpcList(list as Uint8Array)
+    const placed = placeNpcs(cast, readNpcPlacements(places as Uint8Array))
+    expect(placed.length).toBe(49)
+
+    // The village's own collision, assembled the way the game assembles it.
+    const map = fs.file('/data/map/M01.amdj')
+    expect(map).toBeDefined()
+    const members = new Map<string, Uint8Array>()
+    for (const member of readNarc(fs.read(map as NonNullable<typeof map>)).entries()) {
+      members.set(
+        String(member.name ?? member.index),
+        tryDecompressLz10(member.data) ?? member.data,
+      )
+    }
+    const manifest = [...members.values()].find((b) => isMapManifest(b))
+    expect(manifest).toBeDefined()
+    const assembled = assembleMap(readMapManifest(manifest as Uint8Array), members)
+    const world = createCollisionWorld(assembled.meshes)
+    const { bounds } = world
+
+    let inside = 0
+    for (const { placement } of placed) {
+      const x = placement.x * FX32_ONE
+      const z = placement.z * FX32_ONE
+      if (x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ) inside++
+    }
+    expect(inside).toBe(placed.length)
+
+    // And the models are the ones the kind byte says are models.
+    const models = placed.filter((p) => p.entry.kind === NPC_KIND.MODEL)
+    expect(models.length).toBeGreaterThan(0)
+    for (const { entry } of models) {
+      const chr = [...walkFiles(fs.root)].some((f) =>
+        f.path.toLowerCase().endsWith(`/data/chara_sub/${entry.name?.toLowerCase()}.chr`),
+      )
+      expect(chr, entry.name).toBe(true)
+    }
+  })
+
   it('assembles a map from the resources its manifest names', () => {
     // A map archive is a dozen loose files with no index between them; the
     // `.bmdj` is the list. Two things have to hold for that to be usable.
@@ -2856,6 +3240,84 @@ describe.skipIf(!romPath)('a real cartridge', () => {
     }
     // Together they hold twice the shapes the whole figure needs.
     expect(parts.reduce((n, part) => n + part.model.numShapes, 0)).toBe(8)
+  })
+
+  it('picks a standing idle that keeps the figure on the floor', () => {
+    // Three animations in the family are called `stand`. Keeping the last one
+    // read chooses between them by archive order, and the one that wins that
+    // way lifts the whole figure 7.5% of its own height off the ground — which
+    // is what "the feet do not touch" looks like from the outside.
+    //
+    // Invisible to every test that has no cartridge: it needs the real packs
+    // for there to be more than one candidate at all.
+    const parts = new Map<string, Model>()
+    for (const asset of models) {
+      if (!asset.archive.endsWith('#chara_pc.gp2')) continue
+      if (!/^p_[a-z]+\w*$/.test(asset.stem)) continue
+      try {
+        const model = readNsbmd(asset.bytes).models[0]
+        if (model?.numShapes) parts.set(asset.stem, model)
+      } catch {
+        // Reported by the model test.
+      }
+    }
+    expect(parts.size).toBeGreaterThan(100)
+
+    const motions = new Map<string, Animation[]>()
+    for (const asset of animations) {
+      if (!asset.archive.includes('#chara_mp.gp2#')) continue
+      const pack = asset.archive.slice(asset.archive.lastIndexOf('#') + 1)
+      if (!pack.startsWith('mp0200')) continue
+      try {
+        for (const animation of readNsbca(asset.bytes).animations) {
+          const list = motions.get(animation.name)
+          if (list) list.push(animation)
+          else motions.set(animation.name, [animation])
+        }
+      } catch {
+        // Reported by the animation test.
+      }
+    }
+
+    const stands = motions.get('stand') ?? []
+    // If the cartridge ever stops disagreeing with itself this check is moot,
+    // and saying so beats passing vacuously.
+    expect(stands.length, 'the family should carry more than one `stand`').toBeGreaterThan(1)
+
+    const figure = chooseFigure({ parts, motions })
+    const pieces = figurePieces(figure)
+    expect(pieces.length).toBeGreaterThan(0)
+
+    const travelOf = (motion: Animation): number => {
+      let low = Number.POSITIVE_INFINITY
+      let high = Number.NEGATIVE_INFINITY
+      for (let frame = 0; frame < loopFrames(motion); frame++) {
+        const { minY } = measureBounds(
+          poseFigure(figure, pieces, motion, frame).map((p) => p.posed),
+        )
+        low = Math.min(low, minY)
+        high = Math.max(high, minY)
+      }
+      return high - low
+    }
+
+    const chosen = figure.motions.get('stand') as Animation
+    expect(chosen).toBeDefined()
+    const bounds = measureBounds(poseFigure(figure, pieces, chosen, 0).map((p) => p.posed))
+    const figureHeight = bounds.maxY - bounds.minY
+    expect(figureHeight).toBeGreaterThan(0)
+
+    // The chosen idle holds the figure still, and the worst candidate does not,
+    // so this is a real choice rather than a property they all happen to share.
+    const travels = stands.map(travelOf)
+    expect(travelOf(chosen)).toBe(Math.min(...travels))
+    expect(travelOf(chosen) / figureHeight).toBeLessThan(0.01)
+    expect(Math.max(...travels) / figureHeight).toBeGreaterThan(0.05)
+
+    // The walk is a gait, not a lift: its travel is one foot leaving the floor,
+    // and the same rule must not flatten it.
+    const walk = figure.motions.get('walk')
+    if (walk) expect(travelOf(walk) / figureHeight).toBeGreaterThan(0.02)
   })
 
   it('has motions that do not keep the character on its own origin', () => {

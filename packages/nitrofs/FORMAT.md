@@ -114,7 +114,7 @@ empty sub-table) and are addressed purely by index. That case is supported —
 
 The claims above were checked against a retail cartridge that is **not** part of
 this repository and never will be. `tools/harness/test/cartridge.test.ts`
-reproduces the checks; point `VESPER_TEST_ROM` at your own dump to run them.
+reproduces the checks; point `MINSTREL_TEST_ROM` at your own dump to run them.
 
 Results on the reference cartridge:
 

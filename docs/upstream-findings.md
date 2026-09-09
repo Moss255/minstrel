@@ -278,7 +278,10 @@ word `0xA5060003` followed by `-246`. Cartridge-wide there are **1,297** such
 blocks across 74 archives, and:
 
 - the block count matches the name count exactly in 45 of the 74 archives and
-  **never exceeds it**, consistent with some NPCs being placed by events;
+  is smaller on 26, consistent with some NPCs being placed by events. It is
+  **not** true that it never exceeds it, as an earlier revision of this document
+  said: `R01` has 39 placements against 38 names. 1,283 of the 1,285 blocks
+  join to a character;
 - each block carries an index and four floats, and the fourth is **in 0 to 2π in
   all 1,297 cases**, with **71% on an exact multiple of 90°**. That is a facing
   angle beyond reasonable doubt.

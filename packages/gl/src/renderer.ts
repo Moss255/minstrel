@@ -1,11 +1,11 @@
-import type { Geometry } from '@vesper/nitro-gfx'
-import { type FollowCamera, perspective, viewMatrix } from '@vesper/render'
+import type { Geometry } from '@minstrel/nitro-gfx'
+import { type FollowCamera, perspective, viewMatrix } from '@minstrel/render'
 
 /**
  * A minimal WebGL2 renderer for decoded model geometry.
  *
  * Deliberately plain: one draw call per shape, its texture bound, depth test.
- * The camera and the framing come from `@vesper/render`, so the viewer sees
+ * The camera and the framing come from `@minstrel/render`, so the viewer sees
  * what the game will see. DS toon shading, edge marking and the 5-bit colour pipeline
  * belong to the reference renderer and are not attempted here — the job of this
  * one is to prove the parsers put correct geometry and pixels on screen.
@@ -67,7 +67,7 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string): WebG
   return shader
 }
 
-/** The camera the renderer draws from; see `@vesper/render`. */
+/** The camera the renderer draws from; see `@minstrel/render`. */
 export type Camera = FollowCamera
 
 /** One shape, with the texture it is drawn with. */
@@ -77,6 +77,16 @@ export interface Piece {
   readonly pixels?: Uint8Array
   readonly width?: number
   readonly height?: number
+  /**
+   * Draw this one as cut-out pixel art rather than as a surface.
+   *
+   * A map's textures tile, so they repeat and are filtered smoothly. A sprite
+   * does neither: repeating wraps its right edge into its left, and filtering
+   * blends its transparent border into the figure, which leaves a coloured
+   * fringe all the way round and stray specks where the alpha test lets a
+   * blended pixel through. Clamped and unfiltered, it is the artwork.
+   */
+  readonly cutout?: boolean
 }
 
 interface Batch {
@@ -111,7 +121,8 @@ export class ModelRenderer {
   private readonly uHasTexture: WebGLUniformLocation
   private readonly uTextureSize: WebGLUniformLocation
   private batches: Batch[] = []
-  private owned: WebGLTexture[] = []
+  /** Textures by the pixel array they were uploaded from, kept across frames. */
+  private cache = new Map<Uint8Array, WebGLTexture>()
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false })
@@ -177,8 +188,12 @@ export class ModelRenderer {
   /** Upload the model as one buffer with a draw range and texture per shape. */
   upload(pieces: readonly Piece[]): { vertices: number; triangles: number; textured: number } {
     const gl = this.gl
-    for (const texture of this.owned) gl.deleteTexture(texture)
-    this.owned = []
+    // Textures are kept by the identity of the pixels they were made from. A
+    // caller that hands back the same array — a decoded sprite frame, say —
+    // gets the same texture rather than a new one every frame; anything not
+    // handed back this time is dropped. Recreating every texture each frame is
+    // what made a village of billboards flicker.
+    const reused = new Map<Uint8Array, WebGLTexture>()
     this.batches = []
 
     const total = pieces.reduce((n, p) => n + p.geometry.vertices.length, 0)
@@ -208,10 +223,13 @@ export class ModelRenderer {
 
       let texture: WebGLTexture | null = null
       if (piece.pixels && piece.width && piece.height) {
-        texture = gl.createTexture()
+        const already = this.cache.get(piece.pixels)
+        texture = already ?? gl.createTexture()
         if (texture) {
           textured++
-          this.owned.push(texture)
+          reused.set(piece.pixels, texture)
+        }
+        if (texture && !already) {
           gl.bindTexture(gl.TEXTURE_2D, texture)
           gl.texImage2D(
             gl.TEXTURE_2D,
@@ -224,9 +242,14 @@ export class ModelRenderer {
             gl.UNSIGNED_BYTE,
             piece.pixels,
           )
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
-          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+          const wrap = piece.cutout ? gl.CLAMP_TO_EDGE : gl.REPEAT
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap)
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap)
+          gl.texParameteri(
+            gl.TEXTURE_2D,
+            gl.TEXTURE_MIN_FILTER,
+            piece.cutout ? gl.NEAREST : gl.LINEAR,
+          )
           gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
         }
       }
@@ -238,6 +261,12 @@ export class ModelRenderer {
         height: piece.height ?? 0,
       })
     }
+
+    // Drop whatever this frame did not ask for, and keep the rest.
+    for (const [pixels, texture] of this.cache) {
+      if (!reused.has(pixels)) gl.deleteTexture(texture)
+    }
+    this.cache = reused
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer)
     gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW)
@@ -281,7 +310,7 @@ export class ModelRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     if (this.batches.length === 0) return
 
-    // Framing and the view come from `@vesper/render`, so what the viewer
+    // Framing and the view come from `@minstrel/render`, so what the viewer
     // shows at any window shape is the same rule the game will use — never
     // less of the world than the hardware showed.
     const projection = perspective(width / height, 0.01, 1000)

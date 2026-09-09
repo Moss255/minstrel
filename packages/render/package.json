@@ -1,5 +1,5 @@
 {
-  "name": "@vesper/render",
+  "name": "@minstrel/render",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vesper/fixed": "workspace:*",
-    "@vesper/game-formats": "workspace:*",
-    "@vesper/sim": "workspace:*"
+    "@minstrel/fixed": "workspace:*",
+    "@minstrel/game-formats": "workspace:*",
+    "@minstrel/sim": "workspace:*"
   }
 }

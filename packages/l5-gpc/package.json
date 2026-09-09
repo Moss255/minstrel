@@ -1,5 +1,5 @@
 {
-  "name": "@vesper/l5-gpc",
+  "name": "@minstrel/l5-gpc",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,6 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vesper/nitro-comp": "workspace:*"
+    "@minstrel/nitro-comp": "workspace:*"
   }
 }

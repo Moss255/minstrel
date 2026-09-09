@@ -1,5 +1,5 @@
-import { add, FX32_ONE, type Fx32, fx32, sub } from '@vesper/fixed'
-import type { CollisionTriangle } from '@vesper/game-formats'
+import { add, FX32_ONE, type Fx32, fx32, sub } from '@minstrel/fixed'
+import type { CollisionTriangle } from '@minstrel/game-formats'
 import {
   type CollisionWorld,
   groundBelow,

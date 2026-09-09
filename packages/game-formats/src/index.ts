@@ -16,6 +16,7 @@ export {
   isBitmapFont,
   readBitmapFont,
 } from './font.ts'
+export { isMapLinks, type MapLinks, readMapLinks } from './maplinks.ts'
 export {
   isMapList,
   type MapEntry,
@@ -35,6 +36,17 @@ export {
 } from './mapmanifest.ts'
 export { isWaterTexture, textureTag } from './materials.ts'
 export {
+  isNpcList,
+  isNpcPlacements,
+  NPC_KIND,
+  type NpcEntry,
+  type NpcPlacement,
+  placeNpcs,
+  readNpcList,
+  readNpcPlacements,
+} from './npc.ts'
+export { isSprite, readSprite, type Sprite } from './sprite.ts'
+export {
   type DataTable,
   isDataTable,
   readDataTable,
@@ -42,3 +54,4 @@ export {
   TABLE_TYPE_FLOAT,
   type TableRecord,
 } from './table.ts'
+export { type MapTransition, mapDoorways, readMapTransitions } from './transitions.ts'

@@ -1,16 +1,23 @@
-# vesper
+# minstrel
 
 Two things sharing a set of Nintendo DS parsers:
 
 - **`apps/game`** — a browser reimplementation of a DS JRPG in TypeScript, reading assets from the user's own cartridge dump at runtime. Not an emulator and not a recompilation: the engine is original code, only data comes from the cartridge.
 - **`apps/explorer`** — a general-purpose, fully client-side browser explorer for *any* DS cartridge.
 
-Neither app exists yet. What does exist is the parser layer underneath them.
+Both apps exist and run. What is playable is one village: you can walk it, but
+its doors do not lead anywhere yet.
 
 ## Status
 
-Early. M0 (extraction and inventory) is complete; M1 (renderer and model viewer)
-is most of the way there.
+Early. M0 (extraction and inventory) is complete, M1 (renderer and model viewer)
+is done, and M2 (a walkable village) walks — map assembly, collision, the
+character controller and the camera are all working against a real cartridge.
+
+Two M2 items are open, and both are blocked on findings rather than on code:
+interior/exterior transitions need the `SB2` event bytecode, which nothing here
+reads yet, and the player is a stand-in because which parts make the Hero is
+not decoded.
 
 - [`docs/findings.md`](docs/findings.md) — what has been established about the
   cartridge's formats, by what evidence, and what is still unknown.
@@ -19,19 +26,24 @@ is most of the way there.
 
 | package | licence | what it does |
 |---|---|---|
-| [`@vesper/nitrofs`](packages/nitrofs) | MIT | cartridge header, FAT/FNT, overlay tables, NARC archives |
-| [`@vesper/nitro-comp`](packages/nitro-comp) | MIT | LZ77, Huffman, run-length and BLZ decompression |
-| [`@vesper/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
-| [`@vesper/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
-| [`@vesper/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
-| [`@vesper/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest, the map index |
-| [`@vesper/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
-| [`@vesper/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
-| [`@vesper/render`](packages/render) | GPL-3.0+ | the camera, and how the DS's framing extends to other screens |
+| [`@minstrel/nitrofs`](packages/nitrofs) | MIT | cartridge header, FAT/FNT, overlay tables, NARC archives |
+| [`@minstrel/nitro-comp`](packages/nitro-comp) | MIT | LZ77, Huffman, run-length and BLZ decompression |
+| [`@minstrel/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
+| [`@minstrel/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
+| [`@minstrel/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
+| [`@minstrel/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest, the map index |
+| [`@minstrel/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
+| [`@minstrel/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
+| [`@minstrel/render`](packages/render) | GPL-3.0+ | the camera, and how the DS's framing extends to other screens |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
-| `tools/shot` | MIT | headless screenshot of a model, for verifying by eye |
-| `apps/viewer` | GPL-3.0+ | browser model viewer |
+| [`@minstrel/cartridge`](packages/cartridge) | MIT | walk a cartridge, unwrap its containers, index what comes out |
+| [`@minstrel/world`](packages/world) | GPL-3.0+ | map assembly, placement, water, spawning |
+| [`@minstrel/actor`](packages/actor) | GPL-3.0+ | character assembly, rig attachment, motion |
+| [`@minstrel/gl`](packages/gl) | GPL-3.0+ | WebGL2 backend and the DS reference target |
+| `tools/shot` | MIT | serve a built app with a local cartridge and screenshot it |
+| `apps/game` | GPL-3.0+ | walk a village read from your own dump |
+| `apps/explorer` | GPL-3.0+ | browse any DS cartridge |
 
 The `nitro-*` packages are game-agnostic and browser-safe: no Node built-ins, no
 DOM, no WebGL, and no reference to any particular title. They take
@@ -51,6 +63,9 @@ pnpm install
 pnpm test         # unit tests, synthetic fixtures only
 pnpm typecheck
 pnpm lint
+
+pnpm dev          # the game
+pnpm dev:explorer # the cartridge explorer
 ```
 
 ## Using it
@@ -93,7 +108,7 @@ To run the integration tests, point them at your own dump. They are skipped by
 default and never run in CI.
 
 ```sh
-VESPER_TEST_ROM=rom/your.nds pnpm test
+MINSTREL_TEST_ROM=rom/your.nds pnpm test
 ```
 
 ## Looking at models
@@ -158,17 +173,29 @@ packages/
   l5-gpc/         GPC2, a Level-5 container            MIT, game-agnostic
   nitro-gfx/      NSBMD models, display lists          MIT, game-agnostic
   nitro-snd/      SDAT sound archives                  MIT, game-agnostic
+  cartridge/      walk a cartridge, index what is in it  MIT, game-agnostic
   game-formats/   title-specific formats               MIT
+  fixed/          fixed-point arithmetic               GPL, engine
+  sim/            headless simulation                  GPL, engine
+  render/         camera and framing, headless         GPL, engine
+  world/          map assembly, placement, spawning    GPL, engine
+  actor/          character assembly and posing        GPL, engine
+  gl/             WebGL2 backend                       GPL, engine
 tools/
   inventory/      cartridge cataloguing CLI
   harness/        local-only integration tests
-  shot/           headless render verification
+  shot/           headless render verification, no dependencies
 apps/
-  viewer/         browser model viewer
+  game/           walk a village from your own dump
+  explorer/       browse any DS cartridge
 docs/
 ```
 
 Parser packages depend on each other and on nothing else in the repository.
+`render` may import from `sim`; `sim` may never import from `render`, and
+everything in it runs headless. `gl` is the only package that touches the DOM,
+which is why it is excluded from the root TypeScript project — the parsers are
+typechecked without DOM types so a stray `document` cannot compile.
 
 ## Conventions
 

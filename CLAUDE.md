@@ -11,7 +11,7 @@ Two things sharing a set of parsers:
 
 The explorer is not a side project. It's what keeps the parser packages honest and general, and it's the artefact that will attract contributors.
 
-Codename: `vesper`. Do not use the game's real name in code, filenames, package names, commit messages, or the README.
+Codename: `minstrel`. Do not use the game's real name in code, filenames, package names, commit messages, or the README.
 
 Full strategy and milestones live in `docs/PLAN.md`. This file is the operational layer.
 
@@ -62,7 +62,7 @@ This project has few and should keep it that way. Binary parsing, fixed-point ma
 | Lint/format | Biome |
 | Target | Browser first; parsers must also run in Node |
 
-No build step for workspace packages — the bundler consumes TypeScript source directly. Import across packages by package name (`@vesper/nitrofs`), never by relative path across package roots.
+No build step for workspace packages — the bundler consumes TypeScript source directly. Import across packages by package name (`@minstrel/nitrofs`), never by relative path across package roots.
 
 ---
 
@@ -150,7 +150,7 @@ Test fixtures cannot contain ROM data. Build minimal valid structures in code �
 Tests that need a real ROM are gated behind an env var and skipped by default:
 
 ```ts
-const romPath = process.env.VESPER_TEST_ROM;
+const romPath = process.env.MINSTREL_TEST_ROM;
 describe.skipIf(!romPath)('integration', () => { /* ... */ });
 ```
 

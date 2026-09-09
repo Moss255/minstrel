@@ -25,7 +25,12 @@ function buildTable(records: FixtureRecord[], strings: string[] = []): Uint8Arra
     const values = record.values ?? []
     const floats = record.floats ?? []
     const count = values.length + floats.length
+    // Tag, count, then two bits of type per value, padded to a word. A record
+    // of five or more values therefore has an eight-byte head, not four.
+    const typeBytes = Math.max(1, Math.ceil(count / 4))
+    const header = Math.ceil((3 + typeBytes) / 4) * 4
     body.push(record.tag & 0xff, (record.tag >>> 8) & 0xff, count, record.type ?? 0)
+    for (let i = 4; i < header; i++) body.push(0)
     for (const v of values) push32(v)
     for (const f of floats) {
       const buf = new DataView(new ArrayBuffer(4))

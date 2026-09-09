@@ -10,7 +10,7 @@ reproduced here or anywhere in the repository.
 
 The reference dump is a European release (game code ending `P`), 256 MiB,
 header and Nintendo-logo CRC-16 both verifying. It lives in `rom/`, which is gitignored,
-and is never committed. Set `VESPER_TEST_ROM` to run the integration tests
+and is never committed. Set `MINSTREL_TEST_ROM` to run the integration tests
 against your own dump.
 
 Its filesystem: 7,481 named files in 23 directories, plus 35 ARM9 overlays.
@@ -19,8 +19,8 @@ Its filesystem: 7,481 named files in 23 directories, plus 35 ARM9 overlays.
 
 | | |
 |---|---|
-| `@vesper/nitrofs` | cartridge header, FAT, FNT, ARM9/ARM7 overlay tables, NARC archives |
-| `@vesper/nitro-comp` | LZ10 decompression (and a compressor, for round-trip tests) |
+| `@minstrel/nitrofs` | cartridge header, FAT, FNT, ARM9/ARM7 overlay tables, NARC archives |
+| `@minstrel/nitro-comp` | LZ10 decompression (and a compressor, for round-trip tests) |
 | `tools/inventory` | CLIs that catalogue a cartridge and extract it wholesale |
 
 All 4,129 NARC archives on the reference cartridge parse, and all 11,179
@@ -118,7 +118,7 @@ Determining that needs the emulator work this project does not do in code. See
 
 1,671 files, 72.6 MiB, magic `GPC2`. A Level-5 archive container holding the
 event scripts, the scenario data, the font, and the bulk of the monster models.
-It is now read by `@vesper/l5-gpc`; the format is documented in that package's
+It is now read by `@minstrel/l5-gpc`; the format is documented in that package's
 `FORMAT.md`.
 
 Against the reference cartridge: **1,660 of 1,671 archives parse, and all 50,742
@@ -157,12 +157,25 @@ parser does not yet read; and four `unknown_*` header fields.
 
 Both are NARCs. Inside:
 
-- `.amdj` holds `.nsbmd` map geometry (plus `L1`..`L4` and `N1`..`N4` variants,
-  probably level-of-detail or day/night) and a `.bmdj` descriptor alongside.
-- `.ambl` holds `.bats` attribute tables.
+- `.amdj` holds `.nsbmd` map geometry and a `.bmdj` descriptor alongside. The
+  `L1`..`L6` and `N1`..`N6` variants are **day and night**, not level-of-detail:
+  the village's `L1` and `N1` bind two window textures covering the same 840
+  opaque pixels, and the `N` one is brighter and yellower — a lit window. 234
+  archives carry both, 168 of them in equal numbers.
+- `.ambl` comes in **two kinds**, and conflating them is what made an earlier
+  revision of this document say the extension holds `.bats` attribute tables.
+  - **667 per-map** archives — `M01.ambl` beside `M01.amdj` — holding `.bmbl`
+    (667), `.nsbtx` (737), `.dat` (657) and `.bpos` (5). A map's **textures**
+    are here, which is why a map assembled from its `.amdj` alone has none.
+  - **14 grouping** archives named `ats_B`..`ats_Z`, holding the 504 `.bats`
+    attribute tables between them, one letter per area-code prefix.
+
+  `.bmbl` names the maps a map connects to — see `findings.md` and
+  `game-formats/FORMAT.md`. The `.dat` beside it is 48 bytes: two records and
+  one string, the map's own code.
 
 `.bmdj` and `.bats` share a tagged-record container, now parsed by
-`@vesper/game-formats` — 1,260 of 1,260 files, including `mapbgm.bin`, which
+`@minstrel/game-formats` — 1,260 of 1,260 files, including `mapbgm.bin`, which
 turns out to use the same format. A `.bmdj`'s string table lists the map's
 resources by name (`M01M0000.imd`, `M01M00D1.imd`, …), which makes it the
 **map-to-model manifest**: the thing that says which models compose a map.
@@ -253,7 +266,7 @@ carry a differently-shaped index. These hold the Hero and party models — what 
 needs to put a character in the village. No plan yet beyond "look at the index
 again", so this does not meet the milestone's bar.
 
-**Audio — now done.** `@vesper/nitro-snd` reads SDAT, and all three archives on
+**Audio — now done.** `@minstrel/nitro-snd` reads SDAT, and all three archives on
 the cartridge open. `bgm.sdat` holds **82 named sequences (`BG_001`…, `ME_*`),
 82 banks, 81 wave archives and 3 streams**, 186 files in all, and they now
 extract to disk under their own names — `BG_001.sseq`, `BANK_BG_001.sbnk`,
@@ -298,7 +311,7 @@ maps, so at best this is a table of exceptions.
 
 The per-map `.bats` and `.bmdj` files were the other candidate, and they are now
 read: they share one tagged-record container with `mapbgm.bin`, and
-`@vesper/game-formats` parses **1,260 of 1,260** of them with the string count
+`@minstrel/game-formats` parses **1,260 of 1,260** of them with the string count
 matching the header every time. That turned up something useful — a `.bmdj`'s
 string table lists the map's resources by name, making it the map-to-model
 manifest M2 needs — but no music field. Two tags looked promising, occurring
@@ -313,7 +326,7 @@ emulator would settle it in minutes.
 **The font — format read, Latin glyphs still missing.** There is no NFTR
 resource anywhere on the cartridge; the standard Nintendo font format is not
 used. The `.mes` files in `data/pack/font.gp2` are a custom bitmap font, and
-that format is now fully read by `@vesper/game-formats`: **all 529 fonts parse
+that format is now fully read by `@minstrel/game-formats`: **all 529 fonts parse
 and 70,604 glyphs decode**, verified by rendering them and checking they look
 like the characters their Shift-JIS codepoints name.
 
@@ -413,7 +426,7 @@ overlays were BLZ-compressed and had never been decompressed by anything.
 
 Not run: it is a Rust tool and there is no toolchain on this machine. It is also
 largely superseded. Its purpose was to tell us which models convert cleanly;
-`@vesper/nitro-gfx` now parses all 6,889 of them with two independent
+`@minstrel/nitro-gfx` now parses all 6,889 of them with two independent
 self-consistency checks passing on every one, which is a stronger answer than a
 conversion report. It remains worth running eventually as an independent
 cross-check of geometry, and that is the reason to keep it on the list.

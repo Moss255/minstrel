@@ -1,5 +1,5 @@
-import { FX32_ONE, fromInt, fx32, toFloat } from '@vesper/fixed'
-import type { CollisionMesh, CollisionTriangle } from '@vesper/game-formats'
+import { FX32_ONE, fromInt, fx32, toFloat } from '@minstrel/fixed'
+import type { CollisionMesh, CollisionTriangle } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { createCollisionWorld, groundBelow, triangleAt } from '../src/collision.ts'
 
