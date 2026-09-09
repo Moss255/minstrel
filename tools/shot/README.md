@@ -47,5 +47,47 @@ whichever one is being served.
 | `yaw`, `pitch` | explorer | camera angles, in radians |
 | `map` | game | which map archive to open, by name; `M01` by default |
 | `door` | game | take that map's doorway to the named map as soon as it loads |
+| `sprite` | game | `1` shows the sprite cut and turns its keys on — see below |
+| `cut` | game | `start,pitch,height,odd` — start from those numbers instead of the parser's |
 
 `CHROME` in the environment overrides the browser binary.
+
+## Finding the sprite cut by hand
+
+`?sprite=1` puts the three numbers that decide where a sprite's frames are on
+the overlay and binds them to keys. Where a frame begins is settled for the
+horizontal reading and not the vertical one, and six statistical criteria each
+chose a cut that renders wrong — see the sprite section of
+`packages/game-formats/FORMAT.md` — so the way left is to move it against the
+picture and read the answer off the screen.
+
+| key | moves |
+|---|---|
+| `[` `]` | the start, by a byte — two pixels across |
+| `;` `'` | the start, by a row — one row down or up |
+| `,` `.` | the pitch, the bytes from one frame to the next |
+| `-` `=` | the rows in a frame |
+| `9` `\` | bytes added to **odd frames only** |
+| `0` | back to what the parser decided |
+
+The odd-frame key is there for a specific suspicion. A frame occupies **41.5
+rows**, measured three separate ways, and a half row of a 32-pixel sheet is
+eight bytes — sixteen pixels across. If frames really are spaced by a half row
+then every odd frame begins mid-row and its pixels land sixteen over from an
+even frame's, which is what a head sitting at a different offset from its body
+looks like. `8` or `-8` tests it.
+
+The status line prints the three numbers after every change, so whatever looks
+right can be read straight off it. Every sheet in the map is cut again on each
+keystroke and the decoded frames thrown away, so the cast on screen is always
+showing the current numbers.
+
+The defaults are the parser's own reading: for the village's 32-wide characters
+that is start 120, pitch 648, height 40, with a row of 16 bytes.
+
+`?cut=` seeds them, so a candidate can be looked at without pressing a key
+twelve times. **Worth trying first: `?sprite=1&cut=,660`.** Measured on three
+characters, the horizontal centre of a head slides across the frames at 0.38 to
+0.47 pixels a frame at a pitch of 648 and at **0.00 at 660** — which is the
+drift that makes a head sit off from its body. Whether 660 is right by eye is
+the thing to check.

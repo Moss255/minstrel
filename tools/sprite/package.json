@@ -1,0 +1,8 @@
+{
+  "name": "@minstrel/sprite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Local-only: render a cartridge sprite sheet to a PNG so it can be looked at rather than measured. Output goes to out/, which is never committed."
+}

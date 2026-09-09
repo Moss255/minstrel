@@ -25,6 +25,48 @@ import { GameFormatError } from './errors.ts'
 /** How the palette is marked: a count word, then that many BGR555 entries. */
 const PALETTE_COLOURS = 16
 const HEADER_SIZE = 0x10
+/**
+ * Where a sheet's pixels begin, and how far apart its frames are.
+ *
+ * **A frame is not a whole number of sheet rows**, which is why reading the
+ * sheet as a grid of rows and dividing it evenly cut alternate frames in half
+ * and swapped the halves — a horizontal wrap, and the reason a villager came
+ * apart as the camera turned around them.
+ *
+ * A frame is `width x height / 2` bytes of pixels with **eight more bytes
+ * between it and the next**. Eight bytes is half a row of a 32-pixel sheet,
+ * which is exactly the offset that put every other frame half a width out when
+ * the sheet was read as a grid of rows.
+ *
+ * Those eight bytes are **transparent pixels, not a record**: read at the frame
+ * spacing they are zero on every frame of every character checked. An earlier
+ * revision of this comment called them a record, on the strength of the file
+ * also leading with two eight-byte runs before the first frame. They are
+ * padding.
+ *
+ * The pitch was measured before it was explained: sweeping it and scoring by
+ * how much ink lands in the two edge columns picks 648 bytes on both of the
+ * village's 32x40 characters, against the 640 a 32x40 frame occupies.
+ *
+ * **What those eight bytes hold is not established.** They are not read.
+ */
+const FRAME_RECORD = 8
+const PIXELS_AT = HEADER_SIZE + FRAME_RECORD
+
+/**
+ * Rows between the start of the block and the first frame.
+ *
+ * **Fitted by eye, not derived** — the one number here that is. Rendering a
+ * sheet at every candidate start, a row apart, and looking at the result puts
+ * the village's `n003a` and `n017a` both at six rows past {@link PIXELS_AT}:
+ * below it the character's hem is cut off by the foot of the cell, above it the
+ * top of its head is. 183 of the 187 multi-frame sheets on the cartridge are 32
+ * pixels wide, so a row here is 16 bytes on nearly all of them.
+ *
+ * Six criteria were tried in place of the eye and every one chose a start that
+ * renders wrong — see `FORMAT.md`. What these rows *are* is not established.
+ */
+const LEAD_ROWS = 6
 
 /** One step of an animation: a sheet frame, held for a while. */
 export interface SpriteStep {
@@ -243,19 +285,55 @@ export function isSprite(data: Uint8Array): boolean {
  * seams and puts a complete, correctly coloured villager in every cell for 22
  * of the village's 24 sprite characters.
  */
-export function readSprite(data: Uint8Array): Sprite {
+/**
+ * Overrides for how a sheet is cut into frames.
+ *
+ * **A development affordance, and deliberately not a guess.** Where a frame
+ * begins and how far apart frames are is settled for the horizontal reading and
+ * not for the vertical one — see `FORMAT.md` — and six statistical criteria all
+ * chose a cut that renders wrong. Rather than keep fitting it blind, the game
+ * can move these three numbers live and the answer can be read off the screen.
+ *
+ * Nothing in the engine passes them. Omitted, the reading in this file applies.
+ */
+export interface SpriteCut {
+  /** Byte offset of the first frame's pixels. */
+  readonly start?: number
+  /** Bytes from one frame's pixels to the next. */
+  readonly pitch?: number
+  /** Rows in a frame, when the header's height is not it. */
+  readonly height?: number
+  /**
+   * Bytes added to every *odd* frame's start.
+   *
+   * A frame occupies **41.5 rows**, measured three ways, and a half row of a
+   * 32-pixel sheet is eight bytes — sixteen pixels. If frames really are spaced
+   * by a half row then odd frames begin mid-row and their pixels land sixteen
+   * across from where an even frame's do, which is what a head sitting at a
+   * different offset from its body looks like.
+   *
+   * `8` or `-8` tests that. It is a question, not a reading.
+   */
+  readonly oddShift?: number
+}
+
+export function readSprite(data: Uint8Array, cut: SpriteCut = {}): Sprite {
   if (data.length < HEADER_SIZE + 4) {
     throw new GameFormatError(`file is ${data.length} bytes, shorter than its header`)
   }
   const frames = u16(data, 0)
   const width = u16(data, 4)
-  const height = u16(data, 6)
+  // The header's own height finds the palette; an override only moves the cut.
+  // Feeding an override into the search makes it demand more pixels than the
+  // file holds and the palette is never found.
+  const declaredHeight = u16(data, 6)
+  const height = cut.height ?? declaredHeight
   const unknown_0x08 = u32(data, 8)
-  if (frames === 0 || width === 0 || height === 0) {
-    throw new GameFormatError(`sprite declares ${frames} frames of ${width}x${height}`)
+  if (frames === 0 || width === 0 || declaredHeight === 0) {
+    throw new GameFormatError(`sprite declares ${frames} frames of ${width}x${declaredHeight}`)
   }
 
-  const palAt = findPalette(data, frames, width, height)
+  const palAt = findPalette(data, frames, width, declaredHeight)
   if (palAt < 0) {
     throw new GameFormatError('no palette: no count word of 16 leaves room for the pixels')
   }
@@ -281,6 +359,19 @@ export function readSprite(data: Uint8Array): Sprite {
   }
 
   const bound = (frame: number) => Math.round((frame * rows) / frames)
+
+  // Frames packed back to back, each behind an eight-byte record. Only when the
+  // sheet's declared width really is its stride — a sheet read at width - 8 is
+  // not described by this arithmetic — and when the frames fit in front of the
+  // palette.
+  const frameBytes = (stride * height) / 2
+  const pitch = cut.pitch ?? frameBytes + FRAME_RECORD
+  const pixelsAt = cut.start ?? PIXELS_AT + LEAD_ROWS * (stride / 2)
+  const packed =
+    cut.start !== undefined ||
+    cut.pitch !== undefined ||
+    cut.height !== undefined ||
+    (stride === width && pixelsAt + (frames - 1) * pitch + frameBytes <= palAt)
   const animations = readAnimations(data, palAt + 4 + PALETTE_COLOURS * 2, frames)
 
   return {
@@ -296,22 +387,27 @@ export function readSprite(data: Uint8Array): Sprite {
       if (frame < 0 || frame >= frames) {
         throw new GameFormatError(`frame ${frame} of a ${frames}-frame sprite`)
       }
-      const from = bound(frame)
-      const to = bound(frame + 1)
-      const tall = to - from
+      // Packed frames when the file's own arithmetic allows them, which it does
+      // on 1,257 of the cartridge's 1,264 sheets; the even division otherwise,
+      // which is what a sheet whose stride is not its declared width still
+      // needs.
+      const tall = packed ? height : bound(frame + 1) - bound(frame)
+      const odd = frame % 2 === 1 ? (cut.oddShift ?? 0) : 0
+      const at = packed ? pixelsAt + frame * pitch + odd : start + bound(frame) * (stride / 2)
       const pixels = new Uint8Array(stride * tall * 4)
       for (let y = 0; y < tall; y++) {
         for (let x = 0; x < stride; x++) {
-          const i = (from + y) * stride + x
-          const byte = data[start + (i >> 1)] as number
+          const i = y * stride + x
+          const byte = data[at + (i >> 1)] as number
+          if (byte === undefined) continue
           const index = i & 1 ? byte >> 4 : byte & 0x0f
-          const at = (y * stride + x) * 4
+          const to = (y * stride + x) * 4
           if (index === 0) continue
           const c = palette[index] as number
-          pixels[at] = c & 0xff
-          pixels[at + 1] = (c >> 8) & 0xff
-          pixels[at + 2] = (c >> 16) & 0xff
-          pixels[at + 3] = 0xff
+          pixels[to] = c & 0xff
+          pixels[to + 1] = (c >> 8) & 0xff
+          pixels[to + 2] = (c >> 16) & 0xff
+          pixels[to + 3] = 0xff
         }
       }
       return { width: stride, height: tall, pixels }

@@ -45,7 +45,7 @@ export {
   readNpcList,
   readNpcPlacements,
 } from './npc.ts'
-export { isSprite, readSprite, type Sprite } from './sprite.ts'
+export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
 export {
   type DataTable,
   isDataTable,

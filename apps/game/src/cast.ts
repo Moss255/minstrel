@@ -7,6 +7,7 @@ import {
   type NpcPlacement,
   readSprite,
   type Sprite,
+  type SpriteCut,
 } from '@minstrel/game-formats'
 import type { Piece } from '@minstrel/gl'
 import {
@@ -42,8 +43,11 @@ import {
 /** A character drawn as a billboard, from its `.spr` sheet. */
 export interface CastSprite {
   readonly name: string
-  readonly sprite: Sprite
+  /** Re-read when the cut changes, which is why this one is not readonly. */
+  sprite: Sprite
   readonly placement: NpcPlacement
+  /** The sheet as it came off the cartridge, so it can be cut again. */
+  readonly bytes: Uint8Array
 }
 
 /** One character with a model, placed. */
@@ -131,7 +135,12 @@ export function cast(
         sprites++
         continue
       }
-      drawn2d.push({ name: entry.name, sprite: sheet, placement })
+      drawn2d.push({
+        name: entry.name,
+        sprite: sheet,
+        placement,
+        bytes: sheets.get(entry.name.toLowerCase()) as Uint8Array,
+      })
       continue
     }
     if (entry.kind !== NPC_KIND.MODEL) {
@@ -286,6 +295,41 @@ export function castPieces(
 }
 
 /** A character's sprite sheet, read once and kept. */
+/**
+ * How the sheets are being cut, while it is being worked out.
+ *
+ * Empty is the reading in `game-formats`. The game can move these live — see
+ * `spriteKeys` in `main.ts` — because where a frame begins is settled for the
+ * horizontal reading and not the vertical one, and every attempt to fit it by
+ * measurement has chosen a cut that renders wrong. Moving it by hand against
+ * the picture is the way left.
+ */
+let cut: SpriteCut = {}
+
+export function spriteCut(): SpriteCut {
+  return cut
+}
+
+/**
+ * Cut every sheet again, and hand back the numbers.
+ *
+ * The frames already decoded are thrown away with them: they were cut the old
+ * way.
+ */
+export function setSpriteCut(next: SpriteCut, cast: Cast): SpriteCut {
+  cut = next
+  readSheets.clear()
+  decoded.clear()
+  for (const member of cast.sprites2d) {
+    try {
+      member.sprite = readSprite(member.bytes, cut)
+    } catch {
+      // A cut that will not read leaves the character as it was.
+    }
+  }
+  return cut
+}
+
 const readSheets = new Map<string, Sprite | undefined>()
 function sheetFor(name: string, sheets: ReadonlyMap<string, Uint8Array>): Sprite | undefined {
   const key = name.toLowerCase()
@@ -294,7 +338,7 @@ function sheetFor(name: string, sheets: ReadonlyMap<string, Uint8Array>): Sprite
   let sprite: Sprite | undefined
   if (bytes && isSprite(bytes)) {
     try {
-      sprite = readSprite(bytes)
+      sprite = readSprite(bytes, cut)
     } catch {
       // A sheet that will not read leaves its character undrawn rather than
       // drawn wrong.

@@ -149,3 +149,20 @@ body.dragging {
   outline: 2px dashed var(--accent);
   outline-offset: -8px;
 }
+
+/**
+ * The sprite sheet's own canvas.
+ *
+ * A sprite is 2D and the renderer beside it is not, so it gets its own surface
+ * rather than being turned into a quad to look at. Pixels are kept square and
+ * unsmoothed: these are 32-pixel characters and what is being looked at is
+ * usually a single row being in the wrong place.
+ */
+#sheet {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  background: #14141a;
+}

@@ -22,7 +22,7 @@ import {
 } from '@minstrel/render'
 import { groundBelow, PERSON } from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
-import { castPieces, spritePieces, standingFrame } from './cast.ts'
+import { castPieces, setSpriteCut, spriteCut, spritePieces, standingFrame } from './cast.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import { type Loaded, load } from './load.ts'
@@ -102,6 +102,19 @@ let cartridge: Uint8Array | undefined
 const gate = doorGate()
 /** Set while a map is loading, so a doorway cannot be taken twice. */
 let travelling = false
+/**
+ * What the sprite keys have been moved to, and what the sheets say by default.
+ *
+ * The defaults are filled in from the first sheet the map loads, so the keys
+ * start from the reading in `game-formats` rather than from zero.
+ */
+let cutStart = 0
+let cutPitch = 0
+let cutHeight = 0
+/** Bytes added to odd frames only — see `SpriteCut.oddShift`. */
+let cutOdd = 0
+/** How wide a row of the sheet is in bytes, so a key can step by whole rows. */
+let cutRowBytes = 16
 /** The map as drawn this frame, and one box per piece for deciding what is in the way. */
 let mapPieces: Piece[] = []
 let mapBoxes: Box[] = []
@@ -308,6 +321,29 @@ function enter(map: string, arrival?: Arrival): boolean {
   // from wherever it was watching the last map.
   camera.focus = [toFloat(at.x), toFloat(at.y) + camera.height, toFloat(at.z)]
 
+  // Start the keys from what the parser decided, so nudging is relative to the
+  // current reading rather than to zero.
+  const firstSheet = opened.cast.sprites2d[0]
+  if (firstSheet) {
+    const sheet = firstSheet.sprite
+    cutRowBytes = sheet.width / 2
+    const already = spriteCut()
+    cutHeight = already.height ?? sheet.height
+    cutPitch = already.pitch ?? (sheet.width * cutHeight) / 2 + 8
+    cutStart = already.start ?? 24 + 6 * cutRowBytes
+    cutOdd = already.oddShift ?? 0
+    if (cutParam) {
+      cutStart = cutParam[0] ?? cutStart
+      cutPitch = cutParam[1] ?? cutPitch
+      cutHeight = cutParam[2] ?? cutHeight
+      cutOdd = cutParam[3] ?? cutOdd
+      setSpriteCut(
+        { start: cutStart, pitch: cutPitch, height: cutHeight, oddShift: cutOdd },
+        opened.cast,
+      )
+    }
+  }
+
   const elapsed = Math.round(performance.now() - started)
   const { members, sprites, unclassified, missing, elsewhere } = opened.cast
   status(
@@ -349,6 +385,32 @@ function maybeTravel(): void {
   }, 0)
 }
 
+/**
+ * Move the sprite cut, and cut every sheet again.
+ *
+ * Three numbers decide where a frame is: the byte the pixels start at, the
+ * bytes from one frame to the next, and the rows in a frame. The first is
+ * settled horizontally and not vertically, and the other two are measured
+ * rather than derived — see the sprite section of
+ * `packages/game-formats/FORMAT.md`.
+ */
+function moveCut(by: { start?: number; pitch?: number; height?: number; odd?: number }): void {
+  if (!loaded) return
+  cutStart += by.start ?? 0
+  cutPitch += by.pitch ?? 0
+  cutHeight += by.height ?? 0
+  cutOdd += by.odd ?? 0
+  setSpriteCut(
+    { start: cutStart, pitch: cutPitch, height: cutHeight, oddShift: cutOdd },
+    loaded.cast,
+  )
+  status(
+    `sprite cut — start ${cutStart}, pitch ${cutPitch}, height ${cutHeight}, ` +
+      `odd frames ${cutOdd >= 0 ? '+' : ''}${cutOdd} (a row is ${cutRowBytes} bytes, ` +
+      `a byte is 2 pixels across)`,
+  )
+}
+
 /** The overlay text: where the character is, and what it is standing in. */
 function describe(uploaded: { vertices: number; triangles: number; textured: number }): void {
   if (!self || !loaded) {
@@ -363,6 +425,11 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
       (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
     padSeen ? 'left stick to walk · right stick to look' : 'WASD to walk · drag to turn',
+    showSprite
+      ? `sprite cut: start ${cutStart}  pitch ${cutPitch}  height ${cutHeight}` +
+        `   (row = ${cutRowBytes} bytes)\n` +
+        "  [ ] start by a byte · ; ' start by a row · , . pitch · - = height · 0 reset"
+      : undefined,
     // With `?pad=1`, what the pad reports — move a stick and watch which
     // numbers change, then pass those four to `?axes=`.
     showPad && !pad
@@ -491,6 +558,17 @@ const padAxes = axesFrom(params.get('axes'), params.get('lookbuttons'))
 /** A layout given on the URL wins over anything known about the pad. */
 const padOverridden = params.get('axes') !== null || params.get('lookbuttons') !== null
 const showPad = params.get('pad') === '1'
+/** `?sprite=1` shows the sprite cut and turns its keys on. */
+const showSprite = params.get('sprite') === '1'
+/**
+ * `?cut=start,pitch,height,odd` starts from those numbers instead of the
+ * parser's, so a candidate can be looked at without pressing a key twelve
+ * times. Any field left empty keeps the parser's value.
+ */
+const cutParam = params
+  .get('cut')
+  ?.split(',')
+  .map((v) => (v === '' ? undefined : Number(v)))
 /** `?lighting=night` builds the map's night pieces instead of its day ones. */
 const wantedLighting = params.get('lighting') === 'night' ? 'night' : 'day'
 /**
@@ -548,6 +626,37 @@ addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
   if (self && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
     self.held.add(key)
+    event.preventDefault()
+  }
+  if (!showSprite) return
+  // A byte is two pixels across; a row moves the frame down one.
+  const moves: Record<string, () => void> = {
+    '[': () => moveCut({ start: -1 }),
+    ']': () => moveCut({ start: 1 }),
+    ';': () => moveCut({ start: -cutRowBytes }),
+    "'": () => moveCut({ start: cutRowBytes }),
+    ',': () => moveCut({ pitch: -1 }),
+    '.': () => moveCut({ pitch: 1 }),
+    '-': () => moveCut({ height: -1 }),
+    '=': () => moveCut({ height: 1 }),
+    '9': () => moveCut({ odd: -1 }),
+    '\\': () => moveCut({ odd: 1 }),
+  }
+  const move = moves[key]
+  if (move) {
+    move()
+    event.preventDefault()
+  }
+  if (key === '0' && loaded) {
+    // Back to what the parser decided.
+    const sheet = loaded.cast.sprites2d[0]?.sprite
+    if (sheet) {
+      cutHeight = sheet.height
+      cutPitch = (sheet.width * cutHeight) / 2 + 8
+      cutStart = 24 + 6 * (sheet.width / 2)
+      cutOdd = 0
+      moveCut({})
+    }
     event.preventDefault()
   }
 })

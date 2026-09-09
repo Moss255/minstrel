@@ -7,19 +7,95 @@ Against the milestone's own list.
 | Map assembly and collision | **both done** |
 | Character controller with original movement constants | **done**; the character's size is measured off the doors, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
-| Interior/exterior transitions, doors, stairs | **done**; every doorway is read from `.bmbl` and leads somewhere — see below |
+| Interior/exterior transitions, doors, stairs | **the data is read and the doors work**; the rooms behind them are not finished — see "Not done" below |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
-| The village's own cast, placed | **done**; 18 stand in the village, 14 of them 2D sprites, and each interior has its own |
+| The village's own cast, placed | **placed, drawn wrong**; 18 stand in the village, 14 of them 2D sprites, and each interior has its own, but the sheets are still cut wrong — see "Not done" |
 
-**Done when:** you can walk the whole village and enter every building. **You
-can.** All nine of the village's doorways lead somewhere and put the character
-down on the floor of it: eight buildings and the road east to the field. The
-Mayor's house and Erinn's house each carry a second doorway to their upper
-floor, and those load too.
+**Done when:** you can walk the whole village and enter every building.
 
-The one exception is the road east. `F01` opens, but the arrival it names has no
-collision under it, so the character is put down on the nearest ground instead
-— see "A field's collision does not reach its own doorways" in
+All nine of the village's doorways lead somewhere and put the character down on
+the floor of it — eight buildings and the road east — and the two upper floors
+load. **That is not the same as the slice being finished**, and an earlier
+revision of this table said "done" on the strength of it. What that measured was
+whether a doorway lands the character on a floor, checked in a script. It did
+not measure whether the room behind it is one you can walk around, and it could
+not have: nobody had played it.
+
+## Not done
+
+Four things. Every one was found by playing or by looking at a picture; none of
+them came from a measurement, and several survived measurements that said they
+were fine.
+
+**The character was twice as wide as a person.** `PERSON.radius` was 0.04
+against a height of 0.18 — 0.22 of the height, where a person is about 0.14.
+Nothing caught it while interiors were being assembled eight times too big,
+because nothing in them was ever a tight fit. At their own scale it costs most
+of the room: walking every way out of the doorway of `M01M08` reached 1,944
+distinct spots at 0.04 and 6,076 at 0.025. Now 0.025.
+
+**Interiors leak.** A room's collision is one floor quad with walls standing on
+it, and the walls do not close it. Walking 64 directions out of the doorway of
+`M01M04`, **9 of them walk off the floor and fall out of the world**, at either
+radius; `M01M08` does it on 20 once the character is thin enough to reach the
+gap. The fat radius was plugging some of these, which is why they surfaced
+together. Nothing here invents a wall the cartridge does not have — an engine
+rule against stepping off into nothing is the likely answer, and it is not
+written yet.
+
+**The 2D cast still does not survive being walked around**, though it is closer
+and the reason is now known rather than guessed.
+
+*Fixed.* The frames were being cut on an even division of the sheet's rows,
+which is marked `INFERRED` in `sprite.ts` and does not hold: a frame is **not a
+whole number of sheet rows**. It is `width x height / 2` bytes of pixels with
+eight more between it and the next, and eight bytes is half a row of a 32-pixel
+sheet — which is what put every other frame half a width out, sliced down the
+middle with its halves swapped. Cut at that pitch the village's characters come
+out whole, and the ink landing in the edge columns drops 20.2% across the
+cartridge. Confirmed on the frames the game itself asks for, not a convenient
+sample: cut the old way those are unrecognisable.
+
+Those eight bytes are **transparent padding, not a record** — an earlier
+revision of this note and of the parser's comment called them a record, and the
+bytes disprove it.
+
+*Not fixed.* Every frame carries a **stray fragment above the character** — a
+hat, or the top of a head, detached from the figure. In a crowded room that
+reads as debris floating over the cast, which is what the inn looks like.
+Rendering the whole block with no frame assumption shows why: the sheet is a
+repeating pair of *a small mound, then a character*, so the mound is part of the
+repeating unit and there is nothing to remove — only a boundary to place right
+relative to it.
+
+*The lead worth following.* The heads sit at a different offset from the bodies,
+which is an observation from looking at it rather than measuring it. Traced
+numerically, the horizontal centre of a head runs 21.4, 19.1, 15.1, 11.1 across
+frames 0 to 3 — a steady sideways slide. Solving for the pitch that flattens it
+gives **660 bytes** on three characters independently, against 0.38 to 0.47
+pixels a frame of drift at the 648 the parser uses. Whether 660 is right by eye
+is not yet checked, which is why the parser still says 648.
+
+Ruled out along the way, each measured: 8x8 tiling in two arrangements, a wrong
+row stride (32 wins at 0.691 against 0.554 for the next), the animation table
+holding offsets, six criteria for fitting the start, and three hypotheses about
+the row count. All written up in `packages/game-formats/FORMAT.md`.
+
+One thing still unsettled and deliberately parked: the sense of the facing
+angle. `standingFrame` maps "the character's angle equals the camera's" to
+`stand_up` — its back turned — but if `facing` means the direction
+`(sin f, cos f)`, which is the convention the player's own facing uses, that
+case is the character looking **at** the camera and the table is 180° out. A
+test across 119 placed sprites split 26 to 22, which decides nothing. Worth
+settling only once the frames are cut right, since a wrongly cut frame cannot be
+judged by eye.
+
+*To carry on:* `?sprite=1` in the game and any `.spr` in the explorer both cut
+the sheet live, on the same keys, and print the four numbers.
+
+The road east is a fourth, already recorded: `F01` opens, but the arrival it
+names has no collision under it, so the character is put down on the nearest
+ground instead — see "A field's collision does not reach its own doorways" in
 `packages/game-formats/FORMAT.md`.
 
 ## What the slice needs, and whether it exists

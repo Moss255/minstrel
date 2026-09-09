@@ -6,7 +6,15 @@ import {
   scanCartridge,
   textureFor,
 } from '@minstrel/cartridge'
-import { isMapManifest, type MapManifest, readMapManifest } from '@minstrel/game-formats'
+import {
+  isMapManifest,
+  isSprite,
+  type MapManifest,
+  readMapManifest,
+  readSprite,
+  type Sprite,
+  type SpriteCut,
+} from '@minstrel/game-formats'
 import { DS_HEIGHT, DS_WIDTH, ModelRenderer, type Piece, ReferenceTarget } from '@minstrel/gl'
 import {
   type Animation,
@@ -43,6 +51,8 @@ interface Entry {
   readonly leaf?: Leaf
   /** Set for an assembled map: the archive whose descriptor describes it. */
   readonly archive?: string
+  /** Set for a 2D sprite sheet, which is drawn rather than rendered. */
+  readonly sheet?: Leaf
 }
 
 function must<T extends Element>(selector: string): T {
@@ -140,7 +150,16 @@ function scan(rom: Uint8Array, pathFilter?: string): Entry[] {
     name: leaf.path.slice(leaf.path.lastIndexOf('/') + 1),
     leaf,
   }))
-  return [...maps, ...models]
+  // Sprite sheets arrive as unclaimed leaves: they are not models and not in an
+  // archive the catalogue knows how to open.
+  const sheets: Entry[] = cat.other
+    .filter((leaf) => leaf.path.toLowerCase().endsWith('.spr') && isSprite(leaf.bytes))
+    .map((leaf) => ({
+      path: leaf.path,
+      name: `${leaf.path.slice(leaf.path.lastIndexOf('/') + 1)} (sprite)`,
+      sheet: leaf,
+    }))
+  return [...maps, ...models, ...sheets]
 }
 
 function renderList(): void {
@@ -200,12 +219,124 @@ function pose(): void {
   describe(renderer.upload(drawn))
 }
 
+/**
+ * The sprite sheet on show, and how it is being cut.
+ *
+ * Where a `.spr`'s frames begin is not settled — see the sprite section of
+ * `packages/game-formats/FORMAT.md` — so the explorer can move the cut and
+ * redraw, which is what looking at a sheet is for. The keys match the game's.
+ */
+let sheetSprite: Sprite | undefined
+let sheetBytes: Uint8Array | undefined
+let sheetCut: SpriteCut = {}
+
+const sheetEl = must<HTMLCanvasElement>('#sheet')
+
+/** Lay every frame of the sheet out in a grid, as big as the canvas allows. */
+function drawSheet(): void {
+  const sprite = sheetSprite
+  const context = sheetEl.getContext('2d')
+  if (!sprite || !context) return
+  const across = Math.ceil(Math.sqrt(sprite.frames))
+  const down = Math.ceil(sprite.frames / across)
+  const first = sprite.decode(0)
+  const gap = 2
+  const cellW = first.width + gap
+  const cellH = first.height + gap
+  const wide = across * cellW
+  const tall = down * cellH
+  // Whole-number zoom only: a sprite half-scaled is a sprite you cannot judge.
+  const zoom = Math.max(
+    1,
+    Math.floor(Math.min(sheetEl.clientWidth / wide, sheetEl.clientHeight / tall)),
+  )
+  sheetEl.width = wide * zoom
+  sheetEl.height = tall * zoom
+  context.imageSmoothingEnabled = false
+  context.fillStyle = '#14141a'
+  context.fillRect(0, 0, sheetEl.width, sheetEl.height)
+
+  for (let frame = 0; frame < sprite.frames; frame++) {
+    let image: ReturnType<Sprite['decode']>
+    try {
+      image = sprite.decode(frame)
+    } catch {
+      continue
+    }
+    const data = new ImageData(new Uint8ClampedArray(image.pixels), image.width, image.height)
+    // A checkerboard behind it, because what is wrong with a sprite is usually
+    // where its holes are.
+    const atX = (frame % across) * cellW * zoom
+    const atY = Math.floor(frame / across) * cellH * zoom
+    for (let y = 0; y < image.height * zoom; y += 8) {
+      for (let x = 0; x < image.width * zoom; x += 8) {
+        context.fillStyle = ((x >> 3) + (y >> 3)) % 2 === 0 ? '#22222a' : '#2c2c36'
+        context.fillRect(atX + x, atY + y, 8, 8)
+      }
+    }
+    const tile = document.createElement('canvas')
+    tile.width = image.width
+    tile.height = image.height
+    tile.getContext('2d')?.putImageData(data, 0, 0)
+    context.drawImage(tile, atX, atY, image.width * zoom, image.height * zoom)
+  }
+}
+
+/** Cut the sheet again and redraw, then say what the numbers are. */
+function recut(by: Partial<Record<'start' | 'pitch' | 'height' | 'oddShift', number>>): void {
+  if (!sheetBytes || !sheetSprite) return
+  const rowBytes = sheetSprite.width / 2
+  const base: Required<SpriteCut> = {
+    start: sheetCut.start ?? 24 + 6 * rowBytes,
+    pitch: sheetCut.pitch ?? (sheetSprite.width * sheetSprite.height) / 2 + 8,
+    height: sheetCut.height ?? sheetSprite.height,
+    oddShift: sheetCut.oddShift ?? 0,
+  }
+  const next: SpriteCut = {
+    start: base.start + (by.start ?? 0),
+    pitch: base.pitch + (by.pitch ?? 0),
+    height: base.height + (by.height ?? 0),
+    oddShift: base.oddShift + (by.oddShift ?? 0),
+  }
+  try {
+    sheetSprite = readSprite(sheetBytes, next)
+    sheetCut = next
+  } catch {
+    // A cut that will not read leaves the sheet as it was.
+    return
+  }
+  drawSheet()
+  status(
+    `${sheetSprite.frames} frames — start ${next.start}, pitch ${next.pitch}, ` +
+      `height ${next.height}, odd ${next.oddShift} (row = ${rowBytes} bytes)`,
+  )
+}
+
 function select(index: number): void {
   const entry = entries[index]
   if (!entry || !cat) return
   selected = index
 
   try {
+    if (entry.sheet !== undefined) {
+      sheetBytes = entry.sheet.bytes
+      sheetSprite = readSprite(sheetBytes)
+      sheetCut = {}
+      sheetEl.hidden = false
+      canvas.hidden = true
+      scrubber.hidden = true
+      shown = undefined
+      drawSheet()
+      const rowBytes = sheetSprite.width / 2
+      status(
+        `${entry.path} — ${sheetSprite.frames} frames of ${sheetSprite.width}x${sheetSprite.height}` +
+          `, row = ${rowBytes} bytes.  [ ] start · ; ' row · , . pitch · - = height · 9 \\ odd`,
+      )
+      renderList()
+      return
+    }
+    sheetEl.hidden = true
+    canvas.hidden = false
     if (entry.archive !== undefined) {
       const manifest = manifests.get(entry.archive)
       const members = cat.members.get(entry.archive)
@@ -339,9 +470,15 @@ function advance(elapsed: number): void {
   pose()
 }
 
-async function load(file: File, pathFilter?: string): Promise<void> {
-  status(`reading ${file.name}…`)
-  const rom = new Uint8Array(await file.arrayBuffer())
+/**
+ * Take a cartridge and catalogue it.
+ *
+ * The bytes are taken as they arrive rather than through a `Blob`: a dump is
+ * upwards of 128 MiB and going through one costs a second copy and, in some
+ * browsers, a spill to disk that fails outright.
+ */
+async function load(rom: Uint8Array, label: string, pathFilter?: string): Promise<void> {
+  status(`reading ${label}…`)
   const started = performance.now()
   try {
     entries = scan(rom, pathFilter)
@@ -380,11 +517,46 @@ playEl.addEventListener('click', () => {
   playEl.textContent = playing ? 'pause' : 'play'
 })
 
+async function chose(file: File): Promise<void> {
+  status(`reading ${file.name}…`)
+  await load(new Uint8Array(await file.arrayBuffer()), file.name)
+}
+
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0]
-  if (file) void load(file)
+  if (file) void chose(file)
 })
 filterEl.addEventListener('input', renderList)
+
+/**
+ * The sprite cut keys, the same ones the game uses.
+ *
+ * They do nothing unless a sheet is on show, and they stay out of the way of
+ * the filter box — typing a search term should not move the cut.
+ */
+addEventListener('keydown', (event) => {
+  if (sheetEl.hidden || document.activeElement === filterEl) return
+  const moves: Record<string, () => void> = {
+    '[': () => recut({ start: -1 }),
+    ']': () => recut({ start: 1 }),
+    ';': () => recut({ start: -((sheetSprite?.width ?? 32) / 2) }),
+    "'": () => recut({ start: (sheetSprite?.width ?? 32) / 2 }),
+    ',': () => recut({ pitch: -1 }),
+    '.': () => recut({ pitch: 1 }),
+    '-': () => recut({ height: -1 }),
+    '=': () => recut({ height: 1 }),
+    '9': () => recut({ oddShift: -1 }),
+    '\\': () => recut({ oddShift: 1 }),
+  }
+  const move = moves[event.key]
+  if (!move) return
+  move()
+  event.preventDefault()
+})
+
+addEventListener('resize', () => {
+  if (!sheetEl.hidden) drawSheet()
+})
 
 document.addEventListener('dragover', (event) => {
   event.preventDefault()
@@ -395,7 +567,7 @@ document.addEventListener('drop', (event) => {
   event.preventDefault()
   document.body.classList.remove('dragging')
   const file = event.dataTransfer?.files?.[0]
-  if (file) void load(file)
+  if (file) void chose(file)
 })
 
 let dragging = false
@@ -476,7 +648,11 @@ if (romUrl) {
       const response = await fetch(romUrl)
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
       if (params.get('reference') === '1') referenceMode = true
-      await load(new File([await response.blob()], romUrl), params.get('path') ?? undefined)
+      await load(
+        new Uint8Array(await response.arrayBuffer()),
+        romUrl,
+        params.get('path') ?? undefined,
+      )
       const wanted = params.get('model')
       if (wanted) {
         const index = entries.findIndex((e) => e.path.toLowerCase().includes(wanted.toLowerCase()))

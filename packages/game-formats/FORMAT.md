@@ -1066,3 +1066,197 @@ Fixtures in `test/sprite.test.ts` are built in code.
 | …with all eight standing directions | **24 / 24** |
 | readable sheets cartridge-wide carrying an animation table | 181 / 1,317 |
 | frame heights summing to the sheet's rows | by construction |
+
+## The frame segmentation is wrong
+
+**Known broken, reported from play**, and the reason is that the even division
+below is inferred and does not hold. Cutting frame `k` at `round(k x rows /
+frames)` puts a band of the neighbouring frame inside the cell: the first five
+rows of `n003a`'s frame 7 are a slice of another frame, wrapped so that its ink
+sits against the left and right edges with a gap between. The character proper
+begins on row 5.
+
+It shows in play as a villager that comes apart as the camera turns around
+them, because each facing is a different frame and only some are mis-cut.
+
+An earlier check here — "ink fills 33 to 41 of the 41 rows" — was fooled by
+exactly this: the foreign band counts as ink.
+
+### What has been ruled out
+
+- **A constant offset on the even division.** Sweeping every offset scores at
+  best 5 to 7 frames of 16 with their ink in one piece, and the best offset is
+  not the same for two characters (40, 42, 42, 35).
+- **A fixed pitch with a leading offset.** Better, and interestingly so: pitch
+  **41** at an offset of 3 to 6 scores 9 to 13 of 16, against the even
+  division's 5 to 7. 41 is the header's own `height` of 40 plus one. But the
+  offset is not constant across characters, and `n099a` — 839 rows, a nominal
+  height of 51 — scores 1 of 16 at every pitch and offset tried, so the model
+  does not generalise.
+- **A per-frame table in the file.** Searched `n003a.spr` for a run of sixteen
+  values between 35 and 55 at byte, `u16` and `u32` strides through the first
+  4 KiB. There is none.
+
+### The 23 rows were a red herring
+
+Recorded because it was chased and cost time. The guess was that `rows` — walked
+back from the palette — includes data that is not pixels, that the giveaway was
+663 rows for 16 nominal 40-row frames leaving 23 spare (and 839 for 16 nominal
+51-row frames leaving 23 as well), and that the pitch would then be the header's
+`height`. **All three parts are wrong.**
+
+- **The gap is not 23 and not constant.** Taking the pixels as exactly
+  `frames x width x height / 2` bytes ending at the palette, the rows the
+  current start adds in front of them are 2 on 999 sheets, 23 on 163, 9 on 42,
+  and other values below that. 23 looked constant because both sheets examined
+  happened to be in the same group.
+- **The header's `height` is not the pitch.** On `n003a` the rows that are
+  entirely empty fall at 81, 249, 330, 413, 496, 579 and 662 — a period of
+  **83 rows for two frames**, so 41.5 each, against a header height of 40.
+  `n017a` gives the same 83.
+- **Cutting from the header's byte count is worse, not better.** It makes
+  `n003a`'s frame 7 clean and its frame 0 broken, and across the cartridge it
+  takes frames whose ink is in one piece from 2,306 of 4,096 to 1,922.
+
+### The frames are not a row grid: the pitch is `width x height / 2 + 8` bytes
+
+**Found by rendering a sheet to a PNG and looking at it** — `tools/sprite`,
+which writes to `out/` and is local-only. Three separate measurements had said
+the sheets were broadly fine, and all three were blind to this.
+
+Frame 1 of `n003a` is a whole, centred villager. Frame 0 is the *same figure
+sliced down the middle with its halves swapped* — right half against the left
+edge, left half against the right. That is a **horizontal wrap**, and no count
+of rows or of ink was ever going to show it.
+
+The cause is that a frame is not a whole number of sheet rows. Sweeping the byte
+pitch over both 32x40 characters and scoring by how much ink lands in the edge
+columns picks **648 bytes** for each, and a 32x40 frame at 4bpp is **640**.
+The extra **8 bytes is half a row of 32 pixels**, which is exactly the offset
+that puts every other frame half a width out when the sheet is read as a grid of
+rows.
+
+Rendered at a pitch of `width x height / 2 + 8` every frame comes out whole and
+centred, on `n003a` and on `n099a`, whose frames are 40 wide and whose pitch is
+then 808.
+
+The eight bytes are **transparent padding, not a record**: read at the frame
+spacing they are zero on every frame of every character checked. An earlier
+revision of this section called them a per-frame record, on the strength of the
+file also leading with two eight-byte runs before the first frame — that was a
+guess and the bytes disprove it.
+
+That the gap is real and this size is checkable two ways. Read with no gap at
+all — frames packed at exactly `width x height / 2` — the figures **drift down
+the sheet**, a little lower in each successive frame. Read at 648 they hold
+still across all sixteen. And a pitch of 664, the other candidate, cannot be
+right because it does not fit: sixteen frames at 664 leave no room in front of
+the palette for a start above the header.
+
+`readSprite` cuts this way when the sheet's declared width really is its stride
+and the frames fit before the palette — **1,257 of the 1,264** — and falls back
+to the even division otherwise, which is what a sheet read at `width - 8` still
+needs. Across the cartridge it takes the ink landing in the two edge columns
+down by 20.2%, and the village's characters come out whole instead of halved.
+
+### The start is still a row out, and fitting it does not work
+
+A cut frame carries a few rows of its neighbour at the top and sits about two
+pixels right of centre. Sweeping the start a row at a time and rendering each
+shows the band travel from the top of the cell to the bottom; the clean window
+for `n003a` is **92 to 108**, not the 24 the record layout gives.
+
+Nothing found derives 92. It is not a constant offset from the header or from
+the palette, and its phase within a row is not constant either — 12 on `n003a`
+and `n004a`, 15 on `n017a`, `n002b` and `n013a`.
+
+Four ways of fitting it per sheet were tried. All fail, each differently, which
+is why the parser uses the fixed 24:
+
+| criterion | what it actually does |
+|---|---|
+| least ink in the top rows | slides the window until the head is cut off — picks 192, 160, 208 |
+| clear air above the head, feet on the floor | satisfied by 0 or 1 frame in 16; these characters fill their cells |
+| least ink against the left edge | finds the right phase within a row, but lands a row high, and rendering it clips every head |
+| anchor the last frame to the palette | clips every head |
+
+The pitch is settled and the halving is gone. `LEAD_ROWS` in `sprite.ts` carries
+the six, marked as fitted rather than derived.
+
+### What is left: a stray fragment above every character
+
+Rendering **the exact frames the game asks for** — `standingFrame` at the
+follow camera's default yaw, which for the inn's fifteen characters is mostly
+frames 10 to 15 — settles what the packing did and did not fix.
+
+Cut the old way those frames are **sliced vertically with their halves
+swapped**, several of them unrecognisable. Cut the new way every one is a whole
+figure. That comparison is what the packing is worth, and it is the frames in
+play rather than a convenient sample.
+
+But each of those frames also carries a **stray fragment above the character** —
+a hat or the top of a head, clearly separated from the figure below it. On
+screen, in a crowded room, that reads as debris floating over the cast.
+
+It is not drift: measured across all sixteen frames of four characters, the ink
+starts on row 0 and ends on row 39 in almost every one, so the frames do not
+creep relative to each other. It is that a cell holds a character *and*
+something else, and no start tried removes the second without eating the first.
+Cropping to 34 rows six rows down, which should have left the figure alone,
+takes the top of its head off instead.
+
+So the sheet is not simply a column of `height`-row cells with the character
+filling each.
+
+### What the whole block looks like
+
+Rendering every byte from the start of the pixels to the palette, at 32 wide and
+with no frame assumption at all, shows what a cell actually holds. The block is
+a repeating pair:
+
+> a small brown **mound**, five or six rows tall — then the character, then the
+> next mound, then the next character.
+
+Eight columns of 83 rows hold two of those pairs each, which is the 41.5 rows a
+frame occupies, arrived at a third time. **The mound is part of the repeating
+unit, not a mis-cut neighbour.** What it is has not been established — a shadow
+and a hat are both consistent with its shape — but it is why no start removes it:
+there is nothing to remove, only a frame boundary to put in the right place
+relative to it.
+
+That also means the even division was closer than it looked. Its frames
+alternate 41 and 42 rows, which straddles the true 41.5; what it got wrong was
+where the block begins.
+
+### The loader in the cartridge's own code
+
+`CLAUDE.md` puts disassembly outside this repository, so this is a foothold
+rather than a finding. The ARM9 binary is BLZ-compressed — 638,216 bytes at ROM
+offset 0x4000, decompressing to 1,000,984 — and carries the sprite loader's own
+path strings:
+
+| RAM address | string |
+|---|---|
+| `0x20ef20b` | `/data/ani/d_%c%03d.spr` |
+| `0x20e6e98` | `/data/ani/d_i127.spr` |
+| `0x20efdc4` | `data/chara_sub/%s.chr` |
+
+Whatever computes a frame's offset is reached from the code that loads those
+paths. Nothing here has been disassembled and no behaviour is claimed from it.
+
+### What is established
+
+**1,031 of the 1,264 sheets have `rows` divisible by `frames`.** For those the
+even division is exact, the pitch is a whole number, and there is nothing wrong.
+
+**233 do not**, and they are where the mis-cutting lives. Adding a single row to
+the count makes 48 of them exact and three rows makes 2 more; **183 stay
+fractional** under any small correction, so a one-row error in finding the start
+is not the general answer either.
+
+On the affected sheets the measured period (83 rows per two frames, 41.5 each)
+and the computed one (663/16 = 41.44) differ by about a row across the whole
+sheet, which is too small to account for a five-row band of foreign pixels. So
+the artefact seen in play is **still unexplained**, and what has been narrowed is
+where to look: the 233, and what makes their row count fractional.
+
