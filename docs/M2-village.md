@@ -23,6 +23,9 @@ not have: nobody had played it.
 
 ## Not done
 
+`docs/next.md` is the short version of this, with what to do next for each and
+the commands to run. What follows is the evidence.
+
 Four things. Every one was found by playing or by looking at a picture; none of
 them came from a measurement, and several survived measurements that said they
 were fine.
