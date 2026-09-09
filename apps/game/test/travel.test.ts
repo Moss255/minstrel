@@ -100,11 +100,25 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     const inn = open('M01M02')
     const outward = inn.doorways[0] as NonNullable<(typeof inn.doorways)[number]>
 
-    // Pinned so the pair stays honest, both ways round.
-    expect(Math.hypot(outward.x - inward.arriveX, outward.z - inward.arriveZ)).toBeCloseTo(0.03, 2)
+    // Going in, the arrival lands inside the inn's own door back, so the gate
+    // is what stops the character being pulled straight out again.
     expect(doorAt(inn.doorways, inward.arriveX, inward.arriveZ)?.to).toBe('M01')
-    expect(doorAt(village.doorways, outward.arriveX, outward.arriveZ)?.to).toBe('M01M02')
 
+    // Coming out is a knife edge and is deliberately not asserted either way.
+    // The arrival sits 0.150 from the village's door to the inn, and the door
+    // reaches 0.125 of half-depth plus the character's 0.0249 of radius —
+    // 0.150. Which side of its own edge that lands on is a rounding decision.
+    //
+    // It was asserted, before `PERSON.radius` came down from 0.04 to a person's
+    // proportions, and the change moved it onto the boundary. The clearance is
+    // a coincidence, not a rule: across the cartridge's 734 doorway pairs whose
+    // arrival lands just outside the door back, the median gap is 0.095 and the
+    // commonest values run 0.125, 0.025, 0.100, 0.094 — no constant.
+    const dz = Math.abs(outward.arriveZ - inward.z)
+    expect(dz).toBeCloseTo(inward.depth / 2 + toFloat(PERSON.radius), 3)
+
+    // The gate holds either way: put down inside a doorway or on its edge, the
+    // character does not go anywhere until they have stepped clear of it.
     const gate = doorGate()
     expect(doorTaken(gate, village.doorways, outward.arriveX, outward.arriveZ)).toBeUndefined()
     expect(doorTaken(gate, village.doorways, outward.arriveX, outward.arriveZ)).toBeUndefined()

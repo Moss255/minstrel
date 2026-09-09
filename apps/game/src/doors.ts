@@ -1,4 +1,6 @@
+import { toFloat } from '@minstrel/fixed'
 import type { MapTransition } from '@minstrel/game-formats'
+import { PERSON } from '@minstrel/sim'
 
 /**
  * Walking into a doorway, and coming out of one somewhere else.
@@ -16,9 +18,11 @@ import type { MapTransition } from '@minstrel/game-formats'
  * How much of the character's body counts as being in the doorway.
  *
  * A person is not a point, and a doorway you have to hit dead centre reads as
- * broken. This is their radius, so the doorway opens as they touch it.
+ * broken. This is their radius, so the doorway opens as they touch it — taken
+ * from the character rather than written out again, because it was written out
+ * as 0.04 and then the character got thinner.
  */
-export const DOOR_REACH = 0.04
+export const DOOR_REACH = toFloat(PERSON.radius)
 
 /**
  * Whether a point stands inside a doorway's volume.

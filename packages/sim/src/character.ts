@@ -297,7 +297,14 @@ function pushOutOfWalls(
  */
 export const PERSON: CharacterShape = {
   height: fx32(Math.round(0.18 * FX32_ONE)),
-  radius: fx32(Math.round(0.04 * FX32_ONE)),
+  // 0.14 of the height, which is about a person: shoulders half a metre across
+  // on a body 1.7 tall. It was 0.04 — 0.22 of the height, a character twice as
+  // wide as they should be — and nothing caught it while interiors were being
+  // built eight times too big, because nothing was ever a tight fit. Against
+  // interiors at their own scale it costs most of the room: walking every way
+  // out of the doorway of `M01M08` reached 1,944 distinct spots at 0.04 and
+  // 6,076 at 0.025.
+  radius: fx32(Math.round(0.025 * FX32_ONE)),
   stepUp: fx32(Math.round(0.1 * FX32_ONE)),
   // About 50 degrees from flat.
   maxSlope: fx32(Math.round(0.64 * FX32_ONE)),

@@ -94,10 +94,15 @@ function shift(
 ): CollisionTriangle {
   return {
     ...triangle,
+    // Rounded, because an `fx32` is a whole number of 1/4096ths. Scaling a
+    // collision mesh by an eighth without rounding leaves every vertex of an
+    // indoor map fractional — 138 of 138 in the village inn — and a fractional
+    // `fx32` is a float in the simulation, which `mulFx32` truncates through
+    // `Math.imul` and the shifts it decomposes with.
     vertices: triangle.vertices.map((v) => [
-      v[0] * scale + offset.x,
-      v[1] * scale + offset.y,
-      v[2] * scale + offset.z,
+      Math.round(v[0] * scale + offset.x),
+      Math.round(v[1] * scale + offset.y),
+      Math.round(v[2] * scale + offset.z),
     ]) as unknown as CollisionTriangle['vertices'],
   }
 }

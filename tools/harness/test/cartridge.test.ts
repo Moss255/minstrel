@@ -3009,13 +3009,19 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // Ten doorways and one more, every one of them nothing but wall.
     expect(markers).toBe(11)
     expect(standless).toBe(11)
-    // Sealed, most of the village cannot be reached from its middle. Open,
-    // most of it can — and no walkable ground is lost with them, because they
-    // held none. Measured from the middle; the largest connected region of the
-    // village is 93% of its ground either way you start.
-    expect(sealed).toBeLessThan(0.4)
-    expect(open).toBeGreaterThan(0.55)
-    expect(open).toBeGreaterThan(sealed * 2)
+    // Sealed, a good part of the village cannot be reached from its middle.
+    // Open, nearly all of it can — and no walkable ground is lost with them,
+    // because they held none.
+    //
+    // These were 0.4 and 0.55 while the character's radius was 0.04, which made
+    // them 0.22 of their own height wide — about twice a person. At 0.025 they
+    // fit past the ends of a marker quad rather than being stopped by it, so
+    // sealing costs less than it did: 0.596 against 0.927. The gap is what the
+    // test is for, and it is still the difference between three fifths of the
+    // village and all but a fourteenth of it.
+    expect(sealed).toBeLessThan(0.65)
+    expect(open).toBeGreaterThan(0.9)
+    expect(open - sealed).toBeGreaterThan(0.25)
   }, 120_000)
 
   it('does not put a character down in the water', () => {
