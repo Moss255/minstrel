@@ -5,13 +5,22 @@ Against the milestone's own list.
 | M2 task | status |
 |---|---|
 | Map assembly and collision | **both done** |
-| Character controller with original movement constants | **done**; the character's size is measured off the houses, the rest tuned — see below |
+| Character controller with original movement constants | **done**; the character's size is measured off the doors, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
-| Interior/exterior transitions, doors, stairs | not started; the map-to-map graph is now located in `.bmbl`, the per-door binding is not |
+| Interior/exterior transitions, doors, stairs | **done**; every doorway is read from `.bmbl` and leads somewhere — see below |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
-| The village's own cast, placed | **partly** — 4 of the 49 draw; 32 are 2D sprites, which nothing here renders |
+| The village's own cast, placed | **done**; 18 stand in the village, 14 of them 2D sprites, and each interior has its own |
 
-**Done when:** you can walk the whole village and enter every building.
+**Done when:** you can walk the whole village and enter every building. **You
+can.** All nine of the village's doorways lead somewhere and put the character
+down on the floor of it: eight buildings and the road east to the field. The
+Mayor's house and Erinn's house each carry a second doorway to their upper
+floor, and those load too.
+
+The one exception is the road east. `F01` opens, but the arrival it names has no
+collision under it, so the character is put down on the nearest ground instead
+— see "A field's collision does not reach its own doorways" in
+`packages/game-formats/FORMAT.md`.
 
 ## What the slice needs, and whether it exists
 
@@ -737,6 +746,11 @@ until they looked right, and both recorded as chosen rather than derived:
 
 A person about as tall as a doorway is the sanity check that the two agree.
 
+**`PLACED_PIECE_SCALE` is no longer only by eye.** The interior-scale work below
+corroborates the same eighth from three references that have nothing to do with
+how it looks: the inn's furniture, the doorway models, and the village's own
+props. `PERSON.height` is still chosen rather than derived.
+
 Two consequences of a person this small. Gravity lands on three `fx32` words a
 tick, so it is quantised at a few per cent; if the height is revised upwards
 that goes away on its own. And the camera's boom is measured in character
@@ -814,26 +828,43 @@ inside — wider than the village it stands in.
 building on the exterior map is 2.19 units from ground to roof. A building
 cannot hold two floors it is less than half the height of.
 
-So the exterior is drawn at roughly **two and a half times smaller** than the
-interiors, which is ordinary for a game of this kind — interiors are separate
-maps and are built at whatever scale reads well on a small screen — but it means
-a measurement taken in one does not transfer to the other.
+The observation was right and the number was wrong. It is not two and a half.
 
-That is exactly the mistake made earlier here. The character's height was
-derived from "every interior has its ceiling at almost exactly two units", and
-then judged against houses on the *exterior* map. The two numbers were never
-comparable, which is why the figure kept having to be halved by eye and never
-settled.
+**An indoor map is authored an eighth larger than it looks**, and the cartridge
+says so: `maplist9.bin` carries the flag, `1` indoors against `2` outdoors, and
+its own labels are what establish it — "Interior", "Church", "Well", "Inn",
+"Item Shop" on the 520 entries with `1`; "Exterior" and the named regions on the
+119 with `2`. Nothing inside a map's own archive distinguishes the two, which is
+why this took so long to find: the descriptor's scale field is `1, 1, 1` on
+every resource of the cartridge.
 
-It also explains the doors. They are `upScale` 1 and 1.54 units tall — the
-interior scale — and they are placed on the exterior map, whose terrain is
-`upScale` 8 and comes out small. A door built to interior scale standing against
-a house built to exterior scale is a door nearly as tall as the house it opens.
+Outdoors, only the pieces a map *places* are in the larger authored space and
+want `PLACED_PIECE_SCALE`. Indoors the whole map is — its terrain, its
+collision, its furniture and its placements alike.
 
-**What follows:** a character needs a scale per map rather than one constant,
-and the exterior's own scale relative to its interiors has to be established
-before either the character or the doors can be given a number. Neither is
-guessed in the meantime; both are adjustable in the viewer.
+**The doorway table cannot settle this**, which is worth stating because it is
+the obvious place to look. A map and its own doorways are in the same space, so
+scaling both together is invisible from inside: doorways stand over their own
+floor on 95.6% before and 95.6% after. It takes a reference from outside that
+space, and there are three, all agreeing on the same eighth:
+
+- **The furniture.** A stool in the inn stands 1.9 character-heights tall as
+  shipped and 0.24 divided; its beds go from 7.3 x 9.7 to 0.9 x 1.2.
+- **The doorway models**, which are placed and so already divided, and therefore
+  in the character's space whatever their map is doing. The inn is 36 of its own
+  doors wide as shipped and 4.5 divided.
+- **The village outside**, whose own props are already right undivided — its
+  fences stand 0.9 of a character — so the two cannot share a space.
+
+So the earlier mistake here is now explained rather than merely suspected. The
+character's height was derived from "every interior has its ceiling at almost
+exactly two units" and then judged against houses on the *exterior* map. Those
+ceilings are eight times what they look; the two numbers were never comparable,
+which is why the figure kept having to be halved by eye and never settled.
+
+**What follows:** a map carries its own scale, taken from the index rather than
+guessed, and `assembleMap` applies it. A doorway's three parts then need care,
+because they are in three different spaces — see below.
 
 ### Forward was backwards
 
@@ -852,10 +883,17 @@ rather than against the sign of a sine: pressing forward has to put the
 character deeper into the picture and further from the eye, at six different
 camera angles. A sign error cannot pass that.
 
-### The doors are placed, and their size is unresolved
+### The doors are placed, and their size is settled
 
-Placing them was the fix above. Whether they are the right *size* is not
-settled, and nothing in the data settles it:
+Placing them was the fix above. Their *size* is now settled too, by the section
+above: a placed piece is authored in the larger space and wants
+`PLACED_PIECE_SCALE`, which is the same 8 the translations need. A door comes
+out **0.19 units** tall against a character of 0.18 — the check that wanted
+making, and the one the two self-consistent worlds below could not choose
+between.
+
+What follows is what the data does and does not say on its own, kept because the
+reasoning still holds:
 
 - The door models decode at **1.54 units** tall, at `upScale` 1, while the
   terrain around them is at `upScale` 8 — and placed pieces are almost all at 1
@@ -870,11 +908,15 @@ settled, and nothing in the data settles it:
 So no scale is applied, and the viewer resizes placed pieces live on `,` and `.`
 instead — the same approach as the character, for the same reason.
 
-The two are linked, and the link is worth stating. A door is the best
-human-scale reference a village has. If the doors at 1.54 units are right, a
-person is about 1.3 units. If the person at 0.45 is right, the doors should be
-about 0.53. Those are the two self-consistent worlds and the data does not
-choose between them.
+The two are linked, and the link is what settled it. A door is the best
+human-scale reference a village has, and it is the reference the interior scale
+above rests on twice over. Divided by 8 a door is 0.19 and a person 0.18, which
+is the world the furniture and the village's own props both agree with.
+
+A doorway's *trigger* is a third thing again, and not in either map's space:
+across the 154 doorways that have a doorway model standing at them, a trigger is
+1.42 times its door's width outdoors and 1.49 indoors when left at its own size
+— against 0.19 if it is scaled with the map it stands in.
 
 ### The camera was sinking into the ground
 
@@ -930,7 +972,12 @@ sit inside a circle 0.8 units across at one height, 0.157 above the ground
 beneath them — nine tenths of a character. They are on a shop floor, in the
 shop's coordinates. Asking the map's own collision separates them cleanly: the
 ones that belong outside miss the ground by 0.006 to 0.030 and the rest by 0.156
-to 0.175. Four of the village's characters draw.
+to 0.175. Each interior gets the ones that stand on its own floor, which is
+what the ground test already decides: 18 draw in the village, 14 of them 2D, and
+the inn's 20 are the inn's own. This is also the check that caught the interior
+scale — before it, an interior's collision covered the same range of coordinates
+the exterior's cast was placed in, and the village's own characters were drawn
+standing inside the inn.
 
 What the NPCs do settle is a different question. `s001.nsbmd` stands **10.03
 units** — exactly the player's posed height. Every character on the cartridge is
@@ -1084,34 +1131,61 @@ that is a stated deviation from the milestone's wording rather than an oversight
 ## Still to establish
 
 - **What the six remaining placement values mean.** Three of the fourteen are
-  the translation, three the scale, one the parent; the rest are unread.
-- **Interior and exterior links.** Half-answered, by a file that was not known
-  to exist. `M01.ambl` holds `M01M0000.bmbl`, whose string table names the map's
-  own textures and then **nine other map codes** — `M01M01`..`M01M08` and `F01`.
-  Cartridge-wide **858 of 898 such links are reciprocal**: each interior names
-  exactly its exterior, and `F01` names `M01`, `D01` and `S01M01`, which is this
-  slice's own route. So the connectivity graph is data after all, not bytecode.
+  the translation, three the scale, one the parent, one the slot and one the
+  position in the list; the rest are unread. The scale is `1, 1, 1` everywhere,
+  so nothing is lost by not applying it.
+- ~~**Interior and exterior links.**~~ **Answered, and by the same file.**
+  `M01.ambl` holds `M01M0000.bmbl`, whose string table names the map's own
+  textures and then **nine other map codes** — `M01M01`..`M01M08` and `F01`.
+  Cartridge-wide **858 of 898 such links are reciprocal**.
 
-  **It does not say which door leads where.** `M01` has ten doorway models
-  (`M01M00D1`..`DA`) against nine named maps, and the counts agree on only 60 of
-  the 172 maps that have both. Binding a doorway to a destination would have to
-  come from the `.bmbl` record stream, which is not decoded — see
-  `findings.md`. The ten single-shape doorway models, each 1.54 units tall with
-  a two-triangle collision box beside it, remain the candidate for the trigger
-  side of that pairing.
-- **What the placement floats are in.** See the NPC section: the facing angle is
-  established, the three floats before it are not. The map list carries no link
-  field; its eighteen numeric values do not include one that indexes another
-  map. The per-map `.bats` attribute tables are float-valued — fog and lighting,
-  four and seven records for a village with ten doors. And `apinfo.bin`, which
-  looked promising at 144 KB, is battle-road and network data.
+  And its **record stream says which door leads where**, which an earlier
+  revision of this list said it could not. The stream did not decode because a
+  record's header carries two bits of type per value and is padded to four
+  bytes; read as a flat four bytes it desynchronised on 387 of the 667 files.
+  With the padding they walk exactly, 667 of 667, and a doorway comes out of
+  them whole: a volume standing in the map, the map it leads to, and where you
+  come out.
 
-  What remains is the event scripts. Doors in this kind of game are usually
-  events rather than geometry, which fits: it is `SB2` bytecode that is not yet
-  examined, and that makes transitions an M3 problem wearing an M2 hat.
+  The check that makes it trustworthy is that the two halves of the file agree
+  without being read by the same code — the doorways in the record stream name
+  exactly the map codes in the string table above them, on **442 of 444** maps.
+
+  The doorway-model count was the misleading part and is now explained: a model
+  is scenery and a record is a trigger, and there is no reason for them to be in
+  correspondence. `M01`'s ten models against nine named maps was never evidence
+  of anything.
+- ~~**What the placement floats are in.**~~ **Answered**: they are a position,
+  divided by the same 8 the map's own placements need — see the NPC section.
+
+  The paragraph that used to sit here concluded that doors must live in `SB2`
+  event bytecode, "an M3 problem wearing an M2 hat". **That was wrong**, and it
+  is left recorded rather than deleted because the reasoning was plausible and
+  cost time: doors in this kind of game usually *are* events, so the conclusion
+  looked safe once the obvious tables had been searched. What it missed is that
+  the table beside the map had not actually been read yet — only walked, with a
+  header that did not decode.
+
+  Two of the map list's eighteen numeric values are also answered since: slot 17
+  says whether a map is built indoors, which is what gives a map its scale.
 - **The collision attribute word.** Terrain kind — water, and the Hexagon's
   poison marshes — is very likely in it. Not needed to walk.
 - **`gridX` and `gridZ`.** Understanding them would let the sim use the file's
   own index instead of building one.
-- **Where a map starts.** The walker spawns at the middle of the collision mesh
-  because the cartridge's own start positions have not been located.
+- **Where a map starts.** The walker spawns at the most open walkable spot
+  nearest the middle of the collision mesh, because the cartridge's own start
+  positions have not been located. Coming through a doorway is different — that
+  has an arrival to aim at, and `findSpawn` takes it as the spot to search out
+  from.
+- **What a field uses for walkable ground.** New, and the one functional gap
+  left in the slice. A field's collision does not reach its own doorways, on
+  **19.2% of them against 87-100% for every other kind of map**, and the road
+  east out of the village is one of the misses. Scale, translation, `.bats`,
+  `.dat`, the sub-archives, the drawn terrain standing in for collision and
+  collision shared between archives are all ruled out **in the file** — see
+  `packages/game-formats/FORMAT.md`, which records each one so they are not
+  tried again. Settling it means watching the game run.
+- **The three positions in a doorway's tail.** Past the arrival each doorway
+  record carries three more positions. They repeat the arrival exactly on 847 of
+  1,393 and stand more than four units from it on 407, which no reading yet
+  explains. Carried nowhere.
