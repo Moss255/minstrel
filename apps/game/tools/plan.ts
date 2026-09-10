@@ -27,6 +27,17 @@ import { load } from '../src/load.ts'
 const rom = new Uint8Array(readFileSync(process.argv[2] as string))
 const code = process.argv[3] as string
 const SIZE = 700
+/**
+ * Draw only what is below this height, so a room reads as a floor plan rather
+ * than as the silhouette of its own roof. `--under=0.3`, in world units.
+ */
+const under = Number(
+  process.argv.find((a) => a.startsWith('--under='))?.slice(8) ?? Number.POSITIVE_INFINITY,
+)
+/** `--floor` draws only near-horizontal geometry: the floor, and nothing on it. */
+const floorOnly = process.argv.includes('--floor')
+/** `--walls` draws only what stands up, so the drawn room's walls can be seen. */
+const wallsOnly = process.argv.includes('--walls')
 
 const o = load(rom, { map: code })
 type Tri = [number, number, number, number, number, number]
@@ -42,7 +53,24 @@ for (const { model, place, scale } of o.map.pieces) {
       const a = g.vertices[g.indices[i] as number]
       const b = g.vertices[g.indices[i + 1] as number]
       const c = g.vertices[g.indices[i + 2] as number]
-      if (a && b && c) drawn.push([a.x, a.z, b.x, b.z, c.x, c.z])
+      if (!a || !b || !c) continue
+      if (Math.min(a.y, b.y, c.y) > under) continue
+      if (floorOnly || wallsOnly) {
+        const ux = b.x - a.x
+        const uy = b.y - a.y
+        const uz = b.z - a.z
+        const vx = c.x - a.x
+        const vy = c.y - a.y
+        const vz = c.z - a.z
+        const ny = uz * vx - ux * vz
+        const len = Math.hypot(uy * vz - uz * vy, ny, ux * vy - uy * vx)
+        if (floorOnly && (len === 0 || Math.abs(ny) / len < 0.9)) continue
+        if (wallsOnly) {
+          if (len === 0 || Math.abs(ny) / len > 0.3) continue
+          if (Math.max(a.y, b.y, c.y) - Math.min(a.y, b.y, c.y) < 0.1) continue
+        }
+      }
+      drawn.push([a.x, a.z, b.x, b.z, c.x, c.z])
     }
   })
 }
@@ -97,9 +125,64 @@ function fill(t: Tri, colour: number[], alpha: number) {
     }
   }
 }
-for (const t of drawn) fill(t, [0x9a, 0x9a, 0xb0], 0.16)
-for (const t of floor) fill(t, [0x40, 0xd0, 0x70], 0.13)
-for (const t of walls) fill(t, [0xff, 0x50, 0x50], 0.25)
+if (!wallsOnly) for (const t of drawn) fill(t, [0x9a, 0x9a, 0xb0], 0.14)
+for (const t of floor) fill(t, [0x40, 0xd0, 0x70], 0.22)
+// A wall is vertical, so from above it is a line rather than a shape: filling
+// it draws nothing at all, which is why the collision outline was missing.
+function line(x0: number, z0: number, x1: number, z1: number, colour: number[]) {
+  const ax = px(x0)
+  const az = pz(z0)
+  const bx = px(x1)
+  const bz = pz(z1)
+  const steps = Math.max(Math.abs(bx - ax), Math.abs(bz - az), 1)
+  for (let i = 0; i <= steps; i++) {
+    const x = Math.round(ax + ((bx - ax) * i) / steps)
+    const y = Math.round(az + ((bz - az) * i) / steps)
+    if (x < 0 || x >= SIZE || y < 0 || y >= SIZE) continue
+    rgba.set([...(colour as [number, number, number]), 0xff], (y * SIZE + x) * 4)
+  }
+}
+function longest(t: Tri): [number, number, number, number] {
+  const pairs: [number, number, number, number][] = [
+    [t[0], t[1], t[2], t[3]],
+    [t[2], t[3], t[4], t[5]],
+    [t[4], t[5], t[0], t[1]],
+  ]
+  let best = pairs[0] as [number, number, number, number]
+  let far = -1
+  for (const pair of pairs) {
+    const length = Math.hypot(pair[2] - pair[0], pair[3] - pair[1])
+    if (length > far) {
+      far = length
+      best = pair
+    }
+  }
+  return best
+}
+if (wallsOnly) {
+  for (const t of drawn) {
+    const e = longest(t)
+    line(e[0], e[1], e[2], e[3], [0xb0, 0xb0, 0xd0])
+  }
+}
+for (const t of walls) {
+  // The two ends furthest apart in projection are the wall's own line.
+  const pairs: [number, number, number, number][] = [
+    [t[0], t[1], t[2], t[3]],
+    [t[2], t[3], t[4], t[5]],
+    [t[4], t[5], t[0], t[1]],
+  ]
+  let best = pairs[0] as [number, number, number, number]
+  let longest = -1
+  for (const pair of pairs) {
+    const length = Math.hypot(pair[2] - pair[0], pair[3] - pair[1])
+    if (length > longest) {
+      longest = length
+      best = pair
+    }
+  }
+  line(best[0], best[1], best[2], best[3], [0xff, 0x50, 0x50])
+}
 
 // The doorways, which are scaled like the collision rather than like the
 // geometry: a cross where the trigger stands, a ring where it arrives.
@@ -120,7 +203,7 @@ for (const door of o.doorways) mark(door.x, door.z, [0xff, 0xd0, 0x40], 9)
 for (const door of o.doorways) mark(door.x / o.scale, door.z / o.scale, [0x50, 0xc0, 0xff], 9)
 
 // Where the map that leads here puts the character down, both ways round.
-const from = process.argv[4]
+const from = process.argv.slice(4).find((a) => !a.startsWith('--'))
 if (from) {
   const back = load(rom, { map: from })
   for (const door of back.doorways) {
