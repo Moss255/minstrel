@@ -1,4 +1,11 @@
-import { chooseFigure, type Figure, type FigurePiece, figurePieces, library } from '@minstrel/actor'
+import {
+  chooseFigure,
+  type Figure,
+  type FigurePiece,
+  figurePieces,
+  type LibraryBuilder,
+  library,
+} from '@minstrel/actor'
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
@@ -282,30 +289,45 @@ function stemOf(path: string): string {
   return (dot < 0 ? name : name.slice(0, dot)).toLowerCase()
 }
 
-export function load(rom: Uint8Array, options: LoadOptions): Loaded {
-  forgetSheets()
+/**
+ * The part of a load that does not depend on which map is opened.
+ *
+ * Walking the cartridge and cataloguing it is **1.4 of the 1.5 seconds** a load
+ * takes — 0.6 in the walk and 0.9 in the classify — and none of it depends on
+ * the map. The leaves are the same, the character parts are the same, and the
+ * manifests are every map's, not one map's. Going through a doorway paid the
+ * whole price again for every door, which is what made a doorway take seconds.
+ *
+ * Kept against the cartridge itself and **weakly**, so that closing one does not
+ * hold 128 MiB alive, and by the paths walked, so that a caller narrowing them
+ * gets its own walk rather than someone else's.
+ */
+interface Walk {
+  readonly cat: Catalogue
+  readonly parts: LibraryBuilder
+  readonly manifests: ReadonlyMap<string, MapManifest>
+}
+
+const walked = new WeakMap<Uint8Array, Map<string, Walk>>()
+
+function walkOnce(rom: Uint8Array, paths: readonly string[]): Walk {
+  const key = paths.join('\u0000')
+  let byPaths = walked.get(rom)
+  if (!byPaths) {
+    byPaths = new Map()
+    walked.set(rom, byPaths)
+  }
+  const already = byPaths.get(key)
+  if (already) return already
+
   const manifests = new Map<string, MapManifest>()
   const parts = library()
-  const wanted = options.map.toLowerCase()
-
-  options.onProgress?.('reading the cartridge…')
-
   // One walk, several filters: the scan takes a single substring, so the
   // narrowed paths are walked in turn and their leaves catalogued together.
   const leaves = []
-  // The cast list is per map, so it is asked for by name rather than by
-  // walking the 35 MiB of scenario data around it.
-  // The cast list is per map, so it is asked for by name rather than by walking
-  // the 35 MiB of scenario data around it. An interior takes its area's list,
-  // so every prefix of the name is offered.
-  const paths = [
-    ...(options.paths ?? SLICE_PATHS),
-    ...castArchives(options.map).map((code) => `/data/scenario/${code}.npc`),
-  ]
   for (const path of paths) {
     for (const leaf of scanCartridge(rom, { pathFilter: path })) leaves.push(leaf)
   }
-
   const cat = catalogue(leaves, {
     classify: (leaf) => {
       // Observed, not claimed: a character part carries its own textures, so it
@@ -320,6 +342,47 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       return true
     },
   })
+  const fresh: Walk = { cat, parts, manifests }
+  byPaths.set(key, fresh)
+  return fresh
+}
+
+/**
+ * The shared walk with one map's cast list folded in.
+ *
+ * A cast list is the one thing a load needs that *is* per map, and asking for
+ * it by name costs a few milliseconds rather than the walk of the 35 MiB of
+ * scenario data around it. Its archive carries no models, textures or
+ * animations — `npc.bin` and `place.bin` — so only the members and the
+ * unclaimed leaves have anything to add.
+ */
+function withCast(base: Catalogue, extra: Catalogue): Catalogue {
+  if (extra.members.size === 0 && extra.other.length === 0) return base
+  const members = new Map(base.members)
+  for (const [archive, files] of extra.members) members.set(archive, files)
+  return {
+    models: base.models,
+    textures: base.textures,
+    animations: base.animations,
+    members,
+    other: [...base.other, ...extra.other],
+  }
+}
+
+export function load(rom: Uint8Array, options: LoadOptions): Loaded {
+  forgetSheets()
+  const wanted = options.map.toLowerCase()
+
+  options.onProgress?.('reading the cartridge…')
+
+  const { cat: shared, parts, manifests } = walkOnce(rom, options.paths ?? SLICE_PATHS)
+  // An interior takes its area's cast list, so every prefix of the name is
+  // offered. This walk is kept too, so coming back through a door is free.
+  const cast = walkOnce(
+    rom,
+    castArchives(options.map).map((code) => `/data/scenario/${code}.npc`),
+  )
+  const cat = withCast(shared, cast.cat)
 
   options.onProgress?.('assembling the map…')
 

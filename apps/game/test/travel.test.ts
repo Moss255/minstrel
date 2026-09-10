@@ -17,8 +17,8 @@ import { WALK_SPEED } from '../src/player.ts'
  */
 const romPath = process.env.MINSTREL_TEST_ROM
 
-// Opening a map takes about two seconds — the cartridge is walked again for
-// each — and these tests open seven between them.
+// The first map opened walks the cartridge; the rest reuse that walk, so only
+// the first of these costs anything much.
 describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
   // Read only when there is one to read: `skipIf` still runs this body to
   // collect the tests, so anything at this level runs without a cartridge too.
