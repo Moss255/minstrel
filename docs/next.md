@@ -395,6 +395,22 @@ Six characters authored off the walkable floor become one. These come from
 sub-records with unread state words, so they corroborate rather than prove — but
 they were the original symptom and they were not what the fit was made against.
 
+**Confirmed in play, and three that are not.** Reported after walking them:
+the **Inn** `M01M02`, the **Item Shop** `M01M03` and the **Stable** `M01M04`
+are right at two. The **Mayor's House** `M01M05`, the **Church** `M01M06` and
+**Erinn's House** `M01M07` still want adjusting. `M01M01` House A and `M01M08`
+the Well are unreported.
+
+A weak lead on those three, and weak is the word: measure the drawn floor
+against the collision floor and the three that need adjusting want 0.41, 0.42
+and 0.41 of it in z, against 0.75, 0.99 and 0.69 for the three that are right —
+the three agreeing with each other to two decimals, and about a factor of two
+from the working set. That would mean those three want the file's own size and
+not double it. The ruler is not trustworthy on its own: it takes any
+near-horizontal face, so shelving and tabletops widen the drawn floor, and it
+puts the shop — confirmed right in play — at 0.67 rather than 1. So this is
+something to check with `[` while fitting, not a finding.
+
 **What this does not settle**, and the reason the code says fitted: no field in
 the `.col2` header, the manifest, the map index or the model separates a map
 that needs two from one that does not, and `M01M08` measures the same factor the
