@@ -218,6 +218,15 @@ importers:
 
   tools/shot: {}
 
+  tools/sprite:
+    dependencies:
+      '@minstrel/cartridge':
+        specifier: workspace:*
+        version: link:../../packages/cartridge
+      '@minstrel/game-formats':
+        specifier: workspace:*
+        version: link:../../packages/game-formats
+
 packages:
 
   '@biomejs/biome@2.5.12':

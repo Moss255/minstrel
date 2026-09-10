@@ -328,10 +328,12 @@ function enter(map: string, arrival?: Arrival): boolean {
     const sheet = firstSheet.sprite
     cutRowBytes = sheet.width / 2
     const already = spriteCut()
-    cutHeight = already.height ?? sheet.height
-    cutPitch = already.pitch ?? (sheet.width * cutHeight) / 2 + 8
-    cutStart = already.start ?? 24 + 6 * cutRowBytes
-    cutOdd = already.oddShift ?? 0
+    // The sheet reports the cut it was read with, rather than the arithmetic
+    // being copied here where it would go stale.
+    cutHeight = already.height ?? sheet.cut.height
+    cutPitch = already.pitch ?? sheet.cut.pitch
+    cutStart = already.start ?? sheet.cut.start
+    cutOdd = already.oddShift ?? sheet.cut.oddShift
     if (cutParam) {
       cutStart = cutParam[0] ?? cutStart
       cutPitch = cutParam[1] ?? cutPitch

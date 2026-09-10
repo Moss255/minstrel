@@ -286,11 +286,13 @@ function drawSheet(): void {
 function recut(by: Partial<Record<'start' | 'pitch' | 'height' | 'oddShift', number>>): void {
   if (!sheetBytes || !sheetSprite) return
   const rowBytes = sheetSprite.width / 2
+  // The sheet reports the cut it was read with, so the keys move from the
+  // parser's own reading instead of from a copy of its arithmetic here.
   const base: Required<SpriteCut> = {
-    start: sheetCut.start ?? 24 + 6 * rowBytes,
-    pitch: sheetCut.pitch ?? (sheetSprite.width * sheetSprite.height) / 2 + 8,
-    height: sheetCut.height ?? sheetSprite.height,
-    oddShift: sheetCut.oddShift ?? 0,
+    start: sheetCut.start ?? sheetSprite.cut.start,
+    pitch: sheetCut.pitch ?? sheetSprite.cut.pitch,
+    height: sheetCut.height ?? sheetSprite.cut.height,
+    oddShift: sheetCut.oddShift ?? sheetSprite.cut.oddShift,
   }
   const next: SpriteCut = {
     start: base.start + (by.start ?? 0),

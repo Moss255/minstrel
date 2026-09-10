@@ -26,47 +26,51 @@ import { GameFormatError } from './errors.ts'
 const PALETTE_COLOURS = 16
 const HEADER_SIZE = 0x10
 /**
- * Where a sheet's pixels begin, and how far apart its frames are.
+ * How far apart a sheet's frames are, beyond the pixels a frame draws.
  *
  * **A frame is not a whole number of sheet rows**, which is why reading the
  * sheet as a grid of rows and dividing it evenly cut alternate frames in half
  * and swapped the halves — a horizontal wrap, and the reason a villager came
  * apart as the camera turned around them.
  *
- * A frame is `width x height / 2` bytes of pixels with **eight more bytes
- * between it and the next**. Eight bytes is half a row of a 32-pixel sheet,
- * which is exactly the offset that put every other frame half a width out when
- * the sheet was read as a grid of rows.
+ * The unit is `width x height / 2 + 24` bytes, which on the village's 32x40
+ * characters is **664 — 41.5 rows**. That is the same 41.5 the empty rows give:
+ * they fall every 83 rows, two frames apart.
  *
- * Those eight bytes are **transparent pixels, not a record**: read at the frame
- * spacing they are zero on every frame of every character checked. An earlier
- * revision of this comment called them a record, on the strength of the file
- * also leading with two eight-byte runs before the first frame. They are
- * padding.
+ * **Measured, not derived.** The period of the byte stream was taken directly,
+ * by scoring the sheet against itself at every candidate lag over the positions
+ * where either copy has ink. 664 wins on every 32x40 sheet surveyed — 182 of
+ * 187 multi-frame sheets, at 8, 11, 16 and 20 frames alike, so it is a constant
+ * of the geometry rather than a division of the file. The margin is not
+ * marginal: 0.47 against 0.32 for the runner-up on `n003a`.
  *
- * The pitch was measured before it was explained: sweeping it and scoring by
- * how much ink lands in the two edge columns picks 648 bytes on both of the
- * village's 32x40 characters, against the 640 a 32x40 frame occupies.
+ * It was 8 rather than 24, which is 16 bytes — **exactly one row** — short. A
+ * pitch one row short does not wrap; it walks the figure a row further down its
+ * cell with every frame, which is what put a stray fragment above the character
+ * and cut its hem off by the end of the sheet. Rendered at 664 the figures hold
+ * still across all sixteen.
  *
- * **What those eight bytes hold is not established.** They are not read.
+ * What the last 24 bytes hold is not established. They are not read.
  */
-const FRAME_RECORD = 8
-const PIXELS_AT = HEADER_SIZE + FRAME_RECORD
+const FRAME_GAP = 24
 
 /**
- * Rows between the start of the block and the first frame.
+ * Rows of the flattened strip that stands in front of every figure.
  *
- * **Fitted by eye, not derived** — the one number here that is. Rendering a
- * sheet at every candidate start, a row apart, and looking at the result puts
- * the village's `n003a` and `n017a` both at six rows past {@link PIXELS_AT}:
- * below it the character's hem is cut off by the foot of the cell, above it the
- * top of its head is. 183 of the 187 multi-frame sheets on the cartridge are 32
- * pixels wide, so a row here is 16 bytes on nearly all of them.
+ * A frame's 664 bytes are **an eight-row strip, then the figure**, and the
+ * header's `height` of 40 is the two together: 8 and 32. Cut at 32 rows, eight
+ * rows in, every frame of the village's characters is a whole figure with
+ * nothing above it.
  *
- * Six criteria were tried in place of the eye and every one chose a start that
- * renders wrong — see `FORMAT.md`. What these rows *are* is not established.
+ * **What the strip is has not been established.** It is a squashed copy of the
+ * figure — `n017a`'s carries the blue of her dress above the grey of her apron,
+ * and turns as she does, so it is not a constant blob — and a shadow and a
+ * reflection are both consistent with that. It is separate from the figure
+ * either way: eight rows of it, then a row with almost no ink in it, then the
+ * character. Read as part of the frame it drew as debris floating over the
+ * cast, which is what it looked like in a crowded room.
  */
-const LEAD_ROWS = 6
+const SHADOW_ROWS = 8
 
 /** One step of an animation: a sheet frame, held for a while. */
 export interface SpriteStep {
@@ -103,6 +107,23 @@ export interface Sprite {
    * stands.
    */
   readonly animations: readonly SpriteAnimation[]
+  /**
+   * The cut this sheet was read with.
+   *
+   * Reported so that a caller moving the cut live starts from the reading in
+   * this file rather than from its own copy of the arithmetic. Both apps held
+   * such a copy and both went stale the moment the reading changed.
+   *
+   * On the handful of sheets the packed reading does not fit, the frames come
+   * from the even division instead and these are the numbers a live cut would
+   * start from rather than the ones it used.
+   */
+  readonly cut: {
+    readonly start: number
+    readonly pitch: number
+    readonly height: number
+    readonly oddShift: number
+  }
   /** An animation by name, if the sheet has one. */
   animation(name: string): SpriteAnimation | undefined
   /** First and last row of a frame, in sheet rows. */
@@ -312,7 +333,10 @@ export interface SpriteCut {
    * across from where an even frame's do, which is what a head sitting at a
    * different offset from its body looks like.
    *
-   * `8` or `-8` tests that. It is a question, not a reading.
+   * `8` or `-8` tested that, and the answer is that nothing needs shifting: a
+   * frame is read from its own byte start, so the half row falls between frames
+   * rather than inside one. The knob is kept because it costs nothing and the
+   * question comes back whenever a sheet looks wrong.
    */
   readonly oddShift?: number
 }
@@ -364,14 +388,19 @@ export function readSprite(data: Uint8Array, cut: SpriteCut = {}): Sprite {
   // sheet's declared width really is its stride — a sheet read at width - 8 is
   // not described by this arithmetic — and when the frames fit in front of the
   // palette.
-  const frameBytes = (stride * height) / 2
-  const pitch = cut.pitch ?? frameBytes + FRAME_RECORD
-  const pixelsAt = cut.start ?? PIXELS_AT + LEAD_ROWS * (stride / 2)
+  // The unit a frame occupies, which is more than the figure it draws: the
+  // strip in front of it, the figure, and a row and a half of nothing.
+  const pitch = cut.pitch ?? (stride * declaredHeight) / 2 + FRAME_GAP
+  // What the figure itself is. The header's height covers the strip as well,
+  // so the rows drawn are what is left after it.
+  const figureRows = cut.height ?? Math.max(1, declaredHeight - SHADOW_ROWS)
+  const figureBytes = (stride * figureRows) / 2
+  const pixelsAt = cut.start ?? HEADER_SIZE + SHADOW_ROWS * rowBytes
   const packed =
     cut.start !== undefined ||
     cut.pitch !== undefined ||
     cut.height !== undefined ||
-    (stride === width && pixelsAt + (frames - 1) * pitch + frameBytes <= palAt)
+    (stride === width && pixelsAt + (frames - 1) * pitch + figureBytes <= palAt)
   const animations = readAnimations(data, palAt + 4 + PALETTE_COLOURS * 2, frames)
 
   return {
@@ -379,7 +408,8 @@ export function readSprite(data: Uint8Array, cut: SpriteCut = {}): Sprite {
     animations,
     animation: (name) => animations.find((a) => a.name === name),
     frames,
-    height,
+    height: packed ? figureRows : height,
+    cut: { start: pixelsAt, pitch, height: figureRows, oddShift: cut.oddShift ?? 0 },
     unknown_0x08,
     palette,
     frameRows: (frame) => ({ from: bound(frame), to: bound(frame + 1) }),
@@ -391,7 +421,7 @@ export function readSprite(data: Uint8Array, cut: SpriteCut = {}): Sprite {
       // on 1,257 of the cartridge's 1,264 sheets; the even division otherwise,
       // which is what a sheet whose stride is not its declared width still
       // needs.
-      const tall = packed ? height : bound(frame + 1) - bound(frame)
+      const tall = packed ? figureRows : bound(frame + 1) - bound(frame)
       const odd = frame % 2 === 1 ? (cut.oddShift ?? 0) : 0
       const at = packed ? pixelsAt + frame * pitch + odd : start + bound(frame) * (stride / 2)
       const pixels = new Uint8Array(stride * tall * 4)

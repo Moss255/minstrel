@@ -10,6 +10,7 @@ import {
   isMarkerVolume,
   isNpcList,
   isNpcPlacements,
+  isSprite,
   isWaterTexture,
   mapDoorways,
   NPC_KIND,
@@ -23,6 +24,7 @@ import {
   readMapManifest,
   readNpcList,
   readNpcPlacements,
+  readSprite,
   resolveMapResources,
 } from '@minstrel/game-formats'
 import { crc32OfName, isGpc, readGpc } from '@minstrel/l5-gpc'
@@ -2121,6 +2123,66 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // is the minority of it, and the slivers skipped are a small part of that.
     expect(skipped).toBeLessThan(tested)
   })
+
+  it("cuts every sprite sheet on the block's own byte period", () => {
+    // The pitch was 16 bytes — exactly one row — short for a long time, and
+    // nothing caught it: a pitch one row short does not wrap the figure, it
+    // walks it a row further down its cell with every frame, and every count
+    // of rows and of ink said the sheets were fine. What does catch it is the
+    // period of the bytes themselves.
+    //
+    // The block most nearly repeats at the frame pitch. Scoring is over the
+    // positions where either copy has ink, so the transparent majority cannot
+    // vote for every lag alike; a wrong lag disagrees about where the ink is.
+    // `tools/sprite/render.ts --period` is the same measurement to look at.
+    const nibble = (d: Uint8Array, i: number) =>
+      i & 1 ? (d[i >> 1] as number) >> 4 : (d[i >> 1] as number) & 0x0f
+
+    let measured = 0
+    const wrong: string[] = []
+    for (const file of walkFiles(fs.root)) {
+      if (!file.path.startsWith('/data/ani/') || !file.path.endsWith('.spr')) continue
+      // A sample: the measurement is a sweep over the whole block, and the
+      // village's characters all share one geometry anyway.
+      if (measured >= 40) break
+      const data = fs.read(file)
+      if (!isSprite(data)) continue
+      let sprite: ReturnType<typeof readSprite>
+      try {
+        sprite = readSprite(data)
+      } catch {
+        continue
+      }
+      // Only the sheets the packed reading applies to: the rest are cut by the
+      // even division, which has no single pitch to check.
+      if (sprite.frames < 8 || sprite.width * sprite.height < 512) continue
+      const pitch = sprite.cut.pitch
+      measured++
+
+      let best = 0
+      let bestScore = -1
+      for (let lag = pitch - 32; lag <= pitch + 32; lag++) {
+        let both = 0
+        let either = 0
+        for (let i = 0x20; i + lag * 2 < data.length * 2; i++) {
+          const a = nibble(data, i)
+          const b = nibble(data, i + lag * 2)
+          if (a === 0 && b === 0) continue
+          either++
+          if (a === b) both++
+        }
+        const score = either === 0 ? 0 : both / either
+        if (score > bestScore) {
+          bestScore = score
+          best = lag
+        }
+      }
+      if (best !== pitch) wrong.push(`${file.path}: cut at ${pitch}, repeats at ${best}`)
+    }
+
+    expect(measured).toBeGreaterThan(20)
+    expect(wrong.slice(0, 10)).toEqual([])
+  }, 120_000)
 
   it('walks a character over every map without losing it', () => {
     // The controller is exercised on squares and ramps built for the purpose in

@@ -374,9 +374,10 @@ export function spritePieces(
   const { placement } = member
   const image = decodedFrame(member, frame)
   // **A sprite is not in the models' space**, so the models' scale does not
-  // apply: at that scale a 41-row villager stands 0.31 units against a person's
-  // 0.18. The cell is the character — ink fills 33 to 41 of its 41 rows across
-  // the village's cast — so one frame tall is one person tall.
+  // apply: at that scale a villager stands 0.31 units against a person's 0.18.
+  // The cell is the character — a frame is the 32 rows of the figure, with the
+  // strip that precedes it left out of the cut — so one frame tall is one
+  // person tall.
   const scale = characterHeight / image.height
   const halfW = (image.width * scale) / 2
   const tall = image.height * scale

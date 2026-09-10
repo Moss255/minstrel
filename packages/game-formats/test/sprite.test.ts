@@ -94,7 +94,58 @@ describe('readSprite', () => {
     const s = readSprite(build(VILLAGER))
     expect(s.frames).toBe(16)
     expect(s.width).toBe(32)
-    expect(s.height).toBe(40)
+    // The header's 40 rows are the strip and the figure together; what a frame
+    // draws is the 32 the figure occupies.
+    expect(s.height).toBe(32)
+  })
+
+  it('cuts the frames 664 bytes apart, eight rows into each', () => {
+    // The pitch is the measured one — `width x height / 2 + 24`, which is 41.5
+    // rows on a 32x40 sheet — and the eight rows in front of the figure are the
+    // strip, which is not part of it.
+    //
+    // Every pixel here carries its own place in the sheet, so where a frame was
+    // read from can be read back out of the frame. The palette is a ramp, so
+    // the index comes back out of the red channel.
+    const ramp = Array.from({ length: 16 }, (_, i) => i)
+    const mark = (nibble: number) => (nibble % 15) + 1
+    const s = readSprite(
+      build({
+        ...VILLAGER,
+        colours: ramp,
+        indices: (x, y) => mark(y * 32 + x),
+      }),
+    )
+    expect(s.height).toBe(32)
+
+    const red = (index: number) => Math.round(((ramp[index] as number) & 31) * (255 / 31))
+    for (const frame of [0, 1, 7, 15]) {
+      const { pixels, width, height } = s.decode(frame)
+      expect(width).toBe(32)
+      expect(height).toBe(32)
+      // Frame `f` begins at byte 16 + 8 rows + f * 664, and the pixels start at
+      // byte 16 — so its first nibble is (128 + f * 664) * 2 into them.
+      const first = (128 + frame * 664) * 2
+      for (const [x, y] of [
+        [0, 0],
+        [17, 0],
+        [5, 13],
+        [31, 31],
+      ]) {
+        const expected = mark(first + (y as number) * 32 + (x as number))
+        const at = ((y as number) * 32 + (x as number)) * 4
+        expect(pixels[at], `frame ${frame} at ${x},${y}`).toBe(red(expected))
+      }
+    }
+  })
+
+  it('falls back to the even division when the packed frames do not fit', () => {
+    // A sheet with no room in front of the palette for the packed reading is
+    // still cut, by the sheet's own rows — which is what the handful whose
+    // stride is not their declared width need.
+    const s = readSprite(build({ frames: 4, width: 8, height: 4, rows: 16 }))
+    expect(s.height).toBe(4)
+    expect(s.decode(0).height).toBe(4)
   })
 
   it('divides the sheet across the frames rather than by the nominal height', () => {

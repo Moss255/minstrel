@@ -8,9 +8,16 @@ import { encodePng } from './png.ts'
  * Render a sprite sheet to a PNG, on its own, so it can be looked at.
  *
  * ```sh
- * node --experimental-strip-types tools/sprite/render.ts rom/your.nds n003a
- * npx tsx tools/sprite/render.ts rom/your.nds n003a
+ * node tools/sprite/render.ts rom/your.nds n003a
+ * node tools/sprite/render.ts --period rom/your.nds n003a        # the pitch, measured
+ * node tools/sprite/render.ts --sweep=16:200:16 --pitch=664 rom/your.nds n003a
+ * node tools/sprite/render.ts --start=144 --pitch=664 --height=32 rom/your.nds n003a
  * ```
+ *
+ * `--start`, `--pitch` and `--height` go to the parser, so a candidate cut is
+ * judged through the same reading the game uses rather than a copy of it.
+ * `--period` measures the block's own byte period, which is the pitch; it is
+ * the one instrument here that answers rather than illustrates.
  *
  * Writes two images per sheet into `out/sprite/`, which `.gitignore` covers —
  * **these are cartridge pixels and must never be committed.**
@@ -139,8 +146,13 @@ function sweepStarts(
   hi: number,
   step: number,
   overridePitch?: number,
+  overrideHeight?: number,
 ) {
-  const sheet = { ...rawSheet(data), ...(overridePitch ? { pitch: overridePitch } : {}) }
+  const sheet = {
+    ...rawSheet(data),
+    ...(overridePitch ? { pitch: overridePitch } : {}),
+    ...(overrideHeight ? { height: overrideHeight } : {}),
+  }
   const show = Math.min(sheet.frames, 5)
   const starts: number[] = []
   for (let s = lo; s <= hi; s += step) {
@@ -180,19 +192,75 @@ function sweepStarts(
   console.log(`   -> ${file}`)
 }
 
+/**
+ * The period of the sheet's own bytes, measured rather than assumed.
+ *
+ * The frame pitch is the lag at which the block most nearly repeats. Scoring is
+ * over the positions where **either** copy has ink, so the transparent majority
+ * cannot vote for every lag equally; a wrong lag disagrees about where the ink
+ * is and scores badly.
+ *
+ * This is what settled the pitch at 664 on the village's 32x40 characters. It
+ * is a measurement of the data, not another criterion for what a frame ought to
+ * look like — the six of those that were tried all chose a cut that renders
+ * wrong, and are listed in `FORMAT.md` so they are not tried again.
+ */
+function measurePeriod(name: string, data: Uint8Array) {
+  const sheet = rawSheet(data)
+  const nibble = (i: number) =>
+    i & 1 ? (data[i >> 1] as number) >> 4 : (data[i >> 1] as number) & 0x0f
+  const from = 0x10 * 2
+  const to = sheet.palAt * 2
+  const nominal = (sheet.width * sheet.height) / 2
+  const scored: { lag: number; score: number }[] = []
+  for (let lag = Math.max(16, nominal - 60); lag <= nominal + 90; lag++) {
+    const shift = lag * 2
+    let both = 0
+    let either = 0
+    for (let i = from; i + shift < to; i++) {
+      const a = nibble(i)
+      const b = nibble(i + shift)
+      if (a === 0 && b === 0) continue
+      either++
+      if (a === b) both++
+    }
+    scored.push({ lag, score: either === 0 ? 0 : both / either })
+  }
+  scored.sort((a, b) => b.score - a.score)
+  const block = sheet.palAt - 0x10
+  console.log(
+    `${name}: ${sheet.frames} frames of ${sheet.width}x${sheet.height}, ${block} bytes of block` +
+      ` (${(block / sheet.frames).toFixed(2)} a frame)`,
+  )
+  console.log(
+    `   period: ${scored
+      .slice(0, 5)
+      .map((c) => `${c.lag} (${c.score.toFixed(3)})`)
+      .join(', ')}`,
+  )
+}
+
 const args = process.argv.slice(2)
 const zoom = Number(args.find((a) => a.startsWith('--zoom='))?.slice(7) ?? 3)
 const columns = Number(args.find((a) => a.startsWith('--columns='))?.slice(10) ?? 4)
 const range = args.find((a) => a.startsWith('--frames='))?.slice(9)
+/** `--period` — measure the byte period of the block, which is the pitch. */
+const period = args.includes('--period')
 /** `--sweep=lo:hi:step` — one band per candidate start, to be judged by eye. */
 const sweep = args.find((a) => a.startsWith('--sweep='))?.slice(8)
 /** `--pitch=N` overrides the byte pitch, to test a different frame spacing. */
 const pitchArg = Number(args.find((a) => a.startsWith('--pitch='))?.slice(8)) || undefined
+/** `--height=N` overrides the rows in a frame, to test a shorter cell. */
+const heightArg = Number(args.find((a) => a.startsWith('--height='))?.slice(9)) || undefined
+/** `--start=N` overrides the byte the first frame begins at. */
+const startArg = Number(args.find((a) => a.startsWith('--start='))?.slice(8)) || undefined
 const rest = args.filter((a) => !a.startsWith('--'))
 const romPath = rest[0]
 const wanted = rest.slice(1)
 if (!romPath || wanted.length === 0) {
-  console.error('usage: render.ts [--zoom=N] [--columns=N] <rom.nds> <sprite name> […]')
+  console.error(
+    'usage: render.ts [--zoom=N] [--columns=N] [--period] [--sweep=lo:hi:step]\n        [--start=N] [--pitch=N] [--height=N] <rom.nds> <sprite name> […]',
+  )
   process.exit(2)
 }
 
@@ -209,13 +277,23 @@ for (const name of wanted) {
     console.error(`${name}: no such sprite on this cartridge`)
     continue
   }
+  if (period) {
+    measurePeriod(name, bytes)
+    continue
+  }
   if (sweep) {
     const [lo, hi, step] = sweep.split(':').map(Number)
-    sweepStarts(name, bytes, lo ?? 16, hi ?? 300, step ?? 16, pitchArg)
+    sweepStarts(name, bytes, lo ?? 16, hi ?? 300, step ?? 16, pitchArg, heightArg)
     continue
   }
 
-  const sprite = readSprite(bytes)
+  // The cut overrides go to the parser too, so a candidate can be judged
+  // through the same reading the game uses rather than a copy of it here.
+  const sprite = readSprite(bytes, {
+    ...(startArg === undefined ? {} : { start: startArg }),
+    ...(pitchArg === undefined ? {} : { pitch: pitchArg }),
+    ...(heightArg === undefined ? {} : { height: heightArg }),
+  })
   const stride = sprite.width
 
   // Every frame back to back is the whole sheet, because the cuts are contiguous.
