@@ -14,10 +14,10 @@ import {
   isMapManifest,
   isNpcList,
   isNpcPlacements,
+  type MapEntry,
   type MapManifest,
   type MapTransition,
   mapDoorways,
-  npcSubMap,
   PLACED_PIECE_SCALE,
   placeNpcs,
   readMapList,
@@ -106,7 +106,7 @@ export const SLICE_PATHS = [
  * A missing or unreadable cast is not fatal: the map is still walkable, and one
  * archive on the cartridge carries a zero-byte list.
  */
-function castOf(cat: Catalogue, map: string, groundAt: GroundAt): Cast {
+function castOf(cat: Catalogue, map: string, groundAt: GroundAt, id: number | undefined): Cast {
   // `/data/ani/<name>.spr`, by character name. These sit directly in the
   // filesystem rather than inside an archive, so they arrive as unclaimed
   // leaves rather than as an archive's members.
@@ -133,7 +133,7 @@ function castOf(cat: Catalogue, map: string, groundAt: GroundAt): Cast {
   for (let cut = map.length - 1; cut > 0; cut--) candidates.push(map.slice(0, cut))
 
   for (const candidate of candidates) {
-    const found = castFrom(cat, candidate, map, groundAt, sheets)
+    const found = castFrom(cat, candidate, groundAt, sheets, id)
     if (found) return found
   }
   return empty
@@ -143,9 +143,9 @@ function castOf(cat: Catalogue, map: string, groundAt: GroundAt): Cast {
 function castFrom(
   cat: Catalogue,
   area: string,
-  map: string,
   groundAt: GroundAt,
   sheets: ReadonlyMap<string, Uint8Array>,
+  id: number | undefined,
 ): Cast | undefined {
   for (const [archive, files] of cat.members) {
     if (!archive.toLowerCase().endsWith(`/${area.toLowerCase()}.npc`)) continue
@@ -162,10 +162,13 @@ function castFrom(
       // coordinates of the room they stand in — and those rooms are each their
       // own little map about their own origin, so having floor underneath is no
       // evidence at all of being in the right one. It let fifteen villagers
-      // into the stable. See `NpcPlacement.map`.
-      const here = npcSubMap(area, map)
+      // into the stable.
+      //
+      // The join is the map's own id out of `maplist9.bin`, which every one of
+      // the cartridge's 1,289 placements names exactly. A map the index does
+      // not know is not narrowed at all rather than narrowed by a guess.
       const placed = placeNpcs(readNpcList(list), readNpcPlacements(places)).filter(
-        ({ placement }) => here === undefined || placement.map % 100 === here,
+        ({ placement }) => id === undefined || placement.map === id,
       )
       return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
     } catch {
@@ -192,18 +195,19 @@ function castArchives(map: string): string[] {
  * A map the index does not know is treated as outdoors, which is the unscaled
  * reading and the one that was right for every map before this.
  */
-function scales(cat: Catalogue): (code: string) => number {
+function indexOf(cat: Catalogue): (code: string) => MapEntry | undefined {
   for (const leaf of cat.other) {
     if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
     try {
       const list = readMapList(leaf.bytes)
-      return (code) => (list.map(code.toUpperCase())?.indoors ? PLACED_PIECE_SCALE : 1)
+      return (code) => list.map(code.toUpperCase())
     } catch {
-      // An index that will not read leaves every map at its shipped size.
-      return () => 1
+      // An index that will not read leaves every map at its shipped size and
+      // every cast unnarrowed.
+      return () => undefined
     }
   }
-  return () => 1
+  return () => undefined
 }
 
 /**
@@ -405,8 +409,9 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   }
 
   const code = stemOf(archive).toUpperCase()
-  const scaleFor = scales(cat)
-  const scale = scaleFor(code)
+  const index = indexOf(cat)
+  const entry = index(code)
+  const scale = entry?.indoors ? PLACED_PIECE_SCALE : 1
   const map = assembleMap(manifest, members, {
     scale,
     ...(options.lighting === undefined ? {} : { lighting: options.lighting }),
@@ -430,7 +435,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
 
   const figure = chooseFigure(parts)
   return {
-    cast: castOf(cat, code, groundAt),
+    cast: castOf(cat, code, groundAt, entry?.id),
     catalogue: cat,
     map,
     world,

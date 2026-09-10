@@ -81,61 +81,27 @@ export interface NpcPlacement {
    */
   readonly facing: number
   /**
-   * Which map of the area this character stands in.
+   * Which map this character stands in, as **the map's own id**.
    *
-   * **A cast list is per *area*, not per map.** `M01.npc` holds the 49
-   * characters of Angel Falls — the village outdoors *and* everyone inside its
-   * houses — and each one is placed in the coordinates of the map it stands in.
-   * Those coordinates do not distinguish them: an interior is its own little
-   * map about its own origin, so an innkeeper standing at (0.1, −0.1) is over
-   * the floor of every other interior as well. This word is what tells them
-   * apart.
+   * A cast list is per *area*, not per map. `M01.npc` holds the 49 characters
+   * of Angel Falls — the village outdoors *and* everyone inside its houses —
+   * and each is placed in the coordinates of the map they stand in. Those
+   * coordinates do not distinguish them: an interior is its own little map
+   * about its own origin, so an innkeeper standing at (0.1, −0.1) is over the
+   * floor of every other interior as well. This word is what tells them apart.
    *
-   * The value is **`area x 100 + sub-map`**, in decimal, and it reads that way
-   * in the file: `M01`'s placements carry 1100 to 1109, `S07`'s carry 5700 to
-   * 5707, `X05`'s 4501 to 4509. The low two digits name the map within the
-   * area — `1104` is `M01M04`, the stable — and 0 is the area's own exterior.
+   * **It is the id `maplist9.bin` gives the map**, and the join is exact: all
+   * **1,289** placement blocks on the cartridge carry a value that is some
+   * entry's id. See {@link MapEntry.id}.
    *
-   * Evidence, on this cartridge:
-   *
-   * - Every one of the **73** areas with placements uses a single value for
-   *   `x / 100`. Not one mixes two.
-   * - The low two digits name a map the cartridge's own index knows on
-   *   **1,245 of 1,289** placements. The 44 that do not are codes the index
-   *   does not ship at all, which it has 205 of.
-   * - `M01`'s ten values match the ten consecutive index entries `M01` and
-   *   `M01M01`..`M01M09` — the village, its eight interiors and an upper floor.
-   * - Standing them up bears it out: **every** placement tagged 1100 has floor
-   *   under it in `M01`, and **no** placement tagged anything else does.
-   *
-   * What the area half counts is not established — it is not the index
-   * position, and no constant relates the two. Nothing here needs it: a cast
-   * list is opened by area already, so only the low two digits are read.
+   * Angel Falls runs 1100 for the village and 1101 to 1112 for its interiors,
+   * so the ids there read as `area x 100 + sub-map`. That is a habit of the
+   * numbering rather than a rule — ids elsewhere run to 20001 — and nothing
+   * needs to take it apart, since the index gives the number outright.
    */
   readonly map: number
   /** Byte offset of the block, for anything that wants the rest of it. */
   readonly offset: number
-}
-
-/**
- * Which sub-map of `area` the code `code` names, as {@link NpcPlacement.map}
- * counts them.
- *
- * The area's own exterior is 0. A sub-map is spelled by appending to the area
- * code, and the spelling is not uniform — `M01` takes `M01M04` and `F` takes
- * `F01` — so what is taken is the digits the code ends with once the area's own
- * prefix is off it.
- *
- * Returns `undefined` for a code that is not in the area at all, so a caller
- * can tell "no sub-map" from "sub-map 0".
- */
-export function npcSubMap(area: string, code: string): number | undefined {
-  const from = area.toUpperCase()
-  const want = code.toUpperCase()
-  if (want === from) return 0
-  if (!want.startsWith(from)) return undefined
-  const digits = /(\d+)$/.exec(want.slice(from.length))
-  return digits ? Number(digits[1]) : undefined
 }
 
 /**
@@ -212,11 +178,37 @@ export function isNpcPlacements(data: Uint8Array): boolean {
  * Blocks are variable length, so they are found by their two-word signature and
  * read from there. The four floats follow the header.
  *
- * A block is a run of 60-byte records, each carrying six small numbers and a
- * position of its own — the same character in different places, which is what
- * you would expect of a character who moves as the story does. **Only the
- * first is read**, and which of them the game would choose is not established.
- * The map word is the same in every record of a block, so it is the block's.
+ * **A block holds one character in several places, and only the first is
+ * read.** After the header come sub-records, each opening with its own two-word
+ * mark:
+ *
+ * | mark | length | carries |
+ * |---|---|---|
+ * | `0x550D0005 0xFF02A955` | 60 | seven words, a map, the character's id, then x, y, z and a facing |
+ * | `0x55090005 0xFFFF0155` | 44 | the same without any position |
+ *
+ * The header repeats the first positioned sub-record exactly, which is what
+ * this reads.
+ *
+ * The seven words look like a story state and are **not established**. The
+ * first two climb through a block — 1/1, 1/2, 1/3, 2/1, 2/2, 2/6, 2/7, 19/2 —
+ * and the last is 0 or 1 on two records that are otherwise identical but stand
+ * in different places, which is what a character who moves within one state
+ * looks like. Nothing here decodes them.
+ *
+ * **A sub-record's map is its own**, and need not be the block's. `s017` opens
+ * in the village and has positioned records for the mayor's house, Erinn's
+ * house and the inn; `n005a` opens in Erinn's house and has one for the inn.
+ * Reading only the first record therefore both **misses** characters — the
+ * village inn holds 7 by the file and 5 are found — and **keeps** characters
+ * whose first state is far into the story.
+ *
+ * It also stacks them: four of the inn's five share the position
+ * `0.09, 0.02, -0.10` exactly, which is not five authored spots. Their other
+ * records put two of them at `x = 0.53` and one at `x = -0.55`, both outside
+ * the inn's own collision and both inside the room it draws — which is how the
+ * characters came to be the ruler that showed the collision is short. See
+ * `docs/next.md`.
  */
 export function readNpcPlacements(data: Uint8Array): NpcPlacement[] {
   const out: NpcPlacement[] = []

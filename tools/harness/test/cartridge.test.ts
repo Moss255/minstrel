@@ -6,6 +6,7 @@ import {
   isCollisionMesh,
   isDataTable,
   isMapLinks,
+  isMapList,
   isMapManifest,
   isMarkerVolume,
   isNpcList,
@@ -2122,6 +2123,40 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // triangles are exactly vertical — so the walkable surface this walks over
     // is the minority of it, and the slivers skipped are a small part of that.
     expect(skipped).toBeLessThan(tested)
+  })
+
+  it('names a map the index knows on every placement it holds', () => {
+    // A cast list is per area, and which of that area's maps each character
+    // stands in is the word at +8 of its placement block. It is the map's own
+    // id out of `maplist9.bin`, and the join is meant to be exact rather than
+    // nearly right: it was first read by taking the number apart in decimal,
+    // which agrees inside an area and fails on 3.4% of the cartridge.
+    let list: ReturnType<typeof readMapList> | undefined
+    for (const file of walkFiles(fs.root)) {
+      if (!file.path.toLowerCase().endsWith('maplist9.bin')) continue
+      const bytes = fs.read(file)
+      if (isMapList(bytes)) list = readMapList(bytes)
+    }
+    expect(list, 'no map index on this cartridge').toBeDefined()
+    const ids = new Set((list as NonNullable<typeof list>).maps.map((m) => m.id))
+
+    let placements = 0
+    const strangers: string[] = []
+    for (const file of walkFiles(fs.root)) {
+      if (!file.path.toLowerCase().endsWith('.npc')) continue
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        if (!member.name?.toLowerCase().endsWith('place.bin')) continue
+        if (!isNpcPlacements(member.data)) continue
+        for (const placement of readNpcPlacements(member.data)) {
+          placements++
+          if (!ids.has(placement.map)) strangers.push(`${file.path}: map ${placement.map}`)
+        }
+      }
+    }
+    expect(placements).toBeGreaterThan(1000)
+    expect(strangers.slice(0, 10)).toEqual([])
   })
 
   it("cuts every sprite sheet on the block's own byte period", () => {

@@ -5,7 +5,6 @@ import {
   isNpcList,
   isNpcPlacements,
   NPC_KIND,
-  npcSubMap,
   placeNpcs,
   readNpcList,
   readNpcPlacements,
@@ -140,35 +139,6 @@ describe('readNpcList', () => {
   })
 })
 
-describe('npcSubMap', () => {
-  it('gives the area its own exterior, which is zero', () => {
-    expect(npcSubMap('M01', 'M01')).toBe(0)
-    expect(npcSubMap('F', 'F')).toBe(0)
-  })
-
-  it('takes the digits a sub-map code ends with', () => {
-    expect(npcSubMap('M01', 'M01M04')).toBe(4)
-    expect(npcSubMap('M01', 'M01M09')).toBe(9)
-    expect(npcSubMap('X04', 'X04M24')).toBe(24)
-  })
-
-  it('copes with an area whose sub-maps are not spelled with an M', () => {
-    // The fields are `F.npc`, and its maps are `F01`, not `FM01`.
-    expect(npcSubMap('F', 'F01')).toBe(1)
-    expect(npcSubMap('F', 'F63')).toBe(63)
-  })
-
-  it('is undefined for a code outside the area, so it is not read as zero', () => {
-    expect(npcSubMap('M01', 'M02M01')).toBeUndefined()
-    expect(npcSubMap('M01', 'S07')).toBeUndefined()
-  })
-
-  it('does not mind the case either side', () => {
-    expect(npcSubMap('m01', 'M01M04')).toBe(4)
-    expect(npcSubMap('M01', 'm01m04')).toBe(4)
-  })
-})
-
 describe('readNpcPlacements', () => {
   const blocks = [
     { id: 1, x: -0.72, y: -1.05, z: 3.44, facing: Math.PI / 2 },
@@ -186,7 +156,8 @@ describe('readNpcPlacements', () => {
     // A cast list is the whole area's, and the coordinates do not separate its
     // maps: an interior is its own little map about its own origin, so an
     // innkeeper at (0.1, -0.1) is over the floor of every other interior too.
-    // This word is what tells them apart — `1104` is `M01M04`, the stable.
+    // This word is what tells them apart: it is the id `maplist9.bin` gives
+    // the map, and `1104` is `M01M04`, the stable.
     const read = readNpcPlacements(
       buildPlacements([
         { ...(blocks[0] as (typeof blocks)[number]), map: 1100 },

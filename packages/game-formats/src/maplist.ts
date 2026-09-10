@@ -29,6 +29,19 @@ const TAG_COUNT = 0x66
  * and a twelve-byte header. What looked like two leading values were those type
  * bytes. See `table.ts`.
  */
+/**
+ * The map's own id, which is how the rest of the cartridge names it.
+ *
+ * **Established exactly**: every one of the **1,289** placement blocks in
+ * `/data/scenario` carries a map word, and all 1,289 of them are the value of
+ * this slot on some entry here. Angel Falls runs 1100 for the village and 1101
+ * to 1112 for its interiors, which is why the decimal reading of a placement's
+ * map word looked like `area x 100 + sub-map` — but that is a habit of the
+ * numbering rather than a rule, and ids elsewhere run to 20001.
+ *
+ * `0` on 139 entries, which are maps the cartridge does not ship.
+ */
+const SLOT_ID = 0
 const SLOT_UNKNOWN_2 = 0
 const SLOT_REGION = 2
 const SLOT_CODE = 4
@@ -51,8 +64,16 @@ const SPACE_INDOORS = 1
 
 /** One map. */
 export interface MapEntry {
-  /** Position in the list, which is how other tables would refer to it. */
+  /** Position in the list. Not how anything refers to a map — see {@link id}. */
   readonly index: number
+  /**
+   * The map's own id, which **is** how the rest of the cartridge names it.
+   *
+   * A character's placement says which map it stands in by this number, and
+   * every one of the cartridge's 1,289 placements names an id that is here.
+   * Zero on the 139 entries for maps that do not ship.
+   */
+  readonly id: number
   /**
    * The map's code, and the name of its archive: `M01` is `M01.amdj`.
    *
@@ -146,6 +167,7 @@ export function readMapList(data: Uint8Array): MapList {
       code,
       region: at(SLOT_REGION, record),
       label: at(SLOT_LABEL, record),
+      id: record.values[SLOT_ID] as number,
       unknown_13: at(SLOT_UNKNOWN_13, record),
       unknown_2: at(SLOT_UNKNOWN_2, record),
       indoors: record.values[SLOT_SPACE] === SPACE_INDOORS,

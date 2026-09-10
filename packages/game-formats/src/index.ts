@@ -41,7 +41,6 @@ export {
   NPC_KIND,
   type NpcEntry,
   type NpcPlacement,
-  npcSubMap,
   placeNpcs,
   readNpcList,
   readNpcPlacements,
