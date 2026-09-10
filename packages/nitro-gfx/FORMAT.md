@@ -2,7 +2,8 @@
 
 ## Sources
 
-- Nintendo DS file formats wiki: *NSBMD*, *NSBTX*
+- Nintendo DS file formats wiki: *NSBMD*, *NSBTX*, and for the animation
+  containers below, *NSBCA*, *NSBTA*, *NSBTP*, *NSBMA*
 - GBATEK, [DS 3D Video](https://problemkaputt.de/gbatek.htm#ds3dvideo), for the
   geometry commands and their parameter counts
 
@@ -602,6 +603,35 @@ none of it was fitted against the models.
 - **`unknown_0x08`.** A `u32` that is 1 on most animations.
 - **The byte at `+0x02` of a track entry.** Always zero.
 
+## The six containers, and which are read
+
+Every Nitro container on the reference cartridge is the same shape — a four-byte
+stamp, a byte-order mark, a block count and its offsets — and each kind carries
+exactly one block, with no exceptions worth the name:
+
+| file | stamp | block | files in `/data/map` | read here |
+|---|---|---|---|---|
+| `.nsbmd` | `BMD0` | `MDL0` | 4,358 | yes |
+| `.nsbtx` | `BTX0` | `TEX0` | 737 | yes |
+| `.nsbca` | `BCA0` | `JNT0` | 317 | yes |
+| `.nsbta` | `BTA0` | `SRT0` | 873 | **no** |
+| `.nsbtp` | `BTP0` | `PAT0` | 525 | **no** |
+| `.nsbma` | `BMA0` | `MAT0` | 512 | **no** |
+
+The 12 `.nsbmd` that carry a second block carry `TEX0`, a model with its
+textures packed in beside it.
+
+The three unread kinds are animation, as the block stamps say: `SRT0` a
+texture's scale/rotate/translate over time, `PAT0` a texture pattern swapped
+frame by frame, `MAT0` a material's own values animated. Those readings are the
+published ones rather than anything measured here; what is measured is the
+stamp, the single block and the counts.
+
+**They matter more than their size suggests.** 1,910 of them sit in map
+archives, against 4,358 models — so roughly one animated thing for every two
+models. A map that looks static in this repository's viewer is a map whose
+`SRT0` is not being run: water, fire, and anything that scrolls or pulses.
+
 ## Not implemented
 
 - **The `0x40` flag's parameter on node-transform commands.** Its meaning is not
@@ -621,4 +651,5 @@ none of it was fitted against the models.
 - **Interpolation between animation samples.** A frame takes the sample that
   covers it. For step 1, which is all but about 1% of curves, that is every
   frame and there is nothing to interpolate.
-- **NSBTA and NSBTP.** Texture and palette animation are not read.
+- **NSBTA, NSBTP and NSBMA.** Texture, pattern and material animation are not
+  read — 1,910 files in the map archives. See the container table above.

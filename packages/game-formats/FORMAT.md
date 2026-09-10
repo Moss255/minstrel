@@ -239,6 +239,18 @@ bounding box.
 same units, and it encloses every triangle on **1,178 of 1,178** files, exactly
 on 1,038. The other 140 are snapped outward to round numbers, never inward.
 
+### The format has a ceiling, and the cartridge reaches it
+
+A vertex is `s16` in the units a `fx32` word counts, so a coordinate cannot pass
+**±8.00 units** and a mesh cannot be wider than **16.00**. That is not a
+theoretical bound here: the furthest vertex on the cartridge sits at exactly
+8.00 and the widest mesh is exactly 16.00, with 8 meshes past 7.9 and 93 past 7.
+528 of the 1,178 reach past 4.
+
+Anything the game needs collision for that is bigger than sixteen units across
+therefore cannot be stored at the size its models are drawn at. Whatever
+reconciles the two is not in this file — see below.
+
 ### The attribute word is not established
 
 Its values look like packed nibbles — `0x21`, `0x24`, `0x51`, `0x221` in the
@@ -260,20 +272,84 @@ pair lands on the end of the index list, on **1,178 of 1,178** files — allowin
 for the one `u16` of alignment padding the list may carry. Every one of those
 indices names a real triangle, again on all 1,178.
 
-**How many cells there are is read, not computed.** The obvious answer,
-`gridX * gridZ`, holds for only 511 files. `(2·gridX + 1) · gridZ / 2` accounts
-for another 328, and neither that nor any grid derived from the box and the cell
-size explains the remaining 339. Since the tiling identifies the end of the list
-unambiguously, the parser walks it rather than deriving a count it cannot
-justify — and the walk is self-checking, because a wrong length breaks the
-tiling.
+**How many cells there are follows from the header.** It is
 
-What `gridX` and `gridZ` do mean is therefore **not established**. They are
-plausible grid dimensions — `ceil(extent / cellSize)` matches `gridX` on 963
-files and `gridZ` on 1,024 — but "plausible on 82%" is not a reading.
+```
+cells = floor(gridZ * (gridX + 1/2))
+```
+
+on **1,178 of 1,178** files. Equivalently `gridX * gridZ + floor(gridZ / 2)`:
+one extra cell on every other row, so the rows alternate `gridX` and `gridX + 1`
+wide.
+
+This was recorded as underivable, and the floor is why. The earlier note had the
+formula — `(2·gridX + 1) · gridZ / 2` — and read it without rounding, which is
+exact only when `gridZ` is even. **850 of the 1,178 files have an odd `gridZ`**,
+and those are precisely the 850 the unfloored form missed: `gridX * gridZ` alone
+accounted for 511 and the unfloored formula for 328 more, which is where "and
+neither explains the remaining 339" came from. Floored, it is all of them.
+
+The parser derives the count and still checks it against the data, because the
+tiling makes that free: a wrong length breaks it.
+
+**`gridX` and `gridZ` are the grid's dimensions in cells, and the grid covers
+the box.** `gridX * cellSize >= maxX - minX` and `gridZ * cellSize >= maxZ -
+minZ` on **1,178 of 1,178**, and on 77.7% one cell fewer would not cover it. So
+the header describes a grid of `cellSize` squares laid over the mesh's own
+bounding box, with the rows staggered as the cell count says.
+
+**Where cell (0, 0) sits is still not established**, and the staggering is the
+likely reason a rectangular reading fails. Taking the grid's corner as the
+mesh's minimum and indexing row-major puts only **36%** of the index references
+inside the square that names them; column-major gives 26%, and an origin at zero
+4%. Until that is settled the cells are parsed and carried but not used to look
+a position up — `packages/sim` builds a uniform grid of its own instead.
 
 The cell size is a power of two on **1,178 of 1,178**: 8192 on 667 files, 2048
 on 262, 4096 on 173 and 1024 on 76.
+
+## An interior's collision does not always match its own room
+
+**Open**, and reported from play rather than found by measuring.
+
+A map's geometry and its collision are given the same scale when the map is
+assembled, so whatever that scale is, the two move together and their ratio
+cannot change. They agree outdoors. Indoors they sometimes do not, and the
+disagreement is in the files themselves.
+
+The ruler is the drawn model's own walls: take its near-vertical faces that rise
+most of the way to the ceiling, and see where they stand.
+
+| map | drawn walls stand at | collision reaches | |
+|---|---|---|---|
+| `M01M04`, the stable | x = ±0.50 | x −0.43..0.50 | they meet |
+| `M01M02`, the inn | x = ±0.65, ±0.60 | x −0.31..0.37 | **short by ~1.9x** |
+
+The inn's mesh is not broken and nothing is being dropped: 46 triangles, a floor
+quad with partitions standing on it and a wall ring with a gap at the doorway,
+its grid consistent, its archive holding no second mesh. It is simply smaller
+than the room drawn around it. `M01M08`, the well, is the same fault the other
+way — its floor is **1.94x** the room drawn inside it, the same decagon at two
+sizes.
+
+**Nothing in the file distinguishes them.** The inn and the stable carry the
+same `unknown_0x04` (1), the same cell size (4096), the same `kind`, and their
+models have the same position scale (1). The `0x6F` placement records that put
+both meshes give scale `1, 1, 1`. So the factor is not in the `.col2`, not in
+the manifest, and not in the model.
+
+What is ruled out, each measured rather than argued: the model's position
+up/down scale (undoing it fits worse across 86 single-piece maps); the
+placed-piece scale and the map scale (both apply to geometry and collision
+alike); and any single constant, since the factor each map would need runs
+continuously from 0.18 to 2.87 rather than landing on powers of two.
+
+`apps/game/tools/plan.ts` draws a map from above with both on it, which is how
+this was found:
+
+```sh
+node apps/game/tools/plan.ts rom/<your>.nds M01M02 --walls
+```
 
 ## An indoor map is authored an eighth larger than it looks
 
@@ -481,8 +557,11 @@ positive `s16`, which suggests a sentinel. **Not established.**
 | **stored normal == the normalised cross product of its own triangle** | **108,471 / 108,471 with area** |
 | **the header box encloses every triangle** | **1,178 / 1,178** (exact on 1,038) |
 | **the cells tile the triangle-index list** | **1,178 / 1,178** |
+| **cells == `floor(gridZ * (gridX + 1/2))`** | **1,178 / 1,178** |
+| **the grid covers the header box on both axes** | **1,178 / 1,178** (tight on 77.7%) |
 | every index names a real triangle | 1,178 / 1,178 |
 | cell size is a power of two | 1,178 / 1,178 |
+| widest mesh, against the `s16` ceiling of 16.00 | 16.00 units |
 
 `tools/harness/test/cartridge.test.ts` reproduces them.
 
@@ -600,6 +679,127 @@ regions of one space. Assembly is drawing what the manifest lists.
 The exception is the `G1` resource, which is centred on the origin and comes
 with a joint animation and a config file. Something places that, and it is not
 the manifest.
+
+---
+
+# The rest of a map archive — `.dat`, `.bats`, `.bcfg`, `.bpos`, `.bmed`
+
+A map archive holds more than its geometry, its collision and its two
+descriptors. **Every one of the small files in it is the same tagged data table**
+(above) — `.bmdj`, `.bmbl`, `.dat`, `.bats`, `.bcfg`, `.bpos` and `.bmed` all
+parse as one, on every file of each kind. Only the tags and the record widths
+differ, so a reader for one is a reader for all of them.
+
+What follows is the structure of each and, where it can be said, what it is for.
+None of these are read by this repository yet; they are written down because
+they parse cleanly and because the next person should not have to find that out
+again.
+
+**A caveat on the strings below.** A value is reported as a string when it is an
+offset that lands on a printable one, and a small integer can do that by
+accident. Where a record mixes what look like names and numbers, treat the
+first-position names as sound and the rest as unconfirmed.
+
+## `.dat` — which region a map belongs to
+
+**657 files, 48 or 64 bytes**, and the smallest format here: two or three
+records.
+
+| tag | values | meaning |
+|---|---|---|
+| `102` | 1 | `21` on 650 of 657, `8` on 2 |
+| `104` | 1 | a **map code**, as a string |
+| `109` | 1 | on 15 files |
+| `105` | 1 | on 1 file |
+
+**INFERRED: tag `104` names the region the map belongs to.** Of the 657:
+
+- **400 name the file's own area** — every `M01M*` says `M01`, every `F01M*`
+  says `F01`, every `M02M*` says `M02`.
+- **150 name `T00`**, which the map index does not have at all. They are all
+  `B*` archives — 47 in `B01`, 36 in `B02` — plus a handful of `F99`, `S14`,
+  `Z01` and `Z02`. It reads as the unset value.
+- **107 name some other map the index knows**, and this is the interesting
+  group: `B01M28`..`B01M30` name `F16`, labelled *Hermany*; `B01M31` and
+  `B01M32` name `F18`, *Snowberia*; `B01M36`..`B01M38` name `F15`, *Djust
+  Desert*. Those are dungeon maps naming the overworld field they sit in — and
+  **their own index entries carry no region**, so the `.dat` supplies what the
+  index leaves blank.
+
+What the region is *used* for is not established.
+
+## `.bats` — per-map colour and lighting
+
+**504 files, 560 to 1,072 bytes.** The attribute tables, in three shapes:
+
+| tag | values | on |
+|---|---|---|
+| `100` | 1 | 236 files, always `0` |
+| `103` | 0 or 1 | 268 files |
+| `104` | 12 | 715 records |
+| `105` | 15 | 3,529 records |
+| `106` | 18 | 1,652 records |
+
+`105` and `106` records open with an index that counts from zero within the
+file, so both are per-slot settings. Their values are a mix of IEEE floats
+around `1.0` and `0.2` and 16-bit values that read as `fx16` — `32767` for one,
+`22528` for 0.6875, `20479` for 0.625 — which is what colour and intensity look
+like. A map ships its lit pieces twice, once per lighting, so a per-slot table
+of colours is the shape this ought to have.
+
+**What the slots are is not established**, and neither is which value is which.
+`docs/findings.md` records that these are float-valued fog and lighting settings
+and that they carry no music selection.
+
+## `.bcfg` — a piece's named states
+
+**145 files, 80 or 160 bytes.** They sit beside `G1`-suffixed pieces — gates and
+doors — and beside `I00`.
+
+| tag | values | meaning |
+|---|---|---|
+| `100` | 1 | how many `102` records follow: `1` or `4` |
+| `102` | 4 | a **state name**, then three numbers |
+| `101` | 0 | a separator |
+| `112` | 1 | `0xFFFFFFFF` |
+
+The names are the giveaway: **`open`, `closed`, `close`, `opend`, `open2`** on
+the door pieces, and `in` on `C01I00`. So a `.bcfg` is the list of states its
+piece can be in, with three numbers each — plausibly a frame range and a speed,
+though nothing here confirms that.
+
+## `.bpos` — a grid of codes, on the `Z` maps only
+
+**5 files, 1,056 bytes each**, all `Z01M0100`..`Z05M0100`.
+
+| tag | values | meaning |
+|---|---|---|
+| `125` | 1 | `18`, the number of `126` records |
+| `126` | 11 | eleven codes |
+
+Eighteen records of eleven values is an **11 by 18 grid**, and most values
+resolve to four-character codes: `W01A` overwhelmingly, then `W02A`, `W03A`,
+`W04A`, `R01A`..`R04A` and `E01A`. `W`, `R` and `E` reading as wall, room and
+entrance is the obvious guess and is **not confirmed**.
+
+The `Z` maps are outside this repository's slice, so this is recorded rather
+than pursued.
+
+## `.bmed` — the `E1` pieces
+
+**12 files, 80 to 176 bytes**, each named for an `E1` piece — `F17E1.bmed`,
+`D04M02E1.bmed`.
+
+| tag | values | meaning |
+|---|---|---|
+| `102` | 1 | a name, usually the matching `.chr` archive |
+| `108` | 1 or 2 | `44` on every record seen |
+| `106` | 1 | a float, `2.0` or `4.0` |
+| `101`, `100`, `105`, `107`, `103`, `104`, `109` | 1–2 | not established |
+
+A `102` record names a `.chr` — `D04M02E1.chr`, `F18E1.chr` — so an `E1` piece
+is backed by a character archive rather than by map geometry. `105` pairs that
+name with the string `copy`, which recurs 14 times across the twelve files.
 
 ---
 
@@ -937,28 +1137,31 @@ houses. Each is placed in the coordinates of the map it stands in, so five
 copies of `s097a` sit inside a circle 0.8 units across — a room, in that room's
 own coordinates.
 
-**The word at `+8` of a placement block is the map.** It is `area x 100 +
-sub-map`, in decimal, and it reads that way: `M01`'s placements carry 1100 to
-1109, `S07`'s 5700 to 5707, `X05`'s 4501 to 4509. The low two digits name the
-map within the area, and 0 is the area's own exterior. So `1104` is `M01M04`,
-which the cartridge's index calls the Stable — and that is where the five
-`s097a` and `s001` stand.
+**The word at `+8` of a placement block is the map's own id**, the one
+`maplist9.bin` carries in the first slot of each entry. The join is exact: all
+**1,289** placement blocks on the cartridge name a value that is some entry's
+id. So `1104` is `M01M04`, which the index calls the Stable — and that is where
+the five `s097a` and `s001` stand.
+
+Angel Falls runs 1100 for the village and 1101 to 1112 for its interiors, and
+`S07` 5700 to 5707, so within an area the ids read as `area x 100 + sub-map`.
+That was how this was first read, and it is a habit of the numbering rather than
+a rule — ids elsewhere run to 20001, and 3.4% of placements do not match a code
+spelled that way. Nothing needs to take the number apart now the index gives it
+outright.
 
 It is the same in every 60-byte record of a block, so it belongs to the
 character rather than to one of their placements.
 
 | check | result |
 |---|---|
-| areas whose placements all share one `x / 100` | **73 / 73** |
-| placements whose low two digits name a map the index knows | **1,245 / 1,289** (96.6%) |
-| the 44 that do not | codes the index does not ship; it has 205 such |
-| `M01`'s ten values against the index | `M01` and `M01M01`..`M01M09` sit at 140–149, ten consecutive entries |
+| areas whose placements all share one `x / 100` | 73 / 73 |
+| placements whose word is an id in `maplist9.bin` | **1,289 / 1,289** |
 | placements tagged 1100 with floor under them in `M01` | **all of them** |
 | placements tagged anything else with floor under them in `M01` | **none** |
 
-What the area half counts is **not established**: it is not the index position,
-and no constant relates the two. Nothing needs it — a cast list is opened by
-area already — so only the low two digits are read.
+The map list's first slot was read as an unknown until this; it is `0` on the
+139 entries for maps that do not ship, and distinct on the rest.
 
 ### Asking the collision instead does not work
 

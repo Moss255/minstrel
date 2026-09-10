@@ -135,14 +135,27 @@ centre, the mean went from 0.68 to **0.06**, and 90% now stand within a quarter
 of the edge against 7%. The arrival goes with it: you come out a median 0.285
 units from the door back — a character and a half — against 0.973 before.
 
-**An interior's collision still does not match its room**, which was reported in
-the same breath and is a different cause. Drawn from above, the well's walkable
-floor is 1.94x the width of the room drawn inside it — the same decagon at two
-sizes — while the inn's covers about half its room and the stable's is right.
-The model's position scale, the placed-piece scale and the map scale are all
-ruled out by measurement, and the factor each map would need runs continuously
-from 0.18 to 2.87 rather than landing on powers of two. `docs/next.md` item 5
-carries it, and `apps/game/tools/plan.ts` is the instrument.
+**An interior's collision still does not match its room**, and the cartridge's
+own characters now measure it. The inn draws a room x −0.74..0.77 and its
+collision floor covers x −0.31..0.37, stopping 0.24 short of its own door, while
+its cast is authored across the whole room: two of them stand at x = 0.53 and one
+at x = −0.55, inside the room and outside the floor. Where the collision looks
+right — the stable — every character fits inside it.
+
+The file is read faithfully: all 1,154 of the cartridge's collision meshes are
+self-consistent, the grid each carries naming exactly the triangles read, and
+the inn's archive holds no mesh that is being dropped. So what a `.col2` floor
+quad means for an interior is the open question. `docs/next.md` item 5 carries
+it, and `apps/game/tools/plan.ts` is the instrument.
+
+**Which map a character stands in is stated, not inferred.** The first slot of
+a `maplist9.bin` entry is the map's own id, and a placement's map word is that
+id — exactly, on all 1,289 placements the cartridge holds.
+
+**The cast is also per story state.** A placement block holds one character in
+several places, and only the first is read — so the inn holds 7 characters by
+the file where 5 are found, and four of those five share one parking position
+exactly. That is the other half of the same report.
 
 One thing still unsettled: the sense of the facing angle. `standingFrame` maps
 "the character's angle equals the camera's" to `stand_up` — its back turned —

@@ -185,7 +185,46 @@ standable surface, so no ground goes with them.
 
 What they *are* is not established. The shape is the only signal found.
 
-## 9. The collision attribute word is not a terrain type
+## 9. A collision grid's rows are staggered, and its cell count says so
+
+**Confirmed**, on all 1,178 collision meshes.
+
+The header carries `gridX`, `gridZ` and a cell size, and three parallel arrays:
+a `u8` count per cell, a `u16` start per cell, and a `u16` list of triangle
+indices the starts address. How many cells there are is
+
+```
+cells = floor(gridZ * (gridX + 1/2))
+```
+
+which is `gridX * gridZ + floor(gridZ / 2)`: **one extra cell on every other
+row**, so the rows alternate `gridX` and `gridX + 1` wide.
+
+Worth flagging because the unfloored form is a trap. `(2·gridX + 1) · gridZ / 2`
+is exact only when `gridZ` is even, and **850 of the 1,178** files have an odd
+`gridZ` — enough that the formula looks wrong rather than nearly right. Read
+without the floor it accounts for 328 files, `gridX * gridZ` for 511, and the
+remaining 339 look like they need a third rule. They do not.
+
+`gridX` and `gridZ` are the grid's dimensions in cells over the mesh's own
+bounding box: `gridX * cellSize >= maxX - minX` and likewise for z, on 1,178 of
+1,178, and on 77.7% one cell fewer would not cover it.
+
+**Still open:** which square a cell index names. Taking the grid's corner as the
+mesh's minimum and reading it row-major puts only 36% of the index references
+inside the square that names them; column-major gives 26%. The staggering is
+the obvious suspect.
+
+## 10. A collision vertex is `s16`, and the cartridge reaches the bound
+
+**Confirmed.** Positions are `s16` in the units an `fx32` word counts, so a
+coordinate cannot pass ±8.00 units and a mesh cannot be wider than 16.00. The
+cartridge's furthest vertex sits at exactly 8.00 and its widest mesh at exactly
+16.00. Anything needing collision over sixteen units across cannot be stored at
+the size its models are drawn at, and what reconciles the two is not in the
+file.
+
+## 11. The collision attribute word is not a terrain type
 
 **Negative result**, offered to save the search.
 
@@ -197,7 +236,7 @@ and the same values appear on marker volumes and on terrain alike.
 
 Water is identifiable, but from the **texture name**, not from collision.
 
-## 10. Map textures are named for what they are
+## 12. Map textures are named for what they are
 
 **Confirmed** by census.
 
@@ -222,7 +261,7 @@ houses and trees were identified.
 Only the tag is read here. What each means to the game — which are solid, which
 sound different underfoot — is not established.
 
-## 11. A character is assembled, and the head is not part of the rig
+## 13. A character is assembled, and the head is not part of the rig
 
 **Confirmed** for the structure.
 
@@ -249,7 +288,7 @@ after the part itself.
 **Which parts make a given character is open.** The obvious candidate table was
 checked and rejected: its ids match no part and are probably equipment.
 
-## 12. A character's motions are spread across a family of packs
+## 14. A character's motions are spread across a family of packs
 
 **Confirmed**, and a trap.
 
@@ -262,7 +301,7 @@ Of the cartridge's **136** motion packs, **56 carry a `stand`, 13 carry a
 `walk`, and not one carries both**. A reader that takes the pack the config
 names and stops has a character that can walk and cannot stand still.
 
-## 13. Per-map NPC lists and placements exist
+## 15. An NPC placement names its map by the index's own id
 
 **Structure confirmed, positions open.**
 
@@ -286,11 +325,30 @@ blocks across 74 archives, and:
   all 1,297 cases**, with **71% on an exact multiple of 90°**. That is a facing
   angle beyond reasonable doubt.
 
-**The three floats before it are not established.** They look like a position
-and are in the right range for one, but the ones belonging to a village's
-exterior do not stand on that village's collision, so something about their
-frame is still missing. Dividing by 8, as map placements need, moves 42 of 49
-into the village and puts 17 on its ground — better, but not conclusive.
+**The three floats before it are a position**, divided by 8 as map placements
+are. What made that look doubtful was the frame, not the scale: a cast list is
+per **area**, not per map, so most of a village's 49 characters stand inside its
+houses and cannot be expected to land on the village's own ground.
+
+**The word at `+8` of a block says which map**, and it is the map's own id —
+the first value of a `maplist9.bin` entry. The join is exact: all **1,289**
+placement blocks carry a value that is some entry's id. Angel Falls runs 1100
+for the village and 1101 upward for its interiors, so within one area the ids
+read as `area x 100 + sub-map`; that is a habit of the numbering rather than a
+rule, and taking the number apart that way fails on 3.4% of the cartridge where
+using the id outright does not.
+
+Narrowed by it, every placement tagged with the village's own id has floor under
+it in the village, and none tagged anything else does.
+
+**A block holds the same character in several places.** After the header come
+sub-records, each with its own two-word mark: `0x550D0005 0xFF02A955` carries
+seven words, a map, the character's id and a position; `0x55090005 0xFFFF0155`
+carries the same without a position. The header repeats the first positioned
+one. The seven words look like a story state — the first two climb through a
+block, 1/1, 1/2, 2/1, 2/7, 19/2 — and are **not established**. A sub-record's
+map need not be the block's, so a character can stand in several maps as the
+story moves them.
 
 ---
 
@@ -320,11 +378,14 @@ Offered so nobody repeats it.
 
 - What the six unread values of a `0x6F` placement record mean.
 - What the collision attribute word *is*, given it is not terrain type.
-- What the three floats in an NPC placement block are relative to.
+- What the seven words of an NPC placement sub-record mean, and therefore which
+  of a character's several placements the game takes.
 - Which parts make a named character.
 - The map-transition data, presumed to be in the event bytecode.
 - One GPC2 codec, which is carried as raw bytes.
-- `gridX` and `gridZ` in the collision header.
+- Where cell (0, 0) of a collision grid sits. The count and the dimensions are
+  settled (below); the mapping from cell index to world square is not, and the
+  staggered rows are the likely reason a rectangular reading fails.
 
 ## How any of this can be re-checked
 

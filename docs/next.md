@@ -135,29 +135,150 @@ this was found and is the quickest way to check any map.
 
 ---
 
-## 5. An interior's collision does not match its room — **open**
+## 5. An interior's collision does not match its room — **open, and now measurable**
 
-The other half of the same report, and **not** the same cause. Drawn from above,
-`M01M08` — the well — has a walkable floor **1.94x the width of the room drawn
-inside it**: the same decagon at two sizes, concentric. `M01M02`, the inn, is the
-other way round, its collision covering about half the drawn room. `M01M04`, the
-stable, is right.
+Reported again from play, with the useful addition that the *scaling* looks
+right. It does: what is wrong is the collision's extent, and the cartridge's own
+characters are the ruler that shows it.
 
-**Ruled out**, each measured rather than reasoned about:
+**The ruler is the drawn model's own walls**: take the near-vertical faces that
+rise most of the way to the ceiling and see where they stand. It asks nothing of
+a bounding box, which counts roofs and aprons the collision was never meant to
+cover, and nothing of the characters, whose positions come from records with
+unread state words.
+
+| map | drawn walls stand at | collision reaches | |
+|---|---|---|---|
+| `M01M04`, the stable | x = ±0.50 | x −0.43..0.50 | they meet |
+| `M01M02`, the inn | x = ±0.65, ±0.60 | x −0.31..0.37 | **short by ~1.9x** |
+| `M01M08`, the well | — | 1.94x the room drawn inside it | **long by ~1.9x** |
+
+The inn's mesh is not broken and nothing is dropped: 46 triangles, a floor quad
+with partitions on it and a wall ring with a gap at the doorway, its grid
+consistent, its archive holding no second mesh. It is simply smaller than the
+room drawn around it, and the well is the same fault the other way.
+
+Weaker but pointing the same way: the inn's cast is authored across the whole
+room — `n010a` and `n011a` at **x = 0.53**, `n005a` at **x = −0.55** — so
+characters stand where the player cannot walk. Those come from sub-records whose
+state words are unread, so they are corroboration rather than proof.
+
+**The `.col2` format is now fully accounted for**, which is what this round
+went into: the grid's cell count is `floor(gridZ * (gridX + 1/2))` on all 1,178
+files — the rows alternate `gridX` and `gridX + 1` wide — and `gridX`/`gridZ`
+are the grid's dimensions over the mesh's own box, covering it on all 1,178.
+Both were recorded as underivable; the first was a missing floor. A vertex is
+`s16`, so a mesh cannot exceed 16 units across, and the cartridge's widest is
+exactly 16.00. `FORMAT.md` and `docs/upstream-findings.md` carry it.
+
+None of it explains the mismatch. **A per-map scale cannot be the cause, and
+that is worth stating plainly**,
+because it is the natural thing to reach for. `assembleMap` gives a map's own
+geometry and its collision **the same factor**: the piece takes `mapScale` and
+the mesh takes `mapScale`. Whatever that factor is — the hardcoded eighth, or
+something read from a field nobody has found yet — both move together and the
+ratio between them does not change. The exterior looking right and the
+interiors not is therefore not a sign that the interior scale is wrong; the raw
+`.col2` and the raw models simply agree outdoors and disagree indoors.
+
+So the thing to look for is not a scale for the map. It is whatever relates a
+`.col2`'s coordinates to the coordinates of the models beside it.
+
+**What else is not the cause**, each checked rather than argued:
+
+- **Not a truncated read.** Every one of the cartridge's **1,154** collision
+  meshes is self-consistent: the grid the file carries names exactly the
+  triangles that were read, none beyond them. The inn's is 46 triangles, and
+  1,908 bytes at 41.5 a triangle leaves nothing over.
+- **Not a dropped mesh.** The inn's archive holds two `.col2` and the second is
+  its doorway marker, correctly skipped. Its manifest names 8 resources and all
+  8 resolve.
+- **Not the scale**, the placed-piece scale, or the model's position scale —
+  see the list this section already carried.
+
+So the file is read faithfully and the file's floor does not cover the room.
+The factors are close to two in both directions — the inn short by ~1.9, the
+well long by 1.94, the stable right — which looks like one bit somewhere. No
+field found takes those three values apart.
+
+**The other factor of two is not this one.** `nitro-gfx/FORMAT.md` records that
+a model's declared bounding box comes out either the same size as its posed
+geometry or half it, in two clean peaks — 3,132 models against 2,657 — and the
+resemblance is tempting. It is not the same thing: across 86 single-piece maps
+the collision is closer to the posed geometry than to the declared box on 62 of
+them, within 15% on 33% against 15%, and `F99` and its two sub-maps have
+collision matching posed *exactly* while the box is half. Recorded so it is not
+tried again.
+
+**Next:** what a `.col2` floor quad *means* for an interior is the open
+question. The stable's covers its room and its 44 other triangles are interior
+partitions rather than outer walls, so an interior has no wall ring and the
+floor's edge is the boundary — which is what the step-into-nothing rule now
+holds the character to. If the inn's quad is one walkable region among several
+that the game combines from somewhere else, that somewhere else has not been
+found.
+
+`node apps/game/tools/plan.ts rom/<your>.nds M01M02 --under=0.12` draws the
+floor plan, with the collision's walls as lines rather than as the nothing a
+vertical face projects to from above.
+
+### The map index answers "which map", exactly
+
+Looking for that scale field turned up something else. **The first slot of a
+`maplist9.bin` entry is the map's own id** — 1100 for Angel Falls, 1101 to 1112
+for its interiors — and it is what a placement's map word carries. The join is
+exact: all **1,289** placements on the cartridge name a value that is some
+entry's id, against 96.6% for the decimal `area x 100 + sub-map` reading that
+replaced it. `tools/harness` holds it.
+
+Nothing about the scale, but it retires an inferred rule for a stated one.
+
+### The cast is per story state, and only the first is read
+
+Found while chasing the above, and the other half of the same report — "there is
+a character who should be there".
+
+A placement block holds one character in **several places**, as sub-records with
+their own two-word marks, each carrying a map, the character's id, seven words
+that look like a story state, and often a position. The header repeats the first
+of them, and that is all `readNpcPlacements` returns.
+
+So the reading is wrong in both directions. The inn holds **7** characters by
+the file and 5 are found: `s017` opens in the village and moves to the inn,
+`n005a` opens in Erinn's house and does the same. And of the 5 that are found,
+four share the position `0.09, 0.02, -0.10` exactly — a parking spot, not five
+authored places.
+
+**Next:** the seven words are not decoded and nothing should pretend otherwise.
+What a decision is needed on is which record the engine ought to take when it
+does not model story progress at all: the earliest, which is what happens today
+by accident, or the one matching some fixed state. `packages/game-formats/src/npc.ts`
+records the layout.
+
+---
+
+### Ruled out earlier, and still ruled out
+
+Drawn from above, `M01M08` — the well — is the opposite case: a walkable floor
+**1.94x the width of the room drawn inside it**, the same decagon at two sizes,
+concentric. The stable is right. So it is not one direction and not one factor.
 
 - **The model's position scale.** Undoing the down-scale that `nsbmd.ts` folds
-  into the matrices makes the fit worse across 86 single-piece maps, not better.
+  into the matrices makes the fit worse, and measurably so once the ruler is the
+  drawn model's own walls rather than a floor band: across 86 single-piece maps
+  at the origin, the collision matches the posed extent on 46% of `upScale` 2
+  maps against 15% before the down-scale, 24% against 0% at `upScale` 4, and
+  19% against 0% at 8. The well is the exception that suggested otherwise.
+- **Anything in the `.col2`.** The inn and the stable carry the same
+  `unknown_0x04`, the same cell size and the same `kind`; their models have the
+  same position scale; and the `0x6F` records placing both meshes give scale
+  `1, 1, 1`. Two maps, identical everywhere the files can be read, and one needs
+  a factor of about two where the other needs none.
 - **The placed-piece scale**, and the map scale: both scale the drawn geometry
   and the collision together, so neither can move them apart.
 - **A single constant.** The factor each map would need runs continuously from
   0.18 to 2.87 rather than clustering on powers of two, and the `.col2` header's
   two unknown fields do not predict it.
-
-**Next:** the plan tool makes it visible per map, and that is the place to
-start. What it is worth knowing first is whether the collision or the geometry
-is the one in the wrong space — the doorways now say the collision is, since a
-correctly placed arrival lands at the threshold and the collision does not
-always reach it.
 
 ---
 
@@ -203,6 +324,32 @@ says "these four parts go together" — it wants either the table or the game
 running. Not blocking anything meanwhile.
 
 ---
+
+## The rest of a map archive is now written down
+
+Not a defect, and the one thing this round finished. **Every small file in a map
+archive is the same tagged data table** — `.bmdj`, `.bmbl`, `.dat`, `.bats`,
+`.bcfg`, `.bpos` and `.bmed` all parse as one, so a reader for one is a reader
+for all. `packages/game-formats/FORMAT.md` now has a section on each:
+
+- **`.dat`** names the region a map belongs to. 400 of 657 name the file's own
+  area, 150 name `T00` which the index does not have, and 107 name another map
+  — dungeon maps naming the overworld field they sit in, `B01M28` to `B01M30`
+  naming `F16`, *Hermany*. Those maps' own index entries carry **no region**, so
+  the `.dat` supplies what the index leaves blank.
+- **`.bats`** is per-slot colour and lighting: records of 12, 15 and 18 values
+  mixing floats near 1.0 and `fx16` values that read as intensities.
+- **`.bcfg`** lists a piece's named states — `open`, `closed`, `opend`,
+  `close` — beside the `G1` gate and door pieces.
+- **`.bpos`** is an 11 by 18 grid of four-character codes, on the five `Z` maps
+  only.
+- **`.bmed`** describes the `E1` pieces, and names a `.chr` archive for each.
+
+And `nitro-gfx/FORMAT.md` now lists all six Nitro containers with their stamps
+and blocks. Three of them are not read at all — `.nsbta` (`SRT0`), `.nsbtp`
+(`PAT0`) and `.nsbma` (`MAT0`), **1,910 files in the map archives** against
+4,358 models. Roughly one animated thing for every two models, so anything that
+scrolls or pulses in a map is currently still.
 
 ## Not defects, but worth doing
 
