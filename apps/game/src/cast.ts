@@ -86,11 +86,16 @@ export interface Cast {
  * the green; they are standing on a shop floor, in the shop's own coordinates,
  * and the shop is a different map archive.
  *
- * Nothing in the file says which map a placement belongs to, so the map's own
- * collision is asked instead. The split it gives is not a fine judgement: the
- * characters that belong outside miss the ground by 0.006 to 0.030, and the
- * rest by 0.156 to 0.175. A threshold anywhere in that gap gives the same
- * answer, so half a character's height is used and nothing turns on the number.
+ * **This used to decide which map a character belonged to, and no longer does.**
+ * The file says: a placement carries the id of its own map, and every one of the
+ * cartridge's 1,289 names an id the index knows. So the cast is narrowed before
+ * it gets here, and the ground is only asked about *where* a character stands.
+ *
+ * Keeping it as a filter cost real characters. It drops anyone standing where
+ * the collision does not reach, and an interior's collision does not always
+ * reach its own room — the item shop places three characters and two of them
+ * stand 0.05 and 0.10 beyond the edge of its floor, so the shop had no
+ * shopkeeper. A character the file puts in this map is in this map.
  */
 export type GroundAt = (x: number, z: number) => number | undefined
 
@@ -119,17 +124,25 @@ export function cast(
   // Read each archive once: `s097a` stands in the village five times.
   const loaded = new Map<string, { model: Model; motion: Animation | undefined } | undefined>()
 
+  /**
+   * Whether the map's collision reaches where this character stands.
+   *
+   * Counted for the status line and nothing else: it says something about the
+   * *map*, not about the character, and an interior whose collision stops short
+   * of its own room will report several.
+   */
+  const standsOnFloor = (placement: NpcPlacement): boolean => {
+    const ground = groundAt(placement.x, placement.z)
+    return ground !== undefined && Math.abs(placement.y - ground) <= characterHeight / 2
+  }
+
   for (const { entry, placement } of placed) {
     if (entry.name === undefined) {
       unclassified++
       continue
     }
     if (entry.kind === NPC_KIND.SPRITE) {
-      const ground = groundAt(placement.x, placement.z)
-      if (ground === undefined || Math.abs(placement.y - ground) > characterHeight / 2) {
-        elsewhere++
-        continue
-      }
+      if (!standsOnFloor(placement)) elsewhere++
       const sheet = sheetFor(entry.name, sheets)
       if (!sheet) {
         sprites++
@@ -156,11 +169,7 @@ export function cast(
     }
     if (!found) continue
 
-    const ground = groundAt(placement.x, placement.z)
-    if (ground === undefined || Math.abs(placement.y - ground) > characterHeight / 2) {
-      elsewhere++
-      continue
-    }
+    if (!standsOnFloor(placement)) elsewhere++
 
     out.push({
       name: entry.name,

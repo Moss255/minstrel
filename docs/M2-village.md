@@ -7,7 +7,7 @@ Against the milestone's own list.
 | Map assembly and collision | **both done** |
 | Character controller with original movement constants | **done**; the character's size is measured off the doors, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
-| Interior/exterior transitions, doors, stairs | **the data is read and the doors are in the right place**; an interior's collision still does not match its room — see below |
+| Interior/exterior transitions, doors, stairs | **the data is read and the doors are in the right place**; an interior's collision is doubled to fit its room, by eye rather than by a field — see below |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
 | The village's own cast, placed | **placed, cut right, and in the right rooms**; 18 stand in the village, 14 of them 2D sprites, and each interior draws its own household. One question left: whether the facing table is 180° out — see below |
 
@@ -135,22 +135,40 @@ centre, the mean went from 0.68 to **0.06**, and 90% now stand within a quarter
 of the edge against 7%. The arrival goes with it: you come out a median 0.285
 units from the door back — a character and a half — against 0.973 before.
 
-**An interior's collision still does not match its room**, and the cartridge's
-own characters now measure it. The inn draws a room x −0.74..0.77 and its
-collision floor covers x −0.31..0.37, stopping 0.24 short of its own door, while
-its cast is authored across the whole room: two of them stand at x = 0.53 and one
-at x = −0.55, inside the room and outside the floor. Where the collision looks
-right — the stable — every character fits inside it.
+**An interior's collision is built at twice the size the file gives it**, and
+that is fitted rather than read. The inn draws a room x −0.74..0.77 and its
+`.col2` floor covers x −0.31..0.37, stopping 0.24 short of its own door, while
+its cast is authored across the whole room. Moving the mesh over the room in the
+game until it lined up gave two, and `INTERIOR_COLLISION_SCALE` applies it to
+every map the index marks indoors.
 
-The file is read faithfully: all 1,154 of the cartridge's collision meshes are
-self-consistent, the grid each carries naming exactly the triangles read, and
-the inn's archive holds no mesh that is being dropped. So what a `.col2` floor
-quad means for an interior is the open question. `docs/next.md` item 5 carries
-it, and `apps/game/tools/plan.ts` is the instrument.
+Two measurements it was *not* fitted against moved with it. At the file's own
+size every one of the village's interiors puts its way out **past** its own
+floor — 1.0 to 1.7 of the way out of the collision box, a room whose exit cannot
+be walked to — and at twice the size every one lands inside. And the characters
+the cartridge places off the walkable floor go from six to one.
+
+It is not a format finding: no field in the `.col2` header, the manifest, the
+map index or the model separates a map that needs it from one that does not, and
+the well `M01M08` measures the same factor the other way at either size. What a
+`.col2` floor quad means for an interior is still the open question.
+`docs/next.md` item 5 carries the figures, the ruled-out list and the keys for
+fitting a room by hand; `apps/game/tools/plan.ts` and `c` in the game are the
+instruments.
 
 **Which map a character stands in is stated, not inferred.** The first slot of
 a `maplist9.bin` entry is the map's own id, and a placement's map word is that
 id — exactly, on all 1,289 placements the cartridge holds.
+
+**The ground test was throwing characters away**, and the item shop had no
+shopkeeper because of it. Narrowing a cast by asking the map's collision was the
+only way to do it before the placement's map word was found; kept on afterwards
+it drops anyone standing where the collision does not reach, which at the time
+the shop's own two did by 0.05 and 0.10. Counted and no longer obeyed, that
+restores six characters across the interiors — the shop 1 to 3, the stable 7 to
+9 — and leaves the village unchanged at 18. Doubling the collision has since
+brought all but one of those inside the floor anyway, which is the strongest
+thing said for that constant.
 
 **The cast is also per story state.** A placement block holds one character in
 several places, and only the first is read — so the inn holds 7 characters by

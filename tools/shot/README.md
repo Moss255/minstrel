@@ -49,8 +49,30 @@ whichever one is being served.
 | `door` | game | take that map's doorway to the named map as soon as it loads |
 | `sprite` | game | `1` shows the sprite cut and turns its keys on — see below |
 | `cut` | game | `start,pitch,height,odd` — start from those numbers instead of the parser's |
+| `collision` | game | `1` draws the collision mesh over the map: green stands, red stops |
+| `fit` | game | `scale,x,y,z` — move and scale the collision, to fit it over the room |
 
-`CHROME` in the environment overrides the browser binary.
+`CHROME` in the environment overrides the browser binary. A flatpak Chromium is
+`/var/lib/flatpak/exports/bin/org.chromium.Chromium`, which is on no `PATH` and
+so is not found by the search.
+
+## Driving the page before the shot
+
+The game reads keys rather than key events, so a press has to stay down while
+the simulation ticks. These run in order, before the capture:
+
+```sh
+node tools/shot/screenshot.mjs "<url>" out/shot.png 1400 900 \
+  --hold=d:200 --drag=400,0 --wait=500
+```
+
+- `--hold=<key>:<frames>` holds a key down for that many frames — `w`, `a`, `s`,
+  `d` to walk, and any of the collision-fitting keys.
+- `--drag=<dx>,<dy>` turns the camera by dragging from the middle.
+- `--wait=<ms>` waits.
+
+The overlay's first line and the status line are printed after the driving, so
+a position or a fit can be read without opening the image.
 
 ## Finding the sprite cut by hand
 

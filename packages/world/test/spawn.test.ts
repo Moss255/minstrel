@@ -50,6 +50,31 @@ function world(...triangles: ReturnType<typeof slab>[number][][]) {
 const options = { person: PERSON, speed: Math.round(0.01 * K) }
 
 describe('findSpawn', () => {
+  it('finds ground on a map whose scale leaves fractional bounds', () => {
+    // An indoor map is built at `PLACED_PIECE_SCALE`, which divides its
+    // collision by eight and leaves bounds that are not whole `fx32` words —
+    // the village inn's `maxY` is 5235.5. Handing that to `fx32` threw, so
+    // looking for somewhere to stand raised instead of answering, on exactly
+    // the maps that need the fallback most: an interior whose doorway arrival
+    // has no floor under it.
+    const eighth = createCollisionWorld({
+      mesh: {
+        kind: 3,
+        // 41,884 is the inn's own `maxY`, and an eighth of it is 5235.5.
+        bounds: { minX: 0, minY: 0, minZ: 0, maxX: 41884, maxY: 41884, maxZ: 41884 },
+        cellSize: 4096,
+        gridX: 1,
+        gridZ: 1,
+        triangles: slab(-4, -4, 4, 4, 1),
+        cells: [],
+      } as unknown as CollisionMesh,
+      offset: undefined,
+      scale: 0.125,
+    })
+    expect(() => findSpawn(eighth, options)).not.toThrow()
+    expect(findSpawn(eighth, options)).toBeDefined()
+  })
+
   it('puts the character on the ground', () => {
     const spawn = findSpawn(world(slab(-4, -4, 4, 4, 1)), options)
     expect(spawn).toBeDefined()

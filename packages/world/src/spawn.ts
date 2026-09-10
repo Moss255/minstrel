@@ -105,7 +105,12 @@ export function findSpawn(world: CollisionWorld, options: SpawnOptions): Spawn |
   // Where to search outwards from: the spot asked for, or the middle.
   const wantX = options.near ? options.near.x * FX32_ONE : (bounds.minX + bounds.maxX) / 2
   const wantZ = options.near ? options.near.z * FX32_ONE : (bounds.minZ + bounds.maxZ) / 2
-  const above = fx32(bounds.maxY + FX32_ONE)
+  // **Rounded, because a scaled map's bounds are not whole words.** A map built
+  // at `PLACED_PIECE_SCALE` divides its collision by eight, and the village
+  // inn's `maxY` comes out at 5235.5 — which `fx32` refuses, so looking for
+  // somewhere to stand threw instead of answering. It only showed where the
+  // fallback runs at all, which is a doorway whose arrival has no floor.
+  const above = fx32(Math.round(bounds.maxY + FX32_ONE))
   const water = options.water ?? []
   const height = toFloat(options.person.height)
 

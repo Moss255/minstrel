@@ -20,9 +20,18 @@ import {
   occluders,
   updateFollowCamera,
 } from '@minstrel/render'
-import { groundBelow, PERSON } from '@minstrel/sim'
+import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
 import { castPieces, setSpriteCut, spriteCut, spritePieces, standingFrame } from './cast.ts'
+import {
+  type CollisionFit,
+  collisionPieces,
+  describeCollision,
+  fitFrom,
+  fitLine,
+  fitMeshes,
+  NO_FIT,
+} from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import { type Loaded, load } from './load.ts'
@@ -142,7 +151,11 @@ function poseMap(frame: number): void {
   if (!loaded) return
   const cat = loaded.catalogue
   const drawn: Piece[] = []
-  for (const { model, place, scale, animation } of loaded.map.pieces) {
+  for (const piece of loaded.map.pieces) {
+    const { model, animation } = piece
+    const grow = roomScale * worldScale
+    const scale = piece.scale * grow
+    const place = { x: piece.place.x * grow, y: piece.place.y * grow, z: piece.place.z * grow }
     // Each shape has its own matrix stack, because a model reuses slots between
     // shapes. A map's models each drive themselves.
     const stacks =
@@ -168,8 +181,9 @@ function poseMap(frame: number): void {
   // The map's own boxes decide what is in the way and what counts as a roof;
   // the cast is neither, so it is measured before they are added.
   mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
-  mapBackdrop = backdrop(mapBoxes, loaded.world?.bounds)
+  mapBackdrop = backdrop(mapBoxes, (world ?? loaded.world)?.bounds)
   mapPieces = drawn
+  refit()
   castPiecesNow = [
     ...loaded.cast.members.flatMap((member) => castPieces(member, cat, characterScale, frame)),
     // The 2D cast faces the camera, so it is rebuilt in the frame loop rather
@@ -256,7 +270,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // for somewhere the character can walk from.
   const walkable = (near?: { x: number; z: number }) =>
     findSpawn(world, {
-      person: PERSON,
+      person: person(),
       speed: WALK_SPEED,
       water: opened.map.water,
       ...(near ? { near } : {}),
@@ -265,8 +279,10 @@ function enter(map: string, arrival?: Arrival): boolean {
   /** How far from the arrival the character had to be put, if not on it. */
   let strayed = 0
   if (arrival) {
-    const x = fx32(Math.round(arrival.x * FX32_ONE))
-    const z = fx32(Math.round(arrival.z * FX32_ONE))
+    // A world grown around the character has to put them down where they now
+    // belong in it, or they arrive inside the walls.
+    const x = fx32(Math.round(arrival.x * worldScale * FX32_ONE))
+    const z = fx32(Math.round(arrival.z * worldScale * FX32_ONE))
     const hit = groundBelow(world, x, z, fx32(Math.round(world.bounds.maxY + FX32_ONE)))
     if (hit) {
       at = { x, y: hit.y, z }
@@ -281,7 +297,7 @@ function enter(map: string, arrival?: Arrival): boolean {
       // the map they came in on, which the middle of the map does not: coming
       // out of the village, the difference is the west edge of the field
       // against somewhere in the middle of it.
-      const spot = walkable({ x: arrival.x, z: arrival.z })
+      const spot = walkable({ x: arrival.x * worldScale, z: arrival.z * worldScale })
       if (!spot) {
         status(`${opened.archive} has no floor under the arrival, and nowhere else to stand`)
         loaded = previous
@@ -307,7 +323,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   mapFrame = -1
   poseMap(0)
 
-  const scale = figureScale(opened.figure, opened.pieces, measurements, toFloat(PERSON.height))
+  const scale = figureScale(opened.figure, opened.pieces, measurements, toFloat(person().height))
   characterScale = scale
   // The cast was posed before the scale was known; redo it now it is.
   poseMap(0)
@@ -358,7 +374,9 @@ function enter(map: string, arrival?: Arrival): boolean {
       (missing.length > 0 ? `, ${missing.length} unread` : '') +
       `, ${opened.doorways.length} ${opened.doorways.length === 1 ? 'doorway' : 'doorways'}` +
       (strayed > 0 ? `, no floor under the doorway — put down ${strayed.toFixed(1)} away` : '') +
-      `, ready in ${elapsed} ms`,
+      `, ready in ${elapsed} ms` +
+      // Never leave a resized map looking like a wrong one.
+      (fitState() === 'as the file has it' ? '' : ` — ${fitState()}`),
   )
   return true
 }
@@ -488,7 +506,7 @@ function frame(now = 0): void {
   let uploaded = { vertices: 0, triangles: 0, textured: 0 }
   if (self && loaded?.world) {
     self.stick = { forward: sticks.forward, right: sticks.right }
-    const { moving, travelled } = advance(self, loaded.world, camera.yaw, elapsedMs)
+    const { moving, travelled } = advance(self, world, camera.yaw, elapsedMs)
     advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
     maybeTravel()
 
@@ -504,26 +522,48 @@ function frame(now = 0): void {
     const inside = covered(
       mapBoxes.filter((_, index) => !mapBackdrop[index]),
       feet,
-      toFloat(PERSON.height),
+      toFloat(person().height),
     )
     if (inside !== self.inside) {
       self.inside = inside
-      Object.assign(camera, applyStyle(camera, inside ? INDOORS : OUTDOORS, toFloat(PERSON.height)))
+      Object.assign(
+        camera,
+        applyStyle(camera, inside ? INDOORS : OUTDOORS, toFloat(person().height) * worldScale),
+      )
     }
 
     // The world is passed so the eye is kept above the ground: it is never
     // pulled forward for a building — the roof comes off instead — but the
     // ground is the one thing culling must not remove, so a camera inside a
     // hill sees through the world.
-    updateFollowCamera(camera, self.state, elapsedMs / 1000, loaded.world, PERSON)
+    // The boom is a multiple of the character's height, so a world grown around
+    // a character that did not grow leaves the camera inside it. Pulling it back
+    // by the same factor keeps the room framed, which is the whole point: what
+    // should change on screen is the character's size against the room, not how
+    // close the camera happens to be.
+    updateFollowCamera(
+      camera,
+      self.state,
+      elapsedMs / 1000,
+      world,
+      worldScale === 1
+        ? person()
+        : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
+    )
 
     const hidden = new Set(occluders(mapBoxes, cameraEye(camera), camera.focus, CLEARANCE))
     hiddenPieces = hidden.size
     const drawn = [
       ...mapPieces.filter((_, index) => !hidden.has(index)),
+      ...(showCollision ? collisionDrawn : []),
       ...castPiecesNow,
       ...loaded.cast.sprites2d.flatMap((s) =>
-        spritePieces(s, toFloat(PERSON.height), camera.yaw, standingFrame(s, camera.yaw)),
+        spritePieces(
+          s,
+          toFloat(PERSON.height) * worldScale,
+          camera.yaw,
+          standingFrame(s, camera.yaw),
+        ),
       ),
       ...playerPieces(
         self,
@@ -536,7 +576,11 @@ function frame(now = 0): void {
     ]
     uploaded = renderer.upload(drawn)
   } else if (mapPieces.length > 0) {
-    uploaded = renderer.upload([...mapPieces, ...castPiecesNow])
+    uploaded = renderer.upload([
+      ...mapPieces,
+      ...(showCollision ? collisionDrawn : []),
+      ...castPiecesNow,
+    ])
   }
   describe(uploaded)
 
@@ -562,6 +606,67 @@ const padOverridden = params.get('axes') !== null || params.get('lookbuttons') !
 const showPad = params.get('pad') === '1'
 /** `?sprite=1` shows the sprite cut and turns its keys on. */
 const showSprite = params.get('sprite') === '1'
+/** `?collision=1`, or `c` at any time: draw the collision mesh over the map. */
+let showCollision = params.get('collision') === '1'
+/** Built per map, and again whenever the fit below is moved. */
+let collisionDrawn: Piece[] = []
+/**
+ * A correction to the collision, fitted by eye — see `CollisionFit`.
+ *
+ * It moves the mesh the character walks on as well as the one drawn, so a fit
+ * can be judged by walking it and not only by looking at it.
+ */
+let fit: CollisionFit = fitFrom(params.get('fit'))
+const NO_FIT_LINE = fitLine('', NO_FIT).trim()
+/** The world as the fit leaves it: what the character actually walks on. */
+let world: CollisionWorld | undefined
+/**
+ * A scale on the room the map *draws*, as against the collision it carries.
+ *
+ * The two experiments are not the same. Making the collision twice the size
+ * gives the character twice the floor and leaves the room as it was; making the
+ * room half the size fits the same floor to a smaller room and leaves the
+ * character standing over more of it. They align identically and look nothing
+ * alike, so both have to be available for the eye to choose between them.
+ *
+ * `?room=` sets it, `n` and `m` move it.
+ */
+let roomScale = Number(params.get('room')) > 0 ? Number(params.get('room')) : 1
+/**
+ * A scale on the room **and** its collision together, against the character.
+ *
+ * The other two controls ask whether the room and the collision agree with each
+ * other. This one asks the question underneath: whether the pair of them is
+ * right and the *character* is the wrong size. `PERSON.height` was set by eye
+ * against the village and is the one number in the chain that no file gives, so
+ * it is the one worth being able to hold still while everything else moves.
+ *
+ * `?world=` sets it, `g` and `h` move it.
+ */
+let worldScale = Number(params.get('world')) > 0 ? Number(params.get('world')) : 1
+/**
+ * A scale on the **character**, leaving the world exactly as the file has it.
+ *
+ * The cleaner way to ask whether the character is the wrong size. Growing the
+ * world asks the same question and asks the camera an awkward one alongside it:
+ * the boom is a multiple of the character's height, so a doubled room framed by
+ * an unchanged character puts the camera on the floorboards. Shrinking the
+ * character instead is the ordinary case with a different constant, and the
+ * camera behaves.
+ *
+ * `?person=` sets it, `j` and `i` move it. `PERSON.radius` goes with it, being
+ * a fact about the body; the step and snap heights do not — see `PERSON`.
+ */
+let personScale = Number(params.get('person')) > 0 ? Number(params.get('person')) : 1
+/** The character as the scale above leaves them. */
+function person() {
+  if (personScale === 1) return PERSON
+  return {
+    ...PERSON,
+    height: fx32(Math.round(PERSON.height * personScale)),
+    radius: fx32(Math.round(PERSON.radius * personScale)),
+  }
+}
 /**
  * `?cut=start,pitch,height,odd` starts from those numbers instead of the
  * parser's, so a candidate can be looked at without pressing a key twelve
@@ -624,11 +729,178 @@ canvas.addEventListener('pointermove', (event) => {
   lastY = event.clientY
 })
 
+/**
+ * Rebuild the collision from the map's meshes with the current fit applied.
+ *
+ * Both the mesh drawn and the one walked on, so a fit can be judged by walking
+ * it. Cheap enough to do on a keypress: an interior is a few dozen triangles.
+ */
+function refit(): void {
+  if (!loaded) return
+  // The collision takes its own fit and the world scale on top of it, so the
+  // two questions stay separate: does the collision match the room, and does
+  // the pair match the character.
+  const meshes = fitMeshes(loaded.map.meshes, {
+    sx: fit.sx * worldScale,
+    sy: fit.sy * worldScale,
+    sz: fit.sz * worldScale,
+    x: fit.x * worldScale,
+    y: fit.y * worldScale,
+    z: fit.z * worldScale,
+  })
+  world = meshes.length > 0 ? createCollisionWorld(meshes) : undefined
+  collisionDrawn = world ? collisionPieces(world) : []
+}
+
+/** Resize the character, leaving the world exactly as the file has it. */
+function movePerson(by: number): void {
+  personScale = Math.max(0.05, personScale + by)
+  poseMap(0)
+  showCollision = true
+  const line =
+    `${loaded?.code ?? '?'}  character ${personScale.toFixed(3)}` +
+    `  (${toFloat(person().height).toFixed(3)} tall, world untouched)`
+  status(line)
+  console.log(line)
+}
+
+/** Resize the room and its collision together, leaving the character alone. */
+function moveWorld(by: number): void {
+  const was = worldScale
+  worldScale = Math.max(0.05, worldScale + by)
+  // Everything in the world scales except the character, so the character has
+  // to be carried to where they now stand in it.
+  if (self) {
+    const k = worldScale / was
+    self.state = {
+      ...self.state,
+      x: fx32(Math.round(self.state.x * k)),
+      y: fx32(Math.round(self.state.y * k)),
+      z: fx32(Math.round(self.state.z * k)),
+    }
+  }
+  poseMap(0)
+  showCollision = true
+  const line =
+    `${loaded?.code ?? '?'}  world ${worldScale.toFixed(3)}` +
+    `  (room and collision together, character ${toFloat(PERSON.height).toFixed(3)} tall)`
+  status(line)
+  console.log(line)
+}
+
+/** Resize the room the map draws, leaving its collision where the file put it. */
+function moveRoom(by: number): void {
+  roomScale = Math.max(0.05, roomScale + by)
+  poseMap(0)
+  showCollision = true
+  const line = `${loaded?.code ?? '?'}  room ${roomScale.toFixed(3)}  ·  ${fitLine('collision', fit)}`
+  status(line)
+  console.log(line)
+}
+
+/**
+ * What is currently being done to this map, said out loud.
+ *
+ * A fit or a room scale is easy to leave applied and impossible to see, and a
+ * map that has been quietly resized looks like a map that is wrong. So the
+ * state goes on the status line whenever it is not the file's own.
+ */
+function fitState(): string {
+  const moved = fit !== NO_FIT && fitLine('', fit).trim() !== NO_FIT_LINE
+  const resized = roomScale !== 1 || worldScale !== 1 || personScale !== 1
+  if (!moved && !resized) return 'as the file has it'
+  return [
+    moved ? fitLine('collision', fit) : '',
+    roomScale !== 1 ? `room ${roomScale.toFixed(3)}` : '',
+    worldScale !== 1 ? `world ${worldScale.toFixed(3)}` : '',
+    personScale !== 1 ? `character ${personScale.toFixed(3)}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/** Move the fit and say where it now is, in a form that can be copied down. */
+function moveFit(by: Partial<CollisionFit>, factor?: number): void {
+  const step = (was: number, add: number | undefined) => (factor ? was * factor : was + (add ?? 0))
+  fit = {
+    sx: step(fit.sx, by.sx),
+    sy: step(fit.sy, by.sy),
+    sz: step(fit.sz, by.sz),
+    x: fit.x + (by.x ?? 0),
+    y: fit.y + (by.y ?? 0),
+    z: fit.z + (by.z ?? 0),
+  }
+  refit()
+  showCollision = true
+  const line = fitLine(loaded?.code ?? '?', fit)
+  status(`${line} · room ${roomScale.toFixed(3)}   —   ${describeCollision(world)}`)
+  console.log(line)
+}
+
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
   if (self && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
     self.held.add(key)
     event.preventDefault()
+  }
+  if (key === 'c') {
+    showCollision = !showCollision
+    status(
+      showCollision
+        ? `${fitLine(loaded?.code ?? '?', fit)} — green stands, red stops · arrows move · q/e raise · -/= scale all, ,/. x, ;/' z, k/l y · [/] halve/double · n/m room · g/h room+collision · j/i character · 0 resets`
+        : 'collision hidden',
+    )
+    event.preventDefault()
+  }
+  // Fitting the collision over the room, by eye. Only while it is on show, so
+  // these keys are free the rest of the time.
+  if (showCollision) {
+    const step = event.shiftKey ? 0.1 : 0.01
+    const nudge: Record<string, () => void> = {
+      arrowleft: () => moveFit({ x: -step }),
+      arrowright: () => moveFit({ x: step }),
+      arrowup: () => moveFit({ z: -step }),
+      arrowdown: () => moveFit({ z: step }),
+      q: () => moveFit({ y: -step }),
+      e: () => moveFit({ y: step }),
+      // All three axes together, then each on its own: the first room fitted
+      // wanted twice its size in z and about its own in x.
+      '-': () => moveFit({ sx: -step, sy: -step, sz: -step }),
+      '=': () => moveFit({ sx: step, sy: step, sz: step }),
+      ',': () => moveFit({ sx: -step }),
+      '.': () => moveFit({ sx: step }),
+      ';': () => moveFit({ sz: -step }),
+      "'": () => moveFit({ sz: step }),
+      k: () => moveFit({ sy: -step }),
+      l: () => moveFit({ sy: step }),
+      // The other way round: leave the collision and resize the room over it.
+      n: () => moveRoom(-step),
+      m: () => moveRoom(step),
+      // Both at once, against a character that does not move: is the pair right
+      // and the character small?
+      g: () => moveWorld(-step),
+      h: () => moveWorld(step),
+      // And the character alone, which asks the same question the other way up.
+      j: () => movePerson(-step),
+      i: () => movePerson(step),
+      '[': () => moveFit({}, 0.5),
+      ']': () => moveFit({}, 2),
+      '0': () => {
+        fit = NO_FIT
+        roomScale = 1
+        worldScale = 1
+        personScale = 1
+        poseMap(0)
+        refit()
+        status(`${fitLine(loaded?.code ?? '?', fit)} — back to the file`)
+      },
+    }
+    const move = nudge[key]
+    if (move) {
+      move()
+      event.preventDefault()
+      return
+    }
   }
   if (!showSprite) return
   // A byte is two pixels across; a row moves the frame down one.

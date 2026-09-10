@@ -235,55 +235,95 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     expect(drawnIn.get('M01')).toBe(18)
     // An interior holds a household, not a village. The stable drew 15 before.
     for (const code of maps.slice(1)) {
-      expect(drawnIn.get(code), `${code} is crowded`).toBeLessThan(10)
+      expect(drawnIn.get(code), `${code} is crowded`).toBeLessThan(12)
     }
-    expect(drawnIn.get('M01M04')).toBe(7)
+    // Nine, not seven: the two the collision does not reach are drawn now, and
+    // the item shop has its shopkeeper back — see `cast`.
+    expect(drawnIn.get('M01M04')).toBe(9)
+
+    // **Standing off the floor must not take a character out of the map.**
+    // The ground test decided which map a character was in before the file
+    // could be asked, and it dropped anyone the collision did not reach — which
+    // left the item shop with no shopkeeper.
+    //
+    // Both of the shop's now stand on floor, because `INTERIOR_COLLISION_SCALE`
+    // grew the collision to the room. That is the strongest thing said for that
+    // constant: the cartridge's own character placements land on walkable
+    // ground at twice the size and float at one.
+    const shop = open('M01M03').cast
+    expect(shop.members.length + shop.sprites2d.length, 'the shop lost someone').toBe(3)
+    expect(shop.elsewhere, 'the shop reaches its own cast now').toBe(0)
   })
 
-  it('puts an indoor doorway in a wall, not in the middle of the room', () => {
+  it('leaves an indoor doorway where the file puts it, not at the origin', () => {
     // The bug behind "the door is in the wrong position". A doorway's position
-    // was scaled with the map that holds it, which does nothing outdoors —
-    // the village's own nine doorways were right the whole time — and indoors
-    // collapsed the trigger onto the origin. Near enough the middle of the
-    // room that walking across the floor threw the character back outside.
+    // was scaled with the map that holds it, which does nothing outdoors — the
+    // village's own nine were right the whole time — and indoors divided it by
+    // eight, collapsing the trigger onto the origin. Near enough the middle of
+    // the room that walking across the floor threw the character back outside.
     //
-    // A door is in a wall, so it belongs at the edge of its map's collision.
-    // Scored 0 on the boundary and 1 dead centre; over the cartridge's 377
-    // indoor doorways the mean went from 0.68 to 0.06 when this was fixed.
+    // What that looks like from here is a doorway a few hundredths from the
+    // origin instead of most of a unit. Where it sits in the *collision* is the
+    // separate check below.
     const village = open('M01')
     for (const code of ['M01M01', 'M01M02', 'M01M03', 'M01M04', 'M01M06', 'M01M07']) {
       const inside = open(code)
-      const world = inside.world as NonNullable<typeof inside.world>
-      expect(world, code).toBeDefined()
       expect(inside.scale, `${code} is not an indoor map`).toBeLessThan(1)
-
-      const minX = toFloat(world.bounds.minX as never)
-      const maxX = toFloat(world.bounds.maxX as never)
-      const minZ = toFloat(world.bounds.minZ as never)
-      const maxZ = toFloat(world.bounds.maxZ as never)
-      const halfX = (maxX - minX) / 2
-      const halfZ = (maxZ - minZ) / 2
+      expect(inside.doorways.length, `${code} has no way out`).toBeGreaterThan(0)
       for (const door of inside.doorways) {
-        const central = Math.max(
-          0,
-          Math.min(
-            (door.x - minX) / halfX,
-            (maxX - door.x) / halfX,
-            (door.z - minZ) / halfZ,
-            (maxZ - door.z) / halfZ,
-          ),
-        )
+        const away = Math.hypot(door.x, door.z)
+        // An eighth-scaled doorway lands under 0.15 from the origin; a real one
+        // is most of a unit out, in the wall it belongs to.
         expect(
-          central,
-          `${code}: its way out stands ${central.toFixed(2)} of the way in`,
-        ).toBeLessThan(0.3)
+          away,
+          `${code}: its way out stands ${away.toFixed(2)} from the origin`,
+        ).toBeGreaterThan(0.3)
       }
     }
 
-    // And the village's own doorways, which take no scale either way, are where
-    // they always were — spread across the village rather than stacked.
+    // And the village's own, which take no scale either way, are where they
+    // always were — spread across the village rather than stacked.
     const spread = village.doorways.map((d) => Math.hypot(d.x, d.z))
     expect(Math.max(...spread), 'the village doorways collapsed').toBeGreaterThan(2)
+  })
+
+  it('leaves a room by a doorway that stands on the room\u2019s own floor', () => {
+    // The measurement that says most for `INTERIOR_COLLISION_SCALE`, and it is
+    // not the one the constant was fitted against.
+    //
+    // A doorway is in character space and takes no scale at all, so it does not
+    // move when the collision is resized — which makes it a ruler for the
+    // collision. At the size the file gives it, **every** village interior puts
+    // its way out past its own floor, 1.0 to 1.7 of the way out of the box: a
+    // room whose exit cannot be walked to. At twice the size every one lands
+    // inside. `docs/next.md` item 5 carries the per-map figures.
+    //
+    // The well, `M01M08`, is left out on purpose: it is the one village
+    // interior whose collision is *larger* than its room, so it passes this at
+    // any scale and says nothing.
+    for (const code of ['M01M01', 'M01M02', 'M01M03', 'M01M04', 'M01M05', 'M01M06', 'M01M07']) {
+      const inside = open(code)
+      const bounds = inside.world?.bounds
+      expect(bounds, `${code} has no collision`).toBeDefined()
+      if (!bounds) continue
+      const at = (v: number) => v / FX32_ONE
+      const spans = [
+        { of: 'x', low: at(bounds.minX), high: at(bounds.maxX) },
+        { of: 'z', low: at(bounds.minZ), high: at(bounds.maxZ) },
+      ] as const
+      for (const door of inside.doorways) {
+        const where = { x: door.x, z: door.z }
+        for (const span of spans) {
+          const middle = (span.low + span.high) / 2
+          const half = (span.high - span.low) / 2
+          const out = Math.abs(where[span.of] - middle) / (half || 1)
+          expect(
+            out,
+            `${code}: its way out stands ${out.toFixed(2)} out of the floor in ${span.of}`,
+          ).toBeLessThan(1)
+        }
+      }
+    }
   })
 
   it('reads a doorway for the field as well as for the houses', () => {

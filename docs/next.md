@@ -135,7 +135,7 @@ this was found and is the quickest way to check any map.
 
 ---
 
-## 5. An interior's collision does not match its room — **open, and now measurable**
+## 5. An interior's collision does not match its room — **a fitted x2 is applied**
 
 Reported again from play, with the useful addition that the *scaling* looks
 right. It does: what is wrong is the collision's extent, and the cartridge's own
@@ -218,9 +218,75 @@ holds the character to. If the inn's quad is one walkable region among several
 that the game combines from somewhere else, that somewhere else has not been
 found.
 
-`node apps/game/tools/plan.ts rom/<your>.nds M01M02 --under=0.12` draws the
-floor plan, with the collision's walls as lines rather than as the nothing a
-vertical face projects to from above.
+**Look at it in the game**: `?collision=1`, or `c` at any time, draws the mesh
+where it actually is — green what you can stand on, red what stops you, using
+the character controller's own test. Side by side it settles what the numbers
+only implied: the **stable** is right, its green filling the room to the walls
+and its red partitions standing where the wooden stall dividers are drawn; the
+**inn** is not, its green covering a fraction of the floorboards and its red
+walls standing in the middle of open floor, lining up with nothing.
+
+`node apps/game/tools/plan.ts rom/<your>.nds M01M02 --under=0.12` draws the same
+from above, with the collision's walls as lines rather than as the nothing a
+vertical face projects to.
+
+### Fitting it by hand, to see whether there is a trend
+
+The same affordance that settled the sprite cut. With the overlay on, the
+collision can be **moved and scaled live** until it sits over the room, and the
+numbers read off the screen — because no field in any file read here tells a map
+that needs a correction from one that does not, and six statistics have already
+been tried.
+
+| key | what it does |
+|---|---|
+| `c` | show or hide the collision |
+| arrows | move it in x and z, 0.01 a press |
+| `q` / `e` | lower and raise it |
+| `-` / `=` | scale it by 0.01, about the map's own origin |
+| `[` / `]` | halve and double it |
+| `n` / `m` | resize the **room**, leaving the collision alone |
+| `g` / `h` | resize **both together**, leaving the character alone |
+| `j` / `i` | resize the **character**, leaving the world alone |
+| `0` | back to all of the file's own numbers |
+| shift | ten times the step |
+
+Four things can move and there are three questions worth asking, because two of
+them are the same question from opposite ends:
+
+- **the collision against the room** — `-`/`=` and the arrows, or `n`/`m` from
+  the other side. Does the mesh sit where the room is drawn?
+- **the pair against the character** — `j`/`i`, or `g`/`h` from the other side.
+  If the mesh and the room agree and it still looks wrong, the character is the
+  size in question, and it is the one number in the chain no file gives.
+- **anything those cannot say** — a rotation, a shear, a stretch that differs by
+  axis. If a room wants one of those, that is worth reporting on its own.
+
+`j`/`i` is the better of the two equivalent pair: the camera boom is a multiple
+of the character's height, so a doubled room framed by an unchanged character
+puts the camera on the floorboards, while a smaller character in an unchanged
+room is the ordinary case with a different constant.
+
+Whatever is applied shows on the load line — `— collision scale 2.000 …`,
+`— room 0.500`, `— character 0.500` — and nothing shows when it is the file's
+own, so a map that has been resized never looks like a map that is wrong.
+
+It moves the mesh the character walks on as well as the one drawn, so a fit can
+be walked as well as looked at. The status line reads
+
+```
+M01M02  scale 1.030  offset 0.000, 0.000, 0.000
+```
+
+which is the line to write down; the same goes to the console. Putting one back
+is `?collision=1&fit=scale,x,y,z`.
+
+**What to collect.** One line per room. The village's interiors are `M01M01` to
+`M01M08`, and `M01M04` and `M01M01` already fit — so they are the control: if
+they do not come out at `scale 1.000`, the method is wrong before the numbers
+mean anything. Then the question is whether the corrections land on anything:
+powers of two, a constant, or something that tracks a field in the `.col2`
+header or the map index.
 
 ### The map index answers "which map", exactly
 
@@ -232,6 +298,23 @@ entry's id, against 96.6% for the decimal `area x 100 + sub-map` reading that
 replaced it. `tools/harness` holds it.
 
 Nothing about the scale, but it retires an inferred rule for a stated one.
+
+### The ground test was still throwing characters away — **fixed**
+
+Reported from play: the item shop had no shopkeeper.
+
+A cast used to be narrowed to its map by asking the map's own collision — the
+only way to do it before the placement's map word was found. Once the map id
+answered that exactly, the collision test stayed on as a second filter, and it
+drops anyone standing where the collision does not reach. Which, given item 5
+above, is not rare: the shop places three characters and **two of them stand
+0.05 and 0.10 beyond the edge of its floor**.
+
+So it is counted and no longer obeyed. A character the file puts in this map is
+in this map, and the count goes on the status line as something the *map* is
+doing rather than the character. Across the village's interiors that restores
+six: the shop 1 to 3, the stable 7 to 9, the church 2 to 3, House A 1 to 2. The
+village outdoors is unchanged at 18, and the inn at 5.
 
 ### The cast is per story state, and only the first is read
 
@@ -254,6 +337,70 @@ What a decision is needed on is which record the engine ought to take when it
 does not model story progress at all: the earliest, which is what happens today
 by accident, or the one matching some fixed state. `packages/game-formats/src/npc.ts`
 records the layout.
+
+---
+
+### Every interior is doubled — the constant now in the code
+
+Decided from the fitting above rather than found in a file: **an interior's
+collision is built at twice the size the file gives it.**
+`INTERIOR_COLLISION_SCALE` in `apps/game/src/load.ts` is the number, passed to
+`assembleMap` as `AssembleOptions.collisionScale`, and it applies to every map
+the index marks `indoors` and to no outdoor map. Both places say in the code
+that it is fitted and not derived, so nobody later reads it as a format finding.
+
+Two independent measurements moved the right way when it went in, and neither
+was the one it was fitted against.
+
+**A doorway now stands inside the floor it opens off.** A doorway's position is
+in character space and takes no scale at all, so it does not move when the
+collision does — which makes it a ruler. Measured as how far out of the
+collision's own half-extent each doorway stands, where 1 is exactly on the edge
+and the wall it belongs to:
+
+| map | at x1 | at x2 | |
+|---|---|---|---|
+| `M01M01` | 1.03 | 0.37 | |
+| `M01M02`, the inn | 1.46 | 0.50 | |
+| `M01M03`, the shop | 1.00 | 0.36 | |
+| `M01M04`, the stable | 1.46 | 0.61 | |
+| `M01M05` | 1.66, 1.72 | 0.66, 0.74 | |
+| `M01M06` | 1.35 | 0.60 | |
+| `M01M07` | 1.42, 1.11 | 0.55, 0.51 | |
+| `M01M08`, the well | 0.12 | 0.06 | the exception, in both |
+
+At the file's own size **every** village interior puts its way out beyond its
+own floor — 1.0 to 1.7 — which is a room whose exit cannot be reached, and is
+the same fault the step-into-nothing rule of item 1 papered over. At twice the
+size every one of them lands inside. The well is the sole exception at both
+sizes, which is what item 5 already said about it from the other direction: it
+is the one map whose collision is *larger* than its room.
+
+It does not land the doorways *on* the wall — 0.36 to 0.74 is inside the room,
+where a wall is not — so two is not the whole answer either. What it is not is
+arbitrary: it is the only size tried at which no room's exit falls outside it.
+
+**The cartridge's own characters now stand on floor.** The count that item 5's
+ground-test fix stopped obeying, before and after:
+
+| map | off the floor at x1 | at x2 | of |
+|---|---|---|---|
+| `M01M01` | 1 | 0 | 2 |
+| `M01M03`, the shop | 2 | 0 | 3 |
+| `M01M04`, the stable | 2 | 1 | 9 |
+| `M01M06` | 1 | 0 | 3 |
+| the rest | 0 | 0 | |
+
+Six characters authored off the walkable floor become one. These come from
+sub-records with unread state words, so they corroborate rather than prove — but
+they were the original symptom and they were not what the fit was made against.
+
+**What this does not settle**, and the reason the code says fitted: no field in
+the `.col2` header, the manifest, the map index or the model separates a map
+that needs two from one that does not, and `M01M08` measures the same factor the
+other way. The list below is still the list of things checked and ruled out. The
+keys above still fit a room by hand, and a room that wants something other than
+two is worth writing down.
 
 ---
 

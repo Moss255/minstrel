@@ -9,10 +9,23 @@ const CHROME =
   (() => {
     throw new Error('no Chrome found; set CHROME to its path')
   })()
-const url = process.argv[2]
-const out = process.argv[3]
-const width = Number(process.argv[4] ?? 1280)
-const height = Number(process.argv[5] ?? 800)
+const rest = process.argv.slice(2)
+const url = rest[0]
+const out = rest[1]
+const width = Number(rest[2] ?? 1280)
+const height = Number(rest[3] ?? 800)
+/**
+ * Drive the page before the shot, so the game can be looked at somewhere other
+ * than where it starts.
+ *
+ * `--hold=w:120` holds a key for that many frames — the game reads keys, not
+ * key events, so a press has to stay down while the simulation ticks. Several
+ * may be given and they run in order. `--drag=200,0` turns the camera by
+ * dragging that far. `--wait=ms` waits.
+ *
+ * Without any of these the tool behaves exactly as it did.
+ */
+const script = rest.filter((a) => a.startsWith('--'))
 
 const profile = mkdtempSync(join(tmpdir(), 'minstrel-chrome-'))
 const chrome = spawn(
@@ -82,8 +95,69 @@ const overlay = await send('Runtime.evaluate', {
 })
 console.log('title:', title)
 console.log(overlay.result?.result?.value ?? '')
-// One more frame, then capture.
+// One more frame, then whatever driving was asked for, then capture.
 await sleep(600)
+
+/** A key the page can see: the game reads `key`, so that is what must match. */
+const keyEvent = (type, key) =>
+  send('Input.dispatchKeyEvent', {
+    type,
+    key,
+    code: `Key${key.toUpperCase()}`,
+    windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+    nativeVirtualKeyCode: key.toUpperCase().charCodeAt(0),
+  })
+
+for (const step of script) {
+  // Split on the first `=` only: a value may be `=` itself.
+  const at = step.indexOf('=')
+  const name = at < 0 ? step.slice(2) : step.slice(2, at)
+  const value = at < 0 ? '' : step.slice(at + 1)
+  if (name === 'wait') {
+    await sleep(Number(value))
+  } else if (name === 'hold') {
+    const [key, frames] = value.split(':')
+    await keyEvent('keyDown', key)
+    await sleep(Number(frames ?? 60) * 16)
+    await keyEvent('keyUp', key)
+    await sleep(120)
+  } else if (name === 'drag') {
+    const [dx, dy] = value.split(',').map(Number)
+    const from = { x: Math.round(width / 2), y: Math.round(height / 2) }
+    await send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      ...from,
+      button: 'left',
+      clickCount: 1,
+    })
+    for (let i = 1; i <= 10; i++) {
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: from.x + Math.round((dx * i) / 10),
+        y: from.y + Math.round(((dy ?? 0) * i) / 10),
+        button: 'left',
+      })
+      await sleep(16)
+    }
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: from.x + dx,
+      y: from.y + (dy ?? 0),
+      button: 'left',
+      clickCount: 1,
+    })
+    await sleep(200)
+  }
+}
+if (script.length > 0) {
+  const after = await send('Runtime.evaluate', {
+    expression:
+      'document.querySelector("#overlay").textContent.split("\\n")[0] + " || " + document.querySelector("#status").textContent',
+    returnByValue: true,
+  })
+  console.log('after driving:', (after.result?.result?.value ?? '').split('\n')[0])
+  await sleep(300)
+}
 const shot = await send('Page.captureScreenshot', { format: 'png' })
 writeFileSync(out, Buffer.from(shot.result.data, 'base64'))
 console.log('wrote', out)

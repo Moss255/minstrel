@@ -90,6 +90,21 @@ export interface LoadOptions {
  * work and a great deal of memory for 36 MiB of sound the game does not yet
  * play. Narrowing it is what makes a load quick.
  */
+/**
+ * How much bigger an interior's collision has to be than the file makes it.
+ *
+ * **Fitted, not derived.** Moving the mesh over the room in the game until it
+ * lined up gives two for the rooms that were fitted, and no field in the
+ * `.col2` header, the manifest, the index or the model separates a map that
+ * needs it from one that does not.
+ *
+ * It is not established for every map — the well measures the same factor the
+ * other way — so this is the best single number for the rooms looked at rather
+ * than a reading of the format. `docs/next.md` carries the record and the keys
+ * for fitting more.
+ */
+export const INTERIOR_COLLISION_SCALE = 2
+
 export const SLICE_PATHS = [
   '/data/map/',
   '/data/pack_lv5/chara_pc.gp2',
@@ -414,6 +429,11 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const scale = entry?.indoors ? PLACED_PIECE_SCALE : 1
   const map = assembleMap(manifest, members, {
     scale,
+    // An interior's collision sits at half the size of the room drawn around
+    // it, and nothing in any file read here says which maps that is true of.
+    // The correction is fitted by eye and applied to every interior — see
+    // `AssembleOptions.collisionScale`.
+    ...(entry?.indoors ? { collisionScale: INTERIOR_COLLISION_SCALE } : {}),
     ...(options.lighting === undefined ? {} : { lighting: options.lighting }),
   })
   if (map.pieces.length === 0) throw new Error(`'${archive}' names no model that reads`)

@@ -107,6 +107,32 @@ export interface AssembleOptions {
    * `PLACED_PIECE_SCALE` whatever this is.
    */
   readonly scale?: number
+  /**
+   * A further scale on the collision alone, on top of {@link scale}.
+   *
+   * **Fitted by eye, and it is one of the numbers here that no file gives.** An
+   * interior's collision does not sit where its room is drawn: the mesh comes
+   * out about half the size of the room around it, so the walls stand in open
+   * floor and the walkable area covers a fraction of the floorboards. Nothing
+   * in the `.col2` header, the map manifest, the map index or the model tells a
+   * map that needs the correction from one that does not — the item shop and
+   * the stable carry the same `unknown_0x04`, the same cell size, the same
+   * kind, and the same model position scale.
+   *
+   * So it is applied as a constant and recorded as fitted. `2` was arrived at
+   * by moving the mesh over the room in the game until it lined up — see
+   * `docs/next.md`, and `?collision=1` with the fitting keys to do it again.
+   *
+   * **What this is not.** It is not derived, not measured against a field, and
+   * not established for every map: the well, `M01M08`, is the one village
+   * interior whose collision measures *larger* than its room, by about the same
+   * factor in the other direction. A single constant cannot be right for both,
+   * and this one is right for the rooms that were fitted.
+   *
+   * `1` leaves the collision where the file puts it, which is what an outdoor
+   * map wants: outdoors the two agree already.
+   */
+  readonly collisionScale?: number
 }
 
 /**
@@ -151,6 +177,7 @@ export function assembleMap(
 ): AssembledMap {
   const lighting = options.lighting ?? 'day'
   const mapScale = options.scale ?? 1
+  const collisionScale = options.collisionScale ?? 1
   const pieces: MapPiece[] = []
   const meshes: PlacedMesh[] = []
   const water: WaterArea[] = []
@@ -211,7 +238,10 @@ export function assembleMap(
             // scaled takes doorways standing over their own floor from 100% to
             // 63.9% on `T` interiors. A model is authored at its own origin and
             // instanced; a collision volume is authored where it sits.
-            scale: mapScale,
+            //
+            // `collisionScale` is the correction on top of that, and is fitted
+            // rather than derived — see the option.
+            scale: mapScale * collisionScale,
           })
         } catch {
           missing.push(file)
