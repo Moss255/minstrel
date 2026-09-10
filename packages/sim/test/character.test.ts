@@ -76,6 +76,29 @@ function floor(n: number, y = 0): readonly [Point, Point, Point][] {
   ]
 }
 
+/** A flat rectangle covering `x0..x1` by `z0..z1`, at height `y`. */
+function slab(
+  x0: number,
+  x1: number,
+  z0: number,
+  z1: number,
+  y = 0,
+): readonly [Point, Point, Point][] {
+  const h = y * U
+  return [
+    [
+      [x0 * U, h, z0 * U],
+      [x1 * U, h, z0 * U],
+      [x0 * U, h, z1 * U],
+    ],
+    [
+      [x1 * U, h, z0 * U],
+      [x1 * U, h, z1 * U],
+      [x0 * U, h, z1 * U],
+    ],
+  ]
+}
+
 /** A vertical wall across x, running from `z0` to `z1`, `height` tall. */
 function wall(x: number, z0: number, z1: number, height: number): readonly [Point, Point, Point][] {
   const wx = x * U
@@ -230,10 +253,13 @@ describe('falling', () => {
   // A platform from -4..4, with nothing beyond it.
   const world = createCollisionWorld(mesh(floor(4, 0)))
 
-  it('falls off the edge', () => {
+  it('falls off a ledge onto the ground below it', () => {
+    // The same platform with a floor twenty units under it, reaching further
+    // out. A drop with somewhere to land is a fall, and stays one.
+    const ledge = createCollisionWorld(mesh([...floor(4, 0), ...floor(20, -20)]))
     let state: CharacterState = standing(0, 0, 0)
-    for (let i = 0; i < 8; i++) state = step(world, state, fromInt(1), fx32(0), shape)
-    expect(state.grounded).toBe(false)
+    for (let i = 0; i < 8; i++) state = step(ledge, state, fromInt(1), fx32(0), shape)
+    expect(toFloat(state.x)).toBeGreaterThan(4)
     expect(toFloat(state.y)).toBeLessThan(0)
   })
 
@@ -258,6 +284,57 @@ describe('falling', () => {
     expect(state.grounded).toBe(true)
     expect(state.y).toBe(0)
     expect(state.fallSpeed).toBe(0)
+  })
+})
+
+describe('an edge with nothing beyond it', () => {
+  /**
+   * The rule that keeps a character in the world.
+   *
+   * A room's collision is a floor with walls standing on it, and on real maps
+   * those walls do not always close it. Where the floor simply stops and there
+   * is no surface at any height past it, stepping off is not a fall — there is
+   * nothing to fall to — so the step is refused, as one into a wall is.
+   *
+   * A slab from x -4..4, long in z, floating in nothing.
+   */
+  const world = createCollisionWorld(mesh(slab(-4, 4, -20, 20)))
+
+  it('refuses the step rather than walking off into it', () => {
+    let state: StepResult = step(world, standing(0, 0, 0), fx32(0), fx32(0), shape)
+    for (let i = 0; i < 20; i++) state = step(world, state, fromInt(1), fx32(0), shape)
+    expect(state.grounded).toBe(true)
+    expect(state.y).toBe(0)
+    // Held at the last ground there was, not carried past it.
+    expect(state.x).toBe(fromInt(4))
+    expect(state.hitWall).toBe(true)
+  })
+
+  it('keeps the part of the movement that stays over ground', () => {
+    // Walking into the edge at an angle slides along it, the way a wall is
+    // slid along, rather than stopping the character dead.
+    let state: CharacterState = standing(0, 0, 0)
+    for (let i = 0; i < 10; i++) state = step(world, state, fromInt(1), fromInt(1), shape)
+    expect(state.grounded).toBe(true)
+    expect(state.x).toBe(fromInt(4))
+    expect(toFloat(state.z)).toBeGreaterThan(8)
+  })
+
+  it('lets a character walk back away from the edge', () => {
+    let state: CharacterState = standing(0, 0, 0)
+    for (let i = 0; i < 10; i++) state = step(world, state, fromInt(1), fx32(0), shape)
+    for (let i = 0; i < 3; i++) state = step(world, state, fromInt(-1), fx32(0), shape)
+    expect(toFloat(state.x)).toBeCloseTo(1, 3)
+  })
+
+  it('does not pin a character that is already in the air', () => {
+    // The rule is about stepping off, not about being off. Once falling, the
+    // movement carries on: being pushed off an edge must still read as a fall.
+    let state: CharacterState = { ...standing(20, 20, 0), grounded: false }
+    const from = state.x
+    for (let i = 0; i < 5; i++) state = step(world, state, fromInt(1), fx32(0), shape)
+    expect(state.grounded).toBe(false)
+    expect(state.x).toBeGreaterThan(from)
   })
 })
 

@@ -58,7 +58,10 @@ export interface CharacterShape {
 
 /** What a step did, beyond where it ended up. */
 export interface StepResult extends CharacterState {
-  /** A wall or a too-steep face turned the movement aside. */
+  /**
+   * The world turned the movement aside: a wall, a face too steep to stand on,
+   * or an edge with nothing at all beyond it.
+   */
   readonly hitWall: boolean
   /** Steepness of the ground stood on, as a cosine; `FX32_ONE` when airborne. */
   readonly slope: Fx32
@@ -77,6 +80,11 @@ const RESOLVE_PASSES = 4
  * character sliding along a wall keeps the part of its movement the wall does
  * not oppose. Only then is the ground consulted, because where the feet end up
  * horizontally is what decides which ground is under them.
+ *
+ * The ground has the last word as well as the second: a step whose landing has
+ * no surface anywhere beneath it is refused rather than taken, which is what
+ * keeps a character inside a room whose walls do not quite close it. A drop
+ * with ground under it is untouched and remains a fall.
  */
 export function step(
   world: CollisionWorld,
@@ -90,28 +98,47 @@ export function step(
   }
 
   const from = { x: state.x, z: state.z }
-  let x = add(state.x, dx)
-  let z = add(state.z, dz)
-  let hitWall = false
-
-  // Push out of anything the move ended up inside. Several passes, because
-  // escaping one wall in a corner can push straight into the other.
-  for (let pass = 0; pass < RESOLVE_PASSES; pass++) {
-    const pushed = pushOutOfWalls(world, from, x, state.y, z, shape)
-    if (pushed === undefined) break
-    x = pushed.x
-    z = pushed.z
-    hitWall = true
-  }
-
+  let placed = slide(world, from, dx, dz, state.y, shape)
   // The ground under where the feet now are. Looking from `stepUp` above the
   // current height is what lets a low lip be walked onto rather than into.
-  const ground = groundBelow(world, x, z, state.y, shape.stepUp)
-  const standable = ground !== undefined && ground.slope >= shape.maxSlope
+  let ground = groundBelow(world, placed.x, placed.z, state.y, shape.stepUp)
+  let hitWall = placed.hitWall
 
-  if (standable && ground.y >= sub(state.y, shape.snapDown)) {
+  if (ground === undefined && state.grounded) {
+    // **Nothing at all below is not a fall; it is the world running out.**
+    // A room's collision is a floor with walls standing on it, and on real maps
+    // those walls do not always close it: walking every way out of the doorway
+    // of `M01M08` left the floor on 21 of 64 headings, through gaps a
+    // narrower character can reach. So a step whose landing has no surface
+    // anywhere beneath it is refused, the way a step into a wall is.
+    //
+    // The test is "no ground anywhere below", not "ground lower than here",
+    // and the difference is the whole rule. Outdoors a drop with ground under
+    // it is a legitimate fall and must stay one; what is refused is a column
+    // with no surface in it at all.
+    hitWall = true
+    // Each axis alone before giving up, so walking into the edge at an angle
+    // keeps the part of the movement that stays over ground — the same
+    // courtesy sliding along a wall gets. Attempt 2 stays put.
+    for (let attempt = 0; attempt < 3 && ground === undefined; attempt++) {
+      const ax = attempt === 0 ? dx : fx32(0)
+      const az = attempt === 1 ? dz : fx32(0)
+      if (attempt < 2 && ax === 0 && az === 0) continue
+      const tried = slide(world, from, ax, az, state.y, shape)
+      const under = groundBelow(world, tried.x, tried.z, state.y, shape.stepUp)
+      if (under === undefined && attempt < 2) continue
+      placed = tried
+      ground = under
+    }
+  }
+
+  const { x, z } = placed
+  const under = ground
+  const standable = under !== undefined && under.slope >= shape.maxSlope
+
+  if (standable && under.y >= sub(state.y, shape.snapDown)) {
     // On the ground, or close enough under it to follow the surface down.
-    return { x, y: ground.y, z, fallSpeed: fx32(0), grounded: true, hitWall, slope: ground.slope }
+    return { x, y: under.y, z, fallSpeed: fx32(0), grounded: true, hitWall, slope: under.slope }
   }
 
   // Falling. The speed accumulates whether or not there was ground before, so
@@ -134,6 +161,33 @@ export function step(
     }
   }
   return { x, y, z, fallSpeed, grounded: false, hitWall, slope: FX32_ONE }
+}
+
+/**
+ * Where a horizontal move ends up once the walls have had their say.
+ *
+ * Several passes, because escaping one wall in a corner can push straight into
+ * the other.
+ */
+function slide(
+  world: CollisionWorld,
+  from: { x: Fx32; z: Fx32 },
+  dx: Fx32,
+  dz: Fx32,
+  feetY: Fx32,
+  shape: CharacterShape,
+): { x: Fx32; z: Fx32; hitWall: boolean } {
+  let x = add(from.x, dx)
+  let z = add(from.z, dz)
+  let hitWall = false
+  for (let pass = 0; pass < RESOLVE_PASSES; pass++) {
+    const pushed = pushOutOfWalls(world, from, x, feetY, z, shape)
+    if (pushed === undefined) break
+    x = pushed.x
+    z = pushed.z
+    hitWall = true
+  }
+  return { x, z, hitWall }
 }
 
 /**
