@@ -414,11 +414,50 @@ reasoned about:
   together 30.2%. The field's own doorways have no drawn geometry under them
   either.
 
+### The collision is not partial — the doorways are outside the map
+
+Measured after the list above, and it moves the question rather than answering
+it.
+
+**A field's drawn terrain is a grid of tile models**, named `F01M<row><col>00`:
+rows 1–6 step z and columns 1–6 step x, 21 tiles in a ragged rectangle, each
+authored **in world coordinates** rather than at its own origin. Together they
+span x −7.08 to 7.36 and z −6.53 to 6.63.
+
+The field's one collision mesh spans x −6.00 to 6.42, z −5.50 to 6.88. That is
+the same place. **The collision covers the field's own drawn extent**; it is not
+a fragment of a larger mesh and there is nothing missing beside it. Collision
+does not follow the tile naming — there is no `F01A<row><col>00` — so it is
+authored once for the map rather than once per tile.
+
+What is outside is the doorways. Taking every map that has both collision and a
+link table, and asking how far each doorway falls outside its own map's
+collision box:
+
+| map code | doorways inside the box | of the rest: median, 90th, max |
+|---|---|---|
+| `C` `H` `M` `R` `S` `T` | 100% | — |
+| `D` | 99.5% | 0.13 |
+| `X` | 90.5% | 3.04, 4.23, 4.81 |
+| **`F` — fields** | **24.4%** (119 doorways) | **3.33, 8.47, 11.56** |
+
+A field is about 14 units across, so a doorway 11.56 units outside its collision
+is most of a map's width away — too far to be an edge trigger placed just past
+the boundary, which is what the smaller distances would have suggested.
+
+So the question is not "where is the field's missing walkable ground". It is
+**why a field's doorway coordinates land in a space its own geometry does not
+cover**, when every other kind of map puts them inside it. Nothing read here
+answers that, and the arithmetic that would — a scale or a translation — has
+been ruled out above.
+
 ### What it means for now
 
-The walkable ground a field actually uses is **not established**, and finding it
-means watching what the game does — the emulator work this repository does not
-do. What is established is that it is not in any file read here.
+Where a field's doorways stand, relative to its ground, is **not established**,
+and finding it means watching what the game does — the emulator work this
+repository does not do. What is established is that the ground itself is present
+and covers the map, and that no scale or translation in any file read here
+brings the doorways onto it.
 
 Callers should expect a doorway onto a field to name an arrival with no floor.
 `apps/game` puts the character on the walkable ground nearest the arrival
@@ -829,7 +868,7 @@ is reached from somewhere that does not lead back to it.
 
 ---
 
-# `<map>.npc` — who stands in a map, and where
+# `<area>.npc` — who stands in an area, where, and in which of its maps
 
 A NARC beside the map data in `/data/scenario`, holding two files: `<map>npc.bin`
 names the cast and `<map>place.bin` puts them. 74 archives, 1,385 names and
@@ -891,17 +930,48 @@ were still being read as walls.
 **The facing angle is established beyond reasonable doubt**: across all 1,285
 blocks it lies within 0 to 2π, and 71% sit on an exact multiple of 90°.
 
-## A cast list is not only that map's characters
+## A cast list is the whole area's, and the file says which map is which
 
-The village's file places five copies of `s097a` inside a circle 0.8 units
-across, all at one height, and that height is 0.157 above the ground beneath
-them — nine tenths of a character. They are standing on a shop floor, in the
-shop's own coordinates; the shop is a different map archive.
+`M01.npc` holds **49** characters: the village outdoors and everyone inside its
+houses. Each is placed in the coordinates of the map it stands in, so five
+copies of `s097a` sit inside a circle 0.8 units across — a room, in that room's
+own coordinates.
 
-Nothing in the file says which map a placement belongs to. Asking the map's own
-collision separates them cleanly: the characters that belong outside miss the
-ground by **0.006 to 0.030**, and the rest by **0.156 to 0.175**. Any threshold
-in that gap gives the same answer.
+**The word at `+8` of a placement block is the map.** It is `area x 100 +
+sub-map`, in decimal, and it reads that way: `M01`'s placements carry 1100 to
+1109, `S07`'s 5700 to 5707, `X05`'s 4501 to 4509. The low two digits name the
+map within the area, and 0 is the area's own exterior. So `1104` is `M01M04`,
+which the cartridge's index calls the Stable — and that is where the five
+`s097a` and `s001` stand.
+
+It is the same in every 60-byte record of a block, so it belongs to the
+character rather than to one of their placements.
+
+| check | result |
+|---|---|
+| areas whose placements all share one `x / 100` | **73 / 73** |
+| placements whose low two digits name a map the index knows | **1,245 / 1,289** (96.6%) |
+| the 44 that do not | codes the index does not ship; it has 205 such |
+| `M01`'s ten values against the index | `M01` and `M01M01`..`M01M09` sit at 140–149, ten consecutive entries |
+| placements tagged 1100 with floor under them in `M01` | **all of them** |
+| placements tagged anything else with floor under them in `M01` | **none** |
+
+What the area half counts is **not established**: it is not the index position,
+and no constant relates the two. Nothing needs it — a cast list is opened by
+area already — so only the low two digits are read.
+
+### Asking the collision instead does not work
+
+Recorded because it was the reading here until the word was found, and because
+it looked sound. The characters that belong outside miss the village's ground by
+0.006 to 0.030 and the rest by 0.156 to 0.175, so a threshold in that gap sorts
+the *village* correctly.
+
+It cannot sort the interiors, and nothing in that measurement says so. Every
+interior is its own little map about its own origin, so a character standing at
+(0.1, −0.1) of one room is over the floor of every other room too. The stable
+drew **fifteen** of the area's characters; it has seven. The village outdoors
+was right the whole time, which is exactly why this survived.
 
 ## Evidence
 
@@ -919,6 +989,7 @@ code.
 | archives with as many placements as names | 45 |
 | archives with **more** placements than names | 1 (`R01`, by one) |
 | village characters inside its collision, raw | 23 / 49 |
+| **characters drawn in more than one map of the village** | **none**, since the map word is read |
 | **village characters inside its collision, ÷ 8** | **49 / 49** |
 | facing within 0 to 2π | 1,285 / 1,285 |
 | kind 0 with a sprite and no model (village) | 24 / 24 |
@@ -1066,21 +1137,27 @@ Fixtures in `test/sprite.test.ts` are built in code.
 | …with all eight standing directions | **24 / 24** |
 | readable sheets cartridge-wide carrying an animation table | 181 / 1,317 |
 | frame heights summing to the sheet's rows | by construction |
+| sheets whose cut pitch is the block's own measured byte period | **checked on every sampled sheet, in `tools/harness`** |
+| 32x40 sheets whose measured period is 664, at 8/11/16/20 frames | **all of them, 187 surveyed** |
 
-## The frame segmentation is wrong
+## The frame segmentation, and the two ways it was got wrong
 
-**Known broken, reported from play**, and the reason is that the even division
-below is inferred and does not hold. Cutting frame `k` at `round(k x rows /
-frames)` puts a band of the neighbouring frame inside the cell: the first five
-rows of `n003a`'s frame 7 are a slice of another frame, wrapped so that its ink
-sits against the left and right edges with a gap between. The character proper
-begins on row 5.
+**Settled**: the pitch is `width x height / 2 + 24` bytes and the figure is the
+last `height - 8` rows of it. What follows is how that was reached, because
+every wrong answer on the way was reached by a measurement that looked sound.
 
-It shows in play as a villager that comes apart as the camera turns around
-them, because each facing is a different frame and only some are mis-cut.
+It was first cut by the even division — frame `k` at `round(k x rows / frames)`
+— which is inferred and does not hold. That put a band of the neighbouring frame
+inside the cell: the first five rows of `n003a`'s frame 7 were a slice of another
+frame, wrapped so that its ink sat against the left and right edges with a gap
+between. In play a villager came apart as the camera turned around them, because
+each facing is a different frame and only some were mis-cut.
 
 An earlier check here — "ink fills 33 to 41 of the 41 rows" — was fooled by
-exactly this: the foreign band counts as ink.
+exactly that: the foreign band counts as ink. So was its successor, "the ink
+starts on row 0 and ends on row 39 in almost every frame, so the frames do not
+creep": the strip holds the top rows whether the figure has crept or not, and
+the figure was creeping a row a frame.
 
 ### What has been ruled out
 
@@ -1118,60 +1195,80 @@ back from the palette — includes data that is not pixels, that the giveaway wa
   `n003a`'s frame 7 clean and its frame 0 broken, and across the cartridge it
   takes frames whose ink is in one piece from 2,306 of 4,096 to 1,922.
 
-### The frames are not a row grid: the pitch is `width x height / 2 + 8` bytes
+### The frames are not a row grid: the pitch is `width x height / 2 + 24` bytes
 
 **Found by rendering a sheet to a PNG and looking at it** — `tools/sprite`,
 which writes to `out/` and is local-only. Three separate measurements had said
 the sheets were broadly fine, and all three were blind to this.
 
-Frame 1 of `n003a` is a whole, centred villager. Frame 0 is the *same figure
+Frame 1 of `n003a` is a whole, centred villager. Frame 0 was the *same figure
 sliced down the middle with its halves swapped* — right half against the left
 edge, left half against the right. That is a **horizontal wrap**, and no count
 of rows or of ink was ever going to show it.
 
-The cause is that a frame is not a whole number of sheet rows. Sweeping the byte
-pitch over both 32x40 characters and scoring by how much ink lands in the edge
-columns picks **648 bytes** for each, and a 32x40 frame at 4bpp is **640**.
-The extra **8 bytes is half a row of 32 pixels**, which is exactly the offset
-that puts every other frame half a width out when the sheet is read as a grid of
-rows.
+The cause is that a frame is not a whole number of sheet rows. On the village's
+32x40 characters the pitch is **664 bytes — 41.5 rows**, which is
+`width x height / 2 + 24`.
 
-Rendered at a pitch of `width x height / 2 + 8` every frame comes out whole and
-centred, on `n003a` and on `n099a`, whose frames are 40 wide and whose pitch is
-then 808.
+**The pitch is measured, not fitted.** The instrument is the period of the
+sheet's own bytes: score the block against itself at every candidate lag, over
+the positions where *either* copy has ink so the transparent majority cannot
+vote for every lag alike, and take the peak. `tools/sprite/render.ts --period`
+is that measurement, and `n003a` peaks at 664 with 0.465 against 0.325 for the
+runner-up — not a marginal call.
 
-The eight bytes are **transparent padding, not a record**: read at the frame
-spacing they are zero on every frame of every character checked. An earlier
-revision of this section called them a per-frame record, on the strength of the
-file also leading with two eight-byte runs before the first frame — that was a
-guess and the bytes disprove it.
+It is a constant of the geometry rather than a division of the file. Across 187
+multi-frame sheets the peak is 664 on **every 32x40 sheet**, at 8, 11, 16 and 20
+frames alike; `ceil(block / frames)` agrees only where there happen to be 16.
 
-That the gap is real and this size is checkable two ways. Read with no gap at
-all — frames packed at exactly `width x height / 2` — the figures **drift down
-the sheet**, a little lower in each successive frame. Read at 648 they hold
-still across all sixteen. And a pitch of 664, the other candidate, cannot be
-right because it does not fit: sixteen frames at 664 leave no room in front of
-the palette for a start above the header.
+41.5 rows is the same 41.5 the empty rows give — they fall every 83 rows, two
+frames apart — arrived at independently.
 
-`readSprite` cuts this way when the sheet's declared width really is its stride
-and the frames fit before the palette — **1,257 of the 1,264** — and falls back
-to the even division otherwise, which is what a sheet read at `width - 8` still
-needs. Across the cartridge it takes the ink landing in the two edge columns
-down by 20.2%, and the village's characters come out whole instead of halved.
+### 664 was rejected once, on arithmetic that was wrong
 
-### The start is still a row out, and fitting it does not work
+Recorded because it cost the most. An earlier revision of this section chose 648
+and ruled 664 out on the grounds that "sixteen frames at 664 leave no room in
+front of the palette for a start above the header". **Sixteen frames do not need
+sixteen pitches.** They need fifteen, plus the pixels of the last one:
+`15 x 664 + 512` is 10,600 bytes, and `n003a` has 10,612 between its header and
+its palette. It fits, with twelve to spare.
 
-A cut frame carries a few rows of its neighbour at the top and sits about two
-pixels right of centre. Sweeping the start a row at a time and rendering each
-shows the band travel from the top of the cell to the bottom; the clean window
-for `n003a` is **92 to 108**, not the 24 the record layout gives.
+648 came from sweeping the pitch and scoring by how much ink lands in the two
+edge columns. That is a proxy for the wrap, and it found a pitch that does not
+wrap — 648 is a whole number of rows away from 664, so it shifts the figure
+vertically rather than horizontally, and the proxy cannot see vertical error at
+all. **A pitch one row short does not slice a figure; it walks the figure a row
+further down its cell with every frame**, which is what put a fragment above the
+character and cut the hem off by the end of the sheet.
 
-Nothing found derives 92. It is not a constant offset from the header or from
-the palette, and its phase within a row is not constant either — 12 on `n003a`
-and `n004a`, 15 on `n017a`, `n002b` and `n013a`.
+`tools/harness` now checks the pitch the parser uses against the measured period
+on every sheet it samples, which is the check that would have caught this.
 
-Four ways of fitting it per sheet were tried. All fail, each differently, which
-is why the parser uses the fixed 24:
+### A frame is an eight-row strip and then a thirty-two-row figure
+
+The 664 bytes divide as **8 rows, then the figure's 32**, and the header's
+`height` of 40 is the two together. Cut at 32 rows, eight rows into the unit,
+every frame of the village's characters is a whole figure with nothing above it.
+
+The row structure is plain once the block is folded on its 83-row period: ink
+rises through the strip, drops to almost nothing for one row, then rises again
+through the figure and tapers to nothing at its hem.
+
+**What the strip is has not been established.** It is a squashed copy of the
+figure rather than a constant blob — `n017a` carries the blue of her dress above
+the grey of her apron, and it turns as she does — so a shadow and a reflection
+are both consistent with it, and a hat is not. It is separate from the figure
+either way, and read as part of the frame it drew as debris floating over the
+cast.
+
+`SHADOW_ROWS` in `sprite.ts` carries the eight. It replaced a `LEAD_ROWS` of
+six, which was fitted by eye against the drifting cut and is not a measurement
+of anything now the pitch is right.
+
+### The six criteria that were tried, and are not to be tried again
+
+These chose the start, back when the pitch was a row short. Every one renders
+wrong, and they are listed so the same ground is not covered twice:
 
 | criterion | what it actually does |
 |---|---|
@@ -1179,54 +1276,12 @@ is why the parser uses the fixed 24:
 | clear air above the head, feet on the floor | satisfied by 0 or 1 frame in 16; these characters fill their cells |
 | least ink against the left edge | finds the right phase within a row, but lands a row high, and rendering it clips every head |
 | anchor the last frame to the palette | clips every head |
+| least ink in the two edge columns | picks 648: blind to vertical error, which is the error there was |
+| a per-frame table in the file | there is none — searched `n003a` for a run of sixteen values between 35 and 55 at byte, `u16` and `u32` strides through the first 4 KiB |
 
-The pitch is settled and the halving is gone. `LEAD_ROWS` in `sprite.ts` carries
-the six, marked as fitted rather than derived.
-
-### What is left: a stray fragment above every character
-
-Rendering **the exact frames the game asks for** — `standingFrame` at the
-follow camera's default yaw, which for the inn's fifteen characters is mostly
-frames 10 to 15 — settles what the packing did and did not fix.
-
-Cut the old way those frames are **sliced vertically with their halves
-swapped**, several of them unrecognisable. Cut the new way every one is a whole
-figure. That comparison is what the packing is worth, and it is the frames in
-play rather than a convenient sample.
-
-But each of those frames also carries a **stray fragment above the character** —
-a hat or the top of a head, clearly separated from the figure below it. On
-screen, in a crowded room, that reads as debris floating over the cast.
-
-It is not drift: measured across all sixteen frames of four characters, the ink
-starts on row 0 and ends on row 39 in almost every one, so the frames do not
-creep relative to each other. It is that a cell holds a character *and*
-something else, and no start tried removes the second without eating the first.
-Cropping to 34 rows six rows down, which should have left the figure alone,
-takes the top of its head off instead.
-
-So the sheet is not simply a column of `height`-row cells with the character
-filling each.
-
-### What the whole block looks like
-
-Rendering every byte from the start of the pixels to the palette, at 32 wide and
-with no frame assumption at all, shows what a cell actually holds. The block is
-a repeating pair:
-
-> a small brown **mound**, five or six rows tall — then the character, then the
-> next mound, then the next character.
-
-Eight columns of 83 rows hold two of those pairs each, which is the 41.5 rows a
-frame occupies, arrived at a third time. **The mound is part of the repeating
-unit, not a mis-cut neighbour.** What it is has not been established — a shadow
-and a hat are both consistent with its shape — but it is why no start removes it:
-there is nothing to remove, only a frame boundary to put in the right place
-relative to it.
-
-That also means the even division was closer than it looked. Its frames
-alternate 41 and 42 rows, which straddles the true 41.5; what it got wrong was
-where the block begins.
+The lesson is the one that keeps recurring here: a criterion that scores how a
+cut *looks* will find a cut that scores well. The period of the bytes is a
+property of the data, and it answered in one run.
 
 ### The loader in the cartridge's own code
 

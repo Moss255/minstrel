@@ -7,9 +7,9 @@ Against the milestone's own list.
 | Map assembly and collision | **both done** |
 | Character controller with original movement constants | **done**; the character's size is measured off the doors, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
-| Interior/exterior transitions, doors, stairs | **the data is read and the doors work**; the rooms behind them are not finished — see "Not done" below |
+| Interior/exterior transitions, doors, stairs | **the data is read and the doors are in the right place**; an interior's collision still does not match its room — see below |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
-| The village's own cast, placed | **placed, drawn wrong**; 18 stand in the village, 14 of them 2D sprites, and each interior has its own, but the sheets are still cut wrong — see "Not done" |
+| The village's own cast, placed | **placed, cut right, and in the right rooms**; 18 stand in the village, 14 of them 2D sprites, and each interior draws its own household. One question left: whether the facing table is 180° out — see below |
 
 **Done when:** you can walk the whole village and enter every building.
 
@@ -21,14 +21,15 @@ whether a doorway lands the character on a floor, checked in a script. It did
 not measure whether the room behind it is one you can walk around, and it could
 not have: nobody had played it.
 
-## Not done
+## What was wrong, and what is left
 
 `docs/next.md` is the short version of this, with what to do next for each and
 the commands to run. What follows is the evidence.
 
 Four things. Every one was found by playing or by looking at a picture; none of
 them came from a measurement, and several survived measurements that said they
-were fine.
+were fine. Three are now fixed, and each fix was finally settled by a
+measurement of the data rather than of how the result looked.
 
 **The character was twice as wide as a person.** `PERSON.radius` was 0.04
 against a height of 0.18 — 0.22 of the height, where a person is about 0.14.
@@ -37,61 +38,123 @@ because nothing in them was ever a tight fit. At their own scale it costs most
 of the room: walking every way out of the doorway of `M01M08` reached 1,944
 distinct spots at 0.04 and 6,076 at 0.025. Now 0.025.
 
-**Interiors leak.** A room's collision is one floor quad with walls standing on
-it, and the walls do not close it. Walking 64 directions out of the doorway of
-`M01M04`, **9 of them walk off the floor and fall out of the world**, at either
-radius; `M01M08` does it on 20 once the character is thin enough to reach the
-gap. The fat radius was plugging some of these, which is why they surfaced
-together. Nothing here invents a wall the cartridge does not have — an engine
-rule against stepping off into nothing is the likely answer, and it is not
-written yet.
+**Interiors leaked, and no longer do.** A room's collision is one floor quad
+with walls standing on it, and the walls do not close it. Walking 64 directions
+out of the doorway of `M01M04`, **7 of them walked off the floor and fell out of
+the world**; `M01M08` did it on 21, once the character was thin enough to reach
+the gap. The fat radius had been plugging some of these, which is why they
+surfaced together with the radius fix rather than because of it.
 
-**The 2D cast still does not survive being walked around**, though it is closer
-and the reason is now known rather than guessed.
+*Fixed*, and without inventing a wall the cartridge does not have. The rule is
+in the controller instead: **a step whose landing has no surface anywhere
+beneath it is refused**, the way a step into a wall is, and each axis is tried
+on its own first so that walking into the edge at an angle slides along it
+rather than stopping dead. `M01M04`, `M01M08` and `M01M02` now lose the
+character on none of the 64.
 
-*Fixed.* The frames were being cut on an even division of the sheet's rows,
-which is marked `INFERRED` in `sprite.ts` and does not hold: a frame is **not a
-whole number of sheet rows**. It is `width x height / 2` bytes of pixels with
-eight more between it and the next, and eight bytes is half a row of a 32-pixel
-sheet — which is what put every other frame half a width out, sliced down the
-middle with its halves swapped. Cut at that pitch the village's characters come
-out whole, and the ink landing in the edge columns drops 20.2% across the
-cartridge. Confirmed on the frames the game itself asks for, not a convenient
-sample: cut the old way those are unrecognisable.
+The distinction that makes it safe is *no ground anywhere below*, not *ground
+lower than here*: a drop with something under it is a legitimate fall and is
+untouched. What it does change is a platform floating in nothing, which can no
+longer be walked off — the village's own walks are unaffected, reaching the same
+7,403 spots as before, and the harness's walk over every map on the cartridge is
+unchanged.
 
-Those eight bytes are **transparent padding, not a record** — an earlier
-revision of this note and of the parser's comment called them a record, and the
-bytes disprove it.
+`apps/game/test/travel.test.ts` holds the 64-heading probe as a regression test,
+and `packages/sim/test/character.test.ts` covers the rule on built geometry.
 
-*Not fixed.* Every frame carries a **stray fragment above the character** — a
-hat, or the top of a head, detached from the figure. In a crowded room that
-reads as debris floating over the cast, which is what the inn looks like.
-Rendering the whole block with no frame assumption shows why: the sheet is a
-repeating pair of *a small mound, then a character*, so the mound is part of the
-repeating unit and there is nothing to remove — only a boundary to place right
-relative to it.
+**The 2D cast is cut right.** It took two goes, and the second is the one that
+was measured rather than fitted.
 
-*The lead worth following.* The heads sit at a different offset from the bodies,
-which is an observation from looking at it rather than measuring it. Traced
-numerically, the horizontal centre of a head runs 21.4, 19.1, 15.1, 11.1 across
-frames 0 to 3 — a steady sideways slide. Solving for the pitch that flattens it
-gives **660 bytes** on three characters independently, against 0.38 to 0.47
-pixels a frame of drift at the 648 the parser uses. Whether 660 is right by eye
-is not yet checked, which is why the parser still says 648.
+*The wrap.* The frames were being cut on an even division of the sheet's rows,
+which does not hold: a frame is **not a whole number of sheet rows**. Read as a
+grid of rows, every other frame came out half a width out — sliced down the
+middle with its halves swapped.
+
+*The pitch.* The first fix took it as `width x height / 2 + 8`, chosen by
+sweeping the pitch and scoring how much ink lands in the edge columns. That is a
+proxy for the wrap, and it is **blind to vertical error**: the answer it gave,
+648, is a whole row away from the true 664, so the wrap it was scoring had gone
+and the remaining error was entirely up and down. A pitch one row short does not
+slice a figure — it walks the figure a row further down its cell with every
+frame, until the hem is cut off and whatever is above enters the cell.
+
+The pitch is **664 bytes — 41.5 rows**, measured as the period of the sheet's
+own bytes: score the block against itself at every candidate lag over the
+positions where either copy has ink, and take the peak. `n003a` peaks at 664 at
+0.465 against 0.325 for the runner-up, and every 32x40 sheet of 187 surveyed
+peaks there too, at 8, 11, 16 and 20 frames alike. It is the same 41.5 rows the
+empty rows had already given, reached independently. `tools/sprite/render.ts
+--period` is the measurement.
+
+664 had been ruled out earlier on arithmetic that was wrong — sixteen frames
+need fifteen pitches plus one frame's pixels, not sixteen pitches, and it fits
+with twelve bytes to spare.
+
+*The mound.* Real, and now cut out. A frame's 664 bytes are an **eight-row strip
+and then the figure's 32**, and the header's `height` of 40 is the two together.
+What the strip is has not been established: it is a squashed copy of the figure
+that turns as the figure does — `n017a`'s carries the blue of her dress above
+the grey of her apron — so a shadow or a reflection, and not a hat.
+
+Both the parser's tests and a cartridge-wide check in `tools/harness` now hold
+the pitch to the block's own measured period, which is the check that would have
+caught the first fix.
 
 Ruled out along the way, each measured: 8x8 tiling in two arrangements, a wrong
 row stride (32 wins at 0.691 against 0.554 for the next), the animation table
 holding offsets, six criteria for fitting the start, and three hypotheses about
 the row count. All written up in `packages/game-formats/FORMAT.md`.
 
-One thing still unsettled and deliberately parked: the sense of the facing
-angle. `standingFrame` maps "the character's angle equals the camera's" to
-`stand_up` — its back turned — but if `facing` means the direction
-`(sin f, cos f)`, which is the convention the player's own facing uses, that
-case is the character looking **at** the camera and the table is 180° out. A
-test across 119 placed sprites split 26 to 22, which decides nothing. Worth
-settling only once the frames are cut right, since a wrongly cut frame cannot be
-judged by eye.
+**The interiors drew the whole area's cast.** Reported from play: the stable had
+fifteen characters in it. A cast list is per *area* — `M01.npc` holds all 49 of
+Angel Falls, the village and everyone indoors — and each is placed in the
+coordinates of the map they stand in. The filter was "is there floor under
+them", which separates the village from its interiors perfectly and separates
+the interiors from each other not at all: every room is its own little map about
+its own origin, so someone standing at (0.1, −0.1) of one room is over the floor
+of all of them.
+
+*Fixed*, and the file says it after all. The word at `+8` of a placement block is
+`area x 100 + sub-map`: `M01`'s placements run 1100 to 1109, and 1104 is
+`M01M04`, which the index calls the Stable. All 73 areas use one value for the
+area half, the low two digits name a map the index knows on 1,245 of 1,289
+placements, and every placement tagged 1100 stands on the village's floor while
+none tagged anything else does. The stable now draws **7**; the village outdoors
+is unchanged at 18, which is why nothing caught this.
+
+**Indoor doorways stood in the middle of the room.** Reported from play. All
+three parts of a doorway — where it stands, where it puts you down, and how big
+it is — are already in the character's own space, and each had been scaled with
+a map at some point. Outdoors that is a no-op, which is why the village's own
+nine doorways were right the whole time and this went unseen; indoors it put the
+trigger on the origin, near enough the middle of the room that crossing the
+floor threw the character back outside.
+
+Across the cartridge's 377 indoor doorways, scored 0 in the wall and 1 dead
+centre, the mean went from 0.68 to **0.06**, and 90% now stand within a quarter
+of the edge against 7%. The arrival goes with it: you come out a median 0.285
+units from the door back — a character and a half — against 0.973 before.
+
+**An interior's collision still does not match its room**, which was reported in
+the same breath and is a different cause. Drawn from above, the well's walkable
+floor is 1.94x the width of the room drawn inside it — the same decagon at two
+sizes — while the inn's covers about half its room and the stable's is right.
+The model's position scale, the placed-piece scale and the map scale are all
+ruled out by measurement, and the factor each map would need runs continuously
+from 0.18 to 2.87 rather than landing on powers of two. `docs/next.md` item 5
+carries it, and `apps/game/tools/plan.ts` is the instrument.
+
+One thing still unsettled: the sense of the facing angle. `standingFrame` maps
+"the character's angle equals the camera's" to `stand_up` — its back turned —
+but if `facing` means the direction `(sin f, cos f)`, which is the convention the
+player's own facing uses, that case is the character looking **at** the camera
+and the table is 180° out. A test across 119 placed sprites split 26 to 22, which
+decides nothing.
+
+The cut is no longer what blocks it. The sheet's own naming is confirmed:
+`stand_down` is frame 1 and shows the face, `stand_up` is frame 4 and shows the
+back, and both are clean. What is left is to look at the game — the inn is the
+crowded test — which needs `tools/shot` and a Chrome to drive.
 
 *To carry on:* `?sprite=1` in the game and any `.spr` in the explorer both cut
 the sheet live, on the same keys, and print the four numbers.
