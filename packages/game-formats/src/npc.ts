@@ -80,8 +80,62 @@ export interface NpcPlacement {
    * multiple of 90°. That is authored data, not bytes that happen to decode.
    */
   readonly facing: number
+  /**
+   * Which map of the area this character stands in.
+   *
+   * **A cast list is per *area*, not per map.** `M01.npc` holds the 49
+   * characters of Angel Falls — the village outdoors *and* everyone inside its
+   * houses — and each one is placed in the coordinates of the map it stands in.
+   * Those coordinates do not distinguish them: an interior is its own little
+   * map about its own origin, so an innkeeper standing at (0.1, −0.1) is over
+   * the floor of every other interior as well. This word is what tells them
+   * apart.
+   *
+   * The value is **`area x 100 + sub-map`**, in decimal, and it reads that way
+   * in the file: `M01`'s placements carry 1100 to 1109, `S07`'s carry 5700 to
+   * 5707, `X05`'s 4501 to 4509. The low two digits name the map within the
+   * area — `1104` is `M01M04`, the stable — and 0 is the area's own exterior.
+   *
+   * Evidence, on this cartridge:
+   *
+   * - Every one of the **73** areas with placements uses a single value for
+   *   `x / 100`. Not one mixes two.
+   * - The low two digits name a map the cartridge's own index knows on
+   *   **1,245 of 1,289** placements. The 44 that do not are codes the index
+   *   does not ship at all, which it has 205 of.
+   * - `M01`'s ten values match the ten consecutive index entries `M01` and
+   *   `M01M01`..`M01M09` — the village, its eight interiors and an upper floor.
+   * - Standing them up bears it out: **every** placement tagged 1100 has floor
+   *   under it in `M01`, and **no** placement tagged anything else does.
+   *
+   * What the area half counts is not established — it is not the index
+   * position, and no constant relates the two. Nothing here needs it: a cast
+   * list is opened by area already, so only the low two digits are read.
+   */
+  readonly map: number
   /** Byte offset of the block, for anything that wants the rest of it. */
   readonly offset: number
+}
+
+/**
+ * Which sub-map of `area` the code `code` names, as {@link NpcPlacement.map}
+ * counts them.
+ *
+ * The area's own exterior is 0. A sub-map is spelled by appending to the area
+ * code, and the spelling is not uniform — `M01` takes `M01M04` and `F` takes
+ * `F01` — so what is taken is the digits the code ends with once the area's own
+ * prefix is off it.
+ *
+ * Returns `undefined` for a code that is not in the area at all, so a caller
+ * can tell "no sub-map" from "sub-map 0".
+ */
+export function npcSubMap(area: string, code: string): number | undefined {
+  const from = area.toUpperCase()
+  const want = code.toUpperCase()
+  if (want === from) return 0
+  if (!want.startsWith(from)) return undefined
+  const digits = /(\d+)$/.exec(want.slice(from.length))
+  return digits ? Number(digits[1]) : undefined
 }
 
 /**
@@ -153,11 +207,16 @@ export function isNpcPlacements(data: Uint8Array): boolean {
 }
 
 /**
- * Read where a map's characters stand.
+ * Read where an area's characters stand.
  *
  * Blocks are variable length, so they are found by their two-word signature and
- * read from there. The four floats follow the header; what comes after them
- * before the next block is not decoded and is not needed to place anybody.
+ * read from there. The four floats follow the header.
+ *
+ * A block is a run of 60-byte records, each carrying six small numbers and a
+ * position of its own — the same character in different places, which is what
+ * you would expect of a character who moves as the story does. **Only the
+ * first is read**, and which of them the game would choose is not established.
+ * The map word is the same in every record of a block, so it is the block's.
  */
 export function readNpcPlacements(data: Uint8Array): NpcPlacement[] {
   const out: NpcPlacement[] = []
@@ -172,6 +231,7 @@ export function readNpcPlacements(data: Uint8Array): NpcPlacement[] {
     }
     out.push({
       id: u32(data, at + 12),
+      map: u32(data, at + 8),
       x: view.getFloat32(at + BLOCK_HEADER + 0, true) / PLACEMENT_SCALE,
       y: view.getFloat32(at + BLOCK_HEADER + 4, true) / PLACEMENT_SCALE,
       z: view.getFloat32(at + BLOCK_HEADER + 8, true) / PLACEMENT_SCALE,

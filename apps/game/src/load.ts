@@ -10,6 +10,7 @@ import {
   type MapManifest,
   type MapTransition,
   mapDoorways,
+  npcSubMap,
   PLACED_PIECE_SCALE,
   placeNpcs,
   readMapList,
@@ -116,15 +117,16 @@ function castOf(cat: Catalogue, map: string, groundAt: GroundAt): Cast {
     missing: [],
     elsewhere: 0,
   }
-  // A cast list is per *top-level* map: there are 74 of them, one per area, and
-  // an interior has none of its own. `M01M02` — the village inn — takes
-  // `M01.npc` and keeps whichever of its characters stand on the inn's floor,
-  // which is what the ground test already decides.
+  // A cast list is per *area*: there are 74 of them and an interior has none of
+  // its own, so `M01M02` — the village inn — takes `M01.npc`. Every prefix of
+  // the code is offered until one names an archive. Which of that area's
+  // characters belong to *this* map is then read off each placement rather than
+  // guessed at from where it stands — see `NpcPlacement.map`.
   const candidates = [map]
   for (let cut = map.length - 1; cut > 0; cut--) candidates.push(map.slice(0, cut))
 
   for (const candidate of candidates) {
-    const found = castFrom(cat, candidate, groundAt, sheets)
+    const found = castFrom(cat, candidate, map, groundAt, sheets)
     if (found) return found
   }
   return empty
@@ -133,12 +135,13 @@ function castOf(cat: Catalogue, map: string, groundAt: GroundAt): Cast {
 /** The cast of one named `.npc` archive, or undefined if there is no such archive. */
 function castFrom(
   cat: Catalogue,
+  area: string,
   map: string,
   groundAt: GroundAt,
   sheets: ReadonlyMap<string, Uint8Array>,
 ): Cast | undefined {
   for (const [archive, files] of cat.members) {
-    if (!archive.toLowerCase().endsWith(`/${map.toLowerCase()}.npc`)) continue
+    if (!archive.toLowerCase().endsWith(`/${area.toLowerCase()}.npc`)) continue
     let list: Uint8Array | undefined
     let places: Uint8Array | undefined
     for (const [name, bytes] of files) {
@@ -147,13 +150,17 @@ function castFrom(
     }
     if (!list || !places || !isNpcList(list) || !isNpcPlacements(places)) return undefined
     try {
-      return cast(
-        placeNpcs(readNpcList(list), readNpcPlacements(places)),
-        cat.members,
-        groundAt,
-        toFloat(PERSON.height),
-        sheets,
+      // **The list is the whole area's, so it has to be narrowed to this map.**
+      // Everyone inside the village's houses is in `M01.npc` too, placed in the
+      // coordinates of the room they stand in — and those rooms are each their
+      // own little map about their own origin, so having floor underneath is no
+      // evidence at all of being in the right one. It let fifteen villagers
+      // into the stable. See `NpcPlacement.map`.
+      const here = npcSubMap(area, map)
+      const placed = placeNpcs(readNpcList(list), readNpcPlacements(places)).filter(
+        ({ placement }) => here === undefined || placement.map % 100 === here,
       )
+      return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
     } catch {
       return undefined
     }
@@ -354,7 +361,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
 
   const figure = chooseFigure(parts)
   return {
-    cast: castOf(cat, options.map, groundAt),
+    cast: castOf(cat, code, groundAt),
     catalogue: cat,
     map,
     world,

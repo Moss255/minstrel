@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
-import { groundBelow, PERSON, step } from '@minstrel/sim'
+import { type CharacterState, groundBelow, PERSON, step } from '@minstrel/sim'
 import { findSpawn } from '@minstrel/world'
 import { describe, expect, it } from 'vitest'
 import { doorAt, doorGate, doorTaken } from '../src/doors.ts'
@@ -18,7 +18,7 @@ import { WALK_SPEED } from '../src/player.ts'
 const romPath = process.env.MINSTREL_TEST_ROM
 
 // Opening a map takes about two seconds — the cartridge is walked again for
-// each — and these tests open three between them.
+// each — and these tests open seven between them.
 describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
   // Read only when there is one to read: `skipIf` still runs this body to
   // collect the tests, so anything at this level runs without a cartridge too.
@@ -153,6 +153,74 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     // There is floor there too.
     const { hit } = arriveIn('M01', outward)
     expect(hit).toBeDefined()
+  })
+
+  it('keeps the character in the room, walking every way out of the doorway', () => {
+    // A room's collision is one floor quad with walls standing on it, and the
+    // walls do not close it: before the controller refused a step into nothing,
+    // walking 64 headings out of a doorway left the world on 7 of them in
+    // `M01M04` and 21 in `M01M08`, through gaps the character is now thin
+    // enough to reach. Both are rooms you can be sent to from the village.
+    //
+    // What is asserted is the safety property, not the geometry: however the
+    // room is built, a character that starts on its floor stays in it.
+    const village = open('M01')
+    for (const code of ['M01M04', 'M01M08']) {
+      const door = village.doorways.find((d) => d.to === code) as NonNullable<
+        (typeof village.doorways)[number]
+      >
+      const { world, x, z, hit } = arriveIn(code, door)
+      const here = world as NonNullable<typeof world>
+      expect(hit, `${code}: no floor under the arrival`).toBeDefined()
+
+      let lost = 0
+      for (let heading = 0; heading < 64; heading++) {
+        const angle = (heading * 2 * Math.PI) / 64
+        const dx = fx32(Math.round(Math.cos(angle) * WALK_SPEED))
+        const dz = fx32(Math.round(Math.sin(angle) * WALK_SPEED))
+        let state: CharacterState = {
+          x,
+          y: (hit as NonNullable<typeof hit>).y,
+          z,
+          fallSpeed: fx32(0),
+          grounded: true,
+        }
+        for (let tick = 0; tick < 300; tick++) state = step(here, state, dx, dz, PERSON)
+        if (!state.grounded) lost++
+      }
+      expect(lost, `${code}: walks that fell out of the room`).toBe(0)
+    }
+  })
+
+  it('gives each map of the village its own cast, not the whole area', () => {
+    // A cast list is per *area*: `M01.npc` holds the 49 characters of Angel
+    // Falls, the village outdoors and everyone inside its houses, each placed
+    // in the coordinates of the room they stand in. Those coordinates separate
+    // nothing — an interior is its own little map about its own origin — so
+    // filtering by "is there floor underneath" put fifteen villagers in the
+    // stable. Which map a character belongs to is read off the placement now.
+    const maps = ['M01', 'M01M01', 'M01M02', 'M01M03', 'M01M04', 'M01M06', 'M01M08']
+    const drawnIn = new Map<string, number>()
+    const seen = new Map<number, string>()
+    for (const code of maps) {
+      const { cast } = open(code)
+      const here = [...cast.members, ...cast.sprites2d]
+      drawnIn.set(code, here.length)
+      for (const who of here) {
+        const already = seen.get(who.placement.id)
+        // The property that broke: nobody stands in two maps at once.
+        expect(already, `${who.name} is drawn in ${already} and in ${code}`).toBeUndefined()
+        seen.set(who.placement.id, code)
+      }
+    }
+
+    // The village outdoors is the busy one and keeps its cast unchanged.
+    expect(drawnIn.get('M01')).toBe(18)
+    // An interior holds a household, not a village. The stable drew 15 before.
+    for (const code of maps.slice(1)) {
+      expect(drawnIn.get(code), `${code} is crowded`).toBeLessThan(10)
+    }
+    expect(drawnIn.get('M01M04')).toBe(7)
   })
 
   it('reads a doorway for the field as well as for the houses', () => {
