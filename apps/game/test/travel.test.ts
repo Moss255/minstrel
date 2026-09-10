@@ -34,20 +34,33 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     return fresh
   }
 
-  /** The same arrival the game uses: on the floor, not at the stored height. */
+  /**
+   * Where the game actually stands the character up on arriving.
+   *
+   * The floor under the arrival if there is one, and the nearest walkable
+   * ground if there is not — which is what `main.ts` does, and what a correctly
+   * placed arrival needs: it lands at the threshold rather than in the middle
+   * of the room, and an interior's collision often stops short of its own
+   * walls. `stood` is where they end up; `hit` is whether the arrival itself
+   * had floor.
+   */
   function arriveIn(map: string, at: { arriveX: number; arriveY: number; arriveZ: number }) {
     const opened = open(map)
     const world = opened.world
     expect(world, map).toBeDefined()
+    const here = world as NonNullable<typeof world>
     const x = fx32(Math.round(at.arriveX * FX32_ONE))
     const z = fx32(Math.round(at.arriveZ * FX32_ONE))
-    const hit = groundBelow(
-      world as NonNullable<typeof world>,
-      x,
-      z,
-      fx32(Math.round((world as NonNullable<typeof world>).bounds.maxY + FX32_ONE)),
-    )
-    return { opened, world, x, z, hit }
+    const hit = groundBelow(here, x, z, fx32(Math.round(here.bounds.maxY + FX32_ONE)))
+    const stood = hit
+      ? { x, y: hit.y, z }
+      : findSpawn(here, {
+          person: PERSON,
+          speed: WALK_SPEED,
+          water: opened.map.water,
+          near: { x: at.arriveX, z: at.arriveZ },
+        })
+    return { opened, world, x, z, hit, stood }
   }
 
   it('gives the village a doorway for each map it names', () => {
@@ -71,13 +84,15 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     const door = village.doorways.find((d) => d.to === 'M01M02')
     expect(door).toBeDefined()
 
-    const { opened, world, x, z, hit } = arriveIn('M01M02', door as NonNullable<typeof door>)
+    const { opened, world, stood } = arriveIn('M01M02', door as NonNullable<typeof door>)
     expect(opened.map.pieces.length).toBeGreaterThan(0)
-    // There is floor under the arrival: the character comes out standing.
-    expect(hit, 'no floor under the arrival').toBeDefined()
+    // Somewhere to stand: on the arrival if it has floor, and on the nearest
+    // walkable ground if not, which is what the game does.
+    expect(stood, 'nowhere to stand at all').toBeDefined()
+    const from = stood as NonNullable<typeof stood>
 
     // And stays standing. A few ticks of doing nothing must not drop them.
-    let state = { x, y: (hit as NonNullable<typeof hit>).y, z, fallSpeed: fx32(0), grounded: true }
+    let state = { x: from.x, y: from.y, z: from.z, fallSpeed: fx32(0), grounded: true }
     for (let i = 0; i < 30; i++) {
       state = step(world as NonNullable<typeof world>, state, fx32(0), fx32(0), PERSON)
     }
@@ -89,10 +104,7 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     // they arrive in, because you come out where you would go back in. Coming
     // out of the inn is one of them: the character lands inside the village's
     // own doorway to the inn, and without the gate would be pulled straight
-    // back inside. The way in is now the same kind of case: since the inn is
-    // built at its own scale its door back shrank with it, so the arrival that
-    // used to land 0.238 clear of it lands 0.030 away — inside its reach,
-    // because the character's own radius does not shrink with the map.
+    // back inside.
     const village = open('M01')
     const inward = village.doorways.find((d) => d.to === 'M01M02') as NonNullable<
       (typeof village.doorways)[number]
@@ -100,9 +112,14 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     const inn = open('M01M02')
     const outward = inn.doorways[0] as NonNullable<(typeof inn.doorways)[number]>
 
-    // Going in, the arrival lands inside the inn's own door back, so the gate
-    // is what stops the character being pulled straight out again.
-    expect(doorAt(inn.doorways, inward.arriveX, inward.arriveZ)?.to).toBe('M01')
+    // **Going in now lands beside the inn's door back rather than inside it.**
+    // That is the doorway scaling being fixed: the position used to be shrunk
+    // with the map, which put every indoor doorway in the middle of its own
+    // room and the arrival on top of it. Beside it is what a doorway is for.
+    expect(doorAt(inn.doorways, inward.arriveX, inward.arriveZ)).toBeUndefined()
+    const apart = Math.hypot(inward.arriveX - outward.x, inward.arriveZ - outward.z)
+    expect(apart, 'the arrival is nowhere near the door back').toBeLessThan(0.5)
+    expect(apart, 'the arrival is on top of the door back').toBeGreaterThan(toFloat(PERSON.radius))
 
     // Coming out is a knife edge and is deliberately not asserted either way.
     // The arrival sits 0.150 from the village's door to the inn, and the door
@@ -122,9 +139,6 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     const gate = doorGate()
     expect(doorTaken(gate, village.doorways, outward.arriveX, outward.arriveZ)).toBeUndefined()
     expect(doorTaken(gate, village.doorways, outward.arriveX, outward.arriveZ)).toBeUndefined()
-
-    const inGate = doorGate()
-    expect(doorTaken(inGate, inn.doorways, inward.arriveX, inward.arriveZ)).toBeUndefined()
   })
 
   it('lets the character walk back out again', () => {
@@ -169,9 +183,12 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
       const door = village.doorways.find((d) => d.to === code) as NonNullable<
         (typeof village.doorways)[number]
       >
-      const { world, x, z, hit } = arriveIn(code, door)
+      const { world, stood } = arriveIn(code, door)
       const here = world as NonNullable<typeof world>
-      expect(hit, `${code}: no floor under the arrival`).toBeDefined()
+      // Wherever the game stands them up — the arrival itself lands at the
+      // threshold, which an interior's collision does not always reach.
+      expect(stood, `${code}: nowhere to stand at all`).toBeDefined()
+      const from = stood as NonNullable<typeof stood>
 
       let lost = 0
       for (let heading = 0; heading < 64; heading++) {
@@ -179,9 +196,9 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
         const dx = fx32(Math.round(Math.cos(angle) * WALK_SPEED))
         const dz = fx32(Math.round(Math.sin(angle) * WALK_SPEED))
         let state: CharacterState = {
-          x,
-          y: (hit as NonNullable<typeof hit>).y,
-          z,
+          x: from.x,
+          y: from.y,
+          z: from.z,
           fallSpeed: fx32(0),
           grounded: true,
         }
@@ -221,6 +238,52 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
       expect(drawnIn.get(code), `${code} is crowded`).toBeLessThan(10)
     }
     expect(drawnIn.get('M01M04')).toBe(7)
+  })
+
+  it('puts an indoor doorway in a wall, not in the middle of the room', () => {
+    // The bug behind "the door is in the wrong position". A doorway's position
+    // was scaled with the map that holds it, which does nothing outdoors —
+    // the village's own nine doorways were right the whole time — and indoors
+    // collapsed the trigger onto the origin. Near enough the middle of the
+    // room that walking across the floor threw the character back outside.
+    //
+    // A door is in a wall, so it belongs at the edge of its map's collision.
+    // Scored 0 on the boundary and 1 dead centre; over the cartridge's 377
+    // indoor doorways the mean went from 0.68 to 0.06 when this was fixed.
+    const village = open('M01')
+    for (const code of ['M01M01', 'M01M02', 'M01M03', 'M01M04', 'M01M06', 'M01M07']) {
+      const inside = open(code)
+      const world = inside.world as NonNullable<typeof inside.world>
+      expect(world, code).toBeDefined()
+      expect(inside.scale, `${code} is not an indoor map`).toBeLessThan(1)
+
+      const minX = toFloat(world.bounds.minX as never)
+      const maxX = toFloat(world.bounds.maxX as never)
+      const minZ = toFloat(world.bounds.minZ as never)
+      const maxZ = toFloat(world.bounds.maxZ as never)
+      const halfX = (maxX - minX) / 2
+      const halfZ = (maxZ - minZ) / 2
+      for (const door of inside.doorways) {
+        const central = Math.max(
+          0,
+          Math.min(
+            (door.x - minX) / halfX,
+            (maxX - door.x) / halfX,
+            (door.z - minZ) / halfZ,
+            (maxZ - door.z) / halfZ,
+          ),
+        )
+        expect(
+          central,
+          `${code}: its way out stands ${central.toFixed(2)} of the way in`,
+        ).toBeLessThan(0.3)
+      }
+    }
+
+    // And the village's own doorways, which take no scale either way, are where
+    // they always were — spread across the village rather than stacked.
+    const spread = village.doorways.map((d) => Math.hypot(d.x, d.z))
+    expect(Math.max(...spread), 'the village doorways collapsed').toBeGreaterThan(2)
   })
 
   it('reads a doorway for the field as well as for the houses', () => {

@@ -213,23 +213,15 @@ function scales(cat: Catalogue): (code: string) => number {
  * it connects to. A map with no readable `.bmbl` is still walkable; it just has
  * no way out.
  */
-function doorwaysOf(
-  cat: Catalogue,
-  code: string,
-  scaleFor: (code: string) => number,
-): readonly MapTransition[] {
+function doorwaysOf(cat: Catalogue, code: string): readonly MapTransition[] {
   for (const [archive, files] of cat.members) {
     if (stemOf(archive) !== code.toLowerCase() || !archive.toLowerCase().endsWith('.ambl')) continue
     for (const [name, bytes] of files) {
       if (!name.toLowerCase().endsWith('.bmbl') || !isMapLinks(bytes)) continue
       try {
-        // **Two maps, two spaces.** A doorway stands in the map that holds it,
-        // so its position and volume shrink with that map; the arrival is a
-        // spot in the map it leads to, and shrinks with that one instead.
-        // Scaling both by the map that holds them put the character an eighth
-        // of the way to the village every time they left a house.
-        const here = scaleFor(code)
-        return mapDoorways(bytes).map((door) => scaled(door, here, scaleFor(door.to)))
+        // Nothing is scaled: see the note below on why all three parts of a
+        // doorway are already in the character's own space.
+        return mapDoorways(bytes)
       } catch {
         // A link table that will not walk leaves the map without doorways.
         return []
@@ -240,21 +232,49 @@ function doorwaysOf(
 }
 
 /**
- * One doorway in final coordinates.
+ * **A doorway is already in the character's own space, all three parts of it.**
  *
- * Three things, in three spaces, and they are not the same:
+ * Where it stands, where it puts you down, and how big it is were each scaled
+ * with a map at some point, and none of them should be. It only ever showed
+ * indoors, because outdoors the map's scale is one: the village's nine doorways
+ * were right the whole time, which is why this survived.
  *
- * - **Where it stands** is in the map that holds it, so it takes `here`.
- * - **Where it comes out** is a spot in the map it leads to, so it takes
- *   `there`. Scaling it by `here` puts the character an eighth of the way to
- *   the village every time they leave a house.
- * - **How big it is** is in neither. The volume is already in the character's
- *   own space and is left alone.
+ * Scaled with the map that holds it, an indoor doorway collapsed onto the
+ * origin — near enough the middle of the room that walking across the floor
+ * threw the character back outside. That is "the door is in the wrong
+ * position". Measured over the cartridge's **377 indoor doorways**, as how near
+ * a doorway stands to the edge of its own map's collision, where 0 is in the
+ * wall and 1 is dead centre:
  *
- * That last one is measured, on the 154 doorways of the cartridge that have a
- * doorway *model* standing at them — a model is a placed piece, so it is in the
- * character's space whatever its map is doing, which makes it the ruler this
- * needs. Trigger against door:
+ * | | mean | within a quarter of the edge |
+ * |---|---|---|
+ * | scaled with the map | 0.68 | 7% |
+ * | **left alone** | **0.06** | **90%** |
+ *
+ * The arrival went the same way, scaled by the map it leads to. The test that
+ * settles it asks nothing of the collision: **you should come out beside the
+ * door back**. Across 183 doorways into an indoor map, the distance from the
+ * arrival to the door leading back the way you came:
+ *
+ * | | median | 75th | 90th |
+ * |---|---|---|---|
+ * | scaled by the destination | 0.973 | 1.749 | 2.717 |
+ * | **left alone** | **0.285** | **0.462** | 2.133 |
+ *
+ * 0.285 units is a character and a half — beside the door. A whole unit is
+ * across the room.
+ *
+ * A **contrary** measurement, recorded because it is what kept the scaling in
+ * place: 93% of those arrivals stand on walkable floor when scaled and 26% when
+ * left alone. That is the collision being wrong rather than the arrival: a
+ * scaled arrival lands in the middle of the room, where there is always floor,
+ * and a correct one lands at the threshold, which is exactly where an interior's
+ * collision tends to stop short of its own walls. See `docs/next.md`.
+ *
+ * The volume was measured before either of these, on the 154 doorways of the
+ * cartridge that have a doorway *model* standing at them — a model is a placed
+ * piece, so it is in the character's space whatever its map is doing, which
+ * makes it the ruler. Trigger against door:
  *
  * | | height | width |
  * |---|---|---|
@@ -262,25 +282,11 @@ function doorwaysOf(
  * | indoors, volume left alone, 80 | **1.12** | **1.49** |
  * | indoors, volume scaled with the map | 0.14 | 0.19 |
  *
- * A trigger about half again the size of its own door, indoors and out. Scaled
- * with the map an indoor one comes out at a seventh of its door and narrower
- * than the character — 0.13 to 0.43 of their height across, against the 0.44
- * they are wide — so they would have to thread it dead centre.
+ * A trigger about half again the size of its own door, indoors and out. That
+ * was the first of the three to be got right, and the other two agree with it.
  *
- * Angles have no scale, so they are left alone in every case.
+ * Angles have no scale, so they were never in question.
  */
-function scaled(door: MapTransition, here: number, there: number): MapTransition {
-  if (here === 1 && there === 1) return door
-  return {
-    ...door,
-    x: door.x * here,
-    y: door.y * here,
-    z: door.z * here,
-    arriveX: door.arriveX * there,
-    arriveY: door.arriveY * there,
-    arriveZ: door.arriveZ * there,
-  }
-}
 
 /** An archive's name without its directory or extension: `M01` for `/data/map/M01.amdj`. */
 function stemOf(path: string): string {
@@ -430,7 +436,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     world,
     figure,
     pieces: figurePieces(figure),
-    doorways: doorwaysOf(cat, code, scaleFor),
+    doorways: doorwaysOf(cat, code),
     archive,
     code,
     scale,
