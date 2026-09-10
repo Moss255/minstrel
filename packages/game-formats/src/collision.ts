@@ -15,8 +15,8 @@ import { GameFormatError } from './errors.ts'
  * | `+0x14` | `u32` | triangle count |
  * | `+0x18` | `u16` | grid cell size, always a power of two |
  * | `+0x1A` | `u16` | `unknown_0x1a` |
- * | `+0x1C` | `u32` | `gridX` |
- * | `+0x20` | `u32` | `gridZ` |
+ * | `+0x1C` | `u32` | grid width in cells; `gridX * cellSize` covers the box |
+ * | `+0x20` | `u32` | grid depth in cells; `gridZ * cellSize` covers the box |
  * | `+0x24` | `u32` | offset of the triangles |
  * | `+0x28` | `u32` | offset of the per-cell counts, `u8` each |
  * | `+0x2C` | `u32` | offset of the per-cell starts, `u16` each |
@@ -76,11 +76,16 @@ export interface CollisionMesh {
   /**
    * The grid's cells, in file order.
    *
-   * How many there are is **read from the data, not computed**: the starts and
-   * counts tile the index list, so walking until the tiling stops finds the
-   * end. `gridX * gridZ` predicts it for fewer than half the files and no other
-   * formula tried accounts for the rest, so deriving it would be a guess where
-   * the file already says.
+   * There are `floor(gridZ * (gridX + 1/2))` of them — `gridX * gridZ` plus one
+   * more on every other row, so the rows alternate `gridX` and `gridX + 1`
+   * wide.
+   *
+   * **Where cell (0, 0) sits is not established**, and the staggering is
+   * probably why: taking the grid's corner as the mesh's own minimum and
+   * reading it as a plain rectangle puts only 36% of the index references
+   * inside the cell that names them, and column-major or an origin at zero do
+   * worse. So the cells are read and carried, and nothing here uses them to
+   * look a position up.
    */
   readonly cells: readonly CollisionCell[]
   /** Triangle indices, addressed through {@link CollisionMesh.cells}. */
@@ -129,6 +134,8 @@ export function readCollisionMesh(data: Uint8Array): CollisionMesh {
   const indicesAt = u32(0x30)
   const trailingCount = u32(0x34)
   const trailingAt = u32(0x38)
+  const gridX = u32(0x1c)
+  const gridZ = u32(0x20)
 
   const need = (at: number, length: number, what: string) => {
     if (at < 0 || length < 0 || at + length > data.length) {
@@ -159,29 +166,32 @@ export function readCollisionMesh(data: Uint8Array): CollisionMesh {
     })
   }
 
-  // Walk the (start, count) pairs for as long as they tile the index list.
-  // Both arrays are padded to a word, so their sizes bound the walk but do not
-  // end it; the tiling does.
+  // **How many cells there are follows from the header**, and it is not
+  // `gridX * gridZ`: it is `floor(gridZ * (gridX + 1/2))`, which holds on all
+  // **1,154** collision meshes of the reference cartridge. That is
+  // `gridX * gridZ + floor(gridZ / 2)` — one extra cell on every other row, so
+  // the rows alternate `gridX` and `gridX + 1` wide. `gridX * gridZ` accounts
+  // for fewer than half the files, which is what made this look underivable.
+  //
+  // The count is still checked against the data rather than trusted: the starts
+  // must tile the counts, and the total must fit the index list.
   const indexCount = (trailingAt - indicesAt) / 2
-  const limit = Math.min(
-    countsAt === startsAt ? 0 : startsAt - countsAt,
-    (indicesAt - startsAt) / 2,
-  )
+  const wanted = Math.floor(gridZ * (gridX + 0.5))
+  const room = countsAt + wanted <= startsAt && startsAt + wanted * 2 <= indicesAt
   const cells: CollisionCell[] = []
-  if (limit > 0 && view.getUint16(startsAt, true) === 0) {
+  if (room) {
     let start = 0
-    for (let i = 0; i < limit; i++) {
-      if (view.getUint16(startsAt + i * 2, true) !== start) break
+    for (let i = 0; i < wanted; i++) {
+      if (view.getUint16(startsAt + i * 2, true) !== start) {
+        // A file that does not tile is not read past the point it stops.
+        cells.length = 0
+        break
+      }
       const count = data[countsAt + i] as number
       cells.push({ start, count })
       start += count
     }
-    // The list may carry one u16 of alignment padding; anything more means the
-    // walk ran past the real end.
-    while (cells.length > 0 && start > indexCount) {
-      const last = cells.pop() as CollisionCell
-      start = last.start
-    }
+    if (start > indexCount) cells.length = 0
   }
 
   const cellTriangles: number[] = []
@@ -203,8 +213,8 @@ export function readCollisionMesh(data: Uint8Array): CollisionMesh {
       maxZ: s16(0x12),
     },
     cellSize: view.getUint16(0x18, true),
-    gridX: u32(0x1c),
-    gridZ: u32(0x20),
+    gridX,
+    gridZ,
     triangles,
     cells,
     cellTriangles,

@@ -1425,6 +1425,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     let normals = 0
     let enclosed = 0
     let tiled = 0
+    let counted = 0
+    let covered = 0
 
     for (const file of walkFiles(fs.root)) {
       const bytes = fs.read(file)
@@ -1492,6 +1494,21 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
           failures.push(`${path}: the header box does not enclose the triangles`)
         }
 
+        // How many cells there are follows from the header, and it is not
+        // `gridX * gridZ`: every other row carries one more.
+        if (mesh.cells.length === Math.floor(mesh.gridZ * (mesh.gridX + 0.5))) counted++
+        else
+          failures.push(
+            `${path}: ${mesh.cells.length} cells for a ${mesh.gridX}x${mesh.gridZ} grid`,
+          )
+        // And the grid covers the box it declares.
+        if (
+          mesh.gridX * mesh.cellSize >= mesh.bounds.maxX - mesh.bounds.minX &&
+          mesh.gridZ * mesh.cellSize >= mesh.bounds.maxZ - mesh.bounds.minZ
+        ) {
+          covered++
+        } else failures.push(`${path}: the grid does not cover the box`)
+
         const listed = mesh.cells.reduce((n, cell) => n + cell.count, 0)
         // The list is padded to a word, so it may carry one entry past the end.
         if (listed >= mesh.cellTriangles.length - 1 && listed <= mesh.cellTriangles.length) tiled++
@@ -1510,6 +1527,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     expect(triangles).toBeGreaterThan(50000)
     expect(normals).toBe(triangles - degenerate)
     expect(enclosed).toBe(meshes)
+    expect(counted).toBe(meshes)
+    expect(covered).toBe(meshes)
     expect(tiled).toBe(meshes)
   })
 
