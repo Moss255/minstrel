@@ -712,6 +712,36 @@ the manifest.
 
 ---
 
+# Motion tables — `.bcfg`
+
+A tagged data table (above) beside a model, naming stretches of its animation.
+**2,844 of the cartridge's 2,854 `.bcfg` files carry them** — 1,416 in
+`/data/effect`, 554 in `/data/event_lv5`, 262 in `/data/chara`, 226 in
+`/data/chara_sub`, 197 in `/data/pack_lv5`, 145 in `/data/map`, 26 in
+`/data/enemy`, 18 in `/data/bin`.
+
+| tag | values | meaning |
+|---|---|---|
+| `0x66` | string, number, number, number | **a motion**: its name, first frame, last frame, speed |
+| `0x64` | integer | the motion count, on the cabinets |
+| `0x65`, `0x70` | | not established |
+
+A cabinet's, `M01M03G1.bcfg`, reads `open` 0 to 25, `closed` 0 to 0, `opend`
+(sic) 25 to 25 and `close` 0 to 25, each at speed 1. The model beside it has
+three nodes — the cabinet and its two doors, `a` and `b` — and a 25-frame
+animation that turns `a` to +135° and `b` to −135° about the vertical, from
+shut at frame 0 to open at frame 24. So `closed` and `opend` hold the two ends,
+`open` plays between them, and `close` — the same frames — presumably plays
+them backwards (INFERRED; nothing here uses it).
+
+**A piece with a motion table plays a motion when asked, not its animation on a
+loop.** Before this was read, every piece's own animation was played round and
+round, as the waterfall's and the sky's should be, and the cabinets swung open
+and shut for ever. `readMotionTable` reads the table; `assembleMap` hands it to
+the piece that shares its stem.
+
+---
+
 # Doors — `<area>M<nn>D<x>` and `<area>A<nn>D<x>`
 
 A door is two resources in a map's descriptor: a model, `M01M00D1`, and its
@@ -1720,36 +1750,6 @@ is its cast by model file (`chara_sub/s016.chr`), motions (`stand`, `walk`),
 fades (`EFADE`) and, in some, its own name in brackets. Which event runs when is
 decided elsewhere: see the triggers below.
 
----
-
-# What characters say — `/data/scenario/<area><letter>0.gp2`
-
-Each area has a set of archives, one per letter — Angel Falls has fourteen,
-`M01A0.gp2` to `M01Q0.gp2` — each holding numbered text files in the five
-languages. **The number is a character's id** from the area's cast list: 7,974
-of the 7,994 English talk files in areas that have a cast list.
-
-**The letters follow the story.** Only Angel Falls has an `A`; other areas start
-later — `C01` at `B`, `D04` at `D`. 22 of Angel Falls' 46 talk characters
-change between letters and the rest say the same throughout. Villager 2 has five
-versions, and read in order they move from the prologue, through the village
-chapter and its aftermath, to the end of the game.
-
-A file is a tagged data table whose records carry three or four numbers and
-then a string offset. With three numbers, tag 2 on 17,241 records, tag 1 on
-14,273, tag 4 on 2,149 and tag 5 on 1,101; with four, 1,728, 393, 344 and 135.
-What the numbers mean is read, not established:
-
-| | reading | evidence |
-|---|---|---|
-| numbers 0 and 1, on tags 1, 4 and 5 | a range of sub-stages within the letter's chapter, 99 for "to the end" | first at or before second, or second 99, on **all** 19,779 |
-| the extra third number of the four-number form | always 1 — the line for the night | 2,600 of 2,600 are 1; on tag 1, **42.5%** of these lines use night words (night, late, evening, sleep …) against **9.2%** of its three-number ones — weaker on the counters' tags, 29.8% against 12.2% on tag 4 and 9.6% against 4.9% on tag 5 |
-| the last number | a label: 16 the plain line, 192–202 alternatives, 80, 81 and 96 at counters | the triggers name these as labels — below |
-| tag 2's first number | a condition, not a range — an errand, an item | 174–198 and similar; 0 of 2,657 small-valued ones form a range |
-
-Tags 4 and 5 sit at inn and shop counters. Chapter B's own ranges run 1 to 7,
-matching the village cast's stages 2.1 to 2.7, and its sub-stage-1 lines speak
-of the Hero's fall as just past.
 ## The code
 
 Read from the scripts themselves; nothing about this format is published. The
@@ -1836,6 +1836,36 @@ Run that way against an engine that answers every function with 0, **504 of the
 523 events run to their end**; the other 19 are still waiting after 20,000
 frames, for answers that engine never gives.
 
+---
+
+# What characters say — `/data/scenario/<area><letter>0.gp2`
+
+Each area has a set of archives, one per letter — Angel Falls has fourteen,
+`M01A0.gp2` to `M01Q0.gp2` — each holding numbered text files in the five
+languages. **The number is a character's id** from the area's cast list: 7,974
+of the 7,994 English talk files in areas that have a cast list.
+
+**The letters follow the story.** Only Angel Falls has an `A`; other areas start
+later — `C01` at `B`, `D04` at `D`. 22 of Angel Falls' 46 talk characters
+change between letters and the rest say the same throughout. Villager 2 has five
+versions, and read in order they move from the prologue, through the village
+chapter and its aftermath, to the end of the game.
+
+A file is a tagged data table whose records carry three or four numbers and
+then a string offset. With three numbers, tag 2 on 17,241 records, tag 1 on
+14,273, tag 4 on 2,149 and tag 5 on 1,101; with four, 1,728, 393, 344 and 135.
+What the numbers mean is read, not established:
+
+| | reading | evidence |
+|---|---|---|
+| numbers 0 and 1, on tags 1, 4 and 5 | a range of sub-stages within the letter's chapter, 99 for "to the end" | first at or before second, or second 99, on **all** 19,779 |
+| the extra third number of the four-number form | always 1 — the line for the night | 2,600 of 2,600 are 1; on tag 1, **42.5%** of these lines use night words (night, late, evening, sleep …) against **9.2%** of its three-number ones — weaker on the counters' tags, 29.8% against 12.2% on tag 4 and 9.6% against 4.9% on tag 5 |
+| the last number | a label: 16 the plain line, 192–202 alternatives, 80, 81 and 96 at counters | the triggers name these as labels — below |
+| tag 2's first number | a condition, not a range — an errand, an item | 174–198 and similar; 0 of 2,657 small-valued ones form a range |
+
+Tags 4 and 5 sit at inn and shop counters. Chapter B's own ranges run 1 to 7,
+matching the village cast's stages 2.1 to 2.7, and its sub-stage-1 lines speak
+of the Hero's fall as just past.
 
 ---
 
@@ -1888,13 +1918,25 @@ A `0x67` record, by its number of values:
   0.05 to 6.28, with 3.14 and 1.57 among the commonest, and 98 of the other 100
   are 0. Only the six-value kinds have one — which a chest would need and a pot
   would not, also INFERRED.
-- **Kind**, value 1: which kind is a chest, a pot, a barrel or a drawer is not
-  established. `0x30`, the three-value kind, is the one without a position.
-- **`unknown_2`**, value 2 of a three-value record, runs on across an area's
-  maps rather than restarting in each — `M03M05` 93, `M03M08` 94 and 95,
-  `M03M09` 98, `M03M10` 100 and 101, `M03M11` 103 — so it indexes something
-  outside the map: those maps have 5 to 10 pieces, and no trigger of theirs
-  carries a position. Not established.
+- **Kind**, value 1: which kind is a chest, a pot or a barrel is not
+  established. **`0x30`, the three-value kind with no position, is what a
+  cabinet holds** — below.
+- **`unknown_2`**, value 2 of a three-value record: in the village it is the
+  number of the room's cabinet holding it, less one — `M01M03`'s two records
+  read 0 and 1 beside cabinets `G1` and `G2`, `M01M09`'s and `M01M10`'s one
+  reads 0 beside their `G1`. That holds on 45 of the 89 maps that have such
+  records. Elsewhere it runs on across an area instead — `M03M05` 93, `M03M08`
+  94 and 95, `C01M14` 13 and 14 against cabinets `G1` and `G2` — so what it
+  counts is not established.
+
+**Cabinets hold the position-less treasure.** A cabinet is a map piece whose
+resource ends in `G` and a number (see "Motion tables" for how it opens). On 62
+of the 89 maps with kind-`0x30` records the map has exactly as many cabinets as
+records, and in the village every record's cabinet is named by its third value.
+INFERRED: a map's cabinets hold its kind-`0x30` records, paired in order; the
+game here pairs them that way. The 27 maps whose counts differ are mostly names
+this matching does not reach — `H02`'s records against pieces named `H02M00G*`,
+and `R05M01` with its 22 lettered copies.
 - **`unknown_0`**, value 0, is not established, and what the treasure holds
   must be in it if it is in the record at all. Its high half runs on within a
   kind: unique on all 269 of `0x10`, 179 of `0x20` and 145 of `0x30`, on 135 of

@@ -102,6 +102,14 @@ engine functions the opening event calls, so that Erinn's morning plays in the
 room rather than as a list of lines. The technical account is
 `docs/event-scripts.md`.
 
+**Cabinets open, and stop swinging.** The `G` pieces — two in the shop, one each
+in `M01M09` and `M01M10` — are cabinets whose own animation swings their doors;
+played on a loop like everything else, they swung open and shut for ever. Their
+`.bcfg` is a motion table naming `closed`, `open` and `opend`, so a cabinet now
+stands shut, `f` plays its opening once, and it holds open, saying which
+treasure it held: the room's position-less treasure records, paired in order
+(INFERRED). `docs/map-objects.md` has doors, cabinets and treasure together.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

@@ -1,0 +1,121 @@
+# Things in a room — doors, cabinets, treasure
+
+Written 12 September 2026. The format-level evidence is in
+`packages/game-formats/FORMAT.md` ("Doors", "Motion tables", "Treasure"); this is
+the technical account of how the game here reads and runs them, and where it has
+had to choose.
+
+---
+
+## Map pieces and their resources
+
+A map's descriptor (`.bmdj`) names resources; each resource compiles to files
+under one stem in the map archive — a model, a collision mesh, an animation, a
+motion table. `assembleMap` (`packages/world`) turns each into a `MapPiece` and
+now keeps the resource's stem on it (`source`) and on each collision mesh, and
+the motion table from its `.bcfg` (`motions`). The stem is what the game uses to
+tell a door, a cabinet or a lamp from the room.
+
+| stem ends | is | how it moves |
+|---|---|---|
+| `00` | the room, or the village | its own animation, looped |
+| `D1`…`DA` | a door | swung by the game — no animation of its own |
+| `G1`, `G2`… | a cabinet | its own animation, by the motions its `.bcfg` names |
+| `L1`…, `N1`… | the day and night lighting of the same geometry | only the current lighting's is built |
+| `F1`, `E1`… | fires, effects | their own animation, looped |
+
+---
+
+## Doors
+
+**Data.** A door is two resources: its model `<area>M<nn>D<x>` and its
+collision `<area>A<nn>D<x>` — the same name with `A` for `M`, placed separately.
+Every door model in the village is one quad, 0.19 world units tall, with a
+corner at its origin; none has an animation file.
+
+**Collision.** On all of the village's doors but two, the collision is two
+triangles facing the same way — a one-sided marker. The map loader leaves those
+out (kept, they seal the doorways). Erinn's house's two, `M01A10D1` and `D2`,
+are four triangles facing both ways, a wall from either side; the loader keeps
+them, and until doors opened they shut those rooms off for good.
+
+**Behaviour** (`apps/game/src/swing.ts`, all choices except the hinge):
+
+- the hinge is the model's origin (INFERRED from the corner there);
+- within 0.25 of a door's middle it turns a quarter, away from the Hero, in a
+  quarter of a second; past 0.4 it swings back — the gap stops it flapping;
+- its own collision stands only while it is fully shut.
+
+A cartridge test walks through both of Erinn's doors open and is stopped by them
+shut.
+
+---
+
+## Cabinets
+
+**Data.** A cabinet is a piece named `…G<n>` — the shop has `M01M03G1` and
+`G2`, `M01M09` and `M01M10` one each. Its model has three nodes, the cabinet and
+its two doors `a` and `b`, and a 25-frame animation turning `a` to +135° and `b`
+to −135°. Its `.bcfg` names four motions over that animation:
+
+| motion | frames | reads as |
+|---|---|---|
+| `closed` | 0–0 | shut |
+| `open` | 0–25 | opening |
+| `opend` (sic) | 25–25 | open |
+| `close` | 0–25 | closing — the same frames, presumably backwards; unused |
+
+**The bug it explains.** The map renderer played every piece's own animation on
+a loop, which is right for the sky and the waterfall and made every cabinet swing
+open and shut for ever. A piece with a motion table now plays a motion when
+asked instead.
+
+**What is inside.** Treasure records of kind `0x30` have no position. In the
+village each one's third value is its cabinet's number less one, and across the
+cartridge 62 of the 89 maps that have such records have exactly as many
+cabinets; elsewhere the third value counts on across an area. INFERRED: a map's
+cabinets hold its kind-`0x30` records, paired in order.
+
+**Behaviour** (`apps/game/src/cabinets.ts`): a cabinet stands `closed`; `f`
+facing it within talking reach plays `open` once and holds the last frame, says
+which treasure it held, and remembers it by that treasure's game-wide number, so
+it is `opend` when the Hero comes back. A cartridge test finds the shop's two,
+shut, each holding a different record, each reachable from the floor in front.
+
+---
+
+## Motion tables in general
+
+The cabinet's `.bcfg` is not special: 2,844 of the cartridge's 2,854 `.bcfg`
+files are motion tables — characters', effects', events' and map pieces'. Each
+motion is a name, a first and last frame, and a speed (`readMotionTable`). Only
+the cabinets use them yet; characters' will matter when events drive the cast.
+
+---
+
+## Treasure
+
+**Data.** `/data/scenario/treasure.nsarc/<map>.bin`, a tagged table per map
+(`readTreasure`):
+
+- `0x66` gives the file's first game-wide treasure number; across every file the
+  numbers run 0 to 847 without overlapping, gaps only where the two empty files
+  sit. INFERRED: an opened treasure is remembered by it.
+- `0x67` is a treasure: `unknown_0`, a kind, then either a position and on some
+  kinds a facing (radians, INFERRED), or — kind `0x30` — no position, which is a
+  cabinet's.
+- Values are typed by their table bits: a whole number is an integer, the rest
+  floats. Positions are in the files' own units and stand on the floor at
+  `WORLD_SCALE`.
+
+**Behaviour** (`apps/game/src/treasure.ts`): each placed treasure is marked by a
+gold cube, grey once opened — **the marker is ours**; `f` facing one opens it and
+the box says which treasure it was and the raw value its contents must be in.
+
+**Not found** (set aside on 12 September):
+
+- a chest model: no model or texture on the cartridge is named for one — the one
+  `takara` texture is a flat swatch on a test map, `F99M0000`;
+- how `unknown_0` names an item. The item names are read
+  (`/data/prm/itemname.gp2`), but not how a treasure's value maps onto them;
+- which placed kind is a chest, a pot or a barrel.

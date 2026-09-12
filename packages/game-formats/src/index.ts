@@ -39,6 +39,7 @@ export {
   resolveMapResources,
 } from './mapmanifest.ts'
 export { isWaterTexture, textureTag } from './materials.ts'
+export { MOTION_TAG, type Motion, type MotionTable, readMotionTable } from './motion.ts'
 export {
   isNpcList,
   isNpcPlacements,
@@ -51,7 +52,6 @@ export {
   readNpcPlacements,
   readNpcStates,
 } from './npc.ts'
-export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
 export {
   OP_RETURN,
   ROUTINE_HEADER,
@@ -62,6 +62,7 @@ export {
   type ScriptRoutine,
   type ScriptSection,
 } from './script.ts'
+export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
 export {
   type DataTable,
   isDataTable,

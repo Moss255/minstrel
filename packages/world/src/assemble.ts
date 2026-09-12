@@ -1,11 +1,14 @@
 import { FX32_ONE } from '@minstrel/fixed'
 import {
   isCollisionMesh,
+  isDataTable,
   isMarkerVolume,
   isWaterTexture,
   type MapManifest,
+  type Motion,
   placementOf,
   readCollisionMesh,
+  readMotionTable,
   resolveMapResources,
 } from '@minstrel/game-formats'
 import {
@@ -40,6 +43,12 @@ export interface MapPiece {
   readonly model: Model
   /** The resource the piece was built from, by its stem — `M01M00D1`. */
   readonly source?: string
+  /**
+   * The stretches of its animation its resource's `.bcfg` names, when it has
+   * one — see `readMotionTable`. A piece with them plays one when asked, rather
+   * than its whole animation on a loop.
+   */
+  readonly motions?: readonly Motion[]
   /** Where it goes, in the map's final space. */
   readonly place: Placement
   /**
@@ -179,6 +188,7 @@ export function assembleMap(
     // looks harmless and is not: taking the first match loses a map's main
     // geometry to the descriptor sitting beside it under the same stem, and the
     // map still assembles — just without most of itself.
+    const motions = motionsOf(files, members)
     for (const file of files) {
       const bytes = members.get(file)
       if (!bytes) continue
@@ -217,6 +227,7 @@ export function assembleMap(
           scale: WORLD_SCALE,
           animation: ownAnimation(model, file, files, members),
           source: resource.stem,
+          ...(motions ? { motions } : {}),
         })
         water.push(...waterOf(model, place, WORLD_SCALE))
       } catch {
@@ -244,6 +255,25 @@ function ownAnimation(
       if (found) return found
     } catch {
       // An animation that will not read simply is not played.
+    }
+  }
+  return undefined
+}
+
+/** The motions a resource's `.bcfg` names, if it has one that reads and names any. */
+function motionsOf(
+  files: readonly string[],
+  members: ReadonlyMap<string, Uint8Array>,
+): readonly Motion[] | undefined {
+  for (const file of files) {
+    if (!file.toLowerCase().endsWith('.bcfg')) continue
+    const bytes = members.get(file)
+    if (!bytes || !isDataTable(bytes)) continue
+    try {
+      const { motions } = readMotionTable(bytes)
+      if (motions.length > 0) return motions
+    } catch {
+      // A table that will not read names nothing to play.
     }
   }
   return undefined

@@ -22,6 +22,14 @@ import {
 } from '@minstrel/render'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
+import {
+  CABINET_OPENING,
+  CABINET_SHUT,
+  type Cabinet,
+  cabinetsOf,
+  cabinetTargets,
+  motionFrame,
+} from './cabinets.ts'
 import { castPieces, setSpriteCut, spriteCut, spritePieces, standingFrame } from './cast.ts'
 import {
   type CollisionFit,
@@ -194,6 +202,10 @@ const openedTreasure = new Set<string>()
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
 let doors: SwingDoor[] = []
+/** The map's cabinets, and the motion each is playing — see `cabinets.ts`. */
+let cabinets: Cabinet[] = []
+/** Talk-target ids from here on are cabinets, so they cannot be taken for a placed treasure. */
+const CABINET_TARGET = 10_000
 
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
@@ -208,9 +220,24 @@ function poseMap(frame: number): void {
     const place = { x: piece.place.x * grow, y: piece.place.y * grow, z: piece.place.z * grow }
     // Each shape has its own matrix stack, because a model reuses slots between
     // shapes. A map's models each drive themselves.
+    // A cabinet stands where its motion has it; everything else loops its own.
+    const cabinet = cabinets.find((c) => c.piece === pieceIndex)
     const stacks =
       animation && animation.boneCount === model.nodes.length
-        ? model.pose(posedNodes(model, animation, frame))
+        ? model.pose(
+            posedNodes(
+              model,
+              animation,
+              cabinet
+                ? motionFrame(
+                    cabinet.motions,
+                    cabinet.motion,
+                    frame - cabinet.since,
+                    animation.frameCount,
+                  )
+                : frame,
+            ),
+          )
         : model.shapeMatrices
 
     model.shapes.forEach((shape, index) => {
@@ -388,6 +415,10 @@ function enter(map: string, arrival?: Arrival): boolean {
   closeTalk()
   refreshTreasures()
   doors = doorsOf(opened.map)
+  cabinets = cabinetsOf(opened.map, opened.treasures, (slot) => {
+    const inside = opened.treasures[slot]
+    return inside !== undefined && openedTreasure.has(treasureKey(opened.code, slot, inside))
+  })
   measurements.clear()
   mapFrame = -1
   poseMap(0)
@@ -900,16 +931,37 @@ function openTreasureAhead(): boolean {
   if (!loaded || !self) return false
   const target = talkTarget(
     { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing },
-    treasureTargets(loaded.treasures),
+    [
+      ...treasureTargets(loaded.treasures),
+      ...cabinetTargets(cabinets).map((t) => ({ ...t, id: CABINET_TARGET + t.id })),
+    ],
   )
-  const treasure = target && loaded.treasures[target.id]
-  if (!target || !treasure) return false
-  const key = treasureKey(loaded.code, target.id, treasure)
+  if (!target) return false
+  // A cabinet opens whatever is inside: it plays its opening once, then holds.
+  const cabinet = target.id >= CABINET_TARGET ? cabinets[target.id - CABINET_TARGET] : undefined
+  if (cabinet && cabinet.motion === CABINET_SHUT) {
+    cabinet.motion = CABINET_OPENING
+    cabinet.since = Math.max(mapFrame, 0)
+    poseMap(Math.max(mapFrame, 0))
+  }
+  const slot = cabinet ? cabinet.slot : target.id
+  const treasure = slot === undefined ? undefined : loaded.treasures[slot]
+  if (slot === undefined || !treasure) {
+    talking = startConversation(
+      target,
+      `${cabinet?.stem ?? 'treasure'} in ${loaded.code}`,
+      ['You open it. No treasure record is paired with it.'],
+      ['unpaired'],
+    )
+    showTalk()
+    return true
+  }
+  const key = treasureKey(loaded.code, slot, treasure)
   const already = openedTreasure.has(key)
   openedTreasure.add(key)
   talking = startConversation(
     { ...target, id: treasure.index ?? target.id },
-    `kind 0x${treasure.kind.toString(16)} in ${loaded.code}`,
+    `${cabinet ? `${cabinet.stem}, ` : ''}kind 0x${treasure.kind.toString(16)} in ${loaded.code}`,
     [treasureText(treasure, already)],
     [already ? 'already open' : 'opened'],
   )
@@ -920,7 +972,7 @@ function openTreasureAhead(): boolean {
 
 /**
  * `f`: talk to whoever the Hero is facing, or go on to the next page. With
- * nobody there, open the treasure in front instead, if there is one.
+ * nobody there, open the treasure or the cabinet in front instead, if there is one.
  *
  * What they say is `pickLine`'s choice for the story stage — a line of their
  * talk file, or an event's messages — and the status line says why. `Shift+F`
@@ -945,15 +997,17 @@ function talk(everyLine = false): void {
   )
   if (!who) {
     if (openTreasureAhead()) return
-    const nearest = nearestTreasure(loaded.treasures, {
-      x: toFloat(self.state.x),
-      z: toFloat(self.state.z),
-    })
+    const here = { x: toFloat(self.state.x), z: toFloat(self.state.z) }
+    const nearest = nearestTreasure(loaded.treasures, here)
+    const cabinet = cabinets
+      .map((c) => Math.hypot(c.x - here.x, c.z - here.z))
+      .sort((a, b) => a - b)[0]
     status(
       'nobody near enough, and in front, to talk to, and no treasure' +
         (nearest
           ? ` — the nearest, #${nearest.treasure.index ?? '?'}, is ${nearest.distance.toFixed(2)} away`
-          : ' in this map'),
+          : ' placed in this map') +
+        (cabinet === undefined ? '' : `; the nearest cabinet is ${cabinet.toFixed(2)} away`),
     )
     return
   }
