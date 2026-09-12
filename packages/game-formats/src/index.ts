@@ -10,6 +10,12 @@ export {
 } from './collision.ts'
 export { GameFormatError } from './errors.ts'
 export {
+  type EventMessage,
+  type MarkupToken,
+  parseMarkup,
+  readEventMessages,
+} from './events.ts'
+export {
   type BitmapFont,
   type Glyph,
   glyphStride,

@@ -9,6 +9,24 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## M3 has started — event text is read
+
+M2 is walkable end to end, bar the Hero stand-in and the two notes below
+(sprite tiling, where the Hero wakes). M3's task list is waiting on
+`docs/PLAN.md`, which is not in the repo yet; the one bullet recorded elsewhere
+is "text box rendering with a vector font and resolution-independent layout".
+
+The first step, chosen for being under everything else in dialogue:
+`readEventMessages` and `parseMarkup` in `@minstrel/game-formats`. An event's
+five text files are ordinary tagged tables of `(number, text)` records; the text
+is ASCII with accents and a condition language as markup. The evidence and the
+vocabulary — mostly not established — are in `game-formats/FORMAT.md`, "Event
+text", and `tools/harness/test/events.test.ts` holds every event on a cartridge
+to it. Not started: the `.stb` (`SB2`) script, which is what says which message
+is shown when.
+
+---
+
 ## 0. Everything is read at its own size — **done, 12 September**
 
 The scaling problem behind items 5 and 6 was two misreadings, not a per-map
@@ -597,8 +615,8 @@ scrolls or pulses in a map is currently still.
 ```sh
 npx biome check .
 npx tsc --build
-npx vitest run                                     # 707 unit tests
-MINSTREL_TEST_ROM=rom/<your>.nds npx vitest run    # 776, the extra 69 on a cartridge
+npx vitest run                                     # 717 unit tests
+MINSTREL_TEST_ROM=rom/<your>.nds npx vitest run    # 787, the extra 70 on a cartridge
 ```
 
 The cartridge tests are seconds each and slower again under load; they carry

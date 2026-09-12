@@ -1574,3 +1574,60 @@ sheet, which is too small to account for a five-row band of foreign pixels. So
 the artefact seen in play is **still unexplained**, and what has been narrowed is
 where to look: the 233, and what makes their row count fractional.
 
+---
+
+# Event text — `ev#####_<lang>.bin`
+
+Each event unpacks from its own `/data/event/ev#####.gp2` — 523 of them — to a
+`.stb` and five text files, `_de`, `_en`, `_es`, `_fr` and `_it`. The `.stb` is
+the script, magic `SB2\0`, and is not read yet. The text files are **ordinary
+tagged data tables** — see "The tagged data table" — and read with the same
+code.
+
+| check | result |
+|---|---|
+| text files | 2,615, five per event |
+| read as a table | 2,590; the other 25 are zero bytes, five events' worth |
+| records | 18,245, **every one tag `0x64` with two values**: a number, then a string offset |
+| events whose five languages carry the same message numbers in the same order | **518 of 518** |
+| bytes of 0x80 or above in any string of any language | **none** |
+
+A message whose string offset is `0xFFFFFFFF` says nothing — 40 of the 18,245;
+none points at an empty string. `readEventMessages` returns each message's
+number and its text.
+
+## The text is ASCII, and markup does the rest
+
+Accents are markup in every language — Spanish `<'i>` (1,705) and `<~n>`,
+German `<:u>` (1,569) and `<ss>`, French `` <`e> ``, `<^e>` and `<,c>`, Italian
+`` <`e> `` — which is why no string needs a byte above 0x7F. Spanish and French
+also mark some punctuation this way: `<^!>`, `<^?>`, `<!>`, `<?>`, `<:>`. A line
+break is written as the two characters `\n`, 454 times in English.
+
+`parseMarkup` splits a message into text, line breaks and tags — `<name>` or
+`<name=a,b,c>` — and gives no tag a meaning. Across the cartridge no `<` is left
+open and no `>` stands alone.
+
+## What the tags mean — mostly not established
+
+49 names occur in the English text. The few with a meaning are the ones
+`docs/M0-inventory.md` records from reading the text:
+
+| tag | English | what it is |
+|---|---|---|
+| `<1>` | 3,435 | an apostrophe |
+| `<,>` | 3,395 | a pause |
+| `<HERO>` | 317 | the player's name |
+| `<Cap>` | 218 | capitalise |
+| `<SE_014>` | 16 | a sound effect, by number |
+| `<IF_x>` … `<ELSE_…>` … `<ENDIF_x>` | 91 `HERO_MALE`, 34 `MALE`, 11 `SOLO` | conditional text — they nest properly in **all 1,159** messages, in any language, that use them. What each condition tests is only named |
+
+French adds conditions of its own — `IF_VOWEL_FR_HERO`, `IF_FEMALE_PARTY` —
+which is what choosing between *de* and *d'* before a name looks like. The rest
+are **not established**: `<ADD>` (1,303), `<6>`, `<9>`, `<-->`,
+`<PAD_WAIT_NOCUR>`, `<CLOSE>`, `<LEADER>`, `<CEN>`, `<QUEST…>`, `<YESNO>`,
+`<TIME=…>`, `<ME_…>`, `<END>`, `<PAGE>` and a dozen rarer ones.
+
+704 English messages open with `*:`, which is how the text writes a line said
+by someone; what the game does with it is not established.
+
