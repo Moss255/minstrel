@@ -121,6 +121,14 @@ holes. Over 424 views of the village, the most hidden in any one fell from 15.1%
 to 2.2%. The squares are not drawn as pieces of their own — that was tried, at
 five times the draw calls, and the frame rate collapsed.
 
+**Shadows blend.** A map's soft shadows, water, windows, light, sky, fire and
+smoke are textures with partly transparent pixels, and the renderer drew them
+solid — every shadow a dark patch. A texture is now drawn see-through, in a
+second pass after everything solid, when at least 5% of its pixels are partly
+transparent (`packages/gl/src/alpha.ts`): over the village's 181 textures that
+splits 141 with none and one cliff edge at 2.3% from 39 at 10% or more. The
+material's own alpha (the DS's polygon attribute) is not read yet.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

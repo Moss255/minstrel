@@ -1,5 +1,6 @@
 import type { Geometry } from '@minstrel/nitro-gfx'
 import { type FollowCamera, perspective, viewMatrix } from '@minstrel/render'
+import { isTranslucent } from './alpha.ts'
 
 /**
  * A minimal WebGL2 renderer for decoded model geometry.
@@ -95,6 +96,8 @@ interface Batch {
   readonly texture: WebGLTexture | null
   readonly width: number
   readonly height: number
+  /** Drawn in the second, blended pass — see `isTranslucent`. */
+  readonly blend: boolean
 }
 
 function multiply(a: Float32Array, b: Float32Array, out: Float32Array): Float32Array {
@@ -123,6 +126,8 @@ export class ModelRenderer {
   private batches: Batch[] = []
   /** Textures by the pixel array they were uploaded from, kept across frames. */
   private cache = new Map<Uint8Array, WebGLTexture>()
+  /** Whether each texture is drawn see-through, worked out once per pixel array. */
+  private readonly seeThrough = new WeakMap<Uint8Array, boolean>()
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false })
@@ -222,7 +227,18 @@ export class ModelRenderer {
       base += piece.geometry.vertices.length
 
       let texture: WebGLTexture | null = null
+      let blend = false
       if (piece.pixels && piece.width && piece.height) {
+        // A sprite is cut out, whatever its alpha; a surface is blended when
+        // enough of it is partly transparent.
+        if (!piece.cutout) {
+          let known = this.seeThrough.get(piece.pixels)
+          if (known === undefined) {
+            known = isTranslucent(piece.pixels)
+            this.seeThrough.set(piece.pixels, known)
+          }
+          blend = known
+        }
         const already = this.cache.get(piece.pixels)
         texture = already ?? gl.createTexture()
         if (texture) {
@@ -259,6 +275,7 @@ export class ModelRenderer {
         texture,
         width: piece.width ?? 0,
         height: piece.height ?? 0,
+        blend: blend && texture !== null,
       })
     }
 
@@ -322,8 +339,8 @@ export class ModelRenderer {
     gl.uniform1i(this.uWireframe, wireframe ? 1 : 0)
     gl.bindVertexArray(this.vao)
 
-    for (const batch of this.batches) {
-      if (batch.count === 0) continue
+    const drawBatch = (batch: Batch) => {
+      if (batch.count === 0) return
       gl.uniform1i(this.uHasTexture, batch.texture && !wireframe ? 1 : 0)
       gl.uniform2f(this.uTextureSize, batch.width, batch.height)
       if (batch.texture) {
@@ -337,6 +354,20 @@ export class ModelRenderer {
         batch.first * 4,
       )
     }
+    for (const batch of this.batches) if (!batch.blend) drawBatch(batch)
+    // See-through textures — shadows, water, windows, light — go last, blended
+    // over what is already there. They write no depth, so one behind another
+    // still shows, and they are pulled a hair towards the camera, so a shadow
+    // lying on the ground does not flicker in and out of it.
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.depthMask(false)
+    gl.enable(gl.POLYGON_OFFSET_FILL)
+    gl.polygonOffset(-1, -1)
+    for (const batch of this.batches) if (batch.blend) drawBatch(batch)
+    gl.disable(gl.POLYGON_OFFSET_FILL)
+    gl.depthMask(true)
+    gl.disable(gl.BLEND)
     gl.bindVertexArray(null)
   }
 }
