@@ -27,6 +27,8 @@ import {
   readNpcList,
   readNpcPlacements,
   readNpcStates,
+  readTalk,
+  type TalkLine,
 } from '@minstrel/game-formats'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
@@ -57,6 +59,10 @@ export interface Loaded {
   readonly stages: readonly Stage[]
   /** The cast at one of {@link stages}; `undefined` is the file's first placement of each. */
   castAt(stage: Stage | undefined): Cast
+  /** The chapter letters this map's area has talk for, in order — `A0`, `B0` … */
+  readonly letters: readonly string[]
+  /** What a character says in a chapter — see `readTalk`. Empty when they say nothing. */
+  linesOf(id: number, letter: string): readonly TalkLine[]
   /** The way out: where this map's doorways are and what they lead to. */
   readonly doorways: readonly MapTransition[]
   /** Which archive the map came out of, for the status line. */
@@ -120,6 +126,8 @@ function sheetsOf(cat: Catalogue): Map<string, Uint8Array> {
 
 /** What an area's `.npc` archive says: its cast, their placements, and each one's records. */
 interface Area {
+  /** The area's code — `M01` — which is also what its talk archives are named for. */
+  readonly code: string
   readonly entries: readonly NpcEntry[]
   readonly placements: readonly NpcPlacement[]
   readonly states: readonly NpcState[]
@@ -256,6 +264,7 @@ function areaFrom(cat: Catalogue, area: string): Area | undefined {
     if (!list || !places || !isNpcList(list) || !isNpcPlacements(places)) return undefined
     try {
       return {
+        code: area.toUpperCase(),
         entries: readNpcList(list),
         placements: readNpcPlacements(places),
         states: readNpcStates(places),
@@ -265,6 +274,35 @@ function areaFrom(cat: Catalogue, area: string): Area | undefined {
     }
   }
   return undefined
+}
+
+/**
+ * What each character of an area says, by chapter letter and character id —
+ * see `readTalk`. English only, for now.
+ *
+ * The area's archives under `/data/scenario` are walked on their own and kept
+ * like the rest of the walk: 44 ms for Angel Falls' fourteen chapters.
+ */
+function talkOf(rom: Uint8Array, area: string): Map<string, Map<number, readonly TalkLine[]>> {
+  const { cat } = walkOnce(rom, [`/data/scenario/${area}`])
+  const chapter = new RegExp(`/${area}([A-Z]\\d)\\.gp2$`, 'i')
+  const out = new Map<string, Map<number, readonly TalkLine[]>>()
+  for (const [archive, files] of cat.members) {
+    const letter = chapter.exec(archive)?.[1]?.toUpperCase()
+    if (!letter) continue
+    const byId = new Map<number, readonly TalkLine[]>()
+    for (const [name, bytes] of files) {
+      const number = /(?:^|\/)(\d+)_en\.bin$/i.exec(name)
+      if (!number) continue
+      try {
+        byId.set(Number(number[1]), readTalk(bytes))
+      } catch {
+        // A talk file that will not read says nothing; the harness reports it.
+      }
+    }
+    out.set(letter, byId)
+  }
+  return out
 }
 
 /** The `.npc` archive names worth looking for, longest first. */
@@ -531,10 +569,13 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const area = areaOf(cat, code)
   const sheets = sheetsOf(cat)
   const id = entry?.id
+  const talk = area ? talkOf(rom, area.code) : new Map<string, Map<number, readonly TalkLine[]>>()
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
     stages: area ? stagesOf(area, id) : [],
     castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),
+    letters: [...talk.keys()].sort(),
+    linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     catalogue: cat,
     map,
     world,

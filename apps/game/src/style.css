@@ -53,6 +53,41 @@ main {
 }
 
 /*
+ * The text box: the browser's own UI font, sized to the window rather than to
+ * pixels, so a line reads the same at any resolution.
+ */
+#talk:not([hidden]) {
+  position: absolute;
+  left: 50%;
+  bottom: 7vh;
+  transform: translateX(-50%);
+  width: min(92vw, 60rem);
+  min-height: 5.5em;
+  padding: 0.9em 1.3em;
+  border: 0.14em solid rgb(232 230 225 / 85%);
+  border-radius: 0.5em;
+  background: rgb(8 10 18 / 88%);
+  color: var(--ink);
+  font:
+    500 clamp(15px, 2.6vh, 28px) / 1.45 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+#talk .speaker {
+  margin-bottom: 0.25em;
+  font-size: 0.8em;
+  color: var(--dim);
+  letter-spacing: 0.04em;
+}
+
+/*
  * Elements hidden from script set `display` below, and an author rule beats the
  * user-agent stylesheet's `[hidden] { display: none }` however specific that
  * one looks. So the display rule is written not to apply while the element is

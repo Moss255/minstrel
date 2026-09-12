@@ -60,4 +60,5 @@ export {
   TABLE_TYPE_FLOAT,
   type TableRecord,
 } from './table.ts'
+export { readTalk, type TalkLine } from './talk.ts'
 export { type MapTransition, mapDoorways, readMapTransitions } from './transitions.ts'

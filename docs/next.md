@@ -22,8 +22,28 @@ five text files are ordinary tagged tables of `(number, text)` records; the text
 is ASCII with accents and a condition language as markup. The evidence and the
 vocabulary — mostly not established — are in `game-formats/FORMAT.md`, "Event
 text", and `tools/harness/test/events.test.ts` holds every event on a cartridge
-to it. Not started: the `.stb` (`SB2`) script, which is what says which message
-is shown when.
+to it.
+
+**`SB2` examined, as far as the data goes.** The container is mapped — header,
+a section table, a block shared byte-for-byte by 522 of 523 events, then
+sections 200, 300 and 100 — and an event's script names its own messages as
+typed operands; its code is not read. Scripts name no map and no other event,
+so they are not what decides who says what. `game-formats/FORMAT.md` has it.
+
+**What characters say is in `/data/scenario`**, one archive per chapter letter
+per area (`M01A0.gp2` … `M01Q0.gp2`), one talk file per character id — 99.7% of
+them match the area's cast. Beside them, `trigger<area>.bin` reads as "in this
+map, over this span of the story, this character, sometimes this event" — the
+characters it names stand in its map 66% of the time against 18% for a
+stand-in — but its operations are not decoded.
+
+**Talking works as a test affordance.** `f` talks to the character the Hero
+faces and pages through every line of their talk file — which line the game
+would pick is not established — `Esc` closes, and `v`/`b` step the chapter,
+which otherwise follows `t`/`y` (INFERRED: letter = the stage's major number).
+The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
+says which markup readings are established and which are inferred; tags it
+does not know are left out and listed on the status line.
 
 ---
 

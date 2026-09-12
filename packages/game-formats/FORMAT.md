@@ -1629,5 +1629,89 @@ are **not established**: `<ADD>` (1,303), `<6>`, `<9>`, `<-->`,
 `<TIME=…>`, `<ME_…>`, `<END>`, `<PAGE>` and a dozen rarer ones.
 
 704 English messages open with `*:`, which is how the text writes a line said
-by someone; what the game does with it is not established.
+by someone; what the game does with it is not established. A named speaker is
+written `//Name//` instead.
+
+---
+
+# Event scripts — `.stb`, magic `SB2`
+
+736 files: 523 in `/data/event`, one per event; 165 in `/data/evspt_lv5`,
+which carry cutscene staging — model files, motions, cameras; 33 in
+`/data/scenario`; 13 in `/data/menu`; 2 in `/data/event_lv5`. Only the
+container is read. What the code in it does is not.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `char[4]` | `SB2\0` |
+| `+0x04` | `u32` | size of the shared block below — `0x1500` on 522 of the 523 event scripts |
+| `+0x08` | `u32` | end of the section table: its start plus 8 × the count, on 523 of 523 |
+| `+0x0C` | `u32` | start of the section table: `0x40` on all 736 |
+| `+0x10` | `u32` | number of sections |
+| `+0x14` | | zero, bar `+0x18`, which is 0 to 5 on 122 files and not established |
+| `+0x40` | `u32[2]` × n | the sections: a number, then an offset into the file |
+
+On all 523 event scripts the sections run in rising offset order and start past
+the table and the shared block. **The shared block is byte-identical on 522 of
+the 523** — common to every event, not part of one. The sections are numbered
+200, 300 and 100, in that order, on 522 (the other has 200, 201, 300, 301, 100
+and 101); section 100 is the largest, a median 3,632 bytes. Each section's
+first word is its own offset less `0x20`, which is observed and not explained.
+
+**A script names its own messages.** 3,522 of the 3,649 message numbers an
+event's text carries occur in its own script as a word, against 43 of 3,649
+control numbers it does not carry — mostly in section 100. The words around them
+are regular: in 7,692 of 8,963 occurrences the two before are `3, 1`, which
+reads as a typed operand. What the types are is not established.
+
+**A script does not name maps, or other events.** Event numbers occur as words
+in scripts no more often than control numbers do — 1,655 against 1,514 — and no
+village event names an Angel Falls map id. What a script does carry as strings
+is its cast by model file (`chara_sub/s016.chr`), motions (`stand`, `walk`),
+fades (`EFADE`) and, in some, its own name in brackets. Which event runs when is
+decided elsewhere: see the triggers below.
+
+---
+
+# What characters say — `/data/scenario/<area><letter>0.gp2`
+
+Each area has a set of archives, one per letter — Angel Falls has fourteen,
+`M01A0.gp2` to `M01Q0.gp2` — each holding numbered text files in the five
+languages. **The number is a character's id** from the area's cast list: 7,974
+of the 7,994 English talk files in areas that have a cast list.
+
+**The letters follow the story.** Only Angel Falls has an `A`; other areas start
+later — `C01` at `B`, `D04` at `D`. 22 of Angel Falls' 46 talk characters
+change between letters and the rest say the same throughout. Villager 2 has five
+versions, and read in order they move from the prologue, through the village
+chapter and its aftermath, to the end of the game.
+
+A file is a tagged data table whose records are tag 1, 2, 4 or 5 — 17,241,
+14,273, 2,149 and 1,101 of the four-value form across the cartridge — carrying
+three or four numbers and then a string offset. **The numbers are not
+established.** Within a letter the first two often read as a range of
+sub-stages — 1 to 1, 2 to 3, 4 to 4, 5 to 5, and 99 for "to the end" — which
+is the shape the cast's stage words have; the last is one of a few values, 16,
+192, 193 and so on.
+
+---
+
+# Triggers — `trigger<area>.bin`
+
+75 files, one per area: a tagged table whose records are all tag 1 — 5,805 of
+them, 352 in Angel Falls. Each opens with a map id — Angel Falls' records name
+the village, 1100, on 156 and its interiors 1101 to 1112 on the rest — then four
+numbers in the shape of the cast's stage span, then one small number (0, 1, 11,
+3, 20 …), then words that split cleanly into a high and a low half.
+
+| check | result |
+|---|---|
+| records with a high half of 6 or 118 whose low half is a character of the area | 4,067 of 5,805 |
+| that character placed in the record's own map | **3,433 of 5,200 (66%)**, against 945 (18%) for another character of the same area |
+| the same, in records that also carry a high half of 119 | 233 of 306 (76%), against 81 (26%) |
+| Angel Falls words with a high half of 119 whose low half is an event number | **58 of 64** — 2110, 2370, 2420, 2620 and more |
+
+So a record plausibly reads: in this map, over this span of the story, this
+character — and some go on to name an event. That is **INFERRED**; the other
+high halves are not decoded, and nothing here yet acts on them.
 

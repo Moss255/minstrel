@@ -1,5 +1,5 @@
 import { GameFormatError } from './errors.ts'
-import { readDataTable } from './table.ts'
+import { type DataTable, readDataTable, type TableRecord } from './table.ts'
 
 /**
  * `ev#####_<lang>.bin` — an event's text, one file per language.
@@ -13,11 +13,36 @@ import { readDataTable } from './table.ts'
 
 /** The tag every message record carries: 18,245 of 18,245 on the reference cartridge. */
 const TAG_MESSAGE = 0x64
-/** The type bits of a message record's two values: a number, then a string offset. */
-const KIND_NUMBER = 1
-const KIND_STRING = 0
+/** The type bits of a value: a number, or a string offset. */
+export const KIND_NUMBER = 1
+export const KIND_STRING = 0
 /** A message with no text stores this where its string offset would be. */
 const NO_STRING = 0xffffffff
+
+/**
+ * The text a record's string offset names: undefined for `NO_STRING`, and an
+ * error for an offset that is not the start of a string.
+ */
+export function textAt(
+  table: DataTable,
+  data: Uint8Array,
+  record: TableRecord,
+  at: number,
+): string | undefined {
+  if (at === NO_STRING) return undefined
+  const text = table.stringAt(at)
+  if (text !== undefined) return text
+  // The table lists only strings with something in them, so an empty one is a
+  // terminator standing where the offset points. No record on the reference
+  // cartridge does this — silent ones use `NO_STRING` — but it is a valid file,
+  // and one that did should read rather than throw.
+  const strings = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(4, true)
+  if (data[strings + at] === 0) return ''
+  throw new GameFormatError(
+    `record at 0x${record.offset.toString(16)} names string offset ${at}, which is not the start of a string`,
+    record.offset,
+  )
+}
 
 /** One thing an event can say. */
 export interface EventMessage {
@@ -43,8 +68,6 @@ export interface EventMessage {
 export function readEventMessages(data: Uint8Array): EventMessage[] {
   if (data.length === 0) return []
   const table = readDataTable(data)
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  const stringOffset = view.getUint32(4, true)
   return table.records.map((record) => {
     if (
       record.tag !== TAG_MESSAGE ||
@@ -57,20 +80,10 @@ export function readEventMessages(data: Uint8Array): EventMessage[] {
         record.offset,
       )
     }
-    const id = record.values[0] as number
-    const at = record.values[1] as number
-    if (at === NO_STRING) return { id, text: undefined }
-    const text = table.stringAt(at)
-    if (text !== undefined) return { id, text }
-    // The table lists only strings with something in them, so an empty one is
-    // a terminator standing where the offset points. No message on the
-    // reference cartridge does this — its 40 silent ones use `NO_STRING` — but
-    // it is a valid file, and one that did should read rather than throw.
-    if (data[stringOffset + at] === 0) return { id, text: '' }
-    throw new GameFormatError(
-      `message ${id} names string offset ${at}, which is not the start of a string`,
-      record.offset,
-    )
+    return {
+      id: record.values[0] as number,
+      text: textAt(table, data, record, record.values[1] as number),
+    }
   })
 }
 

@@ -36,6 +36,14 @@ import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import { entranceOf, type Loaded, load } from './load.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
+import {
+  type Conversation,
+  letterForStage,
+  nextPage,
+  startConversation,
+  type Talker,
+  talkTarget,
+} from './talk.ts'
 
 /**
  * Walk a village read from the player's own cartridge.
@@ -60,6 +68,7 @@ const statusEl = must<HTMLDivElement>('#status')
 const overlayEl = must<HTMLDivElement>('#overlay')
 const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
+const talkEl = must<HTMLDivElement>('#talk')
 
 const status = (text: string) => {
   statusEl.textContent = text
@@ -151,6 +160,13 @@ let characterScale = 1
  * `y` move it — for checking where characters stand and at what size.
  */
 let stageIndex = 0
+/**
+ * Which chapter's talk files are read: an index into `loaded.letters`, or
+ * undefined to follow the stage — see `letterForStage`. `v` and `b` move it.
+ */
+let chapterIndex: number | undefined
+/** Who is being talked to, and how far through what they say. */
+let talking: Conversation | undefined
 
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
@@ -339,6 +355,8 @@ function enter(map: string, arrival?: Arrival): boolean {
 
   loaded = opened
   stageIndex = 0
+  chapterIndex = undefined
+  closeTalk()
   measurements.clear()
   mapFrame = -1
   poseMap(0)
@@ -794,6 +812,99 @@ function moveStage(by: number): void {
   console.log(line)
 }
 
+/** The chapter letter talk is read from: the one `v` and `b` chose, or the stage's. */
+function chapter(): string | undefined {
+  if (!loaded || loaded.letters.length === 0) return undefined
+  if (chapterIndex !== undefined) return loaded.letters[chapterIndex]
+  return letterForStage(
+    loaded.letters,
+    stageIndex === 0 ? undefined : loaded.stages[stageIndex - 1],
+  )
+}
+
+/** Step the chapter talk is read from, leaving the cast where it stands. */
+function moveChapter(by: number): void {
+  if (!loaded || loaded.letters.length === 0) return
+  const count = loaded.letters.length
+  const from = chapterIndex ?? Math.max(0, loaded.letters.indexOf(chapter() ?? ''))
+  chapterIndex = (from + by + count) % count
+  closeTalk()
+  status(
+    `${loaded.code} talk from chapter ${loaded.letters[chapterIndex]} (${chapterIndex + 1} of ${count}) · v/b change chapter · f talk`,
+  )
+}
+
+/**
+ * `f`: talk to whoever the Hero is facing, or go on to the next page.
+ *
+ * Every line of their talk file is shown in turn, because which one the game
+ * picks is not established — see `talk.ts`. The status line carries the line's
+ * tag and numbers so they can be read against what it says.
+ */
+function talk(): void {
+  if (!loaded || !self) return
+  if (talking) {
+    talking = nextPage(talking)
+    showTalk()
+    return
+  }
+  const cast: Talker[] = [...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => ({
+    id: member.placement.id,
+    name: member.name,
+    x: member.placement.x,
+    z: member.placement.z,
+  }))
+  const who = talkTarget(
+    { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing },
+    cast,
+  )
+  if (!who) {
+    status('nobody near enough, and in front, to talk to')
+    return
+  }
+  const letter = chapter()
+  if (letter !== undefined) talking = startConversation(who, letter, loaded.linesOf(who.id, letter))
+  if (!talking) {
+    status(`${who.name} (#${who.id}) has nothing to say in chapter ${letter ?? '—'}`)
+    return
+  }
+  showTalk()
+}
+
+/** Draw the conversation's page into the text box, or put the box away when it is over. */
+function showTalk(): void {
+  if (!talking) {
+    closeTalk()
+    return
+  }
+  const { who, letter, lines, line, page, rendered } = talking
+  const shown = rendered.pages[page]
+  talkEl.replaceChildren()
+  if (shown?.speaker) {
+    const name = document.createElement('div')
+    name.className = 'speaker'
+    name.textContent = shown.speaker
+    talkEl.append(name)
+  }
+  const body = document.createElement('div')
+  body.textContent = shown?.text ?? ''
+  talkEl.append(body)
+  talkEl.hidden = false
+  const record = lines[line]
+  status(
+    `${who.name} #${who.id} · chapter ${letter} · line ${line + 1} of ${lines.length} ` +
+      `(tag ${record?.tag}, numbers ${record?.unknown_numbers.join(' ')}) · page ${page + 1} of ${rendered.pages.length}` +
+      (rendered.unhandled.length > 0 ? ` · not shown: <${rendered.unhandled.join('> <')}>` : '') +
+      ' · f next, Esc close',
+  )
+}
+
+function closeTalk(): void {
+  talking = undefined
+  talkEl.hidden = true
+  talkEl.replaceChildren()
+}
+
 /** Resize the character, leaving the world exactly as the file has it. */
 function movePerson(by: number): void {
   personScale = Math.max(0.05, personScale + by)
@@ -883,6 +994,20 @@ addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
   if (self && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
     self.held.add(key)
+    event.preventDefault()
+  }
+  // Talk to whoever the Hero faces: `f` to start and to go on, Esc to stop,
+  // `v` and `b` to read another chapter's words.
+  if (key === 'f' && loaded) {
+    talk()
+    event.preventDefault()
+  }
+  if (key === 'escape' && talking) {
+    closeTalk()
+    event.preventDefault()
+  }
+  if ((key === 'v' || key === 'b') && loaded) {
+    moveChapter(key === 'b' ? 1 : -1)
     event.preventDefault()
   }
   // Flick through the story stages the cast's records name: `t` back, `y` on.
