@@ -1,4 +1,4 @@
-import { parseMarkup, type TalkLine, type Trigger } from '@minstrel/game-formats'
+import { type MarkupToken, parseMarkup, type TalkLine, type Trigger } from '@minstrel/game-formats'
 import type { Stage } from './load.ts'
 
 /**
@@ -147,22 +147,66 @@ export interface TalkPage {
   readonly text: string
 }
 
-export interface RenderedLine {
-  readonly pages: readonly TalkPage[]
-  /** Tags left out of the text because nothing here knows what they do. */
-  readonly unhandled: readonly string[]
+/** One of a prompt's answers: the marker its branch opens with, and what the box shows. */
+export interface Answer {
+  readonly marker: string
+  readonly label: string
+}
+
+/** A prompt waiting for an answer, and the token it stands at; its branches follow. */
+export interface Prompt {
+  readonly kind: string
+  readonly answers: readonly Answer[]
+  readonly at: number
 }
 
 /**
- * How a line of the cartridge's text reads on screen.
+ * The prompts and the markers their branches open with — see `FORMAT.md`,
+ * "Prompts". `<UKE>` and `<YAME>` as accept and decline is **INFERRED**, from
+ * the Japanese and from standing at quest offers.
+ */
+const PROMPTS: Readonly<Record<string, readonly Answer[]>> = {
+  YESNO: [
+    { marker: 'YES', label: 'Yes' },
+    { marker: 'NO', label: 'No' },
+  ],
+  UKEYAME: [
+    { marker: 'UKE', label: 'Accept' },
+    { marker: 'YAME', label: 'Decline' },
+  ],
+}
+const MARKERS = new Set(Object.values(PROMPTS).flatMap((answers) => answers.map((a) => a.marker)))
+
+/** What running a line from one point came to: its pages, then a prompt or the end. */
+export interface Run {
+  readonly pages: readonly TalkPage[]
+  /** Tags left out of the text because nothing here knows what they do. */
+  readonly unhandled: readonly string[]
+  /** The prompt the run stopped at, asked on its last page; undefined when the line is over. */
+  readonly prompt: Prompt | undefined
+}
+
+/** A line read straight through, as far as its first prompt. */
+export type RenderedLine = Pick<Run, 'pages' | 'unhandled'>
+
+/**
+ * Run a line, from one of its tokens to its next prompt or its end.
  *
  * `<PAGE>` starts a new page — **INFERRED**, from standing between whole
  * sentences, each page opening with its own speaker mark. A page that opens
  * `//Name//` is said by Name; one that opens `*:` by someone unnamed, and the
  * mark is not shown. `<HERO>` and `<LEADER>` are the Hero's name — the second
  * **INFERRED** for a party of one — and `<Cap>` capitalises what follows.
+ *
+ * A prompt stops the run, to be asked on its last page. A branch ends at
+ * `<END>`, `<CLOSE>` or the next branch's marker, since branches do not rejoin;
+ * `<JP_x>` goes back or on to `<LB_x>`, which every jump on the cartridge has.
  */
-export function renderLine(text: string, context: TextContext = DEFAULT_CONTEXT): RenderedLine {
+export function runLine(
+  tokens: readonly MarkupToken[],
+  from = 0,
+  context: TextContext = DEFAULT_CONTEXT,
+): Run {
   const pages: string[] = []
   const unhandled = new Set<string>()
   let page = ''
@@ -177,8 +221,19 @@ export function renderLine(text: string, context: TextContext = DEFAULT_CONTEXT)
       capitalise = false
     } else page += piece
   }
+  const done = (prompt?: Prompt): Run => {
+    const kept = pages.filter((p) => p.trim() !== '')
+    // A prompt is asked on the page it ends, even one with nothing before it.
+    if (prompt || page.trim() !== '') kept.push(page)
+    return { pages: kept.map(speakerOf), unhandled: [...unhandled], prompt }
+  }
 
-  for (const token of parseMarkup(text)) {
+  // A jump that never reaches a prompt would go round for ever; no line needs
+  // anything like this many steps.
+  let steps = 0
+  for (let at = from; at < tokens.length; at++) {
+    if (++steps > tokens.length * 8) break
+    const token = tokens[at] as MarkupToken
     if (token.kind === 'text') {
       put(token.text)
       continue
@@ -187,7 +242,8 @@ export function renderLine(text: string, context: TextContext = DEFAULT_CONTEXT)
       if (visible()) page += '\n'
       continue
     }
-    const condition = /^(IF|ELSE|ENDIF)_(.+)$/.exec(token.name)
+    const { name } = token
+    const condition = /^(IF|ELSE|ENDIF)_(.+)$/.exec(name)
     if (condition) {
       if (condition[1] === 'IF') shown.push(context.conditions[condition[2] as string] ?? true)
       else if (condition[1] === 'ELSE') shown[shown.length - 1] = !shown[shown.length - 1]
@@ -195,25 +251,52 @@ export function renderLine(text: string, context: TextContext = DEFAULT_CONTEXT)
       continue
     }
     if (!visible()) continue
-    if (token.name === 'PAGE') {
+    const answers = PROMPTS[name]
+    if (answers) return done({ kind: name, answers, at })
+    if (MARKERS.has(name) || name === 'END' || name === 'CLOSE') return done()
+    if (name.startsWith('JP_')) {
+      const label = tokens.findIndex((t) => t.kind === 'tag' && t.name === `LB_${name.slice(3)}`)
+      if (label >= 0) at = label
+      else unhandled.add(name)
+      continue
+    }
+    if (name.startsWith('LB_')) continue
+    if (name === 'PAGE') {
       pages.push(page)
       page = ''
-    } else if (token.name === 'Cap') {
+    } else if (name === 'Cap') {
       capitalise = true
-    } else if (token.name === 'HERO' || token.name === 'LEADER') {
+    } else if (name === 'HERO' || name === 'LEADER') {
       put(context.heroName)
     } else {
-      const glyph = GLYPHS[token.name] ?? accented(token.name)
-      if (glyph === undefined) unhandled.add(token.name)
+      const glyph = GLYPHS[name] ?? accented(name)
+      if (glyph === undefined) unhandled.add(name)
       else put(glyph)
     }
   }
-  pages.push(page)
+  return done()
+}
 
-  return {
-    pages: pages.filter((p) => p.trim() !== '').map(speakerOf),
-    unhandled: [...unhandled],
+/**
+ * Where an answer's branch starts: just after the first marker for it after the
+ * prompt. Undefined when the line has none, and what follows is a script's.
+ */
+export function branchOf(
+  tokens: readonly MarkupToken[],
+  prompt: Prompt,
+  answer: Answer,
+): number | undefined {
+  for (let at = prompt.at + 1; at < tokens.length; at++) {
+    const token = tokens[at]
+    if (token?.kind === 'tag' && token.name === answer.marker) return at + 1
   }
+  return undefined
+}
+
+/** How a line reads on screen, straight through to its first prompt — see `runLine`. */
+export function renderLine(text: string, context: TextContext = DEFAULT_CONTEXT): RenderedLine {
+  const { pages, unhandled } = runLine(parseMarkup(text), 0, context)
+  return { pages, unhandled }
 }
 
 /** A conversation under way: who, what is being read out, and how far through it. */
@@ -224,18 +307,40 @@ export interface Conversation {
   readonly texts: readonly (string | undefined)[]
   /** One note per text, for the status line: a line's tag and numbers, or a message's number. */
   readonly notes: readonly string[]
+  /** Which text, and its markup. */
   readonly line: number
+  readonly tokens: readonly MarkupToken[]
+  /** What the text has run to since it started, or since its last answer. */
+  readonly run: Run
   readonly page: number
-  readonly rendered: RenderedLine
+  /** Which answer is chosen, while a prompt is being asked. */
+  readonly choice: number
+  /** How the conversation got here, for the status line: the answer just given. */
+  readonly aside: string | undefined
 }
 
 type Script = Pick<Conversation, 'who' | 'source' | 'texts' | 'notes'>
 
+const scriptOf = ({ who, source, texts, notes }: Conversation): Script => ({
+  who,
+  source,
+  texts,
+  notes,
+})
+
 /** The first page of the first text, at or after `line`, that has anything to show. */
-function fromLine(script: Script, line: number, context: TextContext): Conversation | undefined {
+function fromLine(
+  script: Script,
+  line: number,
+  context: TextContext,
+  aside?: string,
+): Conversation | undefined {
   for (let at = line; at < script.texts.length; at++) {
-    const rendered = renderLine(script.texts[at] ?? '', context)
-    if (rendered.pages.length > 0) return { ...script, line: at, page: 0, rendered }
+    const tokens = parseMarkup(script.texts[at] ?? '')
+    const run = runLine(tokens, 0, context)
+    if (run.pages.length > 0) {
+      return { ...script, line: at, tokens, run, page: 0, choice: 0, aside }
+    }
   }
   return undefined
 }
@@ -251,16 +356,47 @@ export function startConversation(
   return fromLine({ who, source, texts, notes }, 0, context)
 }
 
-/** The next page, or the next text's first, or undefined when there is no more. */
+/** The prompt being asked, when the conversation is on the page that asks it. */
+export function promptOf(conversation: Conversation): Prompt | undefined {
+  const { run, page } = conversation
+  return run.prompt && page === run.pages.length - 1 ? run.prompt : undefined
+}
+
+/** Choose another of the prompt's answers, round and round. */
+export function moveChoice(conversation: Conversation, by: number): Conversation {
+  const prompt = promptOf(conversation)
+  if (!prompt) return conversation
+  const count = prompt.answers.length
+  return { ...conversation, choice: (((conversation.choice + by) % count) + count) % count }
+}
+
+/**
+ * Go on: the next page; on a prompt, the chosen answer's branch; at the end of
+ * a text, the next text; and undefined when there is no more.
+ *
+ * An answer the line has no branch for moves on to the next text, and says
+ * so: what follows it is a script's, and scripts are not run yet.
+ */
 export function nextPage(
   conversation: Conversation,
   context: TextContext = DEFAULT_CONTEXT,
 ): Conversation | undefined {
-  if (conversation.page + 1 < conversation.rendered.pages.length) {
-    return { ...conversation, page: conversation.page + 1 }
+  if (conversation.page + 1 < conversation.run.pages.length) {
+    return { ...conversation, page: conversation.page + 1, aside: undefined }
   }
-  const { who, source, texts, notes } = conversation
-  return fromLine({ who, source, texts, notes }, conversation.line + 1, context)
+  const prompt = conversation.run.prompt
+  if (!prompt) return fromLine(scriptOf(conversation), conversation.line + 1, context)
+  const chosen = (prompt.answers[conversation.choice] ?? prompt.answers[0]) as Answer
+  const from = branchOf(conversation.tokens, prompt, chosen)
+  const run = from === undefined ? undefined : runLine(conversation.tokens, from, context)
+  if (run === undefined || run.pages.length === 0) {
+    const why =
+      from === undefined
+        ? `answered ${chosen.label} — the line has no branch for it; what follows is a script's`
+        : `answered ${chosen.label}`
+    return fromLine(scriptOf(conversation), conversation.line + 1, context, why)
+  }
+  return { ...conversation, run, page: 0, choice: 0, aside: `answered ${chosen.label}` }
 }
 
 /** A talk line's tag and numbers, for the status line. */

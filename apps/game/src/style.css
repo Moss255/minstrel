@@ -87,6 +87,28 @@ main {
   letter-spacing: 0.04em;
 }
 
+/* A prompt's answers, under the question: the one chosen marked and bright. */
+#talk .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 1.6em;
+  margin-top: 0.6em;
+  color: var(--dim);
+}
+
+#talk .choices > div::before {
+  content: "\25B6\00A0";
+  visibility: hidden;
+}
+
+#talk .choices > .chosen {
+  color: var(--ink);
+}
+
+#talk .choices > .chosen::before {
+  visibility: visible;
+}
+
 /*
  * Elements hidden from script set `display` below, and an author rule beats the
  * user-agent stylesheet's `[hidden] { display: none }` however specific that

@@ -39,10 +39,12 @@ import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED }
 import {
   type Conversation,
   letterForStage,
+  moveChoice,
   nextPage,
   noteOf,
   OPENING_STAGE,
   pickLine,
+  promptOf,
   sameStage,
   stageOrder,
   startConversation,
@@ -921,8 +923,8 @@ function showTalk(): void {
     closeTalk()
     return
   }
-  const { who, source, texts, notes, line, page, rendered } = talking
-  const shown = rendered.pages[page]
+  const { who, source, texts, notes, line, page, run, choice, aside } = talking
+  const shown = run.pages[page]
   talkEl.replaceChildren()
   if (shown?.speaker) {
     const name = document.createElement('div')
@@ -936,9 +938,10 @@ function showTalk(): void {
   talkEl.hidden = false
   const which = texts.length > 1 ? `${line + 1} of ${texts.length}, ` : ''
   status(
-    `${who.name} #${who.id} · ${source} · ${which}${notes[line] ?? ''} · page ${page + 1} of ${rendered.pages.length}` +
-      (rendered.unhandled.length > 0 ? ` · not shown: <${rendered.unhandled.join('> <')}>` : '') +
-      ' · f next, Esc close',
+    `${who.name} #${who.id} · ${source} · ${which}${notes[line] ?? ''} · page ${page + 1} of ${run.pages.length}` +
+      (aside ? ` · ${aside}` : '') +
+      (run.unhandled.length > 0 ? ` · not shown: <${run.unhandled.join('> <')}>` : '') +
+      (asking ? ' · ↑/↓ choose, f answer, Esc close' : ' · f next, Esc close'),
   )
 }
 
@@ -993,6 +996,19 @@ function moveRoom(by: number): void {
   status(line)
   console.log(line)
 }
+  // A prompt is asked on the last page of a run, with its answers under it.
+  const asking = promptOf(talking)
+  if (asking) {
+    const list = document.createElement('div')
+    list.className = 'choices'
+    for (const [index, answer] of asking.answers.entries()) {
+      const item = document.createElement('div')
+      item.textContent = answer.label
+      if (index === choice) item.className = 'chosen'
+      list.append(item)
+    }
+    talkEl.append(list)
+  }
 
 /**
  * What is currently being done to this map, said out loud.
@@ -1095,6 +1111,19 @@ addEventListener('keydown', (event) => {
       // and the character small?
       g: () => moveWorld(-step),
       h: () => moveWorld(step),
+  // While a prompt waits for an answer the arrows choose, before anything else
+  // that uses them; f or Enter answers, as it goes on to the next page.
+  if (talking && promptOf(talking) && key.startsWith('arrow')) {
+    talking = moveChoice(talking, key === 'arrowup' || key === 'arrowleft' ? -1 : 1)
+    showTalk()
+    event.preventDefault()
+    return
+  }
+  if (key === 'enter' && talking) {
+    talk()
+    event.preventDefault()
+    return
+  }
       // And the character alone, which asks the same question the other way up.
       j: () => movePerson(-step),
       i: () => movePerson(step),

@@ -56,6 +56,16 @@ characters have something chosen for them. What is left: paired labels
 (192/193 …) that nothing here chooses between — story flags, most likely — and
 tag 2's errand lines and the counters' tags 4 and 5, which talk does not use.
 
+**Prompts work.** A line that asks `<YESNO>` or `<UKEYAME>` shows its answers
+under the question — the arrows choose, `f` or `Enter` answers — and the branch
+for the answer runs, jumps and all, so a "no" that asks again does. An answer
+with no branch of its own ends the line and says so: what follows is a
+script's. In the village none does — 236 prompts on 208 of its 1,005 lines,
+and all 472 answers have their branch in the line; a cartridge test answers
+every one both ways and checks each runs to an end. The grammar and its measures are in `game-formats/FORMAT.md`,
+"Prompts". The other mechanics still to do, before the scripted sequences:
+chests, examine and story flags.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

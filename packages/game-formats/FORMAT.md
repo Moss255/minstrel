@@ -1632,6 +1632,31 @@ are **not established**: `<ADD>` (1,303), `<6>`, `<9>`, `<-->`,
 by someone; what the game does with it is not established. A named speaker is
 written `//Name//` instead.
 
+## Prompts — `<YESNO>` and `<UKEYAME>`
+
+A small branching language inside the text, the same in all five languages and
+almost all of it in what characters say: 6,651 prompts in the English talk
+files, against 57 in events.
+
+- `<YESNO>` offers two answers, whose branches open `<YES>` and `<NO>`.
+  `<UKEYAME>` offers two more, `<UKE>` and `<YAME>` — **accept and decline**,
+  INFERRED from the Japanese and from where it stands: at quest offers, where
+  `UKEYAME YAME END UKE CLOSE` is the commonest shape in the talk files, 2,087
+  times.
+- A branch runs to `<END>` (5,449) or `<CLOSE>` (4,591), to another branch's
+  marker (675), into a further prompt (583), to a jump (383) or to the end of
+  the message (241). **Branches do not rejoin**: 16 messages have anything after
+  an `<END>` but a marker, a label or `<CLOSE>`.
+- `<LB_x>` is a label and `<JP_x>` a jump to it: **all 1,915 jumps** find their
+  label in the same message, 1,075 of them backwards — which is how answering no
+  can ask again.
+- At most two prompts share a message. Taking an answer's branch as the first
+  marker for it after the prompt lands past another prompt on 65 of 13,302
+  answers — mostly a quest offer asked twice in a row, or one inside a yes/no
+  branch, where the markers differ anyway.
+- 1,380 of the talk files' answers, and 110 of the events' 114, have no branch at
+  all: what follows is the script's.
+
 ---
 
 # Event scripts — `.stb`, magic `SB2`

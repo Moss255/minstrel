@@ -1,14 +1,18 @@
 import { readFileSync } from 'node:fs'
-import type { TalkLine, Trigger } from '@minstrel/game-formats'
+import { parseMarkup, type TalkLine, type Trigger } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import {
+  branchOf,
   DEFAULT_CONTEXT,
   letterForStage,
+  moveChoice,
   nextPage,
   OPENING_STAGE,
   pickLine,
+  promptOf,
   renderLine,
+  runLine,
   startConversation,
   type Talker,
   talkTarget,
@@ -81,9 +85,9 @@ describe('renderLine', () => {
   })
 
   it('leaves out what it does not know, and says so', () => {
-    const line = renderLine('*: Will you come?<YESNO>')
+    const line = renderLine('*: Will you come?<SHAKE>')
     expect(line.pages[0]?.text).toBe('Will you come?')
-    expect(line.unhandled).toEqual(['YESNO'])
+    expect(line.unhandled).toEqual(['SHAKE'])
   })
 
   it('splits pages, and keeps line breaks within a page', () => {
@@ -111,20 +115,72 @@ describe('renderLine', () => {
 
 describe('a conversation', () => {
   const who = someone(3, 0, 0.1)
-  const texts = ['*: First.<PAGE>*: Second.', undefined, '*: Third.']
 
-  it('goes page by page, skips a text with nothing in it, and ends', () => {
+  /** Read texts out to the end, answering each prompt with the next of `answers` — 0 the first. */
+  const readOut = (texts: (string | undefined)[], answers: number[] = []) => {
+    const queue = [...answers]
     let at = startConversation(who, 'chapter B0', texts)
     const seen: string[] = []
-    while (at) {
-      seen.push(at.rendered.pages[at.page]?.text ?? '')
+    for (let guard = 0; at && guard < 50; guard++) {
+      seen.push(at.run.pages[at.page]?.text ?? '')
+      const prompt = promptOf(at)
+      if (prompt) {
+        const pick = queue.shift() ?? 0
+        seen.push(`[${prompt.answers[pick]?.label}]`)
+        at = moveChoice(at, pick)
+      }
       at = nextPage(at)
     }
-    expect(seen).toEqual(['First.', 'Second.', 'Third.'])
+    return seen
+  }
+
+  it('goes page by page, skips a text with nothing in it, and ends', () => {
+    expect(readOut(['*: First.<PAGE>*: Second.', undefined, '*: Third.'])).toEqual([
+      'First.',
+      'Second.',
+      'Third.',
+    ])
   })
 
   it('does not start with someone who has nothing to say', () => {
     expect(startConversation(who, 'chapter B0', [undefined])).toBeUndefined()
+  })
+
+  it('asks yes or no, and says the branch for the answer', () => {
+    const text = '*: Coming along?<YESNO><YES>*: Good.<END><NO>*: A pity.<END>'
+    expect(readOut([text], [0])).toEqual(['Coming along?', '[Yes]', 'Good.'])
+    expect(readOut([text], [1])).toEqual(['Coming along?', '[No]', 'A pity.'])
+  })
+
+  it('offers to accept or decline, with the branches in either order', () => {
+    const text = '*: Will you take it on?<UKEYAME><YAME>*: Another time.<END><UKE>*: Thanks!<CLOSE>'
+    expect(readOut([text], [0])).toEqual(['Will you take it on?', '[Accept]', 'Thanks!'])
+    expect(readOut([text], [1])).toEqual(['Will you take it on?', '[Decline]', 'Another time.'])
+  })
+
+  it('asks again when a branch jumps back', () => {
+    const text = '<LB_A>*: Sure?<YESNO><NO><JP_A><YES>*: Right.<END>'
+    expect(readOut([text], [1, 0])).toEqual(['Sure?', '[No]', 'Sure?', '[Yes]', 'Right.'])
+  })
+
+  it('asks a prompt inside a branch, and stops a branch at the next one', () => {
+    const nested =
+      '*: A?<YESNO><NO>*: Not A.<END><YES>*: B?<UKEYAME><YAME>*: Not B.<END><UKE>*: B!<CLOSE>'
+    expect(readOut([nested], [0, 0])).toEqual(['A?', '[Yes]', 'B?', '[Accept]', 'B!'])
+    expect(readOut(['*: Q?<YESNO><YES>*: y.<NO>*: n.'], [0])).toEqual(['Q?', '[Yes]', 'y.'])
+  })
+
+  it('moves on, and says why, when the line has no branch for the answer', () => {
+    let at = startConversation(who, 'chapter B0', ['*: Ready?<YESNO><END>', '*: Off we go.'])
+    at = at && nextPage(at)
+    expect(at?.run.pages[0]?.text).toBe('Off we go.')
+    expect(at?.aside).toContain('no branch')
+  })
+
+  it('chooses round and round', () => {
+    const at = startConversation(who, 'chapter B0', ['*: Q?<YESNO>'])
+    expect(at && moveChoice(at, -1).choice).toBe(1)
+    expect(at && moveChoice(at, 2).choice).toBe(0)
   })
 })
 
@@ -311,5 +367,36 @@ describe.skipIf(!romPath)('talk on a real cartridge', { timeout: 60_000 }, () =>
     }
     expect(lines).toBeGreaterThan(5)
     expect(events).toBeGreaterThan(0)
+  })
+
+  it("runs every prompt in the village's talk to an end, whichever way it is answered", () => {
+    const village = load(rom, { map: 'M01' })
+    let prompts = 0
+    let branches = 0
+    /** Every path through a line from one point, answering every prompt both ways. */
+    const explore = (tokens: ReturnType<typeof parseMarkup>, from: number, depth: number) => {
+      expect(depth, 'prompts nested deeper than the cartridge has them').toBeLessThan(6)
+      const run = runLine(tokens, from)
+      if (!run.prompt) return
+      prompts++
+      for (const answer of run.prompt.answers) {
+        const next = branchOf(tokens, run.prompt, answer)
+        if (next === undefined) continue
+        branches++
+        // A jump back asks the same prompt again; that path is already walked.
+        const again = runLine(tokens, next).prompt
+        if (again && again.at <= run.prompt.at) continue
+        explore(tokens, next, depth + 1)
+      }
+    }
+    for (const letter of village.letters) {
+      for (const member of [...village.cast.members, ...village.cast.sprites2d]) {
+        for (const line of village.linesOf(member.placement.id, letter)) {
+          explore(parseMarkup(line.text ?? ''), 0, 0)
+        }
+      }
+    }
+    expect(prompts).toBeGreaterThan(10)
+    expect(branches).toBeGreaterThan(10)
   })
 })
