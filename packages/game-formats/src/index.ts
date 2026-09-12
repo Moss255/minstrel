@@ -22,6 +22,7 @@ export {
   isBitmapFont,
   readBitmapFont,
 } from './font.ts'
+export { type ItemName, readItemNames } from './items.ts'
 export { isMapLinks, type MapLinks, readMapLinks } from './maplinks.ts'
 export {
   isMapList,
@@ -74,6 +75,11 @@ export {
 export { readTalk, type TalkLine } from './talk.ts'
 export { type MapTransition, mapDoorways, readMapTransitions } from './transitions.ts'
 export {
+  RANDOM_GOLD,
+  RANDOM_ITEM,
+  RANDOM_TAG,
+  type RandomTreasure,
+  readRandomTreasure,
   readTreasure,
   TREASURE_TAG,
   TREASURE_TAG_FIRST,

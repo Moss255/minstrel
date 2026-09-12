@@ -68,8 +68,14 @@ export interface Cast {
   readonly sprites2d: readonly CastSprite[]
   /** Placed sprite characters whose sheet would not read. */
   readonly sprites: number
-  /** Placed characters whose `kind` is neither, and unnamed records. */
+  /** Placed characters whose `kind` is none of these, and unnamed records. */
   readonly unclassified: number
+  /**
+   * Things to examine: records of kind 1, placed but never drawn — see
+   * `NPC_KIND.SPOT`. They are talked to like anyone else, and what their talk
+   * files say is what examining them says.
+   */
+  readonly spots: readonly { readonly placement: NpcPlacement }[]
   /** Named `kind` 2 characters whose archive or model would not read. */
   readonly missing: readonly string[]
   /** Characters the map has no ground for at their own height. See `standsHere`. */
@@ -136,7 +142,12 @@ export function cast(
     return ground !== undefined && Math.abs(placement.y - ground) <= characterHeight / 2
   }
 
+  const spots: { placement: NpcPlacement }[] = []
   for (const { entry, placement } of placed) {
+    if (entry.kind === NPC_KIND.SPOT) {
+      spots.push({ placement })
+      continue
+    }
     if (entry.name === undefined) {
       unclassified++
       continue
@@ -179,7 +190,7 @@ export function cast(
       placement,
     })
   }
-  return { members: out, sprites2d: drawn2d, sprites, unclassified, missing, elsewhere }
+  return { members: out, sprites2d: drawn2d, sprites, unclassified, spots, missing, elsewhere }
 }
 
 /** A character's model and idle, out of the `.chr` archive named for it. */

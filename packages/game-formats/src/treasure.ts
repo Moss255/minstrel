@@ -76,6 +76,56 @@ export interface TreasureFile {
   readonly treasures: readonly Treasure[]
 }
 
+/** The records of a random-treasure table: one draw each. */
+export const RANDOM_TAG = 0x69
+/** What a random-treasure draw gives: gold, an item, or a third kind not established. */
+export const RANDOM_GOLD = 1
+export const RANDOM_ITEM = 2
+
+/**
+ * One row of a random-treasure table — `randTBox`, `randTD` and `randTTT` in
+ * the treasure archive: a rank, what the row gives, and its weight among the
+ * rank's rows. Packed into one word:
+ *
+ * | bits | meaning |
+ * |---|---|
+ * | 26–31 | rank |
+ * | 23–25 | kind: 1 gold, 2 an item, 3 not established |
+ * | 7–22 | the gold amount, or the item's id |
+ * | 0–6 | weight |
+ *
+ * Established on the whole cartridge: every one of the 288 kind-2 rows names
+ * an item, and the weights of each rank of `randTBox` and `randTD` come to 100.
+ * `randTTT`'s come to 20 to 50 — INFERRED, the rest is the chance of nothing.
+ */
+export interface RandomTreasure {
+  readonly rank: number
+  readonly kind: number
+  readonly value: number
+  readonly weight: number
+}
+
+/** Parse a random-treasure table. */
+export function readRandomTreasure(bytes: Uint8Array): RandomTreasure[] {
+  return readDataTable(bytes)
+    .withTag(RANDOM_TAG)
+    .map((record) => {
+      if (record.values.length !== 1 || record.kinds[0] !== 1) {
+        throw new GameFormatError(
+          `random-treasure row at 0x${record.offset.toString(16)} is not one integer`,
+          record.offset,
+        )
+      }
+      const word = record.values[0] as number
+      return {
+        rank: word >>> 26,
+        kind: (word >>> 23) & 7,
+        value: (word >>> 7) & 0xffff,
+        weight: word & 0x7f,
+      }
+    })
+}
+
 /** A value by its type bits: 2 a float, 1 a signed integer. Anything else where a number belongs is an error. */
 function numberAt(record: TableRecord, i: number): number {
   const kind = record.kinds[i]

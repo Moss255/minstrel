@@ -108,9 +108,18 @@ the cabinets use them yet; characters' will matter when events drive the cast.
   floats. Positions are in the files' own units and stand on the floor at
   `WORLD_SCALE`.
 
-**Behaviour** (`apps/game/src/treasure.ts`): each placed treasure is marked by a
-gold cube, grey once opened — **the marker is ours**; `f` facing one opens it and
-the box says which treasure it was and the raw value its contents must be in.
+**What is inside** (`findInside`): a chest of kind `0x8` or `0x9` names its
+item by id; kind `0x4` holds gold; pots, barrels and cabinets (`0x10`, `0x20`,
+`0x30`) and kind `0x40` give a rank to draw at from a random table — `randTTT`
+and `randTBox`, INFERRED — weighted, with the chance of nothing where the
+weights come to less than 100. The game's dice are not reproduced: a draw uses
+a stand-in roll fixed by the treasure's number, and the status line says the
+rank, the roll and the weights. Item names are read from
+`/data/prm/itemname.gp2`.
+
+**Behaviour** (`apps/game/src/treasure.ts`): each placed treasure that is not a
+chest is marked by a gold cube, grey once opened — **the marker is ours**; `f`
+facing one opens it and the box says what was inside.
 
 **Chests** (`apps/game/src/chests.ts`): the model is `T00GDS01`–`04` in
 `/data/bin/icon.nsarc`, the archive of things the engine draws in the world by
@@ -124,6 +133,18 @@ found nothing, and the models were found among the engine's own.
 
 **Not found** (set aside on 12 September):
 
-- how `unknown_0` names an item. The item names are read
-  (`/data/prm/itemname.gp2`), but not how a treasure's value maps onto them;
-- which placed kind is a chest, a pot or a barrel.
+- which of kinds `0x10` and `0x20` is a pot and which a barrel, and drawing
+  them: their sprites, `taru` and `tsubo`, are in the icon archive, and only
+  the first of each three reads;
+- what a random table's kind-3 rows give.
+
+---
+
+## Things to examine
+
+A cast record of kind 1 has no name and no model, and is placed like any
+character; what its talk file says is what examining a thing says — the
+village's three are a bush with something buried under it and a statue's
+inscription, outside, and one in map `1106` that says nothing in chapter B.
+INFERRED from those. The game keeps them as the cast's `spots`, and `f` talks to
+them like anyone else, with no marker.

@@ -76,6 +76,7 @@ import {
   talkTarget,
 } from './talk.ts'
 import {
+  findInside,
   nearestTreasure,
   TREASURE_MARKER,
   treasureKey,
@@ -1040,12 +1041,13 @@ function openTreasureAhead(): boolean {
   }
   const key = treasureKey(loaded.code, slot, treasure)
   const already = openedTreasure.has(key)
+  const found = findInside(treasure, loaded.randoms, loaded.itemNames)
   openedTreasure.add(key)
   talking = startConversation(
     { ...target, id: treasure.index ?? target.id },
     `${cabinet ? `${cabinet.stem}, ` : ''}kind 0x${treasure.kind.toString(16)} in ${loaded.code}`,
-    [treasureText(treasure, already)],
-    [already ? 'already open' : 'opened'],
+    [treasureText(treasure, already, found.text)],
+    [already ? 'already open' : found.note],
   )
   refreshTreasures()
   showTalk()
@@ -1067,12 +1069,21 @@ function talk(everyLine = false): void {
     showTalk()
     return
   }
-  const cast: Talker[] = [...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => ({
-    id: member.placement.id,
-    name: member.name,
-    x: member.placement.x,
-    z: member.placement.z,
-  }))
+  const cast: Talker[] = [
+    ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => ({
+      id: member.placement.id,
+      name: member.name,
+      x: member.placement.x,
+      z: member.placement.z,
+    })),
+    // Something to examine is talked to like anyone else — see `Cast.spots`.
+    ...loaded.cast.spots.map(({ placement }) => ({
+      id: placement.id,
+      name: 'something to examine',
+      x: placement.x,
+      z: placement.z,
+    })),
+  ]
   const who = talkTarget(
     { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing },
     cast,

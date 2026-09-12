@@ -47,6 +47,12 @@ const UNSET = 0xffffffff
 export const NPC_KIND = {
   /** Drawn as a 2D sprite from `/data/ani/<name>.spr`. */
   SPRITE: 0,
+  /**
+   * Not drawn at all: something to examine — INFERRED. The village's three
+   * are unnamed, placed, and what their talk files say is what examining a
+   * thing says: a bush with something buried under it, a statue's inscription.
+   */
+  SPOT: 1,
   /** Drawn as a 3D model from `/data/chara_sub/<name>.chr`. */
   MODEL: 2,
 } as const
@@ -55,7 +61,7 @@ export const NPC_KIND = {
 export interface NpcEntry {
   /** Joins this entry to its placement. Not a position in the list. */
   readonly id: number
-  /** See {@link NPC_KIND}. Values other than 0 and 2 are not established. */
+  /** See {@link NPC_KIND}. 0 and 2 are established, 1 INFERRED; any other value is not. */
   readonly kind: number
   /** The character's name, absent on records that carry no string offset. */
   readonly name: string | undefined

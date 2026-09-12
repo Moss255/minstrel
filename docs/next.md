@@ -147,11 +147,16 @@ play. The second is not done. Set aside to move on to M4:
 - **Story flags.** Talk's paired labels (192/193 …) and the scripts' game-wide
   variables (scope 64) are not read, so whatever depends on them is guessed or
   missing.
-- **Examine.** Cabinets open; bookshelves, search spots, pots and barrels do
-  not. Pots and barrels (kinds `0x10` and `0x20`, INFERRED) are still gold
-  cubes; their sprites, `taru` and `tsubo`, are in the icon archive, unread.
-- **What is in the treasure.** A treasure's first value is not decoded into an
-  item, though the item names are read.
+- **Examine — done, 12 September.** Things to examine are cast records of
+  kind 1, placed and never drawn, whose talk is what examining says — the
+  village's bush and statue among them; `f` talks to them. Cabinets open. Pots
+  and barrels open but are still gold cubes: their sprites, `taru` and
+  `tsubo`, are in the icon archive, and which kind is which is not known.
+- **What is in the treasure — done, 12 September.** Chests name their item;
+  kind `0x4` is gold; pots, barrels, cabinets and kind `0x40` draw by rank from
+  the random tables, with a stand-in for the game's dice. The item names and
+  tables are read (`game-formats/FORMAT.md`, "Items" and "Treasure"). Nothing
+  is kept yet: there is no inventory until M4.
 - **The stable and the church.** Not started; the church's save point is M4's.
 - **Where the Hero wakes.** `ev02130` puts the Hero at (1.09, 0.61, −2.73),
   0.45 above the floor — in bed, INFERRED — in `M01M07` or `M01M10`, both of

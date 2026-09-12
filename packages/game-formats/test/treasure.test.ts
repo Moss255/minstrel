@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { readTreasure } from '../src/treasure.ts'
+import { readRandomTreasure, readTreasure } from '../src/treasure.ts'
 
 /** A value and its two type bits: 0 a string offset, 1 an integer, 2 a float. */
 interface Field {
@@ -63,6 +63,35 @@ const dated = [
   { tag: 0x64, fields: [text(11)] },
 ]
 const DATES = ['1999/01/02', '990102']
+
+describe('readRandomTreasure', () => {
+  const row = (rank: number, kind: number, value: number, weight: number) =>
+    int(((rank << 26) | (kind << 23) | (value << 7) | weight) >>> 0)
+
+  it('unpacks each row: rank, kind, value and weight', () => {
+    const rows = readRandomTreasure(
+      build(
+        [
+          ...dated,
+          { tag: 0x6a, fields: [int(2)] },
+          { tag: 0x69, fields: [row(1, 2, 0x5123, 25)] },
+          { tag: 0x69, fields: [row(20, 1, 3000, 5)] },
+        ],
+        DATES,
+      ),
+    )
+    expect(rows).toEqual([
+      { rank: 1, kind: 2, value: 0x5123, weight: 25 },
+      { rank: 20, kind: 1, value: 3000, weight: 5 },
+    ])
+  })
+
+  it('refuses a row that is not one integer', () => {
+    expect(() => readRandomTreasure(build([{ tag: 0x69, fields: [int(1), int(2)] }]))).toThrow(
+      /not one integer/,
+    )
+  })
+})
 
 describe('readTreasure', () => {
   it('numbers each treasure on from the first, and reads all three shapes', () => {

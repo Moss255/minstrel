@@ -712,6 +712,25 @@ the manifest.
 
 ---
 
+# Items — `/data/prm/itemname.gp2` and `/data/prm/itemdt_*.gp2`
+
+**Names**, `itemname_<lang>.nat`: a `u16` record count (1,178 in English) and a
+`u16` that differs by language, then 16-byte records — a singular's offset, a
+plural's, a word that differs by language, and the item's id — then the strings,
+which the offsets count from. `readItemNames` reads it. Record 0 is
+`wonder helm` / `wonder helms`, id `0x2F8A`.
+
+**The id is the item's.** Every item table, `itemdt_<c>_<lang>.nat`, is a
+36-byte head and then 32-byte records, and each record opens with an id from
+the names: the tools table's first is `0x55F0`, medicinal herb, then strong
+medicine, special medicine, superior medicine, antidotal herb. Measured by
+where the names' ids fall in each file: stride 32 on 1,007 of the combined
+table's gaps and every per-category table's. The categories by their first
+records: `a` gloves, `b` body, `d` accessories, `h` helms, `l` footwear, `s`
+shields, `t` tools, `u` legwear, `w` weapons. The rest of a record is not read.
+
+---
+
 # Motion tables — `.bcfg`
 
 A tagged data table (above) beside a model, naming stretches of its animation.
@@ -1883,7 +1902,8 @@ count on all 266.
 | `0x64` | a string | 266 files | the same date as `yymmdd` |
 | `0x66` | an integer | 263 files | **the game-wide number of the file's first treasure** — below |
 | `0x67` | 3, 5 or 6 | 821 records in 263 files | one treasure |
-| `0x6A`, `0x69` | integers | the three `rand*` tables only | not read |
+| `0x6A` | an integer | the three `rand*` tables | their row count |
+| `0x69` | an integer | the three `rand*` tables | a row — see "Random treasure" |
 
 **`0x66` numbers every treasure in the game.** Taking each file's span as its
 `0x66` value up to that plus its count of `0x67` records, the 263 spans run from
@@ -1937,12 +1957,14 @@ INFERRED: a map's cabinets hold its kind-`0x30` records, paired in order; the
 game here pairs them that way. The 27 maps whose counts differ are mostly names
 this matching does not reach — `H02`'s records against pieces named `H02M00G*`,
 and `R05M01` with its 22 lettered copies.
-- **`unknown_0`**, value 0, is not established, and what the treasure holds
-  must be in it if it is in the record at all. Its high half runs on within a
-  kind: unique on all 269 of `0x10`, 179 of `0x20` and 145 of `0x30`, on 135 of
-  137 of `0x8` and 62 of 65 of `0x40`. Its low half is under 256 on 667 of the
-  821; on the other 154 its high byte is between `0x03` and `0x56`, which puts
-  it inside the range of the item names' ids (`0x2F8A`–`0x5712`, below).
+- **What is inside is value 0's low half, read by the kind.** Kinds `0x8` and
+  `0x9`: an item's id — **all 142 of their records name an item** in the item
+  names below (a mini medal, a seed of strength, linen gloves…). Kind `0x4`: 50,
+  210, 1,000, 1,500, 1,700, 2,000, 3,000, 5,000 — gold, INFERRED. Kinds `0x10`,
+  `0x20` and `0x30`: 0 to 20, and `0x40`: 1 to 5 — a rank to draw at from a
+  random table, below. Kind `0x0`: 0 on all six. The high half runs on within a
+  kind — unique on all 269 of `0x10`, 179 of `0x20` and 145 of `0x30`, on 135
+  of 137 of `0x8` and 62 of 65 of `0x40` — and is not established.
 
 **The chest model is `T00GDS01`–`04`, in `/data/bin/icon.nsarc`** — the
 archive of things the engine draws in the world by itself: speech bubbles,
@@ -1979,7 +2001,27 @@ they are read: a header word whose low half is the record count (1,178 in
 English), then 16-byte records — two offsets, a word that differs by language,
 and an id — then strings. An offset counts from the end of the records, and
 the two are singular and plural: record 0 is `wonder helm` and `wonder helms`.
-How a treasure's value comes to name an item is not established.
+A chest's value names its item by that id. See "Items" for the tables.
+
+**Random treasure** — `randTBox`, `randTD` and `randTTT` beside the maps. Each
+`0x69` row is one word:
+
+| bits | meaning |
+|---|---|
+| 26–31 | rank |
+| 23–25 | what it gives: 1 gold, 2 an item, 3 not established (38 to 40) |
+| 7–22 | the gold amount, or the item's id |
+| 0–6 | weight among the rank's rows |
+
+Read off the whole cartridge: taking bits 7–22 as an item id lands on one for
+61 of `randTBox`'s 68 rows, 147 of `randTD`'s 162 and 80 of `randTTT`'s 98, and
+every row that does not is a gold or a kind-3 row; no other alignment comes
+close. `randTBox` has ranks 1 to 5, `randTD` 1 to 10, each rank's weights coming
+to 100; `randTTT` has 1 to 20, its weights coming to 20 to 50. INFERRED: kind
+`0x40` draws from `randTBox` — its values are 1 to 5 — and pots, barrels and
+cabinets from `randTTT`, the shortfall below 100 being their chance of nothing.
+`randTD` is no village treasure's; its name and ten ranks suggest the
+treasure-map grottoes. The game's own dice are not reproduced.
 
 ---
 

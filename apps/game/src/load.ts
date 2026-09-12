@@ -23,12 +23,15 @@ import {
   type NpcPlacement,
   type NpcState,
   placeNpcs,
+  type RandomTreasure,
   readEventMessages,
+  readItemNames,
   readMapList,
   readMapManifest,
   readNpcList,
   readNpcPlacements,
   readNpcStates,
+  readRandomTreasure,
   readTalk,
   readTreasure,
   readTriggers,
@@ -78,6 +81,10 @@ export interface Loaded {
   readonly treasures: readonly Treasure[]
   /** The two chests' models, shut and open — see `chests.ts`. */
   readonly chests: readonly ChestLook[]
+  /** Item names in English, by id — see `readItemNames`. */
+  readonly itemNames: ReadonlyMap<number, string>
+  /** The random-treasure tables, by file — `randTBox`, `randTD`, `randTTT`. */
+  readonly randoms: ReadonlyMap<string, readonly RandomTreasure[]>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
@@ -173,6 +180,7 @@ const NOBODY: Cast = {
   sprites2d: [],
   sprites: 0,
   unclassified: 0,
+  spots: [],
   missing: [],
   elsewhere: 0,
 }
@@ -359,6 +367,40 @@ function treasuresOf(rom: Uint8Array, code: string): Treasure[] {
     }
   }
   return []
+}
+
+/** The item names in English, by id — see `readItemNames`. Empty when they will not read. */
+function itemNamesOf(rom: Uint8Array): Map<number, string> {
+  const { cat } = walkOnce(rom, ['/data/prm/itemname.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('itemname_en.nat')) continue
+      try {
+        return new Map(readItemNames(bytes).map((item) => [item.id, item.singular]))
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
+/** The random-treasure tables beside the maps' treasure, by file name. */
+function randomTreasureOf(rom: Uint8Array): Map<string, RandomTreasure[]> {
+  const { cat } = walkOnce(rom, ['/data/scenario/treasure.nsarc'])
+  const tables = new Map<string, RandomTreasure[]>()
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      const table = /(rand\w+)\.bin$/i.exec(name)?.[1]
+      if (!table) continue
+      try {
+        tables.set(table, readRandomTreasure(bytes))
+      } catch {
+        // A table that will not read draws nothing.
+      }
+    }
+  }
+  return tables
 }
 
 /** A treasure in world units: its position the file's own, times {@link WORLD_SCALE}. */
@@ -673,6 +715,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
     treasures: treasuresOf(rom, code),
+    itemNames: itemNamesOf(rom),
+    randoms: randomTreasureOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),
