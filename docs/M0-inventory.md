@@ -367,8 +367,8 @@ Three further leads, all dead ends worth recording so they are not retried:
 A third search added two facts that constrain the problem sharply, and a third
 that widens where to look.
 
-**Accents are ASCII markup, not high bytes.** French reads
-`B<'e>rang<`e>re` for Bérangère, German `Gef<:u>hl` for Gefühl, Spanish
+**Accents are ASCII markup, not high bytes.** French writes
+`caf<'e>` for café, German `Gef<:u>hl` for Gefühl, Spanish
 `<^?>no?` for ¿no?. So the Latin font needs only about 95 plain ASCII glyphs —
 at 12×12 and one bit per pixel, roughly 1.7 KB. It is small enough to hide
 almost anywhere, which is why size-based searching has not found it.

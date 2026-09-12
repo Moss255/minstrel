@@ -791,7 +791,7 @@ binary and all 35 overlays, at 1, 2 and 4 bits per pixel across thirteen cell
 geometries. Nothing.
 
 Two facts constrain it sharply. **Accents are ASCII markup, not high bytes** —
-French reads `B<'e>rang<`e>re`, German `Gef<:u>hl` — so the font needs about 95
+French writes `caf<'e>`, German `Gef<:u>hl` — so the font needs about 95
 plain ASCII glyphs, roughly 1.7 KB at 12×12 and one bit per pixel. It is small
 enough to hide almost anywhere. And **the only font resources the ARM9 names are
 the Japanese ones**. What the ARM9 does contain is the markup parser as *code* —
