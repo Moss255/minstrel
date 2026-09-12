@@ -1729,6 +1729,86 @@ of the Hero's fall as just past.
 
 ---
 
+# Treasure — `/data/scenario/treasure.nsarc/<map>.bin`
+
+One member per map that has any: 268 members, two of them empty (`M09M05`,
+`D13M02`), and three — `randTBox`, `randTD`, `randTTT` — named for no map.
+Every non-empty one is a tagged data table (above) and walks to its string
+table, and the first header word, `unknown_0x00` to the table, is the record
+count on all 266.
+
+| tag | values | seen | meaning |
+|---|---|---|---|
+| `0x65` | a string | 266 files | a date and time, 2009 — when the file was written, by the look of it |
+| `0x64` | a string | 266 files | the same date as `yymmdd` |
+| `0x66` | an integer | 263 files | **the game-wide number of the file's first treasure** — below |
+| `0x67` | 3, 5 or 6 | 821 records in 263 files | one treasure |
+| `0x6A`, `0x69` | integers | the three `rand*` tables only | not read |
+
+**`0x66` numbers every treasure in the game.** Taking each file's span as its
+`0x66` value up to that plus its count of `0x67` records, the 263 spans run from
+0 to 847 without overlapping, and the only two gaps, 13 wide each, fall where
+the two empty files sort (`M09M05` after `M09M04`, `D13M02` after `D13M01`). So
+a treasure's number is its file's first plus its place in the file. INFERRED:
+that number is what an opened treasure is remembered by — it is the one
+numbering that covers every treasure exactly once.
+
+**A number's type bits say how to read it.** A whole number is stored as an
+integer (type 1) and anything else as a float (type 2), so one position can mix
+the two: 50 coordinates are integer-typed, among them 0, −2, 2 and 7, and two
+facings are the integer 1. INFERRED, and tested: in `C04M04` six treasures with
+integer-typed x stand in a grid at −2, 0 and 2, 0.035 world units up from a
+floor at 0.022 — the same lift as the float-typed treasure in that room.
+
+A `0x67` record, by its number of values:
+
+| values | records | kind (value 1) | reads |
+|---|---|---|---|
+| 3 | 145 | all `0x30` | `unknown_0`, kind, `unknown_2` |
+| 5 | 448 | `0x10` (269), `0x20` (179) | `unknown_0`, kind, x, y, z |
+| 6 | 228 | `0x8` (137), `0x40` (65), `0x4` (15), `0x0` (6), `0x9` (5) | `unknown_0`, kind, x, y, z, facing |
+
+- **Position**, values 2–4, is in the files' own units like every other
+  position. Times `WORLD_SCALE`, each one tested stands 0.002 to 0.02 world
+  units above its floor: the 21 treasures of `M01M04`, `M01M07`, `M01M08`,
+  `C02M01` and `C01M12`, and those of `C01M14`, `C01M15`, `C04M04` and `D03M05`.
+  At a half, twice, eight or sixteen times that, none of them finds a floor
+  under it at all.
+- **Facing**, value 5, INFERRED to be radians: the 128 float-typed ones run
+  0.05 to 6.28, with 3.14 and 1.57 among the commonest, and 98 of the other 100
+  are 0. Only the six-value kinds have one — which a chest would need and a pot
+  would not, also INFERRED.
+- **Kind**, value 1: which kind is a chest, a pot, a barrel or a drawer is not
+  established. `0x30`, the three-value kind, is the one without a position.
+- **`unknown_2`**, value 2 of a three-value record, runs on across an area's
+  maps rather than restarting in each — `M03M05` 93, `M03M08` 94 and 95,
+  `M03M09` 98, `M03M10` 100 and 101, `M03M11` 103 — so it indexes something
+  outside the map: those maps have 5 to 10 pieces, and no trigger of theirs
+  carries a position. Not established.
+- **`unknown_0`**, value 0, is not established, and what the treasure holds
+  must be in it if it is in the record at all. Its high half runs on within a
+  kind: unique on all 269 of `0x10`, 179 of `0x20` and 145 of `0x30`, on 135 of
+  137 of `0x8` and 62 of 65 of `0x40`. Its low half is under 256 on 667 of the
+  821; on the other 154 its high byte is between `0x03` and `0x56`, which puts
+  it inside the range of the item names' ids (`0x2F8A`–`0x5712`, below).
+
+**No chest model has been found.** No file on the cartridge is named for one,
+with every leaf walked, `.gp2` members included. `/data/chara_sub/box.chr` is a
+crate of five quads and one texture. `taru` and `tsubo` — barrel and pot — are
+2D sprites in `/data/ani` and in the menu icons, and nothing else. The rooms'
+own models carry no such object. The player's figures do carry `takara.nsbca`
+(*takara* is treasure) beside `hirou.nsbca`, which is presumably the Hero's
+opening motion; it is not used yet.
+
+**The item names**, `/data/prm/itemname.gp2/itemname_<lang>.nat`, as far as
+they are read: a header word whose low half is the record count (1,178 in
+English), then 16-byte records — two offsets, a word that differs by language,
+and an id — then strings. An offset counts from the end of the records, and
+the two are singular and plural: record 0 is `wonder helm` and `wonder helms`.
+How a treasure's value comes to name an item is not established.
+
+---
+
 # Triggers — `trigger<area>.bin`
 
 75 files, one per area: a tagged table whose records are all tag 1 — 5,805 of

@@ -66,6 +66,15 @@ every one both ways and checks each runs to an end. The grammar and its measures
 "Prompts". The other mechanics still to do, before the scripted sequences:
 chests, examine and story flags.
 
+**Chests work, without a chest.** With nobody in front, `f` opens the treasure
+in front instead. Every treasure a map's file places is marked by a gold cube,
+grey once opened — the village has eight with a position — and an opened one
+stays open across maps, by its game-wide number. What is inside is not read
+yet, so the box says which treasure it was and the value its contents must be
+in. Still to find: the chest model, which no file is named for; which kind is
+which; how that value names an item; and the village's four treasures with no
+position, which belong with examine. See `game-formats/FORMAT.md`, "Treasure".
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

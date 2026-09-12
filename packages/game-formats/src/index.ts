@@ -62,4 +62,12 @@ export {
 } from './table.ts'
 export { readTalk, type TalkLine } from './talk.ts'
 export { type MapTransition, mapDoorways, readMapTransitions } from './transitions.ts'
+export {
+  readTreasure,
+  TREASURE_TAG,
+  TREASURE_TAG_FIRST,
+  type Treasure,
+  type TreasureFile,
+  type TreasurePosition,
+} from './treasure.ts'
 export { readTriggers, type Trigger, type TriggerStage } from './triggers.ts'

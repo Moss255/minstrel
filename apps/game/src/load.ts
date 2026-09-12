@@ -30,8 +30,10 @@ import {
   readNpcPlacements,
   readNpcStates,
   readTalk,
+  readTreasure,
   readTriggers,
   type TalkLine,
+  type Treasure,
   type Trigger,
 } from '@minstrel/game-formats'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
@@ -71,6 +73,8 @@ export interface Loaded {
   readonly mapId: number | undefined
   /** The area's triggers — see `readTriggers`. */
   readonly triggers: readonly Trigger[]
+  /** The map's treasure, in world units — see `readTreasure`. Empty when it has none. */
+  readonly treasures: readonly Treasure[]
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
@@ -329,6 +333,36 @@ function triggersOf(rom: Uint8Array, area: string): Trigger[] {
     return readTriggers(leaf.bytes)
   } catch {
     return []
+  }
+}
+
+/**
+ * A map's treasure, out of `/data/scenario/treasure.nsarc/<map>.bin`, in world
+ * units. None when the map has no member there or it will not read.
+ */
+function treasuresOf(rom: Uint8Array, code: string): Treasure[] {
+  const { cat } = walkOnce(rom, ['/data/scenario/treasure.nsarc'])
+  const file = `${code.toLowerCase()}.bin`
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (name.toLowerCase().split('/').pop() !== file) continue
+      try {
+        return readTreasure(bytes).treasures.map(treasureInWorld)
+      } catch {
+        return []
+      }
+    }
+  }
+  return []
+}
+
+/** A treasure in world units: its position the file's own, times {@link WORLD_SCALE}. */
+function treasureInWorld(treasure: Treasure): Treasure {
+  const at = treasure.position
+  if (!at) return treasure
+  return {
+    ...treasure,
+    position: { x: at.x * WORLD_SCALE, y: at.y * WORLD_SCALE, z: at.z * WORLD_SCALE },
   }
 }
 
@@ -633,6 +667,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const triggers = area ? triggersOf(rom, area.code) : []
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
+    treasures: treasuresOf(rom, code),
     stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
     castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),
     letters: [...talk.keys()].sort(),

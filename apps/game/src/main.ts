@@ -51,6 +51,13 @@ import {
   type Talker,
   talkTarget,
 } from './talk.ts'
+import {
+  TREASURE_MARKER,
+  treasureKey,
+  treasurePieces,
+  treasureTargets,
+  treasureText,
+} from './treasure.ts'
 
 /**
  * Walk a village read from the player's own cartridge.
@@ -176,6 +183,13 @@ let storyStage: Stage | undefined = OPENING_STAGE
 let chapterIndex: number | undefined
 /** Who is being talked to, and how far through what they say. */
 let talking: Conversation | undefined
+/**
+ * The treasure opened this session, by `treasureKey` — its game-wide number, so
+ * it stays open whichever way the Hero comes back. Not saved yet.
+ */
+const openedTreasure = new Set<string>()
+/** The markers where the map's treasure is — see `treasure.ts`. */
+let treasureDrawn: Piece[] = []
 
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
@@ -367,6 +381,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   loaded = opened
   chapterIndex = undefined
   closeTalk()
+  refreshTreasures()
   measurements.clear()
   mapFrame = -1
   poseMap(0)
@@ -421,6 +436,7 @@ function enter(map: string, arrival?: Arrival): boolean {
       (unclassified > 0 ? `, ${unclassified} unclassified` : '') +
       (missing.length > 0 ? `, ${missing.length} unread` : '') +
       `, ${opened.doorways.length} ${opened.doorways.length === 1 ? 'doorway' : 'doorways'}` +
+      (opened.treasures.length > 0 ? `, ${opened.treasures.length} treasure` : '') +
       (entrance ? `, came in from ${entrance.from}` : '') +
       (strayed > 0 ? `, no floor under the doorway — put down ${strayed.toFixed(1)} away` : '') +
       `, ready in ${elapsed} ms` +
@@ -606,6 +622,7 @@ function frame(now = 0): void {
       ...mapPieces.filter((_, index) => !hidden.has(index)),
       ...(showCollision ? collisionDrawn : []),
       ...castPiecesNow,
+      ...treasureDrawn,
       ...loaded.cast.sprites2d.flatMap((s) =>
         spritePieces(
           s,
@@ -629,6 +646,7 @@ function frame(now = 0): void {
       ...mapPieces,
       ...(showCollision ? collisionDrawn : []),
       ...castPiecesNow,
+      ...treasureDrawn,
     ])
   }
   describe(uploaded)
@@ -846,8 +864,49 @@ function moveChapter(by: number): void {
   )
 }
 
+/** Redraw the treasure markers, after a map is entered or a treasure opened. */
+function refreshTreasures(): void {
+  if (!loaded) {
+    treasureDrawn = []
+    return
+  }
+  const { code, treasures } = loaded
+  treasureDrawn = treasurePieces(
+    treasures,
+    (treasure, slot) => openedTreasure.has(treasureKey(code, slot, treasure)),
+    toFloat(PERSON.height) * worldScale * TREASURE_MARKER,
+  )
+}
+
 /**
- * `f`: talk to whoever the Hero is facing, or go on to the next page.
+ * Open the treasure the Hero is facing, if there is one near enough: the same
+ * reach and facing as talking. True when there was one.
+ */
+function openTreasureAhead(): boolean {
+  if (!loaded || !self) return false
+  const target = talkTarget(
+    { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing },
+    treasureTargets(loaded.treasures),
+  )
+  const treasure = target && loaded.treasures[target.id]
+  if (!target || !treasure) return false
+  const key = treasureKey(loaded.code, target.id, treasure)
+  const already = openedTreasure.has(key)
+  openedTreasure.add(key)
+  talking = startConversation(
+    { ...target, id: treasure.index ?? target.id },
+    `kind 0x${treasure.kind.toString(16)} in ${loaded.code}`,
+    [treasureText(treasure, already)],
+    [already ? 'already open' : 'opened'],
+  )
+  refreshTreasures()
+  showTalk()
+  return true
+}
+
+/**
+ * `f`: talk to whoever the Hero is facing, or go on to the next page. With
+ * nobody there, open the treasure in front instead, if there is one.
  *
  * What they say is `pickLine`'s choice for the story stage — a line of their
  * talk file, or an event's messages — and the status line says why. `Shift+F`
@@ -871,7 +930,8 @@ function talk(everyLine = false): void {
     cast,
   )
   if (!who) {
-    status('nobody near enough, and in front, to talk to')
+    if (openTreasureAhead()) return
+    status('nobody near enough, and in front, to talk to — and no treasure')
     return
   }
   const letter = chapter()
@@ -935,6 +995,19 @@ function showTalk(): void {
   const body = document.createElement('div')
   body.textContent = shown?.text ?? ''
   talkEl.append(body)
+  // A prompt is asked on the last page of a run, with its answers under it.
+  const asking = promptOf(talking)
+  if (asking) {
+    const list = document.createElement('div')
+    list.className = 'choices'
+    for (const [index, answer] of asking.answers.entries()) {
+      const item = document.createElement('div')
+      item.textContent = answer.label
+      if (index === choice) item.className = 'chosen'
+      list.append(item)
+    }
+    talkEl.append(list)
+  }
   talkEl.hidden = false
   const which = texts.length > 1 ? `${line + 1} of ${texts.length}, ` : ''
   status(
@@ -996,19 +1069,6 @@ function moveRoom(by: number): void {
   status(line)
   console.log(line)
 }
-  // A prompt is asked on the last page of a run, with its answers under it.
-  const asking = promptOf(talking)
-  if (asking) {
-    const list = document.createElement('div')
-    list.className = 'choices'
-    for (const [index, answer] of asking.answers.entries()) {
-      const item = document.createElement('div')
-      item.textContent = answer.label
-      if (index === choice) item.className = 'chosen'
-      list.append(item)
-    }
-    talkEl.append(list)
-  }
 
 /**
  * What is currently being done to this map, said out loud.
@@ -1051,6 +1111,19 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
+  // While a prompt waits for an answer the arrows choose, before anything else
+  // that uses them; f or Enter answers, as it goes on to the next page.
+  if (talking && promptOf(talking) && key.startsWith('arrow')) {
+    talking = moveChoice(talking, key === 'arrowup' || key === 'arrowleft' ? -1 : 1)
+    showTalk()
+    event.preventDefault()
+    return
+  }
+  if (key === 'enter' && talking) {
+    talk()
+    event.preventDefault()
+    return
+  }
   if (self && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
     self.held.add(key)
     event.preventDefault()
@@ -1111,19 +1184,6 @@ addEventListener('keydown', (event) => {
       // and the character small?
       g: () => moveWorld(-step),
       h: () => moveWorld(step),
-  // While a prompt waits for an answer the arrows choose, before anything else
-  // that uses them; f or Enter answers, as it goes on to the next page.
-  if (talking && promptOf(talking) && key.startsWith('arrow')) {
-    talking = moveChoice(talking, key === 'arrowup' || key === 'arrowleft' ? -1 : 1)
-    showTalk()
-    event.preventDefault()
-    return
-  }
-  if (key === 'enter' && talking) {
-    talk()
-    event.preventDefault()
-    return
-  }
       // And the character alone, which asks the same question the other way up.
       j: () => movePerson(-step),
       i: () => movePerson(step),
