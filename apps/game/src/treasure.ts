@@ -37,6 +37,21 @@ export function treasureTargets(treasures: readonly Treasure[]): Talker[] {
   return targets
 }
 
+/** The nearest treasure with a position, and how far away it is, for saying where to look. */
+export function nearestTreasure(
+  treasures: readonly Treasure[],
+  at: { readonly x: number; readonly z: number },
+): { treasure: Treasure; distance: number } | undefined {
+  let best: { treasure: Treasure; distance: number } | undefined
+  for (const treasure of treasures) {
+    const p = treasure.position
+    if (!p) continue
+    const distance = Math.hypot(p.x - at.x, p.z - at.z)
+    if (!best || distance < best.distance) best = { treasure, distance }
+  }
+  return best
+}
+
 const hex = (value: number) => `0x${value.toString(16).padStart(8, '0')}`
 
 /** What the text box says on opening a treasure, or on coming back to one already open. */

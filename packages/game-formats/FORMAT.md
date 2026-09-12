@@ -712,6 +712,29 @@ the manifest.
 
 ---
 
+# Doors — `<area>M<nn>D<x>` and `<area>A<nn>D<x>`
+
+A door is two resources in a map's descriptor: a model, `M01M00D1`, and its
+collision under the same name with `A` for `M`, `M01A00D1`. Each is a resource
+of its own with its own placement, not two files under one stem. The village
+has ten, `D1` to `DA`. Of its houses, `M01M02` and `M01M09` have one each and
+`M01M10`, Erinn's house, has two.
+
+- **Every door model in the village is one quad with a corner at its
+  origin**: four vertices, 1.52 model units tall — 0.19 world units — and the
+  rest of it running out along the ground from there. INFERRED: the origin is
+  the hinge.
+- **No door has an animation file** beside it, so however the game opens one
+  is in code. The game here turns it a quarter about that origin, away from the
+  Hero; that is a choice, not a reading.
+- **Its collision is two triangles facing the same way** on all of the
+  village's doors, and on `M01M02`'s and `M01M09`'s — a marker, which the map
+  loader leaves out, since kept it seals the doorway. **Erinn's house's two are
+  four triangles, facing both ways**: a wall from either side, which stands only
+  while the door is shut.
+
+---
+
 # The rest of a map archive — `.dat`, `.bats`, `.bcfg`, `.bpos`, `.bmed`
 
 A map archive holds more than its geometry, its collision and its two
@@ -1799,6 +1822,15 @@ crate of five quads and one texture. `taru` and `tsubo` — barrel and pot — a
 own models carry no such object. The player's figures do carry `takara.nsbca`
 (*takara* is treasure) beside `hirou.nsbca`, which is presumably the Hero's
 opening motion; it is not used yet.
+
+Nor is one named inside a model or a texture set. Of 8,207 models and the
+23,585 textures of 1,495 standalone texture files, the one texture named
+`takara` — and the one material — belong to `F99M0000`, which is not a chest:
+nine flat panels lying at height 0, `takara` a grid of 52 vertices beside a
+`num` grid the same size, with `train`, `umi` and monster names for the rest. A
+test sheet of textures, by the look of it. Pots and barrels turn up only as
+parts of a few rooms' own models (`tsubo` with a `futa`, lid, in `D04M02E4`;
+`taru` in `M08M0300`).
 
 **The item names**, `/data/prm/itemname.gp2/itemname_<lang>.nat`, as far as
 they are read: a header word whose low half is the record count (1,178 in

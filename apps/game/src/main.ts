@@ -36,6 +36,7 @@ import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
+import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type Conversation,
   letterForStage,
@@ -52,6 +53,7 @@ import {
   talkTarget,
 } from './talk.ts'
 import {
+  nearestTreasure,
   TREASURE_MARKER,
   treasureKey,
   treasurePieces,
@@ -190,14 +192,17 @@ let talking: Conversation | undefined
 const openedTreasure = new Set<string>()
 /** The markers where the map's treasure is — see `treasure.ts`. */
 let treasureDrawn: Piece[] = []
+/** The map's doors, and how far each has swung — see `swing.ts`. */
+let doors: SwingDoor[] = []
 
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
   if (!loaded) return
   const cat = loaded.catalogue
   const drawn: Piece[] = []
-  for (const piece of loaded.map.pieces) {
+  for (const [pieceIndex, piece] of loaded.map.pieces.entries()) {
     const { model, animation } = piece
+    const swung = doors.find((door) => door.piece === pieceIndex)?.angle ?? 0
     const grow = roomScale * worldScale
     const scale = piece.scale * grow
     const place = { x: piece.place.x * grow, y: piece.place.y * grow, z: piece.place.z * grow }
@@ -210,7 +215,7 @@ function poseMap(frame: number): void {
 
     model.shapes.forEach((shape, index) => {
       const geometry: Geometry = placeGeometry(
-        poseGeometry(model.geometry(shape), stacks[index] ?? model.matrices),
+        swingGeometry(poseGeometry(model.geometry(shape), stacks[index] ?? model.matrices), swung),
         place,
         // The piece's own scale, which `assembleMap` worked out: an eighth for
         // a piece instanced from the larger space, and the map's own scale for
@@ -382,6 +387,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   chapterIndex = undefined
   closeTalk()
   refreshTreasures()
+  doors = doorsOf(opened.map)
   measurements.clear()
   mapFrame = -1
   poseMap(0)
@@ -550,7 +556,11 @@ function frame(now = 0): void {
     // A map is not a still life: the village's sky drifts its clouds apart and
     // the waterfall runs, both on the map's own animations.
     const wanted = Math.floor(now / (1000 / MAP_FPS))
-    if (wanted !== mapFrame) {
+    // Doors swing on the frame's own time, and a door that moved is a map to redraw.
+    const swung =
+      self !== undefined &&
+      moveDoors(doors, { x: toFloat(self.state.x), z: toFloat(self.state.z) }, elapsedMs / 1000)
+    if (wanted !== mapFrame || swung) {
       mapFrame = wanted
       poseMap(wanted)
     }
@@ -807,7 +817,11 @@ function refit(): void {
   // The collision takes its own fit and the world scale on top of it, so the
   // two questions stay separate: does the collision match the room, and does
   // the pair match the character.
-  const meshes = fitMeshes(loaded.map.meshes, {
+  // A door's own collision stands only while the door is shut.
+  const standing = loaded.map.meshes.filter(
+    (_, index) => !doors.some((door) => door.mesh === index && !doorShut(door)),
+  )
+  const meshes = fitMeshes(standing, {
     sx: fit.sx * worldScale,
     sy: fit.sy * worldScale,
     sz: fit.sz * worldScale,
@@ -931,7 +945,16 @@ function talk(everyLine = false): void {
   )
   if (!who) {
     if (openTreasureAhead()) return
-    status('nobody near enough, and in front, to talk to — and no treasure')
+    const nearest = nearestTreasure(loaded.treasures, {
+      x: toFloat(self.state.x),
+      z: toFloat(self.state.z),
+    })
+    status(
+      'nobody near enough, and in front, to talk to, and no treasure' +
+        (nearest
+          ? ` — the nearest, #${nearest.treasure.index ?? '?'}, is ${nearest.distance.toFixed(2)} away`
+          : ' in this map'),
+    )
     return
   }
   const letter = chapter()

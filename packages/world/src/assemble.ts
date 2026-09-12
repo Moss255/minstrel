@@ -38,6 +38,8 @@ export interface Placement {
 /** One model of a map, where it goes, and the animation it drives itself with. */
 export interface MapPiece {
   readonly model: Model
+  /** The resource the piece was built from, by its stem — `M01M00D1`. */
+  readonly source?: string
   /** Where it goes, in the map's final space. */
   readonly place: Placement
   /**
@@ -197,6 +199,7 @@ export function assembleMap(
             },
             // Stored halved `shift` times — see `CollisionMesh.shift`.
             scale: WORLD_SCALE * 2 ** mesh.shift,
+            source: resource.stem,
           })
         } catch {
           missing.push(file)
@@ -213,6 +216,7 @@ export function assembleMap(
           place: { x: place.x, y: place.y, z: place.z },
           scale: WORLD_SCALE,
           animation: ownAnimation(model, file, files, members),
+          source: resource.stem,
         })
         water.push(...waterOf(model, place, WORLD_SCALE))
       } catch {

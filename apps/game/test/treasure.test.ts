@@ -4,7 +4,13 @@ import type { Treasure } from '@minstrel/game-formats'
 import { groundBelow } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
-import { treasureKey, treasurePieces, treasureTargets, treasureText } from '../src/treasure.ts'
+import {
+  nearestTreasure,
+  treasureKey,
+  treasurePieces,
+  treasureTargets,
+  treasureText,
+} from '../src/treasure.ts'
 
 function treasure(over: Partial<Treasure> = {}): Treasure {
   return {
@@ -61,6 +67,15 @@ describe('treasure', () => {
     // Twelve triangles, each both ways round.
     expect(open?.indices).toHaveLength(72)
     expect(Math.max(...(open?.indices ?? []))).toBe(7)
+  })
+
+  it('says which is nearest, ignoring treasure with no position', () => {
+    const far = treasure({ index: 1, position: { x: 3, y: 0, z: 4 } })
+    const near = treasure({ index: 2, position: { x: 0, y: 0, z: 1 } })
+    const found = nearestTreasure([treasure({ position: undefined }), far, near], { x: 0, z: 0 })
+    expect(found?.treasure).toBe(near)
+    expect(found?.distance).toBe(1)
+    expect(nearestTreasure([treasure({ position: undefined })], { x: 0, z: 0 })).toBeUndefined()
   })
 
   it('draws nothing where nothing has a position', () => {

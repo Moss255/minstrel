@@ -77,6 +77,11 @@ export interface PlacedMesh {
    * blocker the size of the building.
    */
   readonly scale?: number
+  /**
+   * The map resource it was built from, for a caller that has to tell one mesh
+   * from another — a door's, which comes and goes as the door swings.
+   */
+  readonly source?: string
 }
 
 const ZERO = { x: 0, y: 0, z: 0 }

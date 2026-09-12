@@ -66,7 +66,10 @@ every one both ways and checks each runs to an end. The grammar and its measures
 "Prompts". The other mechanics still to do, before the scripted sequences:
 chests, examine and story flags.
 
-**Chests work, without a chest.** With nobody in front, `f` opens the treasure
+**Chests work, without a chest — on hold.** Set aside on 12 September for
+script execution, with the model and the item encoding unfound; `f` with
+nothing in reach names the nearest treasure, for when it is picked up again.
+With nobody in front, `f` opens the treasure
 in front instead. Every treasure a map's file places is marked by a gold cube,
 grey once opened — the village has eight with a position — and an opened one
 stays open across maps, by its game-wide number. What is inside is not read
@@ -74,6 +77,19 @@ yet, so the box says which treasure it was and the value its contents must be
 in. Still to find: the chest model, which no file is named for; which kind is
 which; how that value names an item; and the village's four treasures with no
 position, which belong with examine. See `game-formats/FORMAT.md`, "Treasure".
+
+**Doors swing.** A door is a map piece of its own, `M01M00D1`, with its
+collision under the same name with `A` for `M`, and no animation, so
+`apps/game/src/swing.ts` turns it a quarter about its origin, away from the
+Hero, when they come within 0.25 of it, and back once they are 0.4 away. Its
+collision stands only while it is shut, which is what opens the two rooms off
+Erinn's house, `M01M10`: those are the village's only doors whose collision
+the loader keeps. The hinge at the origin is INFERRED; the swing, its speed and
+its distances are choices. A cartridge test walks through both of Erinn's doors
+open and is stopped by them shut. `game-formats/FORMAT.md`, "Doors".
+
+**`M01M12` does not load**: its archive names no model that reads. None of the
+village's doorways leads there, so it has not been in the way yet.
 
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
