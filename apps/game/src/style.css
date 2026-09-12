@@ -109,6 +109,54 @@ main {
   visibility: visible;
 }
 
+/* The main menu: a command window at the top left, a panel beside it. */
+#menu:not([hidden]) {
+  position: absolute;
+  top: 6vh;
+  left: 4vw;
+  display: flex;
+  gap: 1em;
+  align-items: flex-start;
+  max-width: min(92vw, 60rem);
+  color: var(--ink);
+  font:
+    500 clamp(15px, 2.6vh, 28px) / 1.45 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  pointer-events: none;
+}
+
+#menu .commands,
+#menu .panel {
+  padding: 0.7em 1.2em;
+  border: 0.14em solid rgb(232 230 225 / 85%);
+  border-radius: 0.5em;
+  background: rgb(8 10 18 / 88%);
+}
+
+#menu .commands > div::before {
+  content: "\25B6\00A0";
+  visibility: hidden;
+}
+
+#menu .commands > .chosen::before {
+  visibility: visible;
+}
+
+#menu .panel {
+  max-width: 32em;
+  white-space: pre-wrap;
+}
+
+#menu .panel > div + div {
+  margin-top: 0.4em;
+  color: var(--dim);
+}
+
 /*
  * Elements hidden from script set `display` below, and an author rule beats the
  * user-agent stylesheet's `[hidden] { display: none }` however specific that

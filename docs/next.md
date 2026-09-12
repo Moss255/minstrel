@@ -135,6 +135,48 @@ two chests shut and open, found among the objects the engine draws itself;
 read and what is inferred. The same archive holds `kage`, a round shadow for
 under characters, not drawn yet.
 
+### M3 — what is left
+
+M3 is done when every villager says the right thing and the opening story beats
+play. The second is not done. Set aside to move on to M4:
+
+- **The opening beats.** Event scripts run in `@minstrel/script`, but the game
+  supplies none of the engine functions yet; Erinn's morning, `ev02130`, calls
+  34 of them — the cast, the camera, messages, sound. Then triggers decide which
+  event runs when.
+- **Story flags.** Talk's paired labels (192/193 …) and the scripts' game-wide
+  variables (scope 64) are not read, so whatever depends on them is guessed or
+  missing.
+- **Examine.** Cabinets open; bookshelves, search spots, pots and barrels do
+  not. Pots and barrels (kinds `0x10` and `0x20`, INFERRED) are still gold
+  cubes; their sprites, `taru` and `tsubo`, are in the icon archive, unread.
+- **What is in the treasure.** A treasure's first value is not decoded into an
+  item, though the item names are read.
+- **The stable and the church.** Not started; the church's save point is M4's.
+- **Where the Hero wakes.** `ev02130` puts the Hero at (1.09, 0.61, −2.73),
+  0.45 above the floor — in bed, INFERRED — in `M01M07` or `M01M10`, both of
+  which have floor there.
+- **Also open:** sprite tiling (half-resolved); `M01M12` does not load; the
+  shadow under characters; a vector font, where the text box uses the
+  browser's own; and seven type errors from before this work — five in the
+  game, two in the explorer — that `pnpm typecheck` reports.
+
+---
+
+## M4 has started — the main menu
+
+`x` opens the main menu, as the plan lists it: talk, status, items, equip,
+spells (`apps/game/src/menu.ts`). The arrows or `w`/`s` choose, `f` or `Enter`
+takes, `x` or `Esc` goes back a step. Talk works; the rest say what is not read
+yet rather than show numbers nobody read — the Hero's numbers are in the
+parameter tables under `/data/prm`, and there is no inventory. The words are
+ours: the cartridge's own menu text, under `/data/menu`, is not read yet.
+
+Next for M4, in the plan's order: the Hero's numbers and the item tables
+(`/data/prm/itemdt*`, `itemname`), then the inventory and item use, equipment
+and its effect on the numbers, the shop, the inn and the church's save point,
+and saving in our own format.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

@@ -48,10 +48,20 @@ import {
 import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
+import {
+  back,
+  choose,
+  MENU_COMMANDS,
+  type MenuState,
+  moveCursor,
+  openMenu,
+  panelLines,
+} from './menu.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type Conversation,
+  DEFAULT_CONTEXT,
   letterForStage,
   moveChoice,
   nextPage,
@@ -98,6 +108,7 @@ const overlayEl = must<HTMLDivElement>('#overlay')
 const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
+const menuEl = must<HTMLDivElement>('#menu')
 
 const status = (text: string) => {
   statusEl.textContent = text
@@ -216,6 +227,8 @@ let storyStage: Stage | undefined = OPENING_STAGE
 let chapterIndex: number | undefined
 /** Who is being talked to, and how far through what they say. */
 let talking: Conversation | undefined
+/** The main menu while it is up — see `menu.ts`. */
+let menu: MenuState | undefined
 /**
  * The treasure opened this session, by `treasureKey` — its game-wide number, so
  * it stays open whichever way the Hero comes back. Not saved yet.
@@ -1123,6 +1136,40 @@ function talk(everyLine = false): void {
   showTalk()
 }
 
+/** Draw the main menu, or put it away when it is closed. */
+function showMenu(): void {
+  if (!menu) {
+    menuEl.hidden = true
+    return
+  }
+  menuEl.replaceChildren()
+  const commands = document.createElement('div')
+  commands.className = 'commands'
+  for (const [index, command] of MENU_COMMANDS.entries()) {
+    const item = document.createElement('div')
+    item.textContent = command.label
+    if (index === menu.cursor) item.className = 'chosen'
+    commands.append(item)
+  }
+  menuEl.append(commands)
+  if (menu.panel) {
+    const panel = document.createElement('div')
+    panel.className = 'panel'
+    const stage = storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined
+    for (const line of panelLines(menu.panel, {
+      hero: DEFAULT_CONTEXT.heroName,
+      map: loaded?.code,
+      stage,
+    })) {
+      const row = document.createElement('div')
+      row.textContent = line
+      panel.append(row)
+    }
+    menuEl.append(panel)
+  }
+  menuEl.hidden = false
+}
+
 /** Draw the conversation's page into the text box, or put the box away when it is over. */
 function showTalk(): void {
   if (!talking) {
@@ -1257,6 +1304,32 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
+  // The main menu: `x` opens it, and it or Esc goes back a step at a time.
+  // While it is up the Hero stands still and the movement keys choose.
+  if (menu) {
+    if (key === 'arrowup' || key === 'w') menu = moveCursor(menu, -1)
+    else if (key === 'arrowdown' || key === 's') menu = moveCursor(menu, 1)
+    else if (key === 'f' || key === 'enter') {
+      const taken = choose(menu)
+      menu = taken.state
+      if (taken.talk) {
+        showMenu()
+        talk()
+        event.preventDefault()
+        return
+      }
+    } else if (key === 'x' || key === 'escape') menu = back(menu)
+    showMenu()
+    event.preventDefault()
+    return
+  }
+  if (key === 'x' && loaded && !talking) {
+    self?.held.clear()
+    menu = openMenu()
+    showMenu()
+    event.preventDefault()
+    return
+  }
   // While a prompt waits for an answer the arrows choose, before anything else
   // that uses them; f or Enter answers, as it goes on to the next page.
   if (talking && promptOf(talking) && key.startsWith('arrow')) {
