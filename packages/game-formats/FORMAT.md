@@ -1686,13 +1686,21 @@ change between letters and the rest say the same throughout. Villager 2 has five
 versions, and read in order they move from the prologue, through the village
 chapter and its aftermath, to the end of the game.
 
-A file is a tagged data table whose records are tag 1, 2, 4 or 5 — 17,241,
-14,273, 2,149 and 1,101 of the four-value form across the cartridge — carrying
-three or four numbers and then a string offset. **The numbers are not
-established.** Within a letter the first two often read as a range of
-sub-stages — 1 to 1, 2 to 3, 4 to 4, 5 to 5, and 99 for "to the end" — which
-is the shape the cast's stage words have; the last is one of a few values, 16,
-192, 193 and so on.
+A file is a tagged data table whose records carry three or four numbers and
+then a string offset. With three numbers, tag 2 on 17,241 records, tag 1 on
+14,273, tag 4 on 2,149 and tag 5 on 1,101; with four, 1,728, 393, 344 and 135.
+What the numbers mean is read, not established:
+
+| | reading | evidence |
+|---|---|---|
+| numbers 0 and 1, on tags 1, 4 and 5 | a range of sub-stages within the letter's chapter, 99 for "to the end" | first at or before second, or second 99, on **all** 19,779 |
+| the extra third number of the four-number form | always 1 — the line for the night | 2,600 of 2,600 are 1; on tag 1, **42.5%** of these lines use night words (night, late, evening, sleep …) against **9.2%** of its three-number ones — weaker on the counters' tags, 29.8% against 12.2% on tag 4 and 9.6% against 4.9% on tag 5 |
+| the last number | a label: 16 the plain line, 192–202 alternatives, 80, 81 and 96 at counters | the triggers name these as labels — below |
+| tag 2's first number | a condition, not a range — an errand, an item | 174–198 and similar; 0 of 2,657 small-valued ones form a range |
+
+Tags 4 and 5 sit at inn and shop counters. Chapter B's own ranges run 1 to 7,
+matching the village cast's stages 2.1 to 2.7, and its sub-stage-1 lines speak
+of the Hero's fall as just past.
 
 ---
 
@@ -1712,6 +1720,26 @@ numbers in the shape of the cast's stage span, then one small number (0, 1, 11,
 | Angel Falls words with a high half of 119 whose low half is an event number | **58 of 64** — 2110, 2370, 2420, 2620 and more |
 
 So a record plausibly reads: in this map, over this span of the story, this
-character — and some go on to name an event. That is **INFERRED**; the other
-high halves are not decoded, and nothing here yet acts on them.
+character — and some go on to name an event. That is **INFERRED**, and so are
+the readings below; the other high halves are not decoded.
+
+**Some words choose what a character says.** In records that name a character,
+the argument of high half 11 is one of that character's talk labels on **707 of
+793**, against 221 for a control; high half 36 with argument 1 goes with a word
+whose high half is one of their labels and whose low half is 0, **338 of 519**
+against none. Where a record names an event instead, its text is that
+character's own talk for the sub-stage: in Angel Falls, one villager's records
+at 2.1 to 2.5 name `ev02110`, `ev02370`, `ev02420`, `ev02570` and `ev02620`, one
+for each sub-stage, and each opens with her line for it.
+
+**The slice opens at 2.1.** A record for map 1107, Erinn's house, over 2.1 alone,
+names her and `2130` — the event in which she greets the Hero in the morning —
+and names map 1110, the floor above.
+
+The game uses this to pick a line — `pickLine` in `apps/game/src/talk.ts`: the
+first record in the map, over a span covering the stage, naming the character
+and one of these, decides a label or an event; without one, the plain line.
+Across chapter B, that gives 17 to 20 of the 20 to 22 characters placed in the
+village at each of 2.1 to 2.5 something to say; the rest have only paired
+labels nothing here chooses between.
 

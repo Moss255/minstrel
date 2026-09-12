@@ -9,6 +9,7 @@ import {
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
+  type EventMessage,
   isMapLinks,
   isMapList,
   isMapManifest,
@@ -22,13 +23,16 @@ import {
   type NpcPlacement,
   type NpcState,
   placeNpcs,
+  readEventMessages,
   readMapList,
   readMapManifest,
   readNpcList,
   readNpcPlacements,
   readNpcStates,
   readTalk,
+  readTriggers,
   type TalkLine,
+  type Trigger,
 } from '@minstrel/game-formats'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
@@ -63,6 +67,12 @@ export interface Loaded {
   readonly letters: readonly string[]
   /** What a character says in a chapter — see `readTalk`. Empty when they say nothing. */
   linesOf(id: number, letter: string): readonly TalkLine[]
+  /** The map's own id in the index, which is how triggers and the cast name it. */
+  readonly mapId: number | undefined
+  /** The area's triggers — see `readTriggers`. */
+  readonly triggers: readonly Trigger[]
+  /** An event's messages in English, read the first time they are asked for. */
+  eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
   readonly doorways: readonly MapTransition[]
   /** Which archive the map came out of, for the status line. */
@@ -303,6 +313,56 @@ function talkOf(rom: Uint8Array, area: string): Map<string, Map<number, readonly
     out.set(letter, byId)
   }
   return out
+}
+
+/**
+ * The area's triggers, out of `/data/scenario/trigger<area>.bin` — a loose file
+ * rather than an archive's member. None when there is no such file or it will
+ * not read.
+ */
+function triggersOf(rom: Uint8Array, area: string): Trigger[] {
+  const { cat } = walkOnce(rom, [`/data/scenario/trigger${area}.bin`])
+  const file = `/trigger${area.toLowerCase()}.bin`
+  const leaf = cat.other.find((candidate) => candidate.path.toLowerCase().endsWith(file))
+  if (!leaf) return []
+  try {
+    return readTriggers(leaf.bytes)
+  } catch {
+    return []
+  }
+}
+
+/** One event's messages in English, out of its own `/data/event/ev#####.gp2`. */
+function eventMessagesOf(rom: Uint8Array, event: number): EventMessage[] {
+  const name = `ev${String(event).padStart(5, '0')}`
+  const { cat } = walkOnce(rom, [`/data/event/${name}.gp2`])
+  for (const [archive, files] of cat.members) {
+    if (!archive.toLowerCase().endsWith(`/${name}.gp2`)) continue
+    for (const [file, bytes] of files) {
+      if (!file.toLowerCase().endsWith(`${name}_en.bin`)) continue
+      try {
+        return readEventMessages(bytes)
+      } catch {
+        return []
+      }
+    }
+  }
+  return []
+}
+
+/** The stages worth stepping through in a map: where its cast's records start, and where its triggers do. */
+function stagesWith(
+  stages: readonly Stage[],
+  triggers: readonly Trigger[],
+  id: number | undefined,
+): Stage[] {
+  const found = new Map<string, Stage>()
+  for (const stage of stages) found.set(`${stage.major}.${stage.minor}`, stage)
+  for (const trigger of triggers) {
+    if (id !== undefined && trigger.map !== id) continue
+    found.set(`${trigger.from.major}.${trigger.from.minor}`, trigger.from)
+  }
+  return [...found.values()].sort(compareStages)
 }
 
 /** The `.npc` archive names worth looking for, longest first. */
@@ -570,12 +630,16 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const sheets = sheetsOf(cat)
   const id = entry?.id
   const talk = area ? talkOf(rom, area.code) : new Map<string, Map<number, readonly TalkLine[]>>()
+  const triggers = area ? triggersOf(rom, area.code) : []
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
-    stages: area ? stagesOf(area, id) : [],
+    stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
     castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
+    mapId: id,
+    triggers,
+    eventMessages: (event) => eventMessagesOf(rom, event),
     catalogue: cat,
     map,
     world,

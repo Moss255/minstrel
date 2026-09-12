@@ -34,12 +34,17 @@ import {
 } from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
-import { entranceOf, type Loaded, load } from './load.ts'
+import { entranceOf, type Loaded, load, type Stage } from './load.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
 import {
   type Conversation,
   letterForStage,
   nextPage,
+  noteOf,
+  OPENING_STAGE,
+  pickLine,
+  sameStage,
+  stageOrder,
   startConversation,
   type Talker,
   talkTarget,
@@ -155,11 +160,13 @@ let castPiecesNow: Piece[] = []
  */
 let characterScale = 1
 /**
- * Which of the map's story stages the cast is shown at: 0 is the file's own
- * first placement of each character, and `n` is `loaded.stages[n - 1]`. `t` and
- * `y` move it — for checking where characters stand and at what size.
+ * Where the story is: which of their records the cast stand at, which chapter
+ * they talk from and which line they say. One for the whole game, not one per
+ * map, and it opens where the slice does — see `OPENING_STAGE`. Undefined is no
+ * stage at all: the file's own first placement of each character. `t` and `y`
+ * move it.
  */
-let stageIndex = 0
+let storyStage: Stage | undefined = OPENING_STAGE
 /**
  * Which chapter's talk files are read: an index into `loaded.letters`, or
  * undefined to follow the stage — see `letterForStage`. `v` and `b` move it.
@@ -353,8 +360,9 @@ function enter(map: string, arrival?: Arrival): boolean {
     at = spawn
   }
 
+  // The cast where the story stage has them.
+  if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage) }
   loaded = opened
-  stageIndex = 0
   chapterIndex = undefined
   closeTalk()
   measurements.clear()
@@ -792,22 +800,27 @@ function refit(): void {
 }
 
 /**
- * Show the cast at another of the map's story stages — see `Loaded.stages`.
- * Stage 0 is the file's own first placement of each character, which is what a
- * map opens with.
+ * Step the story stage through the ones this map's cast records and triggers
+ * start at — see `Loaded.stages`. Before the first is no stage at all: the
+ * file's own first placement of each character.
  */
 function moveStage(by: number): void {
   if (!loaded) return
-  const count = loaded.stages.length + 1
-  stageIndex = (stageIndex + by + count) % count
-  const stage = stageIndex === 0 ? undefined : loaded.stages[stageIndex - 1]
-  loaded = { ...loaded, cast: loaded.castAt(stage) }
+  const known = [...loaded.stages]
+  const current = storyStage
+  if (current && !known.some((stage) => sameStage(stage, current))) known.push(current)
+  known.sort((a, b) => stageOrder(a) - stageOrder(b))
+  const list: (Stage | undefined)[] = [undefined, ...known]
+  const at = list.findIndex((stage) => sameStage(stage, current))
+  storyStage = list[(at + by + list.length) % list.length]
+  closeTalk()
+  loaded = { ...loaded, cast: loaded.castAt(storyStage) }
   poseMap(Math.max(mapFrame, 0))
   const here = loaded.cast.members.length + loaded.cast.sprites2d.length
   const line =
-    stage === undefined
+    storyStage === undefined
       ? `${loaded.code} cast as the file first places it — ${here} characters · t/y change stage`
-      : `${loaded.code} stage ${stage.major}.${stage.minor} (${stageIndex} of ${count - 1}) — ${here} characters · t/y change stage`
+      : `${loaded.code} stage ${storyStage.major}.${storyStage.minor} · talk from chapter ${chapter() ?? '—'} — ${here} characters · t/y change stage`
   status(line)
   console.log(line)
 }
@@ -816,10 +829,7 @@ function moveStage(by: number): void {
 function chapter(): string | undefined {
   if (!loaded || loaded.letters.length === 0) return undefined
   if (chapterIndex !== undefined) return loaded.letters[chapterIndex]
-  return letterForStage(
-    loaded.letters,
-    stageIndex === 0 ? undefined : loaded.stages[stageIndex - 1],
-  )
+  return letterForStage(loaded.letters, storyStage)
 }
 
 /** Step the chapter talk is read from, leaving the cast where it stands. */
@@ -837,11 +847,11 @@ function moveChapter(by: number): void {
 /**
  * `f`: talk to whoever the Hero is facing, or go on to the next page.
  *
- * Every line of their talk file is shown in turn, because which one the game
- * picks is not established — see `talk.ts`. The status line carries the line's
- * tag and numbers so they can be read against what it says.
+ * What they say is `pickLine`'s choice for the story stage — a line of their
+ * talk file, or an event's messages — and the status line says why. `Shift+F`
+ * reads out every line of their file instead, for checking the choice.
  */
-function talk(): void {
+function talk(everyLine = false): void {
   if (!loaded || !self) return
   if (talking) {
     talking = nextPage(talking)
@@ -863,9 +873,43 @@ function talk(): void {
     return
   }
   const letter = chapter()
-  if (letter !== undefined) talking = startConversation(who, letter, loaded.linesOf(who.id, letter))
+  const lines = letter === undefined ? [] : loaded.linesOf(who.id, letter)
+  if (everyLine || storyStage === undefined) {
+    talking = startConversation(
+      who,
+      `every line of chapter ${letter ?? '—'}`,
+      lines.map((line) => line.text),
+      lines.map(noteOf),
+    )
+  } else {
+    const choice = pickLine({
+      triggers: loaded.triggers,
+      map: loaded.mapId,
+      stage: storyStage,
+      night: wantedLighting === 'night',
+      id: who.id,
+      lines,
+    })
+    if (choice?.kind === 'line') {
+      talking = startConversation(
+        who,
+        `chapter ${letter}: ${choice.why}`,
+        [choice.line.text],
+        [noteOf(choice.line)],
+      )
+    } else if (choice?.kind === 'event') {
+      const messages = loaded.eventMessages(choice.event)
+      talking = startConversation(
+        who,
+        `ev${String(choice.event).padStart(5, '0')}: ${choice.why}`,
+        messages.map((message) => message.text),
+        messages.map((message) => `message ${message.id}`),
+      )
+    }
+  }
   if (!talking) {
-    status(`${who.name} (#${who.id}) has nothing to say in chapter ${letter ?? '—'}`)
+    const when = storyStage ? ` at ${storyStage.major}.${storyStage.minor}` : ''
+    status(`${who.name} (#${who.id}) has nothing to say in chapter ${letter ?? '—'}${when}`)
     return
   }
   showTalk()
@@ -877,7 +921,7 @@ function showTalk(): void {
     closeTalk()
     return
   }
-  const { who, letter, lines, line, page, rendered } = talking
+  const { who, source, texts, notes, line, page, rendered } = talking
   const shown = rendered.pages[page]
   talkEl.replaceChildren()
   if (shown?.speaker) {
@@ -890,10 +934,9 @@ function showTalk(): void {
   body.textContent = shown?.text ?? ''
   talkEl.append(body)
   talkEl.hidden = false
-  const record = lines[line]
+  const which = texts.length > 1 ? `${line + 1} of ${texts.length}, ` : ''
   status(
-    `${who.name} #${who.id} · chapter ${letter} · line ${line + 1} of ${lines.length} ` +
-      `(tag ${record?.tag}, numbers ${record?.unknown_numbers.join(' ')}) · page ${page + 1} of ${rendered.pages.length}` +
+    `${who.name} #${who.id} · ${source} · ${which}${notes[line] ?? ''} · page ${page + 1} of ${rendered.pages.length}` +
       (rendered.unhandled.length > 0 ? ` · not shown: <${rendered.unhandled.join('> <')}>` : '') +
       ' · f next, Esc close',
   )
@@ -996,10 +1039,10 @@ addEventListener('keydown', (event) => {
     self.held.add(key)
     event.preventDefault()
   }
-  // Talk to whoever the Hero faces: `f` to start and to go on, Esc to stop,
-  // `v` and `b` to read another chapter's words.
+  // Talk to whoever the Hero faces: `f` to start and to go on, Shift+F for every
+  // line of their file, Esc to stop, `v` and `b` to read another chapter's words.
   if (key === 'f' && loaded) {
-    talk()
+    talk(event.shiftKey)
     event.preventDefault()
   }
   if (key === 'escape' && talking) {

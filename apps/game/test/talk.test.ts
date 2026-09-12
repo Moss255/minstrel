@@ -1,10 +1,13 @@
 import { readFileSync } from 'node:fs'
+import type { TalkLine, Trigger } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import {
   DEFAULT_CONTEXT,
   letterForStage,
   nextPage,
+  OPENING_STAGE,
+  pickLine,
   renderLine,
   startConversation,
   type Talker,
@@ -108,14 +111,10 @@ describe('renderLine', () => {
 
 describe('a conversation', () => {
   const who = someone(3, 0, 0.1)
-  const lines = [
-    { tag: 1, unknown_numbers: [1, 1, 16], text: '*: First.<PAGE>*: Second.' },
-    { tag: 1, unknown_numbers: [2, 2, 16], text: undefined },
-    { tag: 1, unknown_numbers: [3, 3, 16], text: '*: Third.' },
-  ]
+  const texts = ['*: First.<PAGE>*: Second.', undefined, '*: Third.']
 
-  it('goes page by page, skips a line with nothing in it, and ends', () => {
-    let at = startConversation(who, 'B0', lines)
+  it('goes page by page, skips a text with nothing in it, and ends', () => {
+    let at = startConversation(who, 'chapter B0', texts)
     const seen: string[] = []
     while (at) {
       seen.push(at.rendered.pages[at.page]?.text ?? '')
@@ -125,7 +124,141 @@ describe('a conversation', () => {
   })
 
   it('does not start with someone who has nothing to say', () => {
-    expect(startConversation(who, 'B0', [lines[1] as (typeof lines)[number]])).toBeUndefined()
+    expect(startConversation(who, 'chapter B0', [undefined])).toBeUndefined()
+  })
+})
+
+describe('pickLine', () => {
+  const line = (numbers: number[], text: string, tag = 1): TalkLine => ({
+    tag,
+    unknown_numbers: numbers,
+    text,
+  })
+  /** A trigger record built in code: a map, a span, and its words as operation and argument. */
+  const trigger = (
+    map: number,
+    from: [number, number],
+    to: [number, number],
+    words: [number, number][],
+  ): Trigger => ({
+    map,
+    from: { major: from[0], minor: from[1] },
+    to: { major: to[0], minor: to[1] },
+    unknown_5: 1,
+    values: Uint32Array.from(words.map(([op, arg]) => ((op << 16) | arg) >>> 0)),
+    floats: new Float32Array(words.length),
+    kinds: new Uint8Array(words.length).fill(1),
+    offset: 0x40,
+  })
+  const lines = [
+    line([1, 1, 16], '*: Plain, by day.'),
+    line([1, 1, 1, 16], '*: Plain, by night.'),
+    line([1, 1, 192], '*: Labelled.'),
+    line([2, 3, 16], '*: Later on.'),
+    line([5, 6, 1, 16], '*: Only after dark.'),
+    line([1, 99, 196], '*: Long afterwards.'),
+    line([7, 0, 196], '*: About an errand.', 2),
+  ]
+  const asking = {
+    triggers: [] as Trigger[],
+    map: 1100,
+    stage: { major: 2, minor: 1 },
+    night: false,
+    id: 5,
+    lines,
+  }
+  const said = (choice: ReturnType<typeof pickLine>) =>
+    choice?.kind === 'line' ? choice.line.text : undefined
+
+  it('says the plain line for the sub-stage, by day or by night', () => {
+    expect(said(pickLine(asking))).toBe('*: Plain, by day.')
+    expect(said(pickLine({ ...asking, night: true }))).toBe('*: Plain, by night.')
+    expect(said(pickLine({ ...asking, stage: { major: 2, minor: 3 } }))).toBe('*: Later on.')
+  })
+
+  it('takes the other time of day when there is no line for this one', () => {
+    const choice = pickLine({ ...asking, stage: { major: 2, minor: 5 } })
+    expect(said(choice)).toBe('*: Only after dark.')
+    expect(choice?.why).toContain('night line')
+  })
+
+  it('says the line a trigger labels, and runs the event a trigger names instead', () => {
+    const labelled = trigger(
+      1100,
+      [2, 1],
+      [2, 1],
+      [
+        [6, 5],
+        [11, 192],
+      ],
+    )
+    expect(said(pickLine({ ...asking, triggers: [labelled] }))).toBe('*: Labelled.')
+    const event = trigger(
+      1100,
+      [2, 1],
+      [2, 1],
+      [
+        [6, 5],
+        [11, 0],
+        [119, 2110],
+      ],
+    )
+    expect(pickLine({ ...asking, triggers: [event] })).toMatchObject({ kind: 'event', event: 2110 })
+  })
+
+  it('reads a label given the other way, as a word whose low half is 0', () => {
+    const late = trigger(
+      1100,
+      [2, 1],
+      [5, 99],
+      [
+        [6, 5],
+        [36, 1],
+        [118, 5],
+        [196, 0],
+      ],
+    )
+    expect(said(pickLine({ ...asking, triggers: [late] }))).toBe('*: Long afterwards.')
+  })
+
+  it('ignores a trigger in another map, for someone else, or outside its span', () => {
+    const elsewhere = [
+      trigger(
+        1107,
+        [2, 1],
+        [2, 1],
+        [
+          [6, 5],
+          [11, 192],
+        ],
+      ),
+      trigger(
+        1100,
+        [2, 1],
+        [2, 1],
+        [
+          [6, 9],
+          [11, 192],
+        ],
+      ),
+      trigger(
+        1100,
+        [2, 2],
+        [2, 7],
+        [
+          [6, 5],
+          [11, 192],
+        ],
+      ),
+    ]
+    expect(said(pickLine({ ...asking, triggers: elsewhere }))).toBe('*: Plain, by day.')
+  })
+
+  it('never says an errand line, and says when it has had to guess', () => {
+    const choice = pickLine({ ...asking, stage: { major: 2, minor: 4 } })
+    expect(said(choice)).toBe('*: Long afterwards.')
+    expect(choice?.why).toContain('a guess')
+    expect(pickLine({ ...asking, lines: [lines[6] as TalkLine] })).toBeUndefined()
   })
 })
 
@@ -149,5 +282,34 @@ describe.skipIf(!romPath)('talk on a real cartridge', { timeout: 60_000 }, () =>
       }
     }
     expect(said).toBeGreaterThan(100)
+  })
+
+  it('picks a line or an event for the village at the opening, and reads the event', () => {
+    const village = load(rom, { map: 'M01' })
+    expect(village.mapId).toBe(1100)
+    expect(village.triggers.length).toBeGreaterThan(100)
+    // The stages a village trigger starts at are among those `t`/`y` step through.
+    expect(village.stages.some((s) => s.major === 2 && s.minor === 1)).toBe(true)
+    let lines = 0
+    let events = 0
+    for (const member of [...village.cast.members, ...village.cast.sprites2d]) {
+      const choice = pickLine({
+        triggers: village.triggers,
+        map: village.mapId,
+        stage: OPENING_STAGE,
+        night: false,
+        id: member.placement.id,
+        lines: village.linesOf(member.placement.id, 'B0'),
+      })
+      if (choice?.kind === 'line') lines++
+      if (choice?.kind === 'event') {
+        events++
+        expect(village.eventMessages(choice.event).length, `event ${choice.event}`).toBeGreaterThan(
+          0,
+        )
+      }
+    }
+    expect(lines).toBeGreaterThan(5)
+    expect(events).toBeGreaterThan(0)
   })
 })

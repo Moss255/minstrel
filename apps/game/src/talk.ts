@@ -1,4 +1,4 @@
-import { parseMarkup, type TalkLine } from '@minstrel/game-formats'
+import { parseMarkup, type TalkLine, type Trigger } from '@minstrel/game-formats'
 import type { Stage } from './load.ts'
 
 /**
@@ -6,9 +6,9 @@ import type { Stage } from './load.ts'
  * they say, and how a line of the cartridge's text reads on screen.
  *
  * **Much of this is reading rather than finding**, and says so where it is.
- * Which of a character's lines the game picks is not established — the numbers
- * before each line are not decoded — so every line is shown in turn, as a way
- * to test the text and the box rather than as the game's own conversation.
+ * Which line a character says is `pickLine`'s choice, from readings of the talk
+ * files' numbers and the triggers that are INFERRED, each with the measure
+ * behind it; where those run out it says it has guessed.
  */
 
 /** How far away a character can be and still be talked to: about two character heights. */
@@ -216,42 +216,42 @@ export function renderLine(text: string, context: TextContext = DEFAULT_CONTEXT)
   }
 }
 
-/** A conversation under way: who, in which chapter, and how far through what they say. */
+/** A conversation under way: who, what is being read out, and how far through it. */
 export interface Conversation {
   readonly who: Talker
-  readonly letter: string
-  readonly lines: readonly TalkLine[]
+  /** Where the words came from, for the status line: a chapter and a label, or an event. */
+  readonly source: string
+  readonly texts: readonly (string | undefined)[]
+  /** One note per text, for the status line: a line's tag and numbers, or a message's number. */
+  readonly notes: readonly string[]
   readonly line: number
   readonly page: number
   readonly rendered: RenderedLine
 }
 
-/** The first page of the first line, at or after `line`, that has anything to show. */
-function fromLine(
-  who: Talker,
-  letter: string,
-  lines: readonly TalkLine[],
-  line: number,
-  context: TextContext,
-): Conversation | undefined {
-  for (let at = line; at < lines.length; at++) {
-    const rendered = renderLine(lines[at]?.text ?? '', context)
-    if (rendered.pages.length > 0) return { who, letter, lines, line: at, page: 0, rendered }
+type Script = Pick<Conversation, 'who' | 'source' | 'texts' | 'notes'>
+
+/** The first page of the first text, at or after `line`, that has anything to show. */
+function fromLine(script: Script, line: number, context: TextContext): Conversation | undefined {
+  for (let at = line; at < script.texts.length; at++) {
+    const rendered = renderLine(script.texts[at] ?? '', context)
+    if (rendered.pages.length > 0) return { ...script, line: at, page: 0, rendered }
   }
   return undefined
 }
 
-/** Start talking: the first page of the first line that says anything, or nothing at all. */
+/** Start talking: the first page of the first text that says anything, or nothing at all. */
 export function startConversation(
   who: Talker,
-  letter: string,
-  lines: readonly TalkLine[],
+  source: string,
+  texts: readonly (string | undefined)[],
+  notes: readonly string[] = [],
   context: TextContext = DEFAULT_CONTEXT,
 ): Conversation | undefined {
-  return fromLine(who, letter, lines, 0, context)
+  return fromLine({ who, source, texts, notes }, 0, context)
 }
 
-/** The next page, or the next line's first, or undefined when there is no more. */
+/** The next page, or the next text's first, or undefined when there is no more. */
 export function nextPage(
   conversation: Conversation,
   context: TextContext = DEFAULT_CONTEXT,
@@ -259,8 +259,166 @@ export function nextPage(
   if (conversation.page + 1 < conversation.rendered.pages.length) {
     return { ...conversation, page: conversation.page + 1 }
   }
-  const { who, letter, lines, line } = conversation
-  return fromLine(who, letter, lines, line + 1, context)
+  const { who, source, texts, notes } = conversation
+  return fromLine({ who, source, texts, notes }, conversation.line + 1, context)
+}
+
+/** A talk line's tag and numbers, for the status line. */
+export function noteOf(line: TalkLine): string {
+  return `tag ${line.tag}, numbers ${line.unknown_numbers.join(' ')}`
+}
+
+/** Two stages the same, or both no stage at all. */
+export function sameStage(a: Stage | undefined, b: Stage | undefined): boolean {
+  return (
+    a === b || (a !== undefined && b !== undefined && a.major === b.major && a.minor === b.minor)
+  )
+}
+
+/** A stage as one number that orders the way the story does. */
+export function stageOrder(stage: Stage): number {
+  return stage.major * 1000 + stage.minor
+}
+
+/**
+ * Where the slice opens: chapter B, sub-stage 1.
+ *
+ * **INFERRED.** The triggers put Erinn's morning event, `ev02130`, at 2.1 in her
+ * house; chapter B's sub-stage-1 lines speak of the Hero's fall as just past;
+ * and the slice plan opens with the Hero waking there.
+ */
+export const OPENING_STAGE: Stage = { major: 2, minor: 1 }
+
+/**
+ * A trigger word read as an operation, its high half, and an argument, its low.
+ * **INFERRED**, and only four are used, each with the measure behind it in
+ * `FORMAT.md`:
+ */
+/** The character a record is about: placed in the record's map on 66%, against 18% for another. */
+const OP_CHARACTER = 6
+/** A talk label: one of that character's line labels on 707 of 793, against 221 for a control. */
+const OP_LABEL = 11
+/** With argument 1, the label is the high half of a word whose low half is 0: 338 of 519, against 0. */
+const OP_LABEL_BY = 36
+/** An event, by number: 58 of 64 in Angel Falls name one. */
+const OP_EVENT = 119
+/** The label of a character's plain line — the commonest, and the one chapter B's day-to-day lines carry. INFERRED. */
+const PLAIN = 16
+
+interface Word {
+  readonly op: number
+  readonly arg: number
+}
+
+function wordsOf(trigger: Trigger): Word[] {
+  const words: Word[] = []
+  for (let i = 0; i < trigger.values.length; i++) {
+    if (trigger.kinds[i] !== 1) continue
+    const value = trigger.values[i] as number
+    words.push({ op: value >>> 16, arg: value & 0xffff })
+  }
+  return words
+}
+
+/** A line's first two numbers as a range of sub-stages, 99 for "to the end". */
+function covers(line: TalkLine, minor: number): boolean {
+  const from = line.unknown_numbers[0] as number
+  const to = line.unknown_numbers[1] as number
+  return from <= minor && (minor <= to || to === 99)
+}
+
+/** INFERRED: the four-number form is the night line — on tag 1, 42.5% of them use night words against 9.2% of the three-number ones. */
+const isNightLine = (line: TalkLine) => line.unknown_numbers.length === 4
+const labelOf = (line: TalkLine) => line.unknown_numbers[line.unknown_numbers.length - 1]
+
+/** What a character says now: one of their lines, or an event that runs instead. */
+export type Choice =
+  | { readonly kind: 'line'; readonly line: TalkLine; readonly why: string }
+  | { readonly kind: 'event'; readonly event: number; readonly why: string }
+
+export interface Asking {
+  readonly triggers: readonly Trigger[]
+  /** The map the Hero is in, by its own id. */
+  readonly map: number | undefined
+  readonly stage: Stage
+  readonly night: boolean
+  /** Who is being talked to, by their id in the area's cast. */
+  readonly id: number
+  /** Their talk file for the stage's chapter. */
+  readonly lines: readonly TalkLine[]
+}
+
+/**
+ * Which of a character's lines applies now, or which event runs instead.
+ *
+ * **INFERRED throughout**, from the measures above. The first of the area's
+ * triggers in this map, over a span that covers the stage, naming the
+ * character and a talk operation, decides: a label, or failing that an event.
+ * Without one, the plain line. The line is the tag-1 line with that label whose
+ * range covers the sub-stage, in the time of day asked for if there is one and
+ * the other if not; the other tags are errands and counters, not talk. Where no
+ * line has the label, the first that covers the sub-stage is taken, and `why`
+ * says it is a guess.
+ */
+export function pickLine(asking: Asking): Choice | undefined {
+  const { triggers, map, stage, night, id } = asking
+  const lines = asking.lines.filter((line) => line.tag === 1)
+  const labels = new Set(lines.map(labelOf))
+  let label = PLAIN
+  let why = `label ${PLAIN}, the plain line — no trigger names them here`
+
+  const trigger = triggers.find((candidate) => {
+    if (map !== undefined && candidate.map !== map) return false
+    if (
+      stageOrder(candidate.from) > stageOrder(stage) ||
+      stageOrder(stage) > stageOrder(candidate.to)
+    ) {
+      return false
+    }
+    const words = wordsOf(candidate)
+    return (
+      words.some((w) => w.op === OP_CHARACTER && w.arg === id) &&
+      words.some((w) => w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_EVENT)
+    )
+  })
+  if (trigger) {
+    const words = wordsOf(trigger)
+    const where = `the trigger at 0x${trigger.offset.toString(16)}`
+    const named = words.find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
+    const byWord = words.some((w) => w.op === OP_LABEL_BY && w.arg === 1)
+      ? words.find((w) => w.arg === 0 && labels.has(w.op))?.op
+      : undefined
+    const event = words.find((w) => w.op === OP_EVENT)?.arg
+    if (named !== undefined) {
+      label = named
+      why = `label ${named}, from ${where}`
+    } else if (byWord !== undefined) {
+      label = byWord
+      why = `label ${byWord}, from ${where}`
+    } else if (event !== undefined) {
+      return { kind: 'event', event, why: `event ${event}, from ${where}` }
+    }
+  }
+
+  const covering = lines.filter((line) => covers(line, stage.minor))
+  const labelled = covering.filter((line) => labelOf(line) === label)
+  const chosen = labelled.find((line) => isNightLine(line) === night) ?? labelled[0]
+  if (chosen) {
+    const time =
+      isNightLine(chosen) === night
+        ? ''
+        : ` — the ${isNightLine(chosen) ? 'night' : 'day'} line, as there is none for the ${night ? 'night' : 'day'}`
+    return { kind: 'line', line: chosen, why: why + time }
+  }
+  const guess = covering.find((line) => isNightLine(line) === night) ?? covering[0]
+  if (guess) {
+    return {
+      kind: 'line',
+      line: guess,
+      why: `${why}; no such line covers ${stage.major}.${stage.minor}, so the first that does — a guess`,
+    }
+  }
+  return undefined
 }
 
 function speakerOf(page: string): TalkPage {

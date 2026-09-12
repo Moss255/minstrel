@@ -12,9 +12,13 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 ## M3 has started — event text is read
 
 M2 is walkable end to end, bar the Hero stand-in and the two notes below
-(sprite tiling, where the Hero wakes). M3's task list is waiting on
-`docs/PLAN.md`, which is not in the repo yet; the one bullet recorded elsewhere
-is "text box rendering with a vector font and resolution-independent layout".
+(sprite tiling, where the Hero wakes). M3's list is in the Slice 1 plan at the
+repo root: the text box; NPC placement, talk and examine, yes/no prompts;
+script execution — a VM if one exists, otherwise a small hand-authored event
+DSL; chests, the stable, the church and story flags. It is done when every NPC
+in Angel Falls says the right thing and the opening story beats play. The slice
+opens after the fall, in Erinn's house: the Observatory prologue — chapter `A`
+of the talk files — is Slice 2.
 
 The first step, chosen for being under everything else in dialogue:
 `readEventMessages` and `parseMarkup` in `@minstrel/game-formats`. An event's
@@ -37,10 +41,21 @@ map, over this span of the story, this character, sometimes this event" — the
 characters it names stand in its map 66% of the time against 18% for a
 stand-in — but its operations are not decoded.
 
-**Talking works as a test affordance.** `f` talks to the character the Hero
-faces and pages through every line of their talk file — which line the game
-would pick is not established — `Esc` closes, and `v`/`b` step the chapter,
-which otherwise follows `t`/`y` (INFERRED: letter = the stage's major number).
+**Talk picks a line.** `f` talks to the character the Hero faces and says what
+`pickLine` chooses for the story stage: the line a trigger labels, the event a
+trigger names, or the plain line for the sub-stage, by day or by night — the
+status line says which and why. `Shift+F` reads out every line of their file
+instead. `Esc` closes; `v`/`b` step the chapter, which otherwise follows the
+stage (INFERRED: letter = the stage's major number). The readings behind it are
+in `game-formats/FORMAT.md`, all INFERRED.
+
+The story stage is one for the whole game now and opens at **2.1**, where the
+triggers put Erinn's morning event; `t`/`y` step it, and the cast stand where
+it has them. At 2.1 to 2.5, 17 to 20 of the village's 20 to 22 placed
+characters have something chosen for them. What is left: paired labels
+(192/193 …) that nothing here chooses between — story flags, most likely — and
+tag 2's errand lines and the counters' tags 4 and 5, which talk does not use.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.
