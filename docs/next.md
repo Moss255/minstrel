@@ -91,6 +91,17 @@ open and is stopped by them shut. `game-formats/FORMAT.md`, "Doors".
 **`M01M12` does not load**: its archive names no model that reads. None of the
 village's doorways leads there, so it has not been in the way yet.
 
+**Event scripts are read and run — the machine, not yet the game.** The `SB2`
+code is a stack machine of three-word instructions, read from the scripts
+alone: `readScript` in `game-formats` reads every event's routines, and
+`@minstrel/script` runs them, handing each engine function — numbered in
+hundreds, 200s the cast, 300s the camera, 400s messages — to a host. Against a
+host that answers everything with 0, 504 of 523 events run to their end.
+`game-formats/FORMAT.md`, "Event scripts", "The code". Next is the host: the
+engine functions the opening event calls, so that Erinn's morning plays in the
+room rather than as a list of lines. The technical account is
+`docs/event-scripts.md`.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

@@ -14,6 +14,7 @@
     "@minstrel/nitro-snd": "workspace:*",
     "@minstrel/nitrofs": "workspace:*",
     "@minstrel/render": "workspace:*",
+    "@minstrel/script": "workspace:*",
     "@minstrel/sim": "workspace:*"
   },
   "devDependencies": {

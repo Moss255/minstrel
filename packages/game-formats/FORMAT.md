@@ -1686,8 +1686,9 @@ files, against 57 in events.
 
 736 files: 523 in `/data/event`, one per event; 165 in `/data/evspt_lv5`,
 which carry cutscene staging — model files, motions, cameras; 33 in
-`/data/scenario`; 13 in `/data/menu`; 2 in `/data/event_lv5`. Only the
-container is read. What the code in it does is not.
+`/data/scenario`; 13 in `/data/menu`; 2 in `/data/event_lv5`. The event
+scripts are read whole — container, routines and code — and run by
+`@minstrel/script`; "The code", below, has how. The others are not yet read.
 
 | offset | type | meaning |
 |---|---|---|
@@ -1703,8 +1704,8 @@ On all 523 event scripts the sections run in rising offset order and start past
 the table and the shared block. **The shared block is byte-identical on 522 of
 the 523** — common to every event, not part of one. The sections are numbered
 200, 300 and 100, in that order, on 522 (the other has 200, 201, 300, 301, 100
-and 101); section 100 is the largest, a median 3,632 bytes. Each section's
-first word is its own offset less `0x20`, which is observed and not explained.
+and 101); section 100 is the largest, a median 3,632 bytes. Each section is a routine,
+whose first word is its entry address — see "The code".
 
 **A script names its own messages.** 3,522 of the 3,649 message numbers an
 event's text carries occur in its own script as a word, against 43 of 3,649
@@ -1749,6 +1750,92 @@ What the numbers mean is read, not established:
 Tags 4 and 5 sit at inn and shop counters. Chapter B's own ranges run 1 to 7,
 matching the village cast's stages 2.1 to 2.7, and its sub-stage-1 lines speak
 of the Hero's fall as just past.
+## The code
+
+Read from the scripts themselves; nothing about this format is published. The
+numbers are over the 523 event scripts.
+
+**Code addresses count from `+0x08`**, the end of the section table: a jump's
+target and a routine call's are offsets from there.
+
+**A routine is 14 header words and then instructions to a return.** Sections
+are routines, and so is everything in the shared block and after each section.
+
+| offset | meaning |
+|---|---|
+| `+0x00` | its entry address: its own offset less the code base, plus `0x38` |
+| `+0x04` | zero wherever seen |
+| `+0x08` | how many locals it has, its parameters among them |
+| `+0x0C` | how many parameters it takes |
+| `+0x10` .. `+0x37` | a 1 per parameter, where there are any; not established |
+
+The entry address is what recognises a routine. With the usual three sections
+the code base is `0x58`, which made it read as "own offset less `0x20`"; the one
+event with six sections, `ev03130`, has its base at `0x70` and would not read
+until the rule was the entry address. The parameter count is borne out by the
+shared routines' bodies, which read exactly their first *parameters* locals as
+inputs: the message routine at `+0xDE4` takes 2 of its 3, the wait at `+0x0` 1
+of 1.
+
+**An instruction is three `u32`s**, an opcode and two arguments. Walking every
+section and every routine it calls to its return finds nothing but the opcodes
+below — none unread, on all 523.
+
+| op | reads as | evidence |
+|---|---|---|
+| `0x03 t v` | push a constant: `t` 1 an integer, 2 a float's bits, 3 a string's file offset | the only types, 153,272 pushes; floats read as coordinates, strings as names |
+| `0x01 i s` | push variable `i` of scope `s` | |
+| `0x02 i s` | push a reference to it | what stores and engine functions that answer through an argument take |
+| `0x05` | store: value and reference off the stack, the value back on | `&0 0 store pop` |
+| `0x04` | drop the top value | after every routine call whose answer is not used |
+| `0x06` | add | `&0 L0 1 add store` counts up; `4 1 add 2 add` builds 7 |
+| `0x07` | subtract | the wait routine counts down with it |
+| `0x0B` | negate the top value | follows coordinates, which are stored positive |
+| `0x0E c` | compare: 40 `==`, 41 `!=`, 42–45 ordered | `==` from its use in "wait while busy is 1"; the rest INFERRED in C's order |
+| `0x0F` | return, with the top value | ends every routine |
+| `0x10 t` | jump | every target inside its own routine |
+| `0x11 t w` | pop, and jump when its truth is `w` | loops' exits |
+| `0x12 t w` | short-circuit: jump keeping the value when its truth is `w`, else drop it | `a == 1 ‖ a == 2`; INFERRED |
+| `0x13 _ t` | call the routine at `t` | 11,515 calls, **every one onto a routine header** |
+| `0x14 1` | drop a string: the developers' notes, Shift-JIS | |
+| `0x15 n` | invoke an engine function: `n` values, the first its number | below |
+| `0x16 n` | nothing: a label | always at a jump's target |
+| `0x17` | wait for the next frame | inside every waiting loop |
+| `0x19` | or | only ever of flags, `4 \| 16`, `1 \| 16`; INFERRED |
+| `0x1A` | not | before a jump on an engine function's answer |
+
+`0x08` appears in one shared routine that no event calls, and is not read.
+
+**Engine functions are numbered in hundreds, and scripts write the number as a
+sum** — `200 9 add` is function 209. That `add` was first taken for a
+"begin call" marker, and 98% of invokes fitted it; reading it as the add it is,
+**every invoke finds its `n` values**. The hundreds group what the functions
+touch: 200s the cast (206 places one, 207 walks one somewhere over so many
+frames, 209 turns one, 210 plays a motion by name), 300s the camera, 400s
+messages (400 shows one, 405 answers through its argument whether it is still
+up), 500s the event and the screen, 700s sound. Those readings are from the
+arguments each is handed, and INFERRED.
+
+**Scopes**: 1 is a routine's own locals; 8 is the event's, shared by its
+sections — one section writes a character's position into them and another
+reads it back; 64 is the game's (`L0@64 == 0` beside a note about death and
+revival). The last two INFERRED.
+
+**The shared block is a library** of 18 routines, the same bytes in 522 of the
+523 events: waiting so many frames (`+0x0`, 6,982 calls), showing a message and
+waiting for it to be read (`+0xDE4` with a second value handed to 554, 2,352;
+`+0xC68` without, 898; `+0x9FC` choosing between two messages by what 560
+answers, 26), waiting for a fade, a sound or a character's walk to finish, and a
+few for motions.
+
+**Which section runs when is not established.** The game here runs 200, then
+100, then 300: 200 loads the cast and sets the event's options, 100 is the
+scene, 300 hands control back.
+
+Run that way against an engine that answers every function with 0, **504 of the
+523 events run to their end**; the other 19 are still waiting after 20,000
+frames, for answers that engine never gives.
+
 
 ---
 

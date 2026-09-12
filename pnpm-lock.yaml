@@ -69,6 +69,9 @@ importers:
       '@minstrel/render':
         specifier: workspace:*
         version: link:../../packages/render
+      '@minstrel/script':
+        specifier: workspace:*
+        version: link:../../packages/script
       '@minstrel/sim':
         specifier: workspace:*
         version: link:../../packages/sim
@@ -140,6 +143,12 @@ importers:
         specifier: workspace:*
         version: link:../sim
 
+  packages/script:
+    dependencies:
+      '@minstrel/game-formats':
+        specifier: workspace:*
+        version: link:../game-formats
+
   packages/sim:
     dependencies:
       '@minstrel/fixed':
@@ -190,6 +199,9 @@ importers:
       '@minstrel/render':
         specifier: workspace:*
         version: link:../../packages/render
+      '@minstrel/script':
+        specifier: workspace:*
+        version: link:../../packages/script
       '@minstrel/sim':
         specifier: workspace:*
         version: link:../../packages/sim

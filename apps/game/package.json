@@ -18,6 +18,7 @@
     "@minstrel/gl": "workspace:*",
     "@minstrel/nitro-gfx": "workspace:*",
     "@minstrel/render": "workspace:*",
+    "@minstrel/script": "workspace:*",
     "@minstrel/sim": "workspace:*",
     "@minstrel/world": "workspace:*"
   },

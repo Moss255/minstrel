@@ -53,6 +53,16 @@ export {
 } from './npc.ts'
 export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
 export {
+  OP_RETURN,
+  ROUTINE_HEADER,
+  readScript,
+  SCRIPT_MAGIC,
+  type Script,
+  type ScriptInstruction,
+  type ScriptRoutine,
+  type ScriptSection,
+} from './script.ts'
+export {
   type DataTable,
   isDataTable,
   readDataTable,

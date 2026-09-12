@@ -1,0 +1,14 @@
+{
+  "name": "@minstrel/script",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "Run the cartridge's event scripts: the machine, with the engine's functions supplied by the host.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@minstrel/game-formats": "workspace:*"
+  }
+}
