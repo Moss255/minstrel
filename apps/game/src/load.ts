@@ -39,6 +39,7 @@ import {
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
+import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 
 /**
  * Turn a cartridge into somewhere to stand.
@@ -75,6 +76,8 @@ export interface Loaded {
   readonly triggers: readonly Trigger[]
   /** The map's treasure, in world units — see `readTreasure`. Empty when it has none. */
   readonly treasures: readonly Treasure[]
+  /** The two chests' models, shut and open — see `chests.ts`. */
+  readonly chests: readonly ChestLook[]
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
@@ -121,6 +124,8 @@ export const SLICE_PATHS = [
   '/data/chara_sub/',
   // …and the ones that ship as 2D sheets, which is most of a village.
   '/data/ani/',
+  // What the engine draws in the world itself: the chests among it.
+  '/data/bin/icon.nsarc',
 ]
 
 /**
@@ -668,6 +673,9 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
     treasures: treasuresOf(rom, code),
+    chests: chestModelsOf(
+      [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
+    ),
     stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
     castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),
     letters: [...talk.keys()].sort(),

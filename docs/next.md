@@ -129,6 +129,12 @@ transparent (`packages/gl/src/alpha.ts`): over the village's 181 textures that
 splits 141 with none and one cliff edge at 2.3% from 39 at 10% or more. The
 material's own alpha (the DS's polygon attribute) is not read yet.
 
+**Chests are drawn.** The model is `T00GDS01`–`04` in `/data/bin/icon.nsarc`,
+two chests shut and open, found among the objects the engine draws itself;
+`docs/map-objects.md` and `game-formats/FORMAT.md`, "Treasure", have what is
+read and what is inferred. The same archive holds `kage`, a round shadow for
+under characters, not drawn yet.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.

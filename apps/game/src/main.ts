@@ -1,6 +1,7 @@
 import { figureScale, Measurements } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
+import type { Treasure } from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
   type Geometry,
@@ -34,6 +35,7 @@ import {
   motionFrame,
 } from './cabinets.ts'
 import { castPieces, setSpriteCut, spriteCut, spritePieces, standingFrame } from './cast.ts'
+import { chestPieces, isChest } from './chests.ts'
 import {
   type CollisionFit,
   collisionPieces,
@@ -974,11 +976,20 @@ function refreshTreasures(): void {
     return
   }
   const { code, treasures } = loaded
-  treasureDrawn = treasurePieces(
-    treasures,
-    (treasure, slot) => openedTreasure.has(treasureKey(code, slot, treasure)),
-    toFloat(PERSON.height) * worldScale * TREASURE_MARKER,
-  )
+  const isOpen = (treasure: Treasure, slot: number) =>
+    openedTreasure.has(treasureKey(code, slot, treasure))
+  treasureDrawn = [
+    // A chest is drawn with its own model; anything else placed keeps a marker.
+    ...chestPieces(treasures, loaded.chests, isOpen, (material) =>
+      textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
+    ),
+    ...treasurePieces(
+      treasures,
+      isOpen,
+      toFloat(PERSON.height) * worldScale * TREASURE_MARKER,
+      isChest,
+    ),
+  ]
 }
 
 /**

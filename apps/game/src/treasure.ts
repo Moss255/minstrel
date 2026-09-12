@@ -84,12 +84,14 @@ export function treasurePieces(
   treasures: readonly Treasure[],
   isOpen: (treasure: Treasure, slot: number) => boolean,
   size: number,
+  /** Treasure drawn some other way — a chest, by its own model. */
+  skip: (treasure: Treasure) => boolean = () => false,
 ): Piece[] {
   const shut = { vertices: [] as Vertex[], indices: [] as number[] }
   const open = { vertices: [] as Vertex[], indices: [] as number[] }
   for (const [slot, treasure] of treasures.entries()) {
     const at = treasure.position
-    if (!at) continue
+    if (!at || skip(treasure)) continue
     const opened = isOpen(treasure, slot)
     const into = opened ? open : shut
     const [r, g, b] = opened ? OPEN : SHUT

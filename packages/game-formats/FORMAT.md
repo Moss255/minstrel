@@ -1944,7 +1944,20 @@ and `R05M01` with its 22 lettered copies.
   821; on the other 154 its high byte is between `0x03` and `0x56`, which puts
   it inside the range of the item names' ids (`0x2F8A`–`0x5712`, below).
 
-**No chest model has been found.** No file on the cartridge is named for one,
+**The chest model is `T00GDS01`–`04`, in `/data/bin/icon.nsarc`** — the
+archive of things the engine draws in the world by itself: speech bubbles,
+battle cursors, the pot and barrel sprites, a coffin (`kanoke`) and a round
+shadow (`kage`). They are two chests, each shut and open: `01` and `03` a box
+0.80 by 0.68 by 0.41 with its lid down, 18 vertices; `02` and `04` the same box
+0.23 high with the lid thrown back towards +z, 22 and 24. `01` and `02` bind
+one 64×64 texture, red-brown, `03` and `04` another, grey. Nothing names them
+as chests: that is read from the shapes. INFERRED: they are in the files' own
+units — 0.41 is 28% of a person, where in the characters' space, the coffin's,
+it would be 1% — their front is −z, the kinds with a facing are chests, and kind
+`0x40` takes the second, grey one.
+
+It was found only after the search below, which went by name. **No file on
+the cartridge is named for a chest,**
 with every leaf walked, `.gp2` members included. `/data/chara_sub/box.chr` is a
 crate of five quads and one texture. `taru` and `tsubo` — barrel and pot — are
 2D sprites in `/data/ani` and in the menu icons, and nothing else. The rooms'

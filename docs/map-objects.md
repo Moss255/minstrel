@@ -112,10 +112,18 @@ the cabinets use them yet; characters' will matter when events drive the cast.
 gold cube, grey once opened — **the marker is ours**; `f` facing one opens it and
 the box says which treasure it was and the raw value its contents must be in.
 
+**Chests** (`apps/game/src/chests.ts`): the model is `T00GDS01`–`04` in
+`/data/bin/icon.nsarc`, the archive of things the engine draws in the world by
+itself — two chests, red-brown and grey, each shut and open. A placed treasure
+with a facing is drawn as one, turned by its facing, shut until it is opened and
+open after; the gold cube is left for placed treasure that is not a chest.
+INFERRED: that faced treasure is a chest, which kind is which colour (`0x40`
+grey), the scale (the files' own units) and the front (−z, the side away from
+where the open lid falls). None of the names say "chest": the search by name
+found nothing, and the models were found among the engine's own.
+
 **Not found** (set aside on 12 September):
 
-- a chest model: no model or texture on the cartridge is named for one — the one
-  `takara` texture is a flat swatch on a test map, `F99M0000`;
 - how `unknown_0` names an item. The item names are read
   (`/data/prm/itemname.gp2`), but not how a treasure's value maps onto them;
 - which placed kind is a chest, a pot or a barrel.
