@@ -180,7 +180,8 @@ export interface Prompt {
 /**
  * The prompts and the markers their branches open with — see `FORMAT.md`,
  * "Prompts". `<UKE>` and `<YAME>` as accept and decline is **INFERRED**, from
- * the Japanese and from standing at quest offers.
+ * the Japanese, from standing at quest offers, and from the system strings
+ * listing "Yes", "No", "Accept", "Decline" in that order (messages 27 to 30).
  */
 const PROMPTS: Readonly<Record<string, readonly Answer[]>> = {
   YESNO: [

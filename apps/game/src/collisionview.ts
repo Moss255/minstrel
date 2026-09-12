@@ -1,7 +1,7 @@
 import { FX32_ONE, toFloat } from '@minstrel/fixed'
 import type { Piece } from '@minstrel/gl'
 import type { Geometry, Vertex } from '@minstrel/nitro-gfx'
-import { type CollisionWorld, PERSON, slopeOf } from '@minstrel/sim'
+import { type CollisionWorld, PERSON, type PlacedMesh, slopeOf } from '@minstrel/sim'
 
 /**
  * The collision mesh, drawn where it actually is.

@@ -88,8 +88,10 @@ the loader keeps. The hinge at the origin is INFERRED; the swing, its speed and
 its distances are choices. A cartridge test walks through both of Erinn's doors
 open and is stopped by them shut. `game-formats/FORMAT.md`, "Doors".
 
-**`M01M12` does not load**: its archive names no model that reads. None of the
-village's doorways leads there, so it has not been in the way yet.
+**`M01M12` loads — done, 13 September.** The index calls it the opening's
+background. It has two archives with a descriptor, and the loader took the
+first, `M01M12.ambl`, whose descriptor names only its textures; it now takes
+the first whose descriptor names a model that reads, `M01M12.amdj`.
 
 **Event scripts are read and run — the machine, not yet the game.** The `SB2`
 code is a stack machine of three-word instructions, read from the scripts
@@ -132,8 +134,11 @@ material's own alpha (the DS's polygon attribute) is not read yet.
 **Chests are drawn.** The model is `T00GDS01`–`04` in `/data/bin/icon.nsarc`,
 two chests shut and open, found among the objects the engine draws itself;
 `docs/map-objects.md` and `game-formats/FORMAT.md`, "Treasure", have what is
-read and what is inferred. The same archive holds `kage`, a round shadow for
-under characters, not drawn yet.
+read and what is inferred. The same archive holds `kage`, a round shadow, now
+drawn under every character and the Hero (`apps/game/src/shadows.ts`): a flat
+square 1.13 across in the files' own units with a translucent texture, so it
+lies soft in the blended pass. That it goes under characters, and at that
+size, is INFERRED.
 
 ### M3 — what is left
 
@@ -166,10 +171,14 @@ play. The second is not done. Set aside to move on to M4:
 - **Where the Hero wakes.** `ev02130` puts the Hero at (1.09, 0.61, −2.73),
   0.45 above the floor — in bed, INFERRED — in `M01M07` or `M01M10`, both of
   which have floor there.
-- **Also open:** sprite tiling (half-resolved); `M01M12` does not load; the
-  shadow under characters; a vector font, where the text box uses the
-  browser's own; and seven type errors from before this work — five in the
-  game, two in the explorer — that `pnpm typecheck` reports.
+- **Also open:** sprite tiling (half-resolved), and a vector font, where the
+  text box uses the browser's own. Closed on 13 September: `M01M12` loads, the
+  shadow under characters is drawn, the stable (`M01M04`) walks and talks like
+  any interior, and the seven type errors from before — five in the game, two
+  in the explorer — are fixed, so all three projects type-check clean. A chest
+  that is a monster now says so in the game's own message, naming the monster
+  from the monster list (`readMonsterList`, `readSystemStrings` — both share a
+  head word holding their count and their strings' size).
 
 ---
 

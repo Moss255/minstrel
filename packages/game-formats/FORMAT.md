@@ -1824,7 +1824,8 @@ files, against 57 in events.
 
 - `<YESNO>` offers two answers, whose branches open `<YES>` and `<NO>`.
   `<UKEYAME>` offers two more, `<UKE>` and `<YAME>` — **accept and decline**,
-  INFERRED from the Japanese and from where it stands: at quest offers, where
+  INFERRED from the Japanese, from the system strings listing "Yes", "No",
+  "Accept", "Decline" in that order, and from where it stands: at quest offers, where
   `UKEYAME YAME END UKE CLOSE` is the commonest shape in the talk files, 2,087
   times.
 - A branch runs to `<END>` (5,449) or `<CLOSE>` (4,591), to another branch's
@@ -2178,10 +2179,57 @@ treasure-map grottoes. The game's own dice are not reproduced.
   run "Oh no! The chest was really <str_1>!" · "<ACTOR> unlocks the chest." ·
   "It's empty!" · "a cannibox" · "a mimic" · "a Pandora's box".
 
-Not established: that the value counts the monster list's order from 1 — the
-list's records before its strings (`YQT`, a count word of 340) are not read, so
-it is the order of its strings that is counted — and the strings' own records,
-in `strstd`, which do not read as index and offset.
+**The monster list's records settle the numbering.** `mon_list_<lang>.nat` is
+a head word, then 32-byte records — a zero word, the code's and
+the name's offsets from the strings, and a `u16` that is the monster's own
+number — then the strings; `readMonsterList` reads it. The numbers run 1 to 64
+and then 75 on, with gaps, and **the record numbered 38 is `z009a`, 39 `z009b`
+and 40 `z009c`**: the chest rows' values are the monsters' own numbers, not a
+count. Still INFERRED: that the row gives that monster, which is what the three
+counts above say. The chest's own words are read now (system strings, below):
+message 42 is "Oh no! The chest was really `<str_1>`!", and messages 46 to 48
+are the three monsters with their article — each "a " and a name in the monster
+list, so the phrase for a monster is found by its name.
+
+## The monster list — `/data/prm/mon_list.gp2/mon_list_<lang>.nat`
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32` | 0 on every record |
+| `+0x04` | `u32` | the code's offset from the strings: `z000a` … |
+| `+0x08` | `u32` | the name's offset from the strings |
+| `+0x0C` | `u16` | the monster's number |
+| `+0x0E` | `u16` | not established — 364, 356, 246 … on the first |
+| `+0x10` | 16 bytes | not established |
+
+**The head word holds the count and the strings' size.** Its low 12 bits are
+345 on all five languages, and its upper 20 the size of the string section —
+5,445 bytes in English, 5,785 in German, 5,788 in French — and on all five the
+strings start at `4 + 345 × 32` = 11,044 and run exactly to the end of the
+file. In English the word happens to read `YQT` (`0x01545159`: 345, and 5,445
+× 4,096), which was first taken for a magic number; the other languages' do
+not. Every offset lands at the start of a string on all five. Several records share a
+name — records 250 and 251 are both named at offset 6, the first monster's —
+so the offsets do not climb record by record. Every code is a letter, three
+digits and a letter: 278 open `z`, numbered 1 to 298, and 67 open `b`,
+numbered 284 to 514. What the two letters divide is not established.
+
+## System strings — `/data/bin/strstd.gp2/strstd_<lang>.nat`
+
+The engine's own short messages, by number. The same head word as the monster
+list — low 12 bits 81, the record count; upper 20 the string section's size,
+2,225 bytes in English and 2,486 in German, running exactly to the end — then
+81 records of two `u32`s, a message number and its offset from the strings.
+`readSystemStrings` reads it. The numbers skip — 0 to 69, 83 to 86, 200 to 202,
+1000 on — and are the same in all five languages; every offset lands at the
+start of a string.
+
+What it settles elsewhere: message 42 and 46 to 48 are the chest's (above),
+and **27 to 30 are "Yes", "No", "Accept", "Decline"**, in the order the prompts'
+answers are read in — which backs `<UKE>` and `<YAME>` as accept and decline
+(see "Prompts"). An earlier reading took the head word's low half as a count of
+139 and 8-byte records from there, and found the offsets landing mid-word; it
+was the same packing as the monster list's, misread.
 
 ---
 

@@ -31,11 +31,13 @@ import {
   readLevelTable,
   readMapList,
   readMapManifest,
+  readMonsterList,
   readNpcList,
   readNpcPlacements,
   readNpcStates,
   readRandomTreasure,
   readShops,
+  readSystemStrings,
   readTalk,
   readTreasure,
   readTriggers,
@@ -44,12 +46,14 @@ import {
   type Treasure,
   type Trigger,
 } from '@minstrel/game-formats'
+import type { Model } from '@minstrel/nitro-gfx'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import { type Cast, type CastSprite, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { HERO_LEVELS } from './hero.ts'
 import { propSprites } from './pots.ts'
+import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
 
 /**
  * Turn a cartridge into somewhere to stand.
@@ -90,10 +94,16 @@ export interface Loaded {
   readonly chests: readonly ChestLook[]
   /** The pots and barrels, drawn as sprites where the treasure stands — see `pots.ts`. */
   readonly props: readonly CastSprite[]
+  /** The round shadow drawn under each character — see `shadows.ts`. */
+  readonly shadow: Model | undefined
   /** Item names in English, by id — see `readItemNames`. */
   readonly itemNames: ReadonlyMap<number, string>
   /** The random-treasure tables, by file — `randTBox`, `randTD`, `randTTT`. */
   readonly randoms: ReadonlyMap<string, readonly RandomTreasure[]>
+  /** Monster names in English, by the monster's number — see `readMonsterList`. */
+  readonly monsterNames: ReadonlyMap<number, string>
+  /** The engine's own short messages in English, by number — see `readSystemStrings`. */
+  readonly systemStrings: ReadonlyMap<number, string>
   /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
   readonly heroLevels: LevelTable | undefined
   /** What each shop sells, by the number a talk line's `<SHOP=n>` names — see `readShops`. */
@@ -398,6 +408,38 @@ function itemNamesOf(rom: Uint8Array): Map<number, string> {
       if (!name.toLowerCase().endsWith('itemname_en.nat')) continue
       try {
         return new Map(readItemNames(bytes).map((item) => [item.id, item.singular]))
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
+/** The monster names in English, by number — see `readMonsterList`. Empty when they will not read. */
+function monsterNamesOf(rom: Uint8Array): Map<number, string> {
+  const { cat } = walkOnce(rom, ['/data/prm/mon_list.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('mon_list_en.nat')) continue
+      try {
+        return new Map(readMonsterList(bytes).map((monster) => [monster.number, monster.name]))
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
+/** The system strings in English, by number — see `readSystemStrings`. Empty when they will not read. */
+function systemStringsOf(rom: Uint8Array): Map<number, string> {
+  const { cat } = walkOnce(rom, ['/data/bin/strstd.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('strstd_en.nat')) continue
+      try {
+        return readSystemStrings(bytes)
       } catch {
         return new Map()
       }
@@ -757,23 +799,37 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   // By the archive's own name, not by a substring of its path: 'M01' appears in
   // 'B02M01.amdj' and a dozen others, and a plain substring match opens the
   // first of those instead of the village.
-  const archive =
-    [...manifests.keys()].find((path) => stemOf(path) === wanted) ??
-    [...manifests.keys()].find((path) => stemOf(path).includes(wanted))
-  const manifest = archive === undefined ? undefined : manifests.get(archive)
-  const members = archive === undefined ? undefined : cat.members.get(archive)
-  if (!manifest || !members || archive === undefined) {
-    throw new Error(`no map matching '${options.map}' in this cartridge`)
+  const paths = [...manifests.keys()]
+  const matching = [
+    ...paths.filter((path) => stemOf(path) === wanted),
+    ...paths.filter((path) => stemOf(path) !== wanted && stemOf(path).includes(wanted)),
+  ]
+  if (matching.length === 0) throw new Error(`no map matching '${options.map}' in this cartridge`)
+  // A map can have more than one archive with a descriptor: `M01M12.ambl`'s
+  // names only its textures, and `M01M12.amdj`'s its models. The one opened is
+  // the first whose descriptor names a model that reads.
+  let archive: string | undefined
+  let map: AssembledMap | undefined
+  for (const path of matching) {
+    const manifest = manifests.get(path)
+    const members = cat.members.get(path)
+    if (!manifest || !members) continue
+    const built = assembleMap(
+      manifest,
+      members,
+      options.lighting === undefined ? {} : { lighting: options.lighting },
+    )
+    if (built.pieces.length === 0) continue
+    archive = path
+    map = built
+    break
+  }
+  if (archive === undefined || map === undefined) {
+    throw new Error(`'${matching[0]}' names no model that reads`)
   }
 
   const code = stemOf(archive).toUpperCase()
   const entry = indexOf(cat)(code)
-  const map = assembleMap(
-    manifest,
-    members,
-    options.lighting === undefined ? {} : { lighting: options.lighting },
-  )
-  if (map.pieces.length === 0) throw new Error(`'${archive}' names no model that reads`)
 
   // A map's collision is all of its meshes; the village has thirteen, and any
   // one of them is a handful of triangles with nowhere to stand.
@@ -803,11 +859,16 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     props: propSprites(treasures, sheets),
     itemNames: itemNamesOf(rom),
     randoms: randomTreasureOf(rom),
+    monsterNames: monsterNamesOf(rom),
+    systemStrings: systemStringsOf(rom),
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
     goods: goodsOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
+    ),
+    shadow: shadowModelOf(
+      [...cat.members].find(([path]) => path.toLowerCase() === SHADOW_ARCHIVE)?.[1],
     ),
     stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
     castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),

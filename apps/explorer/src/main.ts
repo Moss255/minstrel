@@ -363,7 +363,9 @@ function select(index: number): void {
       const animations = animationsFor(cat, model, leaf.archive)
       shown = {
         path: entry.path,
-        pieces: [{ model, place: { x: 0, y: 0, z: 0 }, animation: undefined }],
+        // A lone model is shown at its own size and framed by its bounds, so
+        // it takes no shrink into a world.
+        pieces: [{ model, place: { x: 0, y: 0, z: 0 }, scale: 1, animation: undefined }],
         animations,
         animation: animations[0],
         frame: 0,
@@ -378,7 +380,8 @@ function select(index: number): void {
 
   // Frame on the bind pose, so the camera does not jump about as an animation
   // moves the geometry.
-  const bindPose = { ...shown, animation: undefined, frame: 0 }
+  if (!shown) return
+  const bindPose: Shown = { ...shown, animation: undefined, frame: 0 }
   const saved = shown
   shown = bindPose
   const drawn = draw()

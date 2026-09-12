@@ -92,6 +92,7 @@ import {
   visitInn,
   visitShop,
 } from './services.ts'
+import { shadowPieces } from './shadows.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type Conversation,
@@ -762,7 +763,8 @@ function frame(now = 0): void {
   }
 
   let uploaded = { vertices: 0, triangles: 0, textured: 0 }
-  if (self && loaded?.world) {
+  // The character walks on the world as the fit leaves it — see `refit`.
+  if (self && loaded && world) {
     self.stick = { forward: sticks.forward, right: sticks.right }
     const { moving, travelled } = advance(self, world, camera.yaw, elapsedMs)
     advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
@@ -838,6 +840,18 @@ function frame(now = 0): void {
       ...(showCollision ? collisionDrawn : []),
       ...castPiecesNow,
       ...treasureDrawn,
+      // A round shadow under everyone, the Hero included — see `shadows.ts`.
+      ...(loaded.shadow
+        ? shadowPieces(
+            loaded.shadow,
+            [
+              ...loaded.cast.members.map((member) => member.placement),
+              ...loaded.cast.sprites2d.map((sprite) => sprite.placement),
+              { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
+            ],
+            (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
+          )
+        : []),
       ...loaded.cast.sprites2d.flatMap((s) =>
         spritePieces(
           s,
@@ -1145,7 +1159,14 @@ function openTreasureAhead(): boolean {
   }
   const key = treasureKey(loaded.code, slot, treasure)
   const already = openedTreasure.has(key)
-  const found = findInside(treasure, loaded.randoms, loaded.itemNames)
+  const found = findInside(
+    treasure,
+    loaded.randoms,
+    loaded.itemNames,
+    undefined,
+    loaded.monsterNames,
+    loaded.systemStrings,
+  )
   if (!already) bag = take(bag, found.takings)
   openedTreasure.add(key)
   talking = startConversation(

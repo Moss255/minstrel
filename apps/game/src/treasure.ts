@@ -8,7 +8,7 @@ import {
 import type { Piece } from '@minstrel/gl'
 import type { Vertex } from '@minstrel/nitro-gfx'
 import type { Takings } from './bag.ts'
-import { renderLine, type Talker } from './talk.ts'
+import { DEFAULT_CONTEXT, renderLine, type Talker } from './talk.ts'
 
 /**
  * Treasure: what is inside, opening it, remembering that it is open, and a
@@ -125,6 +125,10 @@ export function findInside(
   randoms: ReadonlyMap<string, readonly RandomTreasure[]>,
   names: ReadonlyMap<number, string>,
   roll = standInRoll(treasure),
+  /** Monster names by number, for a chest that is a monster — see `readMonsterList`. */
+  monsters: ReadonlyMap<number, string> = new Map(),
+  /** The engine's own messages, for the chest's words — see `readSystemStrings`. */
+  system: ReadonlyMap<number, string> = new Map(),
 ): Found {
   const value = treasure.unknown_0 & 0xffff
   const item = (id: number) => {
@@ -155,10 +159,9 @@ export function findInside(
   const odds = `rank ${value} of ${table}, roll ${roll} of 100 against weights coming to ${total}`
   if (!row) return { text: 'There is nothing inside.', note: `${odds}: nothing`, takings: {} }
   if (row.kind === RANDOM_MONSTER) {
-    // The monster list's names are not read, so it goes by its number; and
-    // there is no battle yet, so nothing comes of it.
+    // There is no battle yet, so nothing comes of it.
     return {
-      text: `The chest was really a monster — number ${row.value} in the monster list!\nThere are no battles yet.`,
+      text: `${chestMonsterLine(monsters.get(row.value), row.value, system)}\nThere are no battles yet.`,
       note: `${odds}: weight ${row.weight}, monster ${row.value}`,
       takings: {},
     }
@@ -175,6 +178,34 @@ export function findInside(
     note,
     takings: {},
   }
+}
+
+/** The system string a chest that is a monster says — "…really `<str_1>`!" — by its number. */
+export const CHEST_WAS_REALLY = 42
+
+/**
+ * What a chest that is a monster says: the game's own message, with the
+ * monster's phrase in it — the system string that is "a" or "an" and the
+ * monster's name — when both read; our words, naming it or numbering it, when
+ * they do not.
+ */
+export function chestMonsterLine(
+  name: string | undefined,
+  number: number,
+  system: ReadonlyMap<number, string>,
+): string {
+  const phrase =
+    name === undefined
+      ? undefined
+      : [...system.values()].find((text) => text === `a ${name}` || text === `an ${name}`)
+  const sentence = system.get(CHEST_WAS_REALLY)
+  if (phrase !== undefined && sentence?.includes('<str_1>')) {
+    return renderLine(sentence, { ...DEFAULT_CONTEXT, values: { str_1: renderName(phrase) } })
+      .pages.map((page) => page.text)
+      .join(' ')
+  }
+  const who = name === undefined ? `number ${number} in the monster list` : renderName(name)
+  return `The chest was really a monster — ${who}!`
 }
 
 /** An item name's markup — `veteran<1>s helm` — as the text box would show it. */

@@ -53,6 +53,7 @@ export {
   resolveMapResources,
 } from './mapmanifest.ts'
 export { isWaterTexture, textureTag } from './materials.ts'
+export { type MonsterEntry, readMonsterList } from './monsters.ts'
 export { MOTION_TAG, type Motion, type MotionTable, readMotionTable } from './motion.ts'
 export {
   isNpcList,
@@ -78,6 +79,7 @@ export {
 } from './script.ts'
 export { readShops, SHOP_SLOTS, SHOP_TAG, type Shop } from './shops.ts'
 export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
+export { readSystemStrings } from './systemstrings.ts'
 export {
   type DataTable,
   isDataTable,

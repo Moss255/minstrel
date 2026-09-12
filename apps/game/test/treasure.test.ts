@@ -96,6 +96,10 @@ describe('treasure', () => {
     )
     expect(found.note).toContain('monster 38')
     expect(found.takings).toEqual({})
+    const named = findInside(chest, randoms, new Map(), 95, new Map([[38, 'box<1>s bite']]))
+    expect(named.text).toBe(
+      'The chest was really a monster — box’s bite!\nThere are no battles yet.',
+    )
     const herb = findInside(chest, randoms, new Map([[7, 'medicinal herb']]), 5)
     expect(herb.text).toBe('Inside: medicinal herb.')
     expect(herb.takings).toEqual({ item: 7 })

@@ -117,8 +117,8 @@ a stand-in roll fixed by the treasure's number, and the status line says the
 rank, the roll and the weights. Item names are read from
 `/data/prm/itemname.gp2`. A chest's draw can also be a monster — kind 3 of a
 random row, INFERRED: the cannibox, mimic or Pandora's box by the monster
-list's number, 38 to 40. The box says so by number, since the monster names are
-not read, and nothing follows: there are no battles yet.
+list's own number, 38 to 40. The box names it, from the monster list
+(`readMonsterList`), and nothing follows: there are no battles yet.
 
 **Behaviour** (`apps/game/src/treasure.ts`): `f` facing a treasure opens it and
 the box says what was inside. A placed treasure that is neither a chest nor a
@@ -150,9 +150,7 @@ found nothing, and the models were found among the engine's own.
 
 - how the pot's and barrel's `_02` sheets — the smash, INFERRED — are laid out,
   and what `_03` is;
-- which kind is the pot and which the barrel, beyond `randTTT`'s name;
-- the monster list's records, which would let a chest monster be named rather
-  than numbered.
+- which kind is the pot and which the barrel, beyond `randTTT`'s name.
 
 ---
 
