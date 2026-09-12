@@ -12,12 +12,15 @@ import {
 import {
   applyStyle,
   type Box,
+  boxOfTriangles,
   cameraEye,
+  cellsOf,
   covered,
   followCamera,
   INDOORS,
+  keepTriangles,
   OUTDOORS,
-  occluders,
+  occludedChunks,
   updateFollowCamera,
 } from '@minstrel/render'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
@@ -128,6 +131,14 @@ const TILT_RATE = Math.PI / 2
 
 /** How much clear air there has to be past a piece for it to count as in the way. */
 const CLEARANCE = toFloat(PERSON.radius)
+/**
+ * The side of the squares a map's shapes are cut into for deciding what is in
+ * the way: two and a half character heights, about half a house. A choice —
+ * smaller hides less and tests more boxes a frame. The squares are never drawn
+ * as pieces of their own: that was five times the draw calls, and the frame
+ * rate fell with it.
+ */
+const OCCLUSION_CELL = toFloat(PERSON.height) * 2.5
 /** The DS plays a map's own animations at 30 frames a second. */
 const MAP_FPS = 30
 
@@ -162,6 +173,16 @@ let mapPieces: Piece[] = []
 let mapBoxes: Box[] = []
 /** Which of those are backdrop — sky and the like — rather than part of the place. */
 let mapBackdrop: boolean[] = []
+/**
+ * The map's shapes cut into chunks for deciding what is in the way — see
+ * `cellsOf`: each shape's chunks as lists of its triangles, cut once per map;
+ * and for every chunk, which shape and which of its chunks it is, and its box,
+ * measured again with each pose.
+ */
+let shapeCells: number[][][] = []
+let chunkShapes: number[] = []
+let chunkLocal: number[] = []
+let chunkBoxes: Box[] = []
 let mapFrame = -1
 let hiddenPieces = 0
 /** Whether a pad has been seen, so the overlay can say which controls apply. */
@@ -255,11 +276,25 @@ function poseMap(frame: number): void {
       drawn.push(texture ? { geometry, ...texture } : { geometry })
     })
   }
-  // The map's own boxes decide what is in the way and what counts as a roof;
+  // Each shape's own box decides what counts as a roof and what is backdrop;
   // the cast is neither, so it is measured before they are added.
   mapBoxes = drawn.map((piece) => measureBounds([piece.geometry]))
   mapBackdrop = backdrop(mapBoxes, (world ?? loaded.world)?.bounds)
   mapPieces = drawn
+  // What is in the way is decided a chunk at a time — see `occludedChunks`. A
+  // map's triangles keep their order from pose to pose, so it is cut once.
+  if (shapeCells.length !== drawn.length) {
+    const cell = OCCLUSION_CELL * roomScale * worldScale
+    shapeCells = drawn.map((piece) => cellsOf(piece.geometry, cell))
+    chunkShapes = shapeCells.flatMap((cells, shape) => cells.map(() => shape))
+    chunkLocal = shapeCells.flatMap((cells) => cells.map((_, local) => local))
+  }
+  chunkBoxes = chunkShapes.map((shape, chunk) =>
+    boxOfTriangles(
+      (drawn[shape] as Piece).geometry,
+      shapeCells[shape]?.[chunkLocal[chunk] as number] ?? [],
+    ),
+  )
   refit()
   castPiecesNow = [
     ...loaded.cast.members.flatMap((member) => castPieces(member, cat, characterScale, frame)),
@@ -421,6 +456,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   })
   measurements.clear()
   mapFrame = -1
+  shapeCells = []
   poseMap(0)
 
   const scale = figureScale(opened.figure, opened.pieces, measurements, toFloat(person().height))
@@ -544,7 +580,7 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
       (self.state.grounded ? '' : ' (falling)') +
       (self.inside ? ' · indoors' : ''),
     `${uploaded.vertices} vertices · ${uploaded.triangles} triangles` +
-      (hiddenPieces > 0 ? ` · ${hiddenPieces} pieces out of the way` : ''),
+      (hiddenPieces > 0 ? ` · ${hiddenPieces} chunks out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
     padSeen ? 'left stick to walk · right stick to look' : 'WASD to walk · drag to turn',
     showSprite
@@ -657,10 +693,32 @@ function frame(now = 0): void {
         : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
     )
 
-    const hidden = new Set(occluders(mapBoxes, cameraEye(camera), camera.focus, CLEARANCE))
-    hiddenPieces = hidden.size
+    const hidden = occludedChunks(
+      mapBoxes,
+      chunkBoxes,
+      chunkShapes,
+      cameraEye(camera),
+      camera.focus,
+      CLEARANCE,
+      mapBackdrop,
+    )
+    hiddenPieces = hidden.length
+    // A shape with a chunk in the way is drawn without that chunk's triangles;
+    // every other shape is drawn as it was posed.
+    const hiddenIn = new Map<number, number[]>()
+    for (const chunk of hidden) {
+      const shape = chunkShapes[chunk] as number
+      const list = hiddenIn.get(shape)
+      if (list) list.push(chunkLocal[chunk] as number)
+      else hiddenIn.set(shape, [chunkLocal[chunk] as number])
+    }
     const drawn = [
-      ...mapPieces.filter((_, index) => !hidden.has(index)),
+      ...mapPieces.map((piece, shape) => {
+        const gone = hiddenIn.get(shape)
+        if (!gone) return piece
+        const indices = keepTriangles(piece.geometry.indices, shapeCells[shape] ?? [], gone)
+        return { ...piece, geometry: { ...piece.geometry, indices } }
+      }),
       ...(showCollision ? collisionDrawn : []),
       ...castPiecesNow,
       ...treasureDrawn,

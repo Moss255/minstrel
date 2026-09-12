@@ -14,4 +14,15 @@ export {
   updateFollowCamera,
   viewMatrix,
 } from './camera.ts'
-export { type Box, covered, occluders, occludes } from './occlusion.ts'
+export {
+  type Box,
+  boxOfTriangles,
+  cellsOf,
+  covered,
+  keepTriangles,
+  occludedChunks,
+  occluders,
+  occludes,
+  type Positioned,
+  type Triangles,
+} from './occlusion.ts'

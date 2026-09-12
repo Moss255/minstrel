@@ -91,6 +91,123 @@ export function occluders(
   return hidden
 }
 
+/** Anything with a position — a vertex, whatever else it carries. */
+export interface Positioned {
+  readonly x: number
+  readonly y: number
+  readonly z: number
+}
+
+/** A shape as occlusion needs it: where its corners are, and its triangles. */
+export interface Triangles<V extends Positioned = Positioned> {
+  readonly vertices: readonly V[]
+  readonly indices: readonly number[]
+}
+
+/**
+ * A shape's triangles in chunks, by where they are: each goes to the square of
+ * side `cell`, on the ground plane, that its middle falls in. A chunk is the
+ * numbers of its triangles — triangle `t` is `indices[3t]` to `indices[3t + 2]`.
+ *
+ * **Why.** A map's shapes are its material groups, not its objects: the
+ * village's windows are one shape spanning eight units of a sixteen-unit map,
+ * its grass another. Hiding what stands in the way a shape at a time took every
+ * window in the village away for the one house between the camera and the
+ * character — 27 of the village's 149 shapes span more than a quarter of it.
+ *
+ * **Chunks decide what is hidden; they are not drawn on their own.** A shape
+ * with a chunk in the way is drawn without that chunk's triangles — see
+ * {@link keepTriangles} — so there are as many pieces to draw as there are
+ * shapes. Drawn as pieces of their own the village's 792 chunks were five
+ * times the draw calls, and the frame rate showed it.
+ */
+export function cellsOf(geometry: Triangles, cell: number): number[][] {
+  if (!(cell > 0)) throw new RangeError(`a chunk's side must be positive, not ${cell}`)
+  const { vertices, indices } = geometry
+  const chunks = new Map<string, number[]>()
+  for (let t = 0; 3 * t + 2 < indices.length; t++) {
+    const a = vertices[indices[3 * t] as number]
+    const b = vertices[indices[3 * t + 1] as number]
+    const c = vertices[indices[3 * t + 2] as number]
+    if (!a || !b || !c) continue
+    const key = `${Math.floor((a.x + b.x + c.x) / 3 / cell)},${Math.floor((a.z + b.z + c.z) / 3 / cell)}`
+    const chunk = chunks.get(key)
+    if (chunk) chunk.push(t)
+    else chunks.set(key, [t])
+  }
+  return [...chunks.values()]
+}
+
+/** The box around some of a shape's triangles, by their numbers. */
+export function boxOfTriangles(geometry: Triangles, triangles: readonly number[]): Box {
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let minZ = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let maxZ = Number.NEGATIVE_INFINITY
+  for (const t of triangles) {
+    for (let k = 0; k < 3; k++) {
+      const v = geometry.vertices[geometry.indices[3 * t + k] as number]
+      if (!v) continue
+      if (v.x < minX) minX = v.x
+      if (v.y < minY) minY = v.y
+      if (v.z < minZ) minZ = v.z
+      if (v.x > maxX) maxX = v.x
+      if (v.y > maxY) maxY = v.y
+      if (v.z > maxZ) maxZ = v.z
+    }
+  }
+  return { minX, minY, minZ, maxX, maxY, maxZ }
+}
+
+/** A shape's triangle list without the triangles of some of its chunks. */
+export function keepTriangles(
+  indices: readonly number[],
+  chunks: readonly (readonly number[])[],
+  hidden: readonly number[],
+): number[] {
+  const gone = new Uint8Array(Math.floor(indices.length / 3))
+  for (const chunk of hidden) for (const t of chunks[chunk] ?? []) gone[t] = 1
+  const kept: number[] = []
+  for (let t = 0; t < gone.length; t++) {
+    if (gone[t]) continue
+    kept.push(indices[3 * t] as number, indices[3 * t + 1] as number, indices[3 * t + 2] as number)
+  }
+  return kept
+}
+
+/**
+ * The chunks to leave out: each one in the way **whose whole shape is in the
+ * way too**, and none of a shape marked `exempt` — the sky.
+ *
+ * Asking of the shape as well keeps what shapes alone got right. The ground
+ * the character stands on is never in the way, because the line to them ends
+ * inside its box; a chunk of it on a hillock between the camera and the
+ * character would be, and asked alone it would leave a hole. So the chunks
+ * hidden are always among the ones hiding whole shapes would have hidden —
+ * only fewer of them.
+ */
+export function occludedChunks(
+  shapes: readonly Box[],
+  chunks: readonly Box[],
+  shapeOf: readonly number[],
+  eye: Vec3,
+  focus: Vec3,
+  clearance = 0.25,
+  exempt: readonly boolean[] = [],
+): number[] {
+  const inTheWay = shapes.map((box, i) => !exempt[i] && occludes(box, eye, focus, clearance))
+  const hidden: number[] = []
+  for (let i = 0; i < chunks.length; i++) {
+    const shape = shapeOf[i]
+    const box = chunks[i]
+    if (shape === undefined || !box || !inTheWay[shape]) continue
+    if (occludes(box, eye, focus, clearance)) hidden.push(i)
+  }
+  return hidden
+}
+
 /**
  * Whether a point has something over its head.
  *

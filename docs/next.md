@@ -110,6 +110,17 @@ stands shut, `f` plays its opening once, and it holds open, saying which
 treasure it held: the room's position-less treasure records, paired in order
 (INFERRED). `docs/map-objects.md` has doors, cabinets and treasure together.
 
+**Less of the map goes missing.** What looked like aggressive level of detail
+was the pass that hides whatever stands between the camera and the Hero: it hid
+a whole shape at a time, and a shape is a material group — the village's
+windows are one, spanning half the map. Shapes are now cut into squares of two
+and a half character heights once per map (`cellsOf` in `packages/render`), and
+a shape with a square in the way is drawn without that square's triangles;
+only squares whose whole shape is in the way go, so the ground never gets
+holes. Over 424 views of the village, the most hidden in any one fell from 15.1%
+to 2.2%. The squares are not drawn as pieces of their own — that was tried, at
+five times the draw calls, and the frame rate collapsed.
+
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it
 does not know are left out and listed on the status line.
