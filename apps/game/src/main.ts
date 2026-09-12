@@ -34,7 +34,14 @@ import {
   cabinetTargets,
   motionFrame,
 } from './cabinets.ts'
-import { castPieces, setSpriteCut, spriteCut, spritePieces, standingFrame } from './cast.ts'
+import {
+  castPieces,
+  propPieces,
+  setSpriteCut,
+  spriteCut,
+  spritePieces,
+  standingFrame,
+} from './cast.ts'
 import { chestPieces, isChest } from './chests.ts'
 import {
   type CollisionFit,
@@ -58,6 +65,7 @@ import {
   panelLines,
 } from './menu.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
+import { isPotOrBarrel } from './pots.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type Conversation,
@@ -746,6 +754,10 @@ function frame(now = 0): void {
           standingFrame(s, camera.yaw),
         ),
       ),
+      // Pots and barrels face the camera too — see `pots.ts`.
+      ...loaded.props.flatMap((prop) =>
+        propPieces(prop, toFloat(PERSON.height) * worldScale, camera.yaw),
+      ),
       ...playerPieces(
         self,
         loaded.figure,
@@ -1001,7 +1013,7 @@ function refreshTreasures(): void {
       treasures,
       isOpen,
       toFloat(PERSON.height) * worldScale * TREASURE_MARKER,
-      isChest,
+      (treasure) => isChest(treasure) || isPotOrBarrel(treasure),
     ),
   ]
 }

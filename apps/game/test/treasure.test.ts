@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
-import type { Treasure } from '@minstrel/game-formats'
+import { RANDOM_ITEM, RANDOM_MONSTER, type Treasure } from '@minstrel/game-formats'
 import { groundBelow } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import {
+  findInside,
   nearestTreasure,
   treasureKey,
   treasurePieces,
@@ -76,6 +77,27 @@ describe('treasure', () => {
     expect(found?.treasure).toBe(near)
     expect(found?.distance).toBe(1)
     expect(nearestTreasure([treasure({ position: undefined })], { x: 0, z: 0 })).toBeUndefined()
+  })
+
+  it('says when a chest was really a monster, by its number, and that nothing follows', () => {
+    const chest = treasure({ kind: 0x40, unknown_0: 4 })
+    const randoms = new Map([
+      [
+        'randTBox',
+        [
+          { rank: 4, kind: RANDOM_ITEM, value: 7, weight: 90 },
+          { rank: 4, kind: RANDOM_MONSTER, value: 38, weight: 10 },
+        ],
+      ],
+    ])
+    const found = findInside(chest, randoms, new Map(), 95)
+    expect(found.text).toBe(
+      'The chest was really a monster — number 38 in the monster list!\nThere are no battles yet.',
+    )
+    expect(found.note).toContain('monster 38')
+    expect(findInside(chest, randoms, new Map([[7, 'medicinal herb']]), 5).text).toBe(
+      'Inside: medicinal herb.',
+    )
   })
 
   it('draws nothing where nothing has a position', () => {

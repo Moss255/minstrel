@@ -115,11 +115,26 @@ and `randTBox`, INFERRED — weighted, with the chance of nothing where the
 weights come to less than 100. The game's dice are not reproduced: a draw uses
 a stand-in roll fixed by the treasure's number, and the status line says the
 rank, the roll and the weights. Item names are read from
-`/data/prm/itemname.gp2`.
+`/data/prm/itemname.gp2`. A chest's draw can also be a monster — kind 3 of a
+random row, INFERRED: the cannibox, mimic or Pandora's box by the monster
+list's number, 38 to 40. The box says so by number, since the monster names are
+not read, and nothing follows: there are no battles yet.
 
-**Behaviour** (`apps/game/src/treasure.ts`): each placed treasure that is not a
-chest is marked by a gold cube, grey once opened — **the marker is ours**; `f`
-facing one opens it and the box says what was inside.
+**Behaviour** (`apps/game/src/treasure.ts`): `f` facing a treasure opens it and
+the box says what was inside. A placed treasure that is neither a chest nor a
+pot or barrel would be marked by a gold cube, grey once opened — **the marker
+is ours** — but the village has none.
+
+**Pots and barrels** (`apps/game/src/pots.ts`): drawn with their sprites,
+`tsubo_01` and `taru_01` in `/data/ani`, standing where the treasure is and
+turned to the camera, at the villagers' pixel scale — a frame of 32 rows is a
+person's height, so their 24 rows are three quarters of one. INFERRED: `0x10` is
+the pot and `0x20` the barrel, from `randTTT`'s name — *tsubo*, *taru*, *tansu* —
+the cabinet, *tansu*, being the third kind, `0x30`. Erinn's room, `M01M07`, has a
+pot and two barrels. They look the same opened as shut. The `_02` sheets, three
+56×32 frames named `taruware` and `tsuboware` (*ware*, breaking), are likely
+the smash, but do not read yet: their pixels are not laid out like a villager's.
+See `game-formats/FORMAT.md`, "Treasure".
 
 **Chests** (`apps/game/src/chests.ts`): the model is `T00GDS01`–`04` in
 `/data/bin/icon.nsarc`, the archive of things the engine draws in the world by
@@ -133,10 +148,11 @@ found nothing, and the models were found among the engine's own.
 
 **Not found** (set aside on 12 September):
 
-- which of kinds `0x10` and `0x20` is a pot and which a barrel, and drawing
-  them: their sprites, `taru` and `tsubo`, are in the icon archive, and only
-  the first of each three reads;
-- what a random table's kind-3 rows give.
+- how the pot's and barrel's `_02` sheets — the smash, INFERRED — are laid out,
+  and what `_03` is;
+- which kind is the pot and which the barrel, beyond `randTTT`'s name;
+- the monster list's records, which would let a chest monster be named rather
+  than numbered.
 
 ---
 

@@ -150,13 +150,17 @@ play. The second is not done. Set aside to move on to M4:
 - **Examine — done, 12 September.** Things to examine are cast records of
   kind 1, placed and never drawn, whose talk is what examining says — the
   village's bush and statue among them; `f` talks to them. Cabinets open. Pots
-  and barrels open but are still gold cubes: their sprites, `taru` and
-  `tsubo`, are in the icon archive, and which kind is which is not known.
+  and barrels open, and are drawn with their sprites (`tsubo_01`, `taru_01`);
+  `0x10` the pot and `0x20` the barrel is INFERRED from `randTTT`'s name. Their
+  `_02` sheets are named for breaking (`tsuboware`) but do not read yet, so
+  opening one does not smash it.
 - **What is in the treasure — done, 12 September.** Chests name their item;
   kind `0x4` is gold; pots, barrels, cabinets and kind `0x40` draw by rank from
   the random tables, with a stand-in for the game's dice. The item names and
-  tables are read (`game-formats/FORMAT.md`, "Items" and "Treasure"). Nothing
-  is kept yet: there is no inventory until M4.
+  tables are read (`game-formats/FORMAT.md`, "Items" and "Treasure"). A chest's
+  draw can be a monster — the cannibox, mimic or Pandora's box, INFERRED — but
+  there are no battles to follow it. Nothing is kept yet: there is no inventory
+  until M4.
 - **The stable and the church.** Not started; the church's save point is M4's.
 - **Where the Hero wakes.** `ev02130` puts the Hero at (1.09, 0.61, −2.73),
   0.45 above the floor — in bed, INFERRED — in `M01M07` or `M01M10`, both of

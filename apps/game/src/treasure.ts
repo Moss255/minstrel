@@ -1,6 +1,7 @@
 import {
   RANDOM_GOLD,
   RANDOM_ITEM,
+  RANDOM_MONSTER,
   type RandomTreasure,
   type Treasure,
 } from '@minstrel/game-formats'
@@ -16,8 +17,9 @@ import { renderLine, type Talker } from './talk.ts'
  * some hold gold, and the rest draw from the random tables.
  *
  * **The marker is not the game's.** Chests are drawn with their own models (see
- * `chests.ts`); pots and barrels are not yet, so each other treasure with a
- * position is a small cube, gold while it is shut and grey once opened.
+ * `chests.ts`) and pots and barrels with their sprites (see `pots.ts`); any
+ * other treasure with a position — the village has none — is a small cube, gold
+ * while it is shut and grey once opened.
  *
  * **Nor are the words.** The cartridge's own text for opening a treasure has
  * not been found; the box says which treasure was opened and what was in it,
@@ -140,12 +142,20 @@ export function findInside(
   const row = drawRow(rows, value, roll)
   const odds = `rank ${value} of ${table}, roll ${roll} of 100 against weights coming to ${total}`
   if (!row) return { text: 'There is nothing inside.', note: `${odds}: nothing` }
+  if (row.kind === RANDOM_MONSTER) {
+    // The monster list's names are not read, so it goes by its number; and
+    // there is no battle yet, so nothing comes of it.
+    return {
+      text: `The chest was really a monster — number ${row.value} in the monster list!\nThere are no battles yet.`,
+      note: `${odds}: weight ${row.weight}, monster ${row.value}`,
+    }
+  }
   const what =
     row.kind === RANDOM_ITEM
       ? item(row.value)
       : row.kind === RANDOM_GOLD
         ? `${row.value} gold coins`
-        : `something not read yet (a kind-${row.kind} draw, ${row.value})`
+        : `something not read (a kind-${row.kind} draw, ${row.value})`
   return { text: `Inside: ${what}.`, note: `${odds}: weight ${row.weight}` }
 }
 

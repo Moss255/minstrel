@@ -41,8 +41,9 @@ import {
 } from '@minstrel/game-formats'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
-import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
+import { type Cast, type CastSprite, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
+import { propSprites } from './pots.ts'
 
 /**
  * Turn a cartridge into somewhere to stand.
@@ -81,6 +82,8 @@ export interface Loaded {
   readonly treasures: readonly Treasure[]
   /** The two chests' models, shut and open — see `chests.ts`. */
   readonly chests: readonly ChestLook[]
+  /** The pots and barrels, drawn as sprites where the treasure stands — see `pots.ts`. */
+  readonly props: readonly CastSprite[]
   /** Item names in English, by id — see `readItemNames`. */
   readonly itemNames: ReadonlyMap<number, string>
   /** The random-treasure tables, by file — `randTBox`, `randTD`, `randTTT`. */
@@ -712,9 +715,11 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const id = entry?.id
   const talk = area ? talkOf(rom, area.code) : new Map<string, Map<number, readonly TalkLine[]>>()
   const triggers = area ? triggersOf(rom, area.code) : []
+  const treasures = treasuresOf(rom, code)
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
-    treasures: treasuresOf(rom, code),
+    treasures,
+    props: propSprites(treasures, sheets),
     itemNames: itemNamesOf(rom),
     randoms: randomTreasureOf(rom),
     chests: chestModelsOf(

@@ -351,7 +351,10 @@ export function setSpriteCut(next: SpriteCut, cast: Cast): SpriteCut {
 }
 
 const readSheets = new Map<string, Sprite | undefined>()
-function sheetFor(name: string, sheets: ReadonlyMap<string, Uint8Array>): Sprite | undefined {
+export function sheetFor(
+  name: string,
+  sheets: ReadonlyMap<string, Uint8Array>,
+): Sprite | undefined {
   const key = name.toLowerCase()
   if (readSheets.has(key)) return readSheets.get(key)
   const bytes = sheets.get(key)
@@ -483,6 +486,19 @@ const FACINGS = [
  * be. Negating the step swaps every `l_*` with its `r_*` and leaves the two
  * ends alone, which is exactly that mirror.
  */
+/** The rows of a character's frame: one frame tall is one person tall — see `spritePieces`. */
+export const FRAME_ROWS = 32
+
+/**
+ * A thing drawn as a sprite — a pot, a barrel — at the characters' own pixel
+ * scale rather than stretched to a person's height: a frame of 24 rows is three
+ * quarters of a person, as 24 rows of a character's 32 would be.
+ */
+export function propPieces(prop: CastSprite, personHeight: number, yaw: number): Piece[] {
+  const image = decodedFrame(prop, 0)
+  return spritePieces(prop, (personHeight * image.height) / FRAME_ROWS, yaw, 0)
+}
+
 export function standingFrame(member: CastSprite, cameraYaw: number): number {
   const away = member.placement.facing - cameraYaw
   const step = Math.PI / 4

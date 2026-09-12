@@ -78,9 +78,16 @@ export interface TreasureFile {
 
 /** The records of a random-treasure table: one draw each. */
 export const RANDOM_TAG = 0x69
-/** What a random-treasure draw gives: gold, an item, or a third kind not established. */
+/** What a random-treasure draw gives: gold, an item, or a monster. */
 export const RANDOM_GOLD = 1
 export const RANDOM_ITEM = 2
+/**
+ * INFERRED: a chest that is a monster, its value the monster's number counting
+ * from 1 in the monster list's order. Its rows are only in the chest tables,
+ * their values are 38 to 40, climbing with the rank, and the monster list's
+ * 38th to 40th are the three chest monsters — see FORMAT.md, "Random treasure".
+ */
+export const RANDOM_MONSTER = 3
 
 /**
  * One row of a random-treasure table — `randTBox`, `randTD` and `randTTT` in
@@ -90,8 +97,8 @@ export const RANDOM_ITEM = 2
  * | bits | meaning |
  * |---|---|
  * | 26–31 | rank |
- * | 23–25 | kind: 1 gold, 2 an item, 3 not established |
- * | 7–22 | the gold amount, or the item's id |
+ * | 23–25 | kind: 1 gold, 2 an item, 3 a monster (INFERRED) |
+ * | 7–22 | the gold amount, the item's id, or the monster's number |
  * | 0–6 | weight |
  *
  * Established on the whole cartridge: every one of the 288 kind-2 rows names

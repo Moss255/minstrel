@@ -1940,7 +1940,10 @@ A `0x67` record, by its number of values:
   would not, also INFERRED.
 - **Kind**, value 1: which kind is a chest, a pot or a barrel is not
   established. **`0x30`, the three-value kind with no position, is what a
-  cabinet holds** — below.
+  cabinet holds** — below. INFERRED: `0x10` is a pot and `0x20` a barrel. The
+  random table they share with the cabinet is `randTTT` — *tsubo*, *taru*,
+  *tansu*: pot, barrel, cabinet — and the cabinet is the third kind, `0x30`, so
+  the first two are taken in the name's order. Nothing else says which is which.
 - **`unknown_2`**, value 2 of a three-value record: in the village it is the
   number of the room's cabinet holding it, less one — `M01M03`'s two records
   read 0 and 1 beside cabinets `G1` and `G2`, `M01M09`'s and `M01M10`'s one
@@ -1983,7 +1986,24 @@ the cartridge is named for a chest,**
 with every leaf walked, `.gp2` members included. `/data/chara_sub/box.chr` is a
 crate of five quads and one texture. `taru` and `tsubo` — barrel and pot — are
 2D sprites in `/data/ani` and in the menu icons, and nothing else. The rooms'
-own models carry no such object. The player's figures do carry `takara.nsbca`
+own models carry no such object. Each comes in three sheets, the same in both
+places:
+
+| sheet | header | reads? |
+|---|---|---|
+| `taru_01`, `tsubo_01` | 1 frame, 32×32 and 24×32 | yes — the game draws these |
+| `taru_02`, `tsubo_02` | 3 frames of 56×32 | no |
+| `taru_03`, `tsubo_03` | 1 frame of 16×16 | `tsubo_03` only |
+
+The `_02` sheets name their one animation `taruware` and `tsuboware` — *ware*
+is breaking — so they are INFERRED to be the smash. They do not read because no
+palette sits where the sprite reader's size rule puts one: three frames of 56×32
+need 2,688 bytes of pixels, and every candidate count word of 16 comes before
+that (or unaligned, at 48 wide). So their pixels are not laid out like a
+villager's, and how they are laid out is not established. `taru_03` has no
+candidate palette at all; its animation is named `tsubo_03`, which suggests a
+copy of the pot's small sheet, but what `_03` is — a shard, perhaps — is not
+established either. The player's figures do carry `takara.nsbca`
 (*takara* is treasure) beside `hirou.nsbca`, which is presumably the Hero's
 opening motion; it is not used yet.
 
@@ -2009,8 +2029,8 @@ A chest's value names its item by that id. See "Items" for the tables.
 | bits | meaning |
 |---|---|
 | 26–31 | rank |
-| 23–25 | what it gives: 1 gold, 2 an item, 3 not established (38 to 40) |
-| 7–22 | the gold amount, or the item's id |
+| 23–25 | what it gives: 1 gold, 2 an item, 3 a monster (INFERRED, below) |
+| 7–22 | the gold amount, the item's id, or the monster's number |
 | 0–6 | weight among the rank's rows |
 
 Read off the whole cartridge: taking bits 7–22 as an item id lands on one for
@@ -2022,6 +2042,28 @@ to 100; `randTTT` has 1 to 20, its weights coming to 20 to 50. INFERRED: kind
 cabinets from `randTTT`, the shortfall below 100 being their chance of nothing.
 `randTD` is no village treasure's; its name and ten ranks suggest the
 treasure-map grottoes. The game's own dice are not reproduced.
+
+**Kind 3 is a chest that is a monster** — INFERRED, on three counts that agree:
+
+- **Where its rows are.** All ten are in the chest tables: `randTBox` ranks 4
+  and 5, `randTD` ranks 3 to 10. `randTTT`, the pots', barrels' and cabinets',
+  has none.
+- **How its value climbs.** 38 at `randTBox` 4 and `randTD` 3; 39 at `randTBox`
+  5 and `randTD` 4 to 7; 40 at `randTD` 8 to 10 — each a weight of 5 to 15 of
+  the rank's 100.
+- **What 38 to 40 are.** The monster list,
+  `/data/prm/mon_list.gp2/mon_list_<lang>.nat`, holds a code and a name for each
+  monster, the codes first from `0x2b24` in English: `z000a` slime, `z000b`
+  she-slime… Counting its codes from 1, the 38th to 40th are `z009a`, `z009b`
+  and `z009c` — cannibox, mimic and Pandora's box, the three monsters that pose
+  as chests, weakest first. And the system strings, `/data/bin/strstd.gp2`,
+  run "Oh no! The chest was really <str_1>!" · "<ACTOR> unlocks the chest." ·
+  "It's empty!" · "a cannibox" · "a mimic" · "a Pandora's box".
+
+Not established: that the value counts the monster list's order from 1 — the
+list's records before its strings (`YQT`, a count word of 340) are not read, so
+it is the order of its strings that is counted — and the strings' own records,
+in `strstd`, which do not read as index and offset.
 
 ---
 

@@ -77,6 +77,7 @@ export { type MapTransition, mapDoorways, readMapTransitions } from './transitio
 export {
   RANDOM_GOLD,
   RANDOM_ITEM,
+  RANDOM_MONSTER,
   RANDOM_TAG,
   type RandomTreasure,
   readRandomTreasure,
