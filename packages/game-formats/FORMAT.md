@@ -731,6 +731,70 @@ shields, `t` tools, `u` legwear, `w` weapons. The rest of a record is not read.
 
 ---
 
+# Level tables — `/data/prm/level<n>.bin`
+
+Thirteen loose files, `level0.bin` to `level12.bin`, 5,312 bytes each. Every
+one is a tagged data table (above) of 102 records: one `0x65` (`0`), one `0x64`
+(`20`), 99 `0x66` and one `0x67` of 22 integers (seventeen `100`s, then `10 2 2
+0 0` on eleven files; `level2` and `level10` carry some `75`s and `50`s among
+the hundreds). `readLevelTable` reads them; the `0x64`, `0x65` and `0x67`
+records are carried, not read.
+
+**A `0x66` record is a level**, eleven integers, and the 99 are levels 1 to 99:
+column 0 is 0 on the first of every file and rises on every record after, to
+4.3 million on `level1` and 6.9 million on `level0` — the experience a level is
+reached at, INFERRED.
+
+**What the other columns are is INFERRED**, in two steps.
+
+- **Ten columns, ten words.** The status screen's strings,
+  `/data/bin/menu/str_sta.gp2/str_sta_en.bin`, run `Lv` · `Exp.` · `Strength`
+  · `Agility` · `Resilience` · `Deftness` · `Charm` · `Magical Mending` ·
+  `Magical Might` · `Max. HP` · `Max. MP` · `Attack` · `Defence`. Past `Lv`,
+  that is experience and nine numbers — the table's first ten columns — with
+  attack and defence, which come from equipment, after. Column 10 is none of
+  them: 0 at level 1, 12 at level 10 and 200 at 99 on twelve files, 17 and 350
+  on `level0`. It is not established.
+- **Which is which, by vocation.** The same strings name thirteen vocations —
+  `Guardian`, `Warrior`, `Priest`, `Mage`, `Martial Artist`, `Thief`,
+  `Minstrel`, `Gladiator`, `Armamentalist`, `Paladin`, `Sage`, `Luminary`,
+  `Ranger` — and there are thirteen files. Taken in that order, level 1 of each:
+
+  | file | vocation | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | `level0` | Guardian | 10 | 9 | 8 | 8 | 9 | 8 | 8 | 30 | 10 |
+  | `level1` | Warrior | 18 | 18 | 4 | 5 | 4 | 0 | 0 | 26 | 4 |
+  | `level2` | Priest | 9 | 9 | 14 | 9 | 7 | 0 | 18 | 19 | 14 |
+  | `level3` | Mage | 4 | 7 | 18 | 14 | 7 | 18 | 0 | 18 | 16 |
+  | `level4` | Martial Artist | 18 | 11 | 23 | 11 | 5 | 0 | 0 | 24 | 2 |
+  | `level5` | Thief | 13 | 11 | 18 | 18 | 3 | 0 | 4 | 23 | 6 |
+  | `level6` | Minstrel | 9 | 8 | 8 | 12 | 9 | 6 | 7 | 20 | 6 |
+  | `level7` | Gladiator | 30 | 19 | 7 | 15 | 5 | 0 | 0 | 32 | 2 |
+  | `level8` | Armamentalist | 21 | 15 | 10 | 7 | 11 | 17 | 0 | 32 | 14 |
+  | `level9` | Paladin | 21 | 22 | 4 | 1 | 7 | 0 | 10 | 36 | 11 |
+  | `level10` | Sage | 12 | 12 | 13 | 3 | 14 | 14 | 12 | 29 | 30 |
+  | `level11` | Luminary | 9 | 12 | 22 | 16 | 18 | 5 | 19 | 31 | 13 |
+  | `level12` | Ranger | 18 | 14 | 16 | 30 | 4 | 0 | 12 | 31 | 14 |
+
+  Columns 6 and 7 are the pair only some vocations have: both 0 on the
+  Warrior, the Martial Artist and the Gladiator; the Mage and the Armamentalist
+  have only 6, the Priest, the Paladin and the Ranger only 7. So 6 is taken for
+  magical might — attack spells — and 7 for magical mending, the reverse of the
+  screen's order. Column 8 is the largest on every file at level 1 and 390 to
+  600 at 99: maximum HP. Column 9, highest on the Mage and the Sage: maximum MP.
+  Column 5 is highest on the Luminary: charm. Columns 2 and 3 are also taken in
+  the reverse of the screen's order — **2 resilience, 3 agility** — because the
+  Paladin (22 against 4) and the Gladiator (19 against 7) are high in 2 and low
+  in 3, and the Martial Artist (11 against 23) and the Thief (11 against 18) the
+  other way about. Column 4, highest on the Ranger and the Thief, is deftness.
+
+The weakest step is the last: it rests on what those vocations are, not on
+anything in the files. A level-1 status screen in the emulator, for any
+vocation whose resilience and agility differ, would settle columns 2 and 3; and
+so would one for the Mage, whose might is 18 or 0.
+
+---
+
 # Motion tables — `.bcfg`
 
 A tagged data table (above) beside a model, naming stretches of its animation.

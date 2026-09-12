@@ -1,3 +1,6 @@
+import { type Bag, bagLines } from './bag.ts'
+import type { Standing } from './hero.ts'
+
 /**
  * The main menu — M4's first step: the commands, and moving between them.
  *
@@ -6,9 +9,9 @@
  * slice plan's — talk, status, items, equip, spells — in our own words: the
  * cartridge's own menu text, under `/data/menu`, is not read yet.
  *
- * **Only talking does anything yet.** The Hero's numbers are in the parameter
- * tables under `/data/prm`, still to be decoded, and there is no inventory; each
- * other command says so rather than show numbers nobody read.
+ * **Talk, status and items work.** Status shows the Hero's level table (see
+ * `hero.ts`), whose columns are INFERRED; items lists the bag (see `bag.ts`).
+ * Equip and spells say what is not read yet rather than show numbers nobody read.
  */
 
 export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells'
@@ -60,25 +63,47 @@ export interface MenuContext {
   readonly hero: string
   readonly map: string | undefined
   readonly stage: string | undefined
+  /** The Hero's level and numbers, when the level table read. */
+  readonly standing?: Standing | undefined
+  readonly bag?: Bag | undefined
+  /** An item's name by id. */
+  readonly itemName?: ((id: number) => string) | undefined
 }
+
+const byId = (id: number) => `item 0x${id.toString(16)}`
 
 /** A panel's lines. */
 export function panelLines(panel: MenuCommand, context: MenuContext): string[] {
+  const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   switch (panel) {
-    case 'status':
+    case 'status': {
+      const s = context.standing
+      if (!s) {
+        return [
+          context.hero,
+          where,
+          'Level, HP, MP and the rest are not read: the level table did not load.',
+        ]
+      }
+      const { level: l } = s
       return [
-        context.hero,
-        `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`,
-        'Level, HP, MP and the rest are not read yet: they are in the parameter tables under /data/prm, still to be decoded.',
+        `${context.hero} — ${s.vocation}, level ${l.level}`,
+        `Exp. ${s.exp}${s.next ? `, level ${s.next.level} at ${s.next.exp}` : ''}`,
+        `HP ${l.maxHp}/${l.maxHp} · MP ${l.maxMp}/${l.maxMp}`,
+        `Strength ${l.strength} · Resilience ${l.resilience} · Agility ${l.agility} · Deftness ${l.deftness} · Charm ${l.charm}`,
+        `Magical might ${l.magicalMight} · Magical mending ${l.magicalMending}`,
+        'Attack and defence wait for equipment. Which level-table column is which is inferred.',
+        where,
       ]
+    }
     case 'items':
-      return ['There is no inventory yet: the bag, and using what is in it, come next in M4.']
+      return context.bag
+        ? bagLines(context.bag, context.itemName ?? byId)
+        : ['There is no bag yet.']
     case 'equip':
-      return [
-        'There is nothing to equip yet: equipment and what it does to the numbers come with the inventory.',
-      ]
+      return ['There is nothing to equip yet: equipment and what it does to the numbers come next.']
     case 'spells':
-      return ['No spells are read yet: they are in the parameter tables with the rest of the Hero.']
+      return ['No spells are read yet.']
     case 'talk':
       return []
   }

@@ -15,6 +15,7 @@ import {
   isMapManifest,
   isNpcList,
   isNpcPlacements,
+  type LevelTable,
   type MapEntry,
   type MapManifest,
   type MapTransition,
@@ -26,6 +27,7 @@ import {
   type RandomTreasure,
   readEventMessages,
   readItemNames,
+  readLevelTable,
   readMapList,
   readMapManifest,
   readNpcList,
@@ -43,6 +45,7 @@ import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import { type Cast, type CastSprite, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
+import { HERO_LEVELS } from './hero.ts'
 import { propSprites } from './pots.ts'
 
 /**
@@ -88,6 +91,8 @@ export interface Loaded {
   readonly itemNames: ReadonlyMap<number, string>
   /** The random-treasure tables, by file — `randTBox`, `randTD`, `randTTT`. */
   readonly randoms: ReadonlyMap<string, readonly RandomTreasure[]>
+  /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
+  readonly heroLevels: LevelTable | undefined
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
@@ -406,6 +411,25 @@ function randomTreasureOf(rom: Uint8Array): Map<string, RandomTreasure[]> {
   return tables
 }
 
+/** The level tables read so far, by cartridge: a loose file, not an archive member. */
+const levelsRead = new WeakMap<Uint8Array, LevelTable | undefined>()
+
+/** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
+function heroLevelsOf(rom: Uint8Array): LevelTable | undefined {
+  if (levelsRead.has(rom)) return levelsRead.get(rom)
+  let table: LevelTable | undefined
+  for (const leaf of scanCartridge(rom, { pathFilter: HERO_LEVELS })) {
+    if (leaf.path !== HERO_LEVELS) continue
+    try {
+      table = readLevelTable(leaf.bytes)
+    } catch {
+      // A table that will not read leaves the Hero without numbers.
+    }
+  }
+  levelsRead.set(rom, table)
+  return table
+}
+
 /** A treasure in world units: its position the file's own, times {@link WORLD_SCALE}. */
 function treasureInWorld(treasure: Treasure): Treasure {
   const at = treasure.position
@@ -722,6 +746,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     props: propSprites(treasures, sheets),
     itemNames: itemNamesOf(rom),
     randoms: randomTreasureOf(rom),
+    heroLevels: heroLevelsOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

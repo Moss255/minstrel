@@ -176,15 +176,27 @@ play. The second is not done. Set aside to move on to M4:
 
 `x` opens the main menu, as the plan lists it: talk, status, items, equip,
 spells (`apps/game/src/menu.ts`). The arrows or `w`/`s` choose, `f` or `Enter`
-takes, `x` or `Esc` goes back a step. Talk works; the rest say what is not read
-yet rather than show numbers nobody read — the Hero's numbers are in the
-parameter tables under `/data/prm`, and there is no inventory. The words are
-ours: the cartridge's own menu text, under `/data/menu`, is not read yet.
+takes, `x` or `Esc` goes back a step. The words are ours: the cartridge's own
+menu text, under `/data/menu`, is not read yet.
 
-Next for M4, in the plan's order: the Hero's numbers and the item tables
-(`/data/prm/itemdt*`, `itemname`), then the inventory and item use, equipment
-and its effect on the numbers, the shop, the inn and the church's save point,
-and saving in our own format.
+- **Status works.** The Hero's numbers come from the level tables,
+  `/data/prm/level<n>.bin` — one per vocation, 99 levels each, read by
+  `readLevelTable`. Which column is which is INFERRED from the status screen's
+  own words and the vocations' numbers (`game-formats/FORMAT.md`, "Level
+  tables"); resilience against agility is the weakest step, and a level-1
+  status screen in the emulator would settle it. The Hero is taken to be a
+  Minstrel, `level6` (`apps/game/src/hero.ts`) — a choice; `level0`, the
+  Guardian's, is the other candidate. Experience stays at 0 until there are
+  battles. Attack and defence wait for equipment.
+- **Items works.** Opening treasure fills the bag (`apps/game/src/bag.ts`):
+  gold, and a count of each item, named from `itemname`. The bag is ours — how
+  the game keeps its own is not read — and neither it nor the opened treasure
+  is saved yet.
+
+Next for M4, in the plan's order: the item tables' numbers (`/data/prm/itemdt*`
+— a weapon's attack, an item's price), then item use, equipment and its effect
+on the numbers, the shop, the inn and the church's save point, and saving in
+our own format.
 
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it

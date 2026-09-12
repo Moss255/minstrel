@@ -23,6 +23,13 @@ export {
   readBitmapFont,
 } from './font.ts'
 export { type ItemName, readItemNames } from './items.ts'
+export {
+  LEVEL_TAG,
+  type LevelRow,
+  type LevelTable,
+  levelAt,
+  readLevelTable,
+} from './levels.ts'
 export { isMapLinks, type MapLinks, readMapLinks } from './maplinks.ts'
 export {
   isMapList,

@@ -7,6 +7,7 @@ import {
 } from '@minstrel/game-formats'
 import type { Piece } from '@minstrel/gl'
 import type { Vertex } from '@minstrel/nitro-gfx'
+import type { Takings } from './bag.ts'
 import { renderLine, type Talker } from './talk.ts'
 
 /**
@@ -76,10 +77,14 @@ export const DRAWN_FROM: ReadonlyMap<number, string> = new Map([
   [0x40, 'randTBox'],
 ])
 
-/** What opening a treasure turned up: the words for the box, and a note on where they came from. */
+/**
+ * What opening a treasure turned up: the words for the box, a note on where they
+ * came from, and what goes into the bag.
+ */
 export interface Found {
   readonly text: string
   readonly note: string
+  readonly takings: Takings
 }
 
 /**
@@ -127,40 +132,53 @@ export function findInside(
     return name === undefined ? `item 0x${id.toString(16)}` : renderName(name)
   }
   if (treasure.kind === 0x8 || treasure.kind === 0x9) {
-    return { text: `Inside: ${item(value)}.`, note: `item 0x${value.toString(16)}` }
+    return {
+      text: `Inside: ${item(value)}.`,
+      note: `item 0x${value.toString(16)}`,
+      takings: { item: value },
+    }
   }
-  if (treasure.kind === 0x4) return { text: `Inside: ${value} gold coins.`, note: `${value} gold` }
+  if (treasure.kind === 0x4) {
+    return { text: `Inside: ${value} gold coins.`, note: `${value} gold`, takings: { gold: value } }
+  }
   const table = DRAWN_FROM.get(treasure.kind)
   if (table === undefined || value === 0) {
     return {
       text: 'There is nothing inside.',
       note: `kind 0x${treasure.kind.toString(16)}, value ${value}`,
+      takings: {},
     }
   }
   const rows = randoms.get(table) ?? []
   const total = rows.filter((row) => row.rank === value).reduce((sum, row) => sum + row.weight, 0)
   const row = drawRow(rows, value, roll)
   const odds = `rank ${value} of ${table}, roll ${roll} of 100 against weights coming to ${total}`
-  if (!row) return { text: 'There is nothing inside.', note: `${odds}: nothing` }
+  if (!row) return { text: 'There is nothing inside.', note: `${odds}: nothing`, takings: {} }
   if (row.kind === RANDOM_MONSTER) {
     // The monster list's names are not read, so it goes by its number; and
     // there is no battle yet, so nothing comes of it.
     return {
       text: `The chest was really a monster — number ${row.value} in the monster list!\nThere are no battles yet.`,
       note: `${odds}: weight ${row.weight}, monster ${row.value}`,
+      takings: {},
     }
   }
-  const what =
-    row.kind === RANDOM_ITEM
-      ? item(row.value)
-      : row.kind === RANDOM_GOLD
-        ? `${row.value} gold coins`
-        : `something not read (a kind-${row.kind} draw, ${row.value})`
-  return { text: `Inside: ${what}.`, note: `${odds}: weight ${row.weight}` }
+  const note = `${odds}: weight ${row.weight}`
+  if (row.kind === RANDOM_ITEM) {
+    return { text: `Inside: ${item(row.value)}.`, note, takings: { item: row.value } }
+  }
+  if (row.kind === RANDOM_GOLD) {
+    return { text: `Inside: ${row.value} gold coins.`, note, takings: { gold: row.value } }
+  }
+  return {
+    text: `Inside: something not read (a kind-${row.kind} draw, ${row.value}).`,
+    note,
+    takings: {},
+  }
 }
 
 /** An item name's markup — `veteran<1>s helm` — as the text box would show it. */
-function renderName(name: string): string {
+export function renderName(name: string): string {
   return renderLine(name)
     .pages.map((page) => page.text)
     .join(' ')

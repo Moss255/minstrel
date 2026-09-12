@@ -26,6 +26,7 @@ import {
 } from '@minstrel/render'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
+import { type Bag, EMPTY_BAG, take } from './bag.ts'
 import {
   CABINET_OPENING,
   CABINET_SHUT,
@@ -54,6 +55,7 @@ import {
 } from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
+import { standing } from './hero.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
 import {
   back,
@@ -86,6 +88,7 @@ import {
 import {
   findInside,
   nearestTreasure,
+  renderName,
   TREASURE_MARKER,
   treasureKey,
   treasurePieces,
@@ -243,6 +246,10 @@ let menu: MenuState | undefined
  * it stays open whichever way the Hero comes back. Not saved yet.
  */
 const openedTreasure = new Set<string>()
+/** What the Hero has picked up — see `bag.ts`. Not saved yet. */
+let bag: Bag = EMPTY_BAG
+/** The Hero's experience. Nothing gives any until there are battles. */
+const heroExp = 0
 /** The markers where the map's treasure is — see `treasure.ts`. */
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
@@ -1054,6 +1061,7 @@ function openTreasureAhead(): boolean {
   const key = treasureKey(loaded.code, slot, treasure)
   const already = openedTreasure.has(key)
   const found = findInside(treasure, loaded.randoms, loaded.itemNames)
+  if (!already) bag = take(bag, found.takings)
   openedTreasure.add(key)
   talking = startConversation(
     { ...target, id: treasure.index ?? target.id },
@@ -1179,10 +1187,18 @@ function showMenu(): void {
     const panel = document.createElement('div')
     panel.className = 'panel'
     const stage = storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined
+    const names = loaded?.itemNames
+    const levels = loaded?.heroLevels
     for (const line of panelLines(menu.panel, {
       hero: DEFAULT_CONTEXT.heroName,
       map: loaded?.code,
       stage,
+      standing: levels ? standing(levels, heroExp) : undefined,
+      bag,
+      itemName: (id) => {
+        const name = names?.get(id)
+        return name === undefined ? `item 0x${id.toString(16)}` : renderName(name)
+      },
     })) {
       const row = document.createElement('div')
       row.textContent = line
