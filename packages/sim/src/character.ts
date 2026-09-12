@@ -305,7 +305,7 @@ function pushOutOfWalls(
  * what it is rather than dressed up as a derivation. Judged against the slice's
  * village by resizing until it looked right, a person is **0.18 units** — 0.11
  * of the 1.57-unit house facade they walk past, and about the same height as
- * the village's doorways once those are at `PLACED_PIECE_SCALE`.
+ * the village's doorways.
  *
  * The radius scales with the height, being a fact about the character. **The
  * step and snap heights do not**, and that distinction cost a lot to learn: a

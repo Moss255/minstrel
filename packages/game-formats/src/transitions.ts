@@ -1,4 +1,3 @@
-import { PLACEMENT_SCALE } from './mapmanifest.ts'
 import { type DataTable, readDataTable, type TableRecord } from './table.ts'
 
 /**
@@ -49,27 +48,22 @@ export interface MapTransition {
   readonly tag: number
   /** The map this leads to, by the code the map index knows it by. */
   readonly to: string
-  /** Where the doorway stands in this map, in world units. */
+  /** Where the doorway stands in this map, in the file's own units. */
   readonly x: number
   readonly y: number
   readonly z: number
-  /** How big the doorway is, in world units. */
+  /** How big the doorway is, in the file's own units. */
   readonly width: number
   readonly height: number
   readonly depth: number
   /** Which way the doorway faces, in radians. */
   readonly angle: number
-  /** Where you stand in the destination, in world units. */
+  /** Where you stand in the destination, in the file's own units. */
   readonly arriveX: number
   readonly arriveY: number
   readonly arriveZ: number
   /** Which way you face on arriving, in radians. */
   readonly arriveFacing: number
-}
-
-/** Positions are in the file's own units, the same eighth-scale the maps use. */
-function scaled(value: number): number {
-  return value / PLACEMENT_SCALE
 }
 
 /**
@@ -100,17 +94,16 @@ function transition(
   return {
     tag,
     to,
-    x: scaled(trigger.values[at] as number),
-    y: scaled(trigger.values[at + 1] as number),
-    z: scaled(trigger.values[at + 2] as number),
-    width: scaled(trigger.values[at + 3] as number),
-    height: scaled(trigger.values[at + 4] as number),
-    depth: scaled(trigger.values[at + 5] as number),
+    x: trigger.values[at] as number,
+    y: trigger.values[at + 1] as number,
+    z: trigger.values[at + 2] as number,
+    width: trigger.values[at + 3] as number,
+    height: trigger.values[at + 4] as number,
+    depth: trigger.values[at + 5] as number,
     angle: trigger.values[at + 6] as number,
-    arriveX: scaled(record.floats[arrival] as number),
-    arriveY: scaled(record.floats[arrival + 1] as number),
-    arriveZ: scaled(record.floats[arrival + 2] as number),
-    // An angle is an angle whatever the scale is.
+    arriveX: record.floats[arrival] as number,
+    arriveY: record.floats[arrival + 1] as number,
+    arriveZ: record.floats[arrival + 2] as number,
     arriveFacing: record.floats[arrival + 3] as number,
   }
 }
@@ -160,15 +153,16 @@ export function readMapTransitions(data: Uint8Array): MapTransition[] {
  * How far apart two records may stand and still be the same doorway.
  *
  * Where a map carries both forms of a doorway they do not coincide exactly:
- * across the village's seven shared doors the `0x73` trigger stands **one raw
- * unit** — an eighth of a world unit — from the `0x72` one, every time, and is
- * a unit deeper. They are the same door described twice, not two doors.
+ * across the village's seven shared doors the `0x73` trigger stands **one
+ * unit** from the `0x72` one, every time, and is a unit deeper. They are the
+ * same door described twice, not two doors.
  *
  * Set well above that and well below the gap between real neighbours: of the
  * 196 same-destination pairs on the cartridge, 87 fall inside this and the
  * rest are over three times as far apart. A house with two doors keeps both.
+ * In the file's own units, like the positions it compares.
  */
-const SAME_DOORWAY = 0.3
+const SAME_DOORWAY = 2.4
 
 /**
  * The doorways of a map, each one once.

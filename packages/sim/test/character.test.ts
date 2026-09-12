@@ -52,7 +52,7 @@ function mesh(triangles: readonly (readonly [Point, Point, Point])[]): Collision
     cells: [],
     cellTriangles: [],
     trailing: [],
-    unknown_0x04: 0,
+    shift: 0,
     unknown_0x1a: 0,
     cell: () => [],
   }

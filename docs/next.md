@@ -9,6 +9,58 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## 0. Everything is read at its own size — **done, 12 September**
+
+The scaling problem behind items 5 and 6 was two misreadings, not a per-map
+fact, and every fitted scale constant is gone with them.
+
+- **Models.** A scaled model's render commands bracket each shape: `0x0B`
+  scales up by `upScale`, the shape is drawn, `0x2B` scales back down by
+  `downScale` (apicula, `render_cmds.rs`). The scale-down is an undo sent after
+  the shape; `nsbmd.ts` applied it to every shape, so every model was drawn at
+  its size over its own `upScale` — 8 for the village's terrain, 1 or 2 for most
+  rooms, 16 for fields. `nitro-gfx/FORMAT.md`, "The position scale".
+- **Collision.** A `.col2`'s `+0x04` is a shift: its coordinates were stored
+  halved that many times. INFERRED; `game-formats/FORMAT.md` has the evidence.
+
+Read that way the files agree with one another with nothing between them but
+one choice of unit, `WORLD_SCALE` in `packages/world` — an eighth of the files'
+units, which is what the character was tuned in. `PLACEMENT_SCALE`,
+`PLACED_PIECE_SCALE`, the indoor eighth and `INTERIOR_COLLISION_SCALE` are
+removed, and the parsers return the files' own values.
+
+| measured on the whole cartridge | before | after |
+|---|---|---|
+| indoor doorways just inside their drawn room, 677 | 34% | 85% |
+| indoor doorways just inside their collision | 16% | 91% |
+| doorway arrivals landing on floor | 78.1% | **99.8%** |
+| arrivals into a field landing on floor | 87 missed | 116 of 116 |
+
+In the village: House A, the Mayor's House, the church and Erinn's house were
+drawn at half size, which is the "still want adjusting" report; the well's
+collision was doubled when it should not have been; and the waterfall,
+`M01M0001`, stood beyond the edge of the map at twice its size, where by its
+bounds it now stands at the head of the river with its foot on the water. The
+village's terrain, buildings, doors and main collision mesh come out as before.
+
+**To look at in play:** the clouds, `M01M0002`, have an `upScale` of 1 and now
+come out an eighth of their old size, near the middle of the village. Their bind
+pose reached below the ground at either size, so the game may draw them relative
+to the camera; that is not established.
+
+**The first map opens at its entrance.** With no doorway to arrive by, the
+character used to be put on walkable ground near the map's middle — a guess,
+which with the village's collision at its right size landed at the river's edge
+by the waterfall. It now comes in the way a neighbouring map's doorway brings
+you: for the village, the road from the field. `entranceOf` in
+`apps/game/src/load.ts`; the middle is kept only for a map nothing leads into.
+The cartridge's real start position is still not found.
+
+Items 5 and 6 below are kept for what they ruled out. Their conclusions are
+superseded by this.
+
+---
+
 ## 1. Interiors leaked, and no longer do — **done**
 
 A room's collision is one floor quad with walls standing on it, and the walls do
@@ -536,8 +588,8 @@ scrolls or pulses in a map is currently still.
 ```sh
 npx biome check .
 npx tsc --build
-npx vitest run                                     # 707 unit tests
-MINSTREL_TEST_ROM=rom/<your>.nds npx vitest run    # 772, the extra 65 on a cartridge
+npx vitest run                                     # 704 unit tests
+MINSTREL_TEST_ROM=rom/<your>.nds npx vitest run    # 772, the extra 68 on a cartridge
 ```
 
 The cartridge tests are seconds each and slower again under load; they carry

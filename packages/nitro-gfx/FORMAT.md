@@ -6,6 +6,8 @@
   containers below, *NSBCA*, *NSBTA*, *NSBTP*, *NSBMA*
 - GBATEK, [DS 3D Video](https://problemkaputt.de/gbatek.htm#ds3dvideo), for the
   geometry commands and their parameter counts
+- apicula, [`src/nitro/render_cmds.rs`](https://github.com/scurest/apicula), for
+  the render commands' scale up (`0x0B`) and scale down (`0x2B`)
 
 ## Container
 
@@ -127,33 +129,44 @@ other triangle is flipped back to give the run one consistent winding.
 ### The position scale
 
 A model's positions are stored small and scaled up when they are drawn. The
-scale is the model header's `upScale`, and `downScale` — always exactly its
-reciprocal — takes the result back to model space afterwards. Ignoring it leaves
-a model whose bones carry large translations spread across the world: `s107`,
-four thin strands, comes out 113 units long against the 7.36 its own header
-declares.
+scale is the model header's `upScale`. `downScale` is always exactly its
+reciprocal, and it is **not** applied to the shape.
 
-Three things carry the scale, and all three are needed:
+The render commands say so. The commonest shape on the reference cartridge —
+1,897 models, and hundreds more repeating it once per shape — is `0x0B`, the
+shape, `0x2B`: scale the current matrix up by `upScale`, send the vertices,
+scale it back down by `downScale`. apicula reads `0x0B` as `ScaleUp` and `0x2B`
+as `ScaleDown`. A vertex is transformed by the matrix current when it is sent,
+so the scale-down only undoes the scale-up for whatever comes after it.
+
+Three things carry the scale up, and all three are needed:
 
 - **`MTX_SCALE` in the display list is always the model's `upScale`**, uniform
   on all three axes — 126,616 of 126,616 on the reference cartridge. Since the
   bone transform is deferred, folding it into the positions as they are emitted
   is the same thing the hardware does by folding it into the current matrix.
 - **The `PositionScale` render command applies it before the shape is drawn**,
-  outside the display list. A model emits that command exactly when its
-  `upScale` is not one: of the 2,901 models that never emit it, 2,898 have an
-  `upScale` of 1.
+  outside the display list, and its `0x20` form undoes it after. A model emits
+  that command exactly when its `upScale` is not one: of the 2,901 models that
+  never emit it, 2,898 have an `upScale` of 1.
 - **`MTX_RESTORE` drops the scale**, because it loads a stored matrix over the
   current one. A display list that restores mid-shape re-applies `MTX_SCALE`
   immediately; one that does not never emits another vertex — **0 of 1,637,744**
   across the 4,719 models whose lists carry no `MTX_SCALE` at all. So no vertex
   is ever left at the wrong scale, which is what confirms the reading.
 
-The evidence that the scale belongs on the vertices and its reciprocal on the
-matrices, rather than the other way about, is `s107` again: with them that way
-round its geometry measures 7.358 x 0.189 x 0.200 against a declared
-7.360 x 0.187 x 0.198. With the scale on the vertices alone it is sixteen times
-too big.
+**Applying `downScale` to the shape was a misreading**, and an expensive one. It
+was adopted because `s107` then matched its own declared bounding box: 7.358 x
+0.189 x 0.200 against 7.360 x 0.187 x 0.198. But the declared box is stored at
+the scaled-down size, like the positions — across the 3,015 map models with an
+`upScale` above one, the raw box contains the geometry drawn that way on 1,531
+and the geometry at its own size on 3 — so matching it was never evidence.
+
+Drawn that way, every model came out at its size over its own `upScale`: 8 for
+the slice village's terrain, 1 or 2 for most rooms, 16 for the fields. The map
+scale constants that followed were compensating for it — see
+`game-formats/FORMAT.md`. With models at their own size, across 315 indoor maps
+the doorways stand just inside the drawn room on 85% of 677, against 34%.
 
 ### A shape starts on the matrix the render commands left current
 

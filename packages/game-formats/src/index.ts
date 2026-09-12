@@ -28,8 +28,6 @@ export {
   type MapManifest,
   type MapPlacement,
   type MapResource,
-  PLACED_PIECE_SCALE,
-  PLACEMENT_SCALE,
   placementOf,
   readMapManifest,
   resolveMapResources,

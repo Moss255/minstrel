@@ -18,7 +18,7 @@ import {
   type MapManifest,
   type MapTransition,
   mapDoorways,
-  PLACED_PIECE_SCALE,
+  type NpcPlacement,
   placeNpcs,
   readMapList,
   readMapManifest,
@@ -26,7 +26,7 @@ import {
   readNpcPlacements,
 } from '@minstrel/game-formats'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
-import { type AssembledMap, assembleMap, type MapLighting } from '@minstrel/world'
+import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 
 /**
@@ -52,14 +52,6 @@ export interface Loaded {
   readonly archive: string
   /** The map's own code, which is what a doorway names. */
   readonly code: string
-  /**
-   * How much the map's own space was shrunk to build it.
-   *
-   * `1` outdoors and `PLACED_PIECE_SCALE` indoors — see `MapEntry.indoors`.
-   * Anything else read in the map's own coordinates has to be shrunk to match,
-   * which is why the doorways below already are.
-   */
-  readonly scale: number
 }
 
 export interface LoadOptions {
@@ -90,21 +82,6 @@ export interface LoadOptions {
  * work and a great deal of memory for 36 MiB of sound the game does not yet
  * play. Narrowing it is what makes a load quick.
  */
-/**
- * How much bigger an interior's collision has to be than the file makes it.
- *
- * **Fitted, not derived.** Moving the mesh over the room in the game until it
- * lined up gives two for the rooms that were fitted, and no field in the
- * `.col2` header, the manifest, the index or the model separates a map that
- * needs it from one that does not.
- *
- * It is not established for every map — the well measures the same factor the
- * other way — so this is the best single number for the rooms looked at rather
- * than a reading of the format. `docs/next.md` carries the record and the keys
- * for fitting more.
- */
-export const INTERIOR_COLLISION_SCALE = 2
-
 export const SLICE_PATHS = [
   '/data/map/',
   '/data/pack_lv5/chara_pc.gp2',
@@ -182,9 +159,10 @@ function castFrom(
       // The join is the map's own id out of `maplist9.bin`, which every one of
       // the cartridge's 1,289 placements names exactly. A map the index does
       // not know is not narrowed at all rather than narrowed by a guess.
-      const placed = placeNpcs(readNpcList(list), readNpcPlacements(places)).filter(
-        ({ placement }) => id === undefined || placement.map === id,
-      )
+      const placed = placeNpcs(
+        readNpcList(list),
+        readNpcPlacements(places).map(placementInWorld),
+      ).filter(({ placement }) => id === undefined || placement.map === id)
       return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
     } catch {
       return undefined
@@ -201,14 +179,8 @@ function castArchives(map: string): string[] {
 }
 
 /**
- * How much to shrink each map's own space, by the map's code.
- *
- * An indoor map is authored an eighth larger than it looks and an outdoor one
- * is not — see `MapEntry.indoors`. The cartridge's own index is the only thing
- * that says which: nothing inside a map's archive distinguishes the two.
- *
- * A map the index does not know is treated as outdoors, which is the unscaled
- * reading and the one that was right for every map before this.
+ * The cartridge's map index, by code — which gives a map its id, and so says
+ * which of an area's cast stand in it.
  */
 function indexOf(cat: Catalogue): (code: string) => MapEntry | undefined {
   for (const leaf of cat.other) {
@@ -217,8 +189,7 @@ function indexOf(cat: Catalogue): (code: string) => MapEntry | undefined {
       const list = readMapList(leaf.bytes)
       return (code) => list.map(code.toUpperCase())
     } catch {
-      // An index that will not read leaves every map at its shipped size and
-      // every cast unnarrowed.
+      // An index that will not read leaves every cast unnarrowed.
       return () => undefined
     }
   }
@@ -238,9 +209,7 @@ function doorwaysOf(cat: Catalogue, code: string): readonly MapTransition[] {
     for (const [name, bytes] of files) {
       if (!name.toLowerCase().endsWith('.bmbl') || !isMapLinks(bytes)) continue
       try {
-        // Nothing is scaled: see the note below on why all three parts of a
-        // doorway are already in the character's own space.
-        return mapDoorways(bytes)
+        return mapDoorways(bytes).map(doorwayInWorld)
       } catch {
         // A link table that will not walk leaves the map without doorways.
         return []
@@ -251,61 +220,76 @@ function doorwaysOf(cat: Catalogue, code: string): readonly MapTransition[] {
 }
 
 /**
- * **A doorway is already in the character's own space, all three parts of it.**
+ * Where a map is walked into from outside it — how the first map opens, when
+ * there is no doorway to arrive by.
  *
- * Where it stands, where it puts you down, and how big it is were each scaled
- * with a map at some point, and none of them should be. It only ever showed
- * indoors, because outdoors the map's scale is one: the village's nine doorways
- * were right the whole time, which is why this survived.
- *
- * Scaled with the map that holds it, an indoor doorway collapsed onto the
- * origin — near enough the middle of the room that walking across the floor
- * threw the character back outside. That is "the door is in the wrong
- * position". Measured over the cartridge's **377 indoor doorways**, as how near
- * a doorway stands to the edge of its own map's collision, where 0 is in the
- * wall and 1 is dead centre:
- *
- * | | mean | within a quarter of the edge |
- * |---|---|---|
- * | scaled with the map | 0.68 | 7% |
- * | **left alone** | **0.06** | **90%** |
- *
- * The arrival went the same way, scaled by the map it leads to. The test that
- * settles it asks nothing of the collision: **you should come out beside the
- * door back**. Across 183 doorways into an indoor map, the distance from the
- * arrival to the door leading back the way you came:
- *
- * | | median | 75th | 90th |
- * |---|---|---|---|
- * | scaled by the destination | 0.973 | 1.749 | 2.717 |
- * | **left alone** | **0.285** | **0.462** | 2.133 |
- *
- * 0.285 units is a character and a half — beside the door. A whole unit is
- * across the room.
- *
- * A **contrary** measurement, recorded because it is what kept the scaling in
- * place: 93% of those arrivals stand on walkable floor when scaled and 26% when
- * left alone. That is the collision being wrong rather than the arrival: a
- * scaled arrival lands in the middle of the room, where there is always floor,
- * and a correct one lands at the threshold, which is exactly where an interior's
- * collision tends to stop short of its own walls. See `docs/next.md`.
- *
- * The volume was measured before either of these, on the 154 doorways of the
- * cartridge that have a doorway *model* standing at them — a model is a placed
- * piece, so it is in the character's space whatever its map is doing, which
- * makes it the ruler. Trigger against door:
- *
- * | | height | width |
- * |---|---|---|
- * | outdoors, 74 of them | 1.30 | 1.42 |
- * | indoors, volume left alone, 80 | **1.12** | **1.49** |
- * | indoors, volume scaled with the map | 0.14 | 0.19 |
- *
- * A trigger about half again the size of its own door, indoors and out. That
- * was the first of the three to be got right, and the other two agree with it.
- *
- * Angles have no scale, so they were never in question.
+ * The cartridge's own start positions have not been found, so the map is
+ * entered the way its neighbours bring you in: the arrival of a doorway, in some
+ * other map's link table, that leads here. A map's own sub-maps are passed over
+ * — `M01M02`'s way out into `M01` is the inn's door, not the village's entrance
+ * — so the village opens where the road from the field puts you, and a room
+ * where its door from outside does. Neighbours are taken in code order, so the
+ * answer is reproducible. Undefined for a map nothing leads into.
  */
+export function entranceOf(
+  cat: Catalogue,
+  code: string,
+): { from: string; door: MapTransition } | undefined {
+  const own = code.toLowerCase()
+  const neighbours = [...cat.members]
+    .filter(([archive]) => archive.toLowerCase().endsWith('.ambl'))
+    .map(([archive, files]) => ({ stem: stemOf(archive), files }))
+    .filter(({ stem }) => !stem.startsWith(own))
+    .sort((a, b) => a.stem.localeCompare(b.stem))
+  for (const { stem, files } of neighbours) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('.bmbl') || !isMapLinks(bytes)) continue
+      try {
+        const door = mapDoorways(bytes).find((d) => d.to.toLowerCase() === own)
+        if (door) return { from: stem.toUpperCase(), door: doorwayInWorld(door) }
+      } catch {
+        // A link table that will not walk leads nowhere.
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * A doorway in world units: the file's own, times {@link WORLD_SCALE} — where
+ * it stands, how big it is and where it puts you down alike. Angles have no
+ * scale.
+ *
+ * A doorway was once the one thing left unshrunk while indoor maps took a
+ * further eighth, which is what put indoor doorways in the middle of their
+ * rooms and then their rooms' exits beyond their floors. Read at the same scale
+ * as everything else, 85% of the cartridge's 677 indoor doorways stand just
+ * inside their own room, and 91% just inside its collision.
+ */
+function doorwayInWorld(door: MapTransition): MapTransition {
+  return {
+    ...door,
+    x: door.x * WORLD_SCALE,
+    y: door.y * WORLD_SCALE,
+    z: door.z * WORLD_SCALE,
+    width: door.width * WORLD_SCALE,
+    height: door.height * WORLD_SCALE,
+    depth: door.depth * WORLD_SCALE,
+    arriveX: door.arriveX * WORLD_SCALE,
+    arriveY: door.arriveY * WORLD_SCALE,
+    arriveZ: door.arriveZ * WORLD_SCALE,
+  }
+}
+
+/** A character's placement in world units: the file's own, times {@link WORLD_SCALE}. */
+function placementInWorld(placement: NpcPlacement): NpcPlacement {
+  return {
+    ...placement,
+    x: placement.x * WORLD_SCALE,
+    y: placement.y * WORLD_SCALE,
+    z: placement.z * WORLD_SCALE,
+  }
+}
 
 /** An archive's name without its directory or extension: `M01` for `/data/map/M01.amdj`. */
 function stemOf(path: string): string {
@@ -424,18 +408,12 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   }
 
   const code = stemOf(archive).toUpperCase()
-  const index = indexOf(cat)
-  const entry = index(code)
-  const scale = entry?.indoors ? PLACED_PIECE_SCALE : 1
-  const map = assembleMap(manifest, members, {
-    scale,
-    // An interior's collision sits at half the size of the room drawn around
-    // it, and nothing in any file read here says which maps that is true of.
-    // The correction is fitted by eye and applied to every interior — see
-    // `AssembleOptions.collisionScale`.
-    ...(entry?.indoors ? { collisionScale: INTERIOR_COLLISION_SCALE } : {}),
-    ...(options.lighting === undefined ? {} : { lighting: options.lighting }),
-  })
+  const entry = indexOf(cat)(code)
+  const map = assembleMap(
+    manifest,
+    members,
+    options.lighting === undefined ? {} : { lighting: options.lighting },
+  )
   if (map.pieces.length === 0) throw new Error(`'${archive}' names no model that reads`)
 
   // A map's collision is all of its meshes; the village has thirteen, and any
@@ -464,6 +442,5 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     doorways: doorwaysOf(cat, code),
     archive,
     code,
-    scale,
   }
 }

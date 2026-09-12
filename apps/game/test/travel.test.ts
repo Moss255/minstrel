@@ -4,7 +4,7 @@ import { type CharacterState, groundBelow, PERSON, step } from '@minstrel/sim'
 import { findSpawn } from '@minstrel/world'
 import { describe, expect, it } from 'vitest'
 import { doorAt, doorGate, doorTaken } from '../src/doors.ts'
-import { load } from '../src/load.ts'
+import { entranceOf, load } from '../src/load.ts'
 import { WALK_SPEED } from '../src/player.ts'
 
 /**
@@ -62,6 +62,21 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
         })
     return { opened, world, x, z, hit, stood }
   }
+
+  it('opens the village at its entrance, where the road from the field brings you', () => {
+    // The first map has no doorway to arrive by, and the cartridge's own start
+    // position is not found. What the cartridge does say is where the road from
+    // the field puts you, so the village opens there rather than at a guess
+    // about its middle, which lands at the river's edge by the waterfall.
+    const village = open('M01')
+    const entrance = entranceOf(village.catalogue, 'M01')
+    expect(entrance?.from).toBe('F01')
+    const { hit } = arriveIn('M01', (entrance as NonNullable<typeof entrance>).door)
+    expect(hit, 'no floor at the village entrance').toBeDefined()
+
+    // A room is entered by its door from outside, not by a door inside it.
+    expect(entranceOf(village.catalogue, 'M01M02')?.from).toBe('M01')
+  })
 
   it('gives the village a doorway for each map it names', () => {
     const village = open('M01')
@@ -246,10 +261,9 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     // could be asked, and it dropped anyone the collision did not reach — which
     // left the item shop with no shopkeeper.
     //
-    // Both of the shop's now stand on floor, because `INTERIOR_COLLISION_SCALE`
-    // grew the collision to the room. That is the strongest thing said for that
-    // constant: the cartridge's own character placements land on walkable
-    // ground at twice the size and float at one.
+    // Both of the shop's stand on floor now the collision is read at its own
+    // size — `CollisionMesh.shift` — rather than at half of it, which left
+    // them floating just past its edge.
     const shop = open('M01M03').cast
     expect(shop.members.length + shop.sprites2d.length, 'the shop lost someone').toBe(3)
     expect(shop.elsewhere, 'the shop reaches its own cast now').toBe(0)
@@ -268,7 +282,6 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     const village = open('M01')
     for (const code of ['M01M01', 'M01M02', 'M01M03', 'M01M04', 'M01M06', 'M01M07']) {
       const inside = open(code)
-      expect(inside.scale, `${code} is not an indoor map`).toBeLessThan(1)
       expect(inside.doorways.length, `${code} has no way out`).toBeGreaterThan(0)
       for (const door of inside.doorways) {
         const away = Math.hypot(door.x, door.z)
@@ -288,19 +301,14 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
   })
 
   it('leaves a room by a doorway that stands on the room\u2019s own floor', () => {
-    // The measurement that says most for `INTERIOR_COLLISION_SCALE`, and it is
-    // not the one the constant was fitted against.
+    // A doorway is a ruler for the collision: it is read from a different file
+    // and does not move when the collision's size is got wrong. With the mesh's
+    // `shift` ignored — half its size — **every** village interior put its way
+    // out past its own floor, 1.0 to 1.7 of the way out of the box: a room whose
+    // exit cannot be walked to. Read at its own size every one lands inside.
     //
-    // A doorway is in character space and takes no scale at all, so it does not
-    // move when the collision is resized — which makes it a ruler for the
-    // collision. At the size the file gives it, **every** village interior puts
-    // its way out past its own floor, 1.0 to 1.7 of the way out of the box: a
-    // room whose exit cannot be walked to. At twice the size every one lands
-    // inside. `docs/next.md` item 5 carries the per-map figures.
-    //
-    // The well, `M01M08`, is left out on purpose: it is the one village
-    // interior whose collision is *larger* than its room, so it passes this at
-    // any scale and says nothing.
+    // The well, `M01M08`, is left out on purpose: its way out stands in the
+    // middle of the room, so it passes this at any scale and says nothing.
     for (const code of ['M01M01', 'M01M02', 'M01M03', 'M01M04', 'M01M05', 'M01M06', 'M01M07']) {
       const inside = open(code)
       const bounds = inside.world?.bounds
@@ -337,45 +345,22 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     expect(opened.map.pieces.length).toBeGreaterThan(0)
   })
 
-  it('has nowhere to stand at the end of the road east, and goes nearest instead', () => {
-    // A known gap in the data, recorded rather than papered over: a field's
-    // collision does not reach its own doorways, on 19.2% of them against
-    // 87-100% for every other kind of map. What the game really uses for a
-    // field's walkable ground is not established — see the field note in
-    // `game-formats/FORMAT.md`, which also records what it is not.
+  it('arrives on the field’s own floor at the end of the road east', () => {
+    // This used to record a gap: the road out of the village arrived at
+    // x = -8.23 while the field's collision ran -6.00 to 6.42, so there was no
+    // floor under the arrival and the character was put on the nearest ground.
     //
-    // The road out of the village arrives at x = -8.23 and the field's
-    // collision runs -6.00 to 6.42, so there is no floor under the arrival.
+    // A field's collision is stored halved four times — its `shift` — where
+    // the village's is halved three, and reading one as the other left it at
+    // half its size. Read at its own size it reaches its own doorways.
     const village = open('M01')
     const road = village.doorways.find((d) => d.to === 'F01') as NonNullable<
       (typeof village.doorways)[number]
     >
     const { world, hit } = arriveIn('F01', road)
-    expect(hit).toBeUndefined()
+    expect(hit, 'no floor under the arrival from the village').toBeDefined()
 
     const bounds = (world as NonNullable<typeof world>).bounds
-    expect(road.arriveX).toBeLessThan(toFloat(bounds.minX as never))
-
-    // So the character goes on the walkable ground nearest the arrival. Which
-    // ground is the point: the west edge the road comes in at, not the middle.
-    const water = open('F01').map.water
-    const here = world as NonNullable<typeof world>
-    const put = findSpawn(here, {
-      person: PERSON,
-      speed: WALK_SPEED,
-      water,
-      near: { x: road.arriveX, z: road.arriveZ },
-    })
-    expect(put).toBeDefined()
-    const spot = put as NonNullable<typeof put>
-    const strayed = Math.hypot(toFloat(spot.x) - road.arriveX, toFloat(spot.z) - road.arriveZ)
-
-    const middle = findSpawn(here, { person: PERSON, speed: WALK_SPEED, water })
-    const mid = middle as NonNullable<typeof middle>
-    const fromMiddle = Math.hypot(toFloat(mid.x) - road.arriveX, toFloat(mid.z) - road.arriveZ)
-
-    expect(strayed).toBeLessThan(fromMiddle)
-    // West of the field's middle, which is the side the village is on.
-    expect(toFloat(spot.x)).toBeLessThan(toFloat(mid.x))
+    expect(road.arriveX).toBeGreaterThan(toFloat(bounds.minX as never))
   })
 })

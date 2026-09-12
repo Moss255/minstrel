@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { PLACEMENT_SCALE } from '../src/mapmanifest.ts'
 import { mapDoorways, readMapTransitions } from '../src/transitions.ts'
 
 /**
@@ -137,15 +136,16 @@ describe('readMapTransitions', () => {
     expect(t[0]).toMatchObject({ tag: 0x72, to: 'M01M01' })
   })
 
-  it('puts the doorway and the arrival in world units', () => {
-    // The file counts in the same eighths the map's own placements do.
+  it("gives the doorway and the arrival in the file's own units", () => {
+    // Nothing is scaled here: the file counts in the units its map's placements
+    // do, and the engine takes both into the world the same way.
     const t = readMapTransitions(
       build([doorway(AT_M01M01, [-30.4, -8, 28.4], [-28.4, 3.36, 6.56, 2.3])], NAMES),
     )
-    expect(t[0]?.x).toBeCloseTo(-30.4 / PLACEMENT_SCALE, 4)
-    expect(t[0]?.z).toBeCloseTo(28.4 / PLACEMENT_SCALE, 4)
-    expect(t[0]?.arriveX).toBeCloseTo(-28.4 / PLACEMENT_SCALE, 4)
-    expect(t[0]?.arriveZ).toBeCloseTo(6.56 / PLACEMENT_SCALE, 4)
+    expect(t[0]?.x).toBeCloseTo(-30.4, 4)
+    expect(t[0]?.z).toBeCloseTo(28.4, 4)
+    expect(t[0]?.arriveX).toBeCloseTo(-28.4, 4)
+    expect(t[0]?.arriveZ).toBeCloseTo(6.56, 4)
   })
 
   it('leaves both angles alone, because an angle has no scale', () => {
@@ -159,8 +159,8 @@ describe('readMapTransitions', () => {
     expect(t).toHaveLength(1)
     expect(t[0]).toMatchObject({ tag: 0x74, to: 'F01' })
     // The volume comes from the trigger, which leads with an integer.
-    expect(t[0]?.x).toBeCloseTo(1, 4)
-    expect(t[0]?.arriveX).toBeCloseTo(10, 4)
+    expect(t[0]?.x).toBeCloseTo(8, 4)
+    expect(t[0]?.arriveX).toBeCloseTo(80, 4)
   })
 
   it('reads both forms out of one map, in file order', () => {
@@ -230,7 +230,7 @@ describe('mapDoorways', () => {
       ],
       NAMES,
     )
-    expect(mapDoorways(bytes)[0]).toMatchObject({ tag: 0x74, arriveX: 3, arriveFacing: 1 })
+    expect(mapDoorways(bytes)[0]).toMatchObject({ tag: 0x74, arriveX: 24, arriveFacing: 1 })
   })
 
   it('keeps the better arrival whichever order the forms come in', () => {
@@ -242,7 +242,7 @@ describe('mapDoorways', () => {
       NAMES,
     )
     expect(mapDoorways(bytes)).toHaveLength(1)
-    expect(mapDoorways(bytes)[0]).toMatchObject({ tag: 0x74, arriveX: 3 })
+    expect(mapDoorways(bytes)[0]).toMatchObject({ tag: 0x74, arriveX: 24 })
   })
 
   it('drops a doorway a form repeats within itself', () => {

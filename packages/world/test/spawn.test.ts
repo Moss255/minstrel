@@ -51,9 +51,9 @@ const options = { person: PERSON, speed: Math.round(0.01 * K) }
 
 describe('findSpawn', () => {
   it('finds ground on a map whose scale leaves fractional bounds', () => {
-    // An indoor map is built at `PLACED_PIECE_SCALE`, which divides its
-    // collision by eight and leaves bounds that are not whole `fx32` words —
-    // the village inn's `maxY` is 5235.5. Handing that to `fx32` threw, so
+    // A mesh scaled into the world can leave bounds that are not whole `fx32`
+    // words — the village inn's `maxY` once came out at 5235.5, an eighth of
+    // its stored 41,884. Handing that to `fx32` threw, so
     // looking for somewhere to stand raised instead of answering, on exactly
     // the maps that need the fallback most: an interior whose doorway arrival
     // has no floor under it.

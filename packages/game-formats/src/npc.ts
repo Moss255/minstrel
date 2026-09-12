@@ -1,5 +1,4 @@
 import { GameFormatError } from './errors.ts'
-import { PLACEMENT_SCALE } from './mapmanifest.ts'
 import { readDataTable } from './table.ts'
 
 /**
@@ -68,7 +67,7 @@ export interface NpcEntry {
 export interface NpcPlacement {
   /** The id of the {@link NpcEntry} this places. */
   readonly id: number
-  /** Position, the file's value divided by {@link PLACEMENT_SCALE}. */
+  /** Position, in the file's own units. */
   readonly x: number
   readonly y: number
   readonly z: number
@@ -224,9 +223,9 @@ export function readNpcPlacements(data: Uint8Array): NpcPlacement[] {
     out.push({
       id: u32(data, at + 12),
       map: u32(data, at + 8),
-      x: view.getFloat32(at + BLOCK_HEADER + 0, true) / PLACEMENT_SCALE,
-      y: view.getFloat32(at + BLOCK_HEADER + 4, true) / PLACEMENT_SCALE,
-      z: view.getFloat32(at + BLOCK_HEADER + 8, true) / PLACEMENT_SCALE,
+      x: view.getFloat32(at + BLOCK_HEADER + 0, true),
+      y: view.getFloat32(at + BLOCK_HEADER + 4, true),
+      z: view.getFloat32(at + BLOCK_HEADER + 8, true),
       facing: view.getFloat32(at + BLOCK_HEADER + 12, true),
       offset: at,
     })

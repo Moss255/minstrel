@@ -191,7 +191,7 @@ section. 1,178 files, 4.3 MiB, one or more per map archive.
 | offset | type | meaning |
 |---|---|---|
 | `+0x00` | `u32` | `3` on all 1,178 files |
-| `+0x04` | `u32` | `unknown_0x04`, 0–5 |
+| `+0x04` | `u32` | `shift`, 0–5: coordinates are stored halved this many times — INFERRED, below |
 | `+0x08` | `s16[6]` | bounding box: min x, y, z then max x, y, z |
 | `+0x14` | `u32` | triangle count |
 | `+0x18` | `u16` | grid cell size |
@@ -308,57 +308,75 @@ a position up — `packages/sim` builds a uniform grid of its own instead.
 The cell size is a power of two on **1,178 of 1,178**: 8192 on 667 files, 2048
 on 262, 4096 on 173 and 1024 on 76.
 
-## An interior's collision does not always match its own room
+## A mesh is stored halved `shift` times
 
-**Open**, and reported from play rather than found by measuring.
+**INFERRED**, from three measurements that agree. No published reference for
+`.col2` is known to this project; the parser carries the value as `shift` and
+applies nothing.
 
-A map's geometry and its collision are given the same scale when the map is
-assembled, so whatever that scale is, the two move together and their ratio
-cannot change. They agree outdoors. Indoors they sometimes do not, and the
-disagreement is in the files themselves.
+`+0x04` runs 0 to 5. On every one of the 511 files where it is not zero, the
+mesh's largest coordinate lies in the top octave of an `s16`, 16,384 to 32,768,
+while files with 0 run as low as 3,684:
 
-The ruler is the drawn model's own walls: take its near-vertical faces that rise
-most of the way to the ceiling, and see where they stand.
-
-| map | drawn walls stand at | collision reaches | |
+| `shift` | files | largest coordinate: min · median · max | cell size |
 |---|---|---|---|
-| `M01M04`, the stable | x = ±0.50 | x −0.43..0.50 | they meet |
-| `M01M02`, the inn | x = ±0.65, ±0.60 | x −0.31..0.37 | **short by ~1.9x** |
+| 0 | 667 | 3,684 · 10,098 · 32,768 | 8192 |
+| 1 | 173 | 16,384 · 22,630 · 32,768 | 4096 |
+| 2 | 171 | 16,384 · 23,552 · 32,706 | 2048 |
+| 3 | 91 | 16,384 · 21,504 · 32,256 | 2048 |
+| 3 | 4 | 16,461 · 20,992 · 27,676 | 1024 |
+| 4 | 57 | 16,384 · 24,294 · 32,768 | 1024 |
+| 5 | 15 | 16,384 · 18,686 · 21,536 | 1024 |
 
-The inn's mesh is not broken and nothing is being dropped: 46 triangles, a floor
-quad with partitions standing on it and a wall ring with a gap at the doorway,
-its grid consistent, its archive holding no second mesh. It is simply smaller
-than the room drawn around it. `M01M08`, the well, is the same fault the other
-way — its floor is **1.94x** the room drawn inside it, the same decagon at two
-sizes.
+That is what halving a mesh until it fits the format leaves behind. The cell
+size halves with it at first — `cellSize << shift` is 8192 on all 1,011 files
+with a shift of 0 to 2 — as though the grid were laid out before the halving.
 
-**Nothing in the file distinguishes them.** The inn and the stable carry the
-same `unknown_0x04` (1), the same cell size (4096), the same `kind`, and their
-models have the same position scale (1). The `0x6F` placement records that put
-both meshes give scale `1, 1, 1`. So the factor is not in the `.col2`, not in
-the manifest, and not in the model.
+Read at `stored × 2 ** shift`, the collision agrees with the models, drawn at
+their own `upScale` (see `nitro-gfx/FORMAT.md`), and with the doorways, which
+come from a different file:
 
-What is ruled out, each measured rather than argued: the model's position
-up/down scale (undoing it fits worse across 86 single-piece maps); the
-placed-piece scale and the map scale (both apply to geometry and collision
-alike); and any single constant, since the factor each map would need runs
-continuously from 0.18 to 2.87 rather than landing on powers of two.
+| across the reference cartridge | stored | `× 2 ** shift` |
+|---|---|---|
+| doorways just inside their map's collision, 1,122 | 32% | 86% |
+| indoor doorways just inside, 677 | 16% | 91% |
+| doorway arrivals standing on floor | 78.1% of 1,132 | 99.8% of 1,098 |
+| collision floor lying on drawn floor, outdoor maps | 0.61 | 0.84 |
 
-`apps/game/tools/plan.ts` draws a map from above with both on it, which is how
-this was found:
+"Just inside" is 0.35 to 1.1 of the way from the box's middle to its edge. The
+floor score is taken where the reading changes anything: better on 58 outdoor
+maps and worse on 3. Indoors it is better on 102 and worse on 27; those 27 are
+rooms whose one floor quad reaches past their walls, which the score counts
+against the larger mesh, and drawn from above their walls trace the room at
+`× 2 ** shift` and stand in open floor without it.
 
-```sh
-node apps/game/tools/plan.ts rom/<your>.nds M01M02 --walls
-```
+### What it retired
 
-## An indoor map is authored an eighth larger than it looks
+Before the shift was read, an interior's collision looked like it did not
+match its own room — the inn's short by 1.9x, the well's long by 1.94x, the
+stable right — and nothing in the file seemed to tell them apart. A factor of
+two, fitted by eye, was applied to every interior.
 
-**Established.** A map's own geometry is not always in the space a character
-stands in. An *outdoor* map is authored at its final size, and only the pieces
-it places are instanced from the larger space that `PLACED_PIECE_SCALE` divides.
-An **indoor** map is authored in that larger space *entirely* — its terrain, its
-collision, its furniture and its placements — and wants the same eighth before
-anyone can stand in it.
+That was two misreadings meeting, not a property of some rooms. The inn and the
+stable have an `upScale` of 1 and a shift of 1, so their collision was drawn at
+half a room drawn right; `M01M01`, `M01M05` to `M01M07` have an `upScale` of 2
+and a shift of 1, so both were at half size and agreed; the well has an
+`upScale` of 2 and a shift of 0. The "stable is right" measurement had set the
+drawn walls against the collision's floor rather than its walls.
+`apps/game/tools/plan.ts` draws a map from above with both on it.
+
+## Why an indoor map once looked an eighth larger — superseded
+
+**Superseded**, and kept as the record of how it was reached. Indoor and outdoor
+maps share one space. What differed was the model reader, which drew every
+model at its size over its own `upScale` — see `nitro-gfx/FORMAT.md`. The
+village's terrain has an `upScale` of 8 and most rooms 1 or 2, so a room drawn
+"at its final size" came out eight times the village around it, and so did a
+piece placed in the village. Dividing both by eight — `PLACED_PIECE_SCALE` and
+the indoor scale — made the village and the rooms with an `upScale` of 1 agree,
+and left every room with an `upScale` of 2 at half its size.
+
+Everything below in this section was measured under the old reading.
 
 `maplist9.bin` is what says which, in slot 17: `1` indoors, `2` outdoors, `0`
 neither. The labels in slot 5 are what establish it — of the 520 entries with
@@ -439,7 +457,13 @@ small room and it is meant to be: a doorway is a large share of a small room's
 wall. It still leaves two thirds of the worst of them free, which is what the
 character needs to step clear of a doorway they arrived in — see `doors.ts`.
 
-## A field's collision does not reach its own doorways
+## A field's collision does not reach its own doorways — resolved
+
+**Resolved, 12 September.** A field's collision has a `shift` of 4 and its
+terrain an `upScale` of 16, and both had been read at half their size. Read at
+their own, all 116 doorway arrivals into a field land on floor, and the Angel
+Falls field's collision spans −12.00 to 12.84 rather than −6.00 to 6.42. What
+follows was measured with both at half size; it is kept for what it ruled out.
 
 **This is a known gap, and it is systematic.** Whether a map's own doorway has
 walkable collision under it, by the kind of map:
@@ -470,8 +494,8 @@ reasoned about:
 - **Not a scale.** Dividing the doorway coordinates by 4, 8, 12, 16, 20, 24 or
   32 gives fields 4.8%, 19.0%, 42.1%, 76.2%, 73.0%, 76.2%, 83.3% — no peak, just
   a climb, which is what collapsing every point onto a central mesh looks like.
-  Every other kind of map peaks cleanly at 8, which is how `PLACEMENT_SCALE` was
-  fixed in the first place.
+  Every other kind of map peaks cleanly at 8, which is how the old placement
+  divisor was fixed in the first place.
 - **Not a translation.** The field's doorways span 19.7 units and its collision
   spans 12.4. No offset fits one inside the other.
 - **Not missing files.** The archive holds exactly one `.col2` and 24 `.nsbmd`,
@@ -618,11 +642,17 @@ rather than leaving it at the origin while the door moves away. Checked on the
 village: each of `M01A00D1`..`DA` names the slot of the `M01M00D1`..`DA` beside
 it, and none carries a translation.
 
-**The unit is INFERRED.** The translations are an order of magnitude larger than
-the map: the doors sit at x −28.56 and 26.10 in a village running −4.38 to 7.61.
-Nothing in the file gives the divisor, so it is fitted — over every map with
-both placed pieces and unplaced ground, counting the pieces authored to sit at
-their own origin (local `minY` ≈ 0) that end up standing on that ground:
+**The unit is the file's own**, the one models are in at their own `upScale`
+and collision at `2 ** shift`, and nothing divides it.
+
+It once looked an order of magnitude too large — the doors at x −28.56 and 26.10
+in a village then drawn −4.38 to 7.61 — because the village's terrain was being
+drawn at an eighth of its size (see `nitro-gfx/FORMAT.md`), and a divisor was
+fitted to bring the placements in line with it. The fit is kept because of what
+it found: over every map with both placed pieces and unplaced ground, counting
+the pieces authored to sit at their own origin (local `minY` ≈ 0) that end up
+standing on that ground, it peaked at 8 — which is the village terrain's own
+`upScale`, rediscovered by fitting:
 
 | divisor | on the ground, cartridge-wide | on the village |
 |---|---|---|
@@ -633,8 +663,8 @@ their own origin (local `minY` ≈ 0) that end up standing on that ground:
 | 10 | 71.1% | 8/10 |
 | 12 | 65.4% | 5/10 |
 
-`PLACEMENT_SCALE` is **8**: the peak in both, and a power of two, which is what
-a DS pipeline would use. It is a fit, not a reading, and is marked as such.
+That was `PLACEMENT_SCALE`, now removed: the engine takes placements into the
+world by the same `WORLD_SCALE` as everything else.
 
 **Placements are only used when they pair one-to-one.** They match resources by
 position, and 696 of the 755 manifests have exactly one per resource; the other
@@ -923,9 +953,10 @@ Two record forms carry one, and both are live.
 | `0x73` + `0x74` | `0x73` slots 1-7 | `0x74` slot 4 | `0x74` slots 7-10 | 11-23 |
 
 The trigger volume is `x, y, z, width, height, depth, angle`. The arrival is
-`x, y, z, facing`. Positions are in the same eighth-scale units `.bmdj` placements
-use — divided by `PLACEMENT_SCALE`, and confirmed by landing on the destination
-map's own collision floor. Angles are radians and are not scaled.
+`x, y, z, facing`. Positions are in the units `.bmdj` placements use, the same
+ones models and collision are in once each is read at its own size — confirmed
+by landing on the destination map's own collision floor, as 1,096 of 1,098
+arrivals do. Angles are radians and are not scaled.
 
 **`width`, `height` and `depth` are the whole size of the volume, not half of
 it.** Measured against the doorway models the triggers guard, which is the one
@@ -1114,7 +1145,7 @@ bytes — found by a two-word signature.
 | `+0x04` | `u32` | `0xFFFFFF0A` |
 | `+0x08` | `u32` | not established; `0x44C` on only 1 of the 74 archives |
 | `+0x0C` | `u32` | the id of the character this places |
-| `+0x10` | `f32` | x, divided by `PLACEMENT_SCALE` |
+| `+0x10` | `f32` | x, in the units map placements use |
 | `+0x14` | `f32` | y, likewise |
 | `+0x18` | `f32` | z, likewise |
 | `+0x1C` | `f32` | facing, in radians |

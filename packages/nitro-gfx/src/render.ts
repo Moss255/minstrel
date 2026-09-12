@@ -32,7 +32,7 @@ import type { NodeTransform } from './node.ts'
  * | `0x08` | billboard about Y | 1 |
  * | `0x09` | blend matrices | 2, then 3 per term |
  * | `0x0A` | call display list | 1 |
- * | `0x0B` | scale by the model's position scale | 0 |
+ * | `0x0B` | scale by the model's position scale; with flag `0x20`, by its reciprocal | 0 |
  * | `0x0C` | environment map | 1 |
  * | `0x0D` | projection map | 1 |
  */
@@ -162,8 +162,11 @@ export interface ResolvedPose {
 export interface ShapeState {
   /** The matrix slot current when the shape is drawn. */
   readonly matrixId: number
-  /** Whether a `PositionScale` command has scaled that matrix. */
-  readonly positionScaled: boolean
+  /**
+   * How many times `PositionScale` has scaled that matrix up, less the times it
+   * has scaled it back down — so the shape is drawn at `upScale` to this power.
+   */
+  readonly positionScales: number
 }
 
 /**
@@ -174,27 +177,34 @@ export interface ShapeState {
  * vertices belong to comes from here, not from the list. For 3,610 shapes it is
  * not slot 0.
  *
- * `PositionScale` carries no parameters; the scale it applies is the model's
- * `upScale`. A model emits it exactly when that scale is not one — 2,898 of the
- * 2,901 models that never emit it have an `upScale` of 1.
+ * `PositionScale` carries no parameters. As `0x0B` it scales the current
+ * matrix by the model's `upScale`; with flag `0x20` set, as `0x2B`, it scales
+ * it by `downScale` — apicula, `src/nitro/render_cmds.rs`: `ScaleUp` and
+ * `ScaleDown`. A model emits it exactly when that scale is not one — 2,898 of
+ * the 2,901 models that never emit it have an `upScale` of 1.
+ *
+ * **The scale-down undoes; it does not shrink the shape.** Every scaled model
+ * on the reference cartridge brackets its shapes as `0x0B`, shape, `0x2B`, so
+ * the scale-down comes after the vertices it would apply to have been sent.
+ * Applying it to the shape drew every such model at its size over `upScale`.
  */
 export function resolveShapeStates(commands: readonly RenderCommand[]): ShapeState[] {
   const states: ShapeState[] = []
   let matrixId = 0
-  let positionScaled = false
+  let positionScales = 0
   for (const command of commands) {
     switch (command.op) {
       case RenderOp.RestoreMatrix:
         matrixId = command.params[0] as number
         // Restoring loads a stored matrix, dropping the scale applied to the
         // one it replaces.
-        positionScaled = false
+        positionScales = 0
         break
       case RenderOp.PositionScale:
-        positionScaled = true
+        positionScales += command.opcode & 0x20 ? -1 : 1
         break
       case RenderOp.Shape:
-        states[command.params[0] as number] = { matrixId, positionScaled }
+        states[command.params[0] as number] = { matrixId, positionScales }
         break
       default:
         break

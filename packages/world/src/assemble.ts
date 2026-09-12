@@ -4,7 +4,6 @@ import {
   isMarkerVolume,
   isWaterTexture,
   type MapManifest,
-  PLACED_PIECE_SCALE,
   placementOf,
   readCollisionMesh,
   resolveMapResources,
@@ -42,11 +41,8 @@ export interface MapPiece {
   /** Where it goes, in the map's final space. */
   readonly place: Placement
   /**
-   * How much to shrink this piece's own geometry.
-   *
-   * A piece the map moves is authored in the larger space and always wants
-   * `PLACED_PIECE_SCALE`. One it does not move is the map itself, and wants
-   * whatever space the map is in — an eighth indoors, unchanged outdoors.
+   * How much to shrink this piece's own geometry into the world: always
+   * {@link WORLD_SCALE}. The model's own `upScale` is already in its geometry.
    */
   readonly scale: number
   /**
@@ -93,46 +89,25 @@ export interface WaterArea {
  */
 export type MapLighting = 'day' | 'night'
 
+/**
+ * How big one of the files' own units is in the world the game simulates.
+ *
+ * **The only scale between the cartridge and the world.** Every file is read at
+ * its own values — a model at its stored positions times its own `upScale`, as
+ * its render commands say; a collision mesh at its stored coordinates times
+ * `2 ** shift`; placements, doorways and the cast as the floats they are — and
+ * they agree with one another with nothing else applied, indoors and out.
+ *
+ * This only picks the unit: an eighth of the files', which is the unit
+ * `PERSON`, the camera and the walking pace were tuned in, and in which the
+ * village is about twelve across. It is a choice, not a finding; any value
+ * would do so long as the character's constants moved with it.
+ */
+export const WORLD_SCALE = 1 / 8
+
 export interface AssembleOptions {
   /** Defaults to `day`. */
   readonly lighting?: MapLighting
-  /**
-   * How much to shrink the map's own space, for a map authored in a larger one.
-   *
-   * `1` for an outdoor map, which is authored at its final size, and
-   * `PLACED_PIECE_SCALE` for an indoor one, which is not — see
-   * `MapEntry.indoors` for what says which and for the evidence. It applies to
-   * the map's own geometry, its collision, its water, and to every placement;
-   * a placed piece's *geometry* is already in the larger space and keeps
-   * `PLACED_PIECE_SCALE` whatever this is.
-   */
-  readonly scale?: number
-  /**
-   * A further scale on the collision alone, on top of {@link scale}.
-   *
-   * **Fitted by eye, and it is one of the numbers here that no file gives.** An
-   * interior's collision does not sit where its room is drawn: the mesh comes
-   * out about half the size of the room around it, so the walls stand in open
-   * floor and the walkable area covers a fraction of the floorboards. Nothing
-   * in the `.col2` header, the map manifest, the map index or the model tells a
-   * map that needs the correction from one that does not — the item shop and
-   * the stable carry the same `unknown_0x04`, the same cell size, the same
-   * kind, and the same model position scale.
-   *
-   * So it is applied as a constant and recorded as fitted. `2` was arrived at
-   * by moving the mesh over the room in the game until it lined up — see
-   * `docs/next.md`, and `?collision=1` with the fitting keys to do it again.
-   *
-   * **What this is not.** It is not derived, not measured against a field, and
-   * not established for every map: the well, `M01M08`, is the one village
-   * interior whose collision measures *larger* than its room, by about the same
-   * factor in the other direction. A single constant cannot be right for both,
-   * and this one is right for the rooms that were fitted.
-   *
-   * `1` leaves the collision where the file puts it, which is what an outdoor
-   * map wants: outdoors the two agree already.
-   */
-  readonly collisionScale?: number
 }
 
 /**
@@ -176,8 +151,6 @@ export function assembleMap(
   options: AssembleOptions = {},
 ): AssembledMap {
   const lighting = options.lighting ?? 'day'
-  const mapScale = options.scale ?? 1
-  const collisionScale = options.collisionScale ?? 1
   const pieces: MapPiece[] = []
   const meshes: PlacedMesh[] = []
   const water: WaterArea[] = []
@@ -192,16 +165,12 @@ export function assembleMap(
     const belongs = lightingOf(resource.stem)
     if (belongs !== undefined && belongs !== lighting) continue
     const authored = placementOf(manifest, resource)
-    // A placement is in the map's own space, so it shrinks with the map.
+    // A placement is in the file's own units, like everything else here.
     const place = {
-      x: authored.x * mapScale,
-      y: authored.y * mapScale,
-      z: authored.z * mapScale,
+      x: authored.x * WORLD_SCALE,
+      y: authored.y * WORLD_SCALE,
+      z: authored.z * WORLD_SCALE,
     }
-    // A piece the map moves is instanced from the larger space; one it leaves
-    // at the origin is the map itself.
-    const moved = authored.x !== 0 || authored.y !== 0 || authored.z !== 0
-    const pieceScale = moved ? PLACED_PIECE_SCALE : mapScale
 
     // One authored resource compiles to several files under the same stem, so
     // take each for what it is rather than picking one and hoping. Choosing
@@ -218,13 +187,6 @@ export function assembleMap(
           // A doorway's marker is not a wall. Left in, the village's ten
           // doorways are sealed and its walkable ground drops from 93% to 24%.
           if (isMarkerVolume(mesh)) continue
-          // **Not scaled**, unlike the drawn geometry beside it. Tried and
-          // measured: scaling placed collision by `PLACED_PIECE_SCALE` the way
-          // `placeGeometry` scales placed models takes doorways standing over
-          // their own map's floor from 100% to 63.9% on `T` interiors and moves
-          // every other kind of map the wrong way too. A model is authored at
-          // its own origin and instanced; a collision volume is authored where
-          // it sits, so it wants the offset and nothing else.
           meshes.push({
             // Collision is in whole fx32 words; the placement is in units.
             mesh,
@@ -233,15 +195,8 @@ export function assembleMap(
               y: Math.round(place.y * FX32_ONE),
               z: Math.round(place.z * FX32_ONE),
             },
-            // The map's own space, never `PLACED_PIECE_SCALE`. Tried and
-            // measured: scaling *placed* collision the way placed geometry is
-            // scaled takes doorways standing over their own floor from 100% to
-            // 63.9% on `T` interiors. A model is authored at its own origin and
-            // instanced; a collision volume is authored where it sits.
-            //
-            // `collisionScale` is the correction on top of that, and is fitted
-            // rather than derived — see the option.
-            scale: mapScale * collisionScale,
+            // Stored halved `shift` times — see `CollisionMesh.shift`.
+            scale: WORLD_SCALE * 2 ** mesh.shift,
           })
         } catch {
           missing.push(file)
@@ -256,10 +211,10 @@ export function assembleMap(
         pieces.push({
           model,
           place: { x: place.x, y: place.y, z: place.z },
-          scale: pieceScale,
+          scale: WORLD_SCALE,
           animation: ownAnimation(model, file, files, members),
         })
-        water.push(...waterOf(model, place, pieceScale))
+        water.push(...waterOf(model, place, WORLD_SCALE))
       } catch {
         missing.push(file)
       }
@@ -341,12 +296,8 @@ export function inWater(
  * slides it up or down the wall it stands against instead of sinking it into
  * the ground.
  *
- * **The scale is decided by the caller**, and `assembleMap` puts it on the
- * piece: `PLACED_PIECE_SCALE` for a piece the map moves, which is instanced
- * from the larger authored space, and the map's own scale for one it does not,
- * which is the map itself. Deciding it here from whether the piece had moved
- * was wrong for indoor maps, whose own geometry is in the larger space while
- * sitting at the origin.
+ * The scale is the caller's; `assembleMap` puts {@link WORLD_SCALE} on every
+ * piece.
  */
 export function placeGeometry(geometry: Geometry, place: Placement, scale: number): Geometry {
   if (scale === 1 && place.x === 0 && place.y === 0 && place.z === 0) return geometry

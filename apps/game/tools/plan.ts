@@ -184,8 +184,7 @@ for (const t of walls) {
   line(best[0], best[1], best[2], best[3], [0xff, 0x50, 0x50])
 }
 
-// The doorways, which are scaled like the collision rather than like the
-// geometry: a cross where the trigger stands, a ring where it arrives.
+// The doorways: a cross where the trigger stands, a ring where it arrives.
 function mark(x: number, z: number, colour: number[], r: number) {
   for (let d = -r; d <= r; d++) {
     for (const [px2, pz2] of [
@@ -198,22 +197,15 @@ function mark(x: number, z: number, colour: number[], r: number) {
   }
 }
 for (const door of o.doorways) mark(door.x, door.z, [0xff, 0xd0, 0x40], 9)
-// And where it would stand if the position were left in the character's own
-// space, as the volume already is — which changes nothing outdoors.
-for (const door of o.doorways) mark(door.x / o.scale, door.z / o.scale, [0x50, 0xc0, 0xff], 9)
 
-// Where the map that leads here puts the character down, both ways round.
+// Where the map that leads here puts the character down.
 const from = process.argv.slice(4).find((a) => !a.startsWith('--'))
 if (from) {
   const back = load(rom, { map: from })
   for (const door of back.doorways) {
     if (door.to.toUpperCase() !== code.toUpperCase()) continue
     mark(door.arriveX, door.arriveZ, [0xff, 0x70, 0xd0], 7)
-    mark(door.arriveX / o.scale, door.arriveZ / o.scale, [0x60, 0xff, 0xa0], 7)
-    console.log(
-      `  arrives from ${from} at ${door.arriveX.toFixed(2)}, ${door.arriveZ.toFixed(2)}` +
-        `  — unscaled ${(door.arriveX / o.scale).toFixed(2)}, ${(door.arriveZ / o.scale).toFixed(2)}`,
-    )
+    console.log(`  arrives from ${from} at ${door.arriveX.toFixed(2)}, ${door.arriveZ.toFixed(2)}`)
   }
 }
 

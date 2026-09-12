@@ -305,13 +305,26 @@ describe('resolveShapeStates', () => {
       { op: RenderOp.RestoreMatrix, opcode: 0x03, offset: 0, params: [2] },
       { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [1] },
     ])
-    expect(states.map((s) => s.positionScaled)).toEqual([true, false])
+    expect(states.map((s) => s.positionScales)).toEqual([1, 0])
+  })
+
+  it('undoes a position scale with the scale-down sent after the shape', () => {
+    // Every scaled model on the reference cartridge brackets its shapes this
+    // way. The scale-down comes after the vertices, so the shape it follows is
+    // drawn scaled up and the one after it is not scaled at all.
+    const states = resolveShapeStates([
+      { op: RenderOp.PositionScale, opcode: 0x0b, offset: 0, params: [] },
+      { op: RenderOp.Shape, opcode: 0x05, offset: 0, params: [0] },
+      { op: RenderOp.PositionScale, opcode: 0x2b, offset: 0, params: [] },
+      { op: RenderOp.Shape, opcode: 0x05, offset: 0, params: [1] },
+    ])
+    expect(states.map((s) => s.positionScales)).toEqual([1, 0])
   })
 
   it('defaults to slot 0 and no scale', () => {
     const states = resolveShapeStates([
       { op: RenderOp.Shape, opcode: 0x04, offset: 0, params: [0] },
     ])
-    expect(states[0]).toEqual({ matrixId: 0, positionScaled: false })
+    expect(states[0]).toEqual({ matrixId: 0, positionScales: 0 })
   })
 })

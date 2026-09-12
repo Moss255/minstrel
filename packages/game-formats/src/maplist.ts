@@ -56,7 +56,7 @@ const SLOT_UNKNOWN_13 = 11
  * and the named regions. The remaining 371 carry `0` and are mostly entries for
  * maps that do not ship.
  *
- * **It is a scale, not a label.** See {@link MapEntry.indoors}.
+ * A label, not a scale — see {@link MapEntry.indoors}.
  */
 const SLOT_SPACE = 17
 /** The value of {@link SLOT_SPACE} that means indoors. */
@@ -94,27 +94,14 @@ export interface MapEntry {
   /** Occasionally another map's code. Not established. */
   readonly unknown_2: string | undefined
   /**
-   * Whether the map is built indoors, which decides **how big it is**.
+   * Whether the index calls the map indoors.
    *
-   * An indoor map is authored in the same space a placed piece is — the one an
-   * order of magnitude larger than the map goes into — so the whole of it wants
-   * `PLACED_PIECE_SCALE` before a character can stand in it. An outdoor map is
-   * authored at its final size and only its placed pieces are scaled.
-   *
-   * Undivided, the village inn's floor covers **1,395 square character-heights
-   * against the whole village's 796**, and one of its houses covers 4,627 — a
-   * single room with nearly six times the floor of the village around it.
-   *
-   * Three independent references say the same eighth, and none of them is the
-   * doorway table, which cannot answer it: scaling a map and its own doorways
-   * together changes nothing either can see, and reads 95.6% both ways.
-   *
-   * - **The furniture.** A stool in the inn stands 1.9 character-heights tall
-   *   as shipped and 0.24 divided; its beds go from 7.3 x 9.7 to 0.9 x 1.2.
-   * - **The doorway models**, which are placed and so already divided: the inn
-   *   is 36 of its own doors wide as shipped, and 4.5 divided.
-   * - **The village around it**, whose own props are already right undivided —
-   *   its fences stand 0.9 of a character — so the two cannot share a space.
+   * **A label, not a scale.** It was once read as one: an indoor map seemed
+   * authored eight times larger than an outdoor one, and was shrunk to match.
+   * What differed was the model reader, which drew every model at its size over
+   * its own `upScale` — eight for the village's terrain, one or two for most
+   * rooms. With the models drawn at their own size, indoor and outdoor maps
+   * share one space and nothing needs this to decide a size.
    */
   readonly indoors: boolean
   /** The whole record, for anything the fields above do not cover. */

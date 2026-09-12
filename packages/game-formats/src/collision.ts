@@ -10,7 +10,7 @@ import { GameFormatError } from './errors.ts'
  * | offset | type | meaning |
  * |---|---|---|
  * | `+0x00` | `u32` | `3` on every file seen |
- * | `+0x04` | `u32` | `unknown_0x04` |
+ * | `+0x04` | `u32` | `shift`: coordinates are stored halved this many times (INFERRED) |
  * | `+0x08` | `s16[6]` | bounding box: min x, y, z then max x, y, z |
  * | `+0x14` | `u32` | triangle count |
  * | `+0x18` | `u16` | grid cell size, always a power of two |
@@ -92,7 +92,20 @@ export interface CollisionMesh {
   readonly cellTriangles: readonly number[]
   /** Eight-byte records after the index. Their meaning is not established. */
   readonly trailing: readonly Uint8Array[]
-  readonly unknown_0x04: number
+  /**
+   * How many times the mesh's coordinates were halved to be stored, so the
+   * mesh's own size is its stored coordinates times `2 ** shift`.
+   *
+   * INFERRED, not read from any published reference: every one of the 511
+   * files on the reference cartridge with a non-zero shift has its largest
+   * coordinate between 16,384 and 32,768 — the top octave of an `s16` — while
+   * files with a shift of zero run as low as 3,684. That is what halving a
+   * mesh until it fits the format leaves behind, and nothing else read so far
+   * explains it. The size it gives agrees with the drawn geometry and with the
+   * doorways across the cartridge; `FORMAT.md` has the figures. This parser
+   * carries the value and applies nothing.
+   */
+  readonly shift: number
   readonly unknown_0x1a: number
   /** The triangles one cell holds. */
   cell(index: number): CollisionTriangle[]
@@ -219,7 +232,7 @@ export function readCollisionMesh(data: Uint8Array): CollisionMesh {
     cells,
     cellTriangles,
     trailing,
-    unknown_0x04: u32(0x04),
+    shift: u32(0x04),
     unknown_0x1a: view.getUint16(0x1a, true),
     cell(index) {
       const entry = cells[index]

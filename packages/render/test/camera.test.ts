@@ -208,7 +208,7 @@ describe('keeping the eye out of the ground', () => {
     cells: [],
     cellTriangles: [],
     trailing: [],
-    unknown_0x04: 0,
+    shift: 0,
     unknown_0x1a: 0,
     cell: () => [],
   }

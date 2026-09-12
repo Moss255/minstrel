@@ -7,7 +7,7 @@ Against the milestone's own list.
 | Map assembly and collision | **both done** |
 | Character controller with original movement constants | **done**; the character's size is measured off the doors, the rest tuned — see below |
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
-| Interior/exterior transitions, doors, stairs | **the data is read and the doors are in the right place**; an interior's collision is doubled to fit its room, by eye rather than by a field — see below |
+| Interior/exterior transitions, doors, stairs | **the data is read, the doors are in the right place, and every room is drawn and collided at its own size** — read from the files, nothing fitted; see "Every file at its own size" below |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
 | The village's own cast, placed | **placed, cut right, and in the right rooms**; 18 stand in the village, 14 of them 2D sprites, and each interior draws its own household. One question left: whether the facing table is 180° out — see below |
 
@@ -20,6 +20,22 @@ revision of this table said "done" on the strength of it. What that measured was
 whether a doorway lands the character on a floor, checked in a script. It did
 not measure whether the room behind it is one you can walk around, and it could
 not have: nobody had played it.
+
+## Every file at its own size — 12 September
+
+This supersedes every scale in this document described as fitted or set by eye,
+except the character's own height. `docs/next.md` item 0 has the figures.
+
+Models were drawn at their size over their own `upScale`, because the render
+commands' scale-down — sent after each shape, as an undo — was applied to the
+shape. And a collision mesh's `+0x04` is how many times its coordinates were
+halved to be stored. Read both ways, the village, its interiors and the field
+agree with their own doorways with no constant between them but the unit,
+`WORLD_SCALE`.
+
+The sections below that derive `PLACEMENT_SCALE`, `PLACED_PIECE_SCALE`, the
+indoor eighth and the doubled interior collision are kept as the record of how
+each was found. Each was compensating for the first of these.
 
 ## What was wrong, and what is left
 

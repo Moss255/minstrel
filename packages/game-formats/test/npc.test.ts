@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { PLACEMENT_SCALE } from '../src/mapmanifest.ts'
 import {
   isNpcList,
   isNpcPlacements,
@@ -145,11 +144,11 @@ describe('readNpcPlacements', () => {
     { id: 7, x: 5.47, y: -1.05, z: 1.74, facing: 0.66 },
   ]
 
-  it('divides the position by the placement scale, as map placements are', () => {
+  it("reads the position in the file's own units, as map placements are", () => {
     const read = readNpcPlacements(buildPlacements(blocks))
-    expect(read[0]?.x).toBeCloseTo(-0.72 / PLACEMENT_SCALE, 5)
-    expect(read[0]?.y).toBeCloseTo(-1.05 / PLACEMENT_SCALE, 5)
-    expect(read[0]?.z).toBeCloseTo(3.44 / PLACEMENT_SCALE, 5)
+    expect(read[0]?.x).toBeCloseTo(-0.72, 5)
+    expect(read[0]?.y).toBeCloseTo(-1.05, 5)
+    expect(read[0]?.z).toBeCloseTo(3.44, 5)
   })
 
   it('reads which map of the area each character stands in', () => {
@@ -218,8 +217,8 @@ describe('placeNpcs', () => {
     )
     const joined = placeNpcs(entries, placements)
     expect(joined.map((j) => j.entry.name)).toEqual(['n003a', 's017'])
-    expect(joined[0]?.placement.x).toBeCloseTo(2, 5)
-    expect(joined[1]?.placement.x).toBeCloseTo(1, 5)
+    expect(joined[0]?.placement.x).toBeCloseTo(16, 5)
+    expect(joined[1]?.placement.x).toBeCloseTo(8, 5)
   })
 
   it('leaves out a character the file does not place', () => {

@@ -25,49 +25,11 @@ const TAG_RESOURCE = 0x6c
 const TAG_PLACEMENT = 0x6f
 
 /**
- * What a placement's translation is divided by to reach world units.
- *
- * **INFERRED**, and the one number here that is fitted rather than read. The
- * translations are floats an order of magnitude larger than the map they place
- * things in: the village's doors sit at x -28.56 and 26.10 in a village that
- * runs -4.38 to 7.61. Dividing brings them inside it, and the divisor is fitted
- * by asking, over every map that has both placed objects and unplaced ground,
- * how many objects authored to sit at their own origin end up standing on that
- * ground. That peaks at 8 to 8.5 across the cartridge and at 7.5 to 8.5 on the
- * slice's village, and 8 is a power of two, which is what a DS pipeline would
- * use. It is not read from the file, so it is recorded as a guess with its
- * evidence rather than as a fact.
- */
-export const PLACEMENT_SCALE = 8
-
-/**
  * A translation smaller than this is no translation.
  *
- * Well under a thousandth of a world unit, so it cannot swallow a real one.
+ * Far below anything a map places, so it cannot swallow a real one.
  */
 const TINY = 1e-6
-
-/**
- * What a map's **placed** pieces are drawn at, relative to the map around them.
- *
- * **The same divisor as the translation, and for the same reason.** A placed
- * piece is authored in a space an order of magnitude larger than the map it
- * goes into — that is why {@link PLACEMENT_SCALE} exists — and its *geometry*
- * is in that space too, not only its position. Dividing one and not the other
- * is what put a doorway 1.54 units tall into a building facade of 1.57.
- *
- * That it is the same number is not assumed, it is what the village says: the
- * value was found by resizing the doors against the buildings until they
- * looked right, twice, landing on 0.12 and then 0.13. One eighth is 0.125,
- * between the two, and it is exactly the divisor the translations need. A
- * doorway comes out **0.19 units** tall — about the height of the character
- * walking through it, which is the check that wanted making.
- *
- * The pieces are still resizable in the viewer with `,` and `.`, because a
- * derivation that agrees with the eye twice is worth being able to disagree
- * with a third time.
- */
-export const PLACED_PIECE_SCALE = 1 / PLACEMENT_SCALE
 
 /**
  * Where a map puts one of its resources.
@@ -78,7 +40,10 @@ export const PLACED_PIECE_SCALE = 1 / PLACEMENT_SCALE
  * middle of the map, in the air, with their collision boxes stacked there too.
  */
 export interface MapPlacement {
-  /** Translation in world units — the file's value divided by {@link PLACEMENT_SCALE}. */
+  /**
+   * Translation, in the file's own units — the same units a model's scaled-up
+   * positions and a collision mesh's shifted coordinates are in.
+   */
   readonly x: number
   readonly y: number
   readonly z: number
@@ -209,9 +174,9 @@ export function readMapManifest(data: Uint8Array): MapManifest {
       placement:
         record && at
           ? {
-              x: (at[2] ?? 0) / PLACEMENT_SCALE,
-              y: (at[3] ?? 0) / PLACEMENT_SCALE,
-              z: (at[4] ?? 0) / PLACEMENT_SCALE,
+              x: at[2] ?? 0,
+              y: at[3] ?? 0,
+              z: at[4] ?? 0,
               scaleX: at[7] ?? 1,
               scaleY: at[8] ?? 1,
               scaleZ: at[9] ?? 1,

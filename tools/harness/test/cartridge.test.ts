@@ -84,7 +84,7 @@ import {
   type PlacedMesh,
   step,
 } from '@minstrel/sim'
-import { assembleMap } from '@minstrel/world'
+import { assembleMap, WORLD_SCALE } from '@minstrel/world'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 /**
@@ -861,7 +861,7 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
       for (const model of parsed.models) {
         const states = resolveShapeStates(model.renderCommands)
         model.shapes.forEach((shape, index) => {
-          const expected = states[index]?.positionScaled ? model.upScale : 1
+          const expected = model.upScale ** (states[index]?.positionScales ?? 0)
           let unscaled: ReturnType<typeof runDisplayList>
           let applied: ReturnType<typeof runDisplayList>
           try {
@@ -909,8 +909,9 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
 
   it('leaves a blended vertex where it was, when the model is in its bind pose', () => {
     // The same invariant as above, carried through to the vertices: a blended
-    // vertex has to land exactly where the display list put it, bar the model's
-    // own downScale, which posing folds in.
+    // vertex has to land exactly where the display list put it. Nothing is
+    // folded in on top — the model's `downScale` is the render commands' undo,
+    // sent after the shape, and never reaches a vertex.
     //
     // Which vertices those are has to be worked out per shape. A model reuses
     // stack slots, so a slot holding a blend when one shape is drawn may hold a
@@ -953,7 +954,7 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
           if (!blended || blended.size === 0) return
           const rest = (model as Model).geometry(shape)
           const posed = (model as Model).posedGeometry(index)
-          const scale = (model as Model).downScale
+          const scale = 1
           rest.vertices.forEach((v, k) => {
             if (!blended.has(v.matrixId)) return
             const q = posed.vertices[k]
@@ -1742,16 +1743,17 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
       'M01M07',
       'M01M08',
     ])
-    // Every door stands somewhere in the village and leads somewhere in it.
+    // Every door stands somewhere in the village and leads somewhere in it —
+    // in world units, which is how the village is measured.
     for (const door of village) {
-      expect(Math.hypot(door.x, door.z), door.to).toBeLessThan(8)
+      expect(Math.hypot(door.x, door.z) * WORLD_SCALE, door.to).toBeLessThan(8)
       expect(door.width, door.to).toBeGreaterThan(0)
       expect(door.height, door.to).toBeGreaterThan(0)
     }
     // The road out is the outlier: the field is a hundred times the village's
     // area, and you arrive far from its origin.
     const field = village.find((d) => d.to === 'F01') as ReturnType<typeof mapDoorways>[number]
-    expect(Math.abs(field.arriveX)).toBeGreaterThan(4)
+    expect(Math.abs(field.arriveX) * WORLD_SCALE).toBeGreaterThan(4)
   })
 
   it("builds one of a map's two lightings, not both at once", () => {
@@ -1878,8 +1880,9 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
   })
 
   it("puts a village's cast inside the village, once the placements are scaled", () => {
-    // The divisor is the same 8 the map's own placements need. Raw, half the
-    // village's characters fall outside its collision entirely.
+    // Into the world by the same `WORLD_SCALE` as the map's own placements.
+    // Taken as though already in world units, half the village's characters
+    // fall outside its collision entirely.
     const archive = [...walkFiles(fs.root)].find((f) => /\/M01\.npc$/i.test(f.path))
     expect(archive).toBeDefined()
     const narc = readNarc(fs.read(archive as NonNullable<typeof archive>))
@@ -1916,8 +1919,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
 
     let inside = 0
     for (const { placement } of placed) {
-      const x = placement.x * FX32_ONE
-      const z = placement.z * FX32_ONE
+      const x = placement.x * WORLD_SCALE * FX32_ONE
+      const z = placement.z * WORLD_SCALE * FX32_ONE
       if (x >= bounds.minX && x <= bounds.maxX && z >= bounds.minZ && z <= bounds.maxZ) inside++
     }
     expect(inside).toBe(placed.length)
@@ -2609,12 +2612,13 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
             // its own nodes, and the village's two scenery models carry one
             // called `hus` and `hus1` beside their trees (`tre20`..) and their
             // ground (`base`). Sizing off "the tallest shape in the map" instead
-            // measures the waterfall, at 4.4 units, or the sky backdrop at 2.1.
+            // measures the waterfall or the sky backdrop.
             if (!model.nodes.some((node) => /^hus\d*$/.test(node.name))) continue
             houses++
             for (let shape = 0; shape < model.numShapes; shape++) {
               const bounds = measureBounds([model.posedGeometry(shape)])
-              house = Math.max(house, bounds.maxY - bounds.minY)
+              // In world units. The model's own `upScale` is in its geometry.
+              house = Math.max(house, (bounds.maxY - bounds.minY) * WORLD_SCALE)
             }
           }
         }
@@ -2691,8 +2695,15 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
         const ground: ReturnType<typeof readCollisionMesh>[] = []
         const movable: { place: ReturnType<typeof placementOf>; minY: number }[] = []
         for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
-          const place = placementOf(manifest, resource)
-          const moved = place.x !== 0 || place.z !== 0
+          const authored = placementOf(manifest, resource)
+          const moved = authored.x !== 0 || authored.z !== 0
+          // Into the world the way `assembleMap` takes it.
+          const place = {
+            ...authored,
+            x: authored.x * WORLD_SCALE,
+            y: authored.y * WORLD_SCALE,
+            z: authored.z * WORLD_SCALE,
+          }
           for (const built of files) {
             const resourceBytes = members.get(built) as Uint8Array
             if (!moved && isCollisionMesh(resourceBytes)) {
@@ -2720,7 +2731,9 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
         }
         if (ground.length === 0 || movable.length === 0) continue
 
-        const world = createCollisionWorld(ground)
+        const world = createCollisionWorld(
+          ground.map((mesh) => ({ mesh, offset: undefined, scale: WORLD_SCALE * 2 ** mesh.shift })),
+        )
         for (const { place } of movable) {
           const before = Math.hypot(place.x, place.z)
           if (before > 0.5) placedApart++
@@ -2744,9 +2757,9 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // origin, which is the whole point.
     expect(placedApart).toBeGreaterThan(200)
     expect(placedApart).toBeGreaterThan(unplacedAtOrigin * 4)
-    // And they land on the ground rather than anywhere: the divisor in
-    // PLACEMENT_SCALE is fitted on exactly this, so what this pins is that the
-    // value in the source still matches the cartridge.
+    // And they land on the ground rather than anywhere. The placements, the
+    // models and the collision are each read at their own values, so what this
+    // pins is that they agree with nothing fitted between them.
     expect(standers).toBeGreaterThan(200)
     expect(onGround / standers).toBeGreaterThan(0.7)
     misses.sort((a, b) => a - b)
@@ -2923,7 +2936,13 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
         const boxes: ReturnType<typeof measureBounds>[] = []
         const meshes: PlacedMesh[] = []
         for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
-          const place = placementOf(manifest, resource)
+          const authored = placementOf(manifest, resource)
+          // Into the world the way `assembleMap` takes it.
+          const place = {
+            x: authored.x * WORLD_SCALE,
+            y: authored.y * WORLD_SCALE,
+            z: authored.z * WORLD_SCALE,
+          }
           const offset = {
             x: Math.round(place.x * 4096),
             y: Math.round(place.y * 4096),
@@ -2933,7 +2952,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
             const resourceBytes = members.get(built) as Uint8Array
             if (isCollisionMesh(resourceBytes)) {
               try {
-                meshes.push({ mesh: readCollisionMesh(resourceBytes), offset })
+                const mesh = readCollisionMesh(resourceBytes)
+                meshes.push({ mesh, offset, scale: WORLD_SCALE * 2 ** mesh.shift })
               } catch {
                 // Reported by the collision test.
               }
@@ -2944,12 +2964,12 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
                 for (let shape = 0; shape < model.numShapes; shape++) {
                   const b = measureBounds([model.posedGeometry(shape)])
                   boxes.push({
-                    minX: b.minX + place.x,
-                    maxX: b.maxX + place.x,
-                    minY: b.minY + place.y,
-                    maxY: b.maxY + place.y,
-                    minZ: b.minZ + place.z,
-                    maxZ: b.maxZ + place.z,
+                    minX: b.minX * WORLD_SCALE + place.x,
+                    maxX: b.maxX * WORLD_SCALE + place.x,
+                    minY: b.minY * WORLD_SCALE + place.y,
+                    maxY: b.maxY * WORLD_SCALE + place.y,
+                    minZ: b.minZ * WORLD_SCALE + place.z,
+                    maxZ: b.maxZ * WORLD_SCALE + place.z,
                   })
                 }
               } catch {
@@ -2981,7 +3001,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
             world,
             fx32(Math.round(x)),
             fx32(Math.round(z)),
-            fx32(ground.maxY + 4096),
+            // Rounded: a mesh scaled into the world need not end on a whole word.
+            fx32(Math.round(ground.maxY + 4096)),
           )
           if (!hit) continue
           spots++
@@ -2999,19 +3020,24 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
       }
     }
 
-    expect(maps).toBeGreaterThan(50)
-    expect(spots).toBeGreaterThan(500)
+    const counts =
+      `maps ${maps}, spots ${spots}, under a box ${withSky}, under a kept box ${withoutSky}; ` +
+      `village ${villageSpots} spots, ${villageWithSky} under a box, ${villageWithoutSky} under a kept one`
+    expect(maps, counts).toBeGreaterThan(50)
+    expect(spots, counts).toBeGreaterThan(500)
     // Across the cartridge the effect is real but moderate, because most maps
-    // are interiors where a ceiling overhead is the truth. Counting the
-    // backdrop still turns a quarter of all open ground into ceiling.
-    expect(withSky / spots).toBeGreaterThan(0.25)
-    expect(withoutSky).toBeLessThan(withSky * 0.85)
+    // are interiors where a ceiling overhead is the truth. A fifth of all open
+    // ground reads as under something — 3,308 of 16,668 spots — and 43% of
+    // that is backdrop. (It read as a quarter while this test drew placed
+    // pieces eight times too big.)
+    expect(withSky / spots, counts).toBeGreaterThan(0.15)
+    expect(withoutSky, counts).toBeLessThan(withSky * 0.85)
 
     // The slice's village is the severe case, and the one to pin: counting its
     // sky, every spot on it is indoors.
-    expect(villageSpots).toBeGreaterThan(15)
-    expect(villageWithSky).toBe(villageSpots)
-    expect(villageWithoutSky / villageSpots).toBeLessThan(0.3)
+    expect(villageSpots, counts).toBeGreaterThan(15)
+    expect(villageWithSky, counts).toBe(villageSpots)
+    expect(villageWithoutSky / villageSpots, counts).toBeLessThan(0.3)
   }, 120_000)
 
   it('can walk the village once its doorway markers stop being walls', () => {

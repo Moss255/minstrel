@@ -34,7 +34,7 @@ import {
 } from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
-import { type Loaded, load } from './load.ts'
+import { entranceOf, type Loaded, load } from './load.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
 
 /**
@@ -236,8 +236,10 @@ interface Arrival {
 /**
  * Open a map and put the character down in it.
  *
- * With no arrival the character is put wherever the map affords standing, which
- * is how the first map opens. With one, they come out of a doorway.
+ * With one, they come out of a doorway. With no arrival — the first map — they
+ * come in the way the map's neighbours bring them, which for the village is the
+ * road from the field; see `entranceOf`. Only a map nothing leads into is opened
+ * wherever it affords standing.
  *
  * Returns whether anyone is standing anywhere afterwards. On failure the map
  * already loaded is left alone: a doorway onto a map that will not read should
@@ -266,6 +268,19 @@ function enter(map: string, arrival?: Arrival): boolean {
     return false
   }
 
+  // With no doorway to arrive by, come in by the map's entrance: where a
+  // doorway from outside it puts you. Guessing at the middle of the village
+  // stood the character at the river's edge by the waterfall.
+  const entrance = arrival ? undefined : entranceOf(opened.catalogue, opened.code)
+  const via: Arrival | undefined =
+    arrival ??
+    (entrance && {
+      x: entrance.door.arriveX,
+      y: entrance.door.arriveY,
+      z: entrance.door.arriveZ,
+      facing: entrance.door.arriveFacing,
+    })
+
   // Where to stand. An arrival names the spot; without one, the map is asked
   // for somewhere the character can walk from.
   const walkable = (near?: { x: number; z: number }) =>
@@ -278,26 +293,24 @@ function enter(map: string, arrival?: Arrival): boolean {
   let at: { x: ReturnType<typeof fx32>; y: ReturnType<typeof fx32>; z: ReturnType<typeof fx32> }
   /** How far from the arrival the character had to be put, if not on it. */
   let strayed = 0
-  if (arrival) {
+  if (via) {
     // A world grown around the character has to put them down where they now
     // belong in it, or they arrive inside the walls.
-    const x = fx32(Math.round(arrival.x * worldScale * FX32_ONE))
-    const z = fx32(Math.round(arrival.z * worldScale * FX32_ONE))
+    const x = fx32(Math.round(via.x * worldScale * FX32_ONE))
+    const z = fx32(Math.round(via.z * worldScale * FX32_ONE))
     const hit = groundBelow(world, x, z, fx32(Math.round(world.bounds.maxY + FX32_ONE)))
     if (hit) {
       at = { x, y: hit.y, z }
     } else {
-      // No floor under the arrival. 136 of the cartridge's 1,132 doorways are
-      // like this and 87 of them lead to a field, which is not a coincidence:
-      // a field's collision does not reach its own doorways — see the field
-      // note in `game-formats/FORMAT.md`.
+      // No floor under the arrival. Rare: 2 of the 1,098 arrivals measured,
+      // now each collision mesh is read at its own size. Before that, a
+      // field's was read at half of it and 136 arrivals missed, 87 of them
+      // into a field.
       //
       // So the character is put on the walkable ground nearest the arrival
       // rather than wherever the map affords standing. It keeps which side of
-      // the map they came in on, which the middle of the map does not: coming
-      // out of the village, the difference is the west edge of the field
-      // against somewhere in the middle of it.
-      const spot = walkable({ x: arrival.x * worldScale, z: arrival.z * worldScale })
+      // the map they came in on, which the middle of the map does not.
+      const spot = walkable({ x: via.x * worldScale, z: via.z * worldScale })
       if (!spot) {
         status(`${opened.archive} has no floor under the arrival, and nowhere else to stand`)
         loaded = previous
@@ -305,7 +318,7 @@ function enter(map: string, arrival?: Arrival): boolean {
         return false
       }
       at = spot
-      strayed = Math.hypot(toFloat(spot.x) - arrival.x, toFloat(spot.z) - arrival.z)
+      strayed = Math.hypot(toFloat(spot.x) - via.x, toFloat(spot.z) - via.z)
     }
   } else {
     const spawn = walkable()
@@ -328,7 +341,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast was posed before the scale was known; redo it now it is.
   poseMap(0)
   self = player(at, scale)
-  if (arrival) self.facing = arrival.facing
+  if (via) self.facing = via.facing
 
   // The character is put down inside the doorway they came out of more often
   // than not, so the gate starts shut and opens when they step clear of it.
@@ -373,6 +386,7 @@ function enter(map: string, arrival?: Arrival): boolean {
       (unclassified > 0 ? `, ${unclassified} unclassified` : '') +
       (missing.length > 0 ? `, ${missing.length} unread` : '') +
       `, ${opened.doorways.length} ${opened.doorways.length === 1 ? 'doorway' : 'doorways'}` +
+      (entrance ? `, came in from ${entrance.from}` : '') +
       (strayed > 0 ? `, no floor under the doorway — put down ${strayed.toFixed(1)} away` : '') +
       `, ready in ${elapsed} ms` +
       // Never leave a resized map looking like a wrong one.

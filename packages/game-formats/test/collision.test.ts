@@ -246,7 +246,7 @@ describe('marker volumes', () => {
       cells: [],
       cellTriangles: [],
       trailing: [],
-      unknown_0x04: 0,
+      shift: 0,
       unknown_0x1a: 0,
       cell: () => [],
     }) as unknown as CollisionMesh

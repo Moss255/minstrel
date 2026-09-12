@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
 import {
   isMapManifest,
-  PLACEMENT_SCALE,
   placementOf,
   readMapManifest,
   resolveMapResources,
@@ -180,12 +179,12 @@ describe('placement', () => {
       places: [{ slot: 0 }, { slot: 7, at: [-28.56, -0.5, -9.472] }, { slot: 9, parent: 7 }],
     })
 
-  it("reads a placement in world units, not the file's", () => {
+  it("reads a placement in the file's own units", () => {
     const manifest = readMapManifest(placedManifest())
     const door = manifest.resources[1] as (typeof manifest.resources)[number]
-    expect(door.placement?.x).toBeCloseTo(-28.56 / PLACEMENT_SCALE, 5)
-    expect(door.placement?.y).toBeCloseTo(-0.5 / PLACEMENT_SCALE, 5)
-    expect(door.placement?.z).toBeCloseTo(-9.472 / PLACEMENT_SCALE, 5)
+    expect(door.placement?.x).toBeCloseTo(-28.56, 5)
+    expect(door.placement?.y).toBeCloseTo(-0.5, 5)
+    expect(door.placement?.z).toBeCloseTo(-9.472, 5)
     expect(door.placement?.scaleX).toBe(1)
   })
 
@@ -196,8 +195,8 @@ describe('placement', () => {
     const manifest = readMapManifest(placedManifest())
     const collision = manifest.resources[2] as (typeof manifest.resources)[number]
     expect(collision.placement?.x).toBe(0)
-    expect(placementOf(manifest, collision).x).toBeCloseTo(-28.56 / PLACEMENT_SCALE, 5)
-    expect(placementOf(manifest, collision).z).toBeCloseTo(-9.472 / PLACEMENT_SCALE, 5)
+    expect(placementOf(manifest, collision).x).toBeCloseTo(-28.56, 5)
+    expect(placementOf(manifest, collision).z).toBeCloseTo(-9.472, 5)
   })
 
   it('leaves a piece with no placement at the origin', () => {
