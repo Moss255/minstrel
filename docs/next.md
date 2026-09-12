@@ -161,7 +161,8 @@ play. The second is not done. Set aside to move on to M4:
   draw can be a monster — the cannibox, mimic or Pandora's box, INFERRED — but
   there are no battles to follow it. Nothing is kept yet: there is no inventory
   until M4.
-- **The stable and the church.** Not started; the church's save point is M4's.
+- **The church works; the stable is not started.** The priest's line hands
+  over to the church (`<CHURCH=1>`), whose confession saves — see M4 below.
 - **Where the Hero wakes.** `ev02130` puts the Hero at (1.09, 0.61, −2.73),
   0.45 above the floor — in bed, INFERRED — in `M01M07` or `M01M10`, both of
   which have floor there.
@@ -193,10 +194,42 @@ menu text, under `/data/menu`, is not read yet.
   the game keeps its own is not read — and neither it nor the opened treasure
   is saved yet.
 
-Next for M4, in the plan's order: the item tables' numbers (`/data/prm/itemdt*`
-— a weapon's attack, an item's price), then item use, equipment and its effect
-on the numbers, the shop, the inn and the church's save point, and saving in
-our own format.
+- **Shops, the inn and the church work.** A talk line that ends
+  `<ADD><SHOP=32>`, `<INN=n>` or `<CHURCH=n>` opens its service when it is done
+  (`apps/game/src/services.ts`). The shop sells what `shopdata1.bin` lists, at
+  each item's price from its table and the shop's rate, and buys back at half —
+  a choice. The inn charges a stand-in 10 G, since the line leaves its price to
+  the engine and no price table is found. The church's confession saves; its
+  divination says how far the next level is. The words on these lists are ours.
+- **Equip works, without numbers.** The equip panel puts on and takes off what
+  the bag holds, a slot to each item table's category. Attack and defence are
+  **not found**: no file, the code included, keeps them by item id
+  (`game-formats/FORMAT.md`, "Items"). A few values read off the shop's screen
+  in the emulator — a copper sword's attack, a leather shield's defence — would
+  be enough to search for them.
+- **Save and load, in our own format** (`apps/game/src/save.ts`): JSON in the
+  browser's storage, written on confession — where the Hero stands, the story
+  stage, the bag, what is worn, the opened treasure and the experience. The
+  start screen offers to carry on from it, and says why when a save will not
+  read.
+- **The Hero starts with a stand-in 100 G** (`STARTING_GOLD`): the game's own
+  purse is not read, and the village's treasure comes to two coins.
+
+- **Which stage each service is open at is the story's.** The shopkeeper stands
+  at the counter in `M01M03` at stages 2.1 and 2.2 and the priest in `M01M06`
+  throughout; the innkeeper is behind the inn's counter only from 2.7, and not
+  yet at the slice's opening stage. `apps/game/test/village-services.test.ts`
+  holds the village to that. Finding it turned up a talk bug, now fixed:
+  answers whose markers stand side by side — `<YES><NO>` — share the branch
+  after them, and read as two the first was empty and ended the line. The
+  innkeeper's counter line is one of 36 such prompts.
+
+M4's done-when — buy a weapon, equip it, sleep at the inn, save, quit and
+reload — can be walked through: buy and equip at 2.1, step the story to 2.7
+with `y` for the inn, confess at the church, reload the page and carry on. It
+has not been played through in a browser here; the pieces are tested on their
+own and against the cartridge. What M4 leaves: attack and defence, using an
+item (its effect is not read), the inn's real price, and the stable.
 
 The box is HTML over the canvas in the system UI font. `apps/game/src/talk.ts`
 says which markup readings are established and which are inferred; tags it

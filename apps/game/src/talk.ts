@@ -79,7 +79,24 @@ export interface TextContext {
    * these are fixed, and a condition not listed takes its first branch.
    */
   readonly conditions: Readonly<Record<string, boolean>>
+  /**
+   * What `<val_1>`, `<val_2>` … stand for, when the engine supplies them — the
+   * inn's price, say. A value not listed is left out, as an unknown tag is.
+   */
+  readonly values?: Readonly<Record<string, string>>
 }
+
+/**
+ * A service a line hands over to when it is done: `<ADD><SHOP=32>`,
+ * `<ADD><INN=2>`, `<ADD><CHURCH=1>`. The number is the shop's in the shop
+ * table; what the inn's and the church's numbers select is not established.
+ */
+export interface Service {
+  readonly kind: 'SHOP' | 'INN' | 'CHURCH'
+  readonly id: number
+}
+
+const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
 
 export const DEFAULT_CONTEXT: TextContext = {
   heroName: 'Hero',
@@ -184,6 +201,8 @@ export interface Run {
   readonly unhandled: readonly string[]
   /** The prompt the run stopped at, asked on its last page; undefined when the line is over. */
   readonly prompt: Prompt | undefined
+  /** The service the run hands over to at its end, if it names one. */
+  readonly service: Service | undefined
 }
 
 /** A line read straight through, as far as its first prompt. */
@@ -211,6 +230,7 @@ export function runLine(
   const unhandled = new Set<string>()
   let page = ''
   let capitalise = false
+  let service: Service | undefined
   /** For each open condition, whether the branch being read is the one shown. */
   const shown: boolean[] = []
   const visible = () => shown.every(Boolean)
@@ -225,7 +245,7 @@ export function runLine(
     const kept = pages.filter((p) => p.trim() !== '')
     // A prompt is asked on the page it ends, even one with nothing before it.
     if (prompt || page.trim() !== '') kept.push(page)
-    return { pages: kept.map(speakerOf), unhandled: [...unhandled], prompt }
+    return { pages: kept.map(speakerOf), unhandled: [...unhandled], prompt, service }
   }
 
   // A jump that never reaches a prompt would go round for ever; no line needs
@@ -268,6 +288,10 @@ export function runLine(
       capitalise = true
     } else if (name === 'HERO' || name === 'LEADER') {
       put(context.heroName)
+    } else if (SERVICES.has(name) && Number.isInteger(Number(token.args[0]))) {
+      service = { kind: name as Service['kind'], id: Number(token.args[0]) }
+    } else if (context.values?.[name] !== undefined) {
+      put(context.values[name] as string)
     } else {
       const glyph = GLYPHS[name] ?? accented(name)
       if (glyph === undefined) unhandled.add(name)
@@ -288,7 +312,19 @@ export function branchOf(
 ): number | undefined {
   for (let at = prompt.at + 1; at < tokens.length; at++) {
     const token = tokens[at]
-    if (token?.kind === 'tag' && token.name === answer.marker) return at + 1
+    if (token?.kind !== 'tag' || token.name !== answer.marker) continue
+    // INFERRED: answers whose markers stand side by side — `<YES><NO>` — share
+    // the branch after them. Read as two branches, the first would be empty
+    // and end the line; the innkeeper's counter line is one.
+    let from = at + 1
+    for (
+      let next = tokens[from];
+      next?.kind === 'tag' && MARKERS.has(next.name);
+      next = tokens[from]
+    ) {
+      from++
+    }
+    return from
   }
   return undefined
 }

@@ -28,6 +28,21 @@ export function take(bag: Bag, takings: Takings): Bag {
   return { gold: bag.gold + (takings.gold ?? 0), items }
 }
 
+/** The bag less some gold; undefined when there is not that much. */
+export function pay(bag: Bag, gold: number): Bag | undefined {
+  return bag.gold < gold ? undefined : { ...bag, gold: bag.gold - gold }
+}
+
+/** The bag less one of an item; undefined when it holds none. */
+export function drop(bag: Bag, item: number): Bag | undefined {
+  const count = bag.items.get(item) ?? 0
+  if (count === 0) return undefined
+  const items = new Map(bag.items)
+  if (count === 1) items.delete(item)
+  else items.set(item, count - 1)
+  return { ...bag, items }
+}
+
 /** What the items panel lists: the gold, then each item and how many. */
 export function bagLines(bag: Bag, nameOf: (id: number) => string): string[] {
   const lines = [`${bag.gold} gold coin${bag.gold === 1 ? '' : 's'}`]

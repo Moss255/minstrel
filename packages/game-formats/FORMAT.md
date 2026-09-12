@@ -727,7 +727,55 @@ medicine, special medicine, superior medicine, antidotal herb. Measured by
 where the names' ids fall in each file: stride 32 on 1,007 of the combined
 table's gaps and every per-category table's. The categories by their first
 records: `a` gloves, `b` body, `d` accessories, `h` helms, `l` footwear, `s`
-shields, `t` tools, `u` legwear, `w` weapons. The rest of a record is not read.
+shields, `t` tools, `u` legwear, `w` weapons. `readItemTable` reads one.
+
+**A record's second `u16` is its price** — INFERRED, and well supported: every
+one of the 330 items any shop sells has one above 0, and none of the 140 items
+at 0 — quest pieces, the celestial suit among them — is sold anywhere. The third
+is `0xFFFF` on most records, `0xFFFC` and 0 on others; not established. The
+other 26 bytes are carried: a sort position, an offset that climbs by the
+length of a description, a run of numbers that count the records, and an icon.
+
+**What an item does is not found.** No field of the record climbs with the
+price as a weapon's attack would (the best, bits of `+0x11`, agrees with the
+price's order at 0.64 over 264 weapons, where attack against price would be
+expected far higher), and no file on the cartridge — `itembtlprm.nat`'s 44-byte
+records, `itemsort`'s 28, the ARM9 binary and all its overlays, decompressed —
+holds the weapons' ids at a fixed spacing beside numbers that do. The tail of
+each category table after its records is not strings on the equipment tables
+but 32-byte entries with 4096s in them (1.0 in fixed point), which look like
+a layout, not per-item numbers: 386 of them for 268 weapons. So attack and
+defence are kept somewhere not keyed by item id — by position in a table, most
+likely — and finding them wants the disassembly, or a few values read off the
+shop's screen in the emulator to search for.
+
+## Shops — `/data/bin/menu/shopdata1.bin`
+
+A loose file, a tagged data table (above): a date and a version string, one
+`0x66` record holding 37, and 37 `0x67` records of 22 integers, one a shop.
+`readShops` reads it.
+
+| value | meaning |
+|---|---|
+| 0 | the shop's number — **the one a talk line's `<SHOP=n>` names**: the village shopkeeper's line ends `<ADD><SHOP=32>`, and shop 32 is the village's |
+| 1 | 1 to 5; not established |
+| 2–19 | eighteen item ids, 0 for an empty slot — full on most shops, 1, 6 or 12 on others |
+| 20 | 100 on 36 shops and 500 on one, whose six things are the ordinary shops' herbs and wings: a price rate in percent, INFERRED |
+| 21 | 0 on every shop that sells only weapons, 1 on shops of armour, 2 on tools and accessories, 3 to 5 on a mix: the kind of shop, INFERRED |
+
+Every item a shop sells is in the item tables, with a price.
+
+## Services in talk — `<SHOP=n>`, `<INN=n>`, `<CHURCH=n>`
+
+A line that hands over to the engine ends `<ADD>` and a service tag: 352
+`<SHOP=n>`, 505 `<INN=n>` and 325 `<CHURCH=n>` across the English talk files,
+and 48 `<BANK>`. In the village: the shopkeeper's `<SHOP=32>`, the innkeeper's
+`<INN=1>` and `<INN=2>` on different lines, and the priest's `<CHURCH=1>`. The
+innkeeper's lines leave the price and the party's size to the engine —
+"That'll be `<val_2>` gold coins" — and `str_inn.bin` beside the scenario is
+empty; no table of inn prices has been found. What the inn's and the church's
+numbers select is not established. `str_church.bin` is a tagged table of the
+church's words, in Japanese only.
 
 ---
 
@@ -1790,6 +1838,12 @@ files, against 57 in events.
   marker for it after the prompt lands past another prompt on 65 of 13,302
   answers — mostly a quest offer asked twice in a row, or one inside a yes/no
   branch, where the markers differ anyway.
+- **Answers whose markers stand side by side share a branch** — INFERRED:
+  `<YESNO><YES><NO>` and then the text, 36 times in the English talk files and
+  10 in the village, the innkeeper's counter line among them. Read as two
+  branches, the first is empty and ends the line; taken together, both answers
+  run on into the text after them, and the innkeeper's ends by handing over to
+  the inn (`<ADD><INN=1>`).
 - 1,380 of the talk files' answers, and 110 of the events' 114, have no branch at
   all: what follows is the script's.
 

@@ -27,6 +27,7 @@ import {
   type RandomTreasure,
   readEventMessages,
   readItemNames,
+  readItemTable,
   readLevelTable,
   readMapList,
   readMapManifest,
@@ -34,9 +35,11 @@ import {
   readNpcPlacements,
   readNpcStates,
   readRandomTreasure,
+  readShops,
   readTalk,
   readTreasure,
   readTriggers,
+  type Shop,
   type TalkLine,
   type Treasure,
   type Trigger,
@@ -93,6 +96,10 @@ export interface Loaded {
   readonly randoms: ReadonlyMap<string, readonly RandomTreasure[]>
   /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
   readonly heroLevels: LevelTable | undefined
+  /** What each shop sells, by the number a talk line's `<SHOP=n>` names — see `readShops`. */
+  readonly shops: ReadonlyMap<number, Shop>
+  /** Each item's price and the table it is listed in — see `readItemTable`. */
+  readonly goods: ReadonlyMap<number, Goods>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
@@ -101,6 +108,12 @@ export interface Loaded {
   readonly archive: string
   /** The map's own code, which is what a doorway names. */
   readonly code: string
+}
+
+/** An item as the shop and the equip panel need it: its price, and its table's letter — `w` weapons … */
+export interface Goods {
+  readonly price: number
+  readonly table: string
 }
 
 export interface LoadOptions {
@@ -430,6 +443,50 @@ function heroLevelsOf(rom: Uint8Array): LevelTable | undefined {
   return table
 }
 
+/** The shop table: a loose file, beside the menus. */
+const SHOP_TABLE = '/data/bin/menu/shopdata1.bin'
+const shopsRead = new WeakMap<Uint8Array, Map<number, Shop>>()
+
+/** What each shop sells, by its number — see `readShops`. Empty when it will not read. */
+function shopsOf(rom: Uint8Array): Map<number, Shop> {
+  const already = shopsRead.get(rom)
+  if (already) return already
+  const shops = new Map<number, Shop>()
+  for (const leaf of scanCartridge(rom, { pathFilter: SHOP_TABLE })) {
+    if (leaf.path !== SHOP_TABLE) continue
+    try {
+      for (const shop of readShops(leaf.bytes)) shops.set(shop.id, shop)
+    } catch {
+      // A table that will not read leaves every shop empty-handed.
+    }
+  }
+  shopsRead.set(rom, shops)
+  return shops
+}
+
+const goodsRead = new WeakMap<Uint8Array, Map<number, Goods>>()
+
+/** Every item's price and table letter, from the English item tables — see `readItemTable`. */
+function goodsOf(rom: Uint8Array): Map<number, Goods> {
+  const already = goodsRead.get(rom)
+  if (already) return already
+  const { cat } = walkOnce(rom, ['/data/prm/itemdt_'])
+  const goods = new Map<number, Goods>()
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      const table = /itemdt_([a-z])_en\.nat$/i.exec(name)?.[1]
+      if (!table) continue
+      try {
+        for (const item of readItemTable(bytes)) goods.set(item.id, { price: item.price, table })
+      } catch {
+        // A table that will not read prices nothing in it.
+      }
+    }
+  }
+  goodsRead.set(rom, goods)
+  return goods
+}
+
 /** A treasure in world units: its position the file's own, times {@link WORLD_SCALE}. */
 function treasureInWorld(treasure: Treasure): Treasure {
   const at = treasure.position
@@ -747,6 +804,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     itemNames: itemNamesOf(rom),
     randoms: randomTreasureOf(rom),
     heroLevels: heroLevelsOf(rom),
+    shops: shopsOf(rom),
+    goods: goodsOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

@@ -24,6 +24,12 @@ export {
 } from './font.ts'
 export { type ItemName, readItemNames } from './items.ts'
 export {
+  ITEM_RECORD_SIZE,
+  ITEM_TABLE_HEAD,
+  type ItemRecord,
+  readItemTable,
+} from './itemtable.ts'
+export {
   LEVEL_TAG,
   type LevelRow,
   type LevelTable,
@@ -70,6 +76,7 @@ export {
   type ScriptRoutine,
   type ScriptSection,
 } from './script.ts'
+export { readShops, SHOP_SLOTS, SHOP_TAG, type Shop } from './shops.ts'
 export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
 export {
   type DataTable,

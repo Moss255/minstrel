@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { EMPTY_BAG, take } from '../src/bag.ts'
+import { SLOTS } from '../src/equipment.ts'
 import { HERO_VOCATION, standing } from '../src/hero.ts'
-import { back, choose, MENU_COMMANDS, moveCursor, openMenu, panelLines } from '../src/menu.ts'
+import {
+  back,
+  choose,
+  MENU_COMMANDS,
+  type MenuContext,
+  moveCursor,
+  openMenu,
+  panelLines,
+} from '../src/menu.ts'
+
+const at = (cursor: number) => ({ cursor, panel: undefined, row: 0, picking: undefined })
 
 describe('the main menu', () => {
   it('opens on the first command and chooses round and round', () => {
@@ -14,7 +25,7 @@ describe('the main menu', () => {
   it('closes to talk, and opens a panel for anything else', () => {
     expect(choose(openMenu())).toEqual({ state: undefined, talk: true })
     const status = choose(moveCursor(openMenu(), 1))
-    expect(status).toEqual({ state: { cursor: 1, panel: 'status' }, talk: false })
+    expect(status).toEqual({ state: { ...at(1), panel: 'status' }, talk: false })
   })
 
   it('keeps its place while a panel is open, and goes back a step at a time', () => {
@@ -23,7 +34,7 @@ describe('the main menu', () => {
     expect(moveCursor(panel, 1)).toBe(panel)
     expect(choose(panel).state).toBe(panel)
     const menu = back(panel)
-    expect(menu).toEqual({ cursor: 2, panel: undefined })
+    expect(menu).toEqual(at(2))
     expect(menu && back(menu)).toBeUndefined()
   })
 
@@ -72,5 +83,45 @@ describe('the main menu', () => {
       'herb',
     ])
     expect(panelLines('items', context)[1]).toBe('item 0x55f0')
+  })
+})
+
+describe('the equip panel', () => {
+  const sword = 20004
+  const shield = 21291
+  const context: MenuContext = {
+    hero: 'Hero',
+    map: undefined,
+    stage: undefined,
+    bag: take(take(EMPTY_BAG, { item: sword }), { item: shield }),
+    equipped: new Map(),
+    itemName: (id) => (id === sword ? 'sword' : 'shield'),
+    tableOf: (id) => (id === sword ? 'w' : 's'),
+  }
+  const equipPanel = () => {
+    const opened = choose(moveCursor(openMenu(), 3)).state
+    if (opened?.panel !== 'equip') throw new Error('no equip panel')
+    return opened
+  }
+
+  it('lists the slots, then what the bag holds for the one chosen', () => {
+    const panel = equipPanel()
+    expect(panelLines('equip', context, panel)[0]).toBe('▶ Weapon: —')
+    expect(moveCursor(panel, -1, context).row).toBe(SLOTS.length - 1)
+    const picking = choose(panel, context).state
+    expect(picking?.picking).toBe('weapon')
+    expect(panelLines('equip', context, picking)).toEqual(['Weapon:', '▶ (nothing)', '   sword'])
+    // Nothing and the sword: two rows to go round.
+    expect(picking && moveCursor(picking, 2, context).row).toBe(0)
+  })
+
+  it('asks to put on the chosen item, and goes back to the slot it came from', () => {
+    const picking = choose(equipPanel(), context).state
+    if (!picking) throw new Error('no choices')
+    const taken = choose(moveCursor(picking, 1, context), context)
+    expect(taken.equip).toEqual({ slot: 'weapon', item: sword })
+    expect(taken.state).toMatchObject({ panel: 'equip', picking: undefined, row: 0 })
+    expect(choose(picking, context).equip).toEqual({ slot: 'weapon', item: undefined })
+    expect(back(picking)).toMatchObject({ panel: 'equip', picking: undefined })
   })
 })

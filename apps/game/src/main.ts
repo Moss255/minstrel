@@ -54,13 +54,15 @@ import {
   NO_FIT,
 } from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
+import { type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
-import { standing } from './hero.ts'
+import { STARTING_GOLD, standing } from './hero.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
 import {
   back,
   choose,
   MENU_COMMANDS,
+  type MenuContext,
   type MenuState,
   moveCursor,
   openMenu,
@@ -68,6 +70,28 @@ import {
 } from './menu.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
 import { isPotOrBarrel } from './pots.ts'
+import {
+  bagOf,
+  equippedOf,
+  equippedRecord,
+  readSave,
+  SAVE_VERSION,
+  type SaveGame,
+  type SaveStore,
+  writeSave,
+} from './save.ts'
+import {
+  type Counter,
+  chooseInVisit,
+  INN_PRICE,
+  leaveVisit,
+  moveVisit,
+  type Visit,
+  viewOf,
+  visitChurch,
+  visitInn,
+  visitShop,
+} from './services.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type Conversation,
@@ -79,10 +103,12 @@ import {
   OPENING_STAGE,
   pickLine,
   promptOf,
+  type Service,
   sameStage,
   stageOrder,
   startConversation,
   type Talker,
+  type TextContext,
   talkTarget,
 } from './talk.ts'
 import {
@@ -121,6 +147,8 @@ const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
 const menuEl = must<HTMLDivElement>('#menu')
+const resumeRow = must<HTMLLabelElement>('#resume-row')
+const resumeEl = must<HTMLInputElement>('#resume')
 
 const status = (text: string) => {
   statusEl.textContent = text
@@ -246,10 +274,16 @@ let menu: MenuState | undefined
  * it stays open whichever way the Hero comes back. Not saved yet.
  */
 const openedTreasure = new Set<string>()
-/** What the Hero has picked up — see `bag.ts`. Not saved yet. */
-let bag: Bag = EMPTY_BAG
-/** The Hero's experience. Nothing gives any until there are battles. */
-const heroExp = 0
+/** What the Hero carries — see `bag.ts` — starting from a stand-in purse, `STARTING_GOLD`. */
+let bag: Bag = take(EMPTY_BAG, { gold: STARTING_GOLD })
+/** What the Hero wears — see `equipment.ts`. */
+let equipped: Equipped = NOTHING_EQUIPPED
+/** The Hero's experience. Nothing gives any until there are battles; a save can. */
+let heroExp = 0
+/** The shop, inn or church being visited — see `services.ts`. */
+let visit: Visit | undefined
+/** What the conversation is read with: the defaults, or those with the inn's price. */
+let talkContext: TextContext = DEFAULT_CONTEXT
 /** The markers where the map's treasure is — see `treasure.ts`. */
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
@@ -358,7 +392,58 @@ function begin(bytes: Uint8Array, map: string): void {
   // Kept for the rest of the session: every doorway taken reads the cartridge
   // again for the map behind it.
   cartridge = bytes
+  // Carry on from the last confession, unless the player asked for a new game.
+  const saved = resumeEl.checked ? savedGame : undefined
+  if (saved) {
+    restore(saved)
+    if (enter(saved.map, saved.at)) return
+  }
   if (!enter(map)) startEl.hidden = false
+}
+
+/** The browser's own storage, where it allows it: private windows and blocked sites do not. */
+function storage(): SaveStore | undefined {
+  try {
+    return window.localStorage
+  } catch {
+    return undefined
+  }
+}
+
+/** Take up where a save left off — everything but the map, which `begin` enters. */
+function restore(game: SaveGame): void {
+  storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
+  bag = bagOf(game)
+  equipped = equippedOf(game)
+  heroExp = game.exp
+  openedTreasure.clear()
+  for (const key of game.opened) openedTreasure.add(key)
+}
+
+/** Record where the Hero stands and all they carry: the church's confession. What the priest says. */
+function confess(): string {
+  if (!loaded || !self) return 'There is nothing to record.'
+  const game: SaveGame = {
+    version: SAVE_VERSION,
+    savedAt: new Date().toISOString(),
+    map: loaded.code,
+    // In the file's own units, which is what a doorway's arrival is in.
+    at: {
+      x: toFloat(self.state.x) / worldScale,
+      y: toFloat(self.state.y) / worldScale,
+      z: toFloat(self.state.z) / worldScale,
+      facing: self.facing,
+    },
+    stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
+    gold: bag.gold,
+    items: [...bag.items],
+    equipped: equippedRecord(equipped),
+    opened: [...openedTreasure],
+    exp: heroExp,
+  }
+  return writeSave(storage(), game)
+    ? 'Your progress is recorded.'
+    : 'This browser would not keep the record.'
 }
 
 /**
@@ -1085,8 +1170,11 @@ function openTreasureAhead(): boolean {
 function talk(everyLine = false): void {
   if (!loaded || !self) return
   if (talking) {
-    talking = nextPage(talking)
+    const ending = talking
+    talking = nextPage(talking, talkContext)
     showTalk()
+    // A line that ends by handing over — `<ADD><SHOP=32>` — opens its service.
+    if (!talking && ending.run.service) openService(ending.run.service)
     return
   }
   const cast: Talker[] = [
@@ -1126,12 +1214,14 @@ function talk(everyLine = false): void {
   }
   const letter = chapter()
   const lines = letter === undefined ? [] : loaded.linesOf(who.id, letter)
+  talkContext = contextFor(lines.map((line) => line.text ?? ''))
   if (everyLine || storyStage === undefined) {
     talking = startConversation(
       who,
       `every line of chapter ${letter ?? '—'}`,
       lines.map((line) => line.text),
       lines.map(noteOf),
+      talkContext,
     )
   } else {
     const choice = pickLine({
@@ -1148,6 +1238,7 @@ function talk(everyLine = false): void {
         `chapter ${letter}: ${choice.why}`,
         [choice.line.text],
         [noteOf(choice.line)],
+        talkContext,
       )
     } else if (choice?.kind === 'event') {
       const messages = loaded.eventMessages(choice.event)
@@ -1167,8 +1258,101 @@ function talk(everyLine = false): void {
   showTalk()
 }
 
-/** Draw the main menu, or put it away when it is closed. */
+/**
+ * The innkeeper's line asks the engine for its price (`<val_2>`) and for how
+ * many are staying (`<val_1>`); it is given the stand-in price, `INN_PRICE`,
+ * and a party of one.
+ */
+function contextFor(texts: readonly string[]): TextContext {
+  return texts.some((text) => text.includes('<INN='))
+    ? { ...DEFAULT_CONTEXT, values: { val_1: '1', val_2: String(INN_PRICE) } }
+    : DEFAULT_CONTEXT
+}
+
+/** An item's name as the text box shows it, or its id when the names did not read. */
+function nameOf(id: number): string {
+  const name = loaded?.itemNames.get(id)
+  return name === undefined ? `item 0x${id.toString(16)}` : renderName(name)
+}
+
+/** What the menu's panels are told. */
+function menuContext(): MenuContext {
+  const levels = loaded?.heroLevels
+  return {
+    hero: DEFAULT_CONTEXT.heroName,
+    map: loaded?.code,
+    stage: storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined,
+    standing: levels ? standing(levels, heroExp) : undefined,
+    bag,
+    equipped,
+    itemName: nameOf,
+    tableOf: (id) => loaded?.goods.get(id)?.table,
+  }
+}
+
+/** What a shop, the inn or the church is told about the items and the Hero. */
+function counter(): Counter {
+  return {
+    name: nameOf,
+    price: (id) => loaded?.goods.get(id)?.price,
+    divination: () => {
+      const levels = loaded?.heroLevels
+      if (!levels) return 'The level table did not load.'
+      const s = standing(levels, heroExp)
+      return s.next
+        ? `${s.next.exp - s.exp} more experience to reach level ${s.next.level}.`
+        : 'There are no more levels to reach.'
+    },
+  }
+}
+
+/** Open what a line handed over to — see `services.ts`. */
+function openService(service: Service): void {
+  if (!loaded) return
+  if (service.kind === 'SHOP') {
+    const shop = loaded.shops.get(service.id)
+    if (!shop) {
+      status(`the line hands over to shop ${service.id}, which the shop table does not have`)
+      return
+    }
+    visit = visitShop(shop)
+  } else {
+    visit = service.kind === 'INN' ? visitInn(service.id) : visitChurch(service.id)
+  }
+  self?.held.clear()
+  showMenu()
+}
+
+/** Draw the shop, inn or church being visited into the menu's box. */
+function showVisit(current: Visit): void {
+  const view = viewOf(current, bag, counter())
+  menuEl.replaceChildren()
+  const rows = document.createElement('div')
+  rows.className = 'commands'
+  for (const [index, row] of view.rows.entries()) {
+    const item = document.createElement('div')
+    item.textContent = row
+    if (index === view.cursor) item.className = 'chosen'
+    rows.append(item)
+  }
+  const panel = document.createElement('div')
+  panel.className = 'panel'
+  for (const line of [view.title, ...view.lines]) {
+    const row = document.createElement('div')
+    row.textContent = line
+    panel.append(row)
+  }
+  menuEl.append(rows, panel)
+  menuEl.hidden = false
+  status(`${view.title} · ↑/↓ choose, f take, Esc back`)
+}
+
+/** Draw the main menu, or a visit, or put the box away when neither is up. */
 function showMenu(): void {
+  if (visit) {
+    showVisit(visit)
+    return
+  }
   if (!menu) {
     menuEl.hidden = true
     return
@@ -1186,20 +1370,7 @@ function showMenu(): void {
   if (menu.panel) {
     const panel = document.createElement('div')
     panel.className = 'panel'
-    const stage = storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined
-    const names = loaded?.itemNames
-    const levels = loaded?.heroLevels
-    for (const line of panelLines(menu.panel, {
-      hero: DEFAULT_CONTEXT.heroName,
-      map: loaded?.code,
-      stage,
-      standing: levels ? standing(levels, heroExp) : undefined,
-      bag,
-      itemName: (id) => {
-        const name = names?.get(id)
-        return name === undefined ? `item 0x${id.toString(16)}` : renderName(name)
-      },
-    })) {
+    for (const line of panelLines(menu.panel, menuContext(), menu)) {
       const row = document.createElement('div')
       row.textContent = line
       panel.append(row)
@@ -1343,14 +1514,36 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
+  // A shop, the inn or the church: the same keys as the menu, over its list.
+  if (visit) {
+    const told = counter()
+    if (key === 'arrowup' || key === 'w') visit = moveVisit(visit, -1, bag, told)
+    else if (key === 'arrowdown' || key === 's') visit = moveVisit(visit, 1, bag, told)
+    else if (key === 'f' || key === 'enter') {
+      const outcome = chooseInVisit(visit, bag, told)
+      bag = outcome.bag
+      visit = outcome.visit
+      if (outcome.confessed && visit) visit = { ...visit, said: confess() }
+    } else if (key === 'x' || key === 'escape') visit = leaveVisit(visit)
+    showMenu()
+    event.preventDefault()
+    return
+  }
   // The main menu: `x` opens it, and it or Esc goes back a step at a time.
   // While it is up the Hero stands still and the movement keys choose.
   if (menu) {
-    if (key === 'arrowup' || key === 'w') menu = moveCursor(menu, -1)
-    else if (key === 'arrowdown' || key === 's') menu = moveCursor(menu, 1)
+    if (key === 'arrowup' || key === 'w') menu = moveCursor(menu, -1, menuContext())
+    else if (key === 'arrowdown' || key === 's') menu = moveCursor(menu, 1, menuContext())
     else if (key === 'f' || key === 'enter') {
-      const taken = choose(menu)
+      const taken = choose(menu, menuContext())
       menu = taken.state
+      if (taken.equip) {
+        const worn = equip(bag, equipped, taken.equip.slot, taken.equip.item)
+        if (worn) {
+          bag = worn.bag
+          equipped = worn.equipped
+        }
+      }
       if (taken.talk) {
         showMenu()
         talk()
@@ -1502,6 +1695,23 @@ addEventListener('keyup', (event) => {
 
 frame()
 status('choose or drop a cartridge dump')
+
+/** The last confession, offered on the start screen; a save that will not read is said so. */
+const kept = readSave(storage())
+const savedGame = kept && 'game' in kept ? kept.game : undefined
+if (kept) {
+  const said = resumeRow.querySelector('span')
+  resumeRow.hidden = false
+  if (savedGame) {
+    if (said) {
+      said.textContent = `Carry on from the confession of ${new Date(savedGame.savedAt).toLocaleString()} in ${savedGame.map}, with ${savedGame.gold} G`
+    }
+  } else if ('error' in kept) {
+    resumeEl.checked = false
+    resumeEl.disabled = true
+    if (said) said.textContent = `A save is kept, but will not read: ${kept.error}`
+  }
+}
 
 // Development convenience: `?rom=<url>` loads a dump over HTTP instead of
 // through the file picker. It fetches only what the URL names, so it stays

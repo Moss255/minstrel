@@ -15,6 +15,13 @@ export const HERO_VOCATION = 'Minstrel'
 /** The Minstrel's level table — the seventh vocation the status screen names, INFERRED. */
 export const HERO_LEVELS = '/data/prm/level6.bin'
 
+/**
+ * A stand-in for the gold the Hero starts with. The game's own starting purse
+ * is not read, and the village's treasure comes to two coins, less than the
+ * cheapest thing its shop sells — so without this the shop could not be tried.
+ */
+export const STARTING_GOLD = 100
+
 /** Where the Hero stands: their vocation, their level, and the next one. */
 export interface Standing {
   readonly vocation: string
