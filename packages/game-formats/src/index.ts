@@ -39,9 +39,11 @@ export {
   NPC_KIND,
   type NpcEntry,
   type NpcPlacement,
+  type NpcState,
   placeNpcs,
   readNpcList,
   readNpcPlacements,
+  readNpcStates,
 } from './npc.ts'
 export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
 export {

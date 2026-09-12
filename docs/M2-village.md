@@ -9,7 +9,7 @@ Against the milestone's own list.
 | Camera behaviour, extended for widescreen | **done**, including taking the roof off; field of view tuned by eye |
 | Interior/exterior transitions, doors, stairs | **the data is read, the doors are in the right place, and every room is drawn and collided at its own size** — read from the files, nothing fitted; see "Every file at its own size" below |
 | Fixed-preset Hero model with the minstrel outfit | **a character walks**, but it is a stand-in — see below |
-| The village's own cast, placed | **placed, cut right, and in the right rooms**; 18 stand in the village, 14 of them 2D sprites, and each interior draws its own household. One question left: whether the facing table is 180° out — see below |
+| The village's own cast, placed | **placed and in the right rooms**; 18 stand in the village, 14 of them 2D sprites, and each interior draws its own household. The sprites rotate correctly but still do not tile properly — some are drawn missing legs or heads; see `docs/next.md` item 2 |
 
 **Done when:** you can walk the whole village and enter every building.
 

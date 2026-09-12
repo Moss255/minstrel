@@ -43,10 +43,9 @@ collision was doubled when it should not have been; and the waterfall,
 bounds it now stands at the head of the river with its foot on the water. The
 village's terrain, buildings, doors and main collision mesh come out as before.
 
-**To look at in play:** the clouds, `M01M0002`, have an `upScale` of 1 and now
-come out an eighth of their old size, near the middle of the village. Their bind
-pose reached below the ground at either size, so the game may draw them relative
-to the camera; that is not established.
+**Confirmed in play:** every room at the right scale, and the clouds,
+`M01M0002`, which have an `upScale` of 1 and now come out an eighth of their old
+size, look right.
 
 **The first map opens at its entrance.** With no doorway to arrive by, the
 character used to be put on walkable ground near the map's middle — a guess,
@@ -54,7 +53,12 @@ which with the village's collision at its right size landed at the river's edge
 by the waterfall. It now comes in the way a neighbouring map's doorway brings
 you: for the village, the road from the field. `entranceOf` in
 `apps/game/src/load.ts`; the middle is kept only for a map nothing leads into.
-The cartridge's real start position is still not found.
+
+**To come back to — reported from play: the Hero starts the game waking up in
+Erinn's house.**
+Which floor — `M01M07` or `M01M10` — and where in it is not in anything read so
+far (no model in either names a bed), so the game still opens at the village
+entrance until it is.
 
 Items 5 and 6 below are kept for what they ruled out. Their conclusions are
 superseded by this.
@@ -85,7 +89,7 @@ geometry).
 
 ---
 
-## 2. Sprite frames carried a stray mound — **done**
+## 2. Sprite frames — **half-resolved**: the mound is gone, the tiling is not right yet
 
 The pitch was **664 bytes**, not the 648 the parser used and not the 660 the head
 measurement suggested, and the mound is an eight-row strip that is part of every
@@ -123,12 +127,14 @@ figure that turns as it does, so a shadow or a reflection, not a hat.
 `tools/harness` now checks the parser's pitch against the measured period on
 every sheet it samples, which is the check that would have caught the original.
 
-**Still parked, for a new reason:** whether `standingFrame`'s facing table is
-180° out. The cut is no longer the obstacle — `stand_down` is frame 1 and shows
-the face, `stand_up` is frame 4 and shows the back, both clean now. What is
-missing is a picture of the game: `tools/shot` drives Chrome over CDP and there
-is no Chrome on this machine. Run it where there is one, with the inn as the
-crowded test:
+**Half-resolved, from play.** The sprites rotate correctly, so `standingFrame`
+is left as it is — an earlier report had them facing backwards, and the later
+one supersedes it. **They still do not tile properly**: some characters are
+drawn missing their legs, some their heads. The 664-byte pitch and the eight-row
+strip were measured on the 32x40 sheets; which sheets come out wrong, and
+whether they share a size, has not been measured yet, and that is where to
+start. `?sprite=1` cuts a sheet live. For a picture, `tools/shot` drives Chrome
+over CDP, and there is no Chrome on this machine; the inn is the crowded test:
 
 ```sh
 pnpm build
@@ -384,11 +390,14 @@ the file and 5 are found: `s017` opens in the village and moves to the inn,
 four share the position `0.09, 0.02, -0.10` exactly — a parking spot, not five
 authored places.
 
-**Next:** the seven words are not decoded and nothing should pretend otherwise.
-What a decision is needed on is which record the engine ought to take when it
-does not model story progress at all: the earliest, which is what happens today
-by accident, or the one matching some fixed state. `packages/game-formats/src/npc.ts`
-records the layout.
+**Flick between them with `t` and `y`** — decided, for now, as a way to test
+where each character stands and at what size rather than as a model of story
+progress. `readNpcStates` reads every record; the game lists the stages a map's
+records start at (words 0-1) and, at each, puts a character at the first of
+their records in that map whose span — words 0-1 to 3-4, never backwards on
+1,977 of 1,977 — covers it. Stage 0 is the file's own first placements, which is
+what a map opens with. The seven words are still not decoded, and word 6 (2, 1
+or 0) is unexplained; day and night is a guess nobody has tested.
 
 ---
 
@@ -588,8 +597,8 @@ scrolls or pulses in a map is currently still.
 ```sh
 npx biome check .
 npx tsc --build
-npx vitest run                                     # 704 unit tests
-MINSTREL_TEST_ROM=rom/<your>.nds npx vitest run    # 772, the extra 68 on a cartridge
+npx vitest run                                     # 707 unit tests
+MINSTREL_TEST_ROM=rom/<your>.nds npx vitest run    # 776, the extra 69 on a cartridge
 ```
 
 The cartridge tests are seconds each and slower again under load; they carry

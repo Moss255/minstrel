@@ -18,12 +18,15 @@ import {
   type MapManifest,
   type MapTransition,
   mapDoorways,
+  type NpcEntry,
   type NpcPlacement,
+  type NpcState,
   placeNpcs,
   readMapList,
   readMapManifest,
   readNpcList,
   readNpcPlacements,
+  readNpcStates,
 } from '@minstrel/game-formats'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
@@ -46,6 +49,14 @@ export interface Loaded {
   readonly pieces: readonly FigurePiece[]
   /** Who else stands in this map. */
   readonly cast: Cast
+  /**
+   * The story stages this map's cast records start at, earliest first, for
+   * flicking through where characters stand. What a stage is in the game is
+   * not established — see {@link Stage}.
+   */
+  readonly stages: readonly Stage[]
+  /** The cast at one of {@link stages}; `undefined` is the file's first placement of each. */
+  castAt(stage: Stage | undefined): Cast
   /** The way out: where this map's doorways are and what they lead to. */
   readonly doorways: readonly MapTransition[]
   /** Which archive the map came out of, for the status line. */
@@ -93,52 +104,147 @@ export const SLICE_PATHS = [
 ]
 
 /**
- * The characters standing in this map.
- *
- * A missing or unreadable cast is not fatal: the map is still walkable, and one
- * archive on the cartridge carries a zero-byte list.
+ * `/data/ani/<name>.spr`, by character name. These sit directly in the
+ * filesystem rather than inside an archive, so they arrive as unclaimed leaves
+ * rather than as an archive's members.
  */
-function castOf(cat: Catalogue, map: string, groundAt: GroundAt, id: number | undefined): Cast {
-  // `/data/ani/<name>.spr`, by character name. These sit directly in the
-  // filesystem rather than inside an archive, so they arrive as unclaimed
-  // leaves rather than as an archive's members.
+function sheetsOf(cat: Catalogue): Map<string, Uint8Array> {
   const sheets = new Map<string, Uint8Array>()
   for (const leaf of cat.other) {
     if (!leaf.path.toLowerCase().endsWith('.spr')) continue
     const name = leaf.path.slice(leaf.path.lastIndexOf('/') + 1)
     sheets.set(name.slice(0, name.length - 4).toLowerCase(), leaf.bytes)
   }
-  const empty: Cast = {
-    members: [],
-    sprites2d: [],
-    sprites: 0,
-    unclassified: 0,
-    missing: [],
-    elsewhere: 0,
-  }
-  // A cast list is per *area*: there are 74 of them and an interior has none of
-  // its own, so `M01M02` — the village inn — takes `M01.npc`. Every prefix of
-  // the code is offered until one names an archive. Which of that area's
-  // characters belong to *this* map is then read off each placement rather than
-  // guessed at from where it stands — see `NpcPlacement.map`.
-  const candidates = [map]
-  for (let cut = map.length - 1; cut > 0; cut--) candidates.push(map.slice(0, cut))
-
-  for (const candidate of candidates) {
-    const found = castFrom(cat, candidate, groundAt, sheets, id)
-    if (found) return found
-  }
-  return empty
+  return sheets
 }
 
-/** The cast of one named `.npc` archive, or undefined if there is no such archive. */
-function castFrom(
+/** What an area's `.npc` archive says: its cast, their placements, and each one's records. */
+interface Area {
+  readonly entries: readonly NpcEntry[]
+  readonly placements: readonly NpcPlacement[]
+  readonly states: readonly NpcState[]
+}
+
+/**
+ * The cast files for this map's area.
+ *
+ * A cast list is per *area*: there are 74 of them and an interior has none of
+ * its own, so `M01M02` — the village inn — takes `M01.npc`. Every prefix of
+ * the code is offered until one names an archive that reads.
+ */
+function areaOf(cat: Catalogue, map: string): Area | undefined {
+  for (let cut = map.length; cut > 0; cut--) {
+    const found = areaFrom(cat, map.slice(0, cut))
+    if (found) return found
+  }
+  return undefined
+}
+
+/** A map nobody stands in, or whose cast will not read — which is not fatal. */
+const NOBODY: Cast = {
+  members: [],
+  sprites2d: [],
+  sprites: 0,
+  unclassified: 0,
+  missing: [],
+  elsewhere: 0,
+}
+
+/**
+ * A story stage, as far as the cast's records name one: the pair of words a
+ * record's span starts at.
+ *
+ * **For flicking through where characters stand, not a reading of the game.**
+ * The words are not decoded; that they read as a span from one stage to
+ * another is only what the numbers look like — see `NpcState`.
+ */
+export interface Stage {
+  readonly major: number
+  readonly minor: number
+}
+
+function compareStages(a: Stage, b: Stage): number {
+  return a.major - b.major || a.minor - b.minor
+}
+
+/** Where a record's span starts and ends: words 0-1 and 3-4. INFERRED — see `NpcState`. */
+function spanOf(state: NpcState): { from: Stage; to: Stage } {
+  const words = state.unknown_0x08
+  return {
+    from: { major: words[0] ?? 0, minor: words[1] ?? 0 },
+    to: { major: words[3] ?? 0, minor: words[4] ?? 0 },
+  }
+}
+
+/** The stages this map's placed records start at, earliest first. */
+function stagesOf(area: Area, id: number | undefined): Stage[] {
+  const found = new Map<string, Stage>()
+  for (const state of area.states) {
+    if (!state.position || (id !== undefined && state.map !== id)) continue
+    const { from } = spanOf(state)
+    found.set(`${from.major}.${from.minor}`, from)
+  }
+  return [...found.values()].sort(compareStages)
+}
+
+/**
+ * The characters standing in this map, as the file first places them or at a
+ * stage.
+ *
+ * **The list is the whole area's, so it has to be narrowed to this map.**
+ * Everyone inside the village's houses is in `M01.npc` too, placed in the
+ * coordinates of the room they stand in — and those rooms are each their own
+ * little map about their own origin, so having floor underneath is no evidence
+ * at all of being in the right one. It let fifteen villagers into the stable.
+ * The join is the map's own id out of `maplist9.bin`, which every one of the
+ * cartridge's 1,289 placements names exactly. A map the index does not know is
+ * not narrowed at all rather than narrowed by a guess.
+ *
+ * With no stage, each character is where its block's header puts them. With
+ * one, it is the first of their placed records in this map whose span covers
+ * the stage, and a character with none is not here.
+ */
+function castOf(
   cat: Catalogue,
-  area: string,
+  area: Area | undefined,
+  id: number | undefined,
   groundAt: GroundAt,
   sheets: ReadonlyMap<string, Uint8Array>,
-  id: number | undefined,
-): Cast | undefined {
+  stage?: Stage,
+): Cast {
+  if (!area) return NOBODY
+  const placed: { entry: NpcEntry; placement: NpcPlacement }[] = []
+  if (stage === undefined) {
+    for (const found of placeNpcs(area.entries, area.placements.map(placementInWorld))) {
+      if (id === undefined || found.placement.map === id) placed.push(found)
+    }
+  } else {
+    const byId = new Map(area.entries.map((entry) => [entry.id, entry]))
+    const seen = new Set<number>()
+    for (const state of area.states) {
+      if (!state.position || seen.has(state.id)) continue
+      if (id !== undefined && state.map !== id) continue
+      const { from, to } = spanOf(state)
+      if (compareStages(from, stage) > 0 || compareStages(stage, to) > 0) continue
+      const entry = byId.get(state.id)
+      if (!entry) continue
+      seen.add(state.id)
+      placed.push({
+        entry,
+        placement: placementInWorld({
+          id: state.id,
+          map: state.map,
+          offset: state.offset,
+          ...state.position,
+        }),
+      })
+    }
+  }
+  return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
+}
+
+/** One named `.npc` archive's cast files, or undefined if there is none or it will not read. */
+function areaFrom(cat: Catalogue, area: string): Area | undefined {
   for (const [archive, files] of cat.members) {
     if (!archive.toLowerCase().endsWith(`/${area.toLowerCase()}.npc`)) continue
     let list: Uint8Array | undefined
@@ -149,21 +255,11 @@ function castFrom(
     }
     if (!list || !places || !isNpcList(list) || !isNpcPlacements(places)) return undefined
     try {
-      // **The list is the whole area's, so it has to be narrowed to this map.**
-      // Everyone inside the village's houses is in `M01.npc` too, placed in the
-      // coordinates of the room they stand in — and those rooms are each their
-      // own little map about their own origin, so having floor underneath is no
-      // evidence at all of being in the right one. It let fifteen villagers
-      // into the stable.
-      //
-      // The join is the map's own id out of `maplist9.bin`, which every one of
-      // the cartridge's 1,289 placements names exactly. A map the index does
-      // not know is not narrowed at all rather than narrowed by a guess.
-      const placed = placeNpcs(
-        readNpcList(list),
-        readNpcPlacements(places).map(placementInWorld),
-      ).filter(({ placement }) => id === undefined || placement.map === id)
-      return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
+      return {
+        entries: readNpcList(list),
+        placements: readNpcPlacements(places),
+        states: readNpcStates(places),
+      }
     } catch {
       return undefined
     }
@@ -432,8 +528,13 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   }
 
   const figure = chooseFigure(parts)
+  const area = areaOf(cat, code)
+  const sheets = sheetsOf(cat)
+  const id = entry?.id
   return {
-    cast: castOf(cat, code, groundAt, entry?.id),
+    cast: castOf(cat, area, id, groundAt, sheets),
+    stages: area ? stagesOf(area, id) : [],
+    castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),
     catalogue: cat,
     map,
     world,

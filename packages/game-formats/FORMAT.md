@@ -1150,13 +1150,38 @@ bytes — found by a two-word signature.
 | `+0x18` | `f32` | z, likewise |
 | `+0x1C` | `f32` | facing, in radians |
 
-What follows before the next block is not decoded, and nothing needs it.
+After the header come sub-records, each one character in one map over a span
+of the story. Two forms are read, found by their own marks:
 
-**The divisor is the same 8 that map placements need.** Raw, only 23 of the
-village's 49 characters fall inside its collision at all; divided by 8, **49 of
-49** do. The earlier reading of this data — that the positions "do not stand on
-the village's collision" — was measuring against a map whose doorway markers
-were still being read as walls.
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32[2]` | `0x550D0005 0xFF02A955`, 60 bytes; `0x55090005 0xFFFF0155`, 44 bytes, without a position |
+| `+0x08` | `u32[7]` | not established |
+| `+0x24` | `u32` | the map, by its own id |
+| `+0x28` | `u32` | the character's id |
+| `+0x2C` | `f32[4]` | x, y, z and facing — the 60-byte form only |
+
+| check, across the cartridge | result |
+|---|---|
+| sub-records | 1,977, in 1,289 blocks |
+| map in the block's own area | 1,976 |
+| id the block's own | 1,876 — so a record names its own character |
+| header repeats the first positioned record | 485 of the 636 blocks that have one |
+| words 3-4, read as a pair, at or after words 0-1 | **1,977 of 1,977** |
+| word 6 | 2 on 1,227, 1 on 378, 0 on 371, one other |
+| bytes between blocks that are neither form | 91,652 — not read |
+
+The seven words are **not decoded**. That the two pairs never run backwards is
+what a span from one story stage to another would look like, and the game uses
+it that way only as a testing affordance: `t` and `y` show the cast at each
+stage a map's records start at. Nothing claims that is what a stage is.
+
+**Positions are in the units map placements use.** Taken as though they were
+already world units, only 23 of the village's 49 characters fall inside its
+collision at all; taken into the world by the same `WORLD_SCALE` as the map,
+**49 of 49** do. The earlier reading — that the positions "do not stand on the
+village's collision" — was measuring against a map whose doorway markers were
+still being read as walls.
 
 **The facing angle is established beyond reasonable doubt**: across all 1,285
 blocks it lies within 0 to 2π, and 71% sit on an exact multiple of 90°.

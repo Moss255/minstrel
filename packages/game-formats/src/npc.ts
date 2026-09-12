@@ -177,17 +177,17 @@ export function isNpcPlacements(data: Uint8Array): boolean {
  * Blocks are variable length, so they are found by their two-word signature and
  * read from there. The four floats follow the header.
  *
- * **A block holds one character in several places, and only the first is
- * read.** After the header come sub-records, each opening with its own two-word
- * mark:
+ * **A block holds one character in several places, and this reads only the
+ * header** — {@link readNpcStates} reads the rest. After the header come
+ * sub-records, each opening with its own two-word mark:
  *
  * | mark | length | carries |
  * |---|---|---|
  * | `0x550D0005 0xFF02A955` | 60 | seven words, a map, the character's id, then x, y, z and a facing |
  * | `0x55090005 0xFFFF0155` | 44 | the same without any position |
  *
- * The header repeats the first positioned sub-record exactly, which is what
- * this reads.
+ * The header repeats the first positioned sub-record on 485 of the 636 blocks
+ * that have one, and differs from it on the rest, most often in position.
  *
  * The seven words look like a story state and are **not established**. The
  * first two climb through a block — 1/1, 1/2, 1/3, 2/1, 2/2, 2/6, 2/7, 19/2 —
@@ -231,6 +231,108 @@ export function readNpcPlacements(data: Uint8Array): NpcPlacement[] {
     })
     at += BLOCK_HEADER + 12
   }
+  return out
+}
+
+/**
+ * One of the sub-records after a placement block's header: a character in one
+ * map, and usually one place, over a span of the story.
+ *
+ * | offset | type | meaning |
+ * |---|---|---|
+ * | `+0x00` | `u32[2]` | `0x550D0005 0xFF02A955`; `0x55090005 0xFFFF0155` without a position |
+ * | `+0x08` | `u32[7]` | not established — see below |
+ * | `+0x24` | `u32` | the map, by its own id |
+ * | `+0x28` | `u32` | the character's id |
+ * | `+0x2C` | `f32[4]` | x, y, z and facing — the 60-byte form only |
+ *
+ * Across the cartridge's 1,977 of these, the map is in the block's own area on
+ * all but one, and the id is the block's own on 1,876 — so a record names its
+ * own character rather than inheriting the block's.
+ *
+ * The seven words are carried, not decoded. Read as pairs, words 0-1 and 3-4
+ * never run backwards — the second is at or after the first on 1,977 of 1,977 —
+ * which is what a span from one story stage to another would look like, and
+ * word 6 is 2, 1 or 0 on all but one. That is a reading of the numbers, not of
+ * the game, and nothing in this package relies on it.
+ *
+ * The blocks hold more than these two forms — 91,652 bytes between blocks are
+ * neither — and what else is there is skipped rather than guessed at.
+ */
+export interface NpcState {
+  /** Byte offset of the block this record sits in. */
+  readonly block: number
+  /** Byte offset of the record itself. */
+  readonly offset: number
+  readonly id: number
+  readonly map: number
+  /** The seven words at `+0x08`. Not established. */
+  readonly unknown_0x08: Uint32Array
+  /** Where the character stands, in the file's own units, when the record says. */
+  readonly position:
+    | { readonly x: number; readonly y: number; readonly z: number; readonly facing: number }
+    | undefined
+}
+
+/** The two sub-record forms: with a position, and without one. */
+const STATE_MARK = 0x550d0005
+const STATE_MARK_2 = 0xff02a955
+const STATE_SIZE = 60
+const UNPLACED_MARK = 0x55090005
+const UNPLACED_MARK_2 = 0xffff0155
+const UNPLACED_SIZE = 44
+
+/**
+ * Every placement block's sub-records, in file order.
+ *
+ * Found by their marks between one block and the next; anything between them
+ * that is neither form is stepped over a word at a time.
+ */
+export function readNpcStates(data: Uint8Array): NpcState[] {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  const blocks: number[] = []
+  for (let at = 0; at + 8 <= data.length; at += 4) {
+    if (u32(data, at) === BLOCK_MARK && u32(data, at + 4) === BLOCK_MARK_2) blocks.push(at)
+  }
+  const out: NpcState[] = []
+  blocks.forEach((block, index) => {
+    const end = blocks[index + 1] ?? data.length
+    let at = block + BLOCK_HEADER + 16
+    while (at + 8 <= end) {
+      const placed = u32(data, at) === STATE_MARK && u32(data, at + 4) === STATE_MARK_2
+      const unplaced =
+        !placed && u32(data, at) === UNPLACED_MARK && u32(data, at + 4) === UNPLACED_MARK_2
+      if (!placed && !unplaced) {
+        at += 4
+        continue
+      }
+      const size = placed ? STATE_SIZE : UNPLACED_SIZE
+      if (at + size > end) {
+        throw new GameFormatError(
+          `cast record at 0x${at.toString(16)} runs past the end of its block`,
+          at,
+        )
+      }
+      const words = new Uint32Array(7)
+      for (let k = 0; k < 7; k++) words[k] = u32(data, at + 8 + 4 * k)
+      out.push({
+        block,
+        offset: at,
+        unknown_0x08: words,
+        map: u32(data, at + 0x24),
+        id: u32(data, at + 0x28),
+        position: placed
+          ? {
+              x: view.getFloat32(at + 0x2c, true),
+              y: view.getFloat32(at + 0x30, true),
+              z: view.getFloat32(at + 0x34, true),
+              facing: view.getFloat32(at + 0x38, true),
+            }
+          : undefined,
+      })
+      at += size
+    }
+  })
   return out
 }
 

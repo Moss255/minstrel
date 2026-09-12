@@ -78,6 +78,23 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
     expect(entranceOf(village.catalogue, 'M01M02')?.from).toBe('M01')
   })
 
+  it('can show the cast at each story stage its records name', () => {
+    // A testing affordance — `t` and `y` in the game — not a reading of the
+    // game's story. `s017` opens in the village and has records for the inn, so
+    // some stage has to put her there.
+    const inn = open('M01M02')
+    expect(inn.stages.length).toBeGreaterThan(1)
+    const names = (stage: (typeof inn.stages)[number] | undefined) => {
+      const here = inn.castAt(stage)
+      return [...here.members.map((m) => m.name), ...here.sprites2d.map((s) => s.name)]
+    }
+    expect(inn.stages.flatMap(names)).toContain('s017')
+    // And no stage is the file's own first placements, which is what opens.
+    expect(names(undefined).sort()).toEqual(
+      [...inn.cast.members.map((m) => m.name), ...inn.cast.sprites2d.map((s) => s.name)].sort(),
+    )
+  })
+
   it('gives the village a doorway for each map it names', () => {
     const village = open('M01')
     expect(village.code).toBe('M01')

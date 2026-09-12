@@ -145,6 +145,12 @@ let castPiecesNow: Piece[] = []
  * the player's 22.9 — so a single scale is what keeps a child a child.
  */
 let characterScale = 1
+/**
+ * Which of the map's story stages the cast is shown at: 0 is the file's own
+ * first placement of each character, and `n` is `loaded.stages[n - 1]`. `t` and
+ * `y` move it — for checking where characters stand and at what size.
+ */
+let stageIndex = 0
 
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
@@ -332,6 +338,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   }
 
   loaded = opened
+  stageIndex = 0
   measurements.clear()
   mapFrame = -1
   poseMap(0)
@@ -766,6 +773,27 @@ function refit(): void {
   collisionDrawn = world ? collisionPieces(world) : []
 }
 
+/**
+ * Show the cast at another of the map's story stages — see `Loaded.stages`.
+ * Stage 0 is the file's own first placement of each character, which is what a
+ * map opens with.
+ */
+function moveStage(by: number): void {
+  if (!loaded) return
+  const count = loaded.stages.length + 1
+  stageIndex = (stageIndex + by + count) % count
+  const stage = stageIndex === 0 ? undefined : loaded.stages[stageIndex - 1]
+  loaded = { ...loaded, cast: loaded.castAt(stage) }
+  poseMap(Math.max(mapFrame, 0))
+  const here = loaded.cast.members.length + loaded.cast.sprites2d.length
+  const line =
+    stage === undefined
+      ? `${loaded.code} cast as the file first places it — ${here} characters · t/y change stage`
+      : `${loaded.code} stage ${stage.major}.${stage.minor} (${stageIndex} of ${count - 1}) — ${here} characters · t/y change stage`
+  status(line)
+  console.log(line)
+}
+
 /** Resize the character, leaving the world exactly as the file has it. */
 function movePerson(by: number): void {
   personScale = Math.max(0.05, personScale + by)
@@ -855,6 +883,11 @@ addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
   if (self && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
     self.held.add(key)
+    event.preventDefault()
+  }
+  // Flick through the story stages the cast's records name: `t` back, `y` on.
+  if ((key === 't' || key === 'y') && loaded) {
+    moveStage(key === 'y' ? 1 : -1)
     event.preventDefault()
   }
   if (key === 'c') {
