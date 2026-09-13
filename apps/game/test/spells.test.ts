@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { ActionEffect, spellsLearnt } from '@minstrel/game-formats'
 import { BattleRng } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
+import { battleSpellOf } from '../src/battle-scene.ts'
 import { HERO_VOCATION, HERO_VOCATION_NUMBER, VOCATION_WORDS } from '../src/hero.ts'
 import { type Loaded, load } from '../src/load.ts'
 import { SEED_GAINS, useOn } from '../src/use.ts'
@@ -84,6 +85,28 @@ describe.skipIf(!romPath)('spells and items, on a real cartridge', { timeout: 12
       ),
     )
     expect(seeds.size).toBe(10)
+  })
+
+  it('casts in battle what heals or deals damage, at the party’s amounts and reach', () => {
+    const table = here.spellTable
+    if (!table) throw new Error('no spell table')
+    const cast = spellsLearnt(table, HERO_VOCATION_NUMBER, 99).flatMap((learnt) => {
+      const action = here.actions.get(learnt.action)
+      const found = action && battleSpellOf(action)
+      if (!found) return []
+      const { does, reach, cost, amount } = found.spell
+      return [[found.name.name, does, reach, cost, amount?.base, amount?.spread]]
+    })
+    // The reference's own Heal, Crack, Woosh and Crackle are 35, 30, 16 and 50.
+    expect(cast).toEqual([
+      ['Heal', 'heal', 'one', 2, 35, 5],
+      ['Crack', 'harm', 'one', 3, 30, 5],
+      ['Woosh', 'harm', 'group', 3, 16, 8],
+      ['Crackle', 'harm', 'group', 8, 50, 8],
+      ['Midheal', 'heal', 'one', 4, 85, 10],
+      ['Swoosh', 'harm', 'group', 8, 40, 15],
+      ['Kaswoosh', 'harm', 'group', 26, 130, 50],
+    ])
   })
 
   it('restores MP with magic water, all of it with the elfin elixir, and raises HP with a seed', () => {

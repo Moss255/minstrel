@@ -55,10 +55,12 @@ import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
   type BattleItem,
   type BattleScene,
+  type BattleSpell,
   battleBack,
   battleChoose,
   battleMove,
   battleRows,
+  battleSpellOf,
   beginBattle,
   labelsOf,
   RESULT_SAYS,
@@ -1473,6 +1475,19 @@ function battleItems(): BattleItem[] {
   return items
 }
 
+/** What the Spells command offers: what the Hero has learnt that a battle can cast — see `battleSpellOf`. */
+function battleSpells(): BattleSpell[] {
+  const here = loaded
+  const table = here?.spellTable
+  const row = heroRow()
+  if (!here || !table || !row) return []
+  return spellsLearnt(table, HERO_VOCATION_NUMBER, row.level).flatMap((learnt) => {
+    const action = here.actions.get(learnt.action)
+    const spell = action && battleSpellOf(action)
+    return spell ? [spell] : []
+  })
+}
+
 /** The numbers using an item or casting a spell outside battle draws from: seeded, as a battle's are. */
 const fieldRng = new BattleRng(0x6d656e75n)
 
@@ -1831,6 +1846,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   battle = beginBattle([hero, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
     hp: new Map([[0, heroHp ?? row.maxHp]]),
+    mp: new Map([[0, heroMp ?? row.maxMp]]),
     words: loaded.battleWords,
     names: [heroNamed(), ...names],
   })
@@ -1993,8 +2009,9 @@ function settleBattle(): void {
     bag = take(bag, { gold })
     const after = standing(levels, heroExp, heroGains).level
     heroHp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
-    // MP spent stays spent, but a level's new MP come with it.
-    if (heroMp !== undefined) heroMp = Math.min(after.maxMp, heroMp + (after.maxMp - before.maxMp))
+    // MP spent in the battle stay spent, but a level's new MP come with it.
+    const mp = Math.min(after.maxMp, hero.mp + (after.maxMp - before.maxMp))
+    heroMp = mp >= after.maxMp ? undefined : mp
     const earned = said(RESULT_SAYS.earns, { values: { str_1: name, val_1: exp } })
     const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), values: { val_1: gold } })
     lines.push(
@@ -2023,6 +2040,7 @@ function settleBattle(): void {
     lines.push(`${name} comes round, restored — but half the gold is gone.`)
   } else if (hero) {
     heroHp = hero.hp
+    heroMp = hero.mp >= hero.maxMp ? undefined : hero.mp
   }
   battle = { ...withPages(battle, lines), settled: true }
 }
@@ -2384,7 +2402,7 @@ addEventListener('keydown', (event) => {
     else if (key === 'arrowdown' || key === 's') battle = battleMove(battle, 1)
     else if (key === 'f' || key === 'enter') {
       const round = battle.state.round
-      battle = battleChoose(battle, battleItems())
+      battle = battleChoose(battle, battleItems(), battleSpells())
       cueStarted = performance.now()
       // An item used this round is gone from the bag.
       if (battle.state.round !== round) {

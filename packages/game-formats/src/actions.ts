@@ -21,6 +21,7 @@ import { GameFormatError } from './errors.ts'
  * | `+0x08` | `u8` | its cost in MP, INFERRED: Heal 2, Midheal 4, Frizz 2, Crack 3; 0 on the 488 actions that are no spell, and 255 on the four that take all a caster's MP — Magic Burst and Kerplunk among them |
  * | `+0x08` | bits 14–21 | its range, an index into the range table beside it, or 0 for none — **every one is there**, 37 in `_a` and 117 in `_b`, and every range is some action's |
  * | `+0x20` | bits 20–31 | what it says, INFERRED: a message in `actmsg` — 22 "wounds are healed" on Heal and the herb, 84 "no longer poisoned" on the antidotal herb and Squelch, 32 "returns to life" on the leaf and Zing, 2 "takes damage" on the attack spells, and 157 to 166 on the seeds, each naming the number it raises; 0 for none |
+ * | `+0x17` | high nibble | whom it reaches, INFERRED — see {@link ActionReach} |
  * | `+0x24` | `u8` | what it does, INFERRED — see {@link ActionEffect} |
  * | `+0x34` | `u32` | the plural's offset — `medicinal herbs` |
  *
@@ -35,7 +36,7 @@ import { GameFormatError } from './errors.ts'
  * | `+0x01` | `u8` | spread: how far either side of the base the value drawn may fall — INFERRED: Heal's is 5, and the reference draws Heal as `FUN_021e8458_typeD(5, 35)`, 35 ± 5 |
  * | `+0x02` | `u16` | 0 on every record |
  * | `+0x04` | bits 0–9 | base, INFERRED: Heal 35, Midheal 85, Moreheal 185 — the reference's own bases for the three |
- * | `+0x04` | bits 10–19 | not established — equal to the base on 78 of 124 |
+ * | `+0x04` | bits 10–19 | the amount a party member's action draws around, INFERRED: the reference's own for Heal 35, Crack 30, Crackle 50 and Woosh 16, where the base is 35, 17, 33 and 14; equal to the base on 78 of 124, the heals and the items among them |
  * | `+0x04` | bits 20–29 | peak, INFERRED: the base at magical mending 999 — the reference's Midheal, 85 + (mending − 100) × 0.2392, and Moreheal, 185 + (mending − 200) × 0.5194, come to 300 and 600 there, and those are theirs |
  * | `+0x04` | bits 30–31 | 0 on every record |
  *
@@ -58,15 +59,36 @@ const RANGE_RECORD = 8
  * - `0x6A` restores MP: magic water, sage's elixir, elfin elixir;
  * - `0x54` cures poison: the antidotal herb, Squelch;
  * - `0x20` brings back the fallen: Zing, Kazing, the Yggdrasil leaf;
- * - `0x00` the seeds, which raise a number for good.
+ * - `0x00` the seeds, which raise a number for good;
+ * - `0x05` deals damage: the attack and every attack spell, Frizz to Kaboom,
+ *   each saying `actmsg` 2, `takes <val_1> points of damage`.
  *
  * Other values are carried as they are.
  */
 export const ActionEffect = {
+  Damages: 0x05,
   RestoresHp: 0x16,
   RestoresMp: 0x6a,
   CuresPoison: 0x54,
   Revives: 0x20,
+} as const
+
+/**
+ * Whom an action reaches, by the high nibble of its byte at `+0x17`. INFERRED,
+ * from the actions carrying each: 1 Defend and Psyche Up; 2 Heal, Frizz,
+ * Crack, Zam, Buff and the herbs; 4 Crackle, Woosh, Swoosh, Snooze and Thwack;
+ * 3 Multiheal, Bang, Boom, Kathwack and the breaths; 7 Evac, Zoom and the
+ * seeds. The Ka- spells step up one: Buff and Sap (2) to Kabuff and Kasap (4),
+ * Snooze and Thwack (4) to Kasnooze and Kathwack (3) — so 4 reaches further
+ * than 2 and less far than 3: a group. 5 is the attack alone; 6 and 8 are
+ * carried.
+ */
+export const ActionReach = {
+  Actor: 1,
+  One: 2,
+  All: 3,
+  Group: 4,
+  Outside: 7,
 } as const
 
 export interface Action {
@@ -82,6 +104,8 @@ export interface Action {
   readonly cost: number
   /** What it says: its message's number in `actmsg`, 0 for none. INFERRED. */
   readonly message: number
+  /** Whom it reaches — see {@link ActionReach}. INFERRED. */
+  readonly reach: number
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -92,8 +116,8 @@ export interface ActionRange {
   readonly spread: number
   /** INFERRED — see above. */
   readonly base: number
-  /** Bits 10 to 19 of the packed word, not established. */
-  readonly unknown_bits10: number
+  /** The amount a party member's action draws around, INFERRED — see above. */
+  readonly party: number
   /** The base at the top of its scale, INFERRED — see above. */
   readonly peak: number
 }
@@ -135,6 +159,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       effect: bytes[at + 0x24] as number,
       cost: bytes[at + 8] as number,
       message: view.getUint32(at + 0x20, true) >>> 20,
+      reach: (bytes[at + 0x17] as number) >> 4,
       raw: bytes.subarray(at, at + ACTION_RECORD),
     })
   }
@@ -163,7 +188,7 @@ export function readActionRanges(bytes: Uint8Array): Map<number, ActionRange> {
       index,
       spread: bytes[at + 1] as number,
       base: packed & 0x3ff,
-      unknown_bits10: (packed >>> 10) & 0x3ff,
+      party: (packed >>> 10) & 0x3ff,
       peak: (packed >>> 20) & 0x3ff,
     })
   }

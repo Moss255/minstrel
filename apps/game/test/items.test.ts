@@ -69,6 +69,7 @@ describe.skipIf(!romPath)(
         target: monster,
         leader: hero,
         item: { name: herb.singular, plural: herb.plural, grammar: herb.grammar },
+        action: { name: 'Heal' },
         monsters: [monster, monster],
         values: { val_1: 2, val_2: 1, str_1: 'Hero', str_2: 'Heal' },
       }

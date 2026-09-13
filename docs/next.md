@@ -9,6 +9,36 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## Spells in battle — 13 September
+
+The battle menu has **Spells**, between Attack and Defend as `str_btl`
+numbers them. It offers what the Hero has learnt that heals or deals damage —
+for the Minstrel, Heal at 3, Crack at 8, Woosh at 12, Crackle at 16 — and asks
+whom when a spell could reach more than one monster, or more than one kind.
+The cast is told in the game's words: `actmsg` 46 `casts <ACTION>.`, the
+spell's own message for each one it reaches, 141 `goes haywire!` on a
+critical, 153 `Not enough MP!`; with none learnt, `str_btl` 30023 `doesn't
+know any battle spells yet.` The Hero's MP go into a battle and come out of it.
+
+**From the cartridge** (`game-formats/FORMAT.md`, "Actions"): a spell's cost,
+its amount for the party — bits 10–19 of its range, which hold exactly the
+reference's own Heal 35, Crack 30, Crackle 50 and Woosh 16, where the range's
+base is 35, 17, 33 and 14 — and **whom it reaches, the high nibble of
+`+0x17`**: one, a group, or everyone, the Ka- spells each a step further than
+their plain ones. `0x05` at `+0x24` deals damage.
+
+**From the reference** (`sim/src/battle/battle.ts`): the amount drawn around
+that party amount, and a spell going haywire 100 times in 10,000 for 1.5 to 2.0
+times as much.
+
+**Ours:** a group is the monsters of the chosen one's kind; each one reached
+has its own amount, after one draw for the whole cast going haywire; a spell
+without the MP costs nothing; the reference's Woosh takes a quarter off, which
+looks like its one foe's resistance and is left out; and the rise of a spell's
+amount with magical might or mending is not modelled.
+
+---
+
 ## M4 is as far as the cartridge goes — menus, items and spells, 13 September
 
 **The menu speaks the game's words**: `Attributes`, `Items`, `Equipment`,
@@ -185,9 +215,9 @@ walk now opens.
 - which of the game's messages each happening says, chosen by reading them;
 - the monsters' motions on each page, and the camera.
 
-**Left for M5:** the party of two, Ivor beside the Hero; spells and abilities,
-and what a monster's six action words say, which is its AI; Hexagoon's own
-behaviour; and defeat at the church.
+**Left for M5:** the party of two, Ivor beside the Hero; abilities (spells are
+done — see the top); what a monster's six action words say, which is its AI,
+and monsters' own spells; Hexagoon's own behaviour; and defeat at the church.
 
 ---
 

@@ -203,6 +203,8 @@ export interface ItemEffect {
   readonly message: number
   /** Its cost in MP; 255 for all there is. INFERRED. */
   readonly cost: number
+  /** Whom it reaches — see `ActionReach`. INFERRED. */
+  readonly reach: number
   /** The range it draws from, when it has one: a base give or take a spread. */
   readonly range: { readonly base: number; readonly spread: number } | undefined
   /** Whether it is in the table's first half, whose spells can be cast outside a battle. INFERRED. */
@@ -826,7 +828,9 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         effect: action.effect,
         message: action.message,
         cost: action.cost,
-        range: range && { base: range.base, spread: range.spread },
+        reach: action.reach,
+        // The party's amount: the Hero is who uses these — see `ActionRange.party`.
+        range: range && { base: range.party, spread: range.spread },
         field: half === 'a',
       })
     }

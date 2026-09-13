@@ -5,9 +5,11 @@ import {
   DEFAULT_RULES,
   type Fighter,
   playRound,
+  type Spell,
   spoils,
   startBattle,
   withHp,
+  withMp,
 } from '../src/battle/battle.ts'
 import { BattleRng } from '../src/battle/rng.ts'
 
@@ -49,6 +51,92 @@ function fight(state: BattleState, seed: bigint, commands = attackFirstFoe, roun
   }
   return { state: now, events: all }
 }
+
+describe('a spell', () => {
+  const crack: Spell = {
+    action: 12,
+    cost: 3,
+    does: 'harm',
+    reach: 'one',
+    amount: { base: 30, spread: 5 },
+  }
+  const heal: Spell = {
+    action: 30,
+    cost: 2,
+    does: 'heal',
+    reach: 'one',
+    amount: { base: 35, spread: 5 },
+  }
+  const cast = (
+    state: BattleState,
+    spell: Spell,
+    target: number,
+    seed = 3n,
+    rules = DEFAULT_RULES,
+  ) => {
+    const played = playRound(
+      state,
+      new Map([[0, { kind: 'spell', spell, target }]]),
+      new BattleRng(seed),
+      rules,
+    )
+    const event = played.events.find((e) => e.kind === 'spell')
+    if (event?.kind !== 'spell') throw new Error('no spell cast')
+    return { state: played.state, event }
+  }
+
+  it('spends its MP, and harms the one chosen by its range', () => {
+    const { state, event } = cast(
+      startBattle([hero, blob('slime', 99), blob('slime', 99)]),
+      crack,
+      2,
+    )
+    expect(event.hits.map((hit) => hit.target)).toEqual([2])
+    const amount = event.hits[0]?.amount ?? 0
+    expect(amount).toBeGreaterThanOrEqual(25)
+    expect(amount).toBeLessThan(event.critical ? 70 : 35)
+    expect(state.fighters[0]?.mp).toBe(3)
+    expect(state.fighters[2]?.hp).toBe(99 - amount)
+    expect(state.fighters[1]?.hp).toBe(99)
+  })
+
+  it('reaches every one of the chosen one’s kind, or everyone on that side', () => {
+    const start = startBattle([hero, blob('slime', 99), blob('slime', 99), blob('drakee', 99)])
+    const group = cast(start, { ...crack, reach: 'group' }, 1).event
+    expect(group.hits.map((hit) => hit.target)).toEqual([1, 2])
+    const all = cast(start, { ...crack, reach: 'all' }, 1).event
+    expect(all.hits.map((hit) => hit.target)).toEqual([1, 2, 3])
+  })
+
+  it('heals its own side no further than the wounds, and wholly with no range', () => {
+    const start = withHp(startBattle([hero, blob('slime', 5, 0)]), new Map([[0, 5]]))
+    const healed = cast(start, heal, 1)
+    expect(healed.event.hits).toEqual([{ target: 0, amount: 15 }])
+    expect(healed.state.fighters[0]?.hp).toBe(20)
+    const whole = cast(start, { ...heal, amount: undefined }, 0)
+    expect(whole.event.hits).toEqual([{ target: 0, amount: 15 }])
+  })
+
+  it('does nothing without the MP for it, and spends none', () => {
+    const { state, event } = cast(
+      withMp(startBattle([hero, blob('slime', 99)]), new Map([[0, 2]])),
+      crack,
+      1,
+    )
+    expect(event).toMatchObject({ short: true, hits: [] })
+    expect(state.fighters[0]?.mp).toBe(2)
+    expect(state.fighters[1]?.hp).toBe(99)
+  })
+
+  it('goes haywire for 1.5 to 2.0 times as much', () => {
+    const always = { ...DEFAULT_RULES, magicCritical: 10_000 }
+    const { event } = cast(startBattle([hero, blob('slime', 999)]), crack, 1, 3n, always)
+    expect(event.critical).toBe(true)
+    const amount = event.hits[0]?.amount ?? 0
+    expect(amount).toBeGreaterThanOrEqual(Math.trunc(25 * 1.5))
+    expect(amount).toBeLessThan(70)
+  })
+})
 
 describe('a battle', () => {
   it('is the same battle from the same seed', () => {
@@ -141,6 +229,6 @@ describe('a battle', () => {
   })
 
   it('uses the default rules unless told otherwise', () => {
-    expect(DEFAULT_RULES).toEqual({ critical: 200, dodge: 2, flee: 50 })
+    expect(DEFAULT_RULES).toEqual({ critical: 200, dodge: 2, flee: 50, magicCritical: 100 })
   })
 })

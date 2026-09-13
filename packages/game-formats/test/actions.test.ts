@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ActionEffect, readActionRanges, readActions } from '../src/actions.ts'
+import { ActionEffect, ActionReach, readActionRanges, readActions } from '../src/actions.ts'
 import { GameFormatError } from '../src/errors.ts'
 
 /** An action table built in code, from `FORMAT.md`: the head word, 60-byte records, then the strings. */
@@ -12,6 +12,7 @@ function actions(
     effect?: number
     cost?: number
     message?: number
+    reach?: number
   }[],
 ) {
   const strings: number[] = []
@@ -26,7 +27,7 @@ function actions(
   const view = new DataView(out.buffer)
   for (const [
     r,
-    { id, name, plural, range = 0, effect = 0, cost = 0, message = 0 },
+    { id, name, plural, range = 0, effect = 0, cost = 0, message = 0, reach = 0 },
   ] of records.entries()) {
     const at = 4 + r * 60
     view.setUint32(at, offset(name), true)
@@ -35,6 +36,8 @@ function actions(
     view.setUint32(at + 8, ((0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0, true)
     // The message's lower neighbours likewise.
     view.setUint32(at + 0x20, ((message << 20) | 0x6b82e) >>> 0, true)
+    // Whom it reaches in the high nibble, a neighbour in the low.
+    out[at + 0x17] = (reach << 4) | 6
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
     view.setUint32(at + 0x34, offset(plural), true)
   }
@@ -94,6 +97,17 @@ describe('the action table', () => {
     expect(seed).toMatchObject({ cost: 0, message: 157 })
   })
 
+  it('reads whom an action reaches', () => {
+    const [crack, woosh, boom] = readActions(
+      actions([
+        { id: 12, name: 'Crack', plural: '', reach: ActionReach.One },
+        { id: 18, name: 'Woosh', plural: '', reach: ActionReach.Group },
+        { id: 22, name: 'Boom', plural: '', reach: ActionReach.All },
+      ]),
+    )
+    expect([crack?.reach, woosh?.reach, boom?.reach]).toEqual([2, 4, 3])
+  })
+
   it('refuses a head word that does not describe the file, or an offset mid-string', () => {
     const table = actions([{ id: 1, name: 'Attack', plural: '' }])
     expect(() => readActions(table.subarray(0, table.length - 1))).toThrow(GameFormatError)
@@ -116,7 +130,7 @@ describe('the range table', () => {
       index: 0x10,
       spread: 5,
       base: 35,
-      unknown_bits10: 35,
+      party: 35,
       peak: 160,
     })
     expect(read.get(0x31)?.peak).toBe(35)

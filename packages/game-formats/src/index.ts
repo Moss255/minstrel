@@ -2,6 +2,7 @@ export {
   type Action,
   ActionEffect,
   type ActionRange,
+  ActionReach,
   readActionRanges,
   readActions,
 } from './actions.ts'

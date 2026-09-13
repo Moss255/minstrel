@@ -1,4 +1,4 @@
-import { criticalBlow, drawnAmount, initiative, physicalDamage } from './damage.ts'
+import { criticalBlow, criticalDamage, drawnAmount, initiative, physicalDamage } from './damage.ts'
 import type { BattleRng } from './rng.ts'
 
 /**
@@ -16,7 +16,11 @@ import type { BattleRng } from './rng.ts'
  *   blow;
  * - the party's critical hit: a draw below 10,000 under {@link Rules.critical},
  *   dealing the attacker's attack power times 0.95 to 1.05;
- * - a healing item's amount, its base give or take its spread, `drawnAmount`.
+ * - a healing item's amount, its base give or take its spread, `drawnAmount`;
+ * - a spell's amount, drawn the same way — the reference's Heal, Crack, Woosh
+ *   and Crackle — and its going haywire: a draw below 10,000 under
+ *   {@link Rules.magicCritical}, 100 on all four, multiplying the amount by 1.5
+ *   to 2.0 (`criticalDamage`); and its MP spent as it is cast.
  *
  * **Ours, and said so:**
  * - the order the numbers are drawn in, which is not the game's: the reference
@@ -30,7 +34,13 @@ import type { BattleRng } from './rng.ts'
  * - fleeing, which the reference does not model: {@link Rules.flee} in 100;
  * - an item used in battle: its heal lands on the user's turn, on the user,
  *   and no more than their wounds — one draw, where the game's others are not
- *   modelled.
+ *   modelled;
+ * - a spell's reach over a group — those of the chosen one's kind — or over
+ *   everyone, where the reference is one against one: one draw for the whole
+ *   cast going haywire, then each reached with an amount of its own;
+ * - a spell without the MP for it doing nothing and costing nothing;
+ * - the reference's Woosh taking a quarter off, which Crack and Crackle do not
+ *   and which looks like its one foe's own resistance: left out.
  */
 
 export type Side = 'party' | 'foes'
@@ -62,12 +72,28 @@ export interface Heal {
   readonly spread: number
 }
 
+/** A spell, as the battle casts it — see {@link playRound}. */
+export interface Spell {
+  /** Its action's number, to tell it by. */
+  readonly action: number
+  /** Its cost in MP. */
+  readonly cost: number
+  /** Whether it heals its caster's side or harms the other. */
+  readonly does: 'heal' | 'harm'
+  /** Whom it reaches: the one chosen, those of the chosen one's kind, or everyone on that side. */
+  readonly reach: 'one' | 'group' | 'all'
+  /** How much, a base give or take a spread; none heals all there is to heal. */
+  readonly amount: Heal | undefined
+}
+
 export type Command =
   | { readonly kind: 'attack'; readonly target: number }
   | { readonly kind: 'defend' }
   | { readonly kind: 'flee' }
   /** Use an item, by id: its heal when it has one, and nothing when it has not. */
   | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal }
+  /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
+  | { readonly kind: 'spell'; readonly spell: Spell; readonly target: number }
 
 export type BattleEvent =
   | {
@@ -89,6 +115,17 @@ export type BattleEvent =
       /** HP restored — 0 when there were no wounds to heal — or undefined for an item with no heal. */
       readonly healed: number | undefined
     }
+  | {
+      readonly kind: 'spell'
+      readonly actor: number
+      readonly action: number
+      /** Too little MP to cast it: nothing happens, and nothing is spent. */
+      readonly short: boolean
+      /** Whether it went haywire — the reference's critical, 1.5 to 2.0 times. */
+      readonly critical: boolean
+      /** Whom it reached, and what each took or recovered. */
+      readonly hits: readonly { readonly target: number; readonly amount: number }[]
+    }
   | { readonly kind: 'defeated'; readonly actor: number }
 
 export type Outcome = 'ongoing' | 'won' | 'lost' | 'fled'
@@ -108,9 +145,11 @@ export interface Rules {
   readonly dodge: number
   /** Fleeing, in 100 — ours: the reference does not model it. */
   readonly flee: number
+  /** A spell going haywire, in 10,000 — the reference's, for every spell it casts. */
+  readonly magicCritical: number
 }
 
-export const DEFAULT_RULES: Rules = { critical: 200, dodge: 2, flee: 50 }
+export const DEFAULT_RULES: Rules = { critical: 200, dodge: 2, flee: 50, magicCritical: 100 }
 
 export function startBattle(fighters: readonly Fighter[], canFlee = true): BattleState {
   return {
@@ -128,6 +167,17 @@ export function withHp(state: BattleState, hp: ReadonlyMap<number, number>): Bat
     fighters: state.fighters.map((f, i) => {
       const set = hp.get(i)
       return set === undefined ? f : { ...f, hp: Math.max(0, Math.min(f.maxHp, set)) }
+    }),
+  }
+}
+
+/** A battle with some fighters' MP set — a party carrying what it has spent in. */
+export function withMp(state: BattleState, mp: ReadonlyMap<number, number>): BattleState {
+  return {
+    ...state,
+    fighters: state.fighters.map((f, i) => {
+      const set = mp.get(i)
+      return set === undefined ? f : { ...f, mp: Math.max(0, Math.min(f.maxMp, set)) }
     }),
   }
 }
@@ -202,6 +252,64 @@ export function playRound(
         fighters = fighters.map((f, i) => (i === actor ? { ...f, hp: f.hp + gained } : f))
       }
       events.push({ kind: 'item', actor, target: actor, item: command.item, healed })
+      continue
+    }
+
+    if (command.kind === 'spell') {
+      const { spell } = command
+      if (me.mp < spell.cost) {
+        events.push({
+          kind: 'spell',
+          actor,
+          action: spell.action,
+          short: true,
+          critical: false,
+          hits: [],
+        })
+        continue
+      }
+      fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spell.cost } : f))
+      const side: Side = spell.does === 'heal' ? me.side : me.side === 'party' ? 'foes' : 'party'
+      const standing = livingOn(side)
+      const named = fighters[command.target]
+      const first = named && alive(named) && named.side === side ? command.target : standing[0]
+      if (first === undefined) {
+        events.push({
+          kind: 'spell',
+          actor,
+          action: spell.action,
+          short: false,
+          critical: false,
+          hits: [],
+        })
+        continue
+      }
+      const kind = fighters[first]?.name
+      const reached =
+        spell.reach === 'one'
+          ? [first]
+          : spell.reach === 'group'
+            ? standing.filter((i) => fighters[i]?.name === kind)
+            : standing
+      // Whether it goes haywire is the cast's; how much, each one's own.
+      const critical = rng.below(10_000) < rules.magicCritical
+      const hits = reached.map((target) => {
+        const them = fighters[target] as FighterState
+        let amount = spell.amount
+          ? drawnAmount(rng, spell.amount.base, spell.amount.spread)
+          : them.maxHp
+        if (critical && spell.amount) amount = criticalDamage(rng, amount)
+        if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
+        return { target, amount }
+      })
+      // Told before anyone it fells falls.
+      events.push({ kind: 'spell', actor, action: spell.action, short: false, critical, hits })
+      for (const { target, amount } of hits) {
+        if (spell.does === 'harm') hurt(target, amount)
+        else fighters = fighters.map((f, i) => (i === target ? { ...f, hp: f.hp + amount } : f))
+      }
+      outcome = outcomeOf(fighters)
+      if (outcome !== 'ongoing') break
       continue
     }
 

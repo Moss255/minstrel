@@ -1,3 +1,4 @@
+import { ActionEffect, ActionReach } from '@minstrel/game-formats'
 import {
   type BattleEvent,
   BattleRng,
@@ -6,14 +7,16 @@ import {
   type Fighter,
   type Heal,
   playRound,
+  type Spell,
   startBattle,
   withHp,
+  withMp,
 } from '@minstrel/sim'
 import { type Named, tellBattle } from './battle-text.ts'
 
 /**
  * A battle as the player sees it: the monsters appear, the party chooses —
- * attack, defend, an item or flee, and whom to attack — the round plays out a
+ * attack, a spell, defend, an item or flee, and whom — the round plays out a
  * message at a time, and the next choice comes, until it is over. The rules
  * are `@minstrel/sim`'s; this is only the telling of them.
  *
@@ -26,20 +29,25 @@ import { type Named, tellBattle } from './battle-text.ts'
  * will not read — the words are ours.
  */
 
-export type Phase = 'command' | 'target' | 'item' | 'telling' | 'over'
+export type Phase = 'command' | 'target' | 'item' | 'spell' | 'telling' | 'over'
 
-export const BATTLE_COMMANDS = ['Attack', 'Defend', 'Items', 'Flee'] as const
+/** The commands, in the order `str_btl` numbers them — Attack, Spells, Defend, then Items — and Flee. */
+export const BATTLE_COMMANDS = ['Attack', 'Spells', 'Defend', 'Items', 'Flee'] as const
 type BattleCommand = (typeof BATTLE_COMMANDS)[number]
 
 /** Each command's word in `str_btl`, the battle menu's own. */
 const COMMAND_WORDS: Readonly<Record<BattleCommand, number>> = {
   Attack: 30004,
+  Spells: 30005,
   Defend: 30006,
   Items: 30008,
   Flee: 30001,
 }
 /** `str_btl`'s word for a party member with nothing to use. */
 const NO_ITEMS = 30024
+/** `str_btl`'s word for one who knows no battle `<str_2>` yet, and its word for spells. */
+const NO_SPELLS = 30023
+const SPELLS_WORD = 30021
 
 /** The game's messages the battle tells, each file by number. */
 export interface BattleWords {
@@ -82,6 +90,11 @@ export const ACTION_SAYS = {
   critical: 140,
   shield: 150,
   dodges: 151,
+  /** Someone casts a spell, `<ACTION>`. */
+  casts: 46,
+  /** A spell's critical: it goes haywire. */
+  haywire: 141,
+  notEnoughMp: 153,
 } as const
 
 /** `str_bres`'s messages, by what they say. */
@@ -98,6 +111,59 @@ export interface BattleItem {
   readonly name: Named
   readonly count: number
   readonly heal?: Heal
+}
+
+/**
+ * Something the Spells command offers: the spell as the battle casts it, its
+ * name, and the message its record says for each one it reaches — `actmsg` 2,
+ * taking damage, or 22, healed.
+ */
+export interface BattleSpell {
+  readonly spell: Spell
+  readonly name: Named
+  readonly message: number
+}
+
+/** An action, as far as a battle casts it — see `ItemEffect` in `load.ts`. */
+export interface Castable {
+  readonly action: number
+  readonly name: string
+  /** What it does — `ActionEffect`. */
+  readonly effect: number
+  readonly message: number
+  readonly cost: number
+  /** Whom it reaches — `ActionReach`. */
+  readonly reach: number
+  /** The party's amount, a base give or take a spread. */
+  readonly range: Heal | undefined
+}
+
+const REACHES = new Map<number, Spell['reach']>([
+  [ActionReach.One, 'one'],
+  [ActionReach.Group, 'group'],
+  [ActionReach.All, 'all'],
+])
+
+/**
+ * A spell as a battle casts it, from its action: one that restores HP heals,
+ * one that deals damage harms, and it reaches one, a group or all as its
+ * record says. Undefined for anything else — Zing, with no one fallen to raise,
+ * and Evac, which is used outside battle.
+ */
+export function battleSpellOf(action: Castable): BattleSpell | undefined {
+  const does =
+    action.effect === ActionEffect.RestoresHp
+      ? 'heal'
+      : action.effect === ActionEffect.Damages
+        ? 'harm'
+        : undefined
+  const reach = REACHES.get(action.reach)
+  if (!does || !reach) return undefined
+  return {
+    spell: { action: action.action, cost: action.cost, does, reach, amount: action.range },
+    name: { name: action.name },
+    message: action.message,
+  }
 }
 
 /**
@@ -127,6 +193,10 @@ export interface BattleScene {
   readonly words: BattleWords | undefined
   /** What the Items command offers, while one is being chosen. */
   readonly items: readonly BattleItem[]
+  /** What the Spells command offers, while one is being chosen and told. */
+  readonly spells: readonly BattleSpell[]
+  /** A spell chosen and waiting for whom to cast it at. */
+  readonly pending?: BattleSpell | undefined
   /** What the last round came to — an item used, for the caller to take from the bag. */
   readonly events: readonly BattleEvent[]
 }
@@ -137,12 +207,15 @@ export function beginBattle(
   options: {
     readonly canFlee: boolean
     readonly hp?: ReadonlyMap<number, number>
+    /** MP each fighter comes in with, where it is not all of it. */
+    readonly mp?: ReadonlyMap<number, number>
     readonly words?: BattleWords
     readonly names?: readonly Named[]
   },
 ): BattleScene {
   const started = startBattle(fighters, options.canFlee)
-  const state = options.hp ? withHp(started, options.hp) : started
+  const wounded = options.hp ? withHp(started, options.hp) : started
+  const state = options.mp ? withMp(wounded, options.mp) : wounded
   const scene: BattleScene = {
     state,
     rng: new BattleRng(seed),
@@ -154,6 +227,7 @@ export function beginBattle(
     names: lettered(fighters.map((f, i) => options.names?.[i] ?? { name: f.name })),
     words: options.words,
     items: [],
+    spells: [],
     events: [],
   }
   const pages = appearing(scene)
@@ -313,6 +387,46 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         event.healed ? `${whom} recovers ${event.healed} HP.` : 'But nothing happens.',
       ].join('\n')
     }
+    case 'spell': {
+      const chosen = scene.spells.find((s) => s.spell.action === event.action)
+      const action = chosen?.name ?? { name: `spell ${event.action}` }
+      const heals = chosen?.spell.does === 'heal'
+      const casts = say(scene, 'actions', ACTION_SAYS.casts, { actor, action })
+      if (event.short) {
+        const game = lines(casts, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
+        return game ?? `${sentence(`${who} casts ${shown(action)}!`)}\nNot enough MP!`
+      }
+      const landed = event.hits.map((hit) => {
+        const target = scene.names[hit.target]
+        const values = { val_1: hit.amount }
+        if (heals) {
+          return say(scene, 'actions', chosen?.message || ACTION_SAYS.healed, { target, values })
+        }
+        return hit.amount > 0
+          ? say(scene, 'actions', chosen?.message || ACTION_SAYS.takes, { actor, target, values })
+          : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target })
+      })
+      const game = lines(
+        casts,
+        ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.haywire, { actor, action })] : []),
+        ...(landed.length > 0 ? landed : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
+      )
+      if (game !== undefined) return game
+      const ours = [`${who} casts ${shown(action)}!`]
+      if (event.critical) ours.push(`The ${shown(action)} goes haywire!`)
+      for (const hit of event.hits) {
+        const whom = labels[hit.target] ?? '?'
+        ours.push(
+          heals
+            ? `${whom} recovers ${hit.amount} HP.`
+            : hit.amount > 0
+              ? `${whom} takes ${hit.amount} damage.`
+              : `${whom} takes no damage.`,
+        )
+      }
+      if (event.hits.length === 0) ours.push('But nothing happens.')
+      return ours.map(sentence).join('\n')
+    }
     case 'defeated': {
       const foe = state.fighters[event.actor]?.side === 'foes'
       const game = say(scene, 'actions', foe ? ACTION_SAYS.defeated : ACTION_SAYS.dies, {
@@ -334,6 +448,12 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
         cues.push({ fighter: event.target, motion: 'damage' })
       return cues
     }
+    case 'spell':
+      return event.hits.flatMap((hit) =>
+        foe(hit.target) && hit.amount > 0 && foe(event.actor) === false
+          ? [{ fighter: hit.target, motion: 'damage' as const }]
+          : [],
+      )
     case 'defeated':
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'death' }] : []
     default:
@@ -364,6 +484,9 @@ export function battleRows(scene: BattleScene): string[] {
     const labels = labelsOf(scene.state)
     return livingFoes(scene.state).map((i) => labels[i] ?? '?')
   }
+  if (scene.phase === 'spell') {
+    return scene.spells.map((s) => `${shown(s.name)} — ${s.spell.cost} MP`)
+  }
   if (scene.phase === 'item') {
     return scene.items.map((i) => (i.count > 1 ? `${shown(i.name)} ×${i.count}` : shown(i.name)))
   }
@@ -377,10 +500,10 @@ export function battleMove(scene: BattleScene, by: number): BattleScene {
   return { ...scene, cursor: (((scene.cursor + by) % count) + count) % count }
 }
 
-/** Go back a step: from choosing whom to attack, or what to use, to the commands. */
+/** Go back a step: from choosing whom, or what to use or cast, to the commands. */
 export function battleBack(scene: BattleScene): BattleScene {
-  return scene.phase === 'target' || scene.phase === 'item'
-    ? { ...scene, phase: 'command', cursor: 0 }
+  return scene.phase === 'target' || scene.phase === 'item' || scene.phase === 'spell'
+    ? { ...scene, phase: 'command', cursor: 0, pending: undefined }
     : scene
 }
 
@@ -409,15 +532,27 @@ function play(scene: BattleScene, command: Command): BattleScene {
     )
   }
   while (cues.length < pages.length) cues.push([])
-  return { ...scene, state, phase: 'telling', cursor: 0, pages, cues, events }
+  return { ...scene, state, phase: 'telling', cursor: 0, pages, cues, events, pending: undefined }
+}
+
+/** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
+function cast(scene: BattleScene, chosen: BattleSpell, target: number): BattleScene {
+  return play(scene, { kind: 'spell', spell: chosen.spell, target })
 }
 
 /**
  * Take the chosen row, or go on to the next message. The Items command offers
- * `items`, what the bag holds that can be used — the caller's to say, as the
- * bag is not the battle's.
+ * `items`, what the bag holds that can be used, and the Spells command
+ * `spells`, what the party knows — the caller's to say, as neither the bag nor
+ * the spell table is the battle's. A spell that heals is cast on the party; one
+ * that harms asks whom when it could reach more than one foe it reaches, or
+ * more than one kind of them.
  */
-export function battleChoose(scene: BattleScene, items: readonly BattleItem[] = []): BattleScene {
+export function battleChoose(
+  scene: BattleScene,
+  items: readonly BattleItem[] = [],
+  spells: readonly BattleSpell[] = [],
+): BattleScene {
   switch (scene.phase) {
     case 'telling': {
       const pages = scene.pages.slice(1)
@@ -435,6 +570,15 @@ export function battleChoose(scene: BattleScene, items: readonly BattleItem[] = 
       const command = BATTLE_COMMANDS[scene.cursor]
       if (command === 'Defend') return play(scene, { kind: 'defend' })
       if (command === 'Flee') return play(scene, { kind: 'flee' })
+      if (command === 'Spells') {
+        if (spells.length > 0) return { ...scene, phase: 'spell', cursor: 0, spells }
+        const party = partyIndex(scene.state)
+        const kind = scene.words?.menu.get(SPELLS_WORD) ?? 'spells'
+        const none =
+          say(scene, 'menu', NO_SPELLS, { actor: scene.names[party], values: { str_2: kind } }) ??
+          `${labelsOf(scene.state)[party] ?? '?'} doesn’t know any battle spells yet.`
+        return { ...scene, phase: 'telling', pages: [none], cues: [[]] }
+      }
       if (command === 'Items') {
         if (items.length > 0) return { ...scene, phase: 'item', cursor: 0, items }
         const party = partyIndex(scene.state)
@@ -450,7 +594,21 @@ export function battleChoose(scene: BattleScene, items: readonly BattleItem[] = 
     case 'target': {
       const target = livingFoes(scene.state)[scene.cursor]
       if (target === undefined) return scene
+      if (scene.pending) return cast(scene, scene.pending, target)
       return play(scene, { kind: 'attack', target })
+    }
+    case 'spell': {
+      const chosen = scene.spells[scene.cursor]
+      if (!chosen) return scene
+      if (chosen.spell.does === 'heal') return cast(scene, chosen, partyIndex(scene.state))
+      const foes = livingFoes(scene.state)
+      const kinds = new Set(foes.map((i) => scene.state.fighters[i]?.name))
+      const asks =
+        chosen.spell.reach === 'one'
+          ? foes.length > 1
+          : chosen.spell.reach === 'group' && kinds.size > 1
+      if (!asks) return cast(scene, chosen, foes[0] ?? partyIndex(scene.state))
+      return { ...scene, phase: 'target', cursor: 0, pending: chosen }
     }
     case 'item': {
       const item = scene.items[scene.cursor]

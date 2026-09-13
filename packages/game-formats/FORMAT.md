@@ -2278,6 +2278,19 @@ record — then the records, then the strings.
 | `+0x08`, the low byte | its cost in MP, INFERRED | Heal 2, Midheal 4, Moreheal 8, Frizz 2, Crack 3, Zam 4, Kamikazee 1; 0 on the 488 actions that are no spell — the attack, the items, the monsters' moves — and 255 on four, Magic Burst and Kerplunk among them, the spells that spend all a caster has. 128 on two, not established |
 | `+0x20`, bits 20–31 | what it says, INFERRED: a message in `actmsg`, 0 for none | 22 `wounds are healed` on Heal, Midheal and the herb; 84 `no longer poisoned` on the antidotal herb and Squelch; 32 `returns to life` on the leaf and Zing; 106 `MP are replenished` on magic water; 2 `takes <val_1> points of damage` on the attack spells; and **157 to 166 on the nine seeds and the pretty betsy**, each message naming the number it raises — `maximum HP` on the seed of life, `charm` on the pretty betsy, `skill points` on the seed of skill |
 
+**Whom an action reaches is the high nibble of `+0x17`**, INFERRED from the
+actions that carry each value: 1 on Defend, Psyche Up and the like — the actor;
+2 on Heal, Frizz, Crack, Zam, Buff, the herbs — one; 4 on Crackle, Woosh,
+Swoosh, Kaswoosh, Snooze, Thwack; 3 on Multiheal, Bang, Boom, Kaboom, Kathwack
+and the breaths — everyone; 7 on Evac, Zoom, the chimaera wing and the seeds,
+which are used outside battle. The Ka- spells show the order: Buff and Sap (2)
+become Kabuff and Kasap (4), Snooze and Thwack (4) become Kasnooze and Kathwack
+(3) — so 4 is between one and everyone: a group. 5 is the attack's alone; 6 and
+8 are not established. `ActionReach` names them.
+
+**`0x05` at `+0x24` deals damage**, INFERRED: the attack and every attack
+spell carry it, each saying `actmsg` 2.
+
 The byte at `+0x24` — `ActionEffect` — agrees with the message on 125 of the
 389 actions that carry both and not on the rest (the attack spells' is 5), so
 the two are kept apart. The rest of the record is carried.
@@ -2295,7 +2308,7 @@ battle, INFERRED.
 | `+0x01` | spread: how far either side of the base, INFERRED | Heal's is 5, and the reference draws Heal as 35 ± 5 |
 | `+0x02` | 0 | on every record |
 | `+0x04`, bits 0–9 | base, INFERRED | Heal 35, Midheal 85, Moreheal 185: the reference's own bases |
-| `+0x04`, bits 10–19 | not established | equal to the base on 78 of 124 |
+| `+0x04`, bits 10–19 | the amount a party member's action draws around, INFERRED | the reference's own party amounts: Heal `typeD(5, 35)`, Crack `(5, 30)`, Crackle `(8, 50)`, Woosh `(8, 16)` — and these are 35, 30, 50 and 16 here, where the base is 35, 17, 33 and 14. Equal to the base on 78 of 124, every heal and item among them. The base's own part beside it is not established; monsters' casting, which is not read, is the likeliest |
 | `+0x04`, bits 20–29 | peak, INFERRED: the base at magical mending 999 | the reference's Midheal, 85 + (mending − 100) × 0.2392, and Moreheal, 185 + (mending − 200) × 0.5194, come to exactly 300 and 600 at 999, which are theirs |
 | `+0x04`, bits 30–31 | 0 | on every record |
 
@@ -2354,6 +2367,13 @@ Abilities`, 4 `Misc.`, 1200 `What would you like to do?`, 1201 `Use`, 1203
 `Discard`, 1204 `Cancel`, 1903 `Equipment`, 4351 `MP`, and the thirteen
 vocations from 2100, `Guardian` to `Ranger`, in the level tables' order.
 `/data/bin/strstd.gp2/strstd_<lang>.nat` 57 is a head banged on the ceiling.
+
+A spell cast in battle says `actmsg` 46, `<DEF_ART_ACTOR> casts <ACTION>.`,
+then its own message; 141, `<DEF_ART_ACTOR><1>s <ACTION> goes haywire!`, is a
+spell's critical — the reference's 1.5 to 2.0 times; 153 `Not enough MP!`.
+The battle menu's `str_btl` numbers its commands 30004 `Attack`, 30005
+`Spells`, 30006 `Defend`, 30007 `Abilities`, 30008 `Items`, and says 30023
+`<DEF_ART_ACTOR> doesn<1>t know any battle <str_2> yet.` with 30021 `spells`.
 
 The markup's own grammar: `<DEF_ART_ACTOR>` is the actor's name behind its
 definite article; `<INDEF_ART_SGL_M_NAME>` a monster's behind its indefinite;

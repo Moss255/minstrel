@@ -10,9 +10,11 @@ export {
   playRound,
   type Rules,
   type Side,
+  type Spell,
   spoils,
   startBattle,
   withHp,
+  withMp,
 } from './battle/battle.ts'
 export {
   criticalBlow,

@@ -5,6 +5,7 @@ import {
   ACTION_SAYS,
   BATTLE_COMMANDS,
   BATTLE_SAYS,
+  type BattleSpell,
   battleBack,
   battleChoose,
   battleMove,
@@ -116,6 +117,58 @@ describe('a battle scene', () => {
     expect(healed).toBeGreaterThanOrEqual(25)
     expect(used.pages.some((page) => page.includes(`Hero recovers ${healed} HP.`))).toBe(true)
   })
+
+  const crack: BattleSpell = {
+    spell: { action: 12, cost: 3, does: 'harm', reach: 'one', amount: { base: 30, spread: 5 } },
+    name: { name: 'Crack' },
+    message: 2,
+  }
+  const heal: BattleSpell = {
+    spell: { action: 30, cost: 2, does: 'heal', reach: 'one', amount: { base: 35, spread: 5 } },
+    name: { name: 'Heal' },
+    message: 22,
+  }
+  const spells = BATTLE_COMMANDS.indexOf('Spells')
+
+  it('offers the spells the Hero knows, or says there are none', () => {
+    const scene = untilChoice(beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true }))
+    expect(battleChoose(battleMove(scene, spells)).pages).toEqual([
+      'Hero doesn’t know any battle spells yet.',
+    ])
+    const offered = battleChoose(battleMove(scene, spells), [], [crack, heal])
+    expect(offered.phase).toBe('spell')
+    expect(battleRows(offered)).toEqual(['Crack — 3 MP', 'Heal — 2 MP'])
+    expect(battleBack(offered).phase).toBe('command')
+  })
+
+  it('casts a spell at the monster chosen, and spends its MP', () => {
+    const scene = untilChoice(beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true }))
+    const targeting = battleChoose(battleChoose(battleMove(scene, spells), [], [crack, heal]))
+    expect(targeting.phase).toBe('target')
+    expect(battleRows(targeting)).toEqual(['blob A', 'blob B'])
+    const cast = battleChoose(battleMove(targeting, 1))
+    const event = cast.events.find((e) => e.kind === 'spell')
+    expect(event).toMatchObject({ kind: 'spell', action: 12, short: false, hits: [{ target: 2 }] })
+    expect(cast.state.fighters[0]?.mp).toBe(3)
+    expect(cast.pages.some((page) => page.startsWith('Hero casts Crack!\nBlob B takes'))).toBe(true)
+  })
+
+  it('heals the Hero with a spell straight away, and says when the MP are not there', () => {
+    const scene = untilChoice(
+      beginBattle([hero, blob(40)], 1n, { canFlee: true, hp: new Map([[0, 5]]) }),
+    )
+    const offered = battleChoose(battleMove(scene, spells), [], [crack, heal])
+    const healed = battleChoose(battleMove(offered, 1))
+    const event = healed.events.find((e) => e.kind === 'spell')
+    expect(event).toMatchObject({ kind: 'spell', action: 30, hits: [{ target: 0 }] })
+    expect(healed.state.fighters[0]?.mp).toBe(4)
+    const poor = untilChoice(
+      beginBattle([hero, blob(40)], 1n, { canFlee: true, mp: new Map([[0, 1]]) }),
+    )
+    const short = battleChoose(battleChoose(battleMove(poor, spells), [], [crack]))
+    expect(short.pages[0]).toBe('Hero casts Crack!\nNot enough MP!')
+    expect(short.state.fighters[0]?.mp).toBe(1)
+  })
 })
 
 describe('a battle in the game’s words', () => {
@@ -159,7 +212,7 @@ describe('a battle in the game’s words', () => {
     expect(two.pages).toEqual(['Some blobs show up!'])
     expect(battleRows(untilChoice(one))[0]).toBe('Hit')
     // A command with no word of its own keeps ours.
-    expect(battleRows(untilChoice(one))[1]).toBe('Defend')
+    expect(battleRows(untilChoice(one))[1]).toBe('Spells')
   })
 
   it('tells a round in them, the monster by its article and letter', () => {
