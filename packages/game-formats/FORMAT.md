@@ -2597,3 +2597,66 @@ MP panels, the digits, a church, crossed swords, and dots. **Cell 5 is an 8×8
 light-blue dot in a black rim**, cell 7 a red one. The game here still draws
 the Hero as `marker0` — see "The markers are coloured dots": which dot is his,
 and in what colour, is not established.
+
+# `.bncg`, `.bncl` and `.bnsc` — the menus' backgrounds
+
+This cartridge's own tile, palette and screen files: beside Nitro files in the
+`.pac` packs, and alone in archives — the mini-map's `z01` to `z05`. Read by
+`screens2d.ts`; `drawBnsc` draws a screen with its tiles and palette.
+
+| `.bncg` | type | meaning |
+|---|---|---|
+| `+0x00` | `char[4]` | `CHAR` |
+| `+0x04` | `u16` | tile count |
+| `+0x06` | `u16` | width in tiles |
+| `+0x08` | `u16` | height in tiles |
+| `+0x0A` | `u16` | `unknown_0x0a` |
+| `+0x0C` | `u32` | the tiles' size |
+| `+0x10` | | the tiles: 32 bytes each at four bits a pixel, 64 at eight |
+
+| `.bncl` | type | meaning |
+|---|---|---|
+| `+0x00` | `char[4]` | `PALT` |
+| `+0x04` | `u32` | `unknown_0x04` |
+| `+0x08` | `u32` | the colours' size |
+| `+0x0C` | | the colours, BGR555 |
+
+| `.bnsc` | type | meaning |
+|---|---|---|
+| `+0x00` | `char[4]` | `SCRN` |
+| `+0x04` | `u16` | width in tiles |
+| `+0x06` | `u16` | height in tiles |
+| `+0x08` | `u16` | `unknown_0x08` |
+| `+0x0A` | `u16` | `unknown_0x0a` |
+| `+0x0C` | `u32` | the entries' size |
+| `+0x10` | `u16` × width × height | the entries, row by row |
+
+An entry is the DS's text background entry — GBATEK, "LCD VRAM BG Screen Data
+Format (BG Map)": bits 0–9 the tile, 10 a horizontal flip, 11 a vertical one,
+12–15 the palette, "unused" at 256 colours. A four-bit tile's low nibble is its
+left pixel, as GBATEK's "LCD VRAM Character Data" has it.
+
+Evidence, over the cartridge's 408 `.bncg`, 370 `.bncl` and 690 `.bnsc`:
+
+- **Every file is exactly as long as its head says**: 16 bytes and the tiles,
+  12 and the colours, 16 and the entries.
+- A `.bncg`'s tiles are 32 bytes each on 376 and 64 on 32. **Its width × height
+  is its count on 408 of 408**, and its `+0x0A` is `0x7C00` on exactly the 376
+  four-bit files and `0x7C01` on the 32 eight-bit ones.
+- A `.bncl` holds 256 colours on 370 of 370; its `+0x04` is 0 on 276 and
+  `0x101` on 94.
+- A `.bnsc`'s entries are width × height × 2 bytes on 690 of 690. **Its `+0x08`
+  is 1 exactly where its pack's tiles are eight-bit**, 32 screens, and 0
+  elsewhere. `+0x0A` follows no pattern found: `0x1300` on one full 32×24
+  screen, `0x1304` on another.
+- **On all 659 screens whose pack holds tiles and a palette, the tile numbers
+  stay inside the pack's largest `.bncg` and the palettes inside its `.bncl`**;
+  171 screens use the flip bits.
+- Drawn so, the equipment screen's pieces come out whole — its backdrop, the
+  frame of sixteen slots, the eight tabs, the sort buttons, and `bg_ii1.pac`'s
+  parchment for the top screen — and match the game's screenshots of it.
+
+Not established: `.bncg`'s `0x7C00` beyond its lowest bit, `.bncl`'s `+0x04`,
+`.bnsc`'s `+0x0A`; which `.bncg` a screen takes when its pack holds two — the
+largest is drawn, and all 659 fit it; and where a screen goes on the DS's
+screen, which the `.lia` layouts would say and which are not read.
