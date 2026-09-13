@@ -2660,3 +2660,37 @@ Not established: `.bncg`'s `0x7C00` beyond its lowest bit, `.bncl`'s `+0x04`,
 `.bnsc`'s `+0x0A`; which `.bncg` a screen takes when its pack holds two — the
 largest is drawn, and all 659 fit it; and where a screen goes on the DS's
 screen, which the `.lia` layouts would say and which are not read.
+
+# Item icons — `/data/ani/d_<letter><nnn>.spr`
+
+**An item's icon is named by its id in decimal**: the thousands choose a
+letter, the rest a three-digit number. The copper sword, id 20004 (`0x4E24`), is
+`d_w004.spr` — found in the explorer, and the rule followed from it. The icons
+are 1,021 sprites, loose in `/data/ani`, each one 24×24 frame (`readSprite`).
+
+| id | items | letter | items with an icon so |
+|---|---|---|---|
+| 12xxx | helms | `m` | 108 of 132 |
+| 13xxx | armour | `b` | 157 of 183 |
+| 15xxx | gloves | `g` | 62 of 78 |
+| 16xxx | legwear | `p` | 77 of 85 |
+| 17xxx | footwear | `r` | 87 of 101 |
+| 18xxx | accessories | `c` | 52 of 52 |
+| 19xxx | knives | `w` | 27 of 40 |
+| 20xxx | weapons | `w` | 148 of 228 |
+| 21xxx | shields | `s` | 35 of 45 |
+| 22xxx | tools | `i` | 232 of 234 |
+
+985 of the 1,178 items have an icon by the rule. The letters were found by
+which one each thousand's remainders land on, then checked by eye: one item
+of each thousand drawn with its icon is the thing it is named — a gold helm,
+red armour, a glove, purple shorts, boots, a ring, a knife, the copper sword, a
+shield, a herb. The gloves' remainders land on `i` a little more often than on
+`g`, 68 to 62, because the tools' icons share the numbers; drawn under `i` a
+glove is a medicinal herb, under `g` a glove.
+
+Not established: the icon of the 193 items the rule gives none — the wonder
+helm, the tracksuit top and others; whether the item record names it among
+its undecoded bytes; and the worn models beside the icons in
+`/data/pack_lv5/chara_pc.gp2`, `p_<letter><nnn>.nsbmd`, whose numbers match the
+icons' on the letters they share (`p_w`, `p_b`, `p_m`, `p_p`, `p_s`).

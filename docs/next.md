@@ -9,6 +9,41 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The equipment screen — 13 September
+
+Equipment opens the game's own screen, its two DS screens on the right:
+the eight slots down the bottom screen, and — a slot opened — the frame with
+its tabs and a 4×4 grid of the bag's items, a page of sixteen at a time; the
+chosen item's name on the top screen's parchment.
+
+**From the cartridge**, every picture: the parchment (`bgii21_en.pac`), the
+backdrop, frame, tabs, name plate and sort label (`bg_eq_en.pac`, read with
+the new `.bncg`/`.bncl`/`.bnsc` reader — game-formats' FORMAT.md), the slot
+boxes, row bars and green corners (`spr_eq.pac`), the hints, L, R and the hand
+(`clmm_en.pac`), the slots' small icons (`oiij_en.pac`). **Measured from the
+art**: the grid's cells, 24 pixels at a pitch of 26, the equipped bar, the tab
+row, and where a raised tab sits. **From two screenshots of the game** (kept
+in `evidence/`, not committed): what goes where.
+
+**The item icons are the game's own**: `/data/ani/d_<letter><nnn>.spr`, named
+by the item's id in decimal — the copper sword, 20004, is `d_w004` (found in
+the explorer; game-formats' FORMAT.md, "Item icons"). 985 of 1,178 items have
+one so.
+
+**Ours, each said so in `apps/game/src/equip-screen.ts`:** the exact places
+the screenshots give roughly; the text, in the browser's font; the icon of an
+item the rule gives none — its slot's small icon; the words "Nothing
+Equipped"; ↑/↓ going through the grid in order; and what is left out — the
+Hero's figure, and the item's description, numbers, rarity and who can use
+it, none of which is read yet. `?bag=w,s:3` fills the bag with every item of
+those tables — a debugging aid, ours.
+
+**Left:** the 193 items without an icon by the rule; the layouts, `lay_eq.lia`
+and `lay_iie.lia`; then step 3 — descriptions, numbers, rarity, who can use
+what.
+
+---
+
 ## The DS's 2D files are read — 13 September
 
 `@minstrel/nitro-gfx` reads NCLR palettes, NCGR characters and NCER cells, and

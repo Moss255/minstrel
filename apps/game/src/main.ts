@@ -90,7 +90,8 @@ import {
   NO_FIT,
 } from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
-import { type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
+import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
+import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
 import { type EventCamera, EventPlayer } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
@@ -209,6 +210,9 @@ const fileInput = must<HTMLInputElement>('#file')
 const statusEl = must<HTMLDivElement>('#status')
 const overlayEl = must<HTMLDivElement>('#overlay')
 const minimapEl = must<HTMLCanvasElement>('#minimap')
+const equipEl = must<HTMLDivElement>('#equip')
+const equipTopEl = must<HTMLCanvasElement>('#equip-top')
+const equipBottomEl = must<HTMLCanvasElement>('#equip-bottom')
 const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
@@ -276,6 +280,12 @@ let minimaps: Minimaps | undefined
 let minimapShown: MinimapShown | undefined
 /** Whether the corner shows it: `m` turns it on and off. **Ours.** */
 let minimapWanted = true
+/**
+ * The equipment screen, its pieces read from the cartridge the first time it
+ * opens — see `equip-screen.ts`. Null when they will not read, and the panel
+ * is shown as text.
+ */
+let equipScreens: EquipScreens | null | undefined
 /** Stops a doorway firing on the character it just put down. See `doors.ts`. */
 const gate = doorGate()
 /** Set while a map is loading, so a doorway cannot be taken twice. */
@@ -520,6 +530,7 @@ function begin(bytes: Uint8Array, map: string): void {
   // again for the map behind it.
   cartridge = bytes
   minimaps = undefined
+  equipScreens = undefined
   // Carry on from the last confession, unless the player asked for a new game.
   const saved = resumeEl.checked ? savedGame : undefined
   if (saved) {
@@ -700,6 +711,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage) }
   loaded = opened
+  fillBag(opened)
   // The top screen's map: the picture this map is drawn on, or its area's.
   minimaps ??= readMinimaps(cartridge)
   minimapShown = showMinimap(minimaps, opened.mapId, opened.code)
@@ -825,7 +837,10 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
  * in at.
  */
 function drawCorner(): void {
-  const show = minimapWanted && minimapShown !== undefined && self !== undefined && !battle
+  // The equipment screen goes where the menu leaves it; the map stays out of its way.
+  if (!equipEl.hidden && menu?.panel !== 'equip') equipEl.hidden = true
+  const show =
+    minimapWanted && minimapShown !== undefined && self !== undefined && !battle && equipEl.hidden
   if (minimapEl.hidden === show) minimapEl.hidden = !show
   const context = show ? minimapEl.getContext('2d') : null
   if (!context || !minimapShown || !self) return
@@ -1125,6 +1140,26 @@ const wantedLighting = params.get('lighting') === 'night' ? 'night' : 'day'
  * screenshot of it is a screenshot of the real thing.
  */
 const wantedDoor = params.get('door')
+/**
+ * `?bag=w,s:3` — a debugging aid, **ours**: one of every item the named item
+ * tables list — or as many as follow a colon — put into the bag, once, when the
+ * first map loads, to see the equipment screen full. The letters are the item
+ * tables' own: `w` weapons, `s` shields and so on (see `readItemTable`).
+ */
+const wantedBag = params.get('bag')
+let bagFilled = false
+function fillBag(opened: Loaded): void {
+  if (bagFilled || !wantedBag) return
+  bagFilled = true
+  for (const part of wantedBag.split(',')) {
+    const [table, times] = part.split(':')
+    const count = Math.max(1, Number(times) || 1)
+    for (const [id, goods] of opened.goods) {
+      if (goods.table !== table) continue
+      for (let i = 0; i < count; i++) bag = take(bag, { item: id })
+    }
+  }
+}
 
 async function chose(file: File): Promise<void> {
   status(`reading ${file.name}…`)
@@ -2335,7 +2370,11 @@ function showMenu(): void {
     commands.append(item)
   }
   menuEl.append(commands)
-  if (menu.panel) {
+  // Equipment is shown as the game shows it, on its two screens; the rest,
+  // and equipment when its pieces will not read, as text.
+  if (menu.panel === 'equip' && showEquipScreens()) {
+    equipEl.hidden = false
+  } else if (menu.panel) {
     const panel = document.createElement('div')
     panel.className = 'panel'
     for (const line of panelLines(menu.panel, menuContext(), menu)) {
@@ -2346,6 +2385,34 @@ function showMenu(): void {
     menuEl.append(panel)
   }
   menuEl.hidden = false
+}
+
+/** Draw the equipment screen for the menu as it stands; false when it cannot be drawn. */
+function showEquipScreens(): boolean {
+  if (!menu || !cartridge) return false
+  if (equipScreens === undefined) {
+    try {
+      equipScreens = makeEquipScreens(readEquipPieces(cartridge))
+    } catch {
+      equipScreens = null
+    }
+  }
+  const top = equipTopEl.getContext('2d')
+  const bottom = equipBottomEl.getContext('2d')
+  if (!equipScreens || !top || !bottom) return false
+  const context = menuContext()
+  const tableOf = context.tableOf ?? (() => undefined)
+  equipScreens.draw(top, bottom, {
+    hero: context.hero,
+    level: context.standing?.level.level,
+    equipped: context.equipped ?? NOTHING_EQUIPPED,
+    bag,
+    itemName: nameOf,
+    row: menu.row,
+    picking: menu.picking,
+    choices: menu.picking ? choicesFor(menu.picking, bag, tableOf) : undefined,
+  })
+  return true
 }
 
 /** Draw the conversation's page into the text box, or put the box away when it is over. */
