@@ -9,6 +9,71 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## What is still open — 14 September, at `ae5e16c`
+
+This replaces the list of 13 September further down, which is kept for its
+questions to the emulator. Each gap's evidence is in the section it names.
+
+**Where the milestones stand.** M0–M2 are done but for the Hero stand-in (§7)
+and a field's doorways (§6). M3 reads the event text and plays the morning; the
+rest of the opening is open. M4 is as far as the cartridge goes; the equipment
+screen is drawn, and its numbers wait on the emulator. M5 has battles, spells,
+changes of state and monsters acting; M6 has monsters roaming the field. M7 and
+M8 have not started, and audio, meant to start alongside M5, has not either.
+
+**Closable here, from the code and the cartridge:**
+
+| gap | milestone | what it needs |
+|---|---|---|
+| The opening beats, and story flags | M3, M7 | The functions other events call, which event runs when (the triggers), and the game-wide variables, scope 64. The largest job left, and on the slice's critical path. |
+| Ivor | M5, M6 | No monster record or system string names him. Next: the companion table `attnpc`, then the event scripts. The party of two and Ivor as a companion both wait on it. |
+| The equipment screen's layouts | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5). Until then, where everything sits is ours. |
+| The rest of the equipment screen | M4 | Moving round the grid by row and column, L/R between tabs, Change Character and sorting; the Hero's figure; the name plate's colour for each character; a string for "Nothing Equipped", which is ours. |
+| Item art not found | M4 | 193 of the 1,178 items have no icon by the rule and show a stand-in (ours). The English vocation icons for "Used by" are not in `obj_ii` or `oiij`, which hold slots and stars. The lit stars are `oiij` cells 21 and 24–27; what white and gold stars mean is not known. |
+| `itemsort`'s `unknown_1` and `unknown_2` | M4 | Not tested against anything yet. |
+| The game's own font | M3 | The Latin glyphs are not found; text uses the browser's font. |
+| M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`, in code as far as has been looked; the chimaera wing's destination; Evac and holy water. |
+| What battles still lack | M5 | Abilities; the changes of state the reference does not model (Dazzle, sand in the eyes, the dances); Hexagoon's behaviour beyond its six ways. |
+| What the loop still lacks | M6 | Which zone applies where; monsters that flee a strong party (`fld_mondata`'s first two numbers); transitions beyond the cut; the poison marshes. |
+| The mini-map's rest | — | `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets; the party's name panels and the town's name tab. |
+| 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
+| The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |
+| Audio | M8 | Not started; the plan wanted it started alongside M5. |
+
+**Needs the emulator — questions to bring to it:**
+
+- **Equipment's numbers, rarity and "Used by"**, the one thing M4 still waits
+  on. Every reference to the copper sword was followed, and 41 shields' published
+  numbers were tested against every file, so they are not beside the item. Open
+  the equipment screen on the Flame shield (defence 18, rarity 1). Search RAM
+  for its id, `8E 53`, and look for 18 and 1 near it. Send the address and a
+  dump of the bytes round it, and it can be traced to its file. The copper
+  sword's attack would check the weapons.
+- **The mini-map's dots**: what colour the Hero's dot is, and whether it is
+  `obj_mm.pac` cell 5. `marker0` stands in, and is ours. Also where a room's dot
+  sits on its area's picture, and how a large picture scrolls.
+- **How a monster chooses**: the weights for its six ways (an even table stands
+  in); the critical chance; fleeing's chance.
+- **The Hero's vocation, and a level-1 status screen**, to settle which
+  level-table columns are which.
+- **Which parts make the Hero** (§7).
+- **Where a field's doorways really are** (§6), which blocks M7's mountain pass.
+- **Which treasure kind is the pot** and which the barrel; **where the Hero
+  wakes**, `M01M07` or `M01M10`.
+- **The inn's price and the starting gold**, if they are not found in code.
+
+**Wanted after Slice 1:** weapons on the Hero, the `p_w<nnn>.nsbmd` models in
+`chara_pc.gp2`, with how they attach not known.
+
+**Deferred by the plan:** WebGPU (WebGL2 is enough), the DS toon and edge
+pipeline outside reference mode, settings, and the ROM hash check and caching
+(M8).
+
+**Where to start next time:** the Flame shield RAM search if the emulator is
+out; otherwise the opening beats, the largest job left on the critical path.
+
+---
+
 ## The equipment screen — 13 September
 
 Equipment opens the game's own screen, its two DS screens on the right:
