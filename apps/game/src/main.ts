@@ -1,9 +1,10 @@
 import { figureScale, Measurements } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
-import { ActionEffect, type Treasure } from '@minstrel/game-formats'
+import { ActionEffect, type NpcPlacement, type Treasure } from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
+  type Animation,
   type Geometry,
   measureBounds,
   type NodeTransform,
@@ -43,7 +44,8 @@ import {
   startRoaming,
   tickRoaming,
 } from '@minstrel/sim'
-import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
+import { backdrop, findSpawn, placeGeometry, WORLD_SCALE } from '@minstrel/world'
+import { actorLookOf, packMotions } from './actors.ts'
 import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
   type BattleItem,
@@ -79,6 +81,7 @@ import {
 } from './collisionview.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
+import { type EventCamera, EventPlayer } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import { STARTING_GOLD, standing } from './hero.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
@@ -315,6 +318,21 @@ let battleLooks: (MonsterLook | undefined)[] = []
 let battleSpots: ({ x: number; y: number; z: number } | undefined)[] = []
 /** When the battle's page on show began, which its monsters' motions play from. */
 let cueStarted = 0
+/**
+ * The event playing, if one is — see `event.ts`: its player, its number, its
+ * messages, the message the text box shows, time left over between ticks, and
+ * the follow camera's framing to give back when it ends.
+ */
+let playing:
+  | {
+      readonly player: EventPlayer
+      readonly event: number
+      readonly messages: ReadonlyMap<number, string>
+      showing: number | undefined
+      carry: number
+      readonly framing: { pitch: number; distance: number; yaw: number }
+    }
+  | undefined
 /** The most monsters a battle here holds: ours, so the row stays in view. */
 const BATTLE_MOST = 5
 /** The Hero's hit points between battles; undefined is full. */
@@ -469,7 +487,11 @@ function begin(bytes: Uint8Array, map: string): void {
     restore(saved)
     if (enter(saved.map, saved.at)) return
   }
-  if (!enter(map)) startEl.hidden = false
+  if (!enter(map)) {
+    startEl.hidden = false
+    return
+  }
+  if (wantedEvent !== undefined) startEvent(wantedEvent)
 }
 
 /** The browser's own storage, where it allows it: private windows and blocked sites do not. */
@@ -781,10 +803,14 @@ function frame(now = 0): void {
   // The character walks on the world as the fit leaves it — see `refit`.
   if (self && loaded && world) {
     self.stick = { forward: sticks.forward, right: sticks.right }
-    const { moving, travelled } = advance(self, world, camera.yaw, elapsedMs)
+    // An event moves the Hero itself, and the keys wait for it — see `playEvent`.
+    if (playing) playEvent(elapsedMs)
+    const { moving, travelled } = playing
+      ? { moving: false, travelled: 0 }
+      : advance(self, world, camera.yaw, elapsedMs)
     // The field's monsters, on the Hero's own ticks, and only while nothing
     // else is up — see `beginRoaming`.
-    if (roaming && !battle && !menu && !visit && !talking) {
+    if (roaming && !battle && !menu && !visit && !talking && !playing) {
       roamCarry = Math.min(roamCarry + elapsedMs, TICK_MS * 8)
       while (roamCarry >= TICK_MS && roaming) {
         roamCarry -= TICK_MS
@@ -830,16 +856,20 @@ function frame(now = 0): void {
     // by the same factor keeps the room framed, which is the whole point: what
     // should change on screen is the character's size against the room, not how
     // close the camera happens to be.
-    updateFollowCamera(
-      camera,
-      // A battle is watched from its middle — see `battleCentre`.
-      battleCentre() ?? self.state,
-      elapsedMs / 1000,
-      world,
-      worldScale === 1
-        ? person()
-        : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
-    )
+    // An event's camera is its own — see `aimAtShot`.
+    const shot = playing?.player.stage.camera
+    if (shot?.target) aimAtShot(shot)
+    else
+      updateFollowCamera(
+        camera,
+        // A battle is watched from its middle — see `battleCentre`.
+        battleCentre() ?? self.state,
+        elapsedMs / 1000,
+        world,
+        worldScale === 1
+          ? person()
+          : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
+      )
 
     const hidden = occludedChunks(
       mapBoxes,
@@ -860,6 +890,7 @@ function frame(now = 0): void {
       if (list) list.push(chunkLocal[chunk] as number)
       else hiddenIn.set(shape, [chunkLocal[chunk] as number])
     }
+    const heroPose = heroEventPose()
     const drawn = [
       ...mapPieces.map((piece, shape) => {
         const gone = hiddenIn.get(shape)
@@ -892,17 +923,19 @@ function frame(now = 0): void {
       ),
       // A battle's monsters, facing the Hero — see `monsters.ts`.
       ...(battle ? foePieces(now) : []),
+      // An event's characters, bar the Hero — see `eventPieces`.
+      ...eventPieces(),
       // The field's roaming monsters, in their field models.
       ...(roaming && !battle ? roamerPieces(now) : []),
       // Pots and barrels face the camera too — see `propPiecesNow`.
       ...propPiecesNow(loaded, now),
       ...playerPieces(
-        self,
+        heroPose ? { ...self, motionFrame: heroPose.frame } : self,
         loaded.figure,
         loaded.pieces,
         loaded.catalogue,
         measurements,
-        loaded.figure.motions.get(self.motion ?? ''),
+        heroPose?.motion ?? loaded.figure.motions.get(self.motion ?? ''),
       ),
     ]
     uploaded = renderer.upload(drawn)
@@ -927,7 +960,23 @@ function frame(now = 0): void {
 }
 
 const params = new URLSearchParams(location.search)
-const wantedMap = params.get('map') ?? 'M01'
+/**
+ * Where a new game opens: the landing upstairs in Erinn's house, `M01M10`, and
+ * the morning there, `ev02130` — Erinn waking the Hero in the room off it.
+ * INFERRED: no trigger names the morning, it is the event that wakes the Hero,
+ * and its places — the bed, Erinn's walk up to it — lie in that room, where
+ * nobody stands at the story's first stage.
+ */
+const OPENING_MAP = 'M01M10'
+const OPENING_EVENT = 2130
+const wantedMap = params.get('map') ?? OPENING_MAP
+/** `?event=N` plays event N once the map is entered; a new game with no `?map=` plays the morning. */
+const wantedEvent =
+  params.get('event') !== null
+    ? Number(params.get('event'))
+    : params.get('map') === null
+      ? OPENING_EVENT
+      : undefined
 /**
  * `?axes=0,1,2,3` moves the sticks to other axes, `?lookbuttons=6,7` reads the
  * look stick from two analog buttons, and `?pad=1` shows what a pad reports.
@@ -1236,8 +1285,15 @@ function talk(everyLine = false): void {
     showTalk()
     // A line that ends by handing over — `<ADD><SHOP=32>` — opens its service.
     if (!talking && ending.run.service) openService(ending.run.service)
+    // An event's message, read to its end, lets the event go on.
+    if (!talking && playing) {
+      playing.player.dismiss()
+      playing.showing = undefined
+    }
     return
   }
+  // While an event plays, `f` only reads its messages.
+  if (playing) return
   const cast: Talker[] = [
     ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => ({
       id: member.placement.id,
@@ -1816,6 +1872,175 @@ function endFight(): void {
   status(`back on the map · HP ${heroHp ?? 'full'}`)
 }
 
+/** Play event `number` in the map the Hero is in — see `event.ts`. False when it will not read. */
+function startEvent(number: number): boolean {
+  if (!loaded || !self) return false
+  const name = `ev${String(number).padStart(5, '0')}`
+  const script = loaded.eventScript(number)
+  if (!script) {
+    status(`${name} will not read`)
+    return false
+  }
+  const messages = new Map(
+    loaded
+      .eventMessages(number)
+      .flatMap((m) => (m.text === undefined ? [] : [[m.id, m.text] as const])),
+  )
+  playing = {
+    player: new EventPlayer(script, WORLD_SCALE * worldScale, {
+      x: toFloat(self.state.x),
+      y: toFloat(self.state.y),
+      z: toFloat(self.state.z),
+      facing: self.facing,
+    }),
+    event: number,
+    messages,
+    showing: undefined,
+    carry: 0,
+    framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
+  }
+  self.held.clear()
+  closeTalk()
+  menu = undefined
+  status(`${name} playing · f reads its messages`)
+  return true
+}
+
+/**
+ * The event's frames for this much time — 60 a second, as the scripts count
+ * them — and then what they came to: the message the text box shows, and
+ * where the Hero, character 0, now is.
+ */
+function playEvent(elapsedMs: number): void {
+  const now = playing
+  if (!now || !self) return
+  now.carry = Math.min(now.carry + elapsedMs, TICK_MS * 8)
+  while (now.carry >= TICK_MS) {
+    now.carry -= TICK_MS
+    let more = false
+    try {
+      more = now.player.tick()
+    } catch (error) {
+      status(`ev${now.event}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!more) {
+      endEvent()
+      return
+    }
+  }
+  const shown = now.player.stage.message
+  if (shown !== undefined && shown !== now.showing) {
+    now.showing = shown
+    talking = startConversation(
+      { id: -1, name: `ev${now.event}`, x: 0, z: 0 },
+      `ev${now.event}, message ${shown}`,
+      [now.messages.get(shown) ?? `(message ${shown} says nothing)`],
+      [`message ${shown}`],
+    )
+    showTalk()
+  }
+  const hero = now.player.stage.actors.get(0)
+  if (hero) {
+    self.state = {
+      ...self.state,
+      x: fx32(Math.round(hero.x * FX32_ONE)),
+      y: fx32(Math.round(hero.y * FX32_ONE)),
+      z: fx32(Math.round(hero.z * FX32_ONE)),
+    }
+    self.facing = hero.facing
+  }
+}
+
+/** The event is over: the Hero stands on the floor where it left them, and the camera follows them again. */
+function endEvent(): void {
+  const done = playing
+  playing = undefined
+  if (!done) return
+  camera.pitch = done.framing.pitch
+  camera.distance = done.framing.distance
+  camera.actualDistance = done.framing.distance
+  if (self && world) {
+    const reach = toFloat(self.state.y) + toFloat(person().height)
+    const hit = groundBelow(world, self.state.x, self.state.z, fx32(Math.round(reach * FX32_ONE)))
+    if (hit) self.state = { ...self.state, y: hit.y, fallSpeed: fx32(0), grounded: true }
+  }
+  closeTalk()
+  const unread = [...done.player.stage.unhandled.keys()]
+  status(
+    `ev${done.event} is over` +
+      (unread.length > 0 ? ` · functions not read: ${unread.sort((a, b) => a - b).join(' ')}` : ''),
+  )
+}
+
+/**
+ * The event's camera: looking at its target from its yaw, rise and run —
+ * which is the follow camera's own yaw, pitch and distance. INFERRED; see
+ * `event.ts`.
+ */
+function aimAtShot(shot: EventCamera): void {
+  if (!shot.target) return
+  camera.focus = [shot.target[0], shot.target[1], shot.target[2]]
+  camera.yaw = shot.yaw
+  camera.pitch = Math.atan2(shot.rise, shot.run)
+  camera.distance = Math.hypot(shot.rise, shot.run)
+  camera.actualDistance = camera.distance
+  camera.lift = 0
+}
+
+/** The event's characters in their own models, playing what they are told; the Hero is drawn as ever. */
+function eventPieces(): Piece[] {
+  const now = playing
+  const rom = cartridge
+  if (!now || !rom) return []
+  const stage = now.player.stage
+  return [...stage.actors].flatMap(([id, actor]) => {
+    if (id === 0 || !actor.model) return []
+    const look = actorLookOf(rom, actor.model, actor.packs)
+    if (!look) return []
+    const motion = look.motions.get(actor.motion ?? '') ?? look.motions.get('stand')
+    const frame = eventMotionFrame(stage.frame, actor.motionFrom)
+    const placement = {
+      id,
+      map: 0,
+      x: actor.x,
+      y: actor.y,
+      z: actor.z,
+      facing: actor.facing,
+      offset: 0,
+    } as NpcPlacement
+    return castPieces(
+      { name: actor.model, model: look.model, motion, floor: look.floor, placement },
+      look.catalogue,
+      characterScale,
+      frame,
+    )
+  })
+}
+
+/**
+ * The Hero's pose while an event plays: what character 0 is told, out of the
+ * Hero's packs or their own, on the event's clock at the map's rate and
+ * round again at its end.
+ */
+function heroEventPose(): { readonly motion: Animation; readonly frame: number } | undefined {
+  const now = playing
+  const rom = cartridge
+  const hero = now?.player.stage.actors.get(0)
+  if (!now || !rom || !hero?.motion || !loaded) return undefined
+  const name = hero.motion
+  const motion =
+    hero.packs.map((pack) => packMotions(rom, pack).get(name)).find((found) => found) ??
+    loaded.figure.motions.get(name)
+  if (!motion) return undefined
+  const since = eventMotionFrame(now.player.stage.frame, hero.motionFrom)
+  return { motion, frame: motion.frameCount > 0 ? since % motion.frameCount : 0 }
+}
+
+/** How far into its motion a character is, at the map's rate: event frames are sixtieths. */
+function eventMotionFrame(frame: number, from: number): number {
+  return Math.max(0, Math.floor(((frame - from) * MAP_FPS) / 60))
+}
+
 /** Draw the main menu, or a visit, or put the box away when neither is up. */
 function showMenu(): void {
   if (battle) {
@@ -2012,7 +2237,7 @@ addEventListener('keydown', (event) => {
     return
   }
   // `p` picks a fight — see `FIGHT` — and Shift+P the boss.
-  if (key === 'p' && loaded && !talking && !menu && !visit) {
+  if (key === 'p' && loaded && !talking && !menu && !visit && !playing) {
     startFight(event.shiftKey ? BOSS_FIGHT : fightCodes(), !event.shiftKey)
     event.preventDefault()
     return
@@ -2059,7 +2284,7 @@ addEventListener('keydown', (event) => {
     event.preventDefault()
     return
   }
-  if (key === 'x' && loaded && !talking) {
+  if (key === 'x' && loaded && !talking && !playing) {
     self?.held.clear()
     menu = openMenu()
     showMenu()
@@ -2185,6 +2410,8 @@ if (kept) {
     if (said) said.textContent = `A save is kept, but will not read: ${kept.error}`
   }
 }
+// Development convenience: `?new=1` starts a new game past a kept save.
+if (params.get('new') === '1') resumeEl.checked = false
 
 // Development convenience: `?rom=<url>` loads a dump over HTTP instead of
 // through the file picker. It fetches only what the URL names, so it stays

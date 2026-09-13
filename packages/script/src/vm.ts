@@ -12,7 +12,7 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * |---|---|---|---|
  * | `0x01 i s` | load | pushes variable `i` of scope `s` | read from use |
  * | `0x02 i s` | ref | pushes a reference to it, for a store or for an engine function to fill | read from use |
- * | `0x03 t v` | push | a constant: `t` 1 an integer, 2 a float's bits, 3 a string's file offset | established |
+ * | `0x03 t v` | push | a constant: `t` 1 an integer, 2 a float's bits, 3 a string's offset from the code base | established |
  * | `0x04` | pop | drops the top value | read from use |
  * | `0x05` | store | value, then reference, off the stack; stores; pushes the value back | read from use |
  * | `0x06` | add | `&0 L0 1 add store` counts up; `200 9 add` makes function 209 | read from use |

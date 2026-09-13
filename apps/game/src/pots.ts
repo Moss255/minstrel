@@ -5,17 +5,23 @@ import { type CastSprite, sheetFor } from './cast.ts'
  * Pots and barrels: treasure the engine draws as a sprite.
  *
  * Neither is part of a room's model — the rooms have nothing where they stand —
- * and their pictures are `tsubo_01` and `taru_01` in `/data/ani`, beside the
- * villagers' sheets: *tsubo* is a pot, *taru* a barrel. Each is drawn standing
- * where the treasure file places it, facing the camera, at the villagers' own
- * pixel scale.
+ * and their pictures are `tsubo_01` and `taru_01`, *tsubo* a pot and *taru* a
+ * barrel, from `/data/bin/icon.nsarc`: the sheets are in `/data/ani` too, but
+ * the field's code names them beside that archive — see game-formats'
+ * FORMAT.md, "`.spr`". Each is drawn standing where the treasure file places
+ * it, facing the camera, at the villagers' own pixel scale.
  *
  * **Opening one smashes it.** The second sheet of each, `_02`, is three frames
  * of shards flying apart, and its one animation is named for breaking —
- * `tsuboware`, `taruware` — three steps of 4. It plays once where the pot
- * stood, and then there is nothing there. A step's length is taken in the
- * DS's 60ths of a second, INFERRED from the villagers' walks, whose steps are
- * 8, and stands, 60. The third sheet, `_03`, is not drawn.
+ * `tsuboware`, `taruware`. A step's length is taken in the DS's 60ths of a
+ * second, INFERRED from the villagers' walks, whose steps are 8, and stands, 60.
+ *
+ * **When the shards go is ours.** The animations go round, as nearly all do —
+ * each step names the next — and the barrel's, after its three frames of
+ * shards, shows the first again and holds it for two seconds. What ends a
+ * smash is the engine's. So it plays once through its frames, stopping where a
+ * frame would show again, and then there is nothing there. The third sheet,
+ * `_03`, is not drawn.
  *
  * **Which kind is which is INFERRED.** Pots, barrels and cabinets share one
  * random table, `randTTT` — tsubo, taru, tansu — and the cabinet, tansu, is
@@ -90,7 +96,9 @@ export function propSprites(
 
 /**
  * Which frame of its breaking shows, this long after a prop was smashed — or
- * undefined once it is over, and the prop is gone.
+ * undefined once it is over, and the prop is gone. Over is once through its
+ * frames: the first step that would show a frame already shown ends it — see
+ * above.
  */
 export function breakingFrame(prop: Prop, elapsedMs: number): number | undefined {
   const breaking = prop.breaking
@@ -98,8 +106,11 @@ export function breakingFrame(prop: Prop, elapsedMs: number): number | undefined
     BREAKING_SHEETS.get(prop.treasure.kind)?.animation ?? '',
   )
   if (!breaking || !animation) return undefined
+  const shown = new Set<number>()
   let left = elapsedMs
   for (const step of animation.steps) {
+    if (shown.has(step.frame)) return undefined
+    shown.add(step.frame)
     left -= step.duration * STEP_MS
     if (left < 0) return step.frame
   }

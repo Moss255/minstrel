@@ -207,18 +207,18 @@ row says otherwise. "—" means not established.
 | 101 | 612 | 368 | `i` | — |
 | 102, 103, 105, 107, 112, 114, 116, 117, 119 | 3–114 | | `i`, `ii`, `iiii` | — |
 | 120, 121 | 362, 563 | 328, 444 | `i` | — |
-| 204 | 78,948 | 7 | `ir` | whether character N is still moving; polled |
-| 206 | 1,600 | 418 | `ifff` | put character N at x, y, z |
-| 207 | 1,445 | 304 | `ifffi` | walk character N to x, y, z over n frames |
-| 208 | 1,526 | 413 | `iifi`, `iiii` | set character N's rotation |
-| 209 | 1,049 | 257 | `iifiii` | turn character N over n frames |
+| 204 | 78,948 | 7 | `ir` | whether character N is still walking or turning; polled |
+| 206 | 1,600 | 418 | `ifff` | put character N at x, y, z, in the map's units — the morning puts the Hero in the bed of `M01M10` and at its side |
+| 207 | 1,445 | 304 | `ifffi` | walk character N to x, y, z over n frames, facing the way it goes — the morning's Erinn goes round the wall to the bedside |
+| 208 | 1,526 | 413 | `iifi`, `iiii` | set character N's rotation: x, y, z in radians; the y is the facing |
+| 209 | 1,049 | 257 | `iifiii` | turn character N to a rotation over n frames |
 | 210 | 3,580 | 520 | `is`, `isi` | play character N's motion by name, with flags |
-| the other 200s: 211, 214–223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 219 (`ii`, 950 calls) and 216 (`ifff`, 713) the busiest |
-| 224 | 451 | 196 | `is`, `isi` | — a second motion call |
-| 300 | 1,016 | 477 | `-` | — first in a scene; camera reset? |
+| the other 200s: 211, 214–223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 219 (`ii`, 950 calls) and 216 (`ifff`, 713) the busiest; the morning's `221 1 0 5 0` turns Erinn after she has walked, perhaps towards character 0 |
+| 224 | 451 | 196 | `is`, `isi` | — a second motion, named after a looping one: the morning's `cyotto_loop` is followed by `224 … "stand"`, so perhaps the motion to go back to |
+| 300 | 1,016 | 477 | `-` | — first in a scene, before 303 and 310; played as letting the camera go |
 | 301, 302, 304, 306, 311, 317, 321, 322, 324, 327, 328 | 3–142 | | | — the camera |
-| 303 | 892 | 366 | `fff` | camera position |
-| 310 | 895 | 366 | `fff` | camera target |
+| 303 | 892 | 366 | `fff` | where the camera looks: the morning's (2.03, 1.56, −0.87) is between the bed and Erinn's walk |
+| 310 | 895 | 366 | `fff` | where it looks from: a yaw, then how far up and how far back — the morning's `0, 7.62, 12.71` is 31° down, the pitch of the game's own field camera |
 | 400 | 23,119 | 462 | `i` | **show message n** — handed the event's own message numbers |
 | 401, 410, 411, 413, 414, 417 | 1–32 | | `-` | — |
 | 405 | 241,319 | 462 | `r` | whether the message is still up; polled |
@@ -274,8 +274,15 @@ row says otherwise. "—" means not established.
 
 ## 7. Open questions
 
-- What each engine function does, beyond the handful above — the next work is
-  the host for the ones the opening event, `ev02130`, calls (34 of them).
+- What each engine function does, beyond the handful above. The game's host,
+  `apps/game/src/event.ts`, plays the ones in the table with a reading; the
+  morning, `ev02130`, calls 21 more — 9, 101, 120, 121, 221, 509, 532, 540,
+  554, 570, 571, 589, 595, 713, 714, 720, 721, 724, 725, 727, 731 — which it
+  answers with 0 and counts. Nothing the morning shows waits on them.
+- Where the DS's camera sits for 303 and 310: the eye is read as the target
+  plus a yaw, a rise and a run, but how much of the room that shows depends on
+  a field of view not yet read.
+- What starts the morning. No trigger names it; a new game plays it.
 - The order the sections run in, and whether 300 runs after 100 or beside it.
 - `0x0E` 42–45, `0x12` and `0x19` beyond the cases seen.
 - Header words `+0x10`..`+0x37` of a routine, and `+0x18` of the file.
@@ -287,6 +294,11 @@ row says otherwise. "—" means not established.
 - `packages/game-formats/src/script.ts` — `readScript`: the file, sections,
   routines, instructions, strings. Synthetic tests in
   `packages/game-formats/test/script.test.ts`.
+- `apps/game/src/event.ts` — the game's side: `EventStage`, the engine
+  functions it reads, and `EventPlayer`, which runs a script a frame at a time.
+  `apps/game/src/actors.ts` reads the look of the characters an event names.
+  Synthetic tests in `apps/game/test/event.test.ts`; the morning on a real
+  cartridge in `apps/game/test/opening.test.ts`.
 - `packages/script/src/vm.ts` — the machine. Synthetic tests in
   `packages/script/test/vm.test.ts`, which build routines in code, labels and
   all.

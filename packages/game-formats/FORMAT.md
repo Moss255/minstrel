@@ -1479,6 +1479,16 @@ every `kind` 2 has a model and no sprite. The pots and barrels are sprites too �
 `tsubo_01` and `taru_01`, and their breaking, `tsubo_02` and `taru_02`.
 `readSprite` reads one.
 
+**The pots' and barrels' sheets are in two places, and the field's are the
+second.** All six are in `/data/ani` and again in `/data/bin/icon.nsarc`, with
+different bytes; the field's overlay, 17, names all six beside `icon.nsarc` and
+`ARC:ev_icon0.spr`, and the archive holds the other things the engine draws in
+the world — the chests, the round shadow. The two barrels' breaking differs:
+`/data/ani`'s is its three frames of shards, `icon.nsarc`'s the same three and
+then the first again, held twice for 60. Of the 24 sprite names that occur more
+than once on the cartridge, 18 differ between their copies; none is a
+villager's.
+
 ## A frame is built of parts
 
 As the DS's own hardware sprites are: rectangles 8, 16, 32 or 64 pixels on a
@@ -1537,7 +1547,7 @@ Then one record each:
 
 ```
 u32 steps
-u32 order[steps]      // 0..steps-1, rotated; meaning not established
+u32 order[steps]      // the step that follows, INFERRED — see below
 u32 duration[steps]   // 8 on a walk step, 60 on a stand, 4 on a breaking one
 u32 frame[steps]      // which frame of the sheet to show
 ```
@@ -1548,6 +1558,14 @@ the run that consumes the file exactly, names a frame that exists at every
 step, and yields as many records as there are names. A wrong start fails on the
 first record or two. A step's duration is taken in 60ths of a second, INFERRED
 from the walks' 8 and the stands' 60.
+
+**A step's `order` is the step that follows it**, INFERRED: on 2,502 of the
+cartridge's 2,510 records each step names the next and the last names the
+first, so the animation goes round. The eight that do not are one character's
+turning to talk, `n303`'s `talk_*` records, whose last step names itself —
+which would hold its last frame. So nothing in a record says when a looping
+animation stops; the breaking pots' and barrels' go round like the rest, and
+what takes the shards away is the engine's.
 
 A villager carries twelve: four walks of four steps, and eight one-frame
 stands.
@@ -1755,7 +1773,7 @@ below — none unread, on all 523.
 
 | op | reads as | evidence |
 |---|---|---|
-| `0x03 t v` | push a constant: `t` 1 an integer, 2 a float's bits, 3 a string's file offset | the only types, 153,272 pushes; floats read as coordinates, strings as names |
+| `0x03 t v` | push a constant: `t` 1 an integer, 2 a float's bits, 3 a string's offset **from the code base** | the only types, 153,272 pushes; floats read as coordinates, strings as names — see below |
 | `0x01 i s` | push variable `i` of scope `s` | |
 | `0x02 i s` | push a reference to it | what stores and engine functions that answer through an argument take |
 | `0x05` | store: value and reference off the stack, the value back on | `&0 0 store pop` |
@@ -1778,6 +1796,15 @@ below — none unread, on all 523.
 
 `0x08` appears in one shared routine that no event calls, and is not read.
 
+**A string's offset counts from the code base**, as jumps and routine calls
+do. Of the 9,273 string pushes in the 523 event scripts, 3,305 are handed
+straight to a note — Shift-JIS — and **every one of the other 5,968 lands on
+the start of a string counted from the code base**: `stand` 2,540 times,
+`walk` 685, `chara_sub/s011.chr`, `event_lv5/ev02010s016.chr`. Counted from
+the file's start, as they first were, 283 land on a string at all, by chance —
+`walk` where `stand` stands, `head` for `kiki` — and the rest read as the tail
+of a name (`tand`, `ara_sub/s011.chr`) or as nothing.
+
 **Engine functions are numbered in hundreds, and scripts write the number as a
 sum** — `200 9 add` is function 209. That `add` was first taken for a
 "begin call" marker, and 98% of invokes fitted it; reading it as the add it is,
@@ -1786,7 +1813,10 @@ touch: 200s the cast (206 places one, 207 walks one somewhere over so many
 frames, 209 turns one, 210 plays a motion by name), 300s the camera, 400s
 messages (400 shows one, 405 answers through its argument whether it is still
 up), 500s the event and the screen, 700s sound. Those readings are from the
-arguments each is handed, and INFERRED.
+arguments each is handed, and INFERRED; the fuller ones the game plays the
+morning by — 303 where the camera looks, 310 a yaw, rise and run it looks
+from, 566 and 567 a character's model and motion packs — are in
+`docs/event-scripts.md` §5.
 
 **Scopes**: 1 is a routine's own locals; 8 is the event's, shared by its
 sections — one section writes a character's position into them and another

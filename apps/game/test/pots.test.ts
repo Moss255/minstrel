@@ -68,6 +68,36 @@ describe('pots and barrels', () => {
     expect(breakingFrame(prop, 3 * step + 1)).toBeUndefined()
     expect(breakingFrame({ ...prop, breaking: undefined }, 0)).toBeUndefined()
   })
+
+  it('stop once every frame of the breaking has shown, not where the animation would go round', () => {
+    // The barrel's breaking goes on past its shards: its first frame again,
+    // held twice for a second. Played out, the shards hung in the air.
+    const animation = {
+      name: 'taruware',
+      steps: [
+        { frame: 0, duration: 4, order: 1 },
+        { frame: 1, duration: 4, order: 2 },
+        { frame: 2, duration: 4, order: 3 },
+        { frame: 0, duration: 60, order: 4 },
+        { frame: 0, duration: 60, order: 0 },
+      ],
+    }
+    const sprite = { animation: (name: string) => (name === 'taruware' ? animation : undefined) }
+    const placement = { id: 2, map: 0, x: 0, y: 0, z: 0, facing: 0, offset: 0 }
+    const barrel = {
+      name: 'taru_01',
+      sprite,
+      bytes: new Uint8Array(),
+      placement,
+      slot: 1,
+      treasure: treasure(BARREL_KIND),
+      breaking: { name: 'taru_02', sprite, bytes: new Uint8Array(), placement },
+    } as unknown as Prop
+    const step = 4000 / 60
+    expect(breakingFrame(barrel, 2 * step + 1)).toBe(2)
+    expect(breakingFrame(barrel, 3 * step + 1)).toBeUndefined()
+    expect(breakingFrame(barrel, 1500)).toBeUndefined()
+  })
 })
 
 const romPath = process.env.MINSTREL_TEST_ROM

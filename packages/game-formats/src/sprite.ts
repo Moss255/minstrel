@@ -45,7 +45,12 @@ export interface SpriteStep {
   readonly frame: number
   /** How long to hold it. `8` on a walk step, `60` on a stand. */
   readonly duration: number
-  /** First value of the record's leading run; meaning not established. */
+  /**
+   * The step that follows this one — INFERRED: on 2,502 of the cartridge's
+   * 2,510 records each step names the next and the last the first, so the
+   * animation goes round; the eight that end on themselves, a character's
+   * turning to talk, would hold their last frame.
+   */
   readonly order: number
 }
 

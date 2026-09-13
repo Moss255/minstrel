@@ -243,7 +243,7 @@ function read(
  * motion rather than once per frame, so a foot leaving the ground lifts the
  * foot instead of translating the whole body.
  */
-function floorOf(model: Model, motion: Animation | undefined): number {
+export function floorOf(model: Model, motion: Animation | undefined): number {
   let lowest = Number.POSITIVE_INFINITY
   const frames = motion ? loopFrames(motion) : 1
   for (let frame = 0; frame < frames; frame++) {

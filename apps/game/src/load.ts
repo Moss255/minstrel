@@ -52,12 +52,14 @@ import {
   readNpcPlacements,
   readNpcStates,
   readRandomTreasure,
+  readScript,
   readShops,
   readSystemStrings,
   readTableMessages,
   readTalk,
   readTreasure,
   readTriggers,
+  type Script,
   type Shop,
   type TalkLine,
   type Treasure,
@@ -150,6 +152,8 @@ export interface Loaded {
   readonly menuWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
+  /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
+  eventScript(event: number): Script | undefined
   /** The way out: where this map's doorways are and what they lead to. */
   readonly doorways: readonly MapTransition[]
   /** Which archive the map came out of, for the status line. */
@@ -859,6 +863,24 @@ function eventMessagesOf(rom: Uint8Array, event: number): EventMessage[] {
   return []
 }
 
+/** One event's script, out of its own `/data/event/ev#####.gp2`. */
+function eventScriptOf(rom: Uint8Array, event: number): Script | undefined {
+  const name = `ev${String(event).padStart(5, '0')}`
+  const { cat } = walkOnce(rom, [`/data/event/${name}.gp2`])
+  for (const [archive, files] of cat.members) {
+    if (!archive.toLowerCase().endsWith(`/${name}.gp2`)) continue
+    for (const [file, bytes] of files) {
+      if (!file.toLowerCase().endsWith('.stb')) continue
+      try {
+        return readScript(bytes)
+      } catch {
+        return undefined
+      }
+    }
+  }
+  return undefined
+}
+
 /** The stages worth stepping through in a map: where its cast's records start, and where its triggers do. */
 function stagesWith(
   stages: readonly Stage[],
@@ -1189,6 +1211,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,
     eventMessages: (event) => eventMessagesOf(rom, event),
+    eventScript: (event) => eventScriptOf(rom, event),
     catalogue: cat,
     map,
     world,

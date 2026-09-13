@@ -9,6 +9,34 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The morning plays — 13 September
+
+A new game opens on the landing upstairs in Erinn's house, `M01M10`, and plays
+`ev02130` there: the Hero asleep in bed, Erinn walking round to the bedside,
+her four lines, and the Hero set down on their feet and handed back to the
+player. `?event=N` plays any event in the map `?map=` names; `?new=1` starts a
+new game past a kept save.
+
+**The engine functions read** (`apps/game/src/event.ts`, and the table in
+`docs/event-scripts.md` §5 — every reading INFERRED): 206–210 place, walk,
+face, turn and pose a character; 204 says whether it is still moving; 566 and
+567 name its model and motion packs; 224 keeps the motion to go back to; 300,
+303 and 310 aim the camera; 400 and 405 show a message and wait on it.
+Character 0 is the Hero, posed from their own pack (`ev7700p000.chr`, `ne_lp`
+asleep). The others are drawn in their own models, with the motions of the
+packs they are handed (`actors.ts`).
+
+**Script strings count from the code base**, not the file's start: every one of
+the 5,968 string pushes that is not a note now reads as a name.
+
+**Ours, or not yet read:** the 21 functions the morning calls that are not
+read, answered with 0 (fades, sound and the event's own bookkeeping by their
+neighbours); the camera's field of view against the DS's; that a new game
+starts here at all — no trigger names the morning; and a message's speaker, as
+the text box already finds it.
+
+---
+
 ## The smaller gaps, and using an item — 13 September
 
 - **A medicinal herb heals**, from the items panel and from the battle's Items
@@ -31,8 +59,10 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 - **The monsters move**: `appear`, their attack, `damage` and `death`, once
   through and held, and a fallen one stays until its page is told. The camera
   watches the middle of the fight. Both ours.
-- **Pots and barrels smash** when opened: the `_02` sheets, three frames of
-  shards, and then nothing.
+- **Pots and barrels smash** when opened: the `_02` sheets out of
+  `icon.nsarc`, which is where the field's code names them, three frames of
+  shards, and then nothing. That copy's barrel goes back to its first frame
+  and holds it; the smash ending at the first frame shown again is ours.
 - **Sprite tiling is resolved.** A frame is built of parts; the "strip" the old
   cut dropped was the top of every villager. The live cut and its keys are gone.
 - **The font is still not found.** The NFTR fonts the code names are the Wi-Fi
@@ -132,7 +162,7 @@ What is left, by what it takes.
 
 | gap | milestone | what it needs |
 |---|---|---|
-| The opening beats, and story flags | M3, and M7's whole sequence | The script VM runs; the game supplies none of the engine functions its routines call (200s the cast, 300s the camera, 400s messages). Then which event runs when, from the triggers, and the game-wide variables (scope 64) that the talk files' paired labels (192/193 …) most likely test. The largest job left, and on the slice's critical path. |
+| The opening beats, and story flags | M3, and M7's whole sequence | The morning plays (see the top): the cast, the camera and the messages are read as far as it needs. Next, the functions other events call, which event runs when, from the triggers, and the game-wide variables (scope 64) that the talk files' paired labels (192/193 …) most likely test. The largest job left, and on the slice's critical path. |
 | Other items | M4 | The herb heals (see the top); what the rest do — MP, cures, the seeds, the chimaera wing — is named by the action byte `+0x24` and not done. |
 | The game's own font | M3 | The text box uses the browser's; the Latin glyphs are not found — see `game-formats/FORMAT.md`, the bitmap font. |
 | The Hero's starting purse and the inn's price | M4 | Both in code, not data, as far as has been looked: `STARTING_GOLD` and `INN_PRICE` stand in. |

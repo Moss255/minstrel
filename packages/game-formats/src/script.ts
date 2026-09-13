@@ -75,9 +75,11 @@ export interface Script {
   /** The routine whose header is at `base + address`: what a call names. */
   routineAt(address: number): ScriptRoutine
   /**
-   * The bytes of the NUL-terminated string at a file offset, which is what a
-   * string operand names. Left undecoded: motion and model names are ASCII,
-   * the developers' notes Shift-JIS.
+   * The bytes of the NUL-terminated string a string operand names: an offset
+   * from `base`, as jumps and calls are — every one of the 5,968 string pushes
+   * not handed to a note lands on a string's start that way, and 283 would from
+   * the file's start. Left undecoded: motion and model names are ASCII, the
+   * developers' notes Shift-JIS.
    */
   stringAt(offset: number): Uint8Array
 }
@@ -156,16 +158,13 @@ export function readScript(bytes: Uint8Array): Script {
     sections,
     routineAt: (address) => routine(base + address),
     stringAt: (offset) => {
-      if (offset < 0 || offset >= bytes.length) {
-        throw new GameFormatError(
-          `string at 0x${offset.toString(16)} is outside the script`,
-          offset,
-        )
+      const at = base + offset
+      if (offset < 0 || at >= bytes.length) {
+        throw new GameFormatError(`string at 0x${offset.toString(16)} is outside the script`, at)
       }
-      const end = bytes.indexOf(0, offset)
-      if (end < 0)
-        throw new GameFormatError(`string at 0x${offset.toString(16)} has no end`, offset)
-      return bytes.subarray(offset, end)
+      const end = bytes.indexOf(0, at)
+      if (end < 0) throw new GameFormatError(`string at 0x${offset.toString(16)} has no end`, at)
+      return bytes.subarray(at, end)
     },
   }
 }

@@ -53,7 +53,8 @@ function build(options: {
   options.sections.forEach((s, i) => {
     view.setUint32(tableStart + i * 8, s.id, true)
     view.setUint32(tableStart + i * 8 + 4, sectionAt[i] as number, true)
-    routine(sectionAt[i] as number, 0, 0, s.code(stringsAt))
+    // A string operand is an offset from the code base, as a jump's is.
+    routine(sectionAt[i] as number, 0, 0, s.code(stringsAt - base))
   })
   for (let i = 0; i < text.length; i++) out[stringsAt + i] = text.charCodeAt(i)
   options.corrupt?.(view)
