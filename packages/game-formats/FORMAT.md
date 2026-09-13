@@ -755,8 +755,12 @@ action, and the head's own last four were `(255, 255)`, the herb's.
 **The two actions.** 36 of the 234 tools name an action called what they are —
 the medicinal herb 255 in both, holy water 259 and 260, the chimaera wing 261,
 sage's elixir 410 — and 179 name 252, which has no name, as all but a few
-pieces of equipment do. The skill books name actions that are not theirs
-(Frizzle, Bang), and are not read. **Which is which, INFERRED: the field's
+pieces of equipment do. **The 23 skill books name actions that are not
+theirs**: their first numbers run 10, 21, 32, 54, 65, 76 … 285 in steps of
+eleven — Frizzle, Bang, Moreheal, the seed of magic on the Sage's Scripture —
+which is a count, not an action, and is not read. Every other tool's field
+action is called what the tool is, so the game here takes an item's field
+action only when it is. **Which is which, INFERRED: the field's
 first, battle's second.** The chimaera wing, the Evac-u-bell and the nine
 seeds, which the series uses only outside battle, have 252 second; the weapons
 and shields that do something when used in battle have 252 first and an action
@@ -870,6 +874,37 @@ The weakest step is the last: it rests on what those vocations are, not on
 anything in the files. A level-1 status screen in the emulator, for any
 vocation whose resilience and agility differ, would settle columns 2 and 3; and
 so would one for the Mage, whose might is 18 or 0.
+
+---
+
+# The spell table — `/data/prm/spelltable.bin`
+
+A loose tagged data table (above), 2,576 bytes: one `0x65` (`0`) and one
+`0x64` (`20`), as the level tables open, then 65 `0x66` records of two integers
+and 108 `0x67` of three, then the date and version the loose tables carry
+(`2010/04/09 00:18:34`, `100203`). `readSpellTable` reads it.
+
+**A `0x66` record is a place in the spell list and the action there**: 0 is
+action 9, Frizz; 1 Frizzle; 2 Kafrizz; 3 action 779; 26 Heal, action 30. The
+list runs a family at a time, each family's last member one of actions 779 to
+784. Places run 0 to 65, and 25 is missing.
+
+**A `0x67` record is a vocation learning a spell**, INFERRED: (vocation, place,
+level). The first value is 2, 3, 5, 6 and 8 to 12 — never 0, 1, 4 or 7 — and
+the third never falls within a vocation's records and never passes 99. Taken
+with the vocations numbered as the level tables are:
+
+- the Priest, 2, learns Heal at 1, Squelch at 3 and Zing at 18; the Mage, 3,
+  Frizz at 1 and Crack at 6; the Sage, 10, spells of both kinds;
+- the Warrior, the Martial Artist and the Gladiator — 1, 4 and 7 — learn
+  nothing, and they are the three whose magical might and mending are both 0
+  at level 1 (see "Level tables"). The Guardian, 0, learns nothing either;
+- **the Minstrel, 6**, whose level table the Hero is given, learns Heal at 3,
+  Crack at 8, Evac at 10, Woosh at 12, Crackle at 16, Midheal at 21, Zing at
+  24, Swoosh at 30 and Kaswoosh at 36.
+
+The Hero's vocation names itself three ways at that number: `level6`, `str_tm`
+2106 `Minstrel`, and the spell table's 6.
 
 ---
 
@@ -2240,9 +2275,17 @@ record — then the records, then the strings.
 | `+0x04`, bits 0–9 | the action's number | `actname`'s: Heal 30, Midheal 31, the medicinal herb 255, strong medicine 256; no two alike in a table |
 | `+0x08`, bits 14–21 | its range: an index into the range table beside it, 0 for none | **every one is there** — 37 in `_a`, 117 in `_b` — and every range is some action's, 17 of 17 and 107 of 107; the word is the same in all five languages |
 | `+0x34` | the plural's offset | `medicinal herbs`; a string's start on every record |
+| `+0x08`, the low byte | its cost in MP, INFERRED | Heal 2, Midheal 4, Moreheal 8, Frizz 2, Crack 3, Zam 4, Kamikazee 1; 0 on the 488 actions that are no spell — the attack, the items, the monsters' moves — and 255 on four, Magic Burst and Kerplunk among them, the spells that spend all a caster has. 128 on two, not established |
+| `+0x20`, bits 20–31 | what it says, INFERRED: a message in `actmsg`, 0 for none | 22 `wounds are healed` on Heal, Midheal and the herb; 84 `no longer poisoned` on the antidotal herb and Squelch; 32 `returns to life` on the leaf and Zing; 106 `MP are replenished` on magic water; 2 `takes <val_1> points of damage` on the attack spells; and **157 to 166 on the nine seeds and the pretty betsy**, each message naming the number it raises — `maximum HP` on the seed of life, `charm` on the pretty betsy, `skill points` on the seed of skill |
 
-The low byte of `+0x08` is 2 on Heal and 4 on Midheal, which would be their
-magic cost; not read. The rest of the record is carried.
+The byte at `+0x24` — `ActionEffect` — agrees with the message on 125 of the
+389 actions that carry both and not on the rest (the attack spells' is 5), so
+the two are kept apart. The rest of the record is carried.
+
+**The halves**: `_a` holds the healing items and the spells that do not strike
+— Heal, Midheal, Zing, Evac — and `_b` the attack spells, Crack and Woosh among
+them. The game here takes `_a`'s spells for those that can be cast outside a
+battle, INFERRED.
 
 **A range table** opens with a word holding its count, then 8-byte records:
 
@@ -2299,9 +2342,18 @@ markup the talk uses and more of it:
   healed, 9012 `it doesn<1>t seem like it<1>d be much use on <DEF_ART_TARGET>`.
 
 Neither healing message names the amount. **Which message an action says is
-not established**: an action record's `+0x0C` holds a pair of numbers — 66 on
-the herb, 11 on Heal — that are not `actmsg`'s (66 is a monster falling into a
-deeper sleep). The game here picks each by what it says.
+in its record**, INFERRED: bits 20–31 of `+0x20` — see "Actions". The battle
+here still picks its messages by what they say; the field's use of an item
+follows the record.
+
+`str_tm` also holds what using something in the field comes to: 9005 `casts
+<str_2>.`, 9006 `doesn<1>t know any non-battle spells!`, 9007 `Not enough
+MP!`, 9062 `<SGL_I_NAME> discarded.`, 9065 `The bag is currently empty.`; and
+the field menu's own words — 1 `Items`, 2 `Attributes`, 3 `Spells &
+Abilities`, 4 `Misc.`, 1200 `What would you like to do?`, 1201 `Use`, 1203
+`Discard`, 1204 `Cancel`, 1903 `Equipment`, 4351 `MP`, and the thirteen
+vocations from 2100, `Guardian` to `Ranger`, in the level tables' order.
+`/data/bin/strstd.gp2/strstd_<lang>.nat` 57 is a head banged on the ceiling.
 
 The markup's own grammar: `<DEF_ART_ACTOR>` is the actor's name behind its
 definite article; `<INDEF_ART_SGL_M_NAME>` a monster's behind its indefinite;

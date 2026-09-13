@@ -104,6 +104,14 @@ export {
 } from './script.ts'
 export { readShops, SHOP_SLOTS, SHOP_TAG, type Shop } from './shops.ts'
 export {
+  LEARNT_TAG,
+  readSpellTable,
+  SPELL_TAG,
+  type SpellLearnt,
+  type SpellTable,
+  spellsLearnt,
+} from './spells.ts'
+export {
   isSprite,
   readSprite,
   type Sprite,

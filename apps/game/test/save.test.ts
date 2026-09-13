@@ -27,6 +27,9 @@ const game: SaveGame = {
   equipped: { weapon: 20004 },
   opened: ['#21', 'M01M07/3'],
   exp: 0,
+  hp: 12,
+  mp: null,
+  gains: { maxHp: 3, skillPoints: 2 },
 }
 
 function memory(): SaveStore & { data: Map<string, string> } {
@@ -54,7 +57,10 @@ describe('saves', () => {
 
   it('are refused whole, saying why, when a field does not read', () => {
     expect(() => decodeSave('not json')).toThrow(/not JSON/)
-    expect(() => decodeSave(encodeSave({ ...game, version: 2 as 1 }))).toThrow(/version 2/)
+    expect(() => decodeSave(encodeSave({ ...game, version: 3 as 2 }))).toThrow(/version 3/)
+    expect(() => decodeSave(JSON.stringify({ ...game, hp: -1 }))).toThrow(/HP/)
+    expect(() => decodeSave(JSON.stringify({ ...game, mp: 'lots' }))).toThrow(/MP/)
+    expect(() => decodeSave(JSON.stringify({ ...game, gains: { luck: 1 } }))).toThrow(/gains/)
     expect(() => decodeSave(JSON.stringify({ ...game, map: '' }))).toThrow(/no map/)
     expect(() => decodeSave(JSON.stringify({ ...game, at: { x: 1 } }))).toThrow(/spot/)
     expect(() => decodeSave(JSON.stringify({ ...game, gold: -1 }))).toThrow(/gold/)
@@ -62,6 +68,12 @@ describe('saves', () => {
     expect(() => decodeSave(JSON.stringify({ ...game, equipped: { hat: 1 } }))).toThrow(/wears hat/)
     expect(() => decodeSave(JSON.stringify({ ...game, opened: [1] }))).toThrow(/opened/)
     expect(decodeSave(JSON.stringify({ ...game, stage: null })).stage).toBeNull()
+  })
+
+  it('read from version 1, before HP, MP and seeds were kept, with the Hero whole and unseeded', () => {
+    const { hp: _hp, mp: _mp, gains: _gains, ...older } = game
+    const back = decodeSave(JSON.stringify({ ...older, version: 1 }))
+    expect(back).toEqual({ ...game, version: SAVE_VERSION, hp: null, mp: null, gains: {} })
   })
 
   it('are kept in storage under their key, and read back, or not, or say why not', () => {

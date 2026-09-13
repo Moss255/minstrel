@@ -5,7 +5,10 @@ import { HERO_VOCATION, standing } from '../src/hero.ts'
 import {
   back,
   choose,
+  ITEM_ACTIONS,
+  labelOf,
   MENU_COMMANDS,
+  MENU_WORDS,
   type MenuContext,
   moveCursor,
   openMenu,
@@ -98,7 +101,24 @@ describe('the main menu', () => {
     if (panel?.panel !== 'items') throw new Error('no items panel')
     const next = moveCursor(panel, 1, context)
     expect(next.row).toBe(1)
-    expect(choose(next, context).use).toBe(0x55f4)
+    // An item chosen offers what can be done with it.
+    const acting = choose(next, context).state
+    if (!acting?.acting) throw new Error('no uses offered')
+    expect(acting.acting).toEqual({ item: 0x55f4, row: 1 })
+    expect(panelLines('items', context, acting).slice(-4)).toEqual([
+      'What would you like to do?',
+      '▶ Use',
+      '   Discard',
+      '   Cancel',
+    ])
+    const used = choose(acting, context)
+    expect(used.use).toBe(0x55f4)
+    expect(used.state).toMatchObject({ panel: 'items', row: 1, acting: undefined })
+    expect(choose(moveCursor(acting, 1, context), context).discard).toBe(0x55f4)
+    const cancelled = choose(moveCursor(acting, -1, context), context)
+    expect(cancelled).toMatchObject({ state: { acting: undefined, row: 1 } })
+    expect(cancelled.use ?? cancelled.discard).toBeUndefined()
+    expect(back(acting)).toMatchObject({ panel: 'items', acting: undefined, row: 1 })
     expect(panelLines('items', context, { ...next, said: ['Hero uses an antidote.'] })).toEqual([
       '0 gold coins',
       '   herb',
@@ -130,6 +150,76 @@ describe('the main menu', () => {
       hp: 12,
     })
     expect(lines[2]).toBe('HP 12/20 · MP 2/2')
+    const spent = panelLines('status', {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      standing: standing({ levels: [row], unknown: [] }, 0),
+      mp: 1,
+      words: new Map([[MENU_WORDS.mp, 'MP']]),
+    })
+    expect(spent[2]).toBe('HP 20/20 · MP 1/2')
+  })
+
+  it('names its commands and an item’s uses in the game’s words, where it has them', () => {
+    const words = new Map([
+      [MENU_WORDS.attributes, 'Attributes!'],
+      [MENU_WORDS.use, 'Use!'],
+    ])
+    expect(MENU_COMMANDS.map((c) => labelOf(c, words))).toEqual([
+      'Talk',
+      'Attributes!',
+      'Items',
+      'Equipment',
+      'Spells & Abilities',
+    ])
+    expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
+  })
+
+  it('says the bag is empty when it holds no items', () => {
+    const lines = panelLines('items', {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      bag: EMPTY_BAG,
+    })
+    expect(lines).toEqual(['0 gold coins', 'The bag is currently empty.'])
+  })
+})
+
+describe('the spells panel', () => {
+  const spells = [
+    { action: 30, name: 'Heal', cost: 2, field: true },
+    { action: 12, name: 'Crack', cost: 3, field: false },
+    { action: 31, name: 'Midheal', cost: 4, field: true },
+  ]
+  const context: MenuContext = { hero: 'Hero', map: undefined, stage: undefined, spells }
+  const spellsPanel = () => {
+    const opened = choose(moveCursor(openMenu(), 4)).state
+    if (opened?.panel !== 'spells') throw new Error('no spells panel')
+    return opened
+  }
+
+  it('lists what can be cast here as rows, and what cannot after them', () => {
+    expect(panelLines('spells', context, spellsPanel())).toEqual([
+      '▶ Heal — 2 MP',
+      '   Midheal — 4 MP',
+      '   Crack — 3 MP, in battle',
+    ])
+  })
+
+  it('casts the chosen spell, choosing only among those that can be cast here', () => {
+    const panel = spellsPanel()
+    expect(choose(panel, context).cast).toBe(30)
+    expect(choose(moveCursor(panel, 1, context), context).cast).toBe(31)
+    expect(moveCursor(panel, 2, context).row).toBe(0)
+  })
+
+  it('says when there is nothing to cast, and when the table did not read', () => {
+    const none = { ...context, spells: [], noSpells: 'Hero doesn’t know any non-battle spells!' }
+    expect(panelLines('spells', none)).toEqual(['Hero doesn’t know any non-battle spells!'])
+    expect(choose(spellsPanel(), none).cast).toBeUndefined()
+    expect(panelLines('spells', { ...context, spells: undefined })[0]).toContain('did not load')
   })
 })
 

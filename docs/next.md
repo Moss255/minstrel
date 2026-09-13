@@ -9,6 +9,44 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## M4 is as far as the cartridge goes — menus, items and spells, 13 September
+
+**The menu speaks the game's words**: `Attributes`, `Items`, `Equipment`,
+`Spells & Abilities` from the field menu's `str_tm` (Talk is ours — the game
+talks with a button); an item chosen offers `Use`, `Discard` and `Cancel`; an
+empty bag says `The bag is currently empty.`; the vocation is `str_tm` 2106,
+`Minstrel`.
+
+**Every usable item does what its action says** (`use.ts`): HP and MP restored
+by the action's range, or all of it when it has none (Fullheal, the elfin
+elixir); the seeds raise the number their own message names, `actmsg` 157 to
+166, for good; cures and revivals have nothing to do on a lone, unpoisoned
+Hero, and say so. Each result is told in the action's own message — bits 20–31
+of its record's `+0x20`, INFERRED (`game-formats/FORMAT.md`, "Actions"). The
+skill books' numbers are no actions, and are not used.
+
+**Spells** (`game-formats/FORMAT.md`, "The spell table"): `spelltable.bin`
+says who learns what at which level; the Minstrel learns Heal at 3. An action's
+MP cost is the low byte of `+0x08`, INFERRED. The spells panel lists what the
+Hero has learnt and casts the field half's — Heal, Midheal, Zing — with
+`Not enough MP!` when short.
+
+**The Hero keeps MP**, as they keep HP; the inn restores both, which it did
+not before; a level's new MP come with it; saves are version 2, keeping HP, MP
+and the seeds' gains, and still read version 1.
+
+**Ours, each said so in the code**: the chimaera wing, whose record says
+nothing — thrown outdoors (`actmsg` 363) it takes the Hero to Angel Falls, the
+slice's one village; indoors they bang their head on the ceiling (`strstd`
+57); a spell or item that would do nothing is not spent; the rise of a spell's
+amount with magical mending; Evac and holy water, whose records say nothing
+either, are not done.
+
+**Left for M4, and needing the emulator:** equipment's numbers — see "What is
+still open".
+
+---
+
 ## The morning plays — 13 September
 
 A new game opens on the landing upstairs in Erinn's house, `M01M10`, and plays
@@ -163,7 +201,7 @@ What is left, by what it takes.
 | gap | milestone | what it needs |
 |---|---|---|
 | The opening beats, and story flags | M3, and M7's whole sequence | The morning plays (see the top): the cast, the camera and the messages are read as far as it needs. Next, the functions other events call, which event runs when, from the triggers, and the game-wide variables (scope 64) that the talk files' paired labels (192/193 …) most likely test. The largest job left, and on the slice's critical path. |
-| Other items | M4 | The herb heals (see the top); what the rest do — MP, cures, the seeds, the chimaera wing — is named by the action byte `+0x24` and not done. |
+| Other items | M4 | Done (see the top), bar what no record says: the chimaera wing's destination, Evac, holy water. |
 | The game's own font | M3 | The text box uses the browser's; the Latin glyphs are not found — see `game-formats/FORMAT.md`, the bitmap font. |
 | The Hero's starting purse and the inn's price | M4 | Both in code, not data, as far as has been looked: `STARTING_GOLD` and `INN_PRICE` stand in. |
 

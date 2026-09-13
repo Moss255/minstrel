@@ -54,6 +54,7 @@ import {
   readRandomTreasure,
   readScript,
   readShops,
+  readSpellTable,
   readSystemStrings,
   readTableMessages,
   readTalk,
@@ -61,6 +62,7 @@ import {
   readTriggers,
   type Script,
   type Shop,
+  type SpellTable,
   type TalkLine,
   type Treasure,
   type Trigger,
@@ -146,10 +148,16 @@ export interface Loaded {
   readonly itemWords: ReadonlyMap<number, ItemName>
   /** What using each item does, by id — see {@link ItemUse}. */
   readonly itemUses: ReadonlyMap<number, ItemUse>
+  /** Every action, by number, as using it needs — see {@link ItemEffect}. */
+  readonly actions: ReadonlyMap<number, ItemEffect>
+  /** Who learns which spell at what level — see `readSpellTable`. Undefined when it will not read. */
+  readonly spellTable: SpellTable | undefined
   /** The battle's words in English — see `battle-scene.ts`. Empty where a file will not read. */
   readonly battleWords: BattleWords
   /** The field menu's messages in English, `str_tm`, by number. */
   readonly menuWords: ReadonlyMap<number, string>
+  /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
+  readonly standardWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
@@ -191,8 +199,14 @@ export interface ItemEffect {
   readonly name: string
   /** What the action does — see `ActionEffect`. INFERRED. */
   readonly effect: number
+  /** What it says: its message in `actmsg`, 0 for none. INFERRED. */
+  readonly message: number
+  /** Its cost in MP; 255 for all there is. INFERRED. */
+  readonly cost: number
   /** The range it draws from, when it has one: a base give or take a spread. */
   readonly range: { readonly base: number; readonly spread: number } | undefined
+  /** Whether it is in the table's first half, whose spells can be cast outside a battle. INFERRED. */
+  readonly field: boolean
 }
 
 export interface LoadOptions {
@@ -777,13 +791,17 @@ function itemWordsOf(rom: Uint8Array): Map<number, ItemName> {
   return new Map()
 }
 
+const actionsRead = new WeakMap<Uint8Array, Map<number, ItemEffect>>()
+
 /**
- * What using each item does — see {@link ItemUse}. The action table's two
- * halves are read in English, each with the range table beside it; an action
- * is looked for in the field half first, where the items' own are.
+ * Every action, by number — see {@link ItemEffect}. The action table's two
+ * halves are read in English, each with the range table beside it; the field
+ * half, `_a`, wins where both have a number, as the items' own are there.
  */
-function itemUsesOf(rom: Uint8Array): Map<number, ItemUse> {
-  const halves: { actions: Action[]; ranges: Map<number, ActionRange> }[] = []
+function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
+  const already = actionsRead.get(rom)
+  if (already) return already
+  const out = new Map<number, ItemEffect>()
   const { cat } = walkOnce(rom, ['/data/prm/actdt_'])
   for (const half of ['a', 'b']) {
     let actions: Action[] = []
@@ -799,23 +817,51 @@ function itemUsesOf(rom: Uint8Array): Map<number, ItemUse> {
         }
       }
     }
-    halves.push({ actions, ranges })
-  }
-  const effectOf = (id: number): ItemEffect | undefined => {
-    if (id === NO_ACTION) return undefined
-    for (const { actions, ranges } of halves) {
-      const action = actions.find((a) => a.id === id)
-      if (!action) continue
+    for (const action of actions) {
+      if (out.has(action.id)) continue
       const range = action.range ? ranges.get(action.range) : undefined
-      return {
-        action: id,
+      out.set(action.id, {
+        action: action.id,
         name: action.name,
         effect: action.effect,
+        message: action.message,
+        cost: action.cost,
         range: range && { base: range.base, spread: range.spread },
-      }
+        field: half === 'a',
+      })
     }
-    return undefined
   }
+  actionsRead.set(rom, out)
+  return out
+}
+
+/** The spell table: a loose file beside the level tables. */
+const SPELL_TABLE = '/data/prm/spelltable.bin'
+
+function spellTableOf(rom: Uint8Array): SpellTable | undefined {
+  for (const leaf of scanCartridge(rom, { pathFilter: SPELL_TABLE })) {
+    if (leaf.path !== SPELL_TABLE) continue
+    try {
+      return readSpellTable(leaf.bytes)
+    } catch {
+      // A table that will not read leaves the Hero without spells.
+    }
+  }
+  return undefined
+}
+
+/**
+ * What using each item does — see {@link ItemUse}: the two actions its item
+ * table names. **A field action counts only when it is called what the item
+ * is**: the skill books' first numbers run 10, 21, 32 … in steps of eleven and
+ * land on Frizzle, Bang and Moreheal, which is no use of theirs; every other
+ * tool's is its own. See game-formats' FORMAT.md, "Items".
+ */
+function itemUsesOf(rom: Uint8Array): Map<number, ItemUse> {
+  const actions = actionsOf(rom)
+  const names = itemWordsOf(rom)
+  const effectOf = (id: number): ItemEffect | undefined =>
+    id === NO_ACTION ? undefined : actions.get(id)
   const uses = new Map<number, ItemUse>()
   const tables = walkOnce(rom, ['/data/prm/itemdt_']).cat
   for (const [, files] of tables.members) {
@@ -824,7 +870,11 @@ function itemUsesOf(rom: Uint8Array): Map<number, ItemUse> {
       try {
         for (const item of readItemTable(bytes)) {
           const [field, battle] = item.actions
-          const use = { field: effectOf(field), battle: effectOf(battle) }
+          const own = effectOf(field)
+          const use = {
+            field: own && own.name === names.get(item.id)?.singular ? own : undefined,
+            battle: effectOf(battle),
+          }
           if (use.field || use.battle) uses.set(item.id, use)
         }
       } catch {
@@ -1195,8 +1245,11 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     goods: goodsOf(rom),
     itemWords: itemWordsOf(rom),
     itemUses: itemUsesOf(rom),
+    actions: actionsOf(rom),
+    spellTable: spellTableOf(rom),
     battleWords: battleWordsOf(rom),
     menuWords: englishText(rom, '/data/bin/menu/str_tm.gp2', 'str_tm_en.nat', readSystemStrings),
+    standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

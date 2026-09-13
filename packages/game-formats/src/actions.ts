@@ -18,7 +18,9 @@ import { GameFormatError } from './errors.ts'
  * |---|---|---|
  * | `+0x00` | `u32` | the name's offset from the strings, on every record |
  * | `+0x04` | bits 0–9 | the action's number, the one `actname.nat` names it by — Heal 30, the medicinal herb 255; no two alike in a table |
+ * | `+0x08` | `u8` | its cost in MP, INFERRED: Heal 2, Midheal 4, Frizz 2, Crack 3; 0 on the 488 actions that are no spell, and 255 on the four that take all a caster's MP — Magic Burst and Kerplunk among them |
  * | `+0x08` | bits 14–21 | its range, an index into the range table beside it, or 0 for none — **every one is there**, 37 in `_a` and 117 in `_b`, and every range is some action's |
+ * | `+0x20` | bits 20–31 | what it says, INFERRED: a message in `actmsg` — 22 "wounds are healed" on Heal and the herb, 84 "no longer poisoned" on the antidotal herb and Squelch, 32 "returns to life" on the leaf and Zing, 2 "takes damage" on the attack spells, and 157 to 166 on the seeds, each naming the number it raises; 0 for none |
  * | `+0x24` | `u8` | what it does, INFERRED — see {@link ActionEffect} |
  * | `+0x34` | `u32` | the plural's offset — `medicinal herbs` |
  *
@@ -76,6 +78,10 @@ export interface Action {
   readonly range: number
   /** What it does — see {@link ActionEffect}. INFERRED. */
   readonly effect: number
+  /** Its cost in MP: 0 for none, 255 for all there is. INFERRED. */
+  readonly cost: number
+  /** What it says: its message's number in `actmsg`, 0 for none. INFERRED. */
+  readonly message: number
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -127,6 +133,8 @@ export function readActions(bytes: Uint8Array): Action[] {
       plural: text(view.getUint32(at + 0x34, true), at + 0x34),
       range: (view.getUint32(at + 8, true) >>> 14) & 0xff,
       effect: bytes[at + 0x24] as number,
+      cost: bytes[at + 8] as number,
+      message: view.getUint32(at + 0x20, true) >>> 20,
       raw: bytes.subarray(at, at + ACTION_RECORD),
     })
   }

@@ -1,5 +1,6 @@
 import type { Bag } from './bag.ts'
 import { type Equipped, SLOTS, type Slot } from './equipment.ts'
+import { GAIN_STATS, type GainStat } from './hero.ts'
 
 /**
  * Saving and loading, in our own format: JSON, in the browser's own storage,
@@ -7,13 +8,15 @@ import { type Equipped, SLOTS, type Slot } from './equipment.ts'
  * compatibility with it is outside the slice.
  *
  * What is kept: where the Hero stands (a map and a spot in the file's own
- * units), the story stage, the bag, what is worn, which treasure is open, and
- * the Hero's experience. Anything a later version adds takes a new
- * {@link SAVE_VERSION}; a save that does not read is refused whole, and says why.
+ * units), the story stage, the bag, what is worn, which treasure is open, the
+ * Hero's experience, their HP and MP, and what seeds have added. Anything a
+ * later version adds takes a new {@link SAVE_VERSION}; a version-1 save, from
+ * before HP, MP and seeds were kept, reads with the Hero whole and unseeded. A
+ * save that does not read is refused whole, and says why.
  */
 
 export const SAVE_KEY = 'minstrel.save'
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 export interface SaveGame {
   readonly version: typeof SAVE_VERSION
@@ -35,6 +38,11 @@ export interface SaveGame {
   /** The opened treasure, by `treasureKey`. */
   readonly opened: readonly string[]
   readonly exp: number
+  /** The Hero's HP and MP; null when whole. */
+  readonly hp: number | null
+  readonly mp: number | null
+  /** What seeds have added — see `Gains`. */
+  readonly gains: Readonly<Partial<Record<GainStat, number>>>
 }
 
 export class SaveError extends Error {
@@ -78,8 +86,23 @@ export function decodeSave(text: string): SaveGame {
   }
   if (typeof raw !== 'object' || raw === null) throw new SaveError('the save is not an object')
   const s = raw as Record<string, unknown>
-  if (s.version !== SAVE_VERSION) {
+  if (s.version !== SAVE_VERSION && s.version !== 1) {
     throw new SaveError(`the save is version ${String(s.version)}, not ${SAVE_VERSION}`)
+  }
+  // Version 1 kept no HP, MP or seeds: the Hero comes back whole and unseeded.
+  const first = s.version === 1
+  const hp = first ? null : s.hp
+  const mp = first ? null : s.mp
+  if (hp !== null && !isCount(hp)) throw new SaveError('the save has HP that do not read')
+  if (mp !== null && !isCount(mp)) throw new SaveError('the save has MP that do not read')
+  const gains = (first ? {} : s.gains) as Record<string, unknown> | undefined
+  const stats = new Set<string>(GAIN_STATS)
+  if (
+    typeof gains !== 'object' ||
+    gains === null ||
+    !Object.entries(gains).every(([stat, n]) => stats.has(stat) && isCount(n))
+  ) {
+    throw new SaveError('the save has seeds’ gains that do not read')
   }
   if (typeof s.savedAt !== 'string') throw new SaveError('the save has no date')
   if (typeof s.map !== 'string' || s.map === '') throw new SaveError('the save names no map')
@@ -113,7 +136,7 @@ export function decodeSave(text: string): SaveGame {
     throw new SaveError('the save has an opened-treasure list that does not read')
   }
   if (!isCount(s.exp)) throw new SaveError('the save has no experience count')
-  return s as unknown as SaveGame
+  return { ...(s as unknown as SaveGame), version: SAVE_VERSION, hp, mp, gains } as SaveGame
 }
 
 /** The storage a save lives in, where the browser allows one. */

@@ -4,7 +4,15 @@ import { GameFormatError } from '../src/errors.ts'
 
 /** An action table built in code, from `FORMAT.md`: the head word, 60-byte records, then the strings. */
 function actions(
-  records: { id: number; name: string; plural: string; range?: number; effect?: number }[],
+  records: {
+    id: number
+    name: string
+    plural: string
+    range?: number
+    effect?: number
+    cost?: number
+    message?: number
+  }[],
 ) {
   const strings: number[] = []
   const offset = (text: string) => {
@@ -16,12 +24,17 @@ function actions(
   const head = 4 + records.length * 60
   const out = new Uint8Array(head + 200)
   const view = new DataView(out.buffer)
-  for (const [r, { id, name, plural, range = 0, effect = 0 }] of records.entries()) {
+  for (const [
+    r,
+    { id, name, plural, range = 0, effect = 0, cost = 0, message = 0 },
+  ] of records.entries()) {
     const at = 4 + r * 60
     view.setUint32(at, offset(name), true)
     // The number's upper bits are other things; they must not leak into it.
     view.setUint32(at + 4, (0xf9c32000 | id) >>> 0, true)
-    view.setUint32(at + 8, ((0x08 << 24) | (range << 14) | 0x0e02) >>> 0, true)
+    view.setUint32(at + 8, ((0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0, true)
+    // The message's lower neighbours likewise.
+    view.setUint32(at + 0x20, ((message << 20) | 0x6b82e) >>> 0, true)
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
     view.setUint32(at + 0x34, offset(plural), true)
   }
@@ -66,6 +79,19 @@ describe('the action table', () => {
     expect(herb).toMatchObject({ id: 255, name: 'medicinal herb', plural: 'medicinal herbs' })
     expect(herb?.range).toBe(0x31)
     expect(herb?.raw).toHaveLength(60)
+  })
+
+  it('reads what an action costs and what it says', () => {
+    const [heal, burst, seed] = readActions(
+      actions([
+        { id: 30, name: 'Heal', plural: '', cost: 2, message: 22 },
+        { id: 28, name: 'Magic Burst', plural: '', cost: 255, message: 2 },
+        { id: 262, name: 'seed of life', plural: '', message: 157 },
+      ]),
+    )
+    expect(heal).toMatchObject({ cost: 2, message: 22 })
+    expect(burst).toMatchObject({ cost: 255, message: 2 })
+    expect(seed).toMatchObject({ cost: 0, message: 157 })
   })
 
   it('refuses a head word that does not describe the file, or an offset mid-string', () => {

@@ -1,7 +1,13 @@
 import { figureScale, Measurements } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
-import { ActionEffect, type NpcPlacement, type Treasure } from '@minstrel/game-formats'
+import {
+  ActionEffect,
+  type LevelRow,
+  type NpcPlacement,
+  spellsLearnt,
+  type Treasure,
+} from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
   type Animation,
@@ -31,7 +37,6 @@ import {
   type CollisionWorld,
   calmFor,
   createCollisionWorld,
-  drawnAmount,
   type Fighter,
   groundBelow,
   headingAngle,
@@ -83,14 +88,23 @@ import { doorGate, doorTaken } from './doors.ts'
 import { type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
 import { type EventCamera, EventPlayer } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
-import { STARTING_GOLD, standing } from './hero.ts'
+import {
+  type Gains,
+  gain,
+  HERO_VOCATION_NUMBER,
+  STARTING_GOLD,
+  standing,
+  VOCATION_WORDS,
+} from './hero.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
 import {
   back,
   choose,
+  labelOf,
   MENU_COMMANDS,
   MENU_SAYS,
   type MenuContext,
+  type MenuSpell,
   type MenuState,
   moveCursor,
   openMenu,
@@ -159,6 +173,7 @@ import {
   treasureTargets,
   treasureText,
 } from './treasure.ts'
+import { castOn, type Outcome, useOn, type Vitals } from './use.ts'
 
 /**
  * Walk a village read from the player's own cartridge.
@@ -337,6 +352,10 @@ let playing:
 const BATTLE_MOST = 5
 /** The Hero's hit points between battles; undefined is full. */
 let heroHp: number | undefined
+/** The Hero's MP now; undefined is full. */
+let heroMp: number | undefined
+/** What seeds have added to the Hero's numbers, for good — see `hero.ts`. */
+let heroGains: Gains = {}
 /** Battles fought this session, which seeds the next one's numbers. */
 let battlesFought = 0
 /**
@@ -509,6 +528,9 @@ function restore(game: SaveGame): void {
   bag = bagOf(game)
   equipped = equippedOf(game)
   heroExp = game.exp
+  heroHp = game.hp ?? undefined
+  heroMp = game.mp ?? undefined
+  heroGains = { ...game.gains }
   openedTreasure.clear()
   for (const key of game.opened) openedTreasure.add(key)
 }
@@ -533,6 +555,9 @@ function confess(): string {
     equipped: equippedRecord(equipped),
     opened: [...openedTreasure],
     exp: heroExp,
+    hp: heroHp ?? null,
+    mp: heroMp ?? null,
+    gains: heroGains,
   }
   return writeSave(storage(), game)
     ? 'Your progress is recorded.'
@@ -1395,16 +1420,26 @@ function nameOf(id: number): string {
 /** What the menu's panels are told. */
 function menuContext(): MenuContext {
   const levels = loaded?.heroLevels
+  const words = loaded?.menuWords
+  const now = levels ? standing(levels, heroExp, heroGains) : undefined
   return {
     hero: DEFAULT_CONTEXT.heroName,
     map: loaded?.code,
     stage: storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined,
-    standing: levels ? standing(levels, heroExp) : undefined,
+    // The vocation in the menu's own words — `str_tm` 2106, the Minstrel.
+    standing: now && {
+      ...now,
+      vocation: words?.get(VOCATION_WORDS + HERO_VOCATION_NUMBER) ?? now.vocation,
+    },
     hp: heroHp,
+    mp: heroMp,
     bag,
     equipped,
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
+    spells: heroSpells(),
+    noSpells: menuSay(MENU_SAYS.noFieldSpells, { actor: heroNamed() }),
+    words,
   }
 }
 
@@ -1438,40 +1473,168 @@ function battleItems(): BattleItem[] {
   return items
 }
 
-/** The numbers using an item outside battle draws from: seeded, as a battle's are. */
+/** The numbers using an item or casting a spell outside battle draws from: seeded, as a battle's are. */
 const fieldRng = new BattleRng(0x6d656e75n)
 
 /**
- * Use an item from the items panel and say what came of it. One that restores
- * HP heals the Hero by its range — the medicinal herb's 35 ± 5 — and is used
- * up; at full HP it is kept, as nothing would come of it. **What any other item
- * does is not done yet.**
+ * The chimaera wing's action, as its item table names it. Its record says
+ * nothing of what it does — no effect, no range, no message — so what it does
+ * here is ours: thrown outdoors, in `actmsg` 363's words, it takes the Hero to
+ * {@link WING_TOWN}, the slice's one village, where a map's own spawn stands
+ * them; indoors the Hero bangs their head on the ceiling, `strstd` 57, and the
+ * wing is kept.
+ */
+const WING_ACTION = 261
+const WING_TOWN = 'M01'
+const WING_THROWN = 363
+const CEILING = 57
+
+/** The Hero's numbers now: their level's, with what seeds have added. */
+function heroRow(): LevelRow | undefined {
+  const levels = loaded?.heroLevels
+  return levels ? standing(levels, heroExp, heroGains).level : undefined
+}
+
+function heroVitals(row: LevelRow): Vitals {
+  return {
+    hp: Math.min(heroHp ?? row.maxHp, row.maxHp),
+    maxHp: row.maxHp,
+    mp: Math.min(heroMp ?? row.maxMp, row.maxMp),
+    maxMp: row.maxMp,
+  }
+}
+
+/** One of a file's messages, told for who and what; undefined when the file has none by that number. */
+function told(words: ReadonlyMap<number, string> | undefined, number: number, telling: Telling) {
+  const template = words?.get(number)
+  const articles = loaded?.battleWords.articles
+  return template === undefined || !articles
+    ? undefined
+    : tellBattle(template, telling, articles).text
+}
+
+/** A field menu message, `str_tm`. */
+const menuSay = (number: number, telling: Telling) => told(loaded?.menuWords, number, telling)
+/** An action's message, `actmsg`. */
+const actionSay = (number: number, telling: Telling) =>
+  told(loaded?.battleWords.actions, number, telling)
+
+/** Put what came of something used on the Hero into their numbers, and say it in the action's words. */
+function settle(outcome: Outcome, row: LevelRow): string {
+  const hero = heroNamed()
+  switch (outcome.kind) {
+    case 'hp':
+      heroHp = outcome.hp >= row.maxHp ? undefined : outcome.hp
+      return (
+        actionSay(outcome.message, { target: hero }) ??
+        menuSay(MENU_SAYS.healed, { target: hero }) ??
+        `${hero.name} recovers ${outcome.amount} HP.`
+      )
+    case 'mp':
+      heroMp = outcome.mp >= row.maxMp ? undefined : outcome.mp
+      return (
+        actionSay(outcome.message, { target: hero }) ??
+        `${hero.name} recovers ${outcome.amount} MP.`
+      )
+    case 'gain':
+      heroGains = gain(heroGains, outcome.stat, outcome.amount)
+      return (
+        actionSay(outcome.message, { target: hero, values: { val_1: outcome.amount } }) ??
+        `${hero.name}'s ${outcome.stat} rises by ${outcome.amount}.`
+      )
+    case 'noUse':
+      return menuSay(MENU_SAYS.noUse, { target: hero }) ?? `It would be no use on ${hero.name} now.`
+    case 'unknown':
+      return 'What it does is not read yet.'
+  }
+}
+
+/**
+ * Use an item from the items panel and say what came of it — see `use.ts`.
+ * What would do nothing now is kept; what has no use outside battle does
+ * nothing, and is kept; what does something is used up. The chimaera wing is
+ * {@link WING_ACTION}'s.
  */
 function useInField(id: number): string[] {
   const here = loaded
-  const levels = here?.heroLevels
-  if (!here || !levels) return ['The level table did not load, so nothing can be used.']
-  const max = standing(levels, heroExp).level.maxHp
-  const use = here.itemUses.get(id)?.field
+  const row = heroRow()
+  if (!here || !row) return ['The level table did not load, so nothing can be used.']
   const hero = heroNamed()
-  const say = (number: number, telling: Telling) => {
-    const template = here.menuWords.get(number)
-    return template === undefined
-      ? undefined
-      : tellBattle(template, telling, here.battleWords.articles).text
+  const use = here.itemUses.get(id)?.field
+  const uses =
+    menuSay(MENU_SAYS.uses, { actor: hero, item: itemNamed(id) }) ??
+    `${hero.name} uses ${nameOf(id)}.`
+  if (use?.action === WING_ACTION) return flyHome(id)
+  if (!use) return [uses, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
+  const outcome = useOn(use, heroVitals(row), fieldRng)
+  if (outcome.kind === 'unknown') return [`What ${nameOf(id)} does is not read yet; it is kept.`]
+  if (outcome.kind !== 'noUse') bag = drop(bag, id) ?? bag
+  return [uses, settle(outcome, row)]
+}
+
+/** A chimaera wing, thrown — see {@link WING_ACTION}. Outdoors it closes the menu and flies. */
+function flyHome(id: number): string[] {
+  const hero = heroNamed()
+  if (self?.inside) {
+    return [
+      told(loaded?.standardWords, CEILING, { actor: hero }) ??
+        `${hero.name} bangs his head on the ceiling!`,
+    ]
   }
-  if (!use || use.effect !== ActionEffect.RestoresHp || !use.range) {
-    return [`Using ${nameOf(id)} is not done yet: only what restores HP is.`]
-  }
-  const hp = Math.min(heroHp ?? max, max)
-  if (hp >= max) return [say(MENU_SAYS.noUse, { target: hero }) ?? `${hero.name} is not hurt.`]
-  const now = Math.min(max, hp + drawnAmount(fieldRng, use.range.base, use.range.spread))
-  heroHp = now >= max ? undefined : now
+  const thrown =
+    actionSay(WING_THROWN, { actor: hero, item: itemNamed(id) }) ??
+    `${hero.name} throws the chimaera wing high into the air!`
   bag = drop(bag, id) ?? bag
-  return [
-    say(MENU_SAYS.uses, { actor: hero, item: itemNamed(id) }) ?? `${hero.name} uses ${nameOf(id)}.`,
-    say(MENU_SAYS.healed, { target: hero }) ?? `${hero.name} recovers ${now - hp} HP.`,
-  ]
+  menu = undefined
+  showMenu()
+  if (enter(WING_TOWN)) status(thrown)
+  return [thrown]
+}
+
+/** Throw one of an item away, and say so. */
+function discardInField(id: number): string[] {
+  bag = drop(bag, id) ?? bag
+  return [menuSay(MENU_SAYS.discarded, { item: itemNamed(id) }) ?? `${nameOf(id)} discarded.`]
+}
+
+/** Cast a spell on the Hero from the spells panel, and say what came of it — see `castOn`. */
+function castInField(action: number): string[] {
+  const row = heroRow()
+  const spell = loaded?.actions.get(action)
+  if (!row || !spell) return ['That spell is not read.']
+  const hero = heroNamed()
+  const cast = castOn(spell, heroVitals(row), fieldRng)
+  if (cast.outcome.kind === 'notEnoughMp') {
+    return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
+  }
+  if (cast.outcome.kind === 'unknown') {
+    return [`What ${spell.name} does outside a battle is not read yet.`]
+  }
+  heroMp = cast.mp >= row.maxMp ? undefined : cast.mp
+  const casts =
+    menuSay(MENU_SAYS.casts, { actor: hero, values: { str_2: spell.name } }) ??
+    `${hero.name} casts ${spell.name}.`
+  return [casts, settle(cast.outcome, row)]
+}
+
+/** The spells the Hero has learnt by their level, with what each costs and whether it is cast here. */
+function heroSpells(): MenuSpell[] | undefined {
+  const here = loaded
+  const table = here?.spellTable
+  const row = heroRow()
+  if (!here || !table || !row) return undefined
+  return spellsLearnt(table, HERO_VOCATION_NUMBER, row.level).flatMap((spell) => {
+    const action = here.actions.get(spell.action)
+    return action
+      ? [{ action: spell.action, name: action.name, cost: action.cost, field: action.field }]
+      : []
+  })
+}
+
+/** The items panel's row, kept inside a bag that has lost an item. */
+function keptInBag(state: MenuState): MenuState {
+  if (state.panel !== 'items' || state.acting) return state
+  return { ...state, row: Math.max(0, Math.min(state.row, bag.items.size - 1)) }
 }
 
 /** What a shop, the inn or the church is told about the items and the Hero. */
@@ -1626,7 +1789,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     status('the level table did not load, so the Hero has no numbers to fight with')
     return
   }
-  const row = standing(levels, heroExp).level
+  const row = standing(levels, heroExp, heroGains).level
   const foes: Fighter[] = []
   const names: Named[] = []
   const looks: (MonsterLook | undefined)[] = []
@@ -1825,11 +1988,13 @@ function settleBattle(): void {
   const lines: string[] = []
   if (battle.state.outcome === 'won' && hero && levels) {
     const { exp, gold } = spoils(battle.state)
-    const before = standing(levels, heroExp).level
+    const before = standing(levels, heroExp, heroGains).level
     heroExp += exp
     bag = take(bag, { gold })
-    const after = standing(levels, heroExp).level
+    const after = standing(levels, heroExp, heroGains).level
     heroHp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
+    // MP spent stays spent, but a level's new MP come with it.
+    if (heroMp !== undefined) heroMp = Math.min(after.maxMp, heroMp + (after.maxMp - before.maxMp))
     const earned = said(RESULT_SAYS.earns, { values: { str_1: name, val_1: exp } })
     const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), values: { val_1: gold } })
     lines.push(
@@ -1853,6 +2018,7 @@ function settleBattle(): void {
     }
   } else if (battle.state.outcome === 'lost') {
     heroHp = undefined
+    heroMp = undefined
     bag = pay(bag, Math.floor(bag.gold / 2)) ?? bag
     lines.push(`${name} comes round, restored — but half the gold is gone.`)
   } else if (hero) {
@@ -2060,7 +2226,7 @@ function showMenu(): void {
   commands.className = 'commands'
   for (const [index, command] of MENU_COMMANDS.entries()) {
     const item = document.createElement('div')
-    item.textContent = command.label
+    item.textContent = labelOf(command, loaded?.menuWords)
     if (index === menu.cursor) item.className = 'chosen'
     commands.append(item)
   }
@@ -2251,6 +2417,11 @@ addEventListener('keydown', (event) => {
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
+      // A night at the inn restores the Hero whole.
+      if (outcome.rested) {
+        heroHp = undefined
+        heroMp = undefined
+      }
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
     } else if (key === 'x' || key === 'escape') visit = leaveVisit(visit)
     showMenu()
@@ -2265,7 +2436,17 @@ addEventListener('keydown', (event) => {
     else if (key === 'f' || key === 'enter') {
       const taken = choose(menu, menuContext())
       menu = taken.state
-      if (taken.use !== undefined && menu) menu = { ...menu, said: useInField(taken.use) }
+      // What came of it is said under the panel — unless it closed the menu,
+      // as a chimaera wing thrown outdoors does.
+      const said =
+        taken.use !== undefined
+          ? useInField(taken.use)
+          : taken.discard !== undefined
+            ? discardInField(taken.discard)
+            : taken.cast !== undefined
+              ? castInField(taken.cast)
+              : undefined
+      if (said && menu) menu = { ...keptInBag(menu), said }
       if (taken.equip) {
         const worn = equip(bag, equipped, taken.equip.slot, taken.equip.item)
         if (worn) {
