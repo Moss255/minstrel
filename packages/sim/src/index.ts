@@ -33,3 +33,14 @@ export {
   wallBetween,
 } from './collision.ts'
 export { SimError } from './errors.ts'
+export {
+  calmFor,
+  HEADINGS,
+  headingAngle,
+  type Roamer,
+  type RoamerKind,
+  type Roaming,
+  type RoamRules,
+  startRoaming,
+  tickRoaming,
+} from './field/roaming.ts'
