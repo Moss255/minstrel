@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   type BattleState,
+  type Changing,
   type Command,
   DEFAULT_RULES,
   type Fighter,
@@ -219,6 +220,81 @@ describe('a foe', () => {
     const cast = events.find((e) => e.kind === 'spell')
     expect(cast).toMatchObject({ actor: 1, short: false, hits: [{ target: 0 }] })
     expect(state.fighters[1]?.mp).toBe(2)
+  })
+})
+
+describe('a change of state', () => {
+  const tough = { ...hero, maxHp: 999 }
+  const wait = new Map<number, Command>([[0, { kind: 'defend' }]])
+  const only = (way: number) => ({
+    ...DEFAULT_RULES,
+    choice: [0, 1, 2, 3, 4, 5].map((i) => (i === way ? 256 : 0)),
+  })
+  const kasap: Changing = {
+    action: 44,
+    cost: 0,
+    change: { kind: 'defence', by: -1, chance: 100 },
+    reach: 'group',
+    side: 'other',
+  }
+  const sweetBreath: Changing = {
+    action: 228,
+    cost: 0,
+    change: { kind: 'sleep', chance: 100 },
+    reach: 'all',
+    side: 'other',
+  }
+
+  it('lowers the Hero’s defence a level, for its turns', () => {
+    const beakon = { ...blob('beakon', 99), acts: [{ kind: 'change', changing: kasap }] as const }
+    const { state, events } = playRound(
+      startBattle([tough, beakon]),
+      wait,
+      new BattleRng(1n),
+      only(0),
+    )
+    expect(events.find((e) => e.kind === 'change')).toMatchObject({
+      actor: 1,
+      change: 'defence',
+      hits: [{ target: 0, result: 'lowered' }],
+    })
+    // Seven turns, less the Hero's own this round.
+    expect(state.fighters[0]?.states.defence).toEqual({ level: -1, turns: 6 })
+  })
+
+  it('puts the Hero to sleep, so they lose their turns until they wake', () => {
+    const breather = {
+      ...blob('mushroom', 999, 0),
+      acts: [{ kind: 'change', changing: sweetBreath }] as const,
+    }
+    const rng = new BattleRng(4n)
+    let now = startBattle([tough, breather])
+    const events = []
+    for (let round = 0; round < 10; round++) {
+      const played = playRound(now, wait, rng, only(0))
+      now = played.state
+      events.push(...played.events)
+    }
+    expect(events).toContainEqual({ kind: 'asleep', actor: 0 })
+    expect(events).toContainEqual({ kind: 'woke', actor: 0 })
+    expect(
+      events.some((e) => e.kind === 'change' && e.hits.some((hit) => hit.result === 'already')),
+    ).toBe(true)
+  })
+
+  it('poisons with a poison attack, and the poison takes a sixteenth at each round’s end', () => {
+    const toad = { ...blob('toad', 99, 1), acts: [{ kind: 'attack', poison: 100 }] as const }
+    const { state, events } = playRound(
+      startBattle([tough, toad]),
+      wait,
+      new BattleRng(2n),
+      only(0),
+    )
+    const blow = events.find((e) => e.kind === 'attack' && e.actor === 1)
+    if (blow?.kind !== 'attack' || blow.dodged || blow.blocked) throw new Error('the blow missed')
+    expect(blow.poisoned).toBe(true)
+    expect(state.fighters[0]?.states.poisoned).toBe(true)
+    expect(events).toContainEqual({ kind: 'poison', actor: 0, damage: 62 })
   })
 })
 

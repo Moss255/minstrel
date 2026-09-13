@@ -3,6 +3,8 @@ import {
   type BattleEvent,
   BattleRng,
   type BattleState,
+  type ChangeResult,
+  type Changing,
   type Command,
   type Fighter,
   type FoeAction,
@@ -98,7 +100,67 @@ export const ACTION_SAYS = {
   /** A spell's critical: it goes haywire. */
   haywire: 141,
   notEnoughMp: 153,
+  /** Changes of state. */
+  unaffected: 27,
+  defenceUp: 60,
+  defenceDown: 61,
+  defenceNormal: 62,
+  poisoned: 63,
+  fallsAsleep: 65,
+  alreadyAsleep: 67,
+  isAsleep: 68,
+  agilityUp: 78,
+  agilityDown: 79,
+  agilityNormal: 80,
+  alreadyPoisoned: 82,
+  wakes: 116,
 } as const
+
+type ChangeKind = Extract<BattleEvent, { kind: 'change' }>['change']
+
+/** What a change's result says in `actmsg`, by what it changes. */
+function changeSays(kind: ChangeKind, result: ChangeResult): number {
+  switch (result) {
+    case 'asleep':
+      return ACTION_SAYS.fallsAsleep
+    case 'poisoned':
+      return ACTION_SAYS.poisoned
+    case 'raised':
+      return kind === 'agility' ? ACTION_SAYS.agilityUp : ACTION_SAYS.defenceUp
+    case 'lowered':
+      return kind === 'agility' ? ACTION_SAYS.agilityDown : ACTION_SAYS.defenceDown
+    case 'already':
+      return kind === 'sleep'
+        ? ACTION_SAYS.alreadyAsleep
+        : kind === 'poison'
+          ? ACTION_SAYS.alreadyPoisoned
+          : ACTION_SAYS.unaffected
+    case 'resisted':
+      return ACTION_SAYS.unaffected
+  }
+}
+
+/** The same, in ours. */
+function changeOurs(kind: ChangeKind, result: ChangeResult, whom: string): string {
+  switch (result) {
+    case 'asleep':
+      return `${whom} falls asleep.`
+    case 'poisoned':
+      return `${whom} is poisoned.`
+    case 'raised':
+      return `${whom}'s ${kind} rises.`
+    case 'lowered':
+      return `${whom}'s ${kind} falls.`
+    case 'already':
+      return kind === 'sleep'
+        ? `${whom} is already asleep.`
+        : kind === 'poison'
+          ? `${whom} is already poisoned.`
+          : `${whom} is not affected.`
+    case 'resisted':
+      return `${whom} is not affected.`
+  }
+}
 
 /** `str_bres`'s messages, by what they say. */
 export const RESULT_SAYS = {
@@ -121,8 +183,12 @@ export interface BattleItem {
  * name, and the message its record says for each one it reaches — `actmsg` 2,
  * taking damage, or 22, healed.
  */
-export interface BattleSpell {
+export interface BattleSpell extends Told {
   readonly spell: Spell
+}
+
+/** How an action is told: its name, its message, and how it opens. */
+export interface Told {
   readonly name: Named
   readonly message: number
   /**
@@ -132,6 +198,10 @@ export interface BattleSpell {
    */
   readonly opening?: 'cast' | 'use' | 'none'
 }
+
+/** Whether a telling is a spell's, which says what it does. */
+const isSpell = (told: Told | undefined): told is BattleSpell =>
+  told !== undefined && 'spell' in told
 
 /** An action, as far as a battle casts it — see `ItemEffect` in `load.ts`. */
 export interface Castable {
@@ -196,21 +266,68 @@ export function foeSpellOf(
 export const FOE_ATTACK = 1
 export const FOE_FLEE = 225
 
+/** The reference's poison attack — Ragin' Contagion's 275 — and its chance in 100 of poisoning. */
+export const POISON_ATTACK = 275
+export const POISON_CHANCE = 12
+
+/**
+ * The changes of state a monster's ways cause, by action, and whose side they
+ * fall on. The reference's own, tied to these numbers by its boss's six words
+ * — Ragin' Contagion's are its candidates exactly: 228 Sweet Breath, sleep 25
+ * in 100; 44 Kasap and 48 Deceleratle, defence or agility down a level 75 in
+ * 100. By their message, `falls asleep`, at Sweet Breath's chance, which is
+ * **ours** for them: 53 Snooze and 54 Kasnooze. **Ours, by their names alone**:
+ * 43 Sap and 47 Decelerate as Kasap and Deceleratle; 41 Buff, 42 Kabuff, 45
+ * Accelerate and 46 Acceleratle a level up on their own side, always.
+ */
+const FOE_CHANGES: ReadonlyMap<number, Pick<Changing, 'change' | 'side'>> = new Map<
+  number,
+  Pick<Changing, 'change' | 'side'>
+>([
+  [228, { change: { kind: 'sleep', chance: 25 }, side: 'other' }],
+  [44, { change: { kind: 'defence', by: -1, chance: 75 }, side: 'other' }],
+  [48, { change: { kind: 'agility', by: -1, chance: 75 }, side: 'other' }],
+  [53, { change: { kind: 'sleep', chance: 25 }, side: 'other' }],
+  [54, { change: { kind: 'sleep', chance: 25 }, side: 'other' }],
+  [43, { change: { kind: 'defence', by: -1, chance: 75 }, side: 'other' }],
+  [47, { change: { kind: 'agility', by: -1, chance: 75 }, side: 'other' }],
+  [41, { change: { kind: 'defence', by: 1, chance: 100 }, side: 'own' }],
+  [42, { change: { kind: 'defence', by: 1, chance: 100 }, side: 'own' }],
+  [45, { change: { kind: 'agility', by: 1, chance: 100 }, side: 'own' }],
+  [46, { change: { kind: 'agility', by: 1, chance: 100 }, side: 'own' }],
+])
+
 /**
  * A monster's six ways of acting, from its six words — game-formats'
  * `readMonsterBattle`, which are action numbers: 1 its attack, 225 fleeing,
- * and what heals or deals damage a spell of its own, `spellOf`. With each
- * spell's telling, by action. **Ours**: what the battle cannot do yet — Buff,
- * Dazzle, sand in the eyes, Sweet Breath — is an attack instead.
+ * 275 the poison attack, a change of state from {@link FOE_CHANGES} at its
+ * action's own reach and cost, and what heals or deals damage a spell of its
+ * own, `spellOf`. With each one's telling, by action. **Ours**: what the battle
+ * cannot do yet — Dazzle, sand in the eyes, the dances, the moves with no
+ * reading — is an attack instead.
  */
 export function foeWaysOf(
   words: readonly number[],
   spellOf: (action: number) => BattleSpell | undefined,
-): { readonly acts: FoeAction[]; readonly known: Map<number, BattleSpell> } {
-  const known = new Map<number, BattleSpell>()
+  actionOf: (action: number) => Castable | undefined = () => undefined,
+): { readonly acts: FoeAction[]; readonly known: Map<number, Told> } {
+  const known = new Map<number, Told>()
   const acts = words.map((word): FoeAction => {
     if (word === FOE_FLEE) return { kind: 'flee' }
     if (word === FOE_ATTACK) return { kind: 'attack' }
+    if (word === POISON_ATTACK) return { kind: 'attack', poison: POISON_CHANCE }
+    const changes = FOE_CHANGES.get(word)
+    const action = actionOf(word)
+    const reach = action && REACHES.get(action.reach)
+    if (changes && action && reach) {
+      // A spell that costs MP is cast; a breath has no word of its own.
+      known.set(word, {
+        name: { name: action.name },
+        message: action.message,
+        opening: action.cost > 0 && action.name ? 'cast' : 'none',
+      })
+      return { kind: 'change', changing: { action: word, cost: action.cost, reach, ...changes } }
+    }
     const spell = spellOf(word)
     if (!spell) return { kind: 'attack' }
     known.set(word, spell)
@@ -250,8 +367,8 @@ export interface BattleScene {
   readonly spells: readonly BattleSpell[]
   /** A spell chosen and waiting for whom to cast it at. */
   readonly pending?: BattleSpell | undefined
-  /** The monsters' own spells, by action, to tell them by. */
-  readonly known: ReadonlyMap<number, BattleSpell>
+  /** The monsters' own spells and changes of state, by action, to tell them by. */
+  readonly known: ReadonlyMap<number, Told>
   /** What the last round came to — an item used, for the caller to take from the bag. */
   readonly events: readonly BattleEvent[]
 }
@@ -264,8 +381,8 @@ export function beginBattle(
     readonly hp?: ReadonlyMap<number, number>
     /** MP each fighter comes in with, where it is not all of it. */
     readonly mp?: ReadonlyMap<number, number>
-    /** The monsters' own spells, by action, to tell them by. */
-    readonly known?: ReadonlyMap<number, BattleSpell>
+    /** The monsters' own spells and changes of state, by action, to tell them by. */
+    readonly known?: ReadonlyMap<number, Told>
     readonly words?: BattleWords
     readonly names?: readonly Named[]
   },
@@ -397,6 +514,9 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                       values: { val_1: event.damage },
                     })
                   : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
+                ...(event.poisoned
+                  ? [say(scene, 'actions', ACTION_SAYS.poisoned, { target })]
+                  : []),
               ]),
       )
       if (game !== undefined) return game
@@ -408,6 +528,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         ours.push(
           event.damage > 0 ? `${whom} takes ${event.damage} damage.` : `${whom} takes no damage.`,
         )
+        if (event.poisoned) ours.push(`${whom} is poisoned.`)
       }
       return ours.map(sentence).join('\n')
     }
@@ -453,7 +574,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       const chosen =
         scene.spells.find((s) => s.spell.action === event.action) ?? scene.known.get(event.action)
       const action = chosen?.name ?? { name: `spell ${event.action}` }
-      const heals = chosen?.spell.does === 'heal'
+      const heals = isSpell(chosen) && chosen.spell.does === 'heal'
       const opening = chosen?.opening ?? 'cast'
       // How it opens, in the game's words and in ours; nothing for a move with no name.
       const opens =
@@ -503,6 +624,57 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       if (event.hits.length === 0) ours.push('But nothing happens.')
       return ours.map(sentence).join('\n')
     }
+    case 'change': {
+      const told = scene.known.get(event.action)
+      const action = told?.name ?? { name: `move ${event.action}` }
+      // A spell is cast; a move with no word of its own — a breath — only lands.
+      const cast = (told?.opening ?? 'cast') === 'cast'
+      const opens = cast ? [say(scene, 'actions', ACTION_SAYS.casts, { actor, action })] : []
+      const ourOpening = cast ? [`${who} casts ${shown(action)}!`] : []
+      if (event.short) {
+        const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
+        return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
+      }
+      const landed = event.hits.map((hit) =>
+        say(scene, 'actions', changeSays(event.change, hit.result), {
+          target: scene.names[hit.target],
+        }),
+      )
+      const game = lines(
+        ...opens,
+        ...(landed.length > 0 ? landed : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
+      )
+      if (game !== undefined) return game
+      const ours = [
+        ...ourOpening,
+        ...event.hits.map((hit) => changeOurs(event.change, hit.result, labels[hit.target] ?? '?')),
+      ]
+      if (event.hits.length === 0) ours.push('But nothing happens.')
+      return ours.map(sentence).join('\n')
+    }
+    case 'asleep':
+      return (
+        say(scene, 'actions', ACTION_SAYS.isAsleep, { actor }) ?? sentence(`${who} is fast asleep.`)
+      )
+    case 'woke':
+      return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
+    case 'wornOff':
+      return (
+        say(
+          scene,
+          'actions',
+          event.stat === 'agility' ? ACTION_SAYS.agilityNormal : ACTION_SAYS.defenceNormal,
+          { target: actor },
+        ) ?? sentence(`${who}'s ${event.stat} returns to normal.`)
+      )
+    case 'poison':
+      // Ours: no line for poison's toll is found; the game's damage line stands in.
+      return (
+        say(scene, 'actions', ACTION_SAYS.takes, {
+          target: actor,
+          values: { val_1: event.damage },
+        }) ?? sentence(`The poison hurts ${who}: ${event.damage} damage.`)
+      )
     case 'defeated': {
       const foe = state.fighters[event.actor]?.side === 'foes'
       const game = say(scene, 'actions', foe ? ACTION_SAYS.defeated : ACTION_SAYS.dies, {
@@ -534,6 +706,13 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
       }
       return cues
     }
+    case 'change':
+      // A monster changing state strikes its attack.
+      return foe(event.actor) ? [{ fighter: event.actor, motion: 'attack' }] : []
+    case 'poison':
+      return foe(event.actor) && event.damage > 0
+        ? [{ fighter: event.actor, motion: 'damage' }]
+        : []
     case 'flee':
       // A monster running away stays until its page is told, then is gone.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'flee' }] : []

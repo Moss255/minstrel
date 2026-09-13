@@ -1,6 +1,9 @@
 export {
   type BattleEvent,
   type BattleState,
+  type Change,
+  type ChangeResult,
+  type Changing,
   type Command,
   DEFAULT_RULES,
   type Fighter,
@@ -25,6 +28,14 @@ export {
   physicalDamage,
 } from './battle/damage.ts'
 export { BattleRng } from './battle/rng.ts'
+export {
+  LEVEL_TURNS,
+  type Level,
+  levelled,
+  NO_STATES,
+  SLEEP_TURNS,
+  type States,
+} from './battle/states.ts'
 export {
   type CharacterShape,
   type CharacterState,

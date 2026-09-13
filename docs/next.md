@@ -9,6 +9,41 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## Changes of state, and coming round in the church — 13 September
+
+**From the reference** (DQIX/BattleEmulator, `sim/src/battle/states.ts`):
+defence and agility levels from −2 to +2, multiplying the stat by 0.25, 0.5, 1,
+1.5 and 2; a level held 7 turns, then wearing off by 62, 75, 87 and 100 in 100;
+sleep for 2 turns, then waking by 37, 62, 87 and 100 in 100, and a sleeper
+neither acting nor defending; poison taking a sixteenth of maximum HP at each
+round's end. And the chances of the four ways the reference's boss has, tied to
+their action numbers by its six words: Kasap and Deceleratle a level down 75 in
+100, Sweet Breath's sleep 25, the poison attack's poison 12. Each told in
+`actmsg`'s own lines — falls asleep, is asleep, wakes up, is poisoned, defence
+decreases a little, returns to normal.
+
+**Ours, each said so in the code:**
+- Snooze and Kasnooze sleeping at Sweet Breath's 25 — their message says
+  sleep, the chance is not read; Sap and Decelerate as Kasap and Deceleratle,
+  by name; Buff, Kabuff, Accelerate and Acceleratle raising their own side a
+  level, always, by name — the reference has none of these four;
+- every fighter having states, where the reference keeps them for its player; a
+  level's turn off at the round's end; any damage waking a sleeper;
+- poison's toll told by the game's plain damage line — no line of its own found;
+- what the slice's monsters do that the reference does not — Dazzle, sand in
+  the eyes, the bag o' laughs' dances — still an attack.
+
+**Coming round in the church — ours but for its message.** A wiped-out Hero —
+`str_bres` 20, the game's — comes round in the village church, `M01M06`, before
+its priest (character 13, whose line hands over to `<CHURCH=1>`), whole, with
+half the gold. Neither the church nor the half is read: no text says either.
+
+**Ivor is not found.** No monster record and no system string names him; his
+numbers, if the game has them as a fighter, are in the event scripts or the
+code.
+
+---
+
 ## Monsters act — 13 September
 
 **A monster's six words are its six ways of acting**, action numbers
@@ -239,11 +274,11 @@ walk now opens.
 - which of the game's messages each happening says, chosen by reading them;
 - the monsters' motions on each page, and the camera.
 
-**Left for M5:** the party of two, Ivor beside the Hero; abilities (spells and
-monsters' ways are done — see the top); changes of state — sleep, poison,
-Buff, Kasap — which half the monsters' other ways are; how each monster
-chooses, where the game keeps it; Hexagoon's own behaviour beyond its six
-ways; and defeat at the church.
+**Left for M5:** the party of two, Ivor beside the Hero — his numbers not
+found; abilities; the changes of state the reference does not model — Dazzle,
+sand in the eyes, the dances; how each monster chooses, where the game keeps it;
+Hexagoon's own behaviour beyond its six ways; and the game's own rule for
+defeat, which the church stands in for (see the top).
 
 ---
 

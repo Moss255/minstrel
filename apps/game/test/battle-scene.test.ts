@@ -145,6 +145,63 @@ describe('a battle scene', () => {
     expect([...ways.known.keys()]).toEqual([236])
   })
 
+  it('turns a monster’s Kasap, poison attack and Buff into changes of state at their own reach', () => {
+    const actionOf = (id: number) => ({
+      action: id,
+      name: id === 44 ? 'Kasap' : 'Buff',
+      effect: 0,
+      message: 0,
+      cost: 3,
+      reach: id === 44 ? 4 : 2,
+      range: undefined,
+    })
+    const ways = foeWaysOf([44, 275, 41], () => undefined, actionOf)
+    expect(ways.acts).toEqual([
+      {
+        kind: 'change',
+        changing: {
+          action: 44,
+          cost: 3,
+          reach: 'group',
+          change: { kind: 'defence', by: -1, chance: 75 },
+          side: 'other',
+        },
+      },
+      { kind: 'attack', poison: 12 },
+      {
+        kind: 'change',
+        changing: {
+          action: 41,
+          cost: 3,
+          reach: 'one',
+          change: { kind: 'defence', by: 1, chance: 100 },
+          side: 'own',
+        },
+      },
+    ])
+    expect(ways.known.get(44)).toMatchObject({ name: { name: 'Kasap' }, opening: 'cast' })
+  })
+
+  it('tells a monster’s change of state on the Hero', () => {
+    const kasap = {
+      kind: 'change' as const,
+      changing: {
+        action: 44,
+        cost: 0,
+        change: { kind: 'defence' as const, by: -1, chance: 100 },
+        reach: 'group' as const,
+        side: 'other' as const,
+      },
+    }
+    const beakon = { ...blob(40), acts: Array.from({ length: 6 }, () => kasap) }
+    const scene = beginBattle([hero, beakon], 1n, {
+      canFlee: true,
+      known: new Map([[44, { name: { name: 'Kasap' }, message: 0, opening: 'cast' as const }]]),
+    })
+    const played = battleChoose(untilChoice(scene))
+    expect(played.pages).toContain("Blob casts Kasap!\nHero's defence falls.")
+  })
+
   it('tells a monster running away, and it is gone with what it was worth', () => {
     const runner = {
       ...blob(40),

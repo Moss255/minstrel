@@ -66,6 +66,7 @@ import {
   foeWaysOf,
   labelsOf,
   RESULT_SAYS,
+  type Told,
   withPages,
 } from './battle-scene.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
@@ -1506,6 +1507,20 @@ const WING_TOWN = 'M01'
 const WING_THROWN = 363
 const CEILING = 57
 
+/**
+ * Where a Hero who is wiped out comes round: before the village church's
+ * priest — character 13 of `M01M06`, whose line hands over to `<CHURCH=1>`, and
+ * who stands at (0, 0.053, −0.575) facing the door — on the near side of his
+ * altar, facing him. **Ours**: that a defeat ends at a church, this one, and
+ * where in it; the game's rule is in its code, and no text says it.
+ */
+const CHURCH = {
+  map: 'M01M06',
+  spot: { x: 0, y: 0.053, z: -0.2, facing: Math.PI },
+} as const
+/** Whether the battle just put away was lost, and the Hero is to come round in the church. */
+let wakeInChurch = false
+
 /** The Hero's numbers now: their level's, with what seeds have added. */
 function heroRow(): LevelRow | undefined {
   const levels = loaded?.heroLevels
@@ -1811,7 +1826,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   const names: Named[] = []
   const looks: (MonsterLook | undefined)[] = []
   // The monsters' own spells, by action, for the telling; an item's is named as the item.
-  const known = new Map<number, BattleSpell>()
+  const known = new Map<number, Told>()
   const items = new Map(
     [...loaded.itemWords.values()].map((w) => [
       w.singular,
@@ -1831,7 +1846,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     }
     names.push({ name: who.name, plural: who.plural, grammar: who.grammar })
     // Its six ways, from its six words — see `foeWaysOf`.
-    const ways = foeWaysOf(numbers.actions, spellOf)
+    const ways = foeWaysOf(numbers.actions, spellOf, (id) => loaded?.actions.get(id))
     for (const [action, spell] of ways.known) known.set(action, spell)
     foes.push({
       acts: ways.acts,
@@ -2058,8 +2073,11 @@ function settleBattle(): void {
   } else if (battle.state.outcome === 'lost') {
     heroHp = undefined
     heroMp = undefined
+    // Ours, both: half the gold, and coming round in the village church — see
+    // `CHURCH`. The game's own rule, and any words for it, are not found.
     bag = pay(bag, Math.floor(bag.gold / 2)) ?? bag
-    lines.push(`${name} comes round, restored — but half the gold is gone.`)
+    wakeInChurch = true
+    lines.push(`${name} comes round in the church, restored — but half the gold is gone.`)
   } else if (hero) {
     heroHp = hero.hp
     heroMp = hero.mp >= hero.maxMp ? undefined : hero.mp
@@ -2075,6 +2093,13 @@ function endFight(): void {
   battleSpots = []
   talkEl.hidden = true
   menuEl.hidden = true
+  if (wakeInChurch) {
+    wakeInChurch = false
+    if (enter(CHURCH.map, CHURCH.spot)) {
+      status(`${DEFAULT_CONTEXT.heroName} comes round in the church`)
+      return
+    }
+  }
   status(`back on the map · HP ${heroHp ?? 'full'}`)
 }
 
