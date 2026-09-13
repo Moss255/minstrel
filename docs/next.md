@@ -9,6 +9,50 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## What is still open — 13 September, at `b9b8117`
+
+M0 to M4 are as far as the cartridge goes without the emulator; M5 is next.
+What is left, by what it takes.
+
+**Closable here, from the code and the cartridge:**
+
+| gap | milestone | what it needs |
+|---|---|---|
+| The opening beats, and story flags | M3, and M7's whole sequence | The script VM runs; the game supplies none of the engine functions its routines call (200s the cast, 300s the camera, 400s messages). Then which event runs when, from the triggers, and the game-wide variables (scope 64) that the talk files' paired labels (192/193 …) most likely test. The largest job left, and on the slice's critical path. |
+| Using an item | M4 | A medicinal herb's effect is not read; `itembtlprm.nat`'s 44-byte records are the first place to look. |
+| The pot's and barrel's smash | M3 | `taru_02`/`tsubo_02`, three 56×32 frames named for breaking, whose pixels are not laid out like a villager's sheet. |
+| Sprite tiling | M2 | Half-resolved (§2 below). |
+| The game's own font | M3 | The text box uses the browser's; the bitmap font reader exists in `game-formats`. |
+| The Hero's starting purse and the inn's price | M4 | Both in code, not data, as far as has been looked: `STARTING_GOLD` and `INN_PRICE` stand in. |
+
+**Needs the emulator — questions to bring to it:**
+
+- **Equipment's numbers.** No file keeps attack or defence by item id. The
+  attack of a copper sword, a soldier's sword and a leather whip, and the
+  defence of a pot lid, a leather shield and leather armour, read off the
+  shop's screen, would be enough to search for where they are kept.
+- **The Hero's vocation, and a level-1 status screen.** Minstrel (`level6`) is
+  a choice; the status screen would also settle which level-table columns are
+  resilience and agility, and might and mending.
+- **The inn's price and the starting gold**, if they are not found in code.
+- **Which parts make the Hero** (§7).
+- **Where a field's doorways really are** (§6) — the mountain pass is a field,
+  so this blocks M7.
+- **Which treasure kind is the pot** and which the barrel.
+- **Where the Hero wakes**: `ev02130` puts them at (1.09, 0.61, −2.73), in
+  `M01M07` or `M01M10`.
+
+**Deferred by the plan:** WebGPU (WebGL2 is enough for the slice), the DS
+toon and edge pipeline outside reference mode, audio (to start during M5),
+settings, the ROM hash check and caching (M8).
+
+**Inferences worth checking when the emulator is out** — each marked INFERRED
+where it is made: which level-table column is which; kind `0x40` as the grey
+chest; the chest monsters' rows; the shop's rate and kind; `<UKE>`/`<YAME>` as
+accept and decline; answers side by side sharing a branch; the shadow's size.
+
+---
+
 ## M3 has started — event text is read
 
 M2 is walkable end to end, bar the Hero stand-in and the two notes below
