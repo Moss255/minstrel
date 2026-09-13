@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { scanCartridge } from '@minstrel/cartridge'
-import { readSprite, readSystemStrings } from '@minstrel/game-formats'
+import { readItemKinds, readItemTable, readSprite, readSystemStrings } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
   type EquipPieces,
@@ -89,6 +89,37 @@ describe.skipIf(!romPath)('the equipment screen, on a real cartridge', { timeout
     // Every one reads as plain text once the talk's markup is rendered.
     const unrendered = [...descriptions.values()].map(renderName).filter((d) => d.includes('<'))
     expect(unrendered).toEqual([])
+  })
+
+  it("knows each item's kind: its category the table it is listed in, a weapon's own icon", () => {
+    const leaves = [...scanCartridge(rom, { pathFilter: '/data/prm/' })]
+    const sort = leaves.find((l) => l.path.endsWith('itemsort_en.bin'))
+    if (!sort) throw new Error('no itemsort_en.bin')
+    const kinds = readItemKinds(sort.bytes)
+    expect(kinds.size).toBe(1178)
+    // The tables' letters and the categories they hold; tools span two.
+    const categories: Record<string, number[]> = {
+      w: [0],
+      s: [1],
+      b: [2],
+      u: [3],
+      h: [4],
+      a: [5],
+      l: [6],
+      d: [7],
+      t: [8, 9],
+    }
+    for (const [letter, allowed] of Object.entries(categories)) {
+      const leaf = leaves.find((l) => l.path.endsWith(`itemdt_${letter}_en.nat`))
+      if (!leaf) throw new Error(`no itemdt_${letter}`)
+      const wrong = readItemTable(leaf.bytes).filter(
+        (r) => !allowed.includes(kinds.get(r.id)?.category ?? -1),
+      )
+      expect(wrong, letter).toEqual([])
+    }
+    expect(kinds.get(20004)?.subtype).toBe(0)
+    expect(kinds.get(21390)?.subtype).toBe(12)
+    expect(pieces.kindIcons.map(size)).toEqual(new Array(12).fill('16×16'))
   })
 
   it('has 1,021 item icons, the copper sword among them at 24 × 24', () => {

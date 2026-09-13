@@ -128,6 +128,8 @@ export interface EquipPieces {
   readonly slotBoxes: readonly Picture[]
   /** Each slot's small icon, 16 × 16. */
   readonly slotIcons: readonly Picture[]
+  /** The weapon kinds' small icons, subtypes 0 to 11 — `obj_iteminfo`'s cells 1 to 12. */
+  readonly kindIcons: readonly Picture[]
   /** The green corners: top left, top right, bottom left, bottom right. */
   readonly corners: readonly Picture[]
   /** The item icons' sprites by name, `d_w004` and so on, to be decoded when shown. */
@@ -166,6 +168,8 @@ const SLOT_BOXES = [
 ]
 /** `obj_iteminfo`'s cells for each slot: sword, shield, helmet, tunic, glove, trousers, boot, ring. */
 const SLOT_ICON_CELLS = [1, 13, 16, 14, 17, 15, 18, 19]
+/** The weapon kinds, subtypes 0 to 11, whose icons are `obj_iteminfo`'s cells 1 to 12 in order. */
+const WEAPON_KINDS = 12
 /** `eq_cell`'s cells for the hints. */
 const HINT_CELLS = { change: 0, back: 1, l: 2, r: 3, sort: 8, hand: 9 } as const
 
@@ -265,6 +269,7 @@ export function readEquipPieces(rom: Uint8Array): EquipPieces {
     blank: sprite('eq0_blank'),
     slotBoxes: SLOT_BOXES.map(sprite),
     slotIcons: SLOT_ICON_CELLS.map(info),
+    kindIcons: Array.from({ length: WEAPON_KINDS }, (_, kind) => info(kind + 1)),
     corners: ['eq_curs01', 'eq_curs02', 'eq_curs03', 'eq_curs04'].map(sprite),
     hints: {
       change: hint(HINT_CELLS.change),
@@ -292,6 +297,8 @@ export interface EquipView {
   readonly choices: readonly (number | undefined)[] | undefined
   /** An item's description, as text; undefined where it has none. */
   readonly describe?: ((id: number) => string | undefined) | undefined
+  /** An item's subtype — see `readItemKinds` — which gives a weapon its own kind's icon. */
+  readonly subtypeOf?: ((id: number) => number | undefined) | undefined
 }
 
 export interface EquipScreens {
@@ -336,6 +343,7 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     blank: c(pieces.blank),
     slotBoxes: pieces.slotBoxes.map(c),
     slotIcons: pieces.slotIcons.map(c),
+    kindIcons: pieces.kindIcons.map(c),
     corners: pieces.corners.map(c),
     hints: {
       change: c(pieces.hints.change),
@@ -379,9 +387,16 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     at(g, bl, x - 2, y + h - 6)
     at(g, br, x + w - 6, y + h - 6)
   }
+  /** The view's subtypes, taken as each draw begins. */
+  let subtypeOf: ((id: number) => number | undefined) | undefined
+  /** An item's small icon: its weapon kind's — `readItemKinds` — or else its slot's. */
+  const smallIcon = (id: number | undefined, slot: number): HTMLCanvasElement | undefined => {
+    const kind = id === undefined ? undefined : subtypeOf?.(id)
+    return kind !== undefined && kind < WEAPON_KINDS ? art.kindIcons[kind] : art.slotIcons[slot]
+  }
   /** A small icon standing in for an item's own — **ours**, for the items that have none. */
-  const standIn = (g: CanvasRenderingContext2D, slot: number, x: number, y: number) =>
-    at(g, art.slotIcons[slot], x, y)
+  const standIn = (g: CanvasRenderingContext2D, id: number, slot: number, x: number, y: number) =>
+    at(g, smallIcon(id, slot), x, y)
   /** Each item's icon, decoded the first time it is shown; null where it has none. */
   const iconCache = new Map<number, HTMLCanvasElement | null>()
   const iconOf = (id: number): HTMLCanvasElement | null => {
@@ -411,7 +426,7 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
   ) => {
     const icon = iconOf(id)
     if (icon) g.drawImage(icon, x, y)
-    else standIn(g, slot, x + 4, y + 4)
+    else standIn(g, id, slot, x + 4, y + 4)
   }
 
   /** The foot of the bottom screen: the plate, L and R, and the hints. */
@@ -507,7 +522,7 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
         ? view.equipped.get(view.picking)
         : view.choices?.[view.row]
       : slot && view.equipped.get(slot)
-    at(g, art.slotIcons[slotIndex], 15, 8)
+    at(g, smallIcon(item, slotIndex), 15, 8)
     if (item === undefined) return
     text(g, view.itemName(item), 88, 16, INK, 'center')
     // The description, to the picture's right, wrapped to the panel: where the
@@ -533,13 +548,14 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     const icon = iconOf(item)
     if (icon) g.drawImage(icon, 28, 52)
     else {
-      const standing = art.slotIcons[slotIndex]
+      const standing = smallIcon(item, slotIndex)
       if (standing) g.drawImage(standing, 24, 48, 32, 32)
     }
   }
 
   return {
     draw(top, bottom, view) {
+      subtypeOf = view.subtypeOf
       for (const g of [top, bottom]) {
         g.imageSmoothingEnabled = false
         g.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT)

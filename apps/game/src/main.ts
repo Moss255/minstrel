@@ -2415,6 +2415,7 @@ function showEquipScreens(): boolean {
       const words = loaded?.itemDescriptions.get(id)
       return words === undefined ? undefined : renderName(words)
     },
+    subtypeOf: (id) => loaded?.itemKinds.get(id)?.subtype,
   })
   return true
 }

@@ -16,6 +16,7 @@ import {
   type FieldMonster,
   type FieldZone,
   type Grammar,
+  type ItemKind,
   type ItemName,
   isMapLinks,
   isMapList,
@@ -40,6 +41,7 @@ import {
   readEventMessages,
   readFieldEncounters,
   readFieldMonsters,
+  readItemKinds,
   readItemNames,
   readItemTable,
   readLevelTable,
@@ -161,6 +163,8 @@ export interface Loaded {
    * `readSystemStrings` reads as it reads the menu's words. Markup and all.
    */
   readonly itemDescriptions: ReadonlyMap<number, string>
+  /** Each item's category and subtype, by id — see `readItemKinds`. Empty when it will not read. */
+  readonly itemKinds: ReadonlyMap<number, ItemKind>
   /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
   readonly standardWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
@@ -639,6 +643,22 @@ function battleEncountersOf(rom: Uint8Array): Map<number, BattleZone> {
 }
 
 /** How each monster goes about the field — see `readFieldMonsters`. Empty when it will not read. */
+/** Each item's category and subtype, from `itemsort_en.bin` — empty when it will not read. */
+function itemKindsOf(rom: Uint8Array): ReadonlyMap<number, ItemKind> {
+  const { cat } = walkOnce(rom, ['/data/prm/itemsort.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('itemsort_en.bin')) continue
+      try {
+        return readItemKinds(bytes)
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
 function fieldMonstersOf(rom: Uint8Array): Map<number, FieldMonster> {
   const bytes = looseFile(rom, '/data/prm/fld_mondata.bin')
   try {
@@ -1270,6 +1290,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       'itemexpl_en.nat',
       readSystemStrings,
     ),
+    itemKinds: itemKindsOf(rom),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],

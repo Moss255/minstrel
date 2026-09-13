@@ -2707,3 +2707,36 @@ none holds a line break: the screen breaks the lines.
 The text carries the talk's markup: `<1>` ×212, `<,>` ×92, `<6>` ×8, `<9>` ×8,
 `<^a>` ×5, `<'e>` ×4, `<^e>` ×2, `<-->` ×1. What each stands for is the talk's
 business — see the game's `talk.ts`.
+
+# Item kinds — `itemsort_<lang>.bin`
+
+In `/data/prm/itemsort.gp2`. **A tagged table** (see "The tagged data table"):
+after its date and version records, one record of tag `0x67` for each item —
+1,178 in English — of five integers: the item's id, two values not read, the
+category and the subtype. Read by `itemsort.ts`.
+
+| value | meaning | evidence |
+|---|---|---|
+| 0 | the item's id | every one is an id in `itemname_en.nat`, each once |
+| 1 | `unknown_1` | 1,178 values, 1 to 9,999 |
+| 2 | `unknown_2` | 1 to 1,178, each once |
+| 3 | the category | 0 on the 268 weapons, 1 the 45 shields, 2 the 183 armour, 3 the 85 legwear, 4 the 132 headgear, 5 the 78 gloves, 6 the 101 footwear, 7 the 52 accessories, 8 and 9 the 234 tools — **exactly the item tables' members** |
+| 4 | the subtype | 0 to 31, below |
+
+**The subtypes**, by the items in each: 0 swords, 1 spears, 2 knives, 3 wands
+(the staffs), 4 whips, 5 staves (the poles), 6 claws, 7 fans, 8 axes, 9
+hammers (and clubs), 10 boomerangs, 11 bows; 12 shields; 13 armour, 14
+clothes, 15 robes, 16 trousers, 17 skirts; 18 helmets, 19 hats; 20
+gauntlets, 21 gloves; 22 boots, 23 shoes; 24 accessories; 25 medicines, 26
+seeds, 27 keys, 28 alchemy materials, 29 important items, 31 skill books.
+
+**The weapon kinds 0 to 11 are in the order of the item-info icons**,
+`obj_iteminfo`'s cells 1 to 12 in `oiij_<lang>.pac`: a sword, a spear, a
+knife, a wand, a whip, a staff, a claw, a fan, an axe, a hammer, a boomerang,
+a bow — and cell 13, a shield, is subtype 12's. The equipment screen draws a
+weapon's kind with them.
+
+Not established: `unknown_1` and `unknown_2`; and where an item's numbers,
+rarity and who may use it are kept — none of them is in this file, the item
+tables, `itembtlprm.nat` or `itemsort`, at any position, width or scale
+tested against 41 shields' published defence and rarity.

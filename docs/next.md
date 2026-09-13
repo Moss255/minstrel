@@ -42,8 +42,19 @@ bag with every item of those tables — a debugging aid, ours.
 of the 1,178 items, keyed by id (game-formats' FORMAT.md, "Item
 descriptions"), its markup rendered as the talk's is.
 
+**Each item's kind is the game's own**: `itemsort_en.bin` gives its category
+and subtype (game-formats' FORMAT.md, "Item kinds"); a weapon shows its own
+kind's icon — spear, axe, bow — in the name bar and where it has no icon.
+
 **Left:** the 193 items without an icon by the rule; the layouts, `lay_eq.lia`
 and `lay_iie.lia`; the rest of step 3 — numbers, rarity, who can use what.
+Rarity, defence and attack are not beside the item anywhere on the cartridge:
+every reference to the copper sword was followed, and 41 shields' published
+defence and rarity were tested against every file's fields, plain, packed and
+scaled, and against tables by position — none. They want the emulator: a RAM
+search on the equipment screen, e.g. for the Flame shield's id `8E 53` beside
+18 and 1. "Used by" follows the subtype (the guides agree), but no table of it
+was found either.
 
 **Wanted after Slice 1: weapons on the Hero** — noted in the slice plan, left
 out of this slice on purpose. The worn models are `p_w<nnn>.nsbmd` in
