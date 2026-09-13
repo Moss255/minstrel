@@ -2694,3 +2694,16 @@ helm, the tracksuit top and others; whether the item record names it among
 its undecoded bytes; and the worn models beside the icons in
 `/data/pack_lv5/chara_pc.gp2`, `p_<letter><nnn>.nsbmd`, whose numbers match the
 icons' on the letters they share (`p_w`, `p_b`, `p_m`, `p_p`, `p_s`).
+
+# Item descriptions — `itemexpl_<lang>.nat`
+
+In `/data/prm/itemexpl.gp2`, and again byte for byte in
+`/data/prm/iteminfo_<lang>.gp2`. **`readSystemStrings` reads it as it is**: a
+record per item, keyed by the item's id. In English there are 1,178, one for
+every item in `itemname_en.nat` and nothing else — the copper sword, 20004,
+"A commonplace cutter made of copper." None is longer than 82 characters, and
+none holds a line break: the screen breaks the lines.
+
+The text carries the talk's markup: `<1>` ×212, `<,>` ×92, `<6>` ×8, `<9>` ×8,
+`<^a>` ×5, `<'e>` ×4, `<^e>` ×2, `<-->` ×1. What each stands for is the talk's
+business — see the game's `talk.ts`.

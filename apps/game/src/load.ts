@@ -156,6 +156,11 @@ export interface Loaded {
   readonly battleWords: BattleWords
   /** The field menu's messages in English, `str_tm`, by number. */
   readonly menuWords: ReadonlyMap<number, string>
+  /**
+   * Each item's description in English, by id — `itemexpl_en.nat`, which
+   * `readSystemStrings` reads as it reads the menu's words. Markup and all.
+   */
+  readonly itemDescriptions: ReadonlyMap<number, string>
   /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
   readonly standardWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
@@ -1259,6 +1264,12 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     spellTable: spellTableOf(rom),
     battleWords: battleWordsOf(rom),
     menuWords: englishText(rom, '/data/bin/menu/str_tm.gp2', 'str_tm_en.nat', readSystemStrings),
+    itemDescriptions: englishText(
+      rom,
+      '/data/prm/itemexpl.gp2',
+      'itemexpl_en.nat',
+      readSystemStrings,
+    ),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],

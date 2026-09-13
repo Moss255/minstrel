@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { readSprite } from '@minstrel/game-formats'
+import { scanCartridge } from '@minstrel/cartridge'
+import { readSprite, readSystemStrings } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
   type EquipPieces,
@@ -9,6 +10,7 @@ import {
   readEquipPieces,
   tabAt,
 } from '../src/equip-screen.ts'
+import { renderName } from '../src/treasure.ts'
 
 describe('the equipment screen, laid out', () => {
   it('puts the grid in 4 × 4 cells of 24 at a pitch of 26, from the frame', () => {
@@ -74,6 +76,19 @@ describe.skipIf(!romPath)('the equipment screen, on a real cartridge', { timeout
         pieces.hints.hand,
       ].map(size),
     ).toEqual(['88×16', '48×16', '16×16', '72×16', '16×16'])
+  })
+
+  it('has a description for every one of the 1,178 items, by id', () => {
+    const leaf = [...scanCartridge(rom, { pathFilter: '/data/prm/itemexpl.gp2' })].find((l) =>
+      l.path.endsWith('itemexpl_en.nat'),
+    )
+    if (!leaf) throw new Error('no itemexpl_en.nat')
+    const descriptions = readSystemStrings(leaf.bytes)
+    expect(descriptions.size).toBe(1178)
+    expect(descriptions.get(20004)).toBe('A commonplace cutter made of copper.')
+    // Every one reads as plain text once the talk's markup is rendered.
+    const unrendered = [...descriptions.values()].map(renderName).filter((d) => d.includes('<'))
+    expect(unrendered).toEqual([])
   })
 
   it('has 1,021 item icons, the copper sword among them at 24 × 24', () => {

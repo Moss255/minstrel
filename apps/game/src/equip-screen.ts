@@ -36,8 +36,9 @@ import { type Equipped, SLOTS, type Slot } from './equipment.ts'
  * - the icon of an item that has none under the rule — see {@link itemIconName} —
  *   which is its slot's small icon;
  * - "Nothing Equipped", which none of the string tables read holds;
- * - what is left out: the Hero's figure, the item's description, numbers,
- *   rarity and who can use it — none of them read yet;
+ * - where the description's lines break;
+ * - what is left out: the Hero's figure, and the item's numbers, rarity and
+ *   who can use it — none of them read yet;
  * - the grid shows its page of sixteen, and ↑/↓ go through it in order.
  */
 
@@ -289,6 +290,8 @@ export interface EquipView {
   readonly picking: Slot | undefined
   /** What can go in it: nothing, then the bag's items of its kind — see `choicesFor`. */
   readonly choices: readonly (number | undefined)[] | undefined
+  /** An item's description, as text; undefined where it has none. */
+  readonly describe?: ((id: number) => string | undefined) | undefined
 }
 
 export interface EquipScreens {
@@ -300,6 +303,8 @@ const FONT = '10px ui-sans-serif, system-ui, sans-serif'
 const INK = '#f2eee4'
 const CHOSEN = '#7fe07a'
 const DIM = '#8f8b84'
+/** The parchment's text, dark on light as the screenshots show it. **Ours**: the shade. */
+const INK_DARK = '#3a2a16'
 /** **Ours**: the game's words for an empty slot are not found. */
 const NOTHING = 'Nothing Equipped'
 
@@ -505,6 +510,25 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     at(g, art.slotIcons[slotIndex], 15, 8)
     if (item === undefined) return
     text(g, view.itemName(item), 88, 16, INK, 'center')
+    // The description, to the picture's right, wrapped to the panel: where the
+    // screenshots start it and how far apart its lines are. **Ours**: the wrap.
+    const words = view.describe?.(item)
+    if (words) {
+      g.font = FONT
+      let line = ''
+      let y = 48
+      for (const word of words.split(' ')) {
+        const tried = line ? `${line} ${word}` : word
+        if (line && g.measureText(tried).width > 102) {
+          text(g, line, 64, y, INK_DARK)
+          line = word
+          y += 12
+        } else {
+          line = tried
+        }
+      }
+      if (line) text(g, line, 64, y, INK_DARK)
+    }
     // The picture box, 32 pixels square from (24, 48): the icon at its own size, centred.
     const icon = iconOf(item)
     if (icon) g.drawImage(icon, 28, 52)

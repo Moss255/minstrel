@@ -33,14 +33,17 @@ one so.
 **Ours, each said so in `apps/game/src/equip-screen.ts`:** the exact places
 the screenshots give roughly; the text, in the browser's font; the icon of an
 item the rule gives none — its slot's small icon; the words "Nothing
-Equipped"; ↑/↓ going through the grid in order; and what is left out — the
-Hero's figure, and the item's description, numbers, rarity and who can use
-it, none of which is read yet. `?bag=w,s:3` fills the bag with every item of
-those tables — a debugging aid, ours.
+Equipped"; ↑/↓ going through the grid in order; where a description's lines
+break; and what is left out — the Hero's figure, and the item's numbers,
+rarity and who can use it, none of which is read yet. `?bag=w,s:3` fills the
+bag with every item of those tables — a debugging aid, ours.
+
+**The item's description is the game's own**: `itemexpl_en.nat`, one for each
+of the 1,178 items, keyed by id (game-formats' FORMAT.md, "Item
+descriptions"), its markup rendered as the talk's is.
 
 **Left:** the 193 items without an icon by the rule; the layouts, `lay_eq.lia`
-and `lay_iie.lia`; then step 3 — descriptions, numbers, rarity, who can use
-what.
+and `lay_iie.lia`; the rest of step 3 — numbers, rarity, who can use what.
 
 **Wanted after Slice 1: weapons on the Hero** — noted in the slice plan, left
 out of this slice on purpose. The worn models are `p_w<nnn>.nsbmd` in

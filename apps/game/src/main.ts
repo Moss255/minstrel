@@ -2411,6 +2411,10 @@ function showEquipScreens(): boolean {
     row: menu.row,
     picking: menu.picking,
     choices: menu.picking ? choicesFor(menu.picking, bag, tableOf) : undefined,
+    describe: (id) => {
+      const words = loaded?.itemDescriptions.get(id)
+      return words === undefined ? undefined : renderName(words)
+    },
   })
   return true
 }
