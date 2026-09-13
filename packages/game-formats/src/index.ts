@@ -74,6 +74,24 @@ export {
 } from './mapmanifest.ts'
 export { isWaterTexture, textureTag } from './materials.ts'
 export {
+  isMinimapPicture,
+  LAYOUT_BACKDROP,
+  LAYOUT_CORNER,
+  LAYOUT_MARK,
+  LAYOUT_OWN,
+  LAYOUT_PICTURE,
+  LAYOUT_PLACES,
+  LAYOUT_SCALE,
+  MINIMAP_COLOURS,
+  type MinimapLayout,
+  type MinimapMark,
+  type MinimapPicture,
+  minimapPixels,
+  minimapPoint,
+  readMinimapLayout,
+  readMinimapPicture,
+} from './minimap.ts'
+export {
   type MonsterBattle,
   type MonsterName,
   readMonsterBattle,

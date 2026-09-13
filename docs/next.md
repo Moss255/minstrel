@@ -9,6 +9,35 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The mini-map — 13 September
+
+The DS's lower screen, drawn in the top right corner; `m` shows and hides it.
+
+**From the cartridge** (`/data/pack_lv5/minimap.gp2`; game-formats' FORMAT.md,
+"The mini-map"): the picture, a `.obg` of 4-bit tiles and sixteen colours;
+the `.bmmp` layout naming which picture a map is drawn on, its backdrop paper,
+the maps it is for by index id, and its marks. Every one of the 268 pictures
+and 279 layouts reads. Where the Hero stands on it — position × scale −
+corner × 8 — is **INFERRED** from the marks landing on the doors they name.
+
+**The Hero is a dot, the game's own:** `marker0.obg`, the blue one of five
+coloured dots. That blue is his is **INFERRED** — the same five dots in
+`obj_minimap` sit beside party panels in blue, green, pink and orange, blue
+first. No code names the markers.
+
+**Ours, each said so in `apps/game/src/minimap.ts`:** the corner, the size
+and the key; a picture bigger than the screen following the Hero, a smaller one
+centred; the backdrop tiled; hidden in a battle. A room is shown on its area's
+picture with the dot at its mark — no interior has a layout, and the village's
+lists all its rooms, so this is **INFERRED**.
+
+**Left:** reading `obj_mm.pac` — the sprite file the code names, a Level-5
+wrapper round `NCER`/`NCGR`/`NCLR` holding a blue dot, a red one, a church and
+crossed swords — and what each marks; the `z` tile sets; what `0x65`, `0x67`,
+`0x68` and `0x6d` say.
+
+---
+
 ## Changes of state, and coming round in the church — 13 September
 
 **From the reference** (DQIX/BattleEmulator, `sim/src/battle/states.ts`):

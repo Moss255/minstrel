@@ -115,6 +115,13 @@ import {
   openMenu,
   panelLines,
 } from './menu.ts'
+import {
+  drawMinimap,
+  type MinimapShown,
+  type Minimaps,
+  readMinimaps,
+  showMinimap,
+} from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
 import {
   advance,
@@ -201,6 +208,7 @@ function must<T extends Element>(selector: string): T {
 const fileInput = must<HTMLInputElement>('#file')
 const statusEl = must<HTMLDivElement>('#status')
 const overlayEl = must<HTMLDivElement>('#overlay')
+const minimapEl = must<HTMLCanvasElement>('#minimap')
 const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
@@ -262,6 +270,12 @@ let self: Player | undefined
  * of 128 MiB and the loader takes a view of it.
  */
 let cartridge: Uint8Array | undefined
+/** The mini-map archive, read the first time a map is entered — see `minimap.ts`. */
+let minimaps: Minimaps | undefined
+/** This map's mini-map; undefined where it has none. */
+let minimapShown: MinimapShown | undefined
+/** Whether the corner shows it: `m` turns it on and off. **Ours.** */
+let minimapWanted = true
 /** Stops a doorway firing on the character it just put down. See `doors.ts`. */
 const gate = doorGate()
 /** Set while a map is loading, so a doorway cannot be taken twice. */
@@ -505,6 +519,7 @@ function begin(bytes: Uint8Array, map: string): void {
   // Kept for the rest of the session: every doorway taken reads the cartridge
   // again for the map behind it.
   cartridge = bytes
+  minimaps = undefined
   // Carry on from the last confession, unless the player asked for a new game.
   const saved = resumeEl.checked ? savedGame : undefined
   if (saved) {
@@ -685,6 +700,9 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage) }
   loaded = opened
+  // The lower screen's map: the picture this map is drawn on, or its area's.
+  minimaps ??= readMinimaps(cartridge)
+  minimapShown = showMinimap(minimaps, opened.mapId, opened.code)
   chapterIndex = undefined
   closeTalk()
   refreshTreasures()
@@ -772,6 +790,7 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
       (hiddenPieces > 0 ? ` · ${hiddenPieces} chunks out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
     padSeen ? 'left stick to walk · right stick to look' : 'WASD to walk · drag to turn',
+    minimapShown ? 'm to show or hide the map' : undefined,
     // With `?pad=1`, what the pad reports — move a stick and watch which
     // numbers change, then pass those four to `?axes=`.
     showPad && !pad
@@ -796,6 +815,24 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
   ]
     .filter((line) => line !== undefined)
     .join('\n')
+}
+
+/**
+ * The mini-map in the corner, where the Hero is now — see `minimap.ts`. Hidden
+ * in a battle, which on the DS takes the lower screen for itself; **ours**, as
+ * are the corner and the key. His position is the map file's own units, as the
+ * picture's are: the world's divided by the scale it was put in at.
+ */
+function drawCorner(): void {
+  const show = minimapWanted && minimapShown !== undefined && self !== undefined && !battle
+  if (minimapEl.hidden === show) minimapEl.hidden = !show
+  const context = show ? minimapEl.getContext('2d') : null
+  if (!context || !minimapShown || !self) return
+  const unit = WORLD_SCALE * worldScale
+  drawMinimap(context, minimapShown, {
+    x: toFloat(self.state.x) / unit,
+    z: toFloat(self.state.z) / unit,
+  })
 }
 
 let lastFrame = 0
@@ -978,6 +1015,7 @@ function frame(now = 0): void {
     ])
   }
   describe(uploaded)
+  drawCorner()
 
   const width = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))
   const height = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio))
@@ -2571,6 +2609,12 @@ addEventListener('keydown', (event) => {
   // Flick through the story stages the cast's records name: `t` back, `y` on.
   if ((key === 't' || key === 'y') && loaded) {
     moveStage(key === 'y' ? 1 : -1)
+    event.preventDefault()
+  }
+  // The mini-map on and off. Not while the collision is on show, whose fitting
+  // keys take `m` for the room.
+  if (key === 'm' && !showCollision) {
+    minimapWanted = !minimapWanted
     event.preventDefault()
   }
   if (key === 'c') {
