@@ -111,6 +111,7 @@ export {
   readNpcPlacements,
   readNpcStates,
 } from './npc.ts'
+export { isPac, type Pac, type PacMember, readPac } from './pac.ts'
 export {
   OP_RETURN,
   ROUTINE_HEADER,

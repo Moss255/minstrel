@@ -2561,3 +2561,39 @@ unit and the corner counts tiles is read from these fits, not from the code.
   reads them yet.
 - The `z` sets, `pd_ab_*`, `C01M0000.MAP`/`.MBK` and `shipMPos.bin`.
 
+
+# `.pac` — a plain pack of named files
+
+The 2D screens' palettes, characters and cells, and some models and effects,
+come packed in `.pac` files — `/data/ani/obj_mm.pac` holds the mini-map's
+sprites. Read by `pac.ts`; what is inside is read by `@minstrel/nitro-gfx`
+(see its FORMAT.md, "2D graphics").
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `char[0x40]` | the name, to a NUL; what follows is left over — one holds `\test\test` |
+| `+0x40` | `u32` | the head's size, 0x50 |
+| `+0x44` | `u32` | the data's size |
+| `+0x48` | `u32` | from this entry to the next |
+| `+0x4C` | `u32` | `unknown_0x4c` |
+
+The data follows the head. Evidence, over the cartridge's 468 files named
+`.pac`:
+
+- **463 are this.** The other five are `/data/tmap/tdata.gp2`'s
+  `tdata_<lang>.pac`, whose word at `+0x40` is `0x1600` to `0x1687`: some other
+  format, refused.
+- **Every entry's step to the next is its head and data rounded up to 16**,
+  on every entry that is not an end.
+- **The chain ends on an end marker that ends the file**, 463 of 463: on 456 a
+  head of 0x50 zero bytes; on the seven in `/data/effect/`, a head whose size
+  and step are both `0xFFFFFFFF`, its name field holding leftovers.
+- Members are Nitro 2D files (`RECN`, `RGCN`, `RLCN`, and `RNAN` animations),
+  this cartridge's own `CHAR`, `PALT` and `SCRN` files (`.bncg`, `.bncl`,
+  `.bnsc`), models (`BMD0`) and effect files.
+
+`obj_mm.pac` holds `obj_mm.NCER`, `.NCGR` and `.NCLR`: 28 cells — the HP and
+MP panels, the digits, a church, crossed swords, and dots. **Cell 5 is an 8×8
+light-blue dot in a black rim**, cell 7 a red one. The game here still draws
+the Hero as `marker0` — see "The markers are coloured dots": which dot is his,
+and in what colour, is not established.

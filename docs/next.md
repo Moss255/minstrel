@@ -9,6 +9,22 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The DS's 2D files are read — 13 September
+
+`@minstrel/nitro-gfx` reads NCLR palettes, NCGR characters and NCER cells, and
+`drawCell` lays a cell's parts together; `@minstrel/game-formats` reads the
+`.pac` packs they come in. Cited to NitroPaint and GBATEK, and checked on the
+whole cartridge: 139, 224 and 138 files read, 463 packs each ending at its
+end, every cell drawn where its pack holds one set of the three. Evidence in
+both FORMAT.md files.
+
+`obj_mm.pac`'s cell 5, the light-blue dot, is drawn by the test but **not by
+the game**, which keeps `marker0` until how a character's colour is chosen is
+found. The explorer does not show 2D files yet; it would be their first real
+user.
+
+---
+
 ## The mini-map — 13 September
 
 The DS's top screen's map, drawn in the top right corner; `m` shows and hides

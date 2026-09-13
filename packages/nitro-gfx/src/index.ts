@@ -10,7 +10,28 @@ export {
 } from './displaylist.ts'
 export { NitroGfxError } from './errors.ts'
 export { FX16_ONE, FX32_ONE, fx10ToFloat, fx16ToFloat, fx32ToFloat, signExtend } from './fixed.ts'
+export {
+  bitsOfDepth,
+  type G2dBlock,
+  type G2dFile,
+  isG2dFile,
+  readG2dFile,
+  requireBlock,
+  rgbOfColour,
+  stampAt,
+} from './g2d.ts'
 export { blend, identity, invertAffine, type Mat4, multiply, transformPoint } from './matrix.ts'
+export {
+  type Cell,
+  type CellImage,
+  type CellPart,
+  drawCell,
+  NCER_MAGIC,
+  type Ncer,
+  readNcer,
+} from './ncer.ts'
+export { NCGR_MAGIC, type Ncgr, readNcgr } from './ncgr.ts'
+export { NCLR_MAGIC, type Nclr, readNclr } from './nclr.ts'
 export { type NodeTransform, readNode } from './node.ts'
 export {
   ANIMATION_STAMP,
