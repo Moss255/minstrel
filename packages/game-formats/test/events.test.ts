@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { parseMarkup, readEventMessages } from '../src/events.ts'
+import { parseMarkup, readEventMessages, readTableMessages } from '../src/events.ts'
 
 /**
  * Fixtures are built here, never taken from a cartridge.
@@ -90,6 +90,34 @@ describe('readEventMessages', () => {
 
   it('refuses a string offset that lands inside a string', () => {
     expect(() => readEventMessages(build([message(100, 1)], ['hello']))).toThrow(GameFormatError)
+  })
+})
+
+describe('readTableMessages', () => {
+  it('reads the messages under one tag, leaving the table’s other records alone', () => {
+    // Written for the test, in the shape of the battle results' file: a
+    // record or two that are not messages, then the messages under their tag.
+    const won = 'You win.'
+    const lost = 'You lose.'
+    const bytes = build(
+      [
+        { tag: 0x65, fields: [int(0)] },
+        { tag: 0x64, fields: [int(20)] },
+        { tag: 0x67, fields: [int(1), text(0)] },
+        { tag: 0x67, fields: [int(20), text(won.length + 1)] },
+      ],
+      [won, lost],
+    )
+    expect(readTableMessages(bytes, 0x67)).toEqual([
+      { id: 1, text: won },
+      { id: 20, text: lost },
+    ])
+  })
+
+  it('refuses a record of the tag that is not a message', () => {
+    expect(() =>
+      readTableMessages(build([{ tag: 0x67, fields: [int(1), int(0)] }], ['a']), 0x67),
+    ).toThrow(GameFormatError)
   })
 })
 

@@ -32,6 +32,8 @@ export interface GpcFixtureOptions {
    * identify-by-validating path.
    */
   compressIndex?: boolean
+  /** Store every member whole, with no region prefix, and set bit 28 of `0x10` to say so. */
+  storedWhole?: boolean
 }
 
 export function fill(length: number, seed: number): Uint8Array {
@@ -86,7 +88,9 @@ export function buildGpc(members: GpcFixtureMember[], options: GpcFixtureOptions
 
   // --- member regions, laid out in the order given, positions relative to the
   // data region so the entry table can be built before its own size is known ---
-  const regions = members.map((member) => buildRegion(member.data, member.codec ?? 'lz77'))
+  const regions = members.map((member) =>
+    options.storedWhole ? member.data : buildRegion(member.data, member.codec ?? 'lz77'),
+  )
   const relativeOffsets: number[] = []
   let cursor = 0
   for (const region of regions) {
@@ -140,7 +144,7 @@ export function buildGpc(members: GpcFixtureMember[], options: GpcFixtureOptions
   view.setUint16(0x0a, dataOffset / 4, true)
   view.setUint16(0x0c, options.entryWords ?? 3 * count, true)
   view.setUint16(0x0e, 0, true)
-  view.setUint32(0x10, 0, true)
+  view.setUint32(0x10, options.storedWhole ? 0x10000000 : 0, true)
   view.setUint32(0x14, 0, true)
 
   archive.set(storedEntries, headerSize)

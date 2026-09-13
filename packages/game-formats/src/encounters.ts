@@ -15,7 +15,15 @@ import { readDataTable } from './table.ts'
  * **`encbtl`, by zone.** The same zones by number, each a `0x68` and then
  * `0x66` records — **the zone's roaming monsters again, the same on all 287
  * zones** — and `0x67` records: monsters that may join a battle there, most of
- * them not among the zone's roamers. The numbers beside each are carried.
+ * them not among the zone's roamers.
+ *
+ * **A companion's bits are three 3-bit fields** above its number: its weight
+ * among the zone's company, and the least and most of it that join — INFERRED:
+ * the second is no more than the third on all 1,527 company records, as a
+ * count's range would be, and nothing is set above the three. The weights are
+ * the company's own: they agree with `encfld`'s for the same monster on 272 of
+ * 829. A roamer's bits hold the same three fields and more above them, and
+ * are carried: the second is no more than the third on only 1,027 of 1,058.
  *
  * How a map chooses among its zones is not established.
  */
@@ -47,12 +55,22 @@ export interface BattleZoneMonster {
   readonly unknown_1: number
 }
 
+/** A monster that may join a battle in a zone: its weight, and how many of it join — INFERRED, see above. */
+export interface CompanyMonster extends BattleZoneMonster {
+  /** Its weight among the zone's company, 0 to 7. */
+  readonly weight: number
+  /** The fewest of it that join, 1 to 3. */
+  readonly least: number
+  /** The most, 1 to 5. */
+  readonly most: number
+}
+
 export interface BattleZone {
   readonly zone: number
   /** The zone's roaming monsters — the same as `encfld`'s for it. */
   readonly roamers: readonly BattleZoneMonster[]
   /** Monsters that may join a battle in the zone. */
-  readonly company: readonly BattleZoneMonster[]
+  readonly company: readonly CompanyMonster[]
 }
 
 /** Parse `encfld`: each map's zones and who roams them, by the map's id. */
@@ -92,7 +110,7 @@ export function readFieldEncounters(bytes: Uint8Array): Map<number, FieldZone[]>
 /** Parse `encbtl`: each zone's roaming monsters and its battle company, by zone. */
 export function readBattleEncounters(bytes: Uint8Array): Map<number, BattleZone> {
   const out = new Map<number, BattleZone>()
-  let zone: { zone: number; roamers: BattleZoneMonster[]; company: BattleZoneMonster[] } | undefined
+  let zone: { zone: number; roamers: BattleZoneMonster[]; company: CompanyMonster[] } | undefined
   const monster = (values: Uint32Array): BattleZoneMonster => {
     const word = values[0] ?? 0
     return { number: word & 0xfff, unknown_bits: word >>> 12, unknown_1: values[1] ?? 0 }
@@ -106,7 +124,17 @@ export function readBattleEncounters(bytes: Uint8Array): Map<number, BattleZone>
       out.set(first, zone)
     } else if (record.tag === HEAD_TAG || record.tag === MONSTER_TAG) {
       if (!zone) throw new GameFormatError('a monster before any zone', record.offset)
-      ;(record.tag === HEAD_TAG ? zone.roamers : zone.company).push(monster(record.values))
+      const read = monster(record.values)
+      if (record.tag === HEAD_TAG) zone.roamers.push(read)
+      else {
+        const bits = read.unknown_bits
+        zone.company.push({
+          ...read,
+          weight: bits & 7,
+          least: (bits >>> 3) & 7,
+          most: (bits >>> 6) & 7,
+        })
+      }
     }
   }
   return out

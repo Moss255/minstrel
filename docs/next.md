@@ -9,6 +9,41 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The smaller gaps, and using an item — 13 September
+
+- **A medicinal herb heals**, from the items panel and from the battle's Items
+  command: 30 to 40 HP, drawn as the reference draws Heal
+  (`FUN_021e8458_typeD`, golden-tested), and kept rather than used at full HP.
+  The way there, all in `game-formats/FORMAT.md`: an item table's record begins
+  four bytes before its id, with two action numbers — the field's and battle's,
+  INFERRED; the action tables `actdt_a` and `actdt_b` name each action's range
+  in `actdamage`, and the herb is action 255, 35 ± 5; and the byte at `+0x24`
+  says what an action does — `0x16` restores HP. **What other items do** —
+  MP, cures, the seeds, the chimaera wing — is read as far as that byte and not
+  done.
+- **The battle speaks the game's words**: `strbtl`, `actmsg`, `str_bres`, and
+  the commands from `str_btl`, with each name's articles, plural and gender
+  from the grammar word beside it (`readGrammar`). **Which message an action
+  says is not in its record**; each is chosen by what it says.
+- **Who joins a battle**: `encbtl`'s company carries a weight and a count
+  range, INFERRED; the monster walked into still comes alone, and how many kinds
+  join and the cap of five are ours.
+- **The monsters move**: `appear`, their attack, `damage` and `death`, once
+  through and held, and a fallen one stays until its page is told. The camera
+  watches the middle of the fight. Both ours.
+- **Pots and barrels smash** when opened: the `_02` sheets, three frames of
+  shards, and then nothing.
+- **Sprite tiling is resolved.** A frame is built of parts; the "strip" the old
+  cut dropped was the top of every villager. The live cut and its keys are gone.
+- **The font is still not found.** The NFTR fonts the code names are the Wi-Fi
+  utility's.
+- **Found on the way**: bit 28 of a GPC header marks archives stored whole —
+  the monsters and the action tables — and the bubble slime and liquid metal
+  slime models put blended vertices off their bind pose, left out of that check
+  by name.
+
+---
+
 ## M6 has started — monsters roam the field, 13 September
 
 On a map that has a zone — the fields and the dungeons, not the village —
@@ -29,8 +64,9 @@ own id — the zone's battle company from `encbtl`, each monster's field speed
   established, and the collision attribute tried for it is not it;
 - how many roam, where they turn up and vanish, how they wander, and how near
   is walking into one;
-- **who joins a battle**: up to two drawn evenly from the zone's company — what
-  `encbtl`'s numbers beside each say is not read;
+- **who joins a battle**: up to two kinds from the zone's company, each by its
+  weight and as many as its range — both read, INFERRED — to at most five; the
+  roamer's own numbers are not read;
 - speed as the Hero's walking speed times the field float;
 - no running from a strong party: `fld_mondata`'s first two numbers look like a
   level and a threshold, but are not read.
@@ -78,13 +114,12 @@ walk now opens.
 - the order the numbers are drawn in is not the game's;
 - defeat restores the Hero where they stand with half their gold — the game
   sends them to a church;
-- the words, including "2 slimes": `/data/bin/strbtl.gp2` holds the game's own,
-  not read yet.
+- which of the game's messages each happening says, chosen by reading them;
+- the monsters' motions on each page, and the camera.
 
 **Left for M5:** the party of two, Ivor beside the Hero; spells and abilities,
 and what a monster's six action words say, which is its AI; Hexagoon's own
-behaviour; the damage and death motions, and a camera for the battle; defeat
-at the church; and the battle messages in the game's own words.
+behaviour; and defeat at the church.
 
 ---
 
@@ -98,10 +133,8 @@ What is left, by what it takes.
 | gap | milestone | what it needs |
 |---|---|---|
 | The opening beats, and story flags | M3, and M7's whole sequence | The script VM runs; the game supplies none of the engine functions its routines call (200s the cast, 300s the camera, 400s messages). Then which event runs when, from the triggers, and the game-wide variables (scope 64) that the talk files' paired labels (192/193 …) most likely test. The largest job left, and on the slice's critical path. |
-| Using an item | M4 | A medicinal herb's effect is not read; `itembtlprm.nat`'s 44-byte records are the first place to look. |
-| The pot's and barrel's smash | M3 | `taru_02`/`tsubo_02`, three 56×32 frames named for breaking, whose pixels are not laid out like a villager's sheet. |
-| Sprite tiling | M2 | Half-resolved (§2 below). |
-| The game's own font | M3 | The text box uses the browser's; the bitmap font reader exists in `game-formats`. |
+| Other items | M4 | The herb heals (see the top); what the rest do — MP, cures, the seeds, the chimaera wing — is named by the action byte `+0x24` and not done. |
+| The game's own font | M3 | The text box uses the browser's; the Latin glyphs are not found — see `game-formats/FORMAT.md`, the bitmap font. |
 | The Hero's starting purse and the inn's price | M4 | Both in code, not data, as far as has been looked: `STARTING_GOLD` and `INN_PRICE` stand in. |
 
 **Needs the emulator — questions to bring to it:**
@@ -449,7 +482,13 @@ geometry).
 
 ---
 
-## 2. Sprite frames — **half-resolved**: the mound is gone, the tiling is not right yet
+## 2. Sprite frames — **resolved, 13 September**: a frame is built of parts
+
+A frame is a list of parts, each placed and sized, as the DS's own sprites are;
+read so, 1,314 of 1,316 sheets land exactly on their palette, and every
+villager is whole. What follows is the fitted reading it replaced, kept as the
+history — the 664-byte pitch below is exactly a villager's frame of two parts.
+See `game-formats/FORMAT.md`, "`.spr`".
 
 The pitch was **664 bytes**, not the 648 the parser used and not the 660 the head
 measurement suggested, and the mound is an eight-row strip that is part of every

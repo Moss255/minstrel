@@ -87,6 +87,32 @@ export function readEventMessages(data: Uint8Array): EventMessage[] {
   })
 }
 
+/**
+ * The messages in a tagged data table whose `tag` records each pair a number
+ * with a string — the battle results' `str_bres_<lang>.bin`, whose `0x67`
+ * records do, beside records of other tags that are not messages and are left
+ * alone. A record of the tag in any other shape is an error.
+ */
+export function readTableMessages(data: Uint8Array, tag: number): EventMessage[] {
+  const table = readDataTable(data)
+  return table.withTag(tag).map((record) => {
+    if (
+      record.values.length !== 2 ||
+      record.kinds[0] !== KIND_NUMBER ||
+      record.kinds[1] !== KIND_STRING
+    ) {
+      throw new GameFormatError(
+        `record at 0x${record.offset.toString(16)} is tag 0x${tag.toString(16)} with ${record.values.length} values, not a message`,
+        record.offset,
+      )
+    }
+    return {
+      id: record.values[0] as number,
+      text: textAt(table, data, record, record.values[1] as number),
+    }
+  })
+}
+
 /** A piece of a message: some text, a line break, or a markup tag. */
 export type MarkupToken =
   | { readonly kind: 'text'; readonly text: string }

@@ -1,7 +1,7 @@
 import { figureScale, Measurements } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
-import type { Treasure } from '@minstrel/game-formats'
+import { ActionEffect, type Treasure } from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
   type Geometry,
@@ -30,6 +30,7 @@ import {
   type CollisionWorld,
   calmFor,
   createCollisionWorld,
+  drawnAmount,
   type Fighter,
   groundBelow,
   headingAngle,
@@ -43,8 +44,9 @@ import {
   tickRoaming,
 } from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
-import { type Bag, EMPTY_BAG, pay, take } from './bag.ts'
+import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
+  type BattleItem,
   type BattleScene,
   battleBack,
   battleChoose,
@@ -52,8 +54,10 @@ import {
   battleRows,
   beginBattle,
   labelsOf,
+  RESULT_SAYS,
   withPages,
 } from './battle-scene.ts'
+import { type Named, type Telling, tellBattle } from './battle-text.ts'
 import {
   CABINET_OPENING,
   CABINET_SHUT,
@@ -62,14 +66,7 @@ import {
   cabinetTargets,
   motionFrame,
 } from './cabinets.ts'
-import {
-  castPieces,
-  propPieces,
-  setSpriteCut,
-  spriteCut,
-  spritePieces,
-  standingFrame,
-} from './cast.ts'
+import { castPieces, propPieces, spritePieces, standingFrame } from './cast.ts'
 import { chestPieces, isChest } from './chests.ts'
 import {
   type CollisionFit,
@@ -89,6 +86,7 @@ import {
   back,
   choose,
   MENU_COMMANDS,
+  MENU_SAYS,
   type MenuContext,
   type MenuState,
   moveCursor,
@@ -105,7 +103,7 @@ import {
   TICK_MS,
   WALK_SPEED,
 } from './player.ts'
-import { isPotOrBarrel } from './pots.ts'
+import { breakingFrame, isPotOrBarrel } from './pots.ts'
 import {
   bagOf,
   equippedOf,
@@ -245,19 +243,6 @@ let cartridge: Uint8Array | undefined
 const gate = doorGate()
 /** Set while a map is loading, so a doorway cannot be taken twice. */
 let travelling = false
-/**
- * What the sprite keys have been moved to, and what the sheets say by default.
- *
- * The defaults are filled in from the first sheet the map loads, so the keys
- * start from the reading in `game-formats` rather than from zero.
- */
-let cutStart = 0
-let cutPitch = 0
-let cutHeight = 0
-/** Bytes added to odd frames only — see `SpriteCut.oddShift`. */
-let cutOdd = 0
-/** How wide a row of the sheet is in bytes, so a key can step by whole rows. */
-let cutRowBytes = 16
 /** The map as drawn this frame, and one box per piece for deciding what is in the way. */
 let mapPieces: Piece[] = []
 let mapBoxes: Box[] = []
@@ -311,6 +296,8 @@ let menu: MenuState | undefined
  * it stays open whichever way the Hero comes back. Not saved yet.
  */
 const openedTreasure = new Set<string>()
+/** When each pot or barrel opened this visit was smashed, by its treasure key — see `pots.ts`. */
+const smashedAt = new Map<string, number>()
 /** What the Hero carries — see `bag.ts` — starting from a stand-in purse, `STARTING_GOLD`. */
 let bag: Bag = take(EMPTY_BAG, { gold: STARTING_GOLD })
 /** What the Hero wears — see `equipment.ts`. */
@@ -326,6 +313,10 @@ let battle: BattleScene | undefined
 /** Each fighter's look and where it stands, by its place in the battle; the Hero's are undefined. */
 let battleLooks: (MonsterLook | undefined)[] = []
 let battleSpots: ({ x: number; y: number; z: number } | undefined)[] = []
+/** When the battle's page on show began, which its monsters' motions play from. */
+let cueStarted = 0
+/** The most monsters a battle here holds: ours, so the row stays in view. */
+const BATTLE_MOST = 5
 /** The Hero's hit points between battles; undefined is full. */
 let heroHp: number | undefined
 /** Battles fought this session, which seeds the next one's numbers. */
@@ -670,31 +661,6 @@ function enter(map: string, arrival?: Arrival): boolean {
   // from wherever it was watching the last map.
   camera.focus = [toFloat(at.x), toFloat(at.y) + camera.height, toFloat(at.z)]
 
-  // Start the keys from what the parser decided, so nudging is relative to the
-  // current reading rather than to zero.
-  const firstSheet = opened.cast.sprites2d[0]
-  if (firstSheet) {
-    const sheet = firstSheet.sprite
-    cutRowBytes = sheet.width / 2
-    const already = spriteCut()
-    // The sheet reports the cut it was read with, rather than the arithmetic
-    // being copied here where it would go stale.
-    cutHeight = already.height ?? sheet.cut.height
-    cutPitch = already.pitch ?? sheet.cut.pitch
-    cutStart = already.start ?? sheet.cut.start
-    cutOdd = already.oddShift ?? sheet.cut.oddShift
-    if (cutParam) {
-      cutStart = cutParam[0] ?? cutStart
-      cutPitch = cutParam[1] ?? cutPitch
-      cutHeight = cutParam[2] ?? cutHeight
-      cutOdd = cutParam[3] ?? cutOdd
-      setSpriteCut(
-        { start: cutStart, pitch: cutPitch, height: cutHeight, oddShift: cutOdd },
-        opened.cast,
-      )
-    }
-  }
-
   const elapsed = Math.round(performance.now() - started)
   const { members, sprites, unclassified, missing, elsewhere } = opened.cast
   status(
@@ -740,32 +706,6 @@ function maybeTravel(): void {
   }, 0)
 }
 
-/**
- * Move the sprite cut, and cut every sheet again.
- *
- * Three numbers decide where a frame is: the byte the pixels start at, the
- * bytes from one frame to the next, and the rows in a frame. The first is
- * settled horizontally and not vertically, and the other two are measured
- * rather than derived — see the sprite section of
- * `packages/game-formats/FORMAT.md`.
- */
-function moveCut(by: { start?: number; pitch?: number; height?: number; odd?: number }): void {
-  if (!loaded) return
-  cutStart += by.start ?? 0
-  cutPitch += by.pitch ?? 0
-  cutHeight += by.height ?? 0
-  cutOdd += by.odd ?? 0
-  setSpriteCut(
-    { start: cutStart, pitch: cutPitch, height: cutHeight, oddShift: cutOdd },
-    loaded.cast,
-  )
-  status(
-    `sprite cut — start ${cutStart}, pitch ${cutPitch}, height ${cutHeight}, ` +
-      `odd frames ${cutOdd >= 0 ? '+' : ''}${cutOdd} (a row is ${cutRowBytes} bytes, ` +
-      `a byte is 2 pixels across)`,
-  )
-}
-
 /** The overlay text: where the character is, and what it is standing in. */
 function describe(uploaded: { vertices: number; triangles: number; textured: number }): void {
   if (!self || !loaded) {
@@ -780,11 +720,6 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
       (hiddenPieces > 0 ? ` · ${hiddenPieces} chunks out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
     padSeen ? 'left stick to walk · right stick to look' : 'WASD to walk · drag to turn',
-    showSprite
-      ? `sprite cut: start ${cutStart}  pitch ${cutPitch}  height ${cutHeight}` +
-        `   (row = ${cutRowBytes} bytes)\n` +
-        "  [ ] start by a byte · ; ' start by a row · , . pitch · - = height · 0 reset"
-      : undefined,
     // With `?pad=1`, what the pad reports — move a stick and watch which
     // numbers change, then pass those four to `?axes=`.
     showPad && !pad
@@ -897,7 +832,8 @@ function frame(now = 0): void {
     // close the camera happens to be.
     updateFollowCamera(
       camera,
-      self.state,
+      // A battle is watched from its middle — see `battleCentre`.
+      battleCentre() ?? self.state,
       elapsedMs / 1000,
       world,
       worldScale === 1
@@ -958,10 +894,8 @@ function frame(now = 0): void {
       ...(battle ? foePieces(now) : []),
       // The field's roaming monsters, in their field models.
       ...(roaming && !battle ? roamerPieces(now) : []),
-      // Pots and barrels face the camera too — see `pots.ts`.
-      ...loaded.props.flatMap((prop) =>
-        propPieces(prop, toFloat(PERSON.height) * worldScale, camera.yaw),
-      ),
+      // Pots and barrels face the camera too — see `propPiecesNow`.
+      ...propPiecesNow(loaded, now),
       ...playerPieces(
         self,
         loaded.figure,
@@ -1002,8 +936,6 @@ const padAxes = axesFrom(params.get('axes'), params.get('lookbuttons'))
 /** A layout given on the URL wins over anything known about the pad. */
 const padOverridden = params.get('axes') !== null || params.get('lookbuttons') !== null
 const showPad = params.get('pad') === '1'
-/** `?sprite=1` shows the sprite cut and turns its keys on. */
-const showSprite = params.get('sprite') === '1'
 /** `?collision=1`, or `c` at any time: draw the collision mesh over the map. */
 let showCollision = params.get('collision') === '1'
 /** Built per map, and again whenever the fit below is moved. */
@@ -1065,15 +997,6 @@ function person() {
     radius: fx32(Math.round(PERSON.radius * personScale)),
   }
 }
-/**
- * `?cut=start,pitch,height,odd` starts from those numbers instead of the
- * parser's, so a candidate can be looked at without pressing a key twelve
- * times. Any field left empty keeps the parser's value.
- */
-const cutParam = params
-  .get('cut')
-  ?.split(',')
-  .map((v) => (v === '' ? undefined : Number(v)))
 /** `?lighting=night` builds the map's night pieces instead of its day ones. */
 const wantedLighting = params.get('lighting') === 'night' ? 'night' : 'day'
 /**
@@ -1199,6 +1122,23 @@ function moveChapter(by: number): void {
   )
 }
 
+/**
+ * The map's pots and barrels, facing the camera — see `pots.ts`. One opened is
+ * smashed: its shards fly while they last, and then there is nothing there.
+ */
+function propPiecesNow(here: Loaded, now: number): Piece[] {
+  const height = toFloat(PERSON.height) * worldScale
+  return here.props.flatMap((prop) => {
+    const key = treasureKey(here.code, prop.slot, prop.treasure)
+    if (!openedTreasure.has(key)) return propPieces(prop, height, camera.yaw)
+    const since = smashedAt.get(key)
+    const shard = since === undefined ? undefined : breakingFrame(prop, now - since)
+    return shard === undefined || !prop.breaking
+      ? []
+      : propPieces(prop.breaking, height, camera.yaw, shard)
+  })
+}
+
 /** Redraw the treasure markers, after a map is entered or a treasure opened. */
 function refreshTreasures(): void {
   if (!loaded) {
@@ -1266,6 +1206,8 @@ function openTreasureAhead(): boolean {
     loaded.systemStrings,
   )
   if (!already) bag = take(bag, found.takings)
+  // A pot or a barrel breaks as it is opened, and then is gone.
+  if (!already && isPotOrBarrel(treasure)) smashedAt.set(key, performance.now())
   openedTreasure.add(key)
   talking = startConversation(
     { ...target, id: treasure.index ?? target.id },
@@ -1402,11 +1344,78 @@ function menuContext(): MenuContext {
     map: loaded?.code,
     stage: storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined,
     standing: levels ? standing(levels, heroExp) : undefined,
+    hp: heroHp,
     bag,
     equipped,
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
   }
+}
+
+/** The Hero as the words name them: the name alone, and he — the preset Hero's. */
+function heroNamed(): Named {
+  return { name: DEFAULT_CONTEXT.heroName, gender: 0 }
+}
+
+/** An item as the words name it: its name, plural and articles. */
+function itemNamed(id: number): Named {
+  const words = loaded?.itemWords.get(id)
+  return words
+    ? { name: words.singular, plural: words.plural, grammar: words.grammar }
+    : { name: nameOf(id) }
+}
+
+/**
+ * What the Items command offers: what the bag holds that does something in
+ * battle, with a heal where its action restores HP — see `ItemUse`.
+ */
+function battleItems(): BattleItem[] {
+  const uses = loaded?.itemUses
+  if (!uses) return []
+  const items: BattleItem[] = []
+  for (const [id, count] of bag.items) {
+    const use = uses.get(id)?.battle
+    if (!use) continue
+    const heal = use.effect === ActionEffect.RestoresHp ? use.range : undefined
+    items.push(heal ? { id, name: itemNamed(id), count, heal } : { id, name: itemNamed(id), count })
+  }
+  return items
+}
+
+/** The numbers using an item outside battle draws from: seeded, as a battle's are. */
+const fieldRng = new BattleRng(0x6d656e75n)
+
+/**
+ * Use an item from the items panel and say what came of it. One that restores
+ * HP heals the Hero by its range — the medicinal herb's 35 ± 5 — and is used
+ * up; at full HP it is kept, as nothing would come of it. **What any other item
+ * does is not done yet.**
+ */
+function useInField(id: number): string[] {
+  const here = loaded
+  const levels = here?.heroLevels
+  if (!here || !levels) return ['The level table did not load, so nothing can be used.']
+  const max = standing(levels, heroExp).level.maxHp
+  const use = here.itemUses.get(id)?.field
+  const hero = heroNamed()
+  const say = (number: number, telling: Telling) => {
+    const template = here.menuWords.get(number)
+    return template === undefined
+      ? undefined
+      : tellBattle(template, telling, here.battleWords.articles).text
+  }
+  if (!use || use.effect !== ActionEffect.RestoresHp || !use.range) {
+    return [`Using ${nameOf(id)} is not done yet: only what restores HP is.`]
+  }
+  const hp = Math.min(heroHp ?? max, max)
+  if (hp >= max) return [say(MENU_SAYS.noUse, { target: hero }) ?? `${hero.name} is not hurt.`]
+  const now = Math.min(max, hp + drawnAmount(fieldRng, use.range.base, use.range.spread))
+  heroHp = now >= max ? undefined : now
+  bag = drop(bag, id) ?? bag
+  return [
+    say(MENU_SAYS.uses, { actor: hero, item: itemNamed(id) }) ?? `${hero.name} uses ${nameOf(id)}.`,
+    say(MENU_SAYS.healed, { target: hero }) ?? `${hero.name} recovers ${now - hp} HP.`,
+  ]
 }
 
 /** What a shop, the inn or the church is told about the items and the Hero. */
@@ -1506,11 +1515,22 @@ function fightRoamer(touched: Roamer): void {
   if (!code) return
   const company = roamZone === undefined ? [] : (loaded.battleZones.get(roamZone)?.company ?? [])
   const codes = [code]
-  const more = company.length > 0 ? roamRng.below(3) : 0
-  for (let i = 0; i < more; i++) {
-    const joined = company[roamRng.below(company.length)]
+  const total = company.reduce((sum, c) => sum + c.weight, 0)
+  const kinds = total > 0 ? roamRng.below(3) : 0
+  for (let i = 0; i < kinds && codes.length < BATTLE_MOST; i++) {
+    let roll = roamRng.below(total)
+    let joined: (typeof company)[number] | undefined
+    for (const candidate of company) {
+      roll -= candidate.weight
+      if (roll < 0) {
+        joined = candidate
+        break
+      }
+    }
     const joinedCode = joined ? loaded.monsterCodeOf.get(joined.number) : undefined
-    if (joinedCode) codes.push(joinedCode)
+    if (!joined || !joinedCode) continue
+    const count = joined.least + roamRng.below(Math.max(1, joined.most - joined.least + 1))
+    for (let k = 0; k < count && codes.length < BATTLE_MOST; k++) codes.push(joinedCode)
   }
   startFight(codes, true)
 }
@@ -1552,6 +1572,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   }
   const row = standing(levels, heroExp).level
   const foes: Fighter[] = []
+  const names: Named[] = []
   const looks: (MonsterLook | undefined)[] = []
   for (const code of codes) {
     const who = loaded.monsterCodes.get(code)
@@ -1560,6 +1581,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
       status(`no monster ${code} in the monster data`)
       return
     }
+    names.push({ name: who.name, plural: who.plural, grammar: who.grammar })
     foes.push({
       name: renderName(who.name),
       side: 'foes',
@@ -1590,9 +1612,12 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   battle = beginBattle([hero, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
     hp: new Map([[0, heroHp ?? row.maxHp]]),
+    words: loaded.battleWords,
+    names: [heroNamed(), ...names],
   })
   battleLooks = [undefined, ...looks]
   battleSpots = [undefined, ...spotsFor(foes.length)]
+  cueStarted = performance.now()
   self.held.clear()
   closeTalk()
   menu = undefined
@@ -1633,17 +1658,55 @@ function spotsFor(count: number): { x: number; y: number; z: number }[] {
   })
 }
 
-/** The monsters still standing, each playing its stand, turned to face the Hero. */
+/** Each cue's motion, by the monster's own motion names — see `monsters.ts`. */
+const CUE_MOTIONS = {
+  appear: 'appear',
+  attack: 'attack0a',
+  damage: 'damage',
+  death: 'death',
+} as const
+
+/**
+ * The monsters in the fight, turned to face the Hero: each playing what the
+ * page on show has it do — once through, holding the last frame — or its
+ * stand. One that has fallen stays until the page that tells of it is gone.
+ */
 function foePieces(now: number): Piece[] {
   if (!battle || !self) return []
-  const frame = Math.floor((now / 1000) * MAP_FPS)
+  const scene = battle
+  const looping = Math.floor((now / 1000) * MAP_FPS)
+  const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
   const facing = self.facing + Math.PI
-  return battle.state.fighters.flatMap((fighter, i) => {
+  const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
+  return scene.state.fighters.flatMap((fighter, i) => {
     const look = battleLooks[i]
     const at = battleSpots[i]
-    if (fighter.side !== 'foes' || fighter.hp <= 0 || !look || !at) return []
-    return monsterPieces(look, at, facing, characterScale, 'stand', frame)
+    if (fighter.side !== 'foes' || !look || !at) return []
+    const falling = scene.cues.some((cues) =>
+      cues.some((c) => c.fighter === i && c.motion === 'death'),
+    )
+    if (fighter.hp <= 0 && !falling) return []
+    const cue = onShow.find((c) => c.fighter === i)
+    const motion = cue ? CUE_MOTIONS[cue.motion] : 'stand'
+    const length = look.motions.get(motion)?.frameCount ?? 1
+    const frame = cue ? Math.min(since, length - 1) : looping
+    return monsterPieces(look, at, facing, characterScale, motion, frame)
   })
+}
+
+/**
+ * The middle of the fight — the Hero and where the monsters stand — which the
+ * camera follows while a battle lasts. **Ours**: the game's battle camera is in
+ * its code.
+ */
+function battleCentre(): Player['state'] | undefined {
+  if (!battle || !self) return undefined
+  const spots = battleSpots.filter((s) => s !== undefined)
+  if (spots.length === 0) return undefined
+  const n = spots.length + 1
+  const x = (toFloat(self.state.x) + spots.reduce((sum, s) => sum + s.x, 0)) / n
+  const z = (toFloat(self.state.z) + spots.reduce((sum, s) => sum + s.z, 0)) / n
+  return { ...self.state, x: fx32(Math.round(x * FX32_ONE)), z: fx32(Math.round(z * FX32_ONE)) }
 }
 
 /** Draw the battle: the message on show, or the rows to choose from, and the Hero's numbers. */
@@ -1696,6 +1759,13 @@ function settleBattle(): void {
   const hero = battle.state.fighters[0]
   const name = DEFAULT_CONTEXT.heroName
   const levels = loaded?.heroLevels
+  const words = loaded?.battleWords
+  const said = (number: number, telling: Telling) => {
+    const template = words?.results.get(number)
+    return words && template !== undefined
+      ? tellBattle(template, telling, words.articles).text
+      : undefined
+  }
   const lines: string[] = []
   if (battle.state.outcome === 'won' && hero && levels) {
     const { exp, gold } = spoils(battle.state)
@@ -1704,9 +1774,18 @@ function settleBattle(): void {
     bag = take(bag, { gold })
     const after = standing(levels, heroExp).level
     heroHp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
-    lines.push(`${name} gains ${exp} experience and ${gold} gold coin${gold === 1 ? '' : 's'}.`)
+    const earned = said(RESULT_SAYS.earns, { values: { str_1: name, val_1: exp } })
+    const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), values: { val_1: gold } })
+    lines.push(
+      earned !== undefined && obtained !== undefined
+        ? `${earned}\n${obtained}`
+        : `${name} gains ${exp} experience and ${gold} gold coin${gold === 1 ? '' : 's'}.`,
+    )
     if (after.level > before.level) {
-      lines.push(`${name} reaches level ${after.level}!`)
+      lines.push(
+        said(RESULT_SAYS.level, { target: heroNamed(), values: { val_1: after.level } }) ??
+          `${name} reaches level ${after.level}!`,
+      )
       const gains = [
         ['Max HP', after.maxHp - before.maxHp],
         ['Max MP', after.maxMp - before.maxMp],
@@ -1913,7 +1992,14 @@ addEventListener('keydown', (event) => {
     if (key === 'arrowup' || key === 'w') battle = battleMove(battle, -1)
     else if (key === 'arrowdown' || key === 's') battle = battleMove(battle, 1)
     else if (key === 'f' || key === 'enter') {
-      battle = battleChoose(battle)
+      const round = battle.state.round
+      battle = battleChoose(battle, battleItems())
+      cueStarted = performance.now()
+      // An item used this round is gone from the bag.
+      if (battle.state.round !== round) {
+        for (const event of battle.events)
+          if (event.kind === 'item') bag = drop(bag, event.item) ?? bag
+      }
       settleBattle()
       if (battle.phase === 'over') {
         endFight()
@@ -1954,6 +2040,7 @@ addEventListener('keydown', (event) => {
     else if (key === 'f' || key === 'enter') {
       const taken = choose(menu, menuContext())
       menu = taken.state
+      if (taken.use !== undefined && menu) menu = { ...menu, said: useInField(taken.use) }
       if (taken.equip) {
         const worn = equip(bag, equipped, taken.equip.slot, taken.equip.item)
         if (worn) {
@@ -2073,37 +2160,6 @@ addEventListener('keydown', (event) => {
       event.preventDefault()
       return
     }
-  }
-  if (!showSprite) return
-  // A byte is two pixels across; a row moves the frame down one.
-  const moves: Record<string, () => void> = {
-    '[': () => moveCut({ start: -1 }),
-    ']': () => moveCut({ start: 1 }),
-    ';': () => moveCut({ start: -cutRowBytes }),
-    "'": () => moveCut({ start: cutRowBytes }),
-    ',': () => moveCut({ pitch: -1 }),
-    '.': () => moveCut({ pitch: 1 }),
-    '-': () => moveCut({ height: -1 }),
-    '=': () => moveCut({ height: 1 }),
-    '9': () => moveCut({ odd: -1 }),
-    '\\': () => moveCut({ odd: 1 }),
-  }
-  const move = moves[key]
-  if (move) {
-    move()
-    event.preventDefault()
-  }
-  if (key === '0' && loaded) {
-    // Back to what the parser decided.
-    const sheet = loaded.cast.sprites2d[0]?.sprite
-    if (sheet) {
-      cutHeight = sheet.height
-      cutPitch = (sheet.width * cutHeight) / 2 + 8
-      cutStart = 24 + 6 * (sheet.width / 2)
-      cutOdd = 0
-      moveCut({})
-    }
-    event.preventDefault()
   }
 })
 addEventListener('keyup', (event) => {

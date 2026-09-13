@@ -265,10 +265,10 @@ async function main(): Promise<void> {
           if (safe.escaped) escapedNames++
           if (!member.readable) {
             // The codec is not identified, so the bytes are preserved rather
-            // than lost. Some of these members turn out to have no region
-            // prefix at all and to be archives outright; where the raw bytes
-            // identify themselves, keep the member's real name so the recursion
-            // below can unpack them, and only mark the rest.
+            // than lost. (Members stored whole are readable, and do not come
+            // here; see the l5-gpc FORMAT.md.) Where the raw bytes identify
+            // themselves, keep the member's real name so the recursion below
+            // can unpack them, and only mark the rest.
             gpcUnreadable++
             const stored = archive.readRaw(member)
             const identifiable = isNarc(stored) || isGpc(stored)

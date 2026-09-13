@@ -1,4 +1,11 @@
 export {
+  type Action,
+  ActionEffect,
+  type ActionRange,
+  readActionRanges,
+  readActions,
+} from './actions.ts'
+export {
   COLLISION_KIND,
   type CollisionBounds,
   type CollisionCell,
@@ -22,6 +29,7 @@ export {
   type MarkupToken,
   parseMarkup,
   readEventMessages,
+  readTableMessages,
 } from './events.ts'
 export { type FieldMonster, readFieldMonsters } from './fieldmonsters.ts'
 export {
@@ -31,11 +39,13 @@ export {
   isBitmapFont,
   readBitmapFont,
 } from './font.ts'
+export { type Grammar, readGrammar } from './grammar.ts'
 export { type ItemName, readItemNames } from './items.ts'
 export {
   ITEM_RECORD_SIZE,
   ITEM_TABLE_HEAD,
   type ItemRecord,
+  NO_ACTION,
   readItemTable,
 } from './itemtable.ts'
 export {
@@ -93,7 +103,14 @@ export {
   type ScriptSection,
 } from './script.ts'
 export { readShops, SHOP_SLOTS, SHOP_TAG, type Shop } from './shops.ts'
-export { isSprite, readSprite, type Sprite, type SpriteCut } from './sprite.ts'
+export {
+  isSprite,
+  readSprite,
+  type Sprite,
+  type SpriteAnimation,
+  type SpriteFrame,
+  type SpritePart,
+} from './sprite.ts'
 export { readSystemStrings } from './systemstrings.ts'
 export {
   type DataTable,

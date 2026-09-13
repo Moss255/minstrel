@@ -107,6 +107,15 @@ per pixel and so was invisible to a 1bpp scan; or it is a tile bank whose glyph
 ordering lives in a separate table; or it is compiled into an overlay in a form
 that scan missed.
 
+**The NFTR fonts the code names are the Wi-Fi utility's, not the game's.**
+Overlay 31 names three — `msg/lc_s.NFTR.l`, `msg/lc_m.NFTR.l`,
+`msg/kc_m.NFTR.l` — and the ARM9 binary carries the `RTFN` stamp, but no file
+on the cartridge is called any of them, and every other place those names and
+stamps occur is inside `/dwc/utility.bin`: Nintendo's Wi-Fi Connection setup,
+which draws its own screens. `/data/pack_lv5/font_lv5.gp2`, which the ARM9 also
+names, holds one font, `f8.mes`, whose Latin is the 26 fullwidth capitals and the
+ten digits; no `.mes` font on the cartridge has a lowercase letter.
+
 M3 needs it. This is the open question.
 
 ---
@@ -718,23 +727,44 @@ the manifest.
 `u16` that differs by language, then 16-byte records — a singular's offset, a
 plural's, a word that differs by language, and the item's id — then the strings,
 which the offsets count from. `readItemNames` reads it. Record 0 is
-`wonder helm` / `wonder helms`, id `0x2F8A`.
+`wonder helm` / `wonder helms`, id `0x2F8A`. The third word is the name's
+grammar — its articles, packed as a monster's are; see "Articles" below.
 
 **The id is the item's.** Every item table, `itemdt_<c>_<lang>.nat`, is a
-36-byte head and then 32-byte records, and each record opens with an id from
-the names: the tools table's first is `0x55F0`, medicinal herb, then strong
-medicine, special medicine, superior medicine, antidotal herb. Measured by
-where the names' ids fall in each file: stride 32 on 1,007 of the combined
-table's gaps and every per-category table's. The categories by their first
-records: `a` gloves, `b` body, `d` accessories, `h` helms, `l` footwear, `s`
-shields, `t` tools, `u` legwear, `w` weapons. `readItemTable` reads one.
+32-byte head and then 32-byte records, each holding an id from the names: the
+tools table's first is `0x55F0`, medicinal herb, then strong medicine, special
+medicine, superior medicine, antidotal herb. Measured by where the names' ids
+fall in each file: stride 32 on 1,007 of the combined table's gaps and every
+per-category table's. The categories by their first records: `a` gloves, `b`
+body, `d` accessories, `h` helms, `l` footwear, `s` shields, `t` tools, `u`
+legwear, `w` weapons. `readItemTable` reads one.
 
-**A record's second `u16` is its price** — INFERRED, and well supported: every
-one of the 330 items any shop sells has one above 0, and none of the 140 items
-at 0 — quest pieces, the celestial suit among them — is sold anywhere. The third
-is `0xFFFF` on most records, `0xFFFC` and 0 on others; not established. The
-other 26 bytes are carried: a sort position, an offset that climbs by the
-length of a description, a run of numbers that count the records, and an icon.
+**A record begins four bytes before its id.** It was first read from the id,
+behind a 36-byte head, and then each record's last four bytes held the *next*
+item's actions: the medicinal herb's ended `(256, 256)`, strong medicine's
+action, and the head's own last four were `(255, 255)`, the herb's.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u16` ×2 | what using it does: two action numbers (see "Actions"), 252 for nothing |
+| `+0x04` | `u16` | the item's id |
+| `+0x06` | `u16` | its price, INFERRED |
+| `+0x08` | `u16` | `0xFFFF` on most, `0xFFFC` and 0 on others; not established |
+| `+0x0A` | 22 bytes | carried: a sort position, an offset that climbs by the length of a description, a run of numbers that count the records, and an icon |
+
+**The two actions.** 36 of the 234 tools name an action called what they are —
+the medicinal herb 255 in both, holy water 259 and 260, the chimaera wing 261,
+sage's elixir 410 — and 179 name 252, which has no name, as all but a few
+pieces of equipment do. The skill books name actions that are not theirs
+(Frizzle, Bang), and are not read. **Which is which, INFERRED: the field's
+first, battle's second.** The chimaera wing, the Evac-u-bell and the nine
+seeds, which the series uses only outside battle, have 252 second; the weapons
+and shields that do something when used in battle have 252 first and an action
+second (370, 384, 396 …).
+
+**The price** — INFERRED, and well supported: every one of the 330 items any
+shop sells has one above 0, and none of the 140 items at 0 — quest pieces, the
+celestial suit among them — is sold anywhere.
 
 **What an item does is not found.** No field of the record climbs with the
 price as a weapon's attack would (the best, bits of `+0x11`, agrees with the
@@ -1440,103 +1470,84 @@ code.
 
 ---
 
-# `.spr` — the 2D characters
+# `.spr` — the 2D characters, and the pots and barrels
 
-1,316 files in `/data/ani`, a directory nothing had opened. **24 of the slice's
-33 villagers are sprites**, not models: every `kind` 0 character in a cast list
-has a `<name>.spr` here and no 3D model anywhere on the cartridge, and every
-`kind` 2 has a model and no sprite.
+1,316 sheets, 1,298 of them loose in `/data/ani`. **24 of the slice's 33
+villagers are sprites**, not models: every `kind` 0 character in a map's cast
+list has a `<name>.spr` here and no 3D model anywhere on the cartridge, and
+every `kind` 2 has a model and no sprite. The pots and barrels are sprites too —
+`tsubo_01` and `taru_01`, and their breaking, `tsubo_02` and `taru_02`.
+`readSprite` reads one.
 
-## Header
+## A frame is built of parts
 
-| offset | type | meaning |
+As the DS's own hardware sprites are: rectangles 8, 16, 32 or 64 pixels on a
+side, each placed in the frame, each with its own pixels.
+
+| at | type | meaning |
 |---|---|---|
-| `0x00` | `u16` | frame count |
-| `0x02` | `u16` | version; `3` on 1,315 of 1,316 |
-| `0x04` | `u16` | frame width — **overstates the stride on most files, see below** |
-| `0x06` | `u16` | nominal frame height — one short of the pitch |
-| `0x08` | `u32` | `unknown_0x08` |
-| `0x0C` | `u32` | zero on every file seen |
+| `+0x00` | `u16` | frame count |
+| `+0x02` | `u16` | version: `3` on 1,315 of 1,316 |
+| `+0x04` | | the frames, one after another; each: |
+| | `u16` ×2 | its width and height |
+| | `u16` | its part count |
+| | `u16` | 0, on all 4,251 frames |
+| | | its parts, one after another; each: |
+| | `s16` ×2 | where the part goes in the frame, x and y |
+| | `u16` ×2 | its width and height as powers: `8 << n` |
+| | | its pixels, 4bpp, a row of the part at a time, the low nibble first |
+| after | `u32` | the palette's colour count |
+| | `u16` × count | the colours, BGR555; index 0 is transparent |
+| after | | the animations — below |
 
-An earlier note in `docs/findings.md` said the leading `0x10` on these files was
-a width. It is the frame count: `arrow3.spr` carries `01 00` and holds one 8x8
-frame, `n003a.spr` carries `10 00` and holds sixteen.
+**Walked by nothing but the parts' own sizes, 1,314 of the 1,316 sheets arrive
+exactly at a palette's count word**, which a wrong reading does not. The two that
+do not are `n001a_test`, whose count word is 0, and one whose parts run past the
+end of the file.
 
-## The palette, and how it is found
+| check | result |
+|---|---|
+| sheets whose frames lead exactly to a palette | **1,314 / 1,316** |
+| the word after each frame's part count | 0 on 4,251 / 4,251 frames |
+| parts inside their frame | 4,250 / 4,251 |
+| parts per frame | 2 on 2,928 frames, 4 on 1,303, 1 on 39, 3 on 4, 6 on 2 |
+| part sizes | 32x8 on 3,195 and 32x32 on 3,189; then 8x8, 8x16, 16x16, 16x8, 8x32 |
+| palette counts | 16 on 1,288 sheets; 14 on 12, 12 on 9, 10 on 3, 8 on 2 |
 
-At the end of the pixel data behind a count word: a `u32` equal to `16`, then 16
-`u16` in BGR555 with bit 15 clear.
+**The villagers' frames are 32x40, of two parts**: the top eight rows, 32x8 at
+0,0, and the 32x32 below them at 0,8. The village's horse, `n099a`, is 40x40 of
+four — 32x32 at 0,0, 8x8 at 32,0, 8x32 at 32,8 and 32x8 at 0,32. The breaking
+pot's three frames are 56x32, of 8x32, 8x32, 8x32 and 32x32 side by side; the
+barrel's of 8x32, 16x32 and 32x32. `tools/sprite/render.ts` draws a sheet's
+frames and lists their parts.
 
-**It has to be found by the size equation, not by scanning.** A backward search
-for the count word lands on stray `16`s in the animation tables at the end of
-the file. Enumerating candidates and keeping the one where the pixels implied by
-the header fit between the header and the candidate resolves **1,265 of the
-1,316** files.
+## The palette
 
-## The stride is not always the header's width
-
-On sheets whose `0x08` is `2` it is: **186 of the 187** such files read cleanly
-at the header's width. On the rest it overstates by exactly eight pixels —
-**1,001 of the 1,063** files with `0x08` of `4` are coherent at `width - 8` and
-none at `width`. The village's one such character, `n099a`, is a 32-wide sheet
-whose header claims 40; read at 40 it is diagonal noise.
-
-Keying off `0x08` would be wrong on the sixty-odd exceptions, so the two
-candidates are put to the data instead. A sheet read at its true stride has
-pixels that agree with the one below far more often than one read at the wrong
-stride, where every row is offset from the last and the image shears. The
-margin is not fine: `n099a` scores 0.79 at 32 against 0.53 at 40, and `n003a`
-0.69 at its header's 32 against 0.53 at 24.
-
-What the header's field means on those files, if not the stride, is not
-established.
-
-## Pixels
-
-4bpp indices, one row of the stride at a time, ending exactly where the count
-word begins. The start is a whole number of rows before it — anything else
-shears the sheet sideways rather than shifting it up, which is what made this
-look unreadable for a long time.
-
-Index 0 is transparent whatever colour the palette gives it.
-
-## Frames are not the header's height — INFERRED
-
-`n003a` holds **663 rows for 16 frames**, or 41.4375 each, and the header says
-40. Every fixed pitch drifts across the sheet.
-
-Cutting on rows where the sheet goes quiet gives seams at 40, 81, 124, 164, 206,
-247, 289, 330, 371, 413, 454, 496, 537, 579 and 620 — fifteen seams, so sixteen
-frames, agreeing with the header — and their spacings run 40, 41, 43, 40, 42 …
-averaging 41.4. Each of those fifteen sits within two rows of `k x rows /
-frames`, with a **constant** offset rather than a drifting one.
-
-So frame `k` runs from `round(k x rows / frames)` to `round((k + 1) x rows /
-frames)`, which alternates 41 and 42. **Nothing in the file has been found that
-states this**, so it is marked inferred: it is a reading that agrees with the
-measured seams and puts a complete, correctly coloured villager in every cell
-for 22 of the village's 24 sprite characters.
-
-Two other readings were tried and disproved: rows stored bottom-up, and 17
-frames of 39 — which divides 663 exactly and shears worse.
+A count and then that many colours: 16 on most sheets, fewer on some — the
+barrel's shards have 12, the pot's 14. A pixel names one of sixteen; past the
+count there is no colour, and nothing is drawn. A few sheets — the arrows among
+them — set bit 15 of a colour, which is not part of a DS colour and is ignored.
 
 ## Animations
 
 Names first, in fixed slots written over a longer string — fragments of
-"…create an Animation" survive between them, and a real name is told from them
-by having an underscore. Then one record each:
+"…create an Animation" survive between them. A real name has an underscore in
+it, or is the one word a breaking sheet carries, `tsuboware` or `taruware`.
+Then one record each:
 
 ```
 u32 steps
 u32 order[steps]      // 0..steps-1, rotated; meaning not established
-u32 duration[steps]   // 8 on a walk step, 60 on a stand
+u32 duration[steps]   // 8 on a walk step, 60 on a stand, 4 on a breaking one
 u32 frame[steps]      // which frame of the sheet to show
 ```
 
-The records are found by trying every aligned start and keeping the run that
-consumes the file exactly, names a frame that exists at every step, and yields
-as many records as there are names. A wrong start fails on the first record or
-two.
+The records are found by trying every start two bytes apart — a palette of
+twelve or fourteen colours leaves them off a four-byte boundary — and keeping
+the run that consumes the file exactly, names a frame that exists at every
+step, and yields as many records as there are names. A wrong start fails on the
+first record or two. A step's duration is taken in 60ths of a second, INFERRED
+from the walks' 8 and the stands' 60.
 
 A villager carries twelve: four walks of four steps, and eight one-frame
 stands.
@@ -1554,209 +1565,32 @@ stands.
 
 Every one of the sixteen frames is reached, and a stand is the middle frame of
 the walk that faces the same way — `stand_down` is frame 1, the neutral pose of
-`walk_down`. The four diagonals have no walk and take frames 12 to 15.
+`walk_down`. The four diagonals have no walk and take frames 12 to 15. A
+breaking sheet carries one animation: frames 0, 1 and 2, each held for 4.
 
-**Which way round the eight go is established by looking, not by the data.**
-They are listed in a consistent rotation, but nothing in the file says whether
-it turns through the character's left or its right. Drawn one way the village
-dog stands with its head where its tail should be; drawn the other it is a dog.
-`down` and `up` are identical under the mirror, so only a side-on character can
-settle it — which is why an animal did and the people did not.
+**Which way round the eight stands go is established by looking, not by the
+data.** They are listed in a consistent rotation, but nothing in the file says
+whether it turns through the character's left or its right. Drawn one way the
+village dog stands with its head where its tail should be; drawn the other it is
+a dog. `down` and `up` are identical under the mirror, so only a side-on
+character can settle it — which is why an animal did and the people did not.
 
-## Evidence
+## What a sheet was once taken to be
 
-Fixtures in `test/sprite.test.ts` are built in code.
-
-| check | result |
-|---|---|
-| `.spr` files | 1,316 |
-| version `3` | 1,315 / 1,316 |
-| palette located by the size equation | **1,265 / 1,316** |
-| village sprite characters that read | **14 / 14 placed outdoors** |
-| **village sprite characters that decode to a recognisable figure** | **24 / 24** |
-| sheets where the header's width is the stride (`0x08` = 2) | 186 / 187 |
-| sheets where it overstates by eight (`0x08` = 4) | 1,001 / 1,063 |
-| village sprite characters with a decoded animation table | **24 / 24** |
-| …with all eight standing directions | **24 / 24** |
-| readable sheets cartridge-wide carrying an animation table | 181 / 1,317 |
-| frame heights summing to the sheet's rows | by construction |
-| sheets whose cut pitch is the block's own measured byte period | **checked on every sampled sheet, in `tools/harness`** |
-| 32x40 sheets whose measured period is 664, at 8/11/16/20 frames | **all of them, 187 surveyed** |
-
-## The frame segmentation, and the two ways it was got wrong
-
-**Settled**: the pitch is `width x height / 2 + 24` bytes and the figure is the
-last `height - 8` rows of it. What follows is how that was reached, because
-every wrong answer on the way was reached by a measurement that looked sound.
-
-It was first cut by the even division — frame `k` at `round(k x rows / frames)`
-— which is inferred and does not hold. That put a band of the neighbouring frame
-inside the cell: the first five rows of `n003a`'s frame 7 were a slice of another
-frame, wrapped so that its ink sat against the left and right edges with a gap
-between. In play a villager came apart as the camera turned around them, because
-each facing is a different frame and only some were mis-cut.
-
-An earlier check here — "ink fills 33 to 41 of the 41 rows" — was fooled by
-exactly that: the foreign band counts as ink. So was its successor, "the ink
-starts on row 0 and ends on row 39 in almost every frame, so the frames do not
-creep": the strip holds the top rows whether the figure has crept or not, and
-the figure was creeping a row a frame.
-
-### What has been ruled out
-
-- **A constant offset on the even division.** Sweeping every offset scores at
-  best 5 to 7 frames of 16 with their ink in one piece, and the best offset is
-  not the same for two characters (40, 42, 42, 35).
-- **A fixed pitch with a leading offset.** Better, and interestingly so: pitch
-  **41** at an offset of 3 to 6 scores 9 to 13 of 16, against the even
-  division's 5 to 7. 41 is the header's own `height` of 40 plus one. But the
-  offset is not constant across characters, and `n099a` — 839 rows, a nominal
-  height of 51 — scores 1 of 16 at every pitch and offset tried, so the model
-  does not generalise.
-- **A per-frame table in the file.** Searched `n003a.spr` for a run of sixteen
-  values between 35 and 55 at byte, `u16` and `u32` strides through the first
-  4 KiB. There is none.
-
-### The 23 rows were a red herring
-
-Recorded because it was chased and cost time. The guess was that `rows` — walked
-back from the palette — includes data that is not pixels, that the giveaway was
-663 rows for 16 nominal 40-row frames leaving 23 spare (and 839 for 16 nominal
-51-row frames leaving 23 as well), and that the pitch would then be the header's
-`height`. **All three parts are wrong.**
-
-- **The gap is not 23 and not constant.** Taking the pixels as exactly
-  `frames x width x height / 2` bytes ending at the palette, the rows the
-  current start adds in front of them are 2 on 999 sheets, 23 on 163, 9 on 42,
-  and other values below that. 23 looked constant because both sheets examined
-  happened to be in the same group.
-- **The header's `height` is not the pitch.** On `n003a` the rows that are
-  entirely empty fall at 81, 249, 330, 413, 496, 579 and 662 — a period of
-  **83 rows for two frames**, so 41.5 each, against a header height of 40.
-  `n017a` gives the same 83.
-- **Cutting from the header's byte count is worse, not better.** It makes
-  `n003a`'s frame 7 clean and its frame 0 broken, and across the cartridge it
-  takes frames whose ink is in one piece from 2,306 of 4,096 to 1,922.
-
-### The frames are not a row grid: the pitch is `width x height / 2 + 24` bytes
-
-**Found by rendering a sheet to a PNG and looking at it** — `tools/sprite`,
-which writes to `out/` and is local-only. Three separate measurements had said
-the sheets were broadly fine, and all three were blind to this.
-
-Frame 1 of `n003a` is a whole, centred villager. Frame 0 was the *same figure
-sliced down the middle with its halves swapped* — right half against the left
-edge, left half against the right. That is a **horizontal wrap**, and no count
-of rows or of ink was ever going to show it.
-
-The cause is that a frame is not a whole number of sheet rows. On the village's
-32x40 characters the pitch is **664 bytes — 41.5 rows**, which is
-`width x height / 2 + 24`.
-
-**The pitch is measured, not fitted.** The instrument is the period of the
-sheet's own bytes: score the block against itself at every candidate lag, over
-the positions where *either* copy has ink so the transparent majority cannot
-vote for every lag alike, and take the peak. `tools/sprite/render.ts --period`
-is that measurement, and `n003a` peaks at 664 with 0.465 against 0.325 for the
-runner-up — not a marginal call.
-
-It is a constant of the geometry rather than a division of the file. Across 187
-multi-frame sheets the peak is 664 on **every 32x40 sheet**, at 8, 11, 16 and 20
-frames alike; `ceil(block / frames)` agrees only where there happen to be 16.
-
-41.5 rows is the same 41.5 the empty rows give — they fall every 83 rows, two
-frames apart — arrived at independently.
-
-### 664 was rejected once, on arithmetic that was wrong
-
-Recorded because it cost the most. An earlier revision of this section chose 648
-and ruled 664 out on the grounds that "sixteen frames at 664 leave no room in
-front of the palette for a start above the header". **Sixteen frames do not need
-sixteen pitches.** They need fifteen, plus the pixels of the last one:
-`15 x 664 + 512` is 10,600 bytes, and `n003a` has 10,612 between its header and
-its palette. It fits, with twelve to spare.
-
-648 came from sweeping the pitch and scoring by how much ink lands in the two
-edge columns. That is a proxy for the wrap, and it found a pitch that does not
-wrap — 648 is a whole number of rows away from 664, so it shifts the figure
-vertically rather than horizontally, and the proxy cannot see vertical error at
-all. **A pitch one row short does not slice a figure; it walks the figure a row
-further down its cell with every frame**, which is what put a fragment above the
-character and cut the hem off by the end of the sheet.
-
-`tools/harness` now checks the pitch the parser uses against the measured period
-on every sheet it samples, which is the check that would have caught this.
-
-### A frame is an eight-row strip and then a thirty-two-row figure
-
-The 664 bytes divide as **8 rows, then the figure's 32**, and the header's
-`height` of 40 is the two together. Cut at 32 rows, eight rows into the unit,
-every frame of the village's characters is a whole figure with nothing above it.
-
-The row structure is plain once the block is folded on its 83-row period: ink
-rises through the strip, drops to almost nothing for one row, then rises again
-through the figure and tapers to nothing at its hem.
-
-**What the strip is has not been established.** It is a squashed copy of the
-figure rather than a constant blob — `n017a` carries the blue of her dress above
-the grey of her apron, and it turns as she does — so a shadow and a reflection
-are both consistent with it, and a hat is not. It is separate from the figure
-either way, and read as part of the frame it drew as debris floating over the
-cast.
-
-`SHADOW_ROWS` in `sprite.ts` carries the eight. It replaced a `LEAD_ROWS` of
-six, which was fitted by eye against the drifting cut and is not a measurement
-of anything now the pitch is right.
-
-### The six criteria that were tried, and are not to be tried again
-
-These chose the start, back when the pitch was a row short. Every one renders
-wrong, and they are listed so the same ground is not covered twice:
-
-| criterion | what it actually does |
-|---|---|
-| least ink in the top rows | slides the window until the head is cut off — picks 192, 160, 208 |
-| clear air above the head, feet on the floor | satisfied by 0 or 1 frame in 16; these characters fill their cells |
-| least ink against the left edge | finds the right phase within a row, but lands a row high, and rendering it clips every head |
-| anchor the last frame to the palette | clips every head |
-| least ink in the two edge columns | picks 648: blind to vertical error, which is the error there was |
-| a per-frame table in the file | there is none — searched `n003a` for a run of sixteen values between 35 and 55 at byte, `u16` and `u32` strides through the first 4 KiB |
-
-The lesson is the one that keeps recurring here: a criterion that scores how a
-cut *looks* will find a cut that scores well. The period of the bytes is a
-property of the data, and it answered in one run.
-
-### The loader in the cartridge's own code
-
-`CLAUDE.md` puts disassembly outside this repository, so this is a foothold
-rather than a finding. The ARM9 binary is BLZ-compressed — 638,216 bytes at ROM
-offset 0x4000, decompressing to 1,000,984 — and carries the sprite loader's own
-path strings:
-
-| RAM address | string |
-|---|---|
-| `0x20ef20b` | `/data/ani/d_%c%03d.spr` |
-| `0x20e6e98` | `/data/ani/d_i127.spr` |
-| `0x20efdc4` | `data/chara_sub/%s.chr` |
-
-Whatever computes a frame's offset is reached from the code that loads those
-paths. Nothing here has been disassembled and no behaviour is claimed from it.
-
-### What is established
-
-**1,031 of the 1,264 sheets have `rows` divisible by `frames`.** For those the
-even division is exact, the pitch is a whole number, and there is nothing wrong.
-
-**233 do not**, and they are where the mis-cutting lives. Adding a single row to
-the count makes 48 of them exact and three rows makes 2 more; **183 stay
-fractional** under any small correction, so a one-row error in finding the start
-is not the general answer either.
-
-On the affected sheets the measured period (83 rows per two frames, 41.5 each)
-and the computed one (663/16 = 41.44) differ by about a row across the whole
-sheet, which is too small to account for a five-row band of foreign pixels. So
-the artefact seen in play is **still unexplained**, and what has been narrowed is
-where to look: the 233, and what makes their row count fractional.
+For a long time a sheet was read as one image — rows of pixels from the header
+to the palette — cut into frames, and every reading of that kind was a fit. The
+even division put bands of one frame inside another. A pitch measured from the
+bytes' own period, 664 on the villagers, cut clean figures, and is exactly a
+villager's frame read as parts: its header, two part headers, a 32x8 and a
+32x32, `8 + 8 + 128 + 8 + 512`. The eight rows that cut dropped as "a strip in
+front of the figure — a squashed copy of it, a shadow or a reflection" were the
+top of the figure, its own part, and characters were drawn without their heads
+or their legs. The header's "width" was frame 0's; its "unknown" `0x08`, 2 on
+some sheets and 4 on others, was frame 0's part count — which is why the
+"stride" came out eight narrower on the four-part sheets; and a palette found by
+searching for a count of 16 missed the breaking sheets, whose counts are 12 and
+14. Those measurements were not wrong about the bytes: they were measuring the
+parts without knowing it.
 
 ---
 
@@ -2260,9 +2094,11 @@ among them, though not the Wight Knight's or Morag's — not established.
 The rest is carried as it is. Hexagoon, the slice's boss, is `b003a`.
 
 **Names**: a record is the name's offset, the code's offset (both `u32`, from
-the strings) and the number (`u16`); the rest is not read. The strings run
-name, plural, code for each monster — `slime`, `slimes`, `z000a` — and the
-plural is not referenced by an offset read here. **Codes repeat**: 438 records
+the strings) and the number (`u16`) at `+0x08`; ten bytes not established; the
+plural's offset at `+0x14`; and at `+0x18` the name's grammar, its articles and
+gender (see "Articles"). The strings run name, plural, code for each monster —
+`slime`, `slimes`, `z000a` — and the plural's offset starts a string on all 438
+records in all five languages. **Codes repeat**: 438 records
 carry 312 codes, a code naming the story's versions of one monster (the
 scarlet fever four times); the lowest number is the ordinary one.
 
@@ -2305,9 +2141,31 @@ the map.
 **`encbtl`, by zone.** A `0x68` record per zone — 290 of them — then `0x66`
 records, **the zone's roamers again: the same monsters as `encfld`'s on all 287
 zones it has**, and `0x67` records, monsters that may join a battle there, most
-of them not among the roamers (zone 12's company includes a batterfly). The bits
-above each monster's number — 9 and 92 on most roamers, 9 to 13 and 4 to 21 on
-the company — and the records' second values are carried, not read.
+of them not among the roamers (zone 12's company includes a batterfly). The
+records' second values are 0 on every company record and carried.
+
+**A companion's bits are three 3-bit fields** above its number — a weight
+among the zone's company, then the least and the most of it that join,
+INFERRED:
+
+| bits (of the word) | reading | seen |
+|---|---|---|
+| 12–14 | weight | 0 to 7; 0 on ten, which then never join |
+| 15–17 | least | 1 on 1,501, 2 on 20, 3 on 6 |
+| 18–20 | most | 1 to 5 |
+| 21 up | — | 0 on all 1,527 |
+
+The least is no more than the most **on all 1,527**, as a count's range must
+be. The weights are the company's own: they agree with `encfld`'s weight for
+the same monster in the same zone on 272 of 829. `F01`'s first zone's company is
+the slime and the cruelcumber at 5, the teeny sanguini and the sacksquatch at
+3, and the batterfly at 1, one of each.
+
+A roamer's bits hold the same three fields and more above them. There the
+second is no more than the third on only 1,027 of 1,058, and the 31 that break
+it carry large values above; they are carried, not read. What they say about
+the roamer walked into — how many of it there are, how big the battle is — is
+not established.
 
 **How a map chooses among its zones is not established.** `F01` has three.
 The collision triangles' attribute word was tried, bits 25 up read as an
@@ -2331,6 +2189,96 @@ for each monster of seven values. `readFieldMonsters` reads it.
 Every roaming monster has a field model beside its battle one,
 `<code>_f.mon` in `enemy.gp2`, with its `appear`, `attack0a`, `run` and `stand`
 motions.
+
+## Actions — `actdt_a.gp2`, `actdt_b.gp2`
+
+What a fighter or an item does, in two halves: `/data/prm/actdt_a.gp2` holds
+`actdt_a_<lang>.nat`, 63 actions — the spells and the healing items — and
+`actdamage_a.nat`; `/data/prm/actdt_b.gp2` holds `actdt_b_<lang>.nat`, 618 —
+the attack, defending, fleeing, the monsters' moves — and `actdamage_b.nat`.
+Both archives' members are stored whole; see the l5-gpc FORMAT.md. `actname.nat`
+names them by number, and reads with `readSystemStrings`.
+`readActions` and `readActionRanges` read them.
+
+**An action table** opens with the head word the system strings share — 618
+records and 3,969 bytes of strings in English, which leaves exactly 60 bytes a
+record — then the records, then the strings.
+
+| offset | reading | evidence |
+|---|---|---|
+| `+0x00` | the name's offset | a string's start on every record |
+| `+0x04`, bits 0–9 | the action's number | `actname`'s: Heal 30, Midheal 31, the medicinal herb 255, strong medicine 256; no two alike in a table |
+| `+0x08`, bits 14–21 | its range: an index into the range table beside it, 0 for none | **every one is there** — 37 in `_a`, 117 in `_b` — and every range is some action's, 17 of 17 and 107 of 107; the word is the same in all five languages |
+| `+0x34` | the plural's offset | `medicinal herbs`; a string's start on every record |
+
+The low byte of `+0x08` is 2 on Heal and 4 on Midheal, which would be their
+magic cost; not read. The rest of the record is carried.
+
+**A range table** opens with a word holding its count, then 8-byte records:
+
+| offset | reading | evidence |
+|---|---|---|
+| `+0x00` | the index | — |
+| `+0x01` | spread: how far either side of the base, INFERRED | Heal's is 5, and the reference draws Heal as 35 ± 5 |
+| `+0x02` | 0 | on every record |
+| `+0x04`, bits 0–9 | base, INFERRED | Heal 35, Midheal 85, Moreheal 185: the reference's own bases |
+| `+0x04`, bits 10–19 | not established | equal to the base on 78 of 124 |
+| `+0x04`, bits 20–29 | peak, INFERRED: the base at magical mending 999 | the reference's Midheal, 85 + (mending − 100) × 0.2392, and Moreheal, 185 + (mending − 200) × 0.5194, come to exactly 300 and 600 at 999, which are theirs |
+| `+0x04`, bits 30–31 | 0 | on every record |
+
+The reference is DQIX/BattleEmulator (MIT, © 2024 DaisukeDaisuke), which
+reproduces the game's arithmetic.
+
+**The medicinal herb** is action 255, range `0x31`: 35 ± 5, peak 35 — it
+restores 30 to 40 HP whoever uses it. Strong medicine is range `0x32`, 50 ± 10.
+An item names its action in its item table — see "Items".
+
+## Articles — `article_<lang>.nat`, and a name's grammar
+
+`/data/prm/article.gp2/article_<lang>.nat` reads with `readSystemStrings`: 38
+articles in English by number — 0 to 5 definite singular (`the`, `the pair
+of`, `the book called` …), 100 to 125 indefinite singular (`a`, `an`, `a suit
+of`, `a phial of` …), 200 to 202 definite plural, 300 to 302 indefinite plural
+(`some`, `some pairs of`).
+
+**A name says which it takes**, in one packed word beside it: `+0x18` of a
+monster's name record, `+0x08` of an item's. `readGrammar` unpacks it.
+
+| bits | reading | evidence |
+|---|---|---|
+| 0–5 | indefinite singular, 100 + n | `an` on every English monster whose name opens with a vowel and `a` on every other, 289 of 289; 679 of 687 items the same, and the eight are English's own — `an honour among thieves`, `a utility belt` — or open with an accent's markup; `a suit of` on leather armour, `a book called` on the books |
+| 6–11 | a plural article, n — the indefinite (300 + n) or the definite: which, not established | equal to bits 18–23 on every English record |
+| 12–17 | definite singular, n | `the book called` on the books, `the keg of` on the kegs; 0, no article at all, on the story's named monsters |
+| 18–23 | the other plural | |
+| 24–25 | the name's gender, INFERRED: 0 he, 1 she, 2 it | 2 on 303 of 438 English monsters, 0 on the named men; German, whose nouns have genders, spreads its monsters across all three. The battle text's `<IF_ACTOR_M>`, `_F`, `_N` choose by it |
+| 26–31 | not established | bit 26 set on 305 English items, and not on every name the plural suits |
+
+## Battle text — `strbtl`, `actmsg`, `str_tm`
+
+Three files of messages by number, each read with `readSystemStrings`, in the
+markup the talk uses and more of it:
+
+- `/data/bin/strbtl.gp2/strbtl_<lang>.nat`, 17: monsters drawing near (5 to 9)
+  and fleeing (1 to 3);
+- `/data/prm/actmsg.gp2/actmsg_<lang>.nat`, 591: what an action says — 1
+  `<DEF_ART_ACTOR> attacks.`, 2 `<DEF_ART_TARGET> takes <val_1> points of
+  damage.`, 9 defeated, 10 defends, 12 `uses <INDEF_ART_SGL_I_NAME>.`, 22
+  `<DEF_ART_TARGET><1>s wounds are healed.`, 140 `Critical hit!`;
+- `/data/bin/menu/str_tm.gp2/str_tm_<lang>.nat`, 329, the field menu's: 9002
+  `uses <INDEF_ART_SGL_I_NAME>.`, 9003 `But nothing happens.`, 9004 wounds
+  healed, 9012 `it doesn<1>t seem like it<1>d be much use on <DEF_ART_TARGET>`.
+
+Neither healing message names the amount. **Which message an action says is
+not established**: an action record's `+0x0C` holds a pair of numbers — 66 on
+the herb, 11 on Heal — that are not `actmsg`'s (66 is a monster falling into a
+deeper sleep). The game here picks each by what it says.
+
+The markup's own grammar: `<DEF_ART_ACTOR>` is the actor's name behind its
+definite article; `<INDEF_ART_SGL_M_NAME>` a monster's behind its indefinite;
+`<IF_SING val_1>` … `<ELSE_NOT_SING>` … `<ENDIF_SING>` choose on a count;
+`<IF_TARGET_SING>` … `<ELSE_TARGET_PLR>` on the target being one;
+`<IF_ACTOR_M>` … `<IF_ACTOR_F>` … `<IF_ACTOR_N>` … `<ENDIF_ACTOR_MFN>` on the
+actor's gender, three branches and one end; `<IF_SOLO>` on the party being one.
 
 ---
 

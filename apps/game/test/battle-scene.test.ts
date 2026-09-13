@@ -1,7 +1,10 @@
+import { readGrammar } from '@minstrel/game-formats'
 import type { Fighter } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import {
+  ACTION_SAYS,
   BATTLE_COMMANDS,
+  BATTLE_SAYS,
   battleBack,
   battleChoose,
   battleMove,
@@ -10,6 +13,7 @@ import {
   labelsOf,
   withPages,
 } from '../src/battle-scene.ts'
+import type { Named } from '../src/battle-text.ts'
 
 const hero: Fighter = {
   name: 'Hero',
@@ -89,7 +93,86 @@ describe('a battle scene', () => {
   it('carries the party’s wounds in, and says when there is no running', () => {
     const scene = beginBattle([hero, blob()], 1n, { canFlee: false, hp: new Map([[0, 7]]) })
     expect(scene.state.fighters[0]?.hp).toBe(7)
-    const fled = battleChoose(battleMove(untilChoice(scene), 2))
+    const fled = battleChoose(battleMove(untilChoice(scene), BATTLE_COMMANDS.indexOf('Flee')))
     expect(fled.pages[0]).toBe('Hero tries to run, but there is no escape!')
+  })
+
+  it('offers the bag’s items, and uses the one chosen on the Hero', () => {
+    const herb = { id: 0x55f0, name: { name: 'herb' }, count: 2, heal: { base: 35, spread: 5 } }
+    const scene = untilChoice(
+      beginBattle([hero, blob()], 1n, { canFlee: true, hp: new Map([[0, 5]]) }),
+    )
+    const items = BATTLE_COMMANDS.indexOf('Items')
+    const empty = battleChoose(battleMove(scene, items))
+    expect(empty.pages).toEqual(['Hero has nothing to use.'])
+    const offered = battleChoose(battleMove(scene, items), [herb])
+    expect(offered.phase).toBe('item')
+    expect(battleRows(offered)).toEqual(['herb ×2'])
+    expect(battleBack(offered).phase).toBe('command')
+    const used = battleChoose(offered)
+    const event = used.events.find((e) => e.kind === 'item')
+    expect(event).toMatchObject({ kind: 'item', item: 0x55f0 })
+    const healed = event?.kind === 'item' ? (event.healed ?? 0) : 0
+    expect(healed).toBeGreaterThanOrEqual(25)
+    expect(used.pages.some((page) => page.includes(`Hero recovers ${healed} HP.`))).toBe(true)
+  })
+})
+
+describe('a battle in the game’s words', () => {
+  // Messages written for the test in the files' markup, at the numbers the
+  // scene reads them by; none is the game's own.
+  const words = {
+    battle: new Map([
+      [
+        BATTLE_SAYS.drawsNear,
+        '<IF_SING val_1><Cap><INDEF_ART_SGL_M_NAME> shows up<ELSE_NOT_SING><Cap><INDEF_ART_PLR_M_NAME> show up<ENDIF_SING>!',
+      ],
+    ]),
+    actions: new Map<number, string>([
+      [ACTION_SAYS.attacks, '<Cap><DEF_ART_ACTOR> swings.'],
+      [ACTION_SAYS.takes, '<Cap><DEF_ART_TARGET> loses <val_1>.'],
+      [ACTION_SAYS.noDamage, 'Nothing.'],
+      [ACTION_SAYS.critical, 'Ouch!'],
+      [ACTION_SAYS.defeated, '<Cap><DEF_ART_TARGET> is out.'],
+      [ACTION_SAYS.uses, '<Cap><DEF_ART_ACTOR> tries <INDEF_ART_SGL_I_NAME>.'],
+      [ACTION_SAYS.healed, 'Better.'],
+    ]),
+    results: new Map(),
+    menu: new Map([[30004, 'Hit']]),
+    articles: new Map([
+      [1, 'the'],
+      [101, 'a'],
+      [301, 'some'],
+    ]),
+  }
+  const grammar = readGrammar(0x02041041)
+  const names = [{ name: 'Hero' }, { name: 'blob', plural: 'blobs', grammar }]
+
+  it('says the monsters drawing near, and the commands, in the words it is given', () => {
+    const one = beginBattle([hero, blob()], 1n, { canFlee: true, words, names })
+    expect(one.pages).toEqual(['A blob shows up!'])
+    const two = beginBattle([hero, blob(), blob()], 1n, {
+      canFlee: true,
+      words,
+      names: [...names, names[1] as Named],
+    })
+    expect(two.pages).toEqual(['Some blobs show up!'])
+    expect(battleRows(untilChoice(one))[0]).toBe('Hit')
+    // A command with no word of its own keeps ours.
+    expect(battleRows(untilChoice(one))[1]).toBe('Defend')
+  })
+
+  it('tells a round in them, the monster by its article and letter', () => {
+    const scene = untilChoice(
+      beginBattle([hero, blob(), blob()], 1n, {
+        canFlee: true,
+        words,
+        names: [...names, names[1] as Named],
+      }),
+    )
+    const played = battleChoose(battleChoose(scene))
+    expect(
+      played.pages.some((page) => /^Hero swings\.\nThe blob A (loses \d+|is out)\./.test(page)),
+    ).toBe(true)
   })
 })

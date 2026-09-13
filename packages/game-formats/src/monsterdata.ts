@@ -1,4 +1,5 @@
 import { GameFormatError } from './errors.ts'
+import { type Grammar, readGrammar } from './grammar.ts'
 
 /**
  * The monsters' battle numbers and names: `/data/prm/mon_btldata.nat` and
@@ -45,11 +46,26 @@ export interface MonsterBattle {
   readonly raw: Uint8Array
 }
 
+/**
+ * A monster's names. **Names**, 28-byte records:
+ *
+ * | offset | type | meaning |
+ * |---|---|---|
+ * | `+0x00` | `u32` | the name's offset from the strings |
+ * | `+0x04` | `u32` | the code's |
+ * | `+0x08` | `u16` | the monster's number |
+ * | `+0x0A` | 10 bytes | not established |
+ * | `+0x14` | `u32` | the plural's offset — `slimes`; a string's start on all 438 in all five languages |
+ * | `+0x18` | `u32` | its grammar: articles and gender, see `readGrammar` |
+ */
 export interface MonsterName {
   readonly number: number
   readonly name: string
+  readonly plural: string
   readonly code: string
-  /** The record past the number, not established. */
+  /** Its articles and gender — see `readGrammar`. */
+  readonly grammar: Grammar
+  /** The record from `+0x0A` to the plural, not established. */
   readonly unknown_0x0a: Uint8Array
 }
 
@@ -94,7 +110,7 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
   return out
 }
 
-/** Parse the monsters' names: each one's number, name and code. */
+/** Parse the monsters' names: each one's number, name, plural, code and grammar. */
 export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
   const { view, count, strings } = head(bytes, DATA_RECORD, 'monster names')
   const text = (offset: number, at: number): string => {
@@ -114,7 +130,9 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       name: text(view.getUint32(at, true), at),
       code: text(view.getUint32(at + 4, true), at + 4),
       number: view.getUint16(at + 8, true),
-      unknown_0x0a: bytes.subarray(at + 10, at + DATA_RECORD),
+      plural: text(view.getUint32(at + 0x14, true), at + 0x14),
+      grammar: readGrammar(view.getUint32(at + 0x18, true)),
+      unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x14),
     })
   }
   return out

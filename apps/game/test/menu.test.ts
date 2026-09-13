@@ -84,6 +84,53 @@ describe('the main menu', () => {
     ])
     expect(panelLines('items', context)[1]).toBe('item 0x55f0')
   })
+
+  it('chooses an item on the items panel to use, and says what came of it', () => {
+    const bag = take(take(EMPTY_BAG, { item: 0x55f0 }), { item: 0x55f4 })
+    const context: MenuContext = {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      bag,
+      itemName: (id) => (id === 0x55f0 ? 'herb' : 'antidote'),
+    }
+    const panel = choose(moveCursor(openMenu(), 2)).state
+    if (panel?.panel !== 'items') throw new Error('no items panel')
+    const next = moveCursor(panel, 1, context)
+    expect(next.row).toBe(1)
+    expect(choose(next, context).use).toBe(0x55f4)
+    expect(panelLines('items', context, { ...next, said: ['Hero uses an antidote.'] })).toEqual([
+      '0 gold coins',
+      '   herb',
+      '▶ antidote',
+      'Hero uses an antidote.',
+    ])
+  })
+
+  it('shows the Hero’s wounds on the status panel', () => {
+    const row = {
+      level: 1,
+      exp: 0,
+      strength: 9,
+      resilience: 8,
+      agility: 7,
+      deftness: 6,
+      charm: 5,
+      magicalMight: 4,
+      magicalMending: 3,
+      maxHp: 20,
+      maxMp: 2,
+      unknown_10: 0,
+    }
+    const lines = panelLines('status', {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      standing: standing({ levels: [row], unknown: [] }, 0),
+      hp: 12,
+    })
+    expect(lines[2]).toBe('HP 12/20 · MP 2/2')
+  })
 })
 
 describe('the equip panel', () => {

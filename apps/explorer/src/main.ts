@@ -13,7 +13,6 @@ import {
   readMapManifest,
   readSprite,
   type Sprite,
-  type SpriteCut,
 } from '@minstrel/game-formats'
 import { DS_HEIGHT, DS_WIDTH, ModelRenderer, type Piece, ReferenceTarget } from '@minstrel/gl'
 import {
@@ -219,16 +218,8 @@ function pose(): void {
   describe(renderer.upload(drawn))
 }
 
-/**
- * The sprite sheet on show, and how it is being cut.
- *
- * Where a `.spr`'s frames begin is not settled — see the sprite section of
- * `packages/game-formats/FORMAT.md` — so the explorer can move the cut and
- * redraw, which is what looking at a sheet is for. The keys match the game's.
- */
+/** The sprite sheet on show: each frame its parts put together — see `readSprite`. */
 let sheetSprite: Sprite | undefined
-let sheetBytes: Uint8Array | undefined
-let sheetCut: SpriteCut = {}
 
 const sheetEl = must<HTMLCanvasElement>('#sheet')
 
@@ -282,38 +273,6 @@ function drawSheet(): void {
   }
 }
 
-/** Cut the sheet again and redraw, then say what the numbers are. */
-function recut(by: Partial<Record<'start' | 'pitch' | 'height' | 'oddShift', number>>): void {
-  if (!sheetBytes || !sheetSprite) return
-  const rowBytes = sheetSprite.width / 2
-  // The sheet reports the cut it was read with, so the keys move from the
-  // parser's own reading instead of from a copy of its arithmetic here.
-  const base: Required<SpriteCut> = {
-    start: sheetCut.start ?? sheetSprite.cut.start,
-    pitch: sheetCut.pitch ?? sheetSprite.cut.pitch,
-    height: sheetCut.height ?? sheetSprite.cut.height,
-    oddShift: sheetCut.oddShift ?? sheetSprite.cut.oddShift,
-  }
-  const next: SpriteCut = {
-    start: base.start + (by.start ?? 0),
-    pitch: base.pitch + (by.pitch ?? 0),
-    height: base.height + (by.height ?? 0),
-    oddShift: base.oddShift + (by.oddShift ?? 0),
-  }
-  try {
-    sheetSprite = readSprite(sheetBytes, next)
-    sheetCut = next
-  } catch {
-    // A cut that will not read leaves the sheet as it was.
-    return
-  }
-  drawSheet()
-  status(
-    `${sheetSprite.frames} frames — start ${next.start}, pitch ${next.pitch}, ` +
-      `height ${next.height}, odd ${next.oddShift} (row = ${rowBytes} bytes)`,
-  )
-}
-
 function select(index: number): void {
   const entry = entries[index]
   if (!entry || !cat) return
@@ -321,18 +280,16 @@ function select(index: number): void {
 
   try {
     if (entry.sheet !== undefined) {
-      sheetBytes = entry.sheet.bytes
-      sheetSprite = readSprite(sheetBytes)
-      sheetCut = {}
+      sheetSprite = readSprite(entry.sheet.bytes)
       sheetEl.hidden = false
       canvas.hidden = true
       scrubber.hidden = true
       shown = undefined
       drawSheet()
-      const rowBytes = sheetSprite.width / 2
+      const parts = sheetSprite.layout[0]?.parts.length ?? 0
       status(
-        `${entry.path} — ${sheetSprite.frames} frames of ${sheetSprite.width}x${sheetSprite.height}` +
-          `, row = ${rowBytes} bytes.  [ ] start · ; ' row · , . pitch · - = height · 9 \\ odd`,
+        `${entry.path} — ${sheetSprite.frames} frames, up to ${sheetSprite.width}x${sheetSprite.height}` +
+          `, ${parts} part${parts === 1 ? '' : 's'} to the first, ${sheetSprite.colours} colours`,
       )
       renderList()
       return
@@ -532,32 +489,6 @@ fileInput.addEventListener('change', () => {
   if (file) void chose(file)
 })
 filterEl.addEventListener('input', renderList)
-
-/**
- * The sprite cut keys, the same ones the game uses.
- *
- * They do nothing unless a sheet is on show, and they stay out of the way of
- * the filter box — typing a search term should not move the cut.
- */
-addEventListener('keydown', (event) => {
-  if (sheetEl.hidden || document.activeElement === filterEl) return
-  const moves: Record<string, () => void> = {
-    '[': () => recut({ start: -1 }),
-    ']': () => recut({ start: 1 }),
-    ';': () => recut({ start: -((sheetSprite?.width ?? 32) / 2) }),
-    "'": () => recut({ start: (sheetSprite?.width ?? 32) / 2 }),
-    ',': () => recut({ pitch: -1 }),
-    '.': () => recut({ pitch: 1 }),
-    '-': () => recut({ height: -1 }),
-    '=': () => recut({ height: 1 }),
-    '9': () => recut({ oddShift: -1 }),
-    '\\': () => recut({ oddShift: 1 }),
-  }
-  const move = moves[event.key]
-  if (!move) return
-  move()
-  event.preventDefault()
-})
 
 addEventListener('resize', () => {
   if (!sheetEl.hidden) drawSheet()

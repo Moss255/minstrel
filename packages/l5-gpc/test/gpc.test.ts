@@ -69,9 +69,25 @@ describe('readGpc', () => {
     )
   })
 
+  it('reads members stored whole when bit 28 of 0x10 says so', () => {
+    // Three archives on the reference cartridge: their members have no region
+    // prefix, and their first words read as one would be nonsense.
+    const whole = [
+      { name: 'monster.mon', data: fill(96, 7) },
+      { name: 'actions_en.nat', data: fill(41, 8) },
+    ]
+    const archive = readGpc(buildGpc(whole, { storedWhole: true }))
+    expect(archive.header.storedWhole).toBe(true)
+    for (const m of whole) {
+      const member = archive.member(m.name)
+      expect(member?.readable).toBe(true)
+      expect(member?.size).toBe(m.data.length)
+      expect(Array.from(archive.read(m.name)), m.name).toEqual(Array.from(m.data))
+    }
+    expect(readGpc(buildGpc(members)).header.storedWhole).toBe(false)
+  })
+
   it('offers raw bytes for a member whose codec is not identified', () => {
-    // The shape that matters: two archives on the reference cartridge store
-    // members with no region prefix at all, and their bytes must survive.
     const raw = buildGpc(members)
     const first = readGpc(raw).members[0]
     if (!first) throw new Error('fixture is empty')

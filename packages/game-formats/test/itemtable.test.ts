@@ -2,37 +2,46 @@ import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
 import { ITEM_RECORD_SIZE, ITEM_TABLE_HEAD, readItemTable } from '../src/itemtable.ts'
 
-/** An item table built in code, from `FORMAT.md`: a 36-byte head with the count first, then 32-byte records. */
-function build(records: { id: number; price: number; flag?: number }[]): Uint8Array {
+/** An item table built in code, from `FORMAT.md`: a 32-byte head with the count first, then 32-byte records. */
+function build(
+  records: { id: number; price: number; flag?: number; actions?: [number, number] }[],
+): Uint8Array {
   const out = new Uint8Array(ITEM_TABLE_HEAD + records.length * ITEM_RECORD_SIZE)
   const view = new DataView(out.buffer)
   view.setUint16(0, records.length, true)
   view.setUint16(2, records.length | 0x8000, true)
-  for (const [r, { id, price, flag = 0xffff }] of records.entries()) {
+  for (const [
+    r,
+    { id, price, flag = 0xffff, actions = [252, 252] as [number, number] },
+  ] of records.entries()) {
     const at = ITEM_TABLE_HEAD + r * ITEM_RECORD_SIZE
-    view.setUint16(at, id, true)
-    view.setUint16(at + 2, price, true)
-    view.setUint16(at + 4, flag, true)
+    view.setUint16(at, actions[0], true)
+    view.setUint16(at + 2, actions[1], true)
+    view.setUint16(at + 4, id, true)
+    view.setUint16(at + 6, price, true)
+    view.setUint16(at + 8, flag, true)
     out[at + 31] = r + 1
   }
   return out
 }
 
 describe('item tables', () => {
-  it('reads each record: id, price, and the rest carried as it is', () => {
+  it('reads each record: its actions, id and price, and the rest carried as it is', () => {
     const [first, second] = readItemTable(
       build([
-        { id: 0x4a6a, price: 7 },
+        { id: 0x55f0, price: 4, actions: [255, 255] },
         { id: 0x4a6b, price: 100, flag: 0 },
       ]),
     )
-    expect(first?.id).toBe(0x4a6a)
-    expect(first?.price).toBe(7)
-    expect(first?.unknown_0x04).toBe(0xffff)
-    expect(first?.unknown_0x06).toHaveLength(26)
-    expect(first?.unknown_0x06[25]).toBe(1)
+    expect(first?.id).toBe(0x55f0)
+    expect(first?.price).toBe(4)
+    expect(first?.actions).toEqual([255, 255])
+    expect(first?.unknown_0x08).toBe(0xffff)
+    expect(first?.unknown_0x0a).toHaveLength(22)
+    expect(first?.unknown_0x0a[21]).toBe(1)
     expect(second?.price).toBe(100)
-    expect(second?.unknown_0x04).toBe(0)
+    expect(second?.actions).toEqual([252, 252])
+    expect(second?.unknown_0x08).toBe(0)
   })
 
   it('refuses a head that is cut short, or records that run past the end', () => {

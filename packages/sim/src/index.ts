@@ -5,6 +5,7 @@ export {
   DEFAULT_RULES,
   type Fighter,
   type FighterState,
+  type Heal,
   type Outcome,
   playRound,
   type Rules,
@@ -13,7 +14,13 @@ export {
   startBattle,
   withHp,
 } from './battle/battle.ts'
-export { criticalBlow, criticalDamage, initiative, physicalDamage } from './battle/damage.ts'
+export {
+  criticalBlow,
+  criticalDamage,
+  drawnAmount,
+  initiative,
+  physicalDamage,
+} from './battle/damage.ts'
 export { BattleRng } from './battle/rng.ts'
 export {
   type CharacterShape,

@@ -1,4 +1,4 @@
-import { criticalBlow, initiative, physicalDamage } from './damage.ts'
+import { criticalBlow, drawnAmount, initiative, physicalDamage } from './damage.ts'
 import type { BattleRng } from './rng.ts'
 
 /**
@@ -15,7 +15,8 @@ import type { BattleRng } from './rng.ts'
  * - defending halving a blow, from the round's start — though not the 0-or-1
  *   blow;
  * - the party's critical hit: a draw below 10,000 under {@link Rules.critical},
- *   dealing the attacker's attack power times 0.95 to 1.05.
+ *   dealing the attacker's attack power times 0.95 to 1.05;
+ * - a healing item's amount, its base give or take its spread, `drawnAmount`.
  *
  * **Ours, and said so:**
  * - the order the numbers are drawn in, which is not the game's: the reference
@@ -26,7 +27,10 @@ import type { BattleRng } from './rng.ts'
  *   attack: a monster's six action words are not read;
  * - the critical chance, the reference's 200 in 10,000 for its level-13 case —
  *   how the game derives it is not read;
- * - fleeing, which the reference does not model: {@link Rules.flee} in 100.
+ * - fleeing, which the reference does not model: {@link Rules.flee} in 100;
+ * - an item used in battle: its heal lands on the user's turn, on the user,
+ *   and no more than their wounds — one draw, where the game's others are not
+ *   modelled.
  */
 
 export type Side = 'party' | 'foes'
@@ -52,10 +56,18 @@ export interface FighterState extends Fighter {
   readonly defending: boolean
 }
 
+/** What an item does when used: the HP it restores, as a base give or take a spread. */
+export interface Heal {
+  readonly base: number
+  readonly spread: number
+}
+
 export type Command =
   | { readonly kind: 'attack'; readonly target: number }
   | { readonly kind: 'defend' }
   | { readonly kind: 'flee' }
+  /** Use an item, by id: its heal when it has one, and nothing when it has not. */
+  | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal }
 
 export type BattleEvent =
   | {
@@ -69,6 +81,14 @@ export type BattleEvent =
     }
   | { readonly kind: 'defend'; readonly actor: number }
   | { readonly kind: 'flee'; readonly actor: number; readonly escaped: boolean }
+  | {
+      readonly kind: 'item'
+      readonly actor: number
+      readonly target: number
+      readonly item: number
+      /** HP restored — 0 when there were no wounds to heal — or undefined for an item with no heal. */
+      readonly healed: number | undefined
+    }
   | { readonly kind: 'defeated'; readonly actor: number }
 
 export type Outcome = 'ongoing' | 'won' | 'lost' | 'fled'
@@ -171,6 +191,17 @@ export function playRound(
         outcome = 'fled'
         break
       }
+      continue
+    }
+    if (command.kind === 'item') {
+      let healed: number | undefined
+      if (command.heal) {
+        const amount = drawnAmount(rng, command.heal.base, command.heal.spread)
+        healed = Math.max(0, Math.min(amount, me.maxHp - me.hp))
+        const gained = healed
+        fighters = fighters.map((f, i) => (i === actor ? { ...f, hp: f.hp + gained } : f))
+      }
+      events.push({ kind: 'item', actor, target: actor, item: command.item, healed })
       continue
     }
 

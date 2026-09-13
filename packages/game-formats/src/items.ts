@@ -1,4 +1,5 @@
 import { GameFormatError } from './errors.ts'
+import { type Grammar, readGrammar } from './grammar.ts'
 
 /**
  * Item names: `/data/prm/itemname.gp2/itemname_<lang>.nat`, one per language.
@@ -9,20 +10,27 @@ import { GameFormatError } from './errors.ts'
  * |---|---|---|
  * | `+0x00` | `u16` | record count — 1,178 in English |
  * | `+0x02` | `u16` | `unknown_0x02`; differs by language |
- * | `+0x04` | 16 bytes × count | a record: singular, plural, `unknown_0x08`, id |
+ * | `+0x04` | 16 bytes × count | a record: singular, plural, grammar, id |
  * | after | | the strings, NUL-terminated; a record's offsets count from here |
  *
  * **The id is the item's.** It is the number each item table's records open
  * with — medicinal herb is `0x55F0`, and the tools table's first record opens
  * `F0 55` — and the number a chest's contents name. The names are ASCII with
  * the text's own markup (`veteran<1>s helm`), left for the caller to render.
+ *
+ * **The third word is the name's grammar** — its articles, packed as a
+ * monster's are (`readGrammar`): `a` on the medicinal herb, `an` on the
+ * antidotal herb, `a suit of` on leather armour. It differs by language, as
+ * articles do.
  */
 
 export interface ItemName {
   readonly id: number
   readonly singular: string
   readonly plural: string
-  /** The record's third word: it differs by language, and is not established. */
+  /** Its articles — see `readGrammar`. */
+  readonly grammar: Grammar
+  /** The grammar's word, as it is. */
   readonly unknown_0x08: number
 }
 
@@ -52,10 +60,12 @@ export function readItemNames(bytes: Uint8Array): ItemName[] {
   const names: ItemName[] = []
   for (let i = 0; i < count; i++) {
     const at = 4 + i * 16
+    const grammar = view.getUint32(at + 8, true)
     names.push({
       singular: text(view.getUint32(at, true), at),
       plural: text(view.getUint32(at + 4, true), at + 4),
-      unknown_0x08: view.getUint32(at + 8, true),
+      grammar: readGrammar(grammar),
+      unknown_0x08: grammar,
       id: view.getUint32(at + 12, true),
     })
   }

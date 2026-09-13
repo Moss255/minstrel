@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { criticalBlow, criticalDamage, initiative, physicalDamage } from '../src/battle/damage.ts'
+import {
+  criticalBlow,
+  criticalDamage,
+  drawnAmount,
+  initiative,
+  physicalDamage,
+} from '../src/battle/damage.ts'
 import { BattleRng } from '../src/battle/rng.ts'
 
 /**
@@ -112,6 +118,39 @@ describe("the battle's random numbers and arithmetic, against the reference", ()
         expect(criticalBlow(rng, attack), `${attack} from seed ${seed}`).toBe(
           Math.trunc(attack * factor),
         )
+      }
+    }
+  })
+
+  it("draws a base give or take a spread as the reference's FUN_021e8458_typeD does", () => {
+    // Its `typeD` copied verbatim into the same harness, six draws in a row
+    // from each seed: the medicinal herb's 35 ± 5, strong medicine's 50 ± 10,
+    // and a spread of nothing, which must still draw.
+    const golden: Record<string, [number, number, number[]][]> = {
+      '1': [
+        [5, 35, [30, 33, 38, 32, 32, 34]],
+        [10, 50, [40, 47, 57, 44, 44, 49]],
+        [0, 3, [3, 3, 3, 3, 3, 3]],
+      ],
+      '305419896': [
+        [5, 35, [30, 39, 36, 30, 39, 36]],
+        [10, 50, [40, 58, 52, 40, 58, 53]],
+        [0, 3, [3, 3, 3, 3, 3, 3]],
+      ],
+      '16045690984503111693': [
+        [5, 35, [38, 39, 38, 39, 33, 31]],
+        [10, 50, [57, 59, 56, 59, 46, 43]],
+        [0, 3, [3, 3, 3, 3, 3, 3]],
+      ],
+    }
+    for (const [seed, rows] of Object.entries(golden)) {
+      for (const [spread, base, drawn] of rows) {
+        const rng = new BattleRng(BigInt(seed))
+        expect(
+          drawn.map(() => drawnAmount(rng, base, spread)),
+          `${base} ± ${spread} from ${seed}`,
+        ).toEqual(drawn)
+        expect(rng.drawn).toBe(drawn.length)
       }
     }
   })

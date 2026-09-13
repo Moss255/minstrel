@@ -43,11 +43,18 @@ export function drop(bag: Bag, item: number): Bag | undefined {
   return { ...bag, items }
 }
 
-/** What the items panel lists: the gold, then each item and how many. */
-export function bagLines(bag: Bag, nameOf: (id: number) => string): string[] {
+/**
+ * What the items panel lists: the gold, then each item and how many — with a
+ * mark on the chosen one, when one is being chosen.
+ */
+export function bagLines(bag: Bag, nameOf: (id: number) => string, chosen?: number): string[] {
   const lines = [`${bag.gold} gold coin${bag.gold === 1 ? '' : 's'}`]
   if (bag.items.size === 0) lines.push('Nothing in the bag yet — open some treasure.')
-  for (const [id, count] of bag.items)
-    lines.push(count > 1 ? `${nameOf(id)} ×${count}` : nameOf(id))
+  let row = 0
+  for (const [id, count] of bag.items) {
+    const mark = chosen === undefined ? '' : row === chosen ? '▶ ' : '   '
+    lines.push(`${mark}${count > 1 ? `${nameOf(id)} ×${count}` : nameOf(id)}`)
+    row++
+  }
   return lines
 }

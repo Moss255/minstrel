@@ -37,10 +37,18 @@ describe('readItemNames', () => {
         { id: 0x5001, singular: 'hero<1>s cap', plural: 'hero<1>s caps' },
       ]),
     )
-    expect(names).toEqual([
+    expect(names.map(({ grammar: _, ...rest }) => rest)).toEqual([
       { id: 0x5000, singular: 'pebble', plural: 'pebbles', unknown_0x08: 7 },
       { id: 0x5001, singular: 'hero<1>s cap', plural: 'hero<1>s caps', unknown_0x08: 0 },
     ])
+  })
+
+  it('reads the third word as the name’s grammar', () => {
+    // `a`, `the`, and `some` and `the`: four 6-bit fields of 1.
+    const [herb] = readItemNames(
+      build([{ id: 0x55f0, singular: 'herb', plural: 'herbs', word: 0x41041 }]),
+    )
+    expect(herb?.grammar).toMatchObject({ indefinite: 101, definite: 1, indefinitePlural: 301 })
   })
 
   it('refuses records that run past the end', () => {

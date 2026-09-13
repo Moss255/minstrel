@@ -4,7 +4,14 @@ import { measureBounds } from '@minstrel/nitro-gfx'
 import { describe, expect, it } from 'vitest'
 import { FRAME_ROWS, propPieces } from '../src/cast.ts'
 import { load } from '../src/load.ts'
-import { BARREL_KIND, isPotOrBarrel, POT_KIND, propSprites } from '../src/pots.ts'
+import {
+  BARREL_KIND,
+  breakingFrame,
+  isPotOrBarrel,
+  POT_KIND,
+  type Prop,
+  propSprites,
+} from '../src/pots.ts'
 
 function treasure(kind: number, placed = true): Treasure {
   return {
@@ -35,6 +42,31 @@ describe('pots and barrels', () => {
 
   it('draw nothing without their sheets', () => {
     expect(propSprites([treasure(POT_KIND)], new Map())).toEqual([])
+  })
+
+  it('break a step at a time, each held its sixtieths of a second, and then are gone', () => {
+    // A stand-in sheet: only its breaking animation is asked for.
+    const animation = {
+      name: 'tsuboware',
+      steps: [0, 1, 2].map((frame) => ({ frame, duration: 4, order: frame })),
+    }
+    const sprite = { animation: (name: string) => (name === 'tsuboware' ? animation : undefined) }
+    const placement = { id: 1, map: 0, x: 0, y: 0, z: 0, facing: 0, offset: 0 }
+    const prop = {
+      name: 'tsubo_01',
+      sprite,
+      bytes: new Uint8Array(),
+      placement,
+      slot: 0,
+      treasure: treasure(POT_KIND),
+      breaking: { name: 'tsubo_02', sprite, bytes: new Uint8Array(), placement },
+    } as unknown as Prop
+    const step = 4000 / 60
+    expect(breakingFrame(prop, 0)).toBe(0)
+    expect(breakingFrame(prop, step + 1)).toBe(1)
+    expect(breakingFrame(prop, 2 * step + 1)).toBe(2)
+    expect(breakingFrame(prop, 3 * step + 1)).toBeUndefined()
+    expect(breakingFrame({ ...prop, breaking: undefined }, 0)).toBeUndefined()
   })
 })
 

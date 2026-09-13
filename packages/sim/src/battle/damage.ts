@@ -63,6 +63,18 @@ export function criticalBlow(rng: BattleRng, attack: number): number {
 }
 
 /**
+ * An amount drawn as a base give or take a spread — the reference's
+ * `FUN_021e8458_typeD`, `floatRand(−spread, spread) + base`, truncated — kept
+ * as the exact integer `((base − spread)·2³² + top·2·spread) / 2³²`, truncated
+ * toward zero as the reference's cast is. One draw. What a healing item
+ * restores is drawn so: the medicinal herb's 35 ± 5.
+ */
+export function drawnAmount(rng: BattleRng, base: number, spread: number): number {
+  const scaled = (BigInt(base - spread) << 32n) + BigInt(rng.top32()) * BigInt(2 * spread)
+  return Number(scaled / (1n << 32n))
+}
+
+/**
  * A skill's critical hit: the damage times a draw from 1.5 to 2.0 — the
  * reference's `baseDamage × floatRand(1.5, 2.0)`, truncated — kept as the
  * exact integer `damage × (3·2³² + top) / 2³³`.

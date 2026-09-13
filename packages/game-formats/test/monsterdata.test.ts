@@ -24,8 +24,10 @@ function battle(monsters: { number: number; hp: number; exp: number; gold: numbe
   return out
 }
 
-/** Names built in code: the head word, 28-byte records, then the strings. */
-function names(monsters: { number: number; name: string; code: string }[]): Uint8Array {
+/** Names built in code: the head word, 28-byte records, then the strings — name, plural, code. */
+function names(
+  monsters: { number: number; name: string; code: string; grammar?: number }[],
+): Uint8Array {
   const strings: number[] = []
   const put = (s: string) => {
     const offset = strings.length
@@ -33,16 +35,18 @@ function names(monsters: { number: number; name: string; code: string }[]): Uint
     strings.push(0)
     return offset
   }
-  const offsets = monsters.map(({ name, code }) => [put(name), put(code)] as const)
+  const offsets = monsters.map(({ name, code }) => [put(name), put(`${name}s`), put(code)] as const)
   const out = new Uint8Array(4 + monsters.length * 28 + strings.length)
   const view = new DataView(out.buffer)
   view.setUint32(0, (monsters.length | (strings.length << 12)) >>> 0, true)
   for (const [r, m] of monsters.entries()) {
     const at = 4 + r * 28
-    const [name, code] = offsets[r] as readonly [number, number]
+    const [name, plural, code] = offsets[r] as readonly [number, number, number]
     view.setUint32(at, name, true)
     view.setUint32(at + 4, code, true)
     view.setUint16(at + 8, m.number, true)
+    view.setUint32(at + 0x14, plural, true)
+    view.setUint32(at + 0x18, m.grammar ?? 0, true)
   }
   out.set(strings, 4 + monsters.length * 28)
   return out
@@ -85,6 +89,15 @@ describe('monster data', () => {
       { number: 1, name: 'blob', code: 'z000a' },
       { number: 38, name: 'box', code: 'z009a' },
     ])
+  })
+
+  it('reads each monster’s plural and grammar', () => {
+    const [blob] = readMonsterNames(
+      names([{ number: 1, name: 'blob', code: 'z000a', grammar: 0x02041041 }]),
+    )
+    expect(blob?.plural).toBe('blobs')
+    expect(blob?.grammar).toMatchObject({ indefinite: 101, definite: 1, gender: 2 })
+    expect(blob?.unknown_0x0a).toHaveLength(10)
   })
 
   it('refuses a head that disagrees with the file', () => {

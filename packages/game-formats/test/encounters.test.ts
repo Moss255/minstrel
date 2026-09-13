@@ -85,8 +85,36 @@ describe('encounters', () => {
     expect(zones.get(12)).toEqual({
       zone: 12,
       roamers: [{ number: 1, unknown_bits: (92 << 4) | 9, unknown_1: 0 }],
-      company: [{ number: 32, unknown_bits: (4 << 4) | 13, unknown_1: 0 }],
+      // 77: weight 5, and one of it, at least and at most.
+      company: [
+        {
+          number: 32,
+          unknown_bits: (4 << 4) | 13,
+          unknown_1: 0,
+          weight: 5,
+          least: 1,
+          most: 1,
+        },
+      ],
     })
+  })
+
+  it('reads a companion’s weight and how many of it join, three bits each', () => {
+    const word = (weight: number, least: number, most: number, number: number) =>
+      (((most << 6) | (least << 3) | weight) << 12) | number
+    const zone = readBattleEncounters(
+      build([
+        { tag: 0x68, values: [7] },
+        { tag: 0x67, values: [word(3, 1, 4, 56)] },
+        { tag: 0x67, values: [word(7, 2, 5, 57)] },
+      ]),
+    ).get(7)
+    expect(
+      zone?.company.map(({ number, weight, least, most }) => [number, weight, least, most]),
+    ).toEqual([
+      [56, 3, 1, 4],
+      [57, 7, 2, 5],
+    ])
   })
 
   it('refuses zones and monsters out of order', () => {

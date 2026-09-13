@@ -7,7 +7,6 @@ import {
   type NpcPlacement,
   readSprite,
   type Sprite,
-  type SpriteCut,
 } from '@minstrel/game-formats'
 import type { Piece } from '@minstrel/gl'
 import {
@@ -314,42 +313,7 @@ export function castPieces(
   return out
 }
 
-/** A character's sprite sheet, read once and kept. */
-/**
- * How the sheets are being cut, while it is being worked out.
- *
- * Empty is the reading in `game-formats`. The game can move these live — see
- * `spriteKeys` in `main.ts` — because where a frame begins is settled for the
- * horizontal reading and not the vertical one, and every attempt to fit it by
- * measurement has chosen a cut that renders wrong. Moving it by hand against
- * the picture is the way left.
- */
-let cut: SpriteCut = {}
-
-export function spriteCut(): SpriteCut {
-  return cut
-}
-
-/**
- * Cut every sheet again, and hand back the numbers.
- *
- * The frames already decoded are thrown away with them: they were cut the old
- * way.
- */
-export function setSpriteCut(next: SpriteCut, cast: Cast): SpriteCut {
-  cut = next
-  readSheets.clear()
-  decoded.clear()
-  for (const member of cast.sprites2d) {
-    try {
-      member.sprite = readSprite(member.bytes, cut)
-    } catch {
-      // A cut that will not read leaves the character as it was.
-    }
-  }
-  return cut
-}
-
+/** Each character's sprite sheet, read once and kept. */
 const readSheets = new Map<string, Sprite | undefined>()
 export function sheetFor(
   name: string,
@@ -361,7 +325,7 @@ export function sheetFor(
   let sprite: Sprite | undefined
   if (bytes && isSprite(bytes)) {
     try {
-      sprite = readSprite(bytes, cut)
+      sprite = readSprite(bytes)
     } catch {
       // A sheet that will not read leaves its character undrawn rather than
       // drawn wrong.
@@ -384,9 +348,8 @@ export function forgetSheets(): void {
  * viewer. Turning the quad by the camera's yaw is what reproduces that — a
  * fixed quad would vanish edge-on as you walked around it.
  *
- * The sheet's own frame is used as the texture. A frame is `width` by its own
- * row count, so the quad is sized from the decoded frame rather than from the
- * header's nominal height, which is a row short.
+ * The sheet's own frame is used as the texture, its parts put together, and
+ * the quad is sized from it.
  */
 export function spritePieces(
   member: CastSprite,
@@ -398,9 +361,8 @@ export function spritePieces(
   const image = decodedFrame(member, frame)
   // **A sprite is not in the models' space**, so the models' scale does not
   // apply: at that scale a villager stands 0.31 units against a person's 0.18.
-  // The cell is the character — a frame is the 32 rows of the figure, with the
-  // strip that precedes it left out of the cut — so one frame tall is one
-  // person tall.
+  // The frame is the character — a villager's 40 rows, its top eight a part of
+  // their own — so one frame tall is one person tall.
   const scale = characterHeight / image.height
   const halfW = (image.width * scale) / 2
   const tall = image.height * scale
@@ -486,17 +448,22 @@ const FACINGS = [
  * be. Negating the step swaps every `l_*` with its `r_*` and leaves the two
  * ends alone, which is exactly that mirror.
  */
-/** The rows of a character's frame: one frame tall is one person tall — see `spritePieces`. */
-export const FRAME_ROWS = 32
+/** The rows of a villager's frame: one frame tall is one person tall — see `spritePieces`. */
+export const FRAME_ROWS = 40
 
 /**
  * A thing drawn as a sprite — a pot, a barrel — at the characters' own pixel
- * scale rather than stretched to a person's height: a frame of 24 rows is three
- * quarters of a person, as 24 rows of a character's 32 would be.
+ * scale rather than stretched to a person's height: a frame of 32 rows is four
+ * fifths of a person, as 32 rows of a villager's 40 would be.
  */
-export function propPieces(prop: CastSprite, personHeight: number, yaw: number): Piece[] {
-  const image = decodedFrame(prop, 0)
-  return spritePieces(prop, (personHeight * image.height) / FRAME_ROWS, yaw, 0)
+export function propPieces(
+  prop: CastSprite,
+  personHeight: number,
+  yaw: number,
+  frame = 0,
+): Piece[] {
+  const image = decodedFrame(prop, frame)
+  return spritePieces(prop, (personHeight * image.height) / FRAME_ROWS, yaw, frame)
 }
 
 export function standingFrame(member: CastSprite, cameraYaw: number): number {

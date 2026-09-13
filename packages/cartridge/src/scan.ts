@@ -113,10 +113,10 @@ function* visit(
     const gpc = readGpc(bytes)
     for (const member of gpc.members) {
       if (!member.readable) {
-        // Stored whole, with no region prefix: `enemy.gp2`'s 601 monsters are,
-        // and every one begins `NARC` — see the l5-gpc FORMAT.md. Taken raw
-        // when it opens as one; anything else unreadable is a codec this
-        // repository cannot decode yet, not a member that is absent.
+        // A codec this repository cannot decode — none on the reference
+        // cartridge, now the archives stored whole are read as such (see the
+        // l5-gpc FORMAT.md). Taken raw when it opens as an archive anyway; not
+        // dropped as though it were absent.
         const raw = gpc.readRaw(member)
         if (isNarc(raw))
           yield* visit(raw, `${path}/${member.name}`, path, depth + 1, maxDepth, enter)

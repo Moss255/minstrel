@@ -29,7 +29,7 @@ package supplies only the framing.
 | `0x0A` | `u16` | data-region offset, in 4-byte words |
 | `0x0C` | `u16` | entry-table size in 4-byte words; always `3 * count` |
 | `0x0E` | `u16` | `unknown_0x0e` |
-| `0x10` | `u32` | `unknown_0x10` |
+| `0x10` | `u32` | `unknown_0x10`; **bit 28: the members are stored whole**, INFERRED — see "Members stored whole" below; the rest not established |
 | `0x14` | `u32` | `unknown_0x14` |
 
 **The count is 12-bit, not 8-bit.** Reading only byte 4 works for most archives
@@ -90,7 +90,7 @@ then the payload.
 | 2 | Huffman, 4-bit symbols | 368 |
 | 3 | Huffman, 8-bit symbols | 2,438 |
 | 4 | run-length | 7,743 |
-| 7 | **unidentified** | 5 |
+| 7 | none — see below | 0 |
 
 Note that the numbering is **not** the BIOS's. Each codec *variant* gets its own
 number, so the two Huffman symbol widths take 2 and 3 and run-length lands on 4.
@@ -98,20 +98,32 @@ An earlier revision of this file asserted that codec 4 was not run-length, on
 the strength of a test that had been pointed at codec 3. Against codec 4,
 run-length matches 7,743 of 7,743 regions exactly.
 
-Codec 7 (5 members, all in one non-slice file) is not identified. `readGpc`
-marks such members `readable: false` and `read` throws naming the codec.
+A codec the reader does not know — 5 to 7 — is marked `readable: false`, and
+`read` throws naming it; `readRaw` hands over the stored bytes. None is left on
+the reference cartridge: the five "codec 7" members an earlier revision listed
+were members stored whole, below, their first word misread as a prefix.
 
-### Members with no region prefix
+### Members stored whole
 
-Two archives — `enemy.gp2` (601 members) and `actdt_a.gp2` — hold members whose
-bytes are their content directly, with no region prefix. Reading the first four
-bytes as a prefix yields a nonsense size and a codec number of 6.
+Three archives hold members with no region prefix, whose bytes are their
+content: `/data/pack_lv5/enemy.gp2` (601 members, every one a `NARC`),
+`/data/prm/actdt_a.gp2` and `/data/prm/actdt_b.gp2` (six each, the action
+tables — see game-formats' FORMAT.md, "Actions"). Read as prefixes, their first
+words give nonsense: a codec of 6 on the `NARC`s, 7 on `actdt_a`'s tables, and
+on `actdt_b`'s a Huffman region two megabytes long in 41 KB — which decoded,
+wrongly, or failed to.
 
-No header field distinguishes these, so the parser does not guess: it reports
-them `readable: false` and offers their bytes verbatim through `readRaw`. In
-practice they identify themselves — every one observed begins with `NARC` — so a
-caller that can recognise a container recovers them intact. `tools/inventory`
-does exactly that.
+**Bit 28 of the header's `0x10` marks them**, INFERRED: it is set on exactly
+those three archives and clear on every other on the cartridge, where the
+largest `0x10` seen is `0xE337F`. `readGpc` reports it as `storedWhole`, and
+such an archive's members read as their stored bytes, `method` `-1`
+(`GpcMethod.Whole`). Before it was found, the `NARC`s were recovered by
+recognising them, and the action tables were not recovered at all.
+
+Read whole, every member identifies itself: `enemy.gp2`'s are `NARC`s, and each
+action table opens with a head word — record count and string size — that
+describes its length exactly (`tools/harness`, "reads the archives stored
+whole").
 
 The name table decodes to plain NUL-separated names. There is no trie: earlier
 readings that appeared to show one were looking at compressed bytes.
@@ -125,8 +137,11 @@ Against a retail cartridge, which is not in this repository:
 | archives parsed | **1,671 / 1,671** |
 | members indexed | 53,639 |
 | **member names whose CRC-32 matches the stored hash** | **53,639 / 53,639, zero mismatches** |
-| members whose codec is implemented | 53,033 |
-| those decoding to exactly the declared size | 53,028 |
+| members that decode, to exactly their declared size | **all**, the 613 stored whole among them |
+
+Before bit 28 was read, 606 members were unreadable and five more — `actdt_b`'s
+— failed to decode to their declared size; the two range tables beside them
+"decoded" silently to 2 and 13 bytes of nothing.
 
 The CRC-32 result is the strongest single piece of evidence. The hash is stored,
 the name is recovered from a separately-compressed table, and the two are
@@ -141,12 +156,12 @@ between the header and the name table, and yields hashes in ascending order.
 
 ## Known gaps
 
-Every archive parses and 98.9% of members decode. What is left:
+Every archive parses and every member decodes. What is left:
 
-- Codec 7: 5 members, all in `data/prm/actdt_a.gp2`.
-- 601 members stored with no region prefix, recoverable via `readRaw` as
-  described above.
-- `unknown_0x05`, `unknown_0x0e`, `unknown_0x10`, `unknown_0x14`.
+- `unknown_0x05`, `unknown_0x0e`, `unknown_0x14`, and `unknown_0x10` below
+  bit 28.
+- Bit 28 rests on three archives. A fourth that set it and still prefixed its
+  members would break the reading; none does here.
 
 An earlier revision listed eleven archives whose index could not be followed,
 and guessed the name offset must be wider than 16 bits in some variant. That was

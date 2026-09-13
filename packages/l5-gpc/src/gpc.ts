@@ -42,10 +42,10 @@ import { GpcError } from './errors.ts'
  * bits select a codec and whose upper 29 bits give the decompressed size,
  * followed by the payload. The name table decodes to NUL-separated names.
  *
- * Two archives on the reference cartridge hold members with no region prefix,
- * whose bytes are their content directly. There is no header flag that
- * distinguishes them, so they are reported `readable: false` and their bytes
- * offered through {@link GpcArchive.readRaw} rather than guessed at.
+ * **Bit 28 of `0x10` says the members are stored whole**, with no region
+ * prefix: their bytes are their content. INFERRED — it is set on exactly the
+ * three archives on the reference cartridge whose members' first words do not
+ * read as prefixes, and on none of the rest. See `FORMAT.md`.
  */
 
 export const GPC_MAGIC = 'GPC2'
@@ -59,7 +59,12 @@ export const GpcMethod = {
   Huffman4: 2,
   Huffman8: 3,
   RunLength: 4,
+  /** No region prefix: the member is stored whole. Not a prefix's value — see {@link GpcHeader.storedWhole}. */
+  Whole: -1,
 } as const
+
+/** Bit 28 of the header's `0x10`: the members are stored whole. */
+const STORED_WHOLE = 0x10000000
 
 export interface GpcHeader {
   readonly count: number
@@ -71,8 +76,14 @@ export interface GpcHeader {
   /** High nibble of byte 5. Meaning not established. */
   readonly unknown_0x05: number
   readonly unknown_0x0e: number
+  /** The whole word at `0x10`: bit 28 is {@link GpcHeader.storedWhole}; the rest is not established. */
   readonly unknown_0x10: number
   readonly unknown_0x14: number
+  /**
+   * Whether the members are stored whole, with no region prefix — bit 28 of
+   * `0x10`. INFERRED; see `FORMAT.md`.
+   */
+  readonly storedWhole: boolean
 }
 
 export interface GpcMember {
@@ -83,9 +94,9 @@ export interface GpcMember {
   readonly offset: number
   /** Stored length of the region, including its 4-byte prefix. */
   readonly storedLength: number
-  /** Decompressed length, from the region prefix. */
+  /** Decompressed length, from the region prefix; a whole member's own length. */
   readonly size: number
-  /** Codec from the region prefix's low three bits. */
+  /** Codec from the region prefix's low three bits; {@link GpcMethod.Whole} for a member stored whole. */
   readonly method: number
   /** False when the codec is one this package cannot decode. */
   readonly readable: boolean
@@ -103,12 +114,11 @@ export interface GpcArchive {
   read(target: string | number | GpcMember): Uint8Array
   /**
    * The member's stored bytes, verbatim and undecoded, including the four that
-   * would be its region prefix.
+   * are its region prefix when it has one.
    *
-   * Useful for a member whose `readable` is false: two archives on the
-   * reference cartridge hold members with no region prefix at all, whose bytes
-   * are simply their content. This hands them to a caller that can identify
-   * them, rather than discarding them. See `FORMAT.md`.
+   * Useful for a member whose `readable` is false — a codec this package does
+   * not decode — which it hands to a caller that can, rather than discarding
+   * it. See `FORMAT.md`.
    */
   readRaw(target: string | number | GpcMember): Uint8Array
 }
@@ -300,6 +310,7 @@ export function readGpc(data: Uint8Array): GpcArchive {
   }
 
   const count = (data[4] as number) | (((data[5] as number) & 0x0f) << 8)
+  const unknown_0x10 = u32(data, 0x10)
   const header: GpcHeader = {
     count,
     version: u16(data, 0x06),
@@ -307,8 +318,9 @@ export function readGpc(data: Uint8Array): GpcArchive {
     dataOffset: u16(data, 0x0a) * 4,
     unknown_0x05: (data[5] as number) >>> 4,
     unknown_0x0e: u16(data, 0x0e),
-    unknown_0x10: u32(data, 0x10),
+    unknown_0x10,
     unknown_0x14: u32(data, 0x14),
+    storedWhole: (unknown_0x10 & STORED_WHOLE) !== 0,
   }
 
   const entryWords = u16(data, 0x0c)
@@ -360,6 +372,25 @@ export function readGpc(data: Uint8Array): GpcArchive {
       throw new GpcError(`member '${name}' starts at ${offset}, past the archive`, offset)
     }
 
+    if (header.storedWhole) {
+      if (offset + storedLength > data.length) {
+        throw new GpcError(
+          `member '${name}' of ${storedLength} bytes runs past the archive`,
+          offset,
+        )
+      }
+      members.push({
+        name,
+        hash,
+        offset,
+        storedLength,
+        size: storedLength,
+        method: GpcMethod.Whole,
+        readable: true,
+      })
+      continue
+    }
+
     const region = readRegion(data, offset)
     members.push({
       name,
@@ -374,8 +405,12 @@ export function readGpc(data: Uint8Array): GpcArchive {
 
   const byName = new Map(members.map((m) => [m.name, m]))
 
-  const read = (target: string | number | GpcMember): Uint8Array =>
-    readRegion(data, resolve(target).offset).decode()
+  const read = (target: string | number | GpcMember): Uint8Array => {
+    const member = resolve(target)
+    return header.storedWhole
+      ? data.subarray(member.offset, member.offset + member.storedLength)
+      : readRegion(data, member.offset).decode()
+  }
 
   const resolve = (target: string | number | GpcMember): GpcMember => {
     let member: GpcMember | undefined

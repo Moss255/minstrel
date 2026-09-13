@@ -108,6 +108,38 @@ describe('a battle', () => {
     expect(blow?.kind === 'attack' && blow.target).toBe(2)
   })
 
+  it('heals with an item on the user’s turn, by a draw, and no more than the wounds', () => {
+    const herb = new Map<number, Command>([
+      [0, { kind: 'item', item: 0x55f0, heal: { base: 35, spread: 5 } }],
+    ])
+    const hurt = withHp(
+      startBattle([{ ...hero, maxHp: 100 }, blob('slime', 8, 1)]),
+      new Map([[0, 10]]),
+    )
+    const { state, events } = playRound(hurt, herb, new BattleRng(1n))
+    const used = events.find((e) => e.kind === 'item')
+    expect(used).toMatchObject({ kind: 'item', actor: 0, target: 0, item: 0x55f0 })
+    const healed = used?.kind === 'item' ? (used.healed ?? 0) : 0
+    expect(healed).toBeGreaterThanOrEqual(30)
+    expect(healed).toBeLessThanOrEqual(40)
+    // The slime's blow comes after or before; the heal is all there either way.
+    const hit = events.find((e) => e.kind === 'attack')
+    const damage = hit?.kind === 'attack' ? hit.damage : 0
+    expect(state.fighters[0]?.hp).toBe(10 + healed - damage)
+
+    const nearlyWell = withHp(startBattle([hero, blob('slime', 8, 1)]), new Map([[0, 18]]))
+    const topped = playRound(nearlyWell, herb, new BattleRng(1n)).events.find(
+      (e) => e.kind === 'item',
+    )
+    expect(topped?.kind === 'item' && topped.healed).toBe(2)
+  })
+
+  it('says an item with no heal did nothing', () => {
+    const wing = new Map<number, Command>([[0, { kind: 'item', item: 0x55fb }]])
+    const { events } = playRound(startBattle([hero, blob('slime', 8, 1)]), wing, new BattleRng(1n))
+    expect(events.find((e) => e.kind === 'item')).toMatchObject({ healed: undefined })
+  })
+
   it('uses the default rules unless told otherwise', () => {
     expect(DEFAULT_RULES).toEqual({ critical: 200, dodge: 2, flee: 50 })
   })

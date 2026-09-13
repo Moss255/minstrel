@@ -9,10 +9,14 @@ import {
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
+  type Action,
+  type ActionRange,
   type BattleZone,
   type EventMessage,
   type FieldMonster,
   type FieldZone,
+  type Grammar,
+  type ItemName,
   isMapLinks,
   isMapList,
   isMapManifest,
@@ -24,11 +28,14 @@ import {
   type MapTransition,
   type MonsterBattle,
   mapDoorways,
+  NO_ACTION,
   type NpcEntry,
   type NpcPlacement,
   type NpcState,
   placeNpcs,
   type RandomTreasure,
+  readActionRanges,
+  readActions,
   readBattleEncounters,
   readEventMessages,
   readFieldEncounters,
@@ -47,6 +54,7 @@ import {
   readRandomTreasure,
   readShops,
   readSystemStrings,
+  readTableMessages,
   readTalk,
   readTreasure,
   readTriggers,
@@ -58,10 +66,11 @@ import {
 import type { Model } from '@minstrel/nitro-gfx'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
-import { type Cast, type CastSprite, cast, forgetSheets, type GroundAt } from './cast.ts'
+import type { BattleWords } from './battle-scene.ts'
+import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { HERO_LEVELS } from './hero.ts'
-import { propSprites } from './pots.ts'
+import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
 
 /**
@@ -102,7 +111,7 @@ export interface Loaded {
   /** The two chests' models, shut and open — see `chests.ts`. */
   readonly chests: readonly ChestLook[]
   /** The pots and barrels, drawn as sprites where the treasure stands — see `pots.ts`. */
-  readonly props: readonly CastSprite[]
+  readonly props: readonly Prop[]
   /** The round shadow drawn under each character — see `shadows.ts`. */
   readonly shadow: Model | undefined
   /** Item names in English, by id — see `readItemNames`. */
@@ -115,8 +124,8 @@ export interface Loaded {
   readonly systemStrings: ReadonlyMap<number, string>
   /** Each monster's battle numbers, by its number — see `readMonsterBattle`. */
   readonly monsterBattle: ReadonlyMap<number, MonsterBattle>
-  /** Each monster's number and name, by its code — `z000a` — see `readMonsterNames`. */
-  readonly monsterCodes: ReadonlyMap<string, { readonly number: number; readonly name: string }>
+  /** Each monster's number, name, plural and grammar, by its code — `z000a` — see `readMonsterNames`. */
+  readonly monsterCodes: ReadonlyMap<string, MonsterWords>
   /** Each monster's code by its number — the other way round. */
   readonly monsterCodeOf: ReadonlyMap<number, string>
   /** This map's zones and who roams them — see `readFieldEncounters`. Empty where none roam. */
@@ -131,6 +140,14 @@ export interface Loaded {
   readonly shops: ReadonlyMap<number, Shop>
   /** Each item's price and the table it is listed in — see `readItemTable`. */
   readonly goods: ReadonlyMap<number, Goods>
+  /** Each item's name, plural and grammar in English, by id — see `readItemNames`. */
+  readonly itemWords: ReadonlyMap<number, ItemName>
+  /** What using each item does, by id — see {@link ItemUse}. */
+  readonly itemUses: ReadonlyMap<number, ItemUse>
+  /** The battle's words in English — see `battle-scene.ts`. Empty where a file will not read. */
+  readonly battleWords: BattleWords
+  /** The field menu's messages in English, `str_tm`, by number. */
+  readonly menuWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** The way out: where this map's doorways are and what they lead to. */
@@ -145,6 +162,33 @@ export interface Loaded {
 export interface Goods {
   readonly price: number
   readonly table: string
+}
+
+/** A monster as the battle's words need it. */
+export interface MonsterWords {
+  readonly number: number
+  readonly name: string
+  readonly plural: string
+  readonly grammar: Grammar
+}
+
+/**
+ * What using an item does, in the field and in battle: the two actions its
+ * item table names, looked up in the action table — see `readItemTable` and
+ * `readActions`. Undefined where it names 252, which does nothing.
+ */
+export interface ItemUse {
+  readonly field: ItemEffect | undefined
+  readonly battle: ItemEffect | undefined
+}
+
+export interface ItemEffect {
+  readonly action: number
+  readonly name: string
+  /** What the action does — see `ActionEffect`. INFERRED. */
+  readonly effect: number
+  /** The range it draws from, when it has one: a base give or take a spread. */
+  readonly range: { readonly base: number; readonly spread: number } | undefined
 }
 
 export interface LoadOptions {
@@ -490,19 +534,20 @@ function monsterBattleOf(rom: Uint8Array): Map<number, MonsterBattle> {
   return byNumber
 }
 
-const codesRead = new WeakMap<Uint8Array, Map<string, { number: number; name: string }>>()
+const codesRead = new WeakMap<Uint8Array, Map<string, MonsterWords>>()
 
 /**
- * Each monster's number and English name, by its code — see `readMonsterNames`.
+ * Each monster's number and English name, plural and grammar, by its code —
+ * see `readMonsterNames`.
  *
  * A code can name several records — 438 records for 312 codes, story versions
  * of one monster — and the first, the lowest number, is the one kept: `z000a`
  * is the slime, number 1. Which version a scripted fight means is not read.
  */
-function monsterCodesOf(rom: Uint8Array): Map<string, { number: number; name: string }> {
+function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
   const already = codesRead.get(rom)
   if (already) return already
-  const byCode = new Map<string, { number: number; name: string }>()
+  const byCode = new Map<string, MonsterWords>()
   const { cat } = walkOnce(rom, ['/data/prm/mon_data.gp2'])
   for (const [, files] of cat.members) {
     for (const [name, bytes] of files) {
@@ -510,7 +555,12 @@ function monsterCodesOf(rom: Uint8Array): Map<string, { number: number; name: st
       try {
         for (const monster of readMonsterNames(bytes)) {
           if (!byCode.has(monster.code))
-            byCode.set(monster.code, { number: monster.number, name: monster.name })
+            byCode.set(monster.code, {
+              number: monster.number,
+              name: monster.name,
+              plural: monster.plural,
+              grammar: monster.grammar,
+            })
         }
       } catch {
         // Names that will not read leave every monster unfound by its code.
@@ -664,6 +714,121 @@ function goodsOf(rom: Uint8Array): Map<number, Goods> {
   }
   goodsRead.set(rom, goods)
   return goods
+}
+
+/** One English text file out of its archive, read — or an empty map when it will not. */
+function englishText(
+  rom: Uint8Array,
+  archive: string,
+  member: string,
+  read: (bytes: Uint8Array) => ReadonlyMap<number, string>,
+): ReadonlyMap<number, string> {
+  const { cat } = walkOnce(rom, [archive])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith(member)) continue
+      try {
+        return read(bytes)
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
+/** A message table's messages, by number, the silent ones left out. */
+const messagesBy = (messages: readonly EventMessage[]) =>
+  new Map(messages.flatMap((m) => (m.text === undefined ? [] : [[m.id, m.text] as const])))
+
+/** The battle results' messages are `str_bres`'s `0x67` records — see game-formats' FORMAT.md, "Battle text". */
+const RESULT_TAG = 0x67
+
+/** The battle's words in English — see `BattleWords`. */
+function battleWordsOf(rom: Uint8Array): BattleWords {
+  return {
+    battle: englishText(rom, '/data/bin/strbtl.gp2', 'strbtl_en.nat', readSystemStrings),
+    actions: englishText(rom, '/data/prm/actmsg.gp2', 'actmsg_en.nat', readSystemStrings),
+    results: englishText(rom, '/data/bin/str_bres.gp2', 'str_bres_en.bin', (bytes) =>
+      messagesBy(readTableMessages(bytes, RESULT_TAG)),
+    ),
+    menu: englishText(rom, '/data/bin/menu/str_btl.gp2', 'str_btl_en.nat', readSystemStrings),
+    articles: englishText(rom, '/data/prm/article.gp2', 'article_en.nat', readSystemStrings),
+  }
+}
+
+/** Every item's English name, plural and grammar — see `readItemNames`. Empty when they will not read. */
+function itemWordsOf(rom: Uint8Array): Map<number, ItemName> {
+  const { cat } = walkOnce(rom, ['/data/prm/itemname.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('itemname_en.nat')) continue
+      try {
+        return new Map(readItemNames(bytes).map((item) => [item.id, item]))
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
+/**
+ * What using each item does — see {@link ItemUse}. The action table's two
+ * halves are read in English, each with the range table beside it; an action
+ * is looked for in the field half first, where the items' own are.
+ */
+function itemUsesOf(rom: Uint8Array): Map<number, ItemUse> {
+  const halves: { actions: Action[]; ranges: Map<number, ActionRange> }[] = []
+  const { cat } = walkOnce(rom, ['/data/prm/actdt_'])
+  for (const half of ['a', 'b']) {
+    let actions: Action[] = []
+    let ranges = new Map<number, ActionRange>()
+    for (const [, files] of cat.members) {
+      for (const [name, bytes] of files) {
+        const lower = name.toLowerCase()
+        try {
+          if (lower.endsWith(`actdt_${half}_en.nat`)) actions = readActions(bytes)
+          if (lower.endsWith(`actdamage_${half}.nat`)) ranges = readActionRanges(bytes)
+        } catch {
+          // A half that will not read does nothing for the items that name it.
+        }
+      }
+    }
+    halves.push({ actions, ranges })
+  }
+  const effectOf = (id: number): ItemEffect | undefined => {
+    if (id === NO_ACTION) return undefined
+    for (const { actions, ranges } of halves) {
+      const action = actions.find((a) => a.id === id)
+      if (!action) continue
+      const range = action.range ? ranges.get(action.range) : undefined
+      return {
+        action: id,
+        name: action.name,
+        effect: action.effect,
+        range: range && { base: range.base, spread: range.spread },
+      }
+    }
+    return undefined
+  }
+  const uses = new Map<number, ItemUse>()
+  const tables = walkOnce(rom, ['/data/prm/itemdt_']).cat
+  for (const [, files] of tables.members) {
+    for (const [name, bytes] of files) {
+      if (!/itemdt_[a-z]_en\.nat$/i.test(name)) continue
+      try {
+        for (const item of readItemTable(bytes)) {
+          const [field, battle] = item.actions
+          const use = { field: effectOf(field), battle: effectOf(battle) }
+          if (use.field || use.battle) uses.set(item.id, use)
+        }
+      } catch {
+        // A table that will not read leaves its items doing nothing.
+      }
+    }
+  }
+  return uses
 }
 
 /** A treasure in world units: its position the file's own, times {@link WORLD_SCALE}. */
@@ -1006,6 +1171,10 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
     goods: goodsOf(rom),
+    itemWords: itemWordsOf(rom),
+    itemUses: itemUsesOf(rom),
+    battleWords: battleWordsOf(rom),
+    menuWords: englishText(rom, '/data/bin/menu/str_tm.gp2', 'str_tm_en.nat', readSystemStrings),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

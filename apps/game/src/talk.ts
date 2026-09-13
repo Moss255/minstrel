@@ -158,6 +158,11 @@ function accented(name: string): string | undefined {
   return (letter + mark).normalize('NFC')
 }
 
+/** The character a tag stands for — `<1>` an apostrophe, `<'e>` é — or undefined. */
+export function glyphOf(name: string): string | undefined {
+  return GLYPHS[name] ?? accented(name)
+}
+
 /** One page of a line, and who says it when the text names them. */
 export interface TalkPage {
   readonly speaker: string | undefined

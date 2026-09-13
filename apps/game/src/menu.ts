@@ -12,11 +12,25 @@ import type { Standing } from './hero.ts'
  *
  * **Talk, status, items and equip work.** Status shows the Hero's level table
  * (see `hero.ts`), whose columns are INFERRED; items lists the bag (see
- * `bag.ts`); equip puts on and takes off what the bag holds, a slot at a time
- * (see `equipment.ts`). Spells say what is not read yet.
+ * `bag.ts`) and uses the one chosen, saying what came of it; equip puts on and
+ * takes off what the bag holds, a slot at a time (see `equipment.ts`). Spells
+ * say what is not read yet.
  */
 
 export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells'
+
+/**
+ * The field menu's messages about using an item, by their numbers in `str_tm`
+ * — chosen by reading them, as which one an action says is not in its record.
+ */
+export const MENU_SAYS = {
+  /** Someone uses an item. */
+  uses: 9002,
+  /** Their wounds are healed. */
+  healed: 9004,
+  /** It would be no use on them now. */
+  noUse: 9012,
+} as const
 
 export const MENU_COMMANDS: readonly { readonly id: MenuCommand; readonly label: string }[] = [
   { id: 'talk', label: 'Talk' },
@@ -35,6 +49,8 @@ export interface MenuState {
   readonly panel: MenuCommand | undefined
   readonly row: number
   readonly picking: Slot | undefined
+  /** What using an item came to, shown under the items panel until the next choice. */
+  readonly said?: readonly string[] | undefined
 }
 
 export function openMenu(): MenuState {
@@ -48,6 +64,8 @@ export interface MenuContext {
   readonly stage: string | undefined
   /** The Hero's level and numbers, when the level table read. */
   readonly standing?: Standing | undefined
+  /** The Hero's hit points now, when wounded; full when undefined. */
+  readonly hp?: number | undefined
   readonly bag?: Bag | undefined
   readonly equipped?: Equipped | undefined
   /** An item's name by id. */
@@ -65,23 +83,29 @@ function equipRows(state: MenuState, context: MenuContext): (number | undefined)
   return choicesFor(state.picking, context.bag ?? EMPTY, context.tableOf ?? (() => undefined))
 }
 
-/** Choose another command, round and round — or, in the equip panel, another row. */
+/** Choose another command, round and round — or, in the equip or items panel, another row. */
 export function moveCursor(state: MenuState, by: number, context?: MenuContext): MenuState {
   const wrap = (at: number, count: number) => (((at + by) % count) + count) % count
   if (state.panel === 'equip') {
     const count = (context && equipRows(state, context)?.length) ?? SLOTS.length
     return { ...state, row: wrap(state.row, count) }
   }
+  if (state.panel === 'items') {
+    const count = context?.bag?.items.size ?? 0
+    return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
+  }
   if (state.panel) return state
   return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length) }
 }
 
-/** What taking a row asks for: talking, or putting something on. */
+/** What taking a row asks for: talking, putting something on, or using an item. */
 export interface Taken {
   readonly state: MenuState | undefined
   readonly talk: boolean
   /** Put this in the slot — undefined to take off what is there. */
   readonly equip?: { readonly slot: Slot; readonly item: number | undefined }
+  /** Use this item, by id. */
+  readonly use?: number
 }
 
 /**
@@ -101,6 +125,10 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     if (state.row >= choices.length) return { state: back, talk: false }
     return { state: back, talk: false, equip: { slot: state.picking, item: choices[state.row] } }
   }
+  if (state.panel === 'items') {
+    const item = [...(context?.bag?.items.keys() ?? [])][state.row]
+    return item === undefined ? { state, talk: false } : { state, talk: false, use: item }
+  }
   if (state.panel) return { state, talk: false }
   const command = MENU_COMMANDS[state.cursor]?.id
   if (command === undefined) return { state, talk: false }
@@ -119,11 +147,11 @@ export function back(state: MenuState): MenuState | undefined {
 
 const mark = (chosen: boolean) => (chosen ? '▶ ' : '   ')
 
-/** A panel's lines. The equip panel marks its chosen row, which is why it takes the state. */
+/** A panel's lines. The equip and items panels mark their chosen row, which is why it takes the state. */
 export function panelLines(
   panel: MenuCommand,
   context: MenuContext,
-  state?: Pick<MenuState, 'row' | 'picking'>,
+  state?: Pick<MenuState, 'row' | 'picking'> & Partial<Pick<MenuState, 'panel' | 'said'>>,
 ): string[] {
   const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   const nameOf = context.itemName ?? byId
@@ -141,15 +169,18 @@ export function panelLines(
       return [
         `${context.hero} — ${s.vocation}, level ${l.level}`,
         `Exp. ${s.exp}${s.next ? `, level ${s.next.level} at ${s.next.exp}` : ''}`,
-        `HP ${l.maxHp}/${l.maxHp} · MP ${l.maxMp}/${l.maxMp}`,
+        `HP ${Math.min(context.hp ?? l.maxHp, l.maxHp)}/${l.maxHp} · MP ${l.maxMp}/${l.maxMp}`,
         `Strength ${l.strength} · Resilience ${l.resilience} · Agility ${l.agility} · Deftness ${l.deftness} · Charm ${l.charm}`,
         `Magical might ${l.magicalMight} · Magical mending ${l.magicalMending}`,
         'Attack and defence are not read: where equipment keeps its numbers is not found. Which level-table column is which is inferred.',
         where,
       ]
     }
-    case 'items':
-      return context.bag ? bagLines(context.bag, nameOf) : ['There is no bag yet.']
+    case 'items': {
+      if (!context.bag) return ['There is no bag yet.']
+      const chosen = state?.panel === 'items' ? state.row : undefined
+      return [...bagLines(context.bag, nameOf, chosen), ...(state?.said ?? [])]
+    }
     case 'equip': {
       const row = state?.row ?? 0
       if (state?.picking) {
