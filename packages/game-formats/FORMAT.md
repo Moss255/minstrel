@@ -2433,7 +2433,7 @@ labels nothing here chooses between.
 
 # The mini-map — `/data/pack_lv5/minimap.gp2`
 
-The DS's lower screen shows a map of where the Hero is. It is drawn from this
+The DS's top screen shows a map of where the party is. It is drawn from this
 archive: 283 `.bmmp` layouts and 268 `.obg` pictures, besides files not read
 here — `z01` to `z05` as `.bncg` (`CHAR` head, 256 tiles) and `.bncl` (`PALT`
 head, 256 colours), `pd_ab_kari.bncg`/`.bncl`/`.bnsc` (`SCRN` head),
@@ -2486,9 +2486,18 @@ which reads as one dot a party member, blue the first. `/data/ani/obj_mm.pac`,
 the sprite file the ARM9 names for the screen, holds a blue dot and a red one
 among its cells (5 and 7), with a church, crossed swords and the HP/MP panels.
 
-No string in the code names `marker`, so how the game picks a dot is not
-established. The game here draws the Hero as `marker0`, the blue one: INFERRED,
-as the first party colour. What the red dot marks is not known.
+**On screen, each party member is a dot in their own colour.** A screenshot
+of the game, in Stornway's church with a party of four (kept locally, not
+committed), shows four dots in a two-by-two cluster on the town's map, no
+arrow and no facing, each in the colour of that member's name panel along the
+screen's foot: the first member green, then lime, grey and dark red. So a
+dot's colour belongs to the character, not to a place in the party, and **the
+first member's is not blue**. None of those four is exactly a marker's colour
+or one of `obj_minimap`'s or `obj_mm.pac`'s palette entries; the screenshot is
+blurred, and where the game takes a character's colour from is not
+established. No string in the code names `marker`. The game here draws the
+Hero, alone, as `marker0` — **ours**, until the rule is found. What the red dot
+marks is not known.
 
 ## `.bmmp` — which picture, and where on it
 
@@ -2538,9 +2547,12 @@ unit and the corner counts tiles is read from these fits, not from the code.
 
 - `0x65`, `0x67`, `0x68`, `0x6d`, `0x66`'s first value, and the `.obg`'s
   `unknown_0x03`.
-- What the screen shows inside a room: no interior has a layout, and the
-  village's `0x70` and marks name all its rooms, which suggests they are shown
-  on the village's picture. The game here does that; it is not confirmed.
+- Where exactly a room's party stands on its area's picture. That a room is
+  shown on its area's picture is now **observed**: the screenshot above, taken
+  inside Stornway's church, shows the town's map with the party's dots on the
+  church, just below its icon — as the village's `0x70` and marks, which name
+  all its rooms, suggested. Whether the dots sit on the room's mark or beside
+  it is not measured.
 - How the DS moves a picture larger than its 256×192 screen, and how it lays
   the backdrop.
 - Which dot the game gives the Hero, and what the others and `obj_mm.pac`'s

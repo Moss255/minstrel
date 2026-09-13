@@ -10,7 +10,7 @@ import {
 } from '@minstrel/game-formats'
 
 /**
- * The DS's lower screen — the map of where the Hero is — drawn in a corner.
+ * The DS's top screen — the map of where the party is — drawn in a corner.
  *
  * From the cartridge: which picture a map is drawn on, the picture, the
  * backdrop behind it, and where the Hero stands on it — see game-formats'
@@ -23,20 +23,20 @@ import {
  *   the DS scrolls one is not known;
  * - the backdrop tiled behind the picture: it is 64 × 64 pixels, which reads as
  *   a pattern, but how the DS lays it is not known;
- * - an interior shown on its area's picture, with the Hero's dot at the mark
- *   that stands for it. INFERRED: no interior has a layout of its own, and the
- *   village's marks and its own list of places name every one of its rooms.
- *
- * The Hero is the game's own blue dot, {@link HERO_MARKER}; that the blue one is
- * his is INFERRED — see FORMAT.md, "The markers are coloured dots".
+ * - the Hero's dot on a room's mark. That a room is shown on its area's picture
+ *   is observed — a screenshot inside Stornway's church shows the town's map
+ *   with the party on the church — but not exactly where on it they stand;
+ * - which dot is the Hero's, {@link HERO_MARKER}. The same screenshot shows each
+ *   member in their own colour, the first one green, and the rule is not found
+ *   — see FORMAT.md, "The markers are coloured dots".
  */
 
 export const MINIMAP_ARCHIVE = '/data/pack_lv5/minimap.gp2'
 
 /**
  * The Hero's dot: the first of the archive's five coloured markers, blue.
- * INFERRED — the same five dots, in the same order, sit beside the party panels
- * of `obj_minimap`, whose four colours run blue, green, pink, orange.
+ * **Ours**: on screen each member's dot is in their own colour — a screenshot
+ * shows a party's first member green — and how the game chooses it is not found.
  */
 export const HERO_MARKER = 'marker0'
 

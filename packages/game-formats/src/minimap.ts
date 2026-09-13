@@ -2,7 +2,7 @@ import { GameFormatError } from './errors.ts'
 import { type DataTable, readDataTable, type TableRecord } from './table.ts'
 
 /**
- * The lower screen's map of an area — the members of
+ * The top screen's map of an area — the members of
  * `/data/pack_lv5/minimap.gp2`.
  *
  * Two kinds of member go together. A `.obg` is a picture; a `.bmmp` says which

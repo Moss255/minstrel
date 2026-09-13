@@ -11,7 +11,8 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ## The mini-map — 13 September
 
-The DS's lower screen, drawn in the top right corner; `m` shows and hides it.
+The DS's top screen's map, drawn in the top right corner; `m` shows and hides
+it.
 
 **From the cartridge** (`/data/pack_lv5/minimap.gp2`; game-formats' FORMAT.md,
 "The mini-map"): the picture, a `.obg` of 4-bit tiles and sixteen colours;
@@ -21,15 +22,21 @@ and 279 layouts reads. Where the Hero stands on it — position × scale −
 corner × 8 — is **INFERRED** from the marks landing on the doors they name.
 
 **The Hero is a dot, the game's own:** `marker0.obg`, the blue one of five
-coloured dots. That blue is his is **INFERRED** — the same five dots in
-`obj_minimap` sit beside party panels in blue, green, pink and orange, blue
-first. No code names the markers.
+coloured dots. **Which colour is his is ours**: a screenshot of the game, a
+party of four in Stornway's church, shows each member as a dot in their own
+colour — the first green, then lime, grey, dark red — matching their name
+panels, with no arrow or facing. How the game picks a character's colour is not
+found; none of the four is exactly in the palettes read so far.
+
+**A room is shown on its area's picture — observed** in the same screenshot:
+inside the church, the town's map with the party on the church. Where on it
+exactly is ours: the dot on the room's mark.
 
 **Ours, each said so in `apps/game/src/minimap.ts`:** the corner, the size
 and the key; a picture bigger than the screen following the Hero, a smaller one
-centred; the backdrop tiled; hidden in a battle. A room is shown on its area's
-picture with the dot at its mark — no interior has a layout, and the village's
-lists all its rooms, so this is **INFERRED**.
+centred; the backdrop tiled; hidden in a battle. The screenshot also shows the
+party's name panels along the map's foot and the town's name in a tab, which
+are not drawn here.
 
 **Left:** reading `obj_mm.pac` — the sprite file the code names, a Level-5
 wrapper round `NCER`/`NCGR`/`NCLR` holding a blue dot, a red one, a church and

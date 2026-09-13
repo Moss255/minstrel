@@ -700,7 +700,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage) }
   loaded = opened
-  // The lower screen's map: the picture this map is drawn on, or its area's.
+  // The top screen's map: the picture this map is drawn on, or its area's.
   minimaps ??= readMinimaps(cartridge)
   minimapShown = showMinimap(minimaps, opened.mapId, opened.code)
   chapterIndex = undefined
@@ -819,9 +819,10 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
 
 /**
  * The mini-map in the corner, where the Hero is now — see `minimap.ts`. Hidden
- * in a battle, which on the DS takes the lower screen for itself; **ours**, as
- * are the corner and the key. His position is the map file's own units, as the
- * picture's are: the world's divided by the scale it was put in at.
+ * in a battle: **ours**, as are the corner and the key — what the DS's map
+ * screen shows during one is not established. His position is the map file's
+ * own units, as the picture's are: the world's divided by the scale it was put
+ * in at.
  */
 function drawCorner(): void {
   const show = minimapWanted && minimapShown !== undefined && self !== undefined && !battle
