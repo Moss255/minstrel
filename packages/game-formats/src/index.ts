@@ -8,6 +8,14 @@ export {
   isMarkerVolume,
   readCollisionMesh,
 } from './collision.ts'
+export {
+  type BattleZone,
+  type BattleZoneMonster,
+  type FieldZone,
+  readBattleEncounters,
+  readFieldEncounters,
+  type ZoneMonster,
+} from './encounters.ts'
 export { GameFormatError } from './errors.ts'
 export {
   type EventMessage,
@@ -15,6 +23,7 @@ export {
   parseMarkup,
   readEventMessages,
 } from './events.ts'
+export { type FieldMonster, readFieldMonsters } from './fieldmonsters.ts'
 export {
   type BitmapFont,
   type Glyph,

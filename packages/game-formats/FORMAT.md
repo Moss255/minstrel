@@ -2284,6 +2284,54 @@ code finds first, are the monsters' attack effects — the slime's a splash
 textured `z000a_at1`, the chest monster's smoke, `z009a_kem01` — not their
 bodies.
 
+## Encounters — `encfld.bin` and `encbtl.bin`
+
+Two loose tagged data tables in `/data/prm`, of the same zones.
+`readFieldEncounters` and `readBattleEncounters` read them.
+
+**`encfld`, by map.** A `0x69` record opens a map, and **its first value is the
+map's own id** — the first value of the map's entry in `maplist9.bin`: 20001
+is `F01`, Angel Falls Region; 7102 to 7104 are the Hexagon's floors. All 210
+groups name a map, and the village has none. The zones follow: a `0x68` record
+names a zone, a `0x66` holds one word for it, and each `0x67` gives a monster
+that roams there — its number in the low 12 bits, and above them, INFERRED, its
+weight among the zone's (slime 7, teeny sanguini 6, cruelcumber 5, sacksquatch 3
+in `F01`'s first zone) — with a second value, 1 on most, not established.
+
+An earlier reading took the zone numbers for places in the map list, and put
+late-game monsters in the village's houses; it is the `0x69` value that names
+the map.
+
+**`encbtl`, by zone.** A `0x68` record per zone — 290 of them — then `0x66`
+records, **the zone's roamers again: the same monsters as `encfld`'s on all 287
+zones it has**, and `0x67` records, monsters that may join a battle there, most
+of them not among the roamers (zone 12's company includes a batterfly). The bits
+above each monster's number — 9 and 92 on most roamers, 9 to 13 and 4 to 21 on
+the company — and the records' second values are carried, not read.
+
+**How a map chooses among its zones is not established.** `F01` has three.
+The collision triangles' attribute word was tried, bits 25 up read as an
+index into the map's zones: it matches the zone count on only 41 of 109 field
+and dungeon maps, and on 61 it runs past the last zone, so it is something
+else. The game here takes a map's first zone.
+
+## Field monsters — `fld_mondata.bin`
+
+A loose tagged data table: a `0x64` record holding 438, and a `0x65` record
+for each monster of seven values. `readFieldMonsters` reads it.
+
+| value | reading |
+|---|---|
+| 0 | the monster's number |
+| 1, 2 | not established — 1 and 5 on the slime, 7 and 12 on the she-slime, −99 and −99 on the metal slime, 99 on many |
+| 3 | a packed word, not established |
+| 4 | a float, INFERRED a speed: 0.40 on the slimes, 0.70 the drackies, 0.80 the firespirit, 0.90 the funghouls, 1.20 the meowgician |
+| 5, 6 | attack and defence — **equal to the battle data's on all 438** |
+
+Every roaming monster has a field model beside its battle one,
+`<code>_f.mon` in `enemy.gp2`, with its `appear`, `attack0a`, `run` and `stand`
+motions.
+
 ---
 
 # Triggers — `trigger<area>.bin`
