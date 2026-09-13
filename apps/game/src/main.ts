@@ -20,17 +20,27 @@ import {
   followCamera,
   INDOORS,
   keepTriangles,
+  moveRelativeToCamera,
   OUTDOORS,
   occludedChunks,
   updateFollowCamera,
 } from '@minstrel/render'
 import {
+  BattleRng,
   type CollisionWorld,
+  calmFor,
   createCollisionWorld,
   type Fighter,
   groundBelow,
+  headingAngle,
   PERSON,
+  type Roamer,
+  type RoamerKind,
+  type Roaming,
+  type RoamRules,
   spoils,
+  startRoaming,
+  tickRoaming,
 } from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
 import { type Bag, EMPTY_BAG, pay, take } from './bag.ts'
@@ -86,7 +96,15 @@ import {
   panelLines,
 } from './menu.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
-import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
+import {
+  advance,
+  advanceMotion,
+  type Player,
+  player,
+  playerPieces,
+  TICK_MS,
+  WALK_SPEED,
+} from './player.ts'
 import { isPotOrBarrel } from './pots.ts'
 import {
   bagOf,
@@ -322,6 +340,30 @@ function fightCodes(): string[] {
 }
 /** Shift+P fights the slice's boss, Hexagoon, from whom there is no running. */
 const BOSS_FIGHT = ['b003a']
+/**
+ * How the field's monsters roam — see `tickRoaming`. **All of it ours**: the
+ * game's spawning is in its code, not its data. Distances go by a person.
+ */
+const ROAM_RULES: RoamRules = {
+  most: 3,
+  near: fx32(PERSON.height * 6),
+  far: fx32(PERSON.height * 10),
+  vanish: fx32(PERSON.height * 16),
+  touch: fx32(Math.round(PERSON.height * 0.6)),
+  spawnEvery: 90,
+  turnEvery: 60,
+  shape: PERSON,
+}
+/** Ticks after arriving or after a battle during which walking into a monster starts nothing. */
+const ROAM_CALM = 120
+/** The field's monsters, where the map has a zone — see `beginRoaming`. */
+let roaming: Roaming | undefined
+let roamKinds: RoamerKind[] = []
+/** The zone roamed. */
+let roamZone: number | undefined
+let roamCarry = 0
+/** The field's own numbers: one generator for the session, so the field is reproducible. */
+const roamRng = new BattleRng(0x5eedf1e1dn)
 /** The markers where the map's treasure is — see `treasure.ts`. */
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
@@ -619,6 +661,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   poseMap(0)
   self = player(at, scale)
   if (via) self.facing = via.facing
+  beginRoaming()
 
   // The character is put down inside the doorway they came out of more often
   // than not, so the gate starts shut and opens when they step clear of it.
@@ -804,6 +847,20 @@ function frame(now = 0): void {
   if (self && loaded && world) {
     self.stick = { forward: sticks.forward, right: sticks.right }
     const { moving, travelled } = advance(self, world, camera.yaw, elapsedMs)
+    // The field's monsters, on the Hero's own ticks, and only while nothing
+    // else is up — see `beginRoaming`.
+    if (roaming && !battle && !menu && !visit && !talking) {
+      roamCarry = Math.min(roamCarry + elapsedMs, TICK_MS * 8)
+      while (roamCarry >= TICK_MS && roaming) {
+        roamCarry -= TICK_MS
+        const next = tickRoaming(roaming, world, roamKinds, self.state, roamRng, ROAM_RULES)
+        roaming = next.roaming
+        if (next.touched) {
+          fightRoamer(next.touched)
+          break
+        }
+      }
+    }
     advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
     maybeTravel()
 
@@ -899,6 +956,8 @@ function frame(now = 0): void {
       ),
       // A battle's monsters, facing the Hero — see `monsters.ts`.
       ...(battle ? foePieces(now) : []),
+      // The field's roaming monsters, in their field models.
+      ...(roaming && !battle ? roamerPieces(now) : []),
       // Pots and barrels face the camera too — see `pots.ts`.
       ...loaded.props.flatMap((prop) =>
         propPieces(prop, toFloat(PERSON.height) * worldScale, camera.yaw),
@@ -1408,6 +1467,76 @@ function showVisit(current: Visit): void {
 }
 
 /**
+ * Let the map's monsters roam, if it has a zone: its first — **how the game
+ * chooses among a map's zones is not established**, and the first of Angel
+ * Falls Region's is slimes, teeny sanguinis, cruelcumbers and sacksquatches.
+ * Each monster moves at the Hero's walking speed times its field speed from
+ * `fld_mondata` (INFERRED). Their field models are read now, not mid-walk.
+ */
+function beginRoaming(): void {
+  roaming = undefined
+  roamKinds = []
+  roamZone = undefined
+  roamCarry = 0
+  const here = loaded
+  if (!here || !cartridge) return
+  const zone = here.fieldZones[0]
+  if (!zone) return
+  roamZone = zone.zone
+  roamKinds = zone.monsters.map((m) => ({
+    number: m.number,
+    weight: m.weight,
+    speed: fx32(Math.round(WALK_SPEED * (here.fieldMonsters.get(m.number)?.speed ?? 0.5))),
+  }))
+  for (const kind of roamKinds) {
+    const code = here.monsterCodeOf.get(kind.number)
+    if (code) monsterLookOf(cartridge, `${code}_f`)
+  }
+  roaming = startRoaming(ROAM_CALM)
+}
+
+/**
+ * Walk into a roaming monster, and fight it, with up to two more from the
+ * zone's battle company, each drawn evenly. **The company is a stand-in**: what
+ * `encbtl`'s numbers beside each monster say about who joins is not read.
+ */
+function fightRoamer(touched: Roamer): void {
+  if (!loaded) return
+  const code = loaded.monsterCodeOf.get(touched.number)
+  if (!code) return
+  const company = roamZone === undefined ? [] : (loaded.battleZones.get(roamZone)?.company ?? [])
+  const codes = [code]
+  const more = company.length > 0 ? roamRng.below(3) : 0
+  for (let i = 0; i < more; i++) {
+    const joined = company[roamRng.below(company.length)]
+    const joinedCode = joined ? loaded.monsterCodeOf.get(joined.number) : undefined
+    if (joinedCode) codes.push(joinedCode)
+  }
+  startFight(codes, true)
+}
+
+/** The roaming monsters, each in its field model, running while it moves. */
+function roamerPieces(now: number): Piece[] {
+  const here = loaded
+  const rom = cartridge
+  if (!roaming || !here || !rom) return []
+  const frame = Math.floor((now / 1000) * MAP_FPS)
+  return roaming.roamers.flatMap((r) => {
+    const code = here.monsterCodeOf.get(r.number)
+    const look = code ? monsterLookOf(rom, `${code}_f`) : undefined
+    if (!look) return []
+    return monsterPieces(
+      look,
+      { x: toFloat(r.state.x), y: toFloat(r.state.y), z: toFloat(r.state.z) },
+      headingAngle(r.heading),
+      characterScale,
+      r.moving ? 'run' : 'stand',
+      frame,
+    )
+  })
+}
+
+/**
  * Start a battle with these monsters, by code, where the Hero stands.
  *
  * The Hero fights with their level's numbers. **Their attack and defence are
@@ -1471,14 +1600,20 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   showBattle()
 }
 
-/** Where a battle's monsters stand: in a row ahead of the Hero, on the ground they stand on. */
+/**
+ * Where a battle's monsters stand: in a row ahead of the Hero as the camera
+ * sees them — away from it, so the Hero stands between — on the ground they
+ * stand on. The Hero turns to face them. Ahead of the Hero's own facing put
+ * them between the Hero and the camera whenever the Hero faced it.
+ */
 function spotsFor(count: number): { x: number; y: number; z: number }[] {
   if (!self) return []
   const person = toFloat(PERSON.height) * worldScale
   const ahead = person * 1.6
   const gap = person * 0.9
-  const forward = { x: Math.sin(self.facing), z: Math.cos(self.facing) }
-  const right = { x: Math.cos(self.facing), z: -Math.sin(self.facing) }
+  const forward = moveRelativeToCamera(camera.yaw, 1, 0)
+  const right = moveRelativeToCamera(camera.yaw, 0, 1)
+  self.facing = Math.atan2(forward.x, forward.z)
   const hx = toFloat(self.state.x)
   const hz = toFloat(self.state.z)
   const hy = toFloat(self.state.y)
@@ -1594,6 +1729,7 @@ function settleBattle(): void {
 /** Put the battle away. */
 function endFight(): void {
   battle = undefined
+  if (roaming) roaming = calmFor(roaming, ROAM_CALM)
   battleLooks = []
   battleSpots = []
   talkEl.hidden = true

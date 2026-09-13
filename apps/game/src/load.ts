@@ -9,7 +9,10 @@ import {
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
+  type BattleZone,
   type EventMessage,
+  type FieldMonster,
+  type FieldZone,
   isMapLinks,
   isMapList,
   isMapManifest,
@@ -26,7 +29,10 @@ import {
   type NpcState,
   placeNpcs,
   type RandomTreasure,
+  readBattleEncounters,
   readEventMessages,
+  readFieldEncounters,
+  readFieldMonsters,
   readItemNames,
   readItemTable,
   readLevelTable,
@@ -111,6 +117,14 @@ export interface Loaded {
   readonly monsterBattle: ReadonlyMap<number, MonsterBattle>
   /** Each monster's number and name, by its code — `z000a` — see `readMonsterNames`. */
   readonly monsterCodes: ReadonlyMap<string, { readonly number: number; readonly name: string }>
+  /** Each monster's code by its number — the other way round. */
+  readonly monsterCodeOf: ReadonlyMap<number, string>
+  /** This map's zones and who roams them — see `readFieldEncounters`. Empty where none roam. */
+  readonly fieldZones: readonly FieldZone[]
+  /** Every zone's roamers and battle company, by zone — see `readBattleEncounters`. */
+  readonly battleZones: ReadonlyMap<number, BattleZone>
+  /** How each monster goes about the field, by number — see `readFieldMonsters`. */
+  readonly fieldMonsters: ReadonlyMap<number, FieldMonster>
   /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
   readonly heroLevels: LevelTable | undefined
   /** What each shop sells, by the number a talk line's `<SHOP=n>` names — see `readShops`. */
@@ -505,6 +519,70 @@ function monsterCodesOf(rom: Uint8Array): Map<string, { number: number; name: st
   }
   codesRead.set(rom, byCode)
   return byCode
+}
+
+const looseRead = new WeakMap<Uint8Array, Map<string, Uint8Array | undefined>>()
+
+/** A loose file's bytes, by its cartridge path, read once. */
+function looseFile(rom: Uint8Array, path: string): Uint8Array | undefined {
+  let byPath = looseRead.get(rom)
+  if (!byPath) {
+    byPath = new Map()
+    looseRead.set(rom, byPath)
+  }
+  if (byPath.has(path)) return byPath.get(path)
+  let bytes: Uint8Array | undefined
+  for (const leaf of scanCartridge(rom, { pathFilter: path }))
+    if (leaf.path === path) bytes = leaf.bytes
+  byPath.set(path, bytes)
+  return bytes
+}
+
+/** Each map's zones, by the map's id — see `readFieldEncounters`. Empty when it will not read. */
+function fieldEncountersOf(rom: Uint8Array): Map<number, FieldZone[]> {
+  const bytes = looseFile(rom, '/data/prm/encfld.bin')
+  try {
+    return bytes ? readFieldEncounters(bytes) : new Map()
+  } catch {
+    return new Map()
+  }
+}
+
+/** Each zone's roamers and battle company — see `readBattleEncounters`. Empty when it will not read. */
+function battleEncountersOf(rom: Uint8Array): Map<number, BattleZone> {
+  const bytes = looseFile(rom, '/data/prm/encbtl.bin')
+  try {
+    return bytes ? readBattleEncounters(bytes) : new Map()
+  } catch {
+    return new Map()
+  }
+}
+
+/** How each monster goes about the field — see `readFieldMonsters`. Empty when it will not read. */
+function fieldMonstersOf(rom: Uint8Array): Map<number, FieldMonster> {
+  const bytes = looseFile(rom, '/data/prm/fld_mondata.bin')
+  try {
+    return bytes ? readFieldMonsters(bytes) : new Map()
+  } catch {
+    return new Map()
+  }
+}
+
+/** Each monster's code by its number, from the English names — see `readMonsterNames`. */
+function monsterCodeByNumberOf(rom: Uint8Array): Map<number, string> {
+  const byNumber = new Map<number, string>()
+  const { cat } = walkOnce(rom, ['/data/prm/mon_data.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('mon_data_en.nat')) continue
+      try {
+        for (const monster of readMonsterNames(bytes)) byNumber.set(monster.number, monster.code)
+      } catch {
+        // Names that will not read leave every number without its code.
+      }
+    }
+  }
+  return byNumber
 }
 
 /** The random-treasure tables beside the maps' treasure, by file name. */
@@ -922,6 +1000,9 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     systemStrings: systemStringsOf(rom),
     monsterBattle: monsterBattleOf(rom),
     monsterCodes: monsterCodesOf(rom),
+    monsterCodeOf: monsterCodeByNumberOf(rom),
+    battleZones: battleEncountersOf(rom),
+    fieldMonsters: fieldMonstersOf(rom),
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
     goods: goodsOf(rom),
@@ -936,6 +1017,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
+    fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,
     eventMessages: (event) => eventMessagesOf(rom, event),
     catalogue: cat,

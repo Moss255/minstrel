@@ -9,6 +9,38 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## M6 has started — monsters roam the field, 13 September
+
+On a map that has a zone — the fields and the dungeons, not the village —
+monsters turn up around the Hero, wander, and start a battle when walked into:
+the monster itself and up to two more. Up to three roam at once; they come
+6 to 10 people's heights away and are gone past 16. Walking into one after
+arriving, or just after a battle, starts nothing for two seconds.
+
+**Read** (`game-formats/FORMAT.md`, "Encounters" and "Field monsters"): which
+monsters roam a map's zone and how often each — `encfld` names the map by its
+own id — the zone's battle company from `encbtl`, each monster's field speed
+(INFERRED) from `fld_mondata`, and its field model, `<code>_f.mon`.
+
+**Ours, each said so in the code** (`packages/sim/src/field/roaming.ts` and
+`beginRoaming` in `main.ts`):
+
+- **which of a map's zones** — the first; how the game chooses is not
+  established, and the collision attribute tried for it is not it;
+- how many roam, where they turn up and vanish, how they wander, and how near
+  is walking into one;
+- **who joins a battle**: up to two drawn evenly from the zone's company — what
+  `encbtl`'s numbers beside each say is not read;
+- speed as the Hero's walking speed times the field float;
+- no running from a strong party: `fld_mondata`'s first two numbers look like a
+  level and a threshold, but are not read.
+
+**Left for M6:** which zone applies where — by day and night, the story, or a
+file not read yet; the monsters who flee a strong party; field-to-battle
+transitions beyond the cut; the poison marshes; and Ivor.
+
+---
+
 ## M5 has started — battles, 13 September
 
 `p` picks a fight — two slimes, or the monsters `?fight=` names by code — and
