@@ -42,6 +42,10 @@ those tables — a debugging aid, ours.
 and `lay_iie.lia`; then step 3 — descriptions, numbers, rarity, who can use
 what.
 
+**Wanted after Slice 1: weapons on the Hero** — noted in the slice plan, left
+out of this slice on purpose. The worn models are `p_w<nnn>.nsbmd` in
+`chara_pc.gp2`.
+
 ---
 
 ## The DS's 2D files are read — 13 September
