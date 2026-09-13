@@ -9,6 +9,30 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## Monsters act — 13 September
+
+**A monster's six words are its six ways of acting**, action numbers
+(`game-formats/FORMAT.md`, "Monster data"): the reference's own boss, Ragin'
+Contagion, has the reference's six candidates exactly and in order. The slime
+attacks and runs away; the bodkin archer uses a medicinal herb on its most
+wounded; Hexagoon strikes everyone, 6 give or take 1, a third of the time.
+
+**From the reference** (`sim/src/battle/battle.ts`): a way is drawn from 1 to
+256 against six weights, `ProcessEnemyRandomAction2A`; a monster's attack as
+before. **Read from the cartridge**: what each way does — its effect, reach and
+range. A monster's amount is the range's base, beside the party's (Crack 17
+against 30) — INFERRED.
+
+**Ours, each said so in the code:** the even table, 43, 42, 43, 43, 42, 43, for
+every monster — the reference has a falling one for its boss, and neither is on
+the cartridge as bytes; a monster that runs away always gets away and pays
+nothing; one that would heal with no one hurt attacks instead; what the battle
+cannot do yet — Buff, Dazzle, sand in the eyes, Sweet Breath and the other
+changes of state — is an attack instead; a move with no name, Hexagoon's among
+them, is told by what it does alone.
+
+---
+
 ## Spells in battle — 13 September
 
 The battle menu has **Spells**, between Attack and Defend as `str_btl`
@@ -215,9 +239,11 @@ walk now opens.
 - which of the game's messages each happening says, chosen by reading them;
 - the monsters' motions on each page, and the camera.
 
-**Left for M5:** the party of two, Ivor beside the Hero; abilities (spells are
-done — see the top); what a monster's six action words say, which is its AI,
-and monsters' own spells; Hexagoon's own behaviour; and defeat at the church.
+**Left for M5:** the party of two, Ivor beside the Hero; abilities (spells and
+monsters' ways are done — see the top); changes of state — sleep, poison,
+Buff, Kasap — which half the monsters' other ways are; how each monster
+chooses, where the game keeps it; Hexagoon's own behaviour beyond its six
+ways; and defeat at the church.
 
 ---
 

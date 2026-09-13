@@ -2147,12 +2147,20 @@ and `readMonsterNames` read them.
 | `+0x04` | `u16` ×2 | its two drops | every one is an item id |
 | `+0x08` | `u32` | experience, INFERRED | the metal family: 4,096, 40,200 and 120,040, against a median of 940 |
 | `+0x0C` | `u16` | gold, INFERRED | a median of 2,490 on the bosses against 120 |
-| `+0x18` | `u16` ×6 | six action words — not established | 1 on most, 225 and others beside it |
+| `+0x18` | `u16` ×6 | its six ways of acting: action numbers (see "Actions"), INFERRED | 1 Attack on 1,064 of the 2,628 words and 225 Flee on 109; the healslime's Heal, the drakulard's Inferno, the uncommon cold's C-C-Cold Breath. The reference's own boss, Ragin' Contagion (`b006a`), has 1, 275, 1, 48, 44, 228 — the reference's six candidates exactly and in order: attack, poison attack, attack, Deceleratle, Kasap, Sweet Breath |
 | `+0x5C` | `u16` | maximum HP, INFERRED | a median of 6,500 on the bosses against 134; the metal slime's 4 |
 | `+0x5E` | `u16` | maximum MP, INFERRED | 255 on most bosses and the metal family |
 | `+0x60` | `u16` | attack, INFERRED | by order |
 | `+0x62` | `u16` | defence, INFERRED | the metal family's 256 and 512 |
 | `+0x64` | `u16` | agility, INFERRED | by order; high on the metal family |
+
+**How a monster chooses among its six is not in the record**, as far as has been
+looked. The reference draws a number from 1 to 256 against six weights: an even
+table, 43, 42, 43, 43, 42, 43, and for Ragin' Contagion a falling one, 68, 58,
+48, 38, 27, 17. Neither table is on the cartridge as bytes — not in `/data/prm`,
+`/data/bin`, the ARM9 binary or its overlays — and no byte of the record
+separates Ragin' Contagion from the rest. The game here gives every monster
+the even table.
 
 `+0x14` is 500 to 605 on ordinary monsters and 0 on most bosses — Hexagoon's
 among them, though not the Wight Knight's or Morag's — not established.

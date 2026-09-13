@@ -11,6 +11,7 @@ import {
   battleMove,
   battleRows,
   beginBattle,
+  foeWaysOf,
   labelsOf,
   withPages,
 } from '../src/battle-scene.ts'
@@ -129,6 +130,55 @@ describe('a battle scene', () => {
     message: 22,
   }
   const spells = BATTLE_COMMANDS.indexOf('Spells')
+
+  it('turns a monster’s six words into its ways, an attack where the battle cannot yet', () => {
+    const herb: BattleSpell = { ...heal, opening: 'use', name: { name: 'herb' } }
+    const ways = foeWaysOf([1, 225, 236, 41, 1, 1], (action) => (action === 236 ? herb : undefined))
+    expect(ways.acts.map((a) => a.kind)).toEqual([
+      'attack',
+      'flee',
+      'spell',
+      'attack',
+      'attack',
+      'attack',
+    ])
+    expect([...ways.known.keys()]).toEqual([236])
+  })
+
+  it('tells a monster running away, and it is gone with what it was worth', () => {
+    const runner = {
+      ...blob(40),
+      acts: Array.from({ length: 6 }, () => ({ kind: 'flee' as const })),
+    }
+    const played = battleChoose(untilChoice(beginBattle([hero, runner], 1n, { canFlee: true })))
+    expect(played.pages).toContain('Blob runs away!')
+    expect(played.state.outcome).toBe('won')
+    expect(played.cues.flat()).toContainEqual({ fighter: 1, motion: 'flee' })
+  })
+
+  it('tells a monster using its own herb on itself when hurt', () => {
+    // A herb costs nothing: the blob has no MP.
+    const herb: BattleSpell = {
+      ...heal,
+      spell: { ...heal.spell, action: 236, cost: 0 },
+      opening: 'use',
+      name: { name: 'herb' },
+    }
+    const healer = {
+      ...blob(40),
+      acts: Array.from({ length: 6 }, () => ({ kind: 'spell' as const, spell: herb.spell })),
+    }
+    let scene = untilChoice(
+      beginBattle([hero, healer], 1n, { canFlee: true, known: new Map([[236, herb]]) }),
+    )
+    let told: string | undefined
+    for (let round = 0; round < 6 && !told && scene.phase === 'command'; round++) {
+      const played = battleChoose(scene)
+      told = played.pages.find((page) => page.startsWith('Blob uses a herb.'))
+      scene = untilChoice(played)
+    }
+    expect(told).toMatch(/^Blob uses a herb\.\nBlob recovers \d+ HP\.$/)
+  })
 
   it('offers the spells the Hero knows, or says there are none', () => {
     const scene = untilChoice(beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true }))

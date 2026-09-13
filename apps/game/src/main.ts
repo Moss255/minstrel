@@ -62,6 +62,8 @@ import {
   battleRows,
   battleSpellOf,
   beginBattle,
+  foeSpellOf,
+  foeWaysOf,
   labelsOf,
   RESULT_SAYS,
   withPages,
@@ -1808,6 +1810,18 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   const foes: Fighter[] = []
   const names: Named[] = []
   const looks: (MonsterLook | undefined)[] = []
+  // The monsters' own spells, by action, for the telling; an item's is named as the item.
+  const known = new Map<number, BattleSpell>()
+  const items = new Map(
+    [...loaded.itemWords.values()].map((w) => [
+      w.singular,
+      { name: w.singular, plural: w.plural, grammar: w.grammar },
+    ]),
+  )
+  const spellOf = (id: number) => {
+    const action = loaded?.actions.get(id)
+    return action && foeSpellOf(action, items.get(action.name))
+  }
   for (const code of codes) {
     const who = loaded.monsterCodes.get(code)
     const numbers = who ? loaded.monsterBattle.get(who.number) : undefined
@@ -1816,7 +1830,11 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
       return
     }
     names.push({ name: who.name, plural: who.plural, grammar: who.grammar })
+    // Its six ways, from its six words — see `foeWaysOf`.
+    const ways = foeWaysOf(numbers.actions, spellOf)
+    for (const [action, spell] of ways.known) known.set(action, spell)
     foes.push({
+      acts: ways.acts,
       name: renderName(who.name),
       side: 'foes',
       maxHp: numbers.maxHp,
@@ -1847,6 +1865,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     canFlee,
     hp: new Map([[0, heroHp ?? row.maxHp]]),
     mp: new Map([[0, heroMp ?? row.maxMp]]),
+    known,
     words: loaded.battleWords,
     names: [heroNamed(), ...names],
   })
@@ -1899,6 +1918,8 @@ const CUE_MOTIONS = {
   attack: 'attack0a',
   damage: 'damage',
   death: 'death',
+  // Ours: a monster running away stands until its page is told, then is gone.
+  flee: 'stand',
 } as const
 
 /**
@@ -1917,10 +1938,11 @@ function foePieces(now: number): Piece[] {
     const look = battleLooks[i]
     const at = battleSpots[i]
     if (fighter.side !== 'foes' || !look || !at) return []
-    const falling = scene.cues.some((cues) =>
-      cues.some((c) => c.fighter === i && c.motion === 'death'),
+    // A monster fallen or fled stays until its page is told.
+    const going = scene.cues.some((cues) =>
+      cues.some((c) => c.fighter === i && (c.motion === 'death' || c.motion === 'flee')),
     )
-    if (fighter.hp <= 0 && !falling) return []
+    if ((fighter.hp <= 0 || fighter.fled) && !going) return []
     const cue = onShow.find((c) => c.fighter === i)
     const motion = cue ? CUE_MOTIONS[cue.motion] : 'stand'
     const length = look.motions.get(motion)?.frameCount ?? 1

@@ -138,6 +138,90 @@ describe('a spell', () => {
   })
 })
 
+describe('a foe', () => {
+  const tough = { ...hero, maxHp: 999 }
+  const wait = new Map<number, Command>([[0, { kind: 'defend' }]])
+  /** All the weight on one way, so that way is the one taken. */
+  const only = (way: number) => ({
+    ...DEFAULT_RULES,
+    choice: [0, 1, 2, 3, 4, 5].map((i) => (i === way ? 256 : 0)),
+  })
+  const herb: Spell = {
+    action: 236,
+    cost: 0,
+    does: 'heal',
+    reach: 'one',
+    amount: { base: 35, spread: 5 },
+  }
+  const frizz: Spell = {
+    action: 9,
+    cost: 2,
+    does: 'harm',
+    reach: 'one',
+    amount: { base: 9, spread: 2 },
+  }
+
+  it('takes the way the draw gives, and flees out of the battle with what it was worth', () => {
+    const slime = {
+      ...blob('slime', 8),
+      acts: [{ kind: 'attack' }, { kind: 'flee' }] as const,
+    }
+    const { state, events } = playRound(
+      startBattle([tough, slime]),
+      wait,
+      new BattleRng(1n),
+      only(1),
+    )
+    expect(events).toContainEqual({ kind: 'flee', actor: 1, escaped: true })
+    expect(state.fighters[1]?.fled).toBe(true)
+    expect(state.outcome).toBe('won')
+    expect(spoils(state)).toEqual({ exp: 0, gold: 0 })
+  })
+
+  it('draws each of its six ways, over enough turns, by the even table', () => {
+    const acts = [0, 1, 2, 3, 4, 5].map((i) => ({
+      kind: 'spell' as const,
+      spell: { ...frizz, action: 100 + i, cost: 0 },
+    }))
+    const { events } = fight(startBattle([tough, { ...blob('slime', 999), acts }]), 5n, wait, 60)
+    const ways = new Set(events.flatMap((e) => (e.kind === 'spell' ? [e.action] : [])))
+    expect([...ways].sort()).toEqual([100, 101, 102, 103, 104, 105])
+  })
+
+  it('heals its most wounded ally, and attacks when no one is hurt', () => {
+    const healer = { ...blob('archer', 20), acts: [{ kind: 'spell', spell: herb }] as const }
+    const start = startBattle([tough, healer, blob('slime', 30), blob('slime', 30)])
+    const hurt = withHp(
+      start,
+      new Map([
+        [2, 20],
+        [3, 5],
+      ]),
+    )
+    const healed = playRound(hurt, wait, new BattleRng(1n), only(0)).events
+    expect(healed.find((e) => e.kind === 'spell')).toMatchObject({
+      actor: 1,
+      hits: [{ target: 3 }],
+    })
+    const whole = playRound(start, wait, new BattleRng(1n), only(0)).events
+    expect(whole.some((e) => e.kind === 'spell')).toBe(false)
+    expect(whole.some((e) => e.kind === 'attack' && e.actor === 1)).toBe(true)
+  })
+
+  it('casts a harmful spell at the party, spending its MP', () => {
+    const mage = { ...blob('mage', 20), maxMp: 4, acts: [{ kind: 'spell', spell: frizz }] as const }
+    const { state, events } = playRound(
+      startBattle([tough, mage]),
+      wait,
+      new BattleRng(2n),
+      only(0),
+    )
+    const cast = events.find((e) => e.kind === 'spell')
+    expect(cast).toMatchObject({ actor: 1, short: false, hits: [{ target: 0 }] })
+    expect(state.fighters[1]?.mp).toBe(2)
+  })
+})
+
 describe('a battle', () => {
   it('is the same battle from the same seed', () => {
     const start = startBattle([hero, blob('slime', 8), blob('slime', 8)])
@@ -229,6 +313,12 @@ describe('a battle', () => {
   })
 
   it('uses the default rules unless told otherwise', () => {
-    expect(DEFAULT_RULES).toEqual({ critical: 200, dodge: 2, flee: 50, magicCritical: 100 })
+    expect(DEFAULT_RULES).toEqual({
+      critical: 200,
+      dodge: 2,
+      flee: 50,
+      magicCritical: 100,
+      choice: [43, 42, 43, 43, 42, 43],
+    })
   })
 })

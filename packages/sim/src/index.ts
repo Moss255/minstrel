@@ -5,6 +5,7 @@ export {
   DEFAULT_RULES,
   type Fighter,
   type FighterState,
+  type FoeAction,
   type Heal,
   type Outcome,
   playRound,

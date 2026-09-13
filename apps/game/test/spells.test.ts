@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { ActionEffect, spellsLearnt } from '@minstrel/game-formats'
 import { BattleRng } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
-import { battleSpellOf } from '../src/battle-scene.ts'
+import { battleSpellOf, foeSpellOf, foeWaysOf } from '../src/battle-scene.ts'
 import { HERO_VOCATION, HERO_VOCATION_NUMBER, VOCATION_WORDS } from '../src/hero.ts'
 import { type Loaded, load } from '../src/load.ts'
 import { SEED_GAINS, useOn } from '../src/use.ts'
@@ -107,6 +107,48 @@ describe.skipIf(!romPath)('spells and items, on a real cartridge', { timeout: 12
       ['Swoosh', 'harm', 'group', 8, 40, 15],
       ['Kaswoosh', 'harm', 'group', 26, 130, 50],
     ])
+  })
+
+  it('gives monsters their six ways: the slime flees, the archer uses a herb, Hexagoon strikes all', () => {
+    const items = new Map(
+      [...here.itemWords.values()].map((w) => [
+        w.singular,
+        { name: w.singular, plural: w.plural, grammar: w.grammar },
+      ]),
+    )
+    const waysOf = (code: string) => {
+      const number = here.monsterCodes.get(code)?.number
+      const words = number === undefined ? [] : (here.monsterBattle.get(number)?.actions ?? [])
+      return foeWaysOf(words, (id) => {
+        const action = here.actions.get(id)
+        return action && foeSpellOf(action, items.get(action.name))
+      })
+    }
+    expect(waysOf('z000a').acts.map((a) => a.kind)).toEqual([
+      'attack',
+      'flee',
+      'attack',
+      'attack',
+      'flee',
+      'attack',
+    ])
+    const archer = waysOf('z005a')
+    expect(archer.acts.map((a) => a.kind)).toEqual([
+      'attack',
+      'attack',
+      'flee',
+      'flee',
+      'spell',
+      'attack',
+    ])
+    expect(archer.known.get(236)).toMatchObject({
+      opening: 'use',
+      spell: { does: 'heal', reach: 'one', amount: { base: 35, spread: 5 } },
+    })
+    expect(waysOf('b003a').known.get(546)).toMatchObject({
+      opening: 'none',
+      spell: { does: 'harm', reach: 'all', amount: { base: 6, spread: 1 } },
+    })
   })
 
   it('restores MP with magic water, all of it with the elfin elixir, and raises HP with a seed', () => {

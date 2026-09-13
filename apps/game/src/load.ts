@@ -205,8 +205,13 @@ export interface ItemEffect {
   readonly cost: number
   /** Whom it reaches — see `ActionReach`. INFERRED. */
   readonly reach: number
-  /** The range it draws from, when it has one: a base give or take a spread. */
+  /** The range the party draws from, when it has one: a base give or take a spread. */
   readonly range: { readonly base: number; readonly spread: number } | undefined
+  /**
+   * The range a monster draws from: the range's own base, beside the party's
+   * amount — INFERRED; see `ActionRange.party`. Crack's is 17, the party's 30.
+   */
+  readonly foeRange: { readonly base: number; readonly spread: number } | undefined
   /** Whether it is in the table's first half, whose spells can be cast outside a battle. INFERRED. */
   readonly field: boolean
 }
@@ -831,6 +836,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         reach: action.reach,
         // The party's amount: the Hero is who uses these — see `ActionRange.party`.
         range: range && { base: range.party, spread: range.spread },
+        foeRange: range && { base: range.base, spread: range.spread },
         field: half === 'a',
       })
     }

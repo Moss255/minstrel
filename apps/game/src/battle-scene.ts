@@ -5,6 +5,7 @@ import {
   type BattleState,
   type Command,
   type Fighter,
+  type FoeAction,
   type Heal,
   playRound,
   type Spell,
@@ -92,6 +93,8 @@ export const ACTION_SAYS = {
   dodges: 151,
   /** Someone casts a spell, `<ACTION>`. */
   casts: 46,
+  /** A monster runs away. */
+  flees: 45,
   /** A spell's critical: it goes haywire. */
   haywire: 141,
   notEnoughMp: 153,
@@ -122,6 +125,12 @@ export interface BattleSpell {
   readonly spell: Spell
   readonly name: Named
   readonly message: number
+  /**
+   * How it opens: cast — `actmsg` 46, the party's spells and a monster's — used,
+   * as a monster's medicinal herb is, `actmsg` 12; or with no word of its own,
+   * as the actions the table leaves unnamed. Cast unless said.
+   */
+  readonly opening?: 'cast' | 'use' | 'none'
 }
 
 /** An action, as far as a battle casts it — see `ItemEffect` in `load.ts`. */
@@ -150,7 +159,10 @@ const REACHES = new Map<number, Spell['reach']>([
  * record says. Undefined for anything else — Zing, with no one fallen to raise,
  * and Evac, which is used outside battle.
  */
-export function battleSpellOf(action: Castable): BattleSpell | undefined {
+export function battleSpellOf(
+  action: Castable,
+  opening: BattleSpell['opening'] = 'cast',
+): BattleSpell | undefined {
   const does =
     action.effect === ActionEffect.RestoresHp
       ? 'heal'
@@ -163,7 +175,48 @@ export function battleSpellOf(action: Castable): BattleSpell | undefined {
     spell: { action: action.action, cost: action.cost, does, reach, amount: action.range },
     name: { name: action.name },
     message: action.message,
+    opening: action.name ? opening : 'none',
   }
+}
+
+/**
+ * A monster's own spell: its action at a monster's amount — the range's base,
+ * `foeRange`, INFERRED — and, when the action is an item's, used as that item
+ * and named as it is: the bodkin archer's medicinal herb.
+ */
+export function foeSpellOf(
+  action: Castable & { readonly foeRange: Heal | undefined },
+  item?: Named,
+): BattleSpell | undefined {
+  const spell = battleSpellOf({ ...action, range: action.foeRange }, item ? 'use' : 'cast')
+  return spell && item ? { ...spell, name: item } : spell
+}
+
+/** The actions a monster's six words use for its attack and for fleeing. */
+export const FOE_ATTACK = 1
+export const FOE_FLEE = 225
+
+/**
+ * A monster's six ways of acting, from its six words — game-formats'
+ * `readMonsterBattle`, which are action numbers: 1 its attack, 225 fleeing,
+ * and what heals or deals damage a spell of its own, `spellOf`. With each
+ * spell's telling, by action. **Ours**: what the battle cannot do yet — Buff,
+ * Dazzle, sand in the eyes, Sweet Breath — is an attack instead.
+ */
+export function foeWaysOf(
+  words: readonly number[],
+  spellOf: (action: number) => BattleSpell | undefined,
+): { readonly acts: FoeAction[]; readonly known: Map<number, BattleSpell> } {
+  const known = new Map<number, BattleSpell>()
+  const acts = words.map((word): FoeAction => {
+    if (word === FOE_FLEE) return { kind: 'flee' }
+    if (word === FOE_ATTACK) return { kind: 'attack' }
+    const spell = spellOf(word)
+    if (!spell) return { kind: 'attack' }
+    known.set(word, spell)
+    return { kind: 'spell', spell: spell.spell }
+  })
+  return { acts, known }
 }
 
 /**
@@ -173,7 +226,7 @@ export function battleSpellOf(action: Castable): BattleSpell | undefined {
  */
 export interface Cue {
   readonly fighter: number
-  readonly motion: 'appear' | 'attack' | 'damage' | 'death'
+  readonly motion: 'appear' | 'attack' | 'damage' | 'death' | 'flee'
 }
 
 export interface BattleScene {
@@ -197,6 +250,8 @@ export interface BattleScene {
   readonly spells: readonly BattleSpell[]
   /** A spell chosen and waiting for whom to cast it at. */
   readonly pending?: BattleSpell | undefined
+  /** The monsters' own spells, by action, to tell them by. */
+  readonly known: ReadonlyMap<number, BattleSpell>
   /** What the last round came to — an item used, for the caller to take from the bag. */
   readonly events: readonly BattleEvent[]
 }
@@ -209,6 +264,8 @@ export function beginBattle(
     readonly hp?: ReadonlyMap<number, number>
     /** MP each fighter comes in with, where it is not all of it. */
     readonly mp?: ReadonlyMap<number, number>
+    /** The monsters' own spells, by action, to tell them by. */
+    readonly known?: ReadonlyMap<number, BattleSpell>
     readonly words?: BattleWords
     readonly names?: readonly Named[]
   },
@@ -228,6 +285,7 @@ export function beginBattle(
     words: options.words,
     items: [],
     spells: [],
+    known: options.known ?? new Map(),
     events: [],
   }
   const pages = appearing(scene)
@@ -358,6 +416,10 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         say(scene, 'actions', ACTION_SAYS.defends, { actor }) ?? sentence(`${who} is on guard.`)
       )
     case 'flee': {
+      // A monster that runs away says so in `actmsg`; the party's flight in `strbtl`.
+      if (state.fighters[event.actor]?.side === 'foes') {
+        return say(scene, 'actions', ACTION_SAYS.flees, { actor }) ?? sentence(`${who} runs away!`)
+      }
       const game = event.escaped
         ? say(scene, 'battle', BATTLE_SAYS.flees, { actor })
         : say(scene, 'battle', BATTLE_SAYS.blocked, { actor })
@@ -388,13 +450,27 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       ].join('\n')
     }
     case 'spell': {
-      const chosen = scene.spells.find((s) => s.spell.action === event.action)
+      const chosen =
+        scene.spells.find((s) => s.spell.action === event.action) ?? scene.known.get(event.action)
       const action = chosen?.name ?? { name: `spell ${event.action}` }
       const heals = chosen?.spell.does === 'heal'
-      const casts = say(scene, 'actions', ACTION_SAYS.casts, { actor, action })
+      const opening = chosen?.opening ?? 'cast'
+      // How it opens, in the game's words and in ours; nothing for a move with no name.
+      const opens =
+        opening === 'cast'
+          ? [say(scene, 'actions', ACTION_SAYS.casts, { actor, action })]
+          : opening === 'use'
+            ? [say(scene, 'actions', ACTION_SAYS.uses, { actor, item: action })]
+            : []
+      const ourOpening =
+        opening === 'cast'
+          ? [`${who} casts ${shown(action)}!`]
+          : opening === 'use'
+            ? [`${who} uses ${article(shown(action))}.`]
+            : []
       if (event.short) {
-        const game = lines(casts, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
-        return game ?? `${sentence(`${who} casts ${shown(action)}!`)}\nNot enough MP!`
+        const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
+        return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
       }
       const landed = event.hits.map((hit) => {
         const target = scene.names[hit.target]
@@ -407,12 +483,12 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target })
       })
       const game = lines(
-        casts,
+        ...opens,
         ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.haywire, { actor, action })] : []),
         ...(landed.length > 0 ? landed : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
       )
       if (game !== undefined) return game
-      const ours = [`${who} casts ${shown(action)}!`]
+      const ours = [...ourOpening]
       if (event.critical) ours.push(`The ${shown(action)} goes haywire!`)
       for (const hit of event.hits) {
         const whom = labels[hit.target] ?? '?'
@@ -448,12 +524,19 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
         cues.push({ fighter: event.target, motion: 'damage' })
       return cues
     }
-    case 'spell':
-      return event.hits.flatMap((hit) =>
-        foe(hit.target) && hit.amount > 0 && foe(event.actor) === false
-          ? [{ fighter: hit.target, motion: 'damage' as const }]
-          : [],
-      )
+    case 'spell': {
+      // A monster casting strikes its attack; one hurt by the party's spell flinches.
+      const cues: Cue[] = foe(event.actor) ? [{ fighter: event.actor, motion: 'attack' }] : []
+      for (const hit of event.hits) {
+        if (!foe(event.actor) && foe(hit.target) && hit.amount > 0) {
+          cues.push({ fighter: hit.target, motion: 'damage' })
+        }
+      }
+      return cues
+    }
+    case 'flee':
+      // A monster running away stays until its page is told, then is gone.
+      return foe(event.actor) ? [{ fighter: event.actor, motion: 'flee' }] : []
     case 'defeated':
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'death' }] : []
     default:
@@ -470,7 +553,7 @@ function partyIndex(state: BattleState): number {
 }
 
 const livingFoes = (state: BattleState) =>
-  state.fighters.flatMap((f, i) => (f.side === 'foes' && f.hp > 0 ? [i] : []))
+  state.fighters.flatMap((f, i) => (f.side === 'foes' && f.hp > 0 && !f.fled ? [i] : []))
 
 /** The rows to choose from: the commands, the monsters standing, or the items. */
 export function battleRows(scene: BattleScene): string[] {

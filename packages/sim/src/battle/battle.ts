@@ -27,8 +27,11 @@ import type { BattleRng } from './rng.ts'
  *   also steps past draws that do nothing here;
  * - a round of more than two fighters, which the reference, one against one,
  *   does not have: everyone is ordered by the same draw;
- * - a monster's target, a draw among the living party, and its action, an
- *   attack: a monster's six action words are not read;
+ * - a monster's target, a draw among the living party;
+ * - which of its six ways a monster takes is the reference's draw, but the
+ *   weights are its even table for every monster (see {@link Rules.choice});
+ *   a monster that flees always gets away, and pays nothing; one that would
+ *   heal with no one hurt attacks instead;
  * - the critical chance, the reference's 200 in 10,000 for its level-13 case —
  *   how the game derives it is not read;
  * - fleeing, which the reference does not model: {@link Rules.flee} in 100;
@@ -58,12 +61,16 @@ export interface Fighter {
   /** What beating this fighter is worth, when it is a foe. */
   readonly exp: number
   readonly gold: number
+  /** A foe's ways of acting, one drawn each turn by {@link Rules.choice}; with none, it attacks. */
+  readonly acts?: readonly FoeAction[]
 }
 
 export interface FighterState extends Fighter {
   readonly hp: number
   readonly mp: number
   readonly defending: boolean
+  /** A foe that has fled: out of the battle, and paying nothing. */
+  readonly fled: boolean
 }
 
 /** What an item does when used: the HP it restores, as a base give or take a spread. */
@@ -85,6 +92,12 @@ export interface Spell {
   /** How much, a base give or take a spread; none heals all there is to heal. */
   readonly amount: Heal | undefined
 }
+
+/** One of a foe's ways of acting — the game gives each monster six: attack, flee, or a spell. */
+export type FoeAction =
+  | { readonly kind: 'attack' }
+  | { readonly kind: 'flee' }
+  | { readonly kind: 'spell'; readonly spell: Spell }
 
 export type Command =
   | { readonly kind: 'attack'; readonly target: number }
@@ -147,13 +160,31 @@ export interface Rules {
   readonly flee: number
   /** A spell going haywire, in 10,000 — the reference's, for every spell it casts. */
   readonly magicCritical: number
+  /**
+   * The weights, in 256, a foe's six ways are drawn by: the reference's even
+   * table. The reference has one other, falling from 68 to 17, for its own boss;
+   * which monsters draw by which is not read.
+   */
+  readonly choice: readonly number[]
 }
 
-export const DEFAULT_RULES: Rules = { critical: 200, dodge: 2, flee: 50, magicCritical: 100 }
+export const DEFAULT_RULES: Rules = {
+  critical: 200,
+  dodge: 2,
+  flee: 50,
+  magicCritical: 100,
+  choice: [43, 42, 43, 43, 42, 43],
+}
 
 export function startBattle(fighters: readonly Fighter[], canFlee = true): BattleState {
   return {
-    fighters: fighters.map((f) => ({ ...f, hp: f.maxHp, mp: f.maxMp, defending: false })),
+    fighters: fighters.map((f) => ({
+      ...f,
+      hp: f.maxHp,
+      mp: f.maxMp,
+      defending: false,
+      fled: false,
+    })),
     round: 0,
     outcome: 'ongoing',
     canFlee,
@@ -182,7 +213,51 @@ export function withMp(state: BattleState, mp: ReadonlyMap<number, number>): Bat
   }
 }
 
-const alive = (f: FighterState) => f.hp > 0
+/** Standing and still in the battle: not fallen, and not fled. */
+const alive = (f: FighterState) => f.hp > 0 && !f.fled
+
+/**
+ * Which of its ways a foe takes: a draw from 1 to 256, walked down the weights
+ * — the reference's `ProcessEnemyRandomAction2A`, `getPercent(0x100) + 1`.
+ */
+function chosenWay(rng: BattleRng, weights: readonly number[]): number {
+  let draw = rng.below(256) + 1
+  for (let i = 0; i < weights.length; i++) {
+    const weight = weights[i] as number
+    if (draw <= weight) return i
+    draw -= weight
+  }
+  return weights.length - 1
+}
+
+/**
+ * A foe's command: one of its ways, drawn by {@link Rules.choice}. A heal goes
+ * to its most wounded ally, itself among them; with no one hurt, and with no
+ * ways at all, it attacks.
+ */
+function foeCommand(
+  me: FighterState,
+  fighters: readonly FighterState[],
+  rng: BattleRng,
+  rules: Rules,
+): Command {
+  const attack: Command = { kind: 'attack', target: -1 }
+  const acts = me.acts
+  if (!acts || acts.length === 0) return attack
+  const act = acts[chosenWay(rng, rules.choice)]
+  if (!act || act.kind === 'attack') return attack
+  if (act.kind === 'flee') return { kind: 'flee' }
+  if (act.spell.does === 'harm') return { kind: 'spell', spell: act.spell, target: -1 }
+  // The most wounded: the lowest share of its hit points, compared in whole numbers.
+  let best = -1
+  for (let i = 0; i < fighters.length; i++) {
+    const f = fighters[i] as FighterState
+    if (f.side !== me.side || !alive(f) || f.hp >= f.maxHp) continue
+    const was = fighters[best]
+    if (!was || f.hp * was.maxHp < was.hp * f.maxHp) best = i
+  }
+  return best < 0 ? attack : { kind: 'spell', spell: act.spell, target: best }
+}
 
 function outcomeOf(fighters: readonly FighterState[]): Outcome {
   if (!fighters.some((f) => f.side === 'foes' && alive(f))) return 'won'
@@ -227,11 +302,19 @@ export function playRound(
     if (!me || !alive(me)) continue
     const command: Command =
       me.side === 'foes'
-        ? { kind: 'attack', target: -1 }
+        ? foeCommand(me, fighters, rng, rules)
         : (commands.get(actor) ?? { kind: 'attack', target: -1 })
 
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
+      continue
+    }
+    if (command.kind === 'flee' && me.side === 'foes') {
+      // A monster that flees is gone, and pays nothing.
+      fighters = fighters.map((f, i) => (i === actor ? { ...f, fled: true } : f))
+      events.push({ kind: 'flee', actor, escaped: true })
+      outcome = outcomeOf(fighters)
+      if (outcome !== 'ongoing') break
       continue
     }
     if (command.kind === 'flee') {
@@ -272,7 +355,13 @@ export function playRound(
       const side: Side = spell.does === 'heal' ? me.side : me.side === 'party' ? 'foes' : 'party'
       const standing = livingOn(side)
       const named = fighters[command.target]
-      const first = named && alive(named) && named.side === side ? command.target : standing[0]
+      // A foe's aim is drawn among the standing, as its attack's is.
+      const first =
+        named && alive(named) && named.side === side
+          ? command.target
+          : me.side === 'foes'
+            ? standing[rng.below(standing.length)]
+            : standing[0]
       if (first === undefined) {
         events.push({
           kind: 'spell',
@@ -368,7 +457,8 @@ export function spoils(state: BattleState): { exp: number; gold: number } {
   let exp = 0
   let gold = 0
   for (const f of state.fighters) {
-    if (f.side !== 'foes') continue
+    // One that fled is gone with what it was worth.
+    if (f.side !== 'foes' || f.fled) continue
     exp += f.exp
     gold += f.gold
   }
