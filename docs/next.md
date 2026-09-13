@@ -9,6 +9,53 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## M5 has started — battles, 13 September
+
+`p` picks a fight — two slimes, or the monsters `?fight=` names by code — and
+Shift+P fights Hexagoon, from whom there is no running. The monsters stand in a
+row ahead of the Hero, in their own models and playing their stand; the menu
+offers Fight, Defend and Flee, and whom to fight when more than one stands; the
+round is told a message at a time. A win pays out experience and gold and says
+what a level brings; the Hero's wounds carry from one battle to the next.
+
+**The rules are translated, and held to their source.** `packages/sim/src/battle`
+takes the random numbers, the damage and the order of a round from
+DQIX/BattleEmulator (MIT, © 2024 DaisukeDaisuke), which reproduces the game's own
+and names its functions by their addresses: the 64-bit generator, `FUN_0207564c`
+for damage — roughly attack/2 − defence/4 with a spread — agility times 0.51 to
+1.0 for who goes first, a monster's blow dodged 2 in 100, defending halving
+it, and a critical blow of the attacker's own attack times 0.95 to 1.05. All of
+it is whole-number arithmetic, and `battle-rng.test.ts` holds it to golden
+values taken by compiling the reference's own `lcg.cpp` and damage function.
+
+**The monsters are read** — their battle numbers, names and models; see
+`game-formats/FORMAT.md`, "Monster data" and "Monster models". Their bodies
+are in `enemy.gp2`, whose members are stored whole and which the cartridge
+walk now opens.
+
+**Stand-ins, each said so in the code:**
+
+- the Hero's attack and defence are their strength and resilience — where
+  equipment keeps its numbers is not found;
+- the critical chance, the reference's 200 in 10,000 for its level-13 case;
+- fleeing, 50 in 100 — the reference does not model it;
+- a monster always attacks — its six action words are not read — and picks its
+  target by a draw;
+- a battle of more than two is ordered by the same draw for everyone — the
+  reference is one against one;
+- the order the numbers are drawn in is not the game's;
+- defeat restores the Hero where they stand with half their gold — the game
+  sends them to a church;
+- the words, including "2 slimes": `/data/bin/strbtl.gp2` holds the game's own,
+  not read yet.
+
+**Left for M5:** the party of two, Ivor beside the Hero; spells and abilities,
+and what a monster's six action words say, which is its AI; Hexagoon's own
+behaviour; the damage and death motions, and a camera for the battle; defeat
+at the church; and the battle messages in the game's own words.
+
+---
+
 ## What is still open — 13 September, at `b9b8117`
 
 M0 to M4 are as far as the cartridge goes without the emulator; M5 is next.

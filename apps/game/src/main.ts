@@ -24,9 +24,26 @@ import {
   occludedChunks,
   updateFollowCamera,
 } from '@minstrel/render'
-import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
+import {
+  type CollisionWorld,
+  createCollisionWorld,
+  type Fighter,
+  groundBelow,
+  PERSON,
+  spoils,
+} from '@minstrel/sim'
 import { backdrop, findSpawn, placeGeometry } from '@minstrel/world'
-import { type Bag, EMPTY_BAG, take } from './bag.ts'
+import { type Bag, EMPTY_BAG, pay, take } from './bag.ts'
+import {
+  type BattleScene,
+  battleBack,
+  battleChoose,
+  battleMove,
+  battleRows,
+  beginBattle,
+  labelsOf,
+  withPages,
+} from './battle-scene.ts'
 import {
   CABINET_OPENING,
   CABINET_SHUT,
@@ -68,6 +85,7 @@ import {
   openMenu,
   panelLines,
 } from './menu.ts'
+import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
 import { advance, advanceMotion, type Player, player, playerPieces, WALK_SPEED } from './player.ts'
 import { isPotOrBarrel } from './pots.ts'
 import {
@@ -285,6 +303,25 @@ let heroExp = 0
 let visit: Visit | undefined
 /** What the conversation is read with: the defaults, or those with the inn's price. */
 let talkContext: TextContext = DEFAULT_CONTEXT
+/** The battle under way — see `battle-scene.ts`. */
+let battle: BattleScene | undefined
+/** Each fighter's look and where it stands, by its place in the battle; the Hero's are undefined. */
+let battleLooks: (MonsterLook | undefined)[] = []
+let battleSpots: ({ x: number; y: number; z: number } | undefined)[] = []
+/** The Hero's hit points between battles; undefined is full. */
+let heroHp: number | undefined
+/** Battles fought this session, which seeds the next one's numbers. */
+let battlesFought = 0
+/**
+ * The monsters `p` fights: `?fight=` codes, or two slimes. A stand-in while
+ * encounters are not read — they are M6's. Read when the key is pressed, as
+ * the page's parameters are declared further down.
+ */
+function fightCodes(): string[] {
+  return (params.get('fight') ?? 'z000a,z000a').split(',').filter((code) => code !== '')
+}
+/** Shift+P fights the slice's boss, Hexagoon, from whom there is no running. */
+const BOSS_FIGHT = ['b003a']
 /** The markers where the map's treasure is — see `treasure.ts`. */
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
@@ -860,6 +897,8 @@ function frame(now = 0): void {
           standingFrame(s, camera.yaw),
         ),
       ),
+      // A battle's monsters, facing the Hero — see `monsters.ts`.
+      ...(battle ? foePieces(now) : []),
       // Pots and barrels face the camera too — see `pots.ts`.
       ...loaded.props.flatMap((prop) =>
         propPieces(prop, toFloat(PERSON.height) * worldScale, camera.yaw),
@@ -1368,8 +1407,206 @@ function showVisit(current: Visit): void {
   status(`${view.title} · ↑/↓ choose, f take, Esc back`)
 }
 
+/**
+ * Start a battle with these monsters, by code, where the Hero stands.
+ *
+ * The Hero fights with their level's numbers. **Their attack and defence are
+ * stand-ins**: strength and resilience, since where equipment keeps its numbers
+ * is not found.
+ */
+function startFight(codes: readonly string[], canFlee: boolean): void {
+  if (!loaded || !self || !cartridge) return
+  const levels = loaded.heroLevels
+  if (!levels) {
+    status('the level table did not load, so the Hero has no numbers to fight with')
+    return
+  }
+  const row = standing(levels, heroExp).level
+  const foes: Fighter[] = []
+  const looks: (MonsterLook | undefined)[] = []
+  for (const code of codes) {
+    const who = loaded.monsterCodes.get(code)
+    const numbers = who ? loaded.monsterBattle.get(who.number) : undefined
+    if (!who || !numbers) {
+      status(`no monster ${code} in the monster data`)
+      return
+    }
+    foes.push({
+      name: renderName(who.name),
+      side: 'foes',
+      maxHp: numbers.maxHp,
+      maxMp: numbers.maxMp,
+      attack: numbers.attack,
+      defence: numbers.defence,
+      agility: numbers.agility,
+      shield: false,
+      exp: numbers.exp,
+      gold: numbers.gold,
+    })
+    looks.push(monsterLookOf(cartridge, code))
+  }
+  const hero: Fighter = {
+    name: DEFAULT_CONTEXT.heroName,
+    side: 'party',
+    maxHp: row.maxHp,
+    maxMp: row.maxMp,
+    attack: row.strength,
+    defence: row.resilience,
+    agility: row.agility,
+    shield: equipped.has('shield'),
+    exp: 0,
+    gold: 0,
+  }
+  battlesFought++
+  battle = beginBattle([hero, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
+    canFlee,
+    hp: new Map([[0, heroHp ?? row.maxHp]]),
+  })
+  battleLooks = [undefined, ...looks]
+  battleSpots = [undefined, ...spotsFor(foes.length)]
+  self.held.clear()
+  closeTalk()
+  menu = undefined
+  visit = undefined
+  showBattle()
+}
+
+/** Where a battle's monsters stand: in a row ahead of the Hero, on the ground they stand on. */
+function spotsFor(count: number): { x: number; y: number; z: number }[] {
+  if (!self) return []
+  const person = toFloat(PERSON.height) * worldScale
+  const ahead = person * 1.6
+  const gap = person * 0.9
+  const forward = { x: Math.sin(self.facing), z: Math.cos(self.facing) }
+  const right = { x: Math.cos(self.facing), z: -Math.sin(self.facing) }
+  const hx = toFloat(self.state.x)
+  const hz = toFloat(self.state.z)
+  const hy = toFloat(self.state.y)
+  return Array.from({ length: count }, (_, i) => {
+    const side = (i - (count - 1) / 2) * gap
+    const x = hx + forward.x * ahead + right.x * side
+    const z = hz + forward.z * ahead + right.z * side
+    const hit = world
+      ? groundBelow(
+          world,
+          fx32(Math.round(x * FX32_ONE)),
+          fx32(Math.round(z * FX32_ONE)),
+          fx32(Math.round((hy + person) * FX32_ONE)),
+        )
+      : undefined
+    return { x, y: hit ? toFloat(hit.y) : hy, z }
+  })
+}
+
+/** The monsters still standing, each playing its stand, turned to face the Hero. */
+function foePieces(now: number): Piece[] {
+  if (!battle || !self) return []
+  const frame = Math.floor((now / 1000) * MAP_FPS)
+  const facing = self.facing + Math.PI
+  return battle.state.fighters.flatMap((fighter, i) => {
+    const look = battleLooks[i]
+    const at = battleSpots[i]
+    if (fighter.side !== 'foes' || fighter.hp <= 0 || !look || !at) return []
+    return monsterPieces(look, at, facing, characterScale, 'stand', frame)
+  })
+}
+
+/** Draw the battle: the message on show, or the rows to choose from, and the Hero's numbers. */
+function showBattle(): void {
+  if (!battle) return
+  const labels = labelsOf(battle.state)
+  if (battle.phase === 'telling' && battle.pages[0] !== undefined) {
+    talkEl.replaceChildren()
+    const body = document.createElement('div')
+    body.textContent = battle.pages[0]
+    talkEl.append(body)
+    talkEl.hidden = false
+  } else {
+    talkEl.hidden = true
+  }
+  menuEl.replaceChildren()
+  const rows = battleRows(battle)
+  if (rows.length > 0) {
+    const commands = document.createElement('div')
+    commands.className = 'commands'
+    for (const [index, row] of rows.entries()) {
+      const item = document.createElement('div')
+      item.textContent = row
+      if (index === battle.cursor) item.className = 'chosen'
+      commands.append(item)
+    }
+    menuEl.append(commands)
+  }
+  const panel = document.createElement('div')
+  panel.className = 'panel'
+  for (const [i, fighter] of battle.state.fighters.entries()) {
+    if (fighter.side !== 'party') continue
+    const row = document.createElement('div')
+    row.textContent = `${labels[i]} — HP ${fighter.hp}/${fighter.maxHp} · MP ${fighter.mp}/${fighter.maxMp}`
+    panel.append(row)
+  }
+  menuEl.append(panel)
+  menuEl.hidden = false
+  status(`battle, round ${battle.state.round} · ↑/↓ choose, f take or go on, Esc back`)
+}
+
+/**
+ * What a battle comes to, once, as it comes to it: a win pays out experience
+ * and gold, and a level reached says what it brought; a loss brings the Hero
+ * round with half the gold gone. **The loss is a stand-in**: the game sends
+ * the Hero back to a church, which is not done here.
+ */
+function settleBattle(): void {
+  if (!battle || battle.settled || battle.state.outcome === 'ongoing') return
+  const hero = battle.state.fighters[0]
+  const name = DEFAULT_CONTEXT.heroName
+  const levels = loaded?.heroLevels
+  const lines: string[] = []
+  if (battle.state.outcome === 'won' && hero && levels) {
+    const { exp, gold } = spoils(battle.state)
+    const before = standing(levels, heroExp).level
+    heroExp += exp
+    bag = take(bag, { gold })
+    const after = standing(levels, heroExp).level
+    heroHp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
+    lines.push(`${name} gains ${exp} experience and ${gold} gold coin${gold === 1 ? '' : 's'}.`)
+    if (after.level > before.level) {
+      lines.push(`${name} reaches level ${after.level}!`)
+      const gains = [
+        ['Max HP', after.maxHp - before.maxHp],
+        ['Max MP', after.maxMp - before.maxMp],
+        ['Strength', after.strength - before.strength],
+        ['Resilience', after.resilience - before.resilience],
+        ['Agility', after.agility - before.agility],
+      ] as const
+      lines.push(gains.map(([label, gain]) => `${label} +${gain}`).join(' · '))
+    }
+  } else if (battle.state.outcome === 'lost') {
+    heroHp = undefined
+    bag = pay(bag, Math.floor(bag.gold / 2)) ?? bag
+    lines.push(`${name} comes round, restored — but half the gold is gone.`)
+  } else if (hero) {
+    heroHp = hero.hp
+  }
+  battle = { ...withPages(battle, lines), settled: true }
+}
+
+/** Put the battle away. */
+function endFight(): void {
+  battle = undefined
+  battleLooks = []
+  battleSpots = []
+  talkEl.hidden = true
+  menuEl.hidden = true
+  status(`back on the map · HP ${heroHp ?? 'full'}`)
+}
+
 /** Draw the main menu, or a visit, or put the box away when neither is up. */
 function showMenu(): void {
+  if (battle) {
+    showBattle()
+    return
+  }
   if (visit) {
     showVisit(visit)
     return
@@ -1535,6 +1772,29 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
+  // A battle takes every key while it lasts: the same keys as the menu.
+  if (battle) {
+    if (key === 'arrowup' || key === 'w') battle = battleMove(battle, -1)
+    else if (key === 'arrowdown' || key === 's') battle = battleMove(battle, 1)
+    else if (key === 'f' || key === 'enter') {
+      battle = battleChoose(battle)
+      settleBattle()
+      if (battle.phase === 'over') {
+        endFight()
+        event.preventDefault()
+        return
+      }
+    } else if (key === 'x' || key === 'escape') battle = battleBack(battle)
+    showBattle()
+    event.preventDefault()
+    return
+  }
+  // `p` picks a fight — see `FIGHT` — and Shift+P the boss.
+  if (key === 'p' && loaded && !talking && !menu && !visit) {
+    startFight(event.shiftKey ? BOSS_FIGHT : fightCodes(), !event.shiftKey)
+    event.preventDefault()
+    return
+  }
   // A shop, the inn or the church: the same keys as the menu, over its list.
   if (visit) {
     const told = counter()

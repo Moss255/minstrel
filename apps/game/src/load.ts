@@ -19,6 +19,7 @@ import {
   type MapEntry,
   type MapManifest,
   type MapTransition,
+  type MonsterBattle,
   mapDoorways,
   type NpcEntry,
   type NpcPlacement,
@@ -31,7 +32,9 @@ import {
   readLevelTable,
   readMapList,
   readMapManifest,
+  readMonsterBattle,
   readMonsterList,
+  readMonsterNames,
   readNpcList,
   readNpcPlacements,
   readNpcStates,
@@ -104,6 +107,10 @@ export interface Loaded {
   readonly monsterNames: ReadonlyMap<number, string>
   /** The engine's own short messages in English, by number — see `readSystemStrings`. */
   readonly systemStrings: ReadonlyMap<number, string>
+  /** Each monster's battle numbers, by its number — see `readMonsterBattle`. */
+  readonly monsterBattle: ReadonlyMap<number, MonsterBattle>
+  /** Each monster's number and name, by its code — `z000a` — see `readMonsterNames`. */
+  readonly monsterCodes: ReadonlyMap<string, { readonly number: number; readonly name: string }>
   /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
   readonly heroLevels: LevelTable | undefined
   /** What each shop sells, by the number a talk line's `<SHOP=n>` names — see `readShops`. */
@@ -446,6 +453,58 @@ function systemStringsOf(rom: Uint8Array): Map<number, string> {
     }
   }
   return new Map()
+}
+
+/** The monsters' battle numbers: a loose file beside the parameter tables. */
+const MONSTER_BATTLE = '/data/prm/mon_btldata.nat'
+const battleRead = new WeakMap<Uint8Array, Map<number, MonsterBattle>>()
+
+/** Each monster's battle numbers, by number — see `readMonsterBattle`. Empty when they will not read. */
+function monsterBattleOf(rom: Uint8Array): Map<number, MonsterBattle> {
+  const already = battleRead.get(rom)
+  if (already) return already
+  const byNumber = new Map<number, MonsterBattle>()
+  for (const leaf of scanCartridge(rom, { pathFilter: MONSTER_BATTLE })) {
+    if (leaf.path !== MONSTER_BATTLE) continue
+    try {
+      for (const monster of readMonsterBattle(leaf.bytes)) byNumber.set(monster.number, monster)
+    } catch {
+      // Numbers that will not read leave every monster out of a fight.
+    }
+  }
+  battleRead.set(rom, byNumber)
+  return byNumber
+}
+
+const codesRead = new WeakMap<Uint8Array, Map<string, { number: number; name: string }>>()
+
+/**
+ * Each monster's number and English name, by its code — see `readMonsterNames`.
+ *
+ * A code can name several records — 438 records for 312 codes, story versions
+ * of one monster — and the first, the lowest number, is the one kept: `z000a`
+ * is the slime, number 1. Which version a scripted fight means is not read.
+ */
+function monsterCodesOf(rom: Uint8Array): Map<string, { number: number; name: string }> {
+  const already = codesRead.get(rom)
+  if (already) return already
+  const byCode = new Map<string, { number: number; name: string }>()
+  const { cat } = walkOnce(rom, ['/data/prm/mon_data.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('mon_data_en.nat')) continue
+      try {
+        for (const monster of readMonsterNames(bytes)) {
+          if (!byCode.has(monster.code))
+            byCode.set(monster.code, { number: monster.number, name: monster.name })
+        }
+      } catch {
+        // Names that will not read leave every monster unfound by its code.
+      }
+    }
+  }
+  codesRead.set(rom, byCode)
+  return byCode
 }
 
 /** The random-treasure tables beside the maps' treasure, by file name. */
@@ -861,6 +920,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     randoms: randomTreasureOf(rom),
     monsterNames: monsterNamesOf(rom),
     systemStrings: systemStringsOf(rom),
+    monsterBattle: monsterBattleOf(rom),
+    monsterCodes: monsterCodesOf(rom),
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
     goods: goodsOf(rom),
