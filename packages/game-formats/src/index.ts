@@ -53,6 +53,12 @@ export {
   resolveMapResources,
 } from './mapmanifest.ts'
 export { isWaterTexture, textureTag } from './materials.ts'
+export {
+  type MonsterBattle,
+  type MonsterName,
+  readMonsterBattle,
+  readMonsterNames,
+} from './monsterdata.ts'
 export { type MonsterEntry, readMonsterList } from './monsters.ts'
 export { MOTION_TAG, type Motion, type MotionTable, readMotionTable } from './motion.ts'
 export {

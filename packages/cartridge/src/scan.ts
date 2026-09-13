@@ -112,9 +112,16 @@ function* visit(
   try {
     const gpc = readGpc(bytes)
     for (const member of gpc.members) {
-      // An unreadable member is one this repository cannot decode yet — one
-      // GPC2 codec is still carried as raw bytes — not one that is absent.
-      if (!member.readable) continue
+      if (!member.readable) {
+        // Stored whole, with no region prefix: `enemy.gp2`'s 601 monsters are,
+        // and every one begins `NARC` — see the l5-gpc FORMAT.md. Taken raw
+        // when it opens as one; anything else unreadable is a codec this
+        // repository cannot decode yet, not a member that is absent.
+        const raw = gpc.readRaw(member)
+        if (isNarc(raw))
+          yield* visit(raw, `${path}/${member.name}`, path, depth + 1, maxDepth, enter)
+        continue
+      }
       yield* visit(gpc.read(member), `${path}/${member.name}`, path, depth + 1, maxDepth, enter)
     }
   } catch {

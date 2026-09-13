@@ -2231,6 +2231,59 @@ answers are read in — which backs `<UKE>` and `<YAME>` as accept and decline
 139 and 8-byte records from there, and found the offsets landing mid-word; it
 was the same packing as the monster list's, misread.
 
+## Monster data — `mon_btldata.nat` and `mon_data_<lang>.nat`
+
+Two files of 438 records each, one a monster, both opening with the head word
+the monster list and the system strings share: `/data/prm/mon_btldata.nat`,
+132-byte records and no strings, and `/data/prm/mon_data.gp2/mon_data_<lang>.nat`,
+28-byte records and then the strings. **Each record's monster number agrees
+between the two on all 438**, so they are read side by side. `readMonsterBattle`
+and `readMonsterNames` read them.
+
+**Battle numbers**, read and not:
+
+| offset | type | reading | evidence |
+|---|---|---|---|
+| `+0x00` | `u16` | the monster's number, bit 15 set on all 438 | agrees with the names file |
+| `+0x04` | `u16` ×2 | its two drops | every one is an item id |
+| `+0x08` | `u32` | experience, INFERRED | the metal family: 4,096, 40,200 and 120,040, against a median of 940 |
+| `+0x0C` | `u16` | gold, INFERRED | a median of 2,490 on the bosses against 120 |
+| `+0x18` | `u16` ×6 | six action words — not established | 1 on most, 225 and others beside it |
+| `+0x5C` | `u16` | maximum HP, INFERRED | a median of 6,500 on the bosses against 134; the metal slime's 4 |
+| `+0x5E` | `u16` | maximum MP, INFERRED | 255 on most bosses and the metal family |
+| `+0x60` | `u16` | attack, INFERRED | by order |
+| `+0x62` | `u16` | defence, INFERRED | the metal family's 256 and 512 |
+| `+0x64` | `u16` | agility, INFERRED | by order; high on the metal family |
+
+`+0x14` is 500 to 605 on ordinary monsters and 0 on most bosses — Hexagoon's
+among them, though not the Wight Knight's or Morag's — not established.
+The rest is carried as it is. Hexagoon, the slice's boss, is `b003a`.
+
+**Names**: a record is the name's offset, the code's offset (both `u32`, from
+the strings) and the number (`u16`); the rest is not read. The strings run
+name, plural, code for each monster — `slime`, `slimes`, `z000a` — and the
+plural is not referenced by an offset read here. **Codes repeat**: 438 records
+carry 312 codes, a code naming the story's versions of one monster (the
+scarlet fever four times); the lowest number is the ordinary one.
+
+## Monster models — `/data/pack_lv5/enemy.gp2`
+
+601 members, `<code>.mon` and `<code>_f.mon`, stored whole — see the l5-gpc
+FORMAT.md on members with no region prefix. Each is a `NARC` of three files:
+
+- `.cchr`, an LZ10-compressed `NARC`: the model (`<code>.nsbmd`), its first
+  motions (`appear`, `attack0a`, `run`, `stand` on the slime) and a `.bcfg`;
+- `.cmot`, another: the rest of its motions — `attack1a`, `call`, `damage`,
+  `death`, `escape`, `sake` on the slime — and a `.bcfg`;
+- `.bact`, no Nitro signature in it: not read.
+
+The `_f` members have no `.cmot`. INFERRED: the models are in the characters'
+own space, as the cast's are — the slime stands 9 units and Hexagoon 35, to a
+person's 23. `/data/effect/<family>000.chr` and its siblings, which a search by
+code finds first, are the monsters' attack effects — the slime's a splash
+textured `z000a_at1`, the chest monster's smoke, `z009a_kem01` — not their
+bodies.
+
 ---
 
 # Triggers — `trigger<area>.bin`
