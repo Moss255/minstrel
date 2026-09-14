@@ -46,8 +46,11 @@ with only standing poses, `md02xx` in man's and woman's pairs. The walk and the
 Hero's own event motions drive 14 bones, so the field figure is `chara_pc`'s;
 `chara_pd` is most likely the equipment screen's figure, INFERRED.
 
-**Left:** the hair — which value picks the style, variant and colour; and the
-two 90xx values' first, which is not hair by any rule tried. See §7.
+**Not a gap: the hair.** The player chooses it at character creation, which
+the slice leaves out, so the Hero's fixed hair is the slice's preset
+appearance. Which preset value, if any, holds a character's hair — the first of
+the two 90xx values is not hair by any rule tried — matters only for drawing
+the presets themselves. See §7.
 
 ---
 
@@ -56,8 +59,8 @@ two 90xx values' first, which is not hair by any rule tried. See §7.
 This replaces the list of 13 September further down, which is kept for its
 questions to the emulator. Each gap's evidence is in the section it names.
 
-**Where the milestones stand.** M0–M2 are done but for the Hero's hair (§7)
-and a field's doorways (§6). M3 reads the event text and plays the morning; the
+**Where the milestones stand.** M0–M2 are done: the Hero is dressed (§7), and
+a field's doorways stand on its ground and can be walked to (§6). M3 reads the event text and plays the morning; the
 rest of the opening is open. M4 is as far as the cartridge goes; the equipment
 screen is drawn, and its numbers wait on the emulator. M5 has battles, spells,
 changes of state and monsters acting; M6 has monsters roaming the field. M7 and
@@ -98,9 +101,6 @@ M8 have not started, and audio, meant to start alongside M5, has not either.
   in); the critical chance; fleeing's chance.
 - **The Hero's vocation, and a level-1 status screen**, to settle which
   level-table columns are which.
-- **The Hero's hair** (§7): with a character of known look on screen, which
-  of a preset's values moves when the hair style or colour does.
-- **Where a field's doorways really are** (§6), which blocks M7's mountain pass.
 - **Which treasure kind is the pot** and which the barrel; **where the Hero
   wakes**, `M01M07` or `M01M10`.
 - **The inn's price and the starting gold**, if they are not found in code.
@@ -1277,7 +1277,26 @@ concentric. The stable is right. So it is not one direction and not one factor.
 
 ---
 
-## 6. A field's doorways stand outside its own ground — still for the emulator
+## 6. A field's doorways stand on its ground — **resolved 12 September, confirmed 14 September**
+
+**Resolved by the scale fix of 12 September (§0), and measured again on the
+14th.** A field's collision and terrain had both been read at half their size.
+Read at their own, and asked of every one of the cartridge's 663 maps through
+the game's own loader, **113 of the 124 field doorways have ground under
+them** — against 24.4% inside the collision below — and every other kind of map
+97.9% or more. Angel Falls field's three all do: back to the village, to `D01`
+and to `S01M01`. And `apps/game/test/travel.test.ts` walks the character from
+where the road out of the village puts them down to both of the others,
+moving only by the controller's `step`, as the game moves them.
+
+The 11 without floor are far from the slice: nine lead to `O00`, from `F44`,
+`F56`, `F99` and its two sub-maps, and one each is in `F07` and `F27`. The game
+puts the character on the nearest ground there, as for any arrival. Nothing of
+this waits on the emulator any more. Which of `D01` and `S01M01` is M7's
+mountain pass is not established here.
+
+What follows was measured with a field's collision at half its size, and is
+kept for what it ruled out.
 
 Measured further, and the finding is that **this was the wrong way round**. The
 field's collision is not missing or partial: its drawn terrain is a grid of
@@ -1309,15 +1328,17 @@ the walkable ground nearest the arrival and says so on the status line.
 
 ---
 
-## 7. The Hero is dressed; their hair is a stand-in — **14 September**
+## 7. The Hero is dressed — **done, 14 September**
 
 The preset table was found (`charapreset.bin`, FORMAT.md "Character presets")
 and the Hero is dressed from real parts — see the top. `chooseFigure` is gone.
-What is left is the hair: a style of 24, a variant `a` to `e` and a colour of
-up to ten, none of which a preset value has been shown to pick. The two 90xx
-values beside each preset's outfit are the lead: the second lands on a face on
-all 41 presets; the first — 9023, 9024 and 9030 to 9033 — is not a hair style
-by number, times ten or otherwise.
+
+The hair — a style of 24, a variant `a` to `e` and a colour of up to ten — is
+the player's choice at character creation, which the slice leaves out, so the
+fixed choice in `hero.ts` is the slice's preset appearance, not a gap. For
+drawing the presets themselves, the two 90xx values beside each outfit are
+the lead: the second lands on a face on all 41 presets; the first — 9023, 9024
+and 9030 to 9033 — is not a hair style by number, times ten or otherwise.
 
 ---
 

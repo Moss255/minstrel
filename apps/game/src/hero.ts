@@ -57,11 +57,12 @@ export const HERO_OUTFIT = { armour: 13007, legwear: 16215, footwear: 17120 } as
 export const HERO_FACE = 'p_f006'
 
 /**
- * The Hero's hair — **ours, a stand-in**: style 00 in its variant `a`, in
- * colour 0. Hair is a style (`p_h<ss>0<v>.nsbmd`, 24 styles in variants `a` to
- * `e`) coloured by a texture file (`p_h<ss><c>a.nsbtx`, up to ten colours to a
- * style); where the game reads the three from is not found. FORMAT.md,
- * "Character parts".
+ * The Hero's hair — **ours**: style 00 in its variant `a`, in colour 0. The
+ * player chooses hair at character creation, which the slice leaves out
+ * ("Preset appearance — no character creation"), so a fixed choice is the
+ * slice's own and not a gap. Hair is a style (`p_h<ss>0<v>.nsbmd`, 24 styles in
+ * variants `a` to `e`) coloured by a texture file (`p_h<ss><c>a.nsbtx`, up to
+ * ten colours to a style). FORMAT.md, "Character parts".
  */
 export const HERO_HAIR = { model: 'p_h000a', colour: 'p_h000a' } as const
 

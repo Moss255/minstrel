@@ -471,8 +471,17 @@ character needs to step clear of a doorway they arrived in — see `doors.ts`.
 **Resolved, 12 September.** A field's collision has a `shift` of 4 and its
 terrain an `upScale` of 16, and both had been read at half their size. Read at
 their own, all 116 doorway arrivals into a field land on floor, and the Angel
-Falls field's collision spans −12.00 to 12.84 rather than −6.00 to 6.42. What
-follows was measured with both at half size; it is kept for what it ruled out.
+Falls field's collision spans −12.00 to 12.84 rather than −6.00 to 6.42.
+
+The doorways themselves, measured again on 14 September over all 663 maps:
+113 of the 124 in a field have floor under them, and every other kind of map
+97.9% or more. Angel Falls field's three all do, and the character walks from
+the village road to the two that lead on (`apps/game/test/travel.test.ts`).
+The 11 without are nine leading to `O00` — from `F44`, `F56`, `F99` and its
+sub-maps — and one each in `F07` and `F27`.
+
+What follows was measured with both at half size; it is kept for what it
+ruled out.
 
 **This is a known gap, and it is systematic.** Whether a map's own doorway has
 walkable collision under it, by the kind of map:
@@ -2877,5 +2886,6 @@ boots 17140, her headkerchief 12432.
 55 of the 57 ids these records wear name a part that exists.
 
 Not read by anything yet — the game dresses the Hero by hand, `hero.ts`. Not
-established: the first of the two 90xx values, and where hair's style, variant
-and colour are kept, if in a preset at all.
+established: the first of the two 90xx values, and where a preset's hair
+style, variant and colour are kept, if in it at all. The Hero's own are the
+player's, chosen at character creation.

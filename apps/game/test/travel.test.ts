@@ -3,7 +3,7 @@ import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import { type CharacterState, groundBelow, PERSON, step } from '@minstrel/sim'
 import { findSpawn } from '@minstrel/world'
 import { describe, expect, it } from 'vitest'
-import { doorAt, doorGate, doorTaken } from '../src/doors.ts'
+import { doorAt, doorGate, doorTaken, inDoorway } from '../src/doors.ts'
 import { entranceOf, load } from '../src/load.ts'
 import { WALK_SPEED } from '../src/player.ts'
 
@@ -379,5 +379,68 @@ describe.skipIf(!romPath)('walking through a door', { timeout: 60_000 }, () => {
 
     const bounds = (world as NonNullable<typeof world>).bounds
     expect(road.arriveX).toBeGreaterThan(toFloat(bounds.minX as never))
+  })
+
+  it('walks from the road out of the village to both of the field’s ways on', {
+    timeout: 300_000,
+  }, () => {
+    // A field's doorways once stood off its ground — `docs/next.md` §6 —
+    // because its collision was read at half its size. A doorway standing on
+    // floor is not the same as a doorway the character can reach, so this asks
+    // the character controller: from where the road puts the character down,
+    // walk the field a stride at a time in eight directions, moving as the game
+    // moves — `step` and nothing else — and see whether the walk ever stands in
+    // each of the field's other doorways.
+    const village = open('M01')
+    const road = village.doorways.find((d) => d.to === 'F01') as NonNullable<
+      (typeof village.doorways)[number]
+    >
+    const { opened: field, world, stood } = arriveIn('F01', road)
+    const here = world as NonNullable<typeof world>
+    expect(stood, 'nowhere to stand coming in from the village').toBeDefined()
+    const from = stood as NonNullable<typeof stood>
+    const onward = field.doorways.filter((d) => d.to !== 'M01')
+    expect(onward.map((d) => d.to).sort()).toEqual(['D01', 'S01M01'])
+
+    // A stride of a quarter unit, about a character and a half.
+    const stride = 0.25
+    const ticks = Math.ceil((stride * FX32_ONE) / WALK_SPEED)
+    const cellOf = (s: CharacterState) =>
+      `${Math.round(toFloat(s.x) / stride)},${Math.round(toFloat(s.z) / stride)}`
+    const start: CharacterState = {
+      x: from.x,
+      y: from.y,
+      z: from.z,
+      fallSpeed: fx32(0),
+      grounded: true,
+    }
+    const seen = new Set([cellOf(start)])
+    const queue = [start]
+    const reached = new Set<string>()
+    for (let i = 0; i < queue.length && reached.size < onward.length; i++) {
+      const at = queue[i] as CharacterState
+      for (let heading = 0; heading < 8; heading++) {
+        const angle = (heading * Math.PI) / 4
+        const dx = fx32(Math.round(Math.cos(angle) * WALK_SPEED))
+        const dz = fx32(Math.round(Math.sin(angle) * WALK_SPEED))
+        let state: CharacterState = at
+        for (let tick = 0; tick < ticks; tick++) {
+          state = step(here, state, dx, dz, PERSON)
+          // As the game asks, every tick: is the character in a doorway?
+          for (const door of onward) {
+            if (inDoorway(door, toFloat(state.x), toFloat(state.z))) reached.add(door.to)
+          }
+        }
+        if (!state.grounded) continue
+        const cell = cellOf(state)
+        if (seen.has(cell)) continue
+        seen.add(cell)
+        queue.push(state)
+      }
+    }
+    expect([...reached].sort(), `walked ${seen.size} strides of the field`).toEqual([
+      'D01',
+      'S01M01',
+    ])
   })
 })
