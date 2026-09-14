@@ -2545,6 +2545,23 @@ established. No string in the code names `marker`. The game here draws the
 Hero, alone, as `marker0` — **ours**, until the rule is found. What the red dot
 marks is not known.
 
+**The party panel is `obj_minimap`'s cell 2**: one 64×64 part, a dark name
+strip with a coloured bar at each end, then HP and MP bars and `:Lv`. Its other
+cells are the five dots (3 to 7, all in palette slot 4, a colour to each
+tile), the level's digits `0`–`9`, `+1`–`+9`, and two HP and MP bars. Drawn in
+palette slots 0 to 3 — the part is in slot 0 — the end bars are **blue, green,
+pink and orange** (slot 0's is `(115, 189, 230)`); slots 4 to 7 recolour the
+whole panel and are not member colours. The strip is rows 0 to 15: a border,
+the dark from row 2 to 14 with the bars in columns 2–6 and 57–61, and a white
+line on row 15. **The screenshot shows exactly these strips**: four side by
+side across the screen's foot, 64 pixels each — the screen's 256 — each with a
+name in white, and nothing of the rest of the panel. `obj_mm.pac` holds the
+same panel cut narrower in four steps, perhaps a slide; its slots 0 to 3 are
+all blue.
+
+The game here draws each member's strip and dot by their place in the party —
+the Hero blue, Ivor green — which is **ours**, for the reason above.
+
 ## `.bmmp` — which picture, and where on it
 
 A tagged table (see "The tagged data table"). 279 read; `F07`, `H07`, `M05` and

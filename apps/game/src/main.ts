@@ -903,10 +903,19 @@ function drawCorner(): void {
   const context = show ? minimapEl.getContext('2d') : null
   if (!context || !minimapShown || !self) return
   const unit = WORLD_SCALE * worldScale
-  drawMinimap(context, minimapShown, {
+  const hero = {
     x: toFloat(self.state.x) / unit,
     z: toFloat(self.state.z) / unit,
+    name: DEFAULT_CONTEXT.heroName,
+  }
+  // Each companion where they walk, or on the Hero while they stand on them.
+  const walking = companionsInField()
+  const companions = companionsNow().flatMap((who, place) => {
+    if (standingHere(who)) return []
+    const seen = walking.find((w) => w.place === place)
+    return [{ x: seen ? seen.x / unit : hero.x, z: seen ? seen.z / unit : hero.z, name: who.name }]
   })
+  drawMinimap(context, minimapShown, [hero, ...companions])
 }
 
 /** Where the Hero stands, for the doors — kept, not made anew each frame. */
@@ -2158,6 +2167,16 @@ function companionsNow(): readonly AttendingCharacter[] {
 }
 
 /**
+ * Whether the map has a companion standing in it — Ivor, waiting in Erinn's
+ * house at 2.2 — by the model they share: see `companionModel`. Then they are
+ * not with the Hero: not following, and not on the top screen. Ours.
+ */
+function standingHere(who: AttendingCharacter): boolean {
+  const model = companionModel(who)
+  return (loaded?.cast.members ?? []).some((member) => member.name === model)
+}
+
+/**
  * Where each companion stands in the field: the one in the party's second
  * place on the Hero's footsteps a pace back, the next a pace further, and so
  * on. None in a battle or an event, which stand them themselves, and none
@@ -2177,12 +2196,10 @@ function companionsInField(): {
   const hx = toFloat(self.state.x)
   const hz = toFloat(self.state.z)
   const near = toFloat(person().radius) * 2
-  const members = loaded?.cast.members ?? []
   return companionsNow().flatMap((who, place) => {
     const trail = trails[place]
     if (!trail) return []
-    const model = companionModel(who)
-    if (members.some((member) => member.name === model)) return []
+    if (standingHere(who)) return []
     const x = toFloat(trail.x)
     const z = toFloat(trail.z)
     if (Math.hypot(x - hx, z - hz) < near) return []

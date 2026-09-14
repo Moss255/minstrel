@@ -1,11 +1,17 @@
 import { readFileSync } from 'node:fs'
-import { type MinimapLayout, minimapPoint } from '@minstrel/game-formats'
+import { type MinimapLayout, type MinimapMark, minimapPoint } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
   HERO_MARKER,
+  type MinimapSheet,
   type Minimaps,
   minimapFor,
+  PANEL_COLOURS,
+  PANEL_STRIP,
+  PARTY_MARKERS,
+  partyDots,
   pictureOffset,
+  ROOM_CLUSTER,
   readMinimaps,
 } from '../src/minimap.ts'
 
@@ -76,6 +82,34 @@ describe('where the picture sits on the screen — ours', () => {
   })
 })
 
+describe('where the party’s dots go', () => {
+  const town = layout('TOWN01', [100], [[101, 'TOWNHOUSE']])
+
+  it('puts each where they stand, the Hero first', () => {
+    const party = [
+      { x: 1, z: 2 },
+      { x: 3, z: 4 },
+    ]
+    expect(partyDots(town, undefined, party)).toEqual([
+      minimapPoint(town, 1, 2),
+      minimapPoint(town, 3, 4),
+    ])
+  })
+
+  it('puts one alone on a room’s mark, and a party two by two about it', () => {
+    const mark = town.marks[0] as MinimapMark
+    const at = minimapPoint(town, mark.x, mark.z)
+    expect(partyDots(town, mark, [{ x: 9, z: 9 }])).toEqual([at])
+    const four = partyDots(
+      town,
+      mark,
+      Array.from({ length: 4 }, () => ({ x: 9, z: 9 })),
+    )
+    expect(four).toEqual(ROOM_CLUSTER.map(([dx, dy]) => ({ x: at.x + dx, y: at.y + dy })))
+    expect(new Set(four.map((dot) => `${dot.x},${dot.y}`)).size).toBe(4)
+  })
+})
+
 const romPath = process.env.MINSTREL_TEST_ROM
 
 describe.skipIf(!romPath)('the mini-map, on a real cartridge', { timeout: 120_000 }, () => {
@@ -113,5 +147,31 @@ describe.skipIf(!romPath)('the mini-map, on a real cartridge', { timeout: 120_00
   it('has a blue dot for the Hero, one tile of marker0', () => {
     const dot = minimaps.picture(HERO_MARKER)
     expect([dot?.width, dot?.height]).toEqual([8, 8])
+  })
+
+  it('has a dot for each place in the party', () => {
+    for (const name of PARTY_MARKERS) expect(minimaps.picture(name)?.width, name).toBe(8)
+  })
+
+  it('has the party’s name strip in four colours, the same but for its end bars', () => {
+    const pixel = (sheet: MinimapSheet, x: number, y: number) => {
+      const at = (y * sheet.width + x) * 4
+      return [...sheet.rgba.subarray(at, at + 4)]
+    }
+    const [first] = minimaps.panels
+    if (!first) throw new Error('no party panels')
+    expect(minimaps.panels).toHaveLength(PANEL_COLOURS)
+    for (const panel of minimaps.panels) {
+      expect([panel.width, panel.height]).toEqual([64, PANEL_STRIP])
+      // The dark strip the name goes on, and the white line under it.
+      expect(pixel(panel, 30, 8)).toEqual(pixel(first, 30, 8))
+      expect(
+        pixel(panel, 30, 15)
+          .slice(0, 3)
+          .every((v) => v > 200),
+      ).toBe(true)
+    }
+    expect(new Set(minimaps.panels.map((panel) => pixel(panel, 4, 8).join())).size).toBe(4)
+    expect(pixel(first, 4, 8)).toEqual([115, 189, 230, 255])
   })
 })

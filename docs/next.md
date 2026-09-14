@@ -9,6 +9,33 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The party on the top screen — 15 September
+
+**From the cartridge** (game-formats' FORMAT.md, "The markers are coloured
+dots"): each member's name strip along the top screen's foot — the party
+panel, `obj_minimap`'s cell 2, cut to its top sixteen rows, in one of its four
+colours — and each one's dot, `marker0` to `marker3`. What it follows is the
+capture in `evidence/in-town.png` (not committed): a party of four in
+Stornway's church, four strips across the foot and four dots on the church,
+two by two.
+
+**Ours:**
+
+- Colour by place in the party: the Hero blue, Ivor green. In the capture each
+  character has a colour of their own, and none is one of these; the rule is
+  not found.
+- The names, in the browser's font: the European build's Latin letters are
+  not found on the cartridge.
+- Fewer than four strips start from the left; one dot alone on a room's mark.
+- Ivor has no strip or dot while he waits in the house at 2.2, as he does not
+  follow then.
+
+**Left:** the rest of the panel — HP, MP and the level, with the file's own
+digits — which the capture does not show; `obj_mm.pac`'s narrower cuts of it,
+perhaps it sliding up; and the town's name in a tab at the map's top right.
+
+---
+
 ## The story moves on — 15 September
 
 **What is read** (`game-formats/FORMAT.md`, "Triggers", "The words" —
