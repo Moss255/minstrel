@@ -22,9 +22,9 @@
  * between the two and this is the same convention seen from another side.
  *
  * **What is read here is only the tag.** What each tag means to the game — which
- * are solid, which make a sound underfoot, which are the Hexagon's poison
- * marshes — is not established, and nothing here claims it. `wtr` is used for
- * one thing only: not standing a character in the sea.
+ * are solid, which make a sound underfoot — is not established, and nothing
+ * here claims it. Two are used: `wtr`, for not standing a character in the
+ * sea, and `dok`, INFERRED to be poison marsh — see {@link isMarshTexture}.
  */
 
 /** The three-letter tag in a map texture's name, if it has one. */
@@ -41,4 +41,19 @@ export function textureTag(name: string): string | undefined {
  */
 export function isWaterTexture(name: string): boolean {
   return textureTag(name) === 'wtr'
+}
+
+/**
+ * Whether a texture names poison marsh — INFERRED.
+ *
+ * Its tag is `dok`, and some tags are Japanese words — `iwa` rock, `zou`
+ * statue, `kabe` wall — as *doku* is poison. Six textures carry it on the whole
+ * cartridge: `d01dok01` and `d01dok02` on the Hexagon's own map, `D01`, where
+ * the slice's poison marshes are — two flat layers of 13 and 31 triangles at
+ * the ground's height, drawn as three purple patches beside the path up to
+ * the hexagon — the same pair on `D14M04`, and
+ * `F49`'s own two. See FORMAT.md, "Poison marsh".
+ */
+export function isMarshTexture(name: string): boolean {
+  return textureTag(name) === 'dok'
 }

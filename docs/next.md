@@ -9,6 +9,24 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The Hexagon's poison marsh — 14 September
+
+**Where it is, read:** the texture tag `dok` — *doku*, poison, INFERRED — on
+the Hexagon's own map, `D01`: three purple patches beside the path up to the
+hexagon — two flat layers of 13 and 31 triangles just at the ground — which
+the collision lets the Hero stand on
+(`game-formats/FORMAT.md`, "Poison marsh"). Six textures on the whole
+cartridge carry the tag. `@minstrel/world` keeps each marsh triangle by
+triangle, not as a box, as water is, because a box would poison most of the
+map.
+
+**What it does, ours** (`apps/game/src/marsh.ts`): 1 HP from the Hero, and
+from Ivor while he goes along, for every half second walked in it — counted
+in the Hero's own moving ticks, so standing still costs nothing — and never
+the last HP. The status line says so. The game's rule is in its code.
+
+---
+
 ## Ivor is found — 14 September
 
 **He is an attending character.** `/data/bin/attnpc.gp2` holds the five people
@@ -140,7 +158,7 @@ M8 have not started, and audio, meant to start alongside M5, has not either.
 | The game's own font | M3 | The Latin glyphs are not found; text uses the browser's font. |
 | M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`, in code as far as has been looked; the chimaera wing's destination; Evac and holy water. |
 | What battles still lack | M5 | Abilities; the changes of state the reference does not model (Dazzle, sand in the eyes, the dances); Hexagoon's behaviour beyond its six ways. |
-| What the loop still lacks | M6 | Which zone applies where; monsters that flee a strong party (`fld_mondata`'s first two numbers); transitions beyond the cut; the poison marshes. |
+| What the loop still lacks | M6 | Which zone applies where; monsters that flee a strong party (`fld_mondata`'s first two numbers); transitions beyond the cut; what the poison marsh really does (where it is, is read — see the top). |
 | The mini-map's rest | — | `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets; the party's name panels and the town's name tab. |
 | 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
 | The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |

@@ -3,6 +3,7 @@ import {
   isCollisionMesh,
   isDataTable,
   isMarkerVolume,
+  isMarshTexture,
   isWaterTexture,
   type MapManifest,
   type Motion,
@@ -85,6 +86,21 @@ export interface WaterArea {
 }
 
 /**
+ * Where a map's poison marsh is: each marsh surface, triangle by triangle, and
+ * its height. Which surfaces are marsh is their texture's `dok` tag — see
+ * `isMarshTexture`, INFERRED.
+ *
+ * **Triangle by triangle**, where water is a box: the Hexagon's marsh is three
+ * patches beside the path up to the hexagon, and the box around them would
+ * poison most of the map between.
+ */
+export interface MarshArea {
+  /** Each triangle's corners on the ground plane — x, z, x, z, x, z — in world units. */
+  readonly triangles: Float32Array
+  readonly surface: number
+}
+
+/**
  * Which of a map's two lightings to build.
  *
  * **A map ships twice over.** Beside its terrain sit resources whose stems end
@@ -144,6 +160,7 @@ export interface AssembledMap {
    */
   readonly meshes: readonly PlacedMesh[]
   readonly water: readonly WaterArea[]
+  readonly marsh: readonly MarshArea[]
   /** Resources the archive holds no file for, and files that would not read. */
   readonly missing: readonly string[]
 }
@@ -165,6 +182,7 @@ export function assembleMap(
   const pieces: MapPiece[] = []
   const meshes: PlacedMesh[] = []
   const water: WaterArea[] = []
+  const marsh: MarshArea[] = []
   const missing: string[] = []
 
   for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
@@ -230,13 +248,14 @@ export function assembleMap(
           ...(motions ? { motions } : {}),
         })
         water.push(...waterOf(model, place, WORLD_SCALE))
+        marsh.push(...marshOf(model, place, WORLD_SCALE))
       } catch {
         missing.push(file)
       }
     }
   }
 
-  return { pieces, meshes, water, missing }
+  return { pieces, meshes, water, marsh, missing }
 }
 
 /** The animation compiled from the same authored resource as this model. */
@@ -297,6 +316,82 @@ function waterOf(model: Model, at: Placement, scale: number): WaterArea[] {
     })
   }
   return found
+}
+
+/** Every marsh surface a model draws, triangle by triangle — placed as water is. */
+function marshOf(model: Model, at: Placement, scale: number): MarshArea[] {
+  const found: MarshArea[] = []
+  for (let shape = 0; shape < model.numShapes; shape++) {
+    const materialIndex = model.shapeMaterials[shape]
+    const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
+    const texture = material?.texture
+    if (texture === undefined || !isMarshTexture(texture)) continue
+    const geometry = model.posedGeometry(shape)
+    const { indices, vertices } = geometry
+    const triangles = new Float32Array(Math.floor(indices.length / 3) * 6)
+    for (let t = 0; 3 * t + 2 < indices.length; t++) {
+      for (let k = 0; k < 3; k++) {
+        const v = vertices[indices[3 * t + k] as number]
+        triangles[6 * t + 2 * k] = (v?.x ?? 0) * scale + at.x
+        triangles[6 * t + 2 * k + 1] = (v?.z ?? 0) * scale + at.z
+      }
+    }
+    found.push({ triangles, surface: measureBounds([geometry]).maxY * scale + at.y })
+  }
+  return found
+}
+
+/**
+ * Is this spot in the marsh? Over one of its triangles, and within a
+ * character's height of its surface, as for water.
+ */
+export function inMarsh(
+  marsh: readonly MarshArea[],
+  x: number,
+  y: number,
+  z: number,
+  height: number,
+): boolean {
+  for (const area of marsh) {
+    if (y > area.surface + height) continue
+    const t = area.triangles
+    for (let i = 0; i + 5 < t.length; i += 6) {
+      if (
+        overTriangle(
+          x,
+          z,
+          t[i] as number,
+          t[i + 1] as number,
+          t[i + 2] as number,
+          t[i + 3] as number,
+          t[i + 4] as number,
+          t[i + 5] as number,
+        )
+      ) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/** Whether (x, z) lies on a triangle's footprint, edges included, whichever way it winds. */
+function overTriangle(
+  x: number,
+  z: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  cx: number,
+  cz: number,
+): boolean {
+  const d1 = (x - bx) * (az - bz) - (ax - bx) * (z - bz)
+  const d2 = (x - cx) * (bz - cz) - (bx - cx) * (z - cz)
+  const d3 = (x - ax) * (cz - az) - (cx - ax) * (z - az)
+  const negative = d1 < 0 || d2 < 0 || d3 < 0
+  const positive = d1 > 0 || d2 > 0 || d3 > 0
+  return !(negative && positive)
 }
 
 /**

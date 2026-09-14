@@ -79,7 +79,7 @@ export {
   readMapManifest,
   resolveMapResources,
 } from './mapmanifest.ts'
-export { isWaterTexture, textureTag } from './materials.ts'
+export { isMarshTexture, isWaterTexture, textureTag } from './materials.ts'
 export {
   isMinimapPicture,
   LAYOUT_BACKDROP,

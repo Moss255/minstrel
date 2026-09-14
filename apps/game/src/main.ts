@@ -52,7 +52,7 @@ import {
   startRoaming,
   tickRoaming,
 } from '@minstrel/sim'
-import { backdrop, findSpawn, placeGeometry, WORLD_SCALE } from '@minstrel/world'
+import { backdrop, findSpawn, inMarsh, placeGeometry, WORLD_SCALE } from '@minstrel/world'
 import { actorLookOf, packMotions } from './actors.ts'
 import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
@@ -114,6 +114,7 @@ import {
   VOCATION_WORDS,
 } from './hero.ts'
 import { entranceOf, type Loaded, load, type Stage } from './load.ts'
+import { afterMarsh, MARSH_TICKS } from './marsh.ts'
 import {
   back,
   choose,
@@ -401,6 +402,8 @@ let ivorTrail: Follower | undefined
 /** Which way Ivor faces in the field, and whether his footsteps moved this frame. */
 let ivorFacing = 0
 let ivorWalking = false
+/** Moving ticks walked in the poison marsh and not yet paid for — see `marsh.ts`. */
+let marshCarry = 0
 /** Who stands beside the Hero in the battle under way: their place in it, and their look. */
 let battleCompanion:
   | { readonly index: number; readonly model: string; readonly packs: readonly string[] }
@@ -914,9 +917,15 @@ function frame(now = 0): void {
     if (playing) playEvent(elapsedMs)
     const ivorX = ivorTrail?.x ?? 0
     const ivorZ = ivorTrail?.z ?? 0
-    const { moving, travelled } = playing
-      ? { moving: false, travelled: 0 }
-      : advance(self, world, camera.yaw, elapsedMs, ivorTrail)
+    const { moving, travelled, marshTicks } = playing
+      ? { moving: false, travelled: 0, marshTicks: 0 }
+      : advance(self, world, camera.yaw, elapsedMs, ivorTrail, inMarshNow)
+    // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
+    marshCarry += marshTicks
+    while (marshCarry >= MARSH_TICKS) {
+      marshCarry -= MARSH_TICKS
+      marshToll()
+    }
     // Ivor walks while his footsteps move, facing the way they go.
     if (ivorTrail) {
       const dx = ivorTrail.x - ivorX
@@ -2047,6 +2056,39 @@ function spotsFor(count: number): { x: number; y: number; z: number }[] {
       : undefined
     return { x, y: hit ? toFloat(hit.y) : hy, z }
   })
+}
+
+/** Whether the Hero stands in the map's poison marsh — see `inMarsh`. */
+function inMarshNow(state: Player['state']): boolean {
+  const marsh = loaded?.map.marsh
+  if (!marsh || marsh.length === 0) return false
+  return inMarsh(
+    marsh,
+    toFloat(state.x),
+    toFloat(state.y),
+    toFloat(state.z),
+    toFloat(person().height),
+  )
+}
+
+/**
+ * The marsh's toll — see `marsh.ts`, where the rule, ours, is: the Hero's HP,
+ * and Ivor's while he goes along, and the status line says so.
+ */
+function marshToll(): void {
+  const row = heroRow()
+  if (!row) return
+  const hp = afterMarsh(heroHp ?? row.maxHp)
+  heroHp = hp >= row.maxHp ? undefined : hp
+  const ivor = ivorAlong() ? loaded?.attending.find((c) => c.id === IVOR) : undefined
+  if (ivor) {
+    const left = afterMarsh(ivorHp ?? ivor.numbers.maxHp)
+    ivorHp = left >= ivor.numbers.maxHp ? undefined : left
+  }
+  status(
+    `the poison marsh stings · HP ${hp}/${row.maxHp}` +
+      (ivor ? ` · Ivor ${ivorHp ?? ivor.numbers.maxHp}/${ivor.numbers.maxHp}` : ''),
+  )
 }
 
 /** Whether Ivor goes along now — see `alongAt`; `?ivor=1` brings him at any stage, to look at. */

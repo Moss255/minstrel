@@ -2940,3 +2940,35 @@ number or his model's, and no table found holds a party by story stage.
 
 Not established: values 3, 4, 6 and 16; the order of the numbers; how a
 character joins and leaves the party.
+
+# Poison marsh — the `dok` texture tag
+
+A map texture's name carries three letters saying what the surface is (see
+`materials.ts`: `wtr` water, `grs` grass, and so on), and some of those
+letters are Japanese words — `iwa` rock, `zou` statue, `kabe` wall, `yane`
+roof. **`dok` is taken for *doku*, poison — INFERRED.** Six textures on the
+cartridge carry it:
+
+| texture | drawn on | as |
+|---|---|---|
+| `d01dok01`, `d01dok02` | `D01M0000`, the Hexagon's own map | two flat planes, 13 and 31 triangles, at y −0.20 to −0.16 and −0.08, winding across x −12 to 10, z −5 to 12 in the model's units |
+| the same two | `D14M04`'s `D14M0499` | the same, reused |
+| `f49dok01`, `f49dok02` | `F49M0000` | two flat planes, 11 and 26 triangles |
+
+`D01` is the Hexagon — its floors are 7102 to 7104 by the map index, and it is
+7100 — and the slice plan puts its poison marshes there. The planes lie as
+water's do, flat and just at the ground, and the ground under them can be
+stood on: under the middle of the marsh's triangles the collision has ground
+within a character's height of the surface on nearly all of them
+(`apps/game/test/marsh.test.ts`). Drawn, they are **three purple patches**
+either side of the path up to the hexagon, as the explorer shows the map from
+above.
+
+`isMarshTexture` reads the tag; `@minstrel/world` keeps each marsh surface
+triangle by triangle (`MarshArea`, `inMarsh`) — not as a box, as water is,
+because the box around the three patches covers most of the map between them.
+
+Not established: what the marsh does, and how much — the game's rule is in
+its code (the game's toll here is ours, `apps/game/src/marsh.ts`); whether
+`mud`, on the fields, does anything; and whether the collision marks the marsh
+too — the attribute word is not read.

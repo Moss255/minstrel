@@ -114,7 +114,9 @@ export function player(
  *
  * A `follower` is handed where the character stands after every tick, so
  * whoever walks behind them keeps to their steps — see `follow.ts` in
- * `@minstrel/sim`.
+ * `@minstrel/sim`. `inMarsh` asks, on every tick the character moved, whether
+ * they now stand in poison marsh; how many such ticks there were comes back as
+ * `marshTicks`, a whole number, for the caller to take its toll by.
  */
 export function advance(
   self: Player,
@@ -122,7 +124,8 @@ export function advance(
   yaw: number,
   elapsedMs: number,
   follower?: Follower,
-): { moving: boolean; travelled: number } {
+  inMarsh?: (state: CharacterState) => boolean,
+): { moving: boolean; travelled: number; marshTicks: number } {
   let keyForward = 0
   let keyRight = 0
   if (self.held.has('w')) keyForward += 1
@@ -149,6 +152,7 @@ export function advance(
   self.carry = Math.min(self.carry + elapsedMs, TICK_MS * 8)
 
   let travelled = 0
+  let marshTicks = 0
   while (self.carry >= TICK_MS) {
     self.carry -= TICK_MS
     const from = self.state
@@ -169,12 +173,14 @@ export function advance(
     }
     self.state = step(world, self.state, fx32(dx), fx32(dz), PERSON)
     if (follower) recordLeader(follower, self.state)
+    const stepped = self.state.x !== from.x || self.state.z !== from.z
+    if (stepped && inMarsh?.(self.state)) marshTicks++
     travelled += Math.hypot(
       toFloat(self.state.x) - toFloat(from.x),
       toFloat(self.state.z) - toFloat(from.z),
     )
   }
-  return { moving, travelled }
+  return { moving, travelled, marshTicks }
 }
 
 /**

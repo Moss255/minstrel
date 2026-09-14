@@ -1,6 +1,6 @@
 import type { Geometry } from '@minstrel/nitro-gfx'
 import { describe, expect, it } from 'vitest'
-import { inWater, placeGeometry, type WaterArea } from '../src/assemble.ts'
+import { inMarsh, inWater, type MarshArea, placeGeometry, type WaterArea } from '../src/assemble.ts'
 
 const river: WaterArea = { minX: -2, maxX: 2, minZ: -1, maxZ: 1, surface: -0.31 }
 /** The character's height, which is what "knee-deep" is measured against. */
@@ -25,6 +25,31 @@ describe('inWater', () => {
 
   it('is false when the map has no water', () => {
     expect(inWater([], 0, -9, 0, HEIGHT)).toBe(false)
+  })
+})
+
+describe('inMarsh', () => {
+  // One triangle, (0, 0), (2, 0), (0, 2) on the ground plane, its surface at 0.
+  const marsh: MarshArea = { triangles: new Float32Array([0, 0, 2, 0, 0, 2]), surface: 0 }
+
+  it('is true over the triangle, on its surface or a little above it', () => {
+    expect(inMarsh([marsh], 0.5, 0, 0.5, HEIGHT)).toBe(true)
+    expect(inMarsh([marsh], 0.5, 0.1, 0.5, HEIGHT)).toBe(true)
+    expect(inMarsh([marsh], 0, 0, 0, HEIGHT)).toBe(true)
+  })
+
+  it('is false inside its box but off the triangle, which a box would not tell', () => {
+    expect(inMarsh([marsh], 1.8, 0, 1.8, HEIGHT)).toBe(false)
+  })
+
+  it('is false standing clear above it, and on a map with none', () => {
+    expect(inMarsh([marsh], 0.5, 0.5, 0.5, HEIGHT)).toBe(false)
+    expect(inMarsh([], 0.5, 0, 0.5, HEIGHT)).toBe(false)
+  })
+
+  it('takes a triangle wound either way', () => {
+    const backwards: MarshArea = { triangles: new Float32Array([0, 0, 0, 2, 2, 0]), surface: 0 }
+    expect(inMarsh([backwards], 0.5, 0, 0.5, HEIGHT)).toBe(true)
   })
 })
 
