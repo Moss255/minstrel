@@ -2889,3 +2889,54 @@ Not read by anything yet — the game dresses the Hero by hand, `hero.ts`. Not
 established: the first of the two 90xx values, and where a preset's hair
 style, variant and colour are kept, if in it at all. The Hero's own are the
 player's, chosen at character creation.
+
+# Attending characters — `/data/bin/attnpc.gp2`
+
+`attnpc_<lang>.bin`, one to a language: a tagged data table of five `0x64`
+records of 19 values, value 2 a string and the rest integers, the same in
+every language but for the name's offset. In English the five are **Aquila,
+Ivor, Dr Phlegming, Sterling and Erinn** — the characters who go along with
+the Hero for a stretch of the story, INFERRED from who they are.
+`readAttendingCharacters` reads it.
+
+| value | meaning | evidence |
+|---|---|---|
+| 0 | its number, 1 to 5 | |
+| 1 | its model, `/data/chara_sub/s<nnn>.chr` | Ivor's 17 is the `s017.chr` the event introducing him loads (`ev02210`), Erinn's 16 the `s016.chr` of her morning (`ev02130`); so Aquila's is `s019`, Dr Phlegming's `s012` and Sterling's `s051`, INFERRED |
+| 2 | the name | |
+| 3 | `unknown_3` | 1, 1, 0, 0, 0 |
+| 4 | `unknown_4` | 3, 0, −1, −1, 3 |
+| 5 | a level, INFERRED | Aquila 20, Ivor 3, the rest 1 |
+| 6 | `unknown_6` | 1 on Erinn, 0 on the rest |
+| 7–15 | numbers — INFERRED to be in the level tables' column order: strength, resilience, agility, deftness, charm, magical might, magical mending, maximum HP, maximum MP | on Ivor and Erinn, who cast nothing, both magic values are 0 and the largest value is where maximum HP is; Aquila, who has a casting pack, has a maximum MP of 84. His agility reads 0, which fits nothing, so the order is not settled |
+| 16 | `unknown_16` | 26 on Aquila, −1 on Ivor and Erinn, 0 on the others |
+| 17 | a weapon's item id, 0 for none | Ivor's 20004, the copper sword; Aquila's 20006 |
+| 18 | a shield's item id, 0 for none | Ivor's 21296, the pot lid |
+
+Read so, **Ivor** is level 3 — strength 15, resilience 13, agility 16,
+deftness 22, charm 10, 25 HP and no MP — with a copper sword and a pot lid.
+
+**Only the fighters have battle motions.** A character's motion packs in
+`/data/chara_sub` are its model's name and a suffix, as the Hero's are in
+`chara_mp` (`mp0200b`, `be`, `bm`). Ivor's `s017b` holds damage, death,
+guard, item, `sake` (a dodge), side- and backsteps, sleep and more, and
+`s017be` two attacks. Aquila's `s019` has `b`, `be` and `bm`, the last a
+casting pack as the Hero's `mp0200bm` is. Erinn, Dr Phlegming and Sterling
+have none. Ivor's field set is `s017.chr` — the model, on a 12-bone rig, with
+`walk`, `run` and `stand` — with three faces, `s017f01` to `s017f03`, which an
+event hangs from his head (`235(10, 1, "head")` in `ev02210`), and a night
+version, `s017n`.
+
+**When he goes along: story stage 2.2, back at 2.3.** The triggers (see
+"Triggers") put the events that speak with him at stage 2.2 — `ev02200` in
+Erinn's house, `ev02220` and `ev02222` in the village, `ev02230` to `ev02250`
+in its houses — then `ev02300`, `ev02320` and `ev02350` in map 5101, at the
+landslide ("We're here at last. The landslide's…"), and his return at 2.3,
+`ev02400` to `ev02450`. From `ev02220` on, those events do not load his model:
+they call `566(10, 1)` and hand character 1 his motion pack, which reads as
+"character 1 is the party's", INFERRED. **How he joins is not found**: no
+script on the way writes a game-wide variable, or calls anything with his
+number or his model's, and no table found holds a party by story stage.
+
+Not established: values 3, 4, 6 and 16; the order of the numbers; how a
+character joins and leaves the party.

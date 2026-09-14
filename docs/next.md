@@ -9,6 +9,36 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## Ivor is found — 14 September
+
+**He is an attending character.** `/data/bin/attnpc.gp2` holds the five people
+who go along with the Hero for a stretch — Aquila, Ivor, Dr Phlegming,
+Sterling and Erinn — each with a model, a level, numbers and what they carry
+(`game-formats/FORMAT.md`, "Attending characters"; `readAttendingCharacters`).
+Ivor is model `s017`, level 3, 25 HP and no MP, with a copper sword and a pot
+lid; the level and the order of his numbers are INFERRED.
+
+**Everything to draw him is on the cartridge**: `s017.chr`, walking, running
+and standing on a 12-bone rig, three faces for his head, and battle packs of
+his own — `s017b` (damage, death, guard, item, a dodge …) and `s017be` (two
+attacks).
+
+**He goes along over story stage 2.2 and is back at 2.3**, by the triggers of
+his events: the village and its houses, then map 5101 — `S01M01`, whose
+doorways join `F01` to `F02` — where the landslide is. So **`S01M01` is the
+mountain pass**, INFERRED. From `ev02220` on, his events treat him as the
+party's, `566(10, 1)`.
+
+**Not found: how he joins and leaves.** No script on the way writes a
+game-wide variable or hands anything his number or his model's. For the
+slice, stage 2.2 until his return at 2.3 says when he is there — ours until
+the rule is found.
+
+**Next:** the party of two in battle (M5), with his numbers and his own
+motions, and Ivor following the Hero in the field over that span (M6).
+
+---
+
 ## The Hero is dressed — 14 September
 
 The Hero is no longer the first part of each kind by name. They wear the
@@ -71,7 +101,7 @@ M8 have not started, and audio, meant to start alongside M5, has not either.
 | gap | milestone | what it needs |
 |---|---|---|
 | The opening beats, and story flags | M3, M7 | The functions other events call, which event runs when (the triggers), and the game-wide variables, scope 64. The largest job left, and on the slice's critical path. |
-| Ivor | M5, M6 | No monster record or system string names him. Next: the companion table `attnpc`, then the event scripts. The party of two and Ivor as a companion both wait on it. |
+| Ivor | M5, M6 | Found in `attnpc` — see the top. Left: how he joins and leaves, and building the party of two and the companion. |
 | The equipment screen's layouts | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5). Until then, where everything sits is ours. |
 | The rest of the equipment screen | M4 | Moving round the grid by row and column, L/R between tabs, Change Character and sorting; the Hero's figure; the name plate's colour for each character; a string for "Nothing Equipped", which is ours. |
 | Item art not found | M4 | 193 of the 1,178 items have no icon by the rule and show a stand-in (ours). The English vocation icons for "Used by" are not in `obj_ii` or `oiij`, which hold slots and stars. The lit stars are `oiij` cells 21 and 24–27; what white and gold stars mean is not known. |
@@ -97,6 +127,8 @@ M8 have not started, and audio, meant to start alongside M5, has not either.
 - **The mini-map's dots**: what colour the Hero's dot is, and whether it is
   `obj_mm.pac` cell 5. `marker0` stands in, and is ours. Also where a room's dot
   sits on its area's picture, and how a large picture scrolls.
+- **Ivor's numbers**: in a battle beside him, his HP — 25 if `attnpc`'s
+  numbers are in the level tables' order.
 - **How a monster chooses**: the weights for its six ways (an even table stands
   in); the critical chance; fleeing's chance.
 - **The Hero's vocation, and a level-1 status screen**, to settle which
@@ -1292,8 +1324,8 @@ moving only by the controller's `step`, as the game moves them.
 The 11 without floor are far from the slice: nine lead to `O00`, from `F44`,
 `F56`, `F99` and its two sub-maps, and one each is in `F07` and `F27`. The game
 puts the character on the nearest ground there, as for any arrival. Nothing of
-this waits on the emulator any more. Which of `D01` and `S01M01` is M7's
-mountain pass is not established here.
+this waits on the emulator any more. `S01M01` is M7's mountain pass,
+INFERRED — see "Ivor is found" at the top.
 
 What follows was measured with a field's collision at half its size, and is
 kept for what it ruled out.

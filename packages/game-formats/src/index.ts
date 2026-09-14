@@ -7,6 +7,12 @@ export {
   readActions,
 } from './actions.ts'
 export {
+  ATTENDING_TAG,
+  type AttendingCharacter,
+  type AttendingNumbers,
+  readAttendingCharacters,
+} from './attnpc.ts'
+export {
   COLLISION_KIND,
   type CollisionBounds,
   type CollisionCell,
