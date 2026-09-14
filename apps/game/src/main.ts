@@ -12,6 +12,7 @@ import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
   type Animation,
   type Geometry,
+  loopFrames,
   measureBounds,
   type NodeTransform,
   poseGeometry,
@@ -37,7 +38,9 @@ import {
   type CollisionWorld,
   calmFor,
   createCollisionWorld,
+  createFollower,
   type Fighter,
+  type Follower,
   groundBelow,
   headingAngle,
   PERSON,
@@ -89,7 +92,14 @@ import {
   fitMeshes,
   NO_FIT,
 } from './collisionview.ts'
-import { alongAt, COMPANION_MOTIONS, companionFighter, companionLook, IVOR } from './companion.ts'
+import {
+  alongAt,
+  COMPANION_MOTIONS,
+  companionFighter,
+  companionLook,
+  FOLLOW_TICKS,
+  IVOR,
+} from './companion.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
@@ -386,6 +396,11 @@ let heroHp: number | undefined
 let heroMp: number | undefined
 /** Ivor's hit points between battles; undefined is full. */
 let ivorHp: number | undefined
+/** Ivor's footsteps behind the Hero in the field — see `follow.ts`; begun anew in each map. */
+let ivorTrail: Follower | undefined
+/** Which way Ivor faces in the field, and whether his footsteps moved this frame. */
+let ivorFacing = 0
+let ivorWalking = false
 /** Who stands beside the Hero in the battle under way: their place in it, and their look. */
 let battleCompanion:
   | { readonly index: number; readonly model: string; readonly packs: readonly string[] }
@@ -740,6 +755,8 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast was posed before the scale was known; redo it now it is.
   poseMap(0)
   self = player(at, scale)
+  // Whoever follows comes in on the Hero, with no footsteps behind them yet.
+  ivorTrail = createFollower(FOLLOW_TICKS, at)
   if (via) self.facing = via.facing
   beginRoaming()
 
@@ -895,9 +912,18 @@ function frame(now = 0): void {
     self.stick = { forward: sticks.forward, right: sticks.right }
     // An event moves the Hero itself, and the keys wait for it — see `playEvent`.
     if (playing) playEvent(elapsedMs)
+    const ivorX = ivorTrail?.x ?? 0
+    const ivorZ = ivorTrail?.z ?? 0
     const { moving, travelled } = playing
       ? { moving: false, travelled: 0 }
-      : advance(self, world, camera.yaw, elapsedMs)
+      : advance(self, world, camera.yaw, elapsedMs, ivorTrail)
+    // Ivor walks while his footsteps move, facing the way they go.
+    if (ivorTrail) {
+      const dx = ivorTrail.x - ivorX
+      const dz = ivorTrail.z - ivorZ
+      ivorWalking = dx !== 0 || dz !== 0
+      if (ivorWalking) ivorFacing = Math.atan2(dx, dz)
+    }
     // The field's monsters, on the Hero's own ticks, and only while nothing
     // else is up — see `beginRoaming`.
     if (roaming && !battle && !menu && !visit && !talking && !playing) {
@@ -999,6 +1025,7 @@ function frame(now = 0): void {
               ...loaded.cast.members.map((member) => member.placement),
               ...loaded.cast.sprites2d.map((sprite) => sprite.placement),
               { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
+              ...[ivorInField()].flatMap((at) => (at ? [at] : [])),
             ],
             (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
           )
@@ -1020,6 +1047,8 @@ function frame(now = 0): void {
       ...(roaming && !battle ? roamerPieces(now) : []),
       // Pots and barrels face the camera too — see `propPiecesNow`.
       ...propPiecesNow(loaded, now),
+      // Ivor behind the Hero, while he goes along — see `ivorInField`.
+      ...ivorFieldPieces(now),
       ...playerPieces(
         heroPose ? { ...self, motionFrame: heroPose.frame } : self,
         loaded.figure,
@@ -1959,7 +1988,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   }
   // Ivor goes along over part of the story — see `companion.ts`; `?ivor=1`
   // brings him at any stage, to look at.
-  const along = alongAt(storyStage) || params.get('ivor') === '1'
+  const along = ivorAlong()
   const ivor = along ? loaded.attending.find((c) => c.id === IVOR) : undefined
   const party: Fighter[] = ivor ? [hero, companionFighter(ivor)] : [hero]
   const hp = new Map([[0, heroHp ?? row.maxHp]])
@@ -2018,6 +2047,61 @@ function spotsFor(count: number): { x: number; y: number; z: number }[] {
       : undefined
     return { x, y: hit ? toFloat(hit.y) : hy, z }
   })
+}
+
+/** Whether Ivor goes along now — see `alongAt`; `?ivor=1` brings him at any stage, to look at. */
+function ivorAlong(): boolean {
+  return alongAt(storyStage) || params.get('ivor') === '1'
+}
+
+/**
+ * Where Ivor stands in the field while he goes along: on the Hero's footsteps.
+ * None in a battle or an event, which stand him themselves, and none while he
+ * stands on the Hero, as he does on arriving until the Hero walks off —
+ * **ours**, both.
+ */
+function ivorInField(): { x: number; y: number; z: number } | undefined {
+  const trail = ivorTrail
+  if (!trail || !self || battle || playing || !ivorAlong()) return undefined
+  const x = toFloat(trail.x)
+  const z = toFloat(trail.z)
+  const apart = Math.hypot(x - toFloat(self.state.x), z - toFloat(self.state.z))
+  if (apart < toFloat(person().radius) * 2) return undefined
+  return { x, y: toFloat(trail.y), z }
+}
+
+/**
+ * Ivor in the field, in his own model: his `walk` in step with the Hero's —
+ * the same pace over the same ground — or his `stand`.
+ */
+function ivorFieldPieces(now: number): Piece[] {
+  const at = ivorInField()
+  const rom = cartridge
+  const who = loaded?.attending.find((c) => c.id === IVOR)
+  if (!at || !rom || !who || !self) return []
+  const { model } = companionLook(who)
+  const look = actorLookOf(rom, model, [])
+  if (!look) return []
+  const motion = look.motions.get(ivorWalking ? 'walk' : 'stand') ?? look.motions.get('stand')
+  const length = Math.max(1, motion ? loopFrames(motion) : 1)
+  const frame = ivorWalking
+    ? Math.floor(self.motionFrame) % length
+    : Math.floor((now / 1000) * MAP_FPS) % length
+  const placement = {
+    id: -1,
+    map: 0,
+    x: at.x,
+    y: at.y,
+    z: at.z,
+    facing: ivorFacing,
+    offset: 0,
+  } as NpcPlacement
+  return castPieces(
+    { name: model, model: look.model, motion, floor: look.floor, placement },
+    look.catalogue,
+    characterScale,
+    frame,
+  )
 }
 
 /**

@@ -54,6 +54,13 @@ export function companionLook(who: AttendingCharacter): { model: string; packs: 
 }
 
 /**
+ * How far behind the Hero Ivor walks in the field, in the Hero's moving ticks
+ * — **ours**: a third of a second at a walk, which at three of the Hero's
+ * heights a second is one height back. See `follow.ts` in `@minstrel/sim`.
+ */
+export const FOLLOW_TICKS = 20
+
+/**
  * Which of its own motions a cue plays — **ours**, by name: the first of its
  * two attacks, and its stand for appearing and running, which it does not do.
  */

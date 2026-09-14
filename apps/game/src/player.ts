@@ -11,7 +11,14 @@ import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import type { Piece } from '@minstrel/gl'
 import type { Animation, Model } from '@minstrel/nitro-gfx'
 import { moveRelativeToCamera } from '@minstrel/render'
-import { type CharacterState, type CollisionWorld, PERSON, step } from '@minstrel/sim'
+import {
+  type CharacterState,
+  type CollisionWorld,
+  type Follower,
+  PERSON,
+  recordLeader,
+  step,
+} from '@minstrel/sim'
 
 /** Simulation ticks a second, and how long one is. */
 export const TICK_MS = 1000 / 60
@@ -104,12 +111,17 @@ export function player(
  *
  * Returns how far the character actually got, which is not how far it asked to
  * go: a wall takes most of it away, and the walk cycle runs on the difference.
+ *
+ * A `follower` is handed where the character stands after every tick, so
+ * whoever walks behind them keeps to their steps — see `follow.ts` in
+ * `@minstrel/sim`.
  */
 export function advance(
   self: Player,
   world: CollisionWorld,
   yaw: number,
   elapsedMs: number,
+  follower?: Follower,
 ): { moving: boolean; travelled: number } {
   let keyForward = 0
   let keyRight = 0
@@ -156,6 +168,7 @@ export function advance(
       self.facing += turn * TURN_RATE
     }
     self.state = step(world, self.state, fx32(dx), fx32(dz), PERSON)
+    if (follower) recordLeader(follower, self.state)
     travelled += Math.hypot(
       toFloat(self.state.x) - toFloat(from.x),
       toFloat(self.state.z) - toFloat(from.z),

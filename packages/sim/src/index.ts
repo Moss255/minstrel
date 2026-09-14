@@ -55,6 +55,13 @@ export {
 } from './collision.ts'
 export { SimError } from './errors.ts'
 export {
+  createFollower,
+  type Follower,
+  type Point,
+  recordLeader,
+  resetFollower,
+} from './field/follow.ts'
+export {
   calmFor,
   HEADINGS,
   headingAngle,
