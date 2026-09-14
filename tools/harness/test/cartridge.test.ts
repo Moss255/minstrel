@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { chooseFigure, figurePieces, poseFigure } from '@minstrel/actor'
+import { dressFigure, figurePieces, poseFigure } from '@minstrel/actor'
 import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
 import {
   isBitmapFont,
@@ -3421,7 +3421,11 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // and saying so beats passing vacuously.
     expect(stands.length, 'the family should carry more than one `stand`').toBeGreaterThan(1)
 
-    const figure = chooseFigure({ parts, motions })
+    // Any body and legs on the rig will do; these are the Hero's.
+    const figure = dressFigure(
+      { parts, textures: new Map(), motions },
+      { body: 'p_b007', legs: 'p_p215' },
+    )
     const pieces = figurePieces(figure)
     expect(pieces.length).toBeGreaterThan(0)
 

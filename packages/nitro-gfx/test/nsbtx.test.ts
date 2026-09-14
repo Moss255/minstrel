@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NitroGfxError } from '../src/errors.ts'
-import { readTex0, TextureFormat, texelDataSize } from '../src/nsbtx.ts'
+import { readNsbtx, readTex0, TextureFormat, texelDataSize } from '../src/nsbtx.ts'
 
 /**
  * Build a TEX0 block. Fixtures may not contain cartridge bytes, so the layout
@@ -235,5 +235,43 @@ describe('readTex0', () => {
     const data = simple()
     new DataView(data.buffer).setUint32(0x14, 0x7fff_0000, true)
     expect(() => readTex0(data)).toThrow(NitroGfxError)
+  })
+})
+
+/** A TEX0 block in the head every Nitro file shares, laid out as FORMAT.md has it. */
+function wrapBtx0(tex0: Uint8Array, blocks = 1): Uint8Array {
+  const out = new Uint8Array(0x14 + tex0.length)
+  const view = new DataView(out.buffer)
+  out.set([0x42, 0x54, 0x58, 0x30])
+  view.setUint16(0x04, 0xfeff, true)
+  view.setUint16(0x06, 1, true)
+  view.setUint32(0x08, out.length, true)
+  view.setUint16(0x0c, 0x10, true)
+  view.setUint16(0x0e, blocks, true)
+  view.setUint32(0x10, 0x14, true)
+  out.set(tex0, 0x14)
+  return out
+}
+
+describe('readNsbtx', () => {
+  const tex0 = () =>
+    buildTex0(
+      [{ name: 'p_a000_00', width: 8, height: 8, format: TextureFormat.Palette16, texels: [] }],
+      [{ name: 'p_a000_00_pl', colours: [bgr(0, 0, 0), bgr(31, 31, 31)] }],
+    )
+
+  it('reads the TEX0 block its head names', () => {
+    const set = readNsbtx(wrapBtx0(tex0()))
+    expect(set.textures.map((t) => t.name)).toEqual(['p_a000_00'])
+    expect(set.palette('p_a000_00_pl')).toBeDefined()
+  })
+
+  it('refuses a file that is not BTX0, holds no block, or names one past its end', () => {
+    expect(() => readNsbtx(tex0())).toThrow(/BTX0/)
+    expect(() => readNsbtx(wrapBtx0(tex0(), 0))).toThrow(/no block/)
+    const far = wrapBtx0(tex0())
+    new DataView(far.buffer).setUint32(0x10, 0x7fff_0000, true)
+    expect(() => readNsbtx(far)).toThrow(NitroGfxError)
+    expect(() => readNsbtx(far.subarray(0, 0x10))).toThrow(NitroGfxError)
   })
 })

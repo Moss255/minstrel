@@ -2691,9 +2691,9 @@ glove is a medicinal herb, under `g` a glove.
 
 Not established: the icon of the 193 items the rule gives none — the wonder
 helm, the tracksuit top and others; whether the item record names it among
-its undecoded bytes; and the worn models beside the icons in
-`/data/pack_lv5/chara_pc.gp2`, `p_<letter><nnn>.nsbmd`, whose numbers match the
-icons' on the letters they share (`p_w`, `p_b`, `p_m`, `p_p`, `p_s`).
+its undecoded bytes. The worn parts beside the icons in
+`/data/pack_lv5/chara_pc.gp2` take the same letters and numbers — see
+"Character parts".
 
 # Item descriptions — `itemexpl_<lang>.nat`
 
@@ -2740,3 +2740,142 @@ Not established: `unknown_1` and `unknown_2`; and where an item's numbers,
 rarity and who may use it are kept — none of them is in this file, the item
 tables, `itembtlprm.nat` or `itemsort`, at any position, width or scale
 tested against 41 shields' published defence and rarity.
+
+# Character parts — `/data/pack_lv5/chara_pc.gp2` and `chara_pd.gp2`
+
+**A worn part is named by its item's id, as the item's icon is** (see "Item
+icons"): the thousands choose a letter, the rest a three-digit number. The
+celestial suit, 13007, is `p_b007`. `partName` in `parts.ts` makes the name.
+
+| id | worn | letter | in `chara_pc` | in `chara_pd` |
+|---|---|---|---|---|
+| 12xxx | headgear | `m` | 142 models, a bone of their own | 142 models |
+| 13xxx | armour | `b` | 192 models on the 14-bone rig | 192, on a 21-bone rig |
+| 14xxx | a body's bare arms — no item | `a` | 192 texture files | 192 models |
+| 15xxx | gloves | `g` | 63 texture files | 63 models |
+| 16xxx | legwear | `p` | 79 models on the rig | 79 |
+| 17xxx | footwear | `r` | 89 texture files | 89 models |
+| 20xxx | weapons | `w` | 200 models, a bone of their own | 178 |
+| 21xxx | shields | `s` | 35 models, a bone of their own | 35 |
+| — | faces | `f` | 24 models, a bone of their own | 24 |
+| — | hair | `h` | 121 models, a bone of their own; 207 texture files | 122; 207 |
+
+The letters are the icons' on every category both have, and the counts agree:
+35 shields have icons and there are 35 `p_s` — which were taken for shoes
+before this; 87 footwear have icons and there are 89 `p_r`. Every `d_` number
+is a `p_` number (175 of `d_w`'s 178). And the presets below wear parts by the
+rule: 141 of the 155 ids the vocations' presets wear name a part that exists.
+The other 14 name none — mostly legwear, 16190 on five women (an id with no
+item either), 16101, 16102, 16110, 16112 and 16201 — so something maps some
+items to another's part, and it is not found.
+
+**Arms, gloves, footwear and hair colours are textures, named alike.** A
+`p_a`, `p_g` or `p_r` file is an NSBTX holding one 8×16 texture and its
+palette: `p_a000_00` in 191 of the 192 arms files and all 63 gloves,
+`p_r000_00` in all 89 footwear. Every body has a material bound to
+`p_a000_00` — 188 of the 192 name it after their own number, `p_b002`'s
+`p_a002_00`, and every body has an arms file of its number — and every legs
+model one bound to `p_r000_00`. So the file loaded decides the arms and the
+footwear; **resolved by name, first found, every character wears the first
+file walked**, which is what the game's figure did until `Figure.textures`.
+
+Hair the same way: each of the 207 `p_h<ss><c>a.nsbtx` holds one texture,
+`p_h<ss>0a_00`, which the style's models bind. Styles 00 to 19 have ten such
+files, `c` 0 to 9, and 20 to 23 one or two — a colour, INFERRED. A hair model
+is `p_h<ss>0<v>.nsbmd`: 24 styles, each in variants `a` to `e` (style 01 also
+`f`). The variants differ in height — style 00's `a` reaches 7.41 above its
+origin, its `e` 4.04 — which reads as hair cut to fit headgear, INFERRED.
+
+**Hung from the head, INFERRED.** Faces, hair and headgear each carry one bone
+of their own and are modelled about their origin in one space: headgear
+`p_m200` spans y 1.82 to 7.93, hair `p_h000a` −0.73 to 7.41, face `p_f006`
+−0.32 to 4.00. The faces and hair were shown to land on the neck through the
+rig's `head` bone (`docs/M2-village.md`). Where weapons and shields hang is not
+established: `chara_pc`'s rig has no hand bone.
+
+**`chara_pd` is the same wardrobe on another rig**, of 21 bones — `root`, the
+part's own, `waist`, `chest`, `arm1L` to `arm3L`, `weaponL`, `arm1R` to
+`arm3R`, `weaponR`, `head`, `manto1`, `leg1L` to `leg3L`, `leg1R` to `leg3R`,
+`skirt` — whose only motions are one standing loop to each of 28 packs,
+`md0200m` and `md0200w` to `md0213m` and `md0213w` with no `0202`, and
+`md0200m_start` and `md0200w_start` of 51 frames. Every motion in
+`chara_mp.gp2`, the walk among them, and the Hero's own event poses
+(`ev7700p000.chr`: `ne_lp`, `oki`) drive 14 bones, so the figure that walks is
+`chara_pc`'s. That `chara_pd`'s is the equipment screen's is INFERRED from its
+standing-only motions. Beside its parts: wings, `d_hane`, on 8 bones of their
+own with `d_hane_m` and `d_hane_w` motions of 51 frames; `d_wa`, a ring whose
+node is named `d_m805` — the halo's part, 12805; `d_wing`; and a coffin,
+`d_kanoke`.
+
+Not established: the four bodies whose arms material is named otherwise
+(`p_b003`, `p_b016`, `p_b490`, `p_b505`); the one arms file whose texture is
+named for itself; where weapons and shields attach; which hair variant goes
+with which headgear; and the items worn with no part of their own.
+
+# Character presets — `/data/bin/charapreset.bin` and `presetdt_<lang>.bin`
+
+**`charapreset.bin`**, a loose tagged data table: a `0x64` record holding 29,
+then 29 `0x65` records of 102 values. Every value is an integer by its kind
+bits but value 76, a string, and 90 and 91, floats. The strings are Shift-JIS.
+Four are names — ナイン, シャノン, テンバタラ, ミーナ, the last two used by two
+records each — and twenty-three name a vocation and a sex: せん (warrior), ぶと
+(martial artist), そう (priest), まほ (mage), ぞく (thief, a man only), たび
+(minstrel) and the six vocations after them, each おとこ, man, or おんな, woman.
+
+| value | meaning | evidence |
+|---|---|---|
+| 0–74 | `unknown_items`: item ids, `0xFFFFFFFF` for none, in runs — weapons, then shields, legwear, footwear, gloves, armour, then headgear | every one an item's id; what the lists are for is not established |
+| 75 | `unknown_75` | 64, 66 and 55 on the vocations; 18 to 25 on the named four |
+| 76 | the name | a string, as above |
+| 77 | `unknown_77` | 9024 on all 23 vocations; 9023 or 9024 on the named |
+| 78 | a face, 9000 and its number — INFERRED | `f006` on every man's vocation record, `f005` on every woman's, and on all 41 presets here and in `presetdt` it lands on a face that exists |
+| 79 | armour worn | 13xxx |
+| 80 | legwear worn | 16xxx; 8001 on the sage man, which names nothing |
+| 81 | gloves worn, or the arms when there are none | 15xxx or 14xxx |
+| 82 | footwear worn | 17xxx |
+| 83 | headgear worn | 12xxx |
+| 84 | weapon | 20xxx |
+| 85 | shield | 21xxx |
+| 86 | sex: 0 a man, 1 a woman | on all 23 vocations, as おとこ and おんな say |
+| 87 | the arms, 14xxx, numbered as the armour | 28 of 29; ナイン's is 1825 |
+| 88, 89 | `unknown_88`, `unknown_89` | 1 or 2; 0 |
+| 90, 91 | floats, 1.0 on most — 0.95 and 0.98 on the mage woman, 1.154 to 1.195 on テンバタラ; a figure's proportions, INFERRED | |
+| 92–101 | `unknown_92` to `unknown_101` | the same ten on most vocations |
+
+**What each vocation wears**, by the item names. The minstrel man: flamenco
+shirt, loud trousers, acroboots and feather headband, no weapon. The minstrel
+woman: dancer's dress, starlet sandals and circlet, her legwear 16190 naming
+no item. The warrior man: the warrior's armour, trousers, gloves, boots, helm,
+sword and shield — which ナイン wears too.
+
+**`presetdt_<lang>.bin`**, one to a language in `/data/bin/presetdt.gp2`: a
+tagged data table whose `0x66` and `0x68` records each list 20 string offsets,
+then a `0x69` record holding 12 and 12 `0x6a` records of 35 values — value 1 a
+string, the rest integers. The strings are 40 Shift-JIS names and, in English,
+Aquila, Erinn, Patty and Sellma, whom the last four records name. **So the
+village's Erinn is built of parts**: "Erinn's outfit" 13622 (`p_b622`), her
+boots 17140, her headkerchief 12432.
+
+| value | meaning |
+|---|---|
+| 0 | the record's number |
+| 1 | its name |
+| 2 | 0 on Aquila, 1 on Erinn, Patty and Sellma — a sex, INFERRED |
+| 3 | the arms, 14xxx — numbered as the armour on 11 of 12 |
+| 4–8 | `unknown_4` to `unknown_8` |
+| 9 | armour |
+| 10 | legwear |
+| 11, 12 | as `charapreset`'s 77 and 78 — 12 a face, INFERRED |
+| 13 | none on all 12 — gloves, INFERRED |
+| 14 | footwear |
+| 15 | headgear |
+| 16 | weapon — a knife, 19061, on Patty |
+| 17 | shield |
+| 18 | an accessory, 18039, on Patty |
+| 19–34 | `unknown_19` to `unknown_34` |
+
+55 of the 57 ids these records wear name a part that exists.
+
+Not read by anything yet — the game dresses the Hero by hand, `hero.ts`. Not
+established: the first of the two 90xx values, and where hair's style, variant
+and colour are kept, if in a preset at all.

@@ -145,6 +145,27 @@ export function isNsbtx(data: Uint8Array): boolean {
   )
 }
 
+/**
+ * Parse an NSBTX file: the `TEX0` block its head names.
+ *
+ * The head is the one every Nitro file shares — the stamp, a byte-order mark,
+ * a version, the file's size, the head's size, a block count at `0x0E`, then
+ * each block's offset from `0x10` (FORMAT.md, "Container"). A
+ * `BTX0` holds one block, `TEX0`, whose own size is at its `+0x04`.
+ */
+export function readNsbtx(data: Uint8Array): TextureSet {
+  if (!isNsbtx(data)) throw new NitroGfxError('not an NSBTX file: no BTX0 stamp', 0)
+  checkRange(data, 0, 0x14, 'nsbtx head')
+  if (u16(data, 0x0e, 'nsbtx.blockCount') < 1) {
+    throw new NitroGfxError('NSBTX file holds no block', 0x0e)
+  }
+  const offset = u32(data, 0x10, 'nsbtx.blockOffset')
+  checkRange(data, offset, 8, 'nsbtx TEX0 head')
+  const size = u32(data, offset + 4, 'tex0.size')
+  checkRange(data, offset, size, 'nsbtx TEX0 block')
+  return readTex0(data.subarray(offset, offset + size))
+}
+
 /** Parse a `TEX0` block, given the block's own bytes. */
 export function readTex0(block: Uint8Array): TextureSet {
   const stamp = resourceName(block, 0, 4)

@@ -1,17 +1,18 @@
 export {
   attachedGeometry,
   boneWorld,
-  chooseFigure,
+  dressFigure,
   type Figure,
   type FigurePiece,
   figurePieces,
   figureStacks,
+  type Outfit,
   poseFigure,
   usefulParts,
 } from './figure.ts'
 export {
-  ATTACHMENT_BONES,
   CHARACTER_PARTS,
+  CHARACTER_TEXTURES,
   type Library,
   type LibraryBuilder,
   library,

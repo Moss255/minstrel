@@ -236,14 +236,20 @@ export function playerPieces(
         return { ...v, x: atX + x * cos + z * sin, y: atY + y, z: atZ - x * sin + z * cos }
       })
       const geometry = { ...posed, vertices }
-      const texture = textureOf(cat, piece.model, piece.shape)
+      const texture = textureOf(cat, figure, piece.model, piece.shape)
       return texture ? { geometry, ...texture } : { geometry }
     },
   )
 }
 
-function textureOf(cat: Catalogue, model: Model, shape: number): DecodedTexture | undefined {
+/** A shape's texture, from what dresses the figure before anything else of that name. */
+function textureOf(
+  cat: Catalogue,
+  figure: Figure,
+  model: Model,
+  shape: number,
+): DecodedTexture | undefined {
   const materialIndex = model.shapeMaterials[shape]
   const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
-  return material ? textureFor(cat, material) : undefined
+  return material ? textureFor(cat, material, figure.textures) : undefined
 }

@@ -9,12 +9,54 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The Hero is dressed — 14 September
+
+The Hero is no longer the first part of each kind by name. They wear the
+**celestial suit, celestial stockings and celestial shoes** — `p_b007` and
+`p_p215` on the rig, the suit's own arms (`p_a007`) and the shoes (`p_r120`)
+as textures — with face `p_f006` and a stand-in hair. `hero.ts` holds it,
+`dressFigure` in `@minstrel/actor` builds it.
+
+**What made it possible — read, `game-formats/FORMAT.md`, "Character parts"
+and "Character presets":**
+
+- A worn part is named by its item's id, as the icon is: 13007 is `p_b007`.
+  `p_s` is shields, not shoes as §7's source had it; footwear is `p_r`.
+- Arms, gloves, footwear and hair colours are not models but texture files,
+  each holding one texture named alike across the files of its kind —
+  `p_a000_00` in 254 of the 255 arms and gloves. So the catalogue's first-found-wins
+  gave every figure the arms and shoes of whichever file was walked first. A
+  figure now carries its own (`Figure.textures`), which `textureFor` asks
+  first.
+- `charapreset.bin` is the game's character presets, one to each vocation and
+  sex, with what each wears; `presetdt_<lang>.bin` has eight more named
+  characters and Aquila, Erinn, Patty and Sellma. **The Minstrel's outfit is there**:
+  flamenco shirt, loud trousers, acroboots and feather headband for a man;
+  dancer's dress, starlet sandals and circlet for a woman.
+
+**Ours, each said so in `hero.ts`:** the outfit — the user's choice for the
+slice, by the items' own words ("well-suited to apprenticing Celestrians");
+nothing on the cartridge puts it on the Hero, and the three ids are listed
+together nowhere — no headgear, a man's face, and the hair, style 00 variant
+`a` colour 0.
+
+**`chara_pd.gp2` is the same wardrobe, larger** — every `d_` part numbered as
+its `p_` one, arms, gloves and footwear as models there — on a 21-bone rig
+with only standing poses, `md02xx` in man's and woman's pairs. The walk and the
+Hero's own event motions drive 14 bones, so the field figure is `chara_pc`'s;
+`chara_pd` is most likely the equipment screen's figure, INFERRED.
+
+**Left:** the hair — which value picks the style, variant and colour; and the
+two 90xx values' first, which is not hair by any rule tried. See §7.
+
+---
+
 ## What is still open — 14 September, at `ae5e16c`
 
 This replaces the list of 13 September further down, which is kept for its
 questions to the emulator. Each gap's evidence is in the section it names.
 
-**Where the milestones stand.** M0–M2 are done but for the Hero stand-in (§7)
+**Where the milestones stand.** M0–M2 are done but for the Hero's hair (§7)
 and a field's doorways (§6). M3 reads the event text and plays the morning; the
 rest of the opening is open. M4 is as far as the cartridge goes; the equipment
 screen is drawn, and its numbers wait on the emulator. M5 has battles, spells,
@@ -56,7 +98,8 @@ M8 have not started, and audio, meant to start alongside M5, has not either.
   in); the critical chance; fleeing's chance.
 - **The Hero's vocation, and a level-1 status screen**, to settle which
   level-table columns are which.
-- **Which parts make the Hero** (§7).
+- **The Hero's hair** (§7): with a character of known look on screen, which
+  of a preset's values moves when the hair style or colour does.
 - **Where a field's doorways really are** (§6), which blocks M7's mountain pass.
 - **Which treasure kind is the pot** and which the barrel; **where the Hero
   wakes**, `M01M07` or `M01M10`.
@@ -1266,14 +1309,15 @@ the walkable ground nearest the arrival and says so on the status line.
 
 ---
 
-## 7. The Hero is a stand-in — blocked on a finding, not on work
+## 7. The Hero is dressed; their hair is a stand-in — **14 September**
 
-`chooseFigure` takes the first part of each kind by name, which is arbitrary but
-reproducible and gives a complete figure. Which parts make the Hero needs the
-preset table, and that has not been found. Nothing here can settle it by
-measurement: unlike the sprite pitch, there is no property of the bytes that
-says "these four parts go together" — it wants either the table or the game
-running. Not blocking anything meanwhile.
+The preset table was found (`charapreset.bin`, FORMAT.md "Character presets")
+and the Hero is dressed from real parts — see the top. `chooseFigure` is gone.
+What is left is the hair: a style of 24, a variant `a` to `e` and a colour of
+up to ten, none of which a preset value has been shown to pick. The two 90xx
+values beside each preset's outfit are the lead: the second lands on a face on
+all 41 presets; the first — 9023, 9024 and 9030 to 9033 — is not a hair style
+by number, times ten or otherwise.
 
 ---
 

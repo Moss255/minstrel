@@ -1,4 +1,5 @@
-import { type LevelRow, type LevelTable, levelAt } from '@minstrel/game-formats'
+import type { Outfit } from '@minstrel/actor'
+import { armsFor, type LevelRow, type LevelTable, levelAt, partName } from '@minstrel/game-formats'
 
 /**
  * The Hero's numbers: their vocation's level table, where their experience
@@ -27,6 +28,59 @@ export const VOCATION_WORDS = 2100
  * cheapest thing its shop sells — so without this the shop could not be tried.
  */
 export const STARTING_GOLD = 100
+
+/**
+ * What the Hero wears: the celestial suit, the celestial stockings and the
+ * celestial shoes.
+ *
+ * **Ours — chosen for the slice on 14 September 2026, not read.** The Hero
+ * wakes a Celestrian fallen to earth, and these are the items the game's own
+ * words make Celestrian (`itemexpl`): the shoes are "well-suited to
+ * apprenticing Celestrians", the stockings "somehow seem angelic". No table,
+ * script or save found puts them on the Hero — the three ids are never listed
+ * together anywhere on the cartridge. The game's own presets dress a Minstrel
+ * otherwise (FORMAT.md, "Character presets"), which would be the reading if
+ * the Hero were dressed as their vocation.
+ *
+ * No headgear: the halo, 12805, is a Celestrian's, and the Hero wakes without
+ * their wings; that the halo went with them is ours too.
+ */
+export const HERO_OUTFIT = { armour: 13007, legwear: 16215, footwear: 17120 } as const
+
+/**
+ * The Hero's face, `p_f006` — the face the character presets give the man of
+ * every vocation. That a preset's second 90xx value names a face is INFERRED
+ * (FORMAT.md, "Character presets"); that the Hero has a man's face is ours:
+ * the slice does not say, and the face is the player's to make in a character
+ * creation the slice leaves out.
+ */
+export const HERO_FACE = 'p_f006'
+
+/**
+ * The Hero's hair — **ours, a stand-in**: style 00 in its variant `a`, in
+ * colour 0. Hair is a style (`p_h<ss>0<v>.nsbmd`, 24 styles in variants `a` to
+ * `e`) coloured by a texture file (`p_h<ss><c>a.nsbtx`, up to ten colours to a
+ * style); where the game reads the three from is not found. FORMAT.md,
+ * "Character parts".
+ */
+export const HERO_HAIR = { model: 'p_h000a', colour: 'p_h000a' } as const
+
+/** The Hero dressed, part by part — see {@link HERO_OUTFIT}. */
+export function heroOutfit(): Outfit {
+  const part = (id: number | undefined): string => {
+    const name = id === undefined ? undefined : partName(id)
+    if (!name) throw new Error(`item ${id} is worn as no part`)
+    return name
+  }
+  return {
+    body: part(HERO_OUTFIT.armour),
+    legs: part(HERO_OUTFIT.legwear),
+    face: HERO_FACE,
+    hair: HERO_HAIR.model,
+    // No gloves, so the arms are the body's own.
+    textures: [part(armsFor(HERO_OUTFIT.armour)), part(HERO_OUTFIT.footwear), HERO_HAIR.colour],
+  }
+}
 
 /** What a seed can raise — see `SEED_GAINS` in `use.ts`. */
 export type GainStat =

@@ -113,6 +113,7 @@ export {
   readNpcStates,
 } from './npc.ts'
 export { isPac, type Pac, type PacMember, readPac } from './pac.ts'
+export { armsFor, PART_LETTERS, partName } from './parts.ts'
 export {
   type Bncg,
   type Bncl,

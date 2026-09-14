@@ -7,7 +7,7 @@ import {
   type ModelMaterial,
   readNsbca,
   readNsbmd,
-  readTex0,
+  readNsbtx,
   type TextureSet,
   textureNameForMaterial,
 } from '@minstrel/nitro-gfx'
@@ -123,14 +123,7 @@ function indexTextures(
   into: Map<string, { set: TextureSet; name: string }>,
 ): void {
   try {
-    let set: TextureSet | undefined
-    if (isNsbtx(bytes)) {
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-      const offset = view.getUint32(0x10, true)
-      set = readTex0(bytes.subarray(offset, offset + view.getUint32(offset + 4, true)))
-    } else {
-      set = readNsbmd(bytes).textures
-    }
+    const set = isNsbtx(bytes) ? readNsbtx(bytes) : readNsbmd(bytes).textures
     if (!set) return
     for (const texture of set.textures) {
       if (!into.has(texture.name)) into.set(texture.name, { set, name: texture.name })
@@ -145,13 +138,19 @@ function indexTextures(
  *
  * The material says which texture and which palette. The name heuristic is a
  * fallback only for the few materials that declare neither.
+ *
+ * `prefer` is asked before the catalogue: textures of a model's own, by name.
+ * A texture's name does not always say which one — a cartridge can ship many
+ * files holding a texture of the same name, one for each thing a model may be
+ * dressed in, and the catalogue keeps only the first it saw.
  */
 export function textureFor(
   cat: Pick<Catalogue, 'textures'>,
   material: ModelMaterial,
+  prefer?: ReadonlyMap<string, { readonly set: TextureSet; readonly name: string }>,
 ): DecodedTexture | undefined {
   const wanted = material.texture ?? textureNameForMaterial(material.name)
-  const found = cat.textures.get(wanted)
+  const found = prefer?.get(wanted) ?? cat.textures.get(wanted)
   if (!found) return undefined
   const info = found.set.texture(found.name)
   if (!info) return undefined

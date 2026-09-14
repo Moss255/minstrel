@@ -9,16 +9,40 @@ import {
   poseGeometry,
   resolvePose,
   sampleAnimation,
+  type TextureSet,
 } from '@minstrel/nitro-gfx'
-import { ATTACHMENT_BONES, type Library, RIG_BONES } from './library.ts'
+import type { Library } from './library.ts'
 
-/** One figure: the parts that carry the rig, and the ones hung from it. */
+/** One figure: the parts that carry the rig, the ones hung from it, and what dresses them. */
 export interface Figure {
   /** Rigged parts. They pose themselves against the motion. */
   readonly rigged: readonly Model[]
   /** Unrigged parts, each with the bone it hangs from. */
   readonly attachments: readonly { readonly model: Model; readonly bone: string }[]
   readonly motions: ReadonlyMap<string, Animation>
+  /**
+   * Textures this figure takes before any other of the same name.
+   *
+   * A character's arms, gloves, footwear and hair colour are texture files,
+   * and the files of a kind name their one texture alike — see
+   * `CHARACTER_TEXTURES`. The body and legs bind that name; which file supplies
+   * it is what the character wears. Resolved by name across the whole
+   * cartridge, the first file walked would dress everyone.
+   */
+  readonly textures: ReadonlyMap<string, { readonly set: TextureSet; readonly name: string }>
+}
+
+/** What a figure is dressed in, by part and file name — see `partName` in `@minstrel/game-formats`. */
+export interface Outfit {
+  /** The body, on the rig: armour, `p_b<nnn>`. */
+  readonly body: string
+  /** The legs, on the rig: legwear, `p_p<nnn>`. */
+  readonly legs: string
+  readonly face?: string
+  readonly hair?: string
+  readonly headgear?: string
+  /** Texture files: arms or gloves (`p_a`, `p_g`), footwear (`p_r`), hair colour (`p_h`). */
+  readonly textures?: readonly string[]
 }
 
 /** One shape of one part, unposed, so a frame change is one pass over it. */
@@ -29,47 +53,43 @@ export interface FigurePiece {
 }
 
 /**
- * Pick one figure out of the cartridge's 796 parts.
+ * Dress a figure in named parts.
  *
- * **Which parts make the Hero is not known** — the preset table has not been
- * found — so this takes the first of each kind by name, which is arbitrary but
- * reproducible, and gives a complete figure: a body and legs that carry the rig
- * and pose themselves, and a face and hair hung from the `head` bone.
+ * The body and legs carry the rig and pose themselves. The face, hair and
+ * headgear carry one bone of their own and hang from the rig's `head`: the
+ * face and hair confirmed by where they land (`docs/M2-village.md`), the
+ * headgear INFERRED — `p_m200` spans y 1.82 to 7.93 about its origin, as hair
+ * spans −0.73 to 7.41 and a face −0.32 to 4.00, so all three are modelled in
+ * the head's space.
  *
- * The `p_test` parts are skipped. They are a half-scale test figure — 7.68
- * units where a real body reaches 16.57 — and they have no head at all.
+ * A part or file the library does not have is refused by name rather than left
+ * out, so a figure is never quietly missing its legs.
  */
-export function chooseFigure(lib: Library): Figure {
-  const names = [...lib.parts.keys()].sort()
-  const rig = lib.motions.get('walk')?.[0]?.boneCount ?? RIG_BONES
+export function dressFigure(lib: Library, outfit: Outfit): Figure {
+  const need = (name: string): Model => {
+    const model = lib.parts.get(name)
+    if (!model) throw new Error(`no character part '${name}' on the cartridge`)
+    return model
+  }
+  const rigged = [need(outfit.body), need(outfit.legs)]
+  const attachments = [outfit.face, outfit.hair, outfit.headgear]
+    .filter((name): name is string => name !== undefined)
+    .map((name) => ({ model: need(name), bone: 'head' }))
 
-  const firstOf = (prefix: string, rigged: boolean): Model | undefined => {
-    const name = names.find((candidate) => {
-      if (!candidate.startsWith(`p_${prefix}`) || candidate.startsWith('p_test')) return false
-      const model = lib.parts.get(candidate) as Model
-      return rigged ? model.nodes.length === rig : model.nodes.length < rig
-    })
-    return name === undefined ? undefined : lib.parts.get(name)
+  const textures = new Map<string, { set: TextureSet; name: string }>()
+  for (const file of outfit.textures ?? []) {
+    const set = lib.textures.get(file)
+    if (!set) throw new Error(`no character texture file '${file}' on the cartridge`)
+    for (const texture of set.textures) textures.set(texture.name, { set, name: texture.name })
   }
 
-  const rigged: Model[] = []
-  for (const prefix of ['b', 'p']) {
-    const model = firstOf(prefix, true)
-    if (model) rigged.push(model)
-  }
-  const attachments: { model: Model; bone: string }[] = []
-  for (const [prefix, bone] of Object.entries(ATTACHMENT_BONES)) {
-    const model = firstOf(prefix, false)
-    if (model) attachments.push({ model, bone })
-  }
-
-  const figure: Figure = { rigged, attachments, motions: new Map() }
+  const bare: Figure = { rigged, attachments, motions: new Map(), textures }
   const motions = new Map<string, Animation>()
   for (const [name, variants] of lib.motions) {
-    const chosen = variants.length === 1 ? variants[0] : inPlace(figure, variants)
+    const chosen = variants.length === 1 ? variants[0] : inPlace(bare, variants)
     if (chosen) motions.set(name, chosen)
   }
-  return { rigged, attachments, motions }
+  return { rigged, attachments, motions, textures }
 }
 
 /**

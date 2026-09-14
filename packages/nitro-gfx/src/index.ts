@@ -72,6 +72,7 @@ export {
   isNsbtx,
   NSBTX_MAGIC,
   type PaletteInfo,
+  readNsbtx,
   readTex0,
   TEXTURE_FORMAT_NAMES,
   TextureFormat,

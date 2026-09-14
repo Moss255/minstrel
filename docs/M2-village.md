@@ -554,6 +554,12 @@ what they are, and the vocabulary reads straight off the counts:
 | `p_m` | 142 | | `p_f` face | 24 |
 | `p_h` hair | 121 | | `p_test` | 3 |
 
+**Corrected 14 September:** the letters are the worn item's category and the
+number its id's last three digits, as the item icons are named — `p_m` is
+headgear, `p_s` **shields** (35, as the shields with icons), and footwear is
+`p_r`, which with arms `p_a` and gloves `p_g` ships as texture files, not
+models. See `packages/game-formats/FORMAT.md`, "Character parts".
+
 **Only the bodies and legs carry the shared fourteen-bone rig** — 274 of the
 796. Those pose themselves and, put together, make a figure that ends at the
 neck. Everything else carries a single bone of its own and sits at the origin
@@ -1301,6 +1307,12 @@ twice.
 
 The three `p_test` models — whole figures on the same rig — stand in, and the
 overlay says so rather than implying the Hero is on screen.
+
+**Superseded 14 September:** `charapreset.bin` is the answer after all — the
+game's character presets, one to a vocation and sex, whose worn set names
+parts by the item-to-part rule. The ids below that "match no part" are in its
+lists of candidate weapons and armour, not in what a preset wears. See
+`packages/game-formats/FORMAT.md`, "Character presets", and `docs/next.md`.
 
 `charapreset.bin` looked like the answer and does not survive inspection. It is
 a data table carrying 29 of something and records of 102 values holding

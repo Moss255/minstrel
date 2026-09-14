@@ -2,9 +2,12 @@ import {
   type Animation,
   isNsbca,
   isNsbmd,
+  isNsbtx,
   type Model,
   readNsbca,
   readNsbmd,
+  readNsbtx,
+  type TextureSet,
 } from '@minstrel/nitro-gfx'
 
 /**
@@ -19,10 +22,12 @@ import {
 /**
  * Which archive holds the character parts, and what each part is called.
  *
- * `chara_pc.gp2` holds 796 parts whose names say what they are — 192 `p_b`
- * bodies, 200 `p_w` weapons, 142 `p_m`, 121 `p_h` hair, 79 `p_p` legs, 35 `p_s`
- * shoes, 24 `p_f` faces — and **only the bodies and legs carry the shared
- * fourteen-bone rig**, 274 parts of the 796. Those pose themselves.
+ * `chara_pc.gp2` holds 796 parts, named by the item each one is — the letter
+ * is the item's category and the number its id's last three digits (see
+ * `partName` in `@minstrel/game-formats`): 192 `p_b` bodies (armour), 79 `p_p`
+ * legs (legwear), 142 `p_m` headgear, 35 `p_s` shields and 200 `p_w` weapons,
+ * with 121 `p_h` hair and 24 `p_f` faces. **Only the bodies and legs carry the
+ * shared fourteen-bone rig**, 274 parts of the 796. Those pose themselves.
  *
  * The rest carry a single bone of their own and sit at the origin until
  * something puts them on the figure. That is why a character built from the
@@ -31,17 +36,16 @@ import {
 export const CHARACTER_PARTS = /\/chara_pc\.gp2\/(p_[a-z]+\w*)\.nsbmd$/
 
 /**
- * Which bone an unrigged part hangs from, by what its name says it is.
+ * The texture files beside the parts, which dress them.
  *
- * **INFERRED from the naming and confirmed by where it lands.** The rig's `head`
- * bone sits at y 16.27 on a body reaching 16.57, and a face put through it
- * lands at 15.94 to 20.26 — on the neck, at a fifth of the figure's height,
- * which is the proportion this game draws.
- *
- * Shoes (`p_s`) and weapons (`p_w`) are not placed: a shoe belongs to two feet
- * and a weapon to a hand that is holding it, and neither is established.
+ * Arms (`p_a`), gloves (`p_g`), footwear (`p_r`) and hair colours (`p_h`) are
+ * not models: each is an NSBTX holding one texture, **named alike across the
+ * files of its kind** — `p_a000_00` in 254 of the 255 arms and gloves,
+ * `p_r000_00` in all 89 footwear, `p_h<style>0a_00` in each style's colours. The body binds
+ * the first, the legs the second, a hair model the third; which file supplies
+ * it is what the character wears. See `Figure.textures`.
  */
-export const ATTACHMENT_BONES: Record<string, string> = { h: 'head', f: 'head' }
+export const CHARACTER_TEXTURES = /\/chara_pc\.gp2\/(p_[a-z]+\w*)\.nsbtx$/
 
 /** Where the motion packs live. */
 export const MOTION_ARCHIVE = '/chara_mp.gp2/'
@@ -64,9 +68,11 @@ export const MOTION_FAMILY = 'mp0200'
 /** The rig's bone count, when no motion has been read to say otherwise. */
 export const RIG_BONES = 14
 
-/** Every part and motion a walk of the cartridge turned up. */
+/** Every part, texture file and motion a walk of the cartridge turned up. */
 export interface Library {
   readonly parts: ReadonlyMap<string, Model>
+  /** The texture files that dress the parts, by name — see {@link CHARACTER_TEXTURES}. */
+  readonly textures: ReadonlyMap<string, TextureSet>
   /**
    * Every animation of a given name, one per pack that carries it.
    *
@@ -76,7 +82,7 @@ export interface Library {
    * sixteen-frame one that lifts the whole figure 7.5% of its own height off
    * the floor. Keeping only the last one read picks between them by archive
    * order, which is how the character came to stand in the air. They are all
-   * kept, and something that can measure them chooses — see `chooseFigure`.
+   * kept, and something that can measure them chooses — see `dressFigure`.
    */
   readonly motions: ReadonlyMap<string, readonly Animation[]>
 }
@@ -84,7 +90,7 @@ export interface Library {
 /** A library being filled in as the cartridge is walked. */
 export interface LibraryBuilder extends Library {
   /**
-   * Offer one leaf, keeping it if it is a part or a motion.
+   * Offer one leaf, keeping it if it is a part, a texture file or a motion.
    *
    * **This observes; it does not claim.** A part carries its own textures — the
    * body's `a_b000_00` and `a_b000_01` are inside `p_b000.nsbmd` itself — so a
@@ -99,10 +105,12 @@ export interface LibraryBuilder extends Library {
 
 export function library(family = MOTION_FAMILY): LibraryBuilder {
   const parts = new Map<string, Model>()
+  const textures = new Map<string, TextureSet>()
   const motions = new Map<string, Animation[]>()
 
   return {
     parts,
+    textures,
     motions,
     offer(path, bytes) {
       const named = CHARACTER_PARTS.exec(path)
@@ -112,6 +120,16 @@ export function library(family = MOTION_FAMILY): LibraryBuilder {
           if (part?.numShapes) parts.set(named[1] as string, part)
         } catch {
           // A part that will not read simply is not drawn.
+        }
+        return
+      }
+
+      const file = CHARACTER_TEXTURES.exec(path)
+      if (file && isNsbtx(bytes)) {
+        try {
+          textures.set(file[1] as string, readNsbtx(bytes))
+        } catch {
+          // A texture file that will not read cannot dress anyone.
         }
         return
       }

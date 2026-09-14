@@ -1,5 +1,5 @@
 import {
-  chooseFigure,
+  dressFigure,
   type Figure,
   type FigurePiece,
   figurePieces,
@@ -75,7 +75,7 @@ import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@
 import type { BattleWords } from './battle-scene.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
-import { HERO_LEVELS } from './hero.ts'
+import { HERO_LEVELS, heroOutfit } from './hero.ts'
 import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
 
@@ -1255,7 +1255,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     return hit ? toFloat(hit.y) : undefined
   }
 
-  const figure = chooseFigure(parts)
+  const figure = dressFigure(parts, heroOutfit())
   const area = areaOf(cat, code)
   const sheets = sheetsOf(cat)
   const id = entry?.id
