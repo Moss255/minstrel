@@ -23,6 +23,7 @@ import {
  * | 207 | character, x, y, z, frames | walk it there over so many frames, facing the way it goes |
  * | 208 | character, rx, ry, rz | face `ry`, in radians, the way the Hero's facing runs |
  * | 209 | character, rx, ry, rz, frames, flag | turn to face `ry` over so many frames, the short way |
+ * | 221 | character, character, frames, flag | turn the first to face the second over so many frames, the short way — in Angel Falls' events, 17 of the 22 calls that find both placed find the first facing elsewhere; Ivor turning back to the Hero at the side of Erinn's house, `ev02210`. The flag, 0 or 1 or missing, is not read |
  * | 204 | character, reference | whether it is still walking or turning |
  * | 210 | character, motion, flags | play one of its motions, by name |
  * | 224 | character, motion | a motion to go back to — kept, not played |
@@ -45,6 +46,8 @@ export interface EventActor {
   y: number
   z: number
   facing: number
+  /** Whether the event has put it anywhere: one only named — a face to wear — stands nowhere. */
+  placed: boolean
   /** The motion playing, by name, and the frame it began on. */
   motion: string | undefined
   motionFrom: number
@@ -119,6 +122,7 @@ export class EventStage {
         y: 0,
         z: 0,
         facing: 0,
+        placed: false,
         motion: undefined,
         motionFrom: 0,
         after: undefined,
@@ -176,6 +180,7 @@ export class EventStage {
         actor.x = num(args[1]) * s
         actor.y = num(args[2]) * s
         actor.z = num(args[3]) * s
+        actor.placed = true
         actor.walk = undefined
         return 0
       }
@@ -185,6 +190,7 @@ export class EventStage {
         const dx = to[0] - actor.x
         const dz = to[2] - actor.z
         if (dx !== 0 || dz !== 0) actor.facing = Math.atan2(dx, dz)
+        actor.placed = true
         actor.turn = undefined
         actor.walk = {
           from: [actor.x, actor.y, actor.z],
@@ -207,6 +213,21 @@ export class EventStage {
           to: towards(actor.facing, num(args[2])),
           start: this.frame,
           frames: Math.max(1, num(args[4])),
+        }
+        return 0
+      }
+      case 221: {
+        const actor = this.actor(num(args[0]))
+        const other = this.actors.get(num(args[1]))
+        if (!other) return 0
+        const dx = other.x - actor.x
+        const dz = other.z - actor.z
+        if (dx === 0 && dz === 0) return 0
+        actor.turn = {
+          from: actor.facing,
+          to: towards(actor.facing, Math.atan2(dx, dz)),
+          start: this.frame,
+          frames: Math.max(1, num(args[2])),
         }
         return 0
       }
@@ -273,7 +294,7 @@ export class EventPlayer {
     hero?: { readonly x: number; readonly y: number; readonly z: number; readonly facing: number },
   ) {
     this.stage = new EventStage(scale)
-    if (hero) Object.assign(this.stage.actor(0), hero)
+    if (hero) Object.assign(this.stage.actor(0), hero, { placed: true })
     this.run = new EventRun(script, this.stage.host)
   }
 

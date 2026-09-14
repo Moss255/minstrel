@@ -108,7 +108,27 @@ const keyEvent = (type, key) =>
     nativeVirtualKeyCode: key.toUpperCase().charCodeAt(0),
   })
 
-for (const step of script) {
+/**
+ * `--trace` prints where the character is and what the status says after each
+ * step that changed either, so one run shows a whole sequence, not its end.
+ */
+const trace = script.includes('--trace')
+let traced = ''
+const where = async () =>
+  (
+    await send('Runtime.evaluate', {
+      expression:
+        'document.querySelector("#overlay").textContent.split("\\n")[0] + " || " + document.querySelector("#status").textContent',
+      returnByValue: true,
+    })
+  ).result?.result?.value ?? ''
+
+for (const [index, step] of script.entries()) {
+  if (trace && index > 0) {
+    const now = await where()
+    if (now !== traced) console.log(`trace ${index}: ${now}`)
+    traced = now
+  }
   // Split on the first `=` only: a value may be `=` itself.
   const at = step.indexOf('=')
   const name = at < 0 ? step.slice(2) : step.slice(2, at)

@@ -31,6 +31,13 @@ export interface SaveGame {
     readonly facing: number
   }
   readonly stage: { readonly major: number; readonly minor: number } | null
+  /**
+   * The step within the stage, and the story flags set — see `story.ts` in
+   * `@minstrel/game-formats`. Absent from saves made before they were kept,
+   * which read with no step and no flags.
+   */
+  readonly step?: number
+  readonly flags?: readonly number[]
   readonly gold: number
   /** Each item and how many, in the bag's order. */
   readonly items: readonly (readonly [number, number])[]
@@ -113,6 +120,12 @@ export function decodeSave(text: string): SaveGame {
   const stage = s.stage as Record<string, unknown> | null | undefined
   if (stage !== null && (!stage || !isCount(stage.major) || !isCount(stage.minor))) {
     throw new SaveError('the save has a story stage that does not read')
+  }
+  if (s.step !== undefined && !isCount(s.step)) {
+    throw new SaveError('the save has a story step that does not read')
+  }
+  if (s.flags !== undefined && (!Array.isArray(s.flags) || !s.flags.every(isCount))) {
+    throw new SaveError('the save has story flags that do not read')
   }
   if (!isCount(s.gold)) throw new SaveError('the save has no gold count')
   if (

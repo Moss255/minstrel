@@ -60,22 +60,36 @@ describe('a door', () => {
   it('opens as the Hero comes near, stands open, and shuts once they have gone', () => {
     const doors = [door()]
     const near = { x: 0.1, z: -0.1 }
-    expect(moveDoors(doors, near, 0.1)).toBe(true)
+    expect(moveDoors(doors, [near], 0.1)).toBe(true)
     expect(doorShut(doors[0] as SwingDoor)).toBe(false)
-    moveDoors(doors, near, 1)
+    moveDoors(doors, [near], 1)
     expect(doors[0]?.angle).toBeCloseTo(Math.PI / 2, 9)
-    expect(moveDoors(doors, near, 1)).toBe(false)
+    expect(moveDoors(doors, [near], 1)).toBe(false)
     const gone = { x: 0.1, z: -(DOOR_CLOSE_FAR + 0.1) }
-    moveDoors(doors, gone, 0.1)
+    moveDoors(doors, [gone], 0.1)
     expect(doorShut(doors[0] as SwingDoor)).toBe(false)
-    moveDoors(doors, gone, 1)
+    moveDoors(doors, [gone], 1)
     expect(doorShut(doors[0] as SwingDoor)).toBe(true)
   })
 
   it('opens again the way it was going when caught shutting', () => {
     const doors = [door({ angle: -0.5, target: 0 })]
-    moveDoors(doors, { x: 0.1, z: 0.1 }, 0)
+    moveDoors(doors, [{ x: 0.1, z: 0.1 }], 0)
     expect(doors[0]?.target).toBeCloseTo(-Math.PI / 2, 9)
+  })
+
+  it('opens for whoever comes near, away from them, and shuts once everyone has gone', () => {
+    const doors = [door()]
+    const far = { x: 5, z: 5 }
+    // Someone an event walks, while the Hero stands across the room.
+    moveDoors(doors, [far, { x: 0.1, z: -0.1 }], 1)
+    expect(doors[0]?.angle).toBeCloseTo(Math.PI / 2, 9)
+    moveDoors(doors, [far, { x: 0.1, z: DOOR_CLOSE_FAR - 0.1 }], 1)
+    expect(doorShut(doors[0] as SwingDoor)).toBe(false)
+    moveDoors(doors, [far], 1)
+    expect(doorShut(doors[0] as SwingDoor)).toBe(true)
+    // With nobody about, nothing opens.
+    expect(moveDoors(doors, [], 1)).toBe(false)
   })
 })
 

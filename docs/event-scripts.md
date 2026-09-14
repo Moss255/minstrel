@@ -213,7 +213,8 @@ row says otherwise. "—" means not established.
 | 208 | 1,526 | 413 | `iifi`, `iiii` | set character N's rotation: x, y, z in radians; the y is the facing |
 | 209 | 1,049 | 257 | `iifiii` | turn character N to a rotation over n frames |
 | 210 | 3,580 | 520 | `is`, `isi` | play character N's motion by name, with flags |
-| the other 200s: 211, 214–223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 219 (`ii`, 950 calls) and 216 (`ifff`, 713) the busiest; the morning's `221 1 0 5 0` turns Erinn after she has walked, perhaps towards character 0 |
+| 221 | | | `iii`, `iiii` | turn character N to face character M over n frames, the short way — INFERRED: of 45 calls in the 49 Angel Falls events played, the two are never the same character, and of the 22 that find both placed, 17 find N facing elsewhere. The morning's `221 1 0 5 0` turns Erinn to the Hero after she has walked to the bed; `ev02210`'s `221 1 0 5 1` turns Ivor back to the Hero at the side of Erinn's house. The fourth value, 0 or 1 or missing, is not read |
+| the other 200s: 211, 214–220, 222, 223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 219 (`ii`, 950 calls) and 216 (`ifff`, 713) the busiest |
 | 224 | 451 | 196 | `is`, `isi` | — a second motion, named after a looping one: the morning's `cyotto_loop` is followed by `224 … "stand"`, so perhaps the motion to go back to |
 | 300 | 1,016 | 477 | `-` | — first in a scene, before 303 and 310; played as letting the camera go |
 | 301, 302, 304, 306, 311, 317, 321, 322, 324, 327, 328 | 3–142 | | | — the camera |

@@ -1,4 +1,11 @@
-import { type MarkupToken, parseMarkup, type TalkLine, type Trigger } from '@minstrel/game-formats'
+import {
+  flagsHold,
+  type MarkupToken,
+  parseMarkup,
+  type TalkLine,
+  type Trigger,
+  triggerWords,
+} from '@minstrel/game-formats'
 import type { Stage } from './load.ts'
 
 /**
@@ -468,9 +475,9 @@ export function stageOrder(stage: Stage): number {
 export const OPENING_STAGE: Stage = { major: 2, minor: 1 }
 
 /**
- * A trigger word read as an operation, its high half, and an argument, its low.
- * **INFERRED**, and only four are used, each with the measure behind it in
- * `FORMAT.md`:
+ * A trigger word read as an operation, its high half, and an argument, its low
+ * — see `triggerWords`. **INFERRED**, each with the measure behind it in
+ * `FORMAT.md`; the story's own operations, flags among them, are `story.ts`'s.
  */
 /** The character a record is about: placed in the record's map on 66%, against 18% for another. */
 const OP_CHARACTER = 6
@@ -478,25 +485,18 @@ const OP_CHARACTER = 6
 const OP_LABEL = 11
 /** With argument 1, the label is the high half of a word whose low half is 0: 338 of 519, against 0. */
 const OP_LABEL_BY = 36
+/**
+ * The same, on a character's own records (value 5 of 0): the word names the
+ * character again, as `6` does on every one read, and the label follows as a
+ * word whose low half is 0 — 192 or 193 as the story's flags stand.
+ */
+const OP_LABEL_OF = 118
 /** An event, by number: 58 of 64 in Angel Falls name one. */
 const OP_EVENT = 119
 /** The label of a character's plain line — the commonest, and the one chapter B's day-to-day lines carry. INFERRED. */
 const PLAIN = 16
 
-interface Word {
-  readonly op: number
-  readonly arg: number
-}
-
-function wordsOf(trigger: Trigger): Word[] {
-  const words: Word[] = []
-  for (let i = 0; i < trigger.values.length; i++) {
-    if (trigger.kinds[i] !== 1) continue
-    const value = trigger.values[i] as number
-    words.push({ op: value >>> 16, arg: value & 0xffff })
-  }
-  return words
-}
+const wordsOf = triggerWords
 
 /** A line's first two numbers as a range of sub-stages, 99 for "to the end". */
 function covers(line: TalkLine, minor: number): boolean {
@@ -524,6 +524,8 @@ export interface Asking {
   readonly id: number
   /** Their talk file for the stage's chapter. */
   readonly lines: readonly TalkLine[]
+  /** The story flags set — see `flagsHold`. None, when not given. */
+  readonly flags?: ReadonlySet<number>
 }
 
 /**
@@ -531,7 +533,8 @@ export interface Asking {
  *
  * **INFERRED throughout**, from the measures above. The first of the area's
  * triggers in this map, over a span that covers the stage, naming the
- * character and a talk operation, decides: a label, or failing that an event.
+ * character and a talk operation, and whose flag conditions hold for the
+ * story's flags, decides: a label, or failing that an event.
  * Without one, the plain line. The line is the tag-1 line with that label whose
  * range covers the sub-stage, in the time of day asked for if there is one and
  * the other if not; the other tags are errands and counters, not talk. Where no
@@ -540,6 +543,7 @@ export interface Asking {
  */
 export function pickLine(asking: Asking): Choice | undefined {
   const { triggers, map, stage, night, id } = asking
+  const flags = asking.flags ?? new Set<number>()
   const lines = asking.lines.filter((line) => line.tag === 1)
   const labels = new Set(lines.map(labelOf))
   let label = PLAIN
@@ -556,14 +560,20 @@ export function pickLine(asking: Asking): Choice | undefined {
     const words = wordsOf(candidate)
     return (
       words.some((w) => w.op === OP_CHARACTER && w.arg === id) &&
-      words.some((w) => w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_EVENT)
+      words.some(
+        (w) =>
+          w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_LABEL_OF || w.op === OP_EVENT,
+      ) &&
+      flagsHold(words, flags)
     )
   })
   if (trigger) {
     const words = wordsOf(trigger)
     const where = `the trigger at 0x${trigger.offset.toString(16)}`
     const named = words.find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
-    const byWord = words.some((w) => w.op === OP_LABEL_BY && w.arg === 1)
+    const byWord = words.some(
+      (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
+    )
       ? words.find((w) => w.arg === 0 && labels.has(w.op))?.op
       : undefined
     const event = words.find((w) => w.op === OP_EVENT)?.arg

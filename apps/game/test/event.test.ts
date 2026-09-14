@@ -47,6 +47,35 @@ describe('an event’s stage', () => {
     expect(stage.actors.get(1)?.facing).toBeCloseTo(-0.1, 9)
   })
 
+  it('turns one character to face another, the short way round', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // Ivor walks off along −z with the Hero behind him, then turns back to them.
+    stage.host.call(206, [0, 0, 0, 1], t)
+    stage.host.call(206, [1, 0, 0, 0], t)
+    stage.host.call(208, [1, 0, Math.PI, 0], t)
+    stage.host.call(221, [1, 0, 2, 1], t)
+    stage.advance()
+    expect(Math.abs(stage.actors.get(1)?.facing ?? 0)).toBeCloseTo(Math.PI / 2, 9)
+    stage.advance()
+    expect(Math.cos(stage.actors.get(1)?.facing ?? 0)).toBeCloseTo(1, 9)
+    // Towards someone not on stage, nobody turns.
+    stage.host.call(221, [1, 7, 2], t)
+    expect(stage.actors.get(1)?.turn).toBeUndefined()
+    expect(stage.unhandled.has(221)).toBe(false)
+  })
+
+  it('knows who it has put somewhere from who it has only named', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(566, [2, 'chara_sub/s017f02.chr', 10], t)
+    stage.host.call(206, [1, 0, 0, 0], t)
+    stage.host.call(207, [2, 1, 0, 0, 4], t)
+    expect(stage.actors.get(10)?.placed).toBe(false)
+    expect(stage.actors.get(1)?.placed).toBe(true)
+    expect(stage.actors.get(2)?.placed).toBe(true)
+  })
+
   it('keeps each character’s model, motion packs and the motion it plays', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

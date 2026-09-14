@@ -1,0 +1,114 @@
+import type { Trigger } from './triggers.ts'
+
+/**
+ * What a trigger record's words say about the story: which point it sets once
+ * an event has played, which flags it sets and tests, and where it goes on.
+ * See FORMAT.md, "Triggers", "The words"; every reading here is **INFERRED**,
+ * each with the measure behind it there.
+ *
+ * A word is an integer the record carries past its head: an operation, its
+ * high half, and an argument, its low.
+ */
+
+export interface TriggerWord {
+  readonly op: number
+  readonly arg: number
+}
+
+/** A trigger record's words, integers only: the floats some carry are not words. */
+export function triggerWords(trigger: Trigger): TriggerWord[] {
+  const words: TriggerWord[] = []
+  for (let i = 0; i < trigger.values.length; i++) {
+    if (trigger.kinds[i] !== 1) continue
+    const value = trigger.values[i] as number
+    words.push({ op: value >>> 16, arg: value & 0xffff })
+  }
+  return words
+}
+
+/** Value 5 of an event's own record: 646 of them, every one naming its event with {@link OP_EVENT_OF}. */
+export const KIND_EVENT = 11
+/** The event an event's own record is about. */
+export const OP_EVENT_OF = 8
+/**
+ * Sets the story to the three values the next three words hold, each as an
+ * operation-0 word: its major and minor stage and a step. On 166 of the 170
+ * that are so, the stage is the record's own, the next minor stage or the next
+ * major; and the steps under one stage run without a gap on 96 of 99.
+ */
+export const OP_STAGE_TO = 132
+/** Sets a story flag. What {@link OP_IF_FLAG} and {@link OP_UNLESS_FLAG} test: 518 of their 664 have a record setting that flag in the same area and stage. */
+export const OP_SET_FLAG = 104
+/** Holds only when the flag is set. */
+export const OP_IF_FLAG = 4
+/** Holds only when the flag is not set. */
+export const OP_UNLESS_FLAG = 5
+/** Goes on to a map, by its id, and the event the next word names, as its operation with an argument of 0. 16 of 29 land on an event defined in that map. */
+export const OP_THEN_MAP = 133
+
+/** A point in the story: a stage, and a step within it. */
+export interface StoryPoint {
+  readonly major: number
+  readonly minor: number
+  readonly step: number
+}
+
+/** What follows an event — see {@link eventOutcome}. */
+export interface EventOutcome {
+  /** Where the story now stands, if the event moves it. */
+  readonly stage: StoryPoint | undefined
+  /** The flags it sets. */
+  readonly flags: readonly number[]
+  /** The map and event it goes on to, if it does. */
+  readonly onward: { readonly map: number; readonly event: number } | undefined
+}
+
+/**
+ * What follows an event, from its own record: the one in `map`, if it has one
+ * there, or else the first. `undefined` when no record is the event's.
+ */
+export function eventOutcome(
+  triggers: readonly Trigger[],
+  event: number,
+  map?: number,
+): EventOutcome | undefined {
+  const own = triggers.filter(
+    (t) =>
+      t.unknown_5 === KIND_EVENT &&
+      triggerWords(t).some((w) => w.op === OP_EVENT_OF && w.arg === event),
+  )
+  const record = own.find((t) => t.map === map) ?? own[0]
+  if (!record) return undefined
+  const words = triggerWords(record)
+
+  let stage: StoryPoint | undefined
+  const at = words.findIndex((w) => w.op === OP_STAGE_TO)
+  const args = at < 0 ? [] : words.slice(at + 1, at + 4)
+  if (args.length === 3 && args.every((w) => w.op === 0)) {
+    const [major, minor, step] = args.map((w) => w.arg) as [number, number, number]
+    stage = { major, minor, step }
+  }
+
+  let onward: EventOutcome['onward']
+  const go = words.findIndex((w) => w.op === OP_THEN_MAP)
+  const next = go < 0 ? undefined : words[go + 1]
+  if (go >= 0 && next && next.arg === 0)
+    onward = { map: (words[go] as TriggerWord).arg, event: next.op }
+
+  return {
+    stage,
+    flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
+    onward,
+  }
+}
+
+/**
+ * Whether a record's flag conditions hold: every {@link OP_IF_FLAG} flag set
+ * and every {@link OP_UNLESS_FLAG} one not. Its other conditions are not read.
+ */
+export function flagsHold(words: readonly TriggerWord[], flags: ReadonlySet<number>): boolean {
+  return words.every(
+    (w) =>
+      (w.op !== OP_IF_FLAG || flags.has(w.arg)) && (w.op !== OP_UNLESS_FLAG || !flags.has(w.arg)),
+  )
+}

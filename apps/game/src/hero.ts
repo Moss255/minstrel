@@ -1,5 +1,6 @@
 import type { Outfit } from '@minstrel/actor'
 import { armsFor, type LevelRow, type LevelTable, levelAt, partName } from '@minstrel/game-formats'
+import type { Equipped } from './equipment.ts'
 
 /**
  * The Hero's numbers: their vocation's level table, where their experience
@@ -28,6 +29,18 @@ export const VOCATION_WORDS = 2100
  * cheapest thing its shop sells — so without this the shop could not be tried.
  */
 export const STARTING_GOLD = 100
+
+/** The copper sword's item id: `d_w004`, its icon, and Ivor's weapon in `attnpc`. */
+export const COPPER_SWORD = 20004
+
+/**
+ * What the Hero has on when the slice opens: a copper sword. **Not read** — the
+ * tester's word, 15 September 2026, from the game itself. Nothing found on the
+ * cartridge lists what a new game starts with. Worn only: no equipment is drawn
+ * on models in the slice, and no item's attack is found, so it changes no
+ * number either.
+ */
+export const STARTING_EQUIPMENT: Equipped = new Map([['weapon', COPPER_SWORD]])
 
 /**
  * What the Hero wears: the celestial suit, the celestial stockings and the

@@ -108,21 +108,32 @@ export function awayFrom(
 }
 
 /**
- * Open the doors the Hero is near, shut the ones they have left, and swing each
- * on by `seconds`. True when any door moved, which is a map to redraw.
+ * Open the doors anyone is near — the Hero, and whoever an event walks, as
+ * Erinn does through her house on the morning — shut the ones everybody has
+ * left, and swing each on by `seconds`. The nearest decides which way it
+ * swings. True when any door moved, which is a map to redraw.
  */
 export function moveDoors(
   doors: SwingDoor[],
-  hero: { readonly x: number; readonly z: number },
+  people: readonly { readonly x: number; readonly z: number }[],
   seconds: number,
 ): boolean {
   let moved = false
   for (const door of doors) {
-    const middle = { x: door.hinge.x + door.leaf.x / 2, z: door.hinge.z + door.leaf.z / 2 }
-    const distance = Math.hypot(hero.x - middle.x, hero.z - middle.z)
-    if (door.target === 0 && distance < DOOR_OPEN_NEAR) {
+    const middleX = door.hinge.x + door.leaf.x / 2
+    const middleZ = door.hinge.z + door.leaf.z / 2
+    let nearest: { readonly x: number; readonly z: number } | undefined
+    let distance = Number.POSITIVE_INFINITY
+    for (const person of people) {
+      const away = Math.hypot(person.x - middleX, person.z - middleZ)
+      if (away < distance) {
+        distance = away
+        nearest = person
+      }
+    }
+    if (door.target === 0 && nearest && distance < DOOR_OPEN_NEAR) {
       // Caught while shutting, it opens again the way it was going.
-      door.target = door.angle !== 0 ? Math.sign(door.angle) * QUARTER : awayFrom(door, hero)
+      door.target = door.angle !== 0 ? Math.sign(door.angle) * QUARTER : awayFrom(door, nearest)
     } else if (door.target !== 0 && distance > DOOR_CLOSE_FAR) {
       door.target = 0
     }

@@ -3,6 +3,8 @@ import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
   ActionEffect,
+  type AttendingCharacter,
+  eventOutcome,
   type LevelRow,
   type NpcPlacement,
   spellsLearnt,
@@ -48,11 +50,12 @@ import {
   type RoamerKind,
   type Roaming,
   type RoamRules,
+  resetFollower,
   spoils,
   startRoaming,
   tickRoaming,
 } from '@minstrel/sim'
-import { backdrop, findSpawn, inMarsh, placeGeometry, WORLD_SCALE } from '@minstrel/world'
+import { backdrop, findSpawn, inMarsh, placeGeometry, WORLD_SCALE, waysOut } from '@minstrel/world'
 import { actorLookOf, packMotions } from './actors.ts'
 import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
@@ -93,12 +96,15 @@ import {
   NO_FIT,
 } from './collisionview.ts'
 import {
-  alongAt,
   COMPANION_MOTIONS,
   companionFighter,
   companionLook,
+  companionModel,
+  companionNamed,
+  companionsAt,
   FOLLOW_TICKS,
   IVOR,
+  PARTY_MOST,
 } from './companion.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
@@ -109,6 +115,7 @@ import {
   type Gains,
   gain,
   HERO_VOCATION_NUMBER,
+  STARTING_EQUIPMENT,
   STARTING_GOLD,
   standing,
   VOCATION_WORDS,
@@ -341,6 +348,9 @@ let characterScale = 1
  * move it.
  */
 let storyStage: Stage | undefined = OPENING_STAGE
+/** The step within the stage, and the story flags set — see `followEvent`. */
+let storyStep = 0
+const storyFlags = new Set<number>()
 /**
  * Which chapter's talk files are read: an index into `loaded.letters`, or
  * undefined to follow the stage — see `letterForStage`. `v` and `b` move it.
@@ -360,7 +370,7 @@ const smashedAt = new Map<string, number>()
 /** What the Hero carries — see `bag.ts` — starting from a stand-in purse, `STARTING_GOLD`. */
 let bag: Bag = take(EMPTY_BAG, { gold: STARTING_GOLD })
 /** What the Hero wears — see `equipment.ts`. */
-let equipped: Equipped = NOTHING_EQUIPPED
+let equipped: Equipped = STARTING_EQUIPMENT
 /** The Hero's experience. Nothing gives any until there are battles; a save can. */
 let heroExp = 0
 /** The shop, inn or church being visited — see `services.ts`. */
@@ -395,19 +405,28 @@ const BATTLE_MOST = 5
 let heroHp: number | undefined
 /** The Hero's MP now; undefined is full. */
 let heroMp: number | undefined
-/** Ivor's hit points between battles; undefined is full. */
-let ivorHp: number | undefined
-/** Ivor's footsteps behind the Hero in the field — see `follow.ts`; begun anew in each map. */
-let ivorTrail: Follower | undefined
-/** Which way Ivor faces in the field, and whether his footsteps moved this frame. */
-let ivorFacing = 0
-let ivorWalking = false
+/** Each companion's hit points between battles, by their number in `attnpc`; one not here is whole. */
+const companionHp = new Map<number, number>()
+/**
+ * Footsteps behind the Hero: a trail for each place in the party after
+ * theirs, each a pace further back — see `follow.ts`; begun anew in each map.
+ */
+let trails: Follower[] = []
+/** Which way each place in the line faces in the field, and whether its footsteps moved this frame. */
+const trailFacing = new Float64Array(PARTY_MOST - 1)
+const trailWalking = new Uint8Array(PARTY_MOST - 1)
+/** Where each trail stood before this frame's ticks, x and z, to tell who walked. */
+const trailWas = new Int32Array((PARTY_MOST - 1) * 2)
 /** Moving ticks walked in the poison marsh and not yet paid for — see `marsh.ts`. */
 let marshCarry = 0
-/** Who stands beside the Hero in the battle under way: their place in it, and their look. */
-let battleCompanion:
-  | { readonly index: number; readonly model: string; readonly packs: readonly string[] }
-  | undefined
+/** One of those beside the Hero in the battle under way: who, their place in it, and their look. */
+interface BattleCompanion {
+  readonly id: number
+  readonly index: number
+  readonly model: string
+  readonly packs: readonly string[]
+}
+let battleCompanions: readonly BattleCompanion[] = []
 /** What seeds have added to the Hero's numbers, for good — see `hero.ts`. */
 let heroGains: Gains = {}
 /** Battles fought this session, which seeds the next one's numbers. */
@@ -581,6 +600,9 @@ function storage(): SaveStore | undefined {
 /** Take up where a save left off — everything but the map, which `begin` enters. */
 function restore(game: SaveGame): void {
   storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
+  storyStep = game.step ?? 0
+  storyFlags.clear()
+  for (const flag of game.flags ?? []) storyFlags.add(flag)
   bag = bagOf(game)
   equipped = equippedOf(game)
   heroExp = game.exp
@@ -606,6 +628,8 @@ function confess(): string {
       facing: self.facing,
     },
     stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
+    step: storyStep,
+    flags: [...storyFlags],
     gold: bag.gold,
     items: [...bag.items],
     equipped: equippedRecord(equipped),
@@ -758,8 +782,11 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast was posed before the scale was known; redo it now it is.
   poseMap(0)
   self = player(at, scale)
-  // Whoever follows comes in on the Hero, with no footsteps behind them yet.
-  ivorTrail = createFollower(FOLLOW_TICKS, at)
+  // Whoever follows comes in on the Hero, with no footsteps behind them yet:
+  // each place in the line a pace further back than the one before.
+  trails = Array.from({ length: PARTY_MOST - 1 }, (_, i) =>
+    createFollower(FOLLOW_TICKS * (i + 1), at),
+  )
   if (via) self.facing = via.facing
   beginRoaming()
 
@@ -797,9 +824,13 @@ function enter(map: string, arrival?: Arrival): boolean {
  * Loading a map is not quick and it blocks, so the frame that starts it says so
  * first and the load happens on the next turn of the event loop. `travelling`
  * holds the door shut meanwhile.
+ *
+ * Not while an event plays: it moves the Hero itself, and where it goes on to
+ * is its own record's to say — see `followEvent`. Ivor's call outside Erinn's
+ * house, `ev02210`, stands the Hero on her doorstep. Ours.
  */
 function maybeTravel(): void {
-  if (!self || !loaded || travelling) return
+  if (!self || !loaded || travelling || playing) return
   const door = doorTaken(gate, loaded.doorways, toFloat(self.state.x), toFloat(self.state.z))
   if (!door) return
   travelling = true
@@ -878,6 +909,23 @@ function drawCorner(): void {
   })
 }
 
+/** Where the Hero stands, for the doors — kept, not made anew each frame. */
+const heroAtDoors = { x: 0, z: 0 }
+const atDoors: { readonly x: number; readonly z: number }[] = []
+/** Who the doors answer to: the Hero, and whoever an event has put somewhere — see `moveDoors`. */
+function peopleAtDoors(): readonly { readonly x: number; readonly z: number }[] {
+  atDoors.length = 0
+  if (self) {
+    heroAtDoors.x = toFloat(self.state.x)
+    heroAtDoors.z = toFloat(self.state.z)
+    atDoors.push(heroAtDoors)
+  }
+  if (playing) {
+    for (const actor of playing.player.stage.actors.values()) if (actor.placed) atDoors.push(actor)
+  }
+  return atDoors
+}
+
 let lastFrame = 0
 function frame(now = 0): void {
   const elapsedMs = lastFrame === 0 ? 0 : now - lastFrame
@@ -888,9 +936,7 @@ function frame(now = 0): void {
     // the waterfall runs, both on the map's own animations.
     const wanted = Math.floor(now / (1000 / MAP_FPS))
     // Doors swing on the frame's own time, and a door that moved is a map to redraw.
-    const swung =
-      self !== undefined &&
-      moveDoors(doors, { x: toFloat(self.state.x), z: toFloat(self.state.z) }, elapsedMs / 1000)
+    const swung = self !== undefined && moveDoors(doors, peopleAtDoors(), elapsedMs / 1000)
     if (wanted !== mapFrame || swung) {
       mapFrame = wanted
       poseMap(wanted)
@@ -915,24 +961,26 @@ function frame(now = 0): void {
     self.stick = { forward: sticks.forward, right: sticks.right }
     // An event moves the Hero itself, and the keys wait for it — see `playEvent`.
     if (playing) playEvent(elapsedMs)
-    const ivorX = ivorTrail?.x ?? 0
-    const ivorZ = ivorTrail?.z ?? 0
+    trails.forEach((trail, i) => {
+      trailWas[2 * i] = trail.x
+      trailWas[2 * i + 1] = trail.z
+    })
     const { moving, travelled, marshTicks } = playing
       ? { moving: false, travelled: 0, marshTicks: 0 }
-      : advance(self, world, camera.yaw, elapsedMs, ivorTrail, inMarshNow)
+      : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow)
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
     marshCarry += marshTicks
     while (marshCarry >= MARSH_TICKS) {
       marshCarry -= MARSH_TICKS
       marshToll()
     }
-    // Ivor walks while his footsteps move, facing the way they go.
-    if (ivorTrail) {
-      const dx = ivorTrail.x - ivorX
-      const dz = ivorTrail.z - ivorZ
-      ivorWalking = dx !== 0 || dz !== 0
-      if (ivorWalking) ivorFacing = Math.atan2(dx, dz)
-    }
+    // Each in the line walks while their footsteps move, facing the way they go.
+    trails.forEach((trail, i) => {
+      const dx = trail.x - (trailWas[2 * i] as number)
+      const dz = trail.z - (trailWas[2 * i + 1] as number)
+      trailWalking[i] = dx !== 0 || dz !== 0 ? 1 : 0
+      if (trailWalking[i]) trailFacing[i] = Math.atan2(dx, dz)
+    })
     // The field's monsters, on the Hero's own ticks, and only while nothing
     // else is up — see `beginRoaming`.
     if (roaming && !battle && !menu && !visit && !talking && !playing) {
@@ -1034,7 +1082,7 @@ function frame(now = 0): void {
               ...loaded.cast.members.map((member) => member.placement),
               ...loaded.cast.sprites2d.map((sprite) => sprite.placement),
               { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
-              ...[ivorInField()].flatMap((at) => (at ? [at] : [])),
+              ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
             ],
             (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
           )
@@ -1056,8 +1104,8 @@ function frame(now = 0): void {
       ...(roaming && !battle ? roamerPieces(now) : []),
       // Pots and barrels face the camera too — see `propPiecesNow`.
       ...propPiecesNow(loaded, now),
-      // Ivor behind the Hero, while he goes along — see `ivorInField`.
-      ...ivorFieldPieces(now),
+      // Whoever goes along, behind the Hero — see `companionsInField`.
+      ...companionFieldPieces(now),
       ...playerPieces(
         heroPose ? { ...self, motionFrame: heroPose.frame } : self,
         loaded.figure,
@@ -1290,6 +1338,9 @@ function moveStage(by: number): void {
   const list: (Stage | undefined)[] = [undefined, ...known]
   const at = list.findIndex((stage) => sameStage(stage, current))
   storyStage = list[(at + by + list.length) % list.length]
+  // Flags are the stage's own — see `followEvent` — so a stage stepped to has none.
+  storyFlags.clear()
+  storyStep = 0
   closeTalk()
   loaded = { ...loaded, cast: loaded.castAt(storyStage) }
   poseMap(Math.max(mapFrame, 0))
@@ -1498,6 +1549,7 @@ function talk(everyLine = false): void {
       night: wantedLighting === 'night',
       id: who.id,
       lines,
+      flags: storyFlags,
     })
     if (choice?.kind === 'line') {
       talking = startConversation(
@@ -1508,6 +1560,8 @@ function talk(everyLine = false): void {
         talkContext,
       )
     } else if (choice?.kind === 'event') {
+      // Played, not read out, so that what follows it follows — see `followEvent`.
+      if (loaded.eventScript(choice.event) && startEvent(choice.event)) return
       const messages = loaded.eventMessages(choice.event)
       talking = startConversation(
         who,
@@ -1995,13 +2049,14 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     exp: 0,
     gold: 0,
   }
-  // Ivor goes along over part of the story — see `companion.ts`; `?ivor=1`
-  // brings him at any stage, to look at.
-  const along = ivorAlong()
-  const ivor = along ? loaded.attending.find((c) => c.id === IVOR) : undefined
-  const party: Fighter[] = ivor ? [hero, companionFighter(ivor)] : [hero]
+  // Whoever goes along stands and fights beside the Hero, in their places —
+  // see `companionsAt`.
+  const companions = companionsNow()
+  const party: Fighter[] = [hero, ...companions.map(companionFighter)]
   const hp = new Map([[0, heroHp ?? row.maxHp]])
-  if (ivor) hp.set(1, ivorHp ?? ivor.numbers.maxHp)
+  for (const [i, who] of companions.entries()) {
+    hp.set(i + 1, companionHp.get(who.id) ?? who.numbers.maxHp)
+  }
   battlesFought++
   // The monsters' places first: they turn the Hero to face them.
   const foeSpots = spotsFor(foes.length)
@@ -2011,12 +2066,15 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     mp: new Map([[0, heroMp ?? row.maxMp]]),
     known,
     words: loaded.battleWords,
-    // He, as his events have him: "He's got something or other he wants to talk about."
-    names: [heroNamed(), ...(ivor ? [{ name: ivor.name, gender: 0 }] : []), ...names],
+    names: [heroNamed(), ...companions.map(companionNamed), ...names],
   })
-  battleCompanion = ivor ? { index: 1, ...companionLook(ivor) } : undefined
+  battleCompanions = companions.map((who, i) => ({
+    id: who.id,
+    index: i + 1,
+    ...companionLook(who),
+  }))
   battleLooks = [...party.map(() => undefined), ...looks]
-  battleSpots = [undefined, ...(ivor ? [besideHero()] : []), ...foeSpots]
+  battleSpots = [undefined, ...companions.map((_, i) => besideHero(i)), ...foeSpots]
   cueStarted = performance.now()
   self.held.clear()
   closeTalk()
@@ -2072,91 +2130,123 @@ function inMarshNow(state: Player['state']): boolean {
 }
 
 /**
- * The marsh's toll — see `marsh.ts`, where the rule, ours, is: the Hero's HP,
- * and Ivor's while he goes along, and the status line says so.
+ * The marsh's toll — see `marsh.ts`, where the rule, ours, is: on everyone in
+ * the party, and the status line says so.
  */
 function marshToll(): void {
   const row = heroRow()
   if (!row) return
   const hp = afterMarsh(heroHp ?? row.maxHp)
   heroHp = hp >= row.maxHp ? undefined : hp
-  const ivor = ivorAlong() ? loaded?.attending.find((c) => c.id === IVOR) : undefined
-  if (ivor) {
-    const left = afterMarsh(ivorHp ?? ivor.numbers.maxHp)
-    ivorHp = left >= ivor.numbers.maxHp ? undefined : left
+  const told = [`HP ${hp}/${row.maxHp}`]
+  for (const who of companionsNow()) {
+    const max = who.numbers.maxHp
+    const left = afterMarsh(companionHp.get(who.id) ?? max)
+    if (left >= max) companionHp.delete(who.id)
+    else companionHp.set(who.id, left)
+    told.push(`${who.name} ${left}/${max}`)
   }
-  status(
-    `the poison marsh stings · HP ${hp}/${row.maxHp}` +
-      (ivor ? ` · Ivor ${ivorHp ?? ivor.numbers.maxHp}/${ivor.numbers.maxHp}` : ''),
-  )
-}
-
-/** Whether Ivor goes along now — see `alongAt`; `?ivor=1` brings him at any stage, to look at. */
-function ivorAlong(): boolean {
-  return alongAt(storyStage) || params.get('ivor') === '1'
+  status(`the poison marsh stings · ${told.join(' · ')}`)
 }
 
 /**
- * Where Ivor stands in the field while he goes along: on the Hero's footsteps.
- * None in a battle or an event, which stand him themselves, and none while he
- * stands on the Hero, as he does on arriving until the Hero walks off —
- * **ours**, both.
+ * Who goes along with the Hero now, in their places after them — see
+ * `companionsAt`. `?ivor=1` brings Ivor at any stage, to look at.
  */
-function ivorInField(): { x: number; y: number; z: number } | undefined {
-  const trail = ivorTrail
-  if (!trail || !self || battle || playing || !ivorAlong()) return undefined
-  const x = toFloat(trail.x)
-  const z = toFloat(trail.z)
-  const apart = Math.hypot(x - toFloat(self.state.x), z - toFloat(self.state.z))
-  if (apart < toFloat(person().radius) * 2) return undefined
-  return { x, y: toFloat(trail.y), z }
+function companionsNow(): readonly AttendingCharacter[] {
+  return companionsAt(loaded?.attending ?? [], storyStage, params.get('ivor') === '1' ? [IVOR] : [])
 }
 
 /**
- * Ivor in the field, in his own model: his `walk` in step with the Hero's —
- * the same pace over the same ground — or his `stand`.
+ * Where each companion stands in the field: the one in the party's second
+ * place on the Hero's footsteps a pace back, the next a pace further, and so
+ * on. None in a battle or an event, which stand them themselves, and none
+ * while one stands on the Hero, as all do on arriving until the Hero walks off
+ * — **ours**, both. Nor one the map has standing in it — Ivor, waiting in
+ * Erinn's house at 2.2 — who is not in two places at once: the same model,
+ * see `companionModel`. Ours too.
  */
-function ivorFieldPieces(now: number): Piece[] {
-  const at = ivorInField()
+function companionsInField(): {
+  who: AttendingCharacter
+  place: number
+  x: number
+  y: number
+  z: number
+}[] {
+  if (!self || battle || playing) return []
+  const hx = toFloat(self.state.x)
+  const hz = toFloat(self.state.z)
+  const near = toFloat(person().radius) * 2
+  const members = loaded?.cast.members ?? []
+  return companionsNow().flatMap((who, place) => {
+    const trail = trails[place]
+    if (!trail) return []
+    const model = companionModel(who)
+    if (members.some((member) => member.name === model)) return []
+    const x = toFloat(trail.x)
+    const z = toFloat(trail.z)
+    if (Math.hypot(x - hx, z - hz) < near) return []
+    return [{ who, place, x, y: toFloat(trail.y), z }]
+  })
+}
+
+/**
+ * Those in the field, each in their own model: their `walk` in step with the
+ * Hero's — the same pace over the same ground — or their `stand`.
+ */
+function companionFieldPieces(now: number): Piece[] {
   const rom = cartridge
-  const who = loaded?.attending.find((c) => c.id === IVOR)
-  if (!at || !rom || !who || !self) return []
-  const { model } = companionLook(who)
-  const look = actorLookOf(rom, model, [])
-  if (!look) return []
-  const motion = look.motions.get(ivorWalking ? 'walk' : 'stand') ?? look.motions.get('stand')
-  const length = Math.max(1, motion ? loopFrames(motion) : 1)
-  const frame = ivorWalking
-    ? Math.floor(self.motionFrame) % length
-    : Math.floor((now / 1000) * MAP_FPS) % length
-  const placement = {
-    id: -1,
-    map: 0,
-    x: at.x,
-    y: at.y,
-    z: at.z,
-    facing: ivorFacing,
-    offset: 0,
-  } as NpcPlacement
-  return castPieces(
-    { name: model, model: look.model, motion, floor: look.floor, placement },
-    look.catalogue,
-    characterScale,
-    frame,
-  )
+  const hero = self
+  if (!rom || !hero) return []
+  return companionsInField().flatMap(({ who, place, x, y, z }) => {
+    const { model } = companionLook(who)
+    const look = actorLookOf(rom, model, [])
+    if (!look) return []
+    const walking = trailWalking[place] === 1
+    const motion = look.motions.get(walking ? 'walk' : 'stand') ?? look.motions.get('stand')
+    const length = Math.max(1, motion ? loopFrames(motion) : 1)
+    const frame = walking
+      ? Math.floor(hero.motionFrame) % length
+      : Math.floor((now / 1000) * MAP_FPS) % length
+    const placement = {
+      id: -1 - place,
+      map: 0,
+      x,
+      y,
+      z,
+      facing: trailFacing[place] ?? 0,
+      offset: 0,
+    } as NpcPlacement
+    return castPieces(
+      { name: model, model: look.model, motion, floor: look.floor, placement },
+      look.catalogue,
+      characterScale,
+      frame,
+    )
+  })
 }
 
 /**
- * Where a companion stands in a battle: beside the Hero, to their right as the
- * camera sees them, facing the monsters. **Ours**: the game's battle places are
- * in its code.
+ * Where each place after the Hero stands in a battle, as `[ahead, across]` in
+ * steps of the gap: to the Hero's right as the camera sees them, then their
+ * left, then behind. **Ours**: the game's battle places are in its code.
  */
-function besideHero(): { x: number; y: number; z: number } | undefined {
+const BESIDE_HERO: readonly (readonly [number, number])[] = [
+  [0, 1],
+  [0, -1],
+  [-1, 0],
+]
+
+/** Where a companion stands in a battle, by their place after the Hero, facing the monsters — see {@link BESIDE_HERO}. */
+function besideHero(place: number): { x: number; y: number; z: number } | undefined {
   if (!self) return undefined
+  const [ahead, across] = BESIDE_HERO[place] ?? [-1 - place, 0]
   const person = toFloat(PERSON.height) * worldScale
+  const forward = moveRelativeToCamera(camera.yaw, 1, 0)
   const right = moveRelativeToCamera(camera.yaw, 0, 1)
-  const x = toFloat(self.state.x) + right.x * person * 0.9
-  const z = toFloat(self.state.z) + right.z * person * 0.9
+  const gap = person * 0.9
+  const x = toFloat(self.state.x) + (forward.x * ahead + right.x * across) * gap
+  const z = toFloat(self.state.z) + (forward.z * ahead + right.z * across) * gap
   const hy = toFloat(self.state.y)
   const hit = world
     ? groundBelow(
@@ -2176,10 +2266,14 @@ function besideHero(): { x: number; y: number; z: number } | undefined {
  * has been shown.
  */
 function companionPieces(now: number): Piece[] {
+  return battleCompanions.flatMap((at) => companionPiecesOf(at, now))
+}
+
+/** One of those beside the Hero in battle — see {@link companionPieces}. */
+function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   const scene = battle
-  const at = battleCompanion
   const rom = cartridge
-  if (!scene || !at || !rom || !self) return []
+  if (!scene || !rom || !self) return []
   const fighter = scene.state.fighters[at.index]
   const spot = battleSpots[at.index]
   const look = actorLookOf(rom, at.model, at.packs)
@@ -2372,12 +2466,14 @@ function settleBattle(): void {
     heroHp = hero.hp
     heroMp = hero.mp >= hero.maxMp ? undefined : hero.mp
   }
-  // Ivor's wounds go on with him; if he fell he gets up with 1 HP, and after a
-  // loss he comes round whole with the Hero — ours, both.
-  const companion = battleCompanion && battle.state.fighters[battleCompanion.index]
-  if (companion) {
-    const left = battle.state.outcome === 'lost' ? companion.maxHp : Math.max(1, companion.hp)
-    ivorHp = left >= companion.maxHp ? undefined : left
+  // Each companion's wounds go on with them; one who fell gets up with 1 HP,
+  // and after a loss they come round whole with the Hero — ours, all.
+  for (const at of battleCompanions) {
+    const fighter = battle.state.fighters[at.index]
+    if (!fighter) continue
+    const left = battle.state.outcome === 'lost' ? fighter.maxHp : Math.max(1, fighter.hp)
+    if (left >= fighter.maxHp) companionHp.delete(at.id)
+    else companionHp.set(at.id, left)
   }
   battle = { ...withPages(battle, lines), settled: true }
 }
@@ -2388,7 +2484,7 @@ function endFight(): void {
   if (roaming) roaming = calmFor(roaming, ROAM_CALM)
   battleLooks = []
   battleSpots = []
-  battleCompanion = undefined
+  battleCompanions = []
   talkEl.hidden = true
   menuEl.hidden = true
   if (wakeInChurch) {
@@ -2453,12 +2549,19 @@ function playEvent(elapsedMs: number): void {
       status(`ev${now.event}: ${error instanceof Error ? error.message : String(error)}`)
     }
     if (!more) {
+      // Its last ticks may have moved the Hero — the morning sets them down out
+      // of bed on its very last — and ending here must not lose that, or they
+      // are handed back where they lay.
+      heroAsEvent(now)
       endEvent()
       return
     }
   }
   const shown = now.player.stage.message
-  if (shown !== undefined && shown !== now.showing) {
+  // The event's message stays up until it is read to its end: whatever closed
+  // the box, it comes back — or the event would wait on it for ever, and the
+  // Hero with it, still lying where the event last put them.
+  if (shown !== undefined && (shown !== now.showing || !talking)) {
     now.showing = shown
     talking = startConversation(
       { id: -1, name: `ev${now.event}`, x: 0, z: 0 },
@@ -2468,16 +2571,20 @@ function playEvent(elapsedMs: number): void {
     )
     showTalk()
   }
+  heroAsEvent(now)
+}
+
+/** Stand the Hero where the event has character 0. */
+function heroAsEvent(now: NonNullable<typeof playing>): void {
   const hero = now.player.stage.actors.get(0)
-  if (hero) {
-    self.state = {
-      ...self.state,
-      x: fx32(Math.round(hero.x * FX32_ONE)),
-      y: fx32(Math.round(hero.y * FX32_ONE)),
-      z: fx32(Math.round(hero.z * FX32_ONE)),
-    }
-    self.facing = hero.facing
+  if (!hero || !self) return
+  self.state = {
+    ...self.state,
+    x: fx32(Math.round(hero.x * FX32_ONE)),
+    y: fx32(Math.round(hero.y * FX32_ONE)),
+    z: fx32(Math.round(hero.z * FX32_ONE)),
   }
+  self.facing = hero.facing
 }
 
 /** The event is over: the Hero stands on the floor where it left them, and the camera follows them again. */
@@ -2492,13 +2599,70 @@ function endEvent(): void {
     const reach = toFloat(self.state.y) + toFloat(person().height)
     const hit = groundBelow(world, self.state.x, self.state.z, fx32(Math.round(reach * FX32_ONE)))
     if (hit) self.state = { ...self.state, y: hit.y, fallSpeed: fx32(0), grounded: true }
+    // Somewhere the Hero cannot walk away from — inside a bed, had an event
+    // stopped before it set them down — is no place to hand them back: the
+    // walkable ground nearest instead, as for an arrival with no floor. Ours.
+    const walking = { person: person(), speed: WALK_SPEED }
+    if (waysOut(world, self.state.x, self.state.y, self.state.z, walking) === 0) {
+      const spot = findSpawn(world, {
+        ...walking,
+        water: loaded?.map.water ?? [],
+        near: { x: toFloat(self.state.x), z: toFloat(self.state.z) },
+      })
+      if (spot) {
+        self.state = { x: spot.x, y: spot.y, z: spot.z, fallSpeed: fx32(0), grounded: true }
+      }
+    }
   }
+  // An event that leaves the Hero in a doorway has not sent them through it:
+  // the door waits until they step clear, as on arriving. Ours.
+  gate.armed = false
+  // Whoever goes along picks up the Hero's footsteps from where the event left
+  // them, not from wherever they were before it: as on arriving. Ours.
+  if (self) for (const trail of trails) resetFollower(trail, self.state)
   closeTalk()
   const unread = [...done.player.stage.unhandled.keys()]
   status(
     `ev${done.event} is over` +
       (unread.length > 0 ? ` · functions not read: ${unread.sort((a, b) => a - b).join(' ')}` : ''),
   )
+  followEvent(done.event)
+}
+
+/**
+ * What follows an event, by its own trigger record — see `eventOutcome` in
+ * `@minstrel/game-formats`, INFERRED throughout. The story moves on to the
+ * stage and step the record sets; the flags it sets are set — a stage's own,
+ * cleared when the stage moves on, INFERRED from the records testing them
+ * naming none set in another; and where it goes on to, it goes: the map, and
+ * the event played there.
+ */
+function followEvent(event: number): void {
+  if (!loaded) return
+  const outcome = eventOutcome(loaded.triggers, event, loaded.mapId)
+  if (!outcome) return
+  const { stage, onward } = outcome
+  if (stage) {
+    const moved =
+      !storyStage || storyStage.major !== stage.major || storyStage.minor !== stage.minor
+    if (moved) storyFlags.clear()
+    storyStage = { major: stage.major, minor: stage.minor }
+    storyStep = stage.step
+    if (moved) {
+      loaded = { ...loaded, cast: loaded.castAt(storyStage) }
+      poseMap(Math.max(mapFrame, 0))
+    }
+  }
+  for (const flag of outcome.flags) storyFlags.add(flag)
+  status(
+    `ev${event} is over · the story is at ${storyStage?.major ?? '?'}.${storyStage?.minor ?? '?'}` +
+      `, step ${storyStep}` +
+      (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : ''),
+  )
+  if (onward) {
+    const code = loaded.mapCodeOf(onward.map)
+    if (code && (code === loaded.code || enter(code))) startEvent(onward.event)
+  }
 }
 
 /**
@@ -2821,7 +2985,7 @@ addEventListener('keydown', (event) => {
       if (outcome.rested) {
         heroHp = undefined
         heroMp = undefined
-        ivorHp = undefined
+        companionHp.clear()
       }
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
     } else if (key === 'x' || key === 'escape') visit = leaveVisit(visit)
@@ -2896,8 +3060,11 @@ addEventListener('keydown', (event) => {
     talk(event.shiftKey)
     event.preventDefault()
   }
+  // Esc closes what is being said — but an event's message is the event's to
+  // close, so there it goes on, as `f` does.
   if (key === 'escape' && talking) {
-    closeTalk()
+    if (playing) talk()
+    else closeTalk()
     event.preventDefault()
   }
   if ((key === 'v' || key === 'b') && loaded) {

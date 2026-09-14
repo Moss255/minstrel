@@ -2440,6 +2440,43 @@ Across chapter B, that gives 17 to 20 of the 20 to 22 characters placed in the
 village at each of 2.1 to 2.5 something to say; the rest have only paired
 labels nothing here chooses between.
 
+## The words — `story.ts`
+
+A word is an integer past the record's head: its high half an operation, its
+low half an argument. The floats some records carry are not words. Every
+reading below is **INFERRED**, each with the measure behind it; across all 75
+files (5,761 records read).
+
+| operation | reading | measure | used |
+|---|---|---|---|
+| value 5 = 11 | the record is an event's own: what follows it | 646 records, **every one** naming its event with operation 8 | yes |
+| 8 : event | the event the record is about | as above | yes |
+| 132, then three words of operation 0 | the story moves to stage *a.b*, step *c* — their three arguments | 170 so; **166** go to the record's own stage (81), the next minor (74) or the next major (11); under one stage the steps run without a gap in **96 of 99** | yes |
+| 104 : n | sets flag *n* | — | yes |
+| 4 : n | holds only if flag *n* is set | **518 of 664** 4s and 5s have a 104 of the same *n* in the same area and stage | yes |
+| 5 : n | holds only if flag *n* is not set | as above | yes |
+| 133 : map, then *event* : 0 | goes on to that map (by id) and plays that event | **16 of 29** name an event whose own record is in that map | yes |
+| 118 : character | a label for that character follows, as with 11 | seen in character records beside their talk labels | yes |
+| 102, 2, 3 | a second set of flags, set and tested as 104, 4 and 5 | **145 of 566** — weak | no |
+| 17 : n | — | never paired with anything that sets or tests it | no |
+
+The flags are read as the stage's own: cleared when the story moves on to
+another stage. INFERRED — the tests find their setter in the same stage.
+
+**The opening, as the records have it.** The morning's record, in map 1110:
+`8:2130 132:0 0:2 0:2 0:1 197:6` — after it the story is at 2.2, step 1. At
+2.2 a character record in 1107, Erinn's house, names Ivor and his event,
+`6:7 119:2200`; the cast places him there at 2.2 and not at 2.1. His event's
+record is `8:2200 133:1100 2210:0` — on to the village, 1100, and `ev02210`,
+his call on her doorstep, whose own record is
+`8:2210 104:0 132:0 0:2 0:2 0:2 197:7 205:1 141:1`: flag 0, and 2.2 step 2. A
+villager's record then holds only with flag 0 set and flag 1 not:
+`6:8 4:0 5:1 119:2220`.
+
+Not established: whether a character record that names an event plays it when
+the Hero comes near, or only when they are talked to. The game plays it on
+being talked to. Operations 141, 197 and 205 are not decoded.
+
 # The mini-map — `/data/pack_lv5/minimap.gp2`
 
 The DS's top screen shows a map of where the party is. It is drawn from this

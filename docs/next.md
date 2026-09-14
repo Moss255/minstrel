@@ -9,6 +9,63 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The story moves on — 15 September
+
+**What is read** (`game-formats/FORMAT.md`, "Triggers", "The words" —
+INFERRED throughout, each reading with its measure): an event's own trigger
+record says what follows it — the stage and step the story moves to (`132`),
+the flags it sets (`104`), and the map and event it goes on to (`133`) — and
+the records that choose a character's talk and events test those flags (`4`
+set, `5` not). `story.ts` in `@minstrel/game-formats`.
+
+**What the game does with it** (`followEvent` in `main.ts`): when an event
+ends, its record moves the story on, sets its flags and goes where it says.
+The cast is placed afresh when the stage moves; a record's label or event is
+taken only while its flags hold. The step and flags are kept in the save, as
+fields an older save reads without.
+
+**The opening plays through.** The morning ends at 2.2, step 1; at 2.2 Ivor
+waits downstairs in Erinn's house, `M01M07`; talked to, he plays `ev02200`,
+which goes on to the village and `ev02210`, his call on her doorstep; after
+it the story is at 2.2, step 2, with flag 0. Walked through in the browser
+with `tools/shot/screenshot.mjs --trace`, which prints the map, position and
+status after every step.
+
+**Ours:**
+
+- No doorway is taken while an event plays, and after one the door waits
+  until the Hero steps clear. `ev02210` stands them on the doorstep, and the
+  door took them back inside with the event still playing.
+- A companion the map has standing in it is not also drawn following: Ivor
+  waits in the house at 2.2 while the stage rule has him along. The link is
+  the model — `attnpc`'s 17 is the cast's `s017`.
+- The flags are cleared when the stage moves on.
+
+**Found playing it, and fixed:**
+
+- **Doors open for whoever an event walks**, not the Hero alone: Erinn now
+  swings her room's door on the morning. The swing itself is still ours
+  (`swing.ts`); who it answers to is anyone the event has put somewhere.
+- **Function 221 turns one character to face another** — INFERRED, 17 of 22
+  (`docs/event-scripts.md`). Ivor turns back to the Hero at the side of the
+  house; the morning's Erinn turns to the bed.
+- **The Hero starts with a copper sword on** (`STARTING_EQUIPMENT` in
+  `hero.ts`): **the tester's word**, not read — nothing found on the cartridge
+  lists a new game's kit. It changes no number, since no item's attack is
+  found, and is not drawn, as no equipment is in the slice.
+
+**Open:**
+
+- Whether a character's event plays when the Hero comes near. Ivor's greeting
+  plays on being talked to.
+- When Ivor joins is still ours, by stage, so outside at 2.2, step 1, he
+  follows before he has asked. Flag 0, which his call sets, would say when;
+  what it means is not established.
+- The second set of flags (`102`, `2`, `3`: 145 of 566), and operations 17,
+  141, 197 and 205.
+
+---
+
 ## The Hexagon's poison marsh — 14 September
 
 **Where it is, read:** the texture tag `dok` — *doku*, poison, INFERRED — on
@@ -84,6 +141,14 @@ gap of 20 ticks (a third of a second, one of the Hero's heights), his walk kept
 in step with theirs; coming in on the Hero at a doorway and staying unseen
 until they walk off him; hidden in battles and events, which stand him
 themselves.
+
+**A party of up to four.** Nothing in the game is Ivor's alone but his rule
+for when he goes along (`companion.ts`). The party is the Hero and up to three
+more — the game's four, not read from its data here — and whoever goes along
+takes the next place: in battle, to the Hero's right, then left, then behind;
+in the field, each a pace further back on the Hero's footsteps; with their own
+HP kept between battles, the inn restoring and the marsh taking from all of
+them. The places, and filling them in `attnpc`'s order, are ours.
 
 ---
 

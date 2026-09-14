@@ -148,6 +148,8 @@ export interface Loaded {
   readonly shops: ReadonlyMap<number, Shop>
   /** Who goes along with the Hero for a stretch, in English — see `readAttendingCharacters`. Empty when it will not read. */
   readonly attending: readonly AttendingCharacter[]
+  /** A map's code by its own id — how a trigger names where the story goes on. */
+  mapCodeOf(id: number): string | undefined
   /** Each item's price and the table it is listed in — see `readItemTable`. */
   readonly goods: ReadonlyMap<number, Goods>
   /** Each item's name, plural and grammar in English, by id — see `readItemNames`. */
@@ -1030,6 +1032,25 @@ function indexOf(cat: Catalogue): (code: string) => MapEntry | undefined {
   return () => undefined
 }
 
+/** The same index the other way round: a map's code by its own id, which is how a trigger names a map. */
+function codeOf(cat: Catalogue): (id: number) => string | undefined {
+  for (const leaf of cat.other) {
+    if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
+    try {
+      const byId = new Map(
+        readMapList(leaf.bytes)
+          .maps.filter((entry) => entry.id !== 0)
+          .map((entry) => [entry.id, entry.code]),
+      )
+      return (id) => byId.get(id)
+    } catch {
+      // An index that will not read names no map.
+      return () => undefined
+    }
+  }
+  return () => undefined
+}
+
 /**
  * A map's doorways, out of the `.bmbl` beside its geometry.
  *
@@ -1302,6 +1323,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
     attending: attendingOf(rom),
+    mapCodeOf: codeOf(cat),
     goods: goodsOf(rom),
     itemWords: itemWordsOf(rom),
     itemUses: itemUsesOf(rom),

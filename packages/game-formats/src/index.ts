@@ -160,6 +160,21 @@ export {
   type SpriteFrame,
   type SpritePart,
 } from './sprite.ts'
+export {
+  type EventOutcome,
+  eventOutcome,
+  flagsHold,
+  KIND_EVENT,
+  OP_EVENT_OF,
+  OP_IF_FLAG,
+  OP_SET_FLAG,
+  OP_STAGE_TO,
+  OP_THEN_MAP,
+  OP_UNLESS_FLAG,
+  type StoryPoint,
+  type TriggerWord,
+  triggerWords,
+} from './story.ts'
 export { readSystemStrings } from './systemstrings.ts'
 export {
   type DataTable,

@@ -112,8 +112,8 @@ export function player(
  * Returns how far the character actually got, which is not how far it asked to
  * go: a wall takes most of it away, and the walk cycle runs on the difference.
  *
- * A `follower` is handed where the character stands after every tick, so
- * whoever walks behind them keeps to their steps — see `follow.ts` in
+ * Each of `followers` is handed where the character stands after every tick,
+ * so whoever walks behind them keeps to their steps — see `follow.ts` in
  * `@minstrel/sim`. `inMarsh` asks, on every tick the character moved, whether
  * they now stand in poison marsh; how many such ticks there were comes back as
  * `marshTicks`, a whole number, for the caller to take its toll by.
@@ -123,7 +123,7 @@ export function advance(
   world: CollisionWorld,
   yaw: number,
   elapsedMs: number,
-  follower?: Follower,
+  followers: readonly Follower[] = [],
   inMarsh?: (state: CharacterState) => boolean,
 ): { moving: boolean; travelled: number; marshTicks: number } {
   let keyForward = 0
@@ -172,7 +172,7 @@ export function advance(
       self.facing += turn * TURN_RATE
     }
     self.state = step(world, self.state, fx32(dx), fx32(dz), PERSON)
-    if (follower) recordLeader(follower, self.state)
+    for (const follower of followers) recordLeader(follower, self.state)
     const stepped = self.state.x !== from.x || self.state.z !== from.z
     if (stepped && inMarsh?.(self.state)) marshTicks++
     travelled += Math.hypot(
