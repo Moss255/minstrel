@@ -276,6 +276,45 @@ describe('a battle scene', () => {
     expect(short.pages[0]).toBe('Hero casts Crack!\nNot enough MP!')
     expect(short.state.fighters[0]?.mp).toBe(1)
   })
+
+  const companion: Fighter = { ...hero, name: 'Ivor', maxMp: 0, attack: 15, agility: 16 }
+
+  it('fights beside a companion who acts by themselves', () => {
+    const scene = untilChoice(beginBattle([hero, companion, blob(999)], 3n, { canFlee: true }))
+    // Attack, at the one monster, straight away; the companion is handed nothing.
+    const played = battleChoose(scene)
+    expect(played.events.some((e) => e.kind === 'attack' && e.actor === 1)).toBe(true)
+    expect(played.pages.some((page) => page.startsWith('Ivor attacks!'))).toBe(true)
+  })
+
+  it('goes on while either stands, and is lost when both have fallen', () => {
+    const deadly: Fighter = { ...blob(999), attack: 999 }
+    let now = battleChoose(
+      untilChoice(beginBattle([hero, companion, deadly], 3n, { canFlee: true })),
+    )
+    // One blow a round fells one of them at most.
+    expect(now.state.outcome).toBe('ongoing')
+    for (let round = 0; round < 10 && now.state.outcome === 'ongoing'; round++) {
+      now = battleChoose(untilChoice(now))
+    }
+    expect(now.state.outcome).toBe('lost')
+    expect(now.state.fighters.slice(0, 2).map((f) => f.hp)).toEqual([0, 0])
+  })
+
+  it('asks whom to heal when someone stands beside the Hero, and heals the one chosen', () => {
+    const scene = untilChoice(
+      beginBattle([hero, companion, blob(40)], 1n, { canFlee: true, hp: new Map([[1, 5]]) }),
+    )
+    const offered = battleChoose(battleMove(scene, spells), [], [crack, heal])
+    const asking = battleChoose(battleMove(offered, 1))
+    expect(asking.phase).toBe('target')
+    expect(battleRows(asking)).toEqual(['Hero', 'Ivor'])
+    const healed = battleChoose(battleMove(asking, 1))
+    expect(healed.events.find((e) => e.kind === 'spell')).toMatchObject({
+      action: 30,
+      hits: [{ target: 1 }],
+    })
+  })
 })
 
 describe('a battle in the game’s words', () => {

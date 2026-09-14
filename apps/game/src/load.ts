@@ -11,6 +11,7 @@ import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
   type Action,
   type ActionRange,
+  type AttendingCharacter,
   type BattleZone,
   type EventMessage,
   type FieldMonster,
@@ -37,6 +38,7 @@ import {
   type RandomTreasure,
   readActionRanges,
   readActions,
+  readAttendingCharacters,
   readBattleEncounters,
   readEventMessages,
   readFieldEncounters,
@@ -144,6 +146,8 @@ export interface Loaded {
   readonly heroLevels: LevelTable | undefined
   /** What each shop sells, by the number a talk line's `<SHOP=n>` names — see `readShops`. */
   readonly shops: ReadonlyMap<number, Shop>
+  /** Who goes along with the Hero for a stretch, in English — see `readAttendingCharacters`. Empty when it will not read. */
+  readonly attending: readonly AttendingCharacter[]
   /** Each item's price and the table it is listed in — see `readItemTable`. */
   readonly goods: ReadonlyMap<number, Goods>
   /** Each item's name, plural and grammar in English, by id — see `readItemNames`. */
@@ -723,6 +727,26 @@ function heroLevelsOf(rom: Uint8Array): LevelTable | undefined {
 }
 
 /** The shop table: a loose file, beside the menus. */
+const ATTENDING_TABLE = '/data/bin/attnpc.gp2'
+const attendingRead = new WeakMap<Uint8Array, readonly AttendingCharacter[]>()
+
+/** Who goes along with the Hero, in English — see `companion.ts`. Read once. */
+function attendingOf(rom: Uint8Array): readonly AttendingCharacter[] {
+  const already = attendingRead.get(rom)
+  if (already) return already
+  let found: readonly AttendingCharacter[] = []
+  for (const leaf of scanCartridge(rom, { pathFilter: ATTENDING_TABLE })) {
+    if (!leaf.path.endsWith('attnpc_en.bin')) continue
+    try {
+      found = readAttendingCharacters(leaf.bytes)
+    } catch {
+      // A table that will not read leaves the Hero to go alone.
+    }
+  }
+  attendingRead.set(rom, found)
+  return found
+}
+
 const SHOP_TABLE = '/data/bin/menu/shopdata1.bin'
 const shopsRead = new WeakMap<Uint8Array, Map<number, Shop>>()
 
@@ -1277,6 +1301,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     fieldMonsters: fieldMonstersOf(rom),
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
+    attending: attendingOf(rom),
     goods: goodsOf(rom),
     itemWords: itemWordsOf(rom),
     itemUses: itemUsesOf(rom),

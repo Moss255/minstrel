@@ -34,8 +34,26 @@ game-wide variable or hands anything his number or his model's. For the
 slice, stage 2.2 until his return at 2.3 says when he is there — ours until
 the rule is found.
 
-**Next:** the party of two in battle (M5), with his numbers and his own
-motions, and Ivor following the Hero in the field over that span (M6).
+**The party of two fights (M5).** Over stages 2.2 and 2.3 — or with
+`?ivor=1` at any stage — Ivor stands beside the Hero in battle in his own
+model, with his own numbers, and swings, flinches and falls in his own
+motions (`s017be`'s `attack1a`, `s017b`'s `damage` and `death`); the battle is
+lost only when both have fallen, and a heal for one asks whom. The battle
+already took a party: nothing in `@minstrel/sim` changed. `companion.ts` holds
+the rest.
+
+**Ours, each said so in the code:** when he goes along (2.2 and 2.3); what he
+does — an attack on the first monster standing, the battle's default for a
+party member with no command, where the game's choice is not read; his attack
+and defence, strength and resilience as the Hero's stand in; where he stands,
+at the Hero's right; which of his motions plays for what; his wounds carrying
+from battle to battle, 1 HP after falling and whole after a loss or a night at
+the inn. His face is his model's own: its head, shape 0, carries `s017_00`
+(32×64). The three `s017f01`–`03` that the event introducing him hangs from
+his head have textures of the same size named after it, `s017_00_f01` …,
+which reads as expressions, INFERRED; they are not drawn.
+
+**Next:** Ivor following the Hero in the field over that span (M6).
 
 ---
 
@@ -93,7 +111,7 @@ questions to the emulator. Each gap's evidence is in the section it names.
 a field's doorways stand on its ground and can be walked to (§6). M3 reads the event text and plays the morning; the
 rest of the opening is open. M4 is as far as the cartridge goes; the equipment
 screen is drawn, and its numbers wait on the emulator. M5 has battles, spells,
-changes of state and monsters acting; M6 has monsters roaming the field. M7 and
+changes of state, monsters acting and a party of two; M6 has monsters roaming the field. M7 and
 M8 have not started, and audio, meant to start alongside M5, has not either.
 
 **Closable here, from the code and the cartridge:**
@@ -101,7 +119,7 @@ M8 have not started, and audio, meant to start alongside M5, has not either.
 | gap | milestone | what it needs |
 |---|---|---|
 | The opening beats, and story flags | M3, M7 | The functions other events call, which event runs when (the triggers), and the game-wide variables, scope 64. The largest job left, and on the slice's critical path. |
-| Ivor | M5, M6 | Found in `attnpc` — see the top. Left: how he joins and leaves, and building the party of two and the companion. |
+| Ivor | M5, M6 | Found in `attnpc`, and fights beside the Hero — see the top. Left: how he joins and leaves, how the game chooses what he does, and following the Hero in the field. |
 | The equipment screen's layouts | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5). Until then, where everything sits is ours. |
 | The rest of the equipment screen | M4 | Moving round the grid by row and column, L/R between tabs, Change Character and sorting; the Hero's figure; the name plate's colour for each character; a string for "Nothing Equipped", which is ours. |
 | Item art not found | M4 | 193 of the 1,178 items have no icon by the rule and show a stand-in (ours). The English vocation icons for "Used by" are not in `obj_ii` or `oiij`, which hold slots and stars. The lit stars are `oiij` cells 21 and 24–27; what white and gold stars mean is not known. |

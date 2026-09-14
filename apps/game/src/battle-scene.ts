@@ -685,22 +685,26 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
   }
 }
 
-/** What the monsters do while an event's page is on show. */
+/**
+ * What the fighters do while an event's page is on show: the monsters, and
+ * whoever stands beside the Hero in a model of their own. The Hero's figure is
+ * the caller's to pose, and takes none of these.
+ */
 function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
   const foe = (i: number) => state.fighters[i]?.side === 'foes'
+  const party = (i: number) => state.fighters[i]?.side === 'party'
   switch (event.kind) {
     case 'attack': {
-      const cues: Cue[] = []
-      if (foe(event.actor)) cues.push({ fighter: event.actor, motion: 'attack' })
-      if (foe(event.target) && event.damage > 0 && !event.dodged && !event.blocked)
+      const cues: Cue[] = [{ fighter: event.actor, motion: 'attack' }]
+      if (event.damage > 0 && !event.dodged && !event.blocked)
         cues.push({ fighter: event.target, motion: 'damage' })
       return cues
     }
     case 'spell': {
-      // A monster casting strikes its attack; one hurt by the party's spell flinches.
+      // A monster casting strikes its attack; one hurt by the other side's spell flinches.
       const cues: Cue[] = foe(event.actor) ? [{ fighter: event.actor, motion: 'attack' }] : []
       for (const hit of event.hits) {
-        if (!foe(event.actor) && foe(hit.target) && hit.amount > 0) {
+        if (foe(event.actor) !== foe(hit.target) && hit.amount > 0) {
           cues.push({ fighter: hit.target, motion: 'damage' })
         }
       }
@@ -710,20 +714,26 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
       // A monster changing state strikes its attack.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'attack' }] : []
     case 'poison':
-      return foe(event.actor) && event.damage > 0
-        ? [{ fighter: event.actor, motion: 'damage' }]
-        : []
+      return event.damage > 0 ? [{ fighter: event.actor, motion: 'damage' }] : []
     case 'flee':
       // A monster running away stays until its page is told, then is gone.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'flee' }] : []
     case 'defeated':
-      return foe(event.actor) ? [{ fighter: event.actor, motion: 'death' }] : []
+      return foe(event.actor) || party(event.actor)
+        ? [{ fighter: event.actor, motion: 'death' }]
+        : []
     default:
       return []
   }
 }
 
-/** Where the party's one member is: the first party fighter. */
+/**
+ * The Hero: the first party fighter, whom the player commands. Anyone else on
+ * the party's side — Ivor — acts by themselves: **ours**, an attack on the
+ * first monster standing, which is what the battle does with a party member it
+ * is handed no command for. How the game chooses a companion's action is not
+ * read.
+ */
 function partyIndex(state: BattleState): number {
   return Math.max(
     0,
@@ -733,6 +743,11 @@ function partyIndex(state: BattleState): number {
 
 const livingFoes = (state: BattleState) =>
   state.fighters.flatMap((f, i) => (f.side === 'foes' && f.hp > 0 && !f.fled ? [i] : []))
+const livingParty = (state: BattleState) =>
+  state.fighters.flatMap((f, i) => (f.side === 'party' && f.hp > 0 ? [i] : []))
+/** Whom the target rows offer: the party for a heal waiting to be cast, the monsters otherwise. */
+const targetsOf = (scene: BattleScene) =>
+  scene.pending?.spell.does === 'heal' ? livingParty(scene.state) : livingFoes(scene.state)
 
 /** The rows to choose from: the commands, the monsters standing, or the items. */
 export function battleRows(scene: BattleScene): string[] {
@@ -744,7 +759,7 @@ export function battleRows(scene: BattleScene): string[] {
   }
   if (scene.phase === 'target') {
     const labels = labelsOf(scene.state)
-    return livingFoes(scene.state).map((i) => labels[i] ?? '?')
+    return targetsOf(scene).map((i) => labels[i] ?? '?')
   }
   if (scene.phase === 'spell') {
     return scene.spells.map((s) => `${shown(s.name)} — ${s.spell.cost} MP`)
@@ -854,7 +869,7 @@ export function battleChoose(
       return { ...scene, phase: 'target', cursor: 0 }
     }
     case 'target': {
-      const target = livingFoes(scene.state)[scene.cursor]
+      const target = targetsOf(scene)[scene.cursor]
       if (target === undefined) return scene
       if (scene.pending) return cast(scene, scene.pending, target)
       return play(scene, { kind: 'attack', target })
@@ -862,7 +877,13 @@ export function battleChoose(
     case 'spell': {
       const chosen = scene.spells[scene.cursor]
       if (!chosen) return scene
-      if (chosen.spell.does === 'heal') return cast(scene, chosen, partyIndex(scene.state))
+      if (chosen.spell.does === 'heal') {
+        // With someone standing beside the Hero, a heal for one asks whom.
+        if (chosen.spell.reach === 'one' && livingParty(scene.state).length > 1) {
+          return { ...scene, phase: 'target', cursor: 0, pending: chosen }
+        }
+        return cast(scene, chosen, partyIndex(scene.state))
+      }
       const foes = livingFoes(scene.state)
       const kinds = new Set(foes.map((i) => scene.state.fighters[i]?.name))
       const asks =

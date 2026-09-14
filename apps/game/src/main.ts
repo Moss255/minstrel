@@ -89,6 +89,7 @@ import {
   fitMeshes,
   NO_FIT,
 } from './collisionview.ts'
+import { alongAt, COMPANION_MOTIONS, companionFighter, companionLook, IVOR } from './companion.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
@@ -383,6 +384,12 @@ const BATTLE_MOST = 5
 let heroHp: number | undefined
 /** The Hero's MP now; undefined is full. */
 let heroMp: number | undefined
+/** Ivor's hit points between battles; undefined is full. */
+let ivorHp: number | undefined
+/** Who stands beside the Hero in the battle under way: their place in it, and their look. */
+let battleCompanion:
+  | { readonly index: number; readonly model: string; readonly packs: readonly string[] }
+  | undefined
 /** What seeds have added to the Hero's numbers, for good — see `hero.ts`. */
 let heroGains: Gains = {}
 /** Battles fought this session, which seeds the next one's numbers. */
@@ -1006,6 +1013,7 @@ function frame(now = 0): void {
       ),
       // A battle's monsters, facing the Hero — see `monsters.ts`.
       ...(battle ? foePieces(now) : []),
+      ...(battle ? companionPieces(now) : []),
       // An event's characters, bar the Hero — see `eventPieces`.
       ...eventPieces(),
       // The field's roaming monsters, in their field models.
@@ -1949,17 +1957,28 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     exp: 0,
     gold: 0,
   }
+  // Ivor goes along over part of the story — see `companion.ts`; `?ivor=1`
+  // brings him at any stage, to look at.
+  const along = alongAt(storyStage) || params.get('ivor') === '1'
+  const ivor = along ? loaded.attending.find((c) => c.id === IVOR) : undefined
+  const party: Fighter[] = ivor ? [hero, companionFighter(ivor)] : [hero]
+  const hp = new Map([[0, heroHp ?? row.maxHp]])
+  if (ivor) hp.set(1, ivorHp ?? ivor.numbers.maxHp)
   battlesFought++
-  battle = beginBattle([hero, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
+  // The monsters' places first: they turn the Hero to face them.
+  const foeSpots = spotsFor(foes.length)
+  battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
-    hp: new Map([[0, heroHp ?? row.maxHp]]),
+    hp,
     mp: new Map([[0, heroMp ?? row.maxMp]]),
     known,
     words: loaded.battleWords,
-    names: [heroNamed(), ...names],
+    // He, as his events have him: "He's got something or other he wants to talk about."
+    names: [heroNamed(), ...(ivor ? [{ name: ivor.name, gender: 0 }] : []), ...names],
   })
-  battleLooks = [undefined, ...looks]
-  battleSpots = [undefined, ...spotsFor(foes.length)]
+  battleCompanion = ivor ? { index: 1, ...companionLook(ivor) } : undefined
+  battleLooks = [...party.map(() => undefined), ...looks]
+  battleSpots = [undefined, ...(ivor ? [besideHero()] : []), ...foeSpots]
   cueStarted = performance.now()
   self.held.clear()
   closeTalk()
@@ -1999,6 +2018,77 @@ function spotsFor(count: number): { x: number; y: number; z: number }[] {
       : undefined
     return { x, y: hit ? toFloat(hit.y) : hy, z }
   })
+}
+
+/**
+ * Where a companion stands in a battle: beside the Hero, to their right as the
+ * camera sees them, facing the monsters. **Ours**: the game's battle places are
+ * in its code.
+ */
+function besideHero(): { x: number; y: number; z: number } | undefined {
+  if (!self) return undefined
+  const person = toFloat(PERSON.height) * worldScale
+  const right = moveRelativeToCamera(camera.yaw, 0, 1)
+  const x = toFloat(self.state.x) + right.x * person * 0.9
+  const z = toFloat(self.state.z) + right.z * person * 0.9
+  const hy = toFloat(self.state.y)
+  const hit = world
+    ? groundBelow(
+        world,
+        fx32(Math.round(x * FX32_ONE)),
+        fx32(Math.round(z * FX32_ONE)),
+        fx32(Math.round((hy + person) * FX32_ONE)),
+      )
+    : undefined
+  return { x, y: hit ? toFloat(hit.y) : hy, z }
+}
+
+/**
+ * Whoever stands beside the Hero, in their own model and motions — see
+ * `COMPANION_MOTIONS`: playing what the page on show has them do, once
+ * through, or their stand; lying where they fell once the page that tells it
+ * has been shown.
+ */
+function companionPieces(now: number): Piece[] {
+  const scene = battle
+  const at = battleCompanion
+  const rom = cartridge
+  if (!scene || !at || !rom || !self) return []
+  const fighter = scene.state.fighters[at.index]
+  const spot = battleSpots[at.index]
+  const look = actorLookOf(rom, at.model, at.packs)
+  if (!fighter || !spot || !look) return []
+  const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
+  const cue = onShow.find((c) => c.fighter === at.index)
+  // Fallen, but not yet told of: still standing.
+  const toldOf = !scene.cues.some((cues) =>
+    cues.some((c) => c.fighter === at.index && c.motion === 'death'),
+  )
+  const lying = fighter.hp <= 0 && toldOf
+  const name = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
+  const motion = look.motions.get(name) ?? look.motions.get('stand')
+  const length = motion?.frameCount ?? 1
+  const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
+  const frame = cue
+    ? Math.min(since, length - 1)
+    : lying
+      ? length - 1
+      : Math.floor((now / 1000) * MAP_FPS)
+  const placement = {
+    id: at.index,
+    map: 0,
+    x: spot.x,
+    y: spot.y,
+    z: spot.z,
+    facing: self.facing,
+    offset: 0,
+  } as NpcPlacement
+  return castPieces(
+    { name: at.model, model: look.model, motion, floor: look.floor, placement },
+    look.catalogue,
+    characterScale,
+    frame,
+  )
 }
 
 /** Each cue's motion, by the monster's own motion names — see `monsters.ts`. */
@@ -2156,6 +2246,13 @@ function settleBattle(): void {
     heroHp = hero.hp
     heroMp = hero.mp >= hero.maxMp ? undefined : hero.mp
   }
+  // Ivor's wounds go on with him; if he fell he gets up with 1 HP, and after a
+  // loss he comes round whole with the Hero — ours, both.
+  const companion = battleCompanion && battle.state.fighters[battleCompanion.index]
+  if (companion) {
+    const left = battle.state.outcome === 'lost' ? companion.maxHp : Math.max(1, companion.hp)
+    ivorHp = left >= companion.maxHp ? undefined : left
+  }
   battle = { ...withPages(battle, lines), settled: true }
 }
 
@@ -2165,6 +2262,7 @@ function endFight(): void {
   if (roaming) roaming = calmFor(roaming, ROAM_CALM)
   battleLooks = []
   battleSpots = []
+  battleCompanion = undefined
   talkEl.hidden = true
   menuEl.hidden = true
   if (wakeInChurch) {
@@ -2597,6 +2695,7 @@ addEventListener('keydown', (event) => {
       if (outcome.rested) {
         heroHp = undefined
         heroMp = undefined
+        ivorHp = undefined
       }
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
     } else if (key === 'x' || key === 'escape') visit = leaveVisit(visit)
