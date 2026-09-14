@@ -96,7 +96,8 @@ main {
   flex: 1;
   min-width: 0;
 }
-canvas {
+/* Guarded as below: unguarded, it kept the hidden sprite sheet over the models. */
+canvas:not([hidden]) {
   display: block;
   width: 100%;
   height: 100%;
