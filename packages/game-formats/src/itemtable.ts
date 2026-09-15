@@ -11,8 +11,8 @@ import { GameFormatError } from './errors.ts'
  * |---|---|---|
  * | `0x00` | `u16` ×2 | what using it does, as two action numbers — in the field and in battle, INFERRED; 252 for nothing. See below |
  * | `0x04` | `u16` | the item's id, as the item names and the treasure use it |
- * | `0x06` | `u16` | its price — INFERRED: every one of the 330 items a shop sells has one above 0, and none of the 140 at 0 is sold anywhere |
- * | `0x08` | `u16` | `unknown_0x08`: `0xFFFF` on most, `0xFFFC` and 0 on others |
+ * | `0x06` | `u16` | its price word — INFERRED: every one of the 330 items a shop sells has one above 0, and none of the 140 at 0 is sold anywhere. What a shop asks is this scaled — see {@link itemPrice} |
+ * | `0x08` | `u16` | `unknown_0x08`: how the price word scales, where it is `0xFFFF`, `0xFFFE`, `0xFFFD` or `0xFFFC` — see {@link itemPrice}; 0 and others on some, not established |
  * | `0x0A` | 22 bytes | `unknown_0x0a`, carried as they are |
  *
  * **A record begins four bytes before its id.** Read from the id, each
@@ -48,6 +48,36 @@ export interface ItemRecord {
   readonly actions: readonly [field: number, battle: number]
   readonly unknown_0x08: number
   readonly unknown_0x0a: Uint8Array
+}
+
+/**
+ * What an item costs in a shop at its full rate: its price word, `+0x06`,
+ * scaled as `+0x08` says. INFERRED, from what a let's play of the European
+ * release shows the village shop asking for all 18 of its items:
+ *
+ * | `+0x08` | costs | the village shop's |
+ * |---|---|---|
+ * | `0xFFFF` | twice the word | 11 of 11 |
+ * | `0xFFFE` | twice, and one | 2 of 2: the chimaera wing, 25; the bandana, 45 |
+ * | `0xFFFD` | twice, less one | the leather whip, 95 |
+ * | `0xFFFC` | ten times | 4 of 4: the copper sword, 150 |
+ *
+ * And across all 330 items the shops sell, the 13 with one of the last three
+ * cost, so, a price ending in 0 or 5 every time — where doubling their word
+ * gives one for 1 of them. The two sold items with another value there,
+ * `0x55` and `0x2BC0`, are taken at twice, as most are: **ours**.
+ */
+export function itemPrice(record: Pick<ItemRecord, 'price' | 'unknown_0x08'>): number {
+  switch (record.unknown_0x08) {
+    case 0xfffe:
+      return record.price * 2 + 1
+    case 0xfffd:
+      return record.price * 2 - 1
+    case 0xfffc:
+      return record.price * 10
+    default:
+      return record.price * 2
+  }
 }
 
 /** Parse one category's item table. */

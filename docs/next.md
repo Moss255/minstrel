@@ -101,7 +101,7 @@ pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
 **Where to start next time:** the rest of what the let's play showed: the
-price field; the Hero's spell vocation. Then the event staging the second folder
+Hero's spell vocation. Then the event staging the second folder
 calls for — models, cameras — and M8.
 
 ---
@@ -184,7 +184,10 @@ fights and a night back in the village at level 3. **Against ours:**
   copper sword — defence 14, not 8 — **with 180 gold**, not the stand-in 100.
 - **Prices**: 11 of the village shop's 18 cost twice the item table's price
   field, 4 ten times it, and 3 one off from twice — so the field is not the
-  price as read.
+  price as read. **Now read** (15 September): the word after it says which —
+  twice, twice and one, twice less one, or ten times — and every sold item it
+  marks then costs a round price (game-formats' FORMAT.md, "Items", "The
+  price"; INFERRED).
 - **Heal comes at level 2**; the spell table's vocation 6, taken for the
   Minstrel, gives it at 3, and vocation 10 at 2.
 - **The time of day moves** — evening before the Hero goes home, night in the

@@ -55,6 +55,7 @@ export {
   ITEM_RECORD_SIZE,
   ITEM_TABLE_HEAD,
   type ItemRecord,
+  itemPrice,
   NO_ACTION,
   readItemTable,
 } from './itemtable.ts'

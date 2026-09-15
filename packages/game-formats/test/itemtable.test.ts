@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { ITEM_RECORD_SIZE, ITEM_TABLE_HEAD, readItemTable } from '../src/itemtable.ts'
+import { ITEM_RECORD_SIZE, ITEM_TABLE_HEAD, itemPrice, readItemTable } from '../src/itemtable.ts'
 
 /** An item table built in code, from `FORMAT.md`: a 32-byte head with the count first, then 32-byte records. */
 function build(
@@ -24,6 +24,17 @@ function build(
   }
   return out
 }
+
+describe('what an item costs', () => {
+  it('is its price word, scaled as the word after it says', () => {
+    expect(itemPrice({ price: 4, unknown_0x08: 0xffff })).toBe(8)
+    expect(itemPrice({ price: 12, unknown_0x08: 0xfffe })).toBe(25)
+    expect(itemPrice({ price: 48, unknown_0x08: 0xfffd })).toBe(95)
+    expect(itemPrice({ price: 15, unknown_0x08: 0xfffc })).toBe(150)
+    // Another value there is taken at twice, as most are.
+    expect(itemPrice({ price: 8, unknown_0x08: 0x55 })).toBe(16)
+  })
+})
 
 describe('item tables', () => {
   it('reads each record: its actions, id and price, and the rest carried as it is', () => {

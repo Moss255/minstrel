@@ -25,6 +25,7 @@ import {
   isMapManifest,
   isNpcList,
   isNpcPlacements,
+  itemPrice,
   type LevelTable,
   type MapEntry,
   type MapManifest,
@@ -872,7 +873,8 @@ function goodsOf(rom: Uint8Array): Map<number, Goods> {
       const table = /itemdt_([a-z])_en\.nat$/i.exec(name)?.[1]
       if (!table) continue
       try {
-        for (const item of readItemTable(bytes)) goods.set(item.id, { price: item.price, table })
+        for (const item of readItemTable(bytes))
+          goods.set(item.id, { price: itemPrice(item), table })
       } catch {
         // A table that will not read prices nothing in it.
       }

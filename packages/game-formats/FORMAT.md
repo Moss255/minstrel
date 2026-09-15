@@ -836,8 +836,8 @@ action, and the head's own last four were `(255, 255)`, the herb's.
 |---|---|---|
 | `+0x00` | `u16` ×2 | what using it does: two action numbers (see "Actions"), 252 for nothing |
 | `+0x04` | `u16` | the item's id |
-| `+0x06` | `u16` | its price, INFERRED |
-| `+0x08` | `u16` | `0xFFFF` on most, `0xFFFC` and 0 on others; not established |
+| `+0x06` | `u16` | its price word, INFERRED — what a shop asks is it scaled by `+0x08`; see "The price" |
+| `+0x08` | `u16` | how the price word scales: `0xFFFF` twice, `0xFFFE` twice and one, `0xFFFD` twice less one, `0xFFFC` ten times — INFERRED; 0 and a few others on some, not established |
 | `+0x0A` | 22 bytes | carried: a sort position; at `+0x10` a `u16`, **the offset in the names at the table's end of the next record's item's name** — on all but the last record of the weapons (267 of 268), shields (44 of 45) and armour (182 of 183), never its own, which suggests a record begins 16 bytes before where it is read here (not established); a run of numbers that count the records; and an icon |
 
 **The two actions.** 36 of the 234 tools name an action called what they are —
@@ -857,6 +857,26 @@ second (370, 384, 396 …).
 **The price** — INFERRED, and well supported: every one of the 330 items any
 shop sells has one above 0, and none of the 140 items at 0 — quest pieces, the
 celestial suit among them — is sold anywhere.
+
+**But the word is not what a shop asks** — found 15 September, against a let's
+play of the European release, whose village shop asks for all 18 of its items
+on screen. What it asks is the word **scaled by `+0x08`** (`itemPrice`):
+
+| `+0x08` | asks | the village shop's 18 | all 330 sold items |
+|---|---|---|---|
+| `0xFFFF` | twice the word | 11 of 11 — the herb 8, the soldier's sword 240 | 315 |
+| `0xFFFE` | twice, and one | 2 of 2 — the chimaera wing 25, the bandana 45 | 4 |
+| `0xFFFD` | twice, less one | 1 of 1 — the leather whip 95 | 2 |
+| `0xFFFC` | ten times | 4 of 4 — the copper sword 150, the feather fan 110 | 7 |
+
+The check that does not lean on those 18: of the 13 sold items with one of
+the last three values, all 13 then ask a price ending in 0 or 5 — the paring
+knife 70, the oak staff 120, the softwort 95, the tangleweb 35, the leather hat
+65 among the ones the let's play does not show — where doubling their word
+gives one ending so for 1 of them. The two sold items with another value, the
+bamboo lance (`0x55`) and the halberd (`0x2BC0`), are taken at twice, as most
+are: ours. Why the scale is kept so is not known. A shop's rate (`readShops`)
+multiplies it: 100 on all but one.
 
 **What an item does is not in its record** — it is in the table after the
 records, found 15 September; see "The stats" below. What follows is the search
