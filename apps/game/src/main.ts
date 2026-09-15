@@ -660,6 +660,11 @@ function begin(bytes: Uint8Array, map: string): void {
     startEl.hidden = false
     return
   }
+  // `?level=20` puts the Hero at that level, with its experience — ours, so a
+  // headless browser can see a fight through.
+  const level = Number(params.get('level'))
+  const row = Number.isInteger(level) ? loaded?.heroLevels?.levels[level - 1] : undefined
+  if (row) heroExp = row.exp
   if (wantedEvent !== undefined) startEvent(wantedEvent)
   else playEntryEvent()
 }

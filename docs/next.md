@@ -35,7 +35,7 @@ wanted begun alongside M5 — has not either.
 | 2 | wake in Erinn's house and explore all of Angel Falls | yes |
 | 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line |
 | 4 | fight, level up, buy and equip gear | yes, but equipment changes no number |
-| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | partly — the Hexagon plays to the fight, and reaching 2.5 brings up the title card; winning the fight is not yet played through |
+| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | yes — through the Hexagon and the Hexagoon fight to Patty's rescue and the title card, walked at level 20 |
 | 6 | the monitor's resolution, widescreen, remappable input | resolution and widescreen yes; remapping no |
 
 **Closable here, from the code and the cartridge:**
@@ -44,7 +44,7 @@ wanted begun alongside M5 — has not either.
 |---|---|---|
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Reaching 2.5 brings up the slice's title card, ours. Left: winning it played through to 2.5 (read and tested, not walked); what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
+| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Won, it plays on to 2.5 and the slice's title card, ours — walked. Left: what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
@@ -99,9 +99,24 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** winning the Hexagoon fight played through, to
-the title card — the last of the critical path; audio alongside it; the zones
-once the emulator has answered.
+**Where to start next time:** the slice plays start to finish, so M8 — audio,
+late by the plan's own reckoning, the ROM's hash and caching, settings — and
+the zones once the emulator has answered.
+
+---
+
+## The slice plays through — 15 September
+
+**Walked in the browser, one run from a new game**: talking to Patty in the
+Hexagon's last room starts set battle 2; Hexagoon falls in four rounds; her
+thanks, `ev02550`, play and go on outside to `ev02555`; the story moves to
+2.5, and the title card comes up. The run starts at level 20 —
+`?map=D01M05&stage=2.4&flags=6&level=20&at=0.13,-1.93` — as a level-1 Hero
+alone does not win it pressing Attack.
+
+**For testing, ours:** `?level=20` opens a new game at that level, with its
+experience. What level the game expects the fight at, and with whom, is not
+read.
 
 ---
 
@@ -116,8 +131,8 @@ end of the first slice", the slice's name, and a line of ours. It takes every
 key until `f`, Enter or Esc puts it away, and the Hexagon is still there to
 walk.
 
-Walked in the browser from `ev02555` on — `?map=D01&stage=2.4&event=2555`.
-The way there through the fight is still not played.
+Walked in the browser from `ev02555` on — `?map=D01&stage=2.4&event=2555` —
+and, since, through the fight to it (see the top).
 
 ---
 
@@ -159,8 +174,7 @@ the camera (function 321, each call aiming it within 0.01 of the switch).
   fight again.
 
 Walked through in the browser: the first floor's four steps, and Patty's plea
-into the fight. **Not walked: winning it** — what follows is read and tested
-against the cartridge, and not played. **For testing, ours:** `?step=4` opens
+into the fight — and, since, winning it (see "The slice plays through"). **For testing, ours:** `?step=4` opens
 at that step, and `?at=x,z` stands the Hero there.
 
 **New readings:** 35 tests the step; a cast record's words 2 and 5 are the
