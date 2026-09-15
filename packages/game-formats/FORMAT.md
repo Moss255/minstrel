@@ -102,11 +102,57 @@ European languages, arrows and shapes. With the bits the other way every glyph
 is mirrored in eight-pixel pieces. `fd_me` is a serifed face; `fd_s7` a
 smaller one without, which also has `+1` to `+9`.
 
-**Beside each is an index, not read**: `fi_me.bin` and `fi_s7.bin` begin `1.1`
-and look like a tagged table's head, but do not read as one ("declares 24
-strings but its section holds 26"); their records begin `12 25 ff 00`,
-`12 27 ff 00`. Which glyph stands where in the strip, and how wide each is,
-should be there.
+**The index beside each** — `fi_me.bin` and `fi_s7.bin`; `readLatinFont` in
+`latinfont.ts` reads a strip and its index together. It is not a tagged table,
+though its head passes for one's: a version, then five `u32`s.
+
+| offset | type | `fi_me` | `fi_s7` | read as |
+|---|---|---|---|---|
+| `+0x00` | 4 bytes | `1.1` and a zero | the same | a version, INFERRED |
+| `+0x04` | `u32` | 242 | 245 | the glyphs |
+| `+0x08` | `u32` | 105 | 22 | the kerning pairs |
+| `+0x0C` | `u32` | 24 | 24 | where the pairs start |
+| `+0x10` | `u32` | 444 | 112 | where the glyphs start |
+| `+0x14` | `u32` | 2,380 | 2,072 | where their names start |
+
+The sections meet end to end on both — 24 + 105 × 4 = 444, 444 + 242 × 8 =
+2,380 — and the names run exactly to the file's end.
+
+**A glyph is eight bytes**: its name's offset (`u32`), its width, a byte of
+flags, and where it stands in the strip (`u16`). Every glyph begins one pixel
+after the one before it ends — 241 of 241 and 244 of 244 — and the last ends at
+the strip's width, 1,600 and 1,312. The names follow one another in glyph order,
+each ending with a zero.
+
+**A name is the character as the game's text spells it**: `A`, `0`, `/`, and
+for the rest the tags the text uses — `<'A>` Á, `<ss>` ß, `<66>` “, `<1>` the
+apostrophe of `warrior<1>s shield`. Every tag `talk.ts` reads — read there from
+where each stands in the text — names a glyph in both fonts. Three are the
+name-entry keyboard's: `<capslock>`, `<shift>` and `<back>`.
+
+**The flags.** Bit 7 is set on exactly the small letters whose capital is in
+the font — 51 in both, a to z and the accented and joined ones — and the one
+small letter without a capital here, ß, lacks it: INFERRED, a letter that can
+be made a capital (`hasCapital`). Bit 6 is set on the vowels, capital and
+small, plain and accented, and on Æ and æ — and on ñ, though not on Ñ, nor on
+Œ or œ: 55 glyphs, the same in both fonts. So it is not simply "a vowel", and
+what it marks is not established. Neither bit is set on anything but a letter.
+The low six bits are 1 on the letters and digits and 3 or 4 on most of the
+rest; not established. The seven are carried as `unknown_flags`.
+
+**A kerning pair is four bytes**: the left glyph, the right, a signed byte and
+one that is 0 on all 127. The signed byte is −1 on every pair: `AT`, `AV`,
+`AW`, `AY`, `LT`, `Ty`, `F.`, `P.` and on in `fi_me`, 22 in `fi_s7`.
+
+**Not established**: which face the game uses where, and the space it leaves
+between glyphs — the strip's one-pixel gap suggests one. The party's name
+panels in the capture of Stornway's church (kept locally) are in a face without
+serifs, as `fd_s7` is; how wide the names stand cannot be measured from that
+capture, whose edges its scaling blurs. Nor is the space read: the first glyph
+in both, named `< >`, draws a bar — 18 of its 24 pixels inked in `fd_me`, 8 of
+12 in `fd_s7` — a cursor or a marker, not a space. The only glyph with no ink
+is `//`, zero pixels wide, which is no space either. So how wide the game makes
+a space is not in the index.
 
 ## What this does not cover: the Latin font
 

@@ -57,6 +57,12 @@ export {
   readItemTable,
 } from './itemtable.ts'
 export {
+  type KerningPair,
+  type LatinFont,
+  type LatinGlyph,
+  readLatinFont,
+} from './latinfont.ts'
+export {
   LEVEL_TAG,
   type LevelRow,
   type LevelTable,
