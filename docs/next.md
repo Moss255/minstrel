@@ -45,7 +45,7 @@ wanted begun alongside M5 — has not either.
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
 | The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Won, it plays on to 2.5 and the slice's title card, ours — walked. Left: what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
-| When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
+| When Ivor joins and leaves | M6 | **Joins on flag 0** (15 September): his call, `ev02210`, ends on "Ivor joins the party!" and its record sets flag 0 — INFERRED, and a let's play shows him joining there. Over 2.3 by stage, ours, as flags are the stage's own; how the game takes him away is not found. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
 | The poison marsh's toll | M6 | Where it is, is read; 1 HP a half second is ours. |
@@ -99,10 +99,10 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** the rest of what the let's play showed: Ivor
-joining on flag 0; the Celestial suit, stockings and shoes and 180 gold to
-start with; the price field; the Hero's spell vocation. Then the event
-staging the second folder calls for — models, cameras — and M8.
+**Where to start next time:** the rest of what the let's play showed: the
+Celestial suit, stockings and shoes and 180 gold to start with; the price
+field; the Hero's spell vocation. Then the event staging the second folder
+calls for — models, cameras — and M8.
 
 ---
 

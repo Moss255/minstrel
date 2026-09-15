@@ -8,6 +8,7 @@ import {
   companionNamed,
   companionsAt,
   IVOR,
+  IVOR_JOINS_FLAG,
   PARTY_MOST,
 } from '../src/companion.ts'
 
@@ -52,7 +53,9 @@ const attending = [
 describe('the party beside the Hero', () => {
   it('has Ivor go along over story stages 2.2 and 2.3, and not before or after', () => {
     expect(alongAt(ivor, { major: 2, minor: 1 })).toBe(false)
-    expect(alongAt(ivor, { major: 2, minor: 2 })).toBe(true)
+    // At 2.2 only once his call has set its flag; over 2.3 by stage.
+    expect(alongAt(ivor, { major: 2, minor: 2 })).toBe(false)
+    expect(alongAt(ivor, { major: 2, minor: 2 }, new Set([IVOR_JOINS_FLAG]))).toBe(true)
     expect(alongAt(ivor, { major: 2, minor: 3 })).toBe(true)
     expect(alongAt(ivor, { major: 2, minor: 4 })).toBe(false)
     expect(alongAt(ivor, { major: 3, minor: 2 })).toBe(false)
@@ -63,8 +66,10 @@ describe('the party beside the Hero', () => {
     for (const who of attending.filter((w) => w.id !== IVOR)) {
       expect(alongAt(who, { major: 2, minor: 2 }), who.name).toBe(false)
     }
-    expect(companionsAt(attending, { major: 2, minor: 2 })).toEqual([ivor])
-    expect(companionsAt(attending, { major: 2, minor: 1 })).toEqual([])
+    const joined = new Set([IVOR_JOINS_FLAG])
+    expect(companionsAt(attending, { major: 2, minor: 2 }, [], joined)).toEqual([ivor])
+    expect(companionsAt(attending, { major: 2, minor: 2 })).toEqual([])
+    expect(companionsAt(attending, { major: 2, minor: 1 }, [], joined)).toEqual([])
   })
 
   it('brings whoever is asked for, in the table’s order, and no more than the party holds', () => {

@@ -2391,7 +2391,12 @@ function marshToll(): void {
  * `companionsAt`. `?ivor=1` brings Ivor at any stage, to look at.
  */
 function companionsNow(): readonly AttendingCharacter[] {
-  return companionsAt(loaded?.attending ?? [], storyStage, params.get('ivor') === '1' ? [IVOR] : [])
+  return companionsAt(
+    loaded?.attending ?? [],
+    storyStage,
+    params.get('ivor') === '1' ? [IVOR] : [],
+    storyFlags,
+  )
 }
 
 /**

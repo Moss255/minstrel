@@ -21,20 +21,37 @@ export const PARTY_MOST = 4
 export const IVOR = 2
 
 /**
- * When each attending character goes along, by their number in `attnpc` —
- * **ours**: how the game adds one to the party and takes them away is not
- * found. Ivor over 2.2, the stage his events leave the village and reach the
- * landslide at, and 2.3, his return, whose events still treat him as the
- * party's (`566(10, 1)`). No other goes along in the slice.
+ * The story flag at 2.2 after which Ivor goes along. INFERRED: his call on
+ * Erinn's doorstep, `ev02210`, ends on the message "Ivor joins the party!" —
+ * its last — and its own record sets flag 0; a let's play shows him joining
+ * there, and not following before.
  */
-const ALONG: ReadonlyMap<number, (stage: Stage) => boolean> = new Map([
-  [IVOR, (stage: Stage) => stage.major === 2 && (stage.minor === 2 || stage.minor === 3)],
+export const IVOR_JOINS_FLAG = 0
+
+/**
+ * When each attending character goes along, by their number in `attnpc`.
+ * Ivor at 2.2 once {@link IVOR_JOINS_FLAG} is set — INFERRED, see there — and
+ * over 2.3, his return, whose events still treat him as the party's
+ * (`566(10, 1)`): that by stage, **ours**, as the story's flags are the
+ * stage's own and the one he joins by is gone at 2.3. How the game takes him
+ * away is not found. No other goes along in the slice.
+ */
+const ALONG: ReadonlyMap<number, (stage: Stage, flags: ReadonlySet<number>) => boolean> = new Map([
+  [
+    IVOR,
+    (stage: Stage, flags: ReadonlySet<number>) =>
+      stage.major === 2 && ((stage.minor === 2 && flags.has(IVOR_JOINS_FLAG)) || stage.minor === 3),
+  ],
 ])
 
-/** Whether an attending character goes along at a story stage — see {@link ALONG}. */
-export function alongAt(who: AttendingCharacter, stage: Stage | undefined): boolean {
+/** Whether an attending character goes along at a story stage with these flags set — see {@link ALONG}. */
+export function alongAt(
+  who: AttendingCharacter,
+  stage: Stage | undefined,
+  flags: ReadonlySet<number> = new Set(),
+): boolean {
   const rule = ALONG.get(who.id)
-  return stage !== undefined && (rule?.(stage) ?? false)
+  return stage !== undefined && (rule?.(stage, flags) ?? false)
 }
 
 /**
@@ -47,9 +64,10 @@ export function companionsAt(
   attending: readonly AttendingCharacter[],
   stage: Stage | undefined,
   forced: readonly number[] = [],
+  flags: ReadonlySet<number> = new Set(),
 ): AttendingCharacter[] {
   return attending
-    .filter((who) => forced.includes(who.id) || alongAt(who, stage))
+    .filter((who) => forced.includes(who.id) || alongAt(who, stage, flags))
     .slice(0, PARTY_MOST - 1)
 }
 
