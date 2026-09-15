@@ -2,16 +2,15 @@ import type { AttendingCharacter } from '@minstrel/game-formats'
 import type { Fighter } from '@minstrel/sim'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
-import type { Stage } from './load.ts'
 
 /**
  * The party beside the Hero: who goes along and when, the fighter each is, and
  * how they are drawn. What is read is `attnpc`'s — FORMAT.md, "Attending
- * characters" — and what is ours is said so below.
+ * characters" — and the events' own records, which bring each in and send them
+ * away; what is ours is said so below.
  *
- * Nothing here is any one character's but the rule for when they go along:
- * whoever does takes the next place after the Hero, in battle and in the
- * field, up to {@link PARTY_MOST}.
+ * Nothing here is any one character's: whoever goes along takes the next place
+ * after the Hero, in battle and in the field, up to {@link PARTY_MOST}.
  */
 
 /** The most a party holds, the Hero among them: the game's four — not read from its data here. */
@@ -21,54 +20,40 @@ export const PARTY_MOST = 4
 export const IVOR = 2
 
 /**
- * The story flag at 2.2 after which Ivor goes along. INFERRED: his call on
- * Erinn's doorstep, `ev02210`, ends on the message "Ivor joins the party!" —
- * its last — and its own record sets flag 0; a let's play shows him joining
- * there, and not following before.
+ * The attending character an event's `205` brings, by their number in
+ * `attnpc`: its argument counts the table's places from 0, and the numbers
+ * from 1 — `205:1` is Ivor. INFERRED, see `OP_JOIN` in `@minstrel/game-formats`.
  */
-export const IVOR_JOINS_FLAG = 0
-
-/**
- * When each attending character goes along, by their number in `attnpc`.
- * Ivor at 2.2 once {@link IVOR_JOINS_FLAG} is set — INFERRED, see there — and
- * over 2.3, his return, whose events still treat him as the party's
- * (`566(10, 1)`): that by stage, **ours**, as the story's flags are the
- * stage's own and the one he joins by is gone at 2.3. How the game takes him
- * away is not found. No other goes along in the slice.
- */
-const ALONG: ReadonlyMap<number, (stage: Stage, flags: ReadonlySet<number>) => boolean> = new Map([
-  [
-    IVOR,
-    (stage: Stage, flags: ReadonlySet<number>) =>
-      stage.major === 2 && ((stage.minor === 2 && flags.has(IVOR_JOINS_FLAG)) || stage.minor === 3),
-  ],
-])
-
-/** Whether an attending character goes along at a story stage with these flags set — see {@link ALONG}. */
-export function alongAt(
-  who: AttendingCharacter,
-  stage: Stage | undefined,
-  flags: ReadonlySet<number> = new Set(),
-): boolean {
-  const rule = ALONG.get(who.id)
-  return stage !== undefined && (rule?.(stage, flags) ?? false)
+export function joinerOf(arg: number): number {
+  return arg + 1
 }
 
 /**
- * Who goes along at a stage, in their places after the Hero: those whose rule
- * has them along, and any `forced` by number, in the table's order, and no
- * more than the party holds beside the Hero. Which place each takes — the
- * table's order — is ours.
+ * The party after an event: whoever its record sends away gone, then whoever
+ * it brings in — see `OP_LEAVE` and `OP_JOIN`. Ivor joins as his call ends
+ * (`ev02210`), goes on ahead at the pass (`ev22591`), joins again at the
+ * landslide (`ev02350`) and goes home with his father (`ev02400`). No record
+ * does both, so which comes first is ours.
+ */
+export function partyAfter(
+  party: ReadonlySet<number>,
+  outcome: { readonly joins: readonly number[]; readonly leaves: boolean },
+): Set<number> {
+  const next = outcome.leaves ? new Set<number>() : new Set(party)
+  for (const arg of outcome.joins) next.add(joinerOf(arg))
+  return next
+}
+
+/**
+ * Who goes along, in their places after the Hero: those in the party, by their
+ * number, in the table's order, and no more than the party holds beside the
+ * Hero. Which place each takes — the table's order — is ours.
  */
 export function companionsAt(
   attending: readonly AttendingCharacter[],
-  stage: Stage | undefined,
-  forced: readonly number[] = [],
-  flags: ReadonlySet<number> = new Set(),
+  party: ReadonlySet<number>,
 ): AttendingCharacter[] {
-  return attending
-    .filter((who) => forced.includes(who.id) || alongAt(who, stage, flags))
-    .slice(0, PARTY_MOST - 1)
+  return attending.filter((who) => party.has(who.id)).slice(0, PARTY_MOST - 1)
 }
 
 /** The gender the game's own text gives a character, where it is known: Ivor's "He's got something or other he wants to talk about" (`ev02130`). */

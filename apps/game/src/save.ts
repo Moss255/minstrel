@@ -38,6 +38,11 @@ export interface SaveGame {
    */
   readonly step?: number
   readonly flags?: readonly number[]
+  /**
+   * Who goes along, by their number in `attnpc` — see `companion.ts`. Absent
+   * from saves made before it was kept, which read with the Hero alone.
+   */
+  readonly party?: readonly number[]
   readonly gold: number
   /** Each item and how many, in the bag's order. */
   readonly items: readonly (readonly [number, number])[]

@@ -222,6 +222,8 @@ describe('the story in trigger records', () => {
       stage: { major: 2, minor: 2, step: 1 },
       flags: [],
       onward: undefined,
+      joins: [],
+      leaves: false,
     })
     const outside = trigger(1100, KIND_EVENT, [
       [8, 2210],
@@ -248,6 +250,28 @@ describe('the story in trigger records', () => {
       stage: undefined,
       flags: [],
       onward: { map: 1100, event: 2210 },
+      joins: [],
+      leaves: false,
+    })
+  })
+
+  it('reads who an event brings into the party, and whether it sends them away', () => {
+    const call = trigger(1100, KIND_EVENT, [
+      [8, 2210],
+      [104, 0],
+      [205, 1],
+    ])
+    const home = trigger(1105, KIND_EVENT, [
+      [8, 2400],
+      [204, 1],
+      [133, 1110],
+      [2410, 0],
+    ])
+    expect(eventOutcome([call], 2210)).toMatchObject({ joins: [1], leaves: false })
+    expect(eventOutcome([home], 2400)).toMatchObject({
+      joins: [],
+      leaves: true,
+      onward: { map: 1110, event: 2410 },
     })
   })
 

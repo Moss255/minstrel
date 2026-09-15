@@ -1,15 +1,15 @@
 import type { AttendingCharacter } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
-  alongAt,
   companionFighter,
   companionLook,
   companionModel,
   companionNamed,
   companionsAt,
   IVOR,
-  IVOR_JOINS_FLAG,
+  joinerOf,
   PARTY_MOST,
+  partyAfter,
 } from '../src/companion.ts'
 
 /** Records as the reader gives them, written out for the test; no cartridge bytes. */
@@ -51,30 +51,25 @@ const attending = [
 ]
 
 describe('the party beside the Hero', () => {
-  it('has Ivor go along over story stages 2.2 and 2.3, and not before or after', () => {
-    expect(alongAt(ivor, { major: 2, minor: 1 })).toBe(false)
-    // At 2.2 only once his call has set its flag; over 2.3 by stage.
-    expect(alongAt(ivor, { major: 2, minor: 2 })).toBe(false)
-    expect(alongAt(ivor, { major: 2, minor: 2 }, new Set([IVOR_JOINS_FLAG]))).toBe(true)
-    expect(alongAt(ivor, { major: 2, minor: 3 })).toBe(true)
-    expect(alongAt(ivor, { major: 2, minor: 4 })).toBe(false)
-    expect(alongAt(ivor, { major: 3, minor: 2 })).toBe(false)
-    expect(alongAt(ivor, undefined)).toBe(false)
+  it('counts an event’s joining word from the table’s first place', () => {
+    expect(joinerOf(1)).toBe(IVOR)
+    expect(joinerOf(2)).toBe(3)
   })
 
-  it('has no one else go along in the slice', () => {
-    for (const who of attending.filter((w) => w.id !== IVOR)) {
-      expect(alongAt(who, { major: 2, minor: 2 }), who.name).toBe(false)
-    }
-    const joined = new Set([IVOR_JOINS_FLAG])
-    expect(companionsAt(attending, { major: 2, minor: 2 }, [], joined)).toEqual([ivor])
-    expect(companionsAt(attending, { major: 2, minor: 2 })).toEqual([])
-    expect(companionsAt(attending, { major: 2, minor: 1 }, [], joined)).toEqual([])
+  it('takes Ivor in and sends him away as the events’ records say, in the slice’s order', () => {
+    const joined = partyAfter(new Set(), { joins: [1], leaves: false })
+    expect(companionsAt(attending, joined)).toEqual([ivor])
+    const ahead = partyAfter(joined, { joins: [], leaves: true })
+    expect(companionsAt(attending, ahead)).toEqual([])
+    const again = partyAfter(ahead, { joins: [1], leaves: false })
+    expect(companionsAt(attending, again)).toEqual([ivor])
+    // An event with neither word leaves the party as it was.
+    expect(partyAfter(again, { joins: [], leaves: false })).toEqual(again)
   })
 
-  it('brings whoever is asked for, in the table’s order, and no more than the party holds', () => {
-    expect(companionsAt(attending, undefined, [IVOR])).toEqual([ivor])
-    const everyone = companionsAt(attending, undefined, [1, 2, 3, 4, 5])
+  it('brings whoever is in the party, in the table’s order, and no more than the party holds', () => {
+    expect(companionsAt(attending, new Set())).toEqual([])
+    const everyone = companionsAt(attending, new Set([5, 4, 3, 2, 1]))
     expect(everyone).toHaveLength(PARTY_MOST - 1)
     expect(everyone.map((w) => w.name)).toEqual(['Aquila', 'Ivor', 'Dr Phlegming'])
   })

@@ -112,6 +112,7 @@ import {
   FOLLOW_TICKS,
   IVOR,
   PARTY_MOST,
+  partyAfter,
 } from './companion.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
@@ -368,6 +369,11 @@ function stepNow(): number | undefined {
   return storyStep > 0 ? storyStep : undefined
 }
 const storyFlags = new Set<number>()
+/**
+ * Who goes along, by their number in `attnpc`: whoever an event's record has
+ * brought in and not since sent away — see `partyAfter`. Kept in the save.
+ */
+let party = new Set<number>()
 /**
  * The second set of flags, "marks" — see `OP_IF_MARK` in `@minstrel/game-formats`.
  * Cleared with the story's flags when the stage moves on, and not yet saved —
@@ -656,6 +662,9 @@ function begin(bytes: Uint8Array, map: string): void {
   for (const flag of (params.get('flags') ?? '').split(',')) {
     if (/^\d+$/.test(flag)) storyFlags.add(Number(flag))
   }
+  // `?ivor=1` opens it with Ivor in the party, as his call leaves him, for
+  // looking at a stage he goes along over; an event's record may send him away.
+  if (params.get('ivor') === '1') party.add(IVOR)
   // `?at=x,z` stands the Hero there, in world units, on the highest floor —
   // ours, for looking at a spot a headless browser cannot walk to.
   const spot = /^(-?[\d.]+),(-?[\d.]+)$/.exec(params.get('at') ?? '')
@@ -705,6 +714,7 @@ function restore(game: SaveGame): void {
   storyFlags.clear()
   storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
+  party = new Set(game.party ?? [])
   bag = bagOf(game)
   equipped = equippedOf(game)
   heroExp = game.exp
@@ -732,6 +742,7 @@ function confess(): string {
     stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
     step: storyStep,
     flags: [...storyFlags],
+    party: [...party],
     gold: bag.gold,
     items: [...bag.items],
     equipped: equippedRecord(equipped),
@@ -2386,17 +2397,9 @@ function marshToll(): void {
   status(`the poison marsh stings · ${told.join(' · ')}`)
 }
 
-/**
- * Who goes along with the Hero now, in their places after them — see
- * `companionsAt`. `?ivor=1` brings Ivor at any stage, to look at.
- */
+/** Who goes along with the Hero now, in their places after them: the {@link party}'s — see `companionsAt`. */
 function companionsNow(): readonly AttendingCharacter[] {
-  return companionsAt(
-    loaded?.attending ?? [],
-    storyStage,
-    params.get('ivor') === '1' ? [IVOR] : [],
-    storyFlags,
-  )
+  return companionsAt(loaded?.attending ?? [], party)
 }
 
 /**
@@ -2920,10 +2923,13 @@ function followEvent(event: number): void {
     }
   }
   for (const flag of outcome.flags) storyFlags.add(flag)
+  // Whoever its record brings in or sends away — Ivor, over 2.2 and 2.3.
+  party = partyAfter(party, outcome)
   status(
     `ev${event} is over · the story is at ${storyStage?.major ?? '?'}.${storyStage?.minor ?? '?'}` +
       `, step ${storyStep}` +
-      (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : ''),
+      (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : '') +
+      (party.size > 0 ? ` · party ${[...party].sort((a, b) => a - b).join(' ')}` : ''),
   )
   // Patty rescued and the story past the slice: its title card — see `card.ts`.
   if (closing) showCard()

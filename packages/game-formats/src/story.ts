@@ -48,6 +48,23 @@ export const OP_THEN_MAP = 133
 /** The event a record plays — a character's when talked to, a map's on entering it. */
 export const OP_EVENT = 119
 /**
+ * On an event's own record, brings an attending character into the party —
+ * INFERRED: the argument is their place in `attnpc`, counted from 0. The three
+ * events whose own text says who joins carry that one's: `ev02210`, "Ivor joins
+ * the party", `205:1`; `ev04080`, Dr Phlegming, `205:2`; `ev28991`, Sterling,
+ * `205:3`. On a character's record (31 of them) it is not read.
+ */
+export const OP_JOIN = 205
+/**
+ * On an event's own record, sends whoever goes along away — INFERRED: all 6
+ * such records carry it with 1 — two in Ivor's stretch, one at 4.6 after Dr
+ * Phlegming joins at 4.5, three in Sterling's at 14.4 — so the 1 does not name
+ * who. Ivor's two, `ev22591` and `ev02400`, are where a let's play shows him
+ * go: on ahead to the landslide, and home with his father. On a character's
+ * record (35 of them) it is not read.
+ */
+export const OP_LEAVE = 204
+/**
  * Value 5 of a record that acts on entering a map — INFERRED: its first word,
  * {@link OP_ENTERED}, names the record's own map on 244 of the 249, and 49 of
  * them play an event, 24 only while a flag holds — as the pass's does at 2.2:
@@ -267,6 +284,10 @@ export interface EventOutcome {
   readonly onward: { readonly map: number; readonly event: number } | undefined
   /** The set battle it starts, if it does — see {@link OP_BATTLE}. */
   readonly battle: number | undefined
+  /** Who it brings into the party, by their place in `attnpc` from 0 — see {@link OP_JOIN}. */
+  readonly joins: readonly number[]
+  /** Whether it sends whoever goes along away — see {@link OP_LEAVE}. */
+  readonly leaves: boolean
 }
 
 /**
@@ -306,6 +327,8 @@ export function eventOutcome(
     flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
     onward,
     battle: words.find((w) => w.op === OP_BATTLE)?.arg,
+    joins: words.filter((w) => w.op === OP_JOIN).map((w) => w.arg),
+    leaves: words.some((w) => w.op === OP_LEAVE),
   }
 }
 

@@ -44,7 +44,7 @@ wanted begun alongside M5 — has not either.
 |---|---|---|
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Won, it plays on to 2.5 and the slice's title card, ours — walked. Left: what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
+| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Won, it plays on to 2.5 and the slice's title card, ours — walked. Left: what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203 (204 and 205, who leaves and joins the party, read 15 September). On the critical path. |
 | When Ivor joins and leaves | M6 | **Joins on flag 0** (15 September): his call, `ev02210`, ends on "Ivor joins the party!" and its record sets flag 0 — INFERRED, and a let's play shows him joining there. Over 2.3 by stage, ours, as flags are the stage's own; how the game takes him away is not found. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
@@ -103,6 +103,36 @@ pipeline outside reference mode, settings, and the ROM hash check and caching
 **Where to start next time:** what the let's play showed that is still
 open — the time of day, which moves there. Then the event staging the second folder
 calls for — models, cameras — and M8.
+
+---
+
+## Ivor leaves as the records say — 15 September
+
+**Who goes along is the events' records'** (game-formats' FORMAT.md, "The
+words", `205` and `204`, and "Attending characters"; INFERRED): an event's own
+record brings a character in with `205:n`, n their place in `attnpc` from 0,
+and sends whoever goes along away with `204:1`. The three events whose text
+says who joins carry that one's place — Ivor `205:1`, Dr Phlegming `205:2`,
+Sterling `205:3` — and all six `204`s carry 1. In the slice Ivor joins as his
+call ends (`ev02210`), goes on ahead at the pass (`ev22591`), joins again at
+the landslide (`ev02350`) and goes home once the mayor has heard the news
+(`ev02400`) — as the fourth let's play shows him do.
+
+This replaces ours — Ivor along by stage, over 2.2 once flag 0 was set and all
+of 2.3 — which kept him following up the pass after he went ahead, and after
+`ev02400`. The party is kept in the save; an older save reads with the Hero
+alone.
+
+**Walked in the browser**: in the mayor's house at 2.3 with Ivor along, `ev02400`
+plays and goes on to `ev02410`, after which the top screen has the Hero alone,
+and Erinn's line is her prayer for Patty. The pass's leave and rejoin are read
+and tested on the cartridge, not walked.
+
+**Ours:** `?ivor=1` now opens a game with Ivor in the party, where an event may
+send him away, rather than keeping him along; a record's leave is taken before
+its join, though none has both. **Not read:** `203`, on the pass's entry
+(`203:1`) and the mayor's (`203:0`), and 71 characters' records; the `204`s and
+`205`s on characters' records.
 
 ---
 

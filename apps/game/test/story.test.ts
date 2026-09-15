@@ -28,6 +28,23 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     expect(load(rom, { map: 'D01M05' }).eventScript(22510)).toBeDefined()
   })
 
+  it('takes Ivor into the party and sends him away as his events’ records say', () => {
+    const village = load(rom, { map: 'M01' })
+    const pass = load(rom, { map: 'S01M01' })
+    const named = (place: number) => village.attending.find((who) => who.id === place + 1)?.name
+    // His call on Erinn's doorstep brings him in…
+    expect(eventOutcome(village.triggers, 2210, 1100)?.joins.map(named)).toEqual(['Ivor'])
+    // …he goes on ahead at the pass, and joins again at the landslide…
+    expect(eventOutcome(pass.triggers, 22591, pass.mapId)?.leaves).toBe(true)
+    expect(eventOutcome(pass.triggers, 2350, pass.mapId)?.joins.map(named)).toEqual(['Ivor'])
+    // …and goes home with his father once the mayor has heard the news.
+    expect(eventOutcome(village.triggers, 2400, 1105)).toMatchObject({
+      joins: [],
+      leaves: true,
+      onward: { map: 1110, event: 2410 },
+    })
+  })
+
   it('plays the mayor’s scene on walking up to him at 2.1, and has Erinn then ask the Hero in, on to the morning', () => {
     const at21 = { major: 2, minor: 1 }
     const house = load(rom, { map: 'M01M05' })

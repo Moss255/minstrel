@@ -2817,6 +2817,8 @@ files (5,761 records read).
 | 102, 2, 3 | a second set of flags, "marks": 102 sets one, 2 holds if it is set, 3 if not | of the 57 sets, **31** sit in a record that also tests 3 of the same mark — the first time a character is talked to — and 24 of those have a partner record for the same character, map and span testing 2 of it: Hugo's `3:7 119:2430 102:7`, then `2:7 118:8 193:0`. Tests (280 and 298) far outnumber sets, so something else sets marks too. An earlier measure, 145 of 566, counted every test against any set | yes |
 | 35 : n | holds only at step *n* of the stage | of the 128 records testing it, **94** name a step some event in the same file moves the story to at that stage, against **20** for the step three on. The Hexagon's switch, `201`: nothing at steps 1 to 3, `ev02530` at 4 — "There's a noise of something moving somewhere!" — its after-line at 5 | yes |
 | 120 : n | starts set battle *n* — see "Event battles" | all **40** arguments are indices there; **65 of the 66** records carrying one have a value 5 = 15 record in the same map naming the same *n* | yes |
+| 205 : n on an event's own record | brings the attending character at place *n* of `attnpc` (from 0) into the party | the three events whose own text says who joins carry that one's place: `ev02210`, "Ivor joins the party", `205:1`; `ev04080`, Dr Phlegming, `205:2`; `ev28991`, Sterling, `205:3`. 6 event records carry it, all with 1 to 3. On a character's record (31) not read | yes |
+| 204 : 1 on an event's own record | sends whoever goes along away | all **6** event records carrying it have 1, in Ivor's stretch, Dr Phlegming's and Sterling's alike, so the 1 does not name who. Ivor's two, `ev22591` and `ev02400`, are where a let's play shows him go — on ahead to the landslide, home with his father — and he joins again at the landslide, `ev02350`, `205:1`. On a character's record (35) not read; nor is `203`, on two entry records (the pass's `203:1`, the mayor's `203:0`) and 71 characters' | yes |
 | value 5 = 15, opening with 12 : n | once set battle *n* is won: plays the event, sets the flags | 46 of the 47 open with 12. The Hexagon's `12:2 119:2550` plays Patty's thanks | yes |
 | value 5 = 16, opening with 12 : n | once it is lost | all 33 open with 12; INFERRED as the other outcome — the Hexagon's `12:2 104:4 197:10` sets the flag under which Patty offers the fight again | yes |
 | value 5 = 20, with 143 : n and six floats | defines area *n*: a box, its greater corner and then its lesser, x y z, in the units placements use; a word of operation 0 follows, its argument not established | all **108** area words have six floats, and the first three are at or above the last three on every axis on **108 of 108**; the boxes sampled lie inside their maps | yes |
@@ -2839,7 +2841,7 @@ villager's record then holds only with flag 0 set and flag 1 not:
 
 Not established: whether a character record that names an event plays it when
 the Hero comes near, or only when they are talked to. The game plays it on
-being talked to. Operations 141, 197 and 205 are not decoded.
+being talked to. Operations 141 and 197 are not decoded; 205 brings Ivor into the party (see its row below).
 
 # The mini-map — `/data/pack_lv5/minimap.gp2`
 
@@ -3357,12 +3359,20 @@ in its houses — then `ev02300`, `ev02320` and `ev02350` in map 5101, at the
 landslide ("We're here at last. The landslide's…"), and his return at 2.3,
 `ev02400` to `ev02450`. From `ev02220` on, those events do not load his model:
 they call `566(10, 1)` and hand character 1 his motion pack, which reads as
-"character 1 is the party's", INFERRED. **How he joins is not found**: no
-script on the way writes a game-wide variable, or calls anything with his
-number or his model's, and no table found holds a party by story stage.
+"character 1 is the party's", INFERRED.
 
-Not established: values 3, 4, 6 and 16; the order of the numbers; how a
-character joins and leaves the party.
+**How he joins and leaves: the events' own records** (see "Triggers", `205`
+and `204`; INFERRED). No script does it — none on the way writes a game-wide
+variable or calls anything with his number or his model's — but the record
+that says what follows an event does: `205:n` brings in the character at
+place n of this table, from 0, and `204:1` sends whoever goes along away.
+Ivor joins as his call ends (`ev02210`, whose last message is "Ivor joins the
+party"), goes on ahead at the pass (`ev22591`, "I'll go on ahead!"), joins
+again at the landslide (`ev02350`) and goes home once the mayor has heard the
+news (`ev02400`), which a let's play shows: he walks off along the pass and is
+found at the landslide, and from 2.4 the Hero goes to the Hexagon alone.
+
+Not established: values 3, 4, 6 and 16; the order of the numbers.
 
 # Poison marsh — the `dok` texture tag
 
