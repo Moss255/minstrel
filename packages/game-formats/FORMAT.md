@@ -1604,7 +1604,7 @@ of the story. Two forms are read, found by their own marks:
 | offset | type | meaning |
 |---|---|---|
 | `+0x00` | `u32[2]` | `0x550D0005 0xFF02A955`, 60 bytes; `0x55090005 0xFFFF0155`, 44 bytes, without a position |
-| `+0x08` | `u32[7]` | not established |
+| `+0x08` | `u32[7]` | a span of the story, INFERRED: words 0, 1 and 2 its first stage and step, 3, 4 and 5 its last; word 6 not established — see below |
 | `+0x24` | `u32` | the map, by its own id |
 | `+0x28` | `u32` | the character's id |
 | `+0x2C` | `f32[4]` | x, y, z and facing — the 60-byte form only |
@@ -1619,10 +1619,27 @@ of the story. Two forms are read, found by their own marks:
 | word 6 | 2 on 1,227, 1 on 378, 0 on 371, one other |
 | bytes between blocks that are neither form | 91,652 — not read |
 
-The seven words are **not decoded**. That the two pairs never run backwards is
-what a span from one story stage to another would look like, and the game uses
-it that way only as a testing affordance: `t` and `y` show the cast at each
-stage a map's records start at. Nothing claims that is what a stage is.
+The seven words read as a **span of the story**, INFERRED: that the two pairs
+never run backwards is what a span from one stage to another would look like,
+and words 2 and 5 are **steps** within the first and last stage — the steps the
+trigger records move the story to (see "The words"). Within one sub-stage word
+2 is at or before word 5 on **362 of 362**; where a character's next record
+begins in the sub-stage the last ends in, it begins one step on — word 2 one
+more than the last's word 5 — **121 times of 179**, against 17 for two steps
+on. On the Hexagon's first floor, `202`'s first record ends at 2.4 step 4 and
+its next, 3.47 units along, begins at step 5 — the step the switch's event
+moves the story to. Word 6 is not established.
+
+**Who stands where, as the game takes it** — `castOf` in `apps/game/src/load.ts`,
+INFERRED from which characters the trigger records talk to:
+
+| a character's records in the map, at the stage and step | stands | measure |
+|---|---|---|
+| one covers it and has a position | there | 1,245 character records talk to someone so |
+| one covers it without a position | not here | taken as the header's place instead, Angel Falls would have **27** more at every stage — Patty's model in the village at 2.1, a second Ivor at 2.3 while he follows |
+| none covers it | not here | as the village's stages had it before; a "none covers it, so the header" rule would put Ivor in the village at 2.1 |
+| none at all | at the header's place, at every stage | **596** records talk to such a character in the header's map; in Angel Falls it adds one thing to examine, in the Hexagon its switch, `201` |
+| a gap between two of them inside one sub-stage | at the header's place | thin: **19** such gaps on the cartridge. The Hexagon's figure, `204`, has one over steps 2 and 3 of 2.4, when it is talked to, and `ev02500`, which opens step 2, stands its figure on the header's spot to 0.01. `ev02510` then walks it to (−11.74, 11.23), which is not followed: which of an event's actors is which of the cast is not read |
 
 **Positions are in the units map placements use.** Taken as though they were
 already world units, only 23 of the village's 49 characters fall inside its
@@ -2392,6 +2409,40 @@ code finds first, are the monsters' attack effects — the slime's a splash
 textured `z000a_at1`, the chest monster's smoke, `z009a_kem01` — not their
 bodies.
 
+## Event battles — `eventbattle.bin`
+
+`/data/event/eventbattle.bin`, 4,336 bytes: the set battles the story starts —
+bosses, and a few others. `readEventBattles` reads it.
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32` | the record count, 98 |
+| `+0x04` | `u32` | the file's size |
+| `+0x08` | 8 bytes | zero; not read |
+| `+0x10` | 44 bytes each | the records |
+
+| record offset | type | meaning |
+|---|---|---|
+| `+0x00` | `u32[2]` | `0x55090064 0xFFFF0155`, on every record |
+| `+0x08` | `u32` | its index: what a trigger's battle word, 120, names |
+| `+0x0C` | `(u32, u32)` ×3 | a monster, by its number in the monster data, and how many; `0xFFFFFFFF` for an empty slot |
+| `+0x24` | `u32` | not established: 23 to 38, 24 on 46 of them |
+| `+0x28` | `u32` | not established: 0 to 30,903 |
+
+| check | result |
+|---|---|
+| indices | 98, every one different, 0 to 143 — not the records' order |
+| slots filled | one on 91, three on 7 |
+| monsters | all 112 in the monster data |
+| counts | 1 on 106, 2 on 2, 3 on 2, 5 and 8 once |
+| trigger battle words | all **40** arguments on the cartridge are indices here |
+
+Index 2 is **Hexagoon alone** — monster 300, `b003a` — and the Hexagon's last
+room, 7105, has the trigger `8:22510 120:2`, which Patty's talk plays once she
+has asked to be freed. Index 0 is the Wight Knight, 1 Morag, 3 the Ragin'
+Contagion. That a slot's second word is a count is INFERRED: it sits beside
+every monster, and is 1 on all but six.
+
 ## Encounters — `encfld.bin` and `encbtl.bin`
 
 Two loose tagged data tables in `/data/prm`, of the same zones.
@@ -2656,8 +2707,14 @@ names her and `2130` — the event in which she greets the Hero in the morning �
 and names map 1110, the floor above.
 
 The game uses this to pick a line — `pickLine` in `apps/game/src/talk.ts`: the
-first record in the map, over a span covering the stage, naming the character
-and one of these, decides a label or an event; without one, the plain line.
+first of the character's own records in the map, over a span covering the
+stage, naming one of these with its conditions holding, decides a label or an
+event; without one, the plain line. A talk record (value 5 = 1) decides only
+for a character with no record of their own there — otherwise it makes an
+event of the label they choose. INFERRED: **116** talk records with no
+condition sit before a record of the same character, map and span, and taking
+the first in the file would leave **269** of those records dead — Patty's
+among them, whose first-time event would play every time she was talked to.
 Across chapter B, that gives 17 to 20 of the 20 to 22 characters placed in the
 village at each of 2.1 to 2.5 something to say; the rest have only paired
 labels nothing here chooses between.
@@ -2683,6 +2740,10 @@ files (5,761 records read).
 | value 5 = 3, with 9 : map and 119 : event | entering that map plays that event | 244 of the 249 open with 9, naming their own map every time; 49 play an event, 24 only while a flag holds — the pass's at 2.2, `9:5101 5:2 203:1 119:2300`, "Finally! We're here at last." | yes |
 | 86 : 0 | holds when the Hero has no companion with them | all 7 in Angel Falls have argument 0, and each sits before a character's first-time event, giving the label that follows it instead. Ivor speaks in every one of those events (2222, 2230, 2240, 2250, 2430, 2440, 2450). An earlier guess, day or night, fails: only 2 of 13 across the cartridge have a twin record | yes |
 | 102, 2, 3 | a second set of flags, "marks": 102 sets one, 2 holds if it is set, 3 if not | of the 57 sets, **31** sit in a record that also tests 3 of the same mark — the first time a character is talked to — and 24 of those have a partner record for the same character, map and span testing 2 of it: Hugo's `3:7 119:2430 102:7`, then `2:7 118:8 193:0`. Tests (280 and 298) far outnumber sets, so something else sets marks too. An earlier measure, 145 of 566, counted every test against any set | yes |
+| 35 : n | holds only at step *n* of the stage | of the 128 records testing it, **94** name a step some event in the same file moves the story to at that stage, against **20** for the step three on. The Hexagon's switch, `201`: nothing at steps 1 to 3, `ev02530` at 4 — "There's a noise of something moving somewhere!" — its after-line at 5 | yes |
+| 120 : n | starts set battle *n* — see "Event battles" | all **40** arguments are indices there; **65 of the 66** records carrying one have a value 5 = 15 record in the same map naming the same *n* | yes |
+| value 5 = 15, opening with 12 : n | once set battle *n* is won: plays the event, sets the flags | 46 of the 47 open with 12. The Hexagon's `12:2 119:2550` plays Patty's thanks | yes |
+| value 5 = 16, opening with 12 : n | once it is lost | all 33 open with 12; INFERRED as the other outcome — the Hexagon's `12:2 104:4 197:10` sets the flag under which Patty offers the fight again | yes |
 | 17 : n | — | never paired with anything that sets or tests it | no |
 
 The flags are read as the stage's own: cleared when the story moves on to

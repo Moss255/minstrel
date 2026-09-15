@@ -146,6 +146,98 @@ describe('talk as the story’s flags stand', () => {
     })
   })
 
+  it('lets the character’s own records choose before a talk record, which plays their label', () => {
+    // Patty's, in the file's order: the talk record with no condition sits
+    // second, and would otherwise answer every time.
+    const triggers = [
+      trigger([
+        [6, 8],
+        [5, 6],
+        [118, 8],
+        [192, 0],
+      ]),
+      trigger(
+        [
+          [6, 8],
+          [11, 192],
+          [119, 2535],
+        ],
+        1,
+      ),
+      trigger([
+        [6, 8],
+        [4, 6],
+        [118, 8],
+        [193, 0],
+      ]),
+      trigger(
+        [
+          [6, 8],
+          [11, 193],
+          [16, 0],
+          [119, 22510],
+        ],
+        1,
+      ),
+    ]
+    expect(pickLine({ ...asking, triggers })).toMatchObject({ kind: 'event', event: 2535 })
+    expect(pickLine({ ...asking, triggers, flags: new Set([6]) })).toMatchObject({
+      kind: 'event',
+      event: 22510,
+    })
+  })
+
+  it('lets a talk record choose for someone with no record of their own', () => {
+    const triggers = [
+      trigger(
+        [
+          [6, 8],
+          [11, 80],
+          [5, 0],
+          [119, 2500],
+        ],
+        1,
+      ),
+    ]
+    expect(pickLine({ ...asking, triggers })).toMatchObject({ kind: 'event', event: 2500 })
+    expect(said(pickLine({ ...asking, triggers, flags: new Set([0]) }))).toBe('*: Plain.')
+  })
+
+  it('holds a record to the story’s step when it names one', () => {
+    const triggers = [
+      trigger([
+        [6, 8],
+        [35, 1],
+        [118, 8],
+        [192, 0],
+      ]),
+      trigger([
+        [6, 8],
+        [35, 4],
+        [118, 8],
+        [194, 0],
+      ]),
+      trigger(
+        [
+          [6, 8],
+          [11, 194],
+          [16, 0],
+          [119, 2530],
+        ],
+        1,
+      ),
+      trigger([
+        [6, 8],
+        [35, 5],
+        [118, 8],
+        [193, 0],
+      ]),
+    ]
+    expect(said(pickLine({ ...asking, triggers, step: 1 }))).toBe('*: Before.')
+    expect(pickLine({ ...asking, triggers, step: 4 })).toMatchObject({ kind: 'event', event: 2530 })
+    expect(said(pickLine({ ...asking, triggers, step: 5 }))).toBe('*: After.')
+  })
+
   it('does not take another character’s label from a record about someone else', () => {
     const triggers = [
       trigger([

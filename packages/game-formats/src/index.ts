@@ -31,6 +31,7 @@ export {
   type ZoneMonster,
 } from './encounters.ts'
 export { GameFormatError } from './errors.ts'
+export { type EventBattle, readEventBattles } from './eventbattle.ts'
 export {
   type EventMessage,
   type MarkupToken,
@@ -168,13 +169,20 @@ export {
   type SpritePart,
 } from './sprite.ts'
 export {
+  afterBattle,
+  type BattleOutcome,
   type EventOutcome,
   entryEvent,
   eventOutcome,
   flagsHold,
   KIND_ENTRY,
   KIND_EVENT,
+  KIND_LOST,
+  KIND_WON,
   marksSet,
+  OP_AFTER_BATTLE,
+  OP_AT_STEP,
+  OP_BATTLE,
   OP_ENTERED,
   OP_EVENT,
   OP_EVENT_OF,

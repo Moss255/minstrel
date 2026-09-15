@@ -13,6 +13,7 @@ import {
   type ActionRange,
   type AttendingCharacter,
   type BattleZone,
+  type EventBattle,
   type EventMessage,
   type FieldMonster,
   type FieldZone,
@@ -40,6 +41,7 @@ import {
   readActions,
   readAttendingCharacters,
   readBattleEncounters,
+  readEventBattles,
   readEventMessages,
   readFieldEncounters,
   readFieldMonsters,
@@ -105,8 +107,11 @@ export interface Loaded {
    * not established — see {@link Stage}.
    */
   readonly stages: readonly Stage[]
-  /** The cast at one of {@link stages}; `undefined` is the file's first placement of each. */
-  castAt(stage: Stage | undefined): Cast
+  /**
+   * The cast at one of {@link stages} — and at a step of it, given one;
+   * `undefined` is the file's first placement of each.
+   */
+  castAt(stage: Stage | undefined, step?: number): Cast
   /** The chapter letters this map's area has talk for, in order — `A0`, `B0` … */
   readonly letters: readonly string[]
   /** What a character says in a chapter — see `readTalk`. Empty when they say nothing. */
@@ -141,6 +146,8 @@ export interface Loaded {
   readonly fieldZones: readonly FieldZone[]
   /** Every zone's roamers and battle company, by zone — see `readBattleEncounters`. */
   readonly battleZones: ReadonlyMap<number, BattleZone>
+  /** The set battles, by the index a trigger's battle word names — see `readEventBattles`. */
+  readonly eventBattles: ReadonlyMap<number, EventBattle>
   /** How each monster goes about the field, by number — see `readFieldMonsters`. */
   readonly fieldMonsters: ReadonlyMap<number, FieldMonster>
   /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
@@ -350,6 +357,52 @@ function spanOf(state: NpcState): { from: Stage; to: Stage } {
   }
 }
 
+/**
+ * Whether the step falls in a gap a character's records leave inside one
+ * sub-stage — one ending before it, the next beginning after — where they
+ * stand at their header. INFERRED, and thin: 19 such gaps on the cartridge,
+ * nearly all between records that say nowhere. The Hexagon's `204` has one
+ * over steps 2 and 3 of 2.4, when it is talked to, and the event that opens
+ * step 2, `ev02500`, stands its figure on the header's spot to 0.01. The next,
+ * `ev02510`, walks it to (−11.74, 11.23) in the file's units, which is not
+ * followed: which of an event's actors is which of the cast is not read.
+ */
+function inStepGap(
+  states: readonly NpcState[],
+  header: NpcPlacement,
+  stage: Stage,
+  step: number | undefined,
+): boolean {
+  if (step === undefined) return false
+  const mine = states.filter((state) => state.id === header.id && state.map === header.map)
+  const endsBefore = mine.some(
+    (state) => compareStages(spanOf(state).to, stage) === 0 && (state.unknown_0x08[5] ?? 0) < step,
+  )
+  const beginsAfter = mine.some(
+    (state) =>
+      compareStages(spanOf(state).from, stage) === 0 && (state.unknown_0x08[2] ?? 0) > step,
+  )
+  return endsBefore && beginsAfter && !mine.some((state) => stateCovers(state, stage, step))
+}
+
+/**
+ * Whether a state's span covers the stage — and, given a step, that step of
+ * it: words 2 and 5 are the span's first and last step. INFERRED: within one
+ * sub-stage the first is at or before the last on 362 of 362, and where a
+ * character's next state begins in the sub-stage the last ends in, it begins
+ * one step on 121 of 179, against 17 for two. The Hexagon's `202` stands
+ * aside from step 5 of 2.4.
+ */
+function stateCovers(state: NpcState, stage: Stage, step: number | undefined): boolean {
+  const words = state.unknown_0x08
+  const { from, to } = spanOf(state)
+  if (compareStages(from, stage) > 0 || compareStages(stage, to) > 0) return false
+  if (step === undefined) return true
+  if (compareStages(from, stage) === 0 && step < (words[2] ?? 0)) return false
+  if (compareStages(stage, to) === 0 && step > (words[5] ?? 0)) return false
+  return true
+}
+
 /** The stages this map's placed records start at, earliest first. */
 function stagesOf(area: Area, id: number | undefined): Stage[] {
   const found = new Map<string, Stage>()
@@ -376,7 +429,17 @@ function stagesOf(area: Area, id: number | undefined): Stage[] {
  *
  * With no stage, each character is where its block's header puts them. With
  * one, it is the first of their placed records in this map whose span covers
- * the stage, and a character with none is not here.
+ * the stage — and the step, given one, see `stateCovers` — and a character
+ * whose records none of them do is not here. **A character with no records at
+ * all stands where the header puts them**, at every stage.
+ *
+ * INFERRED, that last: of the cartridge's character records that talk to
+ * someone, 596 talk to a character with no records whose header is in that
+ * map, against 1,245 over a record with a place. In Angel Falls it adds one
+ * thing to examine; in the Hexagon, the switch on its first floor, `201`. A
+ * record that says nowhere is not the header's place: taken so, Angel Falls
+ * would have 27 more at every stage — Patty's model in the village at 2.1, a
+ * second Ivor at 2.3 while he follows the Hero.
  */
 function castOf(
   cat: Catalogue,
@@ -385,6 +448,7 @@ function castOf(
   groundAt: GroundAt,
   sheets: ReadonlyMap<string, Uint8Array>,
   stage?: Stage,
+  step?: number,
 ): Cast {
   if (!area) return NOBODY
   const placed: { entry: NpcEntry; placement: NpcPlacement }[] = []
@@ -394,14 +458,15 @@ function castOf(
     }
   } else {
     const byId = new Map(area.entries.map((entry) => [entry.id, entry]))
+    const recorded = new Set(area.states.map((state) => state.id))
     const seen = new Set<number>()
     for (const state of area.states) {
-      if (!state.position || seen.has(state.id)) continue
+      if (seen.has(state.id)) continue
       if (id !== undefined && state.map !== id) continue
-      const { from, to } = spanOf(state)
-      if (compareStages(from, stage) > 0 || compareStages(stage, to) > 0) continue
+      if (!stateCovers(state, stage, step)) continue
       const entry = byId.get(state.id)
       if (!entry) continue
+      if (!state.position) continue
       seen.add(state.id)
       placed.push({
         entry,
@@ -412,6 +477,15 @@ function castOf(
           ...state.position,
         }),
       })
+    }
+    for (const header of area.placements) {
+      if (seen.has(header.id)) continue
+      if (id !== undefined && header.map !== id) continue
+      if (recorded.has(header.id) && !inStepGap(area.states, header, stage, step)) continue
+      const entry = byId.get(header.id)
+      if (!entry) continue
+      seen.add(header.id)
+      placed.push({ entry, placement: placementInWorld(header) })
     }
   }
   return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
@@ -629,6 +703,16 @@ function looseFile(rom: Uint8Array, path: string): Uint8Array | undefined {
     if (leaf.path === path) bytes = leaf.bytes
   byPath.set(path, bytes)
   return bytes
+}
+
+/** The set battles, by index — see `readEventBattles`. Empty when the file will not read. */
+function eventBattlesOf(rom: Uint8Array): ReadonlyMap<number, EventBattle> {
+  const bytes = looseFile(rom, '/data/event/eventbattle.bin')
+  try {
+    return new Map((bytes ? readEventBattles(bytes) : []).map((battle) => [battle.index, battle]))
+  } catch {
+    return new Map()
+  }
 }
 
 /** Each map's zones, by the map's id — see `readFieldEncounters`. Empty when it will not read. */
@@ -1371,6 +1455,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     monsterCodes: monsterCodesOf(rom),
     monsterCodeOf: monsterCodeByNumberOf(rom),
     battleZones: battleEncountersOf(rom),
+    eventBattles: eventBattlesOf(rom),
     fieldMonsters: fieldMonstersOf(rom),
     heroLevels: heroLevelsOf(rom),
     shops: shopsOf(rom),
@@ -1399,7 +1484,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       [...cat.members].find(([path]) => path.toLowerCase() === SHADOW_ARCHIVE)?.[1],
     ),
     stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
-    castAt: (stage) => castOf(cat, area, id, groundAt, sheets, stage),
+    castAt: (stage, step) => castOf(cat, area, id, groundAt, sheets, stage, step),
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,

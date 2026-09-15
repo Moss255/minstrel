@@ -551,6 +551,8 @@ export interface Asking {
   readonly marks?: ReadonlySet<number>
   /** Whether the Hero has no companion with them — see `OP_ALONE`. Not read when not given. */
   readonly alone?: boolean
+  /** The step within the stage — see `OP_AT_STEP`. Not read when not given. */
+  readonly step?: number
 }
 
 /**
@@ -568,7 +570,7 @@ export interface Asking {
  * says it is a guess.
  */
 export function pickLine(asking: Asking): Choice | undefined {
-  const { triggers, map, stage, night, id, marks } = asking
+  const { triggers, map, stage, night, id, marks, step } = asking
   const flags = asking.flags ?? new Set<number>()
   let marked: number[] = []
   const lines = asking.lines.filter((line) => line.tag === 1)
@@ -581,19 +583,29 @@ export function pickLine(asking: Asking): Choice | undefined {
     stageOrder(candidate.from) <= stageOrder(stage) &&
     stageOrder(stage) <= stageOrder(candidate.to)
 
-  const trigger = triggers.find((candidate) => {
-    if (!applies(candidate)) return false
+  const naming = (candidate: Trigger) =>
+    applies(candidate) && wordsOf(candidate).some((w) => w.op === OP_CHARACTER && w.arg === id)
+  const chooses = (candidate: Trigger) => {
+    if (!naming(candidate)) return false
     const words = wordsOf(candidate)
     return (
-      words.some((w) => w.op === OP_CHARACTER && w.arg === id) &&
       words.some(
         (w) =>
           w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_LABEL_OF || w.op === OP_EVENT,
       ) &&
-      flagsHold(words, flags, marks) &&
+      flagsHold(words, flags, marks, step) &&
       (asking.alone === undefined || asking.alone || !words.some((w) => w.op === OP_ALONE))
     )
-  })
+  }
+  // The character's own records choose first; a talk record chooses only for
+  // one who has none here — otherwise it makes an event of a label they
+  // choose, see `labelEvent`. INFERRED: 116 talk records with no condition sit
+  // before a record of the same character, map and span, which the first
+  // match in the file would leave dead — 269 of them, Patty's among them.
+  const own = triggers.some((c) => c.unknown_5 !== KIND_TALK && naming(c))
+  const trigger =
+    triggers.find((c) => c.unknown_5 !== KIND_TALK && chooses(c)) ??
+    (own ? undefined : triggers.find((c) => c.unknown_5 === KIND_TALK && chooses(c)))
   if (trigger) {
     const words = wordsOf(trigger)
     marked = marksSet(words)
@@ -611,7 +623,7 @@ export function pickLine(asking: Asking): Choice | undefined {
     const leads =
       chosenHere === undefined
         ? undefined
-        : labelEvent(triggers, applies, id, chosenHere, flags, marks)
+        : labelEvent(triggers, applies, id, chosenHere, flags, marks, step)
     if (leads) {
       const both = [...marked, ...leads.marks]
       return {
@@ -690,13 +702,14 @@ function labelEvent(
   label: number,
   flags: ReadonlySet<number>,
   marks: ReadonlySet<number> | undefined,
+  step: number | undefined,
 ): { event: number; offset: number; marks: number[] } | undefined {
   for (const candidate of triggers) {
     if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
     const words = wordsOf(candidate)
     if (!words.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
     if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(words, flags, marks)) continue
+    if (!flagsHold(words, flags, marks, step)) continue
     const event = words.find((w) => w.op === OP_EVENT)?.arg
     if (event !== undefined) return { event, offset: candidate.offset, marks: marksSet(words) }
   }

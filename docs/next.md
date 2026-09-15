@@ -16,7 +16,8 @@ is kept for its questions to the emulator. Each gap's evidence is in the
 section it names.
 
 **Where the milestones stand.** M0–M2 are done. M3 plays the opening to 2.4,
-past the landslide and back, moved on by the trigger records. M4 is as
+past the landslide and back, moved on by the trigger records, and M7 has
+begun: the Hexagon plays through its first floor to the Hexagoon fight. M4 is as
 far as the cartridge goes: equipment's numbers wait on the emulator. M5 has
 battles, spells, changes of state, monsters acting and a party of up to four.
 M6 has monsters roaming the field, the poison marsh, Ivor following and the
@@ -34,7 +35,7 @@ wanted begun alongside M5 — has not either.
 | 2 | wake in Erinn's house and explore all of Angel Falls | yes |
 | 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line |
 | 4 | fight, level up, buy and equip gear | yes, but equipment changes no number |
-| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | no — M7 |
+| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | partly — the Hexagon plays to the fight; winning it, and the title card, not yet |
 | 6 | the monitor's resolution, widescreen, remappable input | resolution and widescreen yes; remapping no |
 
 **Closable here, from the code and the cartridge:**
@@ -43,7 +44,7 @@ wanted begun alongside M5 — has not either.
 |---|---|---|
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening, on to the Hexagon | M3, M7 | **Plays to 2.4** (15 September, see the top): Hugo at the village's edge, the pass on entering it, Ivor's scene at the landslide, and the way back — Hugo's greeting, the mayor's house and Erinn's. The second set of flags (`102`, `2`, `3`) and `86` (no companion) are read. Left: what else sets marks; the pass's value-5 = 2 records, played by something in the map; what value 5 = 20 gates; whether a character's event plays on coming near; and the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. Then the Hexagon. On the critical path. |
+| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Left: winning it played through to 2.5 (read and tested, not walked); the statue drawn moving (function 321); the title card; what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
@@ -98,8 +99,54 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** the Hexagon at 2.4, the rest of the critical
-path; audio alongside it; the zones once the emulator has answered.
+**Where to start next time:** the Hexagon's last stretch — winning the
+Hexagoon fight played through, the statue's move drawn, and the title card
+that closes the slice; audio alongside it; the zones once the emulator has
+answered.
+
+---
+
+## The Hexagon plays to Hexagoon — 15 September
+
+**What plays now**, moved on by the trigger records (game-formats' FORMAT.md,
+"The words", "The placements", "Event battles"; INFERRED throughout):
+
+- **The first floor goes by the story's step.** Examining the spot `202`
+  plays `ev02500`: step 2, and a figure, `204`, stands ahead of the entrance.
+  Talking to it plays `ev02510` (step 3) and then `ev02520`, "On the back of
+  this statue…" (step 4), and it is gone. The switch in the side room, `201`,
+  then plays `ev02530`, "There's a noise of something moving somewhere!":
+  step 5, and `202` stands 3.47 units along.
+- **Patty, in the last room**: `ev02535`, "you couldn't be a hero and shift
+  some of this rubble for me", sets flag 6; talked to again, `ev22510` starts
+  **set battle 2 — Hexagoon alone**, out of `eventbattle.bin`.
+- **After it**: won, `ev02550`, Patty's thanks, which goes on outside to
+  `ev02555` and **2.5, step 1**; lost, flag 4, under which she offers the
+  fight again.
+
+Walked through in the browser: the first floor's four steps, and Patty's plea
+into the fight. **Not walked: winning it** — what follows is read and tested
+against the cartridge, and not played. **For testing, ours:** `?step=4` opens
+at that step, and `?at=x,z` stands the Hero there.
+
+**New readings:** 35 tests the step; a cast record's words 2 and 5 are the
+span's steps; a character's own records choose before a talk record; a
+character with no records stands at their header, and so does one in a gap
+between two records inside one sub-stage (thin: 19 such gaps); 120 starts a
+set battle, and records of value 5 = 15 and 16 say what follows winning and
+losing it. A record that says nowhere is *not* the header's place — that
+would have put 27 more in Angel Falls at every stage.
+
+**Ours:** there is no running from a set battle; losing one wakes the Hero in
+the village church, as any loss does; a stage opened without an event is at
+step 0, where steps are not read.
+
+**Left:** `ev02530` calls function 321 sixteen times, not read — perhaps what
+moves the statue, which is not drawn moving; whether the way on is shut until
+then is not checked; which of an event's actors is which of the cast, so the
+figure's walk off in `ev02510` is not followed; word 6 of a cast record; the
+title card; `ev02500` and `ev02510` have only "DEBUG!" for text — they are
+scripted scenes.
 
 ---
 

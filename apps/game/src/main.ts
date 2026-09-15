@@ -4,6 +4,7 @@ import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
   ActionEffect,
   type AttendingCharacter,
+  afterBattle,
   entryEvent,
   eventOutcome,
   type LevelRow,
@@ -351,6 +352,14 @@ let characterScale = 1
 let storyStage: Stage | undefined = OPENING_STAGE
 /** The step within the stage, and the story flags set — see `followEvent`. */
 let storyStep = 0
+/**
+ * The step, where one is known: a stage opened without an event to set it — a
+ * new game, `?stage=`, flicking with `t` — is at step 0, which no record
+ * names, and then steps are not read. Ours.
+ */
+function stepNow(): number | undefined {
+  return storyStep > 0 ? storyStep : undefined
+}
 const storyFlags = new Set<number>()
 /**
  * The second set of flags, "marks" — see `OP_IF_MARK` in `@minstrel/game-formats`.
@@ -448,6 +457,42 @@ function fightCodes(): string[] {
 }
 /** Shift+P fights the slice's boss, Hexagoon, from whom there is no running. */
 const BOSS_FIGHT = ['b003a']
+/**
+ * The set battle being fought, the map it began in, and — once settled —
+ * whether it was won: what follows it is that map's record for the outcome —
+ * see `afterBattle` in `@minstrel/game-formats`.
+ */
+let eventFight: { index: number; map: number | undefined; won?: boolean } | undefined
+/**
+ * Fight set battle `index` — see `readEventBattles` — its monsters by their
+ * codes, as many of each as it says. There is no running from one: **ours**,
+ * as the boss's is; whether each set battle allows it is not read.
+ */
+function startEventBattle(index: number): void {
+  const found = loaded?.eventBattles.get(index)
+  const codes = (found?.foes ?? []).flatMap(({ monster, count }) => {
+    const code = loaded?.monsterCodeOf.get(monster)
+    return code ? Array<string>(count).fill(code) : []
+  })
+  if (!found || codes.length === 0) {
+    status(`set battle ${index} is not in the event battles, or names no monster read`)
+    return
+  }
+  eventFight = { index, map: loaded?.mapId }
+  startFight(codes, false)
+}
+
+/**
+ * What follows a set battle: the flags its map's record for the outcome sets,
+ * and the event it plays — Patty's thanks after Hexagoon, `ev02550`.
+ */
+function followBattle(fought: { index: number; map: number | undefined; won?: boolean }): void {
+  if (!loaded || fought.won === undefined) return
+  const after = afterBattle(loaded.triggers, fought.index, fought.won, fought.map)
+  if (!after) return
+  for (const flag of after.flags) storyFlags.add(flag)
+  if (after.event !== undefined && fought.won) startEvent(after.event)
+}
 /**
  * How the field's monsters roam — see `tickRoaming`. **All of it ours**: the
  * game's spawning is in its code, not its data. Distances go by a person.
@@ -588,14 +633,20 @@ function begin(bytes: Uint8Array, map: string): void {
     restore(saved)
     if (enter(saved.map, saved.at)) return
   }
-  // Development convenience: `?stage=2.2` opens a new game at that stage, and
-  // `?flags=0,1` with those story flags set.
+  // Development convenience: `?stage=2.2` opens a new game at that stage,
+  // `?step=4` at that step of it, and `?flags=0,1` with those story flags set.
   const stage = /^(\d+)\.(\d+)$/.exec(params.get('stage') ?? '')
   if (stage) storyStage = { major: Number(stage[1]), minor: Number(stage[2]) }
+  const step = Number(params.get('step'))
+  if (Number.isInteger(step) && step > 0) storyStep = step
   for (const flag of (params.get('flags') ?? '').split(',')) {
     if (/^\d+$/.test(flag)) storyFlags.add(Number(flag))
   }
-  if (!enter(map)) {
+  // `?at=x,z` stands the Hero there, in world units, on the highest floor —
+  // ours, for looking at a spot a headless browser cannot walk to.
+  const spot = /^(-?[\d.]+),(-?[\d.]+)$/.exec(params.get('at') ?? '')
+  const arrival = spot ? { x: Number(spot[1]), y: 0, z: Number(spot[2]), facing: 0 } : undefined
+  if (!enter(map, arrival)) {
     startEl.hidden = false
     return
   }
@@ -612,7 +663,7 @@ function begin(bytes: Uint8Array, map: string): void {
  */
 function playEntryEvent(): boolean {
   if (!loaded || !storyStage || playing || loaded.mapId === undefined) return false
-  const event = entryEvent(loaded.triggers, loaded.mapId, storyStage, storyFlags)
+  const event = entryEvent(loaded.triggers, loaded.mapId, storyStage, storyFlags, stepNow())
   if (event === undefined || !loaded.eventScript(event)) return false
   return startEvent(event)
 }
@@ -788,7 +839,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   }
 
   // The cast where the story stage has them.
-  if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage) }
+  if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
   loaded = opened
   fillBag(opened)
   // The top screen's map: the picture this map is drawn on, or its area's.
@@ -1519,6 +1570,9 @@ function openTreasureAhead(): boolean {
  * talk file, or an event's messages — and the status line says why. `Shift+F`
  * reads out every line of their file instead, for checking the choice.
  */
+/** An event being read out for want of a script that will read — see `followEvent`. */
+let talkEvent: number | undefined
+
 function talk(everyLine = false): void {
   if (!loaded || !self) return
   if (talking) {
@@ -1531,6 +1585,12 @@ function talk(everyLine = false): void {
     if (!talking && playing) {
       playing.player.dismiss()
       playing.showing = undefined
+    }
+    // An event read out for want of its script goes on as a played one does.
+    if (!talking && talkEvent !== undefined) {
+      const read = talkEvent
+      talkEvent = undefined
+      followEvent(read)
     }
     return
   }
@@ -1593,6 +1653,7 @@ function talk(everyLine = false): void {
       flags: storyFlags,
       marks: storyMarks,
       alone: companionsNow().every(standingHere),
+      step: stepNow(),
     })
     // What the record that chose it sets — the first time they are talked to.
     for (const mark of choice?.marks ?? []) storyMarks.add(mark)
@@ -1614,6 +1675,13 @@ function talk(everyLine = false): void {
         messages.map((message) => message.text),
         messages.map((message) => `message ${message.id}`),
       )
+      // What follows it follows once it is read — or at once, with nothing to
+      // read: Patty's `ev22510` starts the fight with Hexagoon.
+      if (!talking) {
+        followEvent(choice.event)
+        return
+      }
+      talkEvent = choice.event
     }
   }
   if (!talking) {
@@ -2505,6 +2573,7 @@ function settleBattle(): void {
       : undefined
   }
   const lines: string[] = []
+  if (eventFight) eventFight = { ...eventFight, won: battle.state.outcome === 'won' }
   if (battle.state.outcome === 'won' && hero && levels) {
     const { exp, gold } = spoils(battle.state)
     const before = standing(levels, heroExp, heroGains).level
@@ -2569,14 +2638,18 @@ function endFight(): void {
   battleCompanions = []
   talkEl.hidden = true
   menuEl.hidden = true
+  const fought = eventFight
+  eventFight = undefined
   if (wakeInChurch) {
     wakeInChurch = false
     if (enter(CHURCH.map, CHURCH.spot)) {
       status(`${DEFAULT_CONTEXT.heroName} comes round in the church`)
+      if (fought) followBattle(fought)
       return
     }
   }
   status(`back on the map · HP ${heroHp ?? 'full'}`)
+  if (fought) followBattle(fought)
 }
 
 /** Play event `number` in the map the Hero is in — see `event.ts`. False when it will not read. */
@@ -2727,14 +2800,17 @@ function followEvent(event: number): void {
   if (stage) {
     const moved =
       !storyStage || storyStage.major !== stage.major || storyStage.minor !== stage.minor
+    const stepped = moved || storyStep !== stage.step
     if (moved) {
       storyFlags.clear()
       storyMarks.clear()
     }
     storyStage = { major: stage.major, minor: stage.minor }
     storyStep = stage.step
-    if (moved) {
-      loaded = { ...loaded, cast: loaded.castAt(storyStage) }
+    // The cast stands where the stage and step have them: the Hexagon's
+    // statue steps aside at 2.4, step 5 — see `castOf`.
+    if (stepped) {
+      loaded = { ...loaded, cast: loaded.castAt(storyStage, stepNow()) }
       poseMap(Math.max(mapFrame, 0))
     }
   }
@@ -2744,6 +2820,10 @@ function followEvent(event: number): void {
       `, step ${storyStep}` +
       (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : ''),
   )
+  if (outcome.battle !== undefined) {
+    startEventBattle(outcome.battle)
+    return
+  }
   if (onward) {
     const code = loaded.mapCodeOf(onward.map)
     if (code && (code === loaded.code || enter(code))) startEvent(onward.event)
@@ -2937,6 +3017,7 @@ function showTalk(): void {
 
 function closeTalk(): void {
   talking = undefined
+  talkEvent = undefined
   talkEl.hidden = true
   talkEl.replaceChildren()
 }
@@ -3149,8 +3230,11 @@ addEventListener('keydown', (event) => {
   // Esc closes what is being said — but an event's message is the event's to
   // close, so there it goes on, as `f` does.
   if (key === 'escape' && talking) {
+    const read = talkEvent
     if (playing) talk()
     else closeTalk()
+    // An event read out goes on all the same.
+    if (!playing && read !== undefined) followEvent(read)
     event.preventDefault()
   }
   if ((key === 'v' || key === 'b') && loaded) {

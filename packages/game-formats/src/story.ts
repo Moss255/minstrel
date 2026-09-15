@@ -56,6 +56,38 @@ export const OP_EVENT = 119
 export const KIND_ENTRY = 3
 /** The map an entry record is for. */
 export const OP_ENTERED = 9
+/**
+ * Holds only when the story is at step *n* of its stage. INFERRED: of the 128
+ * records testing it, 94 name a step that some event in the same file moves
+ * the story to at that stage, against 20 for the step three further on. On the
+ * Hexagon's first floor a statue does nothing at steps 1 to 3, plays `ev02530`
+ * at 4 — "There's a noise of something moving somewhere!" — and says its
+ * after-line at 5.
+ */
+export const OP_AT_STEP = 35
+/**
+ * Starts a set battle: the entry with that index in `eventbattle.bin` — see
+ * `readEventBattles`. INFERRED: all 40 arguments on the cartridge are indices
+ * there, and 65 of the 66 records carrying one have a {@link KIND_WON} record
+ * in the same map naming the same number. The Hexagon's `8:22510 120:2` is
+ * index 2, Hexagoon alone.
+ */
+export const OP_BATTLE = 120
+/**
+ * Value 5 of a record that acts once a set battle is won: 46 of the 47 open
+ * with {@link OP_AFTER_BATTLE}. INFERRED — the Hexagon's, `12:2 119:2550`,
+ * plays Patty's thanks.
+ */
+export const KIND_WON = 15
+/**
+ * Value 5 of a record that acts once a set battle is lost: all 33 open with
+ * {@link OP_AFTER_BATTLE}. INFERRED, as the other outcome to
+ * {@link KIND_WON}: the Hexagon's, `12:2 104:4 197:10`, sets the flag under
+ * which Patty offers the fight again.
+ */
+export const KIND_LOST = 16
+/** The set battle a {@link KIND_WON} or {@link KIND_LOST} record is about. */
+export const OP_AFTER_BATTLE = 12
 
 /** A stage, as a trigger record's span gives one. */
 interface Stage {
@@ -76,13 +108,14 @@ export function entryEvent(
   map: number,
   stage: Stage,
   flags: ReadonlySet<number>,
+  step?: number,
 ): number | undefined {
   for (const trigger of triggers) {
     if (trigger.unknown_5 !== KIND_ENTRY || trigger.map !== map) continue
     if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
     const words = triggerWords(trigger)
     if (!words.some((w) => w.op === OP_ENTERED && w.arg === map)) continue
-    if (!flagsHold(words, flags)) continue
+    if (!flagsHold(words, flags, undefined, step)) continue
     const plays = words.find((w) => w.op === OP_EVENT)
     if (plays) return plays.arg
   }
@@ -104,6 +137,8 @@ export interface EventOutcome {
   readonly flags: readonly number[]
   /** The map and event it goes on to, if it does. */
   readonly onward: { readonly map: number; readonly event: number } | undefined
+  /** The set battle it starts, if it does — see {@link OP_BATTLE}. */
+  readonly battle: number | undefined
 }
 
 /**
@@ -142,7 +177,41 @@ export function eventOutcome(
     stage,
     flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
     onward,
+    battle: words.find((w) => w.op === OP_BATTLE)?.arg,
   }
+}
+
+/** What follows a set battle — see {@link afterBattle}. */
+export interface BattleOutcome {
+  /** The event its record plays, if it names one. */
+  readonly event: number | undefined
+  /** The flags it sets. */
+  readonly flags: readonly number[]
+}
+
+/**
+ * What follows set battle `battle` in `map`, won or lost: the first record of
+ * {@link KIND_WON} or {@link KIND_LOST} there opening with that battle.
+ * `undefined` when there is none. INFERRED — see {@link KIND_WON}.
+ */
+export function afterBattle(
+  triggers: readonly Trigger[],
+  battle: number,
+  won: boolean,
+  map: number | undefined,
+): BattleOutcome | undefined {
+  const kind = won ? KIND_WON : KIND_LOST
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== kind || (map !== undefined && trigger.map !== map)) continue
+    const words = triggerWords(trigger)
+    const first = words[0]
+    if (first?.op !== OP_AFTER_BATTLE || first.arg !== battle) continue
+    return {
+      event: words.find((w) => w.op === OP_EVENT)?.arg,
+      flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
+    }
+  }
+  return undefined
 }
 
 /**
@@ -164,13 +233,15 @@ export const OP_SET_MARK = 102
 /**
  * Whether a record's flag conditions hold: every {@link OP_IF_FLAG} flag set
  * and every {@link OP_UNLESS_FLAG} one not — and, given `marks`, the same for
- * the second set, {@link OP_IF_MARK} and {@link OP_UNLESS_MARK}. Without
- * `marks` those are not read. Its other conditions are not read.
+ * the second set, {@link OP_IF_MARK} and {@link OP_UNLESS_MARK}; given `step`,
+ * every {@link OP_AT_STEP} naming it. Without `marks` or `step` those are not
+ * read. Its other conditions are not read.
  */
 export function flagsHold(
   words: readonly TriggerWord[],
   flags: ReadonlySet<number>,
   marks?: ReadonlySet<number>,
+  step?: number,
 ): boolean {
   return words.every(
     (w) =>
@@ -178,7 +249,8 @@ export function flagsHold(
       (w.op !== OP_UNLESS_FLAG || !flags.has(w.arg)) &&
       (marks === undefined ||
         ((w.op !== OP_IF_MARK || marks.has(w.arg)) &&
-          (w.op !== OP_UNLESS_MARK || !marks.has(w.arg)))),
+          (w.op !== OP_UNLESS_MARK || !marks.has(w.arg)))) &&
+      (step === undefined || w.op !== OP_AT_STEP || w.arg === step),
   )
 }
 

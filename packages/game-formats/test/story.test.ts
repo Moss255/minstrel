@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  afterBattle,
   entryEvent,
   eventOutcome,
   flagsHold,
   KIND_ENTRY,
   KIND_EVENT,
+  KIND_LOST,
+  KIND_WON,
   marksSet,
   OP_IF_FLAG,
   OP_UNLESS_FLAG,
@@ -201,6 +204,36 @@ describe('the story in trigger records', () => {
     expect(flagsHold(after, new Set([0]))).toBe(true)
     expect(flagsHold(after, new Set([0, 1]))).toBe(false)
     expect(flagsHold([{ op: 6, arg: 8 }], new Set())).toBe(true)
+  })
+
+  it('holds a record to the story’s step only when a step is given', () => {
+    const atFour = [{ op: 35, arg: 4 }]
+    expect(flagsHold(atFour, new Set(), undefined, 4)).toBe(true)
+    expect(flagsHold(atFour, new Set(), undefined, 5)).toBe(false)
+    expect(flagsHold(atFour, new Set())).toBe(true)
+  })
+
+  it('reads the set battle an event starts, and what winning or losing it plays', () => {
+    const talk = trigger(7105, KIND_EVENT, [
+      [8, 22510],
+      [120, 2],
+    ])
+    expect(eventOutcome([talk], 22510)?.battle).toBe(2)
+    expect(eventOutcome([talk], 22510)?.stage).toBeUndefined()
+    const won = trigger(7105, KIND_WON, [
+      [12, 2],
+      [119, 2550],
+    ])
+    const lost = trigger(7105, KIND_LOST, [
+      [12, 2],
+      [104, 4],
+      [197, 10],
+    ])
+    const records = [talk, won, lost]
+    expect(afterBattle(records, 2, true, 7105)).toEqual({ event: 2550, flags: [] })
+    expect(afterBattle(records, 2, false, 7105)).toEqual({ event: undefined, flags: [4] })
+    expect(afterBattle(records, 3, true, 7105)).toBeUndefined()
+    expect(afterBattle(records, 2, true, 7101)).toBeUndefined()
   })
 
   it('holds the second set’s conditions, the marks, only when they are given', () => {

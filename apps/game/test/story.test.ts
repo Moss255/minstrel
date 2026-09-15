@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { entryEvent, eventOutcome } from '@minstrel/game-formats'
+import { afterBattle, entryEvent, eventOutcome } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import { pickLine } from '../src/talk.ts'
@@ -103,6 +103,65 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     expect(first).toMatchObject({ kind: 'event', event: 2430, marks: [7] })
     expect(pickLine({ ...asking, marks: new Set([7]), alone: false })?.why).toContain('label 193')
     expect(pickLine({ ...asking, marks: new Set(), alone: true })?.why).toContain('label 194')
+  })
+
+  it('has the Hexagon’s first floor go by its steps, and its statue step aside at 5', () => {
+    const floor = load(rom, { map: 'D01M01' })
+    const stage = { major: 2, minor: 4 }
+    const asking = { triggers: floor.triggers, map: floor.mapId, stage, night: false, lines: [] }
+    // The switch, 201: nothing until step 4, when it plays the noise of something moving.
+    expect(pickLine({ ...asking, id: 201, step: 4 })).toMatchObject({ kind: 'event', event: 2530 })
+    expect(pickLine({ ...asking, id: 201, step: 3 })?.kind).not.toBe('event')
+    expect(eventOutcome(floor.triggers, 2530, floor.mapId)?.stage).toEqual({
+      major: 2,
+      minor: 4,
+      step: 5,
+    })
+    // The figure, 204, stands at its header over steps 2 and 3, and not at 1 or 4.
+    const figures = (step: number) => {
+      const cast = floor.castAt(stage, step)
+      return cast.sprites2d.length + cast.sprites
+    }
+    expect(figures(2)).toBe(figures(1) + 1)
+    expect(figures(3)).toBe(figures(4) + 1)
+    const spotAt = (step: number) =>
+      floor.castAt(stage, step).spots.find(({ placement }) => placement.id === 202)?.placement
+    const before = spotAt(4)
+    const after = spotAt(5)
+    expect(before && after && after.x - before.x).toBeGreaterThan(0)
+    expect(floor.castAt(stage, 4).spots.some(({ placement }) => placement.id === 201)).toBe(true)
+  })
+
+  it('has Patty set the Hexagoon fight, and her thanks after it carry on to 2.5', () => {
+    const room = load(rom, { map: 'D01M05' })
+    const asking = {
+      triggers: room.triggers,
+      map: room.mapId,
+      stage: { major: 2, minor: 4 },
+      night: false,
+      id: 203,
+      lines: [],
+    }
+    expect(pickLine(asking)).toMatchObject({ kind: 'event', event: 2535 })
+    expect(pickLine({ ...asking, flags: new Set([6]) })).toMatchObject({
+      kind: 'event',
+      event: 22510,
+    })
+    expect(eventOutcome(room.triggers, 22510, room.mapId)?.battle).toBe(2)
+    expect(room.eventBattles.get(2)?.foes).toEqual([{ monster: 300, count: 1 }])
+    expect(room.monsterCodeOf.get(300)).toBe('b003a')
+    expect(afterBattle(room.triggers, 2, true, room.mapId)?.event).toBe(2550)
+    expect(afterBattle(room.triggers, 2, false, room.mapId)?.flags).toEqual([4])
+    expect(eventOutcome(room.triggers, 2550, room.mapId)?.onward).toEqual({
+      map: 7100,
+      event: 2555,
+    })
+    const outside = load(rom, { map: 'D01' })
+    expect(eventOutcome(outside.triggers, 2555, outside.mapId)?.stage).toEqual({
+      major: 2,
+      minor: 5,
+      step: 1,
+    })
   })
 
   it('has the mayor hear the news on entering his house at 2.3, and moves on to 2.4', () => {
