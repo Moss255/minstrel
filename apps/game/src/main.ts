@@ -2959,7 +2959,9 @@ function eventPieces(): Piece[] {
   if (!now || !rom) return []
   const stage = now.player.stage
   return [...stage.actors].flatMap(([id, actor]) => {
-    if (id === 0 || !actor.model) return []
+    // Only once the event has put them somewhere: one given a model and not
+    // yet placed — Erinn before she walks in, Ivor's faces — stands nowhere.
+    if (id === 0 || !actor.model || !actor.placed) return []
     const look = actorLookOf(rom, actor.model, actor.packs)
     if (!look) return []
     const motion = look.motions.get(actor.motion ?? '') ?? look.motions.get('stand')

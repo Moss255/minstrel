@@ -29,6 +29,9 @@ import {
  * | 224 | character, motion | a motion to go back to — kept, not played |
  * | 566 | 2, model file, character | which model the character is; other kinds are the event's options |
  * | 567 | motion file, character | a pack of motions for it |
+ * | 200 | model file, slot | the second event folder's way: load a model into a numbered slot, negative on 1,195 of its 1,324 uses — 1,021 of the 1,027 name a `.chr`, and the first folder never calls it |
+ * | 229 | motion file, slot | a pack of motions for the slot's model — 394 of 480 onto a slot a `200` filled |
+ * | 202 | character, slot, kind | the character wears the slot's model and its packs — 1,034 of 1,324 onto a filled slot. The statue scene, `ev22590`: Ivor, 2, wears `chara_sub/s017.chr` so. `kind` is not read |
  * | 300 | — | a new shot: the camera let go |
  * | 303 | x, y, z | where the camera looks |
  * | 310 | yaw, rise, run | where it looks from: turned `yaw` about what it looks at, `rise` up and `run` back — the morning's 7.62 up and 12.71 back is 31° down, the pitch the game's own camera takes |
@@ -119,6 +122,10 @@ export class EventStage {
   frame = 0
   /** Engine functions answered with 0 because they are not read, and how often. */
   readonly unhandled = new Map<number, number>()
+  /** The second event folder's model slots: what `200` loaded into each, and the packs `229` added. */
+  private readonly slots = new Map<number, { model: string; packs: string[] }>()
+  /** Which slot each character wears — see `202`. */
+  private readonly bound = new Map<number, number>()
   readonly host: ScriptHost
 
   constructor(readonly scale: number) {
@@ -265,6 +272,28 @@ export class EventStage {
       case 567:
         if (typeof args[0] === 'string') this.actor(num(args[1])).packs.push(args[0])
         return 0
+      case 200:
+        if (typeof args[0] === 'string') this.slots.set(num(args[1]), { model: args[0], packs: [] })
+        return 0
+      case 229: {
+        const slot = this.slots.get(num(args[1]))
+        if (!slot || typeof args[0] !== 'string') return 0
+        slot.packs.push(args[0])
+        // Whoever already wears the slot's model takes its motions too.
+        for (const [id, bound] of this.bound) {
+          if (bound === num(args[1])) this.actor(id).packs.push(args[0])
+        }
+        return 0
+      }
+      case 202: {
+        const slot = this.slots.get(num(args[1]))
+        if (!slot) return 0
+        const actor = this.actor(num(args[0]))
+        actor.model = slot.model
+        actor.packs.push(...slot.packs)
+        this.bound.set(num(args[0]), num(args[1]))
+        return 0
+      }
       case 300:
         this.camera = undefined
         return 0

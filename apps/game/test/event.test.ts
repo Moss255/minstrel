@@ -18,6 +18,26 @@ describe('an event’s stage', () => {
     expect(stage.actors.get(1)).toMatchObject({ x: 1, y: 0.1, z: 2 })
   })
 
+  it('dresses a character in the model a slot was loaded with, and its motion packs', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // As the statue scene brings Ivor on: load, add a pack, give it to character 2.
+    stage.host.call(200, ['chara_sub/s017.chr', -3], t)
+    stage.host.call(229, ['event_lv5/ev22590s017.chr', -3], t)
+    stage.host.call(202, [2, -3, 1], t)
+    expect(stage.actors.get(2)).toMatchObject({
+      model: 'chara_sub/s017.chr',
+      packs: ['event_lv5/ev22590s017.chr'],
+    })
+    // A pack added after goes to whoever wears the slot.
+    stage.host.call(229, ['event_lv5/ev01000s017.chr', -3], t)
+    expect(stage.actors.get(2)?.packs).toContain('event_lv5/ev01000s017.chr')
+    // A slot nothing was loaded into dresses nobody.
+    stage.host.call(202, [5, -9, 1], t)
+    expect(stage.actors.get(5)?.model).toBeUndefined()
+    expect(stage.unhandled.has(200)).toBe(false)
+  })
+
   it('walks a character over so many frames, facing the way it goes, and says when it has arrived', () => {
     const stage = new EventStage(1)
     const { thread: t, written } = thread()

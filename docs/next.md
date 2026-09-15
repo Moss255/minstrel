@@ -100,8 +100,8 @@ the celestial suit, stockings and shoes, with 180 gold (`STARTING_EQUIPMENT`,
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** the rest of what the let's play showed: the
-Hero's spell vocation. Then the event staging the second folder
+**Where to start next time:** what the let's play showed that is still
+open — the time of day, which moves there. Then the event staging the second folder
 calls for — models, cameras — and M8.
 
 ---
@@ -188,8 +188,14 @@ fights and a night back in the village at level 3. **Against ours:**
   twice, twice and one, twice less one, or ten times — and every sold item it
   marks then costs a round price (game-formats' FORMAT.md, "Items", "The
   price"; INFERRED).
-- **Heal comes at level 2**; the spell table's vocation 6, taken for the
-  Minstrel, gives it at 3, and vocation 10 at 2.
+- **Heal comes at level 3**, as the spell table's vocation 6, the Minstrel,
+  has it — first misread as level 2 from frames two seconds apart, which ran
+  two battles together. Read at two frames a second: the Hero reaches level 2
+  after a cruelcumber and learns nothing; the next battle, which the video cuts
+  into at its results, brings a level and "learns a new spell: Heal!"; and the
+  Hero is level 3 at the shop after, with no level between. The spell lists
+  also name the vocations in the level tables' order — Priest, Mage, Paladin,
+  Sage, Ranger each by its spells.
 - **The time of day moves** — evening before the Hero goes home, night in the
   field — and a bodkin archer turned up only after dark: zone 15, kind 2, the
   only zone with one. One sighting.
