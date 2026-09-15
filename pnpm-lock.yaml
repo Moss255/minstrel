@@ -51,6 +51,9 @@ importers:
       '@minstrel/actor':
         specifier: workspace:*
         version: link:../../packages/actor
+      '@minstrel/audio':
+        specifier: workspace:*
+        version: link:../../packages/audio
       '@minstrel/cartridge':
         specifier: workspace:*
         version: link:../../packages/cartridge
@@ -66,6 +69,9 @@ importers:
       '@minstrel/nitro-gfx':
         specifier: workspace:*
         version: link:../../packages/nitro-gfx
+      '@minstrel/nitro-snd':
+        specifier: workspace:*
+        version: link:../../packages/nitro-snd
       '@minstrel/render':
         specifier: workspace:*
         version: link:../../packages/render
@@ -88,6 +94,12 @@ importers:
       '@minstrel/nitro-gfx':
         specifier: workspace:*
         version: link:../nitro-gfx
+
+  packages/audio:
+    dependencies:
+      '@minstrel/nitro-snd':
+        specifier: workspace:*
+        version: link:../nitro-snd
 
   packages/cartridge:
     dependencies:

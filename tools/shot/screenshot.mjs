@@ -37,6 +37,7 @@ const chrome = spawn(
     `--user-data-dir=${profile}`,
     '--remote-debugging-port=9222',
     '--disable-gpu',
+    '--autoplay-policy=no-user-gesture-required',
     '--enable-unsafe-swiftshader',
     '--use-gl=angle',
     '--use-angle=swiftshader',

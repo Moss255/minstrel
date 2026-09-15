@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
+import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
 import { groundBelow, PERSON } from '@minstrel/sim'
 import { inMarsh } from '@minstrel/world'
 import { describe, expect, it } from 'vitest'
@@ -81,7 +81,7 @@ describe.skipIf(!romPath)('the Hexagon’s marsh, on a real cartridge', { timeou
     if (!start) throw new Error('no ground under the marsh')
     const hero = player(start, 1)
     hero.held.add('w')
-    const marshAt = (s: { x: number; y: number; z: number }) =>
+    const marshAt = (s: { x: Fx32; y: Fx32; z: Fx32 }) =>
       inMarsh(hexagon.map.marsh, toFloat(s.x), toFloat(s.y), toFloat(s.z), height)
     const { marshTicks } = advance(hero, world, 0, 1000, undefined, marshAt)
     // A second of walking is sixty ticks; the first steps are in the marsh.

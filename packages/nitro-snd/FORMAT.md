@@ -108,11 +108,79 @@ lookups through separately-parsed tables, all of which must be right. It also
 comes out self-consistent by name, `BG_001` selecting `BANK_BG_001` selecting
 `WAVE_BG_001`.
 
+## The files inside: SSEQ, SBNK, SWAR
+
+Read since 15 September 2026 (`sseq.ts`, `sbnk.ts`, `swar.ts`). Sources:
+Gota7's *Nitro Studio 2* specifications (sequence, bank, wave, wave archive),
+https://gota7.github.io/NitroStudio2/specs/; fincs's FeOS Sound System,
+https://github.com/fincs/FSS (WTFPL), whose `sbnkswar.h` reads the same
+layouts; GBATEK, "DS Sound Notes", for IMA-ADPCM. Every field below is one of
+theirs; nothing is inferred here.
+
+### The common header
+
+| offset | type | meaning |
+|---|---|---|
+| `0x00` | `char[4]` | `SSEQ`, `SBNK`, `SWAR` |
+| `0x04` | `u16` | byte-order mark, `0xFEFF` |
+| `0x06` | `u16` | version |
+| `0x08` | `u32` | file size |
+| `0x0C` | `u16` | header size, `0x10` |
+| `0x0E` | `u16` | block count, 1 |
+| `0x10` | `char[4]` | `DATA` |
+| `0x14` | `u32` | DATA block size |
+
+### SSEQ
+
+`0x18` holds the absolute offset of the command stream, which runs to the end
+of the DATA block — `0x1C` on every sequence of the reference cartridge. The
+commands are a player's to interpret (`@minstrel/audio`); the reader gives the
+stream and where it starts, as jump and call targets are offsets into it.
+
+### SBNK
+
+| offset | type | meaning |
+|---|---|---|
+| `0x18` | `u32[8]` | reserved |
+| `0x38` | `u32` | instrument count |
+| `0x3C` | 4 bytes each | instrument records: `u8` type, `u16` absolute offset, `u8` pad |
+
+Types: 0 empty; 1 PCM, 2 PSG, 3 noise, 4 direct PCM, 5 null — each a single
+10-byte note definition at the offset; 16 a drum set — `u8` low key, `u8` high
+key, then one `u16` type and 10-byte definition per key from low to high; 17 a
+key split — eight `u8` region-end keys (zero past the last region), then a
+`u16` type and 10-byte definition per region.
+
+A note definition: `u16` wave (or PSG duty), `u16` wave archive (0–3, the
+bank's slot), `u8` base key, `u8` attack, decay, sustain, release, `u8` pan.
+
+### SWAR
+
+| offset | type | meaning |
+|---|---|---|
+| `0x18` | `u32[8]` | reserved |
+| `0x38` | `u32` | wave count |
+| `0x3C` | `u32[count]` | absolute offset of each wave |
+
+Each wave is a 12-byte info block then its samples — a SWAV without its file
+header: `u8` format (0 PCM8, 1 PCM16, 2 IMA-ADPCM), `u8` loops, `u16` sample
+rate, `u16` timer (16756991 / rate, the ARM7 clock over the rate), `u16` loop
+start in 32-bit words, `u32` length after the loop start in words.
+
+IMA-ADPCM (`decodeWave`): a four-byte header, the initial PCM16 value and
+table index, then two nibbles a byte, low first; the step table and index
+table are the standard IMA ones GBATEK lists, the value clamped to ±0x7FFF and
+the index to 0–88. A loop start counts words of the file with its header, so
+its sample is `words × 8 − 8`.
+
+### On the reference cartridge
+
+`bgm.sdat`'s 64 sequences with files read; their banks hold 996 instruments
+(225 notes, 456 key splits, 35 drum sets, 280 empty), whose 2,079 PCM notes
+every one resolve to a wave in the bank's archives; all 2,079 waves are
+IMA-ADPCM, 1,793 of them looping, and every one decodes.
+
 ## Not implemented
 
-**Playback.** Nothing here decodes SSEQ's sequence commands, SBNK's instrument
-definitions or SWAR's ADPCM waveforms — this package finds and extracts the
-resources, it does not synthesise them. That is the AudioWorklet sequencer the
-slice plan schedules for M8 and calls the hardest TypeScript-specific problem in
-the project. Having the resources named, extracted and chained is the
-prerequisite, not the solution.
+**Streams** (`STRM`), which `bgm.sdat` has three of, and **sequence archives**
+(`SSAR`), which the two effects archives are made of: 1,398 between them.

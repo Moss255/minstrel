@@ -9,100 +9,128 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
-## What is still open — 15 September, at `edde26c`
+## What is still open — 16 September, at the audio commit
 
-This replaces the list of 14 September. The list of 13 September further down
-is kept for its questions to the emulator. Each gap's evidence is in the
-section it names.
+This replaces the list of 15 September. Each gap's evidence is in the section
+it names, below.
 
-**Where the milestones stand.** M0–M2 are done. M3 plays the opening to 2.4,
-past the landslide and back, moved on by the trigger records, and M7 has
-begun: the Hexagon plays through its first floor to the Hexagoon fight. M4 is as
-far as the cartridge goes: equipment's numbers wait on the emulator. M5 has
-battles, spells, changes of state, monsters acting and a party of up to four.
-M6 has monsters roaming the field, the poison marsh, Ivor following and the
-party on the top screen. **Equipment's attack and defence are found** (15
-September): the table after each equipment category's records
-(game-formats' FORMAT.md, "The stats"), read but not yet wired into battle or
-the equipment screen. M7 and M8 have not started, and audio — which the plan
-wanted begun alongside M5 — has not either.
+**Where the milestones stand.** M0–M2 are done. M3 plays the whole story from
+the Guardian statue scene at 2.1 to Patty's rescue, moved on by the trigger
+records, with the scenes' cameras, fades, motions and figures read from their
+scripts; M4 has shops, the inn, saving and equipment with its numbers; M5 has
+battles, spells, states, monsters acting and a party of up to four; M6 has the
+field's monsters, the marsh and Ivor following; M7 is complete — the pass, the
+Hexagon, Hexagoon, Patty and the title card — and walked start to finish by the
+tester. **M8 has begun with audio**: the music plays. The rest of M8 has not.
 
 **Against the definition of done:**
 
 | | | |
 |---|---|---|
 | 1 | the ROM's hash checked, its assets converted and cached | no — M8 |
-| 2 | wake in Erinn's house and explore all of Angel Falls | yes |
-| 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line |
-| 4 | fight, level up, buy and equip gear | yes, but equipment changes no number |
-| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | yes — through the Hexagon and the Hexagoon fight to Patty's rescue and the title card, walked at level 20 |
+| 2 | wake in Erinn's house and explore all of Angel Falls | yes; the slice opens a day earlier, at the statue, as the game does |
+| 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line; the inn's price is a stand-in |
+| 4 | fight, level up, buy and equip gear | yes; equipment changes the numbers and is drawn on the Hero and Ivor |
+| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | yes, played through by the tester |
 | 6 | the monitor's resolution, widescreen, remappable input | resolution and widescreen yes; remapping no |
 
-**Closable here, from the code and the cartridge:**
+**Open, by milestone:**
 
 | gap | milestone | what it needs |
 |---|---|---|
-| Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
-| Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Won, it plays on to 2.5 and the slice's title card, ours — walked. Left: what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203 (204 and 205, who leaves and joins the party, read 15 September). On the critical path. |
-| When Ivor joins and leaves | M6 | **Joins on flag 0** (15 September): his call, `ev02210`, ends on "Ivor joins the party!" and its record sets flag 0 — INFERRED, and a let's play shows him joining there. Over 2.3 by stage, ours, as flags are the stage's own; how the game takes him away is not found. |
-| What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
-| Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
-| The poison marsh's toll | M6 | Where it is, is read; 1 HP a half second is ours. |
-| What battles still lack | M5 | Abilities; the changes of state the reference does not model (Dazzle, sand in the eyes, the dances); Hexagoon beyond its six ways. |
-| The equipment screen's layouts and the rest of it | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5); moving round the grid, L/R between tabs, Change Character, sorting; the name plate's colour for each character; a string for "Nothing Equipped". |
-| Item art not found | M4 | 193 of the 1,178 items have no icon by the rule; the English vocation icons for "Used by"; what the white and gold stars mean. |
-| ~~`itemsort`'s `unknown_1` and `unknown_2`~~ | M4 | **Read, 15 September**: the bag's order by category, and alphabetical order by English name — neither a stat (game-formats' FORMAT.md, "Item kinds"). |
-| M4's stand-ins | M4 | `INN_PRICE` (`STARTING_GOLD` is 180 now, as a let's play shows); the chimaera wing's destination; Evac and holy water. |
-| The game's Latin fonts | M3 | **Found and read, 15 September**: `/data/pack_lv5/fd_me.bin` and `fd_s7.bin` are one-bit strips of the Latin glyphs, 12 pixels tall, and `fi_me.bin` and `fi_s7.bin` index them — each glyph's name, width and place, a flag for a small letter with a capital, and kerning (game-formats' FORMAT.md, "The Latin fonts"; `readLatinFont`). The party's names are set in `fd_s7` on the top screen — the face and the pixel between glyphs ours. Left: which face the game uses where, the space between glyphs, and a space's width. The text box stays in a vector font, as the slice plan's M3 has it, unless that is decided otherwise. |
-| The top screen's rest | M6 | The party panel's HP, MP and level, with its own digits; `obj_mm.pac`'s narrower cuts of it; the town's name tab; `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets. |
-| 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
-| The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |
-| Audio | M8 | Not started, and late by the plan's own reckoning. |
+| **Music: the tempo, and which track plays where** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob; the track-to-place table is not found — `mapbgm.bin` is not it — and the videos have no sound, so the emulator or a new lead. Then sound effects (1,398 `SSAR`s), the three streams, and fades on a map change. |
 | The rest of M8 | M8 | Settings — resolution, the two-screen layout, input remapping, text speed; the ROM's hash and caching; README, licence and contribution guide. |
+| The scenes' rough edges | M3 | Sprite characters' walking frames in scenes; who is shown and hidden when (`570`, `571`, `223`); a fade on going through a doorway; Ivor's faces; the camera's even pace and field of view. |
+| The time of day | M6 | The let's play moves into evening and night; ours stays in daylight. Which zone roams when is measured, not settled. |
+| Equipment's rest | M4 | A shield on the Hero's back not yet seen (the starting kit has none); the equipment screen's small figure undressed; its layouts (`lay_eq.lia`); rarity and "Used by" not found. |
+| What battles still lack | M5 | Abilities; the states the reference does not model; Hexagoon beyond its six ways; how Ivor and the monsters choose is ours. The fight was played at level 20 here and won solo at level 7 in the let's play. |
+| M4's stand-ins | M4 | `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
+| The top screen's rest | M6 | HP, MP and level on the party panel; the town's name tab; `.bmmp` tags. |
+| The explorer | explorer | 2D previews, and now sound: the SDAT's sequences could play there too. |
 
 **Needs the emulator — questions to bring to it:**
 
-- **Equipment's numbers — a check, now they are read**: the shop's or the
-  equipment screen's attack for a copper sword should be 7, and a leather
-  shield's defence 3 (game-formats' FORMAT.md, "The stats"). **Rarity and
-  "Used by"** are still not found. Open the equipment screen on the Flame shield (defence 18, rarity 1),
-  search RAM for its id, `8E 53`, and look for 18 and 1 near it; send the
-  address and the bytes round it. The copper sword's attack would check the
-  weapons.
-- **A party member's colour**: how the game picks the colour of each one's
-  name strip and dot — in the capture of Stornway's church they are the
-  characters' own, and none is one of the panel's four. Also where a room's
-  dots sit on its area's picture, and how a large picture scrolls.
-- **Ivor's numbers**: in a battle beside him, his HP — 25 if `attnpc`'s
-  numbers are in the level tables' order.
-- **How a monster chooses**: the weights for its six ways (an even table stands
-  in); the critical chance; fleeing's chance.
+- **Which track plays** in the village, the field, the pass, the Hexagon and a
+  battle — and **the tempo of one track against ours**.
+- **Equipment's numbers, a check now they are read**: a copper sword's attack
+  should be 7, a leather shield's defence 3. Rarity and "Used by" are not
+  found: open the equipment screen on the Flame shield (defence 18, rarity 1),
+  search RAM for its id, `8E 53`, and look for 18 and 1 near it.
+- **A party member's colour** on the top screen: how the game picks each one's
+  strip and dot, which in the capture of Stornway's church are the characters'
+  own and none of the panel's four.
+- **Ivor's numbers**: in a battle beside him, his HP — 25 if `attnpc`'s numbers
+  are in the level tables' order.
+- **How a monster chooses**: the weights for its six ways; the critical chance;
+  fleeing's chance.
 - **The Hero's vocation, and a level-1 status screen**, to settle which
   level-table columns are which.
 - **Which treasure kind is the pot** and which the barrel.
-- **The inn's price and the starting gold**, if they are not found in code.
+- **The inn's price**, if it is not found in code.
 - **Whether Ivor's greeting plays as the Hero comes near** or only when he is
   talked to.
-- **Which zone roams when and where.** In Angel Falls Region at the slice's
-  point in the story: whether bodkin archers and batterflies (its kind-2 zone)
-  roam at all, and if so where or when; and whether the mix changes at night
-  — its kind 1 has sacksquatches ahead of slimes, its kind 0 slimes first.
+- **Which zone roams when and where**, and whether the mix changes at night.
 
-**Seen in a let's play, not read:** the Hero starts in the copper sword and
-the celestial suit, stockings and shoes, with 180 gold (`STARTING_EQUIPMENT`,
-`STARTING_GOLD`) — the sword the tester's word first.
+**Where to start next time:** the tempo, with the knob; then which track plays
+where; then the scenes' rough edges or the rest of M8, as wanted.
 
-**Wanted after Slice 1:** weapons on the Hero, the `p_w<nnn>.nsbmd` models in
-`chara_pc.gp2`, with how they attach not known.
+---
 
-**Deferred by the plan:** WebGPU (WebGL2 is enough), the DS toon and edge
-pipeline outside reference mode, settings, and the ROM hash check and caching
-(M8).
+## The music plays — 15 September
 
-**Where to start next time:** what the let's play showed that is still
-open — the time of day, which moves there. Then the event staging the second folder
-calls for — models, cameras — and M8.
+**M8's first piece, begun.** `bgm.sdat`'s tracks play in the browser through an
+AudioWorklet: `?bgm=BG_001` starts one, `b` starts or stops it. Which track
+plays where is still unread — `mapbgm.bin` was looked at in M0 and is not it —
+so a track is chosen by name for now.
+
+**Read, with its sources** (`packages/nitro-snd/FORMAT.md`, "The files
+inside"): SSEQ, SBNK and SWAR, from Gota7's *Nitro Studio 2* specifications
+and fincs's FeOS Sound System; IMA-ADPCM from GBATEK. On the cartridge, all
+64 sequences read, every one of their 2,079 PCM notes resolves to a wave, and
+every wave decodes.
+
+**Played, with its sources** (`packages/audio`, GPL): the sequencer follows
+FSS's `Track_Run` and `Note_On` — 192 driver ticks a second, a tempo count of
+240, note-wait and tie, the shared call and loop stack, the envelope in
+loudness with seven fractional bits, the LFO, portamento and `Timer_Adjust`,
+which FSS took from the SDK driver's disassembly. The channel mixing follows
+GBATEK's registers as melonDS reads them: volume over 128, the divider, pan as
+`(128 − pan) / 128` and `pan / 128`. The BIOS tables are generated from
+formulas checked against a dump: the pitch and sine tables exactly, the volume
+table on 721 of 724 entries with the three exceptions set by hand.
+
+**Ours:** samples read between the wave's own by a straight line, where the
+hardware holds each; the SDAT sequence record's volume applied as the player's
+volume; the `?bgm=` and `b` choice; the fade the page can ask for. **Checked:**
+39 unit tests on synthetic songs — a note's length and pitch, loops, calls,
+tracks, volume, pan, tie, release, and mixing at 32768 and 48000 Hz; `BG_001`
+rendered offline is sound throughout at 0.2 RMS with 13 clipped samples in
+20 seconds; in headless Chrome the context runs and the worklet's ticks climb
+at the track's tempo. **Not checked:** by ear. Nobody here has heard it.
+
+**The tempo is in question — 16 September.** Heard, the tempo "seems a bit
+off". Checked and consistent with the references on every side: the player
+makes exactly tempo × 0.8 sequence ticks a second on four tracks — the tempo
+value read as beats a minute at 48 ticks a beat, as FSS plays it and as
+VGMTrans and sseq2mid write MIDI from it; `BG_001`'s stream disassembles
+cleanly (many tempo commands, 126, 139, 83 …, a written rubato, not a desync);
+and in the browser the worklet's frames and ticks run at the rates the maths
+gives. So the fault, if there is one, is in the reading and not the code, and
+only an ear can place it. **To finish:** `?bgm=BG_001&tempo=0.8` and `1.25`
+scale the tempo through the driver's own `tempoRate` (FSS's 8.8 multiplier,
+`Sequencer.tempoRate`); the value that sounds right says what is wrong — 0.5
+or 2 the 192 Hz tick rate, 0.8 or 1.2 a tempo unit — and then the game's own
+rule for it is to be found, not the factor kept. Pitch is worth judging at the
+same time: a misread sample rate can pass for tempo.
+
+**Left:** which track plays where — the video has no sound, so that needs
+either the emulator or a table not yet found; sound effects, which are 1,398
+sequence archives (`SSAR`) in `se_norm.sdat` and `se_btl.sdat`, and the events'
+`720`; the three streams; fading between tracks on a map change.
+
+**Also on the way:** `pnpm typecheck`, which checks the game app too, had six
+old errors in tests and one call; all fixed. `tsc -b` at the root does not
+cover the app.
 
 ---
 

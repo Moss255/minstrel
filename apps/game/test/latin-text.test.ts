@@ -38,11 +38,11 @@ describe('text in the game’s letters', () => {
     // T then A: three, a gap, two.
     const ta = setText(font(), 'TA')
     expect(ta?.width).toBe(6)
-    expect([...(ta?.pixels ?? []).subarray(0, 6)]).toEqual([1, 1, 1, 0, 1, 1])
+    expect([...(ta?.pixels ?? new Uint8Array()).subarray(0, 6)]).toEqual([1, 1, 1, 0, 1, 1])
     // A then T are kerned by one: the gap closes.
     const at = setText(font(), 'AT')
     expect(at?.width).toBe(5)
-    expect([...(at?.pixels ?? []).subarray(0, 5)]).toEqual([1, 1, 1, 1, 1])
+    expect([...(at?.pixels ?? new Uint8Array()).subarray(0, 5)]).toEqual([1, 1, 1, 1, 1])
     expect(setText(font(), 'Éß')?.width).toBe(4)
   })
 

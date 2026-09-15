@@ -586,7 +586,7 @@ export interface Asking {
   /** Whether the Hero has no companion with them — see `OP_ALONE`. Not read when not given. */
   readonly alone?: boolean
   /** The step within the stage — see `OP_AT_STEP`. Not read when not given. */
-  readonly step?: number
+  readonly step?: number | undefined
 }
 
 /**

@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@minstrel/actor": "workspace:*",
+    "@minstrel/audio": "workspace:*",
     "@minstrel/cartridge": "workspace:*",
     "@minstrel/fixed": "workspace:*",
     "@minstrel/game-formats": "workspace:*",
     "@minstrel/gl": "workspace:*",
     "@minstrel/nitro-gfx": "workspace:*",
+    "@minstrel/nitro-snd": "workspace:*",
     "@minstrel/render": "workspace:*",
     "@minstrel/script": "workspace:*",
     "@minstrel/sim": "workspace:*",

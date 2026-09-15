@@ -1,0 +1,16 @@
+{
+  "name": "@minstrel/audio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "description": "The sequencer and mixer that play the cartridge's music: SSEQ commands over SBNK instruments and SWAR waves, as the DS's sound driver and hardware play them.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worklet": "./src/worklet.ts",
+    "./player": "./src/player.ts"
+  },
+  "dependencies": {
+    "@minstrel/nitro-snd": "workspace:*"
+  }
+}

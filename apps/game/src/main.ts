@@ -163,6 +163,7 @@ import {
   showMinimap,
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
+import { music, playBgm } from './music.ts'
 import {
   advance,
   advanceMotion,
@@ -331,6 +332,24 @@ let minimapWanted = true
 let equipScreens: EquipScreens | null | undefined
 /** Stops a doorway firing on the character it just put down. See `doors.ts`. */
 const gate = doorGate()
+
+/** Play a music track by name and say so — see `music.ts`. */
+async function startMusic(name: string): Promise<void> {
+  if (!cartridge) return
+  const played = await playBgm(cartridge, name)
+  // `?tempo=0.9` multiplies the tempo: a knob for judging by ear, not the game's.
+  const rate = Number(params.get('tempo'))
+  if (played && Number.isFinite(rate) && rate > 0) music.rate(rate)
+  status(
+    played
+      ? `♪ ${name} playing${rate > 0 ? ` at ×${rate} tempo` : ''} · b stops`
+      : `no track ${name} in the music archive`,
+  )
+}
+// For a headless check: the music's state, readable from the page.
+Object.defineProperty(window, 'minstrelMusic', {
+  get: () => ({ state: music.state, playing: music.playing, report: music.report }),
+})
 /** Set while a map is loading, so a doorway cannot be taken twice. */
 let travelling = false
 /** The map as drawn this frame, and one box per piece for deciding what is in the way. */
@@ -758,6 +777,9 @@ function begin(bytes: Uint8Array, map: string): void {
     startEl.hidden = false
     return
   }
+  // `?bgm=BG_001` plays that track — which plays where is not read; see `music.ts`.
+  const bgm = params.get('bgm')
+  if (bgm) void startMusic(bgm)
   // `?level=20` puts the Hero at that level, with its experience — ours, so a
   // headless browser can see a fight through.
   const level = Number(params.get('level'))
@@ -3652,6 +3674,14 @@ addEventListener('keydown', (event) => {
   // keys take `m` for the room.
   if (key === 'm' && !showCollision) {
     minimapWanted = !minimapWanted
+    event.preventDefault()
+  }
+  // Music on and off: the track the address names, or the first.
+  if (key === 'b') {
+    if (music.playing) {
+      music.stop()
+      status('music stopped')
+    } else void startMusic(params.get('bgm') ?? 'BG_001')
     event.preventDefault()
   }
   if (key === 'c') {

@@ -1,6 +1,10 @@
 {
   "extends": "./tsconfig.base.json",
-  "compilerOptions": { "types": ["node"] },
+  "compilerOptions": {
+    "types": [
+      "node"
+    ]
+  },
   "include": [
     "packages/*/src/**/*.ts",
     "packages/*/test/**/*.ts",
@@ -8,6 +12,10 @@
     "tools/*/test/**/*.ts",
     "*.ts"
   ],
-  "//": "packages/gl is excluded: it is the WebGL backend and needs DOM types. It has its own tsconfig, so the parser packages stay DOM-free at the type level.",
-  "exclude": ["packages/gl/**"]
+  "//": "packages/gl is excluded: it is the WebGL backend and needs DOM types. It has its own tsconfig, so the parser packages stay DOM-free at the type level. packages/audio's player.ts and worklet.ts face the Web Audio API and are checked through apps/game, which has DOM types.",
+  "exclude": [
+    "packages/gl/**",
+    "packages/audio/src/player.ts",
+    "packages/audio/src/worklet.ts"
+  ]
 }
