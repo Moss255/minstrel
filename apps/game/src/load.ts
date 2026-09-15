@@ -3,6 +3,7 @@ import {
   type Figure,
   type FigurePiece,
   figurePieces,
+  type Library,
   type LibraryBuilder,
   library,
 } from '@minstrel/actor'
@@ -100,6 +101,8 @@ export interface Loaded {
   readonly map: AssembledMap
   readonly world: CollisionWorld | undefined
   readonly figure: Figure
+  /** The parts the Hero is dressed from, to dress them again in what they wear — see `outfitOf`. */
+  readonly wardrobe: Library
   readonly pieces: readonly FigurePiece[]
   /** Who else stands in this map. */
   readonly cast: Cast
@@ -1541,6 +1544,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     world,
     figure,
     pieces: figurePieces(figure),
+    wardrobe: parts,
     doorways: doorwaysOf(cat, code),
     archive,
     code,

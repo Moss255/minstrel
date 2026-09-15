@@ -100,6 +100,82 @@ export function heroOutfit(): Outfit {
   }
 }
 
+/**
+ * Where a weapon and a shield are carried: in the hands in battle, on the back
+ * otherwise. INFERRED, from a let's play — the Hero holds the copper sword in
+ * battle, Ivor his sword and pot lid, and in the Hexagon and at the inn the Hero
+ * has a shield on the back and a fan at the side — and from the rig: the hands
+ * are the forearms, `arm1R` and `arm1L`, and the back the rig's own `usiro`,
+ * Japanese for behind.
+ */
+export type Carry = 'hands' | 'back'
+
+/** The bones a weapon and a shield hang from, carried each way — see {@link Carry}. */
+export const CARRY_BONES: Readonly<
+  Record<Carry, { readonly weapon: string; readonly shield: string }>
+> = {
+  hands: { weapon: 'arm1R', shield: 'arm1L' },
+  back: { weapon: 'usiro', shield: 'usiro' },
+}
+
+/**
+ * How a weapon and a shield are turned to hang on the back — **ours**, matched
+ * to that let's play; the game's own is in its code. A shield is modelled
+ * lying along the forearm, so a quarter turn about x stands it upright and
+ * facing out behind, and its own offset leaves it towards the left. A weapon is
+ * modelled pointing ahead, so a quarter turn about x points it down, and a
+ * twelfth of a turn about z takes it to the left hip, where the fan hangs.
+ * Column by column, as the DS keeps a matrix.
+ */
+const SIN_30 = 0.5
+const COS_30 = Math.sqrt(3) / 2
+export const BACK_TURNS: { readonly weapon: Float32Array; readonly shield: Float32Array } = {
+  weapon: Float32Array.of(COS_30, SIN_30, 0, 0, 0, 0, 1, 0, SIN_30, -COS_30, 0, 0, 0, 0, 0, 1),
+  shield: Float32Array.of(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1),
+}
+
+/**
+ * The Hero dressed in what they wear and wield: each worn piece's part by its
+ * item's number (`partName`), the gloves' arms or else the body's own, the
+ * headgear on the head, and the weapon and shield carried as {@link Carry}
+ * says. `has` says which parts and texture files the cartridge holds: an item
+ * with none — an accessory, a knife — is not drawn. A slot with nothing in it
+ * keeps what the Hero starts in there — {@link HERO_OUTFIT} — as the rig needs
+ * a body and legs and no bare ones are on the cartridge: ours.
+ */
+export function outfitOf(equipped: Equipped, carry: Carry, has: (name: string) => boolean): Outfit {
+  const worn = (slot: Slot): { readonly id: number; readonly name: string } | undefined => {
+    const id = equipped.get(slot)
+    const name = id === undefined ? undefined : partName(id)
+    return id !== undefined && name !== undefined && has(name) ? { id, name } : undefined
+  }
+  const starting = (id: number) => ({ id, name: partName(id) as string })
+  const body = worn('body') ?? starting(HERO_OUTFIT.armour)
+  const legs = worn('legs') ?? starting(HERO_OUTFIT.legwear)
+  const feet = worn('feet') ?? starting(HERO_OUTFIT.footwear)
+  const bare = armsFor(body.id)
+  const arms = worn('arms')?.name ?? (bare === undefined ? undefined : partName(bare))
+  const head = worn('head')
+  const weapon = worn('weapon')
+  const shield = worn('shield')
+  const bones = CARRY_BONES[carry]
+  const turned = (turn: Float32Array) => (carry === 'back' ? { turn } : {})
+  return {
+    body: body.name,
+    legs: legs.name,
+    face: HERO_FACE,
+    hair: HERO_HAIR.model,
+    ...(head ? { headgear: head.name } : {}),
+    textures: [arms, feet.name, HERO_HAIR.colour].filter(
+      (name): name is string => name !== undefined && has(name),
+    ),
+    attached: [
+      ...(weapon ? [{ part: weapon.name, bone: bones.weapon, ...turned(BACK_TURNS.weapon) }] : []),
+      ...(shield ? [{ part: shield.name, bone: bones.shield, ...turned(BACK_TURNS.shield) }] : []),
+    ],
+  }
+}
+
 /** What a seed can raise — see `SEED_GAINS` in `use.ts`. */
 export type GainStat =
   | 'maxHp'

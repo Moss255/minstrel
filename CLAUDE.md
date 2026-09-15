@@ -168,7 +168,9 @@ They never run in CI and their fixtures are never committed.
 
 Current target is Slice 1 (see `docs/PLAN.md` §6). The out-of-scope list there is a contract, not a wishlist:
 
-no character creation · no equipment rendered on models · no vocations · no alchemy · no grottoes · no multiplayer · no party recruitment.
+no character creation · no vocations · no alchemy · no grottoes · no multiplayer · no party recruitment.
+
+Equipment drawn on the Hero and Ivor was brought into the slice on 15 September 2026, at the owner's word.
 
 If a task drifts toward any of these, stop and flag it.
 

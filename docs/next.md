@@ -106,6 +106,43 @@ calls for — models, cameras — and M8.
 
 ---
 
+## The Hero and Ivor in what they wear and wield — 15 September
+
+**Brought into the slice** at the owner's word (CLAUDE.md, the slice plan):
+equipment drawn on the Hero and Ivor, which the plan had left out.
+
+**Read** (game-formats' FORMAT.md, "Character parts"; INFERRED): a weapon,
+`p_w<nnn>`, and a shield, `p_s<nnn>`, are parts of one bone of their own,
+numbered as their items are — the copper sword `p_w004`, the pot lid `p_s296`.
+The Hero's rig has, besides its limbs, a bone behind the shoulders called
+`usiro`, Japanese for behind. A shield is modelled lying along the forearm: from
+the forearm bone `arm1L`'s origin, the elbow, it runs along the arm to the wrist,
+on its outer side.
+
+**What a let's play shows:** in battle the Hero holds the copper sword in the
+right hand, and Ivor fights with his sword and pot lid; in the Hexagon and at the
+inn the Hero carries a shield on the back and a fan at the left side.
+
+**What ours does:**
+
+- The Hero is dressed in what they wear — armour, legwear, footwear, gloves and
+  headgear, by their items' parts — and again whenever it changes; a slot with
+  nothing in it keeps the starting piece, as no bare body or legs are on the
+  cartridge (ours).
+- In battle, the weapon hangs from `arm1R` and the shield from `arm1L`, as they
+  are modelled; otherwise both hang on `usiro`, **turned by us** — the shield
+  stood upright facing out, the weapon pointing down to the left hip — to look as
+  the let's play does. The game's own turn is in its code.
+- Ivor holds his `attnpc` weapon and shield in battle the same way. His rig has
+  no `usiro`, so nothing hangs on him in the field.
+
+**Seen in the browser:** the copper sword hanging behind the Hero in the village;
+in a fight with Ivor along, the Hero's sword in hand, and Ivor's sword and pot
+lid. **Not seen:** a shield on the Hero's back — the starting kit has none — or
+what changing equipment looks like on the equipment screen's figure.
+
+---
+
 ## Motions end, lines come before their scenes, and marks show — 15 September
 
 **Motions played once** (`docs/event-scripts.md`, 210 and 224; INFERRED): bit 1

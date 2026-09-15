@@ -1,4 +1,4 @@
-import { figureScale, Measurements } from '@minstrel/actor'
+import { dressFigure, figurePieces, figureScale, Measurements } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
@@ -12,6 +12,7 @@ import {
   inArea,
   type LevelRow,
   type NpcPlacement,
+  partName,
   type StoryArea,
   spellsLearnt,
   type Treasure,
@@ -21,6 +22,7 @@ import {
   type Animation,
   type Geometry,
   loopFrames,
+  type Model,
   measureBounds,
   type NodeTransform,
   poseGeometry,
@@ -92,7 +94,14 @@ import {
   motionFrame,
 } from './cabinets.ts'
 import { CARD, closesTheSlice } from './card.ts'
-import { castPieces, propPieces, sheetFor, spritePieces, standingFrame } from './cast.ts'
+import {
+  castPieces,
+  heldPieces,
+  propPieces,
+  sheetFor,
+  spritePieces,
+  standingFrame,
+} from './cast.ts'
 import { chestPieces, isChest } from './chests.ts'
 import {
   type CollisionFit,
@@ -121,9 +130,11 @@ import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.
 import { type EventCamera, EventPlayer, OPACITY_WHOLE, sceneMotion } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
+  CARRY_BONES,
   type Gains,
   gain,
   HERO_VOCATION_NUMBER,
+  outfitOf,
   STARTING_EQUIPMENT,
   STARTING_GOLD,
   standing,
@@ -949,6 +960,8 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
   loaded = opened
+  // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
+  dressHero()
   fillBag(opened)
   // The top screen's map: the picture this map is drawn on, or its area's.
   minimaps ??= readMinimaps(cartridge)
@@ -2419,6 +2432,8 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     words: loaded.battleWords,
     names: [heroNamed(), ...companions.map(companionNamed), ...names],
   })
+  // The weapon and shield to the Hero's hands — see `dressHero`.
+  dressHero()
   battleCompanions = companions.map((who, i) => ({
     id: who.id,
     index: i + 1,
@@ -2659,12 +2674,35 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     facing: self.facing,
     offset: 0,
   } as NpcPlacement
-  return castPieces(
-    { name: at.model, model: look.model, motion, floor: look.floor, placement },
-    look.catalogue,
-    characterScale,
-    frame,
-  )
+  const member = { name: at.model, model: look.model, motion, floor: look.floor, placement }
+  return [
+    ...castPieces(member, look.catalogue, characterScale, frame),
+    // What they hold, in their hands — see `heldOf`.
+    ...(loaded ? heldPieces(member, heldOf(at.id), loaded.catalogue, characterScale, frame) : []),
+  ]
+}
+
+/**
+ * What an attending character holds in battle: their weapon and shield in
+ * `attnpc` — Ivor's copper sword and pot lid — as parts of the Hero's
+ * wardrobe, hung from the forearms as the Hero's are (`CARRY_BONES`). A let's
+ * play shows Ivor fighting so.
+ */
+function heldOf(id: number): { model: Model; bone: string }[] {
+  const who = loaded?.attending.find((w) => w.id === id)
+  const wardrobe = loaded?.wardrobe
+  if (!who || !wardrobe) return []
+  const held: { model: Model; bone: string }[] = []
+  const carried = [
+    [who.weapon, CARRY_BONES.hands.weapon],
+    [who.shield, CARRY_BONES.hands.shield],
+  ] as const
+  for (const [item, bone] of carried) {
+    const name = item === undefined ? undefined : partName(item)
+    const model = name === undefined ? undefined : wardrobe.parts.get(name)
+    if (model) held.push({ model, bone })
+  }
+  return held
 }
 
 /** Each cue's motion, by the monster's own motion names — see `monsters.ts`. */
@@ -2838,6 +2876,8 @@ function settleBattle(): void {
 /** Put the battle away. */
 function endFight(): void {
   battle = undefined
+  // The weapon and shield go back on the Hero's back — see `dressHero`.
+  dressHero()
   if (roaming) roaming = calmFor(roaming, ROAM_CALM)
   battleLooks = []
   battleSpots = []
@@ -3115,6 +3155,18 @@ function bubbleKindNow(at: { x: number; z: number; facing: number }): BubbleKind
   if (who) return spots.has(who.id) ? 'examine' : 'talk'
   if (gate.armed && doorAhead(loaded.doorways, at, TALK_REACH)) return 'door'
   return undefined
+}
+
+/**
+ * Dress the Hero in what they wear and wield — see `outfitOf` — the weapon and
+ * shield in their hands while a battle is on and on their back otherwise.
+ */
+function dressHero(): void {
+  if (!loaded) return
+  const wardrobe = loaded.wardrobe
+  const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
+  const figure = dressFigure(wardrobe, outfitOf(equipped, battle ? 'hands' : 'back', has))
+  loaded = { ...loaded, figure, pieces: figurePieces(figure) }
 }
 
 /** How high over the Hero's feet the mark stands, in a person's heights: above their head. Ours. */
@@ -3532,6 +3584,8 @@ addEventListener('keydown', (event) => {
         if (worn) {
           bag = worn.bag
           equipped = worn.equipped
+          // Drawn in what they now wear — see `dressHero`.
+          dressHero()
         }
       }
       if (taken.talk) {

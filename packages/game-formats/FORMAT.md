@@ -3221,6 +3221,22 @@ is `p_h<ss>0<v>.nsbmd`: 24 styles, each in variants `a` to `e` (style 01 also
 `f`). The variants differ in height — style 00's `a` reaches 7.41 above its
 origin, its `e` 4.04 — which reads as hair cut to fit headgear, INFERRED.
 
+**Weapons and shields hang from the rig; where is partly read.** Each is one
+bone of its own, named for the part, and sits about its origin: the copper
+sword, `p_w004`, runs along +z from −1.30 to 12.80, its guard across x; the pot
+lid, `p_s296`, is a disc from x −2.22 to 3.60, y 0.26 to 1.48 and z ±2.91. The
+rig's forearm bones, `arm1L` and `arm1R`, start at the elbows, (±5.81, 13.49,
+−0.50) in the bind pose, where the arms reach ±9.23 — so **a shield is modelled
+in the left forearm's space**, lying along it from elbow to wrist on its outer
+side (INFERRED, from those extents). Besides its limbs, trunk and head the rig
+has one bone more, **`usiro`**, at (0, 13.00, −2.00): behind the shoulders, and
+Japanese for behind — where what is carried on the back hangs, INFERRED from the
+name and from a let's play, whose Hero carries a shield there and a fan at the
+side outside battle, and holds the sword in hand in battle. How the game turns a
+part to hang on the back, and where exactly a weapon sits in the hand, is in
+its code, not read; ours are in `hero.ts` ("Carry"). Ivor's rig,
+`s017`, has the same limbs and no `usiro`.
+
 **Hung from the head, INFERRED.** Faces, hair and headgear each carry one bone
 of their own and are modelled about their origin in one space: headgear
 `p_m200` spans y 1.82 to 7.93, hair `p_h000a` −0.73 to 7.41, face `p_f006`

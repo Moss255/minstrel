@@ -1,3 +1,4 @@
+import { attachedGeometry, modelBoneWorld } from '@minstrel/actor'
 import type { Catalogue, DecodedTexture } from '@minstrel/cartridge'
 import { textureFor } from '@minstrel/cartridge'
 import {
@@ -310,6 +311,49 @@ export function castPieces(
     const texture: DecodedTexture | undefined = material ? textureFor(cat, material) : undefined
     out.push(texture ? { geometry, ...texture } : { geometry })
   })
+  return out
+}
+
+/**
+ * What a character drawn as a single model holds — Ivor's copper sword and pot
+ * lid in battle — each part hung from the bone it names, as the pose puts that
+ * bone, and then placed, scaled and faced with the character as
+ * {@link castPieces} places it.
+ */
+export function heldPieces(
+  member: CastMember,
+  held: readonly { readonly model: Model; readonly bone: string }[],
+  cat: Catalogue,
+  scale: number,
+  frame: number,
+): Piece[] {
+  const { model, placement } = member
+  const sin = Math.sin(placement.facing)
+  const cos = Math.cos(placement.facing)
+  const out: Piece[] = []
+  for (const part of held) {
+    const at = modelBoneWorld(model, member.motion, frame, part.bone)
+    if (!at) continue
+    for (let shape = 0; shape < part.model.numShapes; shape++) {
+      const posed = attachedGeometry(part.model, shape, at)
+      const vertices = posed.vertices.map((v) => {
+        const x = v.x * scale
+        const y = (v.y - member.floor) * scale
+        const z = v.z * scale
+        return {
+          ...v,
+          x: placement.x + x * cos + z * sin,
+          y: placement.y + y,
+          z: placement.z - x * sin + z * cos,
+        }
+      })
+      const geometry = { ...posed, vertices }
+      const materialIndex = part.model.shapeMaterials[shape]
+      const material = materialIndex === undefined ? undefined : part.model.materials[materialIndex]
+      const texture: DecodedTexture | undefined = material ? textureFor(cat, material) : undefined
+      out.push(texture ? { geometry, ...texture } : { geometry })
+    }
+  }
   return out
 }
 

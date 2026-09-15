@@ -5,6 +5,7 @@ import {
   type Mat4,
   type Model,
   measureBounds,
+  multiply,
   type NodeTransform,
   poseGeometry,
   resolvePose,
@@ -17,8 +18,15 @@ import type { Library } from './library.ts'
 export interface Figure {
   /** Rigged parts. They pose themselves against the motion. */
   readonly rigged: readonly Model[]
-  /** Unrigged parts, each with the bone it hangs from. */
-  readonly attachments: readonly { readonly model: Model; readonly bone: string }[]
+  /**
+   * Unrigged parts, each with the bone it hangs from — and, where it hangs
+   * turned, how: a matrix in the bone's space, applied before the bone's own.
+   */
+  readonly attachments: readonly {
+    readonly model: Model
+    readonly bone: string
+    readonly turn?: Mat4
+  }[]
   readonly motions: ReadonlyMap<string, Animation>
   /**
    * Textures this figure takes before any other of the same name.
@@ -43,6 +51,15 @@ export interface Outfit {
   readonly headgear?: string
   /** Texture files: arms or gloves (`p_a`, `p_g`), footwear (`p_r`), hair colour (`p_h`). */
   readonly textures?: readonly string[]
+  /**
+   * Parts hung from a bone of the rig by name, and turned in its space if a
+   * turn is given: a weapon (`p_w<nnn>`), a shield (`p_s<nnn>`).
+   */
+  readonly attached?: readonly {
+    readonly part: string
+    readonly bone: string
+    readonly turn?: Mat4
+  }[]
 }
 
 /** One shape of one part, unposed, so a frame change is one pass over it. */
@@ -60,7 +77,8 @@ export interface FigurePiece {
  * face and hair confirmed by where they land (`docs/M2-village.md`), the
  * headgear INFERRED — `p_m200` spans y 1.82 to 7.93 about its origin, as hair
  * spans −0.73 to 7.41 and a face −0.32 to 4.00, so all three are modelled in
- * the head's space.
+ * the head's space. Whatever the outfit hangs elsewhere hangs from the bone it
+ * names.
  *
  * A part or file the library does not have is refused by name rather than left
  * out, so a figure is never quietly missing its legs.
@@ -72,9 +90,16 @@ export function dressFigure(lib: Library, outfit: Outfit): Figure {
     return model
   }
   const rigged = [need(outfit.body), need(outfit.legs)]
-  const attachments = [outfit.face, outfit.hair, outfit.headgear]
-    .filter((name): name is string => name !== undefined)
-    .map((name) => ({ model: need(name), bone: 'head' }))
+  const attachments = [
+    ...[outfit.face, outfit.hair, outfit.headgear]
+      .filter((name): name is string => name !== undefined)
+      .map((name) => ({ model: need(name), bone: 'head' })),
+    ...(outfit.attached ?? []).map(({ part, bone, turn }) => ({
+      model: need(part),
+      bone,
+      ...(turn ? { turn } : {}),
+    })),
+  ]
 
   const textures = new Map<string, { set: TextureSet; name: string }>()
   for (const file of outfit.textures ?? []) {
@@ -223,15 +248,31 @@ export function boneWorld(
 ): Mat4 | undefined {
   const part = figure.rigged[0]
   if (!part) return undefined
-  const index = part.nodes.findIndex((node) => node.name === bone)
-  if (index < 0) return undefined
-  const nodes: readonly NodeTransform[] =
-    motion && motion.boneCount === part.nodes.length ? posedNodes(part, motion, frame) : part.nodes
-  return resolvePose(part.renderCommands, nodes).world[index]
+  return modelBoneWorld(part, motion, frame, bone)
 }
 
-/** One shape of an unrigged part, put where its bone is. */
-export function attachedGeometry(model: Model, shape: number, at: Mat4): Geometry {
+/**
+ * Where a bone of one rigged model is, posed by a motion or in its bind pose —
+ * for a character drawn as a single model, which has no figure: Ivor.
+ */
+export function modelBoneWorld(
+  model: Model,
+  motion: Animation | undefined,
+  frame: number,
+  bone: string,
+): Mat4 | undefined {
+  const index = model.nodes.findIndex((node) => node.name === bone)
+  if (index < 0) return undefined
+  const nodes: readonly NodeTransform[] =
+    motion && motion.boneCount === model.nodes.length
+      ? posedNodes(model, motion, frame)
+      : model.nodes
+  return resolvePose(model.renderCommands, nodes).world[index]
+}
+
+/** One shape of an unrigged part, put where its bone is — turned first, if a turn is given. */
+export function attachedGeometry(model: Model, shape: number, bone: Mat4, turn?: Mat4): Geometry {
+  const at = turn ? multiply(bone, turn) : bone
   const geometry = poseGeometry(model.geometry(shape), model.shapeMatrices[shape] ?? model.matrices)
   return {
     ...geometry,
@@ -276,14 +317,14 @@ export function poseFigure(
         piece.model.matrices,
     ),
   }))
-  // A head is not part of the rig; it hangs from it.
-  for (const { model, bone } of figure.attachments) {
+  // A head is not part of the rig; it hangs from it. So do a weapon and a shield.
+  for (const { model, bone, turn } of figure.attachments) {
     const at = boneWorld(figure, motion, frame, bone)
     if (!at) continue
     for (let shape = 0; shape < model.numShapes; shape++) {
       posed.push({
         piece: { model, shape, geometry: model.geometry(shape) },
-        posed: attachedGeometry(model, shape, at),
+        posed: attachedGeometry(model, shape, at, turn),
       })
     }
   }

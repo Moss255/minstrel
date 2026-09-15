@@ -6,6 +6,7 @@ export {
   type FigurePiece,
   figurePieces,
   figureStacks,
+  modelBoneWorld,
   type Outfit,
   poseFigure,
   usefulParts,
