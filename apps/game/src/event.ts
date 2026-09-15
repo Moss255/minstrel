@@ -33,8 +33,12 @@ import {
  * | 229 | motion file, slot | a pack of motions for the slot's model — 394 of 480 onto a slot a `200` filled |
  * | 202 | character, slot, kind | the character wears the slot's model and its packs — 1,034 of 1,324 onto a filled slot. The statue scene, `ev22590`: Ivor, 2, wears `chara_sub/s017.chr` so. `kind` is not read |
  * | 300 | — | a new shot: the camera let go |
+ * | 302 | x, y, z | where the camera is — its yaw, rise and distance follow from it and `303` until `310` gives them: 1,024 of the 1,032 second-folder shots with all three agree so |
  * | 303 | x, y, z | where the camera looks |
- * | 310 | yaw, rise, run | where it looks from: turned `yaw` about what it looks at, `rise` up and `run` back — the morning's 7.62 up and 12.71 back is 31° down, the pitch the game's own camera takes |
+ * | 304 | eye x, y, z, target x, y, z, frames | move both over so many frames — the pair agrees with the `311` beside it on 506 of 511 |
+ * | 310 | yaw, rise, distance | where it looks from: turned `yaw` about what it looks at, `rise` above it and `distance` from it in a straight line — not across the ground, which agrees with `302` on 539 of the 1,032, where the straight line does on 1,024. The morning's 7.62 up and 12.71 away is 37° down |
+ * | 311 | yaw, rise, distance, frames | move those over so many frames, the yaw the short way |
+ * | 321 | x, y, z, frames | move where the camera looks over so many frames — the switch's shake in the Hexagon, `ev02530`, sixteen short ones |
  * | 400 | message | show one of the event's messages |
  * | 405 | reference | whether a message is still up |
  * | 840 | reference | how long the frame was, in halves — see {@link FRAME_IN_HALVES} |
@@ -93,10 +97,34 @@ interface Turn {
 /** Where the event's camera looks and from where, in the world. */
 export interface EventCamera {
   target: [number, number, number] | undefined
-  /** Turned about the target, in radians; the eye's height and distance back from it. */
+  /** Turned about the target, in radians: the direction of the eye from it, as `atan2(x, z)`. */
   yaw: number
+  /** How far above the target the eye is. */
   rise: number
-  run: number
+  /** How far the eye is from the target in a straight line — not across the ground. */
+  distance: number
+}
+
+type Vec3 = [number, number, number]
+
+/**
+ * Where a camera at `eye` looking at `target` looks from, as `310` gives it:
+ * the yaw of the eye from the target, its height above it, and the
+ * straight-line distance between.
+ */
+function lookFrom(eye: Vec3, target: Vec3): { yaw: number; rise: number; distance: number } {
+  const dx = eye[0] - target[0]
+  const dy = eye[1] - target[1]
+  const dz = eye[2] - target[2]
+  return { yaw: Math.atan2(dx, dz), rise: dy, distance: Math.hypot(dx, dy, dz) }
+}
+
+/** A camera move under way: from where it was to where it is going, over so many frames. */
+interface CameraMove<T> {
+  readonly from: T
+  readonly to: T
+  readonly start: number
+  readonly frames: number
 }
 
 const num = (value: ScriptValue | undefined): number => (typeof value === 'number' ? value : 0)
@@ -126,6 +154,11 @@ export class EventStage {
   private readonly slots = new Map<number, { model: string; packs: string[] }>()
   /** Which slot each character wears — see `202`. */
   private readonly bound = new Map<number, number>()
+  /** The shot's eye, where `302` put it; its yaw, rise and distance follow from it until `310` gives them. */
+  private eye: Vec3 | undefined
+  private angled = false
+  private targetMove: CameraMove<Vec3> | undefined
+  private angleMove: CameraMove<{ yaw: number; rise: number; distance: number }> | undefined
   readonly host: ScriptHost
 
   constructor(readonly scale: number) {
@@ -180,11 +213,61 @@ export class EventStage {
         if (t >= 1) actor.turn = undefined
       }
     }
+    const shot = this.camera
+    if (shot && this.targetMove) {
+      const { from, to, start, frames } = this.targetMove
+      const t = Math.min(1, (this.frame - start) / frames)
+      shot.target = [
+        from[0] + (to[0] - from[0]) * t,
+        from[1] + (to[1] - from[1]) * t,
+        from[2] + (to[2] - from[2]) * t,
+      ]
+      if (t >= 1) this.targetMove = undefined
+    }
+    if (shot && this.angleMove) {
+      const { from, to, start, frames } = this.angleMove
+      const t = Math.min(1, (this.frame - start) / frames)
+      shot.yaw = from.yaw + (to.yaw - from.yaw) * t
+      shot.rise = from.rise + (to.rise - from.rise) * t
+      shot.distance = from.distance + (to.distance - from.distance) * t
+      if (t >= 1) this.angleMove = undefined
+    }
   }
 
   private shot(): EventCamera {
-    this.camera ??= { target: undefined, yaw: 0, rise: 0, run: 0 }
+    this.camera ??= { target: undefined, yaw: 0, rise: 0, distance: 0 }
     return this.camera
+  }
+
+  /** The shot's yaw, rise and distance from its eye and target, while `310` has not given them. */
+  private fromEye(): void {
+    const shot = this.shot()
+    if (!this.angled && this.eye && shot.target)
+      Object.assign(shot, lookFrom(this.eye, shot.target))
+  }
+
+  /** Move where the camera looks to `to` over so many frames, from where it looks now. */
+  private moveTarget(to: Vec3, frames: number): void {
+    const shot = this.shot()
+    this.targetMove = {
+      from: shot.target ?? to,
+      to,
+      start: this.frame,
+      frames: Math.max(1, frames),
+    }
+  }
+
+  /** Move the camera's yaw, rise and distance over so many frames — the yaw the short way round. */
+  private moveAngle(to: { yaw: number; rise: number; distance: number }, frames: number): void {
+    const shot = this.shot()
+    const from = { yaw: shot.yaw, rise: shot.rise, distance: shot.distance }
+    this.angleMove = {
+      from,
+      to: { ...to, yaw: towards(from.yaw, to.yaw) },
+      start: this.frame,
+      frames: Math.max(1, frames),
+    }
+    this.angled = true
   }
 
   private call(
@@ -296,17 +379,44 @@ export class EventStage {
       }
       case 300:
         this.camera = undefined
+        this.eye = undefined
+        this.angled = false
+        this.targetMove = undefined
+        this.angleMove = undefined
+        return 0
+      case 302:
+        this.eye = [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s]
+        this.fromEye()
         return 0
       case 303:
         this.shot().target = [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s]
+        this.fromEye()
         return 0
+      case 304: {
+        const eye: Vec3 = [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s]
+        const target: Vec3 = [num(args[3]) * s, num(args[4]) * s, num(args[5]) * s]
+        this.moveTarget(target, num(args[6]))
+        this.moveAngle(lookFrom(eye, target), num(args[6]))
+        return 0
+      }
       case 310: {
         const shot = this.shot()
         shot.yaw = num(args[0])
         shot.rise = num(args[1]) * s
-        shot.run = num(args[2]) * s
+        shot.distance = num(args[2]) * s
+        this.angled = true
+        this.angleMove = undefined
         return 0
       }
+      case 311:
+        this.moveAngle(
+          { yaw: num(args[0]), rise: num(args[1]) * s, distance: num(args[2]) * s },
+          num(args[3]),
+        )
+        return 0
+      case 321:
+        this.moveTarget([num(args[0]) * s, num(args[1]) * s, num(args[2]) * s], num(args[3]))
+        return 0
       case 400:
         this.message = num(args[0])
         this.shown.push(this.message)

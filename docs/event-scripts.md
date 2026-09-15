@@ -217,9 +217,9 @@ row says otherwise. "—" means not established.
 | the other 200s: 211, 214–220, 222, 223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 219 (`ii`, 950 calls) and 216 (`ifff`, 713) the busiest |
 | 224 | 451 | 196 | `is`, `isi` | — a second motion, named after a looping one: the morning's `cyotto_loop` is followed by `224 … "stand"`, so perhaps the motion to go back to |
 | 300 | 1,016 | 477 | `-` | — first in a scene, before 303 and 310; played as letting the camera go |
-| 301, 302, 304, 306, 311, 317, 321, 322, 324, 327, 328 | 3–142 | | | — the camera |
+| 301, 306, 317, 322, 324, 327, 328 | 3–142 | | | — the camera; 302, 304, 311 and 321 are read — where the camera is, and its moves over so many frames: see `event.ts` |
 | 303 | 892 | 366 | `fff` | where the camera looks: the morning's (2.03, 1.56, −0.87) is between the bed and Erinn's walk |
-| 310 | 895 | 366 | `fff` | where it looks from: a yaw, then how far up and how far back — the morning's `0, 7.62, 12.71` is 31° down, the pitch of the game's own field camera |
+| 310 | 895 | 366 | `fff` | where it looks from: a yaw, how far up, and how far away in a straight line — the morning's `0, 7.62, 12.71` is 37° down. First read as how far back across the ground, 31°; the second event folder's `302`, where the camera is, agrees with the straight line on 1,024 of its 1,032 shots and with the ground on 539 |
 | 400 | 23,119 | 462 | `i` | **show message n** — handed the event's own message numbers |
 | 401, 410, 411, 413, 414, 417 | 1–32 | | `-` | — |
 | 405 | 241,319 | 462 | `r` | whether the message is still up; polled |
@@ -281,8 +281,8 @@ row says otherwise. "—" means not established.
   554, 570, 571, 589, 595, 713, 714, 720, 721, 724, 725, 727, 731 — which it
   answers with 0 and counts. Nothing the morning shows waits on them.
 - Where the DS's camera sits for 303 and 310: the eye is read as the target
-  plus a yaw, a rise and a run, but how much of the room that shows depends on
-  a field of view not yet read.
+  plus a yaw, a rise and a straight-line distance, but how much of the room
+  that shows depends on a field of view not yet read.
 - What starts the morning. No trigger names it; a new game plays it.
 - The order the sections run in, and whether 300 runs after 100 or beside it.
 - `0x0E` 42–45, `0x12` and `0x19` beyond the cases seen.

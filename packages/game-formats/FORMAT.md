@@ -2119,9 +2119,20 @@ frames, 209 turns one, 210 plays a motion by name), 300s the camera, 400s
 messages (400 shows one, 405 answers through its argument whether it is still
 up), 500s the event and the screen, 700s sound. Those readings are from the
 arguments each is handed, and INFERRED; the fuller ones the game plays the
-morning by — 303 where the camera looks, 310 a yaw, rise and run it looks
-from, 566 and 567 a character's model and motion packs — are in
-`docs/event-scripts.md` §5.
+morning by — 303 where the camera looks, 310 a yaw, rise and straight-line
+distance it looks from, 566 and 567 a character's model and motion packs — are
+in `docs/event-scripts.md` §5.
+
+**The camera, read further** — INFERRED, from how the calls agree with each
+other across every script played. 302 is where the camera is: within a shot,
+it and 303 give the yaw, rise and distance 310 does on **1,024 of 1,032**
+second-folder shots, and on 9 of 14 in the first folder — **when the distance
+is the straight line from target to eye**; read as the distance across the
+ground, as it first was, they agree on 539. 304 moves both — camera, then
+target, then frames — and its pair agrees with the 311 beside it (yaw, rise,
+distance, frames) on 506 of 511. 321 moves where the camera looks over so many
+frames — read from its shape alone, a point and a count like 304's; there is
+nothing for it to agree with.
 
 **The second event folder waits its own way.** Each of its 164 scripts has one
 wait routine of 27 instructions: it doubles the frames asked for, then each

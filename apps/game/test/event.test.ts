@@ -126,14 +126,48 @@ describe('an event’s stage', () => {
     expect(stage.shown).toEqual([12])
   })
 
-  it('aims the camera at a target from a yaw, a rise and a run, and lets it go on a new shot', () => {
+  it('aims the camera at a target from a yaw, a rise and a distance, and lets it go on a new shot', () => {
     const stage = new EventStage(1 / 2)
     const { thread: t } = thread()
     stage.host.call(303, [2, 4, 6], t)
     stage.host.call(310, [1.5, 3, 4], t)
-    expect(stage.camera).toEqual({ target: [1, 2, 3], yaw: 1.5, rise: 1.5, run: 2 })
+    expect(stage.camera).toEqual({ target: [1, 2, 3], yaw: 1.5, rise: 1.5, distance: 2 })
     stage.host.call(300, [], t)
     expect(stage.camera).toBeUndefined()
+  })
+
+  it('takes a shot’s yaw, rise and distance from where its camera is, until 310 gives them', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(302, [3, 4, 4], t)
+    stage.host.call(303, [0, 0, 0], t)
+    expect(stage.camera?.yaw).toBeCloseTo(Math.atan2(3, 4))
+    expect(stage.camera?.rise).toBe(4)
+    expect(stage.camera?.distance).toBeCloseTo(Math.hypot(3, 4, 4))
+    // Once 310 has spoken, the eye no longer decides.
+    stage.host.call(310, [0.5, 1, 2], t)
+    stage.host.call(302, [9, 9, 9], t)
+    expect(stage.camera).toMatchObject({ yaw: 0.5, rise: 1, distance: 2 })
+  })
+
+  it('moves the camera over so many frames: both its points, its angle, or where it looks', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 2], t)
+    // To look at (4, 0, 0) from 3 up and 4 back: a distance of 5.
+    stage.host.call(304, [4, 3, 4, 4, 0, 0, 10], t)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.camera?.target?.[0]).toBeCloseTo(2)
+    expect(stage.camera?.distance).toBeCloseTo(3.5)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.camera).toMatchObject({ target: [4, 0, 0], yaw: 0, rise: 3, distance: 5 })
+    stage.host.call(311, [Math.PI / 2, 3, 5, 4], t)
+    for (let i = 0; i < 4; i++) stage.advance()
+    expect(stage.camera?.yaw).toBeCloseTo(Math.PI / 2)
+    stage.host.call(321, [4, 0, 8, 2], t)
+    stage.advance()
+    expect(stage.camera?.target?.[2]).toBeCloseTo(4)
   })
 
   it('answers what it does not read with nothing, and counts it', () => {

@@ -2946,8 +2946,11 @@ function aimAtShot(shot: EventCamera): void {
   if (!shot.target) return
   camera.focus = [shot.target[0], shot.target[1], shot.target[2]]
   camera.yaw = shot.yaw
-  camera.pitch = Math.atan2(shot.rise, shot.run)
-  camera.distance = Math.hypot(shot.rise, shot.run)
+  // The distance is the straight line from target to eye, so the rise over it
+  // is the pitch's sine — see `EventCamera`.
+  camera.pitch =
+    shot.distance > 0 ? Math.asin(Math.max(-1, Math.min(1, shot.rise / shot.distance))) : 0
+  camera.distance = shot.distance
   camera.actualDistance = camera.distance
   camera.lift = 0
 }

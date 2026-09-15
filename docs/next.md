@@ -106,6 +106,27 @@ calls for — models, cameras — and M8.
 
 ---
 
+## The scenes' cameras move — 15 September
+
+**Their characters stand in them** (`63da9ff`): the second event folder dresses
+a character by slots — `200` loads a model, `229` its motion packs, `202` puts
+it on a character — and Ivor, Hugo and Erinn stand in the statue scene.
+
+**And their cameras move** (`event.ts`, game-formats' FORMAT.md, "The camera,
+read further"; INFERRED): `302` is where the camera is, `304` moves it and what
+it looks at over so many frames, `311` its yaw, rise and distance, `321` what
+it looks at. Reading them showed **310's third number is the straight-line
+distance** from what the camera looks at, not the distance across the ground:
+so it agrees with where `302` puts the camera on 1,024 of 1,032 shots, where
+the ground did on 539. Every event shot is a little steeper for it — the
+morning's 37° down, not 31°.
+
+**Not read yet:** a character's `570` and `571` — hide and show, it seemed,
+but the measure does not bear it out; Ivor's faces, `s017f01` to `f03`, hung
+on his head by `235`; the camera's field of view.
+
+---
+
 ## The slice opens at 2.1 — 15 September
 
 **A new game opens in the village at 2.1**, where coming in plays the scene at
