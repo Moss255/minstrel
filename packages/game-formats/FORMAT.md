@@ -943,14 +943,43 @@ from what they do:
 - The largest: attack 180, defence 100. Ten bits for each is INFERRED.
 - The same in all five languages' tables, on every entry of all eight.
 
-**Not read**: the rest of each entry — word 0, set on a few shields and the
-sorcerer's stone; words 1 and 2, packed; words 3 and 4, nearly constant
-(`0x10000081` and `0x18001000` on the weapons); word 5 above bit 20, set on 24
-weapons; and words 6 and 7, which hold numbers on some items — the shoes,
-whose defence is 0, in word 6; the agility ring and the bunny tail in word 7.
-Nor the 100 bytes between the entries and the names. The first entry's words 0
-and 1 are the last record's. And the last record's own bytes 8 to 31 — its
-sort position, description offset and icon on any other record — are the
+**The rest of the entry**, read the same way — by what the items' own
+descriptions (`itemexpl`) say they do, entry by entry. Measured on the 936
+entries whose first words are their own (the first of each table left out).
+Words 5, 6 and 7 are **three 10-bit fields each**: bits 30 and 31 are set on
+none of them.
+
+| word | bits 0–9 | bits 10–19 | bits 20–29 |
+|---|---|---|---|
+| 5 | **attack**, above — every weapon, and 4 accessories | **defence**, above — 570 | set only on the 24 wands and staff-like weapons, 10–100; not established — the one whose words name a stat, the rune staff, "steps up magical might", but magical might has a field of its own in word 7 |
+| 6 | set only on shields, 42 of them, 5–100; not established — no description names it | **evasion**, INFERRED: all five body pieces that set it say so — the cloak of evasion "makes evading enemy attacks easier" 30, the dark robe "sends enemy attacks astray" 20; on 55 pieces of footwear too, whose words do not say; 5–60 | **the chance of a critical hit**, INFERRED on one witness: the critical acclaim, which "cranks up the chance of a critical hit", 40 |
+| 7 | **deftness**, INFERRED: the utility belt "does wonders for deftness" 25, the medal of freedom "upgrades deftness" 100; on 43 of the 78 gloves | **agility**, INFERRED: the agility ring "accentuates agility" 20, the meteorite bracer "insanely agile" 100, the Mercury prize 120 | **magical might**, INFERRED: the sorcerer's stone "a little" 2, the brainy bracer 8, the mager achievement "maximises magical might" 50; on 66 hats and 40 body pieces |
+
+**Word 3**: bit 0 is set on all 936. **Bits 7–11 are a weapon's kind plus
+one** — exactly `itemsort`'s subtype + 1 on all 267 weapons, two files agreeing
+— 13 on all 44 shields, and 0 on 622 of the other 625. Its top bits are not
+established.
+
+**Word 4**: on the weapons, bits 12–15 are one number for each kind — swords
+1, hammers 3, knives 4, wands 5, spears 6, axes 7, boomerangs 8, bows 9, whips
+10, staves 11, claws 12, fans 13 — not established. Bits 0–11 are 0 on every
+weapon and shield, and **`0xfff` on all 51 accessories** and most armour, with
+other patterns on the rest — `0xebe`, `0x5e1`, `0x6a6`, and single bits `0x1`,
+`0x4`, `0x8`: INFERRED, who may wear it, a bit a vocation of the twelve the
+equipment screen's "Used by" shows. Which bit is which is not established.
+
+**Word 0** is set on 137 entries, whose descriptions speak of resistances — to
+spells, sleep, Fizzle, MP being stolen: several fields packed, perhaps; not
+established. Its bits 20–29 are set on 8, four of them about MP. **Words 1 and
+2** are packed, and set on every entry; not established.
+
+**Not found as numbers**: charm, max HP and max MP — the spirit bracer "boosts
+max. MP by thirty", and there is no 30 anywhere in its entry — and the
+vocation medals' own effects. They may be worked by each item's own code.
+
+Nor are the 100 bytes between the entries and the names read. The first
+entry's words 0 and 1 are the last record's, and the last record's own bytes 8
+to 31 — its sort position, name offset and icon on any other record — are the
 first entry's.
 
 ## Shops — `/data/bin/menu/shopdata1.bin`

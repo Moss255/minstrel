@@ -12,10 +12,14 @@ import { GameFormatError } from './errors.ts'
  * | then | {@link STATS_GAP} bytes, not read |
  * | the file's end, less the head's `u32` at `+0x08` | N names, each ending with a zero — the entries' own, in their order |
  *
- * An entry is eight `u32`s. **Word 5's bits 0–9 are attack and bits 10–19
- * defence** — INFERRED, from what they do: within each kind of weapon attack
- * rises with price, and defence the same on shields, headgear, armour, gloves,
- * legwear and boots. The rest of the entry is carried.
+ * An entry is eight `u32`s. Words 5, 6 and 7 are three 10-bit fields each.
+ * **Word 5's are attack and defence** — INFERRED, from what they do: within
+ * each kind of weapon attack rises with price, and defence the same on shields,
+ * headgear, armour, gloves, legwear and boots — and one not established.
+ * **Word 7's are deftness, agility and magical might**, and word 6's second and
+ * third evasion and the chance of a critical hit — INFERRED, from what the
+ * items' own descriptions say they do. Word 3 gives a weapon's kind, and word 4
+ * who may wear a piece. The rest of the entry is carried. See FORMAT.md.
  */
 
 export interface ItemStats {
@@ -29,6 +33,27 @@ export interface ItemStats {
   readonly attack: number
   /** Word 5, bits 10–19 — INFERRED. */
   readonly defence: number
+  /** Word 7, bits 0–9 — INFERRED: deftness. The utility belt "does wonders for deftness"; set on most gloves. */
+  readonly deftness: number
+  /** Word 7, bits 10–19 — INFERRED: agility. The agility ring "accentuates agility". */
+  readonly agility: number
+  /** Word 7, bits 20–29 — INFERRED: magical might. The sorcerer's stone "jacks up magical might a little". */
+  readonly magicalMight: number
+  /** Word 6, bits 10–19 — INFERRED: evasion. All five body pieces that set it say so. */
+  readonly evasion: number
+  /** Word 6, bits 20–29 — INFERRED, on one witness: the chance of a critical hit. */
+  readonly critical: number
+  /**
+   * Word 3, bits 7–11: a weapon's kind plus one — `itemsort`'s subtype + 1 on
+   * every weapon — 13 on a shield, and 0 on the rest.
+   */
+  readonly kind: number
+  /**
+   * Word 4, bits 0–11 — INFERRED: who may wear it, a bit a vocation of the
+   * twelve. `0xfff` on every accessory and most armour, 0 on weapons and
+   * shields. Which bit is which vocation is not established.
+   */
+  readonly usedBy: number
   /**
    * The entry's 32 bytes as they stand, for what is not read. The first
    * entry's first eight are the last record's actions, id and price.
@@ -71,11 +96,22 @@ export function readItemStats(bytes: Uint8Array): ItemStats[] {
   const stats: ItemStats[] = []
   for (let k = 0; k < count; k++) {
     const entry = entriesAt + k * ENTRY
+    const word3 = view.getUint32(entry + 12, true)
+    const word4 = view.getUint32(entry + 16, true)
     const word5 = view.getUint32(entry + 20, true)
+    const word6 = view.getUint32(entry + 24, true)
+    const word7 = view.getUint32(entry + 28, true)
     stats.push({
       name: labelled ? names[k] : undefined,
       attack: word5 & 0x3ff,
       defence: (word5 >>> 10) & 0x3ff,
+      deftness: word7 & 0x3ff,
+      agility: (word7 >>> 10) & 0x3ff,
+      magicalMight: (word7 >>> 20) & 0x3ff,
+      evasion: (word6 >>> 10) & 0x3ff,
+      critical: (word6 >>> 20) & 0x3ff,
+      kind: (word3 >>> 7) & 0x1f,
+      usedBy: word4 & 0xfff,
       unknown_entry: bytes.subarray(entry, entry + ENTRY),
     })
   }

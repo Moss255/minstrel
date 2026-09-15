@@ -79,6 +79,25 @@ describe.skipIf(!romPath)('equipment’s numbers, on a real cartridge', { timeou
     expect(flame).toMatchObject({ attack: 0, defence: 18 })
   })
 
+  it('reads the rest of an entry: a weapon’s kind as itemsort has it, who may wear an accessory, and each field’s witness', () => {
+    for (const s of readItemStats(table('w'))) {
+      const id = s.name === undefined ? undefined : idByName.get(s.name)
+      expect(s.kind, s.name).toBe((kinds.get(id ?? -1)?.subtype ?? -2) + 1)
+    }
+    expect(readItemStats(table('s')).every((s) => s.kind === 13)).toBe(true)
+    expect(readItemStats(table('d')).every((s) => s.usedBy === 0xfff)).toBe(true)
+    const named = (cat: string, name: string) => {
+      const found = readItemStats(table(cat)).find((s) => s.name === name)
+      if (!found) throw new Error(`no ${name}`)
+      return found
+    }
+    expect(named('d', 'utility belt').deftness).toBeGreaterThan(0)
+    expect(named('d', 'agility ring').agility).toBeGreaterThan(0)
+    expect(named('d', 'sorcerer<1>s stone').magicalMight).toBeGreaterThan(0)
+    expect(named('b', 'cloak of evasion').evasion).toBeGreaterThan(0)
+    expect(named('d', 'critical acclaim').critical).toBeGreaterThan(0)
+  })
+
   it('keeps the same numbers in every language', () => {
     for (const cat of ['w', 's', 'b']) {
       const en = readItemStats(table(cat)).map((s) => [s.attack, s.defence])

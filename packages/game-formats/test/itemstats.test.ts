@@ -6,7 +6,16 @@ import { readItemStats, STATS_GAP } from '../src/itemstats.ts'
  * An equipment table built in code from FORMAT.md — no cartridge bytes: the
  * head, N records (left empty), N entries from 32 × N, the gap, and the names.
  */
-function table(entries: { name: string; word5: number }[]): Uint8Array {
+function table(
+  entries: {
+    name: string
+    word5: number
+    word3?: number
+    word4?: number
+    word6?: number
+    word7?: number
+  }[],
+): Uint8Array {
   const n = entries.length
   const names = entries.flatMap((e) => [...e.name].map((c) => c.charCodeAt(0)).concat(0))
   const namesAt = 32 * n + 32 * n + STATS_GAP
@@ -15,8 +24,13 @@ function table(entries: { name: string; word5: number }[]): Uint8Array {
   d.setUint16(0, n, true)
   d.setUint32(8, names.length, true)
   entries.forEach((e, k) => {
-    d.setUint32(32 * n + 32 * k, 0xaa, true)
-    d.setUint32(32 * n + 32 * k + 20, e.word5, true)
+    const at = 32 * n + 32 * k
+    d.setUint32(at, 0xaa, true)
+    d.setUint32(at + 12, e.word3 ?? 0, true)
+    d.setUint32(at + 16, e.word4 ?? 0, true)
+    d.setUint32(at + 20, e.word5, true)
+    d.setUint32(at + 24, e.word6 ?? 0, true)
+    d.setUint32(at + 28, e.word7 ?? 0, true)
   })
   out.set(names, namesAt)
   return out
@@ -38,6 +52,31 @@ describe('an equipment table’s stats', () => {
     expect(
       readItemStats(table([{ name: 'x', word5: (1 << 20) | (5 << 10) | 9 }]))[0],
     ).toMatchObject({ attack: 9, defence: 5 })
+  })
+
+  it('reads the rest of an entry: word 7’s three, word 6’s last two, the kind and who may wear it', () => {
+    const [ring] = readItemStats(
+      table([
+        {
+          name: 'ring',
+          word5: 0,
+          word3: (4 << 7) | 1,
+          word4: 0x18000ebe,
+          // Word 6's first field is not established, and not read.
+          word6: (40 << 20) | (30 << 10) | 25,
+          word7: (8 << 20) | (20 << 10) | 25,
+        },
+      ]),
+    )
+    expect(ring).toMatchObject({
+      deftness: 25,
+      agility: 20,
+      magicalMight: 8,
+      evasion: 30,
+      critical: 40,
+      kind: 4,
+      usedBy: 0xebe,
+    })
   })
 
   it('carries each entry whole', () => {

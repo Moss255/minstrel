@@ -41,7 +41,7 @@ wanted begun alongside M5 — has not either.
 
 | gap | milestone | what it needs |
 |---|---|---|
-| Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. Left: the rest of each entry, which holds more numbers on the shoes and some accessories. |
+| Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece), but not yet used. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
 | The opening, past Ivor's call | M3, M7 | When an event starts — on coming near, on entering a map (value 5 = 3) — and the rest of the triggers' words: the second set of flags (`102`, `2`, `3`: 145 of 566), operations 17, 141, 197 and 205. Then 2.2 step 2 onwards to the pass. The largest job left, and on the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
@@ -129,9 +129,14 @@ what they do, not what the code says. **Read, and corrected on the way**: an
 item record's `u16` at `+0x10` is the offset of the *next* record's item's name;
 the Spanish armour's names are fewer than its items, three pairs sharing one.
 
-**Left**: the rest of each entry — the shoes carry numbers in word 6, and the
-agility ring and the bunny tail in word 7, so agility and the rest are probably
-there. **Put to use the same day**: the equipment screen and the menu show each
+**The rest of each entry, read the same day** by what the items' own
+descriptions say they do: words 5, 6 and 7 are three 10-bit fields each — word
+7's deftness, agility and magical might, word 6's second and third evasion and
+the chance of a critical hit; word 3 gives a weapon's kind, exactly
+`itemsort`'s; and word 4 who may wear a piece, a bit a vocation, `0xfff` on
+every accessory. All INFERRED, each with its witnesses (FORMAT.md, "The
+stats"). Not found as numbers: charm, max HP and max MP, and the medals' own
+effects. **Put to use the same day**: the equipment screen and the menu show each
 piece's number, and the Hero and Ivor fight with strength and resilience plus
 what they wear. That adding is **ours** — the battle reference
 ([DQIX/BattleEmulator](https://github.com/DQIX/BattleEmulator)) takes attack and
