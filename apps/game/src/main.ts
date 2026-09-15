@@ -178,6 +178,7 @@ import {
   visitShop,
 } from './services.ts'
 import { shadowPieces } from './shadows.ts'
+import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type Conversation,
@@ -521,6 +522,8 @@ const roamRng = new BattleRng(0x5eedf1e1dn)
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
 let doors: SwingDoor[] = []
+/** The map's sliding pieces, and where each stands — see `slide.ts`. */
+let slides: Slide[] = []
 /** The map's cabinets, and the motion each is playing — see `cabinets.ts`. */
 let cabinets: Cabinet[] = []
 /** Talk-target ids from here on are cabinets, so they cannot be taken for a placed treasure. */
@@ -534,9 +537,14 @@ function poseMap(frame: number): void {
   for (const [pieceIndex, piece] of loaded.map.pieces.entries()) {
     const { model, animation } = piece
     const swung = doors.find((door) => door.piece === pieceIndex)?.angle ?? 0
+    const slid = slides.find((slide) => slide.piece === pieceIndex)?.offset
     const grow = roomScale * worldScale
     const scale = piece.scale * grow
-    const place = { x: piece.place.x * grow, y: piece.place.y * grow, z: piece.place.z * grow }
+    const place = {
+      x: (piece.place.x + (slid?.x ?? 0)) * grow,
+      y: piece.place.y * grow,
+      z: (piece.place.z + (slid?.z ?? 0)) * grow,
+    }
     // Each shape has its own matrix stack, because a model reuses slots between
     // shapes. A map's models each drive themselves.
     // A cabinet stands where its motion has it; everything else loops its own.
@@ -849,6 +857,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   closeTalk()
   refreshTreasures()
   doors = doorsOf(opened.map)
+  slides = startSlides(opened.slides, (id) => standingIn(opened.cast, id))
   cabinets = cabinetsOf(opened.map, opened.treasures, (slot) => {
     const inside = opened.treasures[slot]
     return inside !== undefined && openedTreasure.has(treasureKey(opened.code, slot, inside))
@@ -1028,7 +1037,8 @@ function frame(now = 0): void {
     const wanted = Math.floor(now / (1000 / MAP_FPS))
     // Doors swing on the frame's own time, and a door that moved is a map to redraw.
     const swung = self !== undefined && moveDoors(doors, peopleAtDoors(), elapsedMs / 1000)
-    if (wanted !== mapFrame || swung) {
+    const slid = moveSlides(slides, elapsedMs / 1000)
+    if (wanted !== mapFrame || swung || slid) {
       mapFrame = wanted
       poseMap(wanted)
     }
@@ -1399,10 +1409,24 @@ function refit(): void {
   // The collision takes its own fit and the world scale on top of it, so the
   // two questions stay separate: does the collision match the room, and does
   // the pair match the character.
-  // A door's own collision stands only while the door is shut.
-  const standing = loaded.map.meshes.filter(
-    (_, index) => !doors.some((door) => door.mesh === index && !doorShut(door)),
-  )
+  // A door's own collision stands only while the door is shut; a sliding
+  // piece's goes where the piece does.
+  const standing = loaded.map.meshes.flatMap((placed, index) => {
+    if (doors.some((door) => door.mesh === index && !doorShut(door))) return []
+    const slid = slides.find((slide) => slide.mesh === index)?.offset
+    if (!slid || (slid.x === 0 && slid.z === 0)) return [placed]
+    const at = placed.offset ?? { x: 0, y: 0, z: 0 }
+    return [
+      {
+        ...placed,
+        offset: {
+          x: at.x + Math.round(slid.x * FX32_ONE),
+          y: at.y,
+          z: at.z + Math.round(slid.z * FX32_ONE),
+        },
+      },
+    ]
+  })
   const meshes = fitMeshes(standing, {
     sx: fit.sx * worldScale,
     sy: fit.sy * worldScale,
@@ -2810,7 +2834,10 @@ function followEvent(event: number): void {
     // The cast stands where the stage and step have them: the Hexagon's
     // statue steps aside at 2.4, step 5 — see `castOf`.
     if (stepped) {
-      loaded = { ...loaded, cast: loaded.castAt(storyStage, stepNow()) }
+      const cast = loaded.castAt(storyStage, stepNow())
+      loaded = { ...loaded, cast }
+      // A sliding piece goes where its character now stands — see `slide.ts`.
+      aimSlides(slides, (id) => standingIn(cast, id))
       poseMap(Math.max(mapFrame, 0))
     }
   }

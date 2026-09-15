@@ -130,6 +130,12 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     const after = spotAt(5)
     expect(before && after && after.x - before.x).toBeGreaterThan(0)
     expect(floor.castAt(stage, 4).spots.some(({ placement }) => placement.id === 201)).toBe(true)
+    // The statue that slides aside: the piece `202`'s step-5 record stands on.
+    expect(floor.slides).toHaveLength(1)
+    const [statue] = floor.slides
+    expect(statue).toMatchObject({ stem: 'D01M01S1', id: 202 })
+    expect(floor.map.meshes[statue?.mesh ?? -1]?.source).toBe('D01A01S1')
+    expect(after && statue && Math.hypot(after.x - statue.home.x, after.z - statue.home.z)).toBe(0)
   })
 
   it('has Patty set the Hexagoon fight, and her thanks after it carry on to 2.5', () => {

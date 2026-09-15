@@ -1158,6 +1158,24 @@ has ten, `D1` to `DA`. Of its houses, `M01M02` and `M01M09` have one each and
   four triangles, facing both ways**: a wall from either side, which stands only
   while the door is shut.
 
+## Sliding pieces — `<area>M<nn>S<x>` and `<area>A<nn>S<x>`
+
+Named as a door is, with `S` for `D`. 13 models are named so across the maps,
+7 with a collision beside them. The Hexagon's first floor has one, `D01M01S1`,
+with `D01A01S1`: eight triangles, a box exactly under the model as the map
+places it — x 0.29 to 0.57, z −1.79 to −1.63 in world units, in the gap between
+the big hexagon and the room above.
+
+**It stands where the thing to examine on it stands** — INFERRED, from this one
+case. The spot `202`'s record from 2.4, step 5, stands on the piece's middle to
+0.006; its record before that stands 0.431 to the left, in the gap. So until
+step 5 the piece, and its collision, are 0.431 to the left, shutting the way;
+from step 5, where the map puts them. None of the other twelve has a record on
+it. No event moves it — `ev02530`, the switch's, calls function 321 sixteen
+times, each aiming the camera within 0.01 of the switch over three frames: a
+shake — so how the game slides it is in code. The game here slides it at half a
+world unit a second, its collision with it; that speed is a choice.
+
 ---
 
 # The rest of a map archive — `.dat`, `.bats`, `.bcfg`, `.bpos`, `.bmed`

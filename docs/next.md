@@ -44,7 +44,7 @@ wanted begun alongside M5 — has not either.
 |---|---|---|
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Left: winning it played through to 2.5 (read and tested, not walked); the statue drawn moving (function 321); the title card; what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
+| The opening and the Hexagon | M3, M7 | **Plays to the Hexagoon fight** (15 September, see the top): the opening to 2.4, then the Hexagon's first floor by its steps, and Patty into set battle 2. Left: winning it played through to 2.5 (read and tested, not walked); the title card; what else sets marks; the pass's value-5 = 2 records; what value 5 = 20 gates; whether a character's event plays on coming near; the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. On the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
@@ -100,9 +100,27 @@ pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
 **Where to start next time:** the Hexagon's last stretch — winning the
-Hexagoon fight played through, the statue's move drawn, and the title card
-that closes the slice; audio alongside it; the zones once the emulator has
-answered.
+Hexagoon fight played through, and the title card that closes the slice;
+audio alongside it; the zones once the emulator has answered.
+
+---
+
+## The Hexagon's statue slides aside — 15 September
+
+The statue on the first floor is a map piece of its own, `D01M01S1`, with its
+collision beside it, `D01A01S1` — named as a door is, with `S` for `D`
+(game-formats' FORMAT.md, "Sliding pieces"). **It stands where the spot on it
+stands**, INFERRED: `202`'s record from step 5 is on the piece's middle to
+0.006, and the one before stands 0.431 to the left, in the gap into the room
+above. So until the switch is pulled the statue and its collision shut the
+gap, and at step 5 they slide aside (`slide.ts`).
+
+Walked in the browser: going straight north through the gap, the Hero stops at
+the statue at step 4, and walks through into the room above at step 5.
+
+**Ours:** the slide, at half a world unit a second, its collision going with
+it — the game's own slide is in code; `ev02530`, the switch's event, only shakes
+the camera (function 321, each call aiming it within 0.01 of the switch).
 
 ---
 
@@ -141,9 +159,7 @@ would have put 27 more in Angel Falls at every stage.
 the village church, as any loss does; a stage opened without an event is at
 step 0, where steps are not read.
 
-**Left:** `ev02530` calls function 321 sixteen times, not read — perhaps what
-moves the statue, which is not drawn moving; whether the way on is shut until
-then is not checked; which of an event's actors is which of the cast, so the
+**Left:** which of an event's actors is which of the cast, so the
 figure's walk off in `ev02510` is not followed; word 6 of a cast record; the
 title card; `ev02500` and `ev02510` have only "DEBUG!" for text — they are
 scripted scenes.

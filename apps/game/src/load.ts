@@ -83,6 +83,7 @@ import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { HERO_LEVELS, heroOutfit } from './hero.ts'
 import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
+import { type SlidingPiece, slidingPieces } from './slide.ts'
 
 /**
  * Turn a cartridge into somewhere to stand.
@@ -112,6 +113,8 @@ export interface Loaded {
    * `undefined` is the file's first placement of each.
    */
   castAt(stage: Stage | undefined, step?: number): Cast
+  /** The map's pieces that slide as their character's place moves — see `slide.ts`. */
+  readonly slides: readonly SlidingPiece[]
   /** The chapter letters this map's area has talk for, in order — `A0`, `B0` … */
   readonly letters: readonly string[]
   /** What a character says in a chapter — see `readTalk`. Empty when they say nothing. */
@@ -1485,6 +1488,20 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     ),
     stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
     castAt: (stage, step) => castOf(cat, area, id, groundAt, sheets, stage, step),
+    slides: slidingPieces(
+      map,
+      (area?.states ?? []).flatMap((state) =>
+        state.position && state.map === id
+          ? [
+              {
+                id: state.id,
+                x: state.position.x * WORLD_SCALE,
+                z: state.position.z * WORLD_SCALE,
+              },
+            ]
+          : [],
+      ),
+    ),
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
