@@ -8,8 +8,8 @@ import { readDataTable } from './table.ts'
  * | value | meaning |
  * |---|---|
  * | 0 | the item's id |
- * | 1 | `unknown_1` — different for every item, 1 to 9,999 |
- * | 2 | `unknown_2` — 1 to 1,178, each once |
+ * | 1 | `unknown_1` — INFERRED an order over the whole bag, each category a run of its own: the weapons 1 to 268, the shields 269 to 313 and on; 9,999 on the blarney stone alone |
+ * | 2 | `unknown_2` — 1 to 1,178, each once: INFERRED alphabetical order by English name, the names rising along it at 1,159 of 1,177 steps |
  * | 3 | the category: 0 weapons, 1 shields, 2 armour, 3 legwear, 4 headgear, 5 gloves, 6 footwear, 7 accessories, 8 and 9 tools |
  * | 4 | the subtype: 0 to 11 the weapon kinds, 12 shields, and on through armour, headgear, gloves, footwear, accessories and tools |
  *
@@ -23,7 +23,9 @@ const VALUES = 5
 export interface ItemKind {
   readonly category: number
   readonly subtype: number
+  /** INFERRED: its place in an order over the whole bag, category by category. Neither this nor the next follows price. */
   readonly unknown_1: number
+  /** INFERRED: its place in alphabetical order by English name. */
   readonly unknown_2: number
 }
 

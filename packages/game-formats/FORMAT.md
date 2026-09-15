@@ -81,10 +81,40 @@ matched its codepoint.
 | glyphs decoded | 70,604 |
 | cell sizes | 525 × 12×12, 3 × 10×10, 1 × 8×8 |
 
+## The Latin fonts — `/data/pack_lv5/fd_me.bin` and `fd_s7.bin`
+
+Found 15 September, outside the archives the search below covered: two loose
+files that are **strips of the Latin glyphs, one bit a pixel**. Their head:
+
+| offset | type | `fd_me.bin` | `fd_s7.bin` | read as |
+|---|---|---|---|---|
+| `+0x00` | 4 bytes | `1.0` and a zero | the same | a version, INFERRED |
+| `+0x04` | `u16` | 1,600 | 1,312 | the strip's width, in pixels |
+| `+0x06` | `u16` | 12 | 12 | its height |
+| `+0x08` | `u32` | 2,400 | 1,968 | the pixels' size in bytes |
+| `+0x0C` | `u32` | 16 | 16 | where they start |
+
+**Width × height ÷ 8 is the size on both** — 1,600 × 12 ÷ 8 = 2,400, and
+1,312 × 12 ÷ 8 = 1,968 — and the pixels end the file. Drawn row by row, each
+byte's **most significant bit on the left**, both read as text: digits, `A`–`Z`,
+`a`–`z`, punctuation, `€ £ © ®`, the accented capitals and small letters of the
+European languages, arrows and shapes. With the bits the other way every glyph
+is mirrored in eight-pixel pieces. `fd_me` is a serifed face; `fd_s7` a
+smaller one without, which also has `+1` to `+9`.
+
+**Beside each is an index, not read**: `fi_me.bin` and `fi_s7.bin` begin `1.1`
+and look like a tagged table's head, but do not read as one ("declares 24
+strings but its section holds 26"); their records begin `12 25 ff 00`,
+`12 27 ff 00`. Which glyph stands where in the strip, and how wide each is,
+should be there.
+
 ## What this does not cover: the Latin font
 
-**The European build's Latin glyphs are not in this format and have not been
-found.** Every one of the 529 fonts is Japanese: 70,540 of their codepoints are
+**The European build's Latin glyphs are not in this format** — they are the
+strips above. What follows is the search that missed them, which looked for
+them in this format:
+
+**Not found in this format.** Every one of the 529 fonts is Japanese: 70,540 of their codepoints are
 in the Shift-JIS kanji range, 54 in the punctuation range, and **none is a
 single-byte Latin codepoint**. The `f12C01B`-style names match scenario area
 codes, so these are per-scenario kanji subsets — the cartridge ships only the
@@ -791,6 +821,27 @@ a layout, not per-item numbers: 386 of them for 268 weapons. So attack and
 defence are kept somewhere not keyed by item id — by position in a table, most
 likely — and finding them wants the disassembly, or a few values read off the
 shop's screen in the emulator to search for.
+
+**Nor by position, as far as the price can tell** — 15 September. Without a
+trusted value to search for, a table of the weapons' attack was sought by what
+it would do: rise with their price. Every run of 268 numbers, 8- or 16-bit, at
+every spacing from 1 to 64 bytes, was scored by the sign test over neighbours
+in price order — only the 168 neighbours whose price strictly rises — laid
+out once by the weapon table's own order and once by `id − 19050`, leaving
+room for missing ids. The weapon table's order follows price at only 0.21, so a
+counter does not pass. **The test works: the item tables' own price field
+scores 1.00, in all ten copies in five languages.** Nothing else reaches 0.35
+in 918 sources — every file in `/data/prm` and `/data/bin`, the ARM9 and its
+35 overlays, decompressed. In the 10,550 files of `/data/menu`, `/data/skill`,
+`/data/enemy`, `/data/tmap`, `/data/pack` and `/data/pack_lv5`, laid out by
+the table's own order only, the best is 0.38, in a model's and a background's
+pixels — the level chance reaches over that many. So no such table is in those
+files or the code at those widths and spacings; wider records, packed bits,
+another order or a number worked out in code are left.
+
+The one value on screen in the evidence kept locally — a Rusty sword's
+"Attack E 215", on a level-58 character wearing it — is the character's
+attack, not the sword's, so it is not one to search for.
 
 ## Shops — `/data/bin/menu/shopdata1.bin`
 
@@ -2813,8 +2864,8 @@ category and the subtype. Read by `itemsort.ts`.
 | value | meaning | evidence |
 |---|---|---|
 | 0 | the item's id | every one is an id in `itemname_en.nat`, each once |
-| 1 | `unknown_1` | 1,178 values, 1 to 9,999 |
-| 2 | `unknown_2` | 1 to 1,178, each once |
+| 1 | `unknown_1` | **an order over the whole bag**, INFERRED: each category a run of its own — the weapons 1 to 268, the shields 269 to 313, the headgear 314 to 445, the armour 446 to 628, the gloves 629 to 706, the legwear 707 to 793, the footwear 794 to 894, the accessories 895 to 946, the tools from 947 — and 9,999 on the blarney stone alone |
+| 2 | `unknown_2` | 1 to 1,178, each once: **alphabetical order by English name**, INFERRED — the names rise along it at 1,159 of 1,177 steps; the skill books, whose names open with markup, come first |
 | 3 | the category | 0 on the 268 weapons, 1 the 45 shields, 2 the 183 armour, 3 the 85 legwear, 4 the 132 headgear, 5 the 78 gloves, 6 the 101 footwear, 7 the 52 accessories, 8 and 9 the 234 tools — **exactly the item tables' members** |
 | 4 | the subtype | 0 to 31, below |
 
@@ -2831,10 +2882,15 @@ knife, a wand, a whip, a staff, a claw, a fan, an axe, a hammer, a boomerang,
 a bow — and cell 13, a shield, is subtype 12's. The equipment screen draws a
 weapon's kind with them.
 
-Not established: `unknown_1` and `unknown_2`; and where an item's numbers,
-rarity and who may use it are kept — none of them is in this file, the item
-tables, `itembtlprm.nat` or `itemsort`, at any position, width or scale
-tested against 41 shields' published defence and rarity.
+Neither follows price in any category — 0.33 at best, the shields'
+`unknown_1`, by the sign test over neighbours in price order — so neither is
+a stat.
+
+Not established: where an item's numbers, rarity and who may use it are kept
+— none of them is in this file, the item tables, `itembtlprm.nat` or
+`itemsort`, at any position, width or scale tested against 41 shields'
+published defence and rarity. Where those published values came from is not
+recorded, which weakens that test.
 
 # Character parts — `/data/pack_lv5/chara_pc.gp2` and `chara_pd.gp2`
 

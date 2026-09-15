@@ -47,8 +47,9 @@ wanted begun alongside M5 — has not either.
 | What battles still lack | M5 | Abilities; the changes of state the reference does not model (Dazzle, sand in the eyes, the dances); Hexagoon beyond its six ways. |
 | The equipment screen's layouts and the rest of it | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5); moving round the grid, L/R between tabs, Change Character, sorting; the name plate's colour for each character; a string for "Nothing Equipped". |
 | Item art not found | M4 | 193 of the 1,178 items have no icon by the rule; the English vocation icons for "Used by"; what the white and gold stars mean. |
-| `itemsort`'s `unknown_1` and `unknown_2` | M4 | Not tested against anything yet. |
+| ~~`itemsort`'s `unknown_1` and `unknown_2`~~ | M4 | **Read, 15 September**: the bag's order by category, and alphabetical order by English name — neither a stat (game-formats' FORMAT.md, "Item kinds"). |
 | M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
+| The game's Latin fonts | M3 | **Found 15 September**: `/data/pack_lv5/fd_me.bin` and `fd_s7.bin` are one-bit strips of the Latin glyphs, 12 pixels tall (game-formats' FORMAT.md, "The Latin fonts"). Left: the index beside each, `fi_me.bin` and `fi_s7.bin` — which glyph is where, and how wide — and then drawing the text box and the party's names in them. |
 | The top screen's rest | M6 | The party panel's HP, MP and level, with its own digits; `obj_mm.pac`'s narrower cuts of it; the town's name tab; `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets. |
 | 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
 | The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |
@@ -58,7 +59,11 @@ wanted begun alongside M5 — has not either.
 **Needs the emulator — questions to bring to it:**
 
 - **Equipment's numbers, rarity and "Used by"**, the one thing M4 still waits
-  on. Open the equipment screen on the Flame shield (defence 18, rarity 1),
+  on. Mined again on 15 September without a value to search for: no run of
+  numbers in the data folders or the code rises with the weapons'
+  prices, though the test finds the price itself (game-formats' FORMAT.md,
+  "Items"). A value off the screen is what is wanted: a copper sword's attack
+  from the shop, with nothing on. Open the equipment screen on the Flame shield (defence 18, rarity 1),
   search RAM for its id, `8E 53`, and look for 18 and 1 near it; send the
   address and the bytes round it. The copper sword's attack would check the
   weapons.
