@@ -4,6 +4,7 @@ import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
   ActionEffect,
   type AttendingCharacter,
+  entryEvent,
   eventOutcome,
   type LevelRow,
   type NpcPlacement,
@@ -581,11 +582,33 @@ function begin(bytes: Uint8Array, map: string): void {
     restore(saved)
     if (enter(saved.map, saved.at)) return
   }
+  // Development convenience: `?stage=2.2` opens a new game at that stage, and
+  // `?flags=0,1` with those story flags set.
+  const stage = /^(\d+)\.(\d+)$/.exec(params.get('stage') ?? '')
+  if (stage) storyStage = { major: Number(stage[1]), minor: Number(stage[2]) }
+  for (const flag of (params.get('flags') ?? '').split(',')) {
+    if (/^\d+$/.test(flag)) storyFlags.add(Number(flag))
+  }
   if (!enter(map)) {
     startEl.hidden = false
     return
   }
   if (wantedEvent !== undefined) startEvent(wantedEvent)
+  else playEntryEvent()
+}
+
+/**
+ * Play what entering this map plays, if anything does — see `entryEvent` in
+ * `@minstrel/game-formats`: the map's own entry record, over the story's
+ * stage, its flags holding. INFERRED. Not on a save carried on from, nor on a
+ * map an event goes on to, whose own event is played instead — both **ours**.
+ * True when an event began.
+ */
+function playEntryEvent(): boolean {
+  if (!loaded || !storyStage || playing || loaded.mapId === undefined) return false
+  const event = entryEvent(loaded.triggers, loaded.mapId, storyStage, storyFlags)
+  if (event === undefined || !loaded.eventScript(event)) return false
+  return startEvent(event)
 }
 
 /** The browser's own storage, where it allows it: private windows and blocked sites do not. */
@@ -836,13 +859,14 @@ function maybeTravel(): void {
   travelling = true
   status(`entering ${door.to}…`)
   setTimeout(() => {
-    enter(door.to, {
+    const arrived = enter(door.to, {
       x: door.arriveX,
       y: door.arriveY,
       z: door.arriveZ,
       facing: door.arriveFacing,
     })
     travelling = false
+    if (arrived) playEntryEvent()
   }, 0)
 }
 

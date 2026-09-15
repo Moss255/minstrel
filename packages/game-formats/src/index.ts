@@ -169,9 +169,13 @@ export {
 } from './sprite.ts'
 export {
   type EventOutcome,
+  entryEvent,
   eventOutcome,
   flagsHold,
+  KIND_ENTRY,
   KIND_EVENT,
+  OP_ENTERED,
+  OP_EVENT,
   OP_EVENT_OF,
   OP_IF_FLAG,
   OP_SET_FLAG,

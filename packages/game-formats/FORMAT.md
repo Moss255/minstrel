@@ -2679,6 +2679,8 @@ files (5,761 records read).
 | 5 : n | holds only if flag *n* is not set | as above | yes |
 | 133 : map, then *event* : 0 | goes on to that map (by id) and plays that event | **16 of 29** name an event whose own record is in that map | yes |
 | 118 : character | a label for that character follows, as with 11 | seen in character records beside their talk labels | yes |
+| value 5 = 1, with 6 : character, 11 : label and 119 : event | talking to the character, when their chosen label is that one, plays that event instead | of the 179 talk records with a label and an event, **97** have the same character's own record choosing that label in the same map and span, first in the file on all 97 — Ivor's at the landslide, `6:7 118:7 192:0` then `6:7 11:192 119:2350`; the other 82 not established | yes |
+| value 5 = 3, with 9 : map and 119 : event | entering that map plays that event | 244 of the 249 open with 9, naming their own map every time; 49 play an event, 24 only while a flag holds — the pass's at 2.2, `9:5101 5:2 203:1 119:2300`, "Finally! We're here at last." | yes |
 | 102, 2, 3 | a second set of flags, set and tested as 104, 4 and 5 | **145 of 566** — weak | no |
 | 17 : n | — | never paired with anything that sets or tests it | no |
 

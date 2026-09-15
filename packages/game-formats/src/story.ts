@@ -45,6 +45,49 @@ export const OP_IF_FLAG = 4
 export const OP_UNLESS_FLAG = 5
 /** Goes on to a map, by its id, and the event the next word names, as its operation with an argument of 0. 16 of 29 land on an event defined in that map. */
 export const OP_THEN_MAP = 133
+/** The event a record plays — a character's when talked to, a map's on entering it. */
+export const OP_EVENT = 119
+/**
+ * Value 5 of a record that acts on entering a map — INFERRED: its first word,
+ * {@link OP_ENTERED}, names the record's own map on 244 of the 249, and 49 of
+ * them play an event, 24 only while a flag holds — as the pass's does at 2.2:
+ * "Finally! We're here at last."
+ */
+export const KIND_ENTRY = 3
+/** The map an entry record is for. */
+export const OP_ENTERED = 9
+
+/** A stage, as a trigger record's span gives one. */
+interface Stage {
+  readonly major: number
+  readonly minor: number
+}
+
+const order = (stage: Stage) => stage.major * 100 + stage.minor
+
+/**
+ * The event entering `map` plays at `stage` with `flags` set: the first entry
+ * record for the map whose span covers the stage, whose flag conditions hold,
+ * and which names an event. `undefined` when none does. INFERRED — see
+ * {@link KIND_ENTRY}.
+ */
+export function entryEvent(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  flags: ReadonlySet<number>,
+): number | undefined {
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_ENTRY || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    const words = triggerWords(trigger)
+    if (!words.some((w) => w.op === OP_ENTERED && w.arg === map)) continue
+    if (!flagsHold(words, flags)) continue
+    const plays = words.find((w) => w.op === OP_EVENT)
+    if (plays) return plays.arg
+  }
+  return undefined
+}
 
 /** A point in the story: a stage, and a step within it. */
 export interface StoryPoint {

@@ -43,7 +43,7 @@ wanted begun alongside M5 — has not either.
 |---|---|---|
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening, past Ivor's call | M3, M7 | When an event starts — on coming near, on entering a map (value 5 = 3) — and the rest of the triggers' words: the second set of flags (`102`, `2`, `3`: 145 of 566), operations 17, 141, 197 and 205. Then 2.2 step 2 onwards to the pass. The largest job left, and on the critical path. |
+| The opening, past the landslide | M3, M7 | **Plays to the landslide** (15 September, see the top): Hugo at the village's edge, the pass on entering it, and Ivor's scene there, to 2.3. Left: the way back — the mayor's house on entering it at 2.3, and Erinn, to 2.4, read and tested but not walked; the pass's value-5 = 2 records, played by something in the map; what value 5 = 20 gates; whether a character's event plays on coming near; and the words not read — the second set of flags (`102`, `2`, `3`: 145 of 566), 17, 105, 107, 141, 197, 203, 204, 205. Then the Hexagon. On the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
@@ -98,9 +98,43 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** the opening past Ivor's call, the largest job
-left on the critical path, with audio alongside it; the zones once the
-emulator has answered.
+**Where to start next time:** the way back from the landslide at 2.3 — the
+mayor's house and Erinn, to 2.4 — and then the Hexagon, the rest of the
+critical path; audio alongside it; the zones once the emulator has answered.
+
+---
+
+## The story reaches the landslide — 15 September
+
+**What plays now**, all moved on by the trigger records (game-formats'
+FORMAT.md, "Triggers", "The words"; INFERRED throughout):
+
+- **Hugo at the village's edge** — once Ivor's call has set flag 0, talking to
+  him plays `ev02220`, "Here comes another lamb to the slaughter!": step 3, and
+  flag 1.
+- **The pass, on entering it** at 2.2 — `ev02300`, "Finally! We're here at
+  last". A record of value 5 = 3 plays an event on entering its map: 244 of
+  the 249 name their own map first, 49 play an event (`entryEvent`).
+- **The landslide** — talking to Ivor there plays `ev02350`, "Is this it? …
+  You and I will never be able to shift this on our own", and the story moves
+  to 2.3. A character's own record chooses their label, and a talk record (value
+  5 = 1) makes an event of it — 97 of the 179 talk records with a label and an
+  event pair so (`labelEvent` in `talk.ts`).
+
+Walked through in the browser: Hugo's scene, the pass's arrival, and Ivor's at
+the landslide. **For testing, ours:** `?stage=2.2` opens a new game at a stage
+and `?flags=0,1` with those flags set.
+
+**Ours:** an entry event is not played on a save carried on from, nor on a map
+an event goes on to, whose own event plays instead.
+
+**Left, on the way:** the pass's records of value 5 = 2, which play
+`ev22591` and `ev22592` by something in the map (`7:20`, `7:22`), not played;
+what value 5 = 20's records gate — the village's `149`/`150` on 26 to 28,
+changing with flag 1, perhaps the way out; and the words not read — 17, 105,
+107, 141, 197, 203, 204, 205. **Next**: the way back at 2.3 — the mayor's house
+plays `ev02400` on entering it, which goes on to Erinn upstairs and 2.4 (both
+read and tested, not walked) — and then the Hexagon.
 
 ---
 

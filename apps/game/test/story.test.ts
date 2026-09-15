@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { eventOutcome } from '@minstrel/game-formats'
+import { entryEvent, eventOutcome } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import { pickLine } from '../src/talk.ts'
@@ -42,6 +42,59 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     expect(eventOutcome(village.triggers, 2210, village.mapId)).toMatchObject({
       stage: { major: 2, minor: 2, step: 2 },
       flags: [0],
+    })
+  })
+
+  it('has Hugo stop them at the village’s edge once Ivor has called, and marks it', () => {
+    const village = load(rom, { map: 'M01' })
+    const asking = {
+      triggers: village.triggers,
+      map: village.mapId,
+      stage: { major: 2, minor: 2 },
+      night: false,
+      id: 8,
+      lines: [],
+    }
+    expect(pickLine({ ...asking, flags: new Set([0]) })).toMatchObject({
+      kind: 'event',
+      event: 2220,
+    })
+    expect(pickLine({ ...asking, flags: new Set([0, 1]) })?.kind).not.toBe('event')
+    expect(eventOutcome(village.triggers, 2220, village.mapId)).toMatchObject({
+      stage: { major: 2, minor: 2, step: 3 },
+      flags: [1],
+    })
+  })
+
+  it('plays the pass’s arrival on entering it, once, and moves on to 2.3 at the landslide', () => {
+    const pass = load(rom, { map: 'S01M01' })
+    const stage = { major: 2, minor: 2 }
+    expect(pass.mapId).toBe(5101)
+    expect(entryEvent(pass.triggers, 5101, stage, new Set())).toBe(2300)
+    expect(entryEvent(pass.triggers, 5101, stage, new Set([2]))).toBeUndefined()
+    expect(eventOutcome(pass.triggers, 2300, pass.mapId)?.flags).toEqual([2])
+    const ivor = pickLine({
+      triggers: pass.triggers,
+      map: pass.mapId,
+      stage,
+      night: false,
+      id: 7,
+      lines: [],
+    })
+    expect(ivor).toMatchObject({ kind: 'event', event: 2350 })
+    expect(eventOutcome(pass.triggers, 2350, pass.mapId)?.stage).toEqual({
+      major: 2,
+      minor: 3,
+      step: 1,
+    })
+  })
+
+  it('has the mayor hear the news on entering his house at 2.3, and Erinn after', () => {
+    const house = load(rom, { map: 'M01M05' })
+    expect(entryEvent(house.triggers, 1105, { major: 2, minor: 3 }, new Set())).toBe(2400)
+    expect(eventOutcome(house.triggers, 2400, house.mapId)?.onward).toEqual({
+      map: 1110,
+      event: 2410,
     })
   })
 })

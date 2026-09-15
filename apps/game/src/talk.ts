@@ -534,7 +534,8 @@ export interface Asking {
  * **INFERRED throughout**, from the measures above. The first of the area's
  * triggers in this map, over a span that covers the stage, naming the
  * character and a talk operation, and whose flag conditions hold for the
- * story's flags, decides: a label, or failing that an event.
+ * story's flags, decides: a label, or failing that an event. A label may lead
+ * on to an event of its own — see {@link labelEvent} — which then runs instead.
  * Without one, the plain line. The line is the tag-1 line with that label whose
  * range covers the sub-stage, in the time of day asked for if there is one and
  * the other if not; the other tags are errands and counters, not talk. Where no
@@ -549,14 +550,13 @@ export function pickLine(asking: Asking): Choice | undefined {
   let label = PLAIN
   let why = `label ${PLAIN}, the plain line — no trigger names them here`
 
+  const applies = (candidate: Trigger) =>
+    (map === undefined || candidate.map === map) &&
+    stageOrder(candidate.from) <= stageOrder(stage) &&
+    stageOrder(stage) <= stageOrder(candidate.to)
+
   const trigger = triggers.find((candidate) => {
-    if (map !== undefined && candidate.map !== map) return false
-    if (
-      stageOrder(candidate.from) > stageOrder(stage) ||
-      stageOrder(stage) > stageOrder(candidate.to)
-    ) {
-      return false
-    }
+    if (!applies(candidate)) return false
     const words = wordsOf(candidate)
     return (
       words.some((w) => w.op === OP_CHARACTER && w.arg === id) &&
@@ -571,6 +571,24 @@ export function pickLine(asking: Asking): Choice | undefined {
     const words = wordsOf(trigger)
     const where = `the trigger at 0x${trigger.offset.toString(16)}`
     const named = words.find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
+    // The label the record chooses, by its own words — after the character's
+    // label word, the first that is a label with 0 — whether or not the talk
+    // file has a line with it; and the event a talk record makes of it.
+    const at = words.findIndex(
+      (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
+    )
+    const chosenHere =
+      named ??
+      (at >= 0 ? words.slice(at + 1).find((w) => w.arg === 0 && w.op !== 0)?.op : undefined)
+    const leads =
+      chosenHere === undefined ? undefined : labelEvent(triggers, applies, id, chosenHere, flags)
+    if (leads) {
+      return {
+        kind: 'event',
+        event: leads.event,
+        why: `event ${leads.event}, which label ${chosenHere} leads to by the trigger at 0x${leads.offset.toString(16)}`,
+      }
+    }
     const byWord = words.some(
       (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
     )
@@ -605,6 +623,39 @@ export function pickLine(asking: Asking): Choice | undefined {
       line: guess,
       why: `${why}; no such line covers ${stage.major}.${stage.minor}, so the first that does — a guess`,
     }
+  }
+  return undefined
+}
+
+/** Value 5 of a talk record: a character, a talk label, and what talking with it does. */
+const KIND_TALK = 1
+
+/**
+ * The event a character's chosen label leads to: a talk record — see
+ * {@link KIND_TALK} — over the map and stage, naming the character, that label
+ * with {@link OP_LABEL}, and an event, its flag conditions holding.
+ *
+ * **INFERRED**: of the 179 talk records on the cartridge with a label and an
+ * event, 97 have the same character's own record choosing that label in the
+ * same map and span, first in the file on all 97 — Ivor's at the landslide,
+ * `6:7 118:7 192:0` and then `6:7 11:192 119:2350`. The other 82 are not
+ * established.
+ */
+function labelEvent(
+  triggers: readonly Trigger[],
+  applies: (candidate: Trigger) => boolean,
+  id: number,
+  label: number,
+  flags: ReadonlySet<number>,
+): { event: number; offset: number } | undefined {
+  for (const candidate of triggers) {
+    if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
+    const words = wordsOf(candidate)
+    if (!words.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
+    if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
+    if (!flagsHold(words, flags)) continue
+    const event = words.find((w) => w.op === OP_EVENT)?.arg
+    if (event !== undefined) return { event, offset: candidate.offset }
   }
   return undefined
 }
