@@ -85,6 +85,21 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.has(221)).toBe(false)
   })
 
+  it('knows which of the map’s cast a character is, and walks that one', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // As the Hexagon's figure is led off: character 1 is cast member 204.
+    stage.host.call(566, [5, 204, 1], t)
+    stage.host.call(206, [1, 0, 0, 0], t)
+    stage.host.call(207, [1, 0, 0, 8, 2], t)
+    stage.advance()
+    stage.advance()
+    expect(stage.actors.get(1)).toMatchObject({ cast: 204, z: 8, placed: true })
+    // A model named for a character is not a cast member.
+    stage.host.call(566, [2, 'chara_sub/s017.chr', 2], t)
+    expect(stage.actors.get(2)?.cast).toBeUndefined()
+  })
+
   it('knows who it has put somewhere from who it has only named', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

@@ -229,7 +229,7 @@ row says otherwise. "—" means not established.
 | 554 | 22,235 | 373 | `i` | — handed the message routine's second value |
 | 558 | 4,022 | 39 | `r` | — polled |
 | 560 | 252 | 112 | `r` | — its answer chooses between two messages |
-| 566, 567 | 2,303, 453 | 522, 218 | `ii`/`isi`, `si` | — the event's options, in section 200 |
+| 566, 567 | 2,303, 453 | 522, 218 | `ii`/`isi`, `si` | what each character is, in section 200: by the first value, `2` a model file for character N (`chara_sub/s016.chr`), and **`5` one of the map's cast, by placement id** — INFERRED: of the 217 such numbers in events whose own record names their map, **186** are in that map's cast. `ev02510`'s `566(5, 204, 1)` makes character 1 the Hexagon's figure, which its four `207`s then lead to the statue room, as a let's play shows. `3` names a sprite file (`n012g.spr`, the figure fading in on `ev02500`), `6` a monster file, `0` and `1` take two values; none of those read. 567 hands character N a motion pack |
 | 570 | 111,451 | 517 | `ii` | — polled |
 | 571 | 1,195 | 513 | `ii` | — |
 | 595 | 501 | 501 | `r` | — once per event, in section 300 |

@@ -106,6 +106,35 @@ calls for — models, cameras — and M8.
 
 ---
 
+## The Hexagon's figure leads the way — 15 September
+
+**Found by the tester**: on the Hexagon's first floor the figure, `204`, stood
+on its tile after being talked to, where the fourth let's play has it walk off
+through the arch to the statue room and wait there; its "On the… back of…
+this statue…" (`ev02520`) and the statue's button follow. Ours left it on the
+tile — talked to again there it played on, but nothing led the Hero to it, and
+the statue says nothing until step 4.
+
+**Read** (`docs/event-scripts.md`, 566; INFERRED): `566(5, id, character)`
+makes an event's character one of the map's cast, by placement id — 186 of the
+217 such numbers are in the event's own map's cast. `ev02510`'s `566(5, 204,
+1)` is the figure, and its four `207`s walk it to the statue room.
+
+**Ours:** while an event plays, a cast member it has a character for is drawn,
+shadowed and talked to where that character is; when it ends, the member stays
+where it was left until the story's step next moves or the map changes — over
+2.4, step 3, whose records leave the figure in a gap that would stand it on its
+tile.
+
+**Walked in the browser**: talked to on its tile at 2.4, step 2, the figure walks
+off past the stone table towards the arch with the camera after it, as the let's
+play shows, and the story is at step 3 with the tile empty. **Not walked**:
+finding it by the statue and talking to it there — no headless walk reaches the
+statue room. **Left:** `566`'s form 3, a sprite file — the figure fading in on
+`ev02500` is not drawn until that event ends.
+
+---
+
 ## Ivor leaves as the records say — 15 September
 
 **Who goes along is the events' records'** (game-formats' FORMAT.md, "The

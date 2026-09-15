@@ -76,6 +76,12 @@ export interface EventActor {
   model: string | undefined
   /** The motion packs it is handed, as the script names them. */
   readonly packs: string[]
+  /**
+   * The map's cast member it is, by placement id, when `566(5, id, character)`
+   * says so — INFERRED, see `566` in the header: the Hexagon's figure, 204, in
+   * `ev02510`. Then the event moves that member.
+   */
+  cast: number | undefined
   walk: Walk | undefined
   turn: Turn | undefined
 }
@@ -180,6 +186,7 @@ export class EventStage {
         after: undefined,
         model: undefined,
         packs: [],
+        cast: undefined,
         walk: undefined,
         turn: undefined,
       }
@@ -350,6 +357,11 @@ export class EventStage {
       case 566:
         if (num(args[0]) === 2 && typeof args[1] === 'string') {
           this.actor(num(args[2])).model = args[1]
+        }
+        // A character that is one of the map's cast, by placement id — INFERRED:
+        // 186 of the 217 such numbers are in the event's own map's cast.
+        if (num(args[0]) === 5 && typeof args[1] === 'number') {
+          this.actor(num(args[2])).cast = args[1]
         }
         return 0
       case 567:

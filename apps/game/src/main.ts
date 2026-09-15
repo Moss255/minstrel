@@ -375,6 +375,27 @@ const storyFlags = new Set<number>()
  */
 let party = new Set<number>()
 /**
+ * Where cast members stand that an event moved and left there, by placement
+ * id — see {@link castPlaced}. Ours: kept until the story's step next moves or
+ * the map changes, as the Hexagon's figure waits by the statue at 2.4, step 3.
+ */
+const castLeft = new Map<number, { x: number; y: number; z: number; facing: number }>()
+
+/**
+ * A cast member's placement as it stands now: where the event playing has it,
+ * when one of its characters is that member (`EventActor.cast`, INFERRED from
+ * `566(5, id, …)`); or where an event left it (`castLeft`); or else its own.
+ */
+function castPlaced<P extends NpcPlacement>(placement: P): P {
+  for (const actor of playing?.player.stage.actors.values() ?? []) {
+    if (actor.cast === placement.id && actor.placed) {
+      return { ...placement, x: actor.x, y: actor.y, z: actor.z, facing: actor.facing }
+    }
+  }
+  const left = castLeft.get(placement.id)
+  return left ? { ...placement, ...left } : placement
+}
+/**
  * The second set of flags, "marks" — see `OP_IF_MARK` in `@minstrel/game-formats`.
  * Cleared with the story's flags when the stage moves on, and not yet saved —
  * both **ours**.
@@ -615,7 +636,15 @@ function poseMap(frame: number): void {
   )
   refit()
   castPiecesNow = [
-    ...loaded.cast.members.flatMap((member) => castPieces(member, cat, characterScale, frame)),
+    // Where an event has them, or left them — see `castPlaced`.
+    ...loaded.cast.members.flatMap((member) =>
+      castPieces(
+        { ...member, placement: castPlaced(member.placement) },
+        cat,
+        characterScale,
+        frame,
+      ),
+    ),
     // The 2D cast faces the camera, so it is rebuilt in the frame loop rather
     // than here; this is only its first placement before anyone has moved.
   ]
@@ -789,6 +818,8 @@ function enter(map: string, arrival?: Arrival): boolean {
   const previous = loaded
   const previousSelf = self
   const started = performance.now()
+  // Where an event left anyone belongs to the map it happened in — see `castLeft`.
+  castLeft.clear()
   let opened: Loaded
   try {
     opened = load(cartridge, { map, lighting: wantedLighting, onProgress: status })
@@ -1249,22 +1280,24 @@ function frame(now = 0): void {
         ? shadowPieces(
             loaded.shadow,
             [
-              ...loaded.cast.members.map((member) => member.placement),
-              ...loaded.cast.sprites2d.map((sprite) => sprite.placement),
+              ...loaded.cast.members.map((member) => castPlaced(member.placement)),
+              ...loaded.cast.sprites2d.map((sprite) => castPlaced(sprite.placement)),
               { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
               ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
             ],
             (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
           )
         : []),
-      ...loaded.cast.sprites2d.flatMap((s) =>
-        spritePieces(
+      // Where an event has them, or left them — the Hexagon's figure — see `castPlaced`.
+      ...loaded.cast.sprites2d.flatMap((sprite) => {
+        const s = { ...sprite, placement: castPlaced(sprite.placement) }
+        return spritePieces(
           s,
           toFloat(PERSON.height) * worldScale,
           camera.yaw,
           standingFrame(s, camera.yaw),
-        ),
-      ),
+        )
+      }),
       // A battle's monsters, facing the Hero — see `monsters.ts`.
       ...(battle ? foePieces(now) : []),
       ...(battle ? companionPieces(now) : []),
@@ -1521,6 +1554,7 @@ function moveStage(by: number): void {
   storyFlags.clear()
   storyMarks.clear()
   storyStep = 0
+  castLeft.clear()
   closeTalk()
   loaded = { ...loaded, cast: loaded.castAt(storyStage) }
   poseMap(Math.max(mapFrame, 0))
@@ -1702,12 +1736,11 @@ function talk(everyLine = false): void {
   talkOnward = undefined
   talkAnswer = undefined
   const cast: Talker[] = [
-    ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => ({
-      id: member.placement.id,
-      name: member.name,
-      x: member.placement.x,
-      z: member.placement.z,
-    })),
+    // Where they stand now, an event having left them there — see `castPlaced`.
+    ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => {
+      const { id, x, z } = castPlaced(member.placement)
+      return { id, name: member.name, x, z }
+    }),
     // Something to examine is talked to like anyone else — see `Cast.spots`.
     ...loaded.cast.spots.map(({ placement }) => ({
       id: placement.id,
@@ -2884,7 +2917,23 @@ function endEvent(): void {
     `ev${done.event} is over` +
       (unread.length > 0 ? ` · functions not read: ${unread.sort((a, b) => a - b).join(' ')}` : ''),
   )
+  // Any of the map's cast it moved stays where it left them — the Hexagon's
+  // figure, by the statue — over the step its record moves to: see `castLeft`.
+  const map = loaded?.code
+  const moved = [...done.player.stage.actors.values()].filter(
+    (actor) => actor.cast !== undefined && actor.placed,
+  )
   followEvent(done.event)
+  if (loaded?.code === map) {
+    for (const actor of moved) {
+      castLeft.set(actor.cast as number, {
+        x: actor.x,
+        y: actor.y,
+        z: actor.z,
+        facing: actor.facing,
+      })
+    }
+  }
 }
 
 /**
@@ -2915,6 +2964,8 @@ function followEvent(event: number): void {
     // The cast stands where the stage and step have them: the Hexagon's
     // statue steps aside at 2.4, step 5 — see `castOf`.
     if (stepped) {
+      // Where an event left anyone is kept only until the step moves — see `castLeft`.
+      castLeft.clear()
       const cast = loaded.castAt(storyStage, stepNow())
       loaded = { ...loaded, cast }
       // A sliding piece goes where its character now stands — see `slide.ts`.
