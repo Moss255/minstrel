@@ -454,6 +454,18 @@ export function nextPage(
   return { ...conversation, run, page: 0, choice: 0, aside: `answered ${chosen.label}`, answered }
 }
 
+/**
+ * The answer `f` gives now, from 0, if the conversation stands at a prompt —
+ * as {@link nextPage} takes it. For the caller to keep: a branch that says
+ * nothing ends the talk with the answer — the Hexagon statue's Yes,
+ * `<YES><END>`, which the switch's scene waits on.
+ */
+export function answerNow(conversation: Conversation): number | undefined {
+  const prompt = conversation.run.prompt
+  if (!prompt || conversation.page + 1 < conversation.run.pages.length) return undefined
+  return prompt.answers[conversation.choice] ? conversation.choice : 0
+}
+
 /** A talk line's tag and numbers, for the status line. */
 export function noteOf(line: TalkLine): string {
   return `tag ${line.tag}, numbers ${line.unknown_numbers.join(' ')}`
@@ -543,6 +555,11 @@ export type Choice =
       readonly marks?: readonly number[]
       /** Where the talk goes on once read, if its label's talk record says — see {@link labelOnward}. */
       readonly onward?: Onward
+      /**
+       * The event its label leads to, played once the line is read — and if the
+       * line asks, only on the answer it waits for. See {@link labelEvent}.
+       */
+      readonly leadsTo?: { readonly event: number; readonly answer: number | undefined }
     }
   | {
       readonly kind: 'event'
@@ -591,6 +608,7 @@ export function pickLine(asking: Asking): Choice | undefined {
   const flags = asking.flags ?? new Set<number>()
   let marked: number[] = []
   let onward: Onward | undefined
+  let leadsTo: { event: number; answer: number | undefined } | undefined
   const lines = asking.lines.filter((line) => line.tag === 1)
   const labels = new Set(lines.map(labelOf))
   let label = PLAIN
@@ -642,7 +660,14 @@ export function pickLine(asking: Asking): Choice | undefined {
       chosenHere === undefined
         ? undefined
         : labelEvent(triggers, applies, id, chosenHere, flags, marks, step)
-    if (leads) {
+    // The line is read first and the event played after it — as a let's play
+    // reads the Hexagon's inscription out before its figure appears, and asks
+    // "Press the button?" before the switch's scene. Where no line has the
+    // label, the one that would be said is: the inscription's record names
+    // label 80 and its one line is 96, and still it is read out (INFERRED,
+    // thin: the one such case seen). With no line at all, the event at once.
+    const read = lines.some((line) => covers(line, stage.minor))
+    if (leads && !read) {
       const both = [...marked, ...leads.marks]
       return {
         kind: 'event',
@@ -651,28 +676,35 @@ export function pickLine(asking: Asking): Choice | undefined {
         ...(both.length > 0 ? { marks: both } : {}),
       }
     }
-    onward =
-      chosenHere === undefined
-        ? undefined
-        : labelOnward(triggers, applies, id, chosenHere, flags, marks, step)
-    const byWord = words.some(
-      (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
-    )
-      ? words.find((w) => w.arg === 0 && labels.has(w.op))?.op
-      : undefined
-    const event = words.find((w) => w.op === OP_EVENT)?.arg
-    if (named !== undefined) {
-      label = named
-      why = `label ${named}, from ${where}`
-    } else if (byWord !== undefined) {
-      label = byWord
-      why = `label ${byWord}, from ${where}`
-    } else if (event !== undefined) {
-      return {
-        kind: 'event',
-        event,
-        why: `event ${event}, from ${where}`,
-        ...(marked.length > 0 ? { marks: marked } : {}),
+    if (leads && chosenHere !== undefined) {
+      marked = [...marked, ...leads.marks]
+      label = chosenHere
+      why = `label ${chosenHere}, then event ${leads.event}, which it leads to by the trigger at 0x${leads.offset.toString(16)}`
+      leadsTo = { event: leads.event, answer: leads.answer }
+    } else {
+      onward =
+        chosenHere === undefined
+          ? undefined
+          : labelOnward(triggers, applies, id, chosenHere, flags, marks, step)
+      const byWord = words.some(
+        (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
+      )
+        ? words.find((w) => w.arg === 0 && labels.has(w.op))?.op
+        : undefined
+      const event = words.find((w) => w.op === OP_EVENT)?.arg
+      if (named !== undefined) {
+        label = named
+        why = `label ${named}, from ${where}`
+      } else if (byWord !== undefined) {
+        label = byWord
+        why = `label ${byWord}, from ${where}`
+      } else if (event !== undefined) {
+        return {
+          kind: 'event',
+          event,
+          why: `event ${event}, from ${where}`,
+          ...(marked.length > 0 ? { marks: marked } : {}),
+        }
       }
     }
   }
@@ -691,6 +723,7 @@ export function pickLine(asking: Asking): Choice | undefined {
       why: why + time,
       ...(marked.length > 0 ? { marks: marked } : {}),
       ...(onward ? { onward } : {}),
+      ...(leadsTo ? { leadsTo } : {}),
     }
   }
   const guess = covering.find((line) => isNightLine(line) === night) ?? covering[0]
@@ -699,6 +732,8 @@ export function pickLine(asking: Asking): Choice | undefined {
       kind: 'line',
       line: guess,
       why: `${why}; no such line covers ${stage.major}.${stage.minor}, so the first that does — a guess`,
+      // Read before the event its label leads to — see `read` above.
+      ...(leadsTo ? { leadsTo, ...(marked.length > 0 ? { marks: marked } : {}) } : {}),
     }
   }
   return undefined
@@ -708,9 +743,20 @@ export function pickLine(asking: Asking): Choice | undefined {
 const KIND_TALK = 1
 
 /**
+ * The prompt's answer a talk record's event waits for, from 0 — Yes. INFERRED:
+ * in Angel Falls, the pass and the Hexagon, 7 of the 9 talk records with a
+ * label, an event and a `16` have a line that asks — one more is the inn's
+ * welcome, and one has no line found — where 3 of the 17 without one do. The
+ * switch's, `6:201 11:194 16:0 119:2530`, asks "Press the button?", and a
+ * let's play answering No is told the Hero decides not to, and nothing moves.
+ */
+const OP_EVENT_ANSWER = 16
+
+/**
  * The event a character's chosen label leads to: a talk record — see
  * {@link KIND_TALK} — over the map and stage, naming the character, that label
- * with {@link OP_LABEL}, and an event, its flag conditions holding.
+ * with {@link OP_LABEL}, and an event, its flag conditions holding; and the
+ * answer it waits for, {@link OP_EVENT_ANSWER}.
  *
  * **INFERRED**: of the 179 talk records on the cartridge with a label and an
  * event, 97 have the same character's own record choosing that label in the
@@ -726,7 +772,7 @@ function labelEvent(
   flags: ReadonlySet<number>,
   marks: ReadonlySet<number> | undefined,
   step: number | undefined,
-): { event: number; offset: number; marks: number[] } | undefined {
+): { event: number; offset: number; marks: number[]; answer: number | undefined } | undefined {
   for (const candidate of triggers) {
     if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
     const words = wordsOf(candidate)
@@ -734,7 +780,14 @@ function labelEvent(
     if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
     if (!flagsHold(words, flags, marks, step)) continue
     const event = words.find((w) => w.op === OP_EVENT)?.arg
-    if (event !== undefined) return { event, offset: candidate.offset, marks: marksSet(words) }
+    if (event !== undefined) {
+      return {
+        event,
+        offset: candidate.offset,
+        marks: marksSet(words),
+        answer: words.find((w) => w.op === OP_EVENT_ANSWER)?.arg,
+      }
+    }
   }
   return undefined
 }

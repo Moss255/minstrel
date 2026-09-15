@@ -106,6 +106,44 @@ calls for — models, cameras — and M8.
 
 ---
 
+## Motions end, lines come before their scenes, and marks show — 15 September
+
+**Motions played once** (`docs/event-scripts.md`, 210 and 224; INFERRED): bit 1
+of `210`'s flags plays a motion once — a `224` follows at once 1,471 of the
+2,534 with it set, and 21 of the 4,345 without — and it then goes on to the
+motion the `224` names, or holds its last frame where none is named (ours). The
+morning's `cyotto_loop` and Ivor's `bk` and `talk` on Erinn's doorstep had gone
+round for ever.
+
+**A talk record's line before its scene** (game-formats' FORMAT.md, "The
+words", 16; INFERRED): the line the character would say is read first and the
+scene plays once it is — the inscription's text before `ev02500`, "Press the
+button?" before `ev02530`, as the fourth let's play shows — and `16:n` has it
+wait for answer n, 0 being Yes: the switch's scene plays on Yes alone. Where no
+line has the label, the one that would be said is read — the inscription's
+record names label 80 and its one line is 96 (thin: the one such case seen).
+**Found on the way:** an answer whose branch says nothing, the statue's
+`<YES><END>`, ended the talk and was lost; it is kept now (`answerNow`).
+
+**The marks over the Hero's head** (`bubbles.ts`; INFERRED from the sheets'
+names and the let's play): `fuki_com`, a speech bubble, for someone to talk to
+in front of them; `fuki_hkn`, "!", for something to examine; `fuki_in` for a
+doorway just ahead. When each shows is ours — while nothing else is going on,
+for what talking would reach, talking before a door — and so are its steps'
+lengths, taken as sixtieths.
+
+**Walked in the browser:** the "!" at the inscription, the speech bubble facing
+the Hexagon's figure, and the door mark at Erinn's front door; the inscription
+read out and then `ev02500`; the statue's question, Yes playing `ev02530` and No
+telling the Hero decides not to press it. **Not walked:** the morning and Ivor's
+call — that their motions now end is tested, not watched.
+
+**Left:** sprite characters' walking frames in scenes; who is shown and hidden
+when (`570`, `571`, `223`); a fade on going through a doorway, which the let's
+play shows; equipment on the party, out of the slice as its plan stands.
+
+---
+
 ## Scenes fade to black and back — 15 September
 
 **Read** (`docs/event-scripts.md`, 101, 120 and 121, 560; INFERRED):

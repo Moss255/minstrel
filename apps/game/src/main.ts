@@ -82,6 +82,7 @@ import {
   withPages,
 } from './battle-scene.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
+import { BUBBLE_SHEETS, type BubbleKind, bubbleFrame, doorAhead } from './bubbles.ts'
 import {
   CABINET_OPENING,
   CABINET_SHUT,
@@ -117,7 +118,7 @@ import {
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
-import { type EventCamera, EventPlayer, OPACITY_WHOLE } from './event.ts'
+import { type EventCamera, EventPlayer, OPACITY_WHOLE, sceneMotion } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   type Gains,
@@ -187,6 +188,7 @@ import { shadowPieces } from './shadows.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
+  answerNow,
   type Conversation,
   DEFAULT_CONTEXT,
   letterForStage,
@@ -200,6 +202,7 @@ import {
   sameStage,
   stageOrder,
   startConversation,
+  TALK_REACH,
   type Talker,
   type TextContext,
   talkTarget,
@@ -1358,6 +1361,8 @@ function frame(now = 0): void {
       ...propPiecesNow(loaded, now),
       // Whoever goes along, behind the Hero — see `companionsInField`.
       ...companionFieldPieces(now),
+      // The mark over the Hero's head: someone to talk to, something to examine, a door.
+      ...bubblePieces(now),
       ...playerPieces(
         heroPose ? { ...self, motionFrame: heroPose.frame } : self,
         loaded.figure,
@@ -1745,6 +1750,8 @@ function openTreasureAhead(): boolean {
 let talkEvent: number | undefined
 /** Where the line being read goes on once read — see `labelOnward` in `talk.ts`. */
 let talkOnward: { map: number; event: number; answer: number | undefined } | undefined
+/** The event a line's label leads to, played once it is read — see `Choice.leadsTo`. */
+let talkThen: { event: number; answer: number | undefined } | undefined
 /** The last of a prompt's answers given in this talk, from 0. */
 let talkAnswer: number | undefined
 
@@ -1752,8 +1759,11 @@ function talk(everyLine = false): void {
   if (!loaded || !self) return
   if (talking) {
     const ending = talking
+    // The answer given at a prompt, kept even where its branch ends the talk:
+    // the Hexagon statue's Yes, `<YES><END>`, which its scene waits on.
+    const given = answerNow(ending)
     talking = nextPage(talking, talkContext)
-    if (talking?.answered !== undefined) talkAnswer = talking.answered
+    if (given !== undefined) talkAnswer = given
     showTalk()
     // A line that ends by handing over — `<ADD><SHOP=32>` — opens its service.
     if (!talking && ending.run.service) openService(ending.run.service)
@@ -1778,11 +1788,20 @@ function talk(everyLine = false): void {
         if (code && (code === loaded.code || enter(code))) startEvent(go.event)
       }
     }
+    // A line whose label leads to an event — the Hexagon's inscription, the
+    // statue's button — plays it once read, on the answer it waits for, and
+    // carries straight on from the conversation: see `Choice.leadsTo`.
+    if (!talking && talkThen) {
+      const go = talkThen
+      talkThen = undefined
+      if (go.answer === undefined || go.answer === talkAnswer) startEvent(go.event, true)
+    }
     return
   }
   // While an event plays, `f` only reads its messages.
   if (playing) return
   talkOnward = undefined
+  talkThen = undefined
   talkAnswer = undefined
   const cast: Talker[] = [
     // Where they stand now, an event having left them there — see `castPlaced`.
@@ -1853,6 +1872,7 @@ function talk(everyLine = false): void {
         talkContext,
       )
       talkOnward = choice.onward
+      talkThen = choice.leadsTo
     } else if (choice?.kind === 'event') {
       // Played, not read out, so that what follows it follows — see `followEvent`.
       // Begun by talking, it carries straight on from the conversation — see `afterTalk`.
@@ -3072,6 +3092,62 @@ function aimAtShot(shot: EventCamera, angled: boolean): void {
   camera.lift = 0
 }
 
+/**
+ * What the mark over the Hero's head says now — see `bubbles.ts`: someone to
+ * talk to in front of them, something to examine, or a doorway just ahead. Who
+ * talking would reach comes before the door: ours.
+ */
+function bubbleKindNow(at: { x: number; z: number; facing: number }): BubbleKind | undefined {
+  if (!loaded) return undefined
+  const spots = new Set(loaded.cast.spots.map(({ placement }) => placement.id))
+  const who = talkTarget(at, [
+    ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => {
+      const { id, x, z } = castPlaced(member.placement)
+      return { id, name: member.name, x, z }
+    }),
+    ...loaded.cast.spots.map(({ placement }) => ({
+      id: placement.id,
+      name: 'something to examine',
+      x: placement.x,
+      z: placement.z,
+    })),
+  ])
+  if (who) return spots.has(who.id) ? 'examine' : 'talk'
+  if (gate.armed && doorAhead(loaded.doorways, at, TALK_REACH)) return 'door'
+  return undefined
+}
+
+/** How high over the Hero's feet the mark stands, in a person's heights: above their head. Ours. */
+const BUBBLE_RISE = 1.15
+
+/** The mark over the Hero's head, while nothing else is going on — see `bubbleKindNow`. */
+function bubblePieces(now: number): Piece[] {
+  if (!loaded || !self || playing || talking || menu || battle || visit) return []
+  const at = { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing }
+  const kind = bubbleKindNow(at)
+  if (!kind) return []
+  const name = BUBBLE_SHEETS[kind]
+  const sprite = sheetFor(name, loaded.sheets)
+  const bytes = loaded.sheets.get(name)
+  if (!sprite || !bytes) return []
+  const person = toFloat(PERSON.height) * worldScale
+  const placement = {
+    id: -1,
+    map: 0,
+    x: at.x,
+    y: toFloat(self.state.y) + person * BUBBLE_RISE,
+    z: at.z,
+    facing: 0,
+    offset: 0,
+  } as NpcPlacement
+  return propPieces(
+    { name, sprite, placement, bytes },
+    person,
+    camera.yaw,
+    bubbleFrame(sprite.animations, (now * 60) / 1000),
+  )
+}
+
 /** The event's characters in their own models, playing what they are told; the Hero is drawn as ever. */
 function eventPieces(): Piece[] {
   const now = playing
@@ -3111,8 +3187,10 @@ function eventPieces(): Piece[] {
     if (!actor.model) return []
     const look = actorLookOf(rom, actor.model, actor.packs)
     if (!look) return []
-    const motion = look.motions.get(actor.motion ?? '') ?? look.motions.get('stand')
-    const frame = eventMotionFrame(stage.frame, actor.motionFrom)
+    // One played once goes on to the next, or holds its last frame — see `sceneMotion`.
+    const posed = sceneMotion((name) => look.motions.get(name), actor, stage.frame, MAP_FPS)
+    const motion = posed?.motion
+    const frame = posed?.frame ?? 0
     const pieces = castPieces(
       { name: actor.model, model: look.model, motion, floor: look.floor, placement },
       look.catalogue,
@@ -3133,18 +3211,13 @@ function heroEventPose(): { readonly motion: Animation; readonly frame: number }
   const rom = cartridge
   const hero = now?.player.stage.actors.get(0)
   if (!now || !rom || !hero?.motion || !loaded) return undefined
-  const name = hero.motion
-  const motion =
+  const figure = loaded.figure
+  const find = (name: string) =>
     hero.packs.map((pack) => packMotions(rom, pack).get(name)).find((found) => found) ??
-    loaded.figure.motions.get(name)
-  if (!motion) return undefined
-  const since = eventMotionFrame(now.player.stage.frame, hero.motionFrom)
-  return { motion, frame: motion.frameCount > 0 ? since % motion.frameCount : 0 }
-}
-
-/** How far into its motion a character is, at the map's rate: event frames are sixtieths. */
-function eventMotionFrame(frame: number, from: number): number {
-  return Math.max(0, Math.floor(((frame - from) * MAP_FPS) / 60))
+    figure.motions.get(name)
+  if (!find(hero.motion)) return undefined
+  // One played once goes on to the next, or holds its last frame — see `sceneMotion`.
+  return sceneMotion(find, hero, now.player.stage.frame, MAP_FPS)
 }
 
 /** Draw the main menu, or a visit, or put the box away when neither is up. */

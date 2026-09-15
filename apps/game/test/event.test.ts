@@ -1,6 +1,6 @@
 import type { ScriptRef, ScriptThread, ScriptValue } from '@minstrel/script'
 import { describe, expect, it } from 'vitest'
-import { EventStage } from '../src/event.ts'
+import { EventStage, sceneMotion } from '../src/event.ts'
 
 /** A thread that only takes writes through a reference — all the stage asks of one. */
 function thread() {
@@ -83,6 +83,31 @@ describe('an event’s stage', () => {
     stage.host.call(221, [1, 7, 2], t)
     expect(stage.actors.get(1)?.turn).toBeUndefined()
     expect(stage.unhandled.has(221)).toBe(false)
+  })
+
+  it('plays a motion once and goes on to the one named next, or holds its last frame', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    const motions = new Map([
+      ['talk', { frameCount: 10 }],
+      ['stand', { frameCount: 4 }],
+    ])
+    const find = (name: string) => motions.get(name)
+    // As Ivor talks on Erinn's doorstep: `talk` once, then `stand`.
+    stage.host.call(210, [1, 'talk', 1], t)
+    stage.host.call(224, [1, 'stand'], t)
+    const ivor = stage.actors.get(1)
+    if (!ivor) throw new Error('no character 1')
+    expect(ivor.once).toBe(true)
+    expect(sceneMotion(find, ivor, 5, 60)).toEqual({ motion: motions.get('talk'), frame: 5 })
+    expect(sceneMotion(find, ivor, 12, 60)).toEqual({ motion: motions.get('stand'), frame: 2 })
+    // With nothing named after it, its last frame holds.
+    stage.host.call(210, [1, 'talk', 17], t)
+    expect(sceneMotion(find, ivor, 40, 60)?.frame).toBe(9)
+    // Without the bit, round and round.
+    stage.host.call(210, [1, 'talk', 16], t)
+    expect(ivor.once).toBe(false)
+    expect(sceneMotion(find, ivor, 13, 60)?.frame).toBe(3)
   })
 
   it('answers whether the scene carries straight on from a conversation', () => {

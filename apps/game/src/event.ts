@@ -65,6 +65,29 @@ import {
  */
 const FRAME_IN_HALVES = 2
 
+/**
+ * The motion a scene's character shows at a frame of the scene, and how far
+ * into it, at `rate` frames a second: one played once goes on to the motion a
+ * `224` named when it ends, or holds its last frame where none was named —
+ * that holding ours; any other plays round and round. See `EventActor.once`.
+ */
+export function sceneMotion<M extends { readonly frameCount: number }>(
+  find: (name: string) => M | undefined,
+  actor: Pick<EventActor, 'motion' | 'motionFrom' | 'once' | 'after'>,
+  frame: number,
+  rate: number,
+): { readonly motion: M; readonly frame: number } | undefined {
+  const first = (actor.motion !== undefined ? find(actor.motion) : undefined) ?? find('stand')
+  if (!first) return undefined
+  const since = Math.max(0, Math.floor(((frame - actor.motionFrom) * rate) / 60))
+  const length = Math.max(1, first.frameCount)
+  if (!actor.once) return { motion: first, frame: since % length }
+  if (since < length) return { motion: first, frame: since }
+  const next = actor.after !== undefined ? find(actor.after) : undefined
+  if (next) return { motion: next, frame: (since - length) % Math.max(1, next.frameCount) }
+  return { motion: first, frame: length - 1 }
+}
+
 export interface EventActor {
   x: number
   y: number
@@ -75,7 +98,14 @@ export interface EventActor {
   /** The motion playing, by name, and the frame it began on. */
   motion: string | undefined
   motionFrom: number
-  /** The motion 224 names to go back to. */
+  /**
+   * Whether the motion plays once rather than round and round: bit 1 of
+   * `210`'s flags. INFERRED: a `224` follows at once 1,471 of the 2,534 `210`s
+   * with it set, and 21 of the 4,345 without — the morning's `cyotto_loop`, Ivor's
+   * `talk` on Erinn's doorstep. See {@link sceneMotion}.
+   */
+  once: boolean
+  /** The motion 224 names to go on to when a motion played once ends. */
   after: string | undefined
   /** Its model file, as the script names it: `chara_sub/s016.chr`. */
   model: string | undefined
@@ -223,6 +253,7 @@ export class EventStage {
         placed: false,
         motion: undefined,
         motionFrom: 0,
+        once: false,
         after: undefined,
         model: undefined,
         packs: [],
@@ -421,6 +452,9 @@ export class EventStage {
         const actor = this.actor(num(args[0]))
         actor.motion = text(args[1])
         actor.motionFrom = this.frame
+        // Bit 1 plays it once — see `once`; what it goes on to, a `224` says after.
+        actor.once = (num(args[2]) & 1) !== 0
+        actor.after = undefined
         return 0
       }
       case 224:

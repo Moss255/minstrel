@@ -84,7 +84,17 @@ describe('talk as the story’s flags stand', () => {
       ],
       1,
     )
-    expect(pickLine({ ...asking, triggers: [chooses, leads] })).toMatchObject({
+    // The label's own line first, and the event once it is read.
+    const first = pickLine({ ...asking, triggers: [chooses, leads] })
+    expect(first).toMatchObject({ kind: 'line', leadsTo: { event: 2350, answer: undefined } })
+    expect(said(first)).toBe('*: Before.')
+    // Where no line has the label, the one that would be said is read first,
+    // as the Hexagon's inscription is; with no line at all, the event at once.
+    const unlabelled = { ...asking, lines: asking.lines.filter((l) => l.text !== '*: Before.') }
+    const guessed = pickLine({ ...unlabelled, triggers: [chooses, leads] })
+    expect(guessed).toMatchObject({ kind: 'line', leadsTo: { event: 2350 } })
+    expect(said(guessed)).toBe('*: Plain.')
+    expect(pickLine({ ...asking, lines: [], triggers: [chooses, leads] })).toMatchObject({
       kind: 'event',
       event: 2350,
     })
@@ -180,10 +190,14 @@ describe('talk as the story’s flags stand', () => {
         1,
       ),
     ]
-    expect(pickLine({ ...asking, triggers })).toMatchObject({ kind: 'event', event: 2535 })
+    // Each label's own line first, and its event once read — the fight on Yes.
+    expect(pickLine({ ...asking, triggers })).toMatchObject({
+      kind: 'line',
+      leadsTo: { event: 2535, answer: undefined },
+    })
     expect(pickLine({ ...asking, triggers, flags: new Set([6]) })).toMatchObject({
-      kind: 'event',
-      event: 22510,
+      kind: 'line',
+      leadsTo: { event: 22510, answer: 0 },
     })
   })
 
@@ -199,8 +213,11 @@ describe('talk as the story’s flags stand', () => {
         1,
       ),
     ]
-    expect(pickLine({ ...asking, triggers })).toMatchObject({ kind: 'event', event: 2500 })
-    expect(said(pickLine({ ...asking, triggers, flags: new Set([0]) }))).toBe('*: Plain.')
+    // As the Hexagon's inscription: its line, labelled otherwise, read before the event.
+    const first = pickLine({ ...asking, triggers })
+    expect(first).toMatchObject({ kind: 'line', leadsTo: { event: 2500, answer: undefined } })
+    expect(said(first)).toBe('*: Plain.')
+    expect(pickLine({ ...asking, triggers, flags: new Set([0]) })).not.toHaveProperty('leadsTo')
   })
 
   it('holds a record to the story’s step when it names one', () => {
@@ -234,7 +251,11 @@ describe('talk as the story’s flags stand', () => {
       ]),
     ]
     expect(said(pickLine({ ...asking, triggers, step: 1 }))).toBe('*: Before.')
-    expect(pickLine({ ...asking, triggers, step: 4 })).toMatchObject({ kind: 'event', event: 2530 })
+    // Its question read first, the switch's scene only on Yes — see `OP_EVENT_ANSWER`.
+    expect(pickLine({ ...asking, triggers, step: 4 })).toMatchObject({
+      kind: 'line',
+      leadsTo: { event: 2530, answer: 0 },
+    })
     expect(said(pickLine({ ...asking, triggers, step: 5 }))).toBe('*: After.')
   })
 
