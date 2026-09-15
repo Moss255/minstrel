@@ -49,6 +49,7 @@ export {
 export { type Grammar, readGrammar } from './grammar.ts'
 export { type ItemName, readItemNames } from './items.ts'
 export { ITEM_KIND_TAG, type ItemKind, readItemKinds } from './itemsort.ts'
+export { type ItemStats, readItemStats, STATS_GAP } from './itemstats.ts'
 export {
   ITEM_RECORD_SIZE,
   ITEM_TABLE_HEAD,

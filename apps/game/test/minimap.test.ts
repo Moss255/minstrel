@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { type MinimapLayout, type MinimapMark, minimapPoint } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
+import { setText } from '../src/latin-text.ts'
 import {
   HERO_MARKER,
   type MinimapSheet,
@@ -173,5 +174,18 @@ describe.skipIf(!romPath)('the mini-map, on a real cartridge', { timeout: 120_00
     }
     expect(new Set(minimaps.panels.map((panel) => pixel(panel, 4, 8).join())).size).toBe(4)
     expect(pixel(first, 4, 8)).toEqual([115, 189, 230, 255])
+  })
+
+  it('reads the names’ face, fd_s7, and sets a name in it a pixel apart', () => {
+    const font = minimaps.nameFont
+    if (!font) throw new Error('no face for the names')
+    expect(font.glyphs).toHaveLength(245)
+    const across = (c: string) => font.glyphs[font.indexOf(c)]?.width ?? 0
+    const ivor = setText(font, 'Ivor')
+    // fd_s7 kerns none of these four together.
+    expect(ivor?.width).toBe([...'Ivor'].reduce((sum, c) => sum + across(c), 0) + 3)
+    expect(ivor?.height).toBe(12)
+    // A space's width is not read, so a name with one is not set.
+    expect(setText(font, 'Hero and Ivor')).toBeUndefined()
   })
 })

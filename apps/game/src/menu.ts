@@ -117,6 +117,33 @@ export interface MenuSpell {
   readonly field: boolean
 }
 
+/** An item's own numbers as a panel shows them — " — attack 7", " — defence 3" — or nothing. The words are ours. */
+function numbersText(context: MenuContext, item: number | undefined): string {
+  const numbers = item === undefined ? undefined : context.numbersOf?.(item)
+  if (!numbers) return ''
+  const said = [
+    numbers.attack ? `attack ${numbers.attack}` : '',
+    numbers.defence ? `defence ${numbers.defence}` : '',
+  ].filter(Boolean)
+  return said.length > 0 ? ` — ${said.join(', ')}` : ''
+}
+
+/**
+ * What the worn equipment adds, item by item as read. How it joins the Hero's
+ * own numbers is not yet cited, so no total attack is shown. The words are ours.
+ */
+function wornText(context: MenuContext): string {
+  if (!context.numbersOf) return 'What equipment adds is not read.'
+  let attack = 0
+  let defence = 0
+  for (const item of (context.equipped ?? new Map<Slot, number>()).values()) {
+    const numbers = context.numbersOf(item)
+    attack += numbers?.attack ?? 0
+    defence += numbers?.defence ?? 0
+  }
+  return `Equipment worn: attack +${attack}, defence +${defence}.`
+}
+
 /** What a panel knows to say. */
 export interface MenuContext {
   readonly hero: string
@@ -130,6 +157,10 @@ export interface MenuContext {
   readonly mp?: number | undefined
   readonly bag?: Bag | undefined
   readonly equipped?: Equipped | undefined
+  /** A piece of equipment's own attack and defence, by id — see `itemStatsOf` in `load.ts`. */
+  readonly numbersOf?:
+    | ((id: number) => { readonly attack: number; readonly defence: number } | undefined)
+    | undefined
   /** An item's name by id. */
   readonly itemName?: ((id: number) => string) | undefined
   /** The item table an item is listed in — `w` weapons and so on. */
@@ -275,7 +306,8 @@ export function panelLines(
         `HP ${Math.min(context.hp ?? l.maxHp, l.maxHp)}/${l.maxHp} · ${mp} ${Math.min(context.mp ?? l.maxMp, l.maxMp)}/${l.maxMp}`,
         `Strength ${l.strength} · Resilience ${l.resilience} · Agility ${l.agility} · Deftness ${l.deftness} · Charm ${l.charm}`,
         `Magical might ${l.magicalMight} · Magical mending ${l.magicalMending}`,
-        'Attack and defence are not read: where equipment keeps its numbers is not found. Which level-table column is which is inferred.',
+        wornText(context),
+        'Which level-table column is which is inferred.',
         where,
       ]
     }
@@ -308,7 +340,8 @@ export function panelLines(
         return [
           `${label}:`,
           ...choices.map(
-            (item, i) => `${mark(i === row)}${item === undefined ? '(nothing)' : nameOf(item)}`,
+            (item, i) =>
+              `${mark(i === row)}${item === undefined ? '(nothing)' : nameOf(item)}${numbersText(context, item)}`,
           ),
         ]
       }
@@ -316,9 +349,9 @@ export function panelLines(
       return [
         ...SLOTS.map(({ slot, label }, i) => {
           const item = worn.get(slot)
-          return `${mark(i === row)}${label}: ${item === undefined ? '—' : nameOf(item)}`
+          return `${mark(i === row)}${label}: ${item === undefined ? '—' : nameOf(item)}${numbersText(context, item)}`
         }),
-        'Equipment changes no numbers yet: where it keeps its attack and defence is not found.',
+        wornText(context),
       ]
     }
     case 'spells': {

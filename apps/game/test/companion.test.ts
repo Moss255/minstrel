@@ -95,6 +95,18 @@ describe('the party beside the Hero', () => {
     expect(companionFighter({ ...ivor, shield: undefined }).shield).toBe(false)
   })
 
+  it('adds what their own weapon and shield carry, when their numbers are known', () => {
+    const numbersOf = (id: number) =>
+      id === 20004
+        ? { attack: 7, defence: 0 }
+        : id === 21296
+          ? { attack: 0, defence: 1 }
+          : undefined
+    expect(companionFighter(ivor, numbersOf)).toMatchObject({ attack: 22, defence: 14 })
+    // A piece whose numbers are not known adds nothing.
+    expect(companionFighter(ivor, () => undefined)).toMatchObject({ attack: 15, defence: 13 })
+  })
+
   it('is drawn in their own model, with the packs they fight with', () => {
     expect(companionLook(ivor)).toEqual({
       model: 'chara_sub/s017.chr',

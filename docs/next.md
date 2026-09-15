@@ -20,7 +20,10 @@ Ivor's call outside Erinn's house, moved on by the trigger records. M4 is as
 far as the cartridge goes: equipment's numbers wait on the emulator. M5 has
 battles, spells, changes of state, monsters acting and a party of up to four.
 M6 has monsters roaming the field, the poison marsh, Ivor following and the
-party on the top screen. M7 and M8 have not started, and audio — which the plan
+party on the top screen. **Equipment's attack and defence are found** (15
+September): the table after each equipment category's records
+(game-formats' FORMAT.md, "The stats"), read but not yet wired into battle or
+the equipment screen. M7 and M8 have not started, and audio — which the plan
 wanted begun alongside M5 — has not either.
 
 **Against the definition of done:**
@@ -38,6 +41,7 @@ wanted begun alongside M5 — has not either.
 
 | gap | milestone | what it needs |
 |---|---|---|
+| Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. Left: the rest of each entry, which holds more numbers on the shoes and some accessories. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
 | The opening, past Ivor's call | M3, M7 | When an event starts — on coming near, on entering a map (value 5 = 3) — and the rest of the triggers' words: the second set of flags (`102`, `2`, `3`: 145 of 566), operations 17, 141, 197 and 205. Then 2.2 step 2 onwards to the pass. The largest job left, and on the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
@@ -49,7 +53,7 @@ wanted begun alongside M5 — has not either.
 | Item art not found | M4 | 193 of the 1,178 items have no icon by the rule; the English vocation icons for "Used by"; what the white and gold stars mean. |
 | ~~`itemsort`'s `unknown_1` and `unknown_2`~~ | M4 | **Read, 15 September**: the bag's order by category, and alphabetical order by English name — neither a stat (game-formats' FORMAT.md, "Item kinds"). |
 | M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
-| The game's Latin fonts | M3 | **Found and read, 15 September**: `/data/pack_lv5/fd_me.bin` and `fd_s7.bin` are one-bit strips of the Latin glyphs, 12 pixels tall, and `fi_me.bin` and `fi_s7.bin` index them — each glyph's name, width and place, a flag for a small letter with a capital, and kerning (game-formats' FORMAT.md, "The Latin fonts"; `readLatinFont`). Left: which face the game uses where, and the space between glyphs; then the party's names in it. The text box stays in a vector font, as the slice plan's M3 has it, unless that is decided otherwise. |
+| The game's Latin fonts | M3 | **Found and read, 15 September**: `/data/pack_lv5/fd_me.bin` and `fd_s7.bin` are one-bit strips of the Latin glyphs, 12 pixels tall, and `fi_me.bin` and `fi_s7.bin` index them — each glyph's name, width and place, a flag for a small letter with a capital, and kerning (game-formats' FORMAT.md, "The Latin fonts"; `readLatinFont`). The party's names are set in `fd_s7` on the top screen — the face and the pixel between glyphs ours. Left: which face the game uses where, the space between glyphs, and a space's width. The text box stays in a vector font, as the slice plan's M3 has it, unless that is decided otherwise. |
 | The top screen's rest | M6 | The party panel's HP, MP and level, with its own digits; `obj_mm.pac`'s narrower cuts of it; the town's name tab; `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets. |
 | 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
 | The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |
@@ -58,12 +62,10 @@ wanted begun alongside M5 — has not either.
 
 **Needs the emulator — questions to bring to it:**
 
-- **Equipment's numbers, rarity and "Used by"**, the one thing M4 still waits
-  on. Mined again on 15 September without a value to search for: no run of
-  numbers in the data folders or the code rises with the weapons'
-  prices, though the test finds the price itself (game-formats' FORMAT.md,
-  "Items"). A value off the screen is what is wanted: a copper sword's attack
-  from the shop, with nothing on. Open the equipment screen on the Flame shield (defence 18, rarity 1),
+- **Equipment's numbers — a check, now they are read**: the shop's or the
+  equipment screen's attack for a copper sword should be 7, and a leather
+  shield's defence 3 (game-formats' FORMAT.md, "The stats"). **Rarity and
+  "Used by"** are still not found. Open the equipment screen on the Flame shield (defence 18, rarity 1),
   search RAM for its id, `8E 53`, and look for 18 and 1 near it; send the
   address and the bytes round it. The copper sword's attack would check the
   weapons.
@@ -102,6 +104,44 @@ emulator has answered.
 
 ---
 
+## Equipment's numbers are found — 15 September
+
+**Where they are** (game-formats' FORMAT.md, "Items", "The stats";
+`readItemStats`): each equipment table — weapons, shields, headgear, armour,
+gloves, legwear, footwear, accessories — goes on past its records into a second
+table, a 32-byte entry an item, from 32 × N, then 100 bytes, then the items'
+names, which label the entries in order. **Word 5 holds attack in bits 0–9 and
+defence in bits 10–19.** The same in all five languages.
+
+**How it was found**, since every search before missed it: not by a value to
+look for — the one in `evidence/` is a character's total, and the "published"
+shield values had no source — but by what attack would do, rise with the
+price. Scored within each kind of weapon (a sword against a sword), and with
+the entries in the bag's order rather than the records', one field stands out
+at 0.62 where the next best anywhere in the data or the code is 0.44. Laid out,
+it climbs sword by sword — copper sword 7, soldier's sword 13, rapier 19 … —
+and its exceptions are the weapons whose worth is not their edge, the poison
+needle 1, the falcon blade 12. Defence was the next field up, climbing on every
+kind of armour; the Flame shield's is 18, the figure these notes quoted for it.
+
+**INFERRED**: that the two fields are attack and defence, and ten bits wide —
+what they do, not what the code says. **Read, and corrected on the way**: an
+item record's `u16` at `+0x10` is the offset of the *next* record's item's name;
+the Spanish armour's names are fewer than its items, three pairs sharing one.
+
+**Left**: the rest of each entry — the shoes carry numbers in word 6, and the
+agility ring and the bunny tail in word 7, so agility and the rest are probably
+there. **Put to use the same day**: the equipment screen and the menu show each
+piece's number, and the Hero and Ivor fight with strength and resilience plus
+what they wear. That adding is **ours** — the battle reference
+([DQIX/BattleEmulator](https://github.com/DQIX/BattleEmulator)) takes attack and
+defence as given, its setups naming them (`lv16_sp22_tamahagane_atk123_def86`),
+so it has no rule to cite. A check in the emulator would settle both: a copper
+sword's attack should be 7, and the Hero's attack on the status screen should
+rise by it when it is put on.
+
+---
+
 ## The party on the top screen — 15 September
 
 **From the cartridge** (game-formats' FORMAT.md, "The markers are coloured
@@ -117,8 +157,10 @@ two by two.
 - Colour by place in the party: the Hero blue, Ivor green. In the capture each
   character has a colour of their own, and none is one of these; the rule is
   not found.
-- The names, in the browser's font: the European build's Latin letters are
-  not found on the cartridge.
+- The names' face: `fd_s7`, the plainer of the game's two Latin fonts
+  (15 September), chosen by how the names look in the capture, and set a pixel
+  apart. A name with a space in it falls back to the browser's letters, since
+  a space's width is not read.
 - Fewer than four strips start from the left; one dot alone on a room's mark.
 - Ivor has no strip or dot while he waits in the house at 2.2, as he does not
   follow then.

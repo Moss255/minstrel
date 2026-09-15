@@ -45,6 +45,7 @@ import {
   readFieldMonsters,
   readItemKinds,
   readItemNames,
+  readItemStats,
   readItemTable,
   readLevelTable,
   readMapList,
@@ -152,6 +153,8 @@ export interface Loaded {
   mapCodeOf(id: number): string | undefined
   /** Each item's price and the table it is listed in — see `readItemTable`. */
   readonly goods: ReadonlyMap<number, Goods>
+  /** Each piece of equipment's attack and defence, by id — see `itemStatsOf`. */
+  readonly itemStats: ReadonlyMap<number, ItemNumbers>
   /** Each item's name, plural and grammar in English, by id — see `readItemNames`. */
   readonly itemWords: ReadonlyMap<number, ItemName>
   /** What using each item does, by id — see {@link ItemUse}. */
@@ -792,6 +795,54 @@ function goodsOf(rom: Uint8Array): Map<number, Goods> {
   return goods
 }
 
+/** A piece of equipment's own numbers — see `readItemStats`. INFERRED, as that reading is. */
+export interface ItemNumbers {
+  readonly attack: number
+  readonly defence: number
+}
+
+const statsRead = new WeakMap<Uint8Array, Map<number, ItemNumbers>>()
+
+/**
+ * Each piece of equipment's attack and defence, by id, from the English item
+ * tables — see `readItemStats`. An entry is matched to its item by the name
+ * that labels it, within its own category; a table whose names are not one to
+ * an entry, or that has no stats — the tools — adds nothing.
+ */
+function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
+  const already = statsRead.get(rom)
+  if (already) return already
+  const names = itemNamesOf(rom)
+  const { cat } = walkOnce(rom, ['/data/prm/itemdt_'])
+  const stats = new Map<number, ItemNumbers>()
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!/itemdt_[a-z]_en\.nat$/i.test(name)) continue
+      let entries: ReturnType<typeof readItemStats>
+      let ids: number[]
+      try {
+        entries = readItemStats(bytes)
+        ids = readItemTable(bytes).map((record) => record.id)
+      } catch {
+        continue
+      }
+      const idsByName = new Map<string, number[]>()
+      for (const id of ids) {
+        const own = names.get(id)
+        if (own !== undefined) idsByName.set(own, [...(idsByName.get(own) ?? []), id])
+      }
+      for (const entry of entries) {
+        if (entry.name === undefined) continue
+        for (const id of idsByName.get(entry.name) ?? []) {
+          stats.set(id, { attack: entry.attack, defence: entry.defence })
+        }
+      }
+    }
+  }
+  statsRead.set(rom, stats)
+  return stats
+}
+
 /** One English text file out of its archive, read — or an empty map when it will not. */
 function englishText(
   rom: Uint8Array,
@@ -1325,6 +1376,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     attending: attendingOf(rom),
     mapCodeOf: codeOf(cat),
     goods: goodsOf(rom),
+    itemStats: itemStatsOf(rom),
     itemWords: itemWordsOf(rom),
     itemUses: itemUsesOf(rom),
     actions: actionsOf(rom),

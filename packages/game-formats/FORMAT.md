@@ -154,6 +154,9 @@ in both, named `< >`, draws a bar — 18 of its 24 pixels inked in `fd_me`, 8 of
 is `//`, zero pixels wide, which is no space either. So how wide the game makes
 a space is not in the index.
 
+The game here sets the party's names on the top screen in `fd_s7`, a pixel
+apart — the face and the pixel both ours, see `apps/game/src/latin-text.ts`.
+
 ## What this does not cover: the Latin font
 
 **The European build's Latin glyphs are not in this format** — they are the
@@ -835,7 +838,7 @@ action, and the head's own last four were `(255, 255)`, the herb's.
 | `+0x04` | `u16` | the item's id |
 | `+0x06` | `u16` | its price, INFERRED |
 | `+0x08` | `u16` | `0xFFFF` on most, `0xFFFC` and 0 on others; not established |
-| `+0x0A` | 22 bytes | carried: a sort position, an offset that climbs by the length of a description, a run of numbers that count the records, and an icon |
+| `+0x0A` | 22 bytes | carried: a sort position; at `+0x10` a `u16`, **the offset in the names at the table's end of the next record's item's name** — on all but the last record of the weapons (267 of 268), shields (44 of 45) and armour (182 of 183), never its own, which suggests a record begins 16 bytes before where it is read here (not established); a run of numbers that count the records; and an icon |
 
 **The two actions.** 36 of the 234 tools name an action called what they are —
 the medicinal herb 255 in both, holy water 259 and 260, the chimaera wing 261,
@@ -855,7 +858,9 @@ second (370, 384, 396 …).
 shop sells has one above 0, and none of the 140 items at 0 — quest pieces, the
 celestial suit among them — is sold anywhere.
 
-**What an item does is not found.** No field of the record climbs with the
+**What an item does is not in its record** — it is in the table after the
+records, found 15 September; see "The stats" below. What follows is the search
+that missed it. No field of the record climbs with the
 price as a weapon's attack would (the best, bits of `+0x11`, agrees with the
 price's order at 0.64 over 264 weapons, where attack against price would be
 expected far higher), and no file on the cartridge — `itembtlprm.nat`'s 44-byte
@@ -888,6 +893,65 @@ another order or a number worked out in code are left.
 The one value on screen in the evidence kept locally — a Rusty sword's
 "Attack E 215", on a level-58 character wearing it — is the character's
 attack, not the sword's, so it is not one to search for.
+
+## The stats — the table after an equipment category's records
+
+**Found 15 September**, by what attack would do rather than by a value to
+search for; `readItemStats` in `itemstats.ts` reads it. Each equipment table —
+weapons, shields, headgear, armour, gloves, legwear, footwear and accessories;
+not the tools, which do not go on so — goes on past its records:
+
+| where | what | on all eight |
+|---|---|---|
+| `32 × N` | N entries of 32 bytes, N the head's record count | the first shares its 32 bytes with the last record: its first eight are that record's actions, id and price |
+| then | 100 bytes, not read | 100 on all eight |
+| the file's end, less the head's `u32` at `+0x08` | N names, each ending with a zero | N on all eight, every one an item's name; the word is their length exactly |
+
+**The names label the entries, in order**: entry *k* is the item named *k*-th.
+That order is the bag's — `itemsort`'s `unknown_1` — on most categories, but
+not on legwear, where only the names' order reads. Scanning by the weapon
+records' own order, as every earlier search did, cannot find the table.
+
+The names are one to an entry in all eight English tables, but not in every
+language: **the Spanish armour's hold 180 for 183**, since three pairs of items
+share a Spanish name — "atuendo de combate", "chaqueta de esgrima", "vestido de
+bailarina" — and the block keeps each once; the records' name offsets (above)
+point both of a pair at it. Even the English shields have two records pointing
+at one "pot lid". So `readItemStats` gives an entry its name only where the
+names are one to an entry, and reads the numbers everywhere: entry *k*'s are the
+same in every language.
+
+**Word 5 (bytes 20–23): bits 0–9 attack, bits 10–19 defence** — INFERRED,
+from what they do:
+
+- **Within each kind of weapon, attack rises with price**: copper sword 7,
+  soldier's sword 13, rapier 19, iron broadsword 27 … dragon slayer 88, and so
+  for spears, knives, wands, whips, poles, claws, fans, axes, hammers,
+  boomerangs and bows. The sign test over neighbours in price order within
+  kinds scores 0.62; the next best field anywhere in the data or the code, laid
+  out the same way, scores 0.44. Its exceptions are the weapons whose worth is
+  not their edge: the poison needle and the falcon knife earring 1, the falcon
+  blade 12, the golden axe 26.
+- **Defence rises the same way** on shields (pot lid 1, leather shield 3,
+  scale shield 5 … dragon shield 24), headgear (iron helmet 11, iron mask 14,
+  steel helmet 15), armour (leather armour 6, scale 9, chain mail 11 … heavy
+  armour 35), gloves, legwear and boots. The Flame shield's is 18 — the defence
+  this file quoted for it from a published list whose source is not recorded.
+- Weapons carry no defence and armour no attack. Accessories carry either — a
+  strength ring attack 4, a raging ruby 9, a gold ring defence 2, a dragon
+  scale 5 — and one of the 52 both.
+- The largest: attack 180, defence 100. Ten bits for each is INFERRED.
+- The same in all five languages' tables, on every entry of all eight.
+
+**Not read**: the rest of each entry — word 0, set on a few shields and the
+sorcerer's stone; words 1 and 2, packed; words 3 and 4, nearly constant
+(`0x10000081` and `0x18001000` on the weapons); word 5 above bit 20, set on 24
+weapons; and words 6 and 7, which hold numbers on some items — the shoes,
+whose defence is 0, in word 6; the agility ring and the bunny tail in word 7.
+Nor the 100 bytes between the entries and the names. The first entry's words 0
+and 1 are the last record's. And the last record's own bytes 8 to 31 — its
+sort position, description offset and icon on any other record — are the
+first entry's.
 
 ## Shops — `/data/bin/menu/shopdata1.bin`
 

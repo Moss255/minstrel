@@ -64,18 +64,27 @@ export function companionNamed(who: AttendingCharacter): Named {
 
 /**
  * The fighter an attending character is, from its numbers — whose reading is
- * INFERRED, see `readAttendingCharacters`. Its attack and defence are
- * **stand-ins**, as the Hero's are: its strength and resilience, since where
- * equipment keeps its numbers is not found.
+ * INFERRED, see `readAttendingCharacters`. Its attack and defence are its
+ * strength and resilience plus what its own weapon and shield add, by
+ * `numbersOf` — the equipment's numbers read, the adding **ours**, as the
+ * Hero's is; without `numbersOf`, strength and resilience alone.
  */
-export function companionFighter(who: AttendingCharacter): Fighter {
+export function companionFighter(
+  who: AttendingCharacter,
+  numbersOf?: (id: number) => { readonly attack: number; readonly defence: number } | undefined,
+): Fighter {
+  const worn = [who.weapon, who.shield].map((id) =>
+    id === undefined ? undefined : numbersOf?.(id),
+  )
+  const adds = (stat: 'attack' | 'defence') =>
+    worn.reduce((sum, numbers) => sum + (numbers?.[stat] ?? 0), 0)
   return {
     name: who.name,
     side: 'party',
     maxHp: who.numbers.maxHp,
     maxMp: who.numbers.maxMp,
-    attack: who.numbers.strength,
-    defence: who.numbers.resilience,
+    attack: who.numbers.strength + adds('attack'),
+    defence: who.numbers.resilience + adds('defence'),
     agility: who.numbers.agility,
     shield: who.shield !== undefined,
     exp: 0,

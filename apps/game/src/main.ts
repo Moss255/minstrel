@@ -1623,6 +1623,7 @@ function menuContext(): MenuContext {
     mp: heroMp,
     bag,
     equipped,
+    numbersOf: (id) => loaded?.itemStats.get(id),
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
     spells: heroSpells(),
@@ -1995,11 +1996,29 @@ function roamerPieces(now: number): Piece[] {
 }
 
 /**
+ * What the Hero's worn equipment adds to their attack and defence, as read —
+ * see `itemStatsOf` in `load.ts`.
+ */
+function wornNumbers(): { attack: number; defence: number } {
+  let attack = 0
+  let defence = 0
+  for (const item of equipped.values()) {
+    const numbers = loaded?.itemStats.get(item)
+    attack += numbers?.attack ?? 0
+    defence += numbers?.defence ?? 0
+  }
+  return { attack, defence }
+}
+
+/**
  * Start a battle with these monsters, by code, where the Hero stands.
  *
  * The Hero fights with their level's numbers. **Their attack and defence are
- * stand-ins**: strength and resilience, since where equipment keeps its numbers
- * is not found.
+ * their strength and resilience plus what their equipment adds**: the
+ * equipment's numbers are read (game-formats' FORMAT.md, "The stats"), the
+ * adding is **ours** — the battle reference takes attack and defence as given
+ * (its setups name them, `atk123_def86`), and how the game makes them up is
+ * not cited.
  */
 function startFight(codes: readonly string[], canFlee: boolean): void {
   if (!loaded || !self || !cartridge) return
@@ -2050,13 +2069,14 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     })
     looks.push(monsterLookOf(cartridge, code))
   }
+  const worn = wornNumbers()
   const hero: Fighter = {
     name: DEFAULT_CONTEXT.heroName,
     side: 'party',
     maxHp: row.maxHp,
     maxMp: row.maxMp,
-    attack: row.strength,
-    defence: row.resilience,
+    attack: row.strength + worn.attack,
+    defence: row.resilience + worn.defence,
     agility: row.agility,
     shield: equipped.has('shield'),
     exp: 0,
@@ -2065,7 +2085,10 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   // Whoever goes along stands and fights beside the Hero, in their places —
   // see `companionsAt`.
   const companions = companionsNow()
-  const party: Fighter[] = [hero, ...companions.map(companionFighter)]
+  const party: Fighter[] = [
+    hero,
+    ...companions.map((who) => companionFighter(who, (id) => loaded?.itemStats.get(id))),
+  ]
   const hp = new Map([[0, heroHp ?? row.maxHp]])
   for (const [i, who] of companions.entries()) {
     hp.set(i + 1, companionHp.get(who.id) ?? who.numbers.maxHp)
@@ -2825,6 +2848,7 @@ function showEquipScreens(): boolean {
       return words === undefined ? undefined : renderName(words)
     },
     subtypeOf: (id) => loaded?.itemKinds.get(id)?.subtype,
+    numbersOf: (id) => loaded?.itemStats.get(id),
   })
   return true
 }

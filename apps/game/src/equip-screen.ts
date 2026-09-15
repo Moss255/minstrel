@@ -37,8 +37,10 @@ import { type Equipped, SLOTS, type Slot } from './equipment.ts'
  *   which is its slot's small icon;
  * - "Nothing Equipped", which none of the string tables read holds;
  * - where the description's lines break;
- * - what is left out: the Hero's figure, and the item's numbers, rarity and
- *   who can use it — none of them read yet;
+ * - the item's own attack or defence in the box below its description, where a
+ *   screenshot shows its wearer's — see game-formats' FORMAT.md, "The stats";
+ * - what is left out: the Hero's figure, and the item's rarity and who can use
+ *   it — neither read yet;
  * - the grid shows its page of sixteen, and ↑/↓ go through it in order.
  */
 
@@ -299,6 +301,10 @@ export interface EquipView {
   readonly describe?: ((id: number) => string | undefined) | undefined
   /** An item's subtype — see `readItemKinds` — which gives a weapon its own kind's icon. */
   readonly subtypeOf?: ((id: number) => number | undefined) | undefined
+  /** A piece of equipment's own attack and defence — see `itemStatsOf` in `load.ts`. */
+  readonly numbersOf?:
+    | ((id: number) => { readonly attack: number; readonly defence: number } | undefined)
+    | undefined
 }
 
 export interface EquipScreens {
@@ -550,6 +556,15 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     else {
       const standing = smallIcon(item, slotIndex)
       if (standing) g.drawImage(standing, 24, 48, 32, 32)
+    }
+    // Its number in the dark box below, where a screenshot shows a weapon's
+    // "Attack". **Ours**: the place, by eye, and the number being the item's
+    // own — the screenshot's is its wearer's attack with it on.
+    const numbers = view.numbersOf?.(item)
+    if (numbers && (numbers.attack > 0 || numbers.defence > 0)) {
+      const attack = numbers.attack > 0
+      text(g, attack ? 'Attack' : 'Defence', 24, 128)
+      text(g, String(attack ? numbers.attack : numbers.defence), 172, 128, INK, 'right')
     }
   }
 

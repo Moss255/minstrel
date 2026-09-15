@@ -1,14 +1,17 @@
 import { scanCartridge } from '@minstrel/cartridge'
 import {
   isMinimapPicture,
+  type LatinFont,
   type MinimapLayout,
   type MinimapMark,
   minimapPixels,
   minimapPoint,
+  readLatinFont,
   readMinimapLayout,
   readMinimapPicture,
 } from '@minstrel/game-formats'
 import { drawCell, readNcer, readNcgr, readNclr } from '@minstrel/nitro-gfx'
+import { setText } from './latin-text.ts'
 
 /**
  * The DS's top screen — the map of where the party is — drawn in a corner.
@@ -33,8 +36,11 @@ import { drawCell, readNcer, readNcgr, readNclr } from '@minstrel/nitro-gfx'
  *   party, the Hero the first, blue. The same screenshot shows each member in a
  *   colour of their own, the first one green, and the rule is not found — see
  *   FORMAT.md, "The markers are coloured dots";
- * - the names' letters: the European build's are not found on the cartridge
- *   (FORMAT.md, "The bitmap font"), so the browser draws them.
+ * - the names' face: `fd_s7`, the plainer of the game's two Latin fonts
+ *   (FORMAT.md, "The Latin fonts"), chosen by how the party's names look in
+ *   that screenshot, and set a pixel apart — see `latin-text.ts`. A name the
+ *   font cannot set, one with a space in it, falls back to the browser's
+ *   letters, as does a cartridge whose font will not read.
  */
 
 export const MINIMAP_ARCHIVE = '/data/pack_lv5/minimap.gp2'
@@ -71,8 +77,14 @@ const NAME_LEFT = 7
 const NAME_WIDTH = 50
 const NAME_MIDDLE = 8.5
 
-/** The names' letters — **ours**, see above: the browser's, bold and white, as small as the strip. */
-const NAME_FONT = 'bold 9px system-ui, sans-serif'
+/** Where the names' glyphs stand in the strip: their 12-row cell from row 2, the dark's own top. **Ours.** */
+const NAME_TOP = 2
+
+/** The names' face, the plainer Latin font: its strip and its index in `/data/pack_lv5`. **Ours**, see above. */
+export const NAME_FONT_FILES = { strip: 'fd_s7.bin', index: 'fi_s7.bin' } as const
+
+/** The letters a name falls back on when the game's cannot set it — **ours**: the browser's, bold and white. */
+const FALLBACK_FONT = 'bold 9px system-ui, sans-serif'
 
 /** The DS's screen, in pixels. */
 export const SCREEN_WIDTH = 256
@@ -92,6 +104,8 @@ export interface Minimaps {
   picture(name: string): MinimapSheet | undefined
   /** The party's name strip in each of its colours, in order; none when the sprite file will not read. */
   readonly panels: readonly MinimapSheet[]
+  /** The face the names are set in — see {@link NAME_FONT_FILES}; undefined when it will not read. */
+  readonly nameFont: LatinFont | undefined
 }
 
 /** The archive's layouts, its pictures to decode when wanted, and the party's panels. */
@@ -133,7 +147,48 @@ export function readMinimaps(rom: Uint8Array): Minimaps {
       return sheet
     },
     panels: readPanels(rom),
+    nameFont: readNameFont(rom),
   }
+}
+
+/** The names' face, from its strip and index; undefined when either is missing or will not read. */
+function readNameFont(rom: Uint8Array): LatinFont | undefined {
+  const files = new Map<string, Uint8Array>()
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/pack_lv5/f' })) {
+    files.set(leaf.path.slice(leaf.path.lastIndexOf('/') + 1).toLowerCase(), leaf.bytes)
+  }
+  const strip = files.get(NAME_FONT_FILES.strip)
+  const index = files.get(NAME_FONT_FILES.index)
+  if (!strip || !index) return undefined
+  try {
+    return readLatinFont(strip, index)
+  } catch {
+    return undefined
+  }
+}
+
+/** Each name set once, white, by the font it was set in. */
+const setNames = new WeakMap<LatinFont, Map<string, HTMLCanvasElement | undefined>>()
+
+/** A name set in the game's letters, white on clear; undefined when the font cannot set it. */
+function nameImage(font: LatinFont, name: string): HTMLCanvasElement | undefined {
+  let names = setNames.get(font)
+  if (!names) {
+    names = new Map()
+    setNames.set(font, names)
+  }
+  if (names.has(name)) return names.get(name)
+  const set = setText(font, name)
+  let image: HTMLCanvasElement | undefined
+  if (set && set.width > 0) {
+    const rgba = new Uint8Array(set.width * set.height * 4)
+    for (let i = 0; i < set.pixels.length; i++) {
+      if (set.pixels[i]) rgba.fill(255, i * 4, i * 4 + 4)
+    }
+    image = canvasOf({ width: set.width, height: set.height, rgba })
+  }
+  names.set(name, image)
+  return image
 }
 
 /** The party's panel in each of its colours, cut to its name strip; none when the sprite file will not read. */
@@ -270,6 +325,8 @@ export interface MinimapShown {
   readonly markers: readonly (HTMLCanvasElement | undefined)[]
   /** A name strip for each place in the party. */
   readonly panels: readonly HTMLCanvasElement[]
+  /** The face the names are set in, if it read. */
+  readonly nameFont: LatinFont | undefined
 }
 
 /** A map's mini-map, its pictures made ready; undefined when it has none. */
@@ -292,6 +349,7 @@ export function showMinimap(
       return marker ? canvasOf(marker) : undefined
     }),
     panels: minimaps.panels.map(canvasOf),
+    nameFont: minimaps.nameFont,
   }
 }
 
@@ -349,7 +407,7 @@ export function drawMinimap(
   }
 
   if (shown.panels.length === 0) return
-  context.font = NAME_FONT
+  context.font = FALLBACK_FONT
   context.fillStyle = '#fff'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
@@ -358,6 +416,14 @@ export function drawMinimap(
     const x = place * panel.width
     const y = SCREEN_HEIGHT - panel.height
     context.drawImage(panel, x, y)
+    const name = shown.nameFont ? nameImage(shown.nameFont, member.name) : undefined
+    if (name) {
+      // Centred in the dark, and cut at its edge if it is wider. Ours.
+      const across = Math.min(name.width, NAME_WIDTH)
+      const left = x + NAME_LEFT + Math.floor((NAME_WIDTH - across) / 2)
+      context.drawImage(name, 0, 0, across, name.height, left, y + NAME_TOP, across, name.height)
+      continue
+    }
     context.fillText(member.name, x + NAME_LEFT + NAME_WIDTH / 2, y + NAME_MIDDLE, NAME_WIDTH)
   }
 }

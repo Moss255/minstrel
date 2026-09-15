@@ -29,10 +29,11 @@ import { GameFormatError } from './errors.ts'
  * have 252 first and an action second. The skill books name actions that are
  * not theirs, and are not read.
  *
- * **What equipment does is not here.** No field climbs with the price as a
- * weapon's attack or a shield's defence would, and no other file on the
- * cartridge — the code included — holds the weapons' ids at a fixed spacing
- * beside numbers that do. Where attack and defence are kept is not established.
+ * **What equipment does is not in its record** — no field of it climbs with
+ * the price as attack or defence would — but in the table after the records:
+ * see `itemstats.ts`. That table's first entry shares its 32 bytes with the
+ * last record, so the last record's `unknown_0x08` and `unknown_0x0a` are that
+ * entry's bytes, not the record's own.
  */
 
 export const ITEM_TABLE_HEAD = 0x20
