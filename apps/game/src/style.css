@@ -210,6 +210,57 @@ main {
   font-size: 12px;
 }
 
+/*
+ * The slice's title card, over everything with the world dimmed behind it —
+ * ours, all of it; see `card.ts`. The text box's type, larger.
+ */
+#card:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 0.6em;
+  padding: 24px;
+  text-align: center;
+  background: rgb(8 10 18 / 94%);
+  color: var(--ink);
+  font:
+    500 clamp(15px, 2.6vh, 28px) / 1.45 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  pointer-events: none;
+}
+
+#card .card-end {
+  color: var(--dim);
+  font-size: 0.75em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+#card .card-title {
+  margin: 0;
+  font-size: 2.2em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+#card .card-line {
+  max-width: 56ch;
+  margin: 0;
+}
+
+#card .card-prompt {
+  margin-top: 1.8em;
+  color: var(--dim);
+  font-size: 0.7em;
+}
+
 body.dragging::after {
   content: "";
   position: fixed;

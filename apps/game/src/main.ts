@@ -86,6 +86,7 @@ import {
   cabinetTargets,
   motionFrame,
 } from './cabinets.ts'
+import { CARD, closesTheSlice } from './card.ts'
 import { castPieces, propPieces, spritePieces, standingFrame } from './cast.ts'
 import { chestPieces, isChest } from './chests.ts'
 import {
@@ -239,6 +240,7 @@ const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
 const menuEl = must<HTMLDivElement>('#menu')
+const cardEl = must<HTMLDivElement>('#card')
 const resumeRow = must<HTMLLabelElement>('#resume-row')
 const resumeEl = must<HTMLInputElement>('#resume')
 
@@ -2821,9 +2823,11 @@ function followEvent(event: number): void {
   const outcome = eventOutcome(loaded.triggers, event, loaded.mapId)
   if (!outcome) return
   const { stage, onward } = outcome
+  let closing = false
   if (stage) {
     const moved =
       !storyStage || storyStage.major !== stage.major || storyStage.minor !== stage.minor
+    closing = moved && closesTheSlice(stage)
     const stepped = moved || storyStep !== stage.step
     if (moved) {
       storyFlags.clear()
@@ -2847,6 +2851,8 @@ function followEvent(event: number): void {
       `, step ${storyStep}` +
       (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : ''),
   )
+  // Patty rescued and the story past the slice: its title card — see `card.ts`.
+  if (closing) showCard()
   if (outcome.battle !== undefined) {
     startEventBattle(outcome.battle)
     return
@@ -3042,6 +3048,24 @@ function showTalk(): void {
   )
 }
 
+/** Put the slice's title card up — see `card.ts`. */
+function showCard(): void {
+  const line = (tag: string, className: string, text: string) => {
+    const element = document.createElement(tag)
+    element.className = className
+    element.textContent = text
+    return element
+  }
+  cardEl.replaceChildren(
+    line('div', 'card-end', CARD.end),
+    line('h1', 'card-title', CARD.title),
+    line('p', 'card-line', CARD.line),
+    line('div', 'card-prompt', CARD.prompt),
+  )
+  self?.held.clear()
+  cardEl.hidden = false
+}
+
 function closeTalk(): void {
   talking = undefined
   talkEvent = undefined
@@ -3136,6 +3160,15 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
+  // The title card takes every key while it is up; f, Enter or Esc puts it away.
+  if (!cardEl.hidden) {
+    if (key === 'f' || key === 'enter' || key === 'escape') {
+      cardEl.hidden = true
+      status('the slice is over · the Hexagon and Angel Falls are still there to walk')
+    }
+    event.preventDefault()
+    return
+  }
   // A battle takes every key while it lasts: the same keys as the menu.
   if (battle) {
     if (key === 'arrowup' || key === 'w') battle = battleMove(battle, -1)
