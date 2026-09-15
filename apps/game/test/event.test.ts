@@ -100,6 +100,27 @@ describe('an event’s stage', () => {
     expect(stage.cameraAngled).toBe(true)
   })
 
+  it('fades a character in and out in the DS’s 32 steps, and draws one from a sprite sheet', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // As the Hexagon's figure appears on `ev02500`: a sheet, next to nothing,
+    // then whole — 31 — over 90 frames.
+    stage.host.call(566, [3, 'n012g.spr', 1], t)
+    stage.host.call(219, [1, 1], t)
+    expect(stage.actors.get(1)).toMatchObject({ sprite: 'n012g', opacity: 1 })
+    stage.host.call(220, [1, 31, 90], t)
+    for (let i = 0; i < 45; i++) stage.advance()
+    expect(stage.actors.get(1)?.opacity).toBeCloseTo(16)
+    for (let i = 0; i < 45; i++) stage.advance()
+    expect(stage.actors.get(1)?.opacity).toBe(31)
+    // A fade given no frames is at once; a value past the top is whole.
+    stage.host.call(220, [1, 0], t)
+    expect(stage.actors.get(1)?.opacity).toBe(0)
+    stage.host.call(219, [1, 255], t)
+    expect(stage.actors.get(1)?.opacity).toBe(31)
+    expect(stage.unhandled.has(219) || stage.unhandled.has(220)).toBe(false)
+  })
+
   it('knows which of the map’s cast a character is, and walks that one', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

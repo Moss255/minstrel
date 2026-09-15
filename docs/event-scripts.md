@@ -214,7 +214,9 @@ row says otherwise. "—" means not established.
 | 209 | 1,049 | 257 | `iifiii` | turn character N to a rotation over n frames |
 | 210 | 3,580 | 520 | `is`, `isi` | play character N's motion by name, with flags |
 | 221 | | | `iii`, `iiii` | turn character N to face character M over n frames, the short way — INFERRED: of 45 calls in the 49 Angel Falls events played, the two are never the same character, and of the 22 that find both placed, 17 find N facing elsewhere. The morning's `221 1 0 5 0` turns Erinn to the Hero after she has walked to the bed; `ev02210`'s `221 1 0 5 1` turns Ivor back to the Hero at the side of Erinn's house. The fourth value, 0 or 1 or missing, is not read |
-| the other 200s: 211, 214–220, 222, 223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 219 (`ii`, 950 calls) and 216 (`ifff`, 713) the busiest |
+| the other 200s: 211, 214–218, 222, 223, 226, 227, 232, 234, 235, 238–240 | 2–950 | | | — the cast; 216 (`ifff`, 713) the busiest. 223 (`ii`, 0 or 1, 14 calls played) comes with fades |
+| 219 | 950 | | `ii` | how much of character N shows, at once, from 0 to 31 — INFERRED: the DS's polygon alpha is 5 bits, and of the 998 calls every event played, all but three (255) hand a whole number 0–31, 0 and 31 the commonest. Ours takes 255 as whole |
+| 220 | | | `iii`, `ii` | fade character N to that much over n frames — INFERRED: all 313 targets played are whole numbers 0–31; after `219(N, 0)`, 72 go to 31 and 39 to 0. The Hexagon's figure fades in so on `ev02500` (`219(1, 1)`, then `220(1, 31, 90)`) and out on `ev02520` (`220(1, 0, 60)`), as a let's play shows. Nine hand no frames, taken as at once |
 | 224 | 451 | 196 | `is`, `isi` | — a second motion, named after a looping one: the morning's `cyotto_loop` is followed by `224 … "stand"`, so perhaps the motion to go back to |
 | 300 | 1,016 | 477 | `-` | — first in a scene, before 303 and 310; played as letting the camera go |
 | 301, 306, 317, 322, 324, 327, 328 | 3–142 | | | — the camera; 302, 304, 311 and 321 are read — where the camera is, and its moves over so many frames: see `event.ts` |
@@ -229,7 +231,7 @@ row says otherwise. "—" means not established.
 | 554 | 22,235 | 373 | `i` | — handed the message routine's second value |
 | 558 | 4,022 | 39 | `r` | — polled |
 | 560 | 252 | 112 | `r` | — its answer chooses between two messages |
-| 566, 567 | 2,303, 453 | 522, 218 | `ii`/`isi`, `si` | what each character is, in section 200: by the first value, `2` a model file for character N (`chara_sub/s016.chr`), and **`5` one of the map's cast, by placement id** — INFERRED: of the 217 such numbers in events whose own record names their map, **186** are in that map's cast. `ev02510`'s `566(5, 204, 1)` makes character 1 the Hexagon's figure, which its four `207`s then lead to the statue room, as a let's play shows. `3` names a sprite file (`n012g.spr`, the figure fading in on `ev02500`), `6` a monster file, `0` and `1` take two values; none of those read. 567 hands character N a motion pack |
+| 566, 567 | 2,303, 453 | 522, 218 | `ii`/`isi`, `si` | what each character is, in section 200: by the first value, `2` a model file for character N (`chara_sub/s016.chr`), and **`5` one of the map's cast, by placement id** — INFERRED: of the 217 such numbers in events whose own record names their map, **186** are in that map's cast. `ev02510`'s `566(5, 204, 1)` makes character 1 the Hexagon's figure, which its four `207`s then lead to the statue room, as a let's play shows. **`3` a sprite sheet** — all 203 name a `.spr` file: `n012g.spr` is the figure fading in on `ev02500`, and is drawn so. `6` names a monster file, and `0` and `1` take two values; those are not read. 567 hands character N a motion pack |
 | 570 | 111,451 | 517 | `ii` | — polled |
 | 571 | 1,195 | 513 | `ii` | — |
 | 595 | 501 | 501 | `r` | — once per event, in section 300 |

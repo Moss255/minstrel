@@ -35,3 +35,11 @@ export function translucentShare(pixels: Uint8Array): number {
 export function isTranslucent(pixels: Uint8Array): boolean {
   return translucentShare(pixels) >= TRANSLUCENT_SHARE
 }
+
+/**
+ * Whether a piece is drawn in the blended pass: its texture see-through, or
+ * the piece itself showing less than whole — a figure fading in or out.
+ */
+export function blended(opacity: number, seeThrough: boolean): boolean {
+  return seeThrough || opacity < 1
+}

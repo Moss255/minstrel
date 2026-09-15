@@ -26,8 +26,10 @@ import {
  * | 221 | character, character, frames, flag | turn the first to face the second over so many frames, the short way — in Angel Falls' events, 17 of the 22 calls that find both placed find the first facing elsewhere; Ivor turning back to the Hero at the side of Erinn's house, `ev02210`. The flag, 0 or 1 or missing, is not read |
  * | 204 | character, reference | whether it is still walking or turning |
  * | 210 | character, motion, flags | play one of its motions, by name |
+ * | 219 | character, opacity | how much of it shows, at once, from 0 to {@link OPACITY_WHOLE} |
+ * | 220 | character, opacity, frames | fade it to that much over so many frames — the Hexagon's figure in on `ev02500`, out on `ev02520` |
  * | 224 | character, motion | a motion to go back to — kept, not played |
- * | 566 | 2, model file, character | which model the character is; other kinds are the event's options |
+ * | 566 | kind, …, character | what the character is: `2` a model file; `3` a sprite sheet, `.spr` on all 203; `5` one of the map's cast, by placement id — 186 of 217 in the event's own map's cast. Other kinds are not read |
  * | 567 | motion file, character | a pack of motions for it |
  * | 200 | model file, slot | the second event folder's way: load a model into a numbered slot, negative on 1,195 of its 1,324 uses — 1,021 of the 1,027 name a `.chr`, and the first folder never calls it |
  * | 229 | motion file, slot | a pack of motions for the slot's model — 394 of 480 onto a slot a `200` filled |
@@ -82,9 +84,33 @@ export interface EventActor {
    * `ev02510`. Then the event moves that member.
    */
   cast: number | undefined
+  /**
+   * The sprite sheet it is drawn as, by name without its `.spr`, when
+   * `566(3, file, character)` names one: the Hexagon's figure, `n012g.spr`,
+   * fading in on `ev02500`.
+   */
+  sprite: string | undefined
+  /** How much of it shows, from 0 to {@link OPACITY_WHOLE} — see `219` and `220`. */
+  opacity: number
+  fade: Fade | undefined
   walk: Walk | undefined
   turn: Turn | undefined
 }
+
+/** A fade under way — see `220`. */
+interface Fade {
+  readonly from: number
+  readonly to: number
+  readonly start: number
+  readonly frames: number
+}
+
+/**
+ * The most a character shows, which is whole: 31, the top of the DS's 5-bit
+ * polygon alpha. INFERRED: all 313 of `220`'s targets are whole numbers from 0
+ * to 31, and of `219`'s 998 values all but three (255) are too.
+ */
+export const OPACITY_WHOLE = 31
 
 interface Walk {
   readonly from: readonly [number, number, number]
@@ -187,6 +213,9 @@ export class EventStage {
         model: undefined,
         packs: [],
         cast: undefined,
+        sprite: undefined,
+        opacity: OPACITY_WHOLE,
+        fade: undefined,
         walk: undefined,
         turn: undefined,
       }
@@ -218,6 +247,12 @@ export class EventStage {
         const t = Math.min(1, (this.frame - start) / frames)
         actor.facing = from + (to - from) * t
         if (t >= 1) actor.turn = undefined
+      }
+      if (actor.fade) {
+        const { from, to, start, frames } = actor.fade
+        const t = Math.min(1, (this.frame - start) / frames)
+        actor.opacity = from + (to - from) * t
+        if (t >= 1) actor.fade = undefined
       }
     }
     const shot = this.camera
@@ -371,9 +406,32 @@ export class EventStage {
       case 224:
         this.actor(num(args[0])).after = text(args[1])
         return 0
+      case 219: {
+        // How much of it shows, at once — 255, three times, taken as whole: ours.
+        const actor = this.actor(num(args[0]))
+        actor.opacity = Math.min(OPACITY_WHOLE, Math.max(0, num(args[1])))
+        actor.fade = undefined
+        return 0
+      }
+      case 220: {
+        const actor = this.actor(num(args[0]))
+        const to = Math.min(OPACITY_WHOLE, Math.max(0, num(args[1])))
+        const frames = num(args[2])
+        if (frames > 0) {
+          actor.fade = { from: actor.opacity, to, start: this.frame, frames }
+        } else {
+          actor.opacity = to
+          actor.fade = undefined
+        }
+        return 0
+      }
       case 566:
         if (num(args[0]) === 2 && typeof args[1] === 'string') {
           this.actor(num(args[2])).model = args[1]
+        }
+        // A character drawn from a sprite sheet — the file ends `.spr` on all 203.
+        if (num(args[0]) === 3 && typeof args[1] === 'string') {
+          this.actor(num(args[2])).sprite = args[1].replace(/\.spr$/i, '')
         }
         // A character that is one of the map's cast, by placement id — INFERRED:
         // 186 of the 217 such numbers are in the event's own map's cast.

@@ -356,6 +356,8 @@ export function spritePieces(
   characterHeight: number,
   yaw: number,
   frame: number,
+  /** How much of it shows, from 0 to 1 — a figure fading in or out. */
+  opacity = 1,
 ): Piece[] {
   const { placement } = member
   const image = decodedFrame(member, frame)
@@ -396,7 +398,14 @@ export function spritePieces(
     scales: [],
   }
   return [
-    { geometry, pixels: image.pixels, width: image.width, height: image.height, cutout: true },
+    {
+      geometry,
+      pixels: image.pixels,
+      width: image.width,
+      height: image.height,
+      cutout: true,
+      ...(opacity < 1 ? { opacity } : {}),
+    },
   ]
 }
 

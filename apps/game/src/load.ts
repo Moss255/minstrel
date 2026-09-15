@@ -191,6 +191,11 @@ export interface Loaded {
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
   eventScript(event: number): Script | undefined
+  /**
+   * The characters' `.spr` sheets, by name without the extension — see
+   * `sheetFor` in `cast.ts`. What an event's `566(3, file, …)` names.
+   */
+  readonly sheets: ReadonlyMap<string, Uint8Array>
   /** The way out: where this map's doorways are and what they lead to. */
   readonly doorways: readonly MapTransition[]
   /** Which archive the map came out of, for the status line. */
@@ -1469,6 +1474,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const treasures = treasuresOf(rom, code)
   return {
     cast: castOf(cat, area, id, groundAt, sheets),
+    sheets,
     treasures,
     props: propSprites(treasures, sheets),
     itemNames: itemNamesOf(rom),

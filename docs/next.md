@@ -106,6 +106,38 @@ calls for — models, cameras — and M8.
 
 ---
 
+## The Hexagon's figure fades in — 15 September
+
+**Read** (`docs/event-scripts.md`, 219, 220 and 566; INFERRED):
+
+- `566(3, file, character)` draws the character from a sprite sheet — all 203
+  name a `.spr`; `ev02500`'s figure is `n012g.spr`.
+- `219(character, n)` sets how much of it shows and `220(character, n,
+  frames)` fades it there, n from 0 to 31 — the DS's 5-bit polygon alpha: all
+  313 of `220`'s targets are whole numbers in that range, and all but three of
+  `219`'s 998 (255, taken as whole: ours). `ev02500` sets the figure to 1 and
+  fades it to 31 over 90 frames; `ev02520` fades it out, as the fourth let's play
+  shows both.
+
+**The renderer** (`@minstrel/gl`) takes a piece's opacity, 0 to 1, and draws
+anything under 1 in its blended pass.
+
+**Found on the way, and fixed**: a shot that only moves where the camera looks
+— `300`, then `321`, as `ev02500` pans from the Hero to the tile — was aimed
+from a distance of 0 since the cameras were read (`c64407a`), and the screen
+went black. 19 shots are so, `ev02320` on the pass among them. Such a shot now
+keeps the field camera's angle and moves where it looks from where it looked
+(`cameraAngled`, `looking` in `event.ts`), as the let's play's pan does.
+
+**Walked in the browser**: examining the inscription at 2.4, step 1, the camera
+pans to the empty tile, the figure comes up through half-seen to whole, and
+the story moves to step 2. **Not walked**: `ev02320`, or `ev02520`'s fade out.
+**Left:** ours plays `ev02500` on examining the inscription at once, where the
+let's play reads it first ("Path ahead sealed…"); `223`, which comes with fades,
+is not read.
+
+---
+
 ## The Hexagon's figure leads the way — 15 September
 
 **Found by the tester**: on the Hexagon's first floor the figure, `204`, stood

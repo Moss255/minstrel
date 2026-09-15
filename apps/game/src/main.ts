@@ -91,7 +91,7 @@ import {
   motionFrame,
 } from './cabinets.ts'
 import { CARD, closesTheSlice } from './card.ts'
-import { castPieces, propPieces, spritePieces, standingFrame } from './cast.ts'
+import { castPieces, propPieces, sheetFor, spritePieces, standingFrame } from './cast.ts'
 import { chestPieces, isChest } from './chests.ts'
 import {
   type CollisionFit,
@@ -117,7 +117,7 @@ import {
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
-import { type EventCamera, EventPlayer } from './event.ts'
+import { type EventCamera, EventPlayer, OPACITY_WHOLE } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   type Gains,
@@ -385,6 +385,18 @@ const castLeft = new Map<number, { x: number; y: number; z: number; facing: numb
  * A cast member's placement as it stands now: where the event playing has it,
  * when one of its characters is that member (`EventActor.cast`, INFERRED from
  * `566(5, id, …)`); or where an event left it (`castLeft`); or else its own.
+ */
+function castOpacity(id: number): number {
+  for (const actor of playing?.player.stage.actors.values() ?? []) {
+    if (actor.cast === id && actor.placed) return actor.opacity / OPACITY_WHOLE
+  }
+  return 1
+}
+
+/**
+ * A cast member's placement as it stands now: where the event playing has it,
+ * when one of its characters is that member — see `castOpacity` for how much
+ * of it shows then — or where an event left it; or else its own.
  */
 function castPlaced<P extends NpcPlacement>(placement: P): P {
   for (const actor of playing?.player.stage.actors.values() ?? []) {
@@ -1299,6 +1311,8 @@ function frame(now = 0): void {
           toFloat(PERSON.height) * worldScale,
           camera.yaw,
           standingFrame(s, camera.yaw),
+          // Fading, when an event's character is them: the figure on `ev02520`.
+          castOpacity(sprite.placement.id),
         )
       }),
       // A battle's monsters, facing the Hero — see `monsters.ts`.
@@ -3021,16 +3035,15 @@ function aimAtShot(shot: EventCamera, angled: boolean): void {
 function eventPieces(): Piece[] {
   const now = playing
   const rom = cartridge
-  if (!now || !rom) return []
+  if (!now || !rom || !loaded) return []
   const stage = now.player.stage
+  const sheets = loaded.sheets
   return [...stage.actors].flatMap(([id, actor]) => {
     // Only once the event has put them somewhere: one given a model and not
     // yet placed — Erinn before she walks in, Ivor's faces — stands nowhere.
-    if (id === 0 || !actor.model || !actor.placed) return []
-    const look = actorLookOf(rom, actor.model, actor.packs)
-    if (!look) return []
-    const motion = look.motions.get(actor.motion ?? '') ?? look.motions.get('stand')
-    const frame = eventMotionFrame(stage.frame, actor.motionFrom)
+    if (id === 0 || !actor.placed) return []
+    // As much of them as shows — see `219` and `220` in `event.ts`.
+    const opacity = actor.opacity / OPACITY_WHOLE
     const placement = {
       id,
       map: 0,
@@ -3040,12 +3053,32 @@ function eventPieces(): Piece[] {
       facing: actor.facing,
       offset: 0,
     } as NpcPlacement
-    return castPieces(
+    // One drawn from a sprite sheet: the Hexagon's figure fading in on `ev02500`.
+    if (actor.sprite) {
+      const sprite = sheetFor(actor.sprite, sheets)
+      const bytes = sheets.get(actor.sprite.toLowerCase())
+      if (!sprite || !bytes) return []
+      const member = { name: actor.sprite, sprite, placement, bytes }
+      return spritePieces(
+        member,
+        toFloat(PERSON.height) * worldScale,
+        camera.yaw,
+        standingFrame(member, camera.yaw),
+        opacity,
+      )
+    }
+    if (!actor.model) return []
+    const look = actorLookOf(rom, actor.model, actor.packs)
+    if (!look) return []
+    const motion = look.motions.get(actor.motion ?? '') ?? look.motions.get('stand')
+    const frame = eventMotionFrame(stage.frame, actor.motionFrom)
+    const pieces = castPieces(
       { name: actor.model, model: look.model, motion, floor: look.floor, placement },
       look.catalogue,
       characterScale,
       frame,
     )
+    return opacity < 1 ? pieces.map((piece) => ({ ...piece, opacity })) : pieces
   })
 }
 
