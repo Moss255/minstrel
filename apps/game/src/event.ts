@@ -246,6 +246,22 @@ export class EventStage {
     return this.camera
   }
 
+  /**
+   * Where the camera looks as the event plays, which the game sets each frame:
+   * where a move of it begins when the shot has not said where it looks.
+   */
+  looking: Vec3 | undefined
+
+  /**
+   * Whether the shot has an angle of its own — from `310` or `311`, from `304`,
+   * or from `302` with `303`. One without keeps the field camera's and only
+   * moves where it looks: 19 shots, the Hexagon's figure appearing on `ev02500`
+   * among them, whose camera pans from the Hero to the tile as a let's play shows.
+   */
+  get cameraAngled(): boolean {
+    return this.angled || (this.eye !== undefined && this.camera?.target !== undefined)
+  }
+
   /** The shot's yaw, rise and distance from its eye and target, while `310` has not given them. */
   private fromEye(): void {
     const shot = this.shot()
@@ -257,7 +273,8 @@ export class EventStage {
   private moveTarget(to: Vec3, frames: number): void {
     const shot = this.shot()
     this.targetMove = {
-      from: shot.target ?? to,
+      // From where it looks now: the shot's own, else the field camera's.
+      from: shot.target ?? this.looking ?? to,
       to,
       start: this.frame,
       frames: Math.max(1, frames),

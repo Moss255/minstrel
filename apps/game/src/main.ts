@@ -1231,8 +1231,11 @@ function frame(now = 0): void {
     // should change on screen is the character's size against the room, not how
     // close the camera happens to be.
     // An event's camera is its own — see `aimAtShot`.
-    const shot = playing?.player.stage.camera
-    if (shot?.target) aimAtShot(shot)
+    const eventStage = playing?.player.stage
+    // Where the camera looks now, for a shot that moves it from there — see `looking`.
+    if (eventStage) eventStage.looking = [camera.focus[0], camera.focus[1], camera.focus[2]]
+    const shot = eventStage?.camera
+    if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
     else
       updateFollowCamera(
         camera,
@@ -2995,13 +2998,15 @@ function followEvent(event: number): void {
 }
 
 /**
- * The event's camera: looking at its target from its yaw, rise and run —
- * which is the follow camera's own yaw, pitch and distance. INFERRED; see
- * `event.ts`.
+ * The event's camera: looking at its target from its yaw, rise and distance —
+ * which is the follow camera's own yaw, pitch and distance. A shot with no
+ * angle of its own keeps the camera's and only moves where it looks — see
+ * `cameraAngled`. INFERRED; see `event.ts`.
  */
-function aimAtShot(shot: EventCamera): void {
+function aimAtShot(shot: EventCamera, angled: boolean): void {
   if (!shot.target) return
   camera.focus = [shot.target[0], shot.target[1], shot.target[2]]
+  if (!angled) return
   camera.yaw = shot.yaw
   // The distance is the straight line from target to eye, so the rise over it
   // is the pitch's sine — see `EventCamera`.

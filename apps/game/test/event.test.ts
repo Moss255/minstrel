@@ -85,6 +85,21 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.has(221)).toBe(false)
   })
 
+  it('moves where the camera looks from where it looks now, with no angle of its own unless given one', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.looking = [0, 0, 0]
+    // As `ev02500` does: a new shot, then only a move of where it looks.
+    stage.host.call(300, [], t)
+    stage.host.call(321, [0, 0, -4, 80], t)
+    for (let i = 0; i < 40; i++) stage.advance()
+    expect(stage.camera?.target?.[2]).toBeCloseTo(-2)
+    expect(stage.cameraAngled).toBe(false)
+    // One given its angle has its own.
+    stage.host.call(310, [0, 1, 2], t)
+    expect(stage.cameraAngled).toBe(true)
+  })
+
   it('knows which of the map’s cast a character is, and walks that one', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
