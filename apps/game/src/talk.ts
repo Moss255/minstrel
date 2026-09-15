@@ -2,6 +2,7 @@ import {
   flagsHold,
   type MarkupToken,
   marksSet,
+  OP_THEN_MAP,
   parseMarkup,
   type TalkLine,
   type Trigger,
@@ -367,6 +368,8 @@ export interface Conversation {
   readonly choice: number
   /** How the conversation got here, for the status line: the answer just given. */
   readonly aside: string | undefined
+  /** Which of a prompt's answers was last given, from 0 — kept until the next is. */
+  readonly answered?: number
 }
 
 type Script = Pick<Conversation, 'who' | 'source' | 'texts' | 'notes'>
@@ -436,7 +439,8 @@ export function nextPage(
   }
   const prompt = conversation.run.prompt
   if (!prompt) return fromLine(scriptOf(conversation), conversation.line + 1, context)
-  const chosen = (prompt.answers[conversation.choice] ?? prompt.answers[0]) as Answer
+  const answered = prompt.answers[conversation.choice] ? conversation.choice : 0
+  const chosen = prompt.answers[answered] as Answer
   const from = branchOf(conversation.tokens, prompt, chosen)
   const run = from === undefined ? undefined : runLine(conversation.tokens, from, context)
   if (run === undefined || run.pages.length === 0) {
@@ -444,9 +448,10 @@ export function nextPage(
       from === undefined
         ? `answered ${chosen.label} — the line has no branch for it; what follows is a script's`
         : `answered ${chosen.label}`
-    return fromLine(scriptOf(conversation), conversation.line + 1, context, why)
+    const next = fromLine(scriptOf(conversation), conversation.line + 1, context, why)
+    return next && { ...next, answered }
   }
-  return { ...conversation, run, page: 0, choice: 0, aside: `answered ${chosen.label}` }
+  return { ...conversation, run, page: 0, choice: 0, aside: `answered ${chosen.label}`, answered }
 }
 
 /** A talk line's tag and numbers, for the status line. */
@@ -518,6 +523,16 @@ function covers(line: TalkLine, minor: number): boolean {
 const isNightLine = (line: TalkLine) => line.unknown_numbers.length === 4
 const labelOf = (line: TalkLine) => line.unknown_numbers[line.unknown_numbers.length - 1]
 
+/**
+ * Where a talk goes on once it is read — see {@link labelOnward}: the map and
+ * the event there, and the prompt's answer it waits for, from 0, if it waits.
+ */
+export interface Onward {
+  readonly map: number
+  readonly event: number
+  readonly answer: number | undefined
+}
+
 /** What a character says now: one of their lines, or an event that runs instead. */
 export type Choice =
   | {
@@ -526,6 +541,8 @@ export type Choice =
       readonly why: string
       /** The marks the record that chose it sets — see `OP_SET_MARK`. */
       readonly marks?: readonly number[]
+      /** Where the talk goes on once read, if its label's talk record says — see {@link labelOnward}. */
+      readonly onward?: Onward
     }
   | {
       readonly kind: 'event'
@@ -573,6 +590,7 @@ export function pickLine(asking: Asking): Choice | undefined {
   const { triggers, map, stage, night, id, marks, step } = asking
   const flags = asking.flags ?? new Set<number>()
   let marked: number[] = []
+  let onward: Onward | undefined
   const lines = asking.lines.filter((line) => line.tag === 1)
   const labels = new Set(lines.map(labelOf))
   let label = PLAIN
@@ -633,6 +651,10 @@ export function pickLine(asking: Asking): Choice | undefined {
         ...(both.length > 0 ? { marks: both } : {}),
       }
     }
+    onward =
+      chosenHere === undefined
+        ? undefined
+        : labelOnward(triggers, applies, id, chosenHere, flags, marks, step)
     const byWord = words.some(
       (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
     )
@@ -668,6 +690,7 @@ export function pickLine(asking: Asking): Choice | undefined {
       line: chosen,
       why: why + time,
       ...(marked.length > 0 ? { marks: marked } : {}),
+      ...(onward ? { onward } : {}),
     }
   }
   const guess = covering.find((line) => isNightLine(line) === night) ?? covering[0]
@@ -712,6 +735,48 @@ function labelEvent(
     if (!flagsHold(words, flags, marks, step)) continue
     const event = words.find((w) => w.op === OP_EVENT)?.arg
     if (event !== undefined) return { event, offset: candidate.offset, marks: marksSet(words) }
+  }
+  return undefined
+}
+
+/**
+ * The prompt's answer a talk record's onward waits for, from 0. INFERRED, and
+ * thin: two records on the cartridge carry it beside an onward. Erinn's at 2.1,
+ * `6:98 11:193 16:0 177:0 1:0 133:1110 2130:0`, goes on to the morning upstairs
+ * — and the line it goes on from asks the Hero in for the night, its first
+ * answer, Yes, being dinner. A let's play answers Yes and wakes to the morning.
+ */
+const OP_ANSWER = 177
+
+/**
+ * Where talking to a character goes on once read, by the talk record for the
+ * label they chose — see {@link KIND_TALK}: `133 : map` and then the event as
+ * its operation, as an event's own record goes on (`OP_THEN_MAP`), and the
+ * answer it waits for, {@link OP_ANSWER}.
+ */
+function labelOnward(
+  triggers: readonly Trigger[],
+  applies: (candidate: Trigger) => boolean,
+  id: number,
+  label: number,
+  flags: ReadonlySet<number>,
+  marks: ReadonlySet<number> | undefined,
+  step: number | undefined,
+): Onward | undefined {
+  for (const candidate of triggers) {
+    if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
+    const words = wordsOf(candidate)
+    if (!words.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
+    if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
+    if (!flagsHold(words, flags, marks, step)) continue
+    const go = words.findIndex((w) => w.op === OP_THEN_MAP)
+    const next = go < 0 ? undefined : words[go + 1]
+    if (go < 0 || !next || next.arg !== 0) continue
+    return {
+      map: (words[go] as { arg: number }).arg,
+      event: next.op,
+      answer: words.find((w) => w.op === OP_ANSWER)?.arg,
+    }
   }
   return undefined
 }

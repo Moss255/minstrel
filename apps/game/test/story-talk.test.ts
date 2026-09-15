@@ -238,6 +238,31 @@ describe('talk as the story’s flags stand', () => {
     expect(said(pickLine({ ...asking, triggers, step: 5 }))).toBe('*: After.')
   })
 
+  it('goes on where a talk record says once its line is read, waiting for the answer it names', () => {
+    const triggers = [
+      trigger([
+        [6, 8],
+        [118, 8],
+        [193, 0],
+      ]),
+      trigger(
+        [
+          [6, 8],
+          [11, 193],
+          [16, 0],
+          [177, 0],
+          [1, 0],
+          [133, 1110],
+          [2130, 0],
+        ],
+        1,
+      ),
+    ]
+    const choice = pickLine({ ...asking, triggers })
+    expect(said(choice)).toBe('*: After.')
+    expect(choice).toMatchObject({ onward: { map: 1110, event: 2130, answer: 0 } })
+  })
+
   it('does not take another character’s label from a record about someone else', () => {
     const triggers = [
       trigger([

@@ -5,10 +5,14 @@ import {
   ActionEffect,
   type AttendingCharacter,
   afterBattle,
+  areaEvent,
+  areasOf,
   entryPlay,
   eventOutcome,
+  inArea,
   type LevelRow,
   type NpcPlacement,
+  type StoryArea,
   spellsLearnt,
   type Treasure,
 } from '@minstrel/game-formats'
@@ -867,6 +871,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   refreshTreasures()
   doors = doorsOf(opened.map)
   slides = startSlides(opened.slides, (id) => standingIn(opened.cast, id))
+  areasIn.clear()
   cabinets = cabinetsOf(opened.map, opened.treasures, (slot) => {
     const inside = opened.treasures[slot]
     return inside !== undefined && openedTreasure.has(treasureKey(opened.code, slot, inside))
@@ -944,6 +949,49 @@ function maybeTravel(): void {
     travelling = false
     if (arrived) playEntryEvent()
   }, 0)
+}
+
+/** The areas the Hero stood in at the last look, by id — see `maybeAreaEvent`. */
+const areasIn = new Set<number>()
+const areasNow = new Set<number>()
+/** This map's areas at the story's stage, kept while neither changes. */
+let areaCache: { key: string; areas: readonly StoryArea[] } | undefined
+
+/**
+ * Play what walking into one of the map's areas plays — see `areaEvent` in
+ * `@minstrel/game-formats`, INFERRED: in the mayor's house at 2.1, walking up
+ * to him plays his scene with Ivor, `ev02120`. Only on walking in, not while
+ * standing in one, and not while anything else is up — both **ours**.
+ */
+function maybeAreaEvent(): void {
+  if (!self || !loaded || !storyStage || playing || battle || talking || menu || visit) return
+  if (travelling || loaded.mapId === undefined) return
+  const key = `${loaded.mapId} ${storyStage.major}.${storyStage.minor}`
+  if (areaCache?.key !== key) {
+    areaCache = { key, areas: areasOf(loaded.triggers, loaded.mapId, storyStage) }
+  }
+  if (areaCache.areas.length === 0) return
+  // Areas are in the units placements use; the world is those times its scale.
+  const scale = WORLD_SCALE * worldScale
+  const x = toFloat(self.state.x) / scale
+  const y = toFloat(self.state.y) / scale
+  const z = toFloat(self.state.z) / scale
+  const height = toFloat(person().height) / scale
+  areasNow.clear()
+  for (const area of areaCache.areas) if (inArea(area, x, y, z, height)) areasNow.add(area.id)
+  const found = areaEvent(
+    loaded.triggers,
+    loaded.mapId,
+    storyStage,
+    storyFlags,
+    stepNow(),
+    (id) => areasNow.has(id) && !areasIn.has(id),
+  )
+  areasIn.clear()
+  for (const id of areasNow) areasIn.add(id)
+  if (!found || !loaded.eventScript(found.event)) return
+  for (const flag of found.flags) storyFlags.add(flag)
+  startEvent(found.event)
 }
 
 /** The overlay text: where the character is, and what it is standing in. */
@@ -1107,6 +1155,7 @@ function frame(now = 0): void {
     }
     advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
     maybeTravel()
+    maybeAreaEvent()
 
     // Indoors the camera comes in and tilts further down. What counts as
     // indoors is whether there is a roof over the character's head, checked as
@@ -1249,22 +1298,17 @@ function frame(now = 0): void {
 
 const params = new URLSearchParams(location.search)
 /**
- * Where a new game opens: the landing upstairs in Erinn's house, `M01M10`, and
- * the morning there, `ev02130` — Erinn waking the Hero in the room off it.
- * INFERRED: no trigger names the morning, it is the event that wakes the Hero,
- * and its places — the bed, Erinn's walk up to it — lie in that room, where
- * nobody stands at the story's first stage.
+ * Where a new game opens: the village, `M01`, at 2.1 — where coming in plays the
+ * scene at the Guardian statue, `ev22590`, by the village's own entry record
+ * (see `entryPlay`). From a let's play of the European release: the slice opens
+ * there, a day before the morning in Erinn's house, which follows that
+ * evening's question of hers — see `labelOnward`. The morning was the opening
+ * before; it is still what the evening goes on to.
  */
-const OPENING_MAP = 'M01M10'
-const OPENING_EVENT = 2130
+const OPENING_MAP = 'M01'
 const wantedMap = params.get('map') ?? OPENING_MAP
-/** `?event=N` plays event N once the map is entered; a new game with no `?map=` plays the morning. */
-const wantedEvent =
-  params.get('event') !== null
-    ? Number(params.get('event'))
-    : params.get('map') === null
-      ? OPENING_EVENT
-      : undefined
+/** `?event=N` plays event N once the map is entered, in place of the map's own entry event. */
+const wantedEvent = params.get('event') !== null ? Number(params.get('event')) : undefined
 /**
  * `?axes=0,1,2,3` moves the sticks to other axes, `?lookbuttons=6,7` reads the
  * look stick from two analog buttons, and `?pad=1` shows what a pad reports.
@@ -1605,12 +1649,17 @@ function openTreasureAhead(): boolean {
  */
 /** An event being read out for want of a script that will read — see `followEvent`. */
 let talkEvent: number | undefined
+/** Where the line being read goes on once read — see `labelOnward` in `talk.ts`. */
+let talkOnward: { map: number; event: number; answer: number | undefined } | undefined
+/** The last of a prompt's answers given in this talk, from 0. */
+let talkAnswer: number | undefined
 
 function talk(everyLine = false): void {
   if (!loaded || !self) return
   if (talking) {
     const ending = talking
     talking = nextPage(talking, talkContext)
+    if (talking?.answered !== undefined) talkAnswer = talking.answered
     showTalk()
     // A line that ends by handing over — `<ADD><SHOP=32>` — opens its service.
     if (!talking && ending.run.service) openService(ending.run.service)
@@ -1625,10 +1674,22 @@ function talk(everyLine = false): void {
       talkEvent = undefined
       followEvent(read)
     }
+    // A line whose talk record goes on — Erinn's evening question, on to the
+    // morning upstairs — goes, once read, if the answer it waits for was given.
+    if (!talking && talkOnward) {
+      const go = talkOnward
+      talkOnward = undefined
+      if (go.answer === undefined || go.answer === talkAnswer) {
+        const code = loaded.mapCodeOf(go.map)
+        if (code && (code === loaded.code || enter(code))) startEvent(go.event)
+      }
+    }
     return
   }
   // While an event plays, `f` only reads its messages.
   if (playing) return
+  talkOnward = undefined
+  talkAnswer = undefined
   const cast: Talker[] = [
     ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => ({
       id: member.placement.id,
@@ -1698,6 +1759,7 @@ function talk(everyLine = false): void {
         [noteOf(choice.line)],
         talkContext,
       )
+      talkOnward = choice.onward
     } else if (choice?.kind === 'event') {
       // Played, not read out, so that what follows it follows — see `followEvent`.
       if (loaded.eventScript(choice.event) && startEvent(choice.event)) return

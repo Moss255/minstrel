@@ -146,6 +146,110 @@ export function entryPlay(
   return undefined
 }
 
+/** Value 5 of a map's settings records, where its areas are defined — see {@link OP_AREA}. */
+export const KIND_SETTINGS = 20
+/**
+ * Defines area *n* of the map: six floats follow, a box — its greater corner,
+ * then its lesser, x, y and z, in the units map placements use — and then a
+ * word of operation 0 whose argument is not established. INFERRED: all 108
+ * area words on the cartridge are followed by six floats, and on 108 of 108
+ * the first three are at or above the last three on every axis; the boxes
+ * sampled — the mayor's house's one, the pass's six — lie inside their map.
+ */
+export const OP_AREA = 143
+/**
+ * Value 5 of a record that acts when the Hero walks into an area, the one
+ * {@link OP_IN_AREA} names. INFERRED: 102 of the 110 name an area their map
+ * defines. The mayor's house at 2.1, `7:15 5:1 119:2120`, plays his scene
+ * with Ivor, and its own record sets the flag after which Erinn asks the
+ * Hero in for the night.
+ */
+export const KIND_AREA_EVENT = 2
+/** The area a {@link KIND_AREA_EVENT} record is about. */
+export const OP_IN_AREA = 7
+
+/** An area of a map — see {@link OP_AREA}. */
+export interface StoryArea {
+  readonly id: number
+  readonly max: { readonly x: number; readonly y: number; readonly z: number }
+  readonly min: { readonly x: number; readonly y: number; readonly z: number }
+  /** The argument of the operation-0 word after the floats: 0, 337, 325 … Not established. */
+  readonly unknown_after: number | undefined
+}
+
+/** The areas `map`'s settings records define over `stage` — see {@link OP_AREA}. */
+export function areasOf(triggers: readonly Trigger[], map: number, stage: Stage): StoryArea[] {
+  const found: StoryArea[] = []
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_SETTINGS || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    const { values, kinds, floats } = trigger
+    for (let i = 0; i < values.length; i++) {
+      if (kinds[i] !== 1 || (values[i] as number) >>> 16 !== OP_AREA) continue
+      const box: number[] = []
+      let j = i + 1
+      while (j < values.length && kinds[j] === 2 && box.length < 6) box.push(floats[j++] as number)
+      if (box.length < 6) continue
+      const [x1, y1, z1, x2, y2, z2] = box as [number, number, number, number, number, number]
+      found.push({
+        id: (values[i] as number) & 0xffff,
+        max: { x: x1, y: y1, z: z1 },
+        min: { x: x2, y: y2, z: z2 },
+        unknown_after: kinds[j] === 1 ? (values[j] as number) & 0xffff : undefined,
+      })
+    }
+  }
+  return found
+}
+
+/**
+ * Whether someone standing at `x`, `y`, `z` — their feet — and `height` tall
+ * is in the area: within its box across the ground, and overlapping it in
+ * height. How the game tests it is not read; this is the box as it reads.
+ */
+export function inArea(area: StoryArea, x: number, y: number, z: number, height = 0): boolean {
+  return (
+    x >= area.min.x &&
+    x <= area.max.x &&
+    z >= area.min.z &&
+    z <= area.max.z &&
+    y + height >= area.min.y &&
+    y <= area.max.y
+  )
+}
+
+/**
+ * The event walking into an area plays: the first {@link KIND_AREA_EVENT}
+ * record for the map, over the stage, whose area `entered` says the Hero has
+ * walked into and whose conditions hold, naming an event — and the flags it
+ * sets itself, as an entry record's are.
+ */
+export function areaEvent(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  flags: ReadonlySet<number>,
+  step: number | undefined,
+  entered: (area: number) => boolean,
+): { readonly event: number; readonly flags: readonly number[] } | undefined {
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_AREA_EVENT || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    const words = triggerWords(trigger)
+    const area = words.find((w) => w.op === OP_IN_AREA)
+    if (!area || !entered(area.arg)) continue
+    if (!flagsHold(words, flags, undefined, step)) continue
+    const plays = words.find((w) => w.op === OP_EVENT)
+    if (plays) {
+      return {
+        event: plays.arg,
+        flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
+      }
+    }
+  }
+  return undefined
+}
+
 /** A point in the story: a stage, and a step within it. */
 export interface StoryPoint {
   readonly major: number

@@ -2788,6 +2788,9 @@ files (5,761 records read).
 | 120 : n | starts set battle *n* — see "Event battles" | all **40** arguments are indices there; **65 of the 66** records carrying one have a value 5 = 15 record in the same map naming the same *n* | yes |
 | value 5 = 15, opening with 12 : n | once set battle *n* is won: plays the event, sets the flags | 46 of the 47 open with 12. The Hexagon's `12:2 119:2550` plays Patty's thanks | yes |
 | value 5 = 16, opening with 12 : n | once it is lost | all 33 open with 12; INFERRED as the other outcome — the Hexagon's `12:2 104:4 197:10` sets the flag under which Patty offers the fight again | yes |
+| value 5 = 20, with 143 : n and six floats | defines area *n*: a box, its greater corner and then its lesser, x y z, in the units placements use; a word of operation 0 follows, its argument not established | all **108** area words have six floats, and the first three are at or above the last three on every axis on **108 of 108**; the boxes sampled lie inside their maps | yes |
+| value 5 = 2, with 7 : n | walking into area *n* plays the record's event | **102 of the 110** name an area defined in their map. The mayor's house at 2.1, `7:15 5:1 119:2120`, plays his scene with Ivor, whose record sets flag 1 | yes |
+| 133 on a talk record, with 177 : n | once the line is read, goes on to that map and event — when the prompt's answer *n*, from 0, was given | thin: two records carry 177 beside a 133. Erinn's at 2.1, `6:98 11:193 16:0 177:0 1:0 133:1110 2130:0`, goes on to the morning; her line's first answer, Yes, is dinner, and a let's play answers it and wakes to the morning. `1 : 0` is not read | yes |
 | 17 : n | — | never paired with anything that sets or tests it | no |
 
 The flags are read as the stage's own: cleared when the story moves on to

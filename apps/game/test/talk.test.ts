@@ -152,6 +152,15 @@ describe('a conversation', () => {
     expect(readOut([text], [1])).toEqual(['Coming along?', '[No]', 'A pity.'])
   })
 
+  it('keeps which answer was given, for what goes on after the talk', () => {
+    const text = '*: Coming along?<YESNO><YES>*: Good.<END><NO>*: A pity.<END>'
+    let at = startConversation(who, 'chapter B0', [text])
+    expect(at?.answered).toBeUndefined()
+    if (!at) throw new Error('no conversation')
+    at = nextPage(moveChoice(at, 1))
+    expect(at?.answered).toBe(1)
+  })
+
   it('offers to accept or decline, with the branches in either order', () => {
     const text = '*: Will you take it on?<UKEYAME><YAME>*: Another time.<END><UKE>*: Thanks!<CLOSE>'
     expect(readOut([text], [0])).toEqual(['Will you take it on?', '[Accept]', 'Thanks!'])

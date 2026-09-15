@@ -99,11 +99,34 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** what the let's play showed (see the top): open
-the slice at 2.1 with the Guardian statue scene; Ivor joining on flag 0; the
-Celestial suit, stockings and shoes and 180 gold to start with; the price
-field; the Hero's spell vocation. Then the event staging the second folder
-calls for — models, cameras — and M8.
+**Where to start next time:** the rest of what the let's play showed: Ivor
+joining on flag 0; the Celestial suit, stockings and shoes and 180 gold to
+start with; the price field; the Hero's spell vocation. Then the event
+staging the second folder calls for — models, cameras — and M8.
+
+---
+
+## The slice opens at 2.1 — 15 September
+
+**A new game opens in the village at 2.1**, where coming in plays the scene at
+the Guardian statue, `ev22590`, by the village's own entry record — as a let's
+play of the European release opens it. The morning in Erinn's house, the
+opening before, is now reached the way the game reaches it:
+
+- **Areas, and walking into them** (game-formats' FORMAT.md, "The words";
+  INFERRED): a map's settings records define boxes — `143 : n` and six floats,
+  its greater corner then its lesser, on 108 of 108 — and records of value
+  5 = 2 play an event on walking into one, 102 of 110 naming an area their map
+  defines. In the mayor's house at 2.1, walking up to him plays his scene with
+  Ivor, `ev02120`, which sets flag 1.
+- **A talk that goes on**: with flag 1 set, Erinn asks the Hero in for the
+  night, and her talk record, `… 177:0 1:0 133:1110 2130:0`, goes on upstairs
+  to the morning — when the first answer, Yes, is given. Thin: two records
+  carry 177.
+
+**Ours:** an area plays only on walking into it, not while standing in it; its
+box is tested across the ground and for any overlap with the Hero's height;
+Esc out of Erinn's question does not go on.
 
 ---
 

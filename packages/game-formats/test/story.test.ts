@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
   afterBattle,
+  areaEvent,
+  areasOf,
   entryEvent,
   entryPlay,
   eventOutcome,
   flagsHold,
+  inArea,
+  KIND_AREA_EVENT,
   KIND_ENTRY,
   KIND_EVENT,
   KIND_LOST,
+  KIND_SETTINGS,
   KIND_WON,
   marksSet,
   OP_IF_FLAG,
@@ -45,6 +50,75 @@ function trigger(
     offset: 0x40,
   }
 }
+
+/** A record built in code with words and floats interleaved, as area words are followed by theirs. */
+function mixed(
+  map: number,
+  kind: number,
+  entries: ([number, number] | number)[],
+  span: [TriggerStage, TriggerStage],
+): Trigger {
+  const values = new Uint32Array(entries.length)
+  const floats = new Float32Array(entries.length)
+  const kinds = new Uint8Array(entries.length)
+  entries.forEach((entry, i) => {
+    if (typeof entry === 'number') {
+      floats[i] = entry
+      values[i] = new Uint32Array(Float32Array.of(entry).buffer)[0] as number
+      kinds[i] = 2
+    } else {
+      values[i] = ((entry[0] << 16) | entry[1]) >>> 0
+      kinds[i] = 1
+    }
+  })
+  return { map, from: span[0], to: span[1], unknown_5: kind, values, floats, kinds, offset: 0x40 }
+}
+
+describe('areas, and what walking into one plays', () => {
+  const at21: TriggerStage = { major: 2, minor: 1 }
+  // The mayor's house at 2.1: area 15, and his scene on walking into it.
+  const settings = mixed(
+    1105,
+    KIND_SETTINGS,
+    [[9, 1105], [143, 15], 2.65, 2.04, 5.26, 1.35, -1.65, -5.93, [0, 0]],
+    [at21, at21],
+  )
+  const mayor = trigger(
+    1105,
+    KIND_AREA_EVENT,
+    [
+      [7, 15],
+      [5, 1],
+      [119, 2120],
+    ],
+    0,
+    [at21, at21],
+  )
+
+  it('reads an area as a box, its greater corner and then its lesser', () => {
+    const [area] = areasOf([settings], 1105, at21)
+    expect(area).toMatchObject({ id: 15, unknown_after: 0 })
+    expect(area?.max.x).toBeCloseTo(2.65, 5)
+    expect(area?.min.z).toBeCloseTo(-5.93, 5)
+    expect(areasOf([settings], 1105, { major: 2, minor: 2 })).toEqual([])
+    if (!area) throw new Error('no area')
+    expect(inArea(area, 2, 0, 0)).toBe(true)
+    expect(inArea(area, 3, 0, 0)).toBe(false)
+    expect(inArea(area, 2, 2.5, 0)).toBe(false)
+    // Feet below it, head in it.
+    expect(inArea(area, 2, -2.5, 0, 1)).toBe(true)
+  })
+
+  it('plays the event of an area walked into, while its flags hold', () => {
+    const into15 = (area: number) => area === 15
+    expect(areaEvent([mayor], 1105, at21, new Set(), undefined, into15)).toEqual({
+      event: 2120,
+      flags: [],
+    })
+    expect(areaEvent([mayor], 1105, at21, new Set([1]), undefined, into15)).toBeUndefined()
+    expect(areaEvent([mayor], 1105, at21, new Set(), undefined, () => false)).toBeUndefined()
+  })
+})
 
 describe('what entering a map plays', () => {
   const at22: TriggerStage = { major: 2, minor: 2 }

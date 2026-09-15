@@ -1,5 +1,12 @@
 import { readFileSync } from 'node:fs'
-import { afterBattle, entryEvent, entryPlay, eventOutcome } from '@minstrel/game-formats'
+import {
+  afterBattle,
+  areaEvent,
+  areasOf,
+  entryEvent,
+  entryPlay,
+  eventOutcome,
+} from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import { pickLine } from '../src/talk.ts'
@@ -19,6 +26,28 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     expect(village.eventMessages(22590).length).toBeGreaterThan(0)
     // Patty's talk before the fight, likewise.
     expect(load(rom, { map: 'D01M05' }).eventScript(22510)).toBeDefined()
+  })
+
+  it('plays the mayor’s scene on walking up to him at 2.1, and has Erinn then ask the Hero in, on to the morning', () => {
+    const at21 = { major: 2, minor: 1 }
+    const house = load(rom, { map: 'M01M05' })
+    const [area] = areasOf(house.triggers, 1105, at21)
+    expect(area?.id).toBe(15)
+    const into15 = (id: number) => id === 15
+    expect(areaEvent(house.triggers, 1105, at21, new Set(), undefined, into15)?.event).toBe(2120)
+    expect(eventOutcome(house.triggers, 2120, 1105)?.flags).toEqual([1])
+    const inn = load(rom, { map: 'M01M07' })
+    const erinn = pickLine({
+      triggers: inn.triggers,
+      map: inn.mapId,
+      stage: at21,
+      night: false,
+      id: 98,
+      lines: inn.linesOf(98, 'B0'),
+      flags: new Set([1]),
+    })
+    expect(erinn).toMatchObject({ kind: 'line', onward: { map: 1110, event: 2130, answer: 0 } })
+    expect(inn.mapCodeOf(1110)).toBe('M01M10')
   })
 
   it('moves on from the morning to 2.2, where Ivor waits downstairs with his greeting', () => {
