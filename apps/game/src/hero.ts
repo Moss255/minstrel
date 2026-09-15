@@ -1,6 +1,6 @@
 import type { Outfit } from '@minstrel/actor'
 import { armsFor, type LevelRow, type LevelTable, levelAt, partName } from '@minstrel/game-formats'
-import type { Equipped } from './equipment.ts'
+import type { Equipped, Slot } from './equipment.ts'
 
 /**
  * The Hero's numbers: their vocation's level table, where their experience
@@ -24,41 +24,45 @@ export const HERO_LEVELS = `/data/prm/level${HERO_VOCATION_NUMBER}.bin`
 export const VOCATION_WORDS = 2100
 
 /**
- * A stand-in for the gold the Hero starts with. The game's own starting purse
- * is not read, and the village's treasure comes to two coins, less than the
- * cheapest thing its shop sells — so without this the shop could not be tried.
+ * The gold the Hero starts the slice with: 180 — **seen, not read**. A let's
+ * play of the European release shows 180 at 2.1 before any fight or chest,
+ * and again at the shop before the first cupboard's ten coins; nothing found
+ * on the cartridge gives a new game's purse. Whether the prologue before the
+ * slice hands any over is not seen.
  */
-export const STARTING_GOLD = 100
+export const STARTING_GOLD = 180
 
 /** The copper sword's item id: `d_w004`, its icon, and Ivor's weapon in `attnpc`. */
 export const COPPER_SWORD = 20004
 
 /**
- * What the Hero has on when the slice opens: a copper sword. **Not read** — the
- * tester's word, 15 September 2026, from the game itself. Nothing found on the
- * cartridge lists what a new game starts with. Worn only: no equipment is drawn
- * on models in the slice, and no item's attack is found, so it changes no
- * number either.
- */
-export const STARTING_EQUIPMENT: Equipped = new Map([['weapon', COPPER_SWORD]])
-
-/**
  * What the Hero wears: the celestial suit, the celestial stockings and the
- * celestial shoes.
+ * celestial shoes, and no headgear.
  *
- * **Ours — chosen for the slice on 14 September 2026, not read.** The Hero
- * wakes a Celestrian fallen to earth, and these are the items the game's own
- * words make Celestrian (`itemexpl`): the shoes are "well-suited to
- * apprenticing Celestrians", the stockings "somehow seem angelic". No table,
- * script or save found puts them on the Hero — the three ids are never listed
- * together anywhere on the cartridge. The game's own presets dress a Minstrel
- * otherwise (FORMAT.md, "Character presets"), which would be the reading if
- * the Hero were dressed as their vocation.
- *
- * No headgear: the halo, 12805, is a Celestrian's, and the Hero wakes without
- * their wings; that the halo went with them is ours too.
+ * **Seen, not read.** A let's play of the European release shows the
+ * equipment screen at level 1 so — those three, the copper sword, and
+ * nothing on the head, arms or shield arm. They were chosen for the slice on
+ * 14 September 2026 before that, from the items' own words (`itemexpl`): the
+ * shoes are "well-suited to apprenticing Celestrians". No table, script or
+ * save found puts them on the Hero — the three ids are never listed together
+ * anywhere on the cartridge. The game's own presets dress a Minstrel otherwise
+ * (FORMAT.md, "Character presets").
  */
 export const HERO_OUTFIT = { armour: 13007, legwear: 16215, footwear: 17120 } as const
+
+/**
+ * What the Hero has on when the slice opens: the copper sword and
+ * {@link HERO_OUTFIT}, and nothing else — **seen, not read**, in the same
+ * let's play, whose Defence of 14 at level 1 is resilience 8 and the three
+ * pieces' 2 each. The sword was the tester's word first, 15 September 2026.
+ * Nothing found on the cartridge lists what a new game starts with.
+ */
+export const STARTING_EQUIPMENT: Equipped = new Map<Slot, number>([
+  ['weapon', COPPER_SWORD],
+  ['body', HERO_OUTFIT.armour],
+  ['legs', HERO_OUTFIT.legwear],
+  ['feet', HERO_OUTFIT.footwear],
+])
 
 /**
  * The Hero's face, `p_f006` — the face the character presets give the man of

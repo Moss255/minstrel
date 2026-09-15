@@ -390,7 +390,7 @@ let menu: MenuState | undefined
 const openedTreasure = new Set<string>()
 /** When each pot or barrel opened this visit was smashed, by its treasure key — see `pots.ts`. */
 const smashedAt = new Map<string, number>()
-/** What the Hero carries — see `bag.ts` — starting from a stand-in purse, `STARTING_GOLD`. */
+/** What the Hero carries — see `bag.ts` — starting from the purse the slice opens with, `STARTING_GOLD`. */
 let bag: Bag = take(EMPTY_BAG, { gold: STARTING_GOLD })
 /** What the Hero wears — see `equipment.ts`. */
 let equipped: Equipped = STARTING_EQUIPMENT

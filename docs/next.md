@@ -53,7 +53,7 @@ wanted begun alongside M5 — has not either.
 | The equipment screen's layouts and the rest of it | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5); moving round the grid, L/R between tabs, Change Character, sorting; the name plate's colour for each character; a string for "Nothing Equipped". |
 | Item art not found | M4 | 193 of the 1,178 items have no icon by the rule; the English vocation icons for "Used by"; what the white and gold stars mean. |
 | ~~`itemsort`'s `unknown_1` and `unknown_2`~~ | M4 | **Read, 15 September**: the bag's order by category, and alphabetical order by English name — neither a stat (game-formats' FORMAT.md, "Item kinds"). |
-| M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
+| M4's stand-ins | M4 | `INN_PRICE` (`STARTING_GOLD` is 180 now, as a let's play shows); the chimaera wing's destination; Evac and holy water. |
 | The game's Latin fonts | M3 | **Found and read, 15 September**: `/data/pack_lv5/fd_me.bin` and `fd_s7.bin` are one-bit strips of the Latin glyphs, 12 pixels tall, and `fi_me.bin` and `fi_s7.bin` index them — each glyph's name, width and place, a flag for a small letter with a capital, and kerning (game-formats' FORMAT.md, "The Latin fonts"; `readLatinFont`). The party's names are set in `fd_s7` on the top screen — the face and the pixel between glyphs ours. Left: which face the game uses where, the space between glyphs, and a space's width. The text box stays in a vector font, as the slice plan's M3 has it, unless that is decided otherwise. |
 | The top screen's rest | M6 | The party panel's HP, MP and level, with its own digits; `obj_mm.pac`'s narrower cuts of it; the town's name tab; `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets. |
 | 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
@@ -89,8 +89,9 @@ wanted begun alongside M5 — has not either.
   roam at all, and if so where or when; and whether the mix changes at night
   — its kind 1 has sacksquatches ahead of slimes, its kind 0 slimes first.
 
-**Taken on the tester's word, not read:** the Hero starts with a copper sword
-on (`STARTING_EQUIPMENT`).
+**Seen in a let's play, not read:** the Hero starts in the copper sword and
+the celestial suit, stockings and shoes, with 180 gold (`STARTING_EQUIPMENT`,
+`STARTING_GOLD`) — the sword the tester's word first.
 
 **Wanted after Slice 1:** weapons on the Hero, the `p_w<nnn>.nsbmd` models in
 `chara_pc.gp2`, with how they attach not known.
@@ -100,8 +101,7 @@ pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
 **Where to start next time:** the rest of what the let's play showed: the
-Celestial suit, stockings and shoes and 180 gold to start with; the price
-field; the Hero's spell vocation. Then the event staging the second folder
+price field; the Hero's spell vocation. Then the event staging the second folder
 calls for — models, cameras — and M8.
 
 ---
