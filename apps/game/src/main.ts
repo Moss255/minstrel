@@ -124,6 +124,8 @@ import {
   PARTY_MOST,
   partyAfter,
 } from './companion.ts'
+import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
+import { ControlsPanel, walkHint } from './controls-panel.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
@@ -332,6 +334,17 @@ let minimapWanted = true
 let equipScreens: EquipScreens | null | undefined
 /** Stops a doorway firing on the character it just put down. See `doors.ts`. */
 const gate = doorGate()
+
+/**
+ * The controls: what each key and pad button does, changeable in the panel
+ * `k` opens — see `controls.ts`. A change lets go of every held key, so a key
+ * bound away cannot leave the Hero walking.
+ */
+const controlsPanel = new ControlsPanel(document.querySelector('#controls') as HTMLDivElement, () =>
+  self?.held.clear(),
+)
+/** The pad's buttons as of the last frame, so a press fires once — see `pressedActions`. */
+let padButtons: readonly number[] = []
 
 /** Play a music track by name and say so — see `music.ts`. */
 async function startMusic(name: string): Promise<void> {
@@ -1129,7 +1142,9 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
     `${uploaded.vertices} vertices · ${uploaded.triangles} triangles` +
       (hiddenPieces > 0 ? ` · ${hiddenPieces} chunks out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
-    padSeen ? 'left stick to walk · right stick to look' : 'WASD to walk · drag to turn',
+    padSeen
+      ? 'left stick to walk · right stick to look'
+      : `${walkHint(controlsPanel.bindings)} to walk · drag to turn · k for controls`,
     minimapShown ? 'm to show or hide the map' : undefined,
     // With `?pad=1`, what the pad reports — move a stick and watch which
     // numbers change, then pass those four to `?axes=`.
@@ -1229,6 +1244,27 @@ function frame(now = 0): void {
   if (sticks.connected) {
     padSeen = true
     pad = sticks
+    // Its buttons act as the keys bound to them do, once as each goes down;
+    // the d-pad walks as the movement keys do while it is held.
+    for (const action of pressedActions(controlsPanel.bindings, sticks.buttons, padButtons)) {
+      if (controlsPanel.waiting) continue
+      onAction(action, '', false)
+    }
+    if (controlsPanel.waiting) {
+      const down = sticks.buttons.findIndex((v, i) => v > 0.5 && (padButtons[i] ?? 0) <= 0.5)
+      if (down >= 0) controlsPanel.button(down)
+    }
+    if (self) {
+      for (const [action, token] of Object.entries(MOVE_TOKENS) as [Action, string][]) {
+        const held = controlsPanel.bindings[action].buttons.some(
+          (b) => (sticks.buttons[b] ?? 0) > 0.5,
+        )
+        const was = controlsPanel.bindings[action].buttons.some((b) => (padButtons[b] ?? 0) > 0.5)
+        if (held && !was) self.held.add(token)
+        else if (!held && was) self.held.delete(token)
+      }
+    }
+    padButtons = sticks.buttons
     const seconds = elapsedMs / 1000
     camera.yaw -= sticks.lookX * LOOK_RATE * seconds
     // The follow camera clamps this to its own range on the same frame.
@@ -3522,20 +3558,48 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
-  // The title card takes every key while it is up; f, Enter or Esc puts it away.
+  // The controls panel takes every key while it is up — see `ControlsPanel`.
+  if (controlsPanel.open) {
+    if (controlsPanel.key(key)) event.preventDefault()
+    return
+  }
+  if (key === 'k' && !talking && !menu && !visit && !battle) {
+    self?.held.clear()
+    controlsPanel.show()
+    event.preventDefault()
+    return
+  }
+  if (onAction(actionOfKey(controlsPanel.bindings, key), key, event.shiftKey))
+    event.preventDefault()
+})
+
+/**
+ * What a key or a pad button does, by the action bound to it — `key` is the
+ * key itself for the development keys, which are not bound, and empty from
+ * the pad. True when something was done, and the event is the game's.
+ */
+function onAction(action: Action | undefined, key: string, shift: boolean): boolean {
+  let handled = false
+  const event = {
+    shiftKey: shift,
+    preventDefault: () => {
+      handled = true
+    },
+  }
+  // The title card takes every key while it is up; confirm or cancel puts it away.
   if (!cardEl.hidden) {
-    if (key === 'f' || key === 'enter' || key === 'escape') {
+    if (action === 'confirm' || action === 'cancel') {
       cardEl.hidden = true
       status('the slice is over · the Hexagon and Angel Falls are still there to walk')
     }
     event.preventDefault()
-    return
+    return handled
   }
   // A battle takes every key while it lasts: the same keys as the menu.
   if (battle) {
-    if (key === 'arrowup' || key === 'w') battle = battleMove(battle, -1)
-    else if (key === 'arrowdown' || key === 's') battle = battleMove(battle, 1)
-    else if (key === 'f' || key === 'enter') {
+    if (action === 'up') battle = battleMove(battle, -1)
+    else if (action === 'down') battle = battleMove(battle, 1)
+    else if (action === 'confirm') {
       const round = battle.state.round
       battle = battleChoose(battle, battleItems(), battleSpells())
       cueStarted = performance.now()
@@ -3548,25 +3612,25 @@ addEventListener('keydown', (event) => {
       if (battle.phase === 'over') {
         endFight()
         event.preventDefault()
-        return
+        return handled
       }
-    } else if (key === 'x' || key === 'escape') battle = battleBack(battle)
+    } else if (action === 'cancel' || action === 'menu') battle = battleBack(battle)
     showBattle()
     event.preventDefault()
-    return
+    return handled
   }
   // `p` picks a fight — see `FIGHT` — and Shift+P the boss.
   if (key === 'p' && loaded && !talking && !menu && !visit && !playing) {
     startFight(event.shiftKey ? BOSS_FIGHT : fightCodes(), !event.shiftKey)
     event.preventDefault()
-    return
+    return handled
   }
   // A shop, the inn or the church: the same keys as the menu, over its list.
   if (visit) {
     const told = counter()
-    if (key === 'arrowup' || key === 'w') visit = moveVisit(visit, -1, bag, told)
-    else if (key === 'arrowdown' || key === 's') visit = moveVisit(visit, 1, bag, told)
-    else if (key === 'f' || key === 'enter') {
+    if (action === 'up') visit = moveVisit(visit, -1, bag, told)
+    else if (action === 'down') visit = moveVisit(visit, 1, bag, told)
+    else if (action === 'confirm') {
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
@@ -3577,17 +3641,17 @@ addEventListener('keydown', (event) => {
         companionHp.clear()
       }
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
-    } else if (key === 'x' || key === 'escape') visit = leaveVisit(visit)
+    } else if (action === 'cancel' || action === 'menu') visit = leaveVisit(visit)
     showMenu()
     event.preventDefault()
-    return
+    return handled
   }
   // The main menu: `x` opens it, and it or Esc goes back a step at a time.
   // While it is up the Hero stands still and the movement keys choose.
   if (menu) {
-    if (key === 'arrowup' || key === 'w') menu = moveCursor(menu, -1, menuContext())
-    else if (key === 'arrowdown' || key === 's') menu = moveCursor(menu, 1, menuContext())
-    else if (key === 'f' || key === 'enter') {
+    if (action === 'up') menu = moveCursor(menu, -1, menuContext())
+    else if (action === 'down') menu = moveCursor(menu, 1, menuContext())
+    else if (action === 'confirm') {
       const taken = choose(menu, menuContext())
       menu = taken.state
       // What came of it is said under the panel — unless it closed the menu,
@@ -3614,46 +3678,43 @@ addEventListener('keydown', (event) => {
         showMenu()
         talk()
         event.preventDefault()
-        return
+        return handled
       }
-    } else if (key === 'x' || key === 'escape') menu = back(menu)
+    } else if (action === 'cancel' || action === 'menu') menu = back(menu)
     showMenu()
     event.preventDefault()
-    return
+    return handled
   }
-  if (key === 'x' && loaded && !talking && !playing) {
+  if (action === 'menu' && loaded && !talking && !playing) {
     self?.held.clear()
     menu = openMenu()
     showMenu()
     event.preventDefault()
-    return
+    return handled
   }
   // While a prompt waits for an answer the arrows choose, before anything else
   // that uses them; f or Enter answers, as it goes on to the next page.
-  if (talking && promptOf(talking) && key.startsWith('arrow')) {
-    talking = moveChoice(talking, key === 'arrowup' || key === 'arrowleft' ? -1 : 1)
+  const moving = action === 'up' || action === 'down' || action === 'left' || action === 'right'
+  if (talking && promptOf(talking) && moving) {
+    talking = moveChoice(talking, action === 'up' || action === 'left' ? -1 : 1)
     showTalk()
     event.preventDefault()
-    return
+    return handled
   }
-  if (key === 'enter' && talking) {
-    talk()
-    event.preventDefault()
-    return
-  }
-  if (self && (key === 'w' || key === 'a' || key === 's' || key === 'd')) {
-    self.held.add(key)
+  const token = action === undefined ? undefined : MOVE_TOKENS[action]
+  if (self && token) {
+    self.held.add(token)
     event.preventDefault()
   }
   // Talk to whoever the Hero faces: `f` to start and to go on, Shift+F for every
-  // line of their file, Esc to stop, `v` and `b` to read another chapter's words.
-  if (key === 'f' && loaded) {
+  // line of their file, Esc to stop, `v` and `n` to read another chapter's words.
+  if (action === 'confirm' && loaded) {
     talk(event.shiftKey)
     event.preventDefault()
   }
   // Esc closes what is being said — but an event's message is the event's to
   // close, so there it goes on, as `f` does.
-  if (key === 'escape' && talking) {
+  if (action === 'cancel' && talking) {
     const read = talkEvent
     if (playing) talk()
     else closeTalk()
@@ -3661,8 +3722,8 @@ addEventListener('keydown', (event) => {
     if (!playing && read !== undefined) followEvent(read)
     event.preventDefault()
   }
-  if ((key === 'v' || key === 'b') && loaded) {
-    moveChapter(key === 'b' ? 1 : -1)
+  if ((key === 'v' || key === 'n') && loaded && !showCollision) {
+    moveChapter(key === 'n' ? 1 : -1)
     event.preventDefault()
   }
   // Flick through the story stages the cast's records name: `t` back, `y` on.
@@ -3672,12 +3733,12 @@ addEventListener('keydown', (event) => {
   }
   // The mini-map on and off. Not while the collision is on show, whose fitting
   // keys take `m` for the room.
-  if (key === 'm' && !showCollision) {
+  if (action === 'map' && !showCollision) {
     minimapWanted = !minimapWanted
     event.preventDefault()
   }
   // Music on and off: the track the address names, or the first.
-  if (key === 'b') {
+  if (action === 'music') {
     if (music.playing) {
       music.stop()
       status('music stopped')
@@ -3740,12 +3801,15 @@ addEventListener('keydown', (event) => {
     if (move) {
       move()
       event.preventDefault()
-      return
+      return handled
     }
   }
-})
+  return handled
+}
 addEventListener('keyup', (event) => {
-  self?.held.delete(event.key.toLowerCase())
+  const action = actionOfKey(controlsPanel.bindings, event.key.toLowerCase())
+  const token = action === undefined ? undefined : MOVE_TOKENS[action]
+  if (token) self?.held.delete(token)
 })
 
 frame()

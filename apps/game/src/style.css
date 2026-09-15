@@ -303,3 +303,52 @@ body.dragging::after {
   border-radius: 4px;
   box-shadow: 0 2px 10px rgb(0 0 0 / 60%);
 }
+
+/* The controls panel: the menu's face, over everything, taking the mouse for its rows. */
+#controls:not([hidden]) {
+  position: absolute;
+  top: 6vh;
+  left: 4vw;
+  max-width: min(92vw, 44rem);
+  padding: 0.7em 1.2em;
+  border: 0.14em solid rgb(232 230 225 / 85%);
+  border-radius: 0.6em;
+  background: rgb(8 10 18 / 88%);
+  color: var(--ink);
+  font:
+    500 clamp(15px, 2.4vh, 26px) / 1.45 system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+}
+
+#controls .controls-title {
+  margin-bottom: 0.4em;
+  font-weight: 700;
+}
+
+#controls .controls-rows > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 2em;
+  padding: 0.1em 0.4em;
+  cursor: pointer;
+}
+
+#controls .controls-rows > .chosen {
+  background: var(--chosen, rgb(255 255 255 / 12%));
+  border-radius: 0.3em;
+}
+
+#controls .bound {
+  opacity: 0.85;
+}
+
+#controls .controls-note {
+  margin-top: 0.5em;
+  font-size: 0.8em;
+  opacity: 0.8;
+}

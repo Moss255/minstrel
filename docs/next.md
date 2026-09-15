@@ -76,6 +76,34 @@ where; then the scenes' rough edges or the rest of M8, as wanted.
 
 ---
 
+## The controls can be changed — 16 September
+
+**M8's remappable input** (`controls.ts`, `controls-panel.ts`; ours, all of
+it — the DS had one layout). The game asks for actions, not keys: up, down,
+left, right, confirm, cancel, menu, map, music. Each has the keys and the
+standard-layout pad buttons bound to it; the defaults are the keys the game
+has always read (`WASD` and the arrows, `f` and Enter, Esc, `x`, `m`, `b`)
+and the usual pad — d-pad, the bottom face button to confirm, the right one
+to cancel, Start for the menu, Select for the map, the top face button for
+music. `k` opens the panel: arrows choose a row, Enter waits for a key or a
+pad button and binds it (taking it from any other action), Backspace clears,
+`r` restores the defaults, Esc closes; a row can be clicked too. The panel's
+own keys are fixed, so no layout can lock it, and a saved layout with an action
+left keyless falls back to the defaults. Changes are kept in the browser under
+`minstrel.controls`.
+
+**The pad's buttons now act**: before, only its sticks were read. A press fires
+its action once as it goes down; the d-pad walks while held.
+
+**Moved:** the chapter-flicking development keys were `v` and `b`; `b` is music,
+so they are `v` and `n` now.
+
+**Left:** the sticks' axes are still chosen by `?axes=` and `?lookbuttons=`,
+not in the panel; text speed and the two-screen layout, which M8 also asks
+for, are not started.
+
+---
+
 ## The music plays — 15 September
 
 **M8's first piece, begun.** `bgm.sdat`'s tracks play in the browser through an
