@@ -204,9 +204,9 @@ row says otherwise. "—" means not established.
 | 0, 2 | 9,994 each | 1 | `r` | — polled by `ev53174` only |
 | 8 | 4 | 4 | `-` | — |
 | 9 | 62 | 62 | `-` | — in section 200 |
-| 101 | 612 | 368 | `i` | — |
+| 101 | 612 | 368 | `i` | **fade the screen to black over n frames** — INFERRED: of the 676 events played to their end, 416 open on one and most of the rest end on one, and after each the script waits n frames before its next call (`101(16)` 17, `101(12)` 13). A let's play shows the darkening at `ev02510`'s start (12 frames) and end (16), and at `ev02500`'s end |
 | 102, 103, 105, 107, 112, 114, 116, 117, 119 | 3–114 | | `i`, `ii`, `iiii` | — |
-| 120, 121 | 362, 563 | 328, 444 | `i` | — |
+| 120, 121 | 362, 563 | 328, 444 | `i` | 121: **fade the screen back from black over n frames**, the script waiting n as for 101 — the commonest sequence, 188 events, is 101, then `120(0)` and 121 as the scene is set, then 101 at its end. `ev02510` comes back over 16 frames so. 120 is handed 0 on 365 of its 366 calls, always just before a 121; not read |
 | 204 | 78,948 | 7 | `ir` | whether character N is still walking or turning; polled |
 | 206 | 1,600 | 418 | `ifff` | put character N at x, y, z, in the map's units — the morning puts the Hero in the bed of `M01M10` and at its side |
 | 207 | 1,445 | 304 | `ifffi` | walk character N to x, y, z over n frames, facing the way it goes — the morning's Erinn goes round the wall to the bedside |
@@ -230,7 +230,7 @@ row says otherwise. "—" means not established.
 | the other 500s, from 536 to 599 | 1–582 | | | — the event and the screen |
 | 554 | 22,235 | 373 | `i` | — handed the message routine's second value |
 | 558 | 4,022 | 39 | `r` | — polled |
-| 560 | 252 | 112 | `r` | — its answer chooses between two messages |
+| 560 | 252 | 112 | `r` | **whether the scene carries straight on from a conversation** — INFERRED: played answering 1, 100 of the 118 scenes that ask skip their opening fade (`101(16)`, and `121(1)` in its place), and 89 of those 100 are begun by talking or examining (value 5 = 0 or 1). A let's play shows the two begun so in the Hexagon, `ev02500` and `ev02520`, not fading in. In some 20 its answer also chooses between messages. Ours answers 1 for a scene a talk record plays, 0 for any other |
 | 566, 567 | 2,303, 453 | 522, 218 | `ii`/`isi`, `si` | what each character is, in section 200: by the first value, `2` a model file for character N (`chara_sub/s016.chr`), and **`5` one of the map's cast, by placement id** — INFERRED: of the 217 such numbers in events whose own record names their map, **186** are in that map's cast. `ev02510`'s `566(5, 204, 1)` makes character 1 the Hexagon's figure, which its four `207`s then lead to the statue room, as a let's play shows. **`3` a sprite sheet** — all 203 name a `.spr` file: `n012g.spr` is the figure fading in on `ev02500`, and is drawn so. `6` names a monster file, and `0` and `1` take two values; those are not read. 567 hands character N a motion pack |
 | 570 | 111,451 | 517 | `ii` | — polled |
 | 571 | 1,195 | 513 | `ii` | — |

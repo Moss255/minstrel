@@ -85,6 +85,32 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.has(221)).toBe(false)
   })
 
+  it('answers whether the scene carries straight on from a conversation', () => {
+    const stage = new EventStage(1)
+    const { thread: t, written } = thread()
+    stage.host.call(560, [ref(3)], t)
+    expect(written.get(3)).toBe(0)
+    stage.afterTalk = true
+    stage.host.call(560, [ref(3)], t)
+    expect(written.get(3)).toBe(1)
+    expect(stage.unhandled.has(560)).toBe(false)
+  })
+
+  it('fades the screen to black and back over so many frames', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // As `ev02510` opens: to black over 12 frames, then back over 16.
+    stage.host.call(101, [12], t)
+    for (let i = 0; i < 6; i++) stage.advance()
+    expect(stage.darkness).toBeCloseTo(0.5)
+    for (let i = 0; i < 6; i++) stage.advance()
+    expect(stage.darkness).toBe(1)
+    stage.host.call(121, [16], t)
+    for (let i = 0; i < 16; i++) stage.advance()
+    expect(stage.darkness).toBe(0)
+    expect(stage.unhandled.has(101) || stage.unhandled.has(121)).toBe(false)
+  })
+
   it('moves where the camera looks from where it looks now, with no angle of its own unless given one', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

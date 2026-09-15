@@ -386,6 +386,36 @@ const castLeft = new Map<number, { x: number; y: number; z: number; facing: numb
  * when one of its characters is that member (`EventActor.cast`, INFERRED from
  * `566(5, id, …)`); or where an event left it (`castLeft`); or else its own.
  */
+/** The cover over the 3D view that a scene's fades darken — see `showDarkness`. */
+const fadeEl = document.querySelector<HTMLDivElement>('#fade')
+
+/**
+ * A scene that ends in the dark leaves the field to come back: black a while,
+ * then clearing. Ours, both, from a let's play's measure: after `ev02500` and
+ * `ev02510` the screen stays black for about half a second and more, then the
+ * field comes back over about a third of one.
+ */
+const RETURN_HOLD_MS = 500
+const RETURN_FADE_MS = 300
+let returning: { readonly from: number; readonly since: number } | undefined
+
+/** Darken the 3D view as the scene playing says, or bring the field back after one. */
+function showDarkness(stage: { readonly darkness: number } | undefined, now: number): void {
+  let dark = 0
+  if (stage) {
+    dark = stage.darkness
+  } else if (returning) {
+    const t = (now - returning.since - RETURN_HOLD_MS) / RETURN_FADE_MS
+    dark = returning.from * Math.min(1, Math.max(0, 1 - t))
+    if (t >= 1) returning = undefined
+  }
+  if (fadeEl) fadeEl.style.opacity = String(dark)
+}
+
+/**
+ * How much of a cast member shows now, from 0 to 1: its event character's
+ * opacity while an event plays one of them — see `EventActor.opacity` — else whole.
+ */
 function castOpacity(id: number): number {
   for (const actor of playing?.player.stage.actors.values() ?? []) {
     if (actor.cast === id && actor.placed) return actor.opacity / OPACITY_WHOLE
@@ -1246,6 +1276,8 @@ function frame(now = 0): void {
     const eventStage = playing?.player.stage
     // Where the camera looks now, for a shot that moves it from there — see `looking`.
     if (eventStage) eventStage.looking = [camera.focus[0], camera.focus[1], camera.focus[2]]
+    // Its fades to black and back, or the field coming back after one.
+    showDarkness(eventStage, now)
     const shot = eventStage?.camera
     if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
     else
@@ -1823,7 +1855,8 @@ function talk(everyLine = false): void {
       talkOnward = choice.onward
     } else if (choice?.kind === 'event') {
       // Played, not read out, so that what follows it follows — see `followEvent`.
-      if (loaded.eventScript(choice.event) && startEvent(choice.event)) return
+      // Begun by talking, it carries straight on from the conversation — see `afterTalk`.
+      if (loaded.eventScript(choice.event) && startEvent(choice.event, true)) return
       const messages = loaded.eventMessages(choice.event)
       talking = startConversation(
         who,
@@ -2805,8 +2838,12 @@ function endFight(): void {
   if (fought) followBattle(fought)
 }
 
-/** Play event `number` in the map the Hero is in — see `event.ts`. False when it will not read. */
-function startEvent(number: number): boolean {
+/**
+ * Play event `number` in the map the Hero is in — see `event.ts`. False when it
+ * will not read. `afterTalk` when a talk record plays it, so it carries straight
+ * on from the conversation — see `EventStage.afterTalk`; ours, that only these do.
+ */
+function startEvent(number: number, afterTalk = false): boolean {
   if (!loaded || !self) return false
   const name = `ev${String(number).padStart(5, '0')}`
   const script = loaded.eventScript(number)
@@ -2832,6 +2869,7 @@ function startEvent(number: number): boolean {
     carry: 0,
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
+  playing.player.stage.afterTalk = afterTalk
   self.held.clear()
   closeTalk()
   menu = undefined
@@ -2900,6 +2938,9 @@ function endEvent(): void {
   const done = playing
   playing = undefined
   if (!done) return
+  // A scene that ends in the dark leaves the field to come back — see `showDarkness`.
+  const dark = done.player.stage.darkness
+  if (dark > 0) returning = { from: dark, since: performance.now() }
   camera.pitch = done.framing.pitch
   camera.distance = done.framing.distance
   camera.actualDistance = done.framing.distance

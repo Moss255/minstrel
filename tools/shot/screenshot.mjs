@@ -21,7 +21,9 @@ const height = Number(rest[3] ?? 800)
  * `--hold=w:120` holds a key for that many frames — the game reads keys, not
  * key events, so a press has to stay down while the simulation ticks. Several
  * may be given and they run in order. `--drag=200,0` turns the camera by
- * dragging that far. `--wait=ms` waits.
+ * dragging that far. `--wait=ms` waits. `--eval=expression` prints what an
+ * expression in the page comes to at that point — a fade shorter than a
+ * screenshot takes to capture, read as it runs.
  *
  * Without any of these the tool behaves exactly as it did.
  */
@@ -156,6 +158,9 @@ for (const [index, step] of script.entries()) {
   const value = at < 0 ? '' : step.slice(at + 1)
   if (name === 'wait') {
     await sleep(Number(value))
+  } else if (name === 'eval') {
+    const result = await send('Runtime.evaluate', { expression: value, returnByValue: true })
+    console.log(`eval ${index}: ${JSON.stringify(result.result?.result?.value)}`)
   } else if (name === 'hold') {
     const [key, frames] = value.split(':')
     await keyEvent('keyDown', key)

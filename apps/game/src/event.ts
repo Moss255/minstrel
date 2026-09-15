@@ -43,6 +43,9 @@ import {
  * | 321 | x, y, z, frames | move where the camera looks over so many frames — the switch's shake in the Hexagon, `ev02530`, sixteen short ones |
  * | 400 | message | show one of the event's messages |
  * | 405 | reference | whether a message is still up |
+ * | 101 | frames | fade the screen to black over so many frames — see `darkness`. The script waits them out itself |
+ * | 121 | frames | fade it back from black over so many frames |
+ * | 560 | reference | whether the scene carries straight on from a conversation — see `afterTalk` |
  * | 840 | reference | how long the frame was, in halves — see {@link FRAME_IN_HALVES} |
  *
  * Positions are in the files' own units, and the stage takes them into the
@@ -174,6 +177,17 @@ function towards(from: number, to: number): number {
 export class EventStage {
   readonly actors = new Map<number, EventActor>()
   camera: EventCamera | undefined
+  /** How dark the screen is, from 0, clear, to 1, black — see `101` and `121`. */
+  darkness = 0
+  private darkening: Fade | undefined
+  /**
+   * Whether the scene carries straight on from a conversation — what `560`
+   * answers, set by the game. INFERRED: answered so, 100 of the 118 scenes that
+   * ask skip their opening fade, and 89 of those 100 are begun by talking or
+   * examining; the two a let's play shows begun so, `ev02500` and `ev02520`, do
+   * not fade in.
+   */
+  afterTalk = false
   /** The message on show, by its number in the event's text. */
   message: number | undefined
   /** Every message shown, in order. */
@@ -233,6 +247,12 @@ export class EventStage {
   /** One frame on: whatever is walking or turning moves. */
   advance(): void {
     this.frame++
+    if (this.darkening) {
+      const { from, to, start, frames } = this.darkening
+      const t = Math.min(1, (this.frame - start) / frames)
+      this.darkness = from + (to - from) * t
+      if (t >= 1) this.darkening = undefined
+    }
     for (const actor of this.actors.values()) {
       if (actor.walk) {
         const { from, to, start, frames } = actor.walk
@@ -406,6 +426,19 @@ export class EventStage {
       case 224:
         this.actor(num(args[0])).after = text(args[1])
         return 0
+      case 101:
+      case 121: {
+        // The screen to black over so many frames, or back from it — see `darkness`.
+        const to = id === 101 ? 1 : 0
+        const frames = num(args[0])
+        if (frames > 0) {
+          this.darkening = { from: this.darkness, to, start: this.frame, frames }
+        } else {
+          this.darkness = to
+          this.darkening = undefined
+        }
+        return 0
+      }
       case 219: {
         // How much of it shows, at once — 255, three times, taken as whole: ours.
         const actor = this.actor(num(args[0]))
@@ -516,6 +549,12 @@ export class EventStage {
       case 840: {
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, FRAME_IN_HALVES)
+        return 0
+      }
+      case 560: {
+        // Whether the scene carries straight on from a conversation — see `afterTalk`.
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.afterTalk ? 1 : 0)
         return 0
       }
       default:

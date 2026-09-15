@@ -106,6 +106,37 @@ calls for — models, cameras — and M8.
 
 ---
 
+## Scenes fade to black and back — 15 September
+
+**Read** (`docs/event-scripts.md`, 101, 120 and 121, 560; INFERRED):
+
+- `101(n)` fades the screen to black over n frames and `121(n)` back from it;
+  the script waits n frames after each. The commonest shape, 188 scenes: 101 as
+  it opens, `120(0)` and 121 once the scene is set, 101 as it ends. The fourth
+  let's play shows `ev02510` darkening as it opens and as it ends, and
+  `ev02500` as it ends.
+- `560` answers whether the scene carries straight on from a conversation:
+  answering 1, 100 of the 118 scenes that ask skip their opening fade, and 89
+  of those are begun by talking or examining. The let's play's `ev02500` and
+  `ev02520`, begun so, do not fade in.
+
+**Ours:** a black cover over the 3D view alone, the text box and map above it;
+`560` answering 1 only for a scene a talk record plays; and after a scene that
+ends in the dark, the field coming back after half a second of black, over a
+third of one — the let's play's measure, not the game's code.
+
+**Checked in the browser**, by reading the cover's opacity from the page as the
+scenes play (the screenshot tool's new `--eval`), since a fade is over before a
+screenshot is taken: `ev02510` is black as it opens and clear a quarter of a
+second later; `ev02500`, begun by examining, opens with no fade, ends into black,
+holds, and the field comes back.
+
+**Left:** `120`, and a fade to any colour but black; a talk record's text before
+its event — the let's play reads the inscription out, "Path ahead sealed…",
+before `ev02500` plays, and asks "Press the button?" before `ev02530`.
+
+---
+
 ## The Hexagon's figure fades in — 15 September
 
 **Read** (`docs/event-scripts.md`, 219, 220 and 566; INFERRED):

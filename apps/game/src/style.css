@@ -34,6 +34,18 @@ main {
   touch-action: none;
 }
 
+/*
+ * A scene's fade to black and back, over the 3D view alone: the text box, the
+ * map and the menus stay above it, as the DS darkens the one screen.
+ */
+#fade {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+
 #overlay,
 #status {
   position: absolute;
