@@ -1883,8 +1883,15 @@ parts without knowing it.
 
 # Event text — `ev#####_<lang>.bin`
 
-Each event unpacks from its own `/data/event/ev#####.gp2` — 523 of them — to a
-`.stb` and five text files, `_de`, `_en`, `_es`, `_fr` and `_it`. The `.stb` is
+Each event unpacks from its own `ev#####.gp2` to a `.stb` and five text files,
+`_de`, `_en`, `_es`, `_fr` and `_it` — **in one of two folders**:
+`/data/event` holds 523 of them, and `/data/evspt_lv5` 164 more, numbered 21500
+to 29791. No number is in both, and the second folder's are packed the same
+way; two of them, `ev21593` and `ev23190`, carry a plain `ev#####.bin` besides,
+not read. The slice's there: the scene at Angel Falls' Guardian statue,
+`ev22590`, Patty's talk before the Hexagoon fight, `ev22510`, and the pass's
+`ev22591` and `ev22592`. The game looks in `/data/event` and then
+`/data/evspt_lv5`. The `.stb` is
 the script, magic `SB2\0`, and is not read yet. The text files are **ordinary
 tagged data tables** — see "The tagged data table" — and read with the same
 code.
@@ -1974,9 +1981,10 @@ files, against 57 in events.
 # Event scripts — `.stb`, magic `SB2`
 
 736 files: 523 in `/data/event`, one per event; 165 in `/data/evspt_lv5`,
-which carry cutscene staging — model files, motions, cameras; 33 in
-`/data/scenario`; 13 in `/data/menu`; 2 in `/data/event_lv5`. The event
-scripts are read whole — container, routines and code — and run by
+which carry cutscene staging — model files, motions, cameras — 164 of them
+events of their own (see "Event text"); 33 in `/data/scenario`; 13 in
+`/data/menu`; 2 in `/data/event_lv5`. The event scripts, in both event
+folders, are read whole — container, routines and code — and run by
 `@minstrel/script`; "The code", below, has how. The others are not yet read.
 
 | offset | type | meaning |
@@ -2049,6 +2057,8 @@ below — none unread, on all 523.
 | `0x04` | drop the top value | after every routine call whose answer is not used |
 | `0x06` | add | `&0 L0 1 add store` counts up; `4 1 add 2 add` builds 7 |
 | `0x07` | subtract | the wait routine counts down with it |
+| `0x08` | multiply | only in `/data/evspt_lv5`'s 164, where it is common — 4,777, in 127 of them. **4,761 follow `1 negate`**: a value times −1. The rest: `3.14 1.5` — a three-quarter turn in radians — `2.0 3.14`, a whole one, and `30 0.2` |
+| `0x09` | divide, the second value by the top | the same folder, 9 times: `4.5 180 divide 3.14 multiply` turns 4.5° into radians; `0.95 L6 divide`. Every one divides a float, so what an integer division does is not seen |
 | `0x0B` | negate the top value | follows coordinates, which are stored positive |
 | `0x0E c` | compare: 40 `==`, 41 `!=`, 42–45 ordered | `==` from its use in "wait while busy is 1"; the rest INFERRED in C's order |
 | `0x0F` | return, with the top value | ends every routine |
@@ -2063,7 +2073,13 @@ below — none unread, on all 523.
 | `0x19` | or | only ever of flags, `4 \| 16`, `1 \| 16`; INFERRED |
 | `0x1A` | not | before a jump on an engine function's answer |
 
-`0x08` appears in one shared routine that no event calls, and is not read.
+`0x08` and `0x09` are the second event folder's (see "Event text"): in the 523
+of `/data/event`, `0x08` appears only in one shared routine that no event
+calls. That folder also has `0x1D` and `0x1E`, twice each and only in
+`ev29350`, outside the slice: `r θ 0x1E multiply cx add` and the same with
+`0x1D` and `cz` read like the two coordinates of a point on a circle — a
+cosine and a sine, one each — but which is which is not settled, and both are
+not read.
 
 **A string's offset counts from the code base**, as jumps and routine calls
 do. Of the 9,273 string pushes in the 523 event scripts, 3,305 are handed
@@ -2086,6 +2102,15 @@ arguments each is handed, and INFERRED; the fuller ones the game plays the
 morning by — 303 where the camera looks, 310 a yaw, rise and run it looks
 from, 566 and 567 a character's model and motion packs — are in
 `docs/event-scripts.md` §5.
+
+**The second event folder waits its own way.** Each of its 164 scripts has one
+wait routine of 27 instructions: it doubles the frames asked for, then each
+frame calls function 840 with a reference and takes what 840 wrote off the
+count — where the first folder's wait takes 1 off. 840 is called nowhere else,
+in either folder. The two folders ask for waits of the same sizes — the
+commonest 1, 10, 5, 30, 20 and 15 in both, medians 10 and 12 over 7,714 and
+5,182 waits — so 840 reads as the frame's length in halves, and the game
+answers 2. INFERRED.
 
 **Scopes**: 1 is a routine's own locals; 8 is the event's, shared by its
 sections — one section writes a character's position into them and another
@@ -2756,6 +2781,7 @@ files (5,761 records read).
 | 118 : character | a label for that character follows, as with 11 | seen in character records beside their talk labels | yes |
 | value 5 = 1, with 6 : character, 11 : label and 119 : event | talking to the character, when their chosen label is that one, plays that event instead | of the 179 talk records with a label and an event, **97** have the same character's own record choosing that label in the same map and span, first in the file on all 97 — Ivor's at the landslide, `6:7 118:7 192:0` then `6:7 11:192 119:2350`; the other 82 not established | yes |
 | value 5 = 3, with 9 : map and 119 : event | entering that map plays that event | 244 of the 249 open with 9, naming their own map every time; 49 play an event, 24 only while a flag holds — the pass's at 2.2, `9:5101 5:2 203:1 119:2300`, "Finally! We're here at last." | yes |
+| 104 : n on an entry record | sets flag *n* as its event plays | of the 49 entry records that play an event, **7** set a flag themselves and **every one** holds only while that flag is unset — so it plays once — while only one of their events has a record of its own, not setting it. The village's at 2.1 plays the Guardian statue scene, `ev22590`, and sets flag 0 | yes |
 | 86 : 0 | holds when the Hero has no companion with them | all 7 in Angel Falls have argument 0, and each sits before a character's first-time event, giving the label that follows it instead. Ivor speaks in every one of those events (2222, 2230, 2240, 2250, 2430, 2440, 2450). An earlier guess, day or night, fails: only 2 of 13 across the cartridge have a twin record | yes |
 | 102, 2, 3 | a second set of flags, "marks": 102 sets one, 2 holds if it is set, 3 if not | of the 57 sets, **31** sit in a record that also tests 3 of the same mark — the first time a character is talked to — and 24 of those have a partner record for the same character, map and span testing 2 of it: Hugo's `3:7 119:2430 102:7`, then `2:7 118:8 193:0`. Tests (280 and 298) far outnumber sets, so something else sets marks too. An earlier measure, 145 of 566, counted every test against any set | yes |
 | 35 : n | holds only at step *n* of the stage | of the 128 records testing it, **94** name a step some event in the same file moves the story to at that stage, against **20** for the step three on. The Hexagon's switch, `201`: nothing at steps 1 to 3, `ev02530` at 4 — "There's a noise of something moving somewhere!" — its after-line at 5 | yes |

@@ -173,6 +173,7 @@ export {
   type BattleOutcome,
   type EventOutcome,
   entryEvent,
+  entryPlay,
   eventOutcome,
   flagsHold,
   KIND_ENTRY,

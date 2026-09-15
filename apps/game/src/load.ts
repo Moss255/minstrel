@@ -1095,37 +1095,56 @@ function treasureInWorld(treasure: Treasure): Treasure {
   }
 }
 
-/** One event's messages in English, out of its own `/data/event/ev#####.gp2`. */
-function eventMessagesOf(rom: Uint8Array, event: number): EventMessage[] {
+/**
+ * Where events are kept: each in its own `ev#####.gp2`, in one folder or the
+ * other. `/data/event` holds 523 and `/data/evspt_lv5` 164 — 21500 to 29791,
+ * the Angel Falls statue scene `ev22590` and Patty's `ev22510` among them —
+ * no number in both, and every one packed the same way: a script and its
+ * text in each language. See game-formats' FORMAT.md, "Event text".
+ */
+const EVENT_FOLDERS = ['/data/event', '/data/evspt_lv5'] as const
+
+/** An event's own archive's files, from whichever folder has it; undefined when neither does. */
+function eventFilesOf(
+  rom: Uint8Array,
+  event: number,
+): { name: string; files: ReadonlyMap<string, Uint8Array> } | undefined {
   const name = `ev${String(event).padStart(5, '0')}`
-  const { cat } = walkOnce(rom, [`/data/event/${name}.gp2`])
+  const { cat } = walkOnce(
+    rom,
+    EVENT_FOLDERS.map((folder) => `${folder}/${name}.gp2`),
+  )
   for (const [archive, files] of cat.members) {
-    if (!archive.toLowerCase().endsWith(`/${name}.gp2`)) continue
-    for (const [file, bytes] of files) {
-      if (!file.toLowerCase().endsWith(`${name}_en.bin`)) continue
-      try {
-        return readEventMessages(bytes)
-      } catch {
-        return []
-      }
+    if (archive.toLowerCase().endsWith(`/${name}.gp2`)) return { name, files }
+  }
+  return undefined
+}
+
+/** One event's messages in English, out of its own `ev#####.gp2` — see {@link EVENT_FOLDERS}. */
+function eventMessagesOf(rom: Uint8Array, event: number): EventMessage[] {
+  const found = eventFilesOf(rom, event)
+  if (!found) return []
+  for (const [file, bytes] of found.files) {
+    if (!file.toLowerCase().endsWith(`${found.name}_en.bin`)) continue
+    try {
+      return readEventMessages(bytes)
+    } catch {
+      return []
     }
   }
   return []
 }
 
-/** One event's script, out of its own `/data/event/ev#####.gp2`. */
+/** One event's script, out of its own `ev#####.gp2` — see {@link EVENT_FOLDERS}. */
 function eventScriptOf(rom: Uint8Array, event: number): Script | undefined {
-  const name = `ev${String(event).padStart(5, '0')}`
-  const { cat } = walkOnce(rom, [`/data/event/${name}.gp2`])
-  for (const [archive, files] of cat.members) {
-    if (!archive.toLowerCase().endsWith(`/${name}.gp2`)) continue
-    for (const [file, bytes] of files) {
-      if (!file.toLowerCase().endsWith('.stb')) continue
-      try {
-        return readScript(bytes)
-      } catch {
-        return undefined
-      }
+  const found = eventFilesOf(rom, event)
+  if (!found) return undefined
+  for (const [file, bytes] of found.files) {
+    if (!file.toLowerCase().endsWith('.stb')) continue
+    try {
+      return readScript(bytes)
+    } catch {
+      return undefined
     }
   }
   return undefined

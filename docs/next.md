@@ -99,9 +99,75 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** the slice plays start to finish, so M8 — audio,
-late by the plan's own reckoning, the ROM's hash and caching, settings — and
-the zones once the emulator has answered.
+**Where to start next time:** what the let's play showed (see the top): open
+the slice at 2.1 with the Guardian statue scene; Ivor joining on flag 0; the
+Celestial suit, stockings and shoes and 180 gold to start with; the price
+field; the Hero's spell vocation. Then the event staging the second folder
+calls for — models, cameras — and M8.
+
+---
+
+## The second event folder — 15 September
+
+**`/data/evspt_lv5` holds 164 events** the game did not read: numbered 21500 to
+29791, packed as `/data/event`'s are, no number in both. The slice's there: the
+scene at the Guardian statue on entering the village at 2.1, `ev22590`;
+Patty's talk before the Hexagoon fight, `ev22510`; the pass's `ev22591` and
+`ev22592`. Events are now looked for in both folders (game-formats' FORMAT.md,
+"Event text").
+
+Their scripts wanted three more readings, each from the cartridge's own use:
+
+- **`0x08` multiplies, `0x09` divides** — 4,761 of the 4,777 multiplies follow
+  `1 negate`; `4.5 180 divide 3.14 multiply` turns degrees to radians.
+  `0x1D` and `0x1E`, twice each in one event outside the slice, look like a
+  sine and a cosine and are not read.
+- **Function 840 answers 2**: the second folder's wait doubles its count and
+  takes 840's answer off each frame, and the two folders ask for waits of the
+  same sizes. INFERRED.
+- **An entry record's own flag is set as its event plays**: 7 entry records set
+  one, every one guarded by that flag, so each plays once. INFERRED.
+
+Walked in the browser: entering the village at 2.1 plays the statue scene —
+the Hero at the statue, its twenty messages — and hands them back there.
+Patty's scene plays before the fight. **Not drawn yet**: the characters the
+scene brings on (Ivor, Hugo and Erinn, by functions 506 and 507, which load
+their event models) and its camera moves (302, 304, 311); 37 functions it
+calls are not read.
+
+**Fixed on the way:** the screenshot tool left Chrome running and its profile
+behind whenever a run was cut short, and filled the temporary folder; it now
+stops Chrome's whole process group and deletes the profile however it ends.
+
+---
+
+## What a let's play showed — 15 September
+
+A let's play of the European release, read frame by frame (not kept in the
+repository), covers the slice from the day before our opening to the first
+fights and a night back in the village at level 3. **Against ours:**
+
+- **Matches**: the morning, Ivor's call and Hugo at the gate, line for line
+  (`ev02130`, `ev02200`, `ev02210`, `ev02220`); the 2.1 villagers' lines;
+  Erinn's evening question going on to the morning; attack as strength plus
+  the weapon and defence as resilience plus armour — level-1 and level-3 rows
+  exactly, and every piece in the village shop; deftness; evasion, whose field
+  counts tenths of a percent.
+- **The slice opens a day earlier**: at 2.1, with the Guardian statue scene
+  and a day in the village; ours opens on the morning.
+- **Ivor joins as his call ends** — "Ivor joins" — which is flag 0; ours has
+  him following from the start of 2.2.
+- **The Hero starts in the Celestial suit, stockings and shoes** as well as the
+  copper sword — defence 14, not 8 — **with 180 gold**, not the stand-in 100.
+- **Prices**: 11 of the village shop's 18 cost twice the item table's price
+  field, 4 ten times it, and 3 one off from twice — so the field is not the
+  price as read.
+- **Heal comes at level 2**; the spell table's vocation 6, taken for the
+  Minstrel, gives it at 3, and vocation 10 at 2.
+- **The time of day moves** — evening before the Hero goes home, night in the
+  field — and a bodkin archer turned up only after dark: zone 15, kind 2, the
+  only zone with one. One sighting.
+- The mayor's scene with Ivor at 2.1 is a value-5 = 2 record, not played here.
 
 ---
 

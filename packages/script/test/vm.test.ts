@@ -141,6 +141,28 @@ describe('the script machine', () => {
     expect(calls.map((c) => c.args)).toEqual([[8, -1.5, 20]])
   })
 
+  it('multiplies and divides, the second value by the top, as the second event folder writes them', () => {
+    const script = assemble([
+      {
+        code: [
+          // x * -1, as 4,761 of the cartridge's multiplies are written; and
+          // 4.5 degrees in radians, as one of its divides is.
+          ...engine(
+            206,
+            [float(2.5), int(1), [OP.NEGATE], [OP.MULTIPLY]],
+            [float(4.5), float(180), [OP.DIVIDE], float(Math.PI), [OP.MULTIPLY]],
+          ),
+          [OP.RETURN],
+        ],
+      },
+    ])
+    const { host, calls } = recorder()
+    run(script, host)
+    const [negated, radians] = (calls[0]?.args ?? []) as number[]
+    expect(negated).toBe(-2.5)
+    expect(radians).toBeCloseTo((4.5 / 180) * Math.PI, 5)
+  })
+
   it('lets an engine function fill a reference, keeping event variables apart from locals', () => {
     const script = assemble([
       {
@@ -256,9 +278,9 @@ describe('the script machine', () => {
   })
 
   it('stops on an opcode it does not read, saying which and where', () => {
-    const script = assemble([{ code: [[0x08], [OP.RETURN]] }])
+    const script = assemble([{ code: [[0x1d], [OP.RETURN]] }])
     expect(() => run(script, recorder().host)).toThrow(ScriptError)
-    expect(() => run(script, recorder().host)).toThrow(/opcode 0x8 .*at 0x138/)
+    expect(() => run(script, recorder().host)).toThrow(/opcode 0x1d .*at 0x138/)
   })
 
   it('stops a script that never waits', () => {

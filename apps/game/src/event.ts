@@ -34,12 +34,24 @@ import {
  * | 310 | yaw, rise, run | where it looks from: turned `yaw` about what it looks at, `rise` up and `run` back — the morning's 7.62 up and 12.71 back is 31° down, the pitch the game's own camera takes |
  * | 400 | message | show one of the event's messages |
  * | 405 | reference | whether a message is still up |
+ * | 840 | reference | how long the frame was, in halves — see {@link FRAME_IN_HALVES} |
  *
  * Positions are in the files' own units, and the stage takes them into the
  * world by one scale, as the cast's placements are. **Character 0 is the
  * Hero**: the morning puts them in bed and hands them the Hero's own motion
  * pack. Also INFERRED.
  */
+
+/**
+ * What function 840 answers through its argument each frame: 2. INFERRED. It
+ * is called only by the second event folder's wait routine, once in each of
+ * its 164 scripts, which doubles the frames it is asked to wait and takes 840's
+ * answer off each frame — where the first folder's takes 1 off. The two
+ * folders ask for waits of the same sizes — 1, 10, 5, 30, 20 and 15 the
+ * commonest in both, medians 10 and 12 — so the answer that makes a wait of *n*
+ * last *n* frames in both is 2: the frame's length in halves.
+ */
+const FRAME_IN_HALVES = 2
 
 export interface EventActor {
   x: number
@@ -273,6 +285,11 @@ export class EventStage {
       case 405: {
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, this.message === undefined ? 0 : 1)
+        return 0
+      }
+      case 840: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, FRAME_IN_HALVES)
         return 0
       }
       default:

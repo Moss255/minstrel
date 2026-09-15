@@ -17,6 +17,8 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * | `0x05` | store | value, then reference, off the stack; stores; pushes the value back | read from use |
  * | `0x06` | add | `&0 L0 1 add store` counts up; `200 9 add` makes function 209 | read from use |
  * | `0x07` | subtract | | read from use |
+ * | `0x08` | multiply | the second event folder's: 4,761 of its 4,777 follow `1 negate`; `3.14 1.5` makes a three-quarter turn | read from use |
+ * | `0x09` | divide | the second, by the top — `4.5 180 divide 3.14 multiply` turns degrees to radians | read from use |
  * | `0x0B` | negate | the value on top; coordinates are stored positive and negated | read from use |
  * | `0x0E c` | compare | 40 `==` … 45 `>=`, in C's order — INFERRED past `==` | INFERRED |
  * | `0x0F` | return | with the value on top | established |
@@ -32,7 +34,8 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * | `0x1A` | not | | read from use |
  *
  * Anything else stops the machine with a `ScriptError` rather than being
- * guessed at; `0x08` is used by one routine no event calls, and is not read.
+ * guessed at — `0x1D` and `0x1E`, twice each in one event outside the slice,
+ * among them.
  *
  * Variables have a scope: 1 is the routine's own locals, 8 the event's, and 64
  * the game's, which the host keeps — the last two INFERRED from use.
@@ -53,6 +56,8 @@ export const OP = {
   STORE: 0x05,
   ADD: 0x06,
   SUBTRACT: 0x07,
+  MULTIPLY: 0x08,
+  DIVIDE: 0x09,
   NEGATE: 0x0b,
   COMPARE: 0x0e,
   RETURN: 0x0f,
@@ -254,6 +259,18 @@ export class ScriptThread {
       case OP.SUBTRACT: {
         const right = this.popNumber(at)
         this.stack.push(this.popNumber(at) - right)
+        return false
+      }
+      case OP.MULTIPLY: {
+        const right = this.popNumber(at)
+        this.stack.push(this.popNumber(at) * right)
+        return false
+      }
+      case OP.DIVIDE: {
+        // Every one on the cartridge divides a float; what an integer division
+        // does — truncate or not — is not seen, and a float's is kept.
+        const right = this.popNumber(at)
+        this.stack.push(this.popNumber(at) / right)
         return false
       }
       case OP.OR: {

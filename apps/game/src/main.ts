@@ -5,7 +5,7 @@ import {
   ActionEffect,
   type AttendingCharacter,
   afterBattle,
-  entryEvent,
+  entryPlay,
   eventOutcome,
   type LevelRow,
   type NpcPlacement,
@@ -678,9 +678,11 @@ function begin(bytes: Uint8Array, map: string): void {
  */
 function playEntryEvent(): boolean {
   if (!loaded || !storyStage || playing || loaded.mapId === undefined) return false
-  const event = entryEvent(loaded.triggers, loaded.mapId, storyStage, storyFlags, stepNow())
-  if (event === undefined || !loaded.eventScript(event)) return false
-  return startEvent(event)
+  const found = entryPlay(loaded.triggers, loaded.mapId, storyStage, storyFlags, stepNow())
+  if (!found || !loaded.eventScript(found.event)) return false
+  // Its record's own flags, so it plays once — see `entryPlay`.
+  for (const flag of found.flags) storyFlags.add(flag)
+  return startEvent(found.event)
 }
 
 /** The browser's own storage, where it allows it: private windows and blocked sites do not. */

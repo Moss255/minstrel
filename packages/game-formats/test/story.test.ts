@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   afterBattle,
   entryEvent,
+  entryPlay,
   eventOutcome,
   flagsHold,
   KIND_ENTRY,
@@ -68,6 +69,25 @@ describe('what entering a map plays', () => {
     expect(entryEvent([pass], 5101, at22, new Set([2]))).toBeUndefined()
     expect(entryEvent([pass], 5101, { major: 2, minor: 1 }, new Set())).toBeUndefined()
     expect(entryEvent([pass], 1100, at22, new Set())).toBeUndefined()
+  })
+
+  it('sets the flags an entry record names as its event plays, so it plays once', () => {
+    const at21: TriggerStage = { major: 2, minor: 1 }
+    const village = trigger(
+      1100,
+      KIND_ENTRY,
+      [
+        [9, 1100],
+        [5, 0],
+        [119, 22590],
+        [104, 0],
+      ],
+      0,
+      [at21, at21],
+    )
+    expect(entryPlay([village], 1100, at21, new Set())).toEqual({ event: 22590, flags: [0] })
+    expect(entryPlay([village], 1100, at21, new Set([0]))).toBeUndefined()
+    expect(entryPlay([pass], 5101, at22, new Set())).toEqual({ event: 2300, flags: [] })
   })
 
   it('is not a character’s record, and plays nothing when its record names no event', () => {

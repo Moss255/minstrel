@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { afterBattle, entryEvent, eventOutcome } from '@minstrel/game-formats'
+import { afterBattle, entryEvent, entryPlay, eventOutcome } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import { pickLine } from '../src/talk.ts'
@@ -8,6 +8,18 @@ const romPath = process.env.MINSTREL_TEST_ROM
 
 describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeout: 120_000 }, () => {
   const rom = romPath ? new Uint8Array(readFileSync(romPath)) : new Uint8Array()
+
+  it('plays the Guardian statue scene on entering the village at 2.1, from the second event folder', () => {
+    const village = load(rom, { map: 'M01' })
+    expect(entryPlay(village.triggers, 1100, { major: 2, minor: 1 }, new Set())).toEqual({
+      event: 22590,
+      flags: [0],
+    })
+    expect(village.eventScript(22590)).toBeDefined()
+    expect(village.eventMessages(22590).length).toBeGreaterThan(0)
+    // Patty's talk before the fight, likewise.
+    expect(load(rom, { map: 'D01M05' }).eventScript(22510)).toBeDefined()
+  })
 
   it('moves on from the morning to 2.2, where Ivor waits downstairs with his greeting', () => {
     const landing = load(rom, { map: 'M01M10' })

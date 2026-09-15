@@ -110,6 +110,25 @@ export function entryEvent(
   flags: ReadonlySet<number>,
   step?: number,
 ): number | undefined {
+  return entryPlay(triggers, map, stage, flags, step)?.event
+}
+
+/**
+ * The event entering `map` plays, as {@link entryEvent} finds it, and the
+ * flags its entry record sets as it plays. INFERRED: of the 49 entry records
+ * that play an event, 7 set a flag themselves, and every one of the 7 holds
+ * only while that same flag is not set — so it plays once — while only one of
+ * their events has a record of its own, which does not set it. The village's
+ * at 2.1, `9:1100 5:0 … 119:22590 104:0`, plays the scene at the Guardian
+ * statue once.
+ */
+export function entryPlay(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  flags: ReadonlySet<number>,
+  step?: number,
+): { readonly event: number; readonly flags: readonly number[] } | undefined {
   for (const trigger of triggers) {
     if (trigger.unknown_5 !== KIND_ENTRY || trigger.map !== map) continue
     if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
@@ -117,7 +136,12 @@ export function entryEvent(
     if (!words.some((w) => w.op === OP_ENTERED && w.arg === map)) continue
     if (!flagsHold(words, flags, undefined, step)) continue
     const plays = words.find((w) => w.op === OP_EVENT)
-    if (plays) return plays.arg
+    if (plays) {
+      return {
+        event: plays.arg,
+        flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
+      }
+    }
   }
   return undefined
 }

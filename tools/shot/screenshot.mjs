@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -43,9 +43,30 @@ const chrome = spawn(
     '--no-first-run',
     'about:blank',
   ],
-  { stdio: ['ignore', 'ignore', 'pipe'] },
+  // Its own process group, so every process it starts can be stopped with it.
+  { stdio: ['ignore', 'ignore', 'pipe'], detached: true },
 )
 chrome.stderr.on('data', () => {})
+
+/**
+ * Chrome and its profile go with this process, however it ends: done, failed,
+ * or stopped by `timeout` or Ctrl+C. Left behind, each run's Chrome keeps
+ * running and each profile keeps its caches in the temporary folder — enough,
+ * over a day's runs, to fill it.
+ */
+let cleaned = false
+function cleanup() {
+  if (cleaned) return
+  cleaned = true
+  try {
+    process.kill(-chrome.pid, 'SIGKILL')
+  } catch {}
+  try {
+    rmSync(profile, { recursive: true, force: true })
+  } catch {}
+}
+process.on('exit', cleanup)
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(signal, () => process.exit(1))
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let targets
@@ -182,5 +203,4 @@ const shot = await send('Page.captureScreenshot', { format: 'png' })
 writeFileSync(out, Buffer.from(shot.result.data, 'base64'))
 console.log('wrote', out)
 ws.close()
-chrome.kill()
 process.exit(0)
