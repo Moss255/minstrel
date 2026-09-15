@@ -1910,9 +1910,13 @@ function showVisit(current: Visit): void {
 }
 
 /**
- * Let the map's monsters roam, if it has a zone: its first — **how the game
- * chooses among a map's zones is not established**, and the first of Angel
- * Falls Region's is slimes, teeny sanguinis, cruelcumbers and sacksquatches.
+ * Let the map's monsters roam, if it has a zone: its kind 0, or failing that
+ * its first — the same zone on every map, since a kind 0 always comes first.
+ * **How the game chooses among a map's zones is not established**
+ * (game-formats' FORMAT.md, "Encounters"): Angel Falls Region's kind 0 and
+ * kind 1 are slimes, teeny sanguinis, cruelcumbers and sacksquatches on other
+ * weights, and its kind 2 bodkin archers, batterflies and cruelcumbers; which
+ * roams when is wanted from the emulator. So the kind 0 is **ours**.
  * Each monster moves at the Hero's walking speed times its field speed from
  * `fld_mondata` (INFERRED). Their field models are read now, not mid-walk.
  */
@@ -1923,7 +1927,7 @@ function beginRoaming(): void {
   roamCarry = 0
   const here = loaded
   if (!here || !cartridge) return
-  const zone = here.fieldZones[0]
+  const zone = here.fieldZones.find((z) => z.kind === 0) ?? here.fieldZones[0]
   if (!zone) return
   roamZone = zone.zone
   roamKinds = zone.monsters.map((m) => ({

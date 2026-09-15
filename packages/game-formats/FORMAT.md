@@ -2249,11 +2249,43 @@ it carry large values above; they are carried, not read. What they say about
 the roamer walked into — how many of it there are, how big the battle is — is
 not established.
 
-**How a map chooses among its zones is not established.** `F01` has three.
-The collision triangles' attribute word was tried, bits 25 up read as an
-index into the map's zones: it matches the zone count on only 41 of 109 field
-and dungeon maps, and on 61 it runs past the last zone, so it is something
-else. The game here takes a map's first zone.
+**A zone's `0x66` word, in part.** Its low three bits are 0, 1 or 2 on all
+287 — INFERRED a kind:
+
+| kind | where | measure |
+|---|---|---|
+| 0, then 1 | a pair, always in that order, and **only on fields** (`Fxx`) | the same monsters on other weights on **37 of 40** pairs — `F01`'s 12 and 14 are the slime, teeny sanguini, cruelcumber and sacksquatch, 7-6-5-3 and 4-4-4-5 |
+| 2 | the only zone of 170 maps — every dungeon's, the Hexagon's floors among them — and a field's third and fourth | `F01`'s 15 is the bodkin archer, the batterfly and the cruelcumber |
+
+The kinds in a map's order: `2` ×170, `012` ×17, `01` ×11, `0122` ×8, `22` ×2,
+`0101` and `2222` once each. Bits 3 to 7 rise with the order the game reaches
+its places — 2 and 3 in Angel Falls Region, 5 to 7 in Stornway's, past 30
+late on — and a pair's kind 1 is its kind 0 plus one on 28 of the 40; what
+they count is not established, and the monsters' battle data has no level to
+test it against. Bits 21 to 23 take every three-bit value, dungeons' lone zones
+included, so they are no time of day to choose by. The top byte is 0 on all.
+
+The `0x67` records' second value is a float on some — 0.85 and 0.9 in `F06`
+— and is carried as its bits.
+
+**How a map chooses among its zones is not established.** Tried, and ruled out:
+
+- **The collision triangles' attribute word.** Bits 25 up, read as an index
+  into the map's zones, match the zone count on only 41 of 109 field and
+  dungeon maps, and on 61 run past the last zone. The rest is no better: the
+  low 24 bits are six nibbles, each only ever from one of {0, 3, 6},
+  {1, 4, 7} and {2, 5, 8} — per-edge data, by the look of it — on `F01`,
+  `F02`, `F06`, `F17`, `F18` and `D01M02` alike.
+- **Night pieces, for kind 1 as the night.** Fields have none: 36 of the 37
+  maps with a pair build the same by night, so the test cannot decide it.
+- **The `0x69` record's other four values**: 0 on all 210.
+- **The map's own tables.** Nothing in `F01`'s `.bmbl`, `.dat` or `.bmdj`
+  names 12, 14 or 15 as a zone. Its three `0x72` records — doorways, see
+  "The doorways" — match its three zones by chance: the counts agree on 36
+  maps and differ on 118.
+
+The game here takes a map's first zone, which is its kind 0 wherever it has
+one.
 
 ## Field monsters — `fld_mondata.bin`
 

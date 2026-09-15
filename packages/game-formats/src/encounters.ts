@@ -7,8 +7,9 @@ import { readDataTable } from './table.ts'
  *
  * **`encfld`, by map.** A `0x69` record opens a map — its first value **is the
  * map's own id**, the one the map list gives it, on all 210 — and its zones
- * follow: a `0x68` record names a zone, a `0x66` holds one word for it, not
- * established, and a `0x67` record each gives a monster that roams there, its
+ * follow: a `0x68` record names a zone, a `0x66` holds one word for it — its
+ * low three bits INFERRED a kind, the rest not established — and a `0x67`
+ * record each gives a monster that roams there, its
  * number in the low 12 bits and — INFERRED — its weight among the zone's
  * monsters above, with a second value, 1 on most, not established.
  *
@@ -37,13 +38,24 @@ export interface ZoneMonster {
   readonly number: number
   /** INFERRED: its weight among the zone's monsters. */
   readonly weight: number
-  /** The record's second value — 1 on most — not established. */
+  /**
+   * The record's second value — 1 on most, 0 on some, and on others a float,
+   * 0.85 or 0.9, carried here as its bits — not established.
+   */
   readonly unknown_1: number
 }
 
 export interface FieldZone {
   readonly zone: number
-  /** The zone's `0x66` word, not established. */
+  /**
+   * The low three bits of the zone's `0x66` word, 0, 1 or 2 — INFERRED a kind.
+   * 0 and 1 come as a pair, in that order, on fields only, and 37 of the 40
+   * pairs are roamed by the same monsters on other weights; 2 is the one zone
+   * of every dungeon, and a field's third and fourth. What chooses among a
+   * map's zones is not established — see FORMAT.md, "Encounters".
+   */
+  readonly kind: number
+  /** The zone's `0x66` word whole: its kind in the low three bits, the rest not established. */
   readonly unknown_head: number
   readonly monsters: readonly ZoneMonster[]
 }
@@ -77,7 +89,9 @@ export interface BattleZone {
 export function readFieldEncounters(bytes: Uint8Array): Map<number, FieldZone[]> {
   const out = new Map<number, FieldZone[]>()
   let zones: FieldZone[] | undefined
-  let zone: { zone: number; unknown_head: number; monsters: ZoneMonster[] } | undefined
+  let zone:
+    | { zone: number; kind: number; unknown_head: number; monsters: ZoneMonster[] }
+    | undefined
   for (const record of readDataTable(bytes).records) {
     const first = record.values[0]
     if (record.tag === MAP_TAG) {
@@ -89,10 +103,13 @@ export function readFieldEncounters(bytes: Uint8Array): Map<number, FieldZone[]>
       if (!zones || first === undefined) {
         throw new GameFormatError('a zone before any map', record.offset)
       }
-      zone = { zone: first, unknown_head: 0, monsters: [] }
+      zone = { zone: first, kind: 0, unknown_head: 0, monsters: [] }
       zones.push(zone)
     } else if (record.tag === HEAD_TAG) {
-      if (zone && first !== undefined) zone.unknown_head = first
+      if (zone && first !== undefined) {
+        zone.unknown_head = first
+        zone.kind = first & 7
+      }
     } else if (record.tag === MONSTER_TAG) {
       if (!zone || first === undefined) {
         throw new GameFormatError('a monster before any zone', record.offset)

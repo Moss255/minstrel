@@ -54,9 +54,11 @@ describe('encounters', () => {
         roam(1, 7),
         roam(56, 6),
         { tag: 0x68, values: [14] },
+        { tag: 0x66, values: [0xe02819] },
         roam(1, 4),
         { tag: 0x69, values: [7102, 0, 0, 0, 0] },
         { tag: 0x68, values: [32] },
+        { tag: 0x66, values: [0x80082a] },
         roam(4, 7),
       ]),
     )
@@ -64,6 +66,7 @@ describe('encounters', () => {
     const [first, second] = table.get(20001) ?? []
     expect(first).toEqual({
       zone: 12,
+      kind: 0,
       unknown_head: 0xe02810,
       monsters: [
         { number: 1, weight: 7, unknown_1: 1 },
@@ -72,6 +75,27 @@ describe('encounters', () => {
     })
     expect(second?.zone).toBe(14)
     expect(table.get(7102)?.[0]?.monsters[0]?.number).toBe(4)
+  })
+
+  it("reads a zone's kind from the low three bits of its word: a field's pair, and the rest", () => {
+    const table = readFieldEncounters(
+      build([
+        { tag: 0x69, values: [20001, 0, 0, 0, 0] },
+        { tag: 0x68, values: [12] },
+        { tag: 0x66, values: [0xe02810] },
+        { tag: 0x68, values: [14] },
+        { tag: 0x66, values: [0xe02819] },
+        { tag: 0x68, values: [15] },
+        { tag: 0x66, values: [0x60481a] },
+        { tag: 0x69, values: [7102, 0, 0, 0, 0] },
+        { tag: 0x68, values: [32] },
+        { tag: 0x66, values: [0x80082a] },
+      ]),
+    )
+    expect(table.get(20001)?.map((z) => z.kind)).toEqual([0, 1, 2])
+    expect(table.get(7102)?.map((z) => z.kind)).toEqual([2])
+    // The word is still carried whole.
+    expect(table.get(20001)?.[1]?.unknown_head).toBe(0xe02819)
   })
 
   it("reads each zone's roamers and battle company", () => {

@@ -9,6 +9,94 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## What is still open — 15 September, at `edde26c`
+
+This replaces the list of 14 September. The list of 13 September further down
+is kept for its questions to the emulator. Each gap's evidence is in the
+section it names.
+
+**Where the milestones stand.** M0–M2 are done. M3 plays the opening as far as
+Ivor's call outside Erinn's house, moved on by the trigger records. M4 is as
+far as the cartridge goes: equipment's numbers wait on the emulator. M5 has
+battles, spells, changes of state, monsters acting and a party of up to four.
+M6 has monsters roaming the field, the poison marsh, Ivor following and the
+party on the top screen. M7 and M8 have not started, and audio — which the plan
+wanted begun alongside M5 — has not either.
+
+**Against the definition of done:**
+
+| | | |
+|---|---|---|
+| 1 | the ROM's hash checked, its assets converted and cached | no — M8 |
+| 2 | wake in Erinn's house and explore all of Angel Falls | yes |
+| 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line |
+| 4 | fight, level up, buy and equip gear | yes, but equipment changes no number |
+| 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | no — M7 |
+| 6 | the monitor's resolution, widescreen, remappable input | resolution and widescreen yes; remapping no |
+
+**Closable here, from the code and the cartridge:**
+
+| gap | milestone | what it needs |
+|---|---|---|
+| Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
+| The opening, past Ivor's call | M3, M7 | When an event starts — on coming near, on entering a map (value 5 = 3) — and the rest of the triggers' words: the second set of flags (`102`, `2`, `3`: 145 of 566), operations 17, 141, 197 and 205. Then 2.2 step 2 onwards to the pass. The largest job left, and on the critical path. |
+| When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
+| What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
+| Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
+| The poison marsh's toll | M6 | Where it is, is read; 1 HP a half second is ours. |
+| What battles still lack | M5 | Abilities; the changes of state the reference does not model (Dazzle, sand in the eyes, the dances); Hexagoon beyond its six ways. |
+| The equipment screen's layouts and the rest of it | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5); moving round the grid, L/R between tabs, Change Character, sorting; the name plate's colour for each character; a string for "Nothing Equipped". |
+| Item art not found | M4 | 193 of the 1,178 items have no icon by the rule; the English vocation icons for "Used by"; what the white and gold stars mean. |
+| `itemsort`'s `unknown_1` and `unknown_2` | M4 | Not tested against anything yet. |
+| M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
+| The top screen's rest | M6 | The party panel's HP, MP and level, with its own digits; `obj_mm.pac`'s narrower cuts of it; the town's name tab; `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets. |
+| 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
+| The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |
+| Audio | M8 | Not started, and late by the plan's own reckoning. |
+| The rest of M8 | M8 | Settings — resolution, the two-screen layout, input remapping, text speed; the ROM's hash and caching; README, licence and contribution guide. |
+
+**Needs the emulator — questions to bring to it:**
+
+- **Equipment's numbers, rarity and "Used by"**, the one thing M4 still waits
+  on. Open the equipment screen on the Flame shield (defence 18, rarity 1),
+  search RAM for its id, `8E 53`, and look for 18 and 1 near it; send the
+  address and the bytes round it. The copper sword's attack would check the
+  weapons.
+- **A party member's colour**: how the game picks the colour of each one's
+  name strip and dot — in the capture of Stornway's church they are the
+  characters' own, and none is one of the panel's four. Also where a room's
+  dots sit on its area's picture, and how a large picture scrolls.
+- **Ivor's numbers**: in a battle beside him, his HP — 25 if `attnpc`'s
+  numbers are in the level tables' order.
+- **How a monster chooses**: the weights for its six ways (an even table stands
+  in); the critical chance; fleeing's chance.
+- **The Hero's vocation, and a level-1 status screen**, to settle which
+  level-table columns are which.
+- **Which treasure kind is the pot** and which the barrel.
+- **The inn's price and the starting gold**, if they are not found in code.
+- **Whether Ivor's greeting plays as the Hero comes near** or only when he is
+  talked to.
+- **Which zone roams when and where.** In Angel Falls Region at the slice's
+  point in the story: whether bodkin archers and batterflies (its kind-2 zone)
+  roam at all, and if so where or when; and whether the mix changes at night
+  — its kind 1 has sacksquatches ahead of slimes, its kind 0 slimes first.
+
+**Taken on the tester's word, not read:** the Hero starts with a copper sword
+on (`STARTING_EQUIPMENT`).
+
+**Wanted after Slice 1:** weapons on the Hero, the `p_w<nnn>.nsbmd` models in
+`chara_pc.gp2`, with how they attach not known.
+
+**Deferred by the plan:** WebGPU (WebGL2 is enough), the DS toon and edge
+pipeline outside reference mode, settings, and the ROM hash check and caching
+(M8).
+
+**Where to start next time:** the opening past Ivor's call, the largest job
+left on the critical path, with audio alongside it; the zones once the
+emulator has answered.
+
+---
+
 ## The party on the top screen — 15 September
 
 **From the cartridge** (game-formats' FORMAT.md, "The markers are coloured
@@ -221,72 +309,6 @@ the slice leaves out, so the Hero's fixed hair is the slice's preset
 appearance. Which preset value, if any, holds a character's hair — the first of
 the two 90xx values is not hair by any rule tried — matters only for drawing
 the presets themselves. See §7.
-
----
-
-## What is still open — 14 September, at `ae5e16c`
-
-This replaces the list of 13 September further down, which is kept for its
-questions to the emulator. Each gap's evidence is in the section it names.
-
-**Where the milestones stand.** M0–M2 are done: the Hero is dressed (§7), and
-a field's doorways stand on its ground and can be walked to (§6). M3 reads the event text and plays the morning; the
-rest of the opening is open. M4 is as far as the cartridge goes; the equipment
-screen is drawn, and its numbers wait on the emulator. M5 has battles, spells,
-changes of state, monsters acting and a party of two; M6 has monsters roaming the field
-and Ivor following the Hero. M7 and
-M8 have not started, and audio, meant to start alongside M5, has not either.
-
-**Closable here, from the code and the cartridge:**
-
-| gap | milestone | what it needs |
-|---|---|---|
-| The opening beats, and story flags | M3, M7 | The functions other events call, which event runs when (the triggers), and the game-wide variables, scope 64. The largest job left, and on the slice's critical path. |
-| Ivor | M5, M6 | Found in `attnpc`, and fights beside the Hero — see the top. Left: how he joins and leaves, and how the game chooses what he does and how he follows. |
-| The equipment screen's layouts | M4 | A reader for `lay_eq.lia` and `lay_iie.lia` (LI5). Until then, where everything sits is ours. |
-| The rest of the equipment screen | M4 | Moving round the grid by row and column, L/R between tabs, Change Character and sorting; the Hero's figure; the name plate's colour for each character; a string for "Nothing Equipped", which is ours. |
-| Item art not found | M4 | 193 of the 1,178 items have no icon by the rule and show a stand-in (ours). The English vocation icons for "Used by" are not in `obj_ii` or `oiij`, which hold slots and stars. The lit stars are `oiij` cells 21 and 24–27; what white and gold stars mean is not known. |
-| `itemsort`'s `unknown_1` and `unknown_2` | M4 | Not tested against anything yet. |
-| The game's own font | M3 | The Latin glyphs are not found; text uses the browser's font. |
-| M4's stand-ins | M4 | `STARTING_GOLD` and `INN_PRICE`, in code as far as has been looked; the chimaera wing's destination; Evac and holy water. |
-| What battles still lack | M5 | Abilities; the changes of state the reference does not model (Dazzle, sand in the eyes, the dances); Hexagoon's behaviour beyond its six ways. |
-| What the loop still lacks | M6 | Which zone applies where; monsters that flee a strong party (`fld_mondata`'s first two numbers); transitions beyond the cut; what the poison marsh really does (where it is, is read — see the top). |
-| The mini-map's rest | — | `.bmmp` tags `0x65`, `0x67`, `0x68` and `0x6d`; the `z` tile sets; the party's name panels and the town's name tab. |
-| 2D format unknowns | — | `.bnsc` `+0x0A`; `.bncl` `+0x04`; `.bncg` `0x7C00` beyond its low bit; which `CHAR` a screen uses when a pack has two; NCER's cell attribute, LBAL/TXEU and `CEBK` `+0x10`; affine parts drawn without rotation. |
-| The explorer's 2D previews | explorer | NCLR, NCGR, NCER and `.bncg`/`.bnsc` are read but not shown. |
-| Audio | M8 | Not started; the plan wanted it started alongside M5. |
-
-**Needs the emulator — questions to bring to it:**
-
-- **Equipment's numbers, rarity and "Used by"**, the one thing M4 still waits
-  on. Every reference to the copper sword was followed, and 41 shields' published
-  numbers were tested against every file, so they are not beside the item. Open
-  the equipment screen on the Flame shield (defence 18, rarity 1). Search RAM
-  for its id, `8E 53`, and look for 18 and 1 near it. Send the address and a
-  dump of the bytes round it, and it can be traced to its file. The copper
-  sword's attack would check the weapons.
-- **The mini-map's dots**: what colour the Hero's dot is, and whether it is
-  `obj_mm.pac` cell 5. `marker0` stands in, and is ours. Also where a room's dot
-  sits on its area's picture, and how a large picture scrolls.
-- **Ivor's numbers**: in a battle beside him, his HP — 25 if `attnpc`'s
-  numbers are in the level tables' order.
-- **How a monster chooses**: the weights for its six ways (an even table stands
-  in); the critical chance; fleeing's chance.
-- **The Hero's vocation, and a level-1 status screen**, to settle which
-  level-table columns are which.
-- **Which treasure kind is the pot** and which the barrel; **where the Hero
-  wakes**, `M01M07` or `M01M10`.
-- **The inn's price and the starting gold**, if they are not found in code.
-
-**Wanted after Slice 1:** weapons on the Hero, the `p_w<nnn>.nsbmd` models in
-`chara_pc.gp2`, with how they attach not known.
-
-**Deferred by the plan:** WebGPU (WebGL2 is enough), the DS toon and edge
-pipeline outside reference mode, settings, and the ROM hash check and caching
-(M8).
-
-**Where to start next time:** the Flame shield RAM search if the emulator is
-out; otherwise the opening beats, the largest job left on the critical path.
 
 ---
 
