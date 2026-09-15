@@ -105,6 +105,9 @@ describe('the party beside the Hero', () => {
     expect(companionFighter(ivor, numbersOf)).toMatchObject({ attack: 22, defence: 14 })
     // A piece whose numbers are not known adds nothing.
     expect(companionFighter(ivor, () => undefined)).toMatchObject({ attack: 15, defence: 13 })
+    // Agility too, where a piece carries some.
+    const swift = (id: number) => (id === 20004 ? { attack: 7, defence: 0, agility: 5 } : undefined)
+    expect(companionFighter(ivor, swift)).toMatchObject({ attack: 22, agility: 21 })
   })
 
   it('is drawn in their own model, with the packs they fight with', () => {

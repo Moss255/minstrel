@@ -124,6 +124,7 @@ function numbersText(context: MenuContext, item: number | undefined): string {
   const said = [
     numbers.attack ? `attack ${numbers.attack}` : '',
     numbers.defence ? `defence ${numbers.defence}` : '',
+    numbers.agility ? `agility ${numbers.agility}` : '',
   ].filter(Boolean)
   return said.length > 0 ? ` — ${said.join(', ')}` : ''
 }
@@ -136,12 +137,14 @@ function wornText(context: MenuContext): string {
   if (!context.numbersOf) return 'What equipment adds is not read.'
   let attack = 0
   let defence = 0
+  let agility = 0
   for (const item of (context.equipped ?? new Map<Slot, number>()).values()) {
     const numbers = context.numbersOf(item)
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
+    agility += numbers?.agility ?? 0
   }
-  return `Equipment worn: attack +${attack}, defence +${defence}.`
+  return `Equipment worn: attack +${attack}, defence +${defence}${agility ? `, agility +${agility}` : ''}.`
 }
 
 /** What a panel knows to say. */
@@ -159,7 +162,11 @@ export interface MenuContext {
   readonly equipped?: Equipped | undefined
   /** A piece of equipment's own attack and defence, by id — see `itemStatsOf` in `load.ts`. */
   readonly numbersOf?:
-    | ((id: number) => { readonly attack: number; readonly defence: number } | undefined)
+    | ((
+        id: number,
+      ) =>
+        | { readonly attack: number; readonly defence: number; readonly agility?: number }
+        | undefined)
     | undefined
   /** An item's name by id. */
   readonly itemName?: ((id: number) => string) | undefined

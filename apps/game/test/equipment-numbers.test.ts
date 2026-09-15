@@ -19,6 +19,26 @@ describe('equipment’s numbers in the menu', () => {
     expect(lines).toContain('Equipment worn: attack +7, defence +0.')
   })
 
+  it('counts a worn piece’s agility, and names it beside the piece', () => {
+    const ring: MenuContext = {
+      ...context,
+      equipped: new Map([
+        ['weapon', 1],
+        ['accessory', 3],
+      ]),
+      itemName: (id) => (id === 3 ? 'swift band' : `item ${id}`),
+      numbersOf: (id) =>
+        id === 1
+          ? { attack: 7, defence: 0 }
+          : id === 3
+            ? { attack: 0, defence: 0, agility: 20 }
+            : undefined,
+    }
+    const lines = panelLines('equip', ring)
+    expect(lines.join('\n')).toContain('swift band — agility 20')
+    expect(lines).toContain('Equipment worn: attack +7, defence +0, agility +20.')
+  })
+
   it('says so when the numbers did not read', () => {
     const lines = panelLines('equip', { ...context, numbersOf: undefined })
     expect(lines).toContain('What equipment adds is not read.')

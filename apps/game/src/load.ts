@@ -799,6 +799,7 @@ function goodsOf(rom: Uint8Array): Map<number, Goods> {
 export interface ItemNumbers {
   readonly attack: number
   readonly defence: number
+  readonly agility: number
 }
 
 const statsRead = new WeakMap<Uint8Array, Map<number, ItemNumbers>>()
@@ -834,7 +835,7 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
       for (const entry of entries) {
         if (entry.name === undefined) continue
         for (const id of idsByName.get(entry.name) ?? []) {
-          stats.set(id, { attack: entry.attack, defence: entry.defence })
+          stats.set(id, { attack: entry.attack, defence: entry.defence, agility: entry.agility })
         }
       }
     }

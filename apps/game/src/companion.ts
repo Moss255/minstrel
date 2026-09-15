@@ -64,19 +64,21 @@ export function companionNamed(who: AttendingCharacter): Named {
 
 /**
  * The fighter an attending character is, from its numbers — whose reading is
- * INFERRED, see `readAttendingCharacters`. Its attack and defence are its
- * strength and resilience plus what its own weapon and shield add, by
- * `numbersOf` — the equipment's numbers read, the adding **ours**, as the
- * Hero's is; without `numbersOf`, strength and resilience alone.
+ * INFERRED, see `readAttendingCharacters`. Its attack, defence and agility are
+ * its strength, resilience and agility plus what its own weapon and shield
+ * add, by `numbersOf` — the equipment's numbers read, the adding **ours**, as
+ * the Hero's is; without `numbersOf`, its own alone.
  */
 export function companionFighter(
   who: AttendingCharacter,
-  numbersOf?: (id: number) => { readonly attack: number; readonly defence: number } | undefined,
+  numbersOf?: (
+    id: number,
+  ) => { readonly attack: number; readonly defence: number; readonly agility?: number } | undefined,
 ): Fighter {
   const worn = [who.weapon, who.shield].map((id) =>
     id === undefined ? undefined : numbersOf?.(id),
   )
-  const adds = (stat: 'attack' | 'defence') =>
+  const adds = (stat: 'attack' | 'defence' | 'agility') =>
     worn.reduce((sum, numbers) => sum + (numbers?.[stat] ?? 0), 0)
   return {
     name: who.name,
@@ -85,7 +87,7 @@ export function companionFighter(
     maxMp: who.numbers.maxMp,
     attack: who.numbers.strength + adds('attack'),
     defence: who.numbers.resilience + adds('defence'),
-    agility: who.numbers.agility,
+    agility: who.numbers.agility + adds('agility'),
     shield: who.shield !== undefined,
     exp: 0,
     gold: 0,

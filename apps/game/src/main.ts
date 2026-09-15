@@ -1996,29 +1996,31 @@ function roamerPieces(now: number): Piece[] {
 }
 
 /**
- * What the Hero's worn equipment adds to their attack and defence, as read —
- * see `itemStatsOf` in `load.ts`.
+ * What the Hero's worn equipment adds to their attack, defence and agility, as
+ * read — see `itemStatsOf` in `load.ts`.
  */
-function wornNumbers(): { attack: number; defence: number } {
+function wornNumbers(): { attack: number; defence: number; agility: number } {
   let attack = 0
   let defence = 0
+  let agility = 0
   for (const item of equipped.values()) {
     const numbers = loaded?.itemStats.get(item)
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
+    agility += numbers?.agility ?? 0
   }
-  return { attack, defence }
+  return { attack, defence, agility }
 }
 
 /**
  * Start a battle with these monsters, by code, where the Hero stands.
  *
- * The Hero fights with their level's numbers. **Their attack and defence are
- * their strength and resilience plus what their equipment adds**: the
- * equipment's numbers are read (game-formats' FORMAT.md, "The stats"), the
- * adding is **ours** — the battle reference takes attack and defence as given
- * (its setups name them, `atk123_def86`), and how the game makes them up is
- * not cited.
+ * The Hero fights with their level's numbers. **Their attack, defence and
+ * agility are their strength, resilience and agility plus what their equipment
+ * adds**: the equipment's numbers are read (game-formats' FORMAT.md, "The
+ * stats"), the adding is **ours** — the battle reference takes attack and
+ * defence as given (its setups name them, `atk123_def86`), and how the game
+ * makes them up is not cited. Agility decides the order of a round.
  */
 function startFight(codes: readonly string[], canFlee: boolean): void {
   if (!loaded || !self || !cartridge) return
@@ -2077,7 +2079,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     maxMp: row.maxMp,
     attack: row.strength + worn.attack,
     defence: row.resilience + worn.defence,
-    agility: row.agility,
+    agility: row.agility + worn.agility,
     shield: equipped.has('shield'),
     exp: 0,
     gold: 0,
