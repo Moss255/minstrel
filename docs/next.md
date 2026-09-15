@@ -15,8 +15,8 @@ This replaces the list of 14 September. The list of 13 September further down
 is kept for its questions to the emulator. Each gap's evidence is in the
 section it names.
 
-**Where the milestones stand.** M0–M2 are done. M3 plays the opening as far as
-Ivor's call outside Erinn's house, moved on by the trigger records. M4 is as
+**Where the milestones stand.** M0–M2 are done. M3 plays the opening to 2.4,
+past the landslide and back, moved on by the trigger records. M4 is as
 far as the cartridge goes: equipment's numbers wait on the emulator. M5 has
 battles, spells, changes of state, monsters acting and a party of up to four.
 M6 has monsters roaming the field, the poison marsh, Ivor following and the
@@ -43,7 +43,7 @@ wanted begun alongside M5 — has not either.
 |---|---|---|
 | Equipment's numbers in the game | M4, M5 | **Read and in use** (15 September): each piece's own attack or defence on the equipment screen and in the menu, and a fighter's attack and defence with what their equipment adds — the Hero's and Ivor's. The adding — strength plus equipment, resilience plus equipment — is **ours**: the battle reference takes attack and defence as given. A status screen in the emulator would check it. The rest of each entry is read too (deftness, agility, magical might, evasion, critical, a weapon's kind, who may wear a piece); **agility is in use** — a fighter's agility with what they wear, which orders a round — and the rest not yet. Left: which "Used by" bit is which vocation; word 0's resistances; words 1 and 2; charm, max HP and max MP, not found as numbers. |
 | Which zone applies where | M6 | Measured, not settled (game-formats' FORMAT.md, "Encounters"). A zone's kind is read: 0 and 1 a pair on fields, the same monsters on other weights; 2 every dungeon's, and a field's others. Nothing read so far says which applies when, and the places tried — the ground's attribute word, the night pieces, the map's own tables — are ruled out. Wants the emulator; see below. |
-| The opening, past the landslide | M3, M7 | **Plays to the landslide** (15 September, see the top): Hugo at the village's edge, the pass on entering it, and Ivor's scene there, to 2.3. Left: the way back — the mayor's house on entering it at 2.3, and Erinn, to 2.4, read and tested but not walked; the pass's value-5 = 2 records, played by something in the map; what value 5 = 20 gates; whether a character's event plays on coming near; and the words not read — the second set of flags (`102`, `2`, `3`: 145 of 566), 17, 105, 107, 141, 197, 203, 204, 205. Then the Hexagon. On the critical path. |
+| The opening, on to the Hexagon | M3, M7 | **Plays to 2.4** (15 September, see the top): Hugo at the village's edge, the pass on entering it, Ivor's scene at the landslide, and the way back — Hugo's greeting, the mayor's house and Erinn's. The second set of flags (`102`, `2`, `3`) and `86` (no companion) are read. Left: what else sets marks; the pass's value-5 = 2 records, played by something in the map; what value 5 = 20 gates; whether a character's event plays on coming near; and the words not read — 16, 17, 105, 107, 141, 197, 203, 204, 205. Then the Hexagon. On the critical path. |
 | When Ivor joins and leaves | M6 | Ours, by stage, so he follows at 2.2 before he has asked. Flag 0, which his call sets, is a candidate. |
 | What Ivor does in a fight, and how he follows | M5, M6 | How the game chooses for him; his footsteps are ours. |
 | Monsters that flee a strong party | M6 | `fld_mondata`'s first two numbers. |
@@ -98,9 +98,50 @@ on (`STARTING_EQUIPMENT`).
 pipeline outside reference mode, settings, and the ROM hash check and caching
 (M8).
 
-**Where to start next time:** the way back from the landslide at 2.3 — the
-mayor's house and Erinn, to 2.4 — and then the Hexagon, the rest of the
-critical path; audio alongside it; the zones once the emulator has answered.
+**Where to start next time:** the Hexagon at 2.4, the rest of the critical
+path; audio alongside it; the zones once the emulator has answered.
+
+---
+
+## The way back reaches 2.4 — 15 September
+
+**What plays now**, moved on by the trigger records as before (game-formats'
+FORMAT.md, "The words"; INFERRED throughout):
+
+- **Hugo, on the way back** at 2.3 — talking to him with Ivor along plays
+  `ev02430`, "Hey, Ivor, you're back! Manage to clear up that landslide, did
+  you?", once; after it he says "Sounds like it might be good news…".
+- **The mayor's house, on entering it** at 2.3 — `ev02400`, the news of
+  Stornway's soldiers, which goes on upstairs in Erinn's house to `ev02410`,
+  and the story is at **2.4, step 1**.
+
+Walked through in the browser: both, and Hugo's line after his event.
+
+**Two readings make it go** (game-formats' FORMAT.md, "The words"):
+
+- **A second set of flags, "marks"** — `102` sets one, `2` holds if it is set,
+  `3` if not. Of the 57 sets, 31 sit in a record that also tests `3` of the same
+  mark — the first time a character is talked to — and 24 of those have a
+  partner record testing `2` of it. Hugo's are `3:7 119:2430 102:7` and then
+  `2:7 118:8 193:0`. Tests far outnumber sets (280 and 298 against 57), so
+  something else sets marks too.
+- **`86:0` — the Hero has no companion with them.** All 7 in Angel Falls sit
+  before a character's first-time event and give the label that follows it
+  instead, and Ivor speaks in every one of those events (2222, 2230, 2240,
+  2250, 2430, 2440, 2450). Read before the first-time record, as the records
+  stand; without it, Hugo's `86:0 118:8 194:0` came first and his event never
+  played.
+
+**Ours:** marks are cleared with the story's flags when the stage moves on,
+and neither is saved yet; whether the Hero is alone is whether any companion
+follows — and when Ivor follows is ours, by stage.
+
+**Fixed on the way:** `?door=` now plays the map's entry event, as walking
+through the door does.
+
+**Left:** what else sets marks; the words still not read — 16, 17, 105, 107,
+141, 197, 203, 204, 205; the pass's value-5 = 2 records; what value 5 = 20
+gates. **Next**: the Hexagon.
 
 ---
 

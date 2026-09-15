@@ -102,6 +102,50 @@ describe('talk as the story’s flags stand', () => {
     expect(said(pickLine({ ...asking, triggers: [chooses, other] }))).toBe('*: Before.')
   })
 
+  it('plays a first-time event once, by the mark its record sets, and the line after', () => {
+    const triggers = [
+      trigger([
+        [6, 8],
+        [3, 7],
+        [119, 2430],
+        [102, 7],
+      ]),
+      trigger([
+        [6, 8],
+        [2, 7],
+        [118, 8],
+        [193, 0],
+      ]),
+    ]
+    const first = pickLine({ ...asking, triggers, marks: new Set() })
+    expect(first).toMatchObject({ kind: 'event', event: 2430, marks: [7] })
+    expect(said(pickLine({ ...asking, triggers, marks: new Set([7]) }))).toBe('*: After.')
+  })
+
+  it('gives the after-label, not the first-time event, when the Hero has no companion', () => {
+    const triggers = [
+      trigger([
+        [6, 8],
+        [86, 0],
+        [118, 8],
+        [192, 0],
+      ]),
+      trigger([
+        [6, 8],
+        [3, 7],
+        [119, 2430],
+        [102, 7],
+      ]),
+    ]
+    expect(said(pickLine({ ...asking, triggers, marks: new Set(), alone: true }))).toBe(
+      '*: Before.',
+    )
+    expect(pickLine({ ...asking, triggers, marks: new Set(), alone: false })).toMatchObject({
+      kind: 'event',
+      event: 2430,
+    })
+  })
+
   it('does not take another character’s label from a record about someone else', () => {
     const triggers = [
       trigger([

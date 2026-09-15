@@ -89,12 +89,33 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     })
   })
 
-  it('has the mayor hear the news on entering his house at 2.3, and Erinn after', () => {
+  it('has Hugo greet Ivor on the way back at 2.3, once, and not without him', () => {
+    const village = load(rom, { map: 'M01' })
+    const asking = {
+      triggers: village.triggers,
+      map: village.mapId,
+      stage: { major: 2, minor: 3 },
+      night: false,
+      id: 8,
+      lines: village.linesOf(8, 'B0'),
+    }
+    const first = pickLine({ ...asking, marks: new Set(), alone: false })
+    expect(first).toMatchObject({ kind: 'event', event: 2430, marks: [7] })
+    expect(pickLine({ ...asking, marks: new Set([7]), alone: false })?.why).toContain('label 193')
+    expect(pickLine({ ...asking, marks: new Set(), alone: true })?.why).toContain('label 194')
+  })
+
+  it('has the mayor hear the news on entering his house at 2.3, and moves on to 2.4', () => {
     const house = load(rom, { map: 'M01M05' })
     expect(entryEvent(house.triggers, 1105, { major: 2, minor: 3 }, new Set())).toBe(2400)
     expect(eventOutcome(house.triggers, 2400, house.mapId)?.onward).toEqual({
       map: 1110,
       event: 2410,
+    })
+    const landing = load(rom, { map: 'M01M10' })
+    expect(eventOutcome(landing.triggers, 2410, landing.mapId)?.stage).toMatchObject({
+      major: 2,
+      minor: 4,
     })
   })
 })

@@ -146,12 +146,43 @@ export function eventOutcome(
 }
 
 /**
- * Whether a record's flag conditions hold: every {@link OP_IF_FLAG} flag set
- * and every {@link OP_UNLESS_FLAG} one not. Its other conditions are not read.
+ * A second set of flags, kept beside the story's — "marks" here: holds only
+ * when the mark is set. INFERRED: of the 57 {@link OP_SET_MARK} words on the
+ * cartridge, 31 sit in a record that also tests {@link OP_UNLESS_MARK} of the
+ * same mark — the first time a character is talked to — and 24 of those have a
+ * partner record for the same character, map and span testing this one: Hugo's
+ * `3:7 119:2430 102:7`, then `2:7 118:8 193:0`. Tests (280 of these, 298 of
+ * the other) far outnumber the sets, so something else sets marks too; what, is
+ * not established.
  */
-export function flagsHold(words: readonly TriggerWord[], flags: ReadonlySet<number>): boolean {
+export const OP_IF_MARK = 2
+/** Holds only when the mark is not set — see {@link OP_IF_MARK}. */
+export const OP_UNLESS_MARK = 3
+/** Sets a mark — see {@link OP_IF_MARK}. */
+export const OP_SET_MARK = 102
+
+/**
+ * Whether a record's flag conditions hold: every {@link OP_IF_FLAG} flag set
+ * and every {@link OP_UNLESS_FLAG} one not — and, given `marks`, the same for
+ * the second set, {@link OP_IF_MARK} and {@link OP_UNLESS_MARK}. Without
+ * `marks` those are not read. Its other conditions are not read.
+ */
+export function flagsHold(
+  words: readonly TriggerWord[],
+  flags: ReadonlySet<number>,
+  marks?: ReadonlySet<number>,
+): boolean {
   return words.every(
     (w) =>
-      (w.op !== OP_IF_FLAG || flags.has(w.arg)) && (w.op !== OP_UNLESS_FLAG || !flags.has(w.arg)),
+      (w.op !== OP_IF_FLAG || flags.has(w.arg)) &&
+      (w.op !== OP_UNLESS_FLAG || !flags.has(w.arg)) &&
+      (marks === undefined ||
+        ((w.op !== OP_IF_MARK || marks.has(w.arg)) &&
+          (w.op !== OP_UNLESS_MARK || !marks.has(w.arg)))),
   )
+}
+
+/** The marks a record sets — see {@link OP_SET_MARK}. */
+export function marksSet(words: readonly TriggerWord[]): number[] {
+  return words.filter((w) => w.op === OP_SET_MARK).map((w) => w.arg)
 }

@@ -353,6 +353,12 @@ let storyStage: Stage | undefined = OPENING_STAGE
 let storyStep = 0
 const storyFlags = new Set<number>()
 /**
+ * The second set of flags, "marks" — see `OP_IF_MARK` in `@minstrel/game-formats`.
+ * Cleared with the story's flags when the stage moves on, and not yet saved —
+ * both **ours**.
+ */
+const storyMarks = new Set<number>()
+/**
  * Which chapter's talk files are read: an index into `loaded.letters`, or
  * undefined to follow the stage — see `letterForStage`. `v` and `b` move it.
  */
@@ -625,6 +631,7 @@ function restore(game: SaveGame): void {
   storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
   storyStep = game.step ?? 0
   storyFlags.clear()
+  storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
   bag = bagOf(game)
   equipped = equippedOf(game)
@@ -1373,6 +1380,7 @@ function moveStage(by: number): void {
   storyStage = list[(at + by + list.length) % list.length]
   // Flags are the stage's own — see `followEvent` — so a stage stepped to has none.
   storyFlags.clear()
+  storyMarks.clear()
   storyStep = 0
   closeTalk()
   loaded = { ...loaded, cast: loaded.castAt(storyStage) }
@@ -1583,7 +1591,11 @@ function talk(everyLine = false): void {
       id: who.id,
       lines,
       flags: storyFlags,
+      marks: storyMarks,
+      alone: companionsNow().every(standingHere),
     })
+    // What the record that chose it sets — the first time they are talked to.
+    for (const mark of choice?.marks ?? []) storyMarks.add(mark)
     if (choice?.kind === 'line') {
       talking = startConversation(
         who,
@@ -2715,7 +2727,10 @@ function followEvent(event: number): void {
   if (stage) {
     const moved =
       !storyStage || storyStage.major !== stage.major || storyStage.minor !== stage.minor
-    if (moved) storyFlags.clear()
+    if (moved) {
+      storyFlags.clear()
+      storyMarks.clear()
+    }
     storyStage = { major: stage.major, minor: stage.minor }
     storyStep = stage.step
     if (moved) {
@@ -3253,12 +3268,14 @@ if (romUrl) {
       if (wantedDoor && loaded) {
         const door = loaded.doorways.find((d) => d.to.toLowerCase() === wantedDoor.toLowerCase())
         if (!door) throw new Error(`${loaded.code} has no doorway to '${wantedDoor}'`)
-        enter(door.to, {
+        const arrived = enter(door.to, {
           x: door.arriveX,
           y: door.arriveY,
           z: door.arriveZ,
           facing: door.arriveFacing,
         })
+        // As `maybeTravel` does: a map's entry event plays on coming in this way too.
+        if (arrived) playEntryEvent()
       }
       // `tools/shot` waits for a title beginning with `ready`, so a headless
       // driver can tell loading apart from a page that is merely slow.

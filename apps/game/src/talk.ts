@@ -1,6 +1,7 @@
 import {
   flagsHold,
   type MarkupToken,
+  marksSet,
   parseMarkup,
   type TalkLine,
   type Trigger,
@@ -493,6 +494,14 @@ const OP_LABEL_BY = 36
 const OP_LABEL_OF = 118
 /** An event, by number: 58 of 64 in Angel Falls name one. */
 const OP_EVENT = 119
+/**
+ * Holds when the Hero has no companion with them; its argument is 0 on all 7
+ * in Angel Falls. Each of those records sits before a character's first-time
+ * event and gives the label that comes after it instead — and in every one of
+ * those events (2222, 2230, 2240, 2250, 2430, 2440, 2450) Ivor speaks. So
+ * without Ivor the character just talks. INFERRED.
+ */
+const OP_ALONE = 86
 /** The label of a character's plain line — the commonest, and the one chapter B's day-to-day lines carry. INFERRED. */
 const PLAIN = 16
 
@@ -511,8 +520,20 @@ const labelOf = (line: TalkLine) => line.unknown_numbers[line.unknown_numbers.le
 
 /** What a character says now: one of their lines, or an event that runs instead. */
 export type Choice =
-  | { readonly kind: 'line'; readonly line: TalkLine; readonly why: string }
-  | { readonly kind: 'event'; readonly event: number; readonly why: string }
+  | {
+      readonly kind: 'line'
+      readonly line: TalkLine
+      readonly why: string
+      /** The marks the record that chose it sets — see `OP_SET_MARK`. */
+      readonly marks?: readonly number[]
+    }
+  | {
+      readonly kind: 'event'
+      readonly event: number
+      readonly why: string
+      /** The marks the records that chose it set — see `OP_SET_MARK`. */
+      readonly marks?: readonly number[]
+    }
 
 export interface Asking {
   readonly triggers: readonly Trigger[]
@@ -526,6 +547,10 @@ export interface Asking {
   readonly lines: readonly TalkLine[]
   /** The story flags set — see `flagsHold`. None, when not given. */
   readonly flags?: ReadonlySet<number>
+  /** The marks set, the second set of flags — see `OP_IF_MARK`. Not read when not given. */
+  readonly marks?: ReadonlySet<number>
+  /** Whether the Hero has no companion with them — see `OP_ALONE`. Not read when not given. */
+  readonly alone?: boolean
 }
 
 /**
@@ -543,8 +568,9 @@ export interface Asking {
  * says it is a guess.
  */
 export function pickLine(asking: Asking): Choice | undefined {
-  const { triggers, map, stage, night, id } = asking
+  const { triggers, map, stage, night, id, marks } = asking
   const flags = asking.flags ?? new Set<number>()
+  let marked: number[] = []
   const lines = asking.lines.filter((line) => line.tag === 1)
   const labels = new Set(lines.map(labelOf))
   let label = PLAIN
@@ -564,11 +590,13 @@ export function pickLine(asking: Asking): Choice | undefined {
         (w) =>
           w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_LABEL_OF || w.op === OP_EVENT,
       ) &&
-      flagsHold(words, flags)
+      flagsHold(words, flags, marks) &&
+      (asking.alone === undefined || asking.alone || !words.some((w) => w.op === OP_ALONE))
     )
   })
   if (trigger) {
     const words = wordsOf(trigger)
+    marked = marksSet(words)
     const where = `the trigger at 0x${trigger.offset.toString(16)}`
     const named = words.find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
     // The label the record chooses, by its own words — after the character's
@@ -581,12 +609,16 @@ export function pickLine(asking: Asking): Choice | undefined {
       named ??
       (at >= 0 ? words.slice(at + 1).find((w) => w.arg === 0 && w.op !== 0)?.op : undefined)
     const leads =
-      chosenHere === undefined ? undefined : labelEvent(triggers, applies, id, chosenHere, flags)
+      chosenHere === undefined
+        ? undefined
+        : labelEvent(triggers, applies, id, chosenHere, flags, marks)
     if (leads) {
+      const both = [...marked, ...leads.marks]
       return {
         kind: 'event',
         event: leads.event,
         why: `event ${leads.event}, which label ${chosenHere} leads to by the trigger at 0x${leads.offset.toString(16)}`,
+        ...(both.length > 0 ? { marks: both } : {}),
       }
     }
     const byWord = words.some(
@@ -602,7 +634,12 @@ export function pickLine(asking: Asking): Choice | undefined {
       label = byWord
       why = `label ${byWord}, from ${where}`
     } else if (event !== undefined) {
-      return { kind: 'event', event, why: `event ${event}, from ${where}` }
+      return {
+        kind: 'event',
+        event,
+        why: `event ${event}, from ${where}`,
+        ...(marked.length > 0 ? { marks: marked } : {}),
+      }
     }
   }
 
@@ -614,7 +651,12 @@ export function pickLine(asking: Asking): Choice | undefined {
       isNightLine(chosen) === night
         ? ''
         : ` — the ${isNightLine(chosen) ? 'night' : 'day'} line, as there is none for the ${night ? 'night' : 'day'}`
-    return { kind: 'line', line: chosen, why: why + time }
+    return {
+      kind: 'line',
+      line: chosen,
+      why: why + time,
+      ...(marked.length > 0 ? { marks: marked } : {}),
+    }
   }
   const guess = covering.find((line) => isNightLine(line) === night) ?? covering[0]
   if (guess) {
@@ -647,15 +689,16 @@ function labelEvent(
   id: number,
   label: number,
   flags: ReadonlySet<number>,
-): { event: number; offset: number } | undefined {
+  marks: ReadonlySet<number> | undefined,
+): { event: number; offset: number; marks: number[] } | undefined {
   for (const candidate of triggers) {
     if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
     const words = wordsOf(candidate)
     if (!words.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
     if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(words, flags)) continue
+    if (!flagsHold(words, flags, marks)) continue
     const event = words.find((w) => w.op === OP_EVENT)?.arg
-    if (event !== undefined) return { event, offset: candidate.offset }
+    if (event !== undefined) return { event, offset: candidate.offset, marks: marksSet(words) }
   }
   return undefined
 }

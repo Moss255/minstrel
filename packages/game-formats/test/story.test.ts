@@ -5,6 +5,7 @@ import {
   flagsHold,
   KIND_ENTRY,
   KIND_EVENT,
+  marksSet,
   OP_IF_FLAG,
   OP_UNLESS_FLAG,
   triggerWords,
@@ -200,5 +201,20 @@ describe('the story in trigger records', () => {
     expect(flagsHold(after, new Set([0]))).toBe(true)
     expect(flagsHold(after, new Set([0, 1]))).toBe(false)
     expect(flagsHold([{ op: 6, arg: 8 }], new Set())).toBe(true)
+  })
+
+  it('holds the second set’s conditions, the marks, only when they are given', () => {
+    const firstTime = [
+      { op: 3, arg: 7 },
+      { op: 102, arg: 7 },
+    ]
+    const after = [{ op: 2, arg: 7 }]
+    expect(flagsHold(firstTime, new Set(), new Set())).toBe(true)
+    expect(flagsHold(firstTime, new Set(), new Set([7]))).toBe(false)
+    expect(flagsHold(after, new Set(), new Set())).toBe(false)
+    expect(flagsHold(after, new Set(), new Set([7]))).toBe(true)
+    // Without the marks, as before: not read.
+    expect(flagsHold(after, new Set())).toBe(true)
+    expect(marksSet(firstTime)).toEqual([7])
   })
 })
