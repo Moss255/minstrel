@@ -94,6 +94,8 @@ export function companionFighter(
     shield: who.shield !== undefined,
     exp: 0,
     gold: 0,
+    // `attnpc`'s level, INFERRED — Ivor's 3 — for a monster to weigh before it runs.
+    level: who.level,
   }
 }
 

@@ -91,6 +91,7 @@ describe('the party beside the Hero', () => {
       shield: true,
       exp: 0,
       gold: 0,
+      level: ivor.level,
     })
     expect(companionFighter({ ...ivor, shield: undefined }).shield).toBe(false)
   })

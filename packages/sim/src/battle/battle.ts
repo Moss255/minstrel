@@ -44,8 +44,9 @@ import {
  * - a monster's target, a draw among the living party;
  * - which of its six ways a monster takes is the reference's draw, but the
  *   weights are its even table for every monster (see {@link Rules.choice});
- *   a monster that flees always gets away, and pays nothing; one that would
- *   heal with no one hurt attacks instead;
+ *   a monster that flees gets away, and pays nothing; one that would heal
+ *   with no one hurt attacks instead; one that would flee from a party not
+ *   yet strong enough — see {@link Fighter.runsFrom} — attacks instead;
  * - the critical chance, the reference's 200 in 10,000 for its level-13 case —
  *   how the game derives it is not read;
  * - fleeing, which the reference does not model: {@link Rules.flee} in 100;
@@ -85,6 +86,16 @@ export interface Fighter {
   readonly acts?: readonly FoeAction[]
   /** The weights its ways are drawn by, in 256, where they are not the rules' — a boss's falling table. */
   readonly choice?: readonly number[]
+  /** A party member's level, which a monster weighs before it runs. */
+  readonly level?: number
+  /**
+   * The party level a monster runs from: a drawn Flee is taken only when the
+   * highest level among the standing party has reached it, and is an attack
+   * otherwise. Without it, or with no party level known, a drawn Flee is
+   * taken. The game's level and margin from `fld_mondata` — INFERRED; that a
+   * Flee below it becomes an attack is ours.
+   */
+  readonly runsFrom?: number
 }
 
 export interface FighterState extends Fighter {
@@ -325,7 +336,7 @@ function foeCommand(
   if (act.kind === 'attack') {
     return act.poison === undefined ? attack : { kind: 'attack', target: -1, poison: act.poison }
   }
-  if (act.kind === 'flee') return { kind: 'flee' }
+  if (act.kind === 'flee') return outclassed(me, fighters) ? { kind: 'flee' } : attack
   if (act.kind === 'wait') return { kind: 'wait', action: act.action }
   if (act.kind === 'change') return { kind: 'change', changing: act.changing, target: -1 }
   if (act.spell.does === 'harm') return { kind: 'spell', spell: act.spell, target: -1 }
@@ -338,6 +349,17 @@ function foeCommand(
     if (!was || f.hp * was.maxHp < was.hp * f.maxHp) best = i
   }
   return best < 0 ? attack : { kind: 'spell', spell: act.spell, target: best }
+}
+
+/** Whether a monster may run: the standing party's highest level has reached its {@link Fighter.runsFrom}. */
+function outclassed(me: FighterState, fighters: readonly FighterState[]): boolean {
+  if (me.runsFrom === undefined) return true
+  let highest: number | undefined
+  for (const f of fighters) {
+    if (f.side === me.side || !alive(f) || f.level === undefined) continue
+    highest = highest === undefined ? f.level : Math.max(highest, f.level)
+  }
+  return highest === undefined || highest >= me.runsFrom
 }
 
 function outcomeOf(fighters: readonly FighterState[]): Outcome {

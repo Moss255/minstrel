@@ -2747,7 +2747,8 @@ for each monster of seven values. `readFieldMonsters` reads it.
 | value | reading |
 |---|---|
 | 0 | the monster's number |
-| 1, 2 | not established — 1 and 5 on the slime, 7 and 12 on the she-slime, −99 and −99 on the metal slime, 99 on many |
+| 1 | the monster's level, INFERRED: excluding the 149 bosses (value 2 is 0 on all of them and no other), its rank agrees with maximum HP's at 0.84 and experience's at 0.88 over 280 monsters — slime 1, dracky 3, spirit 5, skeleton 12 |
+| 2 | the margin by which the party's level must pass value 1 before the monster runs, INFERRED: −99 on the metal family (whose value 1 is −99: they run at once), 99 on 185 (never), 5 to 22 on most of the rest; 1 and 5 on the slime, 7 and 12 on the she-slime |
 | 3 | a packed word, not established |
 | 4 | a float, INFERRED a speed: 0.40 on the slimes, 0.70 the drackies, 0.80 the firespirit, 0.90 the funghouls, 1.20 the meowgician |
 | 5, 6 | attack and defence — **equal to the battle data's on all 438** |

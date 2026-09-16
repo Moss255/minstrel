@@ -198,6 +198,41 @@ describe('a foe', () => {
     expect(spoils(state)).toEqual({ exp: 0, gold: 0 })
   })
 
+  it('runs only from a party whose highest standing level has reached its own mark', () => {
+    const slime: Fighter = {
+      ...blob('slime', 8),
+      acts: [{ kind: 'attack' }, { kind: 'flee' }],
+      runsFrom: 6,
+    }
+    const fledAt = (levels: readonly (number | undefined)[], down: readonly boolean[] = []) => {
+      const party = levels.map((level, i) => ({
+        ...tough,
+        ...(level === undefined ? {} : { level }),
+        maxHp: down[i] ? 1 : tough.maxHp,
+      }))
+      const start = startBattle([...party, slime])
+      const hurt = down.some(Boolean)
+        ? withHp(start, new Map(down.flatMap((d, i) => (d ? [[i, 0]] : []))))
+        : start
+      const commands = new Map<number, Command>(party.map((_, i) => [i, { kind: 'defend' }]))
+      const { events } = playRound(hurt, commands, new BattleRng(1n), only(1))
+      const at = party.length
+      return {
+        fled: events.some((e) => e.kind === 'flee' && e.actor === at),
+        attacked: events.some((e) => e.kind === 'attack' && e.actor === at),
+      }
+    }
+    // Level 5 is short of 6: the drawn Flee is an attack.
+    expect(fledAt([5])).toEqual({ fled: false, attacked: true })
+    // Level 6 reaches it.
+    expect(fledAt([6]).fled).toBe(true)
+    // The highest of the party counts, but only while standing.
+    expect(fledAt([3, 9]).fled).toBe(true)
+    expect(fledAt([3, 9], [false, true]).fled).toBe(false)
+    // With no level known, it runs as before.
+    expect(fledAt([undefined]).fled).toBe(true)
+  })
+
   it('draws each of its six ways, over enough turns, by the even table', () => {
     const acts = [0, 1, 2, 3, 4, 5].map((i) => ({
       kind: 'spell' as const,

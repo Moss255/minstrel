@@ -153,7 +153,7 @@ describe('encounters', () => {
 })
 
 describe('field monsters', () => {
-  it('reads each monster: its number, speed, attack and defence, and the rest carried', () => {
+  it('reads each monster: its number, level and margin, speed, attack and defence, and the rest carried', () => {
     const table = readFieldMonsters(
       build([
         { tag: 0x64, values: [2] },
@@ -163,14 +163,14 @@ describe('field monsters', () => {
     )
     expect(table.get(1)).toEqual({
       number: 1,
-      unknown_1: 1,
-      unknown_2: 5,
+      level: 1,
+      runsFromMargin: 5,
       unknown_3: 0x3c0251,
       speed: expect.closeTo(0.4, 5),
       attack: 10,
       defence: 7,
     })
-    expect(table.get(3)?.unknown_1).toBe(-99)
+    expect(table.get(3)?.level).toBe(-99)
     expect(() => readFieldMonsters(build([{ tag: 0x65, values: [1, 2, 3] }]))).toThrow(
       GameFormatError,
     )

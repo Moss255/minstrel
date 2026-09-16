@@ -2854,6 +2854,16 @@ function wornNumbers(): { attack: number; defence: number; agility: number } {
 }
 
 /**
+ * The party level a monster runs from: its level and margin from `fld_mondata`
+ * added — see `FieldMonster.level`. A monster with no record there runs as
+ * before, whenever it draws its Flee.
+ */
+function runsFromOf(number: number): { runsFrom?: number } {
+  const field = loaded?.fieldMonsters.get(number)
+  return field ? { runsFrom: field.level + field.runsFromMargin } : {}
+}
+
+/**
  * Start a battle with these monsters, by code, where the Hero stands.
  *
  * The Hero fights with their level's numbers. **Their attack, defence and
@@ -2913,6 +2923,8 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
       shield: false,
       exp: numbers.exp,
       gold: numbers.gold,
+      // It runs only from a party past its level by its margin — `fld_mondata`, INFERRED.
+      ...runsFromOf(who.number),
     })
     looks.push(monsterLookOf(cartridge, code))
   }
@@ -2928,6 +2940,8 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     shield: equipped.has('shield'),
     exp: 0,
     gold: 0,
+    // What a monster weighs before it runs — see `Fighter.runsFrom`.
+    level: row.level,
   }
   // Whoever goes along stands and fights beside the Hero, in their places —
   // see `companionsAt`.

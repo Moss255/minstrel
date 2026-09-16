@@ -144,6 +144,38 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 ---
 
+## Monsters run from a strong party — 16 September
+
+**Monsters fled far too often.** Most of the slice's monsters have Flee as two
+of their six ways, drawn evenly, and a drawn Flee always got away: a slime ran
+one turn in three from a level 1 Hero.
+
+**A drawn Flee is now taken only from a party strong enough**, and is an attack
+otherwise. `fld_mondata`'s values 1 and 2 are read as the monster's level and
+the margin the party's level must pass it by (INFERRED, game-formats'
+FORMAT.md, "Field monsters"): value 1's rank agrees with maximum HP's at 0.84
+and experience's at 0.88 over the 280 monsters that are not bosses; value 2 is
+0 on the 149 bosses and no other monster, −99 on the metal family (whose level
+is −99: they run at once) and 99 on 185 (never). The party's level is the
+highest among those standing: the Hero's, and Ivor's `attnpc` 3.
+
+| monster | Flee ways of six | level | margin | runs from level |
+|---|---|---|---|---|
+| slime | 2 | 1 | 5 | 6 |
+| cruelcumber | 1 | 1 | 5 | 6 |
+| dracky | 2 | 3 | 5 | 8 |
+| bodkin archer | 2 | 4 | 5 | 9 |
+| spirit | 2 | 5 | 5 | 10 |
+| teeny sanguini | 2 | 2 | 12 | 14 |
+| sacksquatch, batterfly, bag o' laughs, mecha-mynah | 1 or 2 | 2 to 5 | 99 | never |
+
+**Ours:** that the margin is weighed in battle at all, rather than only on the
+field; that the highest standing level is the party's; that a Flee short of it
+is an attack. **Worth checking against a let's play**: whether slimes run from
+the Hero at level 6 and not at 5.
+
+---
+
 ## Chests open — 16 September
 
 **A chest is a body and a lid**, not a shut model and an open one. Drawn as
@@ -1799,7 +1831,9 @@ own id — the zone's battle company from `encbtl`, each monster's field speed
   roamer's own numbers are not read;
 - speed as the Hero's walking speed times the field float;
 - no running from a strong party: `fld_mondata`'s first two numbers look like a
-  level and a threshold, but are not read.
+  level and a threshold, but are not read. (Read since, 16 September, as a
+  level and a margin, for a monster's Flee in battle — see "Monsters run from
+  a strong party". Whether they also keep the field's monsters away is not.)
 
 **Left for M6:** which zone applies where — by day and night, the story, or a
 file not read yet; the monsters who flee a strong party; field-to-battle
