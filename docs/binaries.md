@@ -34,6 +34,30 @@ Nothing here is copied into the repository; each is read at runtime.
   of five is `1100, 1200 … 2000` at ARM9 `0xE6EC4`, which does not look like
   inns. The price the innkeeper's `<val_2>` shows is still not found.
 
+## Still to look for
+
+Each with the shape a search would go by, the witness that would confirm a
+find, and what to do if the binaries do not give it up. The witness matters
+more than the shape: a run of plausible bytes with nothing independent to
+check against is not a find.
+
+| what | shape to search by | witness | otherwise |
+|---|---|---|---|
+| **The critical, dodge and flee chances** | the words beside the weight tables — `1024, 2560, 2048, 1024` read against 32768 are 1/32, 5/64, 1/16 and 1/32; against 4096, a quarter and more — and the float `0.2` | the reference battle emulator's constants; the let's plays' count of critical hits per attack over the fights they show | the emulator, counting criticals over a long fight with a known deftness |
+| **The damage spread** | the sixteen 12-bit words before the tables, `0x0E35` to `0x1051` — 0.888 to 1.020 in 4096ths, perhaps the multipliers a roll of the damage picks from | the let's plays' damage numbers already checked against the reference formula: their spread should sit inside these bounds and no others | keep the reference's spread, which the let's plays fit |
+| **Which monsters draw by the third and fourth tables** | a field in `mon_btldata.nat`'s records with values 0–3 that agrees with the boss bit for the first two; or the code that indexes the run, in the overlay that runs battles | the `210 29 10 4 2 1` table would show as a monster that almost always takes its first way; a let's play against one | the emulator, a long fight with such a monster, counting its ways |
+| **The inn's price** | the engine function the innkeeper's script calls to fill `<val_2>` — find the innkeeper's talk script's function numbers first (`packages/script`), then the code behind the one that computes a price; a multiply by the party's size near a small constant | the price the let's play's innkeeper names, with a party of one; the same again with two | the emulator: rest with one and with two in the party |
+| **A treasure's kind → sprite** | the code in overlay 17 that reads the table at `0x4AFD0`; a map object's kind value against ids 6–8 (pots) and 9, 10, 4 (barrels) | the let's play's pots and barrels on the maps we show, against the objects' kinds in the map files | the emulator, one of each on a known map |
+| **How the game keeps time** | frame counts for the day's steps — `7200` (`0x1C20`, our 120 s at 60 Hz), `9000` (`0x2328`), or a table of steps — near the code that sets the night pieces; a saved-game field the time goes in | the let's play's evening and night in 2.2, whose seconds are ours; a second video with a different pace would show the rule | leave ours: 120 s to evening, 150 s to night, from the let's play |
+| **The Hero's starting purse** | the new-game initialiser's constants: level 1, the starting gold, the first items | the let's play's first look at the gold | the emulator's new game |
+| **Ivor's numbers as a guest** | a table of guest party members — a row holding a level and HP, MP, attack, defence, agility that match what Ivor shows in the let's play's fights | the let's play's battle screens with Ivor in the party | the emulator, Ivor's status screen |
+| **The shops' selling price** | a constant ratio — `75` or a multiply-by-3-and-shift near the shop code; or a table of ratios by kind | the let's play's sale of one item whose price the item table gives | the emulator, selling one item |
+| **The drop chance's steps** | the table the monster record's drop-rate field indexes — 1/2 … 1/256, or 4096ths | the reference emulator's or the community's drop rates for a known monster | the reference's table, marked INFERRED |
+| **Which zone roams when** | the code that picks a map's encounter zone by the hour; a table of hour bounds | the let's plays: night on 2.2 roams the night zone; day, the day's | leave ours: the zone kind by the time of day |
+
+The party's colours, Ivor's greeting and the menus' sounds are the files' and
+the layouts', not the binaries', and are listed in `docs/next.md`.
+
 ## How to search
 
 `scratchpad`-style scripts are not kept; the approach was: unpack the ARM9

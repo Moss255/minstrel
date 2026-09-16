@@ -39,7 +39,8 @@ APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/sh
 The inn's price; the critical and flee chances; Ivor's numbers; what ends
 2.2's night; which zone roams when; the party's colours; pot or barrel;
 Ivor's greeting. ("Used by" and the monsters' six-way weights are read now —
-see the table below and `docs/binaries.md`.)
+see the table below and `docs/binaries.md`, whose "Still to look for" gives
+each of these the shape a search of the code would go by, and its witness.)
 
 **Where the equipment's numbers are read — for reference:**
 
