@@ -36,9 +36,23 @@ APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/sh
 
 **2. Needs the emulator — questions, each a line in the list below**
 
-Equipment rarity and "Used by"; the inn's price; the monsters' six-way
-weights, critical and flee chances; Ivor's numbers; what ends 2.2's night;
-which zone roams when; the party's colours; pot or barrel; Ivor's greeting.
+Which vocations may use which weapon kinds (the one part of "Used by" not
+on the cartridge — the rest is read, see below); the inn's price; the
+monsters' six-way weights, critical and flee chances; Ivor's numbers; what
+ends 2.2's night; which zone roams when; the party's colours; pot or barrel;
+Ivor's greeting.
+
+**Where the equipment's numbers are read — for reference:**
+
+| what | where on the cartridge | read by | written up |
+|---|---|---|---|
+| attack, defence, deftness, agility, magical might, evasion, critical | the stats table after each `itemdt_<c>_en.nat`'s records, words 5–7 | `readItemStats`, `itemstats.ts` | `packages/game-formats/FORMAT.md`, "The stats" |
+| rarity, 0–5 stars | the item record's byte `+0x15`, bits 1–3 | `readItemTable`, `itemtable.ts` → `ItemRecord.rarity` | FORMAT.md, "Items", the record table; `docs/next.md`, "Rarity and Used by" |
+| who may wear it, armour and accessories | the stats entry's word 4, bits 0–11: bit v − 1 for vocation v in the level tables' order | `ItemStats.usedBy` | FORMAT.md, "The stats", "Which bit is which" |
+| who may use a weapon or shield | not on the cartridge as a table; the vocations' skill trees are chosen in code | — | FORMAT.md, "Weapons and shields carry no bits" |
+| the vocations' names and order | `str_tm` 2100–2112, Guardian then warrior to ranger; the skill trees named for them, `str_sklc` 15–26 | `Loaded.menuWords` | FORMAT.md, "Battle text" |
+| the pictograms | `/data/ani/obj_gl.pac`, cells 10–21, in the "Used by" grid's order | `readEquipPieces`, `equip-screen.ts` | `equip-screen.ts`, `USED_BY_ORDER` |
+| the lit star | `/data/ani/oiij.gp2`, `obj_iteminfo` cell 21 | `readEquipPieces` | `equip-screen.ts`, `STAR_LIT_CELL` |
 
 **3. Code polish, open, none blocking**
 
