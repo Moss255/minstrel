@@ -9,7 +9,7 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
-## What is still open — 16 September, at the audio commit
+## What is still open — 16 September, at the end of M8
 
 This replaces the list of 15 September. Each gap's evidence is in the section
 it names, below.
@@ -21,7 +21,11 @@ scripts; M4 has shops, the inn, saving and equipment with its numbers; M5 has
 battles, spells, states, monsters acting and a party of up to four; M6 has the
 field's monsters, the marsh and Ivor following; M7 is complete — the pass, the
 Hexagon, Hexagoon, Patty and the title card — and walked start to finish by the
-tester. **M8 is under way**: the music, the scenes' effects and jingles, the controls panel and the text speed.
+tester. **M8 is done**: the music and each map's track, the scenes' effects
+and jingles, the controls panel, the text speed, the licence and the guide,
+and the cartridge checked and kept. The slice's definition of done is met,
+with the one reading that "converted and cached" became "kept, unconverted"
+at the owner's word. What is left is what an ear or the emulator settles.
 
 **Against the definition of done:**
 
