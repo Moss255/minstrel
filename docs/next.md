@@ -39,7 +39,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | gap | milestone | what it needs |
 |---|---|---|
 | **Music: the tempo** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob. Which track plays where is read now, from the map index. Then the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
-| The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word; licence and contribution guide. Done: input remapping, text speed, the scenes' effects and jingles. |
+| The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word. Done: input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | Sprite characters' walking frames in scenes; who is shown and hidden when (`570`, `571`, `223`); a fade on going through a doorway; Ivor's faces; the camera's even pace and field of view. |
 | The time of day | M6 | The let's play moves into evening and night; ours stays in daylight. Which zone roams when is measured, not settled. |
 | Equipment's rest | M4 | A shield on the Hero's back not yet seen (the starting kit has none); the equipment screen's small figure undressed; its layouts (`lay_eq.lia`); rarity and "Used by" not found. |
@@ -71,8 +71,25 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
   talked to.
 - **Which zone roams when and where**, and whether the mix changes at night.
 
-**Where to start next time:** the tempo, with the knob; then the licence and
-guide, and the hash and cache last.
+**Where to start next time:** the tempo, with the knob; then the hash and
+cache, the last of M8.
+
+---
+
+## The licence and the contribution guide — 16 September
+
+**Both written.** `LICENSE.md` says which packages are MIT — the parsers and
+tools, so any DS tool can use them — and which GPL-3.0-or-later — the engine
+and both apps — with the texts in `LICENSES/` and a copy in every workspace
+package as its `LICENSE`, matching the `license` field each `package.json`
+already carried. The copyright line names "the minstrel authors", the people
+in the commit history, rather than a person; change it if a name is wanted.
+`CONTRIBUTING.md` puts the three hard rules in front of people as `CLAUDE.md`
+puts them in front of the tooling, with the setup, the package boundaries,
+the two habits worth naming (say what was read and what is ours; every
+parser has a `FORMAT.md`), what a pull request needs, findings without code,
+and what will not be merged. The README links both and gains `@minstrel/script`
+and `tools/sprite` in its table.
 
 ---
 

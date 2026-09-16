@@ -18,8 +18,8 @@ the inn, saving and equipment, drawn on the party; M5 has battles, spells,
 states and a party of up to four; M6 has the field's monsters and the
 companion following; M7 is the road, the dungeon and its boss. M8 is under
 way: the music and the scenes' sound effects play, the controls can be
-remapped, the text speed set. Open in M8: which track plays where, the
-cartridge's hash check and asset cache, the licence and contribution guide.
+remapped, the text speed set, and each map plays its own track. Open in M8:
+the cartridge's hash check and asset cache.
 
 Every reading of an undocumented format or script is marked as read or
 inferred, with its evidence, in the package's `FORMAT.md`; what is ours
@@ -44,6 +44,7 @@ rather than the game's is said so.
 | [`@minstrel/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
 | [`@minstrel/render`](packages/render) | GPL-3.0+ | the camera, and how the DS's framing extends to other screens |
 | [`@minstrel/audio`](packages/audio) | GPL-3.0+ | the sequencer and mixer that play SSEQ through an AudioWorklet |
+| [`@minstrel/script`](packages/script) | GPL-3.0+ | the event-script machine, its engine functions supplied by the host |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | [`@minstrel/cartridge`](packages/cartridge) | MIT | walk a cartridge, unwrap its containers, index what comes out |
@@ -51,6 +52,7 @@ rather than the game's is said so.
 | [`@minstrel/actor`](packages/actor) | GPL-3.0+ | character assembly, rig attachment, motion |
 | [`@minstrel/gl`](packages/gl) | GPL-3.0+ | WebGL2 backend and the DS reference target |
 | `tools/shot` | MIT | serve a built app with a local cartridge and screenshot it |
+| `tools/sprite` | MIT | render a sprite sheet to a PNG for looking at, local-only |
 | `apps/game` | GPL-3.0+ | play the opening slice from your own dump |
 | `apps/explorer` | GPL-3.0+ | browse any DS cartridge |
 
@@ -227,10 +229,18 @@ typechecked without DOM types so a stray `document` cannot compile.
 
 ## Conventions
 
-See [`CLAUDE.md`](CLAUDE.md). The two that matter most:
+See [`CONTRIBUTING.md`](CONTRIBUTING.md), and [`CLAUDE.md`](CLAUDE.md) for the
+operational layer the tooling reads. The two that matter most:
 
 1. **Never commit cartridge-derived content.** Not assets, not tables, not
    golden files of raw bytes.
 2. **Never invent format details.** Parse only fields confirmed by observed
    bytes or published documentation; record the evidence in `FORMAT.md`; carry
    unknown regions through as named opaque bytes rather than skipping them.
+
+## Licence
+
+Package by package — see [`LICENSE.md`](LICENSE.md). The parsers and tools
+are MIT, so any DS tool can use them; the engine and both apps are
+GPL-3.0-or-later. Nothing from the game is in this repository, and nothing
+here grants any right to it.
