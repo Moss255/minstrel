@@ -144,6 +144,28 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 ---
 
+## Chests open — 16 September
+
+**A chest is a body and a lid**, not a shut model and an open one. Drawn as
+the old reading had it, a chest stood open until it was opened and then showed
+only its lid. The casino's prize chest, `z077a_i0`, puts `T00GDS02` on
+`T00GDS01`'s top at its −z edge, and that is how they are drawn now: the lid
+seated on the body, hinged at the back (`chests.ts`; game-formats' FORMAT.md,
+"Treasure").
+
+**The Hero opens it.** Walking up to a shut chest and taking it plays
+`takara`, the treasure motion every player figure carries, once; the lid goes
+back as the Hero's arms rise, frames 6 to 9, and the text of what was inside
+comes when the motion ends. The Hero cannot walk, talk or be walked into by a
+monster meanwhile.
+
+**Ours:** how far the lid goes back, 110°; that it goes at the rate of the
+hands; and the text waiting for the motion. **INFERRED:** that the lid rises
+with the hands, from the motion's crouch to a chest's lid height. No file
+animates a chest's lid. A cabinet opens as before, by its own motion.
+
+---
+
 ## The field's monsters: moving, and on the ground — 16 September
 
 **Every monster animates now.** A motion was only played when its bone count

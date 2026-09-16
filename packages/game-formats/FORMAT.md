@@ -2403,14 +2403,26 @@ and `R05M01` with its 22 lettered copies.
 **The chest model is `T00GDS01`–`04`, in `/data/bin/icon.nsarc`** — the
 archive of things the engine draws in the world by itself: speech bubbles,
 battle cursors, the pot and barrel sprites, a coffin (`kanoke`) and a round
-shadow (`kage`). They are two chests, each shut and open: `01` and `03` a box
-0.80 by 0.68 by 0.41 with its lid down, 18 vertices; `02` and `04` the same box
-0.23 high with the lid thrown back towards +z, 22 and 24. `01` and `02` bind
-one 64×64 texture, red-brown, `03` and `04` another, grey. Nothing names them
-as chests: that is read from the shapes. INFERRED: they are in the files' own
-units — 0.41 is 28% of a person, where in the characters' space, the coffin's,
-it would be 1% — their front is −z, the kinds with a facing are chests, and kind
-`0x40` takes the second, grey one.
+shadow (`kage`). **They are two chests, each a body and a lid**: `01` and `03`
+the body, a box 0.80 by 0.68 by 0.41 whose top face is drawn as the dark
+inside, 18 vertices; `02` and `04` the lid alone, a dome 0.23 high reaching
+0.68 along +z from its own origin, 22 and 24. `01` and `02` bind one 64×64
+texture, red-brown, `03` and `04` another, grey. (First read as a chest shut
+and the same chest open; drawn so, a chest stood open until it was opened and
+then showed only its lid.)
+
+**How the two go together is read from the casino's prize chest**,
+`/data/enemy/z077a_i0.chr`: its model's nodes are `light_off`, `T00GDS01` and
+`T00GDS02`, and the lid's node stands at (0, 6.3, −5.2) over a body 6.29 high
+and 5.21 either side — on the body's top, its origin on the body's −z edge, the
+dome then covering the body exactly (the icon files are the same pieces at a
+fifteenth of the size). The lid's origin is its hinge: **the back is −z, the
+front +z**, as the chest in `M01M08` stands, with no floor behind its −z side.
+Neither of the casino chest's motions, `GGG_i` and `777_i`, turns the lid; no
+file found animates one. Nothing names these as chests: that is read from the
+shapes. INFERRED: they are in the files' own units — 0.41 is 28% of a person,
+where in the characters' space, the coffin's, it would be 1% — the kinds with a
+facing are chests, and kind `0x40` takes the second, grey one.
 
 It was found only after the search below, which went by name. **No file on
 the cartridge is named for a chest,**
@@ -2435,8 +2447,10 @@ villager's, and how they are laid out is not established. `taru_03` has no
 candidate palette at all; its animation is named `tsubo_03`, which suggests a
 copy of the pot's small sheet, but what `_03` is — a shard, perhaps — is not
 established either. The player's figures do carry `takara.nsbca`
-(*takara* is treasure) beside `hirou.nsbca`, which is presumably the Hero's
-opening motion; it is not used yet.
+(*takara* is treasure) beside `hirou.nsbca`: 14 frames, a crouch to the
+forearms' lowest on frame 5, at a chest lid's height, and a lift up and forward
+to their highest on 9. The game plays it as the Hero opens a chest, the lid
+going back with the hands — INFERRED from the motion's shape.
 
 Nor is one named inside a model or a texture set. Of 8,207 models and the
 23,585 textures of 1,495 standalone texture files, the one texture named

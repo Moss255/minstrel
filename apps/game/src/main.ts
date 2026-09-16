@@ -1390,9 +1390,12 @@ function frame(now = 0): void {
       trailWas[2 * i] = trail.x
       trailWas[2 * i + 1] = trail.z
     })
-    const { moving, travelled, marshTicks } = playing
-      ? { moving: false, travelled: 0, marshTicks: 0 }
-      : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow)
+    // Opening a chest holds the Hero where they knelt — see `openChest`.
+    if (opening) followChestOpening(now)
+    const { moving, travelled, marshTicks } =
+      playing || opening
+        ? { moving: false, travelled: 0, marshTicks: 0 }
+        : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow)
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
     marshCarry += marshTicks
     while (marshCarry >= MARSH_TICKS) {
@@ -1408,7 +1411,7 @@ function frame(now = 0): void {
     })
     // The field's monsters, on the Hero's own ticks, and only while nothing
     // else is up — see `beginRoaming`.
-    if (roaming && !battle && !menu && !visit && !talking && !playing) {
+    if (roaming && !battle && !menu && !visit && !talking && !playing && !opening) {
       roamCarry = Math.min(roamCarry + elapsedMs, TICK_MS * 8)
       while (roamCarry >= TICK_MS && roaming) {
         roamCarry -= TICK_MS
@@ -1503,7 +1506,7 @@ function frame(now = 0): void {
       if (list) list.push(chunkLocal[chunk] as number)
       else hiddenIn.set(shape, [chunkLocal[chunk] as number])
     }
-    const heroPose = heroEventPose()
+    const heroPose = heroEventPose() ?? chestOpeningPose(now)
     const drawn = [
       ...mapPieces.map((piece, shape) => {
         const gone = hiddenIn.get(shape)
@@ -2022,9 +2025,15 @@ function refreshTreasures(): void {
   const { code, treasures } = loaded
   const isOpen = (treasure: Treasure, slot: number) =>
     openedTreasure.has(treasureKey(code, slot, treasure))
+  // A chest being opened lifts its lid with the Hero's hands — see `openChest`.
+  const lidOpenness = (treasure: Treasure, slot: number) => {
+    const key = treasureKey(code, slot, treasure)
+    if (opening?.key === key) return lidRaised(performance.now())
+    return isOpen(treasure, slot) ? 1 : 0
+  }
   treasureDrawn = [
     // A chest is drawn with its own model; anything else placed keeps a marker.
-    ...chestPieces(treasures, loaded.chests, isOpen, (material) =>
+    ...chestPieces(treasures, loaded.chests, lidOpenness, (material) =>
       textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
     ),
     ...treasurePieces(
@@ -2082,16 +2091,98 @@ function openTreasureAhead(): boolean {
   if (!already) bag = take(bag, found.takings)
   // A pot or a barrel breaks as it is opened, and then is gone.
   if (!already && isPotOrBarrel(treasure)) smashedAt.set(key, performance.now())
+  const code = loaded.code
+  const tell = () => {
+    talking = startConversation(
+      { ...target, id: treasure.index ?? target.id },
+      `${cabinet ? `${cabinet.stem}, ` : ''}kind 0x${treasure.kind.toString(16)} in ${code}`,
+      [treasureText(treasure, already, found.text)],
+      [already ? 'already open' : found.note],
+    )
+    showTalk()
+  }
+  // A shut chest is opened by the Hero's own motion, and tells what was inside after.
+  if (!already && !cabinet && isChest(treasure) && loaded.figure.motions.has(OPEN_CHEST_MOTION)) {
+    opening = { key, started: performance.now(), lidUp: false, afterwards: tell }
+    return true
+  }
   openedTreasure.add(key)
-  talking = startConversation(
-    { ...target, id: treasure.index ?? target.id },
-    `${cabinet ? `${cabinet.stem}, ` : ''}kind 0x${treasure.kind.toString(16)} in ${loaded.code}`,
-    [treasureText(treasure, already, found.text)],
-    [already ? 'already open' : found.note],
-  )
   refreshTreasures()
-  showTalk()
+  tell()
   return true
+}
+
+/**
+ * The Hero opening a chest: `takara` — *treasure* — the motion every player
+ * figure carries beside `hirou`, picking up, played once at the map's rate.
+ *
+ * **The lid goes back from its frame 6 to 9.** The chest has no motion of its
+ * own — `T00GDS01` and `02` are its body and its lid, and nothing on the
+ * cartridge turns the one on the other (see `chests.ts`) — so the lid follows
+ * the Hero's hands. Frames 3 to 5 crouch, the forearms lowest on 5 at 31% of
+ * the figure's height — where a chest's lid is, 28% of a person — and from 6
+ * to 9 they rise up and forward, highest on 9. That the lid goes back as the
+ * hands rise is INFERRED from that; the text of what was inside waiting for
+ * the motion's end is **ours**.
+ */
+const OPEN_CHEST_MOTION = 'takara'
+const OPEN_CHEST_LID_FRAME = 6
+/** The frame the Hero's arms are highest, and the lid all the way back: 9. */
+const OPEN_CHEST_LID_UP = 9
+/** The chest being opened, when the Hero is opening one. */
+let opening:
+  | {
+      readonly key: string
+      readonly started: number
+      lidUp: boolean
+      readonly afterwards: () => void
+    }
+  | undefined
+
+/** How far into opening the chest the Hero is, in the motion's frames. */
+function chestOpeningFrame(now: number): number {
+  return opening ? Math.floor(chestOpeningTime(now)) : 0
+}
+
+/** The same, between frames. */
+function chestOpeningTime(now: number): number {
+  return opening ? ((now - opening.started) * MAP_FPS) / 1000 : 0
+}
+
+/** How far the lid of the chest being opened has gone back: 0 until the arms rise, 1 at their highest. */
+function lidRaised(now: number): number {
+  const along =
+    (chestOpeningTime(now) - OPEN_CHEST_LID_FRAME) / (OPEN_CHEST_LID_UP - OPEN_CHEST_LID_FRAME)
+  return Math.max(0, Math.min(1, along))
+}
+
+/** Put the lid up on its frame, and at the motion's end tell what was inside. */
+function followChestOpening(now: number): void {
+  const going = opening
+  const motion = loaded?.figure.motions.get(OPEN_CHEST_MOTION)
+  if (!going) return
+  const frame = chestOpeningFrame(now)
+  if (!going.lidUp && frame >= OPEN_CHEST_LID_FRAME) {
+    going.lidUp = true
+    openedTreasure.add(going.key)
+  }
+  // The lid moves every frame it is going up.
+  refreshTreasures()
+  if (!motion || frame >= motion.frameCount) {
+    openedTreasure.add(going.key)
+    opening = undefined
+    refreshTreasures()
+    going.afterwards()
+  }
+}
+
+/** The Hero's pose while opening a chest. */
+function chestOpeningPose(
+  now: number,
+): { readonly motion: Animation; readonly frame: number } | undefined {
+  const motion = opening ? loaded?.figure.motions.get(OPEN_CHEST_MOTION) : undefined
+  if (!motion) return undefined
+  return { motion, frame: Math.min(chestOpeningFrame(now), motion.frameCount - 1) }
 }
 
 /**
@@ -2112,7 +2203,7 @@ let talkThen: { event: number; answer: number | undefined } | undefined
 let talkAnswer: number | undefined
 
 function talk(everyLine = false): void {
-  if (!loaded || !self) return
+  if (!loaded || !self || opening) return
   if (talking) {
     const ending = talking
     // The answer given at a prompt, kept even where its branch ends the talk:
