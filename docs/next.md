@@ -96,7 +96,7 @@ at the owner's word. What is left is what an ear or the emulator settles.
 | The rest of M8 | M8 | Done: the hash check and the kept cartridge, input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
-| Equipment's rest | M4 | The layouts (`lay_eq.lia`), and rarity and "Used by", which want the emulator. Done: the figure on the equipment screen; a shield on the back seen. |
+| Equipment's rest | M4 | The layouts (`lay_eq.lia`); which vocations may use which weapon kinds, in the binaries' code. Done: rarity and "Used by" read from the cartridge and shown; the figure on the screen; a shield on the back seen. |
 | What battles still lack | M5 | Dazzle, sand and Weird Dance, read and not modelled; `calls for backup`; how the monsters weight their ways. Done: the damage checked against the let's play, the fight winnable from level 5 as the video won it, each action's own opening line. |
 | M4's stand-ins | M4 | `INN_PRICE` — no table on the cartridge; the binaries or the emulator. Done, as ours: Evac to the region's outside, holy water's calm. The wing's one destination is the slice's. |
 | The top screen's rest | M6 | Done: the place's name tab. HP, MP and the level are not on the game's field panel; the fuller panel in the sprite set is for a screen not seen; the `.bmmp` tags left are constant. |
@@ -106,10 +106,9 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 - **The tempo of one track against ours** — and whether the village's theme
   carries on into a house unbroken or starts again, and what the church plays.
-- **Equipment's numbers, a check now they are read**: a copper sword's attack
-  should be 7, a leather shield's defence 3. Rarity and "Used by" are not
-  found: open the equipment screen on the Flame shield (defence 18, rarity 1),
-  search RAM for its id, `8E 53`, and look for 18 and 1 near it.
+- **Which vocations may use which weapon kinds** — the one piece of "Used
+  by" not on the cartridge: the vocations' skill trees are chosen in code.
+  The equipment screen on any sword shows the answer for swords.
 - **A party member's colour** on the top screen: how the game picks each one's
   strip and dot, which in the capture of Stornway's church are the characters'
   own and none of the panel's four.
@@ -128,6 +127,46 @@ at the owner's word. What is left is what an ear or the emulator settles.
   of 2.2**: sleeping, or time.
 
 **Where to start next time:** the tempo, with the knob; M8 is otherwise done.
+
+---
+
+## Rarity and "Used by", read from the cartridge — 16 September
+
+**Both were said to be nowhere on the cartridge; both are.** Read from the
+values alone, no published table (game-formats' FORMAT.md, "Items" and "The
+stats"):
+
+- **Rarity** is bits 1–3 of the byte at `+0x15` of an item's record
+  (`ItemRecord.rarity`). The copper sword and the flame shield carry 1, and
+  the two captures of the screen show one star for each; the tools carry 0
+  and show none; over the 268 weapons the counts fall 120, 59, 34, 42, 12 from
+  one star to five, the five-star twelve being the weapons that cost 30,000 G,
+  and the rank correlation with price is 0.67; the rusty sword and shield,
+  the legendary bases, carry 4. An earlier pass tested the *stats* table for
+  it against published values of unrecorded origin; it is in the *record*.
+- **Used by** is the twelve bits of the stats entry's word 4, **bit v − 1 for
+  vocation v in the level tables' order** — warrior, priest, mage, martial
+  artist, thief, minstrel, gladiator, armamentalist, paladin, sage, luminary,
+  ranger (`str_tm` 2101–2112). The evidence is the 23 vocation presets: every
+  piece each dresses in carries that one bit — the warrior's five pieces bit
+  0, the sage's three bit 9, and so on down the list — and the skill trees
+  named for the vocations run in the same order. An earlier pass had matched
+  the stats entries to the records by position, where they are named, and so
+  found the bits inconsistent; matched by name they are exact.
+- **Weapons and shields carry no bits**: their use is by the vocations'
+  weapon skills, and which vocation has which of the fourteen weapon and
+  shield trees is not on the cartridge as a table — searched as rows and as
+  bitmasks — but in the binaries' code. Their grid is left as the art has it.
+
+**On the screen**: the gold star (`obj_iteminfo` cell 21) over the first so
+many of the art's grey five, whose places are found in the art itself; the
+"Used by" grid of two columns from `obj_gl`'s twelve pictograms in the order
+the captures show them (sword, fighter, cross, hat, dagger, note, axe, swirl,
+shield, book, star, bow), each lit or dimmed by its bit — the sword the
+warrior's and the note the minstrel's for certain, the rest read from the
+pictures, ours; the grid's places by eye from the captures. **Seen headless:**
+the flame shield with one star and an empty grid; the wayfarer's clothes with
+its six vocations lit.
 
 ---
 

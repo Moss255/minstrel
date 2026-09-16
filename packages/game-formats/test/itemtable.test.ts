@@ -4,7 +4,13 @@ import { ITEM_RECORD_SIZE, ITEM_TABLE_HEAD, itemPrice, readItemTable } from '../
 
 /** An item table built in code, from `FORMAT.md`: a 32-byte head with the count first, then 32-byte records. */
 function build(
-  records: { id: number; price: number; flag?: number; actions?: [number, number] }[],
+  records: {
+    id: number
+    price: number
+    flag?: number
+    actions?: [number, number]
+    rarity?: number
+  }[],
 ): Uint8Array {
   const out = new Uint8Array(ITEM_TABLE_HEAD + records.length * ITEM_RECORD_SIZE)
   const view = new DataView(out.buffer)
@@ -12,7 +18,7 @@ function build(
   view.setUint16(2, records.length | 0x8000, true)
   for (const [
     r,
-    { id, price, flag = 0xffff, actions = [252, 252] as [number, number] },
+    { id, price, flag = 0xffff, actions = [252, 252] as [number, number], rarity = 0 },
   ] of records.entries()) {
     const at = ITEM_TABLE_HEAD + r * ITEM_RECORD_SIZE
     view.setUint16(at, actions[0], true)
@@ -20,10 +26,24 @@ function build(
     view.setUint16(at + 4, id, true)
     view.setUint16(at + 6, price, true)
     view.setUint16(at + 8, flag, true)
+    // The rarity in bits 1–3 of the byte at 0x15, with its neighbours set so they must not leak in.
+    out[at + 0x15] = 0x51 | (rarity << 1)
     out[at + 31] = r + 1
   }
   return out
 }
+
+describe('what an item is worth having', () => {
+  it('reads the rarity out of its byte, and nothing round it', () => {
+    const table = build([
+      { id: 20004, price: 15, rarity: 1 },
+      { id: 20024, price: 0, rarity: 4 },
+      { id: 22000, price: 4, rarity: 0 },
+      { id: 20999, price: 1500, rarity: 5 },
+    ])
+    expect(readItemTable(table).map((r) => r.rarity)).toEqual([1, 4, 0, 5])
+  })
+})
 
 describe('what an item costs', () => {
   it('is its price word, scaled as the word after it says', () => {

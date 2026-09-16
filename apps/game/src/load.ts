@@ -224,6 +224,8 @@ export interface Loaded {
 export interface Goods {
   readonly price: number
   readonly table: string
+  /** The rarity, 0 to 5 — see `ItemRecord.rarity`, INFERRED. */
+  readonly rarity: number
 }
 
 /** A monster as the battle's words need it. */
@@ -897,7 +899,7 @@ function goodsOf(rom: Uint8Array): Map<number, Goods> {
       if (!table) continue
       try {
         for (const item of readItemTable(bytes))
-          goods.set(item.id, { price: itemPrice(item), table })
+          goods.set(item.id, { price: itemPrice(item), table, rarity: item.rarity })
       } catch {
         // A table that will not read prices nothing in it.
       }
@@ -912,6 +914,12 @@ export interface ItemNumbers {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /**
+   * Who may wear it: bit v − 1 for vocation v in the level tables' order —
+   * see `ItemStats.usedBy`, INFERRED. 0 on weapons and shields, whose use
+   * goes by the vocations' weapon skills, which are not read.
+   */
+  readonly usedBy: number
 }
 
 const statsRead = new WeakMap<Uint8Array, Map<number, ItemNumbers>>()
@@ -947,7 +955,12 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
       for (const entry of entries) {
         if (entry.name === undefined) continue
         for (const id of idsByName.get(entry.name) ?? []) {
-          stats.set(id, { attack: entry.attack, defence: entry.defence, agility: entry.agility })
+          stats.set(id, {
+            attack: entry.attack,
+            defence: entry.defence,
+            agility: entry.agility,
+            usedBy: entry.usedBy,
+          })
         }
       }
     }

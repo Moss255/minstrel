@@ -13,7 +13,8 @@ import { GameFormatError } from './errors.ts'
  * | `0x04` | `u16` | the item's id, as the item names and the treasure use it |
  * | `0x06` | `u16` | its price word — INFERRED: every one of the 330 items a shop sells has one above 0, and none of the 140 at 0 is sold anywhere. What a shop asks is this scaled — see {@link itemPrice} |
  * | `0x08` | `u16` | `unknown_0x08`: how the price word scales, where it is `0xFFFF`, `0xFFFE`, `0xFFFD` or `0xFFFC` — see {@link itemPrice}; 0 and others on some, not established |
- * | `0x0A` | 22 bytes | `unknown_0x0a`, carried as they are |
+ * | `0x15`, bits 1–3 | | **rarity**, the equipment screen's stars, 0 to 5 — INFERRED, see {@link ItemRecord.rarity} |
+ * | `0x0A` | 22 bytes | `unknown_0x0a`, carried as they are, the rarity's byte among them |
  *
  * **A record begins four bytes before its id.** Read from the id, each
  * record's last four bytes held the next item's actions: the medicinal herb's
@@ -47,6 +48,16 @@ export interface ItemRecord {
   /** What using it does: an action number in the field, then in battle — INFERRED; 252 for nothing. */
   readonly actions: readonly [field: number, battle: number]
   readonly unknown_0x08: number
+  /**
+   * The rarity, 0 to 5: the stars the equipment screen shows. INFERRED, from
+   * bits 1–3 of the byte at `0x15`: the copper sword and the flame shield
+   * carry 1, as two captures of the screen show one star for each; the tools
+   * carry 0 or 1 and show none; of the 268 weapons, 120 carry 1 and the 12
+   * that cost 30,000 G carry 5, with the tiers between in price order — the
+   * rank correlation with price is 0.67 — and the rusty sword and shield,
+   * the legendary bases, 4. The byte's other bits are not read.
+   */
+  readonly rarity: number
   readonly unknown_0x0a: Uint8Array
 }
 
@@ -98,6 +109,7 @@ export function readItemTable(bytes: Uint8Array): ItemRecord[] {
       actions: [view.getUint16(at, true), view.getUint16(at + 2, true)],
       id: view.getUint16(at + 4, true),
       price: view.getUint16(at + 6, true),
+      rarity: ((bytes[at + 0x15] as number) >> 1) & 7,
       unknown_0x08: view.getUint16(at + 8, true),
       unknown_0x0a: bytes.subarray(at + 0x0a, at + ITEM_RECORD_SIZE),
     })

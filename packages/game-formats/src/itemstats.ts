@@ -50,8 +50,15 @@ export interface ItemStats {
   readonly kind: number
   /**
    * Word 4, bits 0–11 — INFERRED: who may wear it, a bit a vocation of the
-   * twelve. `0xfff` on every accessory and most armour, 0 on weapons and
-   * shields. Which bit is which vocation is not established.
+   * twelve, **bit v − 1 for vocation v in the level tables' order** — warrior
+   * 0, priest 1, mage 2, martial artist 3, thief 4, minstrel 5, gladiator 6,
+   * armamentalist 7, paladin 8, sage 9, luminary 10, ranger 11: the 23
+   * vocation presets (`charapreset.bin`) each dress in four or five pieces
+   * that carry that one bit and no other — the warrior's armour, trousers,
+   * gloves, boots and helm bit 0; the sage's robe, clogs and mitre bit 9 —
+   * and the skill trees named for the vocations run in the same order.
+   * `0xfff` on every accessory and most armour; 0 on weapons and shields,
+   * whose use goes by the vocations' weapon skills, not read.
    */
   readonly usedBy: number
   /**

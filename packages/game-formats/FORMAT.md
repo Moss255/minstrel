@@ -838,6 +838,7 @@ action, and the head's own last four were `(255, 255)`, the herb's.
 | `+0x04` | `u16` | the item's id |
 | `+0x06` | `u16` | its price word, INFERRED — what a shop asks is it scaled by `+0x08`; see "The price" |
 | `+0x08` | `u16` | how the price word scales: `0xFFFF` twice, `0xFFFE` twice and one, `0xFFFD` twice less one, `0xFFFC` ten times — INFERRED; 0 and a few others on some, not established |
+| `+0x15`, bits 1–3 | | **rarity**, the equipment screen's stars, 0 to 5 — INFERRED, 16 September 2026, from the value alone: the copper sword and the flame shield carry 1, and two captures of the screen show one star for each; the tools carry 0 or 1 and show no stars; of the 268 weapons, 120 carry 1, 59 2, 34 3, 42 4 and 12 5 — the twelve that cost 30,000 G — with the rank correlation against price 0.67, and on every equipment table the counts fall from 1 to 5; the rusty sword and shield, the legendary bases, carry 4. The byte's bit 0 is 1 on the armour tables and 0 on weapons and shields, and its high nibble 5 or 10; neither read |
 | `+0x0A` | 22 bytes | carried: a sort position; at `+0x10` a `u16`, **the offset in the names at the table's end of the next record's item's name** — on all but the last record of the weapons (267 of 268), shields (44 of 45) and armour (182 of 183), never its own, which suggests a record begins 16 bytes before where it is read here (not established); a run of numbers that count the records; and an icon |
 
 **The two actions.** 36 of the 234 tools name an action called what they are —
@@ -986,7 +987,33 @@ established.
 weapon and shield, and **`0xfff` on all 51 accessories** and most armour, with
 other patterns on the rest — `0xebe`, `0x5e1`, `0x6a6`, and single bits `0x1`,
 `0x4`, `0x8`: INFERRED, who may wear it, a bit a vocation of the twelve the
-equipment screen's "Used by" shows. Which bit is which is not established.
+equipment screen's "Used by" shows.
+
+**Which bit is which — INFERRED, 16 September 2026: bit v − 1 is vocation v in
+the level tables' order** (warrior, priest, mage, martial artist, thief,
+minstrel, gladiator, armamentalist, paladin, sage, luminary, ranger; `str_tm`
+2101 to 2112 name them so, after 2100's Guardian). The evidence is the 23
+vocation presets of `charapreset.bin` (see "Character presets"), each named
+for a vocation and a sex: every armour, legwear, glove, footwear and headgear
+piece a preset dresses in carries one bit and no other — the warrior's armour,
+trousers, gloves, boots and helm bit 0, the priestess's pinafore and the
+ascetic robe bit 1, the wizard's trousers bit 2, the tussler's top bit 3, the
+rogue's robes bit 4, the flamenco shirt and loud trousers bit 5, the tactical
+vest bit 6, the fencing jacket bit 7, holy mail bit 8, the sage's robe bit 9,
+the star's suit bit 10, the nomadic deel bit 11 — save two that any may wear
+(`0xfff`, the thug's mug and the red tights) and two of another's (a thief in
+the warrior's gloves). The skill trees named for the vocations, `str_sklc` 15
+to 26 — Courage, Faith, Spellcraft, Focus, Acquisitiveness, Litheness, Guts,
+Force, Virtue, Enlightenment, Je Ne Sais Quoi, Ruggedness — run in the same
+order. An earlier pass matched the entries to the records by position and
+found the bits inconsistent; they are matched by name (above), and consistent.
+
+**Weapons and shields carry no bits.** Their use goes by the vocations' weapon
+skills — `str_gskl` 5, "becomes able to equip <str_2> regardless of
+vocation", is the Omnivocational passives' line — and which vocation has which
+of the fourteen weapon and shield skill trees is not on the cartridge as a
+table: searched as 12 rows of 5 bytes or halfwords in every order, and as
+bitmasks, with nothing found; it is in the binaries' code.
 
 **Word 0** is set on 137 entries, whose descriptions speak of resistances — to
 spells, sleep, Fizzle, MP being stolen: several fields packed, perhaps; not

@@ -3829,6 +3829,8 @@ function showEquipScreens(): boolean {
     },
     subtypeOf: (id) => loaded?.itemKinds.get(id)?.subtype,
     numbersOf: (id) => loaded?.itemStats.get(id),
+    rarityOf: (id) => loaded?.goods.get(id)?.rarity,
+    usedByOf: (id) => loaded?.itemStats.get(id)?.usedBy,
     portrait: heroPortrait(),
   })
   return true

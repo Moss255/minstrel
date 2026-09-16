@@ -39,7 +39,11 @@ import { type Equipped, SLOTS, type Slot } from './equipment.ts'
  * - where the description's lines break;
  * - the item's own attack or defence in the box below its description, where a
  *   screenshot shows its wearer's — see game-formats' FORMAT.md, "The stats";
- * - what is left out: the Hero's figure, and the item's rarity and who can use
+ * - the rarity's stars and the "Used by" grid are the cartridge's — see
+ *   `ItemRecord.rarity` and `ItemStats.usedBy` — their places by eye from
+ *   the captures; a weapon's or shield's grid is left as the art has it, as
+ *   the vocations' weapon skills are not on the cartridge as a table;
+ * - what is left out: the item's rarity and who can use
  *   it — neither read yet;
  * - the grid shows its page of sixteen, and ↑/↓ go through it in order.
  */
@@ -132,6 +136,26 @@ export interface EquipPieces {
   readonly slotBoxes: readonly Picture[]
   /** Each slot's small icon, 16 × 16. */
   readonly slotIcons: readonly Picture[]
+  /** A rarity star lit — `obj_iteminfo`'s cell 21, the gold star. */
+  readonly starLit: Picture
+  /**
+   * The twelve vocations' pictograms, in the order the "Used by" grid shows
+   * them — `obj_gl`'s cells 10 to 21: the sword, the fighter, the cross, the
+   * hat, the dagger, the note, the axe, the swirl, the shield, the book, the
+   * star, the bow. Empty when that set will not read.
+   */
+  readonly vocationIcons: readonly Picture[]
+  /**
+   * Where the panel's five grey stars sit, left to right: found in the panel's
+   * own art, the dark clusters on the "Rarity" row right of its label. Ours,
+   * the finding; the places are the art's.
+   */
+  readonly stars: readonly {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+  }[]
   /** The weapon kinds' small icons, subtypes 0 to 11 — `obj_iteminfo`'s cells 1 to 12. */
   readonly kindIcons: readonly Picture[]
   /** The green corners: top left, top right, bottom left, bottom right. */
@@ -204,6 +228,112 @@ function need(members: ReadonlyMap<string, Uint8Array>, name: string): Uint8Arra
   return found
 }
 
+/** The gold star among `obj_iteminfo`'s cells: the lit rarity star, 16 × 16 with the star at its top left. */
+const STAR_LIT_CELL = 21
+
+/**
+ * The "Used by" grid: two columns of six, each cell a vocation's pictogram,
+ * in the order `obj_gl`'s sheet keeps them — which two captures of the screen
+ * show row by row: the sword at the top left, the fighter beside it, the
+ * cross and the hat under, then the dagger and the note. That order is not
+ * the level tables' (warrior, priest, mage, martial artist …), whose bits
+ * `ItemStats.usedBy` carries: the sword is the warrior's and the note the
+ * minstrel's — the Hero's own mark on the party panel — and the rest are
+ * read from the pictures, ours: the fighter the martial artist, the cross the
+ * priest, the hat the mage, the dagger the thief, the axe the gladiator, the
+ * swirl the armamentalist, the shield the paladin, the book the sage, the
+ * star the luminary, the bow the ranger. Where the cells sit is by eye from
+ * the captures.
+ */
+const USED_BY_GRID = { x: [196, 218], y: 50, pitch: 20, dim: 0.3 } as const
+const USED_BY_ORDER: readonly number[] = [1, 4, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12]
+const VOCATION_ICON_CELLS = { first: 10, count: 12 } as const
+
+/** The vocations' pictograms out of the guest list's sprite set, `/data/ani/obj_gl.pac`. */
+function vocationIconsOf(rom: Uint8Array): Picture[] {
+  try {
+    const gl = cellsOfSet(membersOf(rom, '/data/ani/obj_gl.pac', 'obj_gl.pac'), 'obj_gl')
+    return Array.from({ length: VOCATION_ICON_CELLS.count }, (_, i) =>
+      gl(VOCATION_ICON_CELLS.first + i),
+    )
+  } catch {
+    return []
+  }
+}
+
+/** A cell set whose three files share a stem. */
+function cellsOfSet(
+  members: ReadonlyMap<string, Uint8Array>,
+  stem: string,
+): (index: number) => Picture {
+  const bank = readNcer(need(members, `${stem}.ncer`))
+  const tiles = readNcgr(need(members, `${stem}.ncgr`))
+  const palettes = readNclr(need(members, `${stem}.nclr`))
+  return (index: number): Picture => {
+    const cell = bank.cells[index]
+    if (!cell) throw new Error(`${stem} has no cell ${index}`)
+    return drawCell(cell, bank.mapping, tiles, palettes)
+  }
+}
+
+/**
+ * The five grey stars in the panel's art, as clusters of dark pixels on the
+ * "Rarity" row to the right of its label: columns 200 to 255, rows 8 to 24 of
+ * the 256 × 192 picture, dark being under a third of full brightness. The
+ * art is read; where to look in it is ours.
+ */
+function starsIn(top: Picture): { x: number; y: number; width: number; height: number }[] {
+  const dark = (x: number, y: number) => {
+    const i = (y * top.width + x) * 4
+    const r = top.rgba[i] as number
+    const g = top.rgba[i + 1] as number
+    const b = top.rgba[i + 2] as number
+    return (top.rgba[i + 3] as number) > 0 && r + g + b < 3 * 85
+  }
+  const columns: boolean[] = []
+  for (let x = 200; x < 256; x++) {
+    let any = false
+    for (let y = 8; y < 24 && !any; y++) any = dark(x, y)
+    columns[x] = any
+  }
+  const stars: { x: number; y: number; width: number; height: number }[] = []
+  for (let x = 200; x < 256; x++) {
+    if (!columns[x]) continue
+    const from = x
+    while (x < 256 && columns[x]) x++
+    let top_ = 24
+    let bottom = 8
+    for (let cx = from; cx < x; cx++)
+      for (let y = 8; y < 24; y++)
+        if (dark(cx, y)) {
+          top_ = Math.min(top_, y)
+          bottom = Math.max(bottom, y)
+        }
+    stars.push({ x: from, y: top_, width: x - from, height: bottom - top_ + 1 })
+  }
+  // A star is seven columns wide; the label's letters run together wider, and the panel's edge is narrower.
+  return stars.filter((star) => star.width >= 6 && star.width <= 8).slice(0, 5)
+}
+
+/** The opaque part of a cell's picture: where the drawing sits inside its 16 × 16. */
+function opaqueBox(p: Picture): { x: number; y: number; width: number; height: number } {
+  let x0 = p.width,
+    y0 = p.height,
+    x1 = -1,
+    y1 = -1
+  for (let y = 0; y < p.height; y++)
+    for (let x = 0; x < p.width; x++)
+      if ((p.rgba[(y * p.width + x) * 4 + 3] as number) > 0) {
+        x0 = Math.min(x0, x)
+        y0 = Math.min(y0, y)
+        x1 = Math.max(x1, x)
+        y1 = Math.max(y1, y)
+      }
+  return x1 < 0
+    ? { x: 0, y: 0, width: p.width, height: p.height }
+    : { x: x0, y: y0, width: x1 - x0 + 1, height: y1 - y0 + 1 }
+}
+
 /** Every picture the screen is built from, read from the cartridge. */
 export function readEquipPieces(rom: Uint8Array): EquipPieces {
   const eq = membersOf(rom, '/data/ani/bg_eq.gp2', 'bg_eq_en.pac')
@@ -274,6 +404,9 @@ export function readEquipPieces(rom: Uint8Array): EquipPieces {
     slotBoxes: SLOT_BOXES.map(sprite),
     slotIcons: SLOT_ICON_CELLS.map(info),
     kindIcons: Array.from({ length: WEAPON_KINDS }, (_, kind) => info(kind + 1)),
+    starLit: info(STAR_LIT_CELL),
+    stars: starsIn(top),
+    vocationIcons: vocationIconsOf(rom),
     corners: ['eq_curs01', 'eq_curs02', 'eq_curs03', 'eq_curs04'].map(sprite),
     hints: {
       change: hint(HINT_CELLS.change),
@@ -305,6 +438,14 @@ export interface EquipView {
   readonly subtypeOf?: ((id: number) => number | undefined) | undefined
   /** The Hero as they stand dressed, drawn over the bottom screen's left half — see `heroPortrait` in `main.ts`. */
   readonly portrait?: CanvasImageSource | undefined
+  /** An item's rarity, 0 to 5 stars — see `ItemRecord.rarity`. */
+  readonly rarityOf?: ((id: number) => number | undefined) | undefined
+  /**
+   * Who may wear a piece, a bit a vocation in the level tables' order — see
+   * `ItemStats.usedBy`; 0 where the cartridge's tables do not say (weapons,
+   * shields), and the grid is left as the art has it.
+   */
+  readonly usedByOf?: ((id: number) => number | undefined) | undefined
   /** A piece of equipment's own attack and defence — see `itemStatsOf` in `load.ts`. */
   readonly numbersOf?:
     | ((id: number) => { readonly attack: number; readonly defence: number } | undefined)
@@ -354,6 +495,8 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     slotBoxes: pieces.slotBoxes.map(c),
     slotIcons: pieces.slotIcons.map(c),
     kindIcons: pieces.kindIcons.map(c),
+    starLit: c(pieces.starLit),
+    vocationIcons: pieces.vocationIcons.map(c),
     corners: pieces.corners.map(c),
     hints: {
       change: c(pieces.hints.change),
@@ -535,6 +678,35 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
     at(g, smallIcon(item, slotIndex), 15, 8)
     if (item === undefined) return
     text(g, view.itemName(item), 88, 16, INK, 'center')
+    // The rarity: the gold star over the first so many of the art's grey ones — see `ItemRecord.rarity`.
+    const rarity = view.rarityOf?.(item) ?? 0
+    const lit = opaqueBox(pieces.starLit)
+    pieces.stars.slice(0, rarity).forEach((star) => {
+      g.drawImage(
+        art.starLit,
+        lit.x,
+        lit.y,
+        lit.width,
+        lit.height,
+        star.x,
+        star.y,
+        star.width,
+        star.height,
+      )
+    })
+    // Who may wear it: the grid, each vocation's pictogram lit or dimmed — see
+    // `USED_BY_GRID`. Nothing where the tables say nothing, as on a weapon.
+    const usedBy = view.usedByOf?.(item) ?? 0
+    if (usedBy !== 0 && art.vocationIcons.length === USED_BY_ORDER.length) {
+      art.vocationIcons.forEach((icon, place) => {
+        const vocation = USED_BY_ORDER[place] as number
+        const may = (usedBy >> (vocation - 1)) & 1
+        g.globalAlpha = may ? 1 : USED_BY_GRID.dim
+        const x = USED_BY_GRID.x[place % 2] as number
+        g.drawImage(icon, x, USED_BY_GRID.y + Math.floor(place / 2) * USED_BY_GRID.pitch)
+      })
+      g.globalAlpha = 1
+    }
     // The description, to the picture's right, wrapped to the panel: where the
     // screenshots start it and how far apart its lines are. **Ours**: the wrap.
     const words = view.describe?.(item)
