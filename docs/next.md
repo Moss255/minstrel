@@ -171,7 +171,8 @@ cell, and a step onto a closed one is a wall.
 **Ours:** that monsters keep to drawn, open ground at all; the cell size; the
 two thresholds' placing in the gaps measured. The Hero still walks the hidden
 floors: that is a question of the collision, not asked here. The Hexagon's
-roofed floors would be closed too; those rooms have no roaming zone.
+roofed floors are closed too; the three of its rooms that roam, `D01M02` to
+`D01M04`, keep their open rooms and walkways.
 
 **For headless checks**: `window.minstrelRoaming` lists the field's monsters
 and `window.minstrelCamera` is the camera, to pull back from a script.

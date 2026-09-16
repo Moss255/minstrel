@@ -29,8 +29,9 @@ import { placeGeometry } from './assemble.ts'
  * up to 0.75, and a terrace's grass at 0.4 to 0.5; `F02` is the same, and on
  * neither is anything drawn over a floor from 0.75 up. So a surface drawn
  * within {@link HEADROOM} above the floor closes it. In the Hexagon's rooms
- * that also shuts out the floor under the roofs (`rof`, 0.2 to 0.75 above);
- * those rooms have no roaming zone.
+ * that also shuts out the floor under the roofs (`rof`, 0.2 to 0.75 above).
+ * Three of them roam — `D01M02`, `D01M03`, `D01M04` — and keep 869, 848 and
+ * 672 open cells, their rooms and walkways.
  *
  * **Ours:** that a monster keeps to drawn, open ground at all; the grid's
  * cells, an eighth of a unit across ({@link GROUND_SHIFT}), each judged at its
