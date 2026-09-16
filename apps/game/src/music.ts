@@ -7,11 +7,13 @@ import workletUrl from './music-worklet.ts?worker&url'
 /**
  * The cartridge's sound on the page: `bgm.sdat` for the music and the
  * jingles, `se_norm.sdat` for the field's effects, and the worklet that plays
- * them. Which track plays where is not read — `mapbgm.bin` was looked at and
- * is not it (`docs/M0-inventory.md`, "Audio") — so a track is chosen by name:
- * `?bgm=BG_001`, or the `b` key. The events' effects and jingles are read:
- * `726` and `720` in `event.ts`. The menus' sounds are not, so `?se=n` sounds
- * effect archive `n` on load, for finding them by ear.
+ * them. Which track plays where is the map index's: each map names a
+ * sequence by index (`MapEntry.music`, INFERRED in `game-formats`), and the
+ * battle and boss stages name theirs. `?bgm=BG_001` plays a track by name
+ * instead, for listening; `b` stops and starts the music. The events'
+ * effects and jingles are read: `726` and `720` in `event.ts`. The menus'
+ * sounds are not, so `?se=n` sounds effect archive `n` on load, for finding
+ * them by ear.
  */
 
 /** Where the music archive is on the cartridge. */
@@ -53,6 +55,17 @@ export async function playEffect(rom: Uint8Array, index: number, slot?: number):
   if (!song) return false
   await music.effect(song)
   return true
+}
+
+/** Play a track by its index among the music archive's sequences — a map's; its name, or undefined when there is none. */
+export async function playTrack(rom: Uint8Array, index: number): Promise<string | undefined> {
+  const sdat = bgmArchive(rom)
+  const record = sdat?.sequences[index]
+  const song = sdat ? songAt(sdat, index) : undefined
+  if (!song || !record) return undefined
+  const name = record.name ?? `#${index}`
+  await music.play(name, song)
+  return name
 }
 
 /** Play a jingle by its index among the music archive's sequences; the music waits for it. */

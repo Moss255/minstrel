@@ -125,6 +125,11 @@ export interface Loaded {
   linesOf(id: number, letter: string): readonly TalkLine[]
   /** The map's own id in the index, which is how triggers and the cast name it. */
   readonly mapId: number | undefined
+  /** The track that plays here, an index into `bgm.sdat`'s sequences — see `MapEntry.music`. */
+  readonly music: number | undefined
+  /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
+  readonly battleMusic: number | undefined
+  readonly bossMusic: number | undefined
   /** The area's triggers — see `readTriggers`. */
   readonly triggers: readonly Trigger[]
   /** The map's treasure, in world units — see `readTreasure`. Empty when it has none. */
@@ -1200,6 +1205,41 @@ function indexOf(cat: Catalogue): (code: string) => MapEntry | undefined {
   return () => undefined
 }
 
+/**
+ * The tracks a map calls for, out of the index: its own (`MapEntry.music`,
+ * INFERRED there); the ordinary battle stages' — every `B01` stage names the
+ * one track, 23, and which stage a field's battle is fought on is not read;
+ * and its dungeon's boss stage's — the `B` map whose label opens with the
+ * map's code's first three letters, "D01 - Hexagoon" for the Hexagon's.
+ */
+function musicOf(
+  cat: Catalogue,
+  code: string,
+): Pick<Loaded, 'music' | 'battleMusic' | 'bossMusic'> {
+  const none = { music: undefined, battleMusic: undefined, bossMusic: undefined }
+  for (const leaf of cat.other) {
+    if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
+    try {
+      const list = readMapList(leaf.bytes)
+      const own = list.map(code.toUpperCase())?.music
+      const stages = list.maps.filter((e) => e.id !== 0 && e.code.startsWith('B01'))
+      const shared = new Set(stages.map((e) => e.music))
+      const dungeon = `${code.toUpperCase().slice(0, 3)} - `
+      const boss = list.maps.find(
+        (e) => e.id !== 0 && e.code.startsWith('B') && e.label?.startsWith(dungeon),
+      )
+      return {
+        music: own === undefined || own === 0 ? undefined : own,
+        battleMusic: shared.size === 1 ? stages[0]?.music : undefined,
+        bossMusic: boss?.music,
+      }
+    } catch {
+      return none
+    }
+  }
+  return none
+}
+
 /** The same index the other way round: a map's code by its own id, which is how a trigger names a map. */
 function codeOf(cat: Catalogue): (id: number) => string | undefined {
   for (const leaf of cat.other) {
@@ -1472,6 +1512,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   const area = areaOf(cat, code)
   const sheets = sheetsOf(cat)
   const id = entry?.id
+  const tracks = musicOf(cat, code)
   const talk = area ? talkOf(rom, area.code) : new Map<string, Map<number, readonly TalkLine[]>>()
   const triggers = area ? triggersOf(rom, area.code) : []
   const treasures = treasuresOf(rom, code)
@@ -1535,6 +1576,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
+    ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,
     eventMessages: (event) => eventMessagesOf(rom, event),

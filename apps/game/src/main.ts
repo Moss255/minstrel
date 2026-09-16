@@ -165,7 +165,7 @@ import {
   showMinimap,
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
-import { music, playBgm, playEffect, playJingle } from './music.ts'
+import { music, playBgm, playEffect, playJingle, playTrack } from './music.ts'
 import {
   advance,
   advanceMotion,
@@ -367,6 +367,33 @@ async function startMusic(name: string): Promise<void> {
       ? `♪ ${name} playing${rate > 0 ? ` at ×${rate} tempo` : ''} · b stops`
       : `no track ${name} in the music archive`,
   )
+}
+/**
+ * The map's track, by index — see `Loaded.music`. A map naming the track
+ * already playing lets it play on, so the village's theme runs into its
+ * houses unbroken; going on after a battle starts it again. Both ours. An
+ * address naming `?bgm=` keeps that track instead.
+ */
+let track: number | undefined
+function playMapMusic(again = false): void {
+  if (!cartridge || !loaded || params.get('bgm')) return
+  const wanted = loaded.music
+  if (wanted === undefined) return
+  if (!again && music.playing && track === wanted) return
+  track = wanted
+  void playTrack(cartridge, wanted).then((name) => {
+    if (!name) status(`no track ${wanted} in the music archive`)
+  })
+}
+
+/** A battle's track: the boss stage's for a set battle in a dungeon with one, else the ordinary stages'. */
+function playBattleMusic(): void {
+  if (!cartridge || !loaded || params.get('bgm')) return
+  const wanted =
+    eventFight && loaded.bossMusic !== undefined ? loaded.bossMusic : loaded.battleMusic
+  if (wanted === undefined) return
+  track = wanted
+  void playTrack(cartridge, wanted)
 }
 // For a headless check: the music's state, readable from the page.
 Object.defineProperty(window, 'minstrelMusic', {
@@ -1012,6 +1039,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
   loaded = opened
+  playMapMusic()
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
   dressHero()
   fillBag(opened)
@@ -2500,6 +2528,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   battlesFought++
   // The monsters' places first: they turn the Hero to face them.
   const foeSpots = spotsFor(foes.length)
+  playBattleMusic()
   battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
     hp,
@@ -2953,6 +2982,7 @@ function settleBattle(): void {
 /** Put the battle away. */
 function endFight(): void {
   battle = undefined
+  playMapMusic(true)
   // The weapon and shield go back on the Hero's back — see `dressHero`.
   dressHero()
   if (roaming) roaming = calmFor(roaming, ROAM_CALM)
@@ -3797,12 +3827,14 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     minimapWanted = !minimapWanted
     event.preventDefault()
   }
-  // Music on and off: the track the address names, or the first.
+  // Music off and on: the map's track, or the one the address names.
   if (action === 'music') {
     if (music.playing) {
       music.stop()
+      track = undefined
       status('music stopped')
-    } else void startMusic(params.get('bgm') ?? 'BG_001')
+    } else if (params.get('bgm')) void startMusic(params.get('bgm') as string)
+    else playMapMusic(true)
     event.preventDefault()
   }
   if (key === 'c') {

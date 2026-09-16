@@ -4,6 +4,7 @@ import { isMapList, readMapList } from '../src/maplist.ts'
 
 interface EntrySpec {
   readonly region?: string
+  readonly music?: number
   readonly code: string
   readonly label?: string
 }
@@ -55,6 +56,7 @@ function buildMapList(
     values[2] = entry.region === undefined ? 0 : intern(entry.region)
     values[4] = intern(entry.code)
     values[5] = entry.label === undefined ? 0 : intern(entry.label)
+    values[6] = entry.music ?? 0
     record(0x67, 69, values)
   }
   record(0x6e, 0xff, [])
@@ -71,9 +73,9 @@ function buildMapList(
 
 const sample = () =>
   buildMapList([
-    { region: 'Angel Falls', code: 'M01', label: 'Exterior' },
-    { region: 'Angel Falls', code: 'M01M02', label: 'Inn' },
-    { region: 'Angel Falls', code: 'M01M06', label: 'Church' },
+    { region: 'Angel Falls', code: 'M01', label: 'Exterior', music: 5 },
+    { region: 'Angel Falls', code: 'M01M02', label: 'Inn', music: 5 },
+    { region: 'Angel Falls', code: 'M01M06', label: 'Church', music: 10 },
     { region: 'Gleeba', code: 'C02', label: 'Exterior' },
     { code: 'K01' },
   ])
@@ -104,6 +106,13 @@ describe('readMapList', () => {
     const list = readMapList(sample())
     expect(list.region('Angel Falls').map((m) => m.label)).toEqual(['Exterior', 'Inn', 'Church'])
     expect(list.region('Nowhere')).toEqual([])
+  })
+
+  it('reads which track plays', () => {
+    const list = readMapList(sample())
+    expect(list.map('M01')?.music).toBe(5)
+    expect(list.map('M01M06')?.music).toBe(10)
+    expect(list.map('K01')?.music).toBe(0)
   })
 
   it('finds a map by its code', () => {

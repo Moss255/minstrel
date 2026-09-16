@@ -48,6 +48,19 @@ const SLOT_CODE = 4
 const SLOT_LABEL = 5
 const SLOT_UNKNOWN_13 = 11
 /**
+ * The music: an index into the music archive's sequence list. INFERRED, from
+ * the values alone: on every one of the 871 shipping entries the slot holds a
+ * sequence index — 844 with a file, 25 the grotto boss floors' 80, which is
+ * `BG_100` and pins the numbering, and 2 the index 25, which has no file —
+ * and the values follow what the labels say: all nine "Church" maps and the
+ * "Chapel" 10, the castle 11, the observatory 12, the abbey 13, the 85 field
+ * regions 14, the temple 15, the ship 17, the sky 18, 94 dungeon maps 19, the
+ * 140 grotto floors 22, every `B01` battle stage 23, the `B02` boss stages
+ * 24, and each of the twelve legacy bosses its own from 27 up. A village and
+ * its houses share one value; its church has the other.
+ */
+const SLOT_MUSIC = 6
+/**
  * Which space the map is built in. `1` indoors, `2` outdoors, `0` neither.
  *
  * Established by what the labels say. Of the 520 entries with `1`, the labels
@@ -104,6 +117,13 @@ export interface MapEntry {
    * share one space and nothing needs this to decide a size.
    */
   readonly indoors: boolean
+  /**
+   * The track that plays here: an index into `bgm.sdat`'s sequences — Angel
+   * Falls and its houses 5, its church 10, the region round it 14, the
+   * Hexagon 19, the battle stages 23 and the boss stages 24. INFERRED; see
+   * `SLOT_MUSIC`.
+   */
+  readonly music: number
   /** The whole record, for anything the fields above do not cover. */
   readonly values: Uint32Array
 }
@@ -158,6 +178,7 @@ export function readMapList(data: Uint8Array): MapList {
       unknown_13: at(SLOT_UNKNOWN_13, record),
       unknown_2: at(SLOT_UNKNOWN_2, record),
       indoors: record.values[SLOT_SPACE] === SPACE_INDOORS,
+      music: record.values[SLOT_MUSIC] ?? 0,
       values: record.values,
     }
   })

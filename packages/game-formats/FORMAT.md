@@ -1328,14 +1328,44 @@ Another tagged data table, and the one that says what the maps *are*.
 | `0x66` | number of map entries |
 | `0x67` | one per map, 22 values |
 
-Four of the twenty-two values are byte offsets into the string table:
+Four of the twenty-two values are byte offsets into the string table, and
+three more are read. Slots count from 0 with the record header read as the
+shared table's (`u16` tag, `u8` count, two type bits a value, padded to a
+word); an earlier revision of this table, with a four-byte header, had each
+two higher.
 
 | slot | meaning |
 |---|---|
-| 4 | region — "Angel Falls", "Gleeba" |
-| 6 | **map code**, which is also the name of the map's archive |
-| 7 | the name whoever built it wrote — "Inn", "Church", "Erinn's House Lv 1" |
-| 13 | a second code, usually one with a real attribute table, but not this map's |
+| 0 | the map's own id, which is how placements and triggers name it |
+| 2 | region — "Angel Falls", "Gleeba" |
+| 4 | **map code**, which is also the name of the map's archive |
+| 5 | the name whoever built it wrote — "Inn", "Church", "Erinn's House Lv 1" |
+| 6 | **the music**: an index into `bgm.sdat`'s sequence list — INFERRED, below |
+| 11 | a second code, usually one with a real attribute table, but not this map's |
+| 17 | the space: `1` indoors, `2` outdoors, `0` neither |
+
+### The music — INFERRED, 16 September 2026
+
+Slot 6 is read as the track that plays on the map, from the values alone; no
+code has been read. On every one of the 871 shipping entries it holds an
+index into the music archive's sequence list: 844 name a sequence with a
+file, 25 hold 80 — the grotto boss floors, and 80 is `BG_100`, the one
+sequence past the `ME_` jingles, which pins the numbering to the list's own —
+and 2 hold 25, which has no file on the reference cartridge. The values
+follow what the labels say: all nine "Church" maps and the one "Chapel" hold
+10 and nothing else does; the castle's 26 maps 11; the observatory's 22
+maps 12; the abbey 13; the 85 field regions 14; the temple 15; the ship's
+five 17; "Field - Sky" 18; 94 dungeon maps across 67 regions 19; the 140
+grotto floors 22; every `B01` battle stage 23 — 137 of them, with the
+"Monster Modifier" test floor; the `B02` boss stages 24; and each of the
+twelve legacy bosses' stages its own value from 27 to 38, in the bosses'
+order. A village and its houses share one value, its church another. Angel
+Falls is 5, its church 10, the region round it 14, the Hexagon 19, and the
+Hexagoon stage, `B02M15`, 24.
+
+Not read: whether anything else changes the track — the time of day, the
+story — and `data/bin/mapbgm.bin`, 68 records pairing map ids with values
+from `0x0580` to `0x0857`, which are not sequence indices.
 
 **Zero means empty, not "the first string".** A blank field holds zero, and zero
 is also the offset of the build stamp that opens the string table, so a reader
@@ -1351,7 +1381,7 @@ of the codes name an archive that ships; the rest are development maps the
 cartridge kept an entry for, with names like "Debug Floor", "Bed Test" and
 "For Encounter Testing".
 
-## The other eighteen values are not established
+## The other fifteen values are not established
 
 They are carried on `MapEntry.values`. One reading was tried and **disproved**:
 slots 10 and 12 look like an exterior/interior pair on the ten maps of one

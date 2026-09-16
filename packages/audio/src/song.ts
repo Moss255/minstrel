@@ -17,7 +17,7 @@ import type { Song } from './sequencer.ts'
  */
 export function songOf(sdat: Sdat, name: string): Song | undefined {
   const record = sdat.record(name)
-  if (!record || record.kind !== 0) return undefined
+  if (record?.kind !== 0) return undefined
   return sequenceSong(sdat, record)
 }
 

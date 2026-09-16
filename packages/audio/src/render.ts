@@ -117,7 +117,7 @@ export class Ensemble {
 
   /** Whether a jingle is still sounding. */
   get jingling(): boolean {
-    return this.pending !== undefined && this.pending.playing && !this.pending.finished
+    return this.pending?.playing === true && !this.pending.finished
   }
 
   render(left: Float32Array, right: Float32Array, frames: number): void {

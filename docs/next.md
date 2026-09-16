@@ -38,7 +38,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 | gap | milestone | what it needs |
 |---|---|---|
-| **Music: the tempo, and which track plays where** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob; the track-to-place table is not found — `mapbgm.bin` is not it — and the videos have no sound, so the emulator or a new lead: the scenes' `712`, 452 calls, 6 the commonest, may name a track. Then the menus' sounds (`728`?), the three streams, and fades on a map change. |
+| **Music: the tempo** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob. Which track plays where is read now, from the map index. Then the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
 | The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word; licence and contribution guide. Done: input remapping, text speed, the scenes' effects and jingles. |
 | The scenes' rough edges | M3 | Sprite characters' walking frames in scenes; who is shown and hidden when (`570`, `571`, `223`); a fade on going through a doorway; Ivor's faces; the camera's even pace and field of view. |
 | The time of day | M6 | The let's play moves into evening and night; ours stays in daylight. Which zone roams when is measured, not settled. |
@@ -50,8 +50,8 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Needs the emulator — questions to bring to it:**
 
-- **Which track plays** in the village, the field, the pass, the Hexagon and a
-  battle — and **the tempo of one track against ours**.
+- **The tempo of one track against ours** — and whether the village's theme
+  carries on into a house unbroken or starts again, and what the church plays.
 - **Equipment's numbers, a check now they are read**: a copper sword's attack
   should be 7, a leather shield's defence 3. Rarity and "Used by" are not
   found: open the equipment screen on the Flame shield (defence 18, rarity 1),
@@ -71,8 +71,40 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
   talked to.
 - **Which zone roams when and where**, and whether the mix changes at night.
 
-**Where to start next time:** the tempo, with the knob; then which track plays
-where — try `712`; then the licence and guide, and the hash and cache last.
+**Where to start next time:** the tempo, with the knob; then the licence and
+guide, and the hash and cache last.
+
+---
+
+## Which track plays where — 16 September
+
+**Found in the map index** (`maplist9.bin`, `MapEntry.music`, slot 6 of the
+22; `packages/game-formats/FORMAT.md`, "The music"). Not `712`, which the
+lead named: its 452 calls repeat one value ten times in a scene and take a
+variable as a second argument, which is no way to start a track — it is
+some other sound. **INFERRED from the values alone, no code read:** on every
+one of the 871 shipping maps the slot holds an index into `bgm.sdat`'s
+sequence list — 844 with a file, 25 the grotto boss floors' 80, which is
+`BG_100` and pins the numbering, and 2 an index with no file — and the
+values follow the labels: all nine churches and the chapel 10 and nothing
+else; the castle 11; the observatory 12; the abbey 13; the 85 field regions
+14; the ship 17; 94 dungeon maps 19; the grottoes 22; every `B01` battle
+stage 23; the `B02` boss stages 24; each of the twelve legacy bosses' stages
+its own, 27 to 38, in the bosses' order.
+
+**For the slice:** Angel Falls and its houses `BG_005`, the church
+`BG_010`, the region round it `BG_014`, the Hexagon `BG_019`, battles
+`BG_023`, Hexagoon `BG_024` (`B02M15`, "D01 - Hexagoon"). **Played:** a map's
+track starts on entering it (`playMapMusic`); a battle's on starting it,
+the boss stage's for a set battle in a dungeon with one (`Loaded.bossMusic`);
+the map's again after. **Ours:** a map naming the track already playing lets
+it run on, so the theme carries into the houses; after a battle it starts
+again; `b` stops and starts it; `?bgm=` overrides. **Not read:** which `B01`
+stage a field's battle is on — they all name 23, so it makes no difference to
+the music; whether the time of day or the story changes a track;
+`mapbgm.bin`'s 68 records, whose values `0x0580`–`0x0857` are not sequence
+indices. **Checked headless:** `M01` plays `BG_005`, `M01M06` `BG_010`, `F01`
+`BG_014`, `D01` `BG_019`. **Not heard.**
 
 ---
 
@@ -229,9 +261,11 @@ rule for it is to be found, not the factor kept. Pitch is worth judging at the
 same time: a misread sample rate can pass for tempo.
 
 **Left:** which track plays where — the video has no sound, so that needs
-either the emulator or a table not yet found; sound effects, which are 1,398
-sequence archives (`SSAR`) in `se_norm.sdat` and `se_btl.sdat`, and the events'
-`720`; the three streams; fading between tracks on a map change.
+either the emulator or a table not yet found (found the next day, in the map
+index: "Which track plays where"); sound effects, which are 1,398 sequence
+archives (`SSAR`) in `se_norm.sdat` and `se_btl.sdat`, and the events' `720`
+(done: "The scenes sound"); the three streams; fading between tracks on a
+map change.
 
 **Also on the way:** `pnpm typecheck`, which checks the game app too, had six
 old errors in tests and one call; all fixed. `tsc -b` at the root does not
