@@ -17,6 +17,7 @@
     "@minstrel/fixed": "workspace:*",
     "@minstrel/game-formats": "workspace:*",
     "@minstrel/gl": "workspace:*",
+    "@minstrel/nitro-comp": "workspace:*",
     "@minstrel/nitro-gfx": "workspace:*",
     "@minstrel/nitro-snd": "workspace:*",
     "@minstrel/nitrofs": "workspace:*",

@@ -72,6 +72,9 @@ importers:
       '@minstrel/gl':
         specifier: workspace:*
         version: link:../../packages/gl
+      '@minstrel/nitro-comp':
+        specifier: workspace:*
+        version: link:../../packages/nitro-comp
       '@minstrel/nitro-gfx':
         specifier: workspace:*
         version: link:../../packages/nitro-gfx

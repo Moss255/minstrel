@@ -234,3 +234,12 @@ export {
   type TreasurePosition,
 } from './treasure.ts'
 export { readTriggers, type Trigger, type TriggerStage } from './triggers.ts'
+export {
+  FIRST_OWN_TREE,
+  readVocationTrees,
+  TREES_A_VOCATION,
+  VOCATIONS,
+  type VocationTrees,
+  vocationsWielding,
+  WEAPON_TREES,
+} from './vocations.ts'

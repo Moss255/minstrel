@@ -69,14 +69,18 @@ import {
   readTalk,
   readTreasure,
   readTriggers,
+  readVocationTrees,
   type Script,
   type Shop,
   type SpellTable,
   type TalkLine,
   type Treasure,
   type Trigger,
+  type VocationTrees,
 } from '@minstrel/game-formats'
+import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
 import type { Model } from '@minstrel/nitro-gfx'
+import { parseRomHeader } from '@minstrel/nitrofs'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import type { BattleWords } from './battle-scene.ts'
@@ -135,6 +139,12 @@ export interface Loaded {
   readonly regionExterior: string | undefined
   /** The track that plays here, an index into `bgm.sdat`'s sequences — see `MapEntry.music`. */
   readonly music: number | undefined
+  /**
+   * The vocations' skill trees, out of the ARM9 binary unpacked — see
+   * `readVocationTrees`; undefined when the binary will not unpack or holds
+   * no such table. Which vocations may wield a weapon or shield follows.
+   */
+  readonly vocationTrees: VocationTrees | undefined
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
   readonly battleMusic: number | undefined
   readonly bossMusic: number | undefined
@@ -917,9 +927,11 @@ export interface ItemNumbers {
   /**
    * Who may wear it: bit v − 1 for vocation v in the level tables' order —
    * see `ItemStats.usedBy`, INFERRED. 0 on weapons and shields, whose use
-   * goes by the vocations' weapon skills, which are not read.
+   * goes by the vocations' weapon skills — see `Loaded.vocationTrees`.
    */
   readonly usedBy: number
+  /** Its kind: a weapon's subtype plus one, 13 a shield, 0 the rest — the skill tree's number. See `ItemStats.kind`. */
+  readonly kind: number
 }
 
 const statsRead = new WeakMap<Uint8Array, Map<number, ItemNumbers>>()
@@ -960,6 +972,7 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
             defence: entry.defence,
             agility: entry.agility,
             usedBy: entry.usedBy,
+            kind: entry.kind,
           })
         }
       }
@@ -1292,6 +1305,29 @@ function exteriorOf(cat: Catalogue, code: string): string | undefined {
     }
   }
   return undefined
+}
+
+/** The skill trees read once from the ARM9 binary, by cartridge. */
+const treesRead = new WeakMap<Uint8Array, VocationTrees | undefined>()
+
+/**
+ * The vocations' skill trees out of the ARM9 binary: the header says where
+ * it lies, it is BLZ-packed on the cartridge, and unpacked it holds the
+ * table — see game-formats' FORMAT.md, "Vocation skill trees".
+ */
+function vocationTreesOf(rom: Uint8Array): VocationTrees | undefined {
+  if (treesRead.has(rom)) return treesRead.get(rom)
+  let trees: VocationTrees | undefined
+  try {
+    const header = parseRomHeader(rom)
+    const packed = rom.subarray(header.arm9.romOffset, header.arm9.romOffset + header.arm9.size)
+    const binary = looksBlz(packed) ? decompressBlz(packed) : packed
+    trees = readVocationTrees(binary)
+  } catch {
+    // A binary that will not unpack, or holds no table, leaves the weapons' "Used by" unsaid.
+  }
+  treesRead.set(rom, trees)
+  return trees
 }
 
 /** The same index the other way round: a map's code by its own id, which is how a trigger names a map. */
@@ -1630,6 +1666,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
+    vocationTrees: vocationTreesOf(rom),
     region: regionHead(entry?.region),
     regionExterior: exteriorOf(cat, code),
     ...tracks,

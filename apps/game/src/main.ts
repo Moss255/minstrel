@@ -16,6 +16,7 @@ import {
   type StoryArea,
   spellsLearnt,
   type Treasure,
+  vocationsWielding,
 } from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
@@ -3830,7 +3831,13 @@ function showEquipScreens(): boolean {
     subtypeOf: (id) => loaded?.itemKinds.get(id)?.subtype,
     numbersOf: (id) => loaded?.itemStats.get(id),
     rarityOf: (id) => loaded?.goods.get(id)?.rarity,
-    usedByOf: (id) => loaded?.itemStats.get(id)?.usedBy,
+    // Armour by its own bits; a weapon or shield by who has its tree — see `vocationsWielding`.
+    usedByOf: (id) => {
+      const numbers = loaded?.itemStats.get(id)
+      if (!numbers) return undefined
+      if (numbers.usedBy !== 0 || !loaded?.vocationTrees) return numbers.usedBy
+      return vocationsWielding(loaded.vocationTrees, numbers.kind)
+    },
     portrait: heroPortrait(),
   })
   return true

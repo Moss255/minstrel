@@ -36,11 +36,10 @@ APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/sh
 
 **2. Needs the emulator — questions, each a line in the list below**
 
-Which vocations may use which weapon kinds (the one part of "Used by" not
-on the cartridge — the rest is read, see below); the inn's price; the
-monsters' six-way weights, critical and flee chances; Ivor's numbers; what
-ends 2.2's night; which zone roams when; the party's colours; pot or barrel;
-Ivor's greeting.
+The inn's price; the monsters' six-way weights, critical and flee chances;
+Ivor's numbers; what ends 2.2's night; which zone roams when; the party's
+colours; pot or barrel; Ivor's greeting. ("Used by" is read in full now —
+see the table below.)
 
 **Where the equipment's numbers are read — for reference:**
 
@@ -49,7 +48,7 @@ Ivor's greeting.
 | attack, defence, deftness, agility, magical might, evasion, critical | the stats table after each `itemdt_<c>_en.nat`'s records, words 5–7 | `readItemStats`, `itemstats.ts` | `packages/game-formats/FORMAT.md`, "The stats" |
 | rarity, 0–5 stars | the item record's byte `+0x15`, bits 1–3 | `readItemTable`, `itemtable.ts` → `ItemRecord.rarity` | FORMAT.md, "Items", the record table; `docs/next.md`, "Rarity and Used by" |
 | who may wear it, armour and accessories | the stats entry's word 4, bits 0–11: bit v − 1 for vocation v in the level tables' order | `ItemStats.usedBy` | FORMAT.md, "The stats", "Which bit is which" |
-| who may use a weapon or shield | not on the cartridge as a table; the vocations' skill trees are chosen in code | — | FORMAT.md, "Weapons and shields carry no bits" |
+| who may use a weapon or shield | the ARM9 binary, unpacked: twelve rows of five trees, `0xEE75D` on the reference dump | `readVocationTrees`, `vocations.ts`; `vocationsWielding` on the item's `kind` | FORMAT.md, "Vocation skill trees" |
 | the vocations' names and order | `str_tm` 2100–2112, Guardian then warrior to ranger; the skill trees named for them, `str_sklc` 15–26 | `Loaded.menuWords` | FORMAT.md, "Battle text" |
 | the pictograms | `/data/ani/obj_gl.pac`, cells 10–21, in the "Used by" grid's order | `readEquipPieces`, `equip-screen.ts` | `equip-screen.ts`, `USED_BY_ORDER` |
 | the lit star | `/data/ani/oiij.gp2`, `obj_iteminfo` cell 21 | `readEquipPieces` | `equip-screen.ts`, `STAR_LIT_CELL` |
@@ -110,7 +109,7 @@ at the owner's word. What is left is what an ear or the emulator settles.
 | The rest of M8 | M8 | Done: the hash check and the kept cartridge, input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
-| Equipment's rest | M4 | The layouts (`lay_eq.lia`); which vocations may use which weapon kinds, in the binaries' code. Done: rarity and "Used by" read from the cartridge and shown; the figure on the screen; a shield on the back seen. |
+| Equipment's rest | M4 | The layouts (`lay_eq.lia`). Done: rarity and "Used by" read from the cartridge, the weapons' from the ARM9's skill-tree table, and shown; the figure on the screen; a shield on the back seen. |
 | What battles still lack | M5 | Dazzle, sand and Weird Dance, read and not modelled; `calls for backup`; how the monsters weight their ways. Done: the damage checked against the let's play, the fight winnable from level 5 as the video won it, each action's own opening line. |
 | M4's stand-ins | M4 | `INN_PRICE` — no table on the cartridge; the binaries or the emulator. Done, as ours: Evac to the region's outside, holy water's calm. The wing's one destination is the slice's. |
 | The top screen's rest | M6 | Done: the place's name tab. HP, MP and the level are not on the game's field panel; the fuller panel in the sprite set is for a screen not seen; the `.bmmp` tags left are constant. |
@@ -120,9 +119,8 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 - **The tempo of one track against ours** — and whether the village's theme
   carries on into a house unbroken or starts again, and what the church plays.
-- **Which vocations may use which weapon kinds** — the one piece of "Used
-  by" not on the cartridge: the vocations' skill trees are chosen in code.
-  The equipment screen on any sword shows the answer for swords.
+- **The inn's price** is the first thing to look for in the binaries next
+  — the skill trees were there, unpacked; the price may be too.
 - **A party member's colour** on the top screen: how the game picks each one's
   strip and dot, which in the capture of Stornway's church are the characters'
   own and none of the panel's four.
@@ -141,6 +139,26 @@ at the owner's word. What is left is what an ear or the emulator settles.
   of 2.2**: sleeping, or time.
 
 **Where to start next time:** the tempo, with the knob; M8 is otherwise done.
+
+---
+
+## The vocations' skill trees, found in the ARM9 — 16 September
+
+**The one part of "Used by" said to be beyond the cartridge is on it after
+all** — in the ARM9 binary, which is BLZ-packed on the cartridge; every
+search of the cartridge's own bytes had missed it for that. Unpacked, at
+`0xEE75D` on the reference dump, twelve rows of five bytes: each vocation's
+four weapon, shield or fisticuffs trees and, last, its own — 15 to 26 in the
+vocations' order (game-formats' FORMAT.md, "Vocation skill trees", with the
+table). `readVocationTrees` finds it by that shape, not by the offset, and
+`vocationsWielding` turns a weapon's kind — which is its tree's number —
+into the same bits armour carries, so the copper sword's grid lights the
+warrior, the thief, the minstrel, the gladiator and the armamentalist.
+INFERRED on three legs: the shape, unique in the binary and its overlays;
+the own trees in order; and the minstrel's row holding the sword, the fan
+and the shield the let's play's Hero wields. The search asked for that row
+and the warrior's sword and shield, and nothing more. Not read: whether the
+Omnivocational passives show on the grid.
 
 ---
 

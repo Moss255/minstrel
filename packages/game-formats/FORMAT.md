@@ -1011,9 +1011,47 @@ found the bits inconsistent; they are matched by name (above), and consistent.
 **Weapons and shields carry no bits.** Their use goes by the vocations' weapon
 skills — `str_gskl` 5, "becomes able to equip <str_2> regardless of
 vocation", is the Omnivocational passives' line — and which vocation has which
-of the fourteen weapon and shield skill trees is not on the cartridge as a
-table: searched as 12 rows of 5 bytes or halfwords in every order, and as
-bitmasks, with nothing found; it is in the binaries' code.
+of the fourteen weapon and shield skill trees is in the ARM9 binary, not in
+a file: see "Vocation skill trees" below. An item's `kind` (word 3, above) is
+the tree's number, so who wields it is who has that tree.
+
+# Vocation skill trees — in the ARM9 binary
+
+**Found 16 September 2026, in the unpacked ARM9** — the binary is BLZ-packed
+on the cartridge, which is why searches of the cartridge's bytes found
+nothing. `readVocationTrees` in `vocations.ts` finds it by its shape, not at
+an offset: twelve rows of five bytes, one a vocation in the level tables'
+order, each four distinct trees from 1 to 14 and, last, the vocation's own
+tree — 15 for the first row, 16 for the next, to 26. On the reference
+cartridge it lies at `0xEE75D` of the unpacked binary and reads:
+
+| vocation | trees |
+|---|---|
+| warrior | sword 1, spear 2, knife 3, shield 13, Courage 15 |
+| priest | spear 2, wand 4, staff 6, shield 13, Faith 16 |
+| mage | wand 4, knife 3, whip 5, shield 13, Spellcraft 17 |
+| martial artist | claws 7, staff 6, fan 8, fisticuffs 14, Focus 18 |
+| thief | knife 3, sword 1, claws 7, fisticuffs 14, Acquisitiveness 19 |
+| minstrel | sword 1, whip 5, fan 8, shield 13, Litheness 20 |
+| gladiator | axe 9, hammer 10, sword 1, fisticuffs 14, Guts 21 |
+| armamentalist | bow 12, sword 1, wand 4, shield 13, Force 22 |
+| paladin | hammer 10, spear 2, wand 4, shield 13, Virtue 23 |
+| sage | wand 4, bow 12, boomerang 11, shield 13, Enlightenment 24 |
+| luminary | fan 8, whip 5, boomerang 11, shield 13, Je Ne Sais Quoi 25 |
+| ranger | boomerang 11, axe 9, bow 12, fisticuffs 14, Ruggedness 26 |
+
+The tree numbers are `str_sklc`'s (1 to 14 the weapons, the shield and
+fisticuffs; 15 to 26 the vocations' own, named for them). INFERRED, on three
+legs: the shape — no other run of sixty bytes in the binary or its
+overlays has it; the own trees running 15 to 26 in the vocations' order; and
+the minstrel's row holding the sword, the fan and the shield, which the
+let's play's Hero, a minstrel, wields and wears. The search that found it
+asked for that row and for the warrior's sword and shield, and nothing else.
+`vocationsWielding` turns a tree into the bits `ItemStats.usedBy` uses, so a
+weapon's "Used by" comes out as the armour's does.
+
+**Not read:** whether the Omnivocational passives, which let one character
+wield a kind "regardless of vocation", show on the screen's grid.
 
 **Word 0** is set on 137 entries, whose descriptions speak of resistances — to
 spells, sleep, Fizzle, MP being stolen: several fields packed, perhaps; not
