@@ -29,6 +29,14 @@ Nothing here is copied into the repository; each is read at runtime.
   the float 0.2, the words 1024, 2560, 2048, 1024, four pointers into the
   ARM9, and the floats 1.3 and 1.0 by `0x80`, `0x60` and `0xD3`. Any of these
   may be the critical, dodge or flee chance; none is tied to one yet.
+- **The reference's monster tension table**, `1.3, 2.0, 3.0, 4.5`
+  (`Enemy_TensionTable` in the reference battle emulator): not in the ARM9 or
+  any overlay as a run of floats, doubles, 4096ths in words or halfwords, or
+  tenths in bytes. The float 1.3 at ARM9 `0xE8D24`, beside the weight tables,
+  stands alone between `0x80, 0x60` and a 1.0, so it is not tied to tension.
+- **The words before the weight tables' neighbours**, ARM9 `0xE8C40`: pairs
+  `(7, 125)`, `(8, 181)`, `(9, 189)`, `(11, 213)`, then two `0xFFFFFFFF`. Not
+  identified.
 - **The inn's price**: no string names an inn in the binaries (`inn`, `yado`,
   `hotel` are absent); the only run of eight or more halfwords in multiples
   of five is `1100, 1200 … 2000` at ARM9 `0xE6EC4`, which does not look like
@@ -43,7 +51,9 @@ check against is not a find.
 
 | what | shape to search by | witness | otherwise |
 |---|---|---|---|
-| **The critical, dodge and flee chances** | the words beside the weight tables — `1024, 2560, 2048, 1024` read against 32768 are 1/32, 5/64, 1/16 and 1/32; against 4096, a quarter and more — and the float `0.2` | the reference battle emulator's constants; the let's plays' count of critical hits per attack over the fights they show | the emulator, counting criticals over a long fight with a known deftness |
+| **How experience is shared** | not a table: the battle-result strings (`/data/bin/str_bres.gp2`, `str_bres_en.bin`, 6 to 9) name up to four members each with their own amount, and 26 says "Each party member receives some experience!", so the game pays per member. A fan forum gives the split as the battle's total over the party's summed levels, times each member's level, with the dead paid by rounds alive; nothing on the cartridge confirms it | a let's play's result screen with two members in the party, whose levels are on screen: the two amounts should stand in the ratio of the levels and sum to the monsters' total | the emulator, one fight with Ivor in the party and one without, against the same monster |
+| **The Hero's critical chance** | not a lone constant: the reference sets it by its build, 200 in 10,000 at level 13 and 500 at levels 15 and 19, so it rises with the hero — deftness, most likely. A table indexed by deftness, or a divide, near the attack code | the reference's three cases, which any rule must give | keep the reference's 200, as the sim does |
+| **The flee chance, and the words beside the weight tables** | `1024, 2560, 2048, 1024` read against 32768 are 1/32, 5/64, 1/16 and 1/32; against 4096, a quarter and more — and the float `0.2`. The dodge (2 in 100) and a monster's lack of criticals are the reference's and in the sim already | the let's plays' flee attempts, succeeded and failed | the emulator, fleeing a weak monster many times |
 | **The damage spread** | the sixteen 12-bit words before the tables, `0x0E35` to `0x1051` — 0.888 to 1.020 in 4096ths, perhaps the multipliers a roll of the damage picks from | the let's plays' damage numbers already checked against the reference formula: their spread should sit inside these bounds and no others | keep the reference's spread, which the let's plays fit |
 | **Which monsters draw by the third and fourth tables** | a field in `mon_btldata.nat`'s records with values 0–3 that agrees with the boss bit for the first two; or the code that indexes the run, in the overlay that runs battles | the `210 29 10 4 2 1` table would show as a monster that almost always takes its first way; a let's play against one | the emulator, a long fight with such a monster, counting its ways |
 | **The inn's price** | the engine function the innkeeper's script calls to fill `<val_2>` — find the innkeeper's talk script's function numbers first (`packages/script`), then the code behind the one that computes a price; a multiply by the party's size near a small constant | the price the let's play's innkeeper names, with a party of one; the same again with two | the emulator: rest with one and with two in the party |

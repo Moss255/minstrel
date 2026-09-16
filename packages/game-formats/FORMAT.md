@@ -2568,13 +2568,12 @@ and `readMonsterNames` read them.
 | `+0x64` | `u16` | agility, INFERRED | by order; high on the metal family |
 | `+0x27`, bit 4 | | fights as a boss: draws its ways by the falling weight table — INFERRED, see "Battle weight tables" | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster |
 
-**How a monster chooses among its six is not in the record**, as far as has been
-looked. The reference draws a number from 1 to 256 against six weights: an even
-table, 43, 42, 43, 43, 42, 43, and for Ragin' Contagion a falling one, 68, 58,
-48, 38, 27, 17. Neither table is on the cartridge as bytes — not in `/data/prm`,
-`/data/bin`, the ARM9 binary or its overlays — and no byte of the record
-separates Ragin' Contagion from the rest. The game here gives every monster
-the even table.
+**How a monster chooses among its six**: the reference draws a number from 1
+to 256 against six weights, an even table, 43, 42, 43, 43, 42, 43, and for
+Ragin' Contagion a falling one, 68, 58, 48, 38, 27, 17. Both are in the ARM9
+binary once it is unpacked (an earlier search of the packed bytes missed
+them), and `+0x27` bit 4 says which a monster draws by — see "Battle weight
+tables" and the row above.
 
 `+0x14` is 500 to 605 on ordinary monsters and 0 on most bosses — Hexagoon's
 among them, though not the Wight Knight's or Morag's — not established.
