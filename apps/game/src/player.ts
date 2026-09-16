@@ -4,7 +4,6 @@ import {
   type Measurements,
   motionAdvance,
   poseFigure,
-  strideOf,
 } from '@minstrel/actor'
 import { type Catalogue, type DecodedTexture, textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
@@ -197,7 +196,8 @@ export function advanceMotion(
   elapsedMs: number,
   travelled: number,
 ): void {
-  const wanted = moving ? 'walk' : 'stand'
+  // The Hero runs: the gait a let's play shows in the field and the village alike.
+  const wanted = moving ? 'run' : 'stand'
   if (wanted !== self.motion) {
     self.motion = wanted
     self.motionFrame = 0
@@ -209,14 +209,10 @@ export function advanceMotion(
   const frameCount = measurements.loopLength(motion)
   self.motionFrame += motionAdvance({
     moving,
-    // Real time rather than whole ticks, so an idle does not run in steps of
+    // Real time rather than whole ticks, so a motion does not run in steps of
     // however many ticks happened to fall in a frame.
     ticks: (elapsedMs * 60) / 1000,
     travelled,
-    frameCount,
-    // A length, not a rate: the cadence follows from how fast the character is
-    // actually moving over the ground.
-    stride: strideOf(toFloat(PERSON.height)),
   })
   self.motionFrame %= frameCount
 }

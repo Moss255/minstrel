@@ -22,10 +22,4 @@ export {
   RIG_BONES,
 } from './library.ts'
 export { figureScale, Measurements } from './measure.ts'
-export {
-  ANIMATION_FPS,
-  motionAdvance,
-  STRIDE_HEIGHTS,
-  strideOf,
-  TICK_RATE,
-} from './motion.ts'
+export { ANIMATION_FPS, motionAdvance, TICK_RATE } from './motion.ts'

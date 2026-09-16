@@ -76,6 +76,38 @@ where; then the scenes' rough edges or the rest of M8, as wanted.
 
 ---
 
+## The Hero runs, and the sword rides the hips — 16 September
+
+**Found by the tester:** the walk did not match the game, nor did the sword's
+place. The let's play, read at twelve frames a second (`evidence/`, not kept):
+
+- **The Hero runs everywhere** — field and village alike, leaning forward,
+  arms pumping, the legs alternating on every frame. The cartridge's `run` is
+  13 frames looped, which at the DS's 30 frames a second is 2.3 cycles, four
+  and a half steps, a second: the gait in the video. So `run` plays while the
+  Hero moves, on time like every other motion (`motion.ts`), and the tuned
+  stride that paced `walk` by ground covered is gone — the rate is the game's,
+  the stride was ours. Whoever follows runs too. **Ours, kept:** a Hero pushing
+  against a wall holds still rather than running on the spot.
+- **The sword lies across the back**, grip up over the right shoulder — that
+  is what shows from the front — and blade down to the left hip, **flat against
+  the back whatever the legs do**; a shield stands upright at the left side.
+  Read wrong three times first: hung from the hip, then from the back, then
+  blade up; the tester's eye settled it. The first video's statue scene, seen
+  over the Hero's shoulder, is the plain view. So both hang from `usiro`, the rig's bone
+  behind the shoulders, which moves with the trunk and not the hips (`hero.ts`,
+  `Carry`) — hung from the waist first, they swung with the run. The angle, 50°
+  below level, and the offsets are matched by eye — ours.
+
+**Seen in the browser:** the sword across the hips from behind; the run
+mid-stride. **Not measured:** the Hero's speed over the ground against the
+video's — `WALK_HEIGHTS_PER_SECOND`, 3, is still the old tuned figure, and the
+feet slide against the run's own 0.405 heights a cycle by about 3×, as the
+DS's chibi run may well do too. The video could settle it: a landmark passed
+against the Hero's own height.
+
+---
+
 ## The controls can be changed — 16 September
 
 **M8's remappable input** (`controls.ts`, `controls-panel.ts`; ours, all of

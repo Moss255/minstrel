@@ -6,7 +6,7 @@ import { BACK_TURNS, outfitOf, STARTING_EQUIPMENT } from '../src/hero.ts'
 const everything = () => true
 
 describe('what the Hero is drawn wearing', () => {
-  it('is the starting kit, with the sword on the back, turned to hang there', () => {
+  it('is the starting kit, with the sword on the back, turned to lie across it', () => {
     const outfit = outfitOf(STARTING_EQUIPMENT, 'back', everything)
     expect(outfit).toMatchObject({ body: 'p_b007', legs: 'p_p215' })
     // The suit's own arms and the shoes, as textures.

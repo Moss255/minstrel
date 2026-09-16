@@ -2632,7 +2632,8 @@ function companionFieldPieces(now: number): Piece[] {
     const look = actorLookOf(rom, model, [])
     if (!look) return []
     const walking = trailWalking[place] === 1
-    const motion = look.motions.get(walking ? 'walk' : 'stand') ?? look.motions.get('stand')
+    // Whoever follows runs as the Hero does — see `advanceMotion`.
+    const motion = look.motions.get(walking ? 'run' : 'stand') ?? look.motions.get('stand')
     const length = Math.max(1, motion ? loopFrames(motion) : 1)
     const frame = walking
       ? Math.floor(hero.motionFrame) % length

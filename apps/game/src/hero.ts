@@ -103,10 +103,13 @@ export function heroOutfit(): Outfit {
 /**
  * Where a weapon and a shield are carried: in the hands in battle, on the back
  * otherwise. INFERRED, from a let's play — the Hero holds the copper sword in
- * battle, Ivor his sword and pot lid, and in the Hexagon and at the inn the Hero
- * has a shield on the back and a fan at the side — and from the rig: the hands
- * are the forearms, `arm1R` and `arm1L`, and the back the rig's own `usiro`,
- * Japanese for behind.
+ * battle, Ivor his sword and pot lid, and outside battle the Hero's sword lies
+ * across the back, grip up over the right shoulder and blade down to the left hip,
+ * with a shield upright at the left side, both flat against the back whatever
+ * the legs do — and from the rig: the hands are the forearms, `arm1R` and
+ * `arm1L`, and the back is `usiro`, Japanese for behind, the rig's one bone
+ * that is no limb: behind the shoulders, moving with the trunk and not the
+ * hips, so what hangs there stays flat against the back through the run.
  */
 export type Carry = 'hands' | 'back'
 
@@ -119,19 +122,45 @@ export const CARRY_BONES: Readonly<
 }
 
 /**
- * How a weapon and a shield are turned to hang on the back — **ours**, matched
- * to that let's play; the game's own is in its code. A shield is modelled
- * lying along the forearm, so a quarter turn about x stands it upright and
- * facing out behind, and its own offset leaves it towards the left. A weapon is
- * modelled pointing ahead, so a quarter turn about x points it down, and a
- * twelfth of a turn about z takes it to the left hip, where the fan hangs.
- * Column by column, as the DS keeps a matrix.
+ * How a weapon and a shield sit on the back — **ours**, matched to the let's
+ * play; the game's own is in its code. A matrix in `usiro`'s space, column by
+ * column as the DS keeps one: where the part's x, y and z go, then where its
+ * origin goes. The rig faces +z with its left at +x; `usiro` sits at
+ * (0, 13, −2) of a 23-unit figure, behind the shoulders, so the hips are four
+ * units below it.
+ *
+ * A weapon is modelled along +z from its guard, its grip behind, its guard
+ * across x and its flat in y: on the back the blade runs from under the right
+ * shoulder down to the left hip, about 60° below level, flat against the back,
+ * its guard a little right of the spine, level with the bone and 1.2 behind
+ * it, clear of the back — so the grip stands up over the right shoulder, as
+ * the let's play shows from behind and in front. A shield is modelled along the forearm — long in x, its
+ * face in y — and stands upright behind the left hip, face outward.
  */
-const SIN_30 = 0.5
-const COS_30 = Math.sqrt(3) / 2
+const BLADE_X = Math.cos((60 * Math.PI) / 180)
+const BLADE_Y = -Math.sin((60 * Math.PI) / 180)
 export const BACK_TURNS: { readonly weapon: Float32Array; readonly shield: Float32Array } = {
-  weapon: Float32Array.of(COS_30, SIN_30, 0, 0, 0, 0, 1, 0, SIN_30, -COS_30, 0, 0, 0, 0, 0, 1),
-  shield: Float32Array.of(1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1),
+  // x → across the blade in the back's plane, y → out from the back, z → down and to the left.
+  weapon: Float32Array.of(
+    -BLADE_Y,
+    BLADE_X,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    BLADE_X,
+    BLADE_Y,
+    0,
+    0,
+    -1.5,
+    0.5,
+    -1.2,
+    1,
+  ),
+  // x → up, y → backward, z → across; the origin behind the left hip.
+  shield: Float32Array.of(0, 1, 0, 0, 0, 0, -1, 0, -1, 0, 0, 0, 2.5, -3.5, -0.5, 1),
 }
 
 /**
