@@ -21,7 +21,7 @@ scripts; M4 has shops, the inn, saving and equipment with its numbers; M5 has
 battles, spells, states, monsters acting and a party of up to four; M6 has the
 field's monsters, the marsh and Ivor following; M7 is complete — the pass, the
 Hexagon, Hexagoon, Patty and the title card — and walked start to finish by the
-tester. **M8 has begun with audio**: the music plays. The rest of M8 has not.
+tester. **M8 is under way**: the music, the scenes' effects and jingles, the controls panel and the text speed.
 
 **Against the definition of done:**
 
@@ -32,14 +32,14 @@ tester. **M8 has begun with audio**: the music plays. The rest of M8 has not.
 | 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line; the inn's price is a stand-in |
 | 4 | fight, level up, buy and equip gear | yes; equipment changes the numbers and is drawn on the Hero and Ivor |
 | 5 | cross the pass, clear the Hexagon, beat Hexagoon, rescue Patty | yes, played through by the tester |
-| 6 | the monitor's resolution, widescreen, remappable input | resolution and widescreen yes; remapping no |
+| 6 | the monitor's resolution, widescreen, remappable input | yes: resolution and widescreen, and the controls panel remaps keys and pad |
 
 **Open, by milestone:**
 
 | gap | milestone | what it needs |
 |---|---|---|
-| **Music: the tempo, and which track plays where** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob; the track-to-place table is not found — `mapbgm.bin` is not it — and the videos have no sound, so the emulator or a new lead. Then sound effects (1,398 `SSAR`s), the three streams, and fades on a map change. |
-| The rest of M8 | M8 | Settings — resolution, the two-screen layout, input remapping, text speed; the ROM's hash and caching; README, licence and contribution guide. |
+| **Music: the tempo, and which track plays where** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob; the track-to-place table is not found — `mapbgm.bin` is not it — and the videos have no sound, so the emulator or a new lead: the scenes' `712`, 452 calls, 6 the commonest, may name a track. Then the menus' sounds (`728`?), the three streams, and fades on a map change. |
+| The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word; licence and contribution guide. Done: input remapping, text speed, the scenes' effects and jingles. |
 | The scenes' rough edges | M3 | Sprite characters' walking frames in scenes; who is shown and hidden when (`570`, `571`, `223`); a fade on going through a doorway; Ivor's faces; the camera's even pace and field of view. |
 | The time of day | M6 | The let's play moves into evening and night; ours stays in daylight. Which zone roams when is measured, not settled. |
 | Equipment's rest | M4 | A shield on the Hero's back not yet seen (the starting kit has none); the equipment screen's small figure undressed; its layouts (`lay_eq.lia`); rarity and "Used by" not found. |
@@ -72,7 +72,52 @@ tester. **M8 has begun with audio**: the music plays. The rest of M8 has not.
 - **Which zone roams when and where**, and whether the mix changes at night.
 
 **Where to start next time:** the tempo, with the knob; then which track plays
-where; then the scenes' rough edges or the rest of M8, as wanted.
+where — try `712`; then the licence and guide, and the hash and cache last.
+
+---
+
+## The scenes sound, and the text has a speed — 16 September
+
+**Sound effects and jingles** (`ssar.ts`, `packages/audio`, `music.ts`,
+`event.ts`). The sequence archive, `SSAR`, is read from Gota7's specification
+(`packages/nitro-snd/FORMAT.md`, "SSAR"): many short sequences in one command
+stream, each entry with its own bank and volume. `se_norm.sdat` holds 279 of
+them with a file, `se_btl.sdat` 481, and every one reads. **INFERRED, with
+the counts in `event.ts`'s header:** `726(n)` sounds `se_norm` archive `n` —
+all 240 distinct values are such indices; `730` likewise; `720(n)` plays
+`bgm.sdat`'s sequence `n`, the six values falling among the `ME_` jingles;
+`727` on a scene's last frame and `729(0, frames)` stop the sounds. Ivor's
+"Hero!" scenes sound `ME_006`; the statue sounds 204, the Hexagon's figure
+261, 208 and the switch 225.
+
+**Played:** `Ensemble` in `render.ts` — the music's sequencer and four
+effect sequencers mixed together, an effect taking a free voice or the one
+that has played longest; a jingle pauses the music (its notes released, its
+tracks kept) and lets it go on after. The sequencer takes a `start` offset
+into the stream. The worklet takes `effect`, `jingle` and `stop-effects`
+messages and reports how many effects sound. **Ours:** which of an archive's
+filled slots plays — they are variants, the same phrase at rising keys or
+softer, and the first is taken; sixteen channels for every voice where the
+DS shared sixteen by priority; no fade on `729`; the menus' sounds, which no
+script calls, are not found — `728(n)`, 1,174 calls with small values, 0 to
+36, may be them by a table, and `712`, `713`, `721`, `723` and `731` are not
+read either. `?se=113` or `?se=113:2` sounds an archive, or a slot of it, on
+load, for finding them by ear.
+
+**Checked:** 44 audio and sound tests, the ensemble's among them; every
+effect renders; 72 of the 279 hold a looping wave until stopped, which FSS
+also does (`Track_Run`'s `END` only marks the track), and 134 of the 137
+scenes sounding one call `727` after — so `727` releases them. In headless
+Chrome the worklet runs with an effect sounding. **Not heard.**
+
+**Text speed** (`settings.ts`; ours): slow, normal, fast or instant — 20, 45,
+90 characters a second or the page whole — set at the foot of the controls
+panel (`k`, then ←/→ on the last row) and kept in the browser under
+`minstrel.settings`. A page comes up a character at a time; confirm while it
+is still coming shows the rest. The game's own message speeds are not read.
+
+**The README** now says where the slice stands, lists `@minstrel/audio`, and
+gives the keys and the address parameters.
 
 ---
 

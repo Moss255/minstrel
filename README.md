@@ -5,24 +5,32 @@ Two things sharing a set of Nintendo DS parsers:
 - **`apps/game`** — a browser reimplementation of a DS JRPG in TypeScript, reading assets from the user's own cartridge dump at runtime. Not an emulator and not a recompilation: the engine is original code, only data comes from the cartridge.
 - **`apps/explorer`** — a general-purpose, fully client-side browser explorer for *any* DS cartridge.
 
-Both apps exist and run. What is playable is one village: you can walk it, but
-its doors do not lead anywhere yet.
+Both apps exist and run. What is playable is the opening slice of the story:
+a village, the road out of it, a dungeon and its boss, with the shops, the inn,
+saving, battles, levelling, equipment and the story's scenes between.
 
 ## Status
 
-Early. M0 (extraction and inventory) is complete, M1 (renderer and model viewer)
-is done, and M2 (a walkable village) walks — map assembly, collision, the
-character controller and the camera are all working against a real cartridge.
+The slice plays start to finish. M0 (extraction and inventory), M1 (renderer
+and model viewer) and M2 (a walkable village) are done; M3 plays the story's
+scenes from their scripts — cameras, fades, motions and figures; M4 has shops,
+the inn, saving and equipment, drawn on the party; M5 has battles, spells,
+states and a party of up to four; M6 has the field's monsters and the
+companion following; M7 is the road, the dungeon and its boss. M8 is under
+way: the music and the scenes' sound effects play, the controls can be
+remapped, the text speed set. Open in M8: which track plays where, the
+cartridge's hash check and asset cache, the licence and contribution guide.
 
-Two M2 items are open, and both are blocked on findings rather than on code:
-interior/exterior transitions need the `SB2` event bytecode, which nothing here
-reads yet, and the player is a stand-in because which parts make the Hero is
-not decoded.
+Every reading of an undocumented format or script is marked as read or
+inferred, with its evidence, in the package's `FORMAT.md`; what is ours
+rather than the game's is said so.
 
 - [`docs/findings.md`](docs/findings.md) — what has been established about the
   cartridge's formats, by what evidence, and what is still unknown.
+- [`docs/next.md`](docs/next.md) — where the work stands and what is open,
+  newest first.
 - [`docs/M0-inventory.md`](docs/M0-inventory.md) and
-  [`docs/M1-renderer.md`](docs/M1-renderer.md) — milestone status.
+  [`docs/M1-renderer.md`](docs/M1-renderer.md) — early milestone status.
 
 | package | licence | what it does |
 |---|---|---|
@@ -30,11 +38,12 @@ not decoded.
 | [`@minstrel/nitro-comp`](packages/nitro-comp) | MIT | LZ77, Huffman, run-length and BLZ decompression |
 | [`@minstrel/l5-gpc`](packages/l5-gpc) | MIT | GPC2, a Level-5 archive container |
 | [`@minstrel/nitro-gfx`](packages/nitro-gfx) | MIT | NSBMD models, NSBTX textures, NSBCA animation, the display list |
-| [`@minstrel/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives |
+| [`@minstrel/nitro-snd`](packages/nitro-snd) | MIT | SDAT sound archives: SSEQ, SBNK, SWAR, SSAR |
 | [`@minstrel/game-formats`](packages/game-formats) | MIT | title-specific formats: the bitmap font, the tagged record tables, the collision mesh, the map manifest, the map index |
 | [`@minstrel/fixed`](packages/fixed) | GPL-3.0+ | fixed-point arithmetic; no float reaches gameplay |
 | [`@minstrel/sim`](packages/sim) | GPL-3.0+ | headless simulation: the world, collision, the character controller |
 | [`@minstrel/render`](packages/render) | GPL-3.0+ | the camera, and how the DS's framing extends to other screens |
+| [`@minstrel/audio`](packages/audio) | GPL-3.0+ | the sequencer and mixer that play SSEQ through an AudioWorklet |
 | `tools/inventory` | MIT | CLIs that catalogue and extract a cartridge |
 | `tools/harness` | MIT | integration tests against a real cartridge, local-only |
 | [`@minstrel/cartridge`](packages/cartridge) | MIT | walk a cartridge, unwrap its containers, index what comes out |
@@ -42,7 +51,7 @@ not decoded.
 | [`@minstrel/actor`](packages/actor) | GPL-3.0+ | character assembly, rig attachment, motion |
 | [`@minstrel/gl`](packages/gl) | GPL-3.0+ | WebGL2 backend and the DS reference target |
 | `tools/shot` | MIT | serve a built app with a local cartridge and screenshot it |
-| `apps/game` | GPL-3.0+ | walk a village read from your own dump |
+| `apps/game` | GPL-3.0+ | play the opening slice from your own dump |
 | `apps/explorer` | GPL-3.0+ | browse any DS cartridge |
 
 The `nitro-*` packages are game-agnostic and browser-safe: no Node built-ins, no
@@ -111,6 +120,24 @@ default and never run in CI.
 MINSTREL_TEST_ROM=rom/your.nds pnpm test
 ```
 
+## Playing
+
+```sh
+pnpm dev        # then drop your own dump onto the page
+```
+
+The keyboard's defaults: `WASD` or the arrows walk, `f` or Enter confirms
+and talks, Esc cancels, `x` opens the menu, `m` the map, `b` starts or stops
+the music. A standard-layout gamepad works too. `k` opens the controls panel,
+where every action can be bound to other keys or pad buttons and the text
+speed set; both are kept in the browser. Saves are kept in the browser as
+well.
+
+For looking at a thing on its own, the address takes parameters: `?bgm=BG_001`
+plays a track by name, `?tempo=0.9` scales its tempo, `?se=113` sounds an
+effect archive by index, `?map=`, `?event=` and `?at=x,z` open a map, a scene
+or a spot.
+
 ## Looking at models
 
 ```sh
@@ -178,6 +205,7 @@ packages/
   fixed/          fixed-point arithmetic               GPL, engine
   sim/            headless simulation                  GPL, engine
   render/         camera and framing, headless         GPL, engine
+  audio/          sequencer, mixer, AudioWorklet       GPL, engine
   world/          map assembly, placement, spawning    GPL, engine
   actor/          character assembly and posing        GPL, engine
   gl/             WebGL2 backend                       GPL, engine
@@ -186,7 +214,7 @@ tools/
   harness/        local-only integration tests
   shot/           headless render verification, no dependencies
 apps/
-  game/           walk a village from your own dump
+  game/           the opening slice from your own dump
   explorer/       browse any DS cartridge
 docs/
 ```
