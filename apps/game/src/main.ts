@@ -1290,7 +1290,7 @@ function drawCorner(): void {
     const seen = walking.find((w) => w.place === place)
     return [{ x: seen ? seen.x / unit : hero.x, z: seen ? seen.z / unit : hero.z, name: who.name }]
   })
-  drawMinimap(context, minimapShown, [hero, ...companions])
+  drawMinimap(context, minimapShown, [hero, ...companions], loaded?.region)
 }
 
 /** Where the Hero stands, for the doors — kept, not made anew each frame. */

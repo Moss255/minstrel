@@ -191,6 +191,34 @@ function nameImage(font: LatinFont, name: string): HTMLCanvasElement | undefined
   return image
 }
 
+/** The place's name in its tab at the top right — see `TAB`. */
+function drawTab(
+  context: CanvasRenderingContext2D,
+  font: LatinFont | undefined,
+  title: string,
+): void {
+  const name = font ? nameImage(font, title) : undefined
+  context.font = FALLBACK_FONT
+  const width = (name ? name.width : Math.ceil(context.measureText(title).width)) + TAB.pad * 2
+  const x = SCREEN_WIDTH - TAB.right - width
+  const y = TAB.top
+  context.fillStyle = TAB.fill
+  context.strokeStyle = TAB.edge
+  context.lineWidth = 1
+  context.beginPath()
+  context.roundRect(x + 0.5, y + 0.5, width - 1, TAB.height - 1, 3)
+  context.fill()
+  context.stroke()
+  if (name) {
+    context.drawImage(name, x + TAB.pad, y + Math.floor((TAB.height - name.height) / 2))
+    return
+  }
+  context.fillStyle = '#fff'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText(title, x + width / 2, y + TAB.height / 2)
+}
+
 /** The party's panel in each of its colours, cut to its name strip; none when the sprite file will not read. */
 function readPanels(rom: Uint8Array): MinimapSheet[] {
   const files = new Map<string, Uint8Array>()
@@ -365,10 +393,19 @@ export interface PartyShown {
  * about the Hero, the party's first, or a room's mark — each member's dot, and
  * their name panels along the foot, left to right in their places.
  */
+/**
+ * The tab naming the place at the picture's top right — "Stornway" on the
+ * capture of its church, dark with a light edge and the name in white. Its
+ * place, size and colours are taken from that capture by eye; the name is
+ * the map index's region. Ours.
+ */
+const TAB = { right: 6, top: 5, height: 12, pad: 5, fill: '#2a2a2e', edge: '#c8c8c8' } as const
+
 export function drawMinimap(
   context: CanvasRenderingContext2D,
   shown: MinimapShown,
   party: readonly PartyShown[],
+  title?: string,
 ): void {
   const { layout, room } = shown.chosen
   context.imageSmoothingEnabled = false
@@ -405,6 +442,8 @@ export function drawMinimap(
     context.arc(x, y, 3.5, 0, Math.PI * 2)
     context.fill()
   }
+
+  if (title) drawTab(context, shown.nameFont, title)
 
   if (shown.panels.length === 0) return
   context.font = FALLBACK_FONT

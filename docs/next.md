@@ -45,7 +45,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | Equipment's rest | M4 | The layouts (`lay_eq.lia`), and rarity and "Used by", which want the emulator. Done: the figure on the equipment screen; a shield on the back seen. |
 | What battles still lack | M5 | Dazzle, sand and Weird Dance, read and not modelled; `calls for backup`; how the monsters weight their ways. Done: the damage checked against the let's play, the fight winnable from level 5 as the video won it, each action's own opening line. |
 | M4's stand-ins | M4 | `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
-| The top screen's rest | M6 | HP, MP and level on the party panel; the town's name tab; `.bmmp` tags. |
+| The top screen's rest | M6 | Done: the place's name tab. HP, MP and the level are not on the game's field panel; the fuller panel in the sprite set is for a screen not seen; the `.bmmp` tags left are constant. |
 | The explorer | explorer | 2D previews, and now sound: the SDAT's sequences could play there too. |
 
 **Needs the emulator — questions to bring to it:**
@@ -75,6 +75,25 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## The map corner's tab — 16 September
+
+**The place's name in a tab** at the picture's top right (`drawTab`,
+`minimap.ts`): the map index's region — "Angel Falls" in the village and its
+houses, "Angel Falls Region" on the pass, "The Hexagon" — set in the strips'
+own face. The capture of Stornway's church shows the tab, dark with a light
+edge and the name in white; its place, size and colours are taken from it by
+eye, ours. The sprite set has no tab of its own.
+
+**HP, MP and the level on the field's panel: not the game's.** The capture
+shows the party's strips with their names alone, and so does the let's play
+wherever its map screen shows. The sprite set does hold a fuller panel
+(`obj_minimap` cell 2, 64 × 64: the name strip over HP and MP bars) and the
+digits 0–9, +1 to +9 and a star — for a screen not seen here, unread. The
+`.bmmp` tags `0x65`, `0x67`, `0x68` are constant and `0x6d` all but, so there
+is nothing in them to read.
 
 ---
 

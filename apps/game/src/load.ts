@@ -125,6 +125,8 @@ export interface Loaded {
   linesOf(id: number, letter: string): readonly TalkLine[]
   /** The map's own id in the index, which is how triggers and the cast name it. */
   readonly mapId: number | undefined
+  /** The region the index puts it in — "Angel Falls" — which the map's corner names in its tab. */
+  readonly region: string | undefined
   /** The track that plays here, an index into `bgm.sdat`'s sequences — see `MapEntry.music`. */
   readonly music: number | undefined
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
@@ -1579,6 +1581,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
+    region: entry?.region,
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,
