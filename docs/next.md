@@ -9,6 +9,56 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## Pick-up list — 16 September
+
+The slice's definition of done is met. What is left, in the order worth taking
+it, with where each lives. Commands to come back with:
+
+```sh
+pnpm install && pnpm typecheck && pnpm test          # 1,149 unit tests, synthetic
+MINSTREL_TEST_ROM=rom/your.nds pnpm test             # the gated checks, your dump
+pnpm dev                                             # the game; ?bgm=BG_005&tempo=0.8
+APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/shot
+```
+
+**1. By ear, in play — nothing to code until heard**
+
+- **The tempo.** `?bgm=BG_005&tempo=0.8` and `1.25` against the village; the
+  value that sounds right says what is misread (0.5 or 2 the 192 Hz tick, 0.8
+  or 1.2 the tempo unit), then find the game's rule — `packages/audio`,
+  "The music plays" below. Pitch at the same time.
+- **The music's manners:** whether the village theme should restart on
+  entering a house (ours: it carries on); the effects' loudness against the
+  music; a fade between tracks on a map change (`Music.fade` exists, unused).
+- **The scenes' feel:** the doorway fade's quarter-second; the text speeds;
+  the sword and shield on the back; the dusk and night colours — all set by
+  eye, `daytime.ts`, `hero.ts`, `main.ts`.
+
+**2. Needs the emulator — questions, each a line in the list below**
+
+Equipment rarity and "Used by"; the inn's price; the monsters' six-way
+weights, critical and flee chances; Ivor's numbers; what ends 2.2's night;
+which zone roams when; the party's colours; pot or barrel; Ivor's greeting.
+
+**3. Code polish, open, none blocking**
+
+| where | what |
+|---|---|
+| `packages/audio`, `event.ts` | the menus' sounds — `728` (1,174 calls, small values) and `712` are the candidates, unread; `731`; the three `STRM` streams |
+| `event.ts`, `main.ts` | the scene camera's pace over a `304`/`311` move (ours is even) and the field of view (50°): both want a measurement against the let's play at 12 fps; `223`, 14 calls, unread |
+| `packages/sim/src/battle` | Dazzle (`starts to hallucinate`), sand, Weird Dance (MP drain), `calls for backup` — read, landing as attacks |
+| `equip-screen.ts` | the layouts `lay_eq.lia`, `lay_iie.lia`, for the screen's exact places instead of the screenshots' |
+| `daytime.ts`, `save.ts` | the field's seconds at 2.2 are not saved; a save mid-2.2 wakes to day |
+| `apps/explorer` | lone `NCGR`+`NCLR` tile sheets; `NSBTX` textures on their own; the scan in a Worker |
+| `main.ts` (`hungPieces`) | a face hung on the Hero by `235` is not drawn — the Hero is the figure, not a scene model |
+| `cast.ts` (`walkingFrame`) | sprites walking in scenes: not yet watched in the browser |
+
+**4. After Slice 1** — the plan's own list: the story on from 2.5, the world
+beyond Angel Falls, and everything the scope excludes (character creation,
+vocations, alchemy, grottoes, multiplayer, party recruitment).
+
+---
+
 ## What is still open — 16 September, at the end of M8
 
 This replaces the list of 15 September. Each gap's evidence is in the section
