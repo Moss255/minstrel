@@ -129,8 +129,8 @@ import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './control
 import { ControlsPanel, walkHint } from './controls-panel.ts'
 import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
-import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
-import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
+import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
+import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED, slotOf } from './equipment.ts'
 import {
   type EventCamera,
   EventPlayer,
@@ -1082,6 +1082,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
   dressHero()
   fillBag(opened)
+  wearWanted()
   // The top screen's map: the picture this map is drawn on, or its area's.
   minimaps ??= readMinimaps(cartridge)
   minimapShown = showMinimap(minimaps, opened.mapId, opened.code)
@@ -1684,6 +1685,36 @@ function keepTime(elapsedMs: number): void {
     })
   } else if (turned && roaming) beginRoaming()
 }
+// For a headless check: the portrait drawn, and how much of it is not clear.
+Object.defineProperty(window, 'minstrelPortrait', {
+  get: () => {
+    const drawn = heroPortrait()
+    if (!drawn) return { drawn: false, motions: loaded ? [...loaded.figure.motions.keys()] : [] }
+    const probe = document.createElement('canvas')
+    probe.width = drawn.width
+    probe.height = drawn.height
+    const g = probe.getContext('2d')
+    if (!g) return { drawn: true }
+    g.drawImage(drawn, 0, 0)
+    const data = g.getImageData(0, 0, probe.width, probe.height).data
+    let opaque = 0
+    for (let i = 3; i < data.length; i += 4) if ((data[i] as number) > 0) opaque++
+    return {
+      drawn: true,
+      width: drawn.width,
+      height: drawn.height,
+      opaque,
+      pixels: data.length / 4,
+    }
+  },
+})
+// For a headless check: what the Hero wears, readable from the page.
+Object.defineProperty(window, 'minstrelWorn', {
+  get: () => ({
+    equipped: [...equipped.entries()],
+    parts: loaded ? [...loaded.wardrobe.parts.keys()].filter((n) => /^p_[ws]/.test(n)) : [],
+  }),
+})
 // For a headless check: the time of day, readable from the page.
 Object.defineProperty(window, 'minstrelTime', {
   get: () => ({ time: timeNow(), fieldSeconds, lighting: wantedLighting }),
@@ -1715,6 +1746,30 @@ function fillBag(opened: Loaded): void {
       for (let i = 0; i < count; i++) bag = take(bag, { item: id })
     }
   }
+}
+
+/**
+ * `?wear=21002,20004` — a debugging aid, **ours**: those items put in the bag
+ * and worn, once, when the first map loads, to see them on the Hero.
+ */
+const wantedWear = params.get('wear')
+let wearDone = false
+function wearWanted(): void {
+  if (wearDone || !wantedWear) return
+  wearDone = true
+  for (const part of wantedWear.split(',')) {
+    const id = Number(part)
+    if (!Number.isInteger(id)) continue
+    const slot = slotOf(partName(id)?.split('_')[1]?.[0])
+    if (!slot) continue
+    bag = take(bag, { item: id })
+    const worn = equip(bag, equipped, slot, id)
+    if (worn) {
+      bag = worn.bag
+      equipped = worn.equipped
+    }
+  }
+  dressHero()
 }
 
 async function chose(file: File): Promise<void> {
@@ -3565,6 +3620,77 @@ function showMenu(): void {
 }
 
 /** Draw the equipment screen for the menu as it stands; false when it cannot be drawn. */
+/** The figure the portrait draws, dressed for the hand — see `heroPortrait`. */
+let portraitFigure: { key: string; figure: Loaded['figure']; pieces: Loaded['pieces'] } | undefined
+/** The portrait's own renderer, drawing to nothing behind — see `heroPortrait`. */
+const portraitEl = document.createElement('canvas')
+let portrait: ModelRenderer | null | undefined
+/** How many times the screen's pixels the portrait is drawn at, for crispness when the screen is scaled up. */
+const PORTRAIT_SCALE = 3
+
+/**
+ * The Hero as they stand dressed, for the equipment screen: the figure at
+ * rest, facing the camera, drawn alone by a second renderer onto a clear
+ * ground. The framing — the camera at the waist, a figure and a quarter
+ * away, so the figure fills the frame as the screenshots' does — is ours.
+ */
+function heroPortrait(): HTMLCanvasElement | undefined {
+  const here = loaded
+  if (!here || !self || portrait === null) return undefined
+  if (portrait === undefined) {
+    portraitEl.width = PORTRAIT.width * PORTRAIT_SCALE
+    portraitEl.height = PORTRAIT.height * PORTRAIT_SCALE
+    try {
+      portrait = new ModelRenderer(portraitEl, { transparent: true })
+    } catch {
+      portrait = null
+      return undefined
+    }
+  }
+  const standing: Player = {
+    ...self,
+    state: { ...self.state, x: fx32(0), y: fx32(0), z: fx32(0) },
+    facing: 0,
+    motionFrame: 0,
+  }
+  // Dressed with the weapon and shield in hand, as the screenshots' figure
+  // holds them; kept until what is worn changes.
+  const key = [...equipped.entries()].map(([slot, item]) => `${slot}=${item}`).join(',')
+  if (portraitFigure?.key !== key) {
+    const wardrobe = here.wardrobe
+    const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
+    const figure = dressFigure(wardrobe, outfitOf(equipped, 'hands', has))
+    portraitFigure = { key, figure, pieces: figurePieces(figure) }
+  }
+  const { figure, pieces: dressed } = portraitFigure
+  const motion = figure.motions.get('stand')
+  const pieces = playerPieces(standing, figure, dressed, here.catalogue, measurements, motion)
+  if (pieces.length === 0) return undefined
+  // The figure's own height as posed, in world units, frames it.
+  let height = 0
+  for (const piece of pieces)
+    for (const v of piece.geometry.vertices) height = Math.max(height, v.y)
+  if (height <= 0) return undefined
+  portrait.upload(pieces)
+  portrait.draw(
+    {
+      focus: [0, height * 0.5, 0],
+      yaw: 0,
+      pitch: 0.08,
+      distance: height * 1.25,
+      actualDistance: height * 1.25,
+      lift: 0,
+      height: 0,
+      follow: 0,
+      minPitch: 0,
+      maxPitch: Math.PI / 2,
+    },
+    false,
+    { width: portraitEl.width, height: portraitEl.height },
+  )
+  return portraitEl
+}
+
 function showEquipScreens(): boolean {
   if (!menu || !cartridge) return false
   if (equipScreens === undefined) {
@@ -3594,6 +3720,7 @@ function showEquipScreens(): boolean {
     },
     subtypeOf: (id) => loaded?.itemKinds.get(id)?.subtype,
     numbersOf: (id) => loaded?.itemStats.get(id),
+    portrait: heroPortrait(),
   })
   return true
 }

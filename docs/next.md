@@ -42,7 +42,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word. Done: input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
-| Equipment's rest | M4 | A shield on the Hero's back not yet seen (the starting kit has none); the equipment screen's small figure undressed; its layouts (`lay_eq.lia`); rarity and "Used by" not found. |
+| Equipment's rest | M4 | The layouts (`lay_eq.lia`), and rarity and "Used by", which want the emulator. Done: the figure on the equipment screen; a shield on the back seen. |
 | What battles still lack | M5 | Abilities; the states the reference does not model; Hexagoon beyond its six ways; how Ivor and the monsters choose is ours. The fight was played at level 20 here and won solo at level 7 in the let's play. |
 | M4's stand-ins | M4 | `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
 | The top screen's rest | M6 | HP, MP and level on the party panel; the town's name tab; `.bmmp` tags. |
@@ -75,6 +75,41 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## Equipment: the figure on the screen, and a shield seen — 16 September
+
+**The equipment screen's figure** (`heroPortrait`, `main.ts`; `PORTRAIT` in
+`equip-screen.ts`): the Hero as they stand dressed, facing out, drawn by a
+second renderer onto a clear ground (`ModelRenderer`'s new `transparent`
+option) and laid on the bottom screen's left half above the name plate,
+where the screenshots have it. The figure and its dress are the game's; the
+framing — the camera at the waist, a figure and a quarter away — and the
+frame's place are ours. **Seen headless**: the Hero with the copper sword
+and the catty shield on the screen.
+
+**A shield on the Hero's back, seen at last**: `?wear=21003` (a debugging
+aid, ours: the items put in the bag and worn on load) shows the catty shield
+upright behind the left hip as `BACK_TURNS` places it. On the way: itemsort's
+`unknown_1` runs 1 to 628 across the equipment in table order — an ordering,
+not the worn part's number, which stays the item's own (35 of 45 shields
+and 148 of 228 weapons have a part by it; 9 and 56 by `unknown_1`).
+
+**What an empty slot shows** (`BARE_OUTFIT`, `hero.ts`; the tester found
+the suit staying on when taken off). A slot with nothing in it used to keep
+the Hero's starting piece, there being no bare body known. There is one:
+of the cartridge's 192 body models, 79 legwear models and 89 footwear
+textures, 36, 2 and 2 have no item behind their number, and **090 is the one
+number all three share** — `p_b090`, `p_p090`, `p_r090`: a blue vest, shorts
+and bare feet, seen headless on the Hero in the field and on the screen
+with every slot emptied. INFERRED from the parts alone; a cartridge without
+them keeps the starting piece. A weapon or shield taken off was already
+leaving the model.
+
+**Still open:** the layouts (`lay_eq.lia`, `lay_iie.lia`), which would give
+the screen's exact places instead of the screenshots'; rarity and "Used by",
+which no file on the cartridge holds beside the item and want the emulator.
 
 ---
 

@@ -146,8 +146,17 @@ export class ModelRenderer {
   /** Whether each texture is drawn see-through, worked out once per pixel array. */
   private readonly seeThrough = new WeakMap<Uint8Array, boolean>()
 
-  constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl2', { antialias: true, alpha: false })
+  /**
+   * @param options.transparent clear to nothing rather than to the dark
+   * ground, so what is drawn can be laid over another picture — a figure on a
+   * menu screen.
+   */
+  constructor(canvas: HTMLCanvasElement, options: { readonly transparent?: boolean } = {}) {
+    const gl = canvas.getContext('webgl2', {
+      antialias: true,
+      alpha: options.transparent === true,
+      premultipliedAlpha: false,
+    })
     if (!gl) throw new Error('WebGL2 is not available in this browser')
     this.gl = gl
 
@@ -206,7 +215,8 @@ export class ModelRenderer {
     gl.bindVertexArray(null)
 
     gl.enable(gl.DEPTH_TEST)
-    gl.clearColor(0.078, 0.086, 0.102, 1)
+    if (options.transparent) gl.clearColor(0, 0, 0, 0)
+    else gl.clearColor(0.078, 0.086, 0.102, 1)
   }
 
   /** Upload the model as one buffer with a draw range and texture per shape. */
@@ -346,6 +356,7 @@ export class ModelRenderer {
     }
     const width = viewport?.width ?? canvas.width
     const height = viewport?.height ?? canvas.height
+    if (viewport) gl.viewport(0, 0, width, height)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
     if (this.batches.length === 0) return
 

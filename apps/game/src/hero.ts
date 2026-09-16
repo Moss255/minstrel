@@ -164,13 +164,24 @@ export const BACK_TURNS: { readonly weapon: Float32Array; readonly shield: Float
 }
 
 /**
+ * What the Hero shows where a slot is empty: the underclothes. INFERRED from
+ * the parts alone: of the cartridge's 192 body models, 79 legwear models and
+ * 89 footwear textures, 36, 2 and 2 have no item behind their number, and
+ * **090 is the one number all three lists share** — `p_b090`, `p_p090`,
+ * `p_r090` — a body, legs and feet made as a set for no item to put on. Not
+ * seen in the game; a slot whose bare part is missing keeps what the Hero
+ * starts in, {@link HERO_OUTFIT}.
+ */
+export const BARE_OUTFIT = { armour: 13090, legwear: 16090, footwear: 17090 } as const
+
+/**
  * The Hero dressed in what they wear and wield: each worn piece's part by its
  * item's number (`partName`), the gloves' arms or else the body's own, the
  * headgear on the head, and the weapon and shield carried as {@link Carry}
  * says. `has` says which parts and texture files the cartridge holds: an item
  * with none — an accessory, a knife — is not drawn. A slot with nothing in it
- * keeps what the Hero starts in there — {@link HERO_OUTFIT} — as the rig needs
- * a body and legs and no bare ones are on the cartridge: ours.
+ * shows the underclothes, {@link BARE_OUTFIT}, as the rig needs a body and
+ * legs.
  */
 export function outfitOf(equipped: Equipped, carry: Carry, has: (name: string) => boolean): Outfit {
   const worn = (slot: Slot): { readonly id: number; readonly name: string } | undefined => {
@@ -178,10 +189,14 @@ export function outfitOf(equipped: Equipped, carry: Carry, has: (name: string) =
     const name = id === undefined ? undefined : partName(id)
     return id !== undefined && name !== undefined && has(name) ? { id, name } : undefined
   }
-  const starting = (id: number) => ({ id, name: partName(id) as string })
-  const body = worn('body') ?? starting(HERO_OUTFIT.armour)
-  const legs = worn('legs') ?? starting(HERO_OUTFIT.legwear)
-  const feet = worn('feet') ?? starting(HERO_OUTFIT.footwear)
+  const part = (id: number) => ({ id, name: partName(id) as string })
+  const underneath = (id: number, fallback: number) => {
+    const found = part(id)
+    return has(found.name) ? found : part(fallback)
+  }
+  const body = worn('body') ?? underneath(BARE_OUTFIT.armour, HERO_OUTFIT.armour)
+  const legs = worn('legs') ?? underneath(BARE_OUTFIT.legwear, HERO_OUTFIT.legwear)
+  const feet = worn('feet') ?? underneath(BARE_OUTFIT.footwear, HERO_OUTFIT.footwear)
   const bare = armsFor(body.id)
   const arms = worn('arms')?.name ?? (bare === undefined ? undefined : partName(bare))
   const head = worn('head')

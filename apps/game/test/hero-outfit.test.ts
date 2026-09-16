@@ -35,10 +35,18 @@ describe('what the Hero is drawn wearing', () => {
     expect(outfit.headgear).toBe('p_m001')
   })
 
-  it('keeps the starting piece for an empty slot, and leaves out a part the cartridge lacks', () => {
+  it('shows the underclothes in an empty slot, and leaves out a part the cartridge lacks', () => {
     const worn = new Map<Slot, number>([['weapon', 20004]])
     const outfit = outfitOf(worn, 'hands', (name) => name !== 'p_w004')
-    expect(outfit).toMatchObject({ body: 'p_b007', legs: 'p_p215' })
+    expect(outfit).toMatchObject({ body: 'p_b090', legs: 'p_p090' })
+    expect(outfit.textures).toContain('p_r090')
     expect(outfit.attached).toEqual([])
+  })
+
+  it('keeps the starting piece where the cartridge has no underclothes', () => {
+    const worn = new Map<Slot, number>()
+    const outfit = outfitOf(worn, 'hands', (name) => !/090$/.test(name))
+    expect(outfit).toMatchObject({ body: 'p_b007', legs: 'p_p215' })
+    expect(outfit.textures).toContain('p_r120')
   })
 })

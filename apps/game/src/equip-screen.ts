@@ -47,6 +47,8 @@ import { type Equipped, SLOTS, type Slot } from './equipment.ts'
 export const SCREEN_WIDTH = 256
 export const SCREEN_HEIGHT = 192
 
+/** Where the Hero's figure is drawn on the bottom screen: the left half, above the name plate. Ours. */
+export const PORTRAIT = { x: 0, y: 4, width: 128, height: 152 } as const
 /** Where the frame sits on the bottom screen: its right half, from the top. */
 export const FRAME = { x: 128, y: 0 } as const
 /** A grid of 4 × 4 cells, 24 pixels square at a pitch of 26 — measured from `eq_frame`. */
@@ -301,6 +303,8 @@ export interface EquipView {
   readonly describe?: ((id: number) => string | undefined) | undefined
   /** An item's subtype — see `readItemKinds` — which gives a weapon its own kind's icon. */
   readonly subtypeOf?: ((id: number) => number | undefined) | undefined
+  /** The Hero as they stand dressed, drawn over the bottom screen's left half — see `heroPortrait` in `main.ts`. */
+  readonly portrait?: CanvasImageSource | undefined
   /** A piece of equipment's own attack and defence — see `itemStatsOf` in `load.ts`. */
   readonly numbersOf?:
     | ((id: number) => { readonly attack: number; readonly defence: number } | undefined)
@@ -577,6 +581,10 @@ export function makeEquipScreens(pieces: EquipPieces): EquipScreens {
       }
       details(top, view)
       bottom.drawImage(art.back, 0, 0)
+      // The figure stands on the left, above the name plate — where the
+      // screenshots have it; its exact frame is ours.
+      if (view.portrait)
+        bottom.drawImage(view.portrait, PORTRAIT.x, PORTRAIT.y, PORTRAIT.width, PORTRAIT.height)
       if (view.picking) picking(bottom, view, view.picking)
       else overview(bottom, view)
     },
