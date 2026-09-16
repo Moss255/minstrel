@@ -101,6 +101,7 @@ import {
   sheetFor,
   spritePieces,
   standingFrame,
+  walkingFrame,
 } from './cast.ts'
 import { chestPieces, isChest } from './chests.ts'
 import {
@@ -129,7 +130,13 @@ import { ControlsPanel, walkHint } from './controls-panel.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
-import { type EventCamera, EventPlayer, OPACITY_WHOLE, sceneMotion } from './event.ts'
+import {
+  type EventCamera,
+  EventPlayer,
+  type EventStage,
+  OPACITY_WHOLE,
+  sceneMotion,
+} from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
@@ -395,6 +402,18 @@ function playBattleMusic(): void {
   track = wanted
   void playTrack(cartridge, wanted)
 }
+// For a headless check: the scene playing and its frame, readable from the page.
+Object.defineProperty(window, 'minstrelScene', {
+  get: () =>
+    playing && {
+      event: playing.event,
+      frame: playing.player.stage.frame,
+      hidden: [...playing.player.stage.actors].filter(([, a]) => a.hidden).map(([id]) => id),
+      hung: [...playing.player.stage.actors]
+        .filter(([, a]) => a.hungOn)
+        .map(([id, a]) => `${id} on ${a.hungOn?.parent} ${a.hungOn?.bone}`),
+    },
+})
 // For a headless check: the music's state, readable from the page.
 Object.defineProperty(window, 'minstrelMusic', {
   get: () => ({ state: music.state, playing: music.playing, report: music.report }),
@@ -479,6 +498,15 @@ const fadeEl = document.querySelector<HTMLDivElement>('#fade')
  */
 const RETURN_HOLD_MS = 500
 const RETURN_FADE_MS = 300
+/**
+ * A doorway being gone through: the screen goes black, the map changes behind
+ * it, and the field comes back. The let's play shows a fade through every
+ * door; its length is ours.
+ */
+const DOOR_FADE_MS = 250
+let doorFade:
+  | { readonly since: number; readonly door: NonNullable<ReturnType<typeof doorTaken>> }
+  | undefined
 let returning: { readonly from: number; readonly since: number } | undefined
 
 /** Darken the 3D view as the scene playing says, or bring the field back after one. */
@@ -486,6 +514,16 @@ function showDarkness(stage: { readonly darkness: number } | undefined, now: num
   let dark = 0
   if (stage) {
     dark = stage.darkness
+  } else if (doorFade) {
+    dark = Math.min(1, (now - doorFade.since) / DOOR_FADE_MS)
+    if (dark >= 1) {
+      // Black: change the map behind it — the load blocks, and the screen
+      // stays black for it — then clear without the hold a scene's end has.
+      const { door } = doorFade
+      doorFade = undefined
+      goThrough(door)
+      returning = { from: 1, since: performance.now() - RETURN_HOLD_MS }
+    }
   } else if (returning) {
     const t = (now - returning.since - RETURN_HOLD_MS) / RETURN_FADE_MS
     dark = returning.from * Math.min(1, Math.max(0, 1 - t))
@@ -1119,16 +1157,21 @@ function maybeTravel(): void {
   if (!door) return
   travelling = true
   status(`entering ${door.to}…`)
-  setTimeout(() => {
-    const arrived = enter(door.to, {
-      x: door.arriveX,
-      y: door.arriveY,
-      z: door.arriveZ,
-      facing: door.arriveFacing,
-    })
-    travelling = false
-    if (arrived) playEntryEvent()
-  }, 0)
+  // The screen fades to black first; `showDarkness` goes through when it is.
+  self.held.clear()
+  doorFade = { since: performance.now(), door }
+}
+
+/** Change the map for the doorway's, with the screen black — see `doorFade`. */
+function goThrough(door: NonNullable<ReturnType<typeof doorTaken>>): void {
+  const arrived = enter(door.to, {
+    x: door.arriveX,
+    y: door.arriveY,
+    z: door.arriveZ,
+    facing: door.arriveFacing,
+  })
+  travelling = false
+  if (arrived) playEntryEvent()
 }
 
 /** The areas the Hero stood in at the last look, by id — see `maybeAreaEvent`. */
@@ -3337,6 +3380,8 @@ function eventPieces(): Piece[] {
     // Only once the event has put them somewhere: one given a model and not
     // yet placed — Erinn before she walks in, Ivor's faces — stands nowhere.
     if (id === 0 || !actor.placed) return []
+    // One `570` has hidden, or one hung on another — see `hungPieces`.
+    if (actor.hidden || actor.hungOn) return []
     // As much of them as shows — see `219` and `220` in `event.ts`.
     const opacity = actor.opacity / OPACITY_WHOLE
     const placement = {
@@ -3354,13 +3399,13 @@ function eventPieces(): Piece[] {
       const bytes = sheets.get(actor.sprite.toLowerCase())
       if (!sprite || !bytes) return []
       const member = { name: actor.sprite, sprite, placement, bytes }
-      return spritePieces(
-        member,
-        toFloat(PERSON.height) * worldScale,
-        camera.yaw,
-        standingFrame(member, camera.yaw),
-        opacity,
-      )
+      // Walking while a `207` has it on its way, on the scene's own frames.
+      const walk = actor.walk
+      const walking = walk !== undefined && stage.frame < walk.start + walk.frames
+      const frame = walking
+        ? walkingFrame(member, camera.yaw, stage.frame - walk.start)
+        : standingFrame(member, camera.yaw)
+      return spritePieces(member, toFloat(PERSON.height) * worldScale, camera.yaw, frame, opacity)
     }
     if (!actor.model) return []
     const look = actorLookOf(rom, actor.model, actor.packs)
@@ -3369,14 +3414,39 @@ function eventPieces(): Piece[] {
     const posed = sceneMotion((name) => look.motions.get(name), actor, stage.frame, MAP_FPS)
     const motion = posed?.motion
     const frame = posed?.frame ?? 0
-    const pieces = castPieces(
-      { name: actor.model, model: look.model, motion, floor: look.floor, placement },
-      look.catalogue,
-      characterScale,
-      frame,
-    )
+    const member = { name: actor.model, model: look.model, motion, floor: look.floor, placement }
+    const pieces = [
+      ...castPieces(member, look.catalogue, characterScale, frame),
+      ...hungPieces(rom, stage, id, member, frame),
+    ]
     return opacity < 1 ? pieces.map((piece) => ({ ...piece, opacity })) : pieces
   })
+}
+
+/**
+ * What hangs on a scene character's bones and is shown — a face on the head,
+ * `235` in `event.ts` — drawn where the bone is in its pose, as a decal over
+ * it. A face hung on the Hero is not drawn: the Hero is the figure, not a
+ * scene model.
+ */
+function hungPieces(
+  rom: Uint8Array,
+  stage: EventStage,
+  parentId: number,
+  parent: Parameters<typeof heldPieces>[0],
+  frame: number,
+): Piece[] {
+  const out: Piece[] = []
+  for (const child of stage.actors.values()) {
+    if (child.hungOn?.parent !== parentId || child.hidden || !child.model) continue
+    const look = actorLookOf(rom, child.model, child.packs)
+    if (!look) continue
+    const held = [{ model: look.model, bone: child.hungOn.bone }]
+    for (const piece of heldPieces(parent, held, look.catalogue, characterScale, frame)) {
+      out.push({ ...piece, decal: true })
+    }
+  }
+  return out
 }
 
 /**

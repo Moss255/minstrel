@@ -280,6 +280,22 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.get(731)).toBe(2)
   })
 
+  it('hides and shows a character, and hangs one on another', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(566, [2, 'chara_sub/s017f02.chr', 10], t)
+    stage.host.call(570, [10, 0], t)
+    stage.host.call(571, [10, 0], t)
+    stage.host.call(235, [10, 1, 'head'], t)
+    const face = stage.actors.get(10)
+    expect(face?.hidden).toBe(true)
+    expect(face?.hungOn).toEqual({ parent: 1, bone: 'head' })
+    expect(face?.placed).toBe(false)
+    stage.host.call(570, [10, 1], t)
+    expect(face?.hidden).toBe(false)
+    expect(stage.unhandled.size).toBe(0)
+  })
+
   it('queues the sounds a scene asks for, and their stopping', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

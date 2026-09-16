@@ -29,6 +29,9 @@ import {
  * | 219 | character, opacity | how much of it shows, at once, from 0 to {@link OPACITY_WHOLE} |
  * | 220 | character, opacity, frames | fade it to that much over so many frames — the Hexagon's figure in on `ev02500`, out on `ev02520` |
  * | 224 | character, motion | a motion to go back to — kept, not played |
+ * | 570 | character, shown | whether it is drawn: 0 hides, 1 shows. INFERRED from 5,395 calls: a hidden character is put somewhere (`206`) 242 times before it is shown, and 1,080 of the 2,935 hidings are never undone — a scene's double gone at its end; the Hero is shown, `570(0, 1)`, on the last frame of most scenes. The Hexagon's effect on `ev02350` is hidden on its frame 18, shown from 51 to 108 |
+ * | 571 | character, flag | taken to be whether it is solid: 0 on 1,660 of 2,011 is never undone, and where it is, 470 times a `207` walk lies between — a character let through others while it walks. INFERRED, thin; the scene needs nothing of it, so it is read and not acted on |
+ * | 235 | character, character, bone | hang the first on the second's bone: "head" on 280 of 325, and the first is a face — `s017f02`, a second face for Ivor, on `ev02210`, shown by `570` for 7 frames: a blink. The faces are one-material models whose one texture is a variant of the parent's; drawn over the head, as a decal |
  * | 566 | kind, …, character | what the character is: `2` a model file; `3` a sprite sheet, `.spr` on all 203; `5` one of the map's cast, by placement id — 186 of 217 in the event's own map's cast. Other kinds are not read |
  * | 567 | motion file, character | a pack of motions for it |
  * | 200 | model file, slot | the second event folder's way: load a model into a numbered slot, negative on 1,195 of its 1,324 uses — 1,021 of the 1,027 name a `.chr`, and the first folder never calls it |
@@ -122,6 +125,10 @@ export interface EventActor {
    * `ev02510`. Then the event moves that member.
    */
   cast: number | undefined
+  /** Whether `570` has hidden it — see the header. */
+  hidden: boolean
+  /** Another character's bone it hangs on, by `235`: a face on a head. */
+  hungOn: { readonly parent: number; readonly bone: string } | undefined
   /**
    * The sprite sheet it is drawn as, by name without its `.spr`, when
    * `566(3, file, character)` names one: the Hexagon's figure, `n012g.spr`,
@@ -270,6 +277,8 @@ export class EventStage {
         packs: [],
         cast: undefined,
         sprite: undefined,
+        hidden: false,
+        hungOn: undefined,
         opacity: OPACITY_WHOLE,
         fade: undefined,
         walk: undefined,
@@ -423,6 +432,15 @@ export class EventStage {
         }
         return 0
       }
+      case 570:
+        this.actor(num(args[0])).hidden = num(args[1]) === 0
+        return 0
+      case 571:
+        // Read as solidity and not acted on — see the header.
+        return 0
+      case 235:
+        this.actor(num(args[0])).hungOn = { parent: num(args[1]), bone: String(args[2]) }
+        return 0
       case 208: {
         const actor = this.actor(num(args[0]))
         actor.facing = num(args[2])

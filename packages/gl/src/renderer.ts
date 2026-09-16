@@ -94,6 +94,12 @@ export interface Piece {
    * is drawn in the blended pass, see {@link blended}; whole when not given.
    */
   readonly opacity?: number
+  /**
+   * Lies on another surface — a face over a head — and is drawn after the
+   * opaque pieces, pulled a hair towards the camera so it wins the depth test
+   * against what it lies on, and still writes depth. Ours.
+   */
+  readonly decal?: boolean
 }
 
 interface Batch {
@@ -106,6 +112,8 @@ interface Batch {
   readonly blend: boolean
   /** How much of it shows — see `Piece.opacity`. */
   readonly opacity: number
+  /** Drawn after the opaque pass, over what it lies on — see `Piece.decal`. */
+  readonly decal: boolean
 }
 
 function multiply(a: Float32Array, b: Float32Array, out: Float32Array): Float32Array {
@@ -289,6 +297,7 @@ export class ModelRenderer {
         height: piece.height ?? 0,
         blend: blended(opacity, seeThrough && texture !== null),
         opacity,
+        decal: piece.decal === true,
       })
     }
 
@@ -368,7 +377,13 @@ export class ModelRenderer {
         batch.first * 4,
       )
     }
-    for (const batch of this.batches) if (!batch.blend) drawBatch(batch)
+    for (const batch of this.batches) if (!batch.blend && !batch.decal) drawBatch(batch)
+    // A decal lies on a surface already drawn: pulled a hair towards the
+    // camera so it shows over it, and still writing depth — see `Piece.decal`.
+    gl.enable(gl.POLYGON_OFFSET_FILL)
+    gl.polygonOffset(-1, -1)
+    for (const batch of this.batches) if (!batch.blend && batch.decal) drawBatch(batch)
+    gl.disable(gl.POLYGON_OFFSET_FILL)
     // See-through textures — shadows, water, windows, light — and anything
     // fading go last, blended over what is already there. They write no depth,
     // so one behind another still shows, and they are pulled a hair towards the

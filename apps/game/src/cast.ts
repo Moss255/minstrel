@@ -501,6 +501,42 @@ const FACINGS = [
  * be. Negating the step swaps every `l_*` with its `r_*` and leaves the two
  * ends alone, which is exactly that mirror.
  */
+/** The four walks, in the order the sheet lists them: every other facing of {@link FACINGS}. */
+const WALKS = ['walk_down', 'walk_left', 'walk_up', 'walk_right'] as const
+
+/**
+ * Which frame of a sheet to show a character walking, `ticks` into the walk:
+ * the walk whose facing is nearest its own relative to the camera, its steps
+ * taken round in the order the sheet names them, each held for its own
+ * duration — 8 ticks a step on a villager's walk. The sheet's walks and
+ * durations are read; that a scene's walk runs on the scene's own frames is
+ * ours. Standing, where the sheet has no walk.
+ */
+export function walkingFrame(member: CastSprite, cameraYaw: number, ticks: number): number {
+  const away = member.placement.facing - cameraYaw
+  const quarter = Math.PI / 2
+  const index = (((2 - Math.round(away / quarter)) % 4) + 4) % 4
+  const walk = member.sprite.animation(WALKS[index] as string)
+  if (!walk || walk.steps.length === 0) return standingFrame(member, cameraYaw)
+  // Round the chain from the first step, each naming the next — see `SpriteStep.order`.
+  const chain: (typeof walk.steps)[number][] = []
+  const seen = new Set<number>()
+  for (let at = 0; !seen.has(at) && chain.length < walk.steps.length; ) {
+    const step = walk.steps[at]
+    if (!step) break
+    seen.add(at)
+    chain.push(step)
+    at = step.order
+  }
+  const total = chain.reduce((sum, step) => sum + Math.max(1, step.duration), 0)
+  let left = ((Math.floor(ticks) % total) + total) % total
+  for (const step of chain) {
+    left -= Math.max(1, step.duration)
+    if (left < 0) return step.frame
+  }
+  return chain[0]?.frame ?? 0
+}
+
 /** The rows of a villager's frame: one frame tall is one person tall — see `spritePieces`. */
 export const FRAME_ROWS = 40
 

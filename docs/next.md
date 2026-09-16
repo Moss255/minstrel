@@ -40,7 +40,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 |---|---|---|
 | **Music: the tempo** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob. Which track plays where is read now, from the map index. Then the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
 | The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word. Done: input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
-| The scenes' rough edges | M3 | Sprite characters' walking frames in scenes; who is shown and hidden when (`570`, `571`, `223`); a fade on going through a doorway; Ivor's faces; the camera's even pace and field of view. |
+| The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | The let's play moves into evening and night; ours stays in daylight. Which zone roams when is measured, not settled. |
 | Equipment's rest | M4 | A shield on the Hero's back not yet seen (the starting kit has none); the equipment screen's small figure undressed; its layouts (`lay_eq.lia`); rarity and "Used by" not found. |
 | What battles still lack | M5 | Abilities; the states the reference does not model; Hexagoon beyond its six ways; how Ivor and the monsters choose is ours. The fight was played at level 20 here and won solo at level 7 in the let's play. |
@@ -73,6 +73,53 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## Scenes: who shows, Ivor's faces, sprites walking, doors fading — 16 September
+
+**Three more script functions read** (`event.ts`'s header; INFERRED, from
+every event's calls):
+
+- **`570(character, shown)` hides and shows a character.** 5,395 calls: a
+  hidden character is put somewhere (`206`) 242 times before it is shown,
+  1,080 of the 2,935 hidings are never undone — a scene's double gone at its
+  end — and the Hero is shown, `570(0, 1)`, on the last frame of most scenes.
+  The Hexagon's effect on `ev02350` is hidden on frame 18, shown 51 to 108.
+  Scene characters `570` has hidden are no longer drawn.
+- **`235(character, character, bone)` hangs one character on another's
+  bone**: "head" on 280 of 325 calls, and the hung one is a face — the
+  `sNNNfNN.chr` models, one material and one bone each, 86 of them, whose one
+  texture is a variant of the parent's (`s017_00_f02`). Ivor's `s017f02` on
+  `ev02210`, shown by `570` from frame 172 to 179, seen in the browser: a
+  second expression over his head. Drawn as a **decal** — the renderer's new
+  pass, pulled a hair towards the camera over the head it lies on; ours. A
+  face hung on the Hero is not drawn: the Hero is the figure, not a scene
+  model.
+- **`571(character, flag)`, thin:** taken to be solidity — 0 on 1,660 of
+  2,011 is never undone, and where it is, a `207` walk lies between 470
+  times, a character let through others as it walks. Read and not acted on;
+  the scene needs nothing of it. Out of `unhandled` either way.
+
+**Sprite characters walk in scenes** (`walkingFrame`, `cast.ts`): while a
+`207` has one on its way, the sheet's walk nearest its facing relative to
+the camera plays, its steps round in the order the sheet names them, each
+held its own duration — 8 ticks on a villager's. The sheet is read; that a
+scene's walk runs on the scene's frames is ours. Not yet watched in the
+browser — the Hexagon's figure walks in `ev02510`, and the shot at the
+frames tried looked elsewhere.
+
+**Doorways fade** (`doorFade`, `main.ts`; ours, the let's play showing a
+fade through every door): the screen goes black over a quarter of a second,
+the map changes behind it — the load blocks, and the screen stays black for
+it — and the field comes back over the same three tenths a scene's end has,
+without its hold.
+
+**Not touched:** the camera's pace over a `304`/`311` move — ours is even,
+and whether the game's eases is a thing to measure against the let's play at
+its twelve frames a second — and the field of view, 50° vertical, which needs
+a known object's size on the DS's screen. Both wait on a measurement, not on
+code.
 
 ---
 
