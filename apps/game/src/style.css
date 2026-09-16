@@ -46,6 +46,16 @@ main {
   pointer-events: none;
 }
 
+/* The time of day over the view: white by day, dusk and night as `daytime.ts` colours them. */
+#tint {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transition: background 2s;
+}
+
 #overlay,
 #status {
   position: absolute;

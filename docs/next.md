@@ -41,7 +41,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | **Music: the tempo** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob. Which track plays where is read now, from the map index. Then the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
 | The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word. Done: input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
-| The time of day | M6 | The let's play moves into evening and night; ours stays in daylight. Which zone roams when is measured, not settled. |
+| The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
 | Equipment's rest | M4 | A shield on the Hero's back not yet seen (the starting kit has none); the equipment screen's small figure undressed; its layouts (`lay_eq.lia`); rarity and "Used by" not found. |
 | What battles still lack | M5 | Abilities; the states the reference does not model; Hexagoon beyond its six ways; how Ivor and the monsters choose is ours. The fight was played at level 20 here and won solo at level 7 in the let's play. |
 | M4's stand-ins | M4 | `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
@@ -69,10 +69,41 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 - **The inn's price**, if it is not found in code.
 - **Whether Ivor's greeting plays as the Hero comes near** or only when he is
   talked to.
-- **Which zone roams when and where**, and whether the mix changes at night.
+- **Which zone roams when and where**, and whether the mix changes at night —
+  ours takes kind 0 by day, 1 at dusk, 2 by night. And **what ends the night
+  of 2.2**: sleeping, or time.
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## The time of day — 16 September
+
+**Ours, from the let's plays** (`daytime.ts`). Read at the top screen: the
+day at 2.1 and its village stay daylight through twelve minutes of talking
+and shopping; at 2.2, after Hugo at the gate, the field is daylight at 33:00,
+dusk by 35:20 and night by 35:40 — the bodkin archer under a starry sky — and
+the village is dark at 38:40; the fourth video's twenty minutes of field and
+Hexagon at 2.3 and 2.4 never turn. So the turn is the story's evening, not a
+clock: **at 2.2 the time runs with the seconds spent in the field** — dusk
+after 120, night after 150, the video's own spacing — and at every other
+stage it is day; a night at the inn brings the morning. How the game keeps
+time is not read, and nor is what ends that night in the game — the let's
+play's next video opens by day.
+
+**Shown:** the view is multiplied by a colour (`#tint`) — white by day, a
+warm dimming at dusk, a dark blue by night, set by eye against the frames
+(the night field's grass a fifth as red and a third as green as by day);
+into and out of the night the map is rebuilt where the Hero stands with its
+**night pieces**, the lit windows the manifest already carried
+(`lighting: 'night'`); the villagers say their **night lines** (the
+four-number form, read before); and the field's monsters roam by the time's
+zone kind — 0 by day, 1 at dusk, 2 by night (`ZONE_KIND_BY_TIME`; INFERRED,
+thin: the one bodkin archer, only after dark, is in `F01`'s kind-2 zone, the
+only zone with one). `?time=evening` forces a time. **Not kept in the save:**
+the field's seconds — a game saved at 2.2 wakes to day. **Seen headless:**
+the village and the pass by night, the village at dusk.
 
 ---
 

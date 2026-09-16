@@ -127,6 +127,7 @@ import {
 } from './companion.ts'
 import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
 import { ControlsPanel, walkHint } from './controls-panel.ts'
+import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED } from './equipment.ts'
@@ -1314,6 +1315,7 @@ function frame(now = 0): void {
   lastFrame = now
 
   if (loaded) {
+    keepTime(elapsedMs)
     // A map is not a still life: the village's sky drifts its clouds apart and
     // the waterfall runs, both on the map's own animations.
     const wanted = Math.floor(now / (1000 / MAP_FPS))
@@ -1636,8 +1638,56 @@ function person() {
     radius: fx32(Math.round(PERSON.radius * personScale)),
   }
 }
-/** `?lighting=night` builds the map's night pieces instead of its day ones. */
-const wantedLighting = params.get('lighting') === 'night' ? 'night' : 'day'
+/** Which of the map's lightings to build: the time of day's — see `keepTime` — or `?lighting=night`'s. */
+let wantedLighting: 'day' | 'night' = params.get('lighting') === 'night' ? 'night' : 'day'
+/** Seconds spent in the field, which at 2.2 bring the evening and the night — see `daytime.ts`. */
+let fieldSeconds = 0
+/** The time of day as last shown, to notice it turning. */
+let shownTime: TimeOfDay | undefined
+/** The colour the view is multiplied by — see `TINTS`. */
+const tintEl = document.querySelector<HTMLDivElement>('#tint')
+
+/** The time of day now: `?time=evening` forces one, `?lighting=night` the night, else the story's. */
+function timeNow(): TimeOfDay {
+  const forced = params.get('time')
+  if (forced === 'day' || forced === 'evening' || forced === 'night') return forced
+  if (params.get('lighting') === 'night') return 'night'
+  return timeOfDay(storyStage, fieldSeconds)
+}
+
+/**
+ * Let the time pass and show it: the field's seconds count while the Hero is
+ * out in one with nothing else going on; a turn of the time tints the view,
+ * and into or out of the night rebuilds the map with its other lit pieces
+ * where the Hero stands, and sets the field's monsters roaming again by the
+ * night's zone. Ours — see `daytime.ts`.
+ */
+function keepTime(elapsedMs: number): void {
+  const here = loaded
+  if (!here || !self) return
+  if (here.fieldZones.length > 0 && !playing && !battle && !menu && !visit && !talking) {
+    fieldSeconds += elapsedMs / 1000
+  }
+  const time = timeNow()
+  if (time === shownTime) return
+  const relit = shownTime !== undefined && lightingFor(time) !== lightingFor(shownTime)
+  const turned = shownTime !== undefined
+  shownTime = time
+  if (tintEl) tintEl.style.background = TINTS[time]
+  wantedLighting = lightingFor(time)
+  if (relit) {
+    enter(here.code, {
+      x: toFloat(self.state.x),
+      y: toFloat(self.state.y),
+      z: toFloat(self.state.z),
+      facing: self.facing,
+    })
+  } else if (turned && roaming) beginRoaming()
+}
+// For a headless check: the time of day, readable from the page.
+Object.defineProperty(window, 'minstrelTime', {
+  get: () => ({ time: timeNow(), fieldSeconds, lighting: wantedLighting }),
+})
 /**
  * `?door=M01M02` takes that doorway as soon as the first map has loaded.
  *
@@ -2013,7 +2063,7 @@ function talk(everyLine = false): void {
       triggers: loaded.triggers,
       map: loaded.mapId,
       stage: storyStage,
-      night: wantedLighting === 'night',
+      night: timeNow() === 'night',
       id: who.id,
       lines,
       flags: storyFlags,
@@ -2401,7 +2451,12 @@ function beginRoaming(): void {
   roamCarry = 0
   const here = loaded
   if (!here || !cartridge) return
-  const zone = here.fieldZones.find((z) => z.kind === 0) ?? here.fieldZones[0]
+  // The time of day's kind — see `ZONE_KIND_BY_TIME` — else the day's, else the first.
+  const wantedKind = ZONE_KIND_BY_TIME[timeNow()]
+  const zone =
+    here.fieldZones.find((z) => z.kind === wantedKind) ??
+    here.fieldZones.find((z) => z.kind === 0) ??
+    here.fieldZones[0]
   if (!zone) return
   roamZone = zone.zone
   roamKinds = zone.monsters.map((m) => ({
@@ -3793,8 +3848,9 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
-      // A night at the inn restores the Hero whole.
+      // A night at the inn restores the Hero whole, and the morning comes.
       if (outcome.rested) {
+        fieldSeconds = 0
         heroHp = undefined
         heroMp = undefined
         companionHp.clear()

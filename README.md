@@ -137,8 +137,8 @@ well.
 
 For looking at a thing on its own, the address takes parameters: `?bgm=BG_001`
 plays a track by name, `?tempo=0.9` scales its tempo, `?se=113` sounds an
-effect archive by index, `?map=`, `?event=` and `?at=x,z` open a map, a scene
-or a spot.
+effect archive by index, `?time=night` forces a time of day, `?map=`,
+`?event=` and `?at=x,z` open a map, a scene or a spot.
 
 ## Looking at models
 
