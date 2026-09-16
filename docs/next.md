@@ -36,10 +36,10 @@ APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/sh
 
 **2. Needs the emulator — questions, each a line in the list below**
 
-The inn's price; the monsters' six-way weights, critical and flee chances;
-Ivor's numbers; what ends 2.2's night; which zone roams when; the party's
-colours; pot or barrel; Ivor's greeting. ("Used by" is read in full now —
-see the table below.)
+The inn's price; the critical and flee chances; Ivor's numbers; what ends
+2.2's night; which zone roams when; the party's colours; pot or barrel;
+Ivor's greeting. ("Used by" and the monsters' six-way weights are read now —
+see the table below and `docs/binaries.md`.)
 
 **Where the equipment's numbers are read — for reference:**
 
@@ -119,8 +119,9 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 - **The tempo of one track against ours** — and whether the village's theme
   carries on into a house unbroken or starts again, and what the church plays.
-- **The inn's price** is the first thing to look for in the binaries next
-  — the skill trees were there, unpacked; the price may be too.
+- **The inn's price** — the binaries were searched on 16 September without
+  finding it (`docs/binaries.md`); the innkeeper's line in the emulator, with
+  a party of one and of two, would give the number and the rule.
 - **A party member's colour** on the top screen: how the game picks each one's
   strip and dot, which in the capture of Stornway's church are the characters'
   own and none of the panel's four.
@@ -139,6 +140,33 @@ at the owner's word. What is left is what an ear or the emulator settles.
   of 2.2**: sleeping, or time.
 
 **Where to start next time:** the tempo, with the knob; M8 is otherwise done.
+
+---
+
+## The binaries, searched: the weight tables and the boss bit — 16 September
+
+**A record is kept now** — `docs/binaries.md` — of what the cartridge's code
+holds that its files do not, found by unpacking the ARM9 and the overlays
+and searching for shapes known from the files. Today's finds, after the
+skill trees:
+
+- **The battle weight tables**, ARM9 `0xE8CBA`: four tables of six weights
+  in 256, the first two the reference emulator's even and boss tables
+  exactly — `43 42 43 43 42 43` and `68 58 48 38 27 17` — then two not yet
+  tied to anyone. `readWeightTables` finds the run by the even table.
+- **Which monster draws by which**: bit 4 of the byte at `+0x27` of its
+  battle record, set on 144 of the 159 boss-coded monsters and the five
+  grotto bosses, clear on the bosses' minions and every ordinary monster
+  (`MonsterBattle.bossAi`). The sim's fighters carry their own table now
+  (`Fighter.choice`), so the Hexagoon draws by the falling one: rubble a
+  little oftener, 96 in 256 against 85.
+- **The field sprites' ids**, overlay 17 `0x4AFD0`: the pots, barrels and
+  bubbles by the game's own numbers; how a treasure's kind picks one is
+  still in code.
+- **Not found**: the inn's price — no string in the binaries names an inn,
+  and no table looks like prices; the critical, dodge and flee chances — the
+  constants beside the weight tables (a float 0.2, words 1024, 2560, 2048,
+  1024, floats 1.3 and 1.0) are listed in the record, none tied to a rule.
 
 ---
 

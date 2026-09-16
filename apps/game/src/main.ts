@@ -2751,6 +2751,10 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     for (const [action, spell] of ways.known) known.set(action, spell)
     foes.push({
       acts: ways.acts,
+      // A boss draws its ways by the falling table, the rest by the even one — see `MonsterBattle.bossAi`.
+      ...(loaded.weightTables
+        ? { choice: loaded.weightTables.tables[numbers.bossAi ? 1 : 0] }
+        : {}),
       name: renderName(who.name),
       side: 'foes',
       maxHp: numbers.maxHp,

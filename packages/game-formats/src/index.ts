@@ -13,6 +13,13 @@ export {
   readAttendingCharacters,
 } from './attnpc.ts'
 export {
+  EVEN_TABLE,
+  readWeightTables,
+  WAYS,
+  WEIGHT_TOTAL,
+  type WeightTables,
+} from './battle-tables.ts'
+export {
   COLLISION_KIND,
   type CollisionBounds,
   type CollisionCell,

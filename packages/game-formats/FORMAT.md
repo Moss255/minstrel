@@ -1053,6 +1053,34 @@ weapon's "Used by" comes out as the armour's does.
 **Not read:** whether the Omnivocational passives, which let one character
 wield a kind "regardless of vocation", show on the screen's grid.
 
+# Battle weight tables — in the ARM9 binary
+
+**Found 16 September 2026, in the unpacked ARM9**, at `0xE8CBA` on the
+reference cartridge: a run of four tables of six bytes, each summing to 256,
+the weights a monster's six ways (see "Monster data", `+0x18`) are drawn by
+— a draw from 1 to 256 against the six in turn, as the reference battle
+emulator's `ProcessEnemyRandomAction2A` has it. `readWeightTables` in
+`battle-tables.ts` finds the run by its first table and reads to its end.
+
+| table | weights | who draws by it |
+|---|---|---|
+| 0 | 43 42 43 43 42 43 | every monster without the boss bit — the reference's even table |
+| 1 | 68 58 48 38 27 17 | monsters with the boss bit — the reference's table for its own boss |
+| 2 | 210 29 10 4 2 1 | not read |
+| 3 | 70 70 70 16 15 15 | not read |
+
+The first two are the reference emulator's two tables exactly, which it
+took from the game's disassembly — the witness that this run is the one.
+**The boss bit** is bit 4 of the byte at `+0x27` of a monster's battle
+record (`MonsterBattle.bossAi`), INFERRED from where it is set: on 144 of
+the 159 boss-coded monsters and on the five grotto bosses that carry
+ordinary codes — Equinox, Atlas, Shogum, Trauminator, Nemean — and clear on
+the bosses' minions (scarlet fever, octagoon, cannibelle, the whales …) and
+on every other monster; set on Ragin' Contagion, the reference's boss, and
+on the Hexagoon. The byte's other bits (`0x09`, `0x0C`, `0x19` are its
+other values) are not read, and neither is what chooses tables 2 and 3.
+`docs/binaries.md` keeps the record of what else lies beside them.
+
 **Word 0** is set on 137 entries, whose descriptions speak of resistances — to
 spells, sleep, Fizzle, MP being stolen: several fields packed, perhaps; not
 established. Its bits 20–29 are set on 8, four of them about MP. **Words 1 and
@@ -2538,6 +2566,7 @@ and `readMonsterNames` read them.
 | `+0x60` | `u16` | attack, INFERRED | by order |
 | `+0x62` | `u16` | defence, INFERRED | the metal family's 256 and 512 |
 | `+0x64` | `u16` | agility, INFERRED | by order; high on the metal family |
+| `+0x27`, bit 4 | | fights as a boss: draws its ways by the falling weight table — INFERRED, see "Battle weight tables" | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster |
 
 **How a monster chooses among its six is not in the record**, as far as has been
 looked. The reference draws a number from 1 to 256 against six weights: an even

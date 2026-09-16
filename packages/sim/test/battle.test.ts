@@ -154,6 +154,25 @@ describe('a foe', () => {
     reach: 'one',
     amount: { base: 35, spread: 5 },
   }
+
+  it('draws by its own table before the rules’ — a boss’s falling one', () => {
+    // The rules put every weight on the first way, an attack; the foe's own
+    // table puts it all on the second, fleeing, and the foe's own wins.
+    const runner: Fighter = {
+      ...blob('Runner', 30),
+      acts: [
+        { kind: 'attack' },
+        { kind: 'flee' },
+        { kind: 'attack' },
+        { kind: 'attack' },
+        { kind: 'attack' },
+        { kind: 'attack' },
+      ],
+      choice: [0, 256, 0, 0, 0, 0],
+    }
+    const played = playRound(startBattle([tough, runner]), wait, new BattleRng(5n), only(0))
+    expect(played.events.some((e) => e.kind === 'flee' && e.actor === 1)).toBe(true)
+  })
   const frizz: Spell = {
     action: 9,
     cost: 2,

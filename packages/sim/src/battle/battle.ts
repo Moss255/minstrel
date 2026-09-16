@@ -83,6 +83,8 @@ export interface Fighter {
   readonly gold: number
   /** A foe's ways of acting, one drawn each turn by {@link Rules.choice}; with none, it attacks. */
   readonly acts?: readonly FoeAction[]
+  /** The weights its ways are drawn by, in 256, where they are not the rules' — a boss's falling table. */
+  readonly choice?: readonly number[]
 }
 
 export interface FighterState extends Fighter {
@@ -318,7 +320,7 @@ function foeCommand(
   const attack: Command = { kind: 'attack', target: -1 }
   const acts = me.acts
   if (!acts || acts.length === 0) return attack
-  const act = acts[chosenWay(rng, rules.choice)]
+  const act = acts[chosenWay(rng, me.choice ?? rules.choice)]
   if (!act) return attack
   if (act.kind === 'attack') {
     return act.poison === undefined ? attack : { kind: 'attack', target: -1, poison: act.poison }

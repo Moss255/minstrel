@@ -42,6 +42,17 @@ export interface MonsterBattle {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /**
+   * Whether it fights as a boss does: bit 4 of the byte at `+0x27`. INFERRED
+   * from where it is set: on 144 of the 159 boss-coded monsters and on the
+   * five grotto bosses that carry ordinary codes (Equinox, Atlas, Shogum,
+   * Trauminator, Nemean), and clear on the bosses' minions (scarlet fever,
+   * octagoon, cannibelle …) and every other ordinary monster. The reference
+   * battle emulator draws its own boss's ways, Ragin' Contagion's, by the
+   * falling weight table and every other monster's by the even one; this bit
+   * is set on it. See FORMAT.md, "Battle weight tables".
+   */
+  readonly bossAi: boolean
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -104,6 +115,7 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
       attack: u16(0x60),
       defence: u16(0x62),
       agility: u16(0x64),
+      bossAi: ((bytes[at + 0x27] as number) & 0x10) !== 0,
       raw: bytes.subarray(at, at + BATTLE_RECORD),
     })
   }

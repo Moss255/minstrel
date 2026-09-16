@@ -70,6 +70,7 @@ import {
   readTreasure,
   readTriggers,
   readVocationTrees,
+  readWeightTables,
   type Script,
   type Shop,
   type SpellTable,
@@ -77,6 +78,7 @@ import {
   type Treasure,
   type Trigger,
   type VocationTrees,
+  type WeightTables,
 } from '@minstrel/game-formats'
 import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
 import type { Model } from '@minstrel/nitro-gfx'
@@ -145,6 +147,12 @@ export interface Loaded {
    * no such table. Which vocations may wield a weapon or shield follows.
    */
   readonly vocationTrees: VocationTrees | undefined
+  /**
+   * The weights a monster's six ways are drawn by, out of the ARM9 binary —
+   * see `readWeightTables`: the even table first, the falling one second;
+   * undefined when the binary will not unpack or holds no run.
+   */
+  readonly weightTables: WeightTables | undefined
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
   readonly battleMusic: number | undefined
   readonly bossMusic: number | undefined
@@ -1307,27 +1315,54 @@ function exteriorOf(cat: Catalogue, code: string): string | undefined {
   return undefined
 }
 
+/** The ARM9 binary unpacked once, by cartridge: the header says where it lies, and it is BLZ-packed. */
+const arm9Read = new WeakMap<Uint8Array, Uint8Array | undefined>()
+function arm9Of(rom: Uint8Array): Uint8Array | undefined {
+  if (arm9Read.has(rom)) return arm9Read.get(rom)
+  let binary: Uint8Array | undefined
+  try {
+    const header = parseRomHeader(rom)
+    const packed = rom.subarray(header.arm9.romOffset, header.arm9.romOffset + header.arm9.size)
+    binary = looksBlz(packed) ? decompressBlz(packed) : packed
+  } catch {
+    // A binary that will not unpack holds nothing to read.
+  }
+  arm9Read.set(rom, binary)
+  return binary
+}
+
 /** The skill trees read once from the ARM9 binary, by cartridge. */
 const treesRead = new WeakMap<Uint8Array, VocationTrees | undefined>()
 
-/**
- * The vocations' skill trees out of the ARM9 binary: the header says where
- * it lies, it is BLZ-packed on the cartridge, and unpacked it holds the
- * table — see game-formats' FORMAT.md, "Vocation skill trees".
- */
+/** The vocations' skill trees out of the ARM9 binary — see game-formats' FORMAT.md, "Vocation skill trees". */
 function vocationTreesOf(rom: Uint8Array): VocationTrees | undefined {
   if (treesRead.has(rom)) return treesRead.get(rom)
   let trees: VocationTrees | undefined
   try {
-    const header = parseRomHeader(rom)
-    const packed = rom.subarray(header.arm9.romOffset, header.arm9.romOffset + header.arm9.size)
-    const binary = looksBlz(packed) ? decompressBlz(packed) : packed
-    trees = readVocationTrees(binary)
+    const binary = arm9Of(rom)
+    trees = binary ? readVocationTrees(binary) : undefined
   } catch {
-    // A binary that will not unpack, or holds no table, leaves the weapons' "Used by" unsaid.
+    // A binary that holds no table leaves the weapons' "Used by" unsaid.
   }
   treesRead.set(rom, trees)
   return trees
+}
+
+/** The weight tables read once from the ARM9 binary, by cartridge. */
+const weightsRead = new WeakMap<Uint8Array, WeightTables | undefined>()
+
+/** The monsters' weight tables out of the ARM9 binary — see game-formats' FORMAT.md, "Battle weight tables". */
+function weightTablesOf(rom: Uint8Array): WeightTables | undefined {
+  if (weightsRead.has(rom)) return weightsRead.get(rom)
+  let tables: WeightTables | undefined
+  try {
+    const binary = arm9Of(rom)
+    tables = binary ? readWeightTables(binary) : undefined
+  } catch {
+    // A binary that holds no run leaves the rules' own even table in force.
+  }
+  weightsRead.set(rom, tables)
+  return tables
 }
 
 /** The same index the other way round: a map's code by its own id, which is how a trigger names a map. */
@@ -1667,6 +1702,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
     vocationTrees: vocationTreesOf(rom),
+    weightTables: weightTablesOf(rom),
     region: regionHead(entry?.region),
     regionExterior: exteriorOf(cat, code),
     ...tracks,
