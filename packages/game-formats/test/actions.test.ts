@@ -12,6 +12,7 @@ function actions(
     effect?: number
     cost?: number
     message?: number
+    opening?: number
     reach?: number
   }[],
 ) {
@@ -27,15 +28,15 @@ function actions(
   const view = new DataView(out.buffer)
   for (const [
     r,
-    { id, name, plural, range = 0, effect = 0, cost = 0, message = 0, reach = 0 },
+    { id, name, plural, range = 0, effect = 0, cost = 0, message = 0, opening = 0, reach = 0 },
   ] of records.entries()) {
     const at = 4 + r * 60
     view.setUint32(at, offset(name), true)
     // The number's upper bits are other things; they must not leak into it.
     view.setUint32(at + 4, (0xf9c32000 | id) >>> 0, true)
     view.setUint32(at + 8, ((0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0, true)
-    // The message's lower neighbours likewise.
-    view.setUint32(at + 0x20, ((message << 20) | 0x6b82e) >>> 0, true)
+    // The message's lower neighbours likewise: the opening under it, then a neighbour.
+    view.setUint32(at + 0x20, ((message << 20) | (opening << 10) | 0x2e) >>> 0, true)
     // Whom it reaches in the high nibble, a neighbour in the low.
     out[at + 0x17] = (reach << 4) | 6
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
@@ -87,14 +88,14 @@ describe('the action table', () => {
   it('reads what an action costs and what it says', () => {
     const [heal, burst, seed] = readActions(
       actions([
-        { id: 30, name: 'Heal', plural: '', cost: 2, message: 22 },
-        { id: 28, name: 'Magic Burst', plural: '', cost: 255, message: 2 },
-        { id: 262, name: 'seed of life', plural: '', message: 157 },
+        { id: 30, name: 'Heal', plural: '', cost: 2, message: 22, opening: 46 },
+        { id: 28, name: 'Magic Burst', plural: '', cost: 255, message: 2, opening: 46 },
+        { id: 262, name: 'seed of life', plural: '', message: 157, opening: 70 },
       ]),
     )
-    expect(heal).toMatchObject({ cost: 2, message: 22 })
-    expect(burst).toMatchObject({ cost: 255, message: 2 })
-    expect(seed).toMatchObject({ cost: 0, message: 157 })
+    expect(heal).toMatchObject({ cost: 2, message: 22, opening: 46 })
+    expect(burst).toMatchObject({ cost: 255, message: 2, opening: 46 })
+    expect(seed).toMatchObject({ cost: 0, message: 157, opening: 70 })
   })
 
   it('reads whom an action reaches', () => {

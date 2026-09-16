@@ -132,7 +132,7 @@ describe('a battle scene', () => {
   const spells = BATTLE_COMMANDS.indexOf('Spells')
 
   it('turns a monster’s six words into its ways, an attack where the battle cannot yet', () => {
-    const herb: BattleSpell = { ...heal, opening: 'use', name: { name: 'herb' } }
+    const herb: BattleSpell = { ...heal, opening: 70, name: { name: 'herb' } }
     const ways = foeWaysOf([1, 225, 236, 41, 1, 1], (action) => (action === 236 ? herb : undefined))
     expect(ways.acts.map((a) => a.kind)).toEqual([
       'attack',
@@ -151,6 +151,7 @@ describe('a battle scene', () => {
       name: id === 44 ? 'Kasap' : 'Buff',
       effect: 0,
       message: 0,
+      opening: 46,
       cost: 3,
       reach: id === 44 ? 4 : 2,
       range: undefined,
@@ -179,7 +180,7 @@ describe('a battle scene', () => {
         },
       },
     ])
-    expect(ways.known.get(44)).toMatchObject({ name: { name: 'Kasap' }, opening: 'cast' })
+    expect(ways.known.get(44)).toMatchObject({ name: { name: 'Kasap' }, opening: 46 })
   })
 
   it('tells a monster’s change of state on the Hero', () => {
@@ -196,7 +197,7 @@ describe('a battle scene', () => {
     const beakon = { ...blob(40), acts: Array.from({ length: 6 }, () => kasap) }
     const scene = beginBattle([hero, beakon], 1n, {
       canFlee: true,
-      known: new Map([[44, { name: { name: 'Kasap' }, message: 0, opening: 'cast' as const }]]),
+      known: new Map([[44, { name: { name: 'Kasap' }, message: 0, opening: 46 }]]),
     })
     const played = battleChoose(untilChoice(scene))
     expect(played.pages).toContain("Blob casts Kasap!\nHero's defence falls.")
@@ -218,7 +219,7 @@ describe('a battle scene', () => {
     const herb: BattleSpell = {
       ...heal,
       spell: { ...heal.spell, action: 236, cost: 0 },
-      opening: 'use',
+      opening: 70,
       name: { name: 'herb' },
     }
     const healer = {

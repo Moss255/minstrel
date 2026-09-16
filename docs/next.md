@@ -43,7 +43,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
 | Equipment's rest | M4 | The layouts (`lay_eq.lia`), and rarity and "Used by", which want the emulator. Done: the figure on the equipment screen; a shield on the back seen. |
-| What battles still lack | M5 | Abilities; the states the reference does not model; Hexagoon beyond its six ways; how Ivor and the monsters choose is ours. The fight was played at level 20 here and won solo at level 7 in the let's play. |
+| What battles still lack | M5 | Dazzle, sand and Weird Dance, read and not modelled; `calls for backup`; how the monsters weight their ways. Done: the damage checked against the let's play, the fight winnable from level 5 as the video won it, each action's own opening line. |
 | M4's stand-ins | M4 | `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
 | The top screen's rest | M6 | HP, MP and level on the party panel; the town's name tab; `.bmmp` tags. |
 | The explorer | explorer | 2D previews, and now sound: the SDAT's sequences could play there too. |
@@ -75,6 +75,44 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## Battles against the let's play, and how an action opens — 16 September
+
+**The damage formula holds against the video.** The fourth let's play,
+read at the top screen through the Hexagon and its boss, shows the Hero's
+blows and the monsters': 8 and 9 to drackies at level 5 with the copper
+sword, 4 to the mecha-mynah at level 6, 10 to the hexagoon at level 7 with
+the feather fan, and 1 from a dracky and 5 from the hexagoon on the Hero in
+the celestial kit, bandana and leather shield. Every one falls inside what
+`physicalDamage` draws from the cartridge's own numbers — 8–11, 3–6, 8–12,
+0–1 and 5–8 — and a gated test keeps it so
+(`tools/harness/test/lets-play.test.ts`: the video's numbers in the test,
+the cartridge's read when it runs). **The fight is winnable as the video
+won it**: simulated 2,000 times a level, solo, healing under 16 HP, the Hero
+beats the hexagoon every time from level 5 up — 15 rounds and 3 Heals at 5,
+11 rounds and 1 at 7 — where the docs had it played at level 20 here.
+
+**How an action opens is read** (`Action.opening`, game-formats' FORMAT.md,
+"Actions"; INFERRED, 669 of 681 indexing `actmsg`): bits 10–19 of the word
+at `+0x20`, beside the message: 1 `attacks`, 45 `flees`, 46 `casts <ACTION>`
+on 83 spells, 70 `uses <item>` on the herbs, 15 `does the <ACTION>!`, and the
+monsters' unnamed moves' own lines — the hexagoon's 546 says 394, **`sends
+rubble raining down`**, as the video does. The battle now says each action's
+own opening instead of choosing cast, used or nothing by its shape; a
+monster's idle ways — effect 0, the sanguini's 364 `is just fluffing around`,
+the bag o' laughs' 366 `is assessing the situation` — are a turn spent saying
+so (`wait`, in the sim) where they were attacks.
+
+**Read now, not modelled:** Dazzle, 59, `starts to hallucinate`; the
+sacksquatch's 323, `spews forth a cloud of sand` … `gets sand in his eyes`;
+Weird Dance, 243, `MP decrease by <val_1>`; the bag o' laughs' 344, `calls
+for backup`. The first three are the states the reference does not model and
+the last brings a monster the sim has no way to add; each still lands as an
+attack. **Abilities** are the vocations' skills, out of the slice. **Not
+read:** how a monster weights its six ways (the reference's even table
+stands), the critical and flee chances.
 
 ---
 

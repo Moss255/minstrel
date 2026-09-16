@@ -141,6 +141,8 @@ export type ChangeResult = 'asleep' | 'poisoned' | 'raised' | 'lowered' | 'alrea
 export type FoeAction =
   | { readonly kind: 'attack'; readonly poison?: number }
   | { readonly kind: 'flee' }
+  /** A turn spent doing nothing — a monster fluffing around — with the action that says so. */
+  | { readonly kind: 'wait'; readonly action: number }
   | { readonly kind: 'spell'; readonly spell: Spell }
   | { readonly kind: 'change'; readonly changing: Changing }
 
@@ -151,6 +153,8 @@ export type Command =
   | { readonly kind: 'change'; readonly changing: Changing; readonly target: number }
   | { readonly kind: 'defend' }
   | { readonly kind: 'flee' }
+  /** Do nothing this turn, as the action says — a monster's idle way. */
+  | { readonly kind: 'wait'; readonly action: number }
   /** Use an item, by id: its heal when it has one, and nothing when it has not. */
   | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal }
   /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
@@ -169,6 +173,7 @@ export type BattleEvent =
       readonly poisoned?: boolean
     }
   | { readonly kind: 'defend'; readonly actor: number }
+  | { readonly kind: 'wait'; readonly actor: number; readonly action: number }
   | { readonly kind: 'flee'; readonly actor: number; readonly escaped: boolean }
   | {
       readonly kind: 'item'
@@ -319,6 +324,7 @@ function foeCommand(
     return act.poison === undefined ? attack : { kind: 'attack', target: -1, poison: act.poison }
   }
   if (act.kind === 'flee') return { kind: 'flee' }
+  if (act.kind === 'wait') return { kind: 'wait', action: act.action }
   if (act.kind === 'change') return { kind: 'change', changing: act.changing, target: -1 }
   if (act.spell.does === 'harm') return { kind: 'spell', spell: act.spell, target: -1 }
   // The most wounded: the lowest share of its hit points, compared in whole numbers.
@@ -406,6 +412,10 @@ export function playRound(
 
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
+      continue
+    }
+    if (command.kind === 'wait') {
+      events.push({ kind: 'wait', actor, action: command.action })
       continue
     }
     if (command.kind === 'flee' && me.side === 'foes') {

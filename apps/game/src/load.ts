@@ -243,6 +243,8 @@ export interface ItemEffect {
   readonly effect: number
   /** What it says: its message in `actmsg`, 0 for none. INFERRED. */
   readonly message: number
+  /** How it opens: the `actmsg` said first, 0 for none — see `Action.opening`. INFERRED. */
+  readonly opening: number
   /** Its cost in MP; 255 for all there is. INFERRED. */
   readonly cost: number
   /** Whom it reaches — see `ActionReach`. INFERRED. */
@@ -1037,6 +1039,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         name: action.name,
         effect: action.effect,
         message: action.message,
+        opening: action.opening,
         cost: action.cost,
         reach: action.reach,
         // The party's amount: the Hero is who uses these — see `ActionRange.party`.

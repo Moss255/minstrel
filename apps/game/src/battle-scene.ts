@@ -88,6 +88,8 @@ export const ACTION_SAYS = {
   defeated: 9,
   defends: 10,
   uses: 12,
+  /** `uses <INDEF_ART_SGL_I_NAME>` as the herbs open, and 46 named items. */
+  usesItem: 70,
   healed: 22,
   nothingHappens: 31,
   critical: 140,
@@ -192,11 +194,24 @@ export interface Told {
   readonly name: Named
   readonly message: number
   /**
-   * How it opens: cast — `actmsg` 46, the party's spells and a monster's — used,
-   * as a monster's medicinal herb is, `actmsg` 12; or with no word of its own,
-   * as the actions the table leaves unnamed. Cast unless said.
+   * How it opens: the `actmsg` said before its own — 46 `casts <ACTION>` on a
+   * spell, 70 `uses <item>` on a herb, 394 `sends rubble raining down` on the
+   * hexagoon's move — read from the action (`Action.opening`); 0 for none.
+   * Cast, 46, unless said.
    */
-  readonly opening?: 'cast' | 'use' | 'none'
+  readonly opening?: number
+}
+
+/**
+ * Our words for an opening where the game's are not to hand: the openings
+ * whose shape is known — cast, used, attacks, flees — and nothing for the rest.
+ */
+function ourOpeningOf(opening: number, who: string, action: Named): string[] {
+  if (opening === ACTION_SAYS.casts) return [`${who} casts ${shown(action)}!`]
+  if (opening === ACTION_SAYS.uses || opening === ACTION_SAYS.usesItem || opening === 11)
+    return [`${who} uses ${article(shown(action))}.`]
+  if (opening === ACTION_SAYS.attacks) return [`${who} attacks!`]
+  return []
 }
 
 /** Whether a telling is a spell's, which says what it does. */
@@ -210,6 +225,8 @@ export interface Castable {
   /** What it does — `ActionEffect`. */
   readonly effect: number
   readonly message: number
+  /** How it opens — see `Told.opening`. */
+  readonly opening: number
   readonly cost: number
   /** Whom it reaches — `ActionReach`. */
   readonly reach: number
@@ -231,7 +248,7 @@ const REACHES = new Map<number, Spell['reach']>([
  */
 export function battleSpellOf(
   action: Castable,
-  opening: BattleSpell['opening'] = 'cast',
+  opening: number = action.opening,
 ): BattleSpell | undefined {
   const does =
     action.effect === ActionEffect.RestoresHp
@@ -245,7 +262,7 @@ export function battleSpellOf(
     spell: { action: action.action, cost: action.cost, does, reach, amount: action.range },
     name: { name: action.name },
     message: action.message,
-    opening: action.name ? opening : 'none',
+    opening,
   }
 }
 
@@ -258,7 +275,7 @@ export function foeSpellOf(
   action: Castable & { readonly foeRange: Heal | undefined },
   item?: Named,
 ): BattleSpell | undefined {
-  const spell = battleSpellOf({ ...action, range: action.foeRange }, item ? 'use' : 'cast')
+  const spell = battleSpellOf({ ...action, range: action.foeRange })
   return spell && item ? { ...spell, name: item } : spell
 }
 
@@ -324,9 +341,19 @@ export function foeWaysOf(
       known.set(word, {
         name: { name: action.name },
         message: action.message,
-        opening: action.cost > 0 && action.name ? 'cast' : 'none',
+        opening: action.opening,
       })
       return { kind: 'change', changing: { action: word, cost: action.cost, reach, ...changes } }
+    }
+    // A way that does nothing — effect 0, as fleeing's — is a turn spent
+    // saying so: the sanguini's `is just fluffing around`.
+    if (action && action.effect === 0) {
+      known.set(word, {
+        name: { name: action.name },
+        message: action.message,
+        opening: action.opening,
+      })
+      return { kind: 'wait', action: word }
     }
     const spell = spellOf(word)
     if (!spell) return { kind: 'attack' }
@@ -532,6 +559,14 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       }
       return ours.map(sentence).join('\n')
     }
+    case 'wait': {
+      const chosen = scene.known.get(event.action)
+      const action = chosen?.name ?? { name: '' }
+      const game = chosen?.opening
+        ? lines(say(scene, 'actions', chosen.opening, { actor, action, item: action }))
+        : undefined
+      return game ?? `${who} does nothing.`
+    }
     case 'defend':
       return (
         say(scene, 'actions', ACTION_SAYS.defends, { actor }) ?? sentence(`${who} is on guard.`)
@@ -575,20 +610,11 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         scene.spells.find((s) => s.spell.action === event.action) ?? scene.known.get(event.action)
       const action = chosen?.name ?? { name: `spell ${event.action}` }
       const heals = isSpell(chosen) && chosen.spell.does === 'heal'
-      const opening = chosen?.opening ?? 'cast'
-      // How it opens, in the game's words and in ours; nothing for a move with no name.
-      const opens =
-        opening === 'cast'
-          ? [say(scene, 'actions', ACTION_SAYS.casts, { actor, action })]
-          : opening === 'use'
-            ? [say(scene, 'actions', ACTION_SAYS.uses, { actor, item: action })]
-            : []
-      const ourOpening =
-        opening === 'cast'
-          ? [`${who} casts ${shown(action)}!`]
-          : opening === 'use'
-            ? [`${who} uses ${article(shown(action))}.`]
-            : []
+      const opening = chosen?.opening ?? ACTION_SAYS.casts
+      // How it opens, in the game's words and in ours: the action's own line,
+      // or none where it has none.
+      const opens = opening ? [say(scene, 'actions', opening, { actor, action, item: action })] : []
+      const ourOpening = ourOpeningOf(opening, who, action)
       if (event.short) {
         const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
         return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
@@ -627,10 +653,10 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     case 'change': {
       const told = scene.known.get(event.action)
       const action = told?.name ?? { name: `move ${event.action}` }
-      // A spell is cast; a move with no word of its own — a breath — only lands.
-      const cast = (told?.opening ?? 'cast') === 'cast'
-      const opens = cast ? [say(scene, 'actions', ACTION_SAYS.casts, { actor, action })] : []
-      const ourOpening = cast ? [`${who} casts ${shown(action)}!`] : []
+      // How it opens — cast, or a breath's own line — or nothing where it has none.
+      const opening = told?.opening ?? ACTION_SAYS.casts
+      const opens = opening ? [say(scene, 'actions', opening, { actor, action, item: action })] : []
+      const ourOpening = ourOpeningOf(opening, who, action)
       if (event.short) {
         const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
         return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')

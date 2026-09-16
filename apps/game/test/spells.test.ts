@@ -55,6 +55,7 @@ describe.skipIf(!romPath)('spells and items, on a real cartridge', { timeout: 12
       cost: 2,
       field: true,
       message: 22,
+      opening: 46,
       effect: ActionEffect.RestoresHp,
     })
     expect(here.actions.get(12)).toMatchObject({ name: 'Crack', cost: 3, field: false })
@@ -169,6 +170,7 @@ describe.skipIf(!romPath)('spells and items, on a real cartridge', { timeout: 12
       stat: 'maxHp',
       amount: 3,
       message: 157,
+      opening: 46,
     })
   })
 })

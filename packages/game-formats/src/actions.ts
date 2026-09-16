@@ -104,6 +104,15 @@ export interface Action {
   readonly cost: number
   /** What it says: its message's number in `actmsg`, 0 for none. INFERRED. */
   readonly message: number
+  /**
+   * How it opens: a message in `actmsg` said before the action's own, 0 for
+   * none — `+0x20`, bits 10–19, INFERRED: 1 `attacks` on the attack, 45
+   * `flees` on fleeing, 46 `casts <ACTION>` on 83 spells, 70 `uses <item>`
+   * on the herbs, 15 `does the <ACTION>!` on the dances, and on the monsters'
+   * unnamed moves their own lines — 394 `sends rubble raining down` on the
+   * hexagoon's, 350 `is just fluffing around`. 669 of 681 index a message.
+   */
+  readonly opening: number
   /** Whom it reaches — see {@link ActionReach}. INFERRED. */
   readonly reach: number
   /** The whole record, for what is not read. */
@@ -159,6 +168,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       effect: bytes[at + 0x24] as number,
       cost: bytes[at + 8] as number,
       message: view.getUint32(at + 0x20, true) >>> 20,
+      opening: (view.getUint32(at + 0x20, true) >>> 10) & 0x3ff,
       reach: (bytes[at + 0x17] as number) >> 4,
       raw: bytes.subarray(at, at + ACTION_RECORD),
     })
