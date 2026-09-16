@@ -27,7 +27,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 | | | |
 |---|---|---|
-| 1 | the ROM's hash checked, its assets converted and cached | no — M8 |
+| 1 | the ROM's hash checked, its assets converted and cached | the hash is checked; the cartridge itself is kept in the browser, and nothing is converted — by the owner's word, the game reads the ROM |
 | 2 | wake in Erinn's house and explore all of Angel Falls | yes; the slice opens a day earlier, at the statue, as the game does |
 | 3 | NPCs, shops, the inn and the save point work | mostly: 17 to 20 of the 20 to 22 villagers at each stage have their line; the inn's price is a stand-in |
 | 4 | fight, level up, buy and equip gear | yes; equipment changes the numbers and is drawn on the Hero and Ivor |
@@ -39,7 +39,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | gap | milestone | what it needs |
 |---|---|---|
 | **Music: the tempo** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob. Which track plays where is read now, from the map index. Then the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
-| The rest of M8 | M8 | The ROM's hash and caching, last by the owner's word. Done: input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
+| The rest of M8 | M8 | Done: the hash check and the kept cartridge, input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
 | Equipment's rest | M4 | The layouts (`lay_eq.lia`), and rarity and "Used by", which want the emulator. Done: the figure on the equipment screen; a shield on the back seen. |
@@ -73,8 +73,29 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
   ours takes kind 0 by day, 1 at dusk, 2 by night. And **what ends the night
   of 2.2**: sleeping, or time.
 
-**Where to start next time:** the tempo, with the knob; then the hash and
-cache, the last of M8.
+**Where to start next time:** the tempo, with the knob; M8 is otherwise done.
+
+---
+
+## The cartridge checked and kept — 16 September
+
+**The last of M8's definition of done.** A dropped dump is hashed with the
+platform's SHA-1 (`cartridge-id.ts`) and checked against the reference —
+the dump the slice was read from: `ff761d34…`, 268,435,456 bytes, game code
+`YDQP` — and the start screen says which of three it is: the reference, the
+same title but another dump (by the game code; another region's, trimmed,
+patched — "what was read here may differ"), or something else. Nothing of
+the cartridge is in the code but the hash, the size and the code.
+
+**Kept, not converted.** The file itself, whole, goes into the browser's
+IndexedDB (`cartridge-store.ts`) and is offered on the next visit — "Load
+it" / "Forget it" — so the game reads the cartridge's own formats from that
+file every time, as it does on a first drop. There is no middle format, on
+purpose: the owner's word, 16 September, and the repository's first rule.
+What is derived at runtime — catalogues, decoded models, textures, waves —
+lives in memory for the session, as before; a map opens in under two
+seconds from the cartridge, so nothing more is cached. `?keep=1` on a
+`?rom=` address keeps that one too, for checking the path headless.
 
 ---
 

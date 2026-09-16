@@ -27,8 +27,13 @@
         <label id="resume-row" hidden
           ><input type="checkbox" id="resume" checked /> <span>Carry on from the last confession</span></label
         >
+        <div id="kept-row" hidden>
+          <span id="kept-said"></span>
+          <button type="button" id="kept-load">Load it</button>
+          <button type="button" id="kept-forget">Forget it</button>
+        </div>
         <input type="file" id="file" accept=".nds" />
-        <p class="hint">Drop a dump anywhere on this page, or choose one.</p>
+        <p class="hint">Drop a dump anywhere on this page, or choose one. It is checked against the dump the game was built on, and kept in this browser for next time.</p>
       </div>
       <div id="talk" hidden></div>
       <div id="menu" hidden></div>

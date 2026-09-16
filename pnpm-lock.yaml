@@ -78,6 +78,9 @@ importers:
       '@minstrel/nitro-snd':
         specifier: workspace:*
         version: link:../../packages/nitro-snd
+      '@minstrel/nitrofs':
+        specifier: workspace:*
+        version: link:../../packages/nitrofs
       '@minstrel/render':
         specifier: workspace:*
         version: link:../../packages/render

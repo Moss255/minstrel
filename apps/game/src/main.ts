@@ -94,6 +94,8 @@ import {
   motionFrame,
 } from './cabinets.ts'
 import { CARD, closesTheSlice } from './card.ts'
+import { type CartridgeIdentity, describeIdentity, identifyCartridge } from './cartridge-id.ts'
+import { forgetCartridge, keepCartridge, keptCartridge } from './cartridge-store.ts'
 import {
   castPieces,
   heldPieces,
@@ -282,6 +284,12 @@ const menuEl = must<HTMLDivElement>('#menu')
 const cardEl = must<HTMLDivElement>('#card')
 const resumeRow = must<HTMLLabelElement>('#resume-row')
 const resumeEl = must<HTMLInputElement>('#resume')
+const keptRow = must<HTMLDivElement>('#kept-row')
+const keptSaid = must<HTMLSpanElement>('#kept-said')
+const keptLoad = must<HTMLButtonElement>('#kept-load')
+const keptForget = must<HTMLButtonElement>('#kept-forget')
+/** What the cartridge was identified as — see `cartridge-id.ts`; undefined until one is checked. */
+let identity: CartridgeIdentity | undefined
 
 const status = (text: string) => {
   statusEl.textContent = text
@@ -1772,10 +1780,61 @@ function wearWanted(): void {
   dressHero()
 }
 
+/**
+ * A dump chosen or dropped: checked against the reference, begun, and kept in
+ * the browser for next time — the file itself, whole; see `cartridge-store.ts`.
+ */
 async function chose(file: File): Promise<void> {
   status(`reading ${file.name}…`)
-  begin(new Uint8Array(await file.arrayBuffer()), wantedMap)
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  await checkAndBegin(bytes, true)
 }
+
+/** Identify the bytes, say what they are, begin, and keep them if asked. */
+async function checkAndBegin(bytes: Uint8Array, keep: boolean): Promise<void> {
+  status('checking the cartridge…')
+  identity = await identifyCartridge(bytes)
+  const said = describeIdentity(identity)
+  status(said)
+  begin(bytes, wantedMap)
+  // Said again after the map's own line, where a difference matters most.
+  if (identity.verdict !== 'reference') status(said)
+  if (!keep) return
+  try {
+    await keepCartridge(bytes, identity)
+  } catch (error) {
+    status(
+      `the cartridge could not be kept in this browser: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
+/** The cartridge kept from a past visit, offered on the start screen. */
+async function offerKept(): Promise<void> {
+  const kept = await keptCartridge()
+  if (!kept) return
+  const when = new Date(kept.keptAt).toLocaleString()
+  keptSaid.textContent = `Kept in this browser on ${when}: ${describeIdentity(kept.identity)}.`
+  keptRow.hidden = false
+  keptLoad.onclick = () => {
+    keptRow.hidden = true
+    identity = kept.identity
+    status(describeIdentity(kept.identity))
+    begin(kept.bytes, wantedMap)
+  }
+  keptForget.onclick = () => {
+    keptRow.hidden = true
+    void forgetCartridge().then(() => status('the kept cartridge is forgotten'))
+  }
+}
+// For a headless check: what the cartridge was identified as, and what the browser keeps.
+Object.defineProperty(window, 'minstrelIdentity', { get: () => identity })
+Object.defineProperty(window, 'minstrelKept', {
+  value: async () => {
+    const kept = await keptCartridge()
+    return kept && { size: kept.bytes.length, sha1: kept.identity.sha1, keptAt: kept.keptAt }
+  },
+})
 
 fileInput.addEventListener('change', () => {
   const file = fileInput.files?.[0]
@@ -4228,6 +4287,8 @@ if (kept) {
 }
 // Development convenience: `?new=1` starts a new game past a kept save.
 if (params.get('new') === '1') resumeEl.checked = false
+// A cartridge kept from a past visit is offered, unless the address brings its own.
+if (!params.get('rom')) void offerKept()
 
 // Development convenience: `?rom=<url>` loads a dump over HTTP instead of
 // through the file picker. It fetches only what the URL names, so it stays
@@ -4239,7 +4300,8 @@ if (romUrl) {
     try {
       const response = await fetch(romUrl)
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
-      begin(new Uint8Array(await response.arrayBuffer()), wantedMap)
+      // `?keep=1` keeps it in the browser too, as a dropped file is, for checking that path.
+      await checkAndBegin(new Uint8Array(await response.arrayBuffer()), params.get('keep') === '1')
       if (wantedDoor && loaded) {
         const door = loaded.doorways.find((d) => d.to.toLowerCase() === wantedDoor.toLowerCase())
         if (!door) throw new Error(`${loaded.code} has no doorway to '${wantedDoor}'`)

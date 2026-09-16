@@ -128,6 +128,13 @@ MINSTREL_TEST_ROM=rom/your.nds pnpm test
 pnpm dev        # then drop your own dump onto the page
 ```
 
+The dump is hashed on your machine when it is dropped and checked against the
+one the game was read from — the European release, by SHA-1 and size; a
+different dump is said so and played anyway. The file is then kept in the
+browser (IndexedDB) so it need not be chosen again: **the file itself, whole,
+never a converted copy** — the game reads the cartridge's own formats at
+runtime every time, from that file. "Forget it" on the start screen drops it.
+
 The keyboard's defaults: `WASD` or the arrows walk, `f` or Enter confirms
 and talks, Esc cancels, `x` opens the menu, `m` the map, `b` starts or stops
 the music. A standard-layout gamepad works too. `k` opens the controls panel,

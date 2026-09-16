@@ -160,7 +160,12 @@ for (const [index, step] of script.entries()) {
   if (name === 'wait') {
     await sleep(Number(value))
   } else if (name === 'eval') {
-    const result = await send('Runtime.evaluate', { expression: value, returnByValue: true })
+    // A promise is waited for, so a page's async checks can be asked as one expression.
+    const result = await send('Runtime.evaluate', {
+      expression: value,
+      returnByValue: true,
+      awaitPromise: true,
+    })
     console.log(`eval ${index}: ${JSON.stringify(result.result?.result?.value)}`)
   } else if (name === 'hold') {
     const [key, frames] = value.split(':')
