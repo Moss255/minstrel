@@ -1,6 +1,6 @@
 import type { DecodedWave, Sbnk } from '@minstrel/nitro-snd'
-import { Mixer } from './render.ts'
-import { Sequencer, type Song } from './sequencer.ts'
+import { Ensemble } from './render.ts'
+import type { Song } from './sequencer.ts'
 
 /**
  * The sequencer and mixer inside an AudioWorklet: the page sends a song and
@@ -11,17 +11,20 @@ import { Sequencer, type Song } from './sequencer.ts'
 
 /** A song as it crosses to the worklet: the same fields, structured-cloned. */
 export interface SongMessage {
-  readonly kind: 'song'
+  readonly kind: 'song' | 'effect' | 'jingle'
   readonly commands: Uint8Array
   readonly bank: Sbnk
   readonly archives: readonly (readonly DecodedWave[] | undefined)[]
   readonly volume: number
+  readonly start?: number
 }
 
 export type MusicMessage =
   | SongMessage
   | { readonly kind: 'play' }
   | { readonly kind: 'stop'; readonly now: boolean }
+  /** Let every effect and jingle go, their notes released. */
+  | { readonly kind: 'stop-effects' }
   /** Scale the output to `to` (0–1) over `seconds`. */
   | { readonly kind: 'fade'; readonly to: number; readonly seconds: number }
   /** Multiply the tempo — see `Sequencer.tempoRate`. */
@@ -34,6 +37,8 @@ export interface MusicReport {
   readonly ticks: number
   readonly playing: boolean
   readonly finished: boolean
+  /** How many effects are sounding over it. */
+  readonly effects: number
 }
 
 declare const sampleRate: number
@@ -46,8 +51,8 @@ export const MUSIC_PROCESSOR = 'minstrel-music'
 
 export function registerMusicProcessor(): void {
   class MusicProcessor extends AudioWorkletProcessor {
-    private readonly sequencer = new Sequencer()
-    private readonly mixer = new Mixer(this.sequencer, sampleRate)
+    private readonly ensemble = new Ensemble(sampleRate)
+    private readonly sequencer = this.ensemble.music
     private frames = 0
     private gain = 1
     private gainTo = 1
@@ -61,17 +66,24 @@ export function registerMusicProcessor(): void {
 
     private take(message: MusicMessage): void {
       switch (message.kind) {
-        case 'song': {
+        case 'song':
+        case 'effect':
+        case 'jingle': {
           const song: Song = {
             commands: message.commands,
             bank: message.bank,
             archives: message.archives,
             volume: message.volume,
+            ...(message.start !== undefined ? { start: message.start } : {}),
           }
-          this.sequencer.load(song)
-          this.gain = 1
-          this.gainTo = 1
-          this.gainStep = 0
+          if (message.kind === 'effect') this.ensemble.effect(song)
+          else if (message.kind === 'jingle') this.ensemble.jingle(song)
+          else {
+            this.sequencer.load(song)
+            this.gain = 1
+            this.gainTo = 1
+            this.gainStep = 0
+          }
           break
         }
         case 'play':
@@ -79,6 +91,9 @@ export function registerMusicProcessor(): void {
           break
         case 'stop':
           this.sequencer.stop(message.now)
+          break
+        case 'stop-effects':
+          this.ensemble.stopEffects()
           break
         case 'rate':
           this.sequencer.tempoRate = message.rate
@@ -99,7 +114,7 @@ export function registerMusicProcessor(): void {
       const right = out?.[1] ?? left
       if (!left || !right) return true
       const frames = left.length
-      this.mixer.render(left, right, frames)
+      this.ensemble.render(left, right, frames)
       if (this.gain !== this.gainTo || this.gain !== 1) {
         for (let i = 0; i < frames; i++) {
           if (this.gain !== this.gainTo) {
@@ -122,6 +137,7 @@ export function registerMusicProcessor(): void {
           ticks: this.sequencer.ticks,
           playing: this.sequencer.playing,
           finished: this.sequencer.finished,
+          effects: this.ensemble.sounding,
         }
         this.port.postMessage(report)
       }

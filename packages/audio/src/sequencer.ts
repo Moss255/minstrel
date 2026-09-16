@@ -114,6 +114,12 @@ export interface Song {
   readonly archives: readonly (readonly DecodedWave[] | undefined)[]
   /** The SDAT sequence record's volume, 0–127. */
   readonly volume: number
+  /**
+   * Where the sequence starts in `commands`: 0 for a sequence of its own, an
+   * entry's offset for one of a sequence archive's, whose track and jump
+   * offsets still count from the shared stream's start.
+   */
+  readonly start?: number
 }
 
 /** The order the driver tries channels in for each kind of note. */
@@ -151,10 +157,10 @@ export class Sequencer {
     this.tempoCount = 0
     this.ticks = 0
     const c = song.commands
-    let pos = 0
+    let pos = song.start ?? 0
     const tracks: Track[] = []
-    if (c[0] === CMD.AllocateTracks) {
-      pos = 3
+    if (c[pos] === CMD.AllocateTracks) {
+      pos += 3
       while (c[pos] === CMD.OpenTrack) {
         const number = c[pos + 1] as number
         const start =
@@ -170,7 +176,10 @@ export class Sequencer {
     if (this.song) this.playing = true
   }
 
-  /** Stop, releasing every note — or cutting them, with `now`. */
+  /**
+   * Stop, cutting every note — or, with `now` false, pause: the notes are
+   * released and the tracks kept where they are, for `play` to go on from.
+   */
   stop(now = true): void {
     this.playing = false
     for (const channel of this.channels) {
@@ -178,7 +187,7 @@ export class Sequencer {
       if (now) channel.kill()
       else channel.release()
     }
-    this.tracks = []
+    if (now) this.tracks = []
   }
 
   /** Whether every track has ended and every channel fallen silent. */

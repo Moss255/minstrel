@@ -22,6 +22,7 @@ export {
   type SdatRecord,
   type SequenceInfo,
 } from './sdat.ts'
+export { isSsar, readSsar, type Ssar, type SsarEntry } from './ssar.ts'
 export { isSseq, readSseq, type Sseq } from './sseq.ts'
 export {
   ADPCM_TABLE,

@@ -41,19 +41,39 @@ export class Music {
     this.node?.port.postMessage(message)
   }
 
-  /** Play a song from its start, replacing whatever plays. */
-  async play(name: string, song: Song): Promise<void> {
+  private async sendSong(kind: 'song' | 'effect' | 'jingle', song: Song): Promise<void> {
     await this.open()
     if (this.context?.state !== 'running') await this.context?.resume()
     this.send({
-      kind: 'song',
+      kind,
       commands: song.commands,
       bank: song.bank,
       archives: song.archives,
       volume: song.volume,
+      ...(song.start !== undefined ? { start: song.start } : {}),
     })
+  }
+
+  /** Play a song from its start, replacing whatever plays. */
+  async play(name: string, song: Song): Promise<void> {
+    await this.sendSong('song', song)
     this.send({ kind: 'play' })
     this.playing = name
+  }
+
+  /** Sound an effect over the music. */
+  async effect(song: Song): Promise<void> {
+    await this.sendSong('effect', song)
+  }
+
+  /** Let every effect and jingle go — a scene's end. */
+  stopEffects(): void {
+    this.send({ kind: 'stop-effects' })
+  }
+
+  /** Sound a jingle: the music pauses until it is over. */
+  async jingle(song: Song): Promise<void> {
+    await this.sendSong('jingle', song)
   }
 
   /** Stop: at once, or letting the notes fade. */

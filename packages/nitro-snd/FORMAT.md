@@ -108,10 +108,10 @@ lookups through separately-parsed tables, all of which must be right. It also
 comes out self-consistent by name, `BG_001` selecting `BANK_BG_001` selecting
 `WAVE_BG_001`.
 
-## The files inside: SSEQ, SBNK, SWAR
+## The files inside: SSEQ, SBNK, SWAR, SSAR
 
-Read since 15 September 2026 (`sseq.ts`, `sbnk.ts`, `swar.ts`). Sources:
-Gota7's *Nitro Studio 2* specifications (sequence, bank, wave, wave archive),
+Read since 15 September 2026 (`sseq.ts`, `sbnk.ts`, `swar.ts`, `ssar.ts`). Sources:
+Gota7's *Nitro Studio 2* specifications (sequence, bank, wave, wave archive, sequence archive),
 https://gota7.github.io/NitroStudio2/specs/; fincs's FeOS Sound System,
 https://github.com/fincs/FSS (WTFPL), whose `sbnkswar.h` reads the same
 layouts; GBATEK, "DS Sound Notes", for IMA-ADPCM. Every field below is one of
@@ -121,7 +121,7 @@ theirs; nothing is inferred here.
 
 | offset | type | meaning |
 |---|---|---|
-| `0x00` | `char[4]` | `SSEQ`, `SBNK`, `SWAR` |
+| `0x00` | `char[4]` | `SSEQ`, `SBNK`, `SWAR`, `SSAR` |
 | `0x04` | `u16` | byte-order mark, `0xFEFF` |
 | `0x06` | `u16` | version |
 | `0x08` | `u32` | file size |
@@ -180,7 +180,38 @@ its sample is `words × 8 − 8`.
 every one resolve to a wave in the bank's archives; all 2,079 waves are
 IMA-ADPCM, 1,793 of them looping, and every one decodes.
 
+### SSAR
+
+Read 16 September 2026 (`ssar.ts`), from Gota7's sequence-archive
+specification. A sequence archive is many short sequences in one command
+stream, each with its own bank and volumes — the two effects archives are
+made of them, 1,398 between them.
+
+| offset | type | meaning |
+|---|---|---|
+| `0x18` | `u32` | absolute offset of the command stream: `0x20 + 12 × count` |
+| `0x1C` | `u32` | entry count |
+| `0x20` | 12 bytes each | entries: `u32` offset into the stream, `u16` bank, `u8` volume, `u8` channel priority, `u8` player priority, `u8` player, `u16` pad |
+
+An entry's offset is where its sequence starts in the stream; its track and
+jump offsets still count from the stream's start, as a sequence's do. The
+stream runs to the end of the DATA block.
+
+**An empty slot is one whose offset is `0xFFFFFFFF`.** INFERRED against the
+specification, which says 0: on the reference cartridge 0 is the offset of a
+real sequence, the first in the stream, on 253 of `se_norm.sdat`'s 279
+archives and 430 of `se_btl.sdat`'s 481, while `0xFFFFFFFF` fills 812 and
+2,513 slots there and no offset lies past a stream's end. Which of an archive's filled slots a game plays is the
+game's business, not the format's.
+
+### On the reference cartridge, the effects
+
+`se_norm.sdat`: 462 sequence-archive records, 279 with a file (indices 100 to
+461) holding 819 sequences, every one naming the bank at its archive's own
+index, over 108 wave archives. `se_btl.sdat`: 936 records, 481 with a file
+(101 to 935), 1,081 sequences, likewise, over 105. Every one reads. An archive's filled slots are variants of one sound:
+the same two-note phrase at rising keys, or at full and lesser volume.
+
 ## Not implemented
 
-**Streams** (`STRM`), which `bgm.sdat` has three of, and **sequence archives**
-(`SSAR`), which the two effects archives are made of: 1,398 between them.
+**Streams** (`STRM`), which `bgm.sdat` has three of.

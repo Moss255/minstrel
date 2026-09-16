@@ -46,6 +46,11 @@ import {
  * | 101 | frames | fade the screen to black over so many frames — see `darkness`. The script waits them out itself |
  * | 121 | frames | fade it back from black over so many frames |
  * | 560 | reference | whether the scene carries straight on from a conversation — see `afterTalk` |
+ * | 726 | effect | sound an effect: all 240 distinct values are indices of sequence archives with a file in `se_norm.sdat` |
+ * | 730 | effect | likewise, taken to be: its six values, 364 the commonest, are such indices too. How it differs from `726` is not read |
+ * | 720 | jingle | play a jingle: its six values, 55–67, fall where `bgm.sdat` keeps its `ME_` sequences, 50–68 |
+ * | 727 | — | the scene's sounds stop: called on the last frame of 663 of the 664 scenes that call it, paired with `731`, which is not read. 72 of the 279 effects hold a looping wave for ever until stopped, and 134 of the 137 scenes sounding one call `727` after |
+ * | 729 | 0, frames | the sounds stop, over so many frames — 38 of those 137 call it after the effect; the fade is not done |
  * | 840 | reference | how long the frame was, in halves — see {@link FRAME_IN_HALVES} |
  *
  * Positions are in the files' own units, and the stage takes them into the
@@ -222,6 +227,12 @@ export class EventStage {
   message: number | undefined
   /** Every message shown, in order. */
   readonly shown: number[] = []
+  /**
+   * Sounds asked for and not yet taken by the page: `726` names an effect
+   * archive in the effects' SDAT, `720` a jingle in the music's — see the
+   * header. The page drains this each frame.
+   */
+  readonly sounds: { readonly kind: 'effect' | 'jingle' | 'stop'; readonly index: number }[] = []
   /** Frames played. */
   frame = 0
   /** Engine functions answered with 0 because they are not read, and how often. */
@@ -585,6 +596,17 @@ export class EventStage {
         if (isRef(ref)) thread.write(ref, FRAME_IN_HALVES)
         return 0
       }
+      case 726:
+      case 730:
+        this.sounds.push({ kind: 'effect', index: num(args[0]) })
+        return 0
+      case 720:
+        this.sounds.push({ kind: 'jingle', index: num(args[0]) })
+        return 0
+      case 727:
+      case 729:
+        this.sounds.push({ kind: 'stop', index: 0 })
+        return 0
       case 560: {
         // Whether the scene carries straight on from a conversation — see `afterTalk`.
         const ref = args[0]

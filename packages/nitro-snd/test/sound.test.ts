@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { NitroSndError } from '../src/errors.ts'
 import { InstrumentType, noteFor, readSbnk } from '../src/sbnk.ts'
+import { readSsar } from '../src/ssar.ts'
 import { readSseq } from '../src/sseq.ts'
 import { decodeWave, readSwar, WaveFormat } from '../src/swar.ts'
-import { buildSbnk, buildSseq, buildSwar, encodeAdpcm } from './sound-fixture.ts'
+import { buildSbnk, buildSsar, buildSseq, buildSwar, encodeAdpcm } from './sound-fixture.ts'
 
 describe('readSseq', () => {
   it('finds the command stream where the DATA block says', () => {
@@ -132,5 +133,32 @@ describe('readSwar and decodeWave', () => {
     const odd = buildSwar([{ format: 0, sampleRate: 8000, data: [1, 2, 3, 4] }])
     odd[0x40] = 3
     expect(() => readSwar(odd)).toThrow(/not PCM8/)
+  })
+})
+
+describe('readSsar', () => {
+  it('reads each entry with its start in the shared stream, empty slots as none', () => {
+    const ssar = readSsar(
+      buildSsar(
+        [
+          undefined,
+          { offset: 0, bank: 7, volume: 61, player: 11 },
+          undefined,
+          { offset: 4, bank: 7 },
+        ],
+        [0x81, 0, 0x3c, 0x7f, 0x30, 0xff, 0, 0, 0x80, 0x10, 0xff],
+      ),
+    )
+    expect(ssar.entries).toHaveLength(4)
+    expect(ssar.entries[0]).toBeUndefined()
+    expect(ssar.entries[1]).toMatchObject({ offset: 0, bank: 7, volume: 61, player: 11 })
+    expect(ssar.entries[3]).toMatchObject({ offset: 4, bank: 7, volume: 127 })
+    expect([...ssar.commands.subarray(0, 4)]).toEqual([0x81, 0, 0x3c, 0x7f])
+  })
+
+  it('refuses an entry that starts past the stream', () => {
+    const bad = buildSsar([{ offset: 0, bank: 0 }], [0xff, 0, 0, 0])
+    bad[0x20] = 0x40
+    expect(() => readSsar(bad)).toThrow(/past its stream/)
   })
 })

@@ -1,7 +1,7 @@
 export { adjustTimer, Channel, ChannelType, Phase } from './channel.ts'
-export { Mixer, renderSong } from './render.ts'
+export { Ensemble, Mixer, renderSong } from './render.ts'
 export { Sequencer, type Song, TICK_RATE } from './sequencer.ts'
-export { songNames, songOf } from './song.ts'
+export { effectOf, songAt, songNames, songOf } from './song.ts'
 export {
   AMPL_K,
   attackRate,

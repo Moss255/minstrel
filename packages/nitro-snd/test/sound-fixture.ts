@@ -201,3 +201,28 @@ export function encodeAdpcm(samples: ArrayLike<number>, startIndex = 0): number[
   while (out.length & 3) out.push(0)
   return out
 }
+
+/** An SSAR: entries with their command offsets (or none, for an empty slot), over one stream. */
+export function buildSsar(
+  entries: ({ offset: number; bank: number; volume?: number; player?: number } | undefined)[],
+  commands: ArrayLike<number>,
+): Uint8Array {
+  return soundFile('SSAR', (b) => {
+    b.u32(0x20 + 12 * entries.length)
+    b.u32(entries.length)
+    for (const e of entries) {
+      if (!e) {
+        b.u32(0xffffffff).u32(0).u32(0)
+        continue
+      }
+      b.u32(e.offset)
+        .u16(e.bank)
+        .u8(e.volume ?? 127)
+        .u8(96)
+        .u8(64)
+        .u8(e.player ?? 0)
+        .u16(0)
+    }
+    b.raw(commands)
+  })
+}

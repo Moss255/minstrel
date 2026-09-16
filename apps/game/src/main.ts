@@ -165,7 +165,7 @@ import {
   showMinimap,
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
-import { music, playBgm } from './music.ts'
+import { music, playBgm, playEffect, playJingle } from './music.ts'
 import {
   advance,
   advanceMotion,
@@ -793,6 +793,14 @@ function begin(bytes: Uint8Array, map: string): void {
   // `?bgm=BG_001` plays that track — which plays where is not read; see `music.ts`.
   const bgm = params.get('bgm')
   if (bgm) void startMusic(bgm)
+  // `?se=113` or `?se=113:2`: sound an effect archive, or one slot of it, on load.
+  const se = params.get('se')
+  if (se && cartridge) {
+    const [index, slot] = se.split(':').map(Number)
+    void playEffect(cartridge, index ?? 0, slot).then((played) =>
+      status(played ? `♪ effect ${se}` : `no effect ${se} in the effect archive`),
+    )
+  }
   // `?level=20` puts the Hero at that level, with its experience — ours, so a
   // headless browser can see a fight through.
   const level = Number(params.get('level'))
@@ -3022,6 +3030,8 @@ function playEvent(elapsedMs: number): void {
       return
     }
   }
+  // The sounds the scene asked for this frame.
+  for (const sound of now.player.stage.sounds.splice(0)) void playSound(sound)
   const shown = now.player.stage.message
   // The event's message stays up until it is read to its end: whatever closed
   // the box, it comes back — or the event would wait on it for ever, and the
@@ -3037,6 +3047,23 @@ function playEvent(elapsedMs: number): void {
     showTalk()
   }
   heroAsEvent(now)
+}
+
+/** Sound what a scene asks for — see `726`, `720` and `727` in `event.ts`. */
+async function playSound(sound: {
+  kind: 'effect' | 'jingle' | 'stop'
+  index: number
+}): Promise<void> {
+  if (!cartridge) return
+  if (sound.kind === 'stop') {
+    music.stopEffects()
+    return
+  }
+  const played =
+    sound.kind === 'effect'
+      ? await playEffect(cartridge, sound.index)
+      : await playJingle(cartridge, sound.index)
+  if (!played) status(`no ${sound.kind} ${sound.index} in the sound archive`)
 }
 
 /** Stand the Hero where the event has character 0. */

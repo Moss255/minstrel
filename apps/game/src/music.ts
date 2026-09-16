@@ -1,37 +1,67 @@
-import { songNames, songOf } from '@minstrel/audio'
+import { effectOf, songAt, songNames, songOf } from '@minstrel/audio'
 import { Music } from '@minstrel/audio/player'
 import { scanCartridge } from '@minstrel/cartridge'
 import { readSdat, type Sdat } from '@minstrel/nitro-snd'
 import workletUrl from './music-worklet.ts?worker&url'
 
 /**
- * The cartridge's music on the page: `bgm.sdat`, and the worklet that plays a
- * track out of it. Which track plays where is not read — `mapbgm.bin` was
- * looked at and is not it (`docs/M0-inventory.md`, "Audio") — so a track is
- * chosen by name: `?bgm=BG_001`, or the `b` key.
+ * The cartridge's sound on the page: `bgm.sdat` for the music and the
+ * jingles, `se_norm.sdat` for the field's effects, and the worklet that plays
+ * them. Which track plays where is not read — `mapbgm.bin` was looked at and
+ * is not it (`docs/M0-inventory.md`, "Audio") — so a track is chosen by name:
+ * `?bgm=BG_001`, or the `b` key. The events' effects and jingles are read:
+ * `726` and `720` in `event.ts`. The menus' sounds are not, so `?se=n` sounds
+ * effect archive `n` on load, for finding them by ear.
  */
 
 /** Where the music archive is on the cartridge. */
 export const BGM_ARCHIVE = '/data/sound/bgm.sdat'
+/** Where the field's effect archive is. */
+export const EFFECTS_ARCHIVE = '/data/sound/se_norm.sdat'
 
 export const music = new Music(workletUrl)
 
-let archive: { rom: Uint8Array; sdat: Sdat } | undefined
+const archives = new Map<string, { rom: Uint8Array; sdat: Sdat }>()
 
-/** The music archive, read once: its tables only, the 36 MB left in place. */
-export function bgmArchive(rom: Uint8Array): Sdat | undefined {
-  if (archive?.rom === rom) return archive.sdat
-  for (const leaf of scanCartridge(rom, { pathFilter: BGM_ARCHIVE })) {
-    if (!leaf.path.toLowerCase().endsWith('bgm.sdat')) continue
+/** A sound archive, read once: its tables only, the file left in place. */
+function archiveAt(rom: Uint8Array, path: string): Sdat | undefined {
+  const known = archives.get(path)
+  if (known?.rom === rom) return known.sdat
+  const leafName = path.slice(path.lastIndexOf('/') + 1)
+  for (const leaf of scanCartridge(rom, { pathFilter: path })) {
+    if (!leaf.path.toLowerCase().endsWith(leafName)) continue
     try {
       const sdat = readSdat(leaf.bytes)
-      archive = { rom, sdat }
+      archives.set(path, { rom, sdat })
       return sdat
     } catch {
       return undefined
     }
   }
   return undefined
+}
+
+/** The music archive — 36 MB, its tables only read. */
+export function bgmArchive(rom: Uint8Array): Sdat | undefined {
+  return archiveAt(rom, BGM_ARCHIVE)
+}
+
+/** Sound one of the field's effects by its archive index, the first variant of it. */
+export async function playEffect(rom: Uint8Array, index: number, slot?: number): Promise<boolean> {
+  const sdat = archiveAt(rom, EFFECTS_ARCHIVE)
+  const song = sdat ? effectOf(sdat, index, slot) : undefined
+  if (!song) return false
+  await music.effect(song)
+  return true
+}
+
+/** Play a jingle by its index among the music archive's sequences; the music waits for it. */
+export async function playJingle(rom: Uint8Array, index: number): Promise<boolean> {
+  const sdat = bgmArchive(rom)
+  const song = sdat ? songAt(sdat, index) : undefined
+  if (!song) return false
+  await music.jingle(song)
+  return true
 }
 
 /** The tracks there are to play, by name. */

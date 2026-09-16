@@ -275,8 +275,26 @@ describe('an event’s stage', () => {
   it('answers what it does not read with nothing, and counts it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    expect(stage.host.call(720, [55], t)).toBe(0)
-    stage.host.call(720, [56], t)
-    expect(stage.unhandled.get(720)).toBe(2)
+    expect(stage.host.call(731, [], t)).toBe(0)
+    stage.host.call(731, [], t)
+    expect(stage.unhandled.get(731)).toBe(2)
+  })
+
+  it('queues the sounds a scene asks for, and their stopping', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(726, [261], t)
+    stage.host.call(720, [55], t)
+    stage.host.call(730, [364], t)
+    stage.host.call(729, [0, 16], t)
+    stage.host.call(727, [], t)
+    expect(stage.sounds).toEqual([
+      { kind: 'effect', index: 261 },
+      { kind: 'jingle', index: 55 },
+      { kind: 'effect', index: 364 },
+      { kind: 'stop', index: 0 },
+      { kind: 'stop', index: 0 },
+    ])
+    expect(stage.unhandled.size).toBe(0)
   })
 })
