@@ -198,6 +198,7 @@ import {
   visitInn,
   visitShop,
 } from './services.ts'
+import { revealedCharacters } from './settings.ts'
 import { shadowPieces } from './shadows.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
@@ -261,6 +262,14 @@ const equipBottomEl = must<HTMLCanvasElement>('#equip-bottom')
 const startEl = must<HTMLDivElement>('#start')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
+/**
+ * The page of talk being revealed a character at a time, at the text speed
+ * set in the controls panel — see `settings.ts`. Confirm while it is
+ * revealing shows the rest at once, as the game's box does.
+ */
+let revealing:
+  | { readonly body: HTMLElement; readonly text: string; readonly from: number }
+  | undefined
 const menuEl = must<HTMLDivElement>('#menu')
 const cardEl = must<HTMLDivElement>('#card')
 const resumeRow = must<HTMLLabelElement>('#resume-row')
@@ -1360,6 +1369,7 @@ function frame(now = 0): void {
     if (eventStage) eventStage.looking = [camera.focus[0], camera.focus[1], camera.focus[2]]
     // Its fades to black and back, or the field coming back after one.
     showDarkness(eventStage, now)
+    revealTalk(now)
     const shot = eventStage?.camera
     if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
     else
@@ -3449,7 +3459,10 @@ function showTalk(): void {
     talkEl.append(name)
   }
   const body = document.createElement('div')
-  body.textContent = shown?.text ?? ''
+  const text = shown?.text ?? ''
+  const first = revealedCharacters(controlsPanel.settings.textSpeed, 0, text.length)
+  body.textContent = text.slice(0, first)
+  revealing = first < text.length ? { body, text, from: performance.now() } : undefined
   talkEl.append(body)
   // A prompt is asked on the last page of a run, with its answers under it.
   const asking = promptOf(talking)
@@ -3492,8 +3505,26 @@ function showCard(): void {
   cardEl.hidden = false
 }
 
+/** Show more of the page being revealed, as its time comes; true while some is still to come. */
+function revealTalk(now: number): boolean {
+  if (!revealing) return false
+  const { body, text, from } = revealing
+  const shown = revealedCharacters(controlsPanel.settings.textSpeed, now - from, text.length)
+  body.textContent = text.slice(0, shown)
+  if (shown >= text.length) revealing = undefined
+  return revealing !== undefined
+}
+
+/** Show the rest of the page at once. */
+function revealAll(): void {
+  if (!revealing) return
+  revealing.body.textContent = revealing.text
+  revealing = undefined
+}
+
 function closeTalk(): void {
   talking = undefined
+  revealing = undefined
   talkEvent = undefined
   talkEl.hidden = true
   talkEl.replaceChildren()
@@ -3737,7 +3768,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   // Talk to whoever the Hero faces: `f` to start and to go on, Shift+F for every
   // line of their file, Esc to stop, `v` and `n` to read another chapter's words.
   if (action === 'confirm' && loaded) {
-    talk(event.shiftKey)
+    if (revealing) revealAll()
+    else talk(event.shiftKey)
     event.preventDefault()
   }
   // Esc closes what is being said — but an event's message is the event's to
