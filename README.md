@@ -54,7 +54,7 @@ rather than the game's is said so.
 | `tools/shot` | MIT | serve a built app with a local cartridge and screenshot it |
 | `tools/sprite` | MIT | render a sprite sheet to a PNG for looking at, local-only |
 | `apps/game` | GPL-3.0+ | play the opening slice from your own dump |
-| `apps/explorer` | GPL-3.0+ | browse any DS cartridge |
+| `apps/explorer` | GPL-3.0+ | browse any DS cartridge: models, maps, cells, sounds |
 
 The `nitro-*` packages are game-agnostic and browser-safe: no Node built-ins, no
 DOM, no WebGL, and no reference to any particular title. They take
@@ -149,7 +149,11 @@ pnpm dev        # then open the viewer and drop in your own dump
 
 The list offers each map as one entry as well as its individual models: a map
 archive holds a dozen loose files and a `.bmdj` beside them saying which of them
-the map is made of, so picking the map draws the whole scene.
+the map is made of, so picking the map draws the whole scene. It also lists
+the cartridge's 2D cell sets — an `NCER` with the `NCGR` and `NCLR` beside it,
+every cell laid out in a grid — and its sounds: each `SDAT`'s sequences by
+name and its sequence archives, played through the same sequencer the game
+uses, in an AudioWorklet.
 
 Drag to orbit, wheel to zoom, `W` for wireframe, `R` for reference mode. On a
 map, `G` puts a character on the collision mesh and WASD walks it; `[` and `]`

@@ -46,7 +46,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | What battles still lack | M5 | Dazzle, sand and Weird Dance, read and not modelled; `calls for backup`; how the monsters weight their ways. Done: the damage checked against the let's play, the fight winnable from level 5 as the video won it, each action's own opening line. |
 | M4's stand-ins | M4 | `INN_PRICE` — no table on the cartridge; the binaries or the emulator. Done, as ours: Evac to the region's outside, holy water's calm. The wing's one destination is the slice's. |
 | The top screen's rest | M6 | Done: the place's name tab. HP, MP and the level are not on the game's field panel; the fuller panel in the sprite set is for a screen not seen; the `.bmmp` tags left are constant. |
-| The explorer | explorer | 2D previews, and now sound: the SDAT's sequences could play there too. |
+| The explorer | explorer | Done: cell sets and the SDATs' sequences and effects. Left: lone tile sheets, textures on their own, streams, a Worker for the scan. |
 
 **Needs the emulator — questions to bring to it:**
 
@@ -75,6 +75,23 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## The explorer hears and sees in 2D — 16 September
+
+**Sound in the explorer**: every `SDAT` the cartridge holds is listed by its
+named sequences and its sequence archives (an archive's first filled entry),
+each played on selection through `@minstrel/audio`'s sequencer in an
+AudioWorklet — the game's own, game-agnostic; a stop/play button, and the
+worklet's report (ticks, seconds) shown under the name. **Cell sets**: an
+`NCER` with an `NCGR` and `NCLR` under the same name is one entry, every cell
+drawn with `drawCell` into the grid the sprite sheets use. Both are any
+cartridge's formats; nothing of one title is in the explorer for them (the
+`.spr` sheets, which are this title's, were there already). **Seen headless**:
+`obj_minimap`'s 44 cells, and `BG_001` playing. **Left:** lone `NCGR`+`NCLR`
+tile sheets, `NSBTX` textures on their own, streams (`STRM`), and moving the
+scan into a Worker.
 
 ---
 

@@ -1,3 +1,5 @@
+import { effectOf, type Song, songOf } from '@minstrel/audio'
+import { Music } from '@minstrel/audio/player'
 import {
   animationsFor,
   type Catalogue,
@@ -17,17 +19,27 @@ import {
 import { DS_HEIGHT, DS_WIDTH, ModelRenderer, type Piece, ReferenceTarget } from '@minstrel/gl'
 import {
   type Animation,
+  drawCell,
   type Geometry,
+  isG2dFile,
   type Mat4,
   type Model,
   measureBounds,
+  NCER_MAGIC,
+  NCGR_MAGIC,
+  NCLR_MAGIC,
   type NodeTransform,
   poseGeometry,
+  readNcer,
+  readNcgr,
+  readNclr,
   readNsbmd,
   sampleAnimation,
 } from '@minstrel/nitro-gfx'
+import { isSdat, readSdat, type Sdat } from '@minstrel/nitro-snd'
 import { followCamera, OUTDOORS } from '@minstrel/render'
 import { assembleMap, type MapPiece, placeGeometry } from '@minstrel/world'
+import workletUrl from './sound-worklet.ts?worker&url'
 
 /**
  * Browse a DS cartridge in the browser.
@@ -52,6 +64,14 @@ interface Entry {
   readonly archive?: string
   /** Set for a 2D sprite sheet, which is drawn rather than rendered. */
   readonly sheet?: Leaf
+  /** Set for a set of 2D cells: an NCER with the NCGR and NCLR beside it. */
+  readonly cells?: {
+    readonly ncer: Uint8Array
+    readonly ncgr: Uint8Array
+    readonly nclr: Uint8Array
+  }
+  /** Set for a sound: a sequence of an SDAT by name, or a sequence archive's first entry by index. */
+  readonly sound?: { readonly sdat: Sdat; readonly sequence?: string; readonly archive?: number }
 }
 
 function must<T extends Element>(selector: string): T {
@@ -71,6 +91,13 @@ const animationEl = must<HTMLSelectElement>('#animation')
 const frameEl = must<HTMLInputElement>('#frame')
 const frameLabelEl = must<HTMLSpanElement>('#frameLabel')
 const playEl = must<HTMLButtonElement>('#play')
+const soundEl = must<HTMLDivElement>('#sound')
+const soundNameEl = must<HTMLDivElement>('#soundName')
+const soundPlayEl = must<HTMLButtonElement>('#soundPlay')
+const soundNoteEl = must<HTMLDivElement>('#soundNote')
+
+/** The sequencer in its worklet — `@minstrel/audio` — playing one SDAT sequence at a time. */
+const music = new Music(workletUrl)
 
 const status = (text: string) => {
   statusEl.textContent = text
@@ -158,7 +185,63 @@ function scan(rom: Uint8Array, pathFilter?: string): Entry[] {
       name: `${leaf.path.slice(leaf.path.lastIndexOf('/') + 1)} (sprite)`,
       sheet: leaf,
     }))
-  return [...maps, ...models, ...sheets]
+  // Sets of 2D cells: an NCER with an NCGR and an NCLR under the same name.
+  const byStem = new Map<string, Map<string, Leaf>>()
+  for (const leaf of cat.other) {
+    const dot = leaf.path.lastIndexOf('.')
+    if (dot < 0) continue
+    const kind = leaf.path.slice(dot + 1).toUpperCase()
+    if (kind !== 'NCER' && kind !== 'NCGR' && kind !== 'NCLR') continue
+    const stem = leaf.path.slice(0, dot)
+    const set = byStem.get(stem) ?? new Map<string, Leaf>()
+    set.set(kind, leaf)
+    byStem.set(stem, set)
+  }
+  const cells: Entry[] = []
+  for (const [stem, set] of byStem) {
+    const ncer = set.get('NCER')
+    const ncgr = set.get('NCGR')
+    const nclr = set.get('NCLR')
+    if (!ncer || !ncgr || !nclr) continue
+    if (!isG2dFile(ncer.bytes, NCER_MAGIC) || !isG2dFile(ncgr.bytes, NCGR_MAGIC)) continue
+    if (!isG2dFile(nclr.bytes, NCLR_MAGIC)) continue
+    cells.push({
+      path: stem,
+      name: `${stem.slice(stem.lastIndexOf('/') + 1)} (cells)`,
+      cells: { ncer: ncer.bytes, ncgr: ncgr.bytes, nclr: nclr.bytes },
+    })
+  }
+  // Sounds: every SDAT's named sequences, and its sequence archives.
+  const sounds: Entry[] = []
+  for (const leaf of cat.other) {
+    if (!isSdat(leaf.bytes)) continue
+    let sdat: Sdat
+    try {
+      sdat = readSdat(leaf.bytes)
+    } catch {
+      continue
+    }
+    const file = leaf.path.slice(leaf.path.lastIndexOf('/') + 1)
+    for (const record of sdat.sequences) {
+      if (record.fileId === undefined || !record.name) continue
+      sounds.push({
+        path: `${leaf.path}#${record.name}`,
+        name: `${record.name} (sequence, ${file})`,
+        sound: { sdat, sequence: record.name },
+      })
+    }
+    const archives = sdat.records[1] ?? []
+    archives.forEach((record, index) => {
+      if (record.fileId === undefined) return
+      const label = record.name || `archive ${index}`
+      sounds.push({
+        path: `${leaf.path}#${label}`,
+        name: `${label} (effects, ${file})`,
+        sound: { sdat, archive: index },
+      })
+    })
+  }
+  return [...maps, ...models, ...sheets, ...cells, ...sounds]
 }
 
 function renderList(): void {
@@ -223,14 +306,49 @@ let sheetSprite: Sprite | undefined
 
 const sheetEl = must<HTMLCanvasElement>('#sheet')
 
-/** Lay every frame of the sheet out in a grid, as big as the canvas allows. */
-function drawSheet(): void {
+/** A set of 2D cells on show, each drawn — see `drawCell`; undefined where one would not. */
+let sheetCells: readonly { width: number; height: number; pixels: Uint8Array }[] | undefined
+
+/** What the sheet canvas lays out: the sprite's frames, or the cells. */
+function sheetImages(): {
+  count: number
+  image: (i: number) => { width: number; height: number; pixels: Uint8Array } | undefined
+} {
+  if (sheetCells) {
+    const cells = sheetCells
+    return { count: cells.length, image: (i) => cells[i] }
+  }
   const sprite = sheetSprite
+  if (!sprite) return { count: 0, image: () => undefined }
+  return {
+    count: sprite.frames,
+    image: (i) => {
+      try {
+        return sprite.decode(i)
+      } catch {
+        return undefined
+      }
+    },
+  }
+}
+
+/** Lay every frame of the sheet — or every cell of the set — out in a grid, as big as the canvas allows. */
+function drawSheet(): void {
+  const images = sheetImages()
   const context = sheetEl.getContext('2d')
-  if (!sprite || !context) return
-  const across = Math.ceil(Math.sqrt(sprite.frames))
-  const down = Math.ceil(sprite.frames / across)
-  const first = sprite.decode(0)
+  if (images.count === 0 || !context) return
+  const across = Math.ceil(Math.sqrt(images.count))
+  const down = Math.ceil(images.count / across)
+  // Every cell as large as the largest, so the grid is even.
+  let first = { width: 1, height: 1 }
+  for (let i = 0; i < images.count; i++) {
+    const image = images.image(i)
+    if (image)
+      first = {
+        width: Math.max(first.width, image.width),
+        height: Math.max(first.height, image.height),
+      }
+  }
   const gap = 2
   const cellW = first.width + gap
   const cellH = first.height + gap
@@ -247,13 +365,9 @@ function drawSheet(): void {
   context.fillStyle = '#14141a'
   context.fillRect(0, 0, sheetEl.width, sheetEl.height)
 
-  for (let frame = 0; frame < sprite.frames; frame++) {
-    let image: ReturnType<Sprite['decode']>
-    try {
-      image = sprite.decode(frame)
-    } catch {
-      continue
-    }
+  for (let frame = 0; frame < images.count; frame++) {
+    const image = images.image(frame)
+    if (!image) continue
     const data = new ImageData(new Uint8ClampedArray(image.pixels), image.width, image.height)
     // A checkerboard behind it, because what is wrong with a sprite is usually
     // where its holes are.
@@ -279,8 +393,47 @@ function select(index: number): void {
   selected = index
 
   try {
+    if (entry.sound !== undefined) {
+      soundEl.hidden = false
+      sheetEl.hidden = true
+      canvas.hidden = true
+      scrubber.hidden = true
+      shown = undefined
+      playSound(entry)
+      renderList()
+      return
+    }
+    soundEl.hidden = true
+    if (entry.cells !== undefined) {
+      const bank = readNcer(entry.cells.ncer)
+      const tiles = readNcgr(entry.cells.ncgr)
+      const palettes = readNclr(entry.cells.nclr)
+      let failed = 0
+      sheetCells = bank.cells.map((cell) => {
+        try {
+          const drawn = drawCell(cell, bank.mapping, tiles, palettes)
+          return { width: drawn.width, height: drawn.height, pixels: drawn.rgba }
+        } catch {
+          failed++
+          return { width: 8, height: 8, pixels: new Uint8Array(8 * 8 * 4) }
+        }
+      })
+      sheetSprite = undefined
+      sheetEl.hidden = false
+      canvas.hidden = true
+      scrubber.hidden = true
+      shown = undefined
+      drawSheet()
+      status(
+        `${entry.path} — ${bank.cells.length} cells, ${tiles.bits}-bit characters, ${palettes.bits}-bit palettes` +
+          (failed > 0 ? `, ${failed} not drawn` : ''),
+      )
+      renderList()
+      return
+    }
     if (entry.sheet !== undefined) {
       sheetSprite = readSprite(entry.sheet.bytes)
+      sheetCells = undefined
       sheetEl.hidden = false
       canvas.hidden = true
       scrubber.hidden = true
@@ -362,6 +515,50 @@ function select(index: number): void {
   renderList()
   pose()
 }
+
+/** The sound on show, and whether it is playing — see `playSound`. */
+let sounding: { readonly entry: Entry; readonly song: Song; playing: boolean } | undefined
+
+/** Play an entry's sound: a sequence by name, or a sequence archive's first filled entry. */
+function playSound(entry: Entry): void {
+  const sound = entry.sound
+  if (!sound) return
+  const song =
+    sound.sequence !== undefined
+      ? songOf(sound.sdat, sound.sequence)
+      : sound.archive !== undefined
+        ? effectOf(sound.sdat, sound.archive)
+        : undefined
+  soundNameEl.textContent = entry.name
+  if (!song) {
+    sounding = undefined
+    soundPlayEl.hidden = true
+    soundNoteEl.textContent = 'its bank or waves would not read'
+    status(`${entry.path} — will not play`)
+    return
+  }
+  sounding = { entry, song, playing: true }
+  soundPlayEl.hidden = false
+  soundPlayEl.textContent = 'stop'
+  const waves = song.archives.reduce((n, a) => n + (a?.length ?? 0), 0)
+  status(
+    `${entry.path} — ${song.commands.length} bytes of commands, ${song.bank.instruments.length} instruments, ${waves} waves, volume ${song.volume}`,
+  )
+  void music.play(entry.name, song)
+}
+
+soundPlayEl.addEventListener('click', () => {
+  if (!sounding) return
+  if (sounding.playing) {
+    music.stop()
+    sounding.playing = false
+    soundPlayEl.textContent = 'play'
+  } else {
+    void music.play(sounding.entry.name, sounding.song)
+    sounding.playing = true
+    soundPlayEl.textContent = 'stop'
+  }
+})
 
 /** The overlay text for whatever is on screen. */
 function describe(uploaded: { vertices: number; triangles: number; textured: number }): void {
@@ -449,7 +646,7 @@ async function load(rom: Uint8Array, label: string, pathFilter?: string): Promis
     return
   }
   const elapsed = Math.round(performance.now() - started)
-  status(`${entries.length} models found in ${elapsed} ms`)
+  status(`${entries.length} entries found in ${elapsed} ms`)
   filterEl.hidden = entries.length === 0
   selected = -1
   renderList()
@@ -552,6 +749,12 @@ addEventListener('keydown', (event) => {
 
 function frame(now = 0): void {
   advance(now)
+  if (sounding) {
+    const report = music.report
+    soundNoteEl.textContent = report
+      ? `${report.playing ? 'playing' : report.finished ? 'finished' : 'stopped'} · ${report.ticks} sequence ticks · ${Math.round(report.frames / 44100)} s of audio`
+      : 'starting…'
+  }
   const width = Math.max(1, Math.floor(canvas.clientWidth * devicePixelRatio))
   const height = Math.max(1, Math.floor(canvas.clientHeight * devicePixelRatio))
   if (canvas.width !== width || canvas.height !== height) {

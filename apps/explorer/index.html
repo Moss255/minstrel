@@ -12,12 +12,17 @@
       <p class="hint">Drop a DS cartridge dump here, or choose one. Nothing leaves your machine.</p>
       <input type="file" id="file" accept=".nds" />
       <div id="status" class="status"></div>
-      <input type="search" id="filter" placeholder="filter models and sprites…" hidden />
+      <input type="search" id="filter" placeholder="filter models, sprites, cells and sounds…" hidden />
       <ul id="models"></ul>
     </aside>
     <main>
       <canvas id="gl"></canvas>
       <canvas id="sheet" hidden></canvas>
+      <div id="sound" hidden>
+        <div id="soundName"></div>
+        <button type="button" id="soundPlay" aria-label="play or stop">stop</button>
+        <div id="soundNote" class="status"></div>
+      </div>
       <div id="overlay"></div>
       <div id="scrubber" hidden>
         <select id="animation" aria-label="animation"></select>

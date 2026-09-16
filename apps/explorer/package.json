@@ -4,17 +4,19 @@
   "private": true,
   "type": "module",
   "license": "GPL-3.0-or-later",
-  "description": "Browse any DS cartridge: filesystem, models, maps and animation, entirely in the browser.",
+  "description": "Browse any DS cartridge: filesystem, models, maps, animation, 2D cells and sound, entirely in the browser.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@minstrel/audio": "workspace:*",
     "@minstrel/cartridge": "workspace:*",
     "@minstrel/game-formats": "workspace:*",
     "@minstrel/gl": "workspace:*",
     "@minstrel/nitro-gfx": "workspace:*",
+    "@minstrel/nitro-snd": "workspace:*",
     "@minstrel/render": "workspace:*",
     "@minstrel/world": "workspace:*"
   },

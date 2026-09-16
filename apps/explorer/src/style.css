@@ -146,6 +146,26 @@ canvas:not([hidden]) {
   min-width: 5.5em;
 }
 
+/* A sound has nothing to draw: its name, a button, and what the worklet reports. */
+#sound:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 14px;
+}
+#sound button {
+  background: #1b1b1f;
+  color: inherit;
+  border: 1px solid #33333a;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font: inherit;
+}
+
 body.dragging {
   outline: 2px dashed var(--accent);
   outline-offset: -8px;
