@@ -36,7 +36,7 @@ APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/sh
 
 **2. Needs the emulator — questions, each a line in the list below**
 
-The inn's price; the critical and flee chances; Ivor's numbers; what ends
+How experience is shared among the party; the inn's price; the critical and flee chances; Ivor's numbers; what ends
 2.2's night; which zone roams when; the party's colours; pot or barrel;
 Ivor's greeting. ("Used by" and the monsters' six-way weights are read now —
 see the table below and `docs/binaries.md`, whose "Still to look for" gives
@@ -141,6 +141,40 @@ at the owner's word. What is left is what an ear or the emulator settles.
   of 2.2**: sleeping, or time.
 
 **Where to start next time:** the tempo, with the knob; M8 is otherwise done.
+
+---
+
+## The field's monsters: moving, and on the ground — 16 September
+
+**Every monster animates now.** A motion was only played when its bone count
+matched its model's nodes, and 186 of the 4,197 motions in `enemy.gp2` are one
+or two off — Cruelcumber's 25 bones to 24 nodes, Teeny Sanguini's field model
+20 nodes to its motions' 21 — so those monsters glided in their rest pose, in
+the field and in battle. Nodes now take the bone of their own index (INFERRED:
+`z061c_f` shares its first 19 nodes with the battle model by name, and the
+mismatched motions stretch their models no more than matched ones do). See
+`stacksOf` in `apps/game/src/cast.ts`.
+
+**Monsters keep to open ground.** On `F01` the collision floor runs flat
+straight over the river, and on under the forest blocks and cliffs, so
+monsters turned up on the water and inside the hillsides. No attribute bit
+tells those floors apart. `openGround` in `packages/world/src/footing.ts`
+works it out from the map's own drawing when roaming begins: a grid of cells
+an eighth of a unit across, open where a surface is drawn within 0.06 of the
+floor and nothing within 0.75 above it — both measured, see the module. It is
+worked out once for a map, not for each collision world built: the map's
+animation re-poses the map, and with it the collision, many times a second,
+and redoing the grid each time slowed the field to a crawl. The
+roaming sim reads the grid with shifts: a monster turns up only on an open
+cell, and a step onto a closed one is a wall.
+
+**Ours:** that monsters keep to drawn, open ground at all; the cell size; the
+two thresholds' placing in the gaps measured. The Hero still walks the hidden
+floors: that is a question of the collision, not asked here. The Hexagon's
+roofed floors would be closed too; those rooms have no roaming zone.
+
+**For headless checks**: `window.minstrelRoaming` lists the field's monsters
+and `window.minstrelCamera` is the camera, to pull back from a script.
 
 ---
 

@@ -54,6 +54,7 @@ import {
   type Follower,
   groundBelow,
   headingAngle,
+  type OpenGround,
   PERSON,
   type Roamer,
   type RoamerKind,
@@ -64,7 +65,15 @@ import {
   startRoaming,
   tickRoaming,
 } from '@minstrel/sim'
-import { backdrop, findSpawn, inMarsh, placeGeometry, WORLD_SCALE, waysOut } from '@minstrel/world'
+import {
+  backdrop,
+  findSpawn,
+  inMarsh,
+  openGround,
+  placeGeometry,
+  WORLD_SCALE,
+  waysOut,
+} from '@minstrel/world'
 import { actorLookOf, packMotions } from './actors.ts'
 import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
@@ -1403,7 +1412,15 @@ function frame(now = 0): void {
       roamCarry = Math.min(roamCarry + elapsedMs, TICK_MS * 8)
       while (roamCarry >= TICK_MS && roaming) {
         roamCarry -= TICK_MS
-        const next = tickRoaming(roaming, world, roamKinds, self.state, roamRng, ROAM_RULES)
+        const next = tickRoaming(
+          roaming,
+          world,
+          roamKinds,
+          self.state,
+          roamRng,
+          ROAM_RULES,
+          footingOf(world),
+        )
         roaming = next.roaming
         if (next.touched) {
           fightRoamer(next.touched)
@@ -1727,6 +1744,20 @@ Object.defineProperty(window, 'minstrelWorn', {
 // For a headless check: the time of day, readable from the page.
 Object.defineProperty(window, 'minstrelTime', {
   get: () => ({ time: timeNow(), fieldSeconds, lighting: wantedLighting }),
+})
+// For a headless check: the camera, to pull back and look round from a script.
+Object.defineProperty(window, 'minstrelCamera', { get: () => camera })
+// For a headless check: the field's monsters, where each stands and what it plays.
+Object.defineProperty(window, 'minstrelRoaming', {
+  get: () =>
+    roaming?.roamers.map((r) => ({
+      number: r.number,
+      x: toFloat(r.state.x),
+      y: toFloat(r.state.y),
+      z: toFloat(r.state.z),
+      moving: r.moving,
+      grounded: r.state.grounded,
+    })) ?? null,
 })
 /**
  * `?door=M01M02` takes that doorway as soon as the first map has loaded.
@@ -2633,6 +2664,8 @@ function beginRoaming(): void {
     const code = here.monsterCodeOf.get(kind.number)
     if (code) monsterLookOf(cartridge, `${code}_f`)
   }
+  // Work out where they may stand now, not on their first step.
+  if (world) footingOf(world)
   roaming = startRoaming(ROAM_CALM)
 }
 
@@ -2665,6 +2698,30 @@ function fightRoamer(touched: Roamer): void {
     for (let k = 0; k < count && codes.length < BATTLE_MOST; k++) codes.push(joinedCode)
   }
   startFight(codes, true)
+}
+
+/** The open ground worked out last, and the map and scale it was for. */
+let footing: { map: Loaded; grow: number; ground: OpenGround } | undefined
+/**
+ * Where the map draws open ground — see `openGround` — once for each map and
+ * scale. **Not once for each world built**: the map's animation re-poses it,
+ * and every pose rebuilds the collision, many times a second; the grid is by
+ * position, not by triangle, so a rebuilt world of the same map keeps it. The
+ * pieces are taken as they are drawn, grown by the room and world scales.
+ */
+function footingOf(walked: CollisionWorld): OpenGround | undefined {
+  const here = loaded
+  if (!here) return undefined
+  const grow = roomScale * worldScale
+  if (footing?.map !== here || footing.grow !== grow) {
+    const pieces = here.map.pieces.map((piece) => ({
+      ...piece,
+      place: { x: piece.place.x * grow, y: piece.place.y * grow, z: piece.place.z * grow },
+      scale: piece.scale * grow,
+    }))
+    footing = { map: here, grow, ground: openGround(pieces, walked) }
+  }
+  return footing.ground
 }
 
 /** The roaming monsters, each in its field model, running while it moves. */

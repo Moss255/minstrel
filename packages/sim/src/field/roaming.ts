@@ -10,7 +10,10 @@ import { type CollisionWorld, groundBelow } from '../collision.ts'
  *
  * **Read:** which monsters roam a map's zone and how often each (`encfld`),
  * and how fast each goes (`fld_mondata`, INFERRED) — the caller hands them in
- * as {@link RoamerKind}s.
+ * as {@link RoamerKind}s. Where a map draws open ground, when the caller says,
+ * as an {@link OpenGround} grid — `openGround` in `@minstrel/world`: a monster
+ * turns up and walks only there, so not over a river's hidden floor or inside
+ * a forest block.
  *
  * **Ours, all of it, and said so:** how many roam at once, how near and how far
  * from the Hero they turn up and vanish, how they wander — a heading of
@@ -82,6 +85,31 @@ export interface RoamRules {
   readonly shape: CharacterShape
 }
 
+/**
+ * Where a monster may stand: a grid of cells over the map, one byte a cell, 1
+ * for open ground. Integers throughout — the origin in `fx32` words and the
+ * cell `1 << shift` words across — so a lookup is a shift, not a division.
+ * Outside the grid is not ground.
+ */
+export interface OpenGround {
+  readonly originX: number
+  readonly originZ: number
+  readonly shift: number
+  readonly cellsX: number
+  readonly cellsZ: number
+  /** Row by row, z then x. */
+  readonly cells: Uint8Array
+}
+
+/** Whether a point is on open ground by the grid; everywhere is, without one. */
+export function onOpenGround(ground: OpenGround | undefined, x: Fx32, z: Fx32): boolean {
+  if (!ground) return true
+  const cx = (x - ground.originX) >> ground.shift
+  const cz = (z - ground.originZ) >> ground.shift
+  if (cx < 0 || cz < 0 || cx >= ground.cellsX || cz >= ground.cellsZ) return false
+  return ground.cells[cz * ground.cellsX + cx] === 1
+}
+
 export function startRoaming(calm = 0): Roaming {
   return { roamers: [], nextId: 1, spawnIn: 0, calm }
 }
@@ -120,6 +148,7 @@ export function tickRoaming(
   hero: { readonly x: Fx32; readonly y: Fx32; readonly z: Fx32 },
   rng: BattleRng,
   rules: RoamRules,
+  ground?: OpenGround,
 ): { roaming: Roaming; touched: Roamer | undefined } {
   const moved = roaming.roamers.map((r) => {
     let { heading, moving, turnIn } = r
@@ -132,8 +161,11 @@ export function tickRoaming(
     const [sx, sz] = DIRECTIONS[heading] as readonly [Fx32, Fx32]
     const dx = moving ? mul(sx, r.speed) : fx32(0)
     const dz = moving ? mul(sz, r.speed) : fx32(0)
-    const stepped = step(world, r.state, dx, dz, rules.shape)
-    if (moving && stepped.hitWall) {
+    let stepped = step(world, r.state, dx, dz, rules.shape)
+    // Off the open ground is a wall too: the step is not taken.
+    const offGround = moving && !onOpenGround(ground, stepped.x, stepped.z)
+    if (offGround) stepped = { ...stepped, x: r.state.x, y: r.state.y, z: r.state.z }
+    if (moving && (stepped.hitWall || offGround)) {
       heading = (heading + HEADINGS / 2) % HEADINGS
       turnIn = rules.turnEvery
     }
@@ -141,8 +173,8 @@ export function tickRoaming(
       x: stepped.x,
       y: stepped.y,
       z: stepped.z,
-      fallSpeed: stepped.fallSpeed,
-      grounded: stepped.grounded,
+      fallSpeed: offGround ? r.state.fallSpeed : stepped.fallSpeed,
+      grounded: offGround ? r.state.grounded : stepped.grounded,
     }
     return { ...r, state, heading, moving, turnIn }
   })
@@ -168,7 +200,7 @@ export function tickRoaming(
       const x = fx32(hero.x + mul(sx, reach))
       const z = fx32(hero.z + mul(sz, reach))
       const hit = groundBelow(world, x, z, fx32(world.bounds.maxY + FX32_ONE))
-      if (hit && hit.slope >= rules.shape.maxSlope) {
+      if (hit && hit.slope >= rules.shape.maxSlope && onOpenGround(ground, x, z)) {
         kept.push({
           id: nextId++,
           number: kind.number,

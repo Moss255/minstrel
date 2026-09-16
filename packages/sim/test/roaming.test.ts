@@ -7,6 +7,8 @@ import { createCollisionWorld } from '../src/collision.ts'
 import {
   calmFor,
   headingAngle,
+  type OpenGround,
+  onOpenGround,
   type RoamerKind,
   type RoamRules,
   startRoaming,
@@ -122,6 +124,50 @@ describe('monsters roaming a field', () => {
       vanish: fx32(1 * U),
     })
     expect(next.roaming.roamers).toHaveLength(0)
+  })
+
+  it('keeps to the open ground, turning up and walking only there', () => {
+    // A grid of 20 cells a unit across, open only where x + z ≤ 20; the Hero
+    // stands on that line, so a ring round them lies half over each side.
+    const cells = new Uint8Array(20 * 20)
+    for (let z = 0; z < 20; z++) for (let x = 0; x < 20; x++) cells[z * 20 + x] = x + z < 19 ? 1 : 0
+    const ground: OpenGround = { originX: 0, originZ: 0, shift: 12, cellsX: 20, cellsZ: 20, cells }
+    const rng = new BattleRng(7n)
+    let field = startRoaming()
+    let seen = 0
+    for (let t = 0; t < 900; t++) {
+      field = tickRoaming(field, world, kinds, hero, rng, rules, ground).roaming
+      for (const r of field.roamers) {
+        seen++
+        expect(onOpenGround(ground, r.state.x, r.state.z)).toBe(true)
+      }
+    }
+    expect(seen).toBeGreaterThan(0)
+    // Without the grid, the other side is used too.
+    const everywhere = new BattleRng(7n)
+    let open = startRoaming()
+    let crossed = false
+    for (let t = 0; t < 900; t++) {
+      open = tickRoaming(open, world, kinds, hero, everywhere, rules).roaming
+      if (open.roamers.some((r) => !onOpenGround(ground, r.state.x, r.state.z))) crossed = true
+    }
+    expect(crossed).toBe(true)
+  })
+
+  it('reads the grid by whole cells, and nothing outside it as ground', () => {
+    const ground: OpenGround = {
+      originX: -4096,
+      originZ: 0,
+      shift: 12,
+      cellsX: 2,
+      cellsZ: 1,
+      cells: new Uint8Array([0, 1]),
+    }
+    expect(onOpenGround(ground, fx32(-1), fx32(0))).toBe(false)
+    expect(onOpenGround(ground, fx32(0), fx32(4095))).toBe(true)
+    expect(onOpenGround(ground, fx32(4096), fx32(0))).toBe(false)
+    expect(onOpenGround(ground, fx32(0), fx32(-1))).toBe(false)
+    expect(onOpenGround(undefined, fx32(99999), fx32(0))).toBe(true)
   })
 
   it('faces a heading the Hero’s way round', () => {

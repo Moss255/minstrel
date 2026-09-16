@@ -260,12 +260,27 @@ export function floorOf(model: Model, motion: Animation | undefined): number {
   return Number.isFinite(lowest) ? lowest : 0
 }
 
+/**
+ * A model's matrix stacks posed by a motion for a frame, each node taking the
+ * bone of its own index.
+ *
+ * **A motion one or two bones off the model still drives it.** 186 of the
+ * 4,197 motions in `enemy.gp2` have a bone more or fewer than their own
+ * model's nodes — Teeny Sanguini's field model `z061c_f` has 20 nodes and its
+ * motions 21, the battle model's count, whose first 19 nodes it shares by
+ * name; `z063a` and `z063a_f` have 24 nodes and 25 bones. Requiring the counts
+ * to agree left every one of those monsters in its rest pose. Pairing by index
+ * is INFERRED from that shared prefix, and from the posed models' size: across
+ * the frames, the 186 grow to at most 2.6 times their rest size and the 4,011
+ * whose counts agree to 8.5, so the pairing tears nothing apart. A bone past
+ * the last node is dropped; a node past the last bone keeps its rest.
+ */
 function stacksOf(
   model: Model,
   motion: Animation | undefined,
   frame: number,
 ): readonly (readonly Mat4[])[] {
-  if (!motion || motion.boneCount !== model.nodes.length) return model.shapeMatrices
+  if (!motion) return model.shapeMatrices
   const local = sampleAnimation(motion, frame % Math.max(1, motion.frameCount))
   const nodes: NodeTransform[] = model.nodes.map((node, i) => {
     const posed = local[i]

@@ -65,6 +65,8 @@ export {
   calmFor,
   HEADINGS,
   headingAngle,
+  type OpenGround,
+  onOpenGround,
   type Roamer,
   type RoamerKind,
   type Roaming,
