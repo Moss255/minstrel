@@ -127,6 +127,12 @@ export interface Loaded {
   readonly mapId: number | undefined
   /** The region the index puts it in — "Angel Falls" — which the map's corner names in its tab. */
   readonly region: string | undefined
+  /**
+   * The region's outside — the map the index labels "Exterior" in it, `D01`
+   * for the Hexagon's rooms — where Evac takes the Hero; undefined where the
+   * region has none, or this is it. Ours: which map Evac chooses is not read.
+   */
+  readonly regionExterior: string | undefined
   /** The track that plays here, an index into `bgm.sdat`'s sequences — see `MapEntry.music`. */
   readonly music: number | undefined
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
@@ -1245,6 +1251,36 @@ function musicOf(
   return none
 }
 
+/**
+ * A region's name without its floor: the index names the Hexagon's rooms
+ * "The Hexagon - B1", "The Hexagon - Lv 1", and the village's houses plainly
+ * "Angel Falls" — the part before " - " is the place. INFERRED, thin.
+ */
+function regionHead(region: string | undefined): string | undefined {
+  return region?.split(' - ')[0]?.trim()
+}
+
+/** The map labelled "Exterior" in a map's place, when that is another map — see `Loaded.regionExterior`. */
+function exteriorOf(cat: Catalogue, code: string): string | undefined {
+  for (const leaf of cat.other) {
+    if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
+    try {
+      const list = readMapList(leaf.bytes)
+      const own = list.map(code.toUpperCase())
+      const place = regionHead(own?.region)
+      if (!own || !place) return undefined
+      const outside = list.maps.find(
+        (entry) =>
+          entry.id !== 0 && entry.label === 'Exterior' && regionHead(entry.region) === place,
+      )
+      return outside && outside.code !== own.code ? outside.code : undefined
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
 /** The same index the other way round: a map's code by its own id, which is how a trigger names a map. */
 function codeOf(cat: Catalogue): (id: number) => string | undefined {
   for (const leaf of cat.other) {
@@ -1581,7 +1617,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
-    region: entry?.region,
+    region: regionHead(entry?.region),
+    regionExterior: exteriorOf(cat, code),
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,

@@ -44,7 +44,7 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
 | Equipment's rest | M4 | The layouts (`lay_eq.lia`), and rarity and "Used by", which want the emulator. Done: the figure on the equipment screen; a shield on the back seen. |
 | What battles still lack | M5 | Dazzle, sand and Weird Dance, read and not modelled; `calls for backup`; how the monsters weight their ways. Done: the damage checked against the let's play, the fight winnable from level 5 as the video won it, each action's own opening line. |
-| M4's stand-ins | M4 | `INN_PRICE`; the chimaera wing's destination; Evac and holy water. |
+| M4's stand-ins | M4 | `INN_PRICE` — no table on the cartridge; the binaries or the emulator. Done, as ours: Evac to the region's outside, holy water's calm. The wing's one destination is the slice's. |
 | The top screen's rest | M6 | Done: the place's name tab. HP, MP and the level are not on the game's field panel; the fuller panel in the sprite set is for a screen not seen; the `.bmmp` tags left are constant. |
 | The explorer | explorer | 2D previews, and now sound: the SDAT's sequences could play there too. |
 
@@ -75,6 +75,32 @@ tester. **M8 is under way**: the music, the scenes' effects and jingles, the con
 
 **Where to start next time:** the tempo, with the knob; then the hash and
 cache, the last of M8.
+
+---
+
+## The stand-ins: Evac, holy water, the inn's price — 16 September
+
+**Evac and holy water do something now — ours, both**, their records saying
+nothing of what they do (no effect, no range, no message; only how they
+open). Evac, cast in a dungeon's rooms — the `D` maps' — takes the Hero for
+its 3 MP to the place's outside: the map the index labels "Exterior" in the
+same place, `D01` for the Hexagon's rooms (`Loaded.regionExterior`), the
+place being the region's name before its " - B1" — the index names each
+floor "The Hexagon - B1" (INFERRED, thin; the corner's tab names the place
+the same way) — at its entrance; anywhere else it says "But nothing happens"
+and costs nothing. Holy water,
+sprinkled in `actmsg` 362's words, keeps the field's monsters away for a
+minute (`HOLY_WATER_CALM`), where the game's keeps the weaker ones off for a
+while; the duration and the "all of them" are ours.
+
+**The chimaera wing's destination stays as it was**: the slice has one town,
+and the game's list of places is not read.
+
+**The inn's price stays a stand-in**, 10 G. Looked for again: `str_inn.bin`
+is empty; `shopdata1.bin`'s 37 shops are the `<SHOP=n>` table and hold no
+inn; the innkeeper's `<INN=1>` and `<INN=2>` select something not
+established, and no file on the cartridge names an inn or a price. The
+number is the engine's — a table in the binaries, or the emulator.
 
 ---
 

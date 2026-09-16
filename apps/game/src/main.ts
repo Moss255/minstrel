@@ -2268,6 +2268,20 @@ const WING_ACTION = 261
 const WING_TOWN = 'M01'
 const WING_THROWN = 363
 const CEILING = 57
+/**
+ * Evac's action, whose record says nothing of what it does either: **ours**,
+ * cast in a dungeon's rooms it takes the Hero to the region's outside —
+ * `Loaded.regionExterior`, the Hexagon's `D01` — at its entrance, for its 3
+ * MP; anywhere else it does nothing and costs nothing.
+ */
+const EVAC_ACTION = 205 // its rooms are the `D` maps' — a house is no dungeon
+/**
+ * Holy water's field action, likewise unread: **ours**, sprinkled in `actmsg`
+ * 362's words, it keeps the field's monsters away for {@link HOLY_WATER_CALM}
+ * ticks — a minute — where the game's keeps the weaker ones off for a while.
+ */
+const HOLY_WATER_ACTION = 259
+const HOLY_WATER_CALM = 3600
 
 /**
  * Where a Hero who is wiped out comes round: before the village church's
@@ -2359,6 +2373,7 @@ function useInField(id: number): string[] {
     menuSay(MENU_SAYS.uses, { actor: hero, item: itemNamed(id) }) ??
     `${hero.name} uses ${nameOf(id)}.`
   if (use?.action === WING_ACTION) return flyHome(id)
+  if (use?.action === HOLY_WATER_ACTION) return sprinkle(id)
   if (!use) return [uses, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
   const outcome = useOn(use, heroVitals(row), fieldRng)
   if (outcome.kind === 'unknown') return [`What ${nameOf(id)} does is not read yet; it is kept.`]
@@ -2385,6 +2400,40 @@ function flyHome(id: number): string[] {
   return [thrown]
 }
 
+/** Holy water, sprinkled — see {@link HOLY_WATER_ACTION}: the field's monsters keep away a while. */
+function sprinkle(id: number): string[] {
+  const hero = heroNamed()
+  const sprinkled =
+    actionSay(362, { actor: hero, item: itemNamed(id) }) ??
+    `${hero.name} sprinkles some holy water about the place.`
+  bag = drop(bag, id) ?? bag
+  if (roaming) roaming = calmFor(roaming, HOLY_WATER_CALM)
+  return [sprinkled]
+}
+
+/** Evac, cast — see {@link EVAC_ACTION}: out of a dungeon to its region's outside, or nothing. */
+function evacuate(spell: { readonly name: string; readonly cost: number }): string[] {
+  const row = heroRow()
+  const here = loaded
+  if (!row || !here) return ['That spell is not read.']
+  const hero = heroNamed()
+  const casts =
+    menuSay(MENU_SAYS.casts, { actor: hero, values: { str_2: spell.name } }) ??
+    `${hero.name} casts ${spell.name}.`
+  // A dungeon's rooms only — the `D` maps; a house in the village is no dungeon.
+  const outside = here.regionExterior
+  if (!outside || outside === here.code || !/^D/i.test(outside)) {
+    return [casts, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
+  }
+  const mp = heroMp ?? row.maxMp
+  if (mp < spell.cost) return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
+  heroMp = mp - spell.cost
+  menu = undefined
+  showMenu()
+  if (enter(outside)) status(casts)
+  return [casts]
+}
+
 /** Throw one of an item away, and say so. */
 function discardInField(id: number): string[] {
   bag = drop(bag, id) ?? bag
@@ -2397,6 +2446,7 @@ function castInField(action: number): string[] {
   const spell = loaded?.actions.get(action)
   if (!row || !spell) return ['That spell is not read.']
   const hero = heroNamed()
+  if (action === EVAC_ACTION) return evacuate(spell)
   const cast = castOn(spell, heroVitals(row), fieldRng)
   if (cast.outcome.kind === 'notEnoughMp') {
     return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
