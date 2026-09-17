@@ -17,16 +17,14 @@ it, with where each lives. Commands to come back with:
 ```sh
 pnpm install && pnpm typecheck && pnpm test          # 1,149 unit tests, synthetic
 MINSTREL_TEST_ROM=rom/your.nds pnpm test             # the gated checks, your dump
-pnpm dev                                             # the game; ?bgm=BG_005&tempo=0.8
+pnpm dev                                             # the game; ?bgm=BG_005
 APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/shot
 ```
 
 **1. By ear, in play — nothing to code until heard**
 
-- **The tempo.** `?bgm=BG_005&tempo=0.8` and `1.25` against the village; the
-  value that sounds right says what is misread (0.5 or 2 the 192 Hz tick, 0.8
-  or 1.2 the tempo unit), then find the game's rule — `packages/audio`,
-  "The music plays" below. Pitch at the same time.
+- ~~**The tempo.**~~ Done, 17 September: heard as right at the tempo read,
+  with no factor — "The music plays" below.
 - **The music's manners:** whether the village theme should restart on
   entering a house (ours: it carries on); the effects' loudness against the
   music; a fade between tracks on a map change (`Music.fade` exists, unused).
@@ -106,7 +104,7 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 | gap | milestone | what it needs |
 |---|---|---|
-| **Music: the tempo** | M8 | See "The music plays". The tempo waits on an ear with the `?tempo=` knob. Which track plays where is read now, from the map index. Then the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
+| Music's rest | M8 | The tempo is heard right (17 September), and which track plays where is read from the map index. Left: the menus' sounds (`728`? `712`?), the three streams, and fades on a map change. |
 | The rest of M8 | M8 | Done: the hash check and the kept cartridge, input remapping, text speed, the scenes' effects and jingles, which track plays where, the licence and contribution guide. |
 | The scenes' rough edges | M3 | The camera's pace over a move and its field of view, both waiting on a measurement against the let's play; `223`, 14 calls, unread. Done: who shows (`570`), Ivor's faces (`235`), sprites walking, doorway fades. |
 | The time of day | M6 | Done as the let's play has it: the evening and night of 2.2, with the night pieces, the night lines and the night's zone. Open: how the game keeps time, and what ends the night; the field's seconds are not saved. |
@@ -118,8 +116,8 @@ at the owner's word. What is left is what an ear or the emulator settles.
 
 **Needs the emulator — questions to bring to it:**
 
-- **The tempo of one track against ours** — and whether the village's theme
-  carries on into a house unbroken or starts again, and what the church plays.
+- **Whether the village's theme carries on into a house** unbroken or starts
+  again, and what the church plays.
 - **The inn's price** — the binaries were searched on 16 September without
   finding it (`docs/binaries.md`); the innkeeper's line in the emulator, with
   a party of one and of two, would give the number and the rule.
@@ -140,7 +138,8 @@ at the owner's word. What is left is what an ear or the emulator settles.
   ours takes kind 0 by day, 1 at dusk, 2 by night. And **what ends the night
   of 2.2**: sleeping, or time.
 
-**Where to start next time:** the tempo, with the knob; M8 is otherwise done.
+**Where to start next time:** M8 is done but for the menus' sounds, the
+streams and fades; the tempo was heard right on 17 September.
 
 ---
 
@@ -753,6 +752,11 @@ scale the tempo through the driver's own `tempoRate` (FSS's 8.8 multiplier,
 or 2 the 192 Hz tick rate, 0.8 or 1.2 a tempo unit — and then the game's own
 rule for it is to be found, not the factor kept. Pitch is worth judging at the
 same time: a misread sample rate can pass for tempo.
+
+**Settled — 17 September.** Heard in play by the owner, the tempo is working
+fine: the reading above stands as it is, 192 ticks a second and the tempo
+value as beats a minute, with no factor. The `?tempo=` knob stays as a
+listening aid; its default is 1.
 
 **Left:** which track plays where — the video has no sound, so that needs
 either the emulator or a table not yet found (found the next day, in the map
