@@ -9,13 +9,47 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## A level in play — 17 September
+
+**`l` gives the Hero a level and Shift+L takes one back** — `levelTo` in
+`main.ts`, with the arithmetic in `hero.ts`. A testing aid, **ours**: nothing
+in the game hands out levels but a fight, and what a level does to a fight is
+what it is for.
+
+It moves the **experience** to the level's own threshold rather than setting a
+level (`expAtLevel`), because everything else asks `levelAt` what level the
+Hero is: a level set on its own would be forgotten by the next question, and
+the menu's "level 13 at 3579" would read against it. HP and MP follow a level
+as a battle's level-up does — the maximum's gain is gained, what was spent
+stays spent — and the spells a level brings follow for free, `heroSpells`
+reading the level already. Not in a battle, whose fighters take their numbers
+when it begins.
+
+It says the level reached, what the change brought, and the attack and defence
+a fight would use: `level 13, 3579 experience · Max HP +4 · Max MP +1 ·
+Strength +3 · Resilience +2 · Agility +4 · attack 45 · defence 42`. The
+level-up wording is now one function, `levelGainsText`, shared with the
+battle's own result, so it is signed and a level given back reads as a loss.
+The status panel carries the same two numbers — `In a fight: attack 45 ·
+defence 42 — ours, added` — and is redrawn under the key, so the scaling can
+be watched a level at a time. **The adding is ours**, as `startFight`'s is:
+the battle reference takes attack and defence as given.
+
+`minstrelLevel(30)` does it from a console or a headless script and gives the
+numbers back; `?level=20` still opens a new game at a level and now goes
+through the same code. Driven headlessly against the reference dump: 1 to 4 by
+key, 12 back to 10 by Shift+L, and `?level=99` then `l` saying `level 99 — the
+table's last`.
+
+---
+
 ## Pick-up list — 16 September
 
 The slice's definition of done is met. What is left, in the order worth taking
 it, with where each lives. Commands to come back with:
 
 ```sh
-pnpm install && pnpm typecheck && pnpm test          # 1,149 unit tests, synthetic
+pnpm install && pnpm typecheck && pnpm test          # 1,169 unit tests, synthetic
 MINSTREL_TEST_ROM=rom/your.nds pnpm test             # the gated checks, your dump
 pnpm dev                                             # the game; ?bgm=BG_005
 APP=game PORT=8765 node tools/shot/serve.mjs rom/your.nds   # headless: tools/shot
@@ -1098,6 +1132,9 @@ alone does not win it pressing Attack.
 **For testing, ours:** `?level=20` opens a new game at that level, with its
 experience. What level the game expects the fight at, and with whom, is not
 read.
+
+**A level in play, from 17 September:** `l` and Shift+L move the Hero a level —
+see "A level in play" above.
 
 ---
 

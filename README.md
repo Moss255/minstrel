@@ -145,8 +145,14 @@ well.
 For looking at a thing on its own, the address takes parameters: `?bgm=BG_001`
 plays a track by name, `?tempo=0.9` scales its tempo, `?se=113` sounds an
 effect archive by index, `?time=night` forces a time of day, `?wear=21003`
-puts an item on the Hero, `?map=`, `?event=` and `?at=x,z` open a map, a
-scene or a spot.
+puts an item on the Hero, `?level=20` starts the Hero at a level, `?map=`,
+`?event=` and `?at=x,z` open a map, a scene or a spot.
+
+For trying the numbers out, `p` picks a fight and `l` gives the Hero a level —
+Shift+L takes one back. Each says the level reached, what it brought, and the
+attack and defence a fight would use; with the menu up, the status panel
+follows along, so what a level does to the numbers can be watched a level at a
+time. `minstrelLevel(30)` in the console goes straight to one.
 
 ## Looking at models
 

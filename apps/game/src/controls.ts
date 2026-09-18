@@ -3,8 +3,9 @@
  *
  * The game asks for actions, not keys: `confirm`, `cancel`, `up` … Each has
  * the keys and the standard-layout pad buttons bound to it, which the player
- * may change and which the browser keeps. The development keys — a fight,
- * the chapters, the stages, the collision — are not here and stay fixed.
+ * may change and which the browser keeps. The development keys — a fight, a
+ * level, the chapters, the stages, the collision — are not here and stay
+ * fixed.
  *
  * All of it ours: the DS had one layout.
  */

@@ -153,9 +153,12 @@ import {
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
+  expAtLevel,
+  expLevelledBy,
   type Gains,
   gain,
   HERO_VOCATION_NUMBER,
+  levelGainsText,
   outfitOf,
   STARTING_EQUIPMENT,
   STARTING_GOLD,
@@ -895,10 +898,10 @@ function begin(bytes: Uint8Array, map: string): void {
     )
   }
   // `?level=20` puts the Hero at that level, with its experience — ours, so a
-  // headless browser can see a fight through.
+  // headless browser can see a fight through. The same move the `l` key makes,
+  // clamped to the table's ends; see `levelTo`.
   const level = Number(params.get('level'))
-  const row = Number.isInteger(level) ? loaded?.heroLevels?.levels[level - 1] : undefined
-  if (row) heroExp = row.exp
+  if (Number.isInteger(level) && level > 0) levelTo(level)
   if (wantedEvent !== undefined) startEvent(wantedEvent)
   else playEntryEvent()
 }
@@ -1750,6 +1753,29 @@ Object.defineProperty(window, 'minstrelTime', {
 })
 // For a headless check: the camera, to pull back and look round from a script.
 Object.defineProperty(window, 'minstrelCamera', { get: () => camera })
+/**
+ * For a headless check, and for testing by hand: `minstrelLevel(30)` puts the
+ * Hero at that level and gives back its numbers with the attack and defence a
+ * fight would use; `minstrelLevel()` reads them without moving. See `levelTo`.
+ */
+Object.defineProperty(window, 'minstrelLevel', {
+  value: (level?: number) => {
+    const row = level === undefined ? heroRow() : levelTo(Math.trunc(level))
+    if (!row) return null
+    const worn = wornNumbers()
+    return {
+      level: row.level,
+      exp: heroExp,
+      maxHp: row.maxHp,
+      maxMp: row.maxMp,
+      strength: row.strength,
+      resilience: row.resilience,
+      agility: row.agility,
+      attack: row.strength + worn.attack,
+      defence: row.resilience + worn.defence,
+    }
+  },
+})
 // For a headless check: the field's monsters, where each stands and what it plays.
 Object.defineProperty(window, 'minstrelRoaming', {
   get: () =>
@@ -2492,6 +2518,53 @@ function heroVitals(row: LevelRow): Vitals {
     mp: Math.min(heroMp ?? row.maxMp, row.maxMp),
     maxMp: row.maxMp,
   }
+}
+
+/**
+ * Move the Hero a level, or put them at one — a testing aid, **ours**: `l` a
+ * level on, Shift+L a level back, and `window.minstrelLevel(n)` straight to a
+ * level. Nothing in the game hands out levels but a fight, and what a level
+ * does to a fight is what this is for.
+ *
+ * The experience is set to the level's own threshold rather than the level
+ * being set on its own — see `expAtLevel`. The wounds follow a level as a
+ * battle's level-up does: the maximum's gain is gained, and what was spent
+ * stays spent.
+ *
+ * What it says is the level reached, what the change brought, and the attack
+ * and defence a fight would give the Hero — their strength and resilience
+ * plus what they wear, which is what `startFight` hands the battle. Returns
+ * the level's own numbers, for a headless check to read.
+ */
+function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
+  const levels = loaded?.heroLevels
+  if (!levels) {
+    status('the level table did not load, so the Hero has no level to move')
+    return undefined
+  }
+  const before = standing(levels, heroExp, heroGains).level
+  heroExp = level === undefined ? expLevelledBy(levels, heroExp, by) : expAtLevel(levels, level)
+  const after = standing(levels, heroExp, heroGains).level
+  // Undefined is whole, and stays whole at the new maximum.
+  if (heroHp !== undefined) heroHp = Math.min(after.maxHp, heroHp + (after.maxHp - before.maxHp))
+  if (heroMp !== undefined) heroMp = Math.min(after.maxMp, heroMp + (after.maxMp - before.maxMp))
+  const worn = wornNumbers()
+  const numbers = `attack ${after.strength + worn.attack} · defence ${after.resilience + worn.defence}`
+  // At an end of the table a key press moves nothing, which is worth saying.
+  const end =
+    after.level === 1
+      ? " — the table's first"
+      : after.level === levels.levels.length
+        ? " — the table's last"
+        : ''
+  status(
+    after.level === before.level
+      ? `level ${after.level}${end} · ${numbers}`
+      : `level ${after.level}, ${after.exp} experience · ${levelGainsText(before, after)} · ${numbers}`,
+  )
+  // The status panel is where the numbers are read, so it is redrawn under the key.
+  if (menu) showMenu()
+  return after
 }
 
 /** One of a file's messages, told for who and what; undefined when the file has none by that number. */
@@ -3375,14 +3448,7 @@ function settleBattle(): void {
         said(RESULT_SAYS.level, { target: heroNamed(), values: { val_1: after.level } }) ??
           `${name} reaches level ${after.level}!`,
       )
-      const gains = [
-        ['Max HP', after.maxHp - before.maxHp],
-        ['Max MP', after.maxMp - before.maxMp],
-        ['Strength', after.strength - before.strength],
-        ['Resilience', after.resilience - before.resilience],
-        ['Agility', after.agility - before.agility],
-      ] as const
-      lines.push(gains.map(([label, gain]) => `${label} +${gain}`).join(' · '))
+      lines.push(levelGainsText(before, after))
     }
   } else if (battle.state.outcome === 'lost') {
     heroHp = undefined
@@ -4247,6 +4313,15 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   // `p` picks a fight — see `FIGHT` — and Shift+P the boss.
   if (key === 'p' && loaded && !talking && !menu && !visit && !playing) {
     startFight(event.shiftKey ? BOSS_FIGHT : fightCodes(), !event.shiftKey)
+    event.preventDefault()
+    return handled
+  }
+  // `l` gives the Hero a level and Shift+L takes one back — see `levelTo`.
+  // It works with the menu up, so the status panel can be watched as the
+  // levels go by; not in a battle, whose fighters took their numbers when it
+  // began, nor while the collision fit has `l` for its own.
+  if (key === 'l' && loaded && !battle && !showCollision) {
+    levelTo(undefined, event.shiftKey ? -1 : 1)
     event.preventDefault()
     return handled
   }

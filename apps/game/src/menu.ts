@@ -129,22 +129,40 @@ function numbersText(context: MenuContext, item: number | undefined): string {
   return said.length > 0 ? ` — ${said.join(', ')}` : ''
 }
 
-/**
- * What the worn equipment adds, item by item as read. How it joins the Hero's
- * own numbers is not yet cited, so no total attack is shown. The words are ours.
- */
-function wornText(context: MenuContext): string {
-  if (!context.numbersOf) return 'What equipment adds is not read.'
+/** What the worn equipment adds, item by item as read; nothing when the numbers did not read. */
+function wornTotals(context: MenuContext): { attack: number; defence: number; agility: number } {
   let attack = 0
   let defence = 0
   let agility = 0
   for (const item of (context.equipped ?? new Map<Slot, number>()).values()) {
-    const numbers = context.numbersOf(item)
+    const numbers = context.numbersOf?.(item)
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
     agility += numbers?.agility ?? 0
   }
+  return { attack, defence, agility }
+}
+
+/** What the worn equipment adds, item by item as read. The words are ours. */
+function wornText(context: MenuContext): string {
+  if (!context.numbersOf) return 'What equipment adds is not read.'
+  const { attack, defence, agility } = wornTotals(context)
   return `Equipment worn: attack +${attack}, defence +${defence}${agility ? `, agility +${agility}` : ''}.`
+}
+
+/**
+ * The attack and defence a fight would give the Hero: their strength and
+ * resilience plus what they wear.
+ *
+ * **The adding is ours.** The battle reference takes a fighter's attack and
+ * defence as given — its setups name them, `atk123_def86` — and how the game
+ * makes them up is not cited. `startFight` adds them this way, so what this
+ * line shows is what a battle would use, which is what makes the numbers
+ * worth watching as the levels go by.
+ */
+function fightingText(context: MenuContext, strength: number, resilience: number): string {
+  const worn = wornTotals(context)
+  return `In a fight: attack ${strength + worn.attack} · defence ${resilience + worn.defence} — ours, added.`
 }
 
 /** What a panel knows to say. */
@@ -314,6 +332,7 @@ export function panelLines(
         `Strength ${l.strength} · Resilience ${l.resilience} · Agility ${l.agility} · Deftness ${l.deftness} · Charm ${l.charm}`,
         `Magical might ${l.magicalMight} · Magical mending ${l.magicalMending}`,
         wornText(context),
+        fightingText(context, l.strength, l.resilience),
         'Which level-table column is which is inferred.',
         where,
       ]

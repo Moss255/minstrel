@@ -291,3 +291,49 @@ export function standing(table: LevelTable, exp: number, gains: Gains = {}): Sta
     next: table.levels[level.level],
   }
 }
+
+/**
+ * The experience a level stands at — a **testing aid, ours**.
+ *
+ * The level is clamped to the table, and what comes back is that level's own
+ * threshold. Moving the experience rather than the level is what keeps the two
+ * consistent: everything else asks {@link levelAt} what level the Hero is, so
+ * a level set on its own would be forgotten by the next question, and the
+ * menu's "level n at m experience" would read against it.
+ *
+ * The table's thresholds rise but are not required to rise strictly, so a
+ * level sharing its threshold with a later one lands on the later. Callers
+ * report what {@link standing} then says rather than what they asked for.
+ */
+export function expAtLevel(table: LevelTable, level: number): number {
+  const clamped = Math.max(1, Math.min(table.levels.length, Math.trunc(level)))
+  return (table.levels[clamped - 1] as LevelRow).exp
+}
+
+/** The experience for the level `by` along from the one this much experience stands at. */
+export function expLevelledBy(table: LevelTable, exp: number, by: number): number {
+  return expAtLevel(table, levelAt(table, exp).level + by)
+}
+
+/** A number a level table gives, which is every seed's stat but the skill points. */
+type LevelStat = Exclude<GainStat, 'skillPoints'>
+
+/** The numbers a level change is reported by, with the words the result uses. */
+export const LEVEL_GAINS: readonly (readonly [string, LevelStat])[] = [
+  ['Max HP', 'maxHp'],
+  ['Max MP', 'maxMp'],
+  ['Strength', 'strength'],
+  ['Resilience', 'resilience'],
+  ['Agility', 'agility'],
+]
+
+/**
+ * What a level brought, as the battle's result and the level key both say it:
+ * `Max HP +3 · Max MP +1 · …`, signed, so a level given up reads as a loss.
+ */
+export function levelGainsText(before: LevelRow, after: LevelRow): string {
+  return LEVEL_GAINS.map(([label, stat]) => {
+    const moved = after[stat] - before[stat]
+    return `${label} ${moved < 0 ? '' : '+'}${moved}`
+  }).join(' · ')
+}
