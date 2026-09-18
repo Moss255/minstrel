@@ -9,6 +9,24 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The slice is held shippable — 18 September
+
+**Slice 1 is shippable at the owner's word.** Every point of the plan's
+definition of done is met, the slice has been walked start to finish, and what
+is left is what an ear, a video or the emulator settles rather than what the
+code owes.
+
+So what is open is now **one standing list**:
+[`docs/still-open.md`](still-open.md) — the questions the cartridge has not
+answered, what is ours in place of the game's own rule, what is read and not
+modelled, and the polish. It replaces the list in "What is still open — 16
+September" below, which stays as the record of where M8 ended.
+
+**Added 17 September:** a level in play, below — so the questions that used to
+need a grind are two keypresses each.
+
+---
+
 ## A level in play — 17 September
 
 **`l` gives the Hero a level and Shift+L takes one back** — `levelTo` in
@@ -44,6 +62,9 @@ table's last`.
 ---
 
 ## Pick-up list — 16 September
+
+*Superseded by `docs/still-open.md`; kept for its table of where the
+equipment's numbers are read.*
 
 The slice's definition of done is met. What is left, in the order worth taking
 it, with where each lives. Commands to come back with:
@@ -106,6 +127,10 @@ vocations, alchemy, grottoes, multiplayer, party recruitment).
 ---
 
 ## What is still open — 16 September, at the end of M8
+
+*Superseded by `docs/still-open.md` (18 September), which gathers the same
+gaps by how each would be settled. This stays as the record of where the
+milestones ended.*
 
 This replaces the list of 15 September. Each gap's evidence is in the section
 it names, below.

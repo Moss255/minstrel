@@ -140,6 +140,15 @@ By submitting a change you agree that it is licensed under the licence of
 the package it lands in — MIT for the parsers and tools, GPL-3.0-or-later for
 the engine and apps — and that you have the right to license it so.
 
+## What to work on
+
+[`docs/still-open.md`](docs/still-open.md) is the list. It keeps four kinds of
+gap apart, and the first two are where help is worth most: a question the
+cartridge has not answered yet (with the shape to search by and the witness
+that would confirm a find, in [`docs/binaries.md`](docs/binaries.md)), and a
+rule of ours standing in for the game's own. A finding against either is a
+contribution whether or not any code comes with it — see below.
+
 ## Findings without code
 
 Some of the most useful contributions are not code: a measurement from the

@@ -7,28 +7,33 @@ Two things sharing a set of Nintendo DS parsers:
 
 Both apps exist and run. What is playable is the opening slice of the story:
 a village, the road out of it, a dungeon and its boss, with the shops, the inn,
-saving, battles, levelling, equipment and the story's scenes between.
+saving, battles, levelling, equipment and the story's scenes between. **The
+slice is complete and playable end to end.**
 
 ## Status
 
-The slice plays start to finish. M0 (extraction and inventory), M1 (renderer
-and model viewer) and M2 (a walkable village) are done; M3 plays the story's
-scenes from their scripts — cameras, fades, motions and figures; M4 has shops,
-the inn, saving and equipment, drawn on the party; M5 has battles, spells,
-states and a party of up to four; M6 has the field's monsters and the
-companion following; M7 is the road, the dungeon and its boss. M8 is under
-way: the music and the scenes' sound effects play, the controls can be
-remapped, the text speed set, and each map plays its own track. Open in M8:
-the cartridge's hash check and asset cache.
+The slice plays start to finish, and every milestone it was planned in is
+done. M0 (extraction and inventory), M1 (renderer and model viewer) and M2 (a
+walkable village); M3 plays the story's scenes from their scripts — cameras,
+fades, motions and figures; M4 has shops, the inn, saving and equipment, drawn
+on the party; M5 has battles, spells, states and a party of up to four; M6 has
+the field's monsters and the companion following; M7 is the road, the dungeon
+and its boss; M8 is the music and the scenes' effects, each map's own track,
+remappable controls, the text speed, and the cartridge checked by hash and
+kept in the browser unconverted.
 
 Every reading of an undocumented format or script is marked as read or
 inferred, with its evidence, in the package's `FORMAT.md`; what is ours
-rather than the game's is said so.
+rather than the game's is said so. **What is still open is one list**, and
+most of it is a question for a video or an emulator rather than code:
+[`docs/still-open.md`](docs/still-open.md).
 
 - [`docs/findings.md`](docs/findings.md) — what has been established about the
   cartridge's formats, by what evidence, and what is still unknown.
-- [`docs/next.md`](docs/next.md) — where the work stands and what is open,
-  newest first.
+- [`docs/still-open.md`](docs/still-open.md) — what is unresolved in a
+  shippable slice: the cartridge's unanswered questions, what is ours in place
+  of the game's own rule, and the polish.
+- [`docs/next.md`](docs/next.md) — where the work stands, newest first.
 - [`docs/M0-inventory.md`](docs/M0-inventory.md) and
   [`docs/M1-renderer.md`](docs/M1-renderer.md) — early milestone status.
 
