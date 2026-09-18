@@ -1023,7 +1023,7 @@ nothing. `readVocationTrees` in `vocations.ts` finds it by its shape, not at
 an offset: twelve rows of five bytes, one a vocation in the level tables'
 order, each four distinct trees from 1 to 14 and, last, the vocation's own
 tree — 15 for the first row, 16 for the next, to 26. On the reference
-cartridge it lies at `0xEE75D` of the unpacked binary and reads:
+cartridge those rows lie at `0xEE75D` of the unpacked binary and read:
 
 | vocation | trees |
 |---|---|
@@ -1049,6 +1049,14 @@ let's play's Hero, a minstrel, wields and wears. The search that found it
 asked for that row and for the warrior's sword and shield, and nothing else.
 `vocationsWielding` turns a tree into the bits `ItemStats.usedBy` uses, so a
 weapon's "Used by" comes out as the armour's does.
+
+**The table has a row 0.** Five zero bytes stand before the warrior's row, so
+the table itself begins at `0xEE758` and is thirteen rows, indexed by the
+vocation's number with 0 for none; the game's code refers to it there, not at
+the warrior's row. Seen 17 September in the reference dump and in the USA
+build, where the decomp names it `vocationSkillTrees` (`0x020ee748`). The
+reader finds the warrior's row and indexes from vocation 1, so it reads the
+same rows either way.
 
 **Not read:** whether the Omnivocational passives, which let one character
 wield a kind "regardless of vocation", show on the screen's grid.

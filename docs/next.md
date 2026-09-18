@@ -102,7 +102,7 @@ each of these the shape a search of the code would go by, and its witness.)
 | attack, defence, deftness, agility, magical might, evasion, critical | the stats table after each `itemdt_<c>_en.nat`'s records, words 5–7 | `readItemStats`, `itemstats.ts` | `packages/game-formats/FORMAT.md`, "The stats" |
 | rarity, 0–5 stars | the item record's byte `+0x15`, bits 1–3 | `readItemTable`, `itemtable.ts` → `ItemRecord.rarity` | FORMAT.md, "Items", the record table; `docs/next.md`, "Rarity and Used by" |
 | who may wear it, armour and accessories | the stats entry's word 4, bits 0–11: bit v − 1 for vocation v in the level tables' order | `ItemStats.usedBy` | FORMAT.md, "The stats", "Which bit is which" |
-| who may use a weapon or shield | the ARM9 binary, unpacked: twelve rows of five trees, `0xEE75D` on the reference dump | `readVocationTrees`, `vocations.ts`; `vocationsWielding` on the item's `kind` | FORMAT.md, "Vocation skill trees" |
+| who may use a weapon or shield | the ARM9 binary, unpacked: a zero row and twelve rows of five trees, `0xEE758` on the reference dump | `readVocationTrees`, `vocations.ts`; `vocationsWielding` on the item's `kind` | FORMAT.md, "Vocation skill trees" |
 | the vocations' names and order | `str_tm` 2100–2112, Guardian then warrior to ranger; the skill trees named for them, `str_sklc` 15–26 | `Loaded.menuWords` | FORMAT.md, "Battle text" |
 | the pictograms | `/data/ani/obj_gl.pac`, cells 10–21, in the "Used by" grid's order | `readEquipPieces`, `equip-screen.ts` | `equip-screen.ts`, `USED_BY_ORDER` |
 | the lit star | `/data/ani/oiij.gp2`, `obj_iteminfo` cell 21 | `readEquipPieces` | `equip-screen.ts`, `STAR_LIT_CELL` |
@@ -310,7 +310,8 @@ skill trees:
   little oftener, 96 in 256 against 85.
 - **The field sprites' ids**, overlay 17 `0x4AFD0`: the pots, barrels and
   bubbles by the game's own numbers; how a treasure's kind picks one is
-  still in code.
+  still in code. (Corrected 17 September: the entries are (id, name) from
+  `0x4AFCC`, the pots 5–7 and the barrels 8–10 — `docs/binaries.md`.)
 - **Not found**: the inn's price — no string in the binaries names an inn,
   and no table looks like prices; the critical, dodge and flee chances — the
   constants beside the weight tables (a float 0.2, words 1024, 2560, 2048,
@@ -323,7 +324,8 @@ skill trees:
 **The one part of "Used by" said to be beyond the cartridge is on it after
 all** — in the ARM9 binary, which is BLZ-packed on the cartridge; every
 search of the cartridge's own bytes had missed it for that. Unpacked, at
-`0xEE75D` on the reference dump, twelve rows of five bytes: each vocation's
+`0xEE75D` on the reference dump (the table proper at `0xEE758`, a zero row
+first — corrected 17 September), twelve rows of five bytes: each vocation's
 four weapon, shield or fisticuffs trees and, last, its own — 15 to 26 in the
 vocations' order (game-formats' FORMAT.md, "Vocation skill trees", with the
 table). `readVocationTrees` finds it by that shape, not by the offset, and
