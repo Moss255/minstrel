@@ -2,9 +2,10 @@
 
 Written 18 September 2026, with the slice held **shippable**: Slice 1 plays
 from the Guardian statue at 2.1 to Patty's rescue and the title card, walked
-start to finish, and every point of the plan's definition of done is met —
-`dq9-slice1-angel-falls.md`, and the table in `docs/next.md`, "What is still
-open — 16 September", which this file replaces as the standing list.
+start to finish, and every point of the plan's definition of done is met — the
+slice plan at the repository root, which is local and not committed, and the
+table in `docs/next.md`, "What is still open — 16 September", which this file
+replaces as the standing list.
 
 Nothing in this file stops the slice being played end to end. What is here is
 of four kinds, kept apart on purpose:
