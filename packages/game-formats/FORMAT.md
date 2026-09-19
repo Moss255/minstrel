@@ -2602,13 +2602,45 @@ among them, though not the Wight Knight's or Morag's — not established.
 The rest is carried as it is. Hexagoon, the slice's boss, is `b003a`.
 
 **Names**: a record is the name's offset, the code's offset (both `u32`, from
-the strings) and the number (`u16`) at `+0x08`; ten bytes not established; the
-plural's offset at `+0x14`; and at `+0x18` the name's grammar, its articles and
-gender (see "Articles"). The strings run name, plural, code for each monster —
+the strings) and the number (`u16`) at `+0x08`; then the body, below; six bytes
+not established; the plural's offset at `+0x14`; and at `+0x18` the name's
+grammar, its articles and gender (see "Articles"). The strings run name, plural, code for each monster —
 `slime`, `slimes`, `z000a` — and the plural's offset starts a string on all 438
 records in all five languages. **Codes repeat**: 438 records
 carry 312 codes, a code naming the story's versions of one monster (the
 scarlet fever four times); the lowest number is the ordinary one.
+
+**The body — `+0x0C` and `+0x0E`**, from the code rather than from the bytes:
+
+| offset | type | meaning |
+|---|---|---|
+| `+0x0C` | `s16` | collision **radius**, in 1024ths — shifted left 2 into `fx32` |
+| `+0x0E` | `s16` | collision **height**, `fx32` already |
+
+Overlay 17 builds a field monster's `Object3D` in `func_ov017_021a2128` and
+ends it with
+
+```
+ldrsh r1, [r5, #0xc] ; lsl r1, r1, #2 ; bl Object3D::SetRadius
+ldrsh r1, [r5, #0xe] ;                 bl Object3D::SetHeight
+```
+
+`r5` is an entry of the collection at `+0x2F8` of the resident map — a slot of
+four, 0x318 bytes each, found by map id (`func_02028bd0`) — and `0x021b5250`
+fills that collection from this file. `Object3D::SetRadius` and `SetHeight` are
+the decomp's names; `radius_` and `height_` are `fix32_t` and default to
+`1 << 12` in its constructor, so a monster that named neither would be a
+one-unit ball. Units are the files' own, which `WORLD_SCALE` divides by 8.
+
+**The witness is that the numbers sort the bestiary.** The slime is 0.80 wide
+and 0.80 tall, a ball; the metal slime as wide and 0.60 tall; the bag o' laughs
+0.78 and 0.84. The largest are Lleviathan, Barbarus and Greygnarl at 7.80 and
+5.25, the alphyn and the Nemean at 6.40 and 3.50. Ten times the slime for the
+great dragons, and not one of the 438 negative. A wrong offset does not order
+a bestiary by size. `tools/harness/test/monster-body.test.ts` pins it.
+
+Two of the ten bytes this section used to carry as not established are these;
+`+0x0A`, `+0x10`, `+0x12` and one more remain.
 
 ## Monster models — `/data/pack_lv5/enemy.gp2`
 
