@@ -7,8 +7,10 @@
  * state's top 32 bits — the first draw the seed's own, before any step. A value
  * below `max` is `(top × max) >> 32`, its `getPercent`.
  *
- * `BigInt` keeps the 64-bit arithmetic exact, and no float enters: a battle
- * draws a handful of numbers a turn, not a frame's worth.
+ * `BigInt` keeps the 64-bit state exact: a battle draws a handful of numbers a
+ * turn, not a frame's worth. What is *made* of a draw is the game's own 32-bit
+ * float arithmetic, each step through `Math.fround` — `below`, `float01`,
+ * `floatBetween` — because that rounding is part of the answer.
  */
 
 const MULTIPLIER = 0x5d588b656c078965n
@@ -50,8 +52,41 @@ export class BattleRng {
     return top
   }
 
-  /** A whole number from 0 to `max − 1` — the reference's `getPercent`. */
+  /**
+   * A float from 0 to 1 — the game's `NextRandomFloat01` (0x0207434c): the
+   * draw over `(double) 0xFFFFFFFF`, narrowed to a 32-bit float. It reaches
+   * 1.0 exactly when every bit of the draw is set.
+   */
+  float01(): number {
+    return Math.fround(this.top32() / 0xffffffff)
+  }
+
+  /**
+   * A whole number from 0 to `max − 1` — the game's `NextRandomMax`
+   * (0x020742fc): `max × float01`, **the product a 32-bit float's**, truncated,
+   * and held below the maximum for the draw that makes the float 1.0.
+   *
+   * It was `(top × max) >> 32`, the reference emulator's `getPercent` and
+   * exact. The two agree on every draw for a coin or a die and part about once
+   * in four thousand at 10,000, by one, because the game's float has 24
+   * significant bits. The game's is the one a battle is replayed against — see
+   * `CLAUDE.md`, "Fixed-point in simulation", for why a float is allowed here.
+   */
   below(max: number): number {
-    return Number((BigInt(this.top32()) * BigInt(max)) >> 32n)
+    if (max <= 0) {
+      // The game hands back 0 without drawing; a caller asking is a bug here.
+      return 0
+    }
+    const result = Math.trunc(Math.fround(Math.fround(max) * this.float01()))
+    return result >= max ? max - 1 : result
+  }
+
+  /**
+   * A float between two — the game's `NextRandomFloatBetween` (0x02074388):
+   * `(max − min) × float01 + min`, each step a 32-bit float's.
+   */
+  floatBetween(min: number, max: number): number {
+    const f = Math.fround
+    return f(f(f(f(max) - f(min)) * this.float01()) + f(min))
   }
 }

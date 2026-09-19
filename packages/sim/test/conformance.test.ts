@@ -18,11 +18,11 @@ import {
  * The simulation's integer arithmetic, held to the game's own.
  *
  * `game-oracle.ts` is the game's battle arithmetic translated from its
- * decompilation in the 32-bit floats it computes in. The simulation computes
- * the same quantities in whole numbers, so that no float enters gameplay. These
- * tests say where the two agree, and where they part **how often and by how
- * much** — a disagreement that is measured is a decision; one that is not is a
- * bug waiting for a seed.
+ * decompilation in the 32-bit floats it computes in. What the simulation has
+ * read from the game it computes the same way, and these hold it to the oracle
+ * **exactly** — every draw, every blow, every deftness. Where it once parted,
+ * the old form is kept here as a measurement, so why the float is in the
+ * simulation stays written down beside the proof that it matches.
  *
  * Everything here is synthetic: no cartridge is read.
  */
@@ -61,20 +61,28 @@ describe('a whole number below a maximum', () => {
     return differ
   }
 
-  it('agrees with the game on every draw, for the small maxima a battle mostly uses', () => {
-    // Which of six ways a monster acts, a coin, a die of ten.
-    for (const maximum of [2, 6, 10]) expect(disagreements(maximum, 200_000)).toBe(0)
+  it('agrees with the game on every draw, at every maximum a battle uses', () => {
+    // A coin, a die, a percent, and the critical roll's 10,000 — where the
+    // exact integer form this used to be parted from the game about once in
+    // four thousand draws. It is the game's float now, and parts nowhere.
+    for (const maximum of [2, 4, 5, 6, 8, 10, 100, 256, 1000, 10_000]) {
+      expect(disagreements(maximum, 200_000)).toBe(0)
+    }
   })
 
-  it('parts from the game now and then on a large one, and this is how often', () => {
-    // The game multiplies by a 32-bit float, 24 bits of it significant; the
-    // simulation multiplies exactly. At 10,000 — the critical roll's maximum —
-    // they give different numbers about once in four thousand draws, and then
-    // by one. **Not closed**: closing it means a float in the simulation, which
-    // is a rule to change on purpose rather than in passing.
-    const differ = disagreements(10_000, 400_000)
+  it('is not the exact integer form, and this is how often that would differ', () => {
+    // What `below` was: `(top × max) >> 32`. Kept as a measurement, so the
+    // reason the float is here stays written down beside it.
+    const game = new GameRandom(777n)
+    const tops = BattleRng.fromGameState(777n)
+    let differ = 0
+    const draws = 400_000
+    for (let i = 0; i < draws; i++) {
+      const exact = Number((BigInt(tops.top32()) * 10_000n) >> 32n)
+      if (exact !== game.max(10_000)) differ++
+    }
     expect(differ).toBeGreaterThan(0)
-    expect(differ / 400_000).toBeLessThan(0.0005)
+    expect(differ / draws).toBeLessThan(0.0005)
   })
 
   it('never lands on the maximum itself, as the game takes care not to', () => {
@@ -98,7 +106,7 @@ describe('a whole number below a maximum', () => {
 })
 
 describe('physical damage', () => {
-  it('is the game’s own, truncated, to within a case in a hundred thousand', () => {
+  it('is the game’s own, truncated, in every case', () => {
     let cases = 0
     let differ = 0
     let drawsDiffer = 0
@@ -116,8 +124,9 @@ describe('physical damage', () => {
       if (mine !== theirs) differ++
       cases++
     }
+    expect(cases).toBe(200_000)
     expect(drawsDiffer).toBe(0)
-    expect(differ / cases).toBeLessThan(0.00001)
+    expect(differ).toBe(0)
   })
 
   it('is truncated and not rounded — a third of all blows would differ', () => {
@@ -161,33 +170,32 @@ describe('the critical chance', () => {
     }
     expect(criticalChance(151)).toBe(201)
     expect(criticalChance(250)).toBe(300)
-    expect(criticalChance(999)).toBe(1049)
   })
 
-  it('is the game’s threshold at every deftness to 150, which is all the slice reaches', () => {
-    for (let deftness = 0; deftness <= 150; deftness++) {
+  it('is the game’s threshold at every deftness', () => {
+    for (let deftness = 0; deftness <= 999; deftness++) {
       expect(criticalChance(deftness)).toBe(criticalThreshold(calculateCritRate(deftness)))
     }
-    expect(criticalThreshold(calculateCritRate(0))).toBe(200)
+    expect(criticalChance(0)).toBe(200)
   })
 
-  it('is one too high at 151 of the 850 values past 150, and these are they', () => {
+  it('is one under the exact sum at 151 of the 850 values past 150, and these are they', () => {
     // The game multiplies the percentage by 100 **as a float** and truncates,
     // and `0.01f` is not a hundredth, so its threshold comes out one under
-    // `200 + (deftness − 150)` about one value in six. The same question as
-    // the draw below 10,000 — see `docs/conformance.md` — and far commoner.
-    // **Not closed**, and pinned from both sides until it is decided.
-    const high: number[] = []
+    // `200 + (deftness − 150)` about one value in six. The simulation follows
+    // the game; this keeps the size of what that decision bought.
+    const under: number[] = []
     for (let deftness = 151; deftness <= 999; deftness++) {
-      const game = criticalThreshold(calculateCritRate(deftness))
+      const exact = 200 + (deftness - 150)
       const ours = criticalChance(deftness)
-      if (ours !== game) {
-        expect(ours - game).toBe(1)
-        high.push(deftness)
+      if (ours !== exact) {
+        expect(exact - ours).toBe(1)
+        under.push(deftness)
       }
     }
-    expect(high.length).toBe(151)
-    expect(high.slice(0, 5)).toEqual([159, 160, 161, 162, 184])
+    expect(under.length).toBe(151)
+    expect(under.slice(0, 5)).toEqual([159, 160, 161, 162, 184])
+    expect(criticalChance(159)).toBe(208)
   })
 
   it('meets one draw below 10,000, and spends it whether or not it lands', () => {

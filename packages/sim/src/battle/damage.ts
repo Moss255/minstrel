@@ -6,39 +6,43 @@ import type { BattleRng } from './rng.ts'
  * Translated from DQIX/BattleEmulator's `BattleEmulator.cpp` (MIT, © 2024
  * DaisukeDaisuke), which reproduces the game's own and names the functions by
  * their addresses in it. Where the reference uses a double, the same quantity
- * is computed here exactly in integers, so no float enters the simulation; the
- * golden test holds each to the reference's own output.
+ * is computed here exactly in integers; the golden test holds each to the
+ * reference's own output.
+ *
+ * **What has since been read from the game's own code is the game's instead**,
+ * in the 32-bit floats it computes in — `physicalDamage` and `criticalChance`
+ * so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
+ * "Fixed-point in simulation", and `docs/conformance.md`.
  */
 
 /**
- * Physical damage — the game's `FUN_0207564c`, from the reference's
- * fixed-point version, in 32.32 fixed point.
+ * Physical damage — the game's `CalculatePhysicalDamage` (0x020744c0,
+ * `src/Combat/Main/BasicAttackCalculation.cpp` in the decomp), in the 32-bit
+ * floats it computes in, truncated as its caller `GetAttackBaseDamage` does by
+ * returning it as an `int`.
  *
- * With `base = 2 × attack − defence`: nothing when `base` is not positive.
- * Otherwise a quarter of `base` — attack/2 − defence/4 — if that is more than
- * attack/16, spread by up to a sixteenth of itself either way and then by up to
- * one more (two draws); if it is not, anything from 0 to attack/16 (one draw).
- * The whole part is the damage.
+ * `(attack − defence / 2) / 2`, and nothing when that is not positive. If it
+ * is more than attack/16, spread by up to a sixteenth of itself either way and
+ * then by up to one more (two draws); if it is not, anything from 0 to
+ * attack/16 (one draw).
+ *
+ * It was the reference emulator's fixed-point version, exact in 32.32, and
+ * that agreed with this to a case in a million. This is the game's.
  */
 export function physicalDamage(rng: BattleRng, attack: number, defence: number): number {
-  const base = 2 * attack - defence
-  if (base <= 0) return 0
-  const quarter = BigInt(base) << 30n
-  const sixteenth = BigInt(attack) << 28n
-  let result: bigint
-  if (quarter > sixteenth) {
-    const spreadLimit = quarter >> 4n
-    // floatRand(−limit, limit): −limit + top/2³² × 2·limit.
-    const spread = ((BigInt(rng.top32()) * spreadLimit) >> 31n) - spreadLimit
-    // floatRandAttack: −1 + top/2³¹, in [−1, 1).
-    const offset = (BigInt(rng.top32()) << 1n) - (1n << 32n)
-    result = quarter + spread + offset
+  const f = Math.fround
+  let damage = f(f(f(attack) - f(f(defence) / 2)) / 2)
+  if (damage <= 0) return 0
+  const minimum = f(f(attack) / 16)
+  if (damage <= minimum) {
+    damage = rng.floatBetween(0, minimum)
   } else {
-    // floatRand(0, attack/16).
-    result = (BigInt(rng.top32()) * sixteenth) >> 32n
+    const limit = f(damage / 16)
+    const percentage = rng.floatBetween(f(0 - limit), limit)
+    const flat = rng.floatBetween(-1, 1)
+    damage = f(f(damage + percentage) + flat)
   }
-  if (result <= 0n) return 0
-  return Number(result >> 32n)
+  return damage <= 0 ? 0 : Math.trunc(damage)
 }
 
 /**
@@ -84,19 +88,28 @@ export function criticalDamage(rng: BattleRng, damage: number): number {
 }
 
 /**
- * The chance of a critical hit on an ordinary blow, in 10,000 — the game's
- * `CalculateCritRate` (`src/Combat/Main/CritRateCalculation.cpp` in the
- * decomp), for one hit and with no accessory, book or skill behind it.
+ * The chance of a critical hit on an ordinary blow, in 10,000 — what a draw
+ * below 10,000 has to come in under.
  *
- * Two in a hundred to begin with, and **deftness counts only past 150**, a
- * hundredth of a point each — which in 10,000ths is exactly one a point, so
- * nothing is lost keeping it whole. The reference emulator's 200 is this at
- * any deftness up to 150; its 500s are a bonus the function adds, not a level.
+ * The game's `CalculateCritRate` (`src/Combat/Main/CritRateCalculation.cpp` in
+ * the decomp) for one hit with no accessory, book or skill behind it, and then
+ * its caller's `(int)(100.0f × rate)`: two in a hundred to begin with, and
+ * **deftness counts only past 150**, a hundredth of a point each.
+ *
+ * **In the game's floats, because the rounding is part of the answer.** `0.01f`
+ * is not a hundredth and the `int` truncates, so at 151 of the 850 values past
+ * 150 this is one under `200 + (deftness − 150)`: deftness 159 gives 208. The
+ * reference emulator's 200 is this at any deftness up to 150; its 500s are a
+ * bonus the function adds, not a level.
  *
  * The three bonuses and the sharing-out over a move of several hits are in the
- * game's function and not here: nothing the slice plays has one, and they are
- * floats there. `packages/sim/test/game-oracle.ts` has the whole of it.
+ * game's function and not here: nothing the slice plays has one.
+ * `packages/sim/test/game-oracle.ts` has the whole of it.
  */
 export function criticalChance(deftness: number): number {
-  return 200 + Math.max(0, deftness - 150)
+  const f = Math.fround
+  // The `short` the game narrows to before it looks at the sign.
+  const past = Math.max(0, ((deftness - 150) << 16) >> 16)
+  const rate = f(f(2) + f(f(0.01) * f(past)))
+  return Math.trunc(f(f(100) * rate))
 }

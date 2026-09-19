@@ -119,7 +119,15 @@ All gameplay math is fixed-point, matching DS SDK conventions (`fx32` ≈ 1.19.1
 type Fx32 = number & { readonly __fx32: unique symbol };
 ```
 
-Use `Math.imul` for 32-bit multiply and `>>>` for unsigned shift. Never let a float enter a gameplay calculation — it silently breaks RNG reproducibility, and the divergence surfaces months later.
+Use `Math.imul` for 32-bit multiply and `>>>` for unsigned shift. Never let an *unrounded* float enter a gameplay calculation — it silently breaks RNG reproducibility, and the divergence surfaces months later.
+
+**The one exception: arithmetic the game itself does in `float`.** Its battle code computes in 32-bit floats, and a float's rounding changes answers — a draw below 10,000, a critical threshold — so matching the game means matching its floats. That is allowed in `packages/sim/src/battle`, and only like this:
+
+- every operation's result goes through `Math.fround` before it is used again, one operation at a time, in the order the game does them. IEEE-754 single precision is specified to the bit and is the same on every machine, which is what reproducibility needs;
+- only `+ − × ÷`, comparison and truncation. No `Math.sin`, `Math.pow`, `Math.sqrt` or anything else a platform may round its own way;
+- only where the function is translated from the game's own code, cited, and held to `packages/sim/test/game-oracle.ts`. Anything not read from the game stays in whole numbers.
+
+This was decided on 20 September 2026; `docs/conformance.md` has what forced it.
 
 ### No per-frame allocation in hot paths
 
