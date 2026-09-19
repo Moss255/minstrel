@@ -2,10 +2,13 @@ import { readFileSync } from 'node:fs'
 import { ActionEffect, spellsLearnt } from '@minstrel/game-formats'
 import { BattleRng } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
-import { battleSpellOf, foeSpellOf, foeWaysOf } from '../src/battle-scene.ts'
+import { ACTION_SAYS, battleSpellOf, foeSpellOf, foeWaysOf } from '../src/battle-scene.ts'
 import { HERO_VOCATION, HERO_VOCATION_NUMBER, VOCATION_WORDS } from '../src/hero.ts'
 import { type Loaded, load } from '../src/load.ts'
 import { SEED_GAINS, useOn } from '../src/use.ts'
+
+/** `actmsg` 394, the hexagoon's own opening line — see `Action.opening`. */
+const HEXAGOON_RUBBLE = 394
 
 const romPath = process.env.MINSTREL_TEST_ROM
 
@@ -142,12 +145,16 @@ describe.skipIf(!romPath)('spells and items, on a real cartridge', { timeout: 12
       'spell',
       'attack',
     ])
+    // An opening is the game's own message number in `actmsg`, not a word of
+    // ours — see `Action.opening`. The archer opens on 70, `uses <item>`.
     expect(archer.known.get(236)).toMatchObject({
-      opening: 'use',
+      opening: ACTION_SAYS.usesItem,
       spell: { does: 'heal', reach: 'one', amount: { base: 35, spread: 5 } },
     })
+    // The hexagoon's move has a line of its own rather than a shared opening:
+    // 394, `sends rubble raining down`.
     expect(waysOf('b003a').known.get(546)).toMatchObject({
-      opening: 'none',
+      opening: HEXAGOON_RUBBLE,
       spell: { does: 'harm', reach: 'all', amount: { base: 6, spread: 1 } },
     })
   })
@@ -165,12 +172,15 @@ describe.skipIf(!romPath)('spells and items, on a real cartridge', { timeout: 12
     expect(watered.kind === 'mp' && watered.amount).toBeGreaterThanOrEqual(30)
     expect(watered.kind === 'mp' && watered.amount).toBeLessThanOrEqual(36)
     expect(useOn(elixir, vitals, new BattleRng(1n))).toMatchObject({ kind: 'mp', mp: 50 })
+    // An outcome says what the use came to; **how it is announced belongs to
+    // the action**, which is where the battle scene reads it from. So there is
+    // no opening here — and the seed's own is `uses <item>`, not `casts`.
     expect(useOn(seed, vitals, new BattleRng(1n))).toEqual({
       kind: 'gain',
       stat: 'maxHp',
       amount: 3,
       message: 157,
-      opening: 46,
     })
+    expect(seed.opening).toBe(ACTION_SAYS.usesItem)
   })
 })
