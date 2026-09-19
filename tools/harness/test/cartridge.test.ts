@@ -89,7 +89,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 /**
  * Integration tests against a real cartridge.
  *
- * These never run in CI and their inputs are never committed. Point
+ * These are skipped without a dump and their inputs are never committed. Point
  * `MINSTREL_TEST_ROM` at your own dump to run them:
  *
  *   MINSTREL_TEST_ROM=rom/your.nds pnpm test

@@ -185,7 +185,7 @@ worry.
 | **The engine-function tail** | ~100 unread, silently returning 0, discovered one scene at a time | Phase 1 measures and sequences them before content starts |
 | **A system arriving late** | party of four after 600 maps means revisiting 600 maps | Phase 2 is deliberately before Phase 3 |
 | **Conformance never ending** | formula archaeology can absorb unlimited time | Phase 0 is timeboxed by its "done when", not by exhaustiveness |
-| **No CI** | `CLAUDE.md` claims the package boundaries are "enforced in CI"; there is no workflow. A test was committed red on 16 September and stayed red for three days, invisible without a cartridge | Fix before Phase 1. It is a day's work and it is the only claim the repository makes about itself that is untrue |
+| **A red test going unnoticed** | nothing is checked automatically, and the tests that need a cartridge are skipped without one — so a failure can be invisible to everyone but the person holding a dump. Two assertions sat red from 16 to 19 September | Run `pnpm typecheck && pnpm test && pnpm lint` with `MINSTREL_TEST_ROM` set before committing. It is the whole of the defence, so it has to be habit |
 | **Scope creep back to multiplayer** | the excluded thing that would double the sim's constraints | It stays excluded. Revisit only after Phase 5 |
 | **The witness loop** | after Phase 2 the constraint is no longer writing an area but *seeing* that it is right, 74 times, and that cannot be scripted | Phase 1 builds the tooling for it; Phase 3 starts by timing one area end to end so the floor is measured rather than feared |
 

@@ -147,15 +147,16 @@ settled — heard as right at the tempo read, 17 September, with no factor.
 
 ## 6. The repository itself
 
-- **There is no CI.** `CLAUDE.md` says the package boundaries are "enforced in
-  CI" and `CONTRIBUTING.md` refers to what CI runs; no workflow exists, and no
-  script checks the boundaries. Today the gate is `pnpm typecheck && pnpm test`
-  run by hand — 1,169 unit tests, all synthetic, plus 160 gated on
-  `MINSTREL_TEST_ROM` and skipped without a dump. Before a stranger sends a
-  change, that claim wants either a workflow or softer words.
-- **The `nitro-*` boundary rules** (no Node built-ins, no DOM, no
-  title-specific anything) are conventions held by review alone for the same
-  reason.
+- **Nothing is checked automatically.** The gate is `pnpm typecheck && pnpm
+  test && pnpm lint`, run by hand — 1,174 synthetic tests that pass without a
+  cartridge, plus 171 that are skipped without one.
+- **The package boundaries and the `nitro-*` rules** (no Node built-ins, no
+  DOM, no title-specific anything) are therefore held by review alone.
+- **A test can sit red without anyone noticing**, and one did: two assertions
+  in `spells.test.ts` went in on 16 September and failed from that commit
+  until 19 September. They were invisible to anyone without a cartridge,
+  because the tests that need one are skipped. Running the gate before
+  committing is the whole of the defence.
 
 ---
 

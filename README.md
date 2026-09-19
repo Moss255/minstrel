@@ -120,8 +120,8 @@ including the original name bytes of any name that had to be escaped.
 Everything these print or write is derived from your cartridge. `out/` is
 gitignored; keep it that way.
 
-To run the integration tests, point them at your own dump. They are skipped by
-default and never run in CI.
+To run the integration tests, point them at your own dump. They are skipped
+unless you set the variable, so the suite passes without one.
 
 ```sh
 MINSTREL_TEST_ROM=rom/your.nds pnpm test

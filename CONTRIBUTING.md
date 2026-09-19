@@ -34,7 +34,7 @@ different design: generate it at runtime and cache it locally.
 Test fixtures are **synthetic**: build a minimal valid structure in code — a
 NitroFS image with three files, a hand-made sound bank — and test against
 that. Tests that need a real cartridge are gated behind `MINSTREL_TEST_ROM`
-and skipped by default; they never run in CI.
+and skipped by default, so the suite passes for anyone without a dump.
 
 ### 2. Nothing is invented about a format
 

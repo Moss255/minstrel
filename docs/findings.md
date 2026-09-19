@@ -842,7 +842,7 @@ nothing decodes sequence commands, instruments or ADPCM.
 ## Evidence ledger
 
 Every check below runs in `tools/harness/test/cartridge.test.ts` against a real
-dump. They are skipped by default and never run in CI.
+dump. They are skipped unless `MINSTREL_TEST_ROM` is set.
 
 The harness walks the cartridge filesystem and recurses through **both** archive
 kinds — NARC and GPC2 — decompressing as it goes, so it sees the same assets a

@@ -79,7 +79,9 @@ tools/
   inventory/  harness/
 ```
 
-**Enforced in CI:**
+**Rules, not conventions, and nothing checks them for you. They are held by
+review, so a change that crosses one of these lines has to be caught by
+reading it:**
 
 - Parser packages may depend on each other and on nothing else in the repo. They take bytes and return structured data. No engine imports, no DOM, no WebGL.
 - `render` may import from `sim`. **`sim` may never import from `render`.**
@@ -154,7 +156,8 @@ const romPath = process.env.MINSTREL_TEST_ROM;
 describe.skipIf(!romPath)('integration', () => { /* ... */ });
 ```
 
-They never run in CI and their fixtures are never committed.
+They are skipped unless the variable is set, and their fixtures are never
+committed.
 
 ### Every parser package needs
 

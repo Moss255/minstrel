@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Local-only integration tests that run the parsers against a real cartridge. Skipped unless MINSTREL_TEST_ROM is set; never runs in CI.",
+  "description": "Local-only integration tests that run the parsers against a real cartridge. Skipped unless MINSTREL_TEST_ROM is set.",
   "dependencies": {
     "@minstrel/fixed": "workspace:*",
     "@minstrel/game-formats": "workspace:*",
