@@ -29,4 +29,15 @@ describe('settings', () => {
     expect(revealedCharacters('instant', 0, 40)).toBe(40)
     expect(revealedCharacters('fast', 100, 40)).toBe(9)
   })
+
+  it('shows nothing before the page exists, rather than all but a character', () => {
+    // A page raised inside a frame is stamped later than the frame's own
+    // timestamp, so the first reveal is asked about a negative elapsed. Without
+    // the clamp this returned -1, and `slice(0, -1)` flashed the whole page.
+    expect(revealedCharacters('normal', -1, 40)).toBe(0)
+    expect(revealedCharacters('normal', -30, 40)).toBe(0)
+    expect(revealedCharacters('slow', -1000, 40)).toBe(0)
+    // `instant` has no time in it at all, so it stays whole.
+    expect(revealedCharacters('instant', -30, 40)).toBe(40)
+  })
 })

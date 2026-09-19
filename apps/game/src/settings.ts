@@ -54,9 +54,16 @@ export function nextTextSpeed(speed: TextSpeed, by = 1): TextSpeed {
  * How many characters of a page show `elapsedMs` after it came up: the whole
  * of it at `instant`, or the speed's worth. The count is the game's message
  * box's job — ours, in characters rather than the DS's glyphs.
+ *
+ * **Never fewer than none, and that is not a formality.** A page raised inside
+ * a frame is stamped with `performance.now()`, which is later than the frame's
+ * own timestamp, so the first reveal is asked about a time before the page
+ * existed. Unclamped, the count came out at −1, and `text.slice(0, -1)` is the
+ * whole page but its last character: every scene's message flashed out whole
+ * for one frame and then typed itself from the start.
  */
 export function revealedCharacters(speed: TextSpeed, elapsedMs: number, length: number): number {
   const rate = CHARACTERS_PER_SECOND[speed]
   if (!Number.isFinite(rate)) return length
-  return Math.min(length, Math.floor((elapsedMs / 1000) * rate))
+  return Math.max(0, Math.min(length, Math.floor((elapsedMs / 1000) * rate)))
 }
