@@ -138,7 +138,7 @@ import {
   partyAfter,
 } from './companion.ts'
 import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
-import { ControlsPanel, walkHint } from './controls-panel.ts'
+import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
 import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
@@ -383,6 +383,24 @@ const controlsPanel = new ControlsPanel(document.querySelector('#controls') as H
 )
 /** The pad's buttons as of the last frame, so a press fires once — see `pressedActions`. */
 let padButtons: readonly number[] = []
+/**
+ * The camera-turning keys held right now.
+ *
+ * Kept apart from `self.held`, which is the *walk* and belongs to the Hero:
+ * the camera turns whether or not there is a Hero to walk, and it turns while
+ * the menu or a conversation is up, exactly as the right stick does. Held
+ * state rather than a keypress, so it is read once a frame at a rate in
+ * radians a second and does not depend on the browser's repeat.
+ */
+const turning = new Set<Action>()
+
+/** Which way the camera is being turned this frame: −1, 0 or 1. Keys and shoulders together. */
+function turningNow(): number {
+  const held = (action: Action) =>
+    turning.has(action) ||
+    controlsPanel.bindings[action].buttons.some((b) => (padButtons[b] ?? 0) > 0.5)
+  return (held('turnLeft') ? 1 : 0) - (held('turnRight') ? 1 : 0)
+}
 
 /** Play a music track by name and say so — see `music.ts`. */
 async function startMusic(name: string): Promise<void> {
@@ -1254,8 +1272,8 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
       (hiddenPieces > 0 ? ` · ${hiddenPieces} chunks out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
     padSeen
-      ? 'left stick to walk · right stick to look'
-      : `${walkHint(controlsPanel.bindings)} to walk · drag to turn · k for controls`,
+      ? 'left stick to walk · right stick to look · shoulders to turn'
+      : `${walkHint(controlsPanel.bindings)} to walk · ${turnHint(controlsPanel.bindings)} or drag to turn · k for controls`,
     minimapShown ? 'm to show or hide the map' : undefined,
     // With `?pad=1`, what the pad reports — move a stick and watch which
     // numbers change, then pass those four to `?axes=`.
@@ -1382,6 +1400,11 @@ function frame(now = 0): void {
     // The follow camera clamps this to its own range on the same frame.
     camera.pitch += sticks.lookY * TILT_RATE * seconds
   }
+  // `q` and `e`, and the shoulders: the same rate as the stick held over, so
+  // the two ways of turning agree. Outside the block above because a key turns
+  // the camera whether or not a pad is plugged in.
+  const turn = turningNow()
+  if (turn !== 0) camera.yaw += turn * LOOK_RATE * (elapsedMs / 1000)
 
   let uploaded = { vertices: 0, triangles: 0, textured: 0 }
   // The character walks on the world as the fit leaves it — see `refit`.
@@ -4256,7 +4279,17 @@ addEventListener('keydown', (event) => {
   }
   if (key === 'k' && !talking && !menu && !visit && !battle) {
     self?.held.clear()
+    turning.clear()
     controlsPanel.show()
+    event.preventDefault()
+    return
+  }
+  // Turning is held state, read once a frame, and it is taken here rather than
+  // in `onAction` — which returns early for the title card, a battle, the menu
+  // and a conversation, and would swallow it in all four.
+  const turn = actionOfKey(controlsPanel.bindings, key)
+  if (turn === 'turnLeft' || turn === 'turnRight') {
+    turning.add(turn)
     event.preventDefault()
     return
   }
@@ -4514,6 +4547,14 @@ addEventListener('keyup', (event) => {
   const action = actionOfKey(controlsPanel.bindings, event.key.toLowerCase())
   const token = action === undefined ? undefined : MOVE_TOKENS[action]
   if (token) self?.held.delete(token)
+  if (action) turning.delete(action)
+})
+
+// A key held as the window loses focus never sends its `keyup`, and the camera
+// would spin on for ever. The walk has the same trouble and clears with it.
+addEventListener('blur', () => {
+  turning.clear()
+  self?.held.clear()
 })
 
 frame()

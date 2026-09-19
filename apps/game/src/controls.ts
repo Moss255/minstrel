@@ -17,6 +17,8 @@ export const ACTIONS = [
   'right',
   'confirm',
   'cancel',
+  'turnLeft',
+  'turnRight',
   'menu',
   'map',
   'music',
@@ -31,6 +33,8 @@ export const ACTION_LABELS: Readonly<Record<Action, string>> = {
   right: 'Walk right',
   confirm: 'Talk, examine, confirm',
   cancel: 'Back, close',
+  turnLeft: 'Turn the camera left',
+  turnRight: 'Turn the camera right',
   menu: 'Menu',
   map: 'Map on and off',
   music: 'Music on and off',
@@ -48,6 +52,13 @@ export type Bindings = Readonly<Record<Action, Binding>>
  * The defaults: the keys the game has always read, and the standard pad —
  * 12–15 the d-pad, 0 the bottom face button, 1 the right one, 9 start, 8
  * select, 3 the top face button.
+ *
+ * `q` and `e` turn the camera, on 4 and 5, the shoulders. **Ours**, and not
+ * read from the cartridge: the DS had one stick, so whatever turns the camera
+ * there cannot be the right stick this reads, and which buttons it used has
+ * not been checked. What is deliberate here is that the keys do exactly what
+ * the right stick does, at {@link LOOK_RATE}, so holding one is holding the
+ * stick over and the two ways of turning cannot disagree.
  */
 export const DEFAULT_BINDINGS: Bindings = {
   up: { keys: ['w', 'arrowup'], buttons: [12] },
@@ -56,6 +67,8 @@ export const DEFAULT_BINDINGS: Bindings = {
   right: { keys: ['d', 'arrowright'], buttons: [15] },
   confirm: { keys: ['f', 'enter'], buttons: [0] },
   cancel: { keys: ['escape'], buttons: [1] },
+  turnLeft: { keys: ['q'], buttons: [4] },
+  turnRight: { keys: ['e'], buttons: [5] },
   menu: { keys: ['x'], buttons: [9] },
   map: { keys: ['m'], buttons: [8] },
   music: { keys: ['b'], buttons: [3] },

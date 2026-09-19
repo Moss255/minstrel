@@ -214,6 +214,17 @@ export function walkHint(bindings: Bindings): string {
   return four.map((k) => (k === undefined ? '?' : keyLabel(k))).join(' ')
 }
 
+/**
+ * The keys that turn the camera, for the overlay: `Q/E` when they are, else
+ * each key named. Empty when neither is bound, so the hint simply drops it.
+ */
+export function turnHint(bindings: Bindings): string {
+  const left = bindings.turnLeft.keys[0]
+  const right = bindings.turnRight.keys[0]
+  if (left === undefined && right === undefined) return ''
+  return `${left === undefined ? '?' : keyLabel(left)}/${right === undefined ? '?' : keyLabel(right)}`
+}
+
 function read(key: string): string | null {
   try {
     return window.localStorage.getItem(key)
