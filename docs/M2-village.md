@@ -460,6 +460,27 @@ means being unable to climb the steepest slope one is allowed to stand on. Both
 are now above that with margin, and both have a test that walks a slope at
 exactly the limit and requires the character never to leave it.
 
+**The 50 degrees is superseded — 18 September 2026.** It was chosen by eye, and
+it was too strict: the village's one way back up to the Guardian statue is a
+single face at **56.7 degrees**, so the ledge the slice opens on became an
+island, walked down from and never returned to. The limit is now **60 degrees**,
+and this one is read off the cartridge rather than judged. Steepness across all
+1,178 collision meshes — 108,471 faces — falls away smoothly from flat to 60 and
+then stops: the band from 61 to 78 degrees holds about 40 faces, 0.04% of them,
+while 79 to 90 carries the walls, 79% of every face being vertical to the
+degree. The authors sloped ground up to 60 and stood walls from 79 and left the
+middle empty; the limit belongs in that gap. Which end of the gap is set by the
+step height: at 0.05 units a tick a 60-degree face rises 0.087 under the feet,
+and `stepUp` is 0.1, so past about 63 degrees the steepest standable surface
+stops being climbable. `tools/harness/test/angel-falls-path.test.ts` pins both
+the ramp and the gap.
+
+In the village the change is surgical: from the floor it adds the statue ledge
+and nothing else — 1,238 spots reachable to 1,270. What it did cost is the
+reachability half of the doorway-marker test, which turned out to have been
+measuring the sealed walk's start being stranded on that same ledge; the note
+there says so.
+
 The doorway collisions were the first suspect and are not the cause: they are
 two vertical triangles each, but removing them *lowers* reachability, from 24%
 to 17%.

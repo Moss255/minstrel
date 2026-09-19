@@ -314,12 +314,16 @@ function pushOutOfWalls(
  * nowhere. In the slice's village, 12% of the reachable ground.
  *
  * What sets them is the movement rather than the body. Walking at 0.05 units a
- * tick down the steepest surface `maxSlope` allows — 50 degrees, so a gradient
- * of 1.19 — drops the ground **0.06 units under the feet in one tick**. A snap
+ * tick down the steepest surface `maxSlope` allows — 60 degrees, so a gradient
+ * of 1.73 — drops the ground **0.087 units under the feet in one tick**. A snap
  * height below that means the character leaves the ground on every downhill
  * step, and a step height below it means it cannot climb the steepest slope it
  * is allowed to stand on. Both are set above that with margin, which takes the
  * village from 12% reachable to 24%.
+ *
+ * That also caps `maxSlope` from above: past about 63 degrees the ground rises
+ * more than `stepUp` in a tick, and the steepest standable surface stops being
+ * climbable. The two move together or not at all.
  *
  * Gravity does scale with the height, so a fall reads the same however it is
  * revised; at this size it lands on three `fx32` words a tick, quantised at a
@@ -360,8 +364,22 @@ export const PERSON: CharacterShape = {
   // 6,076 at 0.025.
   radius: fx32(Math.round(0.025 * FX32_ONE)),
   stepUp: fx32(Math.round(0.1 * FX32_ONE)),
-  // About 50 degrees from flat.
-  maxSlope: fx32(Math.round(0.64 * FX32_ONE)),
+  // Exactly 60 degrees from flat — and this one is **read off the cartridge's
+  // own collision**, not chosen by eye.
+  //
+  // Across all 1,178 collision meshes, 108,471 faces, steepness falls away
+  // smoothly from flat to 60 degrees and then stops: the whole band from 61 to
+  // 78 degrees holds about 40 faces, 0.04% of them, while 79 to 90 carries the
+  // walls — 79% of every face on the cartridge is vertical to the degree. The
+  // authors sloped ground up to 60 and stood walls from 79, and left the
+  // middle empty. The limit belongs in that gap, and `stepUp` fixes which end
+  // of it: 60 is the steepest a 0.1 step can still climb.
+  //
+  // At 50 degrees, where this sat while it was set by eye, the village's one
+  // way back up to the Guardian statue — a single face at 56.7 degrees — read
+  // as a wall, and the statue's ledge became an island the Hero could drop off
+  // and not climb back to.
+  maxSlope: fx32(Math.round(0.5 * FX32_ONE)),
   gravity: fx32(Math.round(0.0008 * FX32_ONE)),
   terminalSpeed: fx32(Math.round(0.06 * FX32_ONE)),
   snapDown: fx32(Math.round(0.15 * FX32_ONE)),

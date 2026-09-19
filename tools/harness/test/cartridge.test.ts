@@ -3033,8 +3033,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // A map's collision arrives as several meshes, and a few are one quad
     // standing vertically with nothing to stand on. The village has eleven:
     // one across each of its ten doorways, plus a four-by-six quad standing in
-    // the middle of the map. Treated as walls, every doorway is sealed and the
-    // map is cut in half.
+    // the middle of the map. None of them is ground, so none of them belongs in
+    // the world the character walks — which is what this pins.
     const speed = Math.round(0.05 * 4096)
     const reach = (world: ReturnType<typeof createCollisionWorld>) => {
       const cell = Math.round(0.15 * 4096)
@@ -3140,19 +3140,30 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // Ten doorways and one more, every one of them nothing but wall.
     expect(markers).toBe(11)
     expect(standless).toBe(11)
-    // Sealed, a good part of the village cannot be reached from its middle.
-    // Open, nearly all of it can — and no walkable ground is lost with them,
-    // because they held none.
+    // Open, nearly all of the village can be reached from its middle — and no
+    // walkable ground is lost with the markers, because they held none.
     //
     // These were 0.4 and 0.55 while the character's radius was 0.04, which made
     // them 0.22 of their own height wide — about twice a person. At 0.025 they
     // fit past the ends of a marker quad rather than being stopped by it, so
-    // sealing costs less than it did: 0.596 against 0.927. The gap is what the
-    // test is for, and it is still the difference between three fifths of the
-    // village and all but a fourteenth of it.
-    expect(sealed).toBeLessThan(0.65)
+    // sealing cost less than it did: 0.596 against 0.927.
+    //
+    // **The sealed walk no longer measures the markers**, and it is worth
+    // saying why rather than moving the number quietly. The marker quads reach
+    // past the map's own collision, so the sealed world's bounding box has a
+    // different middle from the open one's, and the walk starting nearest that
+    // middle begins up on the Guardian statue's ledge. While `maxSlope` was 50
+    // degrees the one ramp off that ledge — 56.7 degrees — read as a wall, and
+    // 0.596 was mostly the cost of being stranded on it. At 60 degrees the ramp
+    // is ground, the walk comes down off the ledge, and the markers turn out to
+    // seal almost nothing: they stand across doorways whose rooms are separate
+    // maps, so there was little behind them to cut off.
+    //
+    // What still has signal is the pair above — eleven quads, none of them with
+    // anywhere to stand — and that the open map is nearly all reachable. The
+    // ledge has a test of its own in `angel-falls-path.test.ts`.
     expect(open).toBeGreaterThan(0.9)
-    expect(open - sealed).toBeGreaterThan(0.25)
+    expect(sealed).toBeGreaterThan(0.9)
   }, 120_000)
 
   it('does not put a character down in the water', () => {
