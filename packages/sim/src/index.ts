@@ -22,6 +22,7 @@ export {
 } from './battle/battle.ts'
 export {
   criticalBlow,
+  criticalChance,
   criticalDamage,
   drawnAmount,
   initiative,

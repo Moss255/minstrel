@@ -53,9 +53,12 @@ confirm a find, and what to do if the binaries do not give it up.
 
 - **The inn's price.** No string in the binaries names an inn; no table looks
   like prices. `INN_PRICE` is a stand-in.
-- **The Hero's critical chance.** Not a lone constant — the reference sets it
-  by its build, 200 in 10,000 at level 13 and 500 at 15 and 19, so it rises
-  with the hero, deftness most likely. Ours keeps the reference's 200.
+- ~~**The Hero's critical chance.**~~ **Settled 19 September 2026**, from the
+  game's own `CalculateCritRate`: two in a hundred, plus a hundredth of a point
+  for each point of deftness *past 150*, with an accessory's, a book's and a
+  skill's bonus. The reference's 200 is this at any deftness to 150 and its
+  500s are a bonus, not a level. `criticalChance` in the sim; the whole of it
+  in `docs/conformance.md`.
 - **The flee chance.** Ours is 50 in 100; the reference does not model it. The
   words beside the weight tables (1024, 2560, 2048, 1024, and a float 0.2) are
   candidates and tied to nothing.

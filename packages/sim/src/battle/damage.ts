@@ -82,3 +82,21 @@ export function drawnAmount(rng: BattleRng, base: number, spread: number): numbe
 export function criticalDamage(rng: BattleRng, damage: number): number {
   return Number((BigInt(damage) * (3n * (1n << 32n) + BigInt(rng.top32()))) >> 33n)
 }
+
+/**
+ * The chance of a critical hit on an ordinary blow, in 10,000 — the game's
+ * `CalculateCritRate` (`src/Combat/Main/CritRateCalculation.cpp` in the
+ * decomp), for one hit and with no accessory, book or skill behind it.
+ *
+ * Two in a hundred to begin with, and **deftness counts only past 150**, a
+ * hundredth of a point each — which in 10,000ths is exactly one a point, so
+ * nothing is lost keeping it whole. The reference emulator's 200 is this at
+ * any deftness up to 150; its 500s are a bonus the function adds, not a level.
+ *
+ * The three bonuses and the sharing-out over a move of several hits are in the
+ * game's function and not here: nothing the slice plays has one, and they are
+ * floats there. `packages/sim/test/game-oracle.ts` has the whole of it.
+ */
+export function criticalChance(deftness: number): number {
+  return 200 + Math.max(0, deftness - 150)
+}

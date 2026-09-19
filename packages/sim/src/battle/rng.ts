@@ -23,6 +23,20 @@ export class BattleRng {
     this.#state = seed & MASK
   }
 
+  /**
+   * A generator that draws what the game would from the state `state`.
+   *
+   * **The game steps before it draws and this draws before it steps.** Its
+   * `NextRandom` (0x020742c0 in the decomp's `src/Util/Random.cpp`) advances
+   * the state and hands back the new one's top 32 bits; `top32` here hands
+   * back the seed's own top first, as the reference emulator does. The two are
+   * one sequence a step apart, so a state read out of the running game —
+   * `GetRandomStateHi` and `Lo` — has to be stepped once to seed this.
+   */
+  static fromGameState(state: bigint): BattleRng {
+    return new BattleRng(((state & MASK) * MULTIPLIER + INCREMENT) & MASK)
+  }
+
   /** How many numbers have been drawn: the reference's `position`. */
   get drawn(): number {
     return this.#drawn
