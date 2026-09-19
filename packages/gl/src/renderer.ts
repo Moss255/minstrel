@@ -39,10 +39,14 @@ uniform sampler2D uTexture;
 uniform bool uHasTexture;
 uniform bool uWireframe;
 uniform float uOpacity;
+uniform vec3 uTint;
 out vec4 outColor;
 void main() {
   if (uWireframe) { outColor = vec4(vColor * 0.5 + 0.5, 1.0); return; }
-  vec4 base = vec4(vColor, 1.0);
+  // The polygon is drawn in its material's diffuse colour and its texture
+  // modulates that — which is why the round shadow, a white blob on a material
+  // whose diffuse is black, must come out dark rather than pale.
+  vec4 base = vec4(vColor * uTint, 1.0);
   if (uHasTexture) {
     vec4 texel = texture(uTexture, vTexCoord);
     if (texel.a < 0.05) discard;
@@ -90,6 +94,11 @@ export interface Piece {
    */
   readonly cutout?: boolean
   /**
+   * The material's diffuse colour, which this is drawn in and its texture
+   * modulates. White when not given, which leaves the texture as it is.
+   */
+  readonly tint?: readonly [number, number, number]
+  /**
    * How much of it shows, from 0 to 1 — a figure fading in or out. Under 1 it
    * is drawn in the blended pass, see {@link blended}; whole when not given.
    */
@@ -114,7 +123,12 @@ interface Batch {
   readonly opacity: number
   /** Drawn after the opaque pass, over what it lies on — see `Piece.decal`. */
   readonly decal: boolean
+  /** The material's diffuse colour — see `Piece.tint`. */
+  readonly tint: readonly [number, number, number]
 }
+
+/** An untinted polygon: the texture as it is. */
+const WHITE: readonly [number, number, number] = [1, 1, 1]
 
 function multiply(a: Float32Array, b: Float32Array, out: Float32Array): Float32Array {
   for (let col = 0; col < 4; col++) {
@@ -140,6 +154,7 @@ export class ModelRenderer {
   private readonly uHasTexture: WebGLUniformLocation
   private readonly uTextureSize: WebGLUniformLocation
   private readonly uOpacity: WebGLUniformLocation
+  private readonly uTint: WebGLUniformLocation
   private batches: Batch[] = []
   /** Textures by the pixel array they were uploaded from, kept across frames. */
   private cache = new Map<Uint8Array, WebGLTexture>()
@@ -178,7 +193,8 @@ export class ModelRenderer {
     const uHasTexture = gl.getUniformLocation(program, 'uHasTexture')
     const uTextureSize = gl.getUniformLocation(program, 'uTextureSize')
     const uOpacity = gl.getUniformLocation(program, 'uOpacity')
-    if (!uMvp || !uWireframe || !uHasTexture || !uTextureSize || !uOpacity) {
+    const uTint = gl.getUniformLocation(program, 'uTint')
+    if (!uMvp || !uWireframe || !uHasTexture || !uTextureSize || !uOpacity || !uTint) {
       throw new Error('shader uniforms missing')
     }
     this.uMvp = uMvp
@@ -186,6 +202,7 @@ export class ModelRenderer {
     this.uHasTexture = uHasTexture
     this.uTextureSize = uTextureSize
     this.uOpacity = uOpacity
+    this.uTint = uTint
 
     const vao = gl.createVertexArray()
     const positionBuffer = gl.createBuffer()
@@ -308,6 +325,7 @@ export class ModelRenderer {
         blend: blended(opacity, seeThrough && texture !== null),
         opacity,
         decal: piece.decal === true,
+        tint: piece.tint ?? WHITE,
       })
     }
 
@@ -377,6 +395,7 @@ export class ModelRenderer {
       gl.uniform1i(this.uHasTexture, batch.texture && !wireframe ? 1 : 0)
       gl.uniform2f(this.uTextureSize, batch.width, batch.height)
       gl.uniform1f(this.uOpacity, batch.opacity)
+      gl.uniform3f(this.uTint, batch.tint[0], batch.tint[1], batch.tint[2])
       if (batch.texture) {
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, batch.texture)

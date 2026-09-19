@@ -65,6 +65,32 @@ export interface ModelMaterial {
   readonly texture: string | undefined
   /** The palette this material binds, read the same way. */
   readonly palette: string | undefined
+  /**
+   * The material's diffuse colour, each channel 0 to 1.
+   *
+   * From the `diffAmb` word at `+0x08` of the material record, `BGR555` in its
+   * low fifteen bits. **The polygon is drawn in this colour, modulated by its
+   * texture**, which is why a white texture can come out black: the round
+   * shadow under a character is a white blob whose material's diffuse is
+   * `(0, 0, 0)`.
+   *
+   * The offset is settled against the cartridge rather than assumed. Across
+   * **47,953 materials** the low fifteen bits read `0x7FFF`, pure white, on
+   * 47,871; eight are black and 74 are some other colour. Shifted four bytes
+   * either way it collapses: `+4` is `specEmi`, zero on 47,919, and `+8` is
+   * `polygonAttr`, never a plausible colour on any of them.
+   */
+  readonly diffuse: readonly [number, number, number]
+  /**
+   * Bit 15 of `diffAmb`: the hardware takes the vertex colour from the diffuse
+   * rather than from the display list.
+   *
+   * **Set on all 47,953 materials on the cartridge**, so in practice the
+   * diffuse always wins and a renderer may simply modulate by it. Carried
+   * rather than assumed, because that is a fact about this cartridge and not
+   * about the format.
+   */
+  readonly setVertexColour: boolean
 }
 
 /** One drawable piece of a model: a named display list. */
@@ -322,6 +348,29 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
   const materialTextures = bind(textureNameDict, 'texture')
   const materialPalettes = bind(paletteNameDict, 'palette')
 
+  /**
+   * A material's own record: its `diffAmb` word, and the diffuse colour in it.
+   *
+   * The dictionary entry is a `u32` offset, and the record begins **four bytes
+   * before** where that offset lands — see {@link ModelMaterial.diffuse} for
+   * what settles it. A record that will not fit is left at white, which is what
+   * an unmodulated polygon already is.
+   */
+  const WHITE: readonly [number, number, number] = [1, 1, 1]
+  const colourOf = (entry: {
+    data: Uint8Array
+  }): { diffuse: readonly [number, number, number]; setVertexColour: boolean } => {
+    if (entry.data.length < 4) return { diffuse: WHITE, setVertexColour: false }
+    const at = materialOffset + u32(entry.data, 0, 'material record offset') - 4 + 8
+    if (at < 0 || at + 4 > model.length) return { diffuse: WHITE, setVertexColour: false }
+    const word = u32(model, at, 'material diffAmb')
+    const bgr = word & 0x7fff
+    return {
+      diffuse: [(bgr & 31) / 31, ((bgr >> 5) & 31) / 31, ((bgr >> 10) & 31) / 31],
+      setVertexColour: ((word >>> 15) & 1) === 1,
+    }
+  }
+
   const shapeDict = readDict(model, shapeOffset, `model '${name}' shapes`)
 
   const shapes: ModelShape[] = shapeDict.entries.map((entry, index) => {
@@ -424,6 +473,7 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
       index,
       texture: materialTextures[index],
       palette: materialPalettes[index],
+      ...colourOf(e),
     })),
     textureNames: textureNameDict.entries.map((e) => e.name),
     paletteNames: paletteNameDict.entries.map((e) => e.name),

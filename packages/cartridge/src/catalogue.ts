@@ -62,6 +62,14 @@ export interface DecodedTexture {
   readonly pixels: Uint8Array
   readonly width: number
   readonly height: number
+  /**
+   * The material's diffuse colour, which the polygon is drawn in and its
+   * texture modulates — see `ModelMaterial.diffuse`. White on all but 82 of
+   * the cartridge's 47,953 materials, so it usually changes nothing; the
+   * round shadow under a character is one of the eight that are black, and
+   * without it that shadow draws as a white disc.
+   */
+  readonly tint: readonly [number, number, number]
 }
 
 /**
@@ -159,7 +167,12 @@ export function textureFor(
       (material.palette === undefined ? undefined : found.set.palette(material.palette)) ??
       found.set.palette(`${info.name}_pl`) ??
       found.set.palettes[info.index]
-    return { pixels: found.set.decode(info, palette), width: info.width, height: info.height }
+    return {
+      pixels: found.set.decode(info, palette),
+      width: info.width,
+      height: info.height,
+      tint: material.diffuse,
+    }
   } catch {
     return undefined
   }

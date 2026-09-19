@@ -16,6 +16,12 @@ export interface FixtureModel {
   name: string
   objects?: string[]
   materials?: string[]
+  /**
+   * Each material's `diffAmb` word — `BGR555` diffuse in the low fifteen bits,
+   * bit 15 taking the vertex colour from it. Defaults to white with the bit
+   * set, which is what the cartridge's own materials carry.
+   */
+  materialDiffAmb?: number[]
   shapes?: FixtureShape[]
   /** fx32 position scale; defaults to 1.0. */
   upScale?: number
@@ -125,7 +131,7 @@ function buildModelBody(model: FixtureModel): Uint8Array {
   const materialDict = new Writer()
   writeDict(
     materialDict,
-    materials.map((name, i) => ({ name: `Mat_${name}_`, data: u32le(i) })),
+    materials.map((name) => ({ name: `Mat_${name}_`, data: u32le(0) })),
     4,
   )
   const textureDict = new Writer()
@@ -142,11 +148,35 @@ function buildModelBody(model: FixtureModel): Uint8Array {
   )
   const textureDictOffset = 4 + materialDict.length
   const paletteDictOffset = textureDictOffset + textureDict.length
+
+  // Each material's own 0x30-byte record, after the three dictionaries. The
+  // dictionary entry points four bytes past the record's start — see
+  // `ModelMaterial.diffuse`, where that is settled against the cartridge. The
+  // dictionary's own length does not depend on what the entries hold, so it is
+  // measured first and then written again with the real offsets.
+  const recordsAt = 4 + materialDict.length + textureDict.length + paletteDict.length
+  const placed = new Writer()
+  writeDict(
+    placed,
+    materials.map((name, i) => ({
+      name: `Mat_${name}_`,
+      data: u32le(recordsAt + i * 0x30 + 4),
+    })),
+    4,
+  )
+  const records = new Writer()
+  for (const [i] of materials.entries()) {
+    const diffAmb = model.materialDiffAmb?.[i] ?? 0x7fff | 0x8000
+    records.u32(0).u32(0x2c).u32(diffAmb)
+    while (records.length < (i + 1) * 0x30) records.u32(0)
+  }
+
   const materialSection = new Writer()
   materialSection.u16(textureDictOffset).u16(paletteDictOffset)
-  materialSection.raw(materialDict.bytes)
+  materialSection.raw(placed.bytes)
   materialSection.raw(textureDict.bytes)
   materialSection.raw(paletteDict.bytes)
+  materialSection.raw(records.bytes)
 
   const shapeOffset = align4(materialOffset + materialSection.length)
 

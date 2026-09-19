@@ -149,3 +149,28 @@ describe('readDict', () => {
     expect(() => readDict(new Uint8Array(6), 0)).toThrow(NitroGfxError)
   })
 })
+
+describe("a material's colour", () => {
+  it('reads the diffuse out of its own record, and the vertex-colour bit', () => {
+    // Black with bit 15 set, which is what the round shadow's material carries.
+    const black = buildNsbmd([{ name: 'm', materials: ['a'], materialDiffAmb: [0x8000] }])
+    const one = readNsbmd(black).models[0]?.materials[0]
+    expect(one?.diffuse).toEqual([0, 0, 0])
+    expect(one?.setVertexColour).toBe(true)
+
+    // White, the default, and what all but 82 of the cartridge's carry.
+    const white = readNsbmd(buildNsbmd([{ name: 'm', materials: ['a'] }]))
+    expect(white.models[0]?.materials[0]?.diffuse).toEqual([1, 1, 1])
+
+    // A colour in between, channel by channel: BGR555, red 31 green 0 blue 15.
+    const mixed = buildNsbmd([
+      { name: 'm', materials: ['a'], materialDiffAmb: [(15 << 10) | (0 << 5) | 31] },
+    ])
+    const rgb = readNsbmd(mixed).models[0]?.materials[0]?.diffuse
+    expect(rgb?.[0]).toBeCloseTo(1, 5)
+    expect(rgb?.[1]).toBeCloseTo(0, 5)
+    expect(rgb?.[2]).toBeCloseTo(15 / 31, 5)
+    // Bit 15 clear this time.
+    expect(readNsbmd(mixed).models[0]?.materials[0]?.setVertexColour).toBe(false)
+  })
+})
