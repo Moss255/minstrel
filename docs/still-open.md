@@ -59,9 +59,10 @@ confirm a find, and what to do if the binaries do not give it up.
   skill's bonus. The reference's 200 is this at any deftness to 150 and its
   500s are a bonus, not a level. `criticalChance` in the sim; the whole of it
   in `docs/conformance.md`.
-- **The flee chance.** Ours is 50 in 100; the reference does not model it. The
-  words beside the weight tables (1024, 2560, 2048, 1024, and a float 0.2) are
-  candidates and tied to nothing.
+- **The flee chance.** Ours is 50 in 100; the reference does not model it.
+  **Looked for on 19 September and not found** — `docs/conformance.md` says
+  where it is not. The words beside the weight tables, long the candidates,
+  are heap sizes handed to `SafeAllocator::Allocate`.
 - **How a monster weights its six ways**, and **which monsters draw by the
   third and fourth weight tables** — the four tables are read from the ARM9,
   and only the boss bit chooses between the first two.

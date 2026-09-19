@@ -24,6 +24,9 @@ Nothing here is copied into the repository; each is read at runtime.
 
 ## Looked at and not identified
 
+- **`1024, 2560, 2048, 1024` are heap sizes, not chances** — settled 19
+  September: `func_0208b8c4` hands each to `SafeAllocator::Allocate`. The rest
+  of this entry stands.
 - **Beside the weight tables**, ARM9 `0xE8C60`–`0xE8D40`: before them, sixteen
   words from `0x0E35` to `0x1051` — 12-bit fixed-point multipliers near 1,
   0.89 to 1.02, perhaps — then `02 03`; after them `03 01 04 02 02 03 01 00`,

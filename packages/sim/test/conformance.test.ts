@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { BattleRng, criticalChance, physicalDamage } from '../src/index.ts'
 import {
+  AMBUSH_FOLLOWER_ACTS_BELOW,
+  ambushFollowerActs,
   buffMultiplier,
   calculateCritRate,
+  calculateMonsterCritRate,
   calculatePhysicalDamage,
   calculateTensionBonus,
+  criticalThreshold,
   GameRandom,
+  rollsCritical,
   roundUp,
 } from './game-oracle.ts'
 
@@ -159,10 +164,51 @@ describe('the critical chance', () => {
     expect(criticalChance(999)).toBe(1049)
   })
 
-  it('is the game’s percentage, in 10,000ths, at every deftness', () => {
-    for (let deftness = 0; deftness <= 999; deftness++) {
-      expect(criticalChance(deftness)).toBe(Math.round(calculateCritRate(deftness) * 100))
+  it('is the game’s threshold at every deftness to 150, which is all the slice reaches', () => {
+    for (let deftness = 0; deftness <= 150; deftness++) {
+      expect(criticalChance(deftness)).toBe(criticalThreshold(calculateCritRate(deftness)))
     }
+    expect(criticalThreshold(calculateCritRate(0))).toBe(200)
+  })
+
+  it('is one too high at 151 of the 850 values past 150, and these are they', () => {
+    // The game multiplies the percentage by 100 **as a float** and truncates,
+    // and `0.01f` is not a hundredth, so its threshold comes out one under
+    // `200 + (deftness − 150)` about one value in six. The same question as
+    // the draw below 10,000 — see `docs/conformance.md` — and far commoner.
+    // **Not closed**, and pinned from both sides until it is decided.
+    const high: number[] = []
+    for (let deftness = 151; deftness <= 999; deftness++) {
+      const game = criticalThreshold(calculateCritRate(deftness))
+      const ours = criticalChance(deftness)
+      if (ours !== game) {
+        expect(ours - game).toBe(1)
+        high.push(deftness)
+      }
+    }
+    expect(high.length).toBe(151)
+    expect(high.slice(0, 5)).toEqual([159, 160, 161, 162, 184])
+  })
+
+  it('meets one draw below 10,000, and spends it whether or not it lands', () => {
+    const random = new GameRandom(42n)
+    let landed = 0
+    const rolls = 200_000
+    for (let i = 0; i < rolls; i++) if (rollsCritical(random, 2)) landed++
+    expect(random.drawn).toBe(rolls)
+    // Two in a hundred, give or take.
+    expect(landed / rolls).toBeGreaterThan(0.018)
+    expect(landed / rolls).toBeLessThan(0.022)
+  })
+
+  it('is nothing for a monster, whatever its skill says', () => {
+    // The base is a literal zero in the game's own function.
+    for (const skill of [0, 0.5, 1, 1.27]) {
+      for (const hits of [1, 2, 3]) expect(calculateMonsterCritRate(skill, hits)).toBe(0)
+    }
+    const random = new GameRandom(7n)
+    for (let i = 0; i < 10_000; i++)
+      expect(rollsCritical(random, calculateMonsterCritRate(1))).toBe(false)
   })
 
   it('shares out over a move of several hits, and takes its bonuses as the game does', () => {
@@ -175,6 +221,16 @@ describe('the critical chance', () => {
 })
 
 describe('what is read and not yet in the simulation', () => {
+  it('lets each monster after the first act in an ambush two times in three', () => {
+    expect(AMBUSH_FOLLOWER_ACTS_BELOW).toBe(67)
+    const random = new GameRandom(3n)
+    let acted = 0
+    const rounds = 200_000
+    for (let i = 0; i < rounds; i++) if (ambushFollowerActs(random)) acted++
+    expect(acted / rounds).toBeGreaterThan(0.66)
+    expect(acted / rounds).toBeLessThan(0.68)
+  })
+
   it('tension grows with the level, ten levels at a time', () => {
     // The level is divided by ten as a whole number first.
     expect(calculateTensionBonus(5, 9)).toBe(5)

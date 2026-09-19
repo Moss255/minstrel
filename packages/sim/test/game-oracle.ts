@@ -145,3 +145,56 @@ export const buffMultiplier = {
   /** Magical might and mending alike: half a level, either way. */
   magic: (level: number): number => f(1 + f(0.5 * level)),
 }
+
+/**
+ * Whether a blow is a critical — `func_ov000_02156cc4`, overlay 0, the one
+ * caller `CalculateCritRate` has.
+ *
+ * The percentage is multiplied by 100 **as a float**, truncated by `_ffix`,
+ * and a draw below 10,000 has to come in under it:
+ *
+ *     NextRandomMax(random, 10000) < (int)(100.0f * rate)
+ *
+ * The truncation matters, because `0.01f` is not a hundredth: at 151 of the
+ * 850 deftness values past 150 the threshold comes out one lower than
+ * `200 + (deftness − 150)`.
+ */
+export function criticalThreshold(ratePercent: number): number {
+  return Math.trunc(f(f(100) * f(ratePercent)))
+}
+
+/** The roll itself: one draw, whatever the outcome. */
+export function rollsCritical(random: GameRandom, ratePercent: number): boolean {
+  return random.max(10_000) < criticalThreshold(ratePercent)
+}
+
+/**
+ * A monster's critical rate — `func_020748f8`, which overlay 0 calls instead
+ * of `CalculateCritRate` for a combatant that is not one of the party's four.
+ *
+ * `(1 / hits) × (0.0 × skill)`: the base is a literal zero, so **a monster's
+ * rate is nothing whatever its skill says**, and it never criticals through
+ * this roll. The draw is still spent.
+ */
+export function calculateMonsterCritRate(skillBonus: number, hitCount = 1): number {
+  return f(f(f(1) / f(hitCount)) * f(f(0) * f(skillBonus)))
+}
+
+/**
+ * The party's rate doubles — `× 2.0f` — when the character has trait `0x11d`
+ * and `func_ov000_02155a04` of them is under `0.25f`. What the trait is and
+ * what the quarter is a quarter *of* are not read; a quarter of the HP left is
+ * the obvious guess and is only that.
+ */
+export const CRITICAL_DOUBLING = { trait: 0x11d, below: 0.25, times: 2 } as const
+
+/**
+ * The surprise round — in `ProcessCombatTurn`, overlay 0. `[battle + 0xe49]`
+ * says how the fight opened: at 1 the monsters sit the first round out; at 2
+ * the party does, the first monster always acts, and **each monster after it
+ * acts only on a draw below 100 coming in under 67**.
+ */
+export const AMBUSH_FOLLOWER_ACTS_BELOW = 67
+export function ambushFollowerActs(random: GameRandom): boolean {
+  return random.max(100) < AMBUSH_FOLLOWER_ACTS_BELOW
+}
