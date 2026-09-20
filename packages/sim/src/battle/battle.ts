@@ -36,9 +36,14 @@ import {
  *   and Deceleratle 75 in 100, Sweet Breath's sleep 25, its poison attack's 12;
  *   a sleeper losing its turns, and unable to defend.
  *
+ * **The order of a blow's draws is the game's**, read from its code: the
+ * critical roll, the dodge, the block, the accuracy and then the damage, each
+ * spent whether or not it can come to anything — a monster's critical draw, the
+ * damage of a blow that was dodged. `docs/conformance.md` has the reading.
+ *
  * **Ours, and said so:**
- * - the order the numbers are drawn in, which is not the game's: the reference
- *   also steps past draws that do nothing here;
+ * - the order of every draw that is *not* a plain blow's — a spell's, an
+ *   item's, a change of state's — which is still not the game's;
  * - a round of more than two fighters, which the reference, one against one,
  *   does not have: everyone is ordered by the same draw;
  * - a monster's target, a draw among the living party;
@@ -79,6 +84,19 @@ export interface Fighter {
   readonly agility: number
   /** Whether a shield stands between this fighter and a monster's blow. */
   readonly shield: boolean
+  /**
+   * Its chance of dodging a blow, in a hundred, where it is not the rules'.
+   * A monster's is by a grade in its record — 0, 2, 4, 8 or 25, the game's
+   * table — and none when not given; one of the party's is {@link Rules.dodge}.
+   */
+  readonly evade?: number
+  /**
+   * Its chance of blocking, in a hundred. The game's is the shield's own
+   * chance and a skill's bonus for one of the party, and a grade's for a
+   * monster; the shield's is not read from the item table yet, so without this
+   * a shield blocks once in a hundred, which is the reference's.
+   */
+  readonly block?: number
   /** What beating this fighter is worth, when it is a foe. */
   readonly exp: number
   readonly gold: number
@@ -240,7 +258,7 @@ export interface BattleState {
 export interface Rules {
   /** The party's critical-hit chance, in 10,000 — the reference's level-13 case. */
   readonly critical: number
-  /** A monster's blow dodged, in 100 — the reference's. */
+  /** One of the party dodging a blow, in 100 — the game's own two, `func_ov000_02156270`. */
   readonly dodge: number
   /** Fleeing, in 100 — ours: the reference does not model it. */
   readonly flee: number
@@ -260,6 +278,16 @@ export const DEFAULT_RULES: Rules = {
   flee: 50,
   magicCritical: 100,
   choice: [43, 42, 43, 43, 42, 43],
+}
+
+/** A target's chance of dodging, in a hundred — the game's `func_ov000_02156270`, without its bonuses and statuses. */
+function evadeOf(target: Fighter, rules: Rules): number {
+  return target.evade ?? (target.side === 'party' ? rules.dodge : 0)
+}
+
+/** A target's chance of blocking, in a hundred — the game's `func_ov000_02156118`, likewise. */
+function blockOf(target: Fighter): number {
+  return target.block ?? (target.shield ? 1 : 0)
 }
 
 export function startBattle(fighters: readonly Fighter[], canFlee = true): BattleState {
@@ -621,53 +649,63 @@ export function playRound(
           : (others[0] as number)
     const them = fighters[target] as FighterState
 
-    if (me.side === 'party') {
-      const critical = rng.below(10_000) < rules.critical
-      const damage = critical
-        ? criticalBlow(rng, me.attack)
-        : physicalDamage(rng, me.attack, defenceOf(them))
-      events.push({
-        kind: 'attack',
-        actor,
-        target,
-        damage,
-        critical,
-        dodged: false,
-        blocked: false,
-      })
-      hurt(target, damage)
-    } else {
-      const dodged = rng.below(100) < rules.dodge
-      const blocked = !dodged && them.shield && rng.below(100) === 0
-      let damage = 0
-      if (!dodged && !blocked) {
-        damage = physicalDamage(rng, me.attack, defenceOf(them))
-        if (damage === 0) {
-          damage = rng.below(2)
-        } else if (them.defending) {
-          damage = Math.trunc(damage / 2)
-        }
-      }
-      // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
-      const poisoned =
-        !dodged &&
-        !blocked &&
-        command.poison !== undefined &&
-        !them.states.poisoned &&
-        rng.below(100) < command.poison
-      if (poisoned) setStates(target, { poisoned: true })
-      events.push({
-        kind: 'attack',
-        actor,
-        target,
-        damage,
-        critical: false,
-        dodged,
-        blocked,
-        ...(poisoned ? { poisoned: true } : {}),
-      })
-      hurt(target, damage)
+    // **The game's order of a blow's draws** — `func_ov024_021eb5d0`, read from
+    // the decomp; `docs/conformance.md`, "The resolver of a blow". Each is made
+    // whether or not it can come to anything, which is the point: a battle
+    // replays from a seed only if every draw is spent where the game spends it.
+    //
+    // 1. The critical roll, always. A monster's rate is nothing and its draw is
+    //    spent all the same.
+    const critical = rng.below(10_000) < (me.side === 'party' ? rules.critical : 0)
+    // 2. The dodge, its rate truncated. The plain attack can be dodged.
+    const dodged = rng.below(100) < Math.trunc(evadeOf(them, rules))
+    // 3. The block — not rolled for a blow already dodged — the draw as a float
+    //    under the rate, untruncated. The plain attack can be blocked.
+    const blocked = !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
+    // 4. The accuracy: a draw below 100 made before anything is compared. The
+    //    plain attack's accuracy stands at a hundred, so it lands every time —
+    //    and spends this. (Sight spoilt, which would miss it five times in
+    //    eight, is not modelled.)
+    rng.below(100)
+    // 5. The damage, worked out **even for a blow that was dodged or blocked**:
+    //    the game calls `GetAttackBaseDamage` whenever the blow lands, and the
+    //    dodge and the block ride along as flags.
+    let damage = physicalDamage(rng, me.attack, defenceOf(them))
+    if (critical) {
+      // **The one joint here that is not read.** What a critical does to the
+      // damage is inside one of 67 handlers the game picks by the action
+      // (`func_ov024_021da55c`). This is the reference's — the attacker's
+      // attack power times 0.95 to 1.05 — drawn after the damage the game is
+      // known to have worked out first. INFERRED that the two are in this order.
+      damage = criticalBlow(rng, me.attack)
     }
+    if (dodged || blocked) {
+      damage = 0
+    } else if (me.side === 'foes' && !critical) {
+      // The reference's: a monster's blow that deals nothing deals 0 or 1, and
+      // defending halves one that deals something.
+      if (damage === 0) damage = rng.below(2)
+      else if (them.defending) damage = Math.trunc(damage / 2)
+    }
+    // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
+    const poisoned =
+      !dodged &&
+      !blocked &&
+      command.poison !== undefined &&
+      !them.states.poisoned &&
+      rng.below(100) < command.poison
+    if (poisoned) setStates(target, { poisoned: true })
+    events.push({
+      kind: 'attack',
+      actor,
+      target,
+      damage,
+      critical: critical && !dodged && !blocked,
+      dodged,
+      blocked,
+      ...(poisoned ? { poisoned: true } : {}),
+    })
+    hurt(target, damage)
     outcome = outcomeOf(fighters)
     if (outcome !== 'ongoing') break
   }

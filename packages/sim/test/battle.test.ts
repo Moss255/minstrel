@@ -452,3 +452,78 @@ describe('a battle', () => {
     })
   })
 })
+
+describe('the order a blow’s draws are made in — the game’s', () => {
+  // One round, the Hero defending, so the only blow is the monster's. The
+  // monster hits hard enough that its damage is never nothing, which would
+  // spend a draw of its own.
+  const defend = new Map<number, Command>([[0, { kind: 'defend' }]])
+  const drawsIn = (heroIs: Partial<Fighter>, rules = DEFAULT_RULES) => {
+    const rng = new BattleRng(2024n)
+    const played = playRound(
+      startBattle([{ ...hero, maxHp: 500, ...heroIs }, blob('Brute', 50, 60)]),
+      defend,
+      rng,
+      rules,
+    )
+    const blow = played.events.find((e) => e.kind === 'attack')
+    return { drawn: rng.drawn, blow }
+  }
+
+  it('skips only the block for a blow that is dodged — the damage is still worked out', () => {
+    const lands = drawsIn({ evade: 0 })
+    const dodged = drawsIn({ evade: 100 })
+    expect(dodged.blow).toMatchObject({ dodged: true, damage: 0 })
+    expect(lands.blow).toMatchObject({ dodged: false })
+    // Critical, dodge, block, accuracy, damage — against the same less the block.
+    expect(lands.drawn - dodged.drawn).toBe(1)
+  })
+
+  it('rolls the block whether or not there is anything to block with', () => {
+    // The game makes the draw for every blow that can be blocked; a rate of
+    // nothing simply never comes in under it.
+    expect(drawsIn({ shield: false }).drawn).toBe(drawsIn({ shield: true }).drawn)
+    const blocked = drawsIn({ block: 100 })
+    expect(blocked.blow).toMatchObject({ blocked: true, dodged: false, damage: 0 })
+    expect(blocked.drawn).toBe(drawsIn({ block: 0 }).drawn)
+  })
+
+  it('spends a critical draw on a monster’s blow, which never lands one', () => {
+    // Every blow of the party's a critical, by the rules; the monster's still not.
+    const always = { ...DEFAULT_RULES, critical: 10_000 }
+    expect(drawsIn({}, always).blow).toMatchObject({ critical: false })
+    // And the draw is spent either way: the rules' chance moves nothing.
+    expect(drawsIn({}, always).drawn).toBe(drawsIn({}).drawn)
+    expect(drawsIn({}, always).blow).toEqual(drawsIn({}).blow)
+  })
+
+  it('never calls a dodged or blocked blow a critical', () => {
+    const always = { ...DEFAULT_RULES, critical: 10_000 }
+    const attack = new Map<number, Command>([[0, { kind: 'attack', target: 1 }]])
+    const played = playRound(
+      startBattle([hero, { ...blob('Wisp', 50), evade: 100 }]),
+      attack,
+      new BattleRng(5n),
+      always,
+    )
+    const mine = played.events.find((e) => e.kind === 'attack' && e.actor === 0)
+    expect(mine).toMatchObject({ dodged: true, critical: false, damage: 0 })
+  })
+
+  it('lets a monster dodge by its own chance, where it had none', () => {
+    const attack = new Map<number, Command>([[0, { kind: 'attack', target: 1 }]])
+    let dodges = 0
+    const rounds = 4000
+    const rng = new BattleRng(99n)
+    for (let i = 0; i < rounds; i++) {
+      const played = playRound(
+        startBattle([hero, { ...blob('Nimble', 5000), evade: 25, attack: 1 }]),
+        attack,
+        rng,
+      )
+      if (played.events.some((e) => e.kind === 'attack' && e.actor === 0 && e.dodged)) dodges++
+    }
+    expect(dodges / rounds).toBeGreaterThan(0.22)
+    expect(dodges / rounds).toBeLessThan(0.28)
+  })
+})

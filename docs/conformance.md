@@ -146,6 +146,41 @@ lands on the first draw coming in under the accuracy, truncated.
 of the critical roll for actions `0x48` and `0x70`, read as the all-or-nothing
 blows before their names were: they are **Thunder Thrust** and **Hatchet Man**.
 
+**How the four rolls are gated**, from the stretch between them:
+
+```
+evaded = the evasion roll                 always called
+if (!evaded) blocked = the block roll     skipped for a blow already dodged
+lands = the accuracy roll                 ALWAYS called, dodged or not
+if (lands) damage = GetAttackBaseDamage   even for a blow dodged or blocked
+```
+
+The dodge and the block ride along as flags in the result; the damage is worked
+out regardless, and its draws are spent.
+
+**The simulation makes a plain blow's draws in this order since 20 September.**
+A monster's blow spends its critical draw; the block is rolled whether or not
+there is a shield; a dodged blow still spends its accuracy and its damage.
+`battle.test.ts` pins it by difference — a dodged blow spends exactly one draw
+fewer than one that lands, the block's.
+
+**The one joint in it that is not read** is what a critical does to the
+damage. `func_ov024_021da55c`, called straight after the base damage, is a
+dispatch through a table of **67 member-function pointers** at USA
+`0x021ff1e0`, picked by nine bits of the action's record (`+0x18`, bits 18–26):
+one damage handler for each kind of action. The critical is inside those. The
+simulation's is still the reference's — the attacker's attack times 0.95 to
+1.05, one draw — made *after* the base damage the game is known to work out
+first. That the two come in that order is INFERRED.
+
+**A target's chance of blocking** — `func_ov000_02156118`. One of the party:
+nothing without a shield, and with one **nothing plus the equipment's own
+chance plus a skill's bonus** — the base is zero and the chance is the
+shield's. That is not read from the item table yet, so the simulation's shield
+still blocks once in a hundred, the reference's. A monster: a second grade in
+its record, bits 16–18, through the same table as its dodge. Doubled under one
+status.
+
 **A target's chance of dodging** — `func_ov000_02156270`. One of the party:
 **two in a hundred**, which is the simulation's `dodge: 2` and is now the
 game's rather than the reference's, plus an accessory's and a skill's bonus. A
@@ -171,10 +206,13 @@ now in `readActions`:
 
 ## Still to read, in the order it is wanted
 
-- **make the simulation's draws in the game's order**: critical, dodge, block,
-  accuracy, damage, each gated by the action's own flags. All five are read
-  now. It moves every pinned battle, so it wants doing in one piece;
-- the block rate, `func_ov000_02156118`, which that needs;
+- **the 67 damage handlers** behind `func_ov024_021da55c` — the plain attack's
+  first, for what a critical does to the damage, which is the one joint in a
+  blow's order still the reference's;
+- a shield's own chance of blocking, in the item table, which the block rate
+  is made of;
+- the order of the draws that are *not* a plain blow's: a spell's, an item's, a
+  change of state's;
 - the party's flee chance, by way of how the command is numbered;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;
 - the spell and healing amounts — `drawnAmount`, `criticalDamage` and
