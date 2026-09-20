@@ -16,6 +16,7 @@ import {
   rollsBlock,
   rollsCritical,
   rollsEvade,
+  rollsLands,
   roundUp,
 } from './game-oracle.ts'
 
@@ -271,7 +272,7 @@ describe('what is read and not yet in the simulation', () => {
   })
 
   it('rolls a blow’s critical first, then the dodge, then the block, then the damage', () => {
-    expect(BLOW_ORDER).toEqual(['critical', 'evade', 'block', 'unread', 'damage'])
+    expect(BLOW_ORDER).toEqual(['critical', 'evade', 'block', 'accuracy', 'damage'])
   })
 
   it('lets one of the party dodge two times in a hundred, which is the simulation’s own', () => {
@@ -313,5 +314,37 @@ describe('what is read and not yet in the simulation', () => {
     expect(rollsEvade(new Fixed(1), true, 2.9)).toBe(true)
     expect(rollsBlock(new Fixed(0), true, 0.5)).toBe(true)
     expect(rollsBlock(new Fixed(1), true, 0.5)).toBe(false)
+  })
+
+  it('lands the plain attack every time, and spends a draw finding that out', () => {
+    const random = new GameRandom(21n)
+    for (let i = 0; i < 50_000; i++) expect(rollsLands(random, {})).toBe(true)
+    expect(random.drawn).toBe(50_000)
+  })
+
+  it('misses five times in eight when sight is spoilt, on a blow that sight spoils', () => {
+    const random = new GameRandom(22n)
+    let landed = 0
+    const blows = 200_000
+    for (let i = 0; i < blows; i++) {
+      if (rollsLands(random, { spoiltBySight: true }, { sightSpoilt: true })) landed++
+    }
+    // Two draws a blow: the percent, then the die of eight.
+    expect(random.drawn).toBe(blows * 2)
+    expect(landed / blows).toBeGreaterThan(0.365)
+    expect(landed / blows).toBeLessThan(0.385)
+    // And not at all on an action sight does not spoil — a spell, an item.
+    const other = new GameRandom(23n)
+    for (let i = 0; i < 1000; i++) expect(rollsLands(other, {}, { sightSpoilt: true })).toBe(true)
+    expect(other.drawn).toBe(1000)
+  })
+
+  it('lands a scaling action as often as its accuracy says', () => {
+    const random = new GameRandom(24n)
+    let landed = 0
+    const blows = 200_000
+    for (let i = 0; i < blows; i++) if (rollsLands(random, { accuracy: 75 })) landed++
+    expect(landed / blows).toBeGreaterThan(0.745)
+    expect(landed / blows).toBeLessThan(0.755)
   })
 })

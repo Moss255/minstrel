@@ -117,8 +117,7 @@ Read 20 September. 2,224 instructions; this is its spine.
    a draw below 100 under the target's rate, **truncated**;
 3. **the block roll**, if it can be blocked — `func_ov000_02156e30`: the draw
    **as a float** under the rate, untruncated;
-4. `func_ov000_02156648` — a percent, a die of four and a die of eight. **Not
-   read**;
+4. **the accuracy roll**, `func_ov000_02156648` — below;
 5. the damage, `GetAttackBaseDamage`.
 
 **That settles the question this ledger was carrying**, and without the
@@ -129,6 +128,23 @@ not the game's: the reference also steps past draws that do nothing here."* So
 the game and the reference agree, and the simulation is knowingly different.
 **A battle will not replay from a seed until the simulation makes these draws
 in this order**, which is the work that follows from this reading.
+
+**The accuracy roll** — `func_ov000_02156648`, read 20 September. Several of
+the target's statuses, and an argument that says it always lands, leave before
+any draw. Then **a draw below 100 is made before anything is compared**, so an
+action whose accuracy stands at a hundred — the plain Attack's — lands every
+time and spends its draw all the same. After it: a die of four that misses on
+0, for one of the party with a certain trait on an action flagged `0x10000`;
+for a scaling action (`+0x18` bits 16–17 at 1) the accuracy is set between the
+record's least and most by one of the attacker's numbers, or **drawn as a float
+between them** when none is named; it is then times the target's resistance
+plus a half; a **die of eight misses on five faces** when the action is one a
+status on the attacker spoils (`+0x10` bit 3) — INFERRED: dazzle; and the blow
+lands on the first draw coming in under the accuracy, truncated.
+
+**And the coin is named.** The resolver takes `NextRandomMax(2) == 0` in place
+of the critical roll for actions `0x48` and `0x70`, read as the all-or-nothing
+blows before their names were: they are **Thunder Thrust** and **Hatchet Man**.
 
 **A target's chance of dodging** — `func_ov000_02156270`. One of the party:
 **two in a hundred**, which is the simulation's `dodge: 2` and is now the
@@ -145,6 +161,8 @@ now in `readActions`:
 | `evadable` | `+0x10` bit 5 | the evasion roll makes no draw without it | the plain Attack has it; the medicinal herb and fleeing do not. 156 of 681 |
 | `blockable` | `+0x10` bit 6 | the block roll likewise | 162 of 681, 130 of them dodgeable too |
 | `alwaysCritical` | `+0x08` bit 29 | the critical roll hands back 1 **without a draw** | 18 of 681, and one is named **Critical Claim**. Fifteen are a second copy of each attacking spell, Frizz to Kaboom — INFERRED: the spell as it goes haywire |
+| `spoiltBySight` | `+0x10` bit 3 | the accuracy roll's die of eight | 110 of 681, **every one a blow that can be dodged**; the plain Attack has it, Heal, Frizz and the herb do not |
+| `accuracyMode`, `accuracyRange` | `+0x18` bits 16–17; `+0x14` bits 7–13, 14–20 | whether the accuracy scales, and between what | 202 of 681 scale; the plain Attack does not, so it stands at a hundred |
 | `criticalPercent` | `+0x14` bits 21–27 | divided by `100.0f`, the skill's multiplier in `CalculateCritRate` | **100 on the plain Attack**, which is what leaves its two in a hundred standing |
 
 `tools/harness/test/blow.test.ts` holds them to the cartridge.
@@ -153,11 +171,10 @@ now in `readActions`:
 
 ## Still to read, in the order it is wanted
 
-- **make the simulation's draws in the game's order** — the critical draw on a
-  monster's blow first of all. It moves every pinned battle, so it wants doing
-  in one piece, with `func_ov000_02156648` read first;
-- `func_ov000_02156648`, the fourth roll of a blow;
-- the block rate, `func_ov000_02156118`;
+- **make the simulation's draws in the game's order**: critical, dodge, block,
+  accuracy, damage, each gated by the action's own flags. All five are read
+  now. It moves every pinned battle, so it wants doing in one piece;
+- the block rate, `func_ov000_02156118`, which that needs;
 - the party's flee chance, by way of how the command is numbered;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;
 - the spell and healing amounts — `drawnAmount`, `criticalDamage` and

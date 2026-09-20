@@ -209,11 +209,10 @@ export function ambushFollowerActs(random: GameRandom): boolean {
  *      action that is always a critical skips it;
  *   2. **the evasion roll**, if the action can be dodged;
  *   3. **the block roll**, if it can be blocked;
- *   4. `func_ov000_02156648` — a percent, a die of four and a die of eight,
- *      **not read**;
+ *   4. **the accuracy roll**, `func_ov000_02156648` — see {@link rollsLands};
  *   5. the damage, `GetAttackBaseDamage`.
  */
-export const BLOW_ORDER = ['critical', 'evade', 'block', 'unread', 'damage'] as const
+export const BLOW_ORDER = ['critical', 'evade', 'block', 'accuracy', 'damage'] as const
 
 /** A monster's chance of dodging, in a hundred, by the grade in its record — the table at 0x020e88e4. */
 export const MONSTER_EVASION = [0, 2, 4, 8, 25] as const
@@ -247,4 +246,45 @@ export function rollsEvade(random: GameRandom, evadable: boolean, ratePercent: n
 export function rollsBlock(random: GameRandom, blockable: boolean, ratePercent: number): boolean {
   if (!blockable) return false
   return f(random.max(100)) < f(ratePercent)
+}
+
+/**
+ * Whether a blow lands — `func_ov000_02156648`, the fourth of a blow's rolls.
+ *
+ * **The percent draw is made before anything is compared**, so an action whose
+ * accuracy stands at a hundred — the plain Attack's — lands every time and
+ * spends its draw all the same. After it:
+ *
+ * - a die of four that misses on 0, for one of the party with a certain trait
+ *   on an action flagged `0x10000` (`fourSided`);
+ * - for a scaling action with no number named to scale by, **a float drawn
+ *   between its least and most**, truncated (`drawnBetween`);
+ * - a die of eight that misses on 0 to 4 — five faces of eight — when the
+ *   action is spoilt by sight and the attacker is under that status.
+ *
+ * The accuracy is then times the target's resistance plus a half, truncated,
+ * and the blow lands on a draw under it. What exits before the draw — several
+ * of the target's statuses, and an argument that says it always lands — spends
+ * nothing.
+ */
+export function rollsLands(
+  random: GameRandom,
+  action: {
+    accuracy?: number
+    drawnBetween?: readonly [number, number]
+    spoiltBySight?: boolean
+    fourSided?: boolean
+  },
+  attacker: { sightSpoilt?: boolean } = {},
+  resistance = 1,
+): boolean {
+  const draw = random.max(100)
+  if (action.fourSided && random.max(4) === 0) return false
+  let accuracy = f(action.accuracy ?? 100)
+  if (action.drawnBetween) {
+    accuracy = f(Math.trunc(random.floatBetween(action.drawnBetween[0], action.drawnBetween[1])))
+  }
+  accuracy = f(f(accuracy * f(resistance)) + f(0.5))
+  if (action.spoiltBySight && attacker.sightSpoilt && random.max(8) < 5) return false
+  return draw < Math.trunc(accuracy)
 }

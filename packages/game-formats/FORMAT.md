@@ -2871,6 +2871,9 @@ An item names its action in its item table — see "Items".
 | `+0x10` bit 5 | flag | **can be dodged**: the evasion roll makes no draw without it | the plain Attack has it; the herb and fleeing do not. 156 of 681 |
 | `+0x10` bit 6 | flag | **can be blocked** | 162 of 681 |
 | `+0x14` bits 21–27 | `u7` | the critical chance's multiplier, in hundredths | 100 on the plain Attack |
+| `+0x10` bit 3 | flag | **spoilt by a status on the attacker**: the accuracy roll's die of eight misses on five faces. INFERRED: dazzle | 110 of 681, every one a blow that can be dodged |
+| `+0x18` bits 16–17 | `u2` | how the accuracy is come by: at 1 it scales | 202 of 681; not the plain Attack |
+| `+0x14` bits 7–13, 14–20 | `u7` ×2 | a scaling action's least and most accuracy, in a hundred | |
 
 These are not INFERRED from values: each is what a named function tests before
 it acts. The runtime record the battle reads is laid out as the file's is.

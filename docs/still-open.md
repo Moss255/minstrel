@@ -108,6 +108,8 @@ lives; this is the gathered list.
 
 ## 3. Read and not modelled
 
+- **What dazzle does is read** (20 September, `docs/conformance.md`): a blow that
+  sight spoils misses on five faces of a die of eight. Not yet modelled.
 - **Dazzle, sand, and Weird Dance (MP drain)**, and `calls for backup`: read
   from the monsters' actions, landing as ordinary attacks.
 - **The monsters' drops**: ids read, nothing awarded (§1b).

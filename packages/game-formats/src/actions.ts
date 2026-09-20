@@ -142,6 +142,23 @@ export interface Action {
    * `CalculateCritRate` as the skill's multiplier.
    */
   readonly criticalPercent: number
+  /**
+   * Whether a status on the attacker spoils it — `+0x10`, bit 3. The accuracy
+   * roll (`func_ov000_02156648`) throws a die of eight for such an action when
+   * the attacker is under that status, and it misses on five faces. On 110 of
+   * 681, **every one a blow that can be dodged**: the plain Attack has it and
+   * Heal, Frizz and the medicinal herb do not. INFERRED: the status is dazzle.
+   */
+  readonly spoiltBySight: boolean
+  /**
+   * How its accuracy is come by — `+0x18`, bits 16 and 17. At 1 the accuracy
+   * scales between the two percentages below by one of the attacker's
+   * numbers, or is drawn between them when none is named; otherwise it stands
+   * at a hundred. 202 of 681 scale; the plain Attack does not.
+   */
+  readonly accuracyMode: number
+  /** The least and the most a scaling action's accuracy can be, in a hundred — `+0x14`, bits 7–13 and 14–20. */
+  readonly accuracyRange: { readonly min: number; readonly max: number }
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -201,6 +218,12 @@ export function readActions(bytes: Uint8Array): Action[] {
       blockable: (view.getUint32(at + 0x10, true) & 0x40) !== 0,
       alwaysCritical: ((view.getUint32(at + 8, true) >>> 29) & 1) === 1,
       criticalPercent: (view.getUint32(at + 0x14, true) >>> 21) & 0x7f,
+      spoiltBySight: (view.getUint32(at + 0x10, true) & 8) !== 0,
+      accuracyMode: (view.getUint32(at + 0x18, true) >>> 16) & 3,
+      accuracyRange: {
+        min: (view.getUint32(at + 0x14, true) >>> 7) & 0x7f,
+        max: (view.getUint32(at + 0x14, true) >>> 14) & 0x7f,
+      },
       raw: bytes.subarray(at, at + ACTION_RECORD),
     })
   }

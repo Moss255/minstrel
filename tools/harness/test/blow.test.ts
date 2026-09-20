@@ -69,4 +69,25 @@ describe.skipIf(!romPath)('how a blow is resolved, on a real cartridge', () => {
     // A blow that can be dodged and one that can be blocked are mostly the same blows.
     expect(all.filter((a) => a.evadable && a.blockable).length).toBe(130)
   })
+
+  it('names the two all-or-nothing blows the resolver flips a coin for', () => {
+    // `func_ov024_021eb5d0` takes `NextRandomMax(2) == 0` in place of the
+    // critical roll for actions 0x48 and 0x70, read before their names were.
+    expect(byId.get(0x48)?.name).toBe('Thunder Thrust')
+    expect(byId.get(0x70)?.name).toBe('Hatchet Man')
+  })
+
+  it('spoils only blows with the status that spoils sight', () => {
+    const spoilt = [...byId.values()].filter((a) => a.spoiltBySight)
+    expect(spoilt.length).toBe(110)
+    // Every one can be dodged: it is blows this touches, never a spell or an item.
+    expect(spoilt.every((a) => a.evadable)).toBe(true)
+    expect(byId.get(1)?.spoiltBySight).toBe(true)
+    for (const id of [30, 236, 246]) expect(byId.get(id)?.spoiltBySight).toBe(false)
+  })
+
+  it('leaves the plain attack’s accuracy at a hundred, so it lands and still spends its draw', () => {
+    expect(byId.get(1)?.accuracyMode).not.toBe(1)
+    expect([...byId.values()].filter((a) => a.accuracyMode === 1).length).toBe(202)
+  })
 })
