@@ -29,6 +29,7 @@ export {
   dealt,
   drawnAmount,
   initiative,
+  monsterHp,
   type PartyAmount,
   partyAmount,
   physicalDamage,

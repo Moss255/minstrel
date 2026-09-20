@@ -55,6 +55,7 @@ import {
   type Follower,
   groundBelow,
   headingAngle,
+  monsterHp,
   type OpenGround,
   PERSON,
   type Roamer,
@@ -3014,7 +3015,11 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
         : {}),
       name: renderName(who.name),
       side: 'foes',
-      maxHp: numbers.maxHp,
+      // **Drawn, the game's way**: four fifths to the whole of its table's HP,
+      // from the world's generator and not the battle's — `monsterHp`. A battle
+      // that cannot be fled stands in for the game's own flag, which leaves
+      // the table's as it is — INFERRED to be a scripted battle's.
+      maxHp: monsterHp(roamRng, numbers.maxHp, !canFlee),
       maxMp: numbers.maxMp,
       attack: numbers.attack,
       defence: numbers.defence,

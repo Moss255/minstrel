@@ -2618,8 +2618,9 @@ by no element.
 
 **A monster's HP is drawn** in the same function: unless a flag says not
 (`func_020a3694` of the battle — INFERRED: a grotto's or a legacy boss's), it
-is `(int)(HP × NextRandomFloatBetween(0.8, 1.0) + 0.5)`, from `GetBTRandom()`.
-The table's HP is the most it can have. *Not modelled* — `docs/conformance.md`.
+is `(int)(HP × NextRandomFloatBetween(0.8, 1.0) + 0.5)`, from `GetBTRandom()` —
+the world's generator, not the battle's. The table's HP is the most it can
+have. `monsterHp` in the sim; `docs/conformance.md`, "The two generators".
 
 **How a monster chooses among its six**: the reference draws a number from 1
 to 256 against six weights, an even table, 43, 42, 43, 43, 42, 43, and for

@@ -8,6 +8,7 @@ import {
   criticalHit,
   dealt,
   drawnAmount,
+  monsterHp,
   partyAmount,
   physicalDamage,
   resistanceTo,
@@ -18,6 +19,7 @@ import {
   ambushFollowerActs,
   BLOW_ORDER,
   buffMultiplier,
+  builtMonsterHp,
   calculateCritRate,
   calculateMonsterCritRate,
   calculatePhysicalDamage,
@@ -715,5 +717,32 @@ describe('what a target takes of it', () => {
     expect(
       dealt(BattleRng.fromGameState(1n), 1500, { critical: false, resistance: 1.25, cap: 999 }),
     ).toBe(999)
+  })
+})
+
+describe('the HP a monster comes to a battle with', () => {
+  it('is the game’s at every HP a record can hold a slice of, and one draw', () => {
+    let wrong = 0
+    for (const hp of [1, 4, 8, 13, 134, 999, 6500, 65535]) {
+      for (let seed = 1n; seed <= 2000n; seed++) {
+        const ours = BattleRng.fromGameState(seed)
+        if (monsterHp(ours, hp) !== builtMonsterHp(new GameRandom(seed), hp, false)) wrong++
+        if (ours.drawn !== 1) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('is never more than the table’s, and as little as four fifths', () => {
+    const seen = new Set<number>()
+    for (let seed = 1n; seed <= 4000n; seed++) seen.add(monsterHp(BattleRng.fromGameState(seed), 8))
+    // A slime's 8: 6.9 to 8.5, truncated.
+    expect([...seen].sort((a, b) => a - b)).toEqual([6, 7, 8])
+  })
+
+  it('is the table’s and no draw where the battle says so', () => {
+    const rng = BattleRng.fromGameState(1n)
+    expect(monsterHp(rng, 300, true)).toBe(300)
+    expect(rng.drawn).toBe(0)
   })
 })

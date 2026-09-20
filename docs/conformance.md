@@ -43,7 +43,8 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A change of state landing** | it *is* the accuracy roll: a monster's chance the record's `+0x14` bits 0–6, the party's by might; × the target's resistance + ½; a cast gone haywire lands outright. The kind's handler makes no draw | the accuracy's draw under the chance | **the order and the roll are the game's**, and the chances now come from the record — the reference's 75, 75 and 25 are in the data. **Ours still**: every resistance whole |
 | **What rides on a blow** | one draw, only after a blow that dealt something, under the action's chance × a hundredth of the target's byte | `poison` on an attack | the game's for the poison attack, whose 12 is in its record; the other riders read and not modelled |
 | **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record. Damage × it after the critical; a change's accuracy × it + ½; a rider's chance × it | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte. Frizz on a slime is a quarter more. **Ours still**: the party's whole, the wards and the two statuses that shift them |
-| **A monster's HP** | drawn: `(int)(HP × between(0.8, 1.0) + 0.5)` as the battle builds it, unless a flag says not | the table's HP | read, **not modelled** — which generator it draws from is not established |
+| **A monster's HP** | drawn as the battle builds it: `(int)(0.5 + HP × between(0.8, 1.0))`, from the *world's* generator; the table's where the battle's setup says so | `monsterHp` | **the game's, exactly.** The table's HP is a ceiling. **Ours**: taking a battle that cannot be fled for the game's flag |
+| **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
@@ -437,12 +438,35 @@ a change's `element`. The game gives each monster its record's bytes.
 **Ours still**: the party's are whole — the game's start whole too, and what
 armour and accessories do to them is not read.
 
-**And a monster's HP is drawn.** The same function sets it to
-`(int)(HP × NextRandomFloatBetween(0.8, 1.0) + 0.5)` unless `func_020a3694`
-of the battle says not — INFERRED: a grotto's or a legacy boss's. The table's
-HP is a ceiling. It draws from `GetBTRandom()`, a generator at `0x02108ddc`;
-**whether that is the generator the battle's rolls use is not established**,
-and a replay depends on it. *Not modelled.*
+**And a monster's HP is drawn** — see "The two generators", below.
+
+## The two generators, and a monster's HP
+
+Read 20 September, and it answers what the replay harness will need first.
+
+**The battle has a generator of its own, and it is not `GetBTRandom()`'s.**
+
+| | where | seeded | draws |
+|---|---|---|---|
+| **the battle's** | the head of the battle object — every `NextRandomMax([ctx + 0x10], …)` in overlays 0 and 24 is handed the object itself | when the battle is made, from `GetCurrentTimestamp()` (`InitRandom` at overlay 0 `0x0215d070`). A thunk at `0x0215faa4` re-seeds it from two words, and `0x02160600` reads its state out into `+0x6e3c` of another object — INFERRED: for a battle shared between consoles | every roll this ledger has read |
+| **the world's** | a global at `0x02108ddc`, which `GetBTRandom()` returns | once, when the game state is made (`0x0200f540`), beside the C library's `srand` with the same number | the field's — overlay 17 calls it — thirty callers in all, **and a monster's HP** |
+
+So a battle's rolls replay from **the battle's seed alone**, which is what
+`BattleRng.fromGameState` takes; and the monsters' HP belong to the world's
+stream, drawn before the battle's generator exists.
+
+**A monster's HP** — `func_02089630`, which builds its status from its record:
+`_ffixu(0.5f + (float)HP × NextRandomFloatBetween(0.8f, 1.0f))`, one draw from
+the world's generator, and that number is its HP and its most HP both. **The
+table's HP is a ceiling**: a slime's 8 is 6, 7 or 8. Left as the table's, with
+no draw, when the battle's setup holds a number that is not −1 at `+0xC`
+(`func_020a3694`) — INFERRED: a scripted battle's number, so a boss has its
+table's HP and an encounter's monsters do not. The reference emulator, which
+plays a boss, has the table's.
+
+**In the simulation**: `monsterHp`, held to the oracle. **In the game**: drawn
+from the field's generator for a battle that can be fled — which stands in for
+the game's flag, and is ours.
 
 ## What the rest of a blow does — the end of `func_ov024_021e6a90`
 
@@ -507,8 +531,6 @@ defending and the reference is wrong.
   defending — or the witness above, which is cheaper;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
-- **a monster's HP, drawn at 0.8 to 1.0 of its table's** — read, above; what
-  it needs is whether `GetBTRandom()` is the battle's own generator;
 - what armour and accessories do to the party's resistances, and the wards;
 - what the game does to a heal that goes haywire;
 - the party's flee chance, by way of how the command is numbered;

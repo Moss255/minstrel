@@ -547,3 +547,15 @@ export function damageDealt(
   d = f(d * f(blow.resistance))
   return endOfBlow(d, { ...blow, targetCanBeHurt: blow.resistance > 0 }, random)
 }
+
+/**
+ * A monster's HP as the battle builds it — `func_02089630`, `0x02089648`:
+ * the record's HP as it stands when the flag is set, else
+ * `_ffixu(0.5f + (float)HP × NextRandomFloatBetween(0.8f, 1.0f))`. The
+ * generator is `GetBTRandom()`'s, which is not the battle's own.
+ */
+export function builtMonsterHp(random: GameRandom, tableHp: number, fixed: boolean): number {
+  if (fixed) return tableHp
+  const draw = random.floatBetween(f(0.8), 1)
+  return Math.trunc(f(f(0.5) + f(f(tableHp) * draw)))
+}

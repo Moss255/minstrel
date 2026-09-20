@@ -12,7 +12,7 @@ import type { BattleRng } from './rng.ts'
  * **What has since been read from the game's own code is the game's instead**,
  * in the 32-bit floats it computes in — `physicalDamage`, `criticalChance`,
  * `criticalBlow`, `criticalHit`, `criticalDamage`, `drawnAmount`, `partyAmount`,
- * `blockChance`, `resistanceTo` and `dealt` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
+ * `blockChance`, `resistanceTo`, `dealt` and `monsterHp` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
  * "Fixed-point in simulation", and `docs/conformance.md`.
  */
 
@@ -273,4 +273,26 @@ export function dealt(
   let whole = Math.trunc(d)
   if (to.cap && to.cap < whole) whole = to.cap
   return whole
+}
+
+/**
+ * The HP a monster comes to a battle with — the game's `func_02089630`, which
+ * builds its status from its record: the table's HP times a draw from 0.8 to
+ * 1.0, plus a half, truncated. **The table's is the most it can have.** That
+ * number is its HP and its most HP both.
+ *
+ * `fixed` is the game's flag for leaving the table's as it is — a number in
+ * the battle's setup that is not −1 (`func_020a3694`). INFERRED: a scripted
+ * battle's. It spends no draw.
+ *
+ * **Not the battle's generator.** The game draws this from `GetBTRandom()`,
+ * the one the world outside battle draws from, seeded when the game starts;
+ * the battle's own is made afterwards and seeded from the clock. Hand this the
+ * world's.
+ */
+export function monsterHp(rng: BattleRng, tableHp: number, fixed = false): number {
+  if (fixed) return tableHp
+  const f = Math.fround
+  const draw = rng.floatBetween(0.8, 1)
+  return Math.trunc(f(f(0.5) + f(f(tableHp) * draw)))
 }
