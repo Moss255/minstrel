@@ -2875,6 +2875,9 @@ An item names its action in its item table — see "Items".
 | `+0x18` bits 16–17 | `u2` | how the accuracy is come by: at 1 it scales | 202 of 681; not the plain Attack |
 | `+0x14` bits 7–13, 14–20 | `u7` ×2 | a scaling action's least and most accuracy, in a hundred | |
 | `+0x18` bits 18–26 | `u9` | which of the battle's 67 damage handlers its damage goes through; 0 is none | 570 of 681 on 0, the plain Attack among them; Dragon Slash alone on 1; Thunder Thrust and Hatchet Man sharing 45 |
+| `+0x18` bits 5–11 | `u7` | its **kind**. The final-damage function (`func_ov024_021e6a90`, `0x021e7a68`) tests it for 1 and halves only that; the other numbers' meanings are INFERRED from who carries them | 242 of 681 are 1 — Attack, Frizz, Dragon Slash; Defend is 0; Heal and the medicinal herb are 2; 93 numbers in use |
+| `+0x1C` low 14 bits | `u14` | the most it can deal; 0 is no limit. Taken after the damage is a whole number | 211 of 681: Frizz 999, Frizzle 1999, Kafrizz 2999, and Heal's three the same; none on the plain Attack |
+| `+0x10` bit 24 | flag | **works on a metal body**: without it a blow that comes to nothing on one gets no 0-or-1 | 208 of 681: Attack and the blade skills have it, every attacking spell lacks it |
 
 These are not INFERRED from values: each is what a named function tests before
 it acts. The runtime record the battle reads is laid out as the file's is.

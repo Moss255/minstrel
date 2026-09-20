@@ -510,6 +510,38 @@ describe('the order a blow’s draws are made in — the game’s', () => {
     expect(mine).toMatchObject({ dodged: true, critical: false, damage: 0 })
   })
 
+  it('gives a blow that comes to nothing a coin of 0 or 1 — the party’s as much as a monster’s', () => {
+    // `func_ov024_021e6a90`, 0x021e7824–0x021e7904: the game looks at the blow
+    // and at the target, never at who struck it. An attack of 1 against a
+    // defence of 5000 comes to nothing every time.
+    const attack = new Map<number, Command>([[0, { kind: 'attack', target: 1 }]])
+    const wall = { ...blob('Wall', 5000, 0), defence: 5000, agility: 0 }
+    const seen = new Set<number>()
+    const rng = new BattleRng(7n)
+    for (let i = 0; i < 200; i++) {
+      const played = playRound(startBattle([{ ...hero, attack: 1 }, wall]), attack, rng)
+      const mine = played.events.find((e) => e.kind === 'attack' && e.actor === 0)
+      if (mine?.kind === 'attack' && !mine.dodged && !mine.blocked) seen.add(mine.damage)
+    }
+    expect([...seen].sort()).toEqual([0, 1])
+  })
+
+  it('gives no coin to a blow that was dodged or blocked', () => {
+    // The flags zero the damage and rule the coin out (0x021e7838–0x021e7868),
+    // so a weak blow blocked spends one draw fewer than the same blow landing.
+    const weak = (heroIs: Partial<Fighter>) => {
+      const rng = new BattleRng(2024n)
+      const played = playRound(
+        startBattle([{ ...hero, maxHp: 500, defence: 5000, ...heroIs }, blob('Gnat', 50, 1)]),
+        defend,
+        rng,
+      )
+      return { drawn: rng.drawn, blow: played.events.find((e) => e.kind === 'attack') }
+    }
+    expect(weak({ block: 100 }).blow).toMatchObject({ blocked: true, damage: 0 })
+    expect(weak({ block: 0 }).drawn - weak({ block: 100 }).drawn).toBe(1)
+  })
+
   it('lets a monster dodge by its own chance, where it had none', () => {
     const attack = new Map<number, Command>([[0, { kind: 'attack', target: 1 }]])
     let dodges = 0

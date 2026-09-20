@@ -106,4 +106,38 @@ describe.skipIf(!romPath)('how a blow is resolved, on a real cartridge', () => {
         .sort(),
     ).toEqual(['Hatchet Man', 'Thunder Thrust'])
   })
+
+  it('sorts actions into kinds, and 1 is what does damage', () => {
+    const all = [...byId.values()]
+    // The only kind the final-damage function tests for, and the halving is its.
+    expect(all.filter((a) => a.kind === 1).length).toBe(242)
+    for (const id of [1, 9, 63]) expect(byId.get(id)?.kind).toBe(1) // Attack, Frizz, Dragon Slash
+    // Defending is no kind at all, and what heals is another.
+    expect(byId.get(3)?.kind).toBe(0)
+    for (const id of [30, 236]) expect(byId.get(id)?.kind).toBe(2)
+  })
+
+  it('caps what a spell can deal by its rank, and the plain attack not at all', () => {
+    expect(byId.get(1)?.damageCap).toBe(0)
+    expect([9, 10, 11].map((id) => byId.get(id)?.damageCap)).toEqual([999, 1999, 2999]) // Frizz's three
+    expect([30, 31, 32].map((id) => byId.get(id)?.damageCap)).toEqual([999, 1999, 2999]) // Heal's three
+    expect([...byId.values()].filter((a) => a.damageCap > 0).length).toBe(211)
+  })
+
+  it('lets blows work on a metal body and spells not', () => {
+    for (const id of [1, 63, 64]) expect(byId.get(id)?.worksOnMetal).toBe(true)
+    for (const id of [9, 12, 18, 21, 67]) expect(byId.get(id)?.worksOnMetal).toBe(false)
+    expect([...byId.values()].filter((a) => a.worksOnMetal).length).toBe(208)
+  })
+
+  it('names the actions the final-damage function singles out by number', () => {
+    // 0x40 and 0x7E deal 1 or 2 to a metal body; 0x1B gets no 0-or-1; 0xAF
+    // has a quarter of what it dealt kept — the recoil, by its name.
+    expect([0x40, 0x7e, 0x1b, 0xaf].map((id) => byId.get(id)?.name)).toEqual([
+      'Metal Slash',
+      'Metalicker',
+      'Kamikazee',
+      'Double-Edged Slash',
+    ])
+  })
 })

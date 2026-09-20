@@ -323,3 +323,62 @@ export function criticalDamageOf(base: number, random: GameRandom, attack?: numb
 export const DAMAGE_HANDLERS = 67
 /** A blow that strikes several weakens as it goes — `func_02074948`'s table, by how many it has struck. */
 export const SWEEP_FALLOFF = [1, 0.8, 0.6, 0.4, 0.2] as const
+
+/** What the last function knows of a blow by the time it gets to the end of it. */
+export interface BlowEnd {
+  readonly dodged: boolean
+  readonly blocked: boolean
+  /** The action's number — `+0x04`, the low twelve bits. */
+  readonly action: number
+  /** The action's kind — `+0x18`, bits 5 to 11. 1 is what does damage. */
+  readonly kind: number
+  /** `+0x1C`, the low 14 bits; 0 is none. */
+  readonly damageCap: number
+  /** `+0x10`, bit 24. */
+  readonly worksOnMetal: boolean
+  /** The target's resistance to the action's elements is above nothing — `func_ov000_02156b38`, twice. */
+  readonly targetCanBeHurt: boolean
+  /** `func_ov000_02156068(ctx, target, 0, 1)`. */
+  readonly targetIsMetal: boolean
+  readonly critical: boolean
+  /**
+   * The target's status bit `0x1000000` — `func_ov024_021dd260`. INFERRED to
+   * be defending, from the halving alone; nothing that sets it has been found.
+   */
+  readonly targetStatus24: boolean
+}
+
+/**
+ * The end of `func_ov024_021e6a90`, from `0x021e7760` on, for what the slice
+ * can meet: the flags zeroing the damage, the coin, the metal pair, the
+ * halving, the whole number, the cap. **In that order**, and never asking
+ * whose blow it is.
+ *
+ * Left out, and in the function: the metal body zeroing certain blows
+ * (`0x021e77a4`), one more for the party under an item (`0x021e7970`), the
+ * attacker's own status multiplying by `func_02074738`'s table (`0x021e79d0`),
+ * the combo table (`0x021e7a8c`), and action `0xAF` keeping a quarter.
+ */
+export function endOfBlow(damage: number, blow: BlowEnd, random: GameRandom): number {
+  let d = f(damage)
+  if (d > 0 && blow.blocked) d = 0
+  if (d > 0 && blow.dodged) d = 0
+  if (d <= 0) {
+    const coin =
+      !blow.blocked &&
+      !blow.dodged &&
+      blow.action !== 0x70 &&
+      blow.action !== 0x48 &&
+      blow.targetCanBeHurt &&
+      blow.action !== 0x1b &&
+      !(blow.targetIsMetal && !blow.worksOnMetal)
+    if (coin) d = f(random.max(2))
+  }
+  if (blow.targetIsMetal && !blow.critical && (blow.action === 0x40 || blow.action === 0x7e)) {
+    d = f(1 + random.max(2))
+  }
+  if (blow.targetStatus24 && blow.kind === 1) d = f(f(0.5) * d)
+  let whole = Math.trunc(d)
+  if (blow.damageCap !== 0 && blow.damageCap < whole) whole = blow.damageCap
+  return whole
+}

@@ -19,6 +19,7 @@ import {
   criticalDamageOf,
   criticalThreshold,
   criticalValue,
+  endOfBlow,
   evasionRate,
   GameRandom,
   MONSTER_EVASION,
@@ -412,5 +413,74 @@ describe('a critical’s damage', () => {
       const whole = criticalDamageOf(n, again)
       expect(whole).toBeGreaterThanOrEqual(Math.fround(1.2 * n))
     }
+  })
+})
+
+describe('the end of a blow', () => {
+  const plain = {
+    dodged: false,
+    blocked: false,
+    action: 1,
+    kind: 1,
+    damageCap: 0,
+    worksOnMetal: true,
+    targetCanBeHurt: true,
+    targetIsMetal: false,
+    critical: false,
+    targetStatus24: false,
+  }
+
+  it('gives nothing a coin, whoever struck it, and the simulation’s is the same coin', () => {
+    let wrong = 0
+    for (let seed = 1n; seed <= 2000n; seed++) {
+      const theirs = endOfBlow(0, plain, new GameRandom(seed))
+      const ours = BattleRng.fromGameState(seed).below(2)
+      if (theirs !== ours || (theirs !== 0 && theirs !== 1)) wrong++
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('gives a dodged or blocked blow nothing, and no coin', () => {
+    for (const flag of [{ dodged: true }, { blocked: true }]) {
+      const random = new GameRandom(9n)
+      const before = random.state
+      expect(endOfBlow(40, { ...plain, ...flag }, random)).toBe(0)
+      expect(random.state).toBe(before)
+    }
+  })
+
+  it('gives no coin to Kamikazee, nor to a spell that finds a metal body', () => {
+    const random = new GameRandom(9n)
+    const before = random.state
+    expect(endOfBlow(0, { ...plain, action: 0x1b }, random)).toBe(0)
+    expect(
+      endOfBlow(0, { ...plain, action: 9, targetIsMetal: true, worksOnMetal: false }, random),
+    ).toBe(0)
+    expect(random.state).toBe(before)
+  })
+
+  it('deals a metal body 1 or 2 with Metal Slash, after the coin and over it', () => {
+    const seen = new Set<number>()
+    for (let seed = 1n; seed <= 200n; seed++) {
+      seen.add(endOfBlow(0, { ...plain, action: 0x40, targetIsMetal: true }, new GameRandom(seed)))
+    }
+    expect([...seen].sort()).toEqual([1, 2])
+  })
+
+  it('halves after the coin, so by this reading a halved 0-or-1 is always 0', () => {
+    // **Not the simulation's.** The status bit is INFERRED to be defending, and
+    // the reference has a defended 0-or-1 still dealing 0 or 1. Stated here so
+    // the disagreement is written down in one place; `docs/conformance.md`.
+    for (let seed = 1n; seed <= 200n; seed++) {
+      expect(endOfBlow(0, { ...plain, targetStatus24: true }, new GameRandom(seed))).toBe(0)
+    }
+    expect(endOfBlow(41, { ...plain, targetStatus24: true }, new GameRandom(1n))).toBe(20)
+    // Only what does damage is halved.
+    expect(endOfBlow(41, { ...plain, kind: 2, targetStatus24: true }, new GameRandom(1n))).toBe(41)
+  })
+
+  it('caps the whole number, where the action has a cap', () => {
+    expect(endOfBlow(1200.9, { ...plain, action: 9, damageCap: 999 }, new GameRandom(1n))).toBe(999)
+    expect(endOfBlow(1200.9, plain, new GameRandom(1n))).toBe(1200)
   })
 })

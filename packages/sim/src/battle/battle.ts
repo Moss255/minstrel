@@ -18,8 +18,7 @@ import {
  *
  * **From the reference** (DQIX/BattleEmulator, MIT — see `damage.ts`):
  * - the order of a round: agility times a draw from 0.51 to 1.0, highest first;
- * - an attack's damage, `FUN_0207564c`; and on a monster's blow that deals
- *   nothing, a draw of 0 or 1 in its place;
+ * - an attack's damage, `FUN_0207564c`;
  * - a monster's blow dodged 2 times in 100, and blocked by a shield when a
  *   draw below 100 is 0;
  * - defending halving a blow, from the round's start — though not the 0-or-1
@@ -35,6 +34,9 @@ import {
  *   with the chances a way gives them, which the reference's own are: Kasap
  *   and Deceleratle 75 in 100, Sweet Breath's sleep 25, its poison attack's 12;
  *   a sleeper losing its turns, and unable to defend.
+ *
+ * **A blow that comes to nothing deals 0 or 1, whoever strikes it** — the
+ * game's, read from `func_ov024_021e6a90`; the reference had it for monsters.
  *
  * **The order of a blow's draws is the game's**, read from its code: the
  * critical roll, the dodge, the block, the accuracy and then the damage, each
@@ -678,12 +680,27 @@ export function playRound(
       damage = criticalHit(rng, damage, me.attack)
     }
     if (dodged || blocked) {
+      // The game's: each flag zeroes the damage, late, in `func_ov024_021e6a90`
+      // (0x021e777c, 0x021e77a0), and a blow so zeroed gets no coin.
       damage = 0
-    } else if (me.side === 'foes' && !critical) {
-      // The reference's: a monster's blow that deals nothing deals 0 or 1, and
-      // defending halves one that deals something.
-      if (damage === 0) damage = rng.below(2)
-      else if (them.defending) damage = Math.trunc(damage / 2)
+    } else if (damage <= 0) {
+      // The game's, 0x021e7824–0x021e7904: a blow that comes to nothing, and
+      // was neither dodged nor blocked, deals a draw below 2 instead. **Whoever
+      // struck it** — the code looks at the blow and the target and never at
+      // the attacker's side; the reference had it for a monster's blow only.
+      // (Its other conditions — the target not immune to the action's element,
+      // the action not 0x1B, 0x48 or 0x70, a metal body only under an action
+      // that works on one — are all met by the plain attack on what the slice
+      // fields.)
+      damage = rng.below(2)
+    } else if (me.side === 'foes' && !critical && them.defending) {
+      // The reference's: defending halves a monster's blow that deals
+      // something. The game halves a damaging action (×0.5 at 0x021e7a80) on a
+      // status bit of the target's that is INFERRED to be defending, and does
+      // so after the coin above, whoever strikes — which would make a defended
+      // 0-or-1 always 0 and halve the party's blows too. Not taken up until the
+      // bit is known; `docs/conformance.md`, "What the rest of a blow does".
+      damage = Math.trunc(damage / 2)
     }
     // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
     const poisoned =

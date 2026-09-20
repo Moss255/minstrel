@@ -51,6 +51,15 @@ Not code-shaped: each wants the game running. `docs/binaries.md` gives each of
 these the shape to search the ARM9 and its overlays by, the witness that would
 confirm a find, and what to do if the binaries do not give it up.
 
+- **Whether a defended blow that comes to nothing can still deal 1.** The
+  game halves a damaging action on a status bit of the target's that is
+  INFERRED to be defending, and does it *after* the 0-or-1 coin — so a
+  defended 0-or-1 would always be 0, and the party's blows on a defending
+  monster would be halved too. The reference says a defended 0-or-1 still
+  deals 0 or 1, and the sim keeps that until this is seen. **The witness**:
+  defend with a defence high enough that a slime's blow comes to nothing; if 1
+  is never taken over thirty blows, the bit is defending. `docs/conformance.md`,
+  "The open one".
 - **The inn's price.** No string in the binaries names an inn; no table looks
   like prices. `INN_PRICE` is a stand-in.
 - ~~**The Hero's critical chance.**~~ **Settled 19 September 2026**, from the

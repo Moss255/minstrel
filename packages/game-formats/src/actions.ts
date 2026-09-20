@@ -166,6 +166,28 @@ export interface Action {
    * Slash on 1, Metal Slash on 2, Thunder Thrust and Hatchet Man sharing 45.
    */
   readonly damageHandler: number
+  /**
+   * What kind of thing it does — `+0x18`, bits 5 to 11. Read from the one test
+   * the game's final-damage function makes of it (`func_ov024_021e6a90`,
+   * 0x021e7a68): **1 is halved** when the target carries a certain status, and
+   * nothing else is. On the cartridge 1 is what does damage — the plain
+   * Attack, Frizz, 242 in all — and the others sort by effect: 2 heals, 8 puts
+   * to sleep, 82 is Zoom. Only 1's meaning is from code; the rest are
+   * INFERRED from which actions carry them, and carried as the number.
+   */
+  readonly kind: number
+  /**
+   * The most it can deal — `+0x1C`, the low 14 bits; 0 is no limit. The game
+   * takes the lower of this and the damage once it is a whole number
+   * (0x021e7b2c–0x021e7b44).
+   */
+  readonly damageCap: number
+  /**
+   * Whether it works on a metal body — `+0x10`, bit 24. Without it a blow that
+   * comes to nothing on such a target gets no 0-or-1 (0x021e78e8); what makes
+   * a body metal is the target's, `func_ov000_02156068`, and not read here.
+   */
+  readonly worksOnMetal: boolean
   /** The least and the most a scaling action's accuracy can be, in a hundred — `+0x14`, bits 7–13 and 14–20. */
   readonly accuracyRange: { readonly min: number; readonly max: number }
   /** The whole record, for what is not read. */
@@ -230,6 +252,9 @@ export function readActions(bytes: Uint8Array): Action[] {
       spoiltBySight: (view.getUint32(at + 0x10, true) & 8) !== 0,
       accuracyMode: (view.getUint32(at + 0x18, true) >>> 16) & 3,
       damageHandler: (view.getUint32(at + 0x18, true) >>> 18) & 0x1ff,
+      kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,
+      damageCap: view.getUint32(at + 0x1c, true) & 0x3fff,
+      worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
       accuracyRange: {
         min: (view.getUint32(at + 0x14, true) >>> 7) & 0x7f,
         max: (view.getUint32(at + 0x14, true) >>> 14) & 0x7f,

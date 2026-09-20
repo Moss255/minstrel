@@ -18,6 +18,9 @@ function actions(
     blockable?: boolean
     alwaysCritical?: boolean
     criticalPercent?: number
+    kind?: number
+    damageCap?: number
+    worksOnMetal?: boolean
   }[],
 ) {
   const strings: number[] = []
@@ -46,6 +49,9 @@ function actions(
       blockable = false,
       alwaysCritical = false,
       criticalPercent = 0,
+      kind = 0,
+      damageCap = 0,
+      worksOnMetal = false,
     },
   ] of records.entries()) {
     const at = 4 + r * 60
@@ -60,7 +66,11 @@ function actions(
     // Bits 5 and 6 among neighbours that must not leak into them.
     view.setUint32(
       at + 0x10,
-      (0x01ff3b98 | (evadable ? 0x20 : 0) | (blockable ? 0x40 : 0)) >>> 0,
+      (0x00ff3b98 |
+        (evadable ? 0x20 : 0) |
+        (blockable ? 0x40 : 0) |
+        (worksOnMetal ? 0x1000000 : 0)) >>>
+        0,
       true,
     )
     // The message's lower neighbours likewise: the opening under it, then a neighbour.
@@ -69,6 +79,9 @@ function actions(
     // The critical multiplier in bits 21 to 27 of the same word as the reach.
     view.setUint32(at + 0x14, ((criticalPercent & 0x7f) << 21) >>> 0, true)
     out[at + 0x17] = (reach << 4) | ((out[at + 0x17] as number) & 0x0f)
+    // The kind between neighbours on both sides; the cap under others.
+    view.setUint32(at + 0x18, (0xfffff01f | (kind << 5)) >>> 0, true)
+    view.setUint32(at + 0x1c, (0xffffc000 | damageCap) >>> 0, true)
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
     view.setUint32(at + 0x34, offset(plural), true)
   }
@@ -206,5 +219,19 @@ describe('the range table', () => {
     expect(sure?.reach).toBe(3)
     // And the range beside the always-critical bit is untouched by it.
     expect(sure?.range).toBe(0)
+  })
+
+  it('reads an action’s kind, the most it can deal, and whether it works on metal', () => {
+    const [attack, slash, heal] = readActions(
+      actions([
+        { id: 1, name: 'Attack', plural: '', kind: 1 },
+        { id: 64, name: 'slash', plural: '', kind: 1, damageCap: 0x3fff, worksOnMetal: true },
+        { id: 30, name: 'Heal', plural: '', kind: 0x7f },
+      ]),
+    )
+    expect(attack).toMatchObject({ kind: 1, damageCap: 0, worksOnMetal: false })
+    expect(slash).toMatchObject({ kind: 1, damageCap: 0x3fff, worksOnMetal: true })
+    // All seven bits, and none of the neighbours'.
+    expect(heal).toMatchObject({ kind: 0x7f, damageCap: 0, worksOnMetal: false })
   })
 })
