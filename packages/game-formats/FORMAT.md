@@ -2862,6 +2862,19 @@ reproduces the game's arithmetic.
 restores 30 to 40 HP whoever uses it. Strong medicine is range `0x32`, 50 ± 10.
 An item names its action in its item table — see "Items".
 
+**Three fields read from the code that reads them** (20 September 2026) —
+`docs/conformance.md`, "The resolver of a blow", has the disassembly:
+
+| at | type | meaning | evidence |
+|---|---|---|---|
+| `+0x08` bit 29 | flag | **always a critical**: the battle's critical roll hands back 1 without a draw | 18 of 681; one is named `Critical Claim` |
+| `+0x10` bit 5 | flag | **can be dodged**: the evasion roll makes no draw without it | the plain Attack has it; the herb and fleeing do not. 156 of 681 |
+| `+0x10` bit 6 | flag | **can be blocked** | 162 of 681 |
+| `+0x14` bits 21–27 | `u7` | the critical chance's multiplier, in hundredths | 100 on the plain Attack |
+
+These are not INFERRED from values: each is what a named function tests before
+it acts. The runtime record the battle reads is laid out as the file's is.
+
 ## Articles — `article_<lang>.nat`, and a name's grammar
 
 `/data/prm/article.gp2/article_<lang>.nat` reads with `readSystemStrings`: 38

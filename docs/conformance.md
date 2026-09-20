@@ -103,19 +103,61 @@ is the work: a battle replays from a seed only when every one of them is made
 in the game's order, and the order is what the reference emulator got from
 play and this has not yet got from code.
 
-**The open question that matters most** is in there. The critical roll spends
-its draw whether or not it lands, and it would for a monster too, whose rate is
-zero — *if it is called*. The simulation, following the reference, spends none
-on a monster's blow. Its four callers are all in `func_ov024_021eb5d0`, the
-blow's resolver, behind flags not yet read. The reference was made to predict
-real play and is strong evidence that it is right; the code is how to be sure.
+## The resolver of a blow — `func_ov024_021eb5d0`
+
+Read 20 September. 2,224 instructions; this is its spine.
+
+**The order of a blow's draws:**
+
+1. **the critical roll, always.** `func_ov024_021ea4d0` or `021ea500` decides
+   whether it is made once for the whole action or once a target, and then it
+   is made. Inside it a monster's rate is nothing and the draw is spent all the
+   same; only an action that is always a critical skips it;
+2. **the evasion roll**, if the action can be dodged — `func_ov000_02156f98`:
+   a draw below 100 under the target's rate, **truncated**;
+3. **the block roll**, if it can be blocked — `func_ov000_02156e30`: the draw
+   **as a float** under the rate, untruncated;
+4. `func_ov000_02156648` — a percent, a die of four and a die of eight. **Not
+   read**;
+5. the damage, `GetAttackBaseDamage`.
+
+**That settles the question this ledger was carrying**, and without the
+contradiction it looked like. The game spends a critical draw on a monster's
+blow. The reference emulator does too — the simulation's own header has said so
+all along, under what is ours: *"the order the numbers are drawn in, which is
+not the game's: the reference also steps past draws that do nothing here."* So
+the game and the reference agree, and the simulation is knowingly different.
+**A battle will not replay from a seed until the simulation makes these draws
+in this order**, which is the work that follows from this reading.
+
+**A target's chance of dodging** — `func_ov000_02156270`. One of the party:
+**two in a hundred**, which is the simulation's `dodge: 2` and is now the
+game's rather than the reference's, plus an accessory's and a skill's bonus. A
+monster: by a three-bit grade in its record, **0, 2, 4, 8 or 25** — the table
+at USA `0x020e88e4`. Either doubles under one status and is fifty flat under
+another.
+
+**Three fields of an action's record**, read from the code that reads them and
+now in `readActions`:
+
+| field | where | what reads it | the cartridge's witness |
+|---|---|---|---|
+| `evadable` | `+0x10` bit 5 | the evasion roll makes no draw without it | the plain Attack has it; the medicinal herb and fleeing do not. 156 of 681 |
+| `blockable` | `+0x10` bit 6 | the block roll likewise | 162 of 681, 130 of them dodgeable too |
+| `alwaysCritical` | `+0x08` bit 29 | the critical roll hands back 1 **without a draw** | 18 of 681, and one is named **Critical Claim**. Fifteen are a second copy of each attacking spell, Frizz to Kaboom — INFERRED: the spell as it goes haywire |
+| `criticalPercent` | `+0x14` bits 21–27 | divided by `100.0f`, the skill's multiplier in `CalculateCritRate` | **100 on the plain Attack**, which is what leaves its two in a hundred standing |
+
+`tools/harness/test/blow.test.ts` holds them to the cartridge.
 
 ---
 
 ## Still to read, in the order it is wanted
 
-- **`func_ov024_021eb5d0`**, the resolver of a blow: which draws it makes, in
-  what order, and for whom — the question above;
+- **make the simulation's draws in the game's order** — the critical draw on a
+  monster's blow first of all. It moves every pinned battle, so it wants doing
+  in one piece, with `func_ov000_02156648` read first;
+- `func_ov000_02156648`, the fourth roll of a blow;
+- the block rate, `func_ov000_02156118`;
 - the party's flee chance, by way of how the command is numbered;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;
 - the spell and healing amounts — `drawnAmount`, `criticalDamage` and

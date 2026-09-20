@@ -198,3 +198,53 @@ export const AMBUSH_FOLLOWER_ACTS_BELOW = 67
 export function ambushFollowerActs(random: GameRandom): boolean {
   return random.max(100) < AMBUSH_FOLLOWER_ACTS_BELOW
 }
+
+/**
+ * The order a blow's draws are made in — `func_ov024_021eb5d0`, the resolver
+ * of a blow, overlay 24:
+ *
+ *   1. **the critical roll**, always — once for the whole action when
+ *      `func_ov024_021ea4d0` or `021ea500` says so, else once a target. It
+ *      spends its draw for a monster too, whose rate is nothing; only an
+ *      action that is always a critical skips it;
+ *   2. **the evasion roll**, if the action can be dodged;
+ *   3. **the block roll**, if it can be blocked;
+ *   4. `func_ov000_02156648` — a percent, a die of four and a die of eight,
+ *      **not read**;
+ *   5. the damage, `GetAttackBaseDamage`.
+ */
+export const BLOW_ORDER = ['critical', 'evade', 'block', 'unread', 'damage'] as const
+
+/** A monster's chance of dodging, in a hundred, by the grade in its record — the table at 0x020e88e4. */
+export const MONSTER_EVASION = [0, 2, 4, 8, 25] as const
+
+/**
+ * A target's chance of dodging, a percentage — `func_ov000_02156270`.
+ *
+ * One of the party: two, and an accessory's and a skill's bonus. A monster: by
+ * its grade. Either doubles under one status and is fifty flat under another;
+ * one of the party's doubles again with trait `0xA6` when `func_ov000_02155a04`
+ * of them is under `0.08f`, which is not understood.
+ */
+export function evasionRate(
+  target: { party: true; accessory?: number; skill?: number } | { party: false; grade: number },
+  status: { doubled?: boolean; fifty?: boolean } = {},
+): number {
+  let rate: number
+  if (target.party) rate = f(f(target.skill ?? 0) + f(f(2) + f(target.accessory ?? 0)))
+  else rate = target.grade < 0 || target.grade > 4 ? 0 : (MONSTER_EVASION[target.grade] as number)
+  if (status.doubled) rate = f(f(2) * rate)
+  return status.fifty ? 50 : rate
+}
+
+/** The evasion roll — `func_ov000_02156f98`: a draw below 100 under the rate **truncated**. No draw unless the action can be dodged. */
+export function rollsEvade(random: GameRandom, evadable: boolean, ratePercent: number): boolean {
+  if (!evadable) return false
+  return random.max(100) < Math.trunc(f(ratePercent))
+}
+
+/** The block roll — `func_ov000_02156e30`: the draw **as a float** under the rate, untruncated. No draw unless the action can be blocked. */
+export function rollsBlock(random: GameRandom, blockable: boolean, ratePercent: number): boolean {
+  if (!blockable) return false
+  return f(random.max(100)) < f(ratePercent)
+}

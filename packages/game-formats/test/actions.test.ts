@@ -14,6 +14,10 @@ function actions(
     message?: number
     opening?: number
     reach?: number
+    evadable?: boolean
+    blockable?: boolean
+    alwaysCritical?: boolean
+    criticalPercent?: number
   }[],
 ) {
   const strings: number[] = []
@@ -28,17 +32,43 @@ function actions(
   const view = new DataView(out.buffer)
   for (const [
     r,
-    { id, name, plural, range = 0, effect = 0, cost = 0, message = 0, opening = 0, reach = 0 },
+    {
+      id,
+      name,
+      plural,
+      range = 0,
+      effect = 0,
+      cost = 0,
+      message = 0,
+      opening = 0,
+      reach = 0,
+      evadable = false,
+      blockable = false,
+      alwaysCritical = false,
+      criticalPercent = 0,
+    },
   ] of records.entries()) {
     const at = 4 + r * 60
     view.setUint32(at, offset(name), true)
     // The number's upper bits are other things; they must not leak into it.
     view.setUint32(at + 4, (0xf9c32000 | id) >>> 0, true)
-    view.setUint32(at + 8, ((0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0, true)
+    view.setUint32(
+      at + 8,
+      (((alwaysCritical ? 1 : 0) << 29) | (0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0,
+      true,
+    )
+    // Bits 5 and 6 among neighbours that must not leak into them.
+    view.setUint32(
+      at + 0x10,
+      (0x01ff3b98 | (evadable ? 0x20 : 0) | (blockable ? 0x40 : 0)) >>> 0,
+      true,
+    )
     // The message's lower neighbours likewise: the opening under it, then a neighbour.
     view.setUint32(at + 0x20, ((message << 20) | (opening << 10) | 0x2e) >>> 0, true)
     // Whom it reaches in the high nibble, a neighbour in the low.
-    out[at + 0x17] = (reach << 4) | 6
+    // The critical multiplier in bits 21 to 27 of the same word as the reach.
+    view.setUint32(at + 0x14, ((criticalPercent & 0x7f) << 21) >>> 0, true)
+    out[at + 0x17] = (reach << 4) | ((out[at + 0x17] as number) & 0x0f)
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
     view.setUint32(at + 0x34, offset(plural), true)
   }
@@ -141,5 +171,40 @@ describe('the range table', () => {
     expect(() => readActionRanges(ranges([[1, 2, 3, 4, 5]]).subarray(0, 11))).toThrow(
       GameFormatError,
     )
+  })
+
+  it('reads whether a blow may be dodged or blocked, and a critical that needs no roll', () => {
+    const [attack, herb, sure] = readActions(
+      actions([
+        {
+          id: 1,
+          name: 'Attack',
+          plural: '',
+          evadable: true,
+          blockable: true,
+          criticalPercent: 100,
+        },
+        { id: 236, name: 'herb', plural: '' },
+        {
+          id: 244,
+          name: 'sure',
+          plural: '',
+          evadable: true,
+          blockable: true,
+          alwaysCritical: true,
+          reach: 3,
+          criticalPercent: 127,
+        },
+      ]),
+    )
+    expect(attack).toMatchObject({ evadable: true, blockable: true, alwaysCritical: false })
+    expect(attack?.criticalPercent).toBe(100)
+    expect(herb).toMatchObject({ evadable: false, blockable: false, alwaysCritical: false })
+    expect(sure).toMatchObject({ evadable: true, blockable: true, alwaysCritical: true })
+    // The multiplier and the reach share a word and do not leak into each other.
+    expect(sure?.criticalPercent).toBe(127)
+    expect(sure?.reach).toBe(3)
+    // And the range beside the always-critical bit is untouched by it.
+    expect(sure?.range).toBe(0)
   })
 })

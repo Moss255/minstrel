@@ -115,6 +115,33 @@ export interface Action {
   readonly opening: number
   /** Whom it reaches — see {@link ActionReach}. INFERRED. */
   readonly reach: number
+  /**
+   * Whether its target may dodge it — `+0x10`, bit 5.
+   *
+   * **Read from the code that reads it**, not inferred from the values: the
+   * battle's evasion roll (`func_ov000_02156f98` in the decomp's overlay 0)
+   * opens with `tst [action + 0x10], #0x20` and makes no draw when it is
+   * clear. The witness is on the cartridge: the plain Attack has it, and
+   * fleeing and the medicinal herb do not. 156 of 681 actions have it.
+   */
+  readonly evadable: boolean
+  /** Whether a shield may block it — `+0x10`, bit 6, read the same way by `func_ov000_02156e30`. 162 of 681. */
+  readonly blockable: boolean
+  /**
+   * Whether it is a critical hit without a roll — `+0x08`, bit 29. The
+   * critical roll (`func_ov000_02156cc4`) hands back 1 at once when it is set,
+   * **and spends no draw**. Set on 18 of 681, and the cartridge names the
+   * witness: one is `Critical Claim`. Two more are 244 and 245, which the block
+   * roll also singles out; the other fifteen are a second copy of each
+   * attacking spell, Frizz to Kaboom — INFERRED: the spell as it goes haywire.
+   */
+  readonly alwaysCritical: boolean
+  /**
+   * What the critical chance is multiplied by, in hundredths — `+0x14`, bits
+   * 21 to 27. The roll divides it by `100.0f` and hands it to
+   * `CalculateCritRate` as the skill's multiplier.
+   */
+  readonly criticalPercent: number
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -170,6 +197,10 @@ export function readActions(bytes: Uint8Array): Action[] {
       message: view.getUint32(at + 0x20, true) >>> 20,
       opening: (view.getUint32(at + 0x20, true) >>> 10) & 0x3ff,
       reach: (bytes[at + 0x17] as number) >> 4,
+      evadable: (view.getUint32(at + 0x10, true) & 0x20) !== 0,
+      blockable: (view.getUint32(at + 0x10, true) & 0x40) !== 0,
+      alwaysCritical: ((view.getUint32(at + 8, true) >>> 29) & 1) === 1,
+      criticalPercent: (view.getUint32(at + 0x14, true) >>> 21) & 0x7f,
       raw: bytes.subarray(at, at + ACTION_RECORD),
     })
   }

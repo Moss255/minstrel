@@ -3,14 +3,19 @@ import { BattleRng, criticalChance, physicalDamage } from '../src/index.ts'
 import {
   AMBUSH_FOLLOWER_ACTS_BELOW,
   ambushFollowerActs,
+  BLOW_ORDER,
   buffMultiplier,
   calculateCritRate,
   calculateMonsterCritRate,
   calculatePhysicalDamage,
   calculateTensionBonus,
   criticalThreshold,
+  evasionRate,
   GameRandom,
+  MONSTER_EVASION,
+  rollsBlock,
   rollsCritical,
+  rollsEvade,
   roundUp,
 } from './game-oracle.ts'
 
@@ -263,5 +268,50 @@ describe('what is read and not yet in the simulation', () => {
     expect(roundUp(10.4)).toBe(10)
     expect(roundUp(10.5)).toBe(11)
     expect(roundUp(100 * buffMultiplier.attack(1))).toBe(125)
+  })
+
+  it('rolls a blow’s critical first, then the dodge, then the block, then the damage', () => {
+    expect(BLOW_ORDER).toEqual(['critical', 'evade', 'block', 'unread', 'damage'])
+  })
+
+  it('lets one of the party dodge two times in a hundred, which is the simulation’s own', () => {
+    expect(evasionRate({ party: true })).toBe(2)
+    expect(evasionRate({ party: true, accessory: 3 })).toBe(5)
+    expect(evasionRate({ party: true }, { doubled: true })).toBe(4)
+    expect(evasionRate({ party: true, accessory: 9 }, { fifty: true })).toBe(50)
+  })
+
+  it('lets a monster dodge by its grade, and not at all past the table', () => {
+    expect(MONSTER_EVASION).toEqual([0, 2, 4, 8, 25])
+    expect(evasionRate({ party: false, grade: 4 })).toBe(25)
+    expect(evasionRate({ party: false, grade: 5 })).toBe(0)
+    expect(evasionRate({ party: false, grade: -1 })).toBe(0)
+  })
+
+  it('spends no draw on a dodge or a block the action does not allow', () => {
+    const random = new GameRandom(11n)
+    expect(rollsEvade(random, false, 100)).toBe(false)
+    expect(rollsBlock(random, false, 100)).toBe(false)
+    expect(random.drawn).toBe(0)
+    rollsEvade(random, true, 2)
+    rollsBlock(random, true, 1)
+    expect(random.drawn).toBe(2)
+  })
+
+  it('truncates the dodge’s rate and not the block’s', () => {
+    // A rate of 2.9 dodges on a draw of 0 or 1; a block at 0.5 lands on a draw of 0.
+    class Fixed extends GameRandom {
+      constructor(private readonly value: number) {
+        super(0n)
+      }
+      override max(): number {
+        this.drawn++
+        return this.value
+      }
+    }
+    expect(rollsEvade(new Fixed(2), true, 2.9)).toBe(false)
+    expect(rollsEvade(new Fixed(1), true, 2.9)).toBe(true)
+    expect(rollsBlock(new Fixed(0), true, 0.5)).toBe(true)
+    expect(rollsBlock(new Fixed(1), true, 0.5)).toBe(false)
   })
 })
