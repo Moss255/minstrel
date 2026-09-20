@@ -27,6 +27,7 @@ function actions(
     foeChance?: number
     rider?: number
     levels?: [own: number, rider: number]
+    elements?: [deals: number, lands: number]
   }[],
 ) {
   const strings: number[] = []
@@ -64,6 +65,7 @@ function actions(
       foeChance = 0,
       rider = 0x1f,
       levels = [0, 0],
+      elements = [0, 0x1f],
     },
   ] of records.entries()) {
     const at = 4 + r * 60
@@ -76,7 +78,13 @@ function actions(
     )
     view.setUint32(
       at + 8,
-      (((alwaysCritical ? 1 : 0) << 29) | (0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0,
+      (((alwaysCritical ? 1 : 0) << 29) |
+        (0x08 << 24) |
+        ((elements[0] ?? 0) << 22) |
+        (range << 14) |
+        0x0e00 |
+        cost) >>>
+        0,
       true,
     )
     // Bits 5 and 6 among neighbours that must not leak into them.
@@ -97,7 +105,11 @@ function actions(
     view.setUint32(at + 0x14, (((criticalPercent & 0x7f) << 21) | foeChance) >>> 0, true)
     out[at + 0x17] = (reach << 4) | ((out[at + 0x17] as number) & 0x0f)
     // The kind between neighbours on both sides; the cap under others.
-    view.setUint32(at + 0x18, (0xfffcf000 | (mode << 16) | (kind << 5) | rider) >>> 0, true)
+    view.setUint32(
+      at + 0x18,
+      (0x07fcf000 | ((elements[1] ?? 0) << 27) | (mode << 16) | (kind << 5) | rider) >>> 0,
+      true,
+    )
     view.setUint32(at + 0x1c, (0xffffc000 | damageCap) >>> 0, true)
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
     view.setInt16(at + 0x30, levels[0] ?? 0, true)
@@ -295,5 +307,21 @@ describe('the range table', () => {
     )
     expect(kasap).toMatchObject({ foeChance: 75, rider: 0, levels: -1, riderLevels: 0 })
     expect(dagger).toMatchObject({ foeChance: 0x7f, rider: 4, levels: 0, riderLevels: 1 })
+  })
+
+  it('reads the element of what it deals and the element its landing is resisted by', () => {
+    const [frizz, kasap] = readActions(
+      actions([
+        { id: 9, name: 'Frizz', plural: '', elements: [1, 0], alwaysCritical: true, range: 0xff },
+        { id: 44, name: 'Kasap', plural: '', elements: [0x1f, 19] },
+      ]),
+    )
+    expect(frizz).toMatchObject({
+      element: 1,
+      landingElement: 0,
+      alwaysCritical: true,
+      range: 0xff,
+    })
+    expect(kasap).toMatchObject({ element: 0x1f, landingElement: 19 })
   })
 })

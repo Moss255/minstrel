@@ -3020,6 +3020,8 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
       defence: numbers.defence,
       agility: numbers.agility,
       shield: false,
+      // What it takes of each element — its record's own, read as the game reads it.
+      resist: numbers.resistances,
       exp: numbers.exp,
       gold: numbers.gold,
       // It runs only from a party past its level by its margin — `fld_mondata`, INFERRED.

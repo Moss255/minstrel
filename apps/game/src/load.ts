@@ -291,6 +291,10 @@ export interface ItemEffect {
     readonly haywire: boolean
     readonly levels: number
     readonly rider: number
+    /** The element of what it deals, the element its landing is resisted by, and its cap. */
+    readonly element: number
+    readonly landingElement: number
+    readonly cap: number
   }
   /**
    * The range the party draws from, when it has one. `base` is the party's
@@ -1130,6 +1134,9 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           haywire: action.criticalPercent > 0,
           levels: action.levels,
           rider: action.rider,
+          element: action.element,
+          landingElement: action.landingElement,
+          cap: action.damageCap,
         },
         // The party's amount: the Hero is who uses these — see `ActionRange.party`.
         range: range && {

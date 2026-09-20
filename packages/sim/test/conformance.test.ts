@@ -6,9 +6,11 @@ import {
   criticalChance,
   criticalDamage,
   criticalHit,
+  dealt,
   drawnAmount,
   partyAmount,
   physicalDamage,
+  resistanceTo,
 } from '../src/index.ts'
 import {
   AMBUSH_FOLLOWER_ACTS_BELOW,
@@ -24,11 +26,13 @@ import {
   criticalDamageOf,
   criticalThreshold,
   criticalValue,
+  damageDealt,
   endOfBlow,
   evasionRate,
   GameRandom,
   MONSTER_EVASION,
   partyBlockRate,
+  resistance,
   riderLands,
   rollsBlock,
   rollsCritical,
@@ -640,5 +644,76 @@ describe('what rides on a blow', () => {
       if (theirs !== BattleRng.fromGameState(seed).below(100) < 12) wrong++
     }
     expect(wrong).toBe(0)
+  })
+})
+
+describe('what a target takes of it', () => {
+  const plain = {
+    dodged: false,
+    blocked: false,
+    action: 1,
+    kind: 1,
+    damageCap: 0,
+    worksOnMetal: true,
+    targetCanBeHurt: true,
+    targetIsMetal: false,
+    targetStatus24: false,
+  }
+
+  it('reads a resistance as the game does, at every byte', () => {
+    for (let byte = 0; byte <= 255; byte++) {
+      const bytes = Array.from({ length: 22 }, () => byte)
+      for (const element of [1, 8, 16, 21]) {
+        expect(resistanceTo(bytes, element)).toBe(resistance(bytes, element))
+      }
+    }
+    // Outside the elements, and with no bytes at all, whole.
+    expect(resistanceTo([0], 0)).toBe(1)
+    expect(resistanceTo([0], 22)).toBe(1)
+    expect(resistanceTo(undefined, 5)).toBe(1)
+  })
+
+  it('deals what the game deals — critical or not, a blow or a spell, at every resistance', () => {
+    let wrong = 0
+    for (const byte of [0, 5, 25, 50, 75, 100, 125, 150, 200]) {
+      const res = resistance([byte], 1)
+      for (const critical of [false, true]) {
+        for (const attack of [undefined, 40]) {
+          for (const base of [0, 1, 3, 17, 240]) {
+            for (let seed = 1n; seed <= 60n; seed++) {
+              const ours = dealt(BattleRng.fromGameState(seed), base, {
+                critical,
+                resistance: res,
+                ...(attack === undefined ? {} : { attack }),
+              })
+              const theirs = damageDealt(base, new GameRandom(seed), {
+                ...plain,
+                critical,
+                resistance: res,
+                ...(attack === undefined ? {} : { attack }),
+              })
+              if (ours !== theirs) wrong++
+            }
+          }
+        }
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('gives no coin to what a resistance left above nothing, and none against the immune', () => {
+    // 1 against a half is 0.5: above nothing, so no coin, and truncated to 0.
+    const half = BattleRng.fromGameState(3n)
+    expect(dealt(half, 1, { critical: false, resistance: 0.5 })).toBe(0)
+    expect(half.drawn).toBe(0)
+    const immune = BattleRng.fromGameState(3n)
+    expect(dealt(immune, 40, { critical: false, resistance: 0 })).toBe(0)
+    expect(immune.drawn).toBe(0)
+  })
+
+  it('holds a spell to its cap', () => {
+    expect(
+      dealt(BattleRng.fromGameState(1n), 1500, { critical: false, resistance: 1.25, cap: 999 }),
+    ).toBe(999)
   })
 })

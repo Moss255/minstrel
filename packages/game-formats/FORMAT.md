@@ -2588,7 +2588,38 @@ and `readMonsterNames` read them.
 | `+0x60` | `u16` | attack, INFERRED | by order |
 | `+0x62` | `u16` | defence, INFERRED | the metal family's 256 and 512 |
 | `+0x64` | `u16` | agility, INFERRED | by order; high on the metal family |
+| `+0x6C` | `u8` ×22 | **resistances**: what it takes of each of the game's 21 elements, a hundredth each, by `element − 1`. From the game's code — see below | firespirit 50 fire, 150 ice; slime 125 of all seven; metal slime 0 of every status; **element 8, the plain Attack's, 100 on all 438**. Fifteen values in all: 0, 1, 5, 10, 15, 25, 30, 35, 50, 60, 75, 100, 125, 150, 200 |
+| `+0x82` | `u8` ×2 | copied into the battle beside them; not established | 0 on every monster looked at |
 | `+0x27`, bit 4 | | fights as a boss: draws its ways by the falling weight table — INFERRED, see "Battle weight tables" | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster |
+
+### Resistances, and the five numbers — from the game's code
+
+Read 20 September 2026. The game builds a monster's battle status from this
+record **at `+0x2C`** (`func_02089630`, called from overlay 0 at `0x0215eed0`
+with `record + 0x2c`): HP from that block's `+0x30`, MP `+0x32`, three `u16`s
+`+0x34` to `+0x38`, a packed word at `+0x3C`, and **24 bytes copied from its
+`+0x40`** to the status's `+0x3E` (`func_02082d38`). That is this record's
+`+0x5C`, `+0x5E`, `+0x60`–`+0x64`, `+0x68` and `+0x6C` — so HP, MP, attack,
+defence and agility above are where the game reads a monster's numbers from,
+and no longer only INFERRED from their sizes.
+
+The battle reads a resistance with `func_ov000_02156b38(target, element)`: the
+byte at status `+0x3E + element − 1`, over `100.0f`; whole for an element
+outside 1 to 21. Everyone's bytes start at a hundred (`func_020891cc`
+`memset`s 22 of them); a monster's are then these.
+
+**The elements**, from the actions that carry them (`Action.element`,
+`Action.landingElement`): 1 fire (Frizz, Fire Breath) · 2 ice (Crack, Cool
+Breath) · 3 wind (Woosh) · 4 blast (Bang) · 6 dark (Zam) · **8 the plain
+Attack** · 9 Dazzle · 10 sleep · 13 Fuddle · 16 poison · 18 attack down (its
+rider's handler reads this byte) · 19 defence down (Kasap) · 20 agility down.
+5, 7, 11, 12, 14, 15, 17 and 21 are not established; the 22nd byte is reached
+by no element.
+
+**A monster's HP is drawn** in the same function: unless a flag says not
+(`func_020a3694` of the battle — INFERRED: a grotto's or a legacy boss's), it
+is `(int)(HP × NextRandomFloatBetween(0.8, 1.0) + 0.5)`, from `GetBTRandom()`.
+The table's HP is the most it can have. *Not modelled* — `docs/conformance.md`.
 
 **How a monster chooses among its six**: the reference draws a number from 1
 to 256 against six weights, an even table, 43, 42, 43, 43, 42, 43, and for

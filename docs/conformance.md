@@ -42,6 +42,8 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A spell going haywire** | the blow's own roll at the spell's `criticalPercent` — 50, so one in a hundred; once a cast for a group or all; **a monster's rate a literal nothing** | `magicCritical`, party only | the order and the monster's are the game's. **Ours still**: the rate flat where the game's climbs with deftness past 150 |
 | **A change of state landing** | it *is* the accuracy roll: a monster's chance the record's `+0x14` bits 0–6, the party's by might; × the target's resistance + ½; a cast gone haywire lands outright. The kind's handler makes no draw | the accuracy's draw under the chance | **the order and the roll are the game's**, and the chances now come from the record — the reference's 75, 75 and 25 are in the data. **Ours still**: every resistance whole |
 | **What rides on a blow** | one draw, only after a blow that dealt something, under the action's chance × a hundredth of the target's byte | `poison` on an attack | the game's for the poison attack, whose 12 is in its record; the other riders read and not modelled |
+| **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record. Damage × it after the critical; a change's accuracy × it + ½; a rider's chance × it | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte. Frizz on a slime is a quarter more. **Ours still**: the party's whole, the wards and the two statuses that shift them |
+| **A monster's HP** | drawn: `(int)(HP × between(0.8, 1.0) + 0.5)` as the battle builds it, unless a flag says not | the table's HP | read, **not modelled** — which generator it draws from is not established |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
@@ -396,6 +398,52 @@ resistance.** Every target's is whole and every susceptibility byte a hundred,
 which is right for the Hero against the slice's monsters only as far as the
 reference goes; where a monster's come from is not read.
 
+## Resistances
+
+Read 20 September. **One function, one array.** `func_ov000_02156b38(target,
+element)` is the byte at the target's status `+0x3E + element − 1`, plus a
+modifier, held at nothing or above, over `100.0f`; whole for an element outside
+1 to 21. Twenty-two bytes, a hundred each until something says otherwise
+(`func_020891cc`). The riders' "byte of the target's" at `+0x46` to `+0x52` is
+this same array, elements 9 to 21.
+
+**A monster's are in its record**: the 22 bytes at `+0x6C` of
+`mon_btldata.nat`, copied in when the battle builds it (`func_02089630`). That
+function reads the record's HP, MP, attack, defence and agility from where
+`game-formats` had INFERRED them, which settles those too. The cartridge bears
+the reading out by name: a firespirit takes 50 of fire and 150 of ice, a slime
+125 of all seven, a metal slime nothing of any status — and **all 438 take a
+plain blow whole**.
+
+**Where it is used**, all three through that one function:
+
+- **damage**: times the resistance to the action's element (`+0x08` bits
+  22–26), straight after the critical and before anything else
+  (`0x021e6e8c`). A float until the end — so 1 against a half is 0.5, which is
+  above nothing, gets no coin, and deals 0;
+- **a change of state**: its accuracy times the resistance to `+0x18` bits
+  27–31, plus a half — Kasap's 75 on the slice's boss, whose byte for it is 75,
+  is `(int)(56.25 + 0.5)` = 56;
+- **a rider**: under its chance times the byte over a hundred, and not rolled
+  for at all against a byte of 0.
+
+**The modifier** — read, not modelled: −50 under a ward for each of elements 1
+to 7 (five wards: 1, 2, 3 and 4, 5 and 6, 7), nothing for 8, and for 9 to 21
+−25 under one status bit and +25 under another.
+
+**In the simulation**: `resistanceTo` and `dealt`, held to the oracle at every
+byte and every resistance; a fighter's `resist`; a spell's `element` and `cap`,
+a change's `element`. The game gives each monster its record's bytes.
+**Ours still**: the party's are whole — the game's start whole too, and what
+armour and accessories do to them is not read.
+
+**And a monster's HP is drawn.** The same function sets it to
+`(int)(HP × NextRandomFloatBetween(0.8, 1.0) + 0.5)` unless `func_020a3694`
+of the battle says not — INFERRED: a grotto's or a legacy boss's. The table's
+HP is a ceiling. It draws from `GetBTRandom()`, a generator at `0x02108ddc`;
+**whether that is the generator the battle's rolls use is not established**,
+and a replay depends on it. *Not modelled.*
+
 ## What the rest of a blow does — the end of `func_ov024_021e6a90`
 
 Read 20 September, from `0x021e7760` to the return. `r4` is the attacker and
@@ -459,9 +507,9 @@ defending and the reference is wrong.
   defending — or the witness above, which is cheaper;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
-- **resistances**: `func_ov000_02156b38` and the susceptibility bytes at status
-  `+0x46`–`+0x52` — where a monster's come from, which is most of what is
-  left between the simulation's changes of state and the game's;
+- **a monster's HP, drawn at 0.8 to 1.0 of its table's** — read, above; what
+  it needs is whether `GetBTRandom()` is the battle's own generator;
+- what armour and accessories do to the party's resistances, and the wards;
 - what the game does to a heal that goes haywire;
 - the party's flee chance, by way of how the command is numbered;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;

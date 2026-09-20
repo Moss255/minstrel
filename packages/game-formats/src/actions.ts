@@ -204,6 +204,20 @@ export interface Action {
   /** Between what the number scales it — `+0x04` bits 12–21 and 22–31. Frizz's 50 and 999. */
   readonly scaleRange: { readonly lo: number; readonly hi: number }
   /**
+   * The element of what it deals — `+0x08`, bits 22 to 26. The final-damage
+   * function multiplies the damage by the target's resistance to it
+   * (`func_ov024_021e6a90`, `0x021e6e8c`). 8 on the plain Attack, 1 Frizz, 2
+   * Crack, 3 Woosh, 4 Bang, 6 Zam; 0 where there is none, which is whole.
+   */
+  readonly element: number
+  /**
+   * The element its landing is resisted by — `+0x18`, bits 27 to 31, which the
+   * accuracy roll hands to the same function. 19 on Kasap, 20 Deceleratle, 10
+   * Snooze and Sweet Breath, 16 Poison Breath; and on a blow with a rider, the
+   * rider's — Toxic Dagger's 16, Helm Splitter's 19.
+   */
+  readonly landingElement: number
+  /**
    * **A monster's chance with it**, in a hundred — `+0x14`, bits 0 to 6. Two
    * readers, both the game's: the accuracy roll (`func_ov000_02156648`) takes it
    * as the accuracy of an action whose accuracy scales ({@link accuracyMode}
@@ -306,6 +320,8 @@ export function readActions(bytes: Uint8Array): Action[] {
       kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,
       damageCap: view.getUint32(at + 0x1c, true) & 0x3fff,
       worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
+      element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
+      landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,
       rider: view.getUint32(at + 0x18, true) & 0x1f,
       levels: view.getInt16(at + 0x30, true),

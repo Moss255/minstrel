@@ -244,6 +244,9 @@ export interface Castable {
     readonly haywire: boolean
     readonly levels: number
     readonly rider: number
+    readonly element?: number
+    readonly landingElement?: number
+    readonly cap?: number
   }
 }
 
@@ -272,7 +275,16 @@ export function battleSpellOf(
   const reach = REACHES.get(action.reach)
   if (!does || !reach) return undefined
   return {
-    spell: { action: action.action, cost: action.cost, does, reach, amount: action.range },
+    spell: {
+      action: action.action,
+      cost: action.cost,
+      does,
+      reach,
+      amount: action.range,
+      // What the target's resistance is to, and the most it can deal — the record's.
+      ...(action.rolls?.element ? { element: action.rolls.element } : {}),
+      ...(action.rolls?.cap ? { cap: action.rolls.cap } : {}),
+    },
     name: { name: action.name },
     message: action.message,
     opening,
@@ -350,7 +362,7 @@ const FOE_CHANGES: ReadonlyMap<number, Pick<Changing, 'change' | 'side'>> = new 
 function recordsOwn(
   changes: Pick<Changing, 'change' | 'side'>,
   rolls: Castable['rolls'],
-): Pick<Changing, 'change' | 'side' | 'evadable' | 'haywire'> {
+): Pick<Changing, 'change' | 'side' | 'evadable' | 'haywire' | 'element'> {
   if (!rolls) return changes
   const chance = rolls.chanceIsAccuracy ? rolls.foeChance : 100
   const { change } = changes
@@ -363,6 +375,7 @@ function recordsOwn(
         : { ...change, chance, by: levels === 0 ? change.by : levels },
     evadable: rolls.evadable,
     haywire: rolls.haywire,
+    ...(rolls.landingElement ? { element: rolls.landingElement } : {}),
   }
 }
 

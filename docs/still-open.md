@@ -51,6 +51,11 @@ Not code-shaped: each wants the game running. `docs/binaries.md` gives each of
 these the shape to search the ARM9 and its overlays by, the witness that would
 confirm a find, and what to do if the binaries do not give it up.
 
+- **Whether a monster's HP varies from battle to battle.** The game's code
+  draws it at 0.8 to 1.0 of the table's as the battle is built
+  (`func_02089630`), unless a flag says not. The sim gives every monster the
+  table's. **The witness**: the same monster in two battles falling to
+  different totals of damage — a slime's 8 would be 6 to 8.
 - **Whether a defended blow that comes to nothing can still deal 1.** The
   game halves a damaging action on a status bit of the target's that is
   INFERRED to be defending, and does it *after* the 0-or-1 coin — so a

@@ -1,10 +1,11 @@
 import {
   criticalDamage,
-  criticalHit,
+  dealt,
   drawnAmount,
   initiative,
   partyAmount,
   physicalDamage,
+  resistanceTo,
 } from './damage.ts'
 import type { BattleRng } from './rng.ts'
 import {
@@ -101,6 +102,11 @@ export interface Fighter {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /**
+   * What it takes of each element, in hundredths, by `element − 1` — a
+   * monster's from its record; see `resistanceTo`. Whole when not given.
+   */
+  readonly resist?: readonly number[]
   /** Magical might and magical mending, which a spell's amount may scale by. Nothing when not given. */
   readonly might?: number
   readonly mending?: number
@@ -178,6 +184,10 @@ export interface Spell {
   readonly reach: 'one' | 'group' | 'all'
   /** How much, a base give or take a spread; none heals all there is to heal. */
   readonly amount: Heal | undefined
+  /** The element of what it deals — its record's; none is resisted by no one. */
+  readonly element?: number
+  /** The most it can deal — its record's cap. */
+  readonly cap?: number
 }
 
 /** What a change of state does, and its chance in 100 of landing — see `states.ts`. */
@@ -193,6 +203,8 @@ export interface Changing {
   readonly change: Change
   readonly reach: 'one' | 'group' | 'all'
   readonly side: 'own' | 'other'
+  /** The element its landing is resisted by — its record's; Kasap's 19, Snooze's 10. */
+  readonly element?: number
   /** Whether it can be dodged — the action's own flag; Sweet Breath's is set, Kasap's is not. */
   readonly evadable?: boolean
   /**
@@ -333,6 +345,10 @@ export const DEFAULT_RULES: Rules = {
 function evadeOf(target: Fighter, rules: Rules): number {
   return target.evade ?? (target.side === 'party' ? rules.dodge : 0)
 }
+
+/** The element of the plain Attack, and of poison — the action records' own; see game-formats' `MonsterBattle.resistances`. */
+const PLAIN_ATTACK_ELEMENT = 8
+const POISON_ELEMENT = 16
 
 /** An amount as the game draws it for whoever uses the action: a monster's, or one of the party's. */
 function amountFor(rng: BattleRng, user: Fighter, amount: Heal): number {
@@ -628,7 +644,15 @@ export function playRound(
         if (!once) critical = rng.below(10_000) < rate
         rng.below(100)
         let amount = spell.amount ? amountFor(rng, me, spell.amount) : them.maxHp
-        if (critical && spell.amount) amount = criticalDamage(rng, amount)
+        if (spell.does === 'harm' && spell.amount) {
+          // Its critical, then the target's resistance to its element, then
+          // the whole number — the game's, in the game's floats: `dealt`.
+          amount = dealt(rng, amount, {
+            critical,
+            resistance: resistanceTo(them.resist, spell.element ?? 0),
+            ...(spell.cap ? { cap: spell.cap } : {}),
+          })
+        } else if (critical && spell.amount) amount = criticalDamage(rng, amount)
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         return { target, amount }
       })
@@ -698,7 +722,8 @@ export function playRound(
         const them = fighters[target] as FighterState
         rng.below(100)
         if (!once) critical = rng.below(10_000) < rate
-        const dodged = changing.evadable === true && rng.below(100) < Math.trunc(evadeOf(them, rules))
+        const dodged =
+          changing.evadable === true && rng.below(100) < Math.trunc(evadeOf(them, rules))
         const draw = rng.below(100)
         if (dodged) return { target, result: 'dodged' as const }
         const was = them.states
@@ -710,7 +735,15 @@ export function playRound(
               : false
         if (already) return { target, result: 'already' as const }
         // A cast gone haywire lands outright (`0x02156a34`); the rest under the chance.
-        if (!critical && draw >= change.chance) return { target, result: 'resisted' as const }
+        // Its accuracy is the chance **times the target's resistance, plus a
+        // half, truncated** (`0x02156a74`); gone haywire it lands on anyone
+        // not immune.
+        const resistance = resistanceTo(them.resist, changing.element ?? 0)
+        const accuracy = Math.trunc(
+          Math.fround(Math.fround(Math.fround(change.chance) * resistance) + Math.fround(0.5)),
+        )
+        if (!(critical && resistance > 0) && draw >= accuracy)
+          return { target, result: 'resisted' as const }
         if (change.kind === 'sleep') {
           setStates(target, { sleep: SLEEP_TURNS })
           return { target, result: 'asleep' as const }
@@ -774,26 +807,24 @@ export function playRound(
     //    the game calls `GetAttackBaseDamage` whenever the blow lands, and the
     //    dodge and the block ride along as flags.
     let damage = physicalDamage(rng, me.attack, defenceOf(them))
-    if (critical) {
-      // The greatest of the damage and a fifth, the attack power times a draw
-      // from 0.95 to 1.05, and the damage itself — read from the head of
-      // `func_ov024_021e6a90`. The base damage's draws come first, as above.
-      damage = criticalHit(rng, damage, me.attack)
-    }
-    if (dodged || blocked) {
-      // The game's: each flag zeroes the damage, late, in `func_ov024_021e6a90`
-      // (0x021e777c, 0x021e77a0), and a blow so zeroed gets no coin.
-      damage = 0
-    } else if (damage <= 0) {
-      // The game's, 0x021e7824–0x021e7904: a blow that comes to nothing, and
-      // was neither dodged nor blocked, deals a draw below 2 instead. **Whoever
-      // struck it** — the code looks at the blow and the target and never at
-      // the attacker's side; the reference had it for a monster's blow only.
-      // (Its other conditions — the target not immune to the action's element,
-      // the action not 0x1B, 0x48 or 0x70, a metal body only under an action
-      // that works on one — are all met by the plain attack on what the slice
-      // fields.)
-      damage = rng.below(2)
+    // The rest is the game's `func_ov024_021e6a90`, in its floats — `dealt`:
+    // the critical (the greatest of the damage and a fifth, the attack power
+    // times 0.95 to 1.05, and the damage itself), **times the target's
+    // resistance to the plain Attack's element, 8**; nothing for a blow dodged
+    // or blocked, zeroed late and given no coin; and for one that came to
+    // nothing and was neither, a draw below 2 — **whoever struck it**, which
+    // the reference had for a monster's blow only.
+    // What was worked out, before the coin: the reference's halving is not the coin's.
+    const worked = damage
+    damage = dealt(rng, damage, {
+      critical,
+      attack: me.attack,
+      resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
+      dodged,
+      blocked,
+    })
+    if (dodged || blocked || damage <= 0 || worked <= 0) {
+      // Nothing to halve — and the 0-or-1 blow is not halved, the reference's.
     } else if (me.side === 'foes' && !critical && them.defending) {
       // The reference's: defending halves a monster's blow that deals
       // something. The game halves a damaging action (×0.5 at 0x021e7a80) on a
@@ -807,11 +838,15 @@ export function playRound(
     // Rolled only for a blow that has dealt something, and not for one already
     // poisoned — both the game's, from the rider's handler (`func_ov024_021e303c`),
     // which leaves before its draw otherwise.
+    // It lands under its chance times a hundredth of the target's byte for
+    // poison, the draw a float; and one immune is not rolled for.
+    const toPoison = resistanceTo(them.resist, POISON_ELEMENT)
     const poisoned =
       damage > 0 &&
       command.poison !== undefined &&
       !them.states.poisoned &&
-      rng.below(100) < command.poison
+      toPoison > 0 &&
+      Math.fround(rng.below(100)) < Math.fround(Math.fround(command.poison) * toPoison)
     if (poisoned) setStates(target, { poisoned: true })
     events.push({
       kind: 'attack',

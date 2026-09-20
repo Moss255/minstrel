@@ -11,8 +11,8 @@ import type { BattleRng } from './rng.ts'
  *
  * **What has since been read from the game's own code is the game's instead**,
  * in the 32-bit floats it computes in — `physicalDamage`, `criticalChance`,
- * `criticalBlow`, `criticalHit`, `criticalDamage`, `drawnAmount`, `partyAmount` and
- * `blockChance` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
+ * `criticalBlow`, `criticalHit`, `criticalDamage`, `drawnAmount`, `partyAmount`,
+ * `blockChance`, `resistanceTo` and `dealt` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
  * "Fixed-point in simulation", and `docs/conformance.md`.
  */
 
@@ -208,4 +208,69 @@ export function blockChance(hasShield: boolean, tenths: readonly number[]): numb
   let sum = f(0)
   for (const each of tenths) sum = f(sum + f(f(each) / f(10)))
   return sum
+}
+
+/**
+ * What a target takes of an element, as the game's `func_ov000_02156b38` gives
+ * it: the byte for the element over `100.0f` — and whole for an element outside
+ * 1 to 21, or for anyone with no bytes, which is what the game's own `memset`
+ * to a hundred leaves them with.
+ *
+ * Not here, and in the game's: fifty off each of the first seven under a ward,
+ * and twenty-five either way on the rest under two statuses. None is modelled.
+ */
+export function resistanceTo(bytes: readonly number[] | undefined, element: number): number {
+  if (element < 1 || element > 21) return 1
+  const byte = bytes?.[element - 1]
+  if (byte === undefined) return 1
+  return Math.fround(Math.fround(byte) / Math.fround(100))
+}
+
+/**
+ * What a worked-out amount comes to on its target — the spine of the game's
+ * `func_ov024_021e6a90`, **kept a float to the end as the game keeps it**:
+ *
+ * 1. a critical: the greatest of the amount and a fifth and its critical's
+ *    draw — the attacker's attack power times 0.95 to 1.05 with the amount for
+ *    a floor, for a blow; the amount times 1.5 to 2.0, for anything else;
+ * 2. **times the target's resistance** to the action's element (`0x021e6e8c`);
+ * 3. nothing, if it was blocked or dodged;
+ * 4. a draw below 2 in place of nothing — for what was neither, against a
+ *    target not immune;
+ * 5. truncated, and held to the action's cap.
+ *
+ * The order matters where a resistance is not whole: an amount of 1 against a
+ * half is 0.5, which is *above* nothing and so gets no coin, and deals 0.
+ */
+export function dealt(
+  rng: BattleRng,
+  amount: number,
+  to: {
+    readonly critical: boolean
+    /** The attacker's attack power, for a blow's critical; absent for a spell's. */
+    readonly attack?: number
+    readonly resistance: number
+    readonly dodged?: boolean
+    readonly blocked?: boolean
+    readonly cap?: number
+  },
+): number {
+  const f = Math.fround
+  let d = f(amount)
+  if (to.critical) {
+    const boosted = f(f(1.2) * d)
+    const drawn =
+      to.attack !== undefined
+        ? f(f(to.attack) * rng.floatBetween(0.95, 1.05))
+        : f(d * rng.floatBetween(1.5, 2))
+    const floor = to.attack !== undefined ? d : 0
+    d = boosted < drawn ? drawn : boosted
+    if (d < floor) d = floor
+  }
+  d = f(d * f(to.resistance))
+  if (to.blocked || to.dodged) d = 0
+  else if (d <= 0 && to.resistance > 0) d = f(rng.below(2))
+  let whole = Math.trunc(d)
+  if (to.cap && to.cap < whole) whole = to.cap
+  return whole
 }

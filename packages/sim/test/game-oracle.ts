@@ -514,3 +514,36 @@ export function riderLands(
   const under = critical ? f(100) : f(f(chance) * f(f(targetByte) / f(100)))
   return f(draw) < under
 }
+
+/**
+ * A target's resistance to an element — `func_ov000_02156b38`. The byte for
+ * the element (status `+0x3E + element − 1`; a monster's from its record's
+ * `+0x6C`, anyone's a hundred until something says otherwise), plus a
+ * modifier, held at nothing or above, over `100.0f`. Whole for an element
+ * outside 1 to 21.
+ *
+ * The modifier: for elements 1 to 7, −50 under that element's ward (five
+ * wards: 1, 2, 3 and 4, 5 and 6, 7); for 8, nothing; for 9 to 21, −25 under
+ * status bit 3 of the word at `+0x18`, else +25 under bit 4.
+ */
+export function resistance(bytes: readonly number[], element: number, modifier = 0): number {
+  if (element < 1 || element > 0x15) return 1
+  let value = f(f(bytes[element - 1] ?? 100) + f(element === 8 ? 0 : modifier))
+  if (value < 0) value = 0
+  return f(value / f(100))
+}
+
+/**
+ * The spine of `func_ov024_021e6a90` whole: the critical at its head, **times
+ * the resistance** (`0x021e6e8c`), and then the end of the blow.
+ */
+export function damageDealt(
+  base: number,
+  random: GameRandom,
+  blow: BlowEnd & { readonly resistance: number; readonly attack?: number },
+): number {
+  let d = f(base)
+  if (blow.critical) d = criticalDamageOf(base, random, blow.attack)
+  d = f(d * f(blow.resistance))
+  return endOfBlow(d, { ...blow, targetCanBeHurt: blow.resistance > 0 }, random)
+}

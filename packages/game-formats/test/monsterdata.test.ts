@@ -20,6 +20,10 @@ function battle(monsters: { number: number; hp: number; exp: number; gold: numbe
     view.setUint16(at + 0x60, 10, true)
     view.setUint16(at + 0x62, 7, true)
     view.setUint16(at + 0x64, 6, true)
+    // Neighbours either side of the 22 resistances, which must not leak in.
+    out[at + 0x6b] = 0xee
+    for (let i = 0; i < 22; i++) out[at + 0x6c + i] = 100 + i + r
+    out[at + 0x82] = 0xdd
   }
   return out
 }
@@ -75,6 +79,18 @@ describe('monster data', () => {
     expect(slime?.raw).toHaveLength(132)
     expect(big?.number).toBe(900)
     expect(big?.exp).toBe(70000)
+  })
+
+  it('reads 22 resistances from the record’s tail, and only those', () => {
+    const [slime, big] = readMonsterBattle(
+      battle([
+        { number: 1, hp: 8, exp: 2, gold: 4 },
+        { number: 2, hp: 9, exp: 2, gold: 4 },
+      ]),
+    )
+    expect(slime?.resistances).toEqual(Array.from({ length: 22 }, (_, i) => 100 + i))
+    expect(big?.resistances[0]).toBe(101)
+    expect(big?.resistances).toHaveLength(22)
   })
 
   it('reads each monster’s name and code by its number', () => {

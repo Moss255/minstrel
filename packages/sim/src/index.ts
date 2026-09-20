@@ -26,11 +26,13 @@ export {
   criticalChance,
   criticalDamage,
   criticalHit,
+  dealt,
   drawnAmount,
   initiative,
   type PartyAmount,
   partyAmount,
   physicalDamage,
+  resistanceTo,
 } from './battle/damage.ts'
 export { BattleRng } from './battle/rng.ts'
 export {

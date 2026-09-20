@@ -209,4 +209,18 @@ describe.skipIf(!romPath)('how a blow is resolved, on a real cartridge', () => {
     // Action 275, unnamed: the rider that poisons, a level of it, at 12.
     expect(byId.get(275)).toMatchObject({ rider: 4, foeChance: 12, riderLevels: 1, kind: 1 })
   })
+
+  it('names the element of what an action deals, and the element its landing is resisted by', () => {
+    const deals = (id: number) => byId.get(id)?.element
+    // The plain Attack 8; Frizz, Crack, Woosh, Bang 1 to 4; Zam 6.
+    expect([1, 9, 12, 18, 21, 13].map(deals)).toEqual([8, 1, 2, 3, 4, 6])
+    // The breaths are their spells' elements.
+    expect([226, 267].map(deals)).toEqual([1, 2])
+    const lands = (id: number) => byId.get(id)?.landingElement
+    // Kasap, Deceleratle, Snooze, Sweet Breath, Poison Breath, Fuddle, Dazzle.
+    expect([44, 48, 53, 228, 229, 51, 59].map(lands)).toEqual([19, 20, 10, 10, 16, 13, 9])
+    // A blow with a rider is resisted by the rider's: Toxic Dagger's poison,
+    // Helm Splitter's fall in defence.
+    expect([75, 109].map(lands)).toEqual([16, 19])
+  })
 })

@@ -23,6 +23,15 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | `+0x60` | `u16` | attack — INFERRED, by order |
  * | `+0x62` | `u16` | defence — INFERRED: the metal family's 256 and 512 |
  * | `+0x64` | `u16` | agility — INFERRED, by order |
+ * | `+0x6C` | `u8` ×22 | **resistances**, a hundredth each, one an element — from the game's code |
+ * | `+0x82` | `u8` ×2 | copied along with them, not established; 0 on every monster looked at |
+ *
+ * **The five numbers from `+0x5C` and the resistances are no longer only
+ * INFERRED.** The game builds a monster's battle status from this record at
+ * `+0x2C` (`func_02089630`, called at overlay 0 `0x0215eed0`), reading HP at
+ * that block's `+0x30`, MP `+0x32`, three more `u16`s to `+0x38`, and copying
+ * 24 bytes from its `+0x40` — which are this record's `+0x5C` to `+0x64` and
+ * `+0x6C`. See FORMAT.md, "Monster data", "Resistances".
  *
  * The rest of each record is carried as it is.
  */
@@ -42,6 +51,20 @@ export interface MonsterBattle {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /**
+   * What it takes of each of the game's 21 elements, in hundredths — index
+   * `element − 1`; 22 bytes, the last not reached by any element. 100 is
+   * whole, 0 immune, 125 a quarter more. The battle's `func_ov000_02156b38`
+   * reads the byte for an action's element and divides by `100.0f`: a spell's
+   * damage is multiplied by it, a change of state's accuracy likewise, and
+   * what rides on a blow lands under its chance times it.
+   *
+   * From the actions that carry them: 1 fire (Frizz), 2 ice (Crack), 3 wind
+   * (Woosh), 4 blast (Bang), 6 dark (Zam), **8 the plain Attack's**, 9 Dazzle,
+   * 10 sleep, 13 Fuddle, 16 poison, 19 defence down (Kasap), 20 agility down.
+   * 18 is attack down, from its rider's handler. The rest INFERRED or unknown.
+   */
+  readonly resistances: readonly number[]
   /**
    * Whether it fights as a boss does: bit 4 of the byte at `+0x27`. INFERRED
    * from where it is set: on 144 of the 159 boss-coded monsters and on the
@@ -115,6 +138,7 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
       attack: u16(0x60),
       defence: u16(0x62),
       agility: u16(0x64),
+      resistances: [...bytes.subarray(at + 0x6c, at + 0x6c + 22)],
       bossAi: ((bytes[at + 0x27] as number) & 0x10) !== 0,
       raw: bytes.subarray(at, at + BATTLE_RECORD),
     })
