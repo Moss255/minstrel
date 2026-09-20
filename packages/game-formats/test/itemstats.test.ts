@@ -54,7 +54,7 @@ describe('an equipment table’s stats', () => {
     ).toMatchObject({ attack: 9, defence: 5 })
   })
 
-  it('reads the rest of an entry: word 7’s three, word 6’s last two, the kind and who may wear it', () => {
+  it('reads the rest of an entry: word 7’s three, word 6’s three, the kind and who may wear it', () => {
     const [ring] = readItemStats(
       table([
         {
@@ -62,7 +62,7 @@ describe('an equipment table’s stats', () => {
           word5: 0,
           word3: (4 << 7) | 1,
           word4: 0x18000ebe,
-          // Word 6's first field is not established, and not read.
+          // Three ten-bit fields: the block, the evasion, the critical.
           word6: (40 << 20) | (30 << 10) | 25,
           word7: (8 << 20) | (20 << 10) | 25,
         },
@@ -72,6 +72,7 @@ describe('an equipment table’s stats', () => {
       deftness: 25,
       agility: 20,
       magicalMight: 8,
+      block: 25,
       evasion: 30,
       critical: 40,
       kind: 4,

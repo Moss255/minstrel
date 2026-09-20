@@ -134,3 +134,26 @@ export function criticalChance(deftness: number): number {
   const rate = f(f(2) + f(f(0.01) * f(past)))
   return Math.trunc(f(f(100) * rate))
 }
+
+/**
+ * One of the party's chance of blocking, in a hundred — the game's
+ * `func_ov000_02156118` for a character: **nothing without a shield**, and with
+ * one, what every piece worn says of blocking, each a number of tenths divided
+ * by `10.0f` and summed in the game's floats (`func_02084ee8`, over the eleven
+ * places in their order).
+ *
+ * Not here, and in the game's: a whole-number bonus from three of the shield
+ * skill's traits (`func_02085b88`), and a doubling under a status not
+ * established (`func_ov000_02156258`). Nothing the slice plays has either.
+ *
+ * It is not truncated, and the draw it meets is a float: the bronze shield's
+ * 0.5 blocks on a draw of 0 — once in a hundred — and the steel shield's 1.5
+ * on 0 or 1.
+ */
+export function blockChance(hasShield: boolean, tenths: readonly number[]): number {
+  if (!hasShield) return 0
+  const f = Math.fround
+  let sum = f(0)
+  for (const each of tenths) sum = f(sum + f(f(each) / f(10)))
+  return sum
+}

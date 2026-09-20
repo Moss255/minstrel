@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BattleRng,
+  blockChance,
   criticalBlow,
   criticalChance,
   criticalDamage,
@@ -23,6 +24,7 @@ import {
   evasionRate,
   GameRandom,
   MONSTER_EVASION,
+  partyBlockRate,
   rollsBlock,
   rollsCritical,
   rollsEvade,
@@ -482,5 +484,35 @@ describe('the end of a blow', () => {
   it('caps the whole number, where the action has a cap', () => {
     expect(endOfBlow(1200.9, { ...plain, action: 9, damageCap: 999 }, new GameRandom(1n))).toBe(999)
     expect(endOfBlow(1200.9, plain, new GameRandom(1n))).toBe(1200)
+  })
+})
+
+describe('a shield’s chance of blocking', () => {
+  it('is the game’s, for every shield there could be, alone or with more worn', () => {
+    let wrong = 0
+    for (let tenths = 0; tenths < 1024; tenths++) {
+      for (const rest of [[], [0, 0, 0], [3, 7]]) {
+        const worn = [...rest, tenths]
+        if (blockChance(true, worn) !== partyBlockRate(true, worn)) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('is nothing without a shield, whatever else is worn', () => {
+    expect(blockChance(false, [50])).toBe(0)
+    expect(partyBlockRate(false, [50])).toBe(0)
+  })
+
+  it('blocks on a whole draw under an untruncated rate — half a hundredth is one in a hundred', () => {
+    const blocks = (tenths: number) => {
+      let n = 0
+      for (let draw = 0; draw < 100; draw++) {
+        if (Math.fround(draw) < blockChance(true, [tenths])) n++
+      }
+      return n
+    }
+    // The bronze shield's 5, the iron's 10, the steel's 15, Erdrick's 90.
+    expect([5, 10, 15, 90].map(blocks)).toEqual([1, 1, 2, 9])
   })
 })

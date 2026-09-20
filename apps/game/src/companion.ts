@@ -1,5 +1,5 @@
 import type { AttendingCharacter } from '@minstrel/game-formats'
-import type { Fighter } from '@minstrel/sim'
+import { blockChance, type Fighter } from '@minstrel/sim'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
 
@@ -74,9 +74,14 @@ export function companionNamed(who: AttendingCharacter): Named {
  */
 export function companionFighter(
   who: AttendingCharacter,
-  numbersOf?: (
-    id: number,
-  ) => { readonly attack: number; readonly defence: number; readonly agility?: number } | undefined,
+  numbersOf?: (id: number) =>
+    | {
+        readonly attack: number
+        readonly defence: number
+        readonly agility?: number
+        readonly block?: number
+      }
+    | undefined,
 ): Fighter {
   const worn = [who.weapon, who.shield].map((id) =>
     id === undefined ? undefined : numbersOf?.(id),
@@ -92,6 +97,15 @@ export function companionFighter(
     defence: who.numbers.resilience + adds('defence'),
     agility: who.numbers.agility + adds('agility'),
     shield: who.shield !== undefined,
+    // The game's, from what is worn — `blockChance`. Only with `numbersOf`.
+    ...(numbersOf
+      ? {
+          block: blockChance(
+            who.shield !== undefined,
+            worn.map((numbers) => numbers?.block ?? 0),
+          ),
+        }
+      : {}),
     exp: 0,
     gold: 0,
     // `attnpc`'s level, INFERRED — Ivor's 3 — for a monster to weigh before it runs.

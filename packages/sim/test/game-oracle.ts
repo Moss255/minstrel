@@ -382,3 +382,25 @@ export function endOfBlow(damage: number, blow: BlowEnd, random: GameRandom): nu
   if (blow.damageCap !== 0 && blow.damageCap < whole) whole = blow.damageCap
   return whole
 }
+
+/**
+ * One of the party's block rate — `func_ov000_02156118`, the character's arm.
+ * Nothing unless the shield's place (the tenth of eleven, `+0x2CC` of the
+ * equipment at the character's `+0x150`) holds an item. Then `0.0f` plus
+ * `func_02084ee8` — every worn piece's ten bits over `10.0f`, summed — plus
+ * `func_02085b88`, a whole number from the skill's traits; and doubled when
+ * `func_ov000_02156258` finds bit 0 of the status word at `+0x18`.
+ */
+export function partyBlockRate(
+  hasShield: boolean,
+  wornTenths: readonly number[],
+  skillBonus = 0,
+  doubled = false,
+): number {
+  if (!hasShield) return 0
+  let sum = f(0)
+  for (const each of wornTenths) sum = f(sum + f(f(each) / f(10)))
+  let rate = f(f(skillBonus) + f(f(0) + sum))
+  if (doubled) rate = f(f(2) * rate)
+  return rate
+}

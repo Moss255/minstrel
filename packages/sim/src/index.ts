@@ -21,6 +21,7 @@ export {
   withMp,
 } from './battle/battle.ts'
 export {
+  blockChance,
   criticalBlow,
   criticalChance,
   criticalDamage,

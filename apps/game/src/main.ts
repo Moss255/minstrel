@@ -46,6 +46,7 @@ import {
 } from '@minstrel/render'
 import {
   BattleRng,
+  blockChance,
   type CollisionWorld,
   calmFor,
   createCollisionWorld,
@@ -2936,7 +2937,8 @@ function roamerPieces(now: number): Piece[] {
  * What the Hero's worn equipment adds to their attack, defence and agility, as
  * read — see `itemStatsOf` in `load.ts`.
  */
-function wornNumbers(): { attack: number; defence: number; agility: number } {
+function wornNumbers(): { attack: number; defence: number; agility: number; block: number[] } {
+  const block: number[] = []
   let attack = 0
   let defence = 0
   let agility = 0
@@ -2945,8 +2947,9 @@ function wornNumbers(): { attack: number; defence: number; agility: number } {
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
     agility += numbers?.agility ?? 0
+    block.push(numbers?.block ?? 0)
   }
-  return { attack, defence, agility }
+  return { attack, defence, agility, block }
 }
 
 /**
@@ -3034,6 +3037,8 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     defence: row.resilience + worn.defence,
     agility: row.agility + worn.agility,
     shield: equipped.has('shield'),
+    // The game's: what is worn says, and only behind a shield — `blockChance`.
+    block: blockChance(equipped.has('shield'), worn.block),
     exp: 0,
     gold: 0,
     // What a monster weighs before it runs — see `Fighter.runsFrom`.

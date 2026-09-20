@@ -98,6 +98,24 @@ describe.skipIf(!romPath)('equipment’s numbers, on a real cartridge', { timeou
     expect(named('d', 'critical acclaim').critical).toBeGreaterThan(0)
   })
 
+  it('gives a shield its chance of blocking, and nothing else one', () => {
+    // Word 6's low ten bits, in tenths — read from `func_02084ee8`, which sums
+    // them over all that is worn; the cartridge says only a shield has any.
+    for (const cat of ['w', 'h', 'b', 'a', 'u', 'l', 'd']) {
+      expect(
+        readItemStats(table(cat)).every((s) => s.block === 0),
+        cat,
+      ).toBe(true)
+    }
+    const shields = readItemStats(table('s'))
+    expect(shields.filter((s) => s.block > 0).length).toBe(42)
+    expect(shields.length).toBe(45)
+    const block = (name: string) => shields.find((s) => s.name === name)?.block
+    // Half a hundredth to begin with, rising with the shield.
+    expect(['bronze shield', 'iron shield', 'steel shield'].map(block)).toEqual([5, 10, 15])
+    expect(block('metal king shield')).toBe(85)
+  })
+
   it('keeps the same numbers in every language', () => {
     for (const cat of ['w', 's', 'b']) {
       const en = readItemStats(table(cat)).map((s) => [s.attack, s.defence])

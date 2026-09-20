@@ -19,8 +19,7 @@ import {
  * **From the reference** (DQIX/BattleEmulator, MIT — see `damage.ts`):
  * - the order of a round: agility times a draw from 0.51 to 1.0, highest first;
  * - an attack's damage, `FUN_0207564c`;
- * - a monster's blow dodged 2 times in 100, and blocked by a shield when a
- *   draw below 100 is 0;
+ * - a monster's blow dodged 2 times in 100;
  * - defending halving a blow, from the round's start — though not the 0-or-1
  *   blow;
  * - the party's critical hit: a draw below 10,000 under {@link Rules.critical},
@@ -37,6 +36,10 @@ import {
  *
  * **A blow that comes to nothing deals 0 or 1, whoever strikes it** — the
  * game's, read from `func_ov024_021e6a90`; the reference had it for monsters.
+ *
+ * **A shield's chance of blocking is the game's**, from what is worn —
+ * `blockChance`; a fighter given none blocks once in a hundred behind a shield,
+ * which was the reference's and is the game's for the least shields.
  *
  * **The order of a blow's draws is the game's**, read from its code: the
  * critical roll, the dodge, the block, the accuracy and then the damage, each
@@ -95,8 +98,9 @@ export interface Fighter {
   /**
    * Its chance of blocking, in a hundred. The game's is the shield's own
    * chance and a skill's bonus for one of the party, and a grade's for a
-   * monster; the shield's is not read from the item table yet, so without this
-   * a shield blocks once in a hundred, which is the reference's.
+   * monster — `blockChance` makes it from what is worn. Without this a shield
+   * blocks once in a hundred, which is the reference's, and what the game's
+   * comes to for any shield of ten tenths or fewer.
    */
   readonly block?: number
   /** What beating this fighter is worth, when it is a foe. */

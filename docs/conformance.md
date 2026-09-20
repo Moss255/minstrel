@@ -36,6 +36,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A blow that comes to nothing** | the end of `func_ov024_021e6a90`, `0x021e7824`: damage not above nothing, not dodged, not blocked → `NextRandomMax(2)` | `below(2)` | **the game's, and it changed ours.** The code never asks whose blow it is: **the party's feeble blows deal 0 or 1 as a monster's do.** The reference had it for monsters only. Closed 20 September |
 | **Defending** | `× 0.5f` at `0x021e7a80`, on an action of kind 1 whose target carries status bit `0x1000000` | the reference's halving | **read, and not taken up.** The bit is INFERRED to be defending and nothing that sets it was found. If it is, the game halves *after* the coin — a defended 0-or-1 is always 0 — and halves the party's blows on a defending monster too; the reference says otherwise on the first. See below |
 | **The whole number, and the cap** | `_ffix` at `0x021e7b28`, then the lower of it and the action's `+0x1C` low 14 bits | truncates; no cap | read into the oracle. Frizz 999, Frizzle 1999, Kafrizz 2999; the plain Attack has none |
+| **A shield's chance of blocking** | `func_ov000_02156118` → `func_02084ee8`: every worn piece's ten bits over `10.0f`, summed; nothing without a shield; not truncated | `blockChance`, from the item table | **the game's, exactly**, at every value the field can hold. It was once in a hundred for any shield, the reference's — which is what the game's comes to for the bronze and the iron. Closed 20 September |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
@@ -215,8 +216,19 @@ names what they are for — Dragon Slash on 1, Metal Slash on 2, Falcon Slash on
 **A target's chance of blocking** — `func_ov000_02156118`. One of the party:
 nothing without a shield, and with one **nothing plus the equipment's own
 chance plus a skill's bonus** — the base is zero and the chance is the
-shield's. That is not read from the item table yet, so the simulation's shield
-still blocks once in a hundred, the reference's. A monster: a second grade in
+shield's. **Read from the item table, 20 September**: `func_02084ee8` walks the
+eleven places of what is worn (`0x20` bytes each from `+0x194` of the
+equipment at the character's `+0x150`; the shield's is the tenth, its item at
+`+0x2CC`) and sums ten bits of each item's record over `10.0f` — the low ten
+of the equipment table's word 6, set on 42 of the 45 shields and on nothing
+else. The bronze shield's is 5: half a hundredth. **And the rate is not
+truncated**, so against a whole draw below 100 that is one in a hundred, the
+iron shield's 1.0 the same, the steel's 1.5 two — the reference's "blocked
+when the draw is 0" is the game's for any shield of ten tenths or fewer, which
+is every one the slice sells. `blockChance` in the simulation, held to the
+oracle at all 1,024 values. The skill's bonus (`func_02085b88`: three traits,
+each worth a number fetched by `func_0201137c` at `0x22`, `0x24`, `0x26`) and
+the doubling are read and not modelled. A monster: a second grade in
 its record, bits 16–18, through the same table as its dodge. Doubled under one
 status.
 
@@ -309,8 +321,6 @@ defending and the reference is wrong.
   defending — or the witness above, which is cheaper;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
-- a shield's own chance of blocking, in the item table, which the block rate
-  is made of;
 - the order of the draws that are *not* a plain blow's: a spell's, an item's, a
   change of state's;
 - the party's flee chance, by way of how the command is numbered;

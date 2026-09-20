@@ -39,7 +39,21 @@ export interface ItemStats {
   readonly agility: number
   /** Word 7, bits 20–29 — INFERRED: magical might. The sorcerer's stone "jacks up magical might a little". */
   readonly magicalMight: number
-  /** Word 6, bits 10–19 — INFERRED: evasion. All five body pieces that set it say so. */
+  /**
+   * Word 6, bits 0–9: **the chance of blocking, in tenths of a hundredth** —
+   * read from the game's code. `func_02084ee8` sums this field over all eleven
+   * pieces worn, each divided by `10.0f`, and the battle's block rate
+   * (`func_ov000_02156118`) is that sum when a shield is worn. On the cartridge
+   * it is set on 42 of the 45 shields and on nothing else in the eight tables:
+   * the bronze shield's 5, the iron shield's 10, Erdrick's 90.
+   */
+  readonly block: number
+  /**
+   * Word 6, bits 10–19: evasion, in tenths of a hundredth. It was INFERRED from
+   * the five body pieces whose descriptions say so; the game's `func_02084f58`
+   * reads these bits and divides by `10.0f` as it does the block's, for the
+   * evasion rate (`func_ov000_02156270`).
+   */
   readonly evasion: number
   /** Word 6, bits 20–29 — INFERRED, on one witness: the chance of a critical hit. */
   readonly critical: number
@@ -115,6 +129,7 @@ export function readItemStats(bytes: Uint8Array): ItemStats[] {
       deftness: word7 & 0x3ff,
       agility: (word7 >>> 10) & 0x3ff,
       magicalMight: (word7 >>> 20) & 0x3ff,
+      block: word6 & 0x3ff,
       evasion: (word6 >>> 10) & 0x3ff,
       critical: (word6 >>> 20) & 0x3ff,
       kind: (word3 >>> 7) & 0x1f,

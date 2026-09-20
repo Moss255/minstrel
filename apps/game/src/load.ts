@@ -932,6 +932,8 @@ export interface ItemNumbers {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /** Its chance of blocking, in tenths of a hundredth — a shield's; see `ItemStats.block`. */
+  readonly block: number
   /**
    * Who may wear it: bit v − 1 for vocation v in the level tables' order —
    * see `ItemStats.usedBy`, INFERRED. 0 on weapons and shields, whose use
@@ -979,6 +981,7 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
             attack: entry.attack,
             defence: entry.defence,
             agility: entry.agility,
+            block: entry.block,
             usedBy: entry.usedBy,
             kind: entry.kind,
           })
