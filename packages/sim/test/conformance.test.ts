@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { BattleRng, criticalChance, physicalDamage } from '../src/index.ts'
+import {
+  BattleRng,
+  criticalBlow,
+  criticalChance,
+  criticalDamage,
+  criticalHit,
+  physicalDamage,
+} from '../src/index.ts'
 import {
   AMBUSH_FOLLOWER_ACTS_BELOW,
   ambushFollowerActs,
@@ -9,7 +16,9 @@ import {
   calculateMonsterCritRate,
   calculatePhysicalDamage,
   calculateTensionBonus,
+  criticalDamageOf,
   criticalThreshold,
+  criticalValue,
   evasionRate,
   GameRandom,
   MONSTER_EVASION,
@@ -346,5 +355,62 @@ describe('what is read and not yet in the simulation', () => {
     for (let i = 0; i < blows; i++) if (rollsLands(random, { accuracy: 75 })) landed++
     expect(landed / blows).toBeGreaterThan(0.745)
     expect(landed / blows).toBeLessThan(0.755)
+  })
+})
+
+describe('a critical’s damage', () => {
+  it('is the game’s for an ordinary blow, in every case', () => {
+    const game = new GameRandom(31n)
+    const ours = BattleRng.fromGameState(31n)
+    let differ = 0
+    for (let n = 0; n < 100_000; n++) {
+      const attack = 1 + ((n * 7919) % 400)
+      const base = (n * 104729) % 250
+      if (criticalHit(ours, base, attack) !== Math.trunc(criticalDamageOf(base, game, attack)))
+        differ++
+    }
+    expect(differ).toBe(0)
+    expect(ours.drawn).toBe(game.drawn)
+  })
+
+  it('is the attack power’s draw almost always, which is all the reference has', () => {
+    const ours = BattleRng.fromGameState(32n)
+    const same = BattleRng.fromGameState(32n)
+    for (let n = 0; n < 10_000; n++) {
+      // Any blow an attack of 60 can really deal: well under the attack itself.
+      const base = n % 40
+      expect(criticalHit(ours, base, 60)).toBe(criticalBlow(same, 60))
+    }
+  })
+
+  it('is the damage and a fifth when that is more — a feeble attack against nothing', () => {
+    // An attack of 2 deals about 1; its critical draw is about 2; but against a
+    // damage of 10 handed in, a fifth more is 12 and wins.
+    const rng = BattleRng.fromGameState(33n)
+    expect(criticalHit(rng, 10, 2)).toBe(12)
+    // And never less than the blow would have dealt.
+    const floor = BattleRng.fromGameState(34n)
+    expect(criticalHit(floor, 0, 0)).toBe(0)
+  })
+
+  it('is half again to twice as much for a spell gone haywire', () => {
+    const game = new GameRandom(35n)
+    const ours = BattleRng.fromGameState(35n)
+    let differ = 0
+    let outOfRange = 0
+    for (let n = 0; n < 100_000; n++) {
+      const amount = 1 + (n % 300)
+      const mine = criticalDamage(ours, amount)
+      if (mine !== Math.trunc(criticalValue(amount, false, game))) differ++
+      if (mine < Math.trunc(amount * 1.5) - 1 || mine > amount * 2) outOfRange++
+    }
+    expect(differ).toBe(0)
+    expect(outOfRange).toBe(0)
+    // The game then takes the greater of it and the amount and a fifth, which it always is.
+    const again = new GameRandom(36n)
+    for (let n = 1; n < 1000; n++) {
+      const whole = criticalDamageOf(n, again)
+      expect(whole).toBeGreaterThanOrEqual(Math.fround(1.2 * n))
+    }
   })
 })

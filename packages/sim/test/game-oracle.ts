@@ -288,3 +288,38 @@ export function rollsLands(
   if (action.spoiltBySight && attacker.sightSpoilt && random.max(8) < 5) return false
   return draw < Math.trunc(accuracy)
 }
+
+/**
+ * What a critical is worth — `func_02074838`, which takes the generator. With
+ * its flag set, an attack's: the value times a draw from 0.95 to 1.05. With it
+ * clear, anything else's: the value times a draw from 1.5 to 2.0.
+ */
+export function criticalValue(value: number, isAttack: boolean, random: GameRandom): number {
+  const draw = isAttack ? random.floatBetween(0.95, 1.05) : random.floatBetween(1.5, 2)
+  return f(f(value) * draw)
+}
+
+/**
+ * A critical's damage — the head of `func_ov024_021e6a90`, the last function a
+ * blow's damage goes through. `func_ov024_021ea7fc` says whether it applies:
+ * not to Thunder Thrust or Hatchet Man, whose own handler has it, nor to an
+ * action that is always a critical, bar `0x1F9`.
+ *
+ * For the plain Attack, `0xDB` and `0x1F9` the value is **the attacker's attack
+ * power** and the floor the damage itself; for anything else the value is the
+ * damage and there is no floor. Either way: the greatest of the damage and a
+ * fifth, the value's critical, and the floor.
+ */
+export function criticalDamageOf(base: number, random: GameRandom, attack?: number): number {
+  const boosted = f(f(1.2) * f(base))
+  const drawn = criticalValue(attack ?? base, attack !== undefined, random)
+  let damage = boosted < drawn ? drawn : boosted
+  const floor = attack !== undefined ? f(base) : 0
+  if (damage < floor) damage = floor
+  return damage
+}
+
+/** What an action's damage goes through after the base: 67 slots, by nine bits of its record. Slot 0 is none. */
+export const DAMAGE_HANDLERS = 67
+/** A blow that strikes several weakens as it goes — `func_02074948`'s table, by how many it has struck. */
+export const SWEEP_FALLOFF = [1, 0.8, 0.6, 0.4, 0.2] as const

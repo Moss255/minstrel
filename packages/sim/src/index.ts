@@ -24,6 +24,7 @@ export {
   criticalBlow,
   criticalChance,
   criticalDamage,
+  criticalHit,
   drawnAmount,
   initiative,
   physicalDamage,

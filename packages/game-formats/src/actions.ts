@@ -157,6 +157,15 @@ export interface Action {
    * at a hundred. 202 of 681 scale; the plain Attack does not.
    */
   readonly accuracyMode: number
+  /**
+   * Which of the battle's 67 damage handlers its damage goes through after the
+   * base is worked out — `+0x18`, bits 18 to 26. The game indexes a table of
+   * member-function pointers by it (`func_ov024_021da55c`), and slot 0 is
+   * empty: the damage passes as it is. **570 of 681 actions are on 0, the plain
+   * Attack among them**; the rest are the skills, mostly one apiece — Dragon
+   * Slash on 1, Metal Slash on 2, Thunder Thrust and Hatchet Man sharing 45.
+   */
+  readonly damageHandler: number
   /** The least and the most a scaling action's accuracy can be, in a hundred — `+0x14`, bits 7–13 and 14–20. */
   readonly accuracyRange: { readonly min: number; readonly max: number }
   /** The whole record, for what is not read. */
@@ -220,6 +229,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       criticalPercent: (view.getUint32(at + 0x14, true) >>> 21) & 0x7f,
       spoiltBySight: (view.getUint32(at + 0x10, true) & 8) !== 0,
       accuracyMode: (view.getUint32(at + 0x18, true) >>> 16) & 3,
+      damageHandler: (view.getUint32(at + 0x18, true) >>> 18) & 0x1ff,
       accuracyRange: {
         min: (view.getUint32(at + 0x14, true) >>> 7) & 0x7f,
         max: (view.getUint32(at + 0x14, true) >>> 14) & 0x7f,

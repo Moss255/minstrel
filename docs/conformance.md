@@ -164,14 +164,50 @@ there is a shield; a dodged blow still spends its accuracy and its damage.
 `battle.test.ts` pins it by difference — a dodged blow spends exactly one draw
 fewer than one that lands, the block's.
 
-**The one joint in it that is not read** is what a critical does to the
-damage. `func_ov024_021da55c`, called straight after the base damage, is a
-dispatch through a table of **67 member-function pointers** at USA
-`0x021ff1e0`, picked by nine bits of the action's record (`+0x18`, bits 18–26):
-one damage handler for each kind of action. The critical is inside those. The
-simulation's is still the reference's — the attacker's attack times 0.95 to
-1.05, one draw — made *after* the base damage the game is known to work out
-first. That the two come in that order is INFERRED.
+**What a critical does to the damage** — read 20 September, and it was the one
+joint in a blow's order still the reference's. It is not in the 67 handlers:
+the plain Attack is on handler 0, which is none. It is at the head of
+`func_ov024_021e6a90`, the last function a blow's damage goes through:
+
+```
+if (the critical applies)                       func_ov024_021ea7fc
+    damage = max(1.2 × base,  func_02074838(value, isAttack, random),  floor)
+```
+
+`func_02074838` is both of the reference's critical formulas in one: with its
+flag set, **the value times a draw from 0.95 to 1.05**; with it clear, **the
+value times a draw from 1.5 to 2.0**. For the plain Attack, `0xDB` and `0x1F9`
+the value is the attacker's attack power and the floor the damage itself; for
+anything else the value is the damage. The base damage's draws are spent first
+and the critical's one after — which the simulation had INFERRED and now has
+read. What the reference lacks is the *greatest of three*: with any attack
+worth the name the attack power's draw wins, and with an attack of two or three
+it does not. `criticalHit`, `criticalBlow` and `criticalDamage` are the game's,
+in its floats, and held to the oracle in every case.
+
+**The 67 damage handlers** — `func_ov024_021da55c` dispatches through a table
+of member-function pointers at USA `0x021ff1e0` by nine bits of the action's
+record, `+0x18` bits 18–26, now `damageHandler` in `readActions`. Slot 0 is
+empty and the damage passes as it is: **570 of 681 actions, the plain Attack
+among them.** The rest are the skills, mostly one apiece, and the cartridge
+names what they are for — Dragon Slash on 1, Metal Slash on 2, Falcon Slash on
+9, **Thunder Thrust and Hatchet Man sharing 45**, whose handler holds their own
+0.95-to-1.05 draw. None is read yet; none is in the slice.
+
+**Also read on the way, and not yet in the simulation:**
+
+- `GetAttackBaseDamage` has two halves. Handed an action's damage-range record
+  it is **the base give or take the spread** — `between(−spread, +spread) +
+  base`, the reference's `drawnAmount` — the range chosen by one of the
+  caster's numbers between two thresholds, as the accuracy is. Handed none, it
+  is the physical formula. So a spell's and an item's amounts are confirmed in
+  shape; `drawnAmount` is still the reference's exact integers until that
+  scaling is read;
+- **the initiative's draw is a float from 0.51 to 1.0**, in `ProcessCombatTurn`
+  — the reference's, confirmed. How it meets agility there is not read;
+- a blow that strikes several weakens as it goes, by `func_02074948`'s table
+  **1.0, 0.8, 0.6, 0.4, 0.2**, for actions flagged `0x20000`; and action `0x79`
+  deals four fifths.
 
 **A target's chance of blocking** — `func_ov000_02156118`. One of the party:
 nothing without a shield, and with one **nothing plus the equipment's own
@@ -206,9 +242,11 @@ now in `readActions`:
 
 ## Still to read, in the order it is wanted
 
-- **the 67 damage handlers** behind `func_ov024_021da55c` — the plain attack's
-  first, for what a critical does to the damage, which is the one joint in a
-  blow's order still the reference's;
+- the rest of `func_ov024_021e6a90` after the critical — resistances, the two
+  coin flips at `0x021e7904` and `0x021e7958`, and where the float becomes the
+  whole number that is dealt;
+- a monster's blow that deals nothing dealing 0 or 1, and defending halving a
+  blow — both still the reference's, and both somewhere in that function;
 - a shield's own chance of blocking, in the item table, which the block rate
   is made of;
 - the order of the draws that are *not* a plain blow's: a spell's, an item's, a

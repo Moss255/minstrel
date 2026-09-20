@@ -90,4 +90,20 @@ describe.skipIf(!romPath)('how a blow is resolved, on a real cartridge', () => {
     expect(byId.get(1)?.accuracyMode).not.toBe(1)
     expect([...byId.values()].filter((a) => a.accuracyMode === 1).length).toBe(202)
   })
+
+  it('sends most damage through no handler, and each skill through its own', () => {
+    const all = [...byId.values()]
+    expect(all.filter((a) => a.damageHandler === 0).length).toBe(570)
+    expect(byId.get(1)?.damageHandler).toBe(0)
+    // The table has 67 slots, and no action names one past it.
+    expect(Math.max(...all.map((a) => a.damageHandler))).toBeLessThan(67)
+    // The cartridge names what the handlers are for.
+    expect(all.filter((a) => a.damageHandler === 1).map((a) => a.name)).toEqual(['Dragon Slash'])
+    expect(
+      all
+        .filter((a) => a.damageHandler === 45)
+        .map((a) => a.name)
+        .sort(),
+    ).toEqual(['Hatchet Man', 'Thunder Thrust'])
+  })
 })

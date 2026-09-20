@@ -2874,6 +2874,7 @@ An item names its action in its item table — see "Items".
 | `+0x10` bit 3 | flag | **spoilt by a status on the attacker**: the accuracy roll's die of eight misses on five faces. INFERRED: dazzle | 110 of 681, every one a blow that can be dodged |
 | `+0x18` bits 16–17 | `u2` | how the accuracy is come by: at 1 it scales | 202 of 681; not the plain Attack |
 | `+0x14` bits 7–13, 14–20 | `u7` ×2 | a scaling action's least and most accuracy, in a hundred | |
+| `+0x18` bits 18–26 | `u9` | which of the battle's 67 damage handlers its damage goes through; 0 is none | 570 of 681 on 0, the plain Attack among them; Dragon Slash alone on 1; Thunder Thrust and Hatchet Man sharing 45 |
 
 These are not INFERRED from values: each is what a named function tests before
 it acts. The runtime record the battle reads is laid out as the file's is.

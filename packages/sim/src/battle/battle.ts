@@ -1,4 +1,4 @@
-import { criticalBlow, criticalDamage, drawnAmount, initiative, physicalDamage } from './damage.ts'
+import { criticalDamage, criticalHit, drawnAmount, initiative, physicalDamage } from './damage.ts'
 import type { BattleRng } from './rng.ts'
 import {
   levelled,
@@ -672,12 +672,10 @@ export function playRound(
     //    dodge and the block ride along as flags.
     let damage = physicalDamage(rng, me.attack, defenceOf(them))
     if (critical) {
-      // **The one joint here that is not read.** What a critical does to the
-      // damage is inside one of 67 handlers the game picks by the action
-      // (`func_ov024_021da55c`). This is the reference's — the attacker's
-      // attack power times 0.95 to 1.05 — drawn after the damage the game is
-      // known to have worked out first. INFERRED that the two are in this order.
-      damage = criticalBlow(rng, me.attack)
+      // The greatest of the damage and a fifth, the attack power times a draw
+      // from 0.95 to 1.05, and the damage itself — read from the head of
+      // `func_ov024_021e6a90`. The base damage's draws come first, as above.
+      damage = criticalHit(rng, damage, me.attack)
     }
     if (dodged || blocked) {
       damage = 0

@@ -10,8 +10,8 @@ import type { BattleRng } from './rng.ts'
  * reference's own output.
  *
  * **What has since been read from the game's own code is the game's instead**,
- * in the 32-bit floats it computes in — `physicalDamage` and `criticalChance`
- * so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
+ * in the 32-bit floats it computes in — `physicalDamage`, `criticalChance`,
+ * `criticalBlow`, `criticalHit` and `criticalDamage` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
  * "Fixed-point in simulation", and `docs/conformance.md`.
  */
 
@@ -56,14 +56,33 @@ export function initiative(rng: BattleRng, agility: number): bigint {
 }
 
 /**
- * An ordinary attack's critical hit: the attacker's own attack power times a
- * draw from 0.95 to 1.05, whatever the defence — the reference's
- * `OffensivePower × floatRand(0.95, 1.05)` on `ATTACK_ALLY`, truncated — kept
- * as the exact integer `attack × (95·2³² + 10·top) / (100·2³²)`.
+ * What a critical is worth when it is an attack's — the game's
+ * `func_02074838` with its flag set: the attacker's attack power times a draw
+ * from 0.95 to 1.05, in the game's floats. The reference emulator's
+ * `OffensivePower × floatRand(0.95, 1.05)`, now read from the game.
  */
 export function criticalBlow(rng: BattleRng, attack: number): number {
-  const scale = 100n * (1n << 32n)
-  return Number((BigInt(attack) * (95n * (1n << 32n) + 10n * BigInt(rng.top32()))) / scale)
+  return Math.trunc(Math.fround(Math.fround(attack) * rng.floatBetween(0.95, 1.05)))
+}
+
+/**
+ * An ordinary blow's critical hit, whole — the game's, from the head of
+ * `func_ov024_021e6a90`: **the greatest of three**. The blow's own damage and
+ * a fifth; the attacker's attack power times a draw from 0.95 to 1.05; and the
+ * blow's own damage, as a floor.
+ *
+ * `base` is the damage already worked out, whose draws the game spends first;
+ * this spends the one more. With any attack worth the name the middle one
+ * wins, which is why the reference has only that — and with an attack of two
+ * or three against no defence, it does not.
+ */
+export function criticalHit(rng: BattleRng, base: number, attack: number): number {
+  const f = Math.fround
+  const boosted = f(f(1.2) * f(base))
+  const drawn = f(f(attack) * rng.floatBetween(0.95, 1.05))
+  let damage = boosted < drawn ? drawn : boosted
+  if (damage < f(base)) damage = f(base)
+  return Math.trunc(damage)
 }
 
 /**
@@ -79,12 +98,14 @@ export function drawnAmount(rng: BattleRng, base: number, spread: number): numbe
 }
 
 /**
- * A skill's critical hit: the damage times a draw from 1.5 to 2.0 — the
- * reference's `baseDamage × floatRand(1.5, 2.0)`, truncated — kept as the
- * exact integer `damage × (3·2³² + top) / 2³³`.
+ * What a critical is worth when it is not an attack's — a spell going haywire
+ * — the game's `func_02074838` with its flag clear: the amount times a draw
+ * from 1.5 to 2.0, in the game's floats. The reference's
+ * `baseDamage × floatRand(1.5, 2.0)`, now read from the game. The game then
+ * takes the greater of this and the amount and a fifth, which this always is.
  */
 export function criticalDamage(rng: BattleRng, damage: number): number {
-  return Number((BigInt(damage) * (3n * (1n << 32n) + BigInt(rng.top32()))) >> 33n)
+  return Math.trunc(Math.fround(Math.fround(damage) * rng.floatBetween(1.5, 2)))
 }
 
 /**
