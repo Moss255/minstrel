@@ -24,6 +24,9 @@ function actions(
     mode?: number
     scalesBy?: 'might' | 'mending'
     scale?: [lo: number, hi: number]
+    foeChance?: number
+    rider?: number
+    levels?: [own: number, rider: number]
   }[],
 ) {
   const strings: number[] = []
@@ -58,6 +61,9 @@ function actions(
       mode = 3,
       scalesBy,
       scale,
+      foeChance = 0,
+      rider = 0x1f,
+      levels = [0, 0],
     },
   ] of records.entries()) {
     const at = 4 + r * 60
@@ -88,12 +94,14 @@ function actions(
     view.setUint32(at + 0x20, ((message << 20) | (opening << 10) | 0x2e) >>> 0, true)
     // Whom it reaches in the high nibble, a neighbour in the low.
     // The critical multiplier in bits 21 to 27 of the same word as the reach.
-    view.setUint32(at + 0x14, ((criticalPercent & 0x7f) << 21) >>> 0, true)
+    view.setUint32(at + 0x14, (((criticalPercent & 0x7f) << 21) | foeChance) >>> 0, true)
     out[at + 0x17] = (reach << 4) | ((out[at + 0x17] as number) & 0x0f)
     // The kind between neighbours on both sides; the cap under others.
-    view.setUint32(at + 0x18, (0xfffcf01f | (mode << 16) | (kind << 5)) >>> 0, true)
+    view.setUint32(at + 0x18, (0xfffcf000 | (mode << 16) | (kind << 5) | rider) >>> 0, true)
     view.setUint32(at + 0x1c, (0xffffc000 | damageCap) >>> 0, true)
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
+    view.setInt16(at + 0x30, levels[0] ?? 0, true)
+    view.setInt16(at + 0x32, levels[1] ?? 0, true)
     view.setUint32(at + 0x34, offset(plural), true)
   }
   const bytes = new Uint8Array(head + strings.length)
@@ -276,5 +284,16 @@ describe('the range table', () => {
       party: 14,
       peak: 99,
     })
+  })
+
+  it('reads a monster’s chance, what rides on a blow, and how many levels it moves', () => {
+    const [kasap, dagger] = readActions(
+      actions([
+        { id: 44, name: 'Kasap', plural: '', foeChance: 75, rider: 0, levels: [-1, 0] },
+        { id: 75, name: 'Toxic Dagger', plural: '', foeChance: 0x7f, rider: 4, levels: [0, 1] },
+      ]),
+    )
+    expect(kasap).toMatchObject({ foeChance: 75, rider: 0, levels: -1, riderLevels: 0 })
+    expect(dagger).toMatchObject({ foeChance: 0x7f, rider: 4, levels: 0, riderLevels: 1 })
   })
 })

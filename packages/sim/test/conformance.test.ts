@@ -20,6 +20,7 @@ import {
   calculateMonsterCritRate,
   calculatePhysicalDamage,
   calculateTensionBonus,
+  changeLands,
   criticalDamageOf,
   criticalThreshold,
   criticalValue,
@@ -28,6 +29,7 @@ import {
   GameRandom,
   MONSTER_EVASION,
   partyBlockRate,
+  riderLands,
   rollsBlock,
   rollsCritical,
   rollsEvade,
@@ -592,5 +594,51 @@ describe('an action’s amount', () => {
     expect(about(999)).toEqual([97, 100])
     // Halfway: 14 + (int)(474 × (85 / 949)) = 14 + 42.
     expect(about(524)).toEqual([54, 57])
+  })
+})
+
+describe('a change of state', () => {
+  it('lands under its chance against a whole resistance, which is the simulation’s rule', () => {
+    // The simulation has no resistances: everyone's is whole. Then the game's
+    // `(int)(chance × 1.0 + 0.5)` is the chance, and `draw < chance` is it.
+    let wrong = 0
+    for (let chance = 0; chance <= 100; chance++) {
+      for (let draw = 0; draw < 100; draw++) {
+        if (changeLands(draw, chance, 1, false) !== draw < chance) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('lands outright when the cast goes haywire, unless the target is immune', () => {
+    expect(changeLands(99, 0, 1, true)).toBe(true)
+    expect(changeLands(0, 100, 0, true)).toBe(false)
+  })
+
+  it('is what a resistance does to it — read, and not the simulation’s yet', () => {
+    // Kasap's 75 against half a resistance: 38, the half rounding it up.
+    expect(changeLands(37, 75, 0.5, false)).toBe(true)
+    expect(changeLands(38, 75, 0.5, false)).toBe(false)
+  })
+})
+
+describe('what rides on a blow', () => {
+  it('draws only for a blow that dealt something, on one who can take it', () => {
+    const random = new GameRandom(5n)
+    const before = random.state
+    expect(riderLands(random, 0, 12, 100, false)).toBe(false)
+    expect(riderLands(random, 9, 12, 0, false)).toBe(false)
+    expect(random.state).toBe(before)
+    riderLands(random, 9, 12, 100, false)
+    expect(random.state).not.toBe(before)
+  })
+
+  it('poisons 12 times in 100 at the reference’s poison attack’s chance, as the simulation does', () => {
+    let wrong = 0
+    for (let seed = 1n; seed <= 3000n; seed++) {
+      const theirs = riderLands(new GameRandom(seed), 9, 12, 100, false)
+      if (theirs !== BattleRng.fromGameState(seed).below(100) < 12) wrong++
+    }
+    expect(wrong).toBe(0)
   })
 })

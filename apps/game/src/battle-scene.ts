@@ -139,6 +139,8 @@ function changeSays(kind: ChangeKind, result: ChangeResult): number {
           : ACTION_SAYS.unaffected
     case 'resisted':
       return ACTION_SAYS.unaffected
+    case 'dodged':
+      return ACTION_SAYS.dodges
   }
 }
 
@@ -161,6 +163,8 @@ function changeOurs(kind: ChangeKind, result: ChangeResult, whom: string): strin
           : `${whom} is not affected.`
     case 'resisted':
       return `${whom} is not affected.`
+    case 'dodged':
+      return `${whom} dodges out of the way!`
   }
 }
 
@@ -232,6 +236,15 @@ export interface Castable {
   readonly reach: number
   /** The party's amount, a base give or take a spread. */
   readonly range: Heal | undefined
+  /** What the battle's rolls read of its record — the loader's `ItemEffect.rolls`. */
+  readonly rolls?: {
+    readonly foeChance: number
+    readonly chanceIsAccuracy: boolean
+    readonly evadable: boolean
+    readonly haywire: boolean
+    readonly levels: number
+    readonly rider: number
+  }
 }
 
 const REACHES = new Map<number, Spell['reach']>([
@@ -283,9 +296,17 @@ export function foeSpellOf(
 export const FOE_ATTACK = 1
 export const FOE_FLEE = 225
 
-/** The reference's poison attack — Ragin' Contagion's 275 — and its chance in 100 of poisoning. */
+/**
+ * The reference's poison attack — Ragin' Contagion's 275 — and its chance in
+ * 100 of poisoning. **The chance is the record's own where there is one**: the
+ * game's rider handler takes a monster's from the action's `foeChance` when
+ * what rides on the blow is slot {@link POISON_RIDER}. The 12 is the
+ * reference's, and what the cartridge says too.
+ */
 export const POISON_ATTACK = 275
 export const POISON_CHANCE = 12
+/** The rider that poisons — INFERRED from who carries it: Toxic Dagger, Venomissile. */
+export const POISON_RIDER = 4
 
 /**
  * The changes of state a monster's ways cause, by action, and whose side they
@@ -296,6 +317,12 @@ export const POISON_CHANCE = 12
  * **ours** for them: 53 Snooze and 54 Kasnooze. **Ours, by their names alone**:
  * 43 Sap and 47 Decelerate as Kasap and Deceleratle; 41 Buff, 42 Kabuff, 45
  * Accelerate and 46 Acceleratle a level up on their own side, always.
+ *
+ * **What they change and on whose side is this table's; how often, by how
+ * much, and whether it can be dodged are the record's**, where the record is
+ * to hand — see {@link foeWaysOf}. The chances here are what stands without
+ * one, and the cartridge corrects two of them: Snooze is 37 and Kasnooze 50,
+ * where ours gave both Sweet Breath's 25.
  */
 const FOE_CHANGES: ReadonlyMap<number, Pick<Changing, 'change' | 'side'>> = new Map<
   number,
@@ -315,6 +342,31 @@ const FOE_CHANGES: ReadonlyMap<number, Pick<Changing, 'change' | 'side'>> = new 
 ])
 
 /**
+ * A change with what the action's record says of it in place of the table's:
+ * a monster's chance — its accuracy, for an action whose accuracy scales, and a
+ * hundred for one whose does not — the levels it moves, held to two either way
+ * as the game's handlers hold them, and whether it can be dodged.
+ */
+function recordsOwn(
+  changes: Pick<Changing, 'change' | 'side'>,
+  rolls: Castable['rolls'],
+): Pick<Changing, 'change' | 'side' | 'evadable' | 'haywire'> {
+  if (!rolls) return changes
+  const chance = rolls.chanceIsAccuracy ? rolls.foeChance : 100
+  const { change } = changes
+  const levels = Math.max(-2, Math.min(2, rolls.levels))
+  return {
+    side: changes.side,
+    change:
+      change.kind === 'sleep' || change.kind === 'poison'
+        ? { ...change, chance }
+        : { ...change, chance, by: levels === 0 ? change.by : levels },
+    evadable: rolls.evadable,
+    haywire: rolls.haywire,
+  }
+}
+
+/**
  * A monster's six ways of acting, from its six words — game-formats'
  * `readMonsterBattle`, which are action numbers: 1 its attack, 225 fleeing,
  * 275 the poison attack, a change of state from {@link FOE_CHANGES} at its
@@ -332,9 +384,12 @@ export function foeWaysOf(
   const acts = words.map((word): FoeAction => {
     if (word === FOE_FLEE) return { kind: 'flee' }
     if (word === FOE_ATTACK) return { kind: 'attack' }
-    if (word === POISON_ATTACK) return { kind: 'attack', poison: POISON_CHANCE }
-    const changes = FOE_CHANGES.get(word)
     const action = actionOf(word)
+    if (word === POISON_ATTACK) {
+      const own = action?.rolls?.rider === POISON_RIDER ? action.rolls.foeChance : POISON_CHANCE
+      return { kind: 'attack', poison: own }
+    }
+    const changes = FOE_CHANGES.get(word)
     const reach = action && REACHES.get(action.reach)
     if (changes && action && reach) {
       // A spell that costs MP is cast; a breath has no word of its own.
@@ -343,7 +398,10 @@ export function foeWaysOf(
         message: action.message,
         opening: action.opening,
       })
-      return { kind: 'change', changing: { action: word, cost: action.cost, reach, ...changes } }
+      return {
+        kind: 'change',
+        changing: { action: word, cost: action.cost, reach, ...recordsOwn(changes, action.rolls) },
+      }
     }
     // A way that does nothing — effect 0, as fleeing's — is a turn spent
     // saying so: the sanguini's `is just fluffing around`.

@@ -183,6 +183,50 @@ describe('a battle scene', () => {
     expect(ways.known.get(44)).toMatchObject({ name: { name: 'Kasap' }, opening: 46 })
   })
 
+  it('takes a change’s chance, levels and dodging from the action’s record where it has one', () => {
+    // What the game's rolls read — see `Castable.rolls`. Snooze's chance is its
+    // own 37 and not the table's 25; a breath can be dodged and a spell cannot;
+    // an action whose accuracy does not scale lands every time, whatever its
+    // chance field holds; and the poison attack's chance is its rider's.
+    const rolls = {
+      foeChance: 0,
+      chanceIsAccuracy: true,
+      evadable: false,
+      haywire: false,
+      levels: 0,
+      rider: 0,
+    }
+    const records = new Map([
+      [53, { ...rolls, foeChance: 37, haywire: true }],
+      [228, { ...rolls, foeChance: 25, evadable: true }],
+      [41, { ...rolls, chanceIsAccuracy: false, foeChance: 9, levels: 1 }],
+      [275, { ...rolls, foeChance: 40, rider: 4 }],
+    ])
+    const actionOf = (id: number) => ({
+      action: id,
+      name: 'x',
+      effect: 1,
+      message: 0,
+      opening: 0,
+      cost: 0,
+      reach: 2,
+      range: undefined,
+      rolls: records.get(id) ?? rolls,
+    })
+    const changing = (id: number) => {
+      const [way] = foeWaysOf([id], () => undefined, actionOf).acts
+      return way?.kind === 'change' ? way.changing : way
+    }
+    expect(changing(53)).toMatchObject({
+      change: { kind: 'sleep', chance: 37 },
+      evadable: false,
+      haywire: true,
+    })
+    expect(changing(228)).toMatchObject({ change: { kind: 'sleep', chance: 25 }, evadable: true })
+    expect(changing(41)).toMatchObject({ change: { kind: 'defence', by: 1, chance: 100 } })
+    expect(changing(275)).toEqual({ kind: 'attack', poison: 40 })
+  })
+
   it('tells a monster’s change of state on the Hero', () => {
     const kasap = {
       kind: 'change' as const,

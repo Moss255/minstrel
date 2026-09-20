@@ -203,6 +203,33 @@ export interface Action {
   readonly scalesBy: 'might' | 'mending' | undefined
   /** Between what the number scales it — `+0x04` bits 12–21 and 22–31. Frizz's 50 and 999. */
   readonly scaleRange: { readonly lo: number; readonly hi: number }
+  /**
+   * **A monster's chance with it**, in a hundred — `+0x14`, bits 0 to 6. Two
+   * readers, both the game's: the accuracy roll (`func_ov000_02156648`) takes it
+   * as the accuracy of an action whose accuracy scales ({@link accuracyMode}
+   * at 1) when a monster uses it — Kasap's 75, Sweet Breath's 25, which is
+   * the whole of whether such an action lands, since its handler makes no draw
+   * of its own; and the {@link rider}'s handler takes it as the rider's chance.
+   * One of the party's is {@link accuracyRange}, least to most by their might.
+   */
+  readonly foeChance: number
+  /**
+   * What rides on its blow — `+0x18`, bits 0 to 4: a slot of 22 in the table
+   * `func_ov024_021e4b14` dispatches by, 0 for none. Each makes one draw below
+   * a hundred once the blow has dealt something, and lands under the action's
+   * chance times a hundredth of a byte of the *target's*. Read from the
+   * handlers: 2 lowers attack, 8 lowers defence; INFERRED from who carries
+   * them: 4 poisons (Toxic Dagger, Venomissile), 7 sleep (Hit the Hay), 11
+   * paralysis, 20 death (Assassin's Stab). Carried as the number.
+   */
+  readonly rider: number
+  /**
+   * How many levels it moves what it changes — `+0x30`, signed, held to two
+   * either way by the handlers that read it (`func_ov024_021db7c0` for
+   * defence): Buff 1, Sap −1, Oomph 2, Blunt −2. The rider's own is at `+0x32`.
+   */
+  readonly levels: number
+  readonly riderLevels: number
   /** The least and the most a scaling action's accuracy can be, in a hundred — `+0x14`, bits 7–13 and 14–20. */
   readonly accuracyRange: { readonly min: number; readonly max: number }
   /** The whole record, for what is not read. */
@@ -279,6 +306,10 @@ export function readActions(bytes: Uint8Array): Action[] {
       kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,
       damageCap: view.getUint32(at + 0x1c, true) & 0x3fff,
       worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
+      foeChance: view.getUint32(at + 0x14, true) & 0x7f,
+      rider: view.getUint32(at + 0x18, true) & 0x1f,
+      levels: view.getInt16(at + 0x30, true),
+      riderLevels: view.getInt16(at + 0x32, true),
       amountScales: ((view.getUint32(at + 0x18, true) >>> 16) & 3) === 2,
       scalesBy:
         (view.getUint32(at + 0x10, true) & 0x4000) !== 0

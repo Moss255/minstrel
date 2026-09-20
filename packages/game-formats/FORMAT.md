@@ -2891,6 +2891,9 @@ An item names its action in its item table — see "Items".
 | `+0x18` bits 16–17 at 2 | | its **amount scales** by a number of the user's — the same two bits as the accuracy's, read by `GetAttackBaseDamage` for one of the party. Means something only with a range: the plain Attack has the 2 and none | Frizz, Crack, Heal |
 | `+0x10` bits 14, 15 | flags | the number it scales by: **magical might**, **magical mending** | 14 on the attacking spells, 15 on the heals |
 | `+0x04` bits 12–21, 22–31 | `u10` ×2 | the number at which the amount leaves its least, and at which it reaches its most | Frizz 50 and 999; Crackle 100 and 999; Heal 50 and 999 |
+| `+0x14` bits 0–6 | `u7` | **a monster's chance with it**, in a hundred: its accuracy where the accuracy scales — which is the whole of whether a change of state lands — and its rider's chance | Kasap 75, Deceleratle 75, Sweet Breath 25: the reference's three, found in play. Snooze 37, Kasnooze 50 |
+| `+0x18` bits 0–4 | `u5` | **what rides on its blow**: a slot of 22 (`func_ov024_021e4b14`), 0 none. 2 lowers attack and 8 defence, from their handlers; 4 poison, 7 sleep, 11 paralysis, 20 death INFERRED from who carries them | Toxic Dagger 4 at 50; Helm Splitter 8 at 75; **action 275, the reference's poison attack, 4 at 12** |
+| `+0x30`, `+0x32` | `s16` ×2 | the levels it moves, and its rider's; held to two either way | Buff 1, Sap −1, Oomph 2, Blunt −2 |
 
 These are not INFERRED from values: each is what a named function tests before
 it acts. The runtime record the battle reads is laid out as the file's is.

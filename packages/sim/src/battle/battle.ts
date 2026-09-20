@@ -34,9 +34,11 @@ import {
  * - a spell's going haywire multiplying its amount by 1.5 to 2.0
  *   (`criticalDamage`), under {@link Rules.magicCritical} in 10,000 — 100, which
  *   is the game's at any deftness to 150; and its MP spent as it is cast;
- * - changes of state, `states.ts`: defence and agility levels, sleep, poison —
- *   with the chances a way gives them, which the reference's own are: Kasap
- *   and Deceleratle 75 in 100, Sweet Breath's sleep 25, its poison attack's 12;
+ * - changes of state, `states.ts`: defence and agility levels, sleep, poison.
+ *   **Whether one lands is the game's** — its accuracy roll, in the resolver's
+ *   order; the chances a way gives them are the action records' own, and the
+ *   reference's are those: Kasap and Deceleratle 75 in 100, Sweet Breath's
+ *   sleep 25, its poison attack's 12. Nobody's resistance is modelled;
  *   a sleeper losing its turns, and unable to defend.
  *
  * **A blow that comes to nothing deals 0 or 1, whoever strikes it** — the
@@ -191,10 +193,25 @@ export interface Changing {
   readonly change: Change
   readonly reach: 'one' | 'group' | 'all'
   readonly side: 'own' | 'other'
+  /** Whether it can be dodged — the action's own flag; Sweet Breath's is set, Kasap's is not. */
+  readonly evadable?: boolean
+  /**
+   * Whether one of the party's cast of it can go haywire — its record's
+   * critical multiplier is not nothing; 50 on Sap, Snooze and their like. A
+   * cast that does lands outright.
+   */
+  readonly haywire?: boolean
 }
 
 /** How a change came out on one it reached. */
-export type ChangeResult = 'asleep' | 'poisoned' | 'raised' | 'lowered' | 'already' | 'resisted'
+export type ChangeResult =
+  | 'asleep'
+  | 'poisoned'
+  | 'raised'
+  | 'lowered'
+  | 'already'
+  | 'resisted'
+  | 'dodged'
 
 /**
  * One of a foe's ways of acting — the game gives each monster six: attack
@@ -666,8 +683,25 @@ export function playRound(
             ? standing.filter((i) => fighters[i]?.name === kind)
             : standing
       const { change } = changing
+      // **The game's order, and the game's roll.** A change of state goes
+      // through the same resolver as a blow (`docs/conformance.md`, "A change
+      // of state"), and its handler makes no draw of its own: **whether it
+      // lands is the accuracy roll**, the chance its accuracy. So: the critical
+      // once for a cast at a group or all; then for each one reached their die,
+      // the critical where it is theirs, the dodge if it can be dodged, and the
+      // accuracy's draw — made before it is known whether there is anything
+      // left to change, since the handler finds that out afterwards.
+      const rate = me.side === 'party' && changing.haywire ? rules.magicCritical : 0
+      const once = changing.reach !== 'one'
+      let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
-        const was = (fighters[target] as FighterState).states
+        const them = fighters[target] as FighterState
+        rng.below(100)
+        if (!once) critical = rng.below(10_000) < rate
+        const dodged = changing.evadable === true && rng.below(100) < Math.trunc(evadeOf(them, rules))
+        const draw = rng.below(100)
+        if (dodged) return { target, result: 'dodged' as const }
+        const was = them.states
         const already =
           change.kind === 'sleep'
             ? was.sleep !== undefined
@@ -675,7 +709,8 @@ export function playRound(
               ? was.poisoned
               : false
         if (already) return { target, result: 'already' as const }
-        if (rng.below(100) >= change.chance) return { target, result: 'resisted' as const }
+        // A cast gone haywire lands outright (`0x02156a34`); the rest under the chance.
+        if (!critical && draw >= change.chance) return { target, result: 'resisted' as const }
         if (change.kind === 'sleep') {
           setStates(target, { sleep: SLEEP_TURNS })
           return { target, result: 'asleep' as const }
@@ -769,9 +804,11 @@ export function playRound(
       damage = Math.trunc(damage / 2)
     }
     // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
+    // Rolled only for a blow that has dealt something, and not for one already
+    // poisoned — both the game's, from the rider's handler (`func_ov024_021e303c`),
+    // which leaves before its draw otherwise.
     const poisoned =
-      !dodged &&
-      !blocked &&
+      damage > 0 &&
       command.poison !== undefined &&
       !them.states.poisoned &&
       rng.below(100) < command.poison

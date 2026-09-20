@@ -169,4 +169,44 @@ describe.skipIf(!romPath)('how a blow is resolved, on a real cartridge', () => {
     // And nothing at all on an item.
     expect(byId.get(236)?.criticalPercent).toBe(0)
   })
+
+  it('gives a monster’s change of state the chance the reference found in play', () => {
+    // `+0x14` bits 0–6, read by the accuracy roll for a monster using an action
+    // whose accuracy scales. The reference has Kasap and Deceleratle at 75 and
+    // Sweet Breath at 25, from play; these are them.
+    const chance = (id: number) => byId.get(id)?.foeChance
+    expect([44, 48, 228].map(chance)).toEqual([75, 75, 25])
+    for (const id of [44, 48, 228]) expect(byId.get(id)?.accuracyMode, String(id)).toBe(1)
+    // And two the reference has not, which ours had at Sweet Breath's 25.
+    expect([53, 54].map(chance)).toEqual([37, 50]) // Snooze, Kasnooze
+    // What raises lands every time: its accuracy does not scale.
+    for (const id of [41, 42, 45, 46]) expect(byId.get(id)?.accuracyMode, String(id)).not.toBe(1)
+    // A breath can be dodged and a spell cannot.
+    expect(byId.get(228)?.evadable).toBe(true)
+    expect(byId.get(44)?.evadable).toBe(false)
+  })
+
+  it('moves a level by what the record says', () => {
+    const levels = (id: number) => byId.get(id)?.levels
+    // Buff, Sap, Oomph, Blunt, Accelerate, Decelerate.
+    expect([41, 43, 49, 50, 45, 47].map(levels)).toEqual([1, -1, 2, -2, 1, -1])
+  })
+
+  it('hangs a rider on the blows that have one, at its own chance', () => {
+    const rider = (id: number) => [byId.get(id)?.rider, byId.get(id)?.foeChance]
+    expect(byId.get(1)?.rider).toBe(0)
+    // Poison: Toxic Dagger, and Venomissile at the reference's poison attack's 12.
+    expect(rider(75)).toEqual([4, 50])
+    expect(rider(295)).toEqual([4, 12])
+    // Defence down a level: Helm Splitter.
+    expect(rider(109)).toEqual([8, 75])
+    expect(byId.get(109)?.riderLevels).toBe(-1)
+    // None past the table's 22 slots.
+    expect(Math.max(...[...byId.values()].map((a) => a.rider))).toBeLessThan(0x17)
+  })
+
+  it('has the reference’s poison attack poisoning 12 times in 100, in its own record', () => {
+    // Action 275, unnamed: the rider that poisons, a level of it, at 12.
+    expect(byId.get(275)).toMatchObject({ rider: 4, foeChance: 12, riderLevels: 1, kind: 1 })
+  })
 })

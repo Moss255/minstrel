@@ -469,3 +469,48 @@ export function drawsPerTarget(action: {
     'accuracy',
   ]
 }
+
+/**
+ * Whether a change of state lands, for an action whose accuracy scales — the
+ * scaling arm of the accuracy roll, `func_ov000_02156648` from `0x02156868`.
+ * **This is the whole of whether it lands**: the handlers the resolver then
+ * calls by the action's kind (`func_ov024_021db7c0` for defence) are handed the
+ * answer and make no draw.
+ *
+ * `draw` is the hundred already thrown. A monster's accuracy is the record's
+ * `+0x14` bits 0–6. One of the party's runs from bits 7–13 to bits 14–20 as
+ * their might or mending runs between the record's `lo` and `hi` — or, naming
+ * neither, is *drawn* between them and truncated, which is one draw more.
+ * A cast gone haywire lands outright on a target whose resistance is above
+ * nothing; otherwise the accuracy is times the resistance, plus a half,
+ * truncated, and the draw must come in under it.
+ */
+export function changeLands(
+  draw: number,
+  accuracy: number,
+  resistance: number,
+  critical: boolean,
+): boolean {
+  if (f(resistance) > 0 && critical) return true
+  return draw < Math.trunc(f(f(f(accuracy) * f(resistance)) + f(0.5)))
+}
+
+/**
+ * Whether what rides on a blow lands — the rider handlers' shared shape
+ * (`func_ov024_021e303c` poison, `021e33a4`, and their neighbours): nothing,
+ * **and no draw**, for a blow that dealt nothing or a target whose byte for it
+ * is 0; otherwise a draw below a hundred, as a float, under the action's chance
+ * times a hundredth of the target's byte — or under a hundred, for a critical.
+ */
+export function riderLands(
+  random: GameRandom,
+  dealt: number,
+  chance: number,
+  targetByte: number,
+  critical: boolean,
+): boolean {
+  if (dealt <= 0 || targetByte === 0) return false
+  const draw = random.max(100)
+  const under = critical ? f(100) : f(f(chance) * f(f(targetByte) / f(100)))
+  return f(draw) < under
+}

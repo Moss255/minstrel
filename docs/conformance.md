@@ -40,6 +40,8 @@ a float is in the simulation stays written down beside the proof it matches.
 | **Each target's die** | `NextRandomMax(100)` at the top of each target's pass, kept at `[battle + 0x8e6e]` | `below(100)`, spent | **the game's.** Missed in the first reading of the resolver; read by the dodge for a target in a state not established, and otherwise by nothing |
 | **An action's amount** | `GetAttackBaseDamage` with a range: a monster's base, or one of the party's least-to-most by might or mending, give or take the spread; drawn twice where it names no number | `drawnAmount`, `partyAmount` | **the game's, exactly** — three forms, every number from 0 to 1,023. It was the reference's one form in 32.32. The herb now costs two draws |
 | **A spell going haywire** | the blow's own roll at the spell's `criticalPercent` — 50, so one in a hundred; once a cast for a group or all; **a monster's rate a literal nothing** | `magicCritical`, party only | the order and the monster's are the game's. **Ours still**: the rate flat where the game's climbs with deftness past 150 |
+| **A change of state landing** | it *is* the accuracy roll: a monster's chance the record's `+0x14` bits 0–6, the party's by might; × the target's resistance + ½; a cast gone haywire lands outright. The kind's handler makes no draw | the accuracy's draw under the chance | **the order and the roll are the game's**, and the chances now come from the record — the reference's 75, 75 and 25 are in the data. **Ours still**: every resistance whole |
+| **What rides on a blow** | one draw, only after a blow that dealt something, under the action's chance × a hundredth of the target's byte | `poison` on an attack | the game's for the poison attack, whose 12 is in its record; the other riders read and not modelled |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
@@ -329,6 +331,71 @@ Two more draws in the resolver are **not followed**: `NextRandomMax(100)` at
 `func_ov024_021eb1ec` picks out, after the damage. And four actions draw
 before any target is looked at (`0x1FF`, `0x200`, `0x20B`, `0x20C`).
 
+## A change of state — and what rides on a blow
+
+Read 20 September. Two different things in the game, and the simulation had
+them as one kind of roll.
+
+**A change of state that is the action itself** — Kasap, Snooze, Sweet Breath.
+The resolver calls a handler by the action's *kind* (`+0x18` bits 5–11; a table
+of member pointers at `0x021ff508`: 3 attack, 4 defence `func_ov024_021db7c0`,
+5 agility, 6 poison, 8 sleep). **The handler makes no draw.** It is handed
+whether the action landed, and that is the resolver's own **accuracy roll** —
+so the chance of a change of state *is its accuracy*:
+
+- **a monster's** is the record's `+0x14` bits 0–6. Kasap 75, Deceleratle 75,
+  Sweet Breath 25 — **the reference's three, from play, and here they are in
+  the data**. Snooze is 37 and Kasnooze 50, which ours had at 25;
+- **one of the party's** runs from bits 7–13 to bits 14–20 as their might (or
+  mending) runs between the record's `lo` and `hi`, exactly as an amount does —
+  Sap 75 to 100 — or is *drawn* between them, one draw more, where it names
+  neither;
+- then **times the target's resistance** to the action's element (`+0x18` bits
+  27–31, through `func_ov000_02156b38`) **plus a half**, truncated, and the
+  hundred drawn must come in under it;
+- **a cast gone haywire lands outright**, against any resistance above nothing
+  (`0x02156a34`);
+- what *raises* — Buff, Accelerate, Oomph — does not scale, so its accuracy
+  stands at a hundred: it lands every time, and spends the draw;
+- how far: the record's `+0x30`, signed, held to two either way. Buff 1, Sap
+  −1, Oomph 2, Blunt −2;
+- **before any draw**, the roll leaves with a miss for a metal body under an
+  action that does not work on one, and for a few of the target's statuses.
+
+The order is the resolver's, so the draws are: the critical once for a group or
+all; then each one's die, the critical where it is theirs, **the dodge where
+the record allows one — a breath's does, a spell's does not** — the block
+likewise, and the accuracy. They are made **before it is known whether there is
+anything left to change**: the handler finds that out afterwards
+(`func_02087860`), so a cast on one already asleep costs what any cast does.
+
+**What rides on a blow** — Toxic Dagger's poison, Helm Splitter's defence, the
+poison attack's poison. `func_ov024_021e4b14` dispatches by the record's
+`+0x18` bits 0–4, 22 slots at `0x021ff450`, called from the kind's handler once
+the blow has landed. Each handler has one shape:
+
+- nothing **and no draw** for a blow that dealt nothing, a target whose byte
+  for it is 0 (status `+0x46` to `+0x52`, one a rider — the target's
+  susceptibility, in hundredths), or one who cannot take it now;
+- then `NextRandomMax(100)`, as a float, under **the action's chance times a
+  hundredth of the target's byte** — a monster's chance bits 0–6, one of the
+  party's bits 7–13 — or under a hundred for a critical;
+- the levels at `+0x32`.
+
+Slots read from their handlers: 2 lowers attack (`UpdateCombatantAttack`), 8
+lowers defence. INFERRED from who carries them: 4 poison, 7 sleep, 10
+confusion, 11 paralysis, 20 death. **Action 275 — the reference's poison
+attack — is rider 4 at 12**: the reference's 12 in 100, in its own record.
+
+**In the simulation**: the change's draws in this order, its roll the
+accuracy's; `haywire` and `evadable` from the record; a `dodged` result; the
+poison rolled only for a blow that dealt something. **In the game**
+(`foeWaysOf`): chance, levels and dodging from the action's record in place of
+our table. **Ours still, and the largest thing left here: nobody has a
+resistance.** Every target's is whole and every susceptibility byte a hundred,
+which is right for the Hero against the slice's monsters only as far as the
+reference goes; where a monster's come from is not read.
+
 ## What the rest of a blow does — the end of `func_ov024_021e6a90`
 
 Read 20 September, from `0x021e7760` to the return. `r4` is the attacker and
@@ -392,9 +459,9 @@ defending and the reference is wrong.
   defending — or the witness above, which is cheaper;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
-- the draws of a change of state — Kasap, Sweet Breath: the resolver is the
-  same, so the die, the critical and the accuracy are made; where the chance
-  of its landing is rolled is not read;
+- **resistances**: `func_ov000_02156b38` and the susceptibility bytes at status
+  `+0x46`–`+0x52` — where a monster's come from, which is most of what is
+  left between the simulation's changes of state and the game's;
 - what the game does to a heal that goes haywire;
 - the party's flee chance, by way of how the command is numbered;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;

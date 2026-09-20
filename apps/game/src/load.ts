@@ -278,6 +278,21 @@ export interface ItemEffect {
   /** Whom it reaches — see `ActionReach`. INFERRED. */
   readonly reach: number
   /**
+   * What the battle's rolls read of it — each from the game's code; see
+   * game-formats' `Action`: a monster's chance with it, whether that chance is
+   * its accuracy (it scales) and so whether it lands, whether it can be dodged,
+   * whether a cast can go haywire, the levels it moves, and what rides on its
+   * blow.
+   */
+  readonly rolls: {
+    readonly foeChance: number
+    readonly chanceIsAccuracy: boolean
+    readonly evadable: boolean
+    readonly haywire: boolean
+    readonly levels: number
+    readonly rider: number
+  }
+  /**
    * The range the party draws from, when it has one. `base` is the party's
    * least, which is what is used outside a battle (ours); `party` is what the
    * battle makes one of the party's amount from, the game's way — the least
@@ -1108,6 +1123,14 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         opening: action.opening,
         cost: action.cost,
         reach: action.reach,
+        rolls: {
+          foeChance: action.foeChance,
+          chanceIsAccuracy: action.accuracyMode === 1,
+          evadable: action.evadable,
+          haywire: action.criticalPercent > 0,
+          levels: action.levels,
+          rider: action.rider,
+        },
         // The party's amount: the Hero is who uses these — see `ActionRange.party`.
         range: range && {
           base: range.party,

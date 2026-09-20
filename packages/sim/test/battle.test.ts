@@ -638,6 +638,98 @@ describe('the draws of what is not a plain blow — the game’s', () => {
     expect(amounts(999) - amounts(0)).toBe(85)
   })
 
+  it('rolls a change of state with the accuracy’s draw, after the die and the critical', () => {
+    const sap = (extra: Partial<Changing>): Command => ({
+      kind: 'change',
+      target: 1,
+      changing: {
+        action: 43,
+        cost: 0,
+        reach: 'one',
+        side: 'other',
+        change: { kind: 'defence', by: -1, chance: 75 },
+        ...extra,
+      },
+    })
+    // At one: their die, the critical, the accuracy — and that is the roll.
+    expect(drawn(sap({})) - nothing).toBe(3)
+    // At a group of two: the critical once, then a die and an accuracy apiece.
+    expect(drawn(sap({ reach: 'group' })) - nothing).toBe(1 + 2 * 2)
+    // One that can be dodged rolls the dodge too.
+    expect(drawn(sap({ evadable: true })) - nothing).toBe(4)
+  })
+
+  it('spends a change’s draws on one with nothing left to change', () => {
+    // The handler finds out after the resolver has rolled: one already
+    // poisoned is rolled for all the same.
+    const snooze: Command = {
+      kind: 'change',
+      target: 1,
+      changing: {
+        action: 53,
+        cost: 0,
+        reach: 'one',
+        side: 'other',
+        change: { kind: 'poison', chance: 100 },
+      },
+    }
+    const rng = new BattleRng(11n)
+    let state = withHp(
+      startBattle([{ ...hero, maxHp: 500 }, idle('slime'), idle('slime')]),
+      new Map([[0, 100]]),
+    )
+    state = playRound(state, new Map([[0, snooze]]), rng, rules).state
+    const before = rng.drawn
+    const again = playRound(state, new Map([[0, snooze]]), rng, rules)
+    expect(again.events.find((e) => e.kind === 'change')).toMatchObject({
+      hits: [{ result: 'already' }],
+    })
+    const idleRound = (() => {
+      const r = new BattleRng(11n)
+      playRound(state, new Map([[0, { kind: 'defend' }]]), r, rules)
+      return r.drawn
+    })()
+    expect(rng.drawn - before - idleRound).toBe(3)
+  })
+
+  it('lands a cast gone haywire outright, and lets a dodge come first', () => {
+    const hopeless = (extra: Partial<Changing>, r = rules): unknown => {
+      const played = playRound(
+        startBattle([
+          { ...hero, maxHp: 500 },
+          { ...idle('slime'), evade: 100 },
+        ]),
+        new Map([
+          [
+            0,
+            {
+              kind: 'change',
+              target: 1,
+              changing: {
+                action: 43,
+                cost: 0,
+                reach: 'one',
+                side: 'other',
+                change: { kind: 'defence', by: -1, chance: 0 },
+                ...extra,
+              },
+            },
+          ],
+        ]),
+        new BattleRng(11n),
+        r,
+      )
+      const told = played.events.find((e) => e.kind === 'change')
+      return told?.kind === 'change' ? told.hits[0]?.result : undefined
+    }
+    const always = { ...rules, magicCritical: 10_000 }
+    expect(hopeless({})).toBe('resisted')
+    expect(hopeless({ haywire: true }, always)).toBe('lowered')
+    // Without the record saying it can, it cannot.
+    expect(hopeless({}, always)).toBe('resisted')
+    expect(hopeless({ evadable: true, haywire: true }, always)).toBe('dodged')
+  })
+
   it('never lets a monster’s spell go haywire, and spends the draw on it all the same', () => {
     const caster = (name: string) => ({
       ...blob(name, 500),
