@@ -6,10 +6,13 @@ import {
   criticalChance,
   criticalDamage,
   criticalHit,
+  drawnAmount,
+  partyAmount,
   physicalDamage,
 } from '../src/index.ts'
 import {
   AMBUSH_FOLLOWER_ACTS_BELOW,
+  actionAmount,
   ambushFollowerActs,
   BLOW_ORDER,
   buffMultiplier,
@@ -514,5 +517,80 @@ describe('a shield’s chance of blocking', () => {
     }
     // The bronze shield's 5, the iron's 10, the steel's 15, Erdrick's 90.
     expect([5, 10, 15, 90].map(blocks)).toEqual([1, 1, 2, 9])
+  })
+})
+
+describe('an action’s amount', () => {
+  // Frizz, Heal, the medicinal herb and Crackle, as the cartridge has them.
+  const ranges = [
+    { spread: 2, base: 9, min: 14, max: 99 },
+    { spread: 5, base: 35, min: 35, max: 160 },
+    { spread: 5, base: 35, min: 35, max: 35 },
+    { spread: 8, base: 33, min: 50, max: 150 },
+  ]
+
+  it('is the game’s for a monster: its own base, give or take the spread, in one draw', () => {
+    let wrong = 0
+    for (const range of ranges) {
+      for (let seed = 1n; seed <= 3000n; seed++) {
+        const ours = BattleRng.fromGameState(seed)
+        const theirs = new GameRandom(seed)
+        if (drawnAmount(ours, range.base, range.spread) !== actionAmount(theirs, range, 'monster'))
+          wrong++
+        if (ours.drawn !== 1) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('is the game’s for one of the party scaling by a number, at every number', () => {
+    let wrong = 0
+    for (const range of ranges) {
+      for (let stat = 0; stat <= 1023; stat += 7) {
+        const scales = { stat, lo: 50, hi: 999 }
+        for (let seed = 1n; seed <= 40n; seed++) {
+          const ours = BattleRng.fromGameState(seed)
+          const mine = partyAmount(ours, { min: range.min, max: range.max, scales }, range.spread)
+          if (mine !== actionAmount(new GameRandom(seed), range, 'party', scales)) wrong++
+          if (ours.drawn !== 1) wrong++
+        }
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('is the game’s for one of the party not scaling, in two draws — even a herb’s 35 to 35', () => {
+    let wrong = 0
+    for (const range of ranges) {
+      for (let seed = 1n; seed <= 3000n; seed++) {
+        const ours = BattleRng.fromGameState(seed)
+        const mine = partyAmount(ours, { min: range.min, max: range.max }, range.spread)
+        if (mine !== actionAmount(new GameRandom(seed), range, 'party')) wrong++
+        if (ours.drawn !== 2) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('gives Frizz 14 at a might of 50, 99 at 999, and what lies between', () => {
+    const frizz = { min: 14, max: 99 }
+    const about = (stat: number) => {
+      const seen = new Set<number>()
+      for (let seed = 1n; seed <= 400n; seed++) {
+        seen.add(
+          partyAmount(
+            BattleRng.fromGameState(seed),
+            { ...frizz, scales: { stat, lo: 50, hi: 999 } },
+            2,
+          ),
+        )
+      }
+      return [Math.min(...seen), Math.max(...seen)]
+    }
+    expect(about(0)).toEqual([12, 15])
+    expect(about(50)).toEqual([12, 15])
+    expect(about(999)).toEqual([97, 100])
+    // Halfway: 14 + (int)(474 × (85 / 949)) = 14 + 42.
+    expect(about(524)).toEqual([54, 57])
   })
 })

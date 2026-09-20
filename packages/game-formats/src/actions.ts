@@ -188,21 +188,45 @@ export interface Action {
    * a body metal is the target's, `func_ov000_02156068`, and not read here.
    */
   readonly worksOnMetal: boolean
+  /**
+   * Whether its *amount* scales by a number of the user's — the same two bits
+   * as {@link accuracyMode}, at 2. `GetAttackBaseDamage` (overlay 24,
+   * `0x021e7c0c`) tests them for one of the party: at 2, and with a number
+   * named by {@link scalesBy}, the amount runs from the range's least to its
+   * most as that number runs from {@link scaleRange}'s `lo` to its `hi`.
+   * **It means something only with a {@link range}**: the plain Attack has the
+   * 2 and no range, and the game works its damage out as a blow's without
+   * looking at this.
+   */
+  readonly amountScales: boolean
+  /** The number it scales by — `+0x10` bit 14 magical might, bit 15 magical mending; the first tested wins. */
+  readonly scalesBy: 'might' | 'mending' | undefined
+  /** Between what the number scales it — `+0x04` bits 12–21 and 22–31. Frizz's 50 and 999. */
+  readonly scaleRange: { readonly lo: number; readonly hi: number }
   /** The least and the most a scaling action's accuracy can be, in a hundred — `+0x14`, bits 7–13 and 14–20. */
   readonly accuracyRange: { readonly min: number; readonly max: number }
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
 
+/**
+ * A range, as the game's `GetAttackBaseDamage` reads it (overlay 24,
+ * `0x021e7bc0`) — what was INFERRED here from the reference is now from the
+ * code, and it bore the inference out.
+ */
 export interface ActionRange {
   readonly index: number
-  /** How far either side of the base the value drawn may fall. INFERRED. */
+  /**
+   * How far either side the amount may fall: a draw between ∓ this is added
+   * last, whoever uses the action. Word 0 bits 8–17 — ten bits; it was read as
+   * the byte at `+0x01`, and no range on the cartridge goes past it.
+   */
   readonly spread: number
-  /** INFERRED — see above. */
+  /** **A monster's** amount — word 1, bits 0–9. */
   readonly base: number
-  /** The amount a party member's action draws around, INFERRED — see above. */
+  /** **One of the party's least** — word 1, bits 10–19: what it is until the user's number passes the action's `lo`. */
   readonly party: number
-  /** The base at the top of its scale, INFERRED — see above. */
+  /** **One of the party's most** — word 1, bits 20–29: what it is from the action's `hi`. */
   readonly peak: number
 }
 
@@ -255,6 +279,17 @@ export function readActions(bytes: Uint8Array): Action[] {
       kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,
       damageCap: view.getUint32(at + 0x1c, true) & 0x3fff,
       worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
+      amountScales: ((view.getUint32(at + 0x18, true) >>> 16) & 3) === 2,
+      scalesBy:
+        (view.getUint32(at + 0x10, true) & 0x4000) !== 0
+          ? 'might'
+          : (view.getUint32(at + 0x10, true) & 0x8000) !== 0
+            ? 'mending'
+            : undefined,
+      scaleRange: {
+        lo: (view.getUint32(at + 4, true) >>> 12) & 0x3ff,
+        hi: view.getUint32(at + 4, true) >>> 22,
+      },
       accuracyRange: {
         min: (view.getUint32(at + 0x14, true) >>> 7) & 0x7f,
         max: (view.getUint32(at + 0x14, true) >>> 14) & 0x7f,
@@ -285,7 +320,7 @@ export function readActionRanges(bytes: Uint8Array): Map<number, ActionRange> {
     const index = bytes[at] as number
     out.set(index, {
       index,
-      spread: bytes[at + 1] as number,
+      spread: (view.getUint32(at, true) >>> 8) & 0x3ff,
       base: packed & 0x3ff,
       party: (packed >>> 10) & 0x3ff,
       peak: (packed >>> 20) & 0x3ff,

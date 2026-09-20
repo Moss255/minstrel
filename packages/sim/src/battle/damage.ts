@@ -11,7 +11,8 @@ import type { BattleRng } from './rng.ts'
  *
  * **What has since been read from the game's own code is the game's instead**,
  * in the 32-bit floats it computes in — `physicalDamage`, `criticalChance`,
- * `criticalBlow`, `criticalHit` and `criticalDamage` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
+ * `criticalBlow`, `criticalHit`, `criticalDamage`, `drawnAmount`, `partyAmount` and
+ * `blockChance` so far — and held to `packages/sim/test/game-oracle.ts`. See `CLAUDE.md`,
  * "Fixed-point in simulation", and `docs/conformance.md`.
  */
 
@@ -86,15 +87,66 @@ export function criticalHit(rng: BattleRng, base: number, attack: number): numbe
 }
 
 /**
- * An amount drawn as a base give or take a spread — the reference's
- * `FUN_021e8458_typeD`, `floatRand(−spread, spread) + base`, truncated — kept
- * as the exact integer `((base − spread)·2³² + top·2·spread) / 2³²`, truncated
- * toward zero as the reference's cast is. One draw. What a healing item
- * restores is drawn so: the medicinal herb's 35 ± 5.
+ * An amount drawn as a base give or take a spread — the game's, from
+ * `GetAttackBaseDamage` (overlay 24, `0x021e7bc0`) for an action with a range:
+ * `base + NextRandomFloatBetween(−spread, spread)` in its floats, and the
+ * `_ffix` it returns through, which truncates toward nothing. One draw.
+ *
+ * **This is a monster's amount whole**, the base its own (the range's low ten
+ * bits), and the last step of one of the party's — see {@link partyAmount}.
+ * The reference's `FUN_021e8458_typeD` is this. What a healing item restores
+ * *outside* a battle is drawn so too, which is ours: that is not this function.
  */
 export function drawnAmount(rng: BattleRng, base: number, spread: number): number {
-  const scaled = (BigInt(base - spread) << 32n) + BigInt(rng.top32()) * BigInt(2 * spread)
-  return Number(scaled / (1n << 32n))
+  const f = Math.fround
+  const low = f(f(-1) * f(spread))
+  return Math.trunc(f(f(base) + rng.floatBetween(low, f(spread))))
+}
+
+/** What one of the party's amount is made from — a range's party half, and how the action scales. */
+export interface PartyAmount {
+  /** The least: the range's second ten bits. */
+  readonly min: number
+  /** The most: its third. */
+  readonly max: number
+  /**
+   * The number of the user's it scales by, and between what — for an action
+   * whose record says it scales (`+0x18` bits 16–17 at 2) and names a number
+   * (`+0x10` bit 14 magical might, bit 15 magical mending). `lo` and `hi` are
+   * the record's `+0x04` bits 12–21 and 22–31: Frizz's 50 and 999.
+   */
+  readonly scales?: { readonly stat: number; readonly lo: number; readonly hi: number }
+}
+
+/**
+ * One of the party's amount — the same function's other arm.
+ *
+ * **Scaling by a number of the user's**: at or under `lo` the least, at or over
+ * `hi` the most, and between them `(stat − lo) × ((max − min) / (hi − lo))`,
+ * truncated, on top of the least — then give or take the spread. One draw.
+ *
+ * **Not scaling** — a medicinal herb — the base is *drawn* between the least
+ * and the most, and then give or take the spread. **Two draws**, the first
+ * spent even when the least and the most are the same, as the herb's 35 and
+ * 35 are.
+ *
+ * Not here: six skills (Gigaslash among them) that scale by a number put
+ * together from the user's and what they hold, by a table at `0x021fe8b6`.
+ */
+export function partyAmount(rng: BattleRng, amount: PartyAmount, spread: number): number {
+  const f = Math.fround
+  const { min, max, scales } = amount
+  if (!scales) {
+    const base = rng.floatBetween(min, max)
+    const low = f(f(-1) * f(spread))
+    return Math.trunc(f(base + rng.floatBetween(low, f(spread))))
+  }
+  const { stat, lo, hi } = scales
+  let base: number
+  if (stat <= lo) base = min
+  else if (stat >= hi) base = max
+  else base = Math.trunc(f(f(stat - lo) * f(f(max - min) / f(hi - lo)))) + min
+  return drawnAmount(rng, base, spread)
 }
 
 /**

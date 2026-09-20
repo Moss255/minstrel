@@ -277,11 +277,32 @@ export interface ItemEffect {
   readonly cost: number
   /** Whom it reaches — see `ActionReach`. INFERRED. */
   readonly reach: number
-  /** The range the party draws from, when it has one: a base give or take a spread. */
-  readonly range: { readonly base: number; readonly spread: number } | undefined
   /**
-   * The range a monster draws from: the range's own base, beside the party's
-   * amount — INFERRED; see `ActionRange.party`. Crack's is 17, the party's 30.
+   * The range the party draws from, when it has one. `base` is the party's
+   * least, which is what is used outside a battle (ours); `party` is what the
+   * battle makes one of the party's amount from, the game's way — the least
+   * and the most, and the number it scales by where the action names one. See
+   * the sim's `partyAmount`.
+   */
+  readonly range:
+    | {
+        readonly base: number
+        readonly spread: number
+        readonly party: {
+          readonly min: number
+          readonly max: number
+          readonly scales?: {
+            readonly by: 'might' | 'mending'
+            readonly lo: number
+            readonly hi: number
+          }
+        }
+      }
+    | undefined
+  /**
+   * The range a monster draws from: the range's own base — read from the
+   * game's `GetAttackBaseDamage`; see `ActionRange.base`. Crack's is 17, the
+   * party's least 30.
    */
   readonly foeRange: { readonly base: number; readonly spread: number } | undefined
   /** Whether it is in the table's first half, whose spells can be cast outside a battle. INFERRED. */
@@ -1088,7 +1109,18 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         cost: action.cost,
         reach: action.reach,
         // The party's amount: the Hero is who uses these — see `ActionRange.party`.
-        range: range && { base: range.party, spread: range.spread },
+        range: range && {
+          base: range.party,
+          spread: range.spread,
+          party: {
+            min: range.party,
+            max: range.peak,
+            // Only an action whose record says its amount scales, and by what.
+            ...(action.amountScales && action.scalesBy
+              ? { scales: { by: action.scalesBy, ...action.scaleRange } }
+              : {}),
+          },
+        },
         foeRange: range && { base: range.base, spread: range.spread },
         field: half === 'a',
       })

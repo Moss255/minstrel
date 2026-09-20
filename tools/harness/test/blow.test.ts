@@ -140,4 +140,33 @@ describe.skipIf(!romPath)('how a blow is resolved, on a real cartridge', () => {
       'Double-Edged Slash',
     ])
   })
+
+  it('scales the spells by might and the heals by mending, between what their records say', () => {
+    // Read by `GetAttackBaseDamage`: bits 16–17 of `+0x18` at 2, a number
+    // named at `+0x10`, and the two tens at the top of `+0x04`.
+    for (const id of [9, 12, 18, 21]) {
+      expect(byId.get(id), String(id)).toMatchObject({ amountScales: true, scalesBy: 'might' })
+    }
+    expect(byId.get(9)?.scaleRange).toEqual({ lo: 50, hi: 999 }) // Frizz
+    expect(byId.get(16)?.scaleRange).toEqual({ lo: 100, hi: 999 }) // Crackle
+    expect(byId.get(30)).toMatchObject({
+      amountScales: true,
+      scalesBy: 'mending',
+      scaleRange: { lo: 50, hi: 999 },
+    })
+    // The herb names no number, so its amount is drawn between its least and
+    // most — the same 35 — and then spread: two draws.
+    expect(byId.get(236)?.scalesBy).toBeUndefined()
+    // The plain Attack carries the 2 as well and **has no range**, so the game
+    // never gets as far as looking: its damage is the blow's own.
+    expect(byId.get(1)).toMatchObject({ amountScales: true, scalesBy: undefined, range: 0 })
+  })
+
+  it('rolls a spell’s critical at half the rate of a blow’s', () => {
+    // 50 hundredths of `CalculateCritRate`'s two in a hundred: one in a
+    // hundred to a deftness of 150, which is the reference's 100 in 10,000.
+    for (const id of [9, 12, 18, 30]) expect(byId.get(id)?.criticalPercent).toBe(50)
+    // And nothing at all on an item.
+    expect(byId.get(236)?.criticalPercent).toBe(0)
+  })
 })

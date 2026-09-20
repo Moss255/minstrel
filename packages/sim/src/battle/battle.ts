@@ -1,4 +1,11 @@
-import { criticalDamage, criticalHit, drawnAmount, initiative, physicalDamage } from './damage.ts'
+import {
+  criticalDamage,
+  criticalHit,
+  drawnAmount,
+  initiative,
+  partyAmount,
+  physicalDamage,
+} from './damage.ts'
 import type { BattleRng } from './rng.ts'
 import {
   levelled,
@@ -24,11 +31,9 @@ import {
  *   blow;
  * - the party's critical hit: a draw below 10,000 under {@link Rules.critical},
  *   dealing the attacker's attack power times 0.95 to 1.05;
- * - a healing item's amount, its base give or take its spread, `drawnAmount`;
- * - a spell's amount, drawn the same way — the reference's Heal, Crack, Woosh
- *   and Crackle — and its going haywire: a draw below 10,000 under
- *   {@link Rules.magicCritical}, 100 on all four, multiplying the amount by 1.5
- *   to 2.0 (`criticalDamage`); and its MP spent as it is cast;
+ * - a spell's going haywire multiplying its amount by 1.5 to 2.0
+ *   (`criticalDamage`), under {@link Rules.magicCritical} in 10,000 — 100, which
+ *   is the game's at any deftness to 150; and its MP spent as it is cast;
  * - changes of state, `states.ts`: defence and agility levels, sleep, poison —
  *   with the chances a way gives them, which the reference's own are: Kasap
  *   and Deceleratle 75 in 100, Sweet Breath's sleep 25, its poison attack's 12;
@@ -36,6 +41,13 @@ import {
  *
  * **A blow that comes to nothing deals 0 or 1, whoever strikes it** — the
  * game's, read from `func_ov024_021e6a90`; the reference had it for monsters.
+ *
+ * **What a spell or an item amounts to is the game's**, and the draws made on
+ * the way to it, in its order — `drawnAmount`, `partyAmount`, and
+ * `docs/conformance.md`, "What is not a plain blow": a die for each one
+ * reached, the critical roll (the cast's for a group or all, never a
+ * monster's), the accuracy's draw, and the amount — a monster's base, or one of
+ * the party's least-to-most by their might or mending.
  *
  * **A shield's chance of blocking is the game's**, from what is worn —
  * `blockChance`; a fighter given none blocks once in a hundred behind a shield,
@@ -87,6 +99,9 @@ export interface Fighter {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /** Magical might and magical mending, which a spell's amount may scale by. Nothing when not given. */
+  readonly might?: number
+  readonly mending?: number
   /** Whether a shield stands between this fighter and a monster's blow. */
   readonly shield: boolean
   /**
@@ -134,8 +149,19 @@ export interface FighterState extends Fighter {
 
 /** What an item does when used: the HP it restores, as a base give or take a spread. */
 export interface Heal {
+  /** What a monster's amount is drawn about — and anyone's, where {@link party} is not given. */
   readonly base: number
   readonly spread: number
+  /**
+   * What one of the party's is made from instead — the game's, see
+   * `partyAmount`: the least and the most, and the number of the user's it
+   * scales between them by, where its record names one.
+   */
+  readonly party?: {
+    readonly min: number
+    readonly max: number
+    readonly scales?: { readonly by: 'might' | 'mending'; readonly lo: number; readonly hi: number }
+  }
 }
 
 /** A spell, as the battle casts it — see {@link playRound}. */
@@ -289,6 +315,19 @@ export const DEFAULT_RULES: Rules = {
 /** A target's chance of dodging, in a hundred — the game's `func_ov000_02156270`, without its bonuses and statuses. */
 function evadeOf(target: Fighter, rules: Rules): number {
   return target.evade ?? (target.side === 'party' ? rules.dodge : 0)
+}
+
+/** An amount as the game draws it for whoever uses the action: a monster's, or one of the party's. */
+function amountFor(rng: BattleRng, user: Fighter, amount: Heal): number {
+  if (user.side === 'foes' || !amount.party) return drawnAmount(rng, amount.base, amount.spread)
+  const { min, max, scales } = amount.party
+  return partyAmount(
+    rng,
+    scales
+      ? { min, max, scales: { stat: user[scales.by] ?? 0, lo: scales.lo, hi: scales.hi } }
+      : { min, max },
+    amount.spread,
+  )
 }
 
 /** A target's chance of blocking, in a hundred — the game's `func_ov000_02156118`, likewise. */
@@ -496,7 +535,13 @@ export function playRound(
     if (command.kind === 'item') {
       let healed: number | undefined
       if (command.heal) {
-        const amount = drawnAmount(rng, command.heal.base, command.heal.spread)
+        // The game's order for anything used on someone — see the spell below:
+        // the target's die, the critical roll (an item's rate is nothing, and
+        // the draw is spent), the accuracy, and then the amount.
+        rng.below(100)
+        rng.below(10_000)
+        rng.below(100)
+        const amount = amountFor(rng, me, command.heal)
         healed = Math.max(0, Math.min(amount, me.maxHp - me.hp))
         const gained = healed
         fighters = fighters.map((f, i) => (i === actor ? { ...f, hp: f.hp + gained } : f))
@@ -547,13 +592,25 @@ export function playRound(
           : spell.reach === 'group'
             ? standing.filter((i) => fighters[i]?.name === kind)
             : standing
-      // Whether it goes haywire is the cast's; how much, each one's own.
-      const critical = rng.below(10_000) < rules.magicCritical
+      // **The game's order** — `func_ov024_021eb5d0`, `docs/conformance.md`,
+      // "What is not a plain blow". Whether it goes haywire is rolled **once
+      // for the cast when it reaches a group or all** (`func_ov024_021ea4d0`:
+      // the record's reach at 3 or 4) and before anyone is looked at; for one
+      // it is rolled for that one, after their die. A monster's rate is a
+      // literal nothing (`func_020748f8`) and its draw is spent all the same.
+      const rate = me.side === 'party' ? rules.magicCritical : 0
+      const once = spell.reach !== 'one'
+      let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
         const them = fighters[target] as FighterState
-        let amount = spell.amount
-          ? drawnAmount(rng, spell.amount.base, spell.amount.spread)
-          : them.maxHp
+        // Each one reached: a die of a hundred the game keeps for them
+        // (`0x021ebf28`), the critical roll where it is theirs, the accuracy's
+        // draw — a spell cannot be dodged or blocked, so neither is rolled —
+        // and the amount.
+        rng.below(100)
+        if (!once) critical = rng.below(10_000) < rate
+        rng.below(100)
+        let amount = spell.amount ? amountFor(rng, me, spell.amount) : them.maxHp
         if (critical && spell.amount) amount = criticalDamage(rng, amount)
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         return { target, amount }
@@ -660,6 +717,11 @@ export function playRound(
     // whether or not it can come to anything, which is the point: a battle
     // replays from a seed only if every draw is spent where the game spends it.
     //
+    // 0. A die of a hundred the game throws for each one an action reaches and
+    //    keeps (`0x021ebf28`, at `[battle + 0x8e6e]`). The dodge reads it in
+    //    place of its own draw for a target in a state not modelled here;
+    //    otherwise nothing comes of it, and it is spent.
+    rng.below(100)
     // 1. The critical roll, always. A monster's rate is nothing and its draw is
     //    spent all the same.
     const critical = rng.below(10_000) < (me.side === 'party' ? rules.critical : 0)

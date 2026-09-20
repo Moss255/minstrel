@@ -360,7 +360,11 @@ describe('a battle', () => {
   })
 
   it('is won when every foe is down, and pays out their experience and gold', () => {
-    const { state, events } = fight(startBattle([hero, blob('slime', 8), blob('slime', 8)]), 3n)
+    // A Hero hale enough that no seed's luck loses it: the point is the winning.
+    const { state, events } = fight(
+      startBattle([{ ...hero, maxHp: 200 }, blob('slime', 8), blob('slime', 8)]),
+      3n,
+    )
     expect(state.outcome).toBe('won')
     expect(state.fighters.filter((f) => f.side === 'foes').every((f) => f.hp === 0)).toBe(true)
     expect(events.filter((e) => e.kind === 'defeated')).toHaveLength(2)
@@ -430,10 +434,13 @@ describe('a battle', () => {
     expect(state.fighters[0]?.hp).toBe(10 + healed - damage)
 
     const nearlyWell = withHp(startBattle([hero, blob('slime', 8, 1)]), new Map([[0, 18]]))
-    const topped = playRound(nearlyWell, herb, new BattleRng(1n)).events.find(
-      (e) => e.kind === 'item',
-    )
-    expect(topped?.kind === 'item' && topped.healed).toBe(2)
+    const round = playRound(nearlyWell, herb, new BattleRng(1n)).events
+    const at = round.findIndex((e) => e.kind === 'item')
+    const topped = round[at]
+    // The wounds are the two it began with and whatever the slime dealt first.
+    const first = round.slice(0, at).find((e) => e.kind === 'attack')
+    const wounds = 2 + (first?.kind === 'attack' ? first.damage : 0)
+    expect(topped?.kind === 'item' && topped.healed).toBe(wounds)
   })
 
   it('says an item with no heal did nothing', () => {
@@ -557,5 +564,102 @@ describe('the order a blow’s draws are made in — the game’s', () => {
     }
     expect(dodges / rounds).toBeGreaterThan(0.22)
     expect(dodges / rounds).toBeLessThan(0.28)
+  })
+})
+
+describe('the draws of what is not a plain blow — the game’s', () => {
+  // Monsters that only fluff around, so a round's draws are the order of
+  // going, their choosing, and the Hero's action — and two rounds differ by
+  // what the Hero did and nothing else.
+  const idle = (name: string) => ({
+    ...blob(name, 500),
+    acts: [{ kind: 'wait', action: 0 }] as const,
+  })
+  const rules = { ...DEFAULT_RULES, choice: [256, 0, 0, 0, 0, 0] }
+  const drawn = (command: Command, foes = [idle('slime'), idle('slime')]) => {
+    const rng = new BattleRng(11n)
+    const state = withHp(startBattle([{ ...hero, maxHp: 500 }, ...foes]), new Map([[0, 100]]))
+    playRound(state, new Map([[0, command]]), rng, rules)
+    return rng.drawn
+  }
+  const nothing = drawn({ kind: 'defend' })
+  const bolt = (reach: Spell['reach'], amount: Spell['amount']): Command => ({
+    kind: 'spell',
+    target: 1,
+    spell: { action: 9, cost: 0, does: 'harm', reach, amount },
+  })
+  const legacy = { base: 14, spread: 2 }
+
+  it('spends four on a spell at one: their die, the critical, the accuracy, the amount', () => {
+    expect(drawn(bolt('one', legacy)) - nothing).toBe(4)
+  })
+
+  it('rolls the critical once for a spell at a group, and the rest for each one reached', () => {
+    // One for the cast, then a die, an accuracy and an amount apiece.
+    expect(drawn(bolt('group', legacy)) - nothing).toBe(1 + 2 * 3)
+    const three = [idle('slime'), idle('bat'), idle('bat')]
+    expect(drawn(bolt('all', legacy), three) - drawn({ kind: 'defend' }, three)).toBe(1 + 3 * 3)
+  })
+
+  it('draws one of the party’s amount once when it scales and twice when it does not', () => {
+    const scaling = {
+      ...legacy,
+      party: { min: 14, max: 99, scales: { by: 'might', lo: 50, hi: 999 } },
+    } as const
+    const flat = { ...legacy, party: { min: 14, max: 14 } }
+    expect(drawn(bolt('one', scaling)) - nothing).toBe(4)
+    expect(drawn(bolt('one', flat)) - nothing).toBe(5)
+  })
+
+  it('spends the same on an item as on a spell at one — and the herb’s amount is two', () => {
+    const herb = (heal: Spell['amount']): Command => ({
+      kind: 'item',
+      item: 1,
+      ...(heal ? { heal } : {}),
+    })
+    expect(drawn(herb({ base: 35, spread: 5 })) - nothing).toBe(4)
+    expect(drawn(herb({ base: 35, spread: 5, party: { min: 35, max: 35 } })) - nothing).toBe(5)
+  })
+
+  it('scales a spell by the caster’s own might', () => {
+    const amounts = (might: number) => {
+      const rng = new BattleRng(11n)
+      const state = startBattle([{ ...hero, might }, idle('slime')])
+      const spell = bolt('one', {
+        ...legacy,
+        party: { min: 14, max: 99, scales: { by: 'might', lo: 50, hi: 999 } },
+      })
+      const cast = playRound(state, new Map([[0, spell]]), rng, {
+        ...rules,
+        magicCritical: 0,
+      }).events.find((e) => e.kind === 'spell')
+      return cast?.kind === 'spell' ? (cast.hits[0]?.amount ?? -1) : -1
+    }
+    expect(amounts(999) - amounts(0)).toBe(85)
+  })
+
+  it('never lets a monster’s spell go haywire, and spends the draw on it all the same', () => {
+    const caster = (name: string) => ({
+      ...blob(name, 500),
+      acts: [
+        {
+          kind: 'spell',
+          spell: { action: 9, cost: 0, does: 'harm', reach: 'one', amount: legacy },
+        },
+      ] as const,
+    })
+    const always = { ...rules, magicCritical: 10_000 }
+    const round = (r: typeof rules) => {
+      const rng = new BattleRng(11n)
+      const played = playRound(
+        startBattle([{ ...hero, maxHp: 500 }, caster('imp')]),
+        new Map([[0, { kind: 'defend' }]]),
+        rng,
+        r,
+      )
+      return { drawn: rng.drawn, cast: played.events.find((e) => e.kind === 'spell') }
+    }
+    expect(round(always).cast).toMatchObject({ critical: false })
+    expect(round(always).drawn).toBe(round(rules).drawn)
   })
 })

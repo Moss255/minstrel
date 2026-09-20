@@ -37,6 +37,9 @@ a float is in the simulation stays written down beside the proof it matches.
 | **Defending** | `× 0.5f` at `0x021e7a80`, on an action of kind 1 whose target carries status bit `0x1000000` | the reference's halving | **read, and not taken up.** The bit is INFERRED to be defending and nothing that sets it was found. If it is, the game halves *after* the coin — a defended 0-or-1 is always 0 — and halves the party's blows on a defending monster too; the reference says otherwise on the first. See below |
 | **The whole number, and the cap** | `_ffix` at `0x021e7b28`, then the lower of it and the action's `+0x1C` low 14 bits | truncates; no cap | read into the oracle. Frizz 999, Frizzle 1999, Kafrizz 2999; the plain Attack has none |
 | **A shield's chance of blocking** | `func_ov000_02156118` → `func_02084ee8`: every worn piece's ten bits over `10.0f`, summed; nothing without a shield; not truncated | `blockChance`, from the item table | **the game's, exactly**, at every value the field can hold. It was once in a hundred for any shield, the reference's — which is what the game's comes to for the bronze and the iron. Closed 20 September |
+| **Each target's die** | `NextRandomMax(100)` at the top of each target's pass, kept at `[battle + 0x8e6e]` | `below(100)`, spent | **the game's.** Missed in the first reading of the resolver; read by the dodge for a target in a state not established, and otherwise by nothing |
+| **An action's amount** | `GetAttackBaseDamage` with a range: a monster's base, or one of the party's least-to-most by might or mending, give or take the spread; drawn twice where it names no number | `drawnAmount`, `partyAmount` | **the game's, exactly** — three forms, every number from 0 to 1,023. It was the reference's one form in 32.32. The herb now costs two draws |
+| **A spell going haywire** | the blow's own roll at the spell's `criticalPercent` — 50, so one in a hundred; once a cast for a group or all; **a monster's rate a literal nothing** | `magicCritical`, party only | the order and the monster's are the game's. **Ours still**: the rate flat where the game's climbs with deftness past 150 |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
@@ -113,9 +116,21 @@ Read 20 September. 2,224 instructions; this is its spine.
 
 **The order of a blow's draws:**
 
+0. **a die of a hundred for each one the action reaches**, thrown at the top
+   of that target's pass (`0x021ebf28`) and kept at `[battle + 0x8e6e]`.
+   *Missed when this was first read, and found on 20 September by looking for
+   what reads it*: the evasion roll (`func_ov000_02156f98`) and its neighbour
+   `func_ov000_02156558` use it **in place of a draw of their own** for a
+   target in a state `func_ov000_02156404` tests — under 50 dodges, 50 to 74
+   does the neighbour's thing; what state, not established. For anyone else
+   nothing reads it, and it is spent all the same;
 1. **the critical roll, always.** `func_ov024_021ea4d0` or `021ea500` decides
    whether it is made once for the whole action or once a target, and then it
-   is made. Inside it a monster's rate is nothing and the draw is spent all the
+   is made. **Once for the action, and before any target's die**, when the
+   record's reach (`+0x14`, the top four bits) is 3 or 4 — all, or a group —
+   and `+0x1C` bits 14–18 are nothing; or for the plain Attack from one of the
+   party whose weapon strikes more than one (two bits at `+0x2F4` of what they
+   wear). Otherwise once a target, after their die. Inside it a monster's rate is nothing and the draw is spent all the
    same; only an action that is always a critical skips it;
 2. **the evasion roll**, if the action can be dodged — `func_ov000_02156f98`:
    a draw below 100 under the target's rate, **truncated**;
@@ -162,7 +177,8 @@ if (lands) damage = GetAttackBaseDamage   even for a blow dodged or blocked
 The dodge and the block ride along as flags in the result; the damage is worked
 out regardless, and its draws are spent.
 
-**The simulation makes a plain blow's draws in this order since 20 September.**
+**The simulation makes a plain blow's draws in this order since 20 September**
+— the die at step 0 since later the same day.
 A monster's blow spends its critical draw; the block is rolled whether or not
 there is a shield; a dodged blow still spends its accuracy and its damage.
 `battle.test.ts` pins it by difference — a dodged blow spends exactly one draw
@@ -258,6 +274,61 @@ now in `readActions`:
 
 ---
 
+## What is not a plain blow — a spell, an item
+
+Read 20 September. **It is the same resolver**, and so the same order: the
+cast's critical roll where it is the cast's; then for each one reached their
+die, the critical roll where it is theirs, the dodge and the block *if the
+record allows them* — no spell's does, and no draw is made — the accuracy's
+draw, and the amount. Frizz at one monster: four draws and the amount's.
+Crack at three: one, and three apiece.
+
+**A spell's critical is the blow's roll with the spell's own multiplier**:
+`criticalPercent` is 50 on Frizz, Crack, Woosh and Heal, which halves
+`CalculateCritRate`'s two in a hundred to **one** — the reference's 100 in
+10,000, and like a blow's it climbs with deftness past 150, which the
+simulation's flat `magicCritical` does not. **A monster's is the same literal
+nothing as its blow's**: a monster's spell never goes haywire, and spends the
+draw. The simulation had it going haywire as often as the party's; corrected.
+An item's multiplier is 0, so nor does a herb — and it spends the draw too.
+
+**The amount — `GetAttackBaseDamage` (`0x021e7bc0`), handed a range.** The
+range's record is a spread (word 0, bits 8–17) and three tens in word 1, and
+who is using the action picks among them:
+
+| who | the amount | draws |
+|---|---|---|
+| a monster | word 1 bits 0–9, give or take the spread | 1 |
+| one of the party, the action scaling (`+0x18` bits 16–17 at 2) by a number it names (`+0x10` bit 14 magical might, bit 15 magical mending) | bits 10–19 at or under the record's `lo` (`+0x04` bits 12–21), bits 20–29 at or over its `hi` (bits 22–31), and `(int)((stat − lo) × ((max − min) / (hi − lo))) + min` between; give or take the spread | 1 |
+| one of the party otherwise | **drawn** between bits 10–19 and bits 20–29, *then* give or take the spread | **2** |
+
+Every arm returns through `_ffix`. `game-formats` had the three tens as
+INFERRED from the reference — a monster's base, the party's, a peak — and the
+code bears all three out. **Frizz is 14 to 99 as might goes from 50 to 999**;
+Heal 35 to 160 as mending does.
+
+**The herb costs two draws.** It names no number, so its base is *drawn*
+between 35 and 35 — a draw that can only come to 35, spent — and then spread.
+The reference has one. The simulation now makes both.
+
+Six skills scale by a number put together from the user's and what they hold,
+by a table at `0x021fe8b6` — Gigaslash, Gigagash and Lightning Storm 500 to
+1,998, Hand of God 300 to 999, Whopper Chop 250 to 600, Boulder Toss 500 to
+1,998. *Read, not followed*: nothing the slice plays has one.
+
+**In the simulation**: `drawnAmount` and `partyAmount`, held to the oracle —
+every spread, every number from 0 to 1,023; a fighter's `might` and `mending`;
+the spell's and the item's draws in the resolver's order, pinned in
+`battle.test.ts` by difference. **Ours still**: a heal's going haywire
+multiplying by 1.5 to 2.0 is the harm's rule applied to it — what the game
+does for kind 2 after the amount is not read; and what is worn is not added
+to might or mending.
+
+Two more draws in the resolver are **not followed**: `NextRandomMax(100)` at
+`0x021ecfd8` and `0x021ed324`, each for one of the party whom
+`func_ov024_021eb1ec` picks out, after the damage. And four actions draw
+before any target is looked at (`0x1FF`, `0x200`, `0x20B`, `0x20C`).
+
 ## What the rest of a blow does — the end of `func_ov024_021e6a90`
 
 Read 20 September, from `0x021e7760` to the return. `r4` is the attacker and
@@ -321,10 +392,10 @@ defending and the reference is wrong.
   defending — or the witness above, which is cheaper;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
-- the order of the draws that are *not* a plain blow's: a spell's, an item's, a
-  change of state's;
+- the draws of a change of state — Kasap, Sweet Breath: the resolver is the
+  same, so the die, the critical and the accuracy are made; where the chance
+  of its landing is rolled is not read;
+- what the game does to a heal that goes haywire;
 - the party's flee chance, by way of how the command is numbered;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;
-- the spell and healing amounts — `drawnAmount`, `criticalDamage` and
-  `criticalBlow` are the reference's and not yet held to the game;
 - `initiative` — agility times a draw from 0.51 to 1.0, likewise.

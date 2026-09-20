@@ -2858,6 +2858,16 @@ battle, INFERRED.
 The reference is DQIX/BattleEmulator (MIT, © 2024 DaisukeDaisuke), which
 reproduces the game's arithmetic.
 
+**Read from the game's code on 20 September 2026, and all four borne out.**
+`GetAttackBaseDamage` (overlay 24, USA `0x021e7bc0`) is handed a range and
+reads: the spread as **ten bits, word 0 bits 8–17** (the byte at `+0x01` and
+two more above it — no range on the cartridge uses them); bits 0–9 of word 1
+for **a monster**; bits 10–19 and 20–29 as **one of the party's least and
+most**, between which the amount runs as the user's magical might or mending
+runs between two numbers in the *action's* record (see the actions' table
+below), or between which it is *drawn* when the action names no number. The
+reference's slopes are these: Midheal's 0.2392 is (300 − 85) / (999 − 100).
+
 **The medicinal herb** is action 255, range `0x31`: 35 ± 5, peak 35 — it
 restores 30 to 40 HP whoever uses it. Strong medicine is range `0x32`, 50 ± 10.
 An item names its action in its item table — see "Items".
@@ -2878,6 +2888,9 @@ An item names its action in its item table — see "Items".
 | `+0x18` bits 5–11 | `u7` | its **kind**. The final-damage function (`func_ov024_021e6a90`, `0x021e7a68`) tests it for 1 and halves only that; the other numbers' meanings are INFERRED from who carries them | 242 of 681 are 1 — Attack, Frizz, Dragon Slash; Defend is 0; Heal and the medicinal herb are 2; 93 numbers in use |
 | `+0x1C` low 14 bits | `u14` | the most it can deal; 0 is no limit. Taken after the damage is a whole number | 211 of 681: Frizz 999, Frizzle 1999, Kafrizz 2999, and Heal's three the same; none on the plain Attack |
 | `+0x10` bit 24 | flag | **works on a metal body**: without it a blow that comes to nothing on one gets no 0-or-1 | 208 of 681: Attack and the blade skills have it, every attacking spell lacks it |
+| `+0x18` bits 16–17 at 2 | | its **amount scales** by a number of the user's — the same two bits as the accuracy's, read by `GetAttackBaseDamage` for one of the party. Means something only with a range: the plain Attack has the 2 and none | Frizz, Crack, Heal |
+| `+0x10` bits 14, 15 | flags | the number it scales by: **magical might**, **magical mending** | 14 on the attacking spells, 15 on the heals |
+| `+0x04` bits 12–21, 22–31 | `u10` ×2 | the number at which the amount leaves its least, and at which it reaches its most | Frizz 50 and 999; Crackle 100 and 999; Heal 50 and 999 |
 
 These are not INFERRED from values: each is what a named function tests before
 it acts. The runtime record the battle reads is laid out as the file's is.

@@ -88,6 +88,9 @@ describe('the party beside the Hero', () => {
       attack: 15,
       defence: 13,
       agility: 16,
+      // Their own, for a spell's amount to scale by — the fixture's Ivor has none.
+      might: ivor.numbers.magicalMight,
+      mending: ivor.numbers.magicalMending,
       shield: true,
       exp: 0,
       gold: 0,

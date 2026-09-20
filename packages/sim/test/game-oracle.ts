@@ -404,3 +404,68 @@ export function partyBlockRate(
   if (doubled) rate = f(f(2) * rate)
   return rate
 }
+
+/** A range's record as `GetAttackBaseDamage` reads it: word 0 bits 8–17, word 1's three tens. */
+export interface RangeRecord {
+  readonly spread: number
+  /** Word 1 bits 0–9: a monster's. */
+  readonly base: number
+  /** Word 1 bits 10–19 and 20–29: one of the party's least and most. */
+  readonly min: number
+  readonly max: number
+}
+
+/**
+ * An action's amount — `GetAttackBaseDamage` (overlay 24, `0x021e7bc0`) when it
+ * is handed a range, before the `_ffix` every arm returns through.
+ *
+ * - **a monster** (`0x021e8004`): the base, plus a draw between ∓spread;
+ * - **one of the party, the action scaling** (`+0x18` bits 16–17 at 2) **by a
+ *   number it names** (`0x021e7d84`): at or under `lo` the least, at or over
+ *   `hi` the most, else `(int)((stat − lo) × ((max − min) / (hi − lo))) + min`;
+ *   plus the same draw;
+ * - **one of the party otherwise** (`0x021e7efc`, `0x021e7f80`): a draw between
+ *   the least and the most, *then* the draw between ∓spread. Two.
+ */
+export function actionAmount(
+  random: GameRandom,
+  range: RangeRecord,
+  user: 'monster' | 'party',
+  scales?: { stat: number; lo: number; hi: number },
+): number {
+  const spread = () => random.floatBetween(f(f(-1) * f(range.spread)), f(range.spread))
+  if (user === 'monster') return Math.trunc(f(f(range.base) + spread()))
+  if (!scales) {
+    const base = random.floatBetween(f(range.min), f(range.max))
+    return Math.trunc(f(base + spread()))
+  }
+  let base: number
+  if (scales.stat <= scales.lo) base = range.min
+  else if (scales.stat >= scales.hi) base = range.max
+  else {
+    const ratio = f(f(range.max - range.min) / f(scales.hi - scales.lo))
+    base = Math.trunc(f(f(scales.stat - scales.lo) * ratio)) + range.min
+  }
+  return Math.trunc(f(f(base) + spread()))
+}
+
+/**
+ * What each one an action reaches costs in draws, in the resolver's order —
+ * `func_ov024_021eb5d0`. `'die'` is the hundred thrown at the top of each
+ * target's pass and kept at `[battle + 0x8e6e]` (`0x021ebf28`); the critical
+ * is there only when it is not the cast's. The amount's own draws follow.
+ */
+export function drawsPerTarget(action: {
+  reach: number
+  evadable: boolean
+  blockable: boolean
+}): readonly string[] {
+  const perCast = action.reach === 3 || action.reach === 4
+  return [
+    'die',
+    ...(perCast ? [] : ['critical']),
+    ...(action.evadable ? ['evade'] : []),
+    ...(action.blockable ? ['block'] : []),
+    'accuracy',
+  ]
+}

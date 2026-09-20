@@ -3036,6 +3036,9 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     attack: row.strength + worn.attack,
     defence: row.resilience + worn.defence,
     agility: row.agility + worn.agility,
+    // What a spell's amount may scale by — the level's own; what is worn is not added, ours.
+    might: row.magicalMight,
+    mending: row.magicalMending,
     shield: equipped.has('shield'),
     // The game's: what is worn says, and only behind a shield — `blockChance`.
     block: blockChance(equipped.has('shield'), worn.block),

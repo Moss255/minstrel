@@ -21,6 +21,9 @@ function actions(
     kind?: number
     damageCap?: number
     worksOnMetal?: boolean
+    mode?: number
+    scalesBy?: 'might' | 'mending'
+    scale?: [lo: number, hi: number]
   }[],
 ) {
   const strings: number[] = []
@@ -52,12 +55,19 @@ function actions(
       kind = 0,
       damageCap = 0,
       worksOnMetal = false,
+      mode = 3,
+      scalesBy,
+      scale,
     },
   ] of records.entries()) {
     const at = 4 + r * 60
     view.setUint32(at, offset(name), true)
     // The number's upper bits are other things; they must not leak into it.
-    view.setUint32(at + 4, (0xf9c32000 | id) >>> 0, true)
+    view.setUint32(
+      at + 4,
+      (scale ? (scale[1] << 22) | (scale[0] << 12) | id : 0xf9c32000 | id) >>> 0,
+      true,
+    )
     view.setUint32(
       at + 8,
       (((alwaysCritical ? 1 : 0) << 29) | (0x08 << 24) | (range << 14) | 0x0e00 | cost) >>> 0,
@@ -69,7 +79,8 @@ function actions(
       (0x00ff3b98 |
         (evadable ? 0x20 : 0) |
         (blockable ? 0x40 : 0) |
-        (worksOnMetal ? 0x1000000 : 0)) >>>
+        (worksOnMetal ? 0x1000000 : 0) |
+        (scalesBy === 'might' ? 0x4000 : scalesBy === 'mending' ? 0x8000 : 0)) >>>
         0,
       true,
     )
@@ -80,7 +91,7 @@ function actions(
     view.setUint32(at + 0x14, ((criticalPercent & 0x7f) << 21) >>> 0, true)
     out[at + 0x17] = (reach << 4) | ((out[at + 0x17] as number) & 0x0f)
     // The kind between neighbours on both sides; the cap under others.
-    view.setUint32(at + 0x18, (0xfffff01f | (kind << 5)) >>> 0, true)
+    view.setUint32(at + 0x18, (0xfffcf01f | (mode << 16) | (kind << 5)) >>> 0, true)
     view.setUint32(at + 0x1c, (0xffffc000 | damageCap) >>> 0, true)
     view.setUint32(at + 0x24, (0x01617c00 | effect) >>> 0, true)
     view.setUint32(at + 0x34, offset(plural), true)
@@ -100,8 +111,8 @@ function ranges(
   const view = new DataView(out.buffer)
   view.setUint32(0, records.length, true)
   for (const [r, [index, spread, base, second, peak]] of records.entries()) {
-    out[4 + r * 8] = index
-    out[5 + r * 8] = spread
+    // The spread is ten bits over the index, with a neighbour above it.
+    view.setUint32(4 + r * 8, (0xfffc0000 | (spread << 8) | index) >>> 0, true)
     view.setUint32(8 + r * 8, (peak << 20) | (second << 10) | base, true)
   }
   return out
@@ -233,5 +244,37 @@ describe('the range table', () => {
     expect(slash).toMatchObject({ kind: 1, damageCap: 0x3fff, worksOnMetal: true })
     // All seven bits, and none of the neighbours'.
     expect(heal).toMatchObject({ kind: 0x7f, damageCap: 0, worksOnMetal: false })
+  })
+
+  it('reads how an amount scales: whether, by what, and between what', () => {
+    const [frizz, heal, herb] = readActions(
+      actions([
+        { id: 9, name: 'Frizz', plural: '', mode: 2, scalesBy: 'might', scale: [50, 999] },
+        { id: 30, name: 'Heal', plural: '', mode: 2, scalesBy: 'mending', scale: [50, 1023] },
+        { id: 236, name: 'herb', plural: '' },
+      ]),
+    )
+    expect(frizz).toMatchObject({
+      amountScales: true,
+      scalesBy: 'might',
+      scaleRange: { lo: 50, hi: 999 },
+    })
+    expect(heal).toMatchObject({
+      amountScales: true,
+      scalesBy: 'mending',
+      scaleRange: { lo: 50, hi: 1023 },
+    })
+    expect(frizz?.id).toBe(9)
+    expect(herb).toMatchObject({ amountScales: false, scalesBy: undefined })
+  })
+
+  it('reads a range’s spread as ten bits', () => {
+    expect(readActionRanges(ranges([[7, 0x2a5, 9, 14, 99]])).get(7)).toEqual({
+      index: 7,
+      spread: 0x2a5,
+      base: 9,
+      party: 14,
+      peak: 99,
+    })
   })
 })

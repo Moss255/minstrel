@@ -28,6 +28,8 @@ export {
   criticalHit,
   drawnAmount,
   initiative,
+  type PartyAmount,
+  partyAmount,
   physicalDamage,
 } from './battle/damage.ts'
 export { BattleRng } from './battle/rng.ts'
