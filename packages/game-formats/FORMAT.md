@@ -2703,7 +2703,8 @@ and `readMonsterNames` read them.
 | `+0x6C` | `u8` ×22 | **resistances**: what it takes of each of the game's 21 elements, a hundredth each, by `element − 1`. From the game's code — see below | firespirit 50 fire, 150 ice; slime 125 of all seven; metal slime 0 of every status; **element 8, the plain Attack's, 100 on all 438**. Fifteen values in all: 0, 1, 5, 10, 15, 25, 30, 35, 50, 60, 75, 100, 125, 150, 200 |
 | `+0x82` | `u8` ×2 | copied into the battle beside them; not established | 0 on every monster looked at |
 | `+0x10`, bits 5–7 | | **how it chooses among its six ways**: one of eight handlers, four of which draw by a weight table — see "Battle weight tables" | the game's own selector, `func_0208a91c` |
-| `+0x27`, bit 4 | | set on the bosses; **not** what chooses the weight table, which this file had INFERRED | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster. What it does is not established |
+| `+0x24` | `u32` | **two statuses a blow of its can carry, and a chance for each**: bits 0–6 the first status, 7–13 its chance, 14–20 the second, 21–27 its chance | the one reader, ov024 `0x021eb124`, compares the requested status against each field and a draw below 100 against each chance; the chances in the file are 0, 25, 50, 75 and 100 |
+| `+0x27`, bit 4 | | set on the bosses, and **read by nothing** | set on 149 records — 144 of the 159 boss-coded monsters and five grotto bosses — and clear on the bosses' minions and every ordinary monster. It is bit 28 of the word above, which its reader never touches; six searches over the ARM9 and all 35 overlays found no instruction that tests it. It is not what chooses the weight table, which this file had INFERRED |
 
 ### Confirmed by the guide — 22 September 2026
 

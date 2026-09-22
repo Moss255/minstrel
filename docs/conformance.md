@@ -683,32 +683,41 @@ none of the battle's own numbers.
   `ProcessCombatTurn` makes. Its handler slot is null, and the usable-action
   mask excludes it. Nothing in the slice metamorphoses.
 
-## Where the phase stands — 22 September 2026
+## Where the phase stands — 23 September 2026
 
-**Twenty-two of the ledger's rows are the game's own.** What is left is of
-three kinds, and none of it is a blow being worked out wrongly:
+**Twenty-two of the ledger's rows are the game's own**, and the list of what
+is still to read is four items long. What is left is of three kinds, and none
+of it is a blow being worked out wrongly:
 
 1. **Read, and not modelled, because the slice cannot reach it**: tension and
-   its table, the four buff multipliers the slice casts no spell for, the coin
+   its table, the four buff multipliers no spell of the slice's casts, the coin
    that stands in for the critical roll on Thunder Thrust and Hatchet Man, the
    critical-rate doubling, the metal body, the combo table, the wards, the
-   slayer multipliers, the drop roll's four further passes. Each is in this
-   file with its addresses; each would be a small piece of work the day a
-   later slice needs it.
+   slayer multipliers, the drop roll's four further passes, a metamorphosis.
+   Each is in this file with its addresses; each would be a small piece of work
+   the day a later slice needs it.
 2. **Ours, and marked**: the four ways of choosing a monster's action that are
    not weight tables (34 of the 438 monsters, the hammerhood among the
-   slice's); how a tie in initiative
-   breaks; the seed of the generator a drop is rolled from, which the game takes from a
-   clock; which monster the
-   game counts as first in a surprised round; reading "nothing that can act"
-   as fallen or asleep.
+   slice's); how a tie in initiative breaks; the seed of the generator a drop
+   is rolled from, which the game takes from a clock; which monster the game
+   counts as first in a surprised round; reading "nothing that can act" as
+   fallen or asleep.
 3. **Wanted from outside the code**: the damage formula against a video at
-   levels 5, 20 and 50 — `docs/still-open.md` §1a — which no amount of
-   reading settles.
+   levels 5, 20 and 50 — `docs/still-open.md` §1a — which no amount of reading
+   settles.
 
-**What the phase changed in play**, beyond the readings: a monster's ways are
-drawn by the game's table rather than by a bit that does not choose it; the
-Hero's critical chance climbs with deftness; a stat under Kasap rounds the
-game's way; defending halves either side's blow and can still leave a 1; a
-flight climbs a quarter, a half, three quarters, then certainty; a battle pays
-what it drops; and a round's order is the game's floats.
+**What the phase changed in play.** A monster's ways are drawn by the game's
+own table rather than by a bit that turns out to be read by nothing. The
+Hero's critical chance climbs with deftness, and a spell's is that same chance
+halved. A stat under Kasap rounds the game's way. Defending halves either
+side's blow, by the guard level the game keeps, and can still leave a 1. A
+flight climbs a quarter, a half, three quarters, then certainty, and is drawn
+from the world's numbers. A battle pays what it drops. A round's order is the
+game's floats. The party's resistances are read from what they wear. And
+walking into a monster whose back is turned now opens the fight the game's
+way.
+
+**Two questions closed by nothing being there**: the boss bit is read by no
+instruction in the ROM, and what the flee chance and the surprise round read
+for deftness is the same field the critical roll reads — so the last inference
+in either formula is gone.

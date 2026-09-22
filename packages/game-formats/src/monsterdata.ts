@@ -26,6 +26,7 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | `+0x62` | `u16` | defence |
  * | `+0x64` | `u16` | agility |
  * | `+0x6C` | `u8` ×22 | **resistances**, a hundredth each, one an element — from the game's code |
+ * | `+0x24` | `u32` | two statuses a blow of its can carry and a chance for each — bits 0–6 and 7–13, then 14–20 and 21–27; the chances are 0, 25, 50, 75 or 100. Read by `0x021eb124` |
  * | `+0x82` | `u8` ×2 | copied along with them, not established; 0 on every monster looked at |
  *
  * **The five numbers from `+0x5C` and the resistances are no longer only
@@ -108,7 +109,15 @@ export interface MonsterBattle {
    *
    * **It does not choose the weight table**, which was INFERRED here until the
    * game's own selector was read: that is {@link aiType}, and it cuts across
-   * this bit. What this bit does is not established.
+   * this bit.
+   *
+   * **Nothing in the ROM reads it.** It is bit 28 of the word at `+0x24`,
+   * whose other bits are two statuses a blow can carry and a chance for each;
+   * the one function that reads that word (`0x021eb124`) never touches bit 28,
+   * and a search of the ARM9 and all 35 overlays — by byte, by halfword, by
+   * word, and through every function handed the record — found no other
+   * reader. It still says *boss* by where it is set, and says nothing to the
+   * game.
    */
   readonly bossAi: boolean
   /** The whole record, for what is not read. */
