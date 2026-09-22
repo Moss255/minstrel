@@ -1232,6 +1232,9 @@ Signature Series guide (Prima; the Internet Archive's scan,
   each vocation level: 3 at 5, 6, 8, 9, …, rising to 6 in the thirties, then 2
   a level on two levels of every three from 50. Summed, it is **column 10 at
   every level from 1 to 99 on all twelve vocations' files**, 200 at 99. The
+  cartridge bears the reading out: `str_bres` 13, among the battle's result
+  messages, is "`<val_1>` skill point(s) earned." — so skill points are what a
+  level pays, and a column that counts them belongs here. The guide's
   walkthrough adds that the Hero first gets skill points at level 5 (p. 59);
   `level0`, the Guardian's, has them from level 4, and agrees with the table
   at 3 of the 99 levels.
@@ -2631,7 +2634,7 @@ and `readMonsterNames` read them.
 | offset | type | reading | evidence |
 |---|---|---|---|
 | `+0x00` | `u16` | the monster's number, bit 15 set on all 438 | agrees with the names file |
-| `+0x02` | `u8` ×2 | each drop's chance, a step: 0 always, 1–6 one in `2^(step+2)`, 7 none — INFERRED | against the guide, below |
+| `+0x02` | `u8` ×2 | each drop's chance, a step — the ordinary's at `+0x02`, the rare's at `+0x03`: 0 always, 1–6 one in `2^(step+2)`, 7 none | the game's own table, below |
 | `+0x04` | `u16` ×2 | its two drops, the ordinary and the rare | every one is an item id; the guide's, below |
 | `+0x08` | `u32` | experience | the metal family: 4,096, 40,200 and 120,040, against a median of 940; the guide's, below |
 | `+0x0C` | `u16` | gold | a median of 2,490 on the bosses against 120; the guide's, below |
@@ -2671,9 +2674,17 @@ one a drop, run 0 to 7, and against the chances the guide prints:
 | 6 | 1/256 | restless armour, purrestidigitator |
 | 7 | — | beside item 0 on every record but ten, all legacy and grotto bosses; not established there |
 
-So one in `2^(step+2)`, with 0 a certain drop — `dropOneIn`. The table in the
-game's code that the step indexes is not found; this is the witness, not the
-code. Over all 438: step 0 on 31 first drops, 7 on 14 first and 128 second.
+So one in `2^(step+2)`, with 0 a certain drop — `dropOneIn`. Over all 438:
+step 0 on 31 first drops, 7 on 14 first and 128 second.
+
+**And the game's own table says the same — 22 September 2026.** The drop roll,
+`func_ov023_021f454c` in overlay 23 of the USA build, indexes the table of
+eight words at `0x021fd888` by this byte: `1 8 16 32 64 128 256 0`. It loads
+it at `0x021f49ac` for the byte at `+0x03` and at `0x021f4a74` for the one at
+`+0x02` — which settles that **`+0x02` is the ordinary drop's chance and
+`+0x03` the rare's**, and that a step of 7 never drops (its entry is 0). No
+other copy of that table is in the ROM. How the roll runs is in
+`packages/sim/src/battle/drops.ts` and `docs/conformance.md`.
 
 ### Resistances, and the five numbers — from the game's code
 

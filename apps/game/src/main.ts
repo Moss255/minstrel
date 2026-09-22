@@ -51,6 +51,8 @@ import {
   calmFor,
   createCollisionWorld,
   createFollower,
+  DropRng,
+  dropsWon,
   type Fighter,
   type Follower,
   groundBelow,
@@ -755,6 +757,12 @@ let roamZone: number | undefined
 let roamCarry = 0
 /** The field's own numbers: one generator for the session, so the field is reproducible. */
 const roamRng = new BattleRng(0x5eedf1e1dn)
+/**
+ * What a battle's drops are rolled from — the game draws these from the C
+ * library's generator, not the battle's or the world's, so a drop costs a
+ * battle no draw. **Ours**: the seed, as the game's own is not found.
+ */
+const dropRng = new DropRng(0x5eed0d09)
 /** The markers where the map's treasure is — see `treasure.ts`. */
 let treasureDrawn: Piece[] = []
 /** The map's doors, and how far each has swung — see `swing.ts`. */
@@ -2448,6 +2456,16 @@ function heroNamed(): Named {
   return { name: DEFAULT_CONTEXT.heroName, gender: 0 }
 }
 
+/** A monster as the words name it, by its record's number — see `MonsterWords`. */
+function monsterNamed(number: number | undefined): Named | undefined {
+  if (number === undefined) return undefined
+  for (const words of loaded?.monsterCodes.values() ?? []) {
+    if (words.number !== number) continue
+    return { name: words.name, plural: words.plural, grammar: words.grammar }
+  }
+  return undefined
+}
+
 /** An item as the words name it: its name, plural and articles. */
 function itemNamed(id: number): Named {
   const words = loaded?.itemWords.get(id)
@@ -3030,6 +3048,14 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
       resist: numbers.resistances,
       exp: numbers.exp,
       gold: numbers.gold,
+      // Which monster it is: what a battle drops goes by the kind — `dropsWon`.
+      kind: who.number,
+      // What it may drop: its record's two items, each with its chance step —
+      // the ordinary and the rare; see `dropOneIn`.
+      drops: [
+        { item: numbers.drops[0], step: numbers.dropSteps[0] },
+        { item: numbers.drops[1], step: numbers.dropSteps[1] },
+      ],
       // It runs only from a party past its level by its margin — `fld_mondata`, INFERRED.
       ...runsFromOf(who.number),
     })
@@ -3488,6 +3514,20 @@ function settleBattle(): void {
           `${name} reaches level ${after.level}!`,
       )
       lines.push(levelGainsText(before, after))
+    }
+    // What the monsters dropped — rolled the game's way, from its own
+    // generator, after the experience and the gold are settled; see `dropsWon`.
+    for (const won of dropsWon(battle.state, dropRng)) {
+      bag = take(bag, { item: won.item })
+      const monster = monsterNamed(won.kind) ?? { name: won.from }
+      const item = itemNamed(won.item)
+      const chest = said(RESULT_SAYS.dropsChest, { monsters: [monster], target: heroNamed() })
+      const holds = said(RESULT_SAYS.chestHolds, { item, target: heroNamed() })
+      lines.push(
+        chest !== undefined && holds !== undefined
+          ? `${chest}\n${holds}`
+          : `${monster.name} drops a treasure chest! It contains ${item.name}.`,
+      )
     }
   } else if (battle.state.outcome === 'lost') {
     heroHp = undefined

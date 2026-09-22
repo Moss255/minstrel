@@ -173,6 +173,14 @@ export const RESULT_SAYS = {
   earns: 6,
   level: 10,
   gold: 16,
+  /** A monster's drop: "<M_NAME> drops a treasure chest! <TARGET> opens it up." */
+  dropsChest: 17,
+  /**
+   * What the chest holds: "It contains <I_NAME>! <TARGET> puts it in the bag."
+   * 18 says the same and ends "greedily grabs the loot!"; what chooses between
+   * them is not established, and 19 is the one used here.
+   */
+  chestHolds: 19,
   wipedOut: 20,
 } as const
 

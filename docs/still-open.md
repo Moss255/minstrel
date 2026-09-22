@@ -105,13 +105,16 @@ confirm a find, and what to do if the binaries do not give it up.
   talked to.
 - **Whether the village's theme carries on into a house** or starts again, and
   what the church plays.
-- **The monsters' drop chances.** ~~Not found.~~ **Read 22 September 2026**,
-  against the guide's bestiary: the two items at `+0x04` are the ordinary and
-  the rare drop, and the bytes at `+0x02` their chances — 0 always, 1 to 6 one
-  in `2^(step+2)`, 7 none (`dropOneIn`; INFERRED, from 20 drops and 3 bosses;
-  the table in code is not found). **Nothing awards a drop after a battle** —
-  `spoils` pays experience and gold only. That is now §3, read and not
-  modelled.
+- ~~**The monsters' drop chances.**~~ **Settled 22 September 2026**, and
+  **modelled**: the chances are the game's own table at `0x021fd888` in
+  overlay 23, which its drop roll indexes by the bytes at `+0x02` (the
+  ordinary drop's) and `+0x03` (the rare's) — 0 always, 1 to 6 one in
+  `2^(step+2)`, 7 never. A won battle now pays what it drops; the roll is
+  `dropsWon`, and `docs/conformance.md` has the row. What is **ours**: the
+  seed of the C library generator the game rolls these from, and the order the
+  kinds of monster are rolled in. Not modelled: the four further passes, one a
+  standing party member, that the series' item-finding abilities scale — the
+  slice has none.
 - ~~**The shops' selling price.**~~ **Settled 22 September 2026**: it is the
   item's own, the word at `+0x06` — not half what a shop asks. The copper sword
   sells for 15, not 75. `+0x08` is what a shop asks, and the bamboo lance's and
@@ -129,6 +132,7 @@ lives; this is the gathered list.
 
 | where | what is ours |
 |---|---|
+| drops | the seed of the generator a drop is rolled from, and the order the kinds of monster are rolled in — the roll itself and its table are the game's |
 | battle numbers | **the Hero's attack and defence are strength and resilience plus what they wear** — the equipment's numbers are read, the adding is ours; the battle reference takes attack and defence as given |
 | battle | the flee chance, 50 in 100; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
 | defeat | the Hero comes round in the village church — the game sends them to a church, which is not modelled; no text says where. **Half the gold going is the game's**: the guide, "Money on hand is halved when your characters die"; rounding down is ours |
@@ -148,8 +152,6 @@ lives; this is the gathered list.
   sight spoils misses on five faces of a die of eight. Not yet modelled.
 - **Dazzle, sand, and Weird Dance (MP drain)**, and `calls for backup`: read
   from the monsters' actions, landing as ordinary attacks.
-- **The monsters' drops**: the items and their chances read, nothing awarded
-  (§1b).
 - **Erinn's rest**: the offer and the event it leads to are read, and not
   reached in play (§1b).
 - **The field sprites' ids**: the pot, barrel and bubble numbering was found

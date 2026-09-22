@@ -6,6 +6,7 @@ export {
   type Changing,
   type Command,
   DEFAULT_RULES,
+  type Drop,
   type Fighter,
   type FighterState,
   type FoeAction,
@@ -35,6 +36,7 @@ export {
   physicalDamage,
   resistanceTo,
 } from './battle/damage.ts'
+export { DROP_CHANCES, DropRng, type DropWon, dropsWon } from './battle/drops.ts'
 export { BattleRng } from './battle/rng.ts'
 export {
   LEVEL_TURNS,

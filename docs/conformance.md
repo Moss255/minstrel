@@ -44,6 +44,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **What rides on a blow** | one draw, only after a blow that dealt something, under the action's chance × a hundredth of the target's byte | `poison` on an attack | the game's for the poison attack, whose 12 is in its record; the other riders read and not modelled |
 | **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record. Damage × it after the critical; a change's accuracy × it + ½; a rider's chance × it | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte. Frizz on a slime is a quarter more. **Ours still**: the party's whole, the wards and the two statuses that shift them |
 | **A monster's HP** | drawn as the battle builds it: `(int)(0.5 + HP × between(0.8, 1.0))`, from the *world's* generator; the table's where the battle's setup says so | `monsterHp` | **the game's, exactly.** The table's HP is a ceiling. **Ours**: taking a battle that cannot be fled for the game's flag |
+| **A monster's drops** | `func_ov023_021f454c`, from the victory routine once the experience and gold are settled: a kind of monster at a time, the rare drop rolled first and the ordinary only after it fails, each `func_02032370(one in so many) == 0` against the table at `0x021fd888` — and the generator is **the C library's `rand`**, neither the battle's nor the world's | `dropsWon`, `DropRng` | **the game's**, step for step and table for table; **ours**: the seed of that generator, which the game's is not known to be, and the order the kinds are rolled in. A drop spends **no draw of the battle's**, so a battle replays the same whether it drops or not |
 | **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
@@ -534,5 +535,10 @@ defending and the reference is wrong.
 - what armour and accessories do to the party's resistances, and the wards;
 - what the game does to a heal that goes haywire;
 - the party's flee chance, by way of how the command is numbered;
+- what seeds the C library's generator, which a drop is rolled from, and what
+  the drop roll's four further passes scale their chance by —
+  `func_ov023_021f454c` at `0x021f4628` on, one pass a standing party member
+  above half its HP: the series' item-finding abilities, which the slice has
+  not;
 - how a monster weighs its six ways: `func_ov000_0215f57c` is part of it;
 - `initiative` — agility times a draw from 0.51 to 1.0, likewise.

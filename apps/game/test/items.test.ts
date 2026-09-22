@@ -82,6 +82,22 @@ describe.skipIf(!romPath)(
           expect(said.text, what).not.toMatch(/[<>]/)
         }
       }
+      // The drop's two lines read as the game writes them — see `dropsWon`.
+      const chest = tellBattle(
+        words.results.get(RESULT_SAYS.dropsChest) ?? '',
+        telling,
+        words.articles,
+      )
+      expect(chest.text).toContain('drops a treasure chest')
+      expect(chest.text).toContain(slime.name)
+      const holds = tellBattle(
+        words.results.get(RESULT_SAYS.chestHolds) ?? '',
+        telling,
+        words.articles,
+      )
+      expect(holds.text).toContain(`It contains a ${herb.singular}`)
+      expect(holds.text).toContain('in the bag')
+
       check(words.battle, BATTLE_SAYS)
       check(words.actions, ACTION_SAYS)
       check(words.results, RESULT_SAYS)

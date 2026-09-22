@@ -94,6 +94,13 @@ import {
 
 export type Side = 'party' | 'foes'
 
+/** One of a monster's two drops: the item, and the chance step of its record. */
+export interface Drop {
+  readonly item: number
+  /** 0 always, 1 to 6 one in `2 ** (step + 2)`, 7 none — see `dropOneIn`. */
+  readonly step: number
+}
+
 export interface Fighter {
   readonly name: string
   readonly side: Side
@@ -129,6 +136,17 @@ export interface Fighter {
   /** What beating this fighter is worth, when it is a foe. */
   readonly exp: number
   readonly gold: number
+  /**
+   * What a foe may drop: its two item ids, the ordinary and the rare, each
+   * with the chance step of its record — see `dropOneIn` and {@link drops}.
+   * Nothing when it drops nothing.
+   */
+  readonly drops?: readonly [Drop, Drop]
+  /**
+   * Which monster a foe is, by its record's number: what beating it drops
+   * goes by the kind, not by each monster — see `dropsWon`.
+   */
+  readonly kind?: number
   /** A foe's ways of acting, one drawn each turn by {@link Rules.choice}; with none, it attacks. */
   readonly acts?: readonly FoeAction[]
   /** The weights its ways are drawn by, in 256, where they are not the rules' — a boss's falling table. */

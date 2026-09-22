@@ -14,7 +14,7 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | offset | type | meaning |
  * |---|---|---|
  * | `+0x00` | `u16` | the monster's number, with bit 15 set on all 438 |
- * | `+0x02` | `u8` ×2 | each drop's chance, a step — see {@link dropOneIn}. INFERRED, against a published guide |
+ * | `+0x02` | `u8` ×2 | each drop's chance, a step: the ordinary's, then the rare's — see {@link dropOneIn} |
  * | `+0x04` | `u16` ×2 | two item ids — its drops, the ordinary and the rare |
  * | `+0x08` | `u32` | experience |
  * | `+0x0C` | `u16` | gold |
@@ -160,13 +160,15 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
  * A drop's chance, as "one in so many", from its step at `+0x02`: 0 always, 1
  * to 6 one in `2 ** (step + 2)` — 1 in 8 to 1 in 256 — and 7 none.
  *
- * INFERRED, against a published guide's bestiary. Steps 1 to 6 agree with the
- * chance it prints at every one of 20 drops checked (the seven Angel Falls
- * monsters' 14, and the restless armour, purrestidigitator and wight
- * emperor); 0 is the "100%" it gives King Godwyn, Barbarus and Corvus. 7 sits
- * beside no item on every record but ten legacy and grotto bosses', whose
- * drops the guide does not price that way — undefined here, not established.
- * The table in the game's code that these index is not found.
+ * **The game's own**: the table of eight words at `0x021fd888` in overlay 23,
+ * `1 8 16 32 64 128 256 0`, which its drop roll indexes by this byte —
+ * `func_ov023_021f454c`, and nothing else in the ROM holds that table. It was
+ * read first from a published guide's bestiary, which prints the same chance
+ * at every one of 20 drops checked and "100%" for step 0.
+ *
+ * 7 is 0 in the table, so it never drops; it sits beside no item on every
+ * record but ten legacy and grotto bosses', whose drops that routine takes
+ * another way. See `packages/sim/src/battle/drops.ts` for the roll.
  */
 export function dropOneIn(step: number): number | undefined {
   if (step === 0) return 1
