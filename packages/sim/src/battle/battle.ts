@@ -350,6 +350,8 @@ export interface BattleState {
   readonly outcome: Outcome
   /** Whether the party may flee: not from a boss. */
   readonly canFlee: boolean
+  /** How the fight opened, which decides who sits the first round out — see {@link Opening}. */
+  readonly opening?: Opening
 }
 
 export interface Rules {
@@ -416,7 +418,19 @@ function blockOf(target: Fighter): number {
   return target.block ?? (target.shield ? 1 : 0)
 }
 
-export function startBattle(fighters: readonly Fighter[], canFlee = true): BattleState {
+/**
+ * How a fight opened, which decides who sits the first round out — the game's
+ * `[battle + 0xe49]`, read by `ProcessCombatTurn`. What sets it is **not
+ * read**: nothing here chooses it, and a battle opens `even` unless it is
+ * given one.
+ */
+export type Opening = 'even' | 'monstersSitOut' | 'partySitsOut'
+
+export function startBattle(
+  fighters: readonly Fighter[],
+  canFlee = true,
+  opening: Opening = 'even',
+): BattleState {
   return {
     fighters: fighters.map((f) => ({
       ...f,
@@ -429,6 +443,7 @@ export function startBattle(fighters: readonly Fighter[], canFlee = true): Battl
     round: 0,
     outcome: 'ongoing',
     canFlee,
+    opening,
   }
 }
 
@@ -453,6 +468,13 @@ export function withMp(state: BattleState, mp: ReadonlyMap<number, number>): Bat
     }),
   }
 }
+
+/**
+ * A monster after the first acts in a round the party is surprised in only on
+ * a draw below a hundred coming in under this — the game's 67, at
+ * `0x0215d790`.
+ */
+export const SURPRISED_ACTS_BELOW = 67
 
 /** Standing and still in the battle: not fallen, and not fled. */
 const alive = (f: FighterState) => f.hp > 0 && !f.fled
@@ -541,12 +563,28 @@ export function playRound(
     ...f,
     defending: alive(f) && f.states.sleep === undefined && commands.get(i)?.kind === 'defend',
   }))
-  const order = fighters
-    .map((f, i) => ({
-      i,
-      key: alive(f) ? initiative(rng, levelled(f.agility, f.states.agility.level)) : -1,
-    }))
-    .filter(({ key }) => key >= 0)
+  // **The game's, in its order** (`ProcessCombatTurn`, `0x0215d740` on): each
+  // fighter in turn is looked at, and one the opening leaves out is passed
+  // over **without an initiative roll**; the rest are rolled for and the
+  // scores sorted highest first. A surprise round therefore makes fewer draws.
+  // Which fighter the game counts as the first monster is its own list's; ours
+  // is the order they stand in.
+  const opening = state.round === 0 ? (state.opening ?? 'even') : 'even'
+  let monstersSoFar = 0
+  const scored: { i: number; key: number }[] = []
+  for (const [i, f] of fighters.entries()) {
+    if (!alive(f)) continue
+    if (opening === 'monstersSitOut' && f.side === 'foes') continue
+    if (opening === 'partySitsOut') {
+      if (f.side === 'party') continue
+      // The first monster always acts; each after it on a draw under 67.
+      const acts = monstersSoFar === 0 || rng.below(100) < SURPRISED_ACTS_BELOW
+      monstersSoFar++
+      if (!acts) continue
+    }
+    scored.push({ i, key: initiative(rng, levelled(f.agility, f.states.agility.level)) })
+  }
+  const order = scored
     .sort((a, b) => (a.key === b.key ? a.i - b.i : a.key > b.key ? -1 : 1))
     .map(({ i }) => i)
 

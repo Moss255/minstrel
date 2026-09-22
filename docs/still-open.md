@@ -151,6 +151,10 @@ lives; this is the gathered list.
 
 ## 3. Read and not modelled
 
+- **What opens a fight is not read.** The game keeps it at `[battle + 0xe49]`
+  — the party surprising the monsters, or being surprised — and the round it
+  makes is now modelled, draw for draw (`BattleState.opening`). Nothing sets
+  it: every fight opens even until the field's side of it is found.
 - **What dazzle does is read** (20 September, `docs/conformance.md`): a blow that
   sight spoils misses on five faces of a die of eight. Not yet modelled.
 - **Dazzle, sand, and Weird Dance (MP drain)**, and `calls for backup`: read
