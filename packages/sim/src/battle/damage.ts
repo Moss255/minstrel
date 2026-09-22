@@ -175,16 +175,22 @@ export function criticalDamage(rng: BattleRng, damage: number): number {
  * reference emulator's 200 is this at any deftness up to 150; its 500s are a
  * bonus the function adds, not a level.
  *
- * The three bonuses and the sharing-out over a move of several hits are in the
- * game's function and not here: nothing the slice plays has one.
+ * **A spell's is the same roll with the spell's own multiplier** — its
+ * record's `criticalPercent` over a hundred, 50 on Frizz, Crack, Woosh and
+ * Heal, which halves the two in a hundred to one. An accessory's and a book's
+ * bonus and the sharing-out over a move of several hits are in the game's
+ * function and not here: nothing the slice plays has one.
  * `packages/sim/test/game-oracle.ts` has the whole of it.
  */
-export function criticalChance(deftness: number): number {
+export function criticalChance(deftness: number, skillPercent = 100): number {
   const f = Math.fround
   // The `short` the game narrows to before it looks at the sign.
   const past = Math.max(0, ((deftness - 150) << 16) >> 16)
   const rate = f(f(2) + f(f(0.01) * f(past)))
-  return Math.trunc(f(f(100) * rate))
+  // The action's own `criticalPercent` over a hundred multiplies it: 100 on
+  // the plain attack, which leaves it standing; 50 on the spells, which halves
+  // it; 0 on an item, which can never go haywire.
+  return Math.trunc(f(f(100) * f(f(f(skillPercent) / f(100)) * rate)))
 }
 
 /**

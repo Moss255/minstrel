@@ -1,4 +1,5 @@
 import {
+  criticalChance,
   criticalDamage,
   dealt,
   drawnAmount,
@@ -117,6 +118,12 @@ export interface Fighter {
    * monster's from its record; see `resistanceTo`. Whole when not given.
    */
   readonly resist?: readonly number[]
+  /**
+   * Its deftness, which its chance of a critical climbs with past 150 — see
+   * `criticalChance`. Without it the rules' flat chance stands, which is what
+   * the game's comes to at any deftness up to 150.
+   */
+  readonly deftness?: number
   /** Magical might and magical mending, which a spell's amount may scale by. Nothing when not given. */
   readonly might?: number
   readonly mending?: number
@@ -209,6 +216,12 @@ export interface Spell {
   readonly element?: number
   /** The most it can deal — its record's cap. */
   readonly cap?: number
+  /**
+   * Its record's `criticalPercent`, which multiplies the caster's chance of
+   * going haywire — 50 on the spells, so half of a blow's. Without it the
+   * rules' flat chance stands.
+   */
+  readonly criticalPercent?: number
 }
 
 /** What a change of state does, and its chance in 100 of landing — see `states.ts`. */
@@ -234,6 +247,8 @@ export interface Changing {
    * cast that does lands outright.
    */
   readonly haywire?: boolean
+  /** Its record's `criticalPercent`, which multiplies the caster's chance — see {@link Spell.criticalPercent}. */
+  readonly criticalPercent?: number
 }
 
 /** How a change came out on one it reached. */
@@ -360,6 +375,18 @@ export const DEFAULT_RULES: Rules = {
   flee: 50,
   magicCritical: 100,
   choice: [43, 42, 43, 43, 42, 43],
+}
+
+/**
+ * A fighter's chance, in 10,000, that a blow or a cast of theirs goes the
+ * game's way — `CalculateCritRate` with the action's own multiplier, where the
+ * fighter carries a deftness, and the rules' flat chance where it does not.
+ * **A monster's is a literal nothing** (`func_020748f8`), and its draw is
+ * spent all the same.
+ */
+function criticalRate(me: FighterState, percent: number, flat: number): number {
+  if (me.side !== 'party') return 0
+  return me.deftness === undefined ? flat : criticalChance(me.deftness, percent)
 }
 
 /** A target's chance of dodging, in a hundred — the game's `func_ov000_02156270`, without its bonuses and statuses. */
@@ -652,7 +679,7 @@ export function playRound(
       // the record's reach at 3 or 4) and before anyone is looked at; for one
       // it is rolled for that one, after their die. A monster's rate is a
       // literal nothing (`func_020748f8`) and its draw is spent all the same.
-      const rate = me.side === 'party' ? rules.magicCritical : 0
+      const rate = criticalRate(me, spell.criticalPercent ?? 100, rules.magicCritical)
       const once = spell.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
@@ -736,7 +763,9 @@ export function playRound(
       // the critical where it is theirs, the dodge if it can be dodged, and the
       // accuracy's draw — made before it is known whether there is anything
       // left to change, since the handler finds that out afterwards.
-      const rate = me.side === 'party' && changing.haywire ? rules.magicCritical : 0
+      const rate = changing.haywire
+        ? criticalRate(me, changing.criticalPercent ?? 100, rules.magicCritical)
+        : 0
       const once = changing.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
@@ -813,7 +842,7 @@ export function playRound(
     rng.below(100)
     // 1. The critical roll, always. A monster's rate is nothing and its draw is
     //    spent all the same.
-    const critical = rng.below(10_000) < (me.side === 'party' ? rules.critical : 0)
+    const critical = rng.below(10_000) < criticalRate(me, 100, rules.critical)
     // 2. The dodge, its rate truncated. The plain attack can be dodged.
     const dodged = rng.below(100) < Math.trunc(evadeOf(them, rules))
     // 3. The block — not rolled for a blow already dodged — the draw as a float

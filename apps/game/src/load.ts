@@ -292,6 +292,8 @@ export interface ItemEffect {
     readonly chanceIsAccuracy: boolean
     readonly evadable: boolean
     readonly haywire: boolean
+    /** Its record's `criticalPercent`: what multiplies a caster's chance of going haywire. */
+    readonly criticalPercent: number
     readonly levels: number
     readonly rider: number
     /** The element of what it deals, the element its landing is resisted by, and its cap. */
@@ -1140,6 +1142,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           chanceIsAccuracy: action.accuracyMode === 1,
           evadable: action.evadable,
           haywire: action.criticalPercent > 0,
+          criticalPercent: action.criticalPercent,
           levels: action.levels,
           rider: action.rider,
           element: action.element,

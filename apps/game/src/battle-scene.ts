@@ -250,6 +250,8 @@ export interface Castable {
     readonly chanceIsAccuracy: boolean
     readonly evadable: boolean
     readonly haywire: boolean
+    /** Its record's own multiplier on a caster's chance of going haywire. */
+    readonly criticalPercent?: number
     readonly levels: number
     readonly rider: number
     readonly element?: number
@@ -292,6 +294,11 @@ export function battleSpellOf(
       // What the target's resistance is to, and the most it can deal — the record's.
       ...(action.rolls?.element ? { element: action.rolls.element } : {}),
       ...(action.rolls?.cap ? { cap: action.rolls.cap } : {}),
+      // Its own multiplier on the caster's chance of going haywire — 50 on the
+      // spells, half a blow's; see `criticalChance`.
+      ...(action.rolls?.criticalPercent === undefined
+        ? {}
+        : { criticalPercent: action.rolls.criticalPercent }),
     },
     name: { name: action.name },
     message: action.message,
@@ -383,6 +390,7 @@ function recordsOwn(
         : { ...change, chance, by: levels === 0 ? change.by : levels },
     evadable: rolls.evadable,
     haywire: rolls.haywire,
+    ...(rolls.criticalPercent === undefined ? {} : { criticalPercent: rolls.criticalPercent }),
     ...(rolls.landingElement ? { element: rolls.landingElement } : {}),
   }
 }

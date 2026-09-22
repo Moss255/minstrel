@@ -290,6 +290,29 @@ describe('what is read and not yet in the simulation', () => {
     expect(buffMultiplier.magic(-1)).toBe(0.5)
   })
 
+  it('halves the chance for a spell, whose record’s multiplier is fifty', () => {
+    // At any deftness up to 150 that is 100 in 10,000 — what the flat rate was.
+    expect(criticalChance(150, 50)).toBe(100)
+    expect(criticalChance(0, 50)).toBe(100)
+    // Past 150 it climbs, at half a blow's rate.
+    expect(criticalChance(200)).toBe(250)
+    expect(criticalChance(200, 50)).toBe(125)
+    // An item's multiplier is nothing, so a herb never goes haywire.
+    expect(criticalChance(999, 0)).toBe(0)
+  })
+
+  it('is the game’s at every deftness for a blow, a spell and an item alike', () => {
+    let wrong = 0
+    for (const percent of [0, 50, 100]) {
+      for (let deftness = 0; deftness <= 999; deftness++) {
+        const ours = criticalChance(deftness, percent)
+        const game = criticalThreshold(calculateCritRate(deftness, 0, 0, percent / 100))
+        if (ours !== game) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
   it('tension multiplies a blow by its level’s own number, the party’s and a monster’s apart', () => {
     expect([0, 1, 2, 3, 4].map((l) => tensionMultiplier(l, false))).toEqual([1, 1.5, 2.5, 4, 6])
     expect(tensionMultiplier(4, true)).toBe(4.5)

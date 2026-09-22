@@ -3070,6 +3070,8 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     attack: row.strength + worn.attack,
     defence: row.resilience + worn.defence,
     agility: row.agility + worn.agility,
+    // The chance of a critical climbs with deftness past 150 — `criticalChance`.
+    deftness: row.deftness,
     // What a spell's amount may scale by — the level's own; what is worn is not added, ours.
     might: row.magicalMight,
     mending: row.magicalMending,
