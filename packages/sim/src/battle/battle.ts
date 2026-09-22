@@ -481,10 +481,13 @@ export const SURPRISED_ACTS_BELOW = 67
 
 /**
  * The least chance in a hundred a flight has, by how many have been tried in
- * this battle — the game's table at `0x02182c04`, `25 50 75 100`, which its
- * roll takes the greater of against what the party's own numbers give. **Ours**:
- * holding the count at the table's end, where the game reads on into `65535`
- * and then zeroes that nothing was found to reach.
+ * this battle — the game's table at `0x02182c04`, which its roll takes the
+ * greater of against what the party's own numbers give.
+ *
+ * The table holds `25 50 75 100 65535 0 0 0`. The fifth entry passes any draw,
+ * so a fifth attempt always gets away and the battle ends there: the zeros
+ * after it cannot be reached, and holding the count at `100` here comes to the
+ * same thing.
  */
 export const FLEE_FLOOR = [25, 50, 75, 100] as const
 
