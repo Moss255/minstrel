@@ -42,7 +42,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A spell going haywire** | the blow's own roll at the spell's `criticalPercent` — 50, so one in a hundred; once a cast for a group or all; **a monster's rate a literal nothing** | `criticalChance(deftness, percent)` | **the game's**, at every deftness for a blow, a spell and an item alike. It was flat: the Hero's own critical chance and every cast's were the reference's 200 and 100, because the engine never handed the sim a deftness. It does now, and the action's own multiplier with it — a herb's nothing, so it can never go haywire |
 | **A change of state landing** | it *is* the accuracy roll: a monster's chance the record's `+0x14` bits 0–6, the party's by might; × the target's resistance + ½; a cast gone haywire lands outright. The kind's handler makes no draw | the accuracy's draw under the chance | **the order and the roll are the game's**, and the chances now come from the record — the reference's 75, 75 and 25 are in the data. **Ours still**: every resistance whole |
 | **What rides on a blow** | one draw, only after a blow that dealt something, under the action's chance × a hundredth of the target's byte | `poison` on an attack | the game's for the poison attack, whose 12 is in its record; the other riders read and not modelled |
-| **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record. Damage × it after the critical; a change's accuracy × it + ½; a rider's chance × it | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte. Frizz on a slime is a quarter more. **Ours still**: the party's whole, the wards and the two statuses that shift them |
+| **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record. Damage × it after the critical; a change's accuracy × it + ½; a rider's chance × it | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte. Frizz on a slime is a quarter more. **Ours still**: the party's whole — see below for where the game keeps theirs, and why it cannot be read yet — and the wards and the two statuses that shift them |
 | **A monster's HP** | drawn as the battle builds it: `(int)(0.5 + HP × between(0.8, 1.0))`, from the *world's* generator; the table's where the battle's setup says so | `monsterHp` | **the game's, exactly.** The table's HP is a ceiling. **Ours**: taking a battle that cannot be fled for the game's flag |
 | **A monster's drops** | `func_ov023_021f454c`, from the victory routine once the experience and gold are settled: a kind of monster at a time, the rare drop rolled first and the ordinary only after it fails, each `func_02032370(one in so many) == 0` against the table at `0x021fd888` — and the generator is **the C library's `rand`**, neither the battle's nor the world's | `dropsWon`, `DropRng` | **the game's**, step for step and table for table; **ours**: the seed of that generator, which the game's is not known to be, and the order the kinds are rolled in. A drop spends **no draw of the battle's**, so a battle replays the same whether it drops or not |
 | **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
@@ -292,6 +292,14 @@ record allows them* — no spell's does, and no draw is made — the accuracy's
 draw, and the amount. Frizz at one monster: four draws and the amount's.
 Crack at three: one, and three apiece.
 
+**A heal that goes haywire multiplies by 1.5 to 2.0**, read 22 September: a
+heal takes the same `CalculateFinalDamage` path a blow does, and its critical
+goes down `CalculateCriticalDamage`'s flag-clear arm — the same
+`NextRandomFloatBetween(1.5, 2.0)` an attacking spell takes, over the amount
+before the critical. Only actions 1, `0xDB` and `0x1F9` take the 0.95-to-1.05
+arm. `criticalDamage` in the simulation, which is what a haywire heal already
+used.
+
 **A spell's critical is the blow's roll with the spell's own multiplier**:
 `criticalPercent` is 50 on Frizz, Crack, Woosh and Heal, which halves
 `CalculateCritRate`'s two in a hundred to **one** — the reference's 100 in
@@ -483,10 +491,15 @@ In the game's order:
 1. **Blocked, then dodged, each zero the damage** (`0x021e777c`, `0x021e77a0`)
    — bits 2 and 1 of the result's byte `+0x1C`. This late: the base damage and
    the critical have already spent their draws.
-2. **A metal body** (`func_ov000_02156068(ctx, target, 0, 1)`) zeroes a
-   non-critical blow whose action works on metal and is of a certain sort
-   (`+0x08` bits 8–9 at 1, or action `0xDB`), bar actions `0x205` and `0x82` and
-   a flag on the stack not followed. *Read, not understood, not in the oracle.*
+2. **A metal body** (`func_ov000_02156068(ctx, target, 0, 1)`, which is bit 12
+   of the halfword at `+0x0A` of the monster's record, and **never one of the
+   party**) zeroes a non-critical blow whose action **carries** `+0x10` bit 24
+   and is of a certain sort (`+0x08` bits 8–9 at 1, or action `0xDB`), bar
+   actions `0x205` and `0x82` and the forced-one flag of step 5. Read 22
+   September: the bit must be **set**, not clear, which is the other way about
+   from what this file said, and the damage becomes exactly nothing. So the
+   flag reads less like "works on metal" than like "deals damage at all". *Not
+   in the simulation: no monster of the slice has a metal body.*
 3. **The coin** (`0x021e7824`–`0x021e7904`): damage not above nothing, and not
    blocked, not dodged, not action `0x70` or `0x48`, the target's resistance to
    both of the action's elements above nothing (`func_ov000_02156b38`), not
@@ -496,7 +509,10 @@ In the game's order:
 4. **Metal Slash and Metalicker** (`0x40`, `0x7E`) on a metal body, not
    critical: `1.0f + NextRandomMax(2)`, over whatever came before.
 5. One more for one of the party when the action has `+0x10` bit 18 and
-   `func_02085128` of something at their `+0x150` says so. *Not followed.*
+   `func_02085128` of something at their `+0x150` says so — **and only against
+   a metal body**, the whole of steps 4 to 6 sitting inside that gate
+   (`0x021e7910`). Read 22 September; a skill of the party's, which the slice
+   has not.
 6. When `[ctx + 0x76]` is set and the action has `+0x10` bit 13: an attacker
    carrying status bit `0x800000` or `0x1000000` multiplies by
    `func_02074738(level, isMonster)` — a table at `0x020e88f8` of
@@ -506,12 +522,24 @@ In the game's order:
    blow home with nothing and a 1 or a 2 in `[ctx + 0x47]`.
 7. **The halving** (`0x021e7a58`): the *target* carrying status `0x1000000`
    and the action's kind being 1 → `0.5f × damage`.
-8. The combo table at `0x021fe778`, for an action with `+0x2C` bit 27 and
-   damage of at least one. *Not followed.*
+8. **The combo table** at `0x021fe778` — `1.0 1.2 1.5 2.0` — for an action
+   with `+0x2C` bit 27 and damage of at least one: a counter byte at
+   `[battle + 0x8e83]`, held to 3, indexes it, and anything else resets that
+   counter (`func_ov000_0215cd80`). Read 22 September. What increments the
+   counter is not in this function; nothing of the slice's carries the bit.
 9. **`_ffix`** — the float becomes the whole number, truncated — and **the
    cap**: the action's `+0x1C` low 14 bits, when not nothing and lower.
 10. Action `0xAF` — **Double-Edged Slash** — has a quarter of the number kept
     at `[battle + 0x8e38]`: INFERRED, the recoil.
+
+**Two more of the tail, read 22 September** and not modelled, both before the
+steps above: a **ward** on the target — status `+0x18` bit 1 or 2 — takes a
+quarter off what fire or ice deals it, on a five-turn count; and a **family
+ward**, status `+0x14` bit `0x20000000` on a four-turn count, halves what a
+monster of one family deals. Neither is cast by anything in the slice. The
+twelve **slayer** multipliers that sit before them — `func_ov000_02156068`
+with a family number, gating a multiplier from what the party member holds —
+are the equipment's, and likewise unreached.
 
 ### It was not defending: `0x1000000` is maximum tension — 22 September 2026
 
@@ -555,6 +583,30 @@ word carries a multi-turn duration byte, which a one-turn defence would not.
 The witness experiment is no longer needed to settle the bit; what it would now
 measure is our own stand-in.
 
+## The party's own resistances — where they live, and why they are still whole
+
+Read 22 September. A fighter's 22 resistance bytes sit at `status + 0x3E`, and
+only two things ever write them: `ResetBattleStatus` (`0x020891cc`), which sets
+all 22 to a hundred as a combatant is built, and `CopyResistances`
+(`0x02082d38`). For a monster the copy is from its record's `+0x40` block —
+which this repository reads. **For one of the party the copy is from the
+character's own block at `+0x21`**, filled by `func_02083e28` when their stats
+are worked out, not in the battle at all.
+
+That function sums, over the eight worn things at `char + 0x2F4` (each `0x2C`
+bytes, taken only where the signed halfword at `+0x28` is above nothing),
+**twenty signed bytes packed into the five words at `+0x14`, `+0x18`, `+0x1C`,
+`+0x20` and `+0x24`** — one an element, elements 8 and 22 never among them.
+The sum is **added** to a hundred, held at nothing below, and written as a
+byte. Nothing else touches them: no vocation, no skill, no spell.
+
+**Why they are still whole here.** What fills `char + 0x2F4` from the item
+table was not found — only two references to that offset exist, and the fill
+goes through a held pointer. Until it is found, the equipment's resistances
+cannot be read off the cartridge, so the party's stay at a hundred, which is
+what they are with nothing worn. The slice's Hero wears the celestial suit and
+a copper sword, so the error is whatever those carry, if anything.
+
 ## Still to read, in the order it is wanted
 
 - **what the Defend command does**, which is still unlocated: the status word
@@ -562,8 +614,9 @@ measure is our own stand-in.
   in the action data rather than in a status bit;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
-- what armour and accessories do to the party's resistances, and the wards;
-- what the game does to a heal that goes haywire;
+- **what fills `char + 0x2F4` from the item table**, which is the last step
+  between the cartridge and the party's own resistances — see above;
+
 - what seeds the C library's generator, which a drop is rolled from, and what
   the drop roll's four further passes scale their chance by —
   `func_ov023_021f454c` at `0x021f4628` on, one pass a standing party member
