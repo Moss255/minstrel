@@ -94,8 +94,8 @@ confirm a find, and what to do if the binaries do not give it up.
   attack-and-defence is not above the party's; otherwise the chance climbs
   with each attempt in the battle — a quarter, a half, three quarters, then
   certainty — and the draw comes from the world's generator, not the battle's.
-  Modelled; `docs/conformance.md` has the row. **INFERRED**: the ten-bit field
-  its own term reads, taken here for deftness.
+  Modelled; `docs/conformance.md` has the row. The ten-bit field its own term
+  reads is deftness — the same one the critical roll reads.
 - ~~**How a monster weights its six ways**~~ **Read 22 September 2026**: the
   record's `+0x10` bits 5–7 choose among eight ways, four of which draw by one
   of the four tables (`MonsterBattle.aiType`), and the boss bit — which this
@@ -157,10 +157,6 @@ lives; this is the gathered list.
 
 ## 3. Read and not modelled
 
-- **What opens a fight is not read.** The game keeps it at `[battle + 0xe49]`
-  — the party surprising the monsters, or being surprised — and the round it
-  makes is now modelled, draw for draw (`BattleState.opening`). Nothing sets
-  it: every fight opens even until the field's side of it is found.
 - **The wards, and the two statuses that shift a resistance** — a quarter off
   fire or ice for five turns, a half against one family of monsters for four,
   and a flat 25 either way on everything but a plain blow. Read 22 September

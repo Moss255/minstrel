@@ -39,6 +39,7 @@ export {
   resistanceTo,
 } from './battle/damage.ts'
 export { DROP_CHANCES, DropRng, type DropWon, dropsWon } from './battle/drops.ts'
+export { FACING_CONE, facingOff, howItOpens } from './battle/opening.ts'
 export { BattleRng } from './battle/rng.ts'
 export {
   LEVEL_TURNS,

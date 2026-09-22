@@ -9,6 +9,7 @@ import {
   type Fighter,
   type FoeAction,
   type Heal,
+  type Opening,
   playRound,
   type Spell,
   startBattle,
@@ -499,6 +500,8 @@ export function beginBattle(
   seed: bigint,
   options: {
     readonly canFlee: boolean
+    /** How the fight opened, which decides who sits the first round out — see `howItOpens`. */
+    readonly opening?: Opening
     /** The world's generator, which a flight is drawn from — see `BattleScene.world`. */
     readonly world?: BattleRng
     readonly hp?: ReadonlyMap<number, number>
@@ -510,7 +513,7 @@ export function beginBattle(
     readonly names?: readonly Named[]
   },
 ): BattleScene {
-  const started = startBattle(fighters, options.canFlee)
+  const started = startBattle(fighters, options.canFlee, options.opening)
   const wounded = options.hp ? withHp(started, options.hp) : started
   const state = options.mp ? withMp(wounded, options.mp) : wounded
   const scene: BattleScene = {

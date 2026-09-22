@@ -46,10 +46,10 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A monster's HP** | drawn as the battle builds it: `(int)(0.5 + HP × between(0.8, 1.0))`, from the *world's* generator; the table's where the battle's setup says so | `monsterHp` | **the game's, exactly.** The table's HP is a ceiling. **Ours**: taking a battle that cannot be fled for the game's flag |
 | **A monster's drops** | `func_ov023_021f454c`, from the victory routine once the experience and gold are settled: a kind of monster at a time, the rare drop rolled first and the ordinary only after it fails, each `func_02032370(one in so many) == 0` against the table at `0x021fd888` — and the generator is **the C library's `rand`**, neither the battle's nor the world's | `dropsWon`, `DropRng` | **the game's**, step for step and table for table; **ours**: the seed of that generator, which the game's is not known to be, and the order the kinds are rolled in. A drop spends **no draw of the battle's**, so a battle replays the same whether it drops or not |
 | **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
-| **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67`. One passed over is **not rolled for**, so a surprised round makes fewer draws | `BattleState.opening`, `SURPRISED_ACTS_BELOW` | **the game's behaviour**, draw for draw. **Not read: what sets it** — nothing in the engine gives a battle an opening, so every fight opens even, and the modelling waits on the field's side of it. **Ours**: which monster counts as the first |
+| **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67`. One passed over is **not rolled for**, so a surprised round makes fewer draws | `BattleState.opening`, `SURPRISED_ACTS_BELOW`, `howItOpens` | **the game's**, and **what sets it is read too**: who was facing whom as they met — see below. **Ours**: which monster counts as the first |
 | **How a monster chooses its way** | `func_0208a91c` reads bits 5–7 of the record's `+0x10` and dispatches to one of eight handlers; four draw by a weight table — `func_0208a370`, `NextRandomMax(256) + 1` walked down `monsterActionWeights` at `0x020e8caa` | `chosenWay`, the table by `aiType` | **the game's draw, and now the game's table.** It was the boss bit that chose, which this repository had INFERRED and which is not it: Hexagoon is way 0, where the bit had it drawing by the falling table. **Ours**: ways 3, 5, 6 and 7 — a round robin, a pair and a coin, two passes — fall back to the even table, and a slot the monster cannot use is not scanned past |
 | **Initiative** | inlined in `ProcessCombatTurn`: the **buffed** agility, capped at 999, times `NextRandomFloatBetween(0.51, 1.0)`, sorted highest first by a quicksort over floats | `initiative`, over `levelled(agility)` | **the game's**, in its floats, over the buffed agility. It was the reference's arithmetic in exact whole numbers, which orders two close scores differently where a float's rounding parts them. `0.51f` appears once in the whole build. **Ours**: how a tie breaks, the game's sort being unstable, and the 999 cap, which no stat of the slice's reaches |
-| **The party fleeing** | `func_ov000_0215f7a8`: away outright where the party surprised them, where nothing is left that can act, or where three times the monsters' mean attack-and-defence is not above the party's; otherwise `10 + deftness ÷ 20` held up to the floor its attempt gives — `25 50 75 100` at `0x02182c04` — and a draw below a hundred under it, **from the world's generator** | `fleeChance` | **the game's shape**, and the draw is the world's, so a flight spends none of the battle's numbers. It was a flat 50 in 100 of ours. **INFERRED**: what the ten-bit field it reads holds — taken here for deftness. **Ours**: reading "nothing that can act" as fallen or asleep. The table's own fifth step is `65535`, which any draw passes, so the zeros after it cannot be reached and holding the count at `100` comes to the same thing |
+| **The party fleeing** | `func_ov000_0215f7a8`: away outright where the party surprised them, where nothing is left that can act, or where three times the monsters' mean attack-and-defence is not above the party's; otherwise `10 + deftness ÷ 20` held up to the floor its attempt gives — `25 50 75 100` at `0x02182c04` — and a draw below a hundred under it, **from the world's generator** | `fleeChance` | **the game's shape**, and the draw is the world's, so a flight spends none of the battle's numbers. It was a flat 50 in 100 of ours. The ten-bit field its own term reads is **deftness**, the same one `RollCritical` hands `CalculateCritRate`. **Ours**: reading "nothing that can act" as fallen or asleep. The table's own fifth step is `65535`, which any draw passes, so the zeros after it cannot be reached and holding the count at `100` comes to the same thing |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's; and the **level's own multiplier**, `func_02074738` reading the table at `0x020e88f8`: `1.0 1.5 2.5 4.0 6.0` for the party, `1.0 1.3 2.0 3.0 4.5` for a monster | not modelled | read into the oracle; levels 10 to 19 all double the bonus. A fighter's tension level is `[status + 0x24]`, 0 to 4, with bits `0x800000` and `0x1000000` saying which — see below. Nothing in the slice psyches up |
 | **Buffs** | the six `Calculate…BuffMultiplier`s | `levelled`, for defence and agility | **the game's for the two the slice casts** — Kasap's and Deceleratle's levels multiply as the game's do, half again up and a half then a quarter down. The other four are read into the oracle and not modelled, there being no spell in the slice that casts them. A quarter a level on attack; a half on defence, agility and the magics; defence *down* is a half and then three quarters, not a half a level; charm never falls below whole |
@@ -616,8 +616,6 @@ something with a number on it is worn, it will count.
 
 ## Still to read, in the order it is wanted
 
-- **what sets `[battle + 0xe49]`**, how a fight opened, which is the last step
-  between the field and the surprise round the simulation already plays;
 - what the drop roll's four further passes scale their chance by —
   `func_ov023_021f454c` at `0x021f4628` on, one pass a standing party member
   above half its HP: the series' item-finding abilities, which the slice has
@@ -625,12 +623,34 @@ something with a number on it is worn, it will count.
 - what the four ways of choosing that do not draw by weights do, exactly — a
   round robin (3 and 7), a pair and a coin (5), two passes (6) — and what
   makes a slot unusable, which the game scans past rather than re-drawing;
-- what the boss bit at `+0x27` does, now that it is known not to choose the
-  weight table;
-- action kind `0x22`, which `ProcessCombatTurn` draws again rather than
-  taking;
 - what the trait `0x11d` is, and what `func_ov000_02155a04`'s quarter is a
   quarter of, which together double a critical rate.
+
+## What opens a fight — 23 September 2026
+
+`[battle + 0xe49]` is carried in from the encounter's own record, and for a
+wandering monster it is decided as the two of them meet
+(`func_ov017_021970a0`, called from the encounter check at `0x02196b40`).
+**Who was facing whom decides which way it can go.** The check measures each
+one's facing against the bearing to the other, and calls it a turned back past
+**9007.6 of a turn of `0x10000` — 49.48°**:
+
+| how they met | the party may surprise | the party may be surprised |
+|---|---|---|
+| face to face | `2 + deftness ÷ 20` in a hundred | 2 in a hundred |
+| the monster's back was turned | `12 + deftness ÷ 20` | never |
+| it came at the party from behind | never | 12 in a hundred |
+
+The deftness is the highest among the party who can act, from the same ten
+bits of the character's record that `RollCritical` hands `CalculateCritRate` —
+which also settles what the flee chance's own term reads, that being the same
+field. The draws are the **C library generator's**, as a drop's are.
+
+A scripted battle carries its opening as a byte in its own data instead; the
+slice's are all even, and `startFight` takes one.
+
+`[battle + 0xe20]`, which bypasses the whole of it, is **the round counter**,
+not a flag: the surprise round is the first round, and nothing more.
 
 ## What seeds the generator a drop is rolled from — 22 September 2026
 
@@ -645,6 +665,23 @@ So a drop's seed is whatever was last installed, from outside the battle
 entirely. There is nothing to reproduce here: the engine keeps a generator of
 its own for the session, which is **ours** and marked, and a drop still spends
 none of the battle's own numbers.
+
+## Two that are answered by nothing being there — 23 September 2026
+
+- **The boss bit at `+0x27`** — bit 28 of the word at `+0x24` — is read by
+  **nothing in the ROM**. Six searches, each over the ARM9 and all 35
+  overlays, found no instruction that tests it: not by byte, not by halfword,
+  not by the word, and no helper handed the record reads past `+0x29`. The
+  rest of that word is four seven-bit fields — two statuses a monster's blow
+  can carry and a chance for each, 0, 25, 50, 75 or 100 — read only by
+  `0x021eb124`, which never touches bit 28. The bit still says *boss* by where
+  it is set; it says nothing to the game. `MonsterBattle.bossAi` keeps it and
+  says so.
+- **Action kind `0x22`** is a **metamorphosis**: the combatant's battle record
+  is swapped for the monster named at the action's `+0x30`, keeping its name
+  (`func_0204887c`), and the turn is then re-drawn — which is the loop
+  `ProcessCombatTurn` makes. Its handler slot is null, and the usable-action
+  mask excludes it. Nothing in the slice metamorphoses.
 
 ## Where the phase stands — 22 September 2026
 

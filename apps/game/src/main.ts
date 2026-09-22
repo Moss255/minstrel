@@ -56,10 +56,13 @@ import {
   dropsWon,
   type Fighter,
   type Follower,
+  facingOff,
   groundBelow,
   headingAngle,
+  howItOpens,
   monsterHp,
   type OpenGround,
+  type Opening,
   PERSON,
   type Roamer,
   type RoamerKind,
@@ -2915,7 +2918,30 @@ function fightRoamer(touched: Roamer): void {
     const count = joined.least + roamRng.below(Math.max(1, joined.most - joined.least + 1))
     for (let k = 0; k < count && codes.length < BATTLE_MOST; k++) codes.push(joinedCode)
   }
-  startFight(codes, true)
+  // **How the fight opens is the game's** — who was facing whom as they met,
+  // and a draw from the C library's generator: `howItOpens`. The Hero's is the
+  // party's highest deftness, no one else in the slice having numbers.
+  const walker = self
+  if (!walker) return
+  const mine = {
+    x: toFloat(walker.state.x),
+    z: toFloat(walker.state.z),
+    facing: walker.facing,
+  }
+  const theirs = {
+    x: toFloat(touched.state.x),
+    z: toFloat(touched.state.z),
+    facing: headingAngle(touched.heading),
+  }
+  startFight(
+    codes,
+    true,
+    howItOpens(dropRng, {
+      theirs: facingOff(theirs, mine),
+      ours: facingOff(mine, theirs),
+      deftness: heroRow()?.deftness ?? 0,
+    }),
+  )
 }
 
 /** The open ground worked out last, and the map and scale it was for. */
@@ -3002,7 +3028,7 @@ function runsFromOf(number: number): { runsFrom?: number } {
  * defence as given (its setups name them, `atk123_def86`), and how the game
  * makes them up is not cited. Agility decides the order of a round.
  */
-function startFight(codes: readonly string[], canFlee: boolean): void {
+function startFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
   if (!loaded || !self || !cartridge) return
   const levels = loaded.heroLevels
   if (!levels) {
@@ -3122,6 +3148,7 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   playBattleMusic()
   battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
+    opening,
     // A flight is drawn from the world's generator, not the battle's — the
     // game's `GetBTRandom()`; see `fleeChance`.
     world: roamRng,
