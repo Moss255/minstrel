@@ -2644,6 +2644,38 @@ answers are read in — which backs `<UKE>` and `<YAME>` as accept and decline
 139 and 8-byte records from there, and found the offsets landing mid-word; it
 was the same packing as the monster list's, misread.
 
+# What equipment does in a battle — `itembtlprm.nat`
+
+Read 22 September 2026, from the game. `/data/prm/itembtlprm.nat` is **1,423
+records of 44 bytes** behind a `u32` count — its low 20 bits, as
+`func_0209a088` masks them — in order of the item they belong to, which is how
+the game finds one (a binary search, `func_0209a004`, on the id at `+0x28`).
+`readItemBattleParams` reads it.
+
+| offset | type | reading | evidence |
+|---|---|---|---|
+| `+0x00` | `u32` | flags, one bit to an accessor; not read | the game tests bits of it one at a time |
+| `+0x08` | 10 bytes | not established | 1,178 of the 1,423 carry something |
+| `+0x14` | `i8` ×20 | **what it adds to a resistance**, one an element — elements 1 to 7 and 9 to 21, never 8 or 22 | the game's own loop (`func_02083e28`), which writes the eighth byte to the ninth element's place |
+| `+0x28` | `i16` | the item's id | strictly ascending across all 1,423, from 994 to 22,290 |
+| `+0x2A` | 2 bytes | 0 on every record | |
+
+**How the game uses it.** Overlay 17's `func_ov017_021b3780` walks the eight
+equipment places it keeps battle numbers for — the slot order is a byte table
+at `0x021d6b20` — looks the worn item up here, and copies the whole 44 bytes
+into the character's own block at `char + 0x2F4 + entry × 0x2C`. The stat
+recompute then sums the twenty numbers over the eight entries onto **a hundred
+each**, holds them at nothing below, and writes 22 bytes to `char + 0x21`;
+building a combatant copies those into the battle's status at `+0x3E`
+(`CopyResistances`), which is where `GetResistance` reads them. `func_02083e28`
+runs the sum; `wornResistances` is that sum here.
+
+**Only 183 of the records carry any number**, and the values seen are whole
+multiples of five, mostly negative — `-20`, `-25`, `-30`, `-35`. Nothing the
+slice's Hero can wear carries one.
+
+---
+
 ## Monster data — `mon_btldata.nat` and `mon_data_<lang>.nat`
 
 Two files of 438 records each, one a monster, both opening with the head word

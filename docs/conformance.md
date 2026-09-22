@@ -42,7 +42,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A spell going haywire** | the blow's own roll at the spell's `criticalPercent` — 50, so one in a hundred; once a cast for a group or all; **a monster's rate a literal nothing** | `criticalChance(deftness, percent)` | **the game's**, at every deftness for a blow, a spell and an item alike. It was flat: the Hero's own critical chance and every cast's were the reference's 200 and 100, because the engine never handed the sim a deftness. It does now, and the action's own multiplier with it — a herb's nothing, so it can never go haywire |
 | **A change of state landing** | it *is* the accuracy roll: a monster's chance the record's `+0x14` bits 0–6, the party's by might; × the target's resistance + ½; a cast gone haywire lands outright. The kind's handler makes no draw | the accuracy's draw under the chance | **the order and the roll are the game's**, and the chances now come from the record — the reference's 75, 75 and 25 are in the data. **Ours still**: every resistance whole |
 | **What rides on a blow** | one draw, only after a blow that dealt something, under the action's chance × a hundredth of the target's byte | `poison` on an attack | the game's for the poison attack, whose 12 is in its record; the other riders read and not modelled |
-| **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record. Damage × it after the critical; a change's accuracy × it + ½; a rider's chance × it | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte. Frizz on a slime is a quarter more. **Ours still**: the party's whole — see below for where the game keeps theirs, and why it cannot be read yet — and the wards and the two statuses that shift them |
+| **Resistances** | `func_ov000_02156b38`: a byte an element, over `100.0f`; a monster's the 22 at `+0x6C` of its record, one of the party's summed from what they wear | `resistanceTo`, `dealt`; a fighter's `resist` | **the game's, exactly**, at every byte, and **the party's are read now too** — from `itembtlprm.nat`, summed onto a hundred as `func_02083e28` sums them. Nothing the slice wears carries a number, so they are all whole, as before. **Ours still**: the wards and the two statuses that shift them, which no spell of the slice's casts |
 | **A monster's HP** | drawn as the battle builds it: `(int)(0.5 + HP × between(0.8, 1.0))`, from the *world's* generator; the table's where the battle's setup says so | `monsterHp` | **the game's, exactly.** The table's HP is a ceiling. **Ours**: taking a battle that cannot be fled for the game's flag |
 | **A monster's drops** | `func_ov023_021f454c`, from the victory routine once the experience and gold are settled: a kind of monster at a time, the rare drop rolled first and the ordinary only after it fails, each `func_02032370(one in so many) == 0` against the table at `0x021fd888` — and the generator is **the C library's `rand`**, neither the battle's nor the world's | `dropsWon`, `DropRng` | **the game's**, step for step and table for table; **ours**: the seed of that generator, which the game's is not known to be, and the order the kinds are rolled in. A drop spends **no draw of the battle's**, so a battle replays the same whether it drops or not |
 | **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
@@ -600,21 +600,25 @@ bytes, taken only where the signed halfword at `+0x28` is above nothing),
 The sum is **added** to a hundred, held at nothing below, and written as a
 byte. Nothing else touches them: no vocation, no skill, no spell.
 
-**Why they are still whole here.** What fills `char + 0x2F4` from the item
-table was not found — only two references to that offset exist, and the fill
-goes through a held pointer. Until it is found, the equipment's resistances
-cannot be read off the cartridge, so the party's stay at a hundred, which is
-what they are with nothing worn. The slice's Hero wears the celestial suit and
-a copper sword, so the error is whatever those carry, if anything.
+**And now they are read — 22 September.** What fills `char + 0x2F4` is
+`func_ov017_021b3780`, which looks each worn thing up in a file of its own —
+**`/data/prm/itembtlprm.nat`**, 1,423 records of 44 bytes, the item's id at
+`+0x28` and the twenty numbers at `+0x14` — and copies the record whole. The
+simulation reads that file (`readItemBattleParams`) and sums it the game's way
+(`wornResistances`), so the Hero's resistances are the game's rather than an
+assumption.
+
+**What the slice sees of it**: nothing. Of the 1,423 records only 183 carry
+any number at all, and every piece the slice's Hero can wear carries none — so
+the party's resistances really are all whole here, which is what they were
+before. The difference is that it is now read rather than assumed, and the day
+something with a number on it is worn, it will count.
 
 ## Still to read, in the order it is wanted
 
-- **what fills `char + 0x2F4` from the item table**, which is the last step
-  between the cartridge and the party's own resistances — see above;
 - **what sets `[battle + 0xe49]`**, how a fight opened, which is the last step
   between the field and the surprise round the simulation already plays;
-- what seeds the C library's generator, which a drop is rolled from, and what
-  the drop roll's four further passes scale their chance by —
+- what the drop roll's four further passes scale their chance by —
   `func_ov023_021f454c` at `0x021f4628` on, one pass a standing party member
   above half its HP: the series' item-finding abilities, which the slice has
   not;
@@ -627,6 +631,20 @@ a copper sword, so the error is whatever those carry, if anything.
   taking;
 - what the trait `0x11d` is, and what `func_ov000_02155a04`'s quarter is a
   quarter of, which together double a critical rate.
+
+## What seeds the generator a drop is rolled from — 22 September 2026
+
+The C library's `rand`, which the drop roll draws on, keeps its seed in one
+global at `0x020eef30`, and the ROM holds `1` there. **Nothing in the battle
+or the drop path seeds it**; twelve places elsewhere do, and they are of two
+kinds: two that take entropy — the hardware timer at `0x04000100`, and an
+RTC-derived timestamp — and ten that install a *deterministic* seed for
+generating a grotto, a floor or a treasure map.
+
+So a drop's seed is whatever was last installed, from outside the battle
+entirely. There is nothing to reproduce here: the engine keeps a generator of
+its own for the session, which is **ours** and marked, and a drop still spends
+none of the battle's own numbers.
 
 ## Where the phase stands — 22 September 2026
 
@@ -642,8 +660,9 @@ three kinds, and none of it is a blow being worked out wrongly:
    later slice needs it.
 2. **Ours, and marked**: the four ways of choosing a monster's action that are
    not weight tables (34 of the 438 monsters, the hammerhood among the
-   slice's); the party's resistances, all whole; how a tie in initiative
-   breaks; the seed of the generator a drop is rolled from; which monster the
+   slice's); how a tie in initiative
+   breaks; the seed of the generator a drop is rolled from, which the game takes from a
+   clock; which monster the
    game counts as first in a surprised round; reading "nothing that can act"
    as fallen or asleep.
 3. **Wanted from outside the code**: the damage formula against a video at

@@ -17,6 +17,7 @@ import {
   spellsLearnt,
   type Treasure,
   vocationsWielding,
+  wornResistances,
 } from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
 import {
@@ -3084,6 +3085,15 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     agility: row.agility + worn.agility,
     // The chance of a critical climbs with deftness past 150 — `criticalChance`.
     deftness: row.deftness,
+    // What the Hero takes of each element: a hundred each, and what is worn
+    // added on — the game's own sum (`wornResistances`). Nothing the slice
+    // wears carries any, so these are all whole; something later will not be.
+    resist: wornResistances(
+      [...equipped.values()].flatMap((id) => {
+        const own = loaded?.itemResistances.get(id)
+        return own ? [own] : []
+      }),
+    ),
     // What a spell's amount may scale by — the level's own; what is worn is not added, ours.
     might: row.magicalMight,
     mending: row.magicalMending,

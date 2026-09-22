@@ -50,6 +50,7 @@ import {
   readItemKinds,
   readItemNames,
   readItemStats,
+  readItemBattleParams,
   readItemTable,
   readLevelTable,
   readMapList,
@@ -196,6 +197,11 @@ export interface Loaded {
   readonly attending: readonly AttendingCharacter[]
   /** A map's code by its own id — how a trigger names where the story goes on. */
   mapCodeOf(id: number): string | undefined
+  /**
+   * What each worn thing adds to a resistance, by item id — see
+   * `readItemBattleParams`. Whatever is not listed adds nothing.
+   */
+  readonly itemResistances: ReadonlyMap<number, readonly number[]>
   /** Each item's price and the table it is listed in — see `readItemTable`. */
   readonly goods: ReadonlyMap<number, Goods>
   /** Each piece of equipment's attack and defence, by id — see `itemStatsOf`. */
@@ -726,7 +732,33 @@ function systemStringsOf(rom: Uint8Array): Map<number, string> {
 
 /** The monsters' battle numbers: a loose file beside the parameter tables. */
 const MONSTER_BATTLE = '/data/prm/mon_btldata.nat'
+/** What a worn thing does in a battle — see `readItemBattleParams`. */
+const ITEM_BATTLE = '/data/prm/itembtlprm.nat'
 const battleRead = new WeakMap<Uint8Array, Map<number, MonsterBattle>>()
+
+/** What each worn thing does in a battle, by item — see `readItemBattleParams`. */
+const itemBattleRead = new WeakMap<Uint8Array, Map<number, readonly number[]>>()
+
+/**
+ * What each item adds to a resistance, by item id — `itembtlprm.nat`, which
+ * the game looks a worn thing up in and whose twenty numbers it sums onto a
+ * hundred (`wornResistances`). Empty when the file will not read.
+ */
+function itemBattleOf(rom: Uint8Array): Map<number, readonly number[]> {
+  const already = itemBattleRead.get(rom)
+  if (already) return already
+  const byItem = new Map<number, readonly number[]>()
+  for (const leaf of scanCartridge(rom, { pathFilter: ITEM_BATTLE })) {
+    if (leaf.path !== ITEM_BATTLE) continue
+    try {
+      for (const item of readItemBattleParams(leaf.bytes)) byItem.set(item.id, item.resistances)
+    } catch {
+      // A file that will not read leaves everyone's resistances whole.
+    }
+  }
+  itemBattleRead.set(rom, byItem)
+  return byItem
+}
 
 /** Each monster's battle numbers, by number — see `readMonsterBattle`. Empty when they will not read. */
 function monsterBattleOf(rom: Uint8Array): Map<number, MonsterBattle> {
@@ -1740,6 +1772,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     attending: attendingOf(rom),
     mapCodeOf: codeOf(cat),
     goods: goodsOf(rom),
+    itemResistances: itemBattleOf(rom),
     itemStats: itemStatsOf(rom),
     itemWords: itemWordsOf(rom),
     itemUses: itemUsesOf(rom),

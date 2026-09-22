@@ -55,6 +55,13 @@ export {
   readBitmapFont,
 } from './font.ts'
 export { type Grammar, readGrammar } from './grammar.ts'
+export {
+  type ItemBattleParams,
+  RESISTANCE_COUNT,
+  RESISTANCE_ELEMENTS,
+  readItemBattleParams,
+  wornResistances,
+} from './itembattle.ts'
 export { type ItemName, readItemNames } from './items.ts'
 export { ITEM_KIND_TAG, type ItemKind, readItemKinds } from './itemsort.ts'
 export { type ItemStats, readItemStats, STATS_GAP } from './itemstats.ts'

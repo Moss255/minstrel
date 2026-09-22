@@ -142,7 +142,6 @@ lives; this is the gathered list.
 | where | what is ours |
 |---|---|
 | drops | the seed of the generator a drop is rolled from, and the order the kinds of monster are rolled in — the roll itself and its table are the game's |
-| battle | the party's resistances, all whole — the game's come from what is worn, and what fills that block from the item table is not found (`docs/conformance.md`) |
 | battle numbers | **the Hero's attack and defence are strength and resilience plus what they wear** — the equipment's numbers are read, the adding is ours; the battle reference takes attack and defence as given |
 | battle | the four ways of choosing that are not weight tables — a round robin, a pair and a coin, two passes — which fall back to the even table; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
 | defeat | the Hero comes round in the village church — the game sends them to a church, which is not modelled; no text says where. **Half the gold going is the game's**: the guide, "Money on hand is halved when your characters die"; rounding down is ours |
@@ -162,6 +161,10 @@ lives; this is the gathered list.
   — the party surprising the monsters, or being surprised — and the round it
   makes is now modelled, draw for draw (`BattleState.opening`). Nothing sets
   it: every fight opens even until the field's side of it is found.
+- **The wards, and the two statuses that shift a resistance** — a quarter off
+  fire or ice for five turns, a half against one family of monsters for four,
+  and a flat 25 either way on everything but a plain blow. Read 22 September
+  (`docs/conformance.md`); no spell of the slice's casts one.
 - **What dazzle does is read** (20 September, `docs/conformance.md`): a blow that
   sight spoils misses on five faces of a die of eight. Not yet modelled.
 - **Dazzle, sand, and Weird Dance (MP drain)**, and `calls for backup`: read
