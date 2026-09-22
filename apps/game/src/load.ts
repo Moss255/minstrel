@@ -238,9 +238,12 @@ export interface Loaded {
   readonly code: string
 }
 
-/** An item as the shop and the equip panel need it: its price, and its table's letter — `w` weapons … */
+/** An item as the shop and the equip panel need it: its prices, and its table's letter — `w` weapons … */
 export interface Goods {
+  /** What a shop asks for it — see `itemPrice`. */
   readonly price: number
+  /** What a shop gives for it — see `ItemRecord.price`; 0 for what no shop buys. */
+  readonly sells: number
   readonly table: string
   /** The rarity, 0 to 5 — see `ItemRecord.rarity`, INFERRED. */
   readonly rarity: number
@@ -957,7 +960,12 @@ function goodsOf(rom: Uint8Array): Map<number, Goods> {
       if (!table) continue
       try {
         for (const item of readItemTable(bytes))
-          goods.set(item.id, { price: itemPrice(item), table, rarity: item.rarity })
+          goods.set(item.id, {
+            price: itemPrice(item),
+            sells: item.price,
+            table,
+            rarity: item.rarity,
+          })
       } catch {
         // A table that will not read prices nothing in it.
       }

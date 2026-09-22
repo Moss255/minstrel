@@ -8,12 +8,15 @@ import { readDataTable, type TableRecord } from './table.ts'
  * data tables" in FORMAT.md) of 102 records: one `0x65`, one `0x64`, 99 `0x66`
  * — a level each — and one `0x67`. A level's record is eleven integers.
  *
- * **What the columns are is INFERRED**, from the status screen's own words and
- * the numbers themselves — see FORMAT.md, "Level tables":
+ * What the columns are — see FORMAT.md, "Level tables". **Columns 1 to 10 are
+ * confirmed** against a published strategy guide: its Minstrel attribute table
+ * agrees with `level6` at all 72 of the values it gives, and its table of skill
+ * points by level with column 10 on all twelve vocations' files at every level.
+ * Column 0 is still INFERRED.
  *
  * | column | meaning |
  * |---|---|
- * | 0 | the experience the level is reached at: 0 at level 1, rising to millions |
+ * | 0 | the experience the level is reached at: 0 at level 1, rising to millions — INFERRED |
  * | 1 | strength |
  * | 2 | resilience |
  * | 3 | agility |
@@ -23,7 +26,7 @@ import { readDataTable, type TableRecord } from './table.ts'
  * | 7 | magical mending |
  * | 8 | maximum HP |
  * | 9 | maximum MP |
- * | 10 | not established: 0 at level 1, 200 at 99 on twelve of the thirteen |
+ * | 10 | the skill points gained by this level, all told: 200 at 99 |
  *
  * The `0x64`, `0x65` and `0x67` records are carried as they are.
  */
@@ -33,7 +36,7 @@ export const LEVEL_TAG = 0x66
 /** The integers in a level's record. */
 const LEVEL_VALUES = 11
 
-/** One level of a vocation. Every meaning here is INFERRED — see the module's table. */
+/** One level of a vocation — see the module's table; the experience is INFERRED. */
 export interface LevelRow {
   /** 1 for the first record, and on by one: the records are in order of experience. */
   readonly level: number
@@ -47,8 +50,11 @@ export interface LevelRow {
   readonly magicalMending: number
   readonly maxHp: number
   readonly maxMp: number
-  /** Column 10: 0 at level 1, 12 at 10 and 200 at 99 on twelve of the files. */
-  readonly unknown_10: number
+  /**
+   * Column 10: the skill points gained by this level, all told — 0 at level 1,
+   * 12 at 10 and 200 at 99 on the twelve vocations' files; 350 on `level0`.
+   */
+  readonly skillPoints: number
 }
 
 export interface LevelTable {
@@ -95,7 +101,7 @@ export function readLevelTable(bytes: Uint8Array): LevelTable {
       magicalMending: v(7),
       maxHp: v(8),
       maxMp: v(9),
-      unknown_10: v(10),
+      skillPoints: v(10),
     })
   }
   if (levels.length === 0) throw new GameFormatError('level table has no levels')

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { readMonsterBattle, readMonsterNames } from '../src/monsterdata.ts'
+import { dropOneIn, readMonsterBattle, readMonsterNames } from '../src/monsterdata.ts'
 
 /** Battle numbers built in code, from `FORMAT.md`: the head word, then 132-byte records. */
 function battle(monsters: { number: number; hp: number; exp: number; gold: number }[]): Uint8Array {
@@ -10,6 +10,8 @@ function battle(monsters: { number: number; hp: number; exp: number; gold: numbe
   for (const [r, m] of monsters.entries()) {
     const at = 4 + r * 132
     view.setUint16(at, 0x8000 | m.number, true)
+    out[at + 2] = 1
+    out[at + 3] = 7
     view.setUint16(at + 4, 22000, true)
     view.setUint16(at + 6, 22019, true)
     view.setUint32(at + 8, m.exp, true)
@@ -67,6 +69,7 @@ describe('monster data', () => {
     expect(slime).toMatchObject({
       number: 1,
       drops: [22000, 22019],
+      dropSteps: [1, 7],
       exp: 2,
       gold: 4,
       actions: [1, 2, 3, 4, 5, 6],
@@ -79,6 +82,11 @@ describe('monster data', () => {
     expect(slime?.raw).toHaveLength(132)
     expect(big?.number).toBe(900)
     expect(big?.exp).toBe(70000)
+  })
+
+  it('gives a drop step as one in so many: always, 1 in 8 to 1 in 256, or none', () => {
+    expect([0, 1, 2, 3, 4, 5, 6, 7].map(dropOneIn)).toEqual([1, 8, 16, 32, 64, 128, 256, undefined])
+    expect(dropOneIn(8)).toBeUndefined()
   })
 
   it('reads 22 resistances from the record’s tail, and only those', () => {

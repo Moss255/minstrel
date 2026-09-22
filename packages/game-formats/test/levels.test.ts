@@ -53,7 +53,7 @@ describe('level tables', () => {
       magicalMending: 16,
       maxHp: 17,
       maxMp: 18,
-      unknown_10: 19,
+      skillPoints: 19,
     })
     expect(table.levels[1]?.level).toBe(2)
     expect(table.unknown.map((record) => record.tag)).toEqual([0x65, 0x67])

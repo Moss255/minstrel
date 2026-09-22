@@ -115,6 +115,7 @@ export {
   readMinimapPicture,
 } from './minimap.ts'
 export {
+  dropOneIn,
   type MonsterBattle,
   type MonsterName,
   readMonsterBattle,

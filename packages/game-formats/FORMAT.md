@@ -836,8 +836,8 @@ action, and the head's own last four were `(255, 255)`, the herb's.
 |---|---|---|
 | `+0x00` | `u16` ×2 | what using it does: two action numbers (see "Actions"), 252 for nothing |
 | `+0x04` | `u16` | the item's id |
-| `+0x06` | `u16` | its price word, INFERRED — what a shop asks is it scaled by `+0x08`; see "The price" |
-| `+0x08` | `u16` | how the price word scales: `0xFFFF` twice, `0xFFFE` twice and one, `0xFFFD` twice less one, `0xFFFC` ten times — INFERRED; 0 and a few others on some, not established |
+| `+0x06` | `u16` | **what a shop gives for it**, its selling price — see "The price" |
+| `+0x08` | `u16` | **what a shop asks for it**: the price itself, or a code on the selling price — `0xFFFF` twice, `0xFFFE` twice and one, `0xFFFD` twice less one, `0xFFFC` ten times; 0 on some that no shop sells |
 | `+0x15`, bits 1–3 | | **rarity**, the equipment screen's stars, 0 to 5 — INFERRED, 16 September 2026, from the value alone: the copper sword and the flame shield carry 1, and two captures of the screen show one star for each; the tools carry 0 or 1 and show no stars; of the 268 weapons, 120 carry 1, 59 2, 34 3, 42 4 and 12 5 — the twelve that cost 30,000 G — with the rank correlation against price 0.67, and on every equipment table the counts fall from 1 to 5; the rusty sword and shield, the legendary bases, carry 4. The byte's bit 0 is 1 on the armour tables and 0 on weapons and shields, and its high nibble 5 or 10; neither read |
 | `+0x0A` | 22 bytes | carried: a sort position; at `+0x10` a `u16`, **the offset in the names at the table's end of the next record's item's name** — on all but the last record of the weapons (267 of 268), shields (44 of 45) and armour (182 of 183), never its own, which suggests a record begins 16 bytes before where it is read here (not established); a run of numbers that count the records; and an icon |
 
@@ -855,7 +855,7 @@ seeds, which the series uses only outside battle, have 252 second; the weapons
 and shields that do something when used in battle have 252 first and an action
 second (370, 384, 396 …).
 
-**The price** — INFERRED, and well supported: every one of the 330 items any
+**The price** — every one of the 330 items any
 shop sells has one above 0, and none of the 140 items at 0 — quest pieces, the
 celestial suit among them — is sold anywhere.
 
@@ -878,6 +878,29 @@ gives one ending so for 1 of them. The two sold items with another value, the
 bamboo lance (`0x55`) and the halberd (`0x2BC0`), are taken at twice, as most
 are: ours. Why the scale is kept so is not known. A shop's rate (`readShops`)
 multiplies it: 100 on all but one.
+
+**The word is what a shop gives, and `+0x08` what it asks — 22 September
+2026**, from the guide (see "Level tables"), whose item lists give a buying and
+a selling price for every item. That corrects two readings above:
+
+- The two "other" values are prices, not scales: the bamboo lance, `0x55`,
+  costs **85** and sells for **8**; the halberd, `0x2BC0`, costs **11,200** and
+  sells for **6,600** (printed pages 297–298) — `+0x08` and `+0x06`
+  exactly. Taken at twice, they had cost 16 and 13,200. Stornway's weapon
+  shop's own table (p. 67) has the lance at 85 too.
+- **What a shop gives is the word itself**, not half what it asks: the copper
+  sword, `0xFFFC`, sells for **15**, a tenth of its 150; the soldier's sword
+  240 and 120, the rapier 480 and 240, the iron lance 450 and 225 — each
+  `0xFFFF`, where the word is half; the dragon top 11,200 and 5,600 and the
+  dark robe 13,500 and 6,750 likewise. Items no shop sells have a selling
+  price all the same, and it is the word: the star's suit 11,750, the
+  superstar's suit 16,000, the metal slime spear 22,500, the stud poker
+  24,000 (pp. 298, 342). The guide prints the copper sword's buying
+  price as 159, against 150 on its own shop pages and in the let's play: a
+  misprint.
+
+So `itemPrice` is what a shop asks and the word what it gives. Whether a shop's
+rate touches what it gives is not established.
 
 **What an item does is not in its record** — it is in the table after the
 records, found 15 September; see "The stats" below. What follows is the search
@@ -1147,7 +1170,8 @@ column 0 is 0 on the first of every file and rises on every record after, to
 4.3 million on `level1` and 6.9 million on `level0` — the experience a level is
 reached at, INFERRED.
 
-**What the other columns are is INFERRED**, in two steps.
+**What the other columns are was INFERRED**, in two steps, and is now
+**confirmed** against a published guide — see "Confirmed by the guide" below.
 
 - **Ten columns, ten words.** The status screen's strings,
   `/data/bin/menu/str_sta.gp2/str_sta_en.bin`, run `Lv` · `Exp.` · `Strength`
@@ -1156,7 +1180,7 @@ reached at, INFERRED.
   that is experience and nine numbers — the table's first ten columns — with
   attack and defence, which come from equipment, after. Column 10 is none of
   them: 0 at level 1, 12 at level 10 and 200 at 99 on twelve files, 17 and 350
-  on `level0`. It is not established.
+  on `level0`. It is the skill points gained, all told — see below.
 - **Which is which, by vocation.** The same strings name thirteen vocations —
   `Guardian`, `Warrior`, `Priest`, `Mage`, `Martial Artist`, `Thief`,
   `Minstrel`, `Gladiator`, `Armamentalist`, `Paladin`, `Sage`, `Luminary`,
@@ -1190,10 +1214,31 @@ reached at, INFERRED.
   in 3, and the Martial Artist (11 against 23) and the Thief (11 against 18) the
   other way about. Column 4, highest on the Ranger and the Thief, is deftness.
 
-The weakest step is the last: it rests on what those vocations are, not on
-anything in the files. A level-1 status screen in the emulator, for any
-vocation whose resilience and agility differ, would settle columns 2 and 3; and
-so would one for the Mage, whose might is 18 or 0.
+The weakest step was the last: it rested on what those vocations are, not on
+anything in the files.
+
+**Confirmed by the guide — 22 September 2026.** The *Dragon Quest IX*
+Signature Series guide (Prima; the Internet Archive's scan,
+`Dragon_Quest_IX_Guide`), kept locally in `evidence/` and not committed:
+
+- **The Minstrel's attribute table** (printed page 36) gives HP, MP and the
+  seven stats at levels 1, 5, 15, 25, 40, 60, 80 and 99. `level6` agrees at
+  **all 72** of those values, under the reading above; no other file agrees at
+  more than 2. That settles columns 1 to 9, including the two taken against
+  the screen's order — 2 resilience and 3 agility (22 against 18 at level 5), 6
+  might and 7 mending (6 against 7 at level 1) — and that `level6` is the
+  Minstrel's. The guide says the Hero "starts the main game as a minstrel".
+- **The skill-point table** (printed pages 18–19) gives the points gained at
+  each vocation level: 3 at 5, 6, 8, 9, …, rising to 6 in the thirties, then 2
+  a level on two levels of every three from 50. Summed, it is **column 10 at
+  every level from 1 to 99 on all twelve vocations' files**, 200 at 99. The
+  walkthrough adds that the Hero first gets skill points at level 5 (p. 59);
+  `level0`, the Guardian's, has them from level 4, and agrees with the table
+  at 3 of the 99 levels.
+- Column 0, the experience, is not in the guide and stays INFERRED.
+
+The guide has an attribute table for every vocation. Only the Minstrel's has
+been checked; the other files' vocations still rest on the order of the names.
 
 ---
 
@@ -1225,6 +1270,13 @@ with the vocations numbered as the level tables are:
 
 The Hero's vocation names itself three ways at that number: `level6`, `str_tm`
 2106 `Minstrel`, and the spell table's 6.
+
+**Confirmed for the Minstrel — 22 September 2026.** The guide's Minstrel page
+(printed page 36; see "Level tables") lists the nine spells above, each at the
+level read here, with the MP the actions' own records give: Heal 2, Crack 3,
+Evac 3, Woosh 3, Crackle 8, Midheal 4, Zing 8, Swoosh 8, Kaswoosh 26. So the
+record is (vocation, place, level), at least on the Minstrel's records; the
+other vocations' are read the same way and have not been checked.
 
 ---
 
@@ -2579,18 +2631,49 @@ and `readMonsterNames` read them.
 | offset | type | reading | evidence |
 |---|---|---|---|
 | `+0x00` | `u16` | the monster's number, bit 15 set on all 438 | agrees with the names file |
-| `+0x04` | `u16` ×2 | its two drops | every one is an item id |
-| `+0x08` | `u32` | experience, INFERRED | the metal family: 4,096, 40,200 and 120,040, against a median of 940 |
-| `+0x0C` | `u16` | gold, INFERRED | a median of 2,490 on the bosses against 120 |
+| `+0x02` | `u8` ×2 | each drop's chance, a step: 0 always, 1–6 one in `2^(step+2)`, 7 none — INFERRED | against the guide, below |
+| `+0x04` | `u16` ×2 | its two drops, the ordinary and the rare | every one is an item id; the guide's, below |
+| `+0x08` | `u32` | experience | the metal family: 4,096, 40,200 and 120,040, against a median of 940; the guide's, below |
+| `+0x0C` | `u16` | gold | a median of 2,490 on the bosses against 120; the guide's, below |
 | `+0x18` | `u16` ×6 | its six ways of acting: action numbers (see "Actions"), INFERRED | 1 Attack on 1,064 of the 2,628 words and 225 Flee on 109; the healslime's Heal, the drakulard's Inferno, the uncommon cold's C-C-Cold Breath. The reference's own boss, Ragin' Contagion (`b006a`), has 1, 275, 1, 48, 44, 228 — the reference's six candidates exactly and in order: attack, poison attack, attack, Deceleratle, Kasap, Sweet Breath |
-| `+0x5C` | `u16` | maximum HP, INFERRED | a median of 6,500 on the bosses against 134; the metal slime's 4 |
-| `+0x5E` | `u16` | maximum MP, INFERRED | 255 on most bosses and the metal family |
-| `+0x60` | `u16` | attack, INFERRED | by order |
-| `+0x62` | `u16` | defence, INFERRED | the metal family's 256 and 512 |
-| `+0x64` | `u16` | agility, INFERRED | by order; high on the metal family |
+| `+0x5C` | `u16` | maximum HP | a median of 6,500 on the bosses against 134; the metal slime's 4; the game's code and the guide, below |
+| `+0x5E` | `u16` | maximum MP | 255 on most bosses and the metal family; likewise |
+| `+0x60` | `u16` | attack | likewise |
+| `+0x62` | `u16` | defence | the metal family's 256 and 512; likewise |
+| `+0x64` | `u16` | agility | high on the metal family; likewise |
 | `+0x6C` | `u8` ×22 | **resistances**: what it takes of each of the game's 21 elements, a hundredth each, by `element − 1`. From the game's code — see below | firespirit 50 fire, 150 ice; slime 125 of all seven; metal slime 0 of every status; **element 8, the plain Attack's, 100 on all 438**. Fifteen values in all: 0, 1, 5, 10, 15, 25, 30, 35, 50, 60, 75, 100, 125, 150, 200 |
 | `+0x82` | `u8` ×2 | copied into the battle beside them; not established | 0 on every monster looked at |
 | `+0x27`, bit 4 | | fights as a boss: draws its ways by the falling weight table — INFERRED, see "Battle weight tables" | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster |
+
+### Confirmed by the guide — 22 September 2026
+
+The *Dragon Quest IX* Signature Series guide (see "Level tables") prints, for
+each monster in its bestiary, HP, MP, attack, defence, agility, experience,
+gold, and an ordinary and a rare drop with the chance of each. For the seven
+monsters around Angel Falls (printed page 255: slime, cruelcumber, teeny
+sanguini, sacksquatch, batterfly, dracky, bodkin archer) **every one of the
+seven numbers and both items agrees with the record** — 49 numbers and 14
+items — the first item being the ordinary drop and the second the rare. The
+walkthrough's table of the area's monsters (p. 59) gives the same HP,
+experience and gold.
+
+**The drop chance** — INFERRED from the same pages. The two bytes at `+0x02`,
+one a drop, run 0 to 7, and against the chances the guide prints:
+
+| step | the guide's chance | where it was checked |
+|---|---|---|
+| 0 | 100% | King Godwyn, Barbarus, Corvus — each with one drop and 7 beside the empty second |
+| 1 | 1/8 | slime, cruelcumber, restless armour, purrestidigitator |
+| 2 | 1/16 | slime, batterfly, dracky, teeny sanguini, bodkin archer |
+| 3 | 1/32 | sacksquatch |
+| 4 | 1/64 | sacksquatch, batterfly, dracky, teeny sanguini, bodkin archer |
+| 5 | 1/128 | cruelcumber, wight emperor (both) |
+| 6 | 1/256 | restless armour, purrestidigitator |
+| 7 | — | beside item 0 on every record but ten, all legacy and grotto bosses; not established there |
+
+So one in `2^(step+2)`, with 0 a certain drop — `dropOneIn`. The table in the
+game's code that the step indexes is not found; this is the witness, not the
+code. Over all 438: step 0 on 31 first drops, 7 on 14 first and 128 second.
 
 ### Resistances, and the five numbers — from the game's code
 

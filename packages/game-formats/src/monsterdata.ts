@@ -14,15 +14,16 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | offset | type | meaning |
  * |---|---|---|
  * | `+0x00` | `u16` | the monster's number, with bit 15 set on all 438 |
- * | `+0x04` | `u16` ×2 | two item ids — its drops, INFERRED: every one names an item |
- * | `+0x08` | `u32` | experience — INFERRED: the metal family's 4,096, 40,200 and 120,040 stand out as the series' own |
- * | `+0x0C` | `u16` | gold — INFERRED: far higher on bosses and the chest monsters |
+ * | `+0x02` | `u8` ×2 | each drop's chance, a step — see {@link dropOneIn}. INFERRED, against a published guide |
+ * | `+0x04` | `u16` ×2 | two item ids — its drops, the ordinary and the rare |
+ * | `+0x08` | `u32` | experience |
+ * | `+0x0C` | `u16` | gold |
  * | `+0x18` | `u16` ×6 | six action words, not established |
- * | `+0x5C` | `u16` | maximum HP — INFERRED: a median of 6,500 on the bosses against 134, and the metal slime's 4 |
- * | `+0x5E` | `u16` | maximum MP — INFERRED: 255 on most bosses and the metal family |
- * | `+0x60` | `u16` | attack — INFERRED, by order |
- * | `+0x62` | `u16` | defence — INFERRED: the metal family's 256 and 512 |
- * | `+0x64` | `u16` | agility — INFERRED, by order |
+ * | `+0x5C` | `u16` | maximum HP |
+ * | `+0x5E` | `u16` | maximum MP |
+ * | `+0x60` | `u16` | attack |
+ * | `+0x62` | `u16` | defence |
+ * | `+0x64` | `u16` | agility |
  * | `+0x6C` | `u8` ×22 | **resistances**, a hundredth each, one an element — from the game's code |
  * | `+0x82` | `u8` ×2 | copied along with them, not established; 0 on every monster looked at |
  *
@@ -32,6 +33,12 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * that block's `+0x30`, MP `+0x32`, three more `u16`s to `+0x38`, and copying
  * 24 bytes from its `+0x40` — which are this record's `+0x5C` to `+0x64` and
  * `+0x6C`. See FORMAT.md, "Monster data", "Resistances".
+ *
+ * **The drops, experience, gold and five numbers are confirmed by a witness**:
+ * a published guide's bestiary gives HP, MP, attack, defence, agility,
+ * experience, gold and both drops for the seven monsters around Angel Falls,
+ * and the records agree at every one — 49 numbers and 14 items. See FORMAT.md,
+ * "Monster data".
  *
  * The rest of each record is carried as it is.
  */
@@ -43,6 +50,8 @@ const DATA_RECORD = 28
 export interface MonsterBattle {
   readonly number: number
   readonly drops: readonly [number, number]
+  /** Each drop's chance as a step, 0 to 7 — see {@link dropOneIn}. */
+  readonly dropSteps: readonly [number, number]
   readonly exp: number
   readonly gold: number
   readonly actions: readonly number[]
@@ -130,6 +139,7 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
     out.push({
       number: u16(0) & 0x7fff,
       drops: [u16(4), u16(6)],
+      dropSteps: [bytes[at + 2] as number, bytes[at + 3] as number],
       exp: view.getUint32(at + 8, true),
       gold: u16(12),
       actions: [0, 1, 2, 3, 4, 5].map((i) => u16(0x18 + i * 2)),
@@ -144,6 +154,24 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
     })
   }
   return out
+}
+
+/**
+ * A drop's chance, as "one in so many", from its step at `+0x02`: 0 always, 1
+ * to 6 one in `2 ** (step + 2)` — 1 in 8 to 1 in 256 — and 7 none.
+ *
+ * INFERRED, against a published guide's bestiary. Steps 1 to 6 agree with the
+ * chance it prints at every one of 20 drops checked (the seven Angel Falls
+ * monsters' 14, and the restless armour, purrestidigitator and wight
+ * emperor); 0 is the "100%" it gives King Godwyn, Barbarus and Corvus. 7 sits
+ * beside no item on every record but ten legacy and grotto bosses', whose
+ * drops the guide does not price that way — undefined here, not established.
+ * The table in the game's code that these index is not found.
+ */
+export function dropOneIn(step: number): number | undefined {
+  if (step === 0) return 1
+  if (step >= 1 && step <= 6) return 2 ** (step + 2)
+  return undefined
 }
 
 /** Parse the monsters' names: each one's number, name, plural, code and grammar. */

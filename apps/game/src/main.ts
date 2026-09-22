@@ -2766,6 +2766,7 @@ function counter(): Counter {
   return {
     name: nameOf,
     price: (id) => loaded?.goods.get(id)?.price,
+    sells: (id) => loaded?.goods.get(id)?.sells,
     divination: () => {
       const levels = loaded?.heroLevels
       if (!levels) return 'The level table did not load.'
@@ -3491,8 +3492,10 @@ function settleBattle(): void {
   } else if (battle.state.outcome === 'lost') {
     heroHp = undefined
     heroMp = undefined
-    // Ours, both: half the gold, and coming round in the village church — see
-    // `CHURCH`. The game's own rule, and any words for it, are not found.
+    // Half the gold is the game's — a published guide: "Money on hand is halved
+    // when your characters die" — though the rule is not found in code, and
+    // rounding down is ours. Coming round in the village church is ours — see
+    // `CHURCH`; the game's own words for either are not found.
     bag = pay(bag, Math.floor(bag.gold / 2)) ?? bag
     wakeInChurch = true
     lines.push(`${name} comes round in the church, restored — but half the gold is gone.`)

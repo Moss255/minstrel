@@ -14,7 +14,7 @@ const row = (level: number, exp: number) => ({
   magicalMending: 2,
   maxHp: 20 + level * 5,
   maxMp: 2 + level,
-  unknown_10: 0,
+  skillPoints: 0,
 })
 
 const table = { levels: [row(1, 0), row(2, 17), row(3, 44)], unknown: [] }

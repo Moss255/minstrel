@@ -46,13 +46,15 @@ describe('what an item is worth having', () => {
 })
 
 describe('what an item costs', () => {
-  it('is its price word, scaled as the word after it says', () => {
-    expect(itemPrice({ price: 4, unknown_0x08: 0xffff })).toBe(8)
-    expect(itemPrice({ price: 12, unknown_0x08: 0xfffe })).toBe(25)
-    expect(itemPrice({ price: 48, unknown_0x08: 0xfffd })).toBe(95)
-    expect(itemPrice({ price: 15, unknown_0x08: 0xfffc })).toBe(150)
-    // Another value there is taken at twice, as most are.
-    expect(itemPrice({ price: 8, unknown_0x08: 0x55 })).toBe(16)
+  it('is what the word after the selling price says: a code on the selling price, or itself', () => {
+    expect(itemPrice({ price: 4, buy: 0xffff })).toBe(8)
+    expect(itemPrice({ price: 12, buy: 0xfffe })).toBe(25)
+    expect(itemPrice({ price: 48, buy: 0xfffd })).toBe(95)
+    expect(itemPrice({ price: 15, buy: 0xfffc })).toBe(150)
+    // Another value there is the price itself; 0, on items no shop sells, is taken at twice.
+    expect(itemPrice({ price: 8, buy: 0x55 })).toBe(85)
+    expect(itemPrice({ price: 6600, buy: 0x2bc0 })).toBe(11200)
+    expect(itemPrice({ price: 30, buy: 0 })).toBe(60)
   })
 })
 
@@ -67,12 +69,12 @@ describe('item tables', () => {
     expect(first?.id).toBe(0x55f0)
     expect(first?.price).toBe(4)
     expect(first?.actions).toEqual([255, 255])
-    expect(first?.unknown_0x08).toBe(0xffff)
+    expect(first?.buy).toBe(0xffff)
     expect(first?.unknown_0x0a).toHaveLength(22)
     expect(first?.unknown_0x0a[21]).toBe(1)
     expect(second?.price).toBe(100)
     expect(second?.actions).toEqual([252, 252])
-    expect(second?.unknown_0x08).toBe(0)
+    expect(second?.buy).toBe(0)
   })
 
   it('refuses a head that is cut short, or records that run past the end', () => {

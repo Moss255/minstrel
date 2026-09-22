@@ -6,19 +6,21 @@ import type { Equipped, Slot } from './equipment.ts'
  * The Hero's numbers: their vocation's level table, where their experience
  * puts them in it, and what seeds have added.
  *
- * **The vocation is a choice.** The cartridge has thirteen level tables,
- * `level0` to `level12`, one to a vocation in the order the status screen names
- * them — Guardian first, Minstrel seventh (FORMAT.md, "Level tables"). Which
- * one the Hero has in the slice is not read; the Hero is taken to be a
- * Minstrel. `level0`, the Guardian's, is the other candidate, and would be
- * worth checking against a status screen in the emulator. The Minstrel is 6
- * in all three places that number vocations: the level tables, the field
- * menu's names (`str_tm` 2100 on) and the spell table.
+ * **The Hero is a Minstrel, and `level6` is the Minstrel's.** The cartridge has
+ * thirteen level tables, `level0` to `level12`, one to a vocation in the order
+ * the status screen names them — Guardian first, Minstrel seventh (FORMAT.md,
+ * "Level tables"). The code that gives the Hero their vocation is not read;
+ * what settles it is a witness. A published guide says the Hero "starts the
+ * main game as a minstrel", and its Minstrel attribute table agrees with
+ * `level6` at all 72 values it gives and its spell list with the spell table's
+ * 6; `level0`, the Guardian's, agrees at 2. The Minstrel is 6 in all three
+ * places that number vocations: the level tables, the field menu's names
+ * (`str_tm` 2100 on) and the spell table.
  */
 export const HERO_VOCATION = 'Minstrel'
-/** The Minstrel's number — see above. INFERRED. */
+/** The Minstrel's number — see above. */
 export const HERO_VOCATION_NUMBER = 6
-/** The Minstrel's level table — the seventh vocation the status screen names, INFERRED. */
+/** The Minstrel's level table — the seventh vocation the status screen names; confirmed, see above. */
 export const HERO_LEVELS = `/data/prm/level${HERO_VOCATION_NUMBER}.bin`
 /** Where the field menu's names for the vocations begin in `str_tm`: 2100 the Guardian. */
 export const VOCATION_WORDS = 2100

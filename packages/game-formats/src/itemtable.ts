@@ -11,8 +11,8 @@ import { GameFormatError } from './errors.ts'
  * |---|---|---|
  * | `0x00` | `u16` ×2 | what using it does, as two action numbers — in the field and in battle, INFERRED; 252 for nothing. See below |
  * | `0x04` | `u16` | the item's id, as the item names and the treasure use it |
- * | `0x06` | `u16` | its price word — INFERRED: every one of the 330 items a shop sells has one above 0, and none of the 140 at 0 is sold anywhere. What a shop asks is this scaled — see {@link itemPrice} |
- * | `0x08` | `u16` | `unknown_0x08`: how the price word scales, where it is `0xFFFF`, `0xFFFE`, `0xFFFD` or `0xFFFC` — see {@link itemPrice}; 0 and others on some, not established |
+ * | `0x06` | `u16` | **what a shop gives for it** — its selling price; 0 on 140 items, which no shop will buy. See {@link ItemRecord.price} |
+ * | `0x08` | `u16` | **what a shop asks for it**: the price itself, or `0xFFFF` to `0xFFFC` for one made from the selling price — see {@link itemPrice} |
  * | `0x15`, bits 1–3 | | **rarity**, the equipment screen's stars, 0 to 5 — INFERRED, see {@link ItemRecord.rarity} |
  * | `0x0A` | 22 bytes | `unknown_0x0a`, carried as they are, the rarity's byte among them |
  *
@@ -33,7 +33,7 @@ import { GameFormatError } from './errors.ts'
  * **What equipment does is not in its record** — no field of it climbs with
  * the price as attack or defence would — but in the table after the records:
  * see `itemstats.ts`. That table's first entry shares its 32 bytes with the
- * last record, so the last record's `unknown_0x08` and `unknown_0x0a` are that
+ * last record, so the last record's `buy` and `unknown_0x0a` are that
  * entry's bytes, not the record's own.
  */
 
@@ -44,10 +44,20 @@ export const NO_ACTION = 252
 
 export interface ItemRecord {
   readonly id: number
+  /**
+   * What a shop gives for it: its selling price, `+0x06`. From a published
+   * guide's item lists, which give a buying and a selling price for each: the
+   * bamboo lance sells for 8 and the halberd for 6,600, the words here, where
+   * half what a shop asks would be 42 and 5,600; the copper sword for 15, a
+   * tenth of its 150. Items no shop sells have one too: the star's suit
+   * 11,750, the stud poker 24,000. 0 on 140 items, the quest pieces and the
+   * celestial suit among them.
+   */
   readonly price: number
   /** What using it does: an action number in the field, then in battle — INFERRED; 252 for nothing. */
   readonly actions: readonly [field: number, battle: number]
-  readonly unknown_0x08: number
+  /** What a shop asks for it, or how to make that from {@link price}: `+0x08` — see {@link itemPrice}. */
+  readonly buy: number
   /**
    * The rarity, 0 to 5: the stars the equipment screen shows. INFERRED, from
    * bits 1–3 of the byte at `0x15`: the copper sword and the flame shield
@@ -62,24 +72,32 @@ export interface ItemRecord {
 }
 
 /**
- * What an item costs in a shop at its full rate: its price word, `+0x06`,
- * scaled as `+0x08` says. INFERRED, from what a let's play of the European
- * release shows the village shop asking for all 18 of its items:
+ * What an item costs in a shop at its full rate, from `+0x08`: the price itself,
+ * or one of four codes that make it from the selling price, `+0x06`.
  *
  * | `+0x08` | costs | the village shop's |
  * |---|---|---|
- * | `0xFFFF` | twice the word | 11 of 11 |
+ * | `0xFFFF` | twice the selling price | 11 of 11 |
  * | `0xFFFE` | twice, and one | 2 of 2: the chimaera wing, 25; the bandana, 45 |
  * | `0xFFFD` | twice, less one | the leather whip, 95 |
  * | `0xFFFC` | ten times | 4 of 4: the copper sword, 150 |
+ * | anything else | itself | — the bamboo lance, 85, and the halberd, 11,200, in the guide |
  *
- * And across all 330 items the shops sell, the 13 with one of the last three
- * cost, so, a price ending in 0 or 5 every time — where doubling their word
- * gives one for 1 of them. The two sold items with another value there,
- * `0x55` and `0x2BC0`, are taken at twice, as most are: **ours**.
+ * The four codes were INFERRED from what a let's play of the European release
+ * shows the village shop asking for all 18 of its items, and a published
+ * guide's table of the same shop (printed page 57) gives the same 18. The last
+ * row is the guide's: of the 330 items shops sell, the two with another value
+ * there are the bamboo lance, `0x55`, and the halberd, `0x2BC0` — 85 and
+ * 11,200, as the guide's item lists price them — and the guide gives their
+ * selling prices, 8 and 6,600, as the words at `+0x06`. So `+0x06` is what a
+ * shop gives and `+0x08` what it asks. 0 is on some items no shop sells, and
+ * is taken as twice, as most are: **ours**, with nothing riding on it.
  */
-export function itemPrice(record: Pick<ItemRecord, 'price' | 'unknown_0x08'>): number {
-  switch (record.unknown_0x08) {
+export function itemPrice(record: Pick<ItemRecord, 'price' | 'buy'>): number {
+  switch (record.buy) {
+    case 0:
+    case 0xffff:
+      return record.price * 2
     case 0xfffe:
       return record.price * 2 + 1
     case 0xfffd:
@@ -87,7 +105,7 @@ export function itemPrice(record: Pick<ItemRecord, 'price' | 'unknown_0x08'>): n
     case 0xfffc:
       return record.price * 10
     default:
-      return record.price * 2
+      return record.buy
   }
 }
 
@@ -110,7 +128,7 @@ export function readItemTable(bytes: Uint8Array): ItemRecord[] {
       id: view.getUint16(at + 4, true),
       price: view.getUint16(at + 6, true),
       rarity: ((bytes[at + 0x15] as number) >> 1) & 7,
-      unknown_0x08: view.getUint16(at + 8, true),
+      buy: view.getUint16(at + 8, true),
       unknown_0x0a: bytes.subarray(at + 0x0a, at + ITEM_RECORD_SIZE),
     })
   }

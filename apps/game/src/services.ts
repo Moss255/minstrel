@@ -7,11 +7,12 @@ import { type Bag, drop, pay, take } from './bag.ts'
  * Each is a list to choose from, drawn in the menu's box.
  *
  * **What is read:** which shop sells what, and at what rate (`readShops`), and
- * each item's price (`readItemTable`).
+ * each item's prices, what a shop asks and what it gives (`readItemTable`).
+ * Whether a shop's rate touches what it gives is not established; here it
+ * does not.
  *
  * **What is ours:**
  * - the words on every list, since the cartridge's own menu text is not read;
- * - selling at half the price, rounded down — the game's own rule is not read;
  * - the inn's price, {@link INN_PRICE}: the innkeeper's line leaves it to the
  *   engine (`<val_2>`), and no table of inn prices has been found;
  * - what the inn and the church's numbers select, which is not established.
@@ -37,8 +38,10 @@ export type Visit =
 /** What a visit needs to know about the items, and about the Hero. */
 export interface Counter {
   readonly name: (id: number) => string
-  /** An item's price, from its table; undefined for one no table lists. */
+  /** What a shop asks for an item, from its table; undefined for one no table lists. */
   readonly price: (id: number) => number | undefined
+  /** What a shop gives for an item, from its table; 0 or undefined for one it will not buy. */
+  readonly sells: (id: number) => number | undefined
   /** What divination tells: how far the Hero is from the next level. */
   readonly divination: () => string
 }
@@ -80,11 +83,6 @@ export function buyPrice(shop: Shop, price: number): number {
   return Math.floor((price * shop.rate) / 100)
 }
 
-/** What the shop gives for an item: half its price, rounded down — a choice. */
-export function sellPrice(price: number): number {
-  return Math.floor(price / 2)
-}
-
 /** The items a shop would buy back: what is in the bag, in the bag's order. */
 function forSale(bag: Bag): number[] {
   return [...bag.items.keys()]
@@ -103,8 +101,8 @@ function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
   if (selling.length === 0) return ['Nothing to sell']
   return selling.map((id) => {
     const count = bag.items.get(id) ?? 0
-    const price = counter.price(id)
-    const offer = price === undefined || price === 0 ? 'not bought' : `${sellPrice(price)} G`
+    const gives = counter.sells(id)
+    const offer = gives === undefined || gives === 0 ? 'not bought' : `${gives} G`
     return `${counter.name(id)}${count > 1 ? ` ×${count}` : ''} — ${offer}`
   })
 }
@@ -175,18 +173,18 @@ export function chooseInVisit(visit: Visit, bag: Bag, counter: Counter): Outcome
   const selling = forSale(bag)
   const id = selling[visit.cursor]
   if (id === undefined) return { visit, bag }
-  const price = counter.price(id)
-  if (price === undefined || price === 0) {
+  const gives = counter.sells(id)
+  if (gives === undefined || gives === 0) {
     return { visit: { ...visit, said: `The shop will not buy the ${counter.name(id)}.` }, bag }
   }
   const dropped = drop(bag, id) as Bag
-  const after = take(dropped, { gold: sellPrice(price) })
+  const after = take(dropped, { gold: gives })
   const left = forSale(after).length
   return {
     visit: {
       ...visit,
       cursor: Math.min(visit.cursor, Math.max(0, left - 1)),
-      said: `You sell the ${counter.name(id)} for ${sellPrice(price)} G.`,
+      said: `You sell the ${counter.name(id)} for ${gives} G.`,
     },
     bag: after,
   }

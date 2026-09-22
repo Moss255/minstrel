@@ -62,7 +62,7 @@ describe('the main menu', () => {
       magicalMending: 3,
       maxHp: 20,
       maxMp: 2,
-      unknown_10: 0,
+      skillPoints: 0,
     })
     const table = { levels: [row(1, 0), row(2, 17)], unknown: [] }
     const lines = panelLines('status', {
@@ -140,7 +140,7 @@ describe('the main menu', () => {
       magicalMending: 3,
       maxHp: 20,
       maxMp: 2,
-      unknown_10: 0,
+      skillPoints: 0,
     }
     const lines = panelLines('status', {
       hero: 'Hero',

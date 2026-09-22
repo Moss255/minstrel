@@ -10,12 +10,14 @@ import { readDataTable, type TableRecord } from './table.ts'
  * | record | values | reading |
  * |---|---|---|
  * | `0x66` | place, action | the spell list: the action at each place — 0 is Frizz, action 9 |
- * | `0x67` | vocation, place, level | a vocation learning the spell at that place, at that level — INFERRED |
+ * | `0x67` | vocation, place, level | a vocation learning the spell at that place, at that level — confirmed on the Minstrel's |
  *
  * Vocations are numbered as the level tables are, `level0` to `level12`: the
  * Mage, 3, learns Frizz at level 1 and the Priest, 2, Heal; the Warrior, the
  * Martial Artist and the Gladiator, the three with no magical might or mending,
- * learn nothing. INFERRED.
+ * learn nothing. The Minstrel's, 6, agree spell for spell and level for level
+ * with a published guide's Minstrel page — FORMAT.md; the other vocations'
+ * numbers are INFERRED.
  *
  * The `0x64` and `0x65` records are carried, not read.
  */
@@ -26,13 +28,13 @@ export const SPELL_TAG = 0x66
 export const LEARNT_TAG = 0x67
 
 export interface SpellLearnt {
-  /** The vocation, numbered as the level tables are — 6 the Minstrel. INFERRED. */
+  /** The vocation, numbered as the level tables are — 6 the Minstrel, confirmed; the rest INFERRED. */
   readonly vocation: number
   /** The spell's place in the list. */
   readonly place: number
   /** The action it is — see `readActions`. */
   readonly action: number
-  /** The level it is learnt at. INFERRED. */
+  /** The level it is learnt at — confirmed on the Minstrel's nine. */
   readonly level: number
 }
 

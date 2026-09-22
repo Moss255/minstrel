@@ -38,11 +38,11 @@ an outside witness.
 
 | question | what rides on it | how it would be settled |
 |---|---|---|
-| **Which level-table column is which.** Eleven integers a level; the meanings are INFERRED from the status screen's words and the numbers themselves, and column 10 is not established at all — 0 at level 1, 200 at 99 on twelve of the thirteen files | every number the Hero fights and survives with: attack, defence, agility, HP and MP all come from this reading | a status screen at a known level, from a let's play or the emulator, against what the menu's status panel shows at that level. `levels.ts`; game-formats' FORMAT.md, "Level tables" |
-| **Whether the Hero is a Minstrel.** `level6.bin` is taken as theirs, INFERRED from the Minstrel being 6 in all three places that number vocations; `level0.bin`, the Guardian's, is the other candidate | as above — a different table is a different curve | HP and MP at levels 1 and 10 against a video. Level 1 already agrees with the let's play under the Minstrel reading (`hero-kit.test.ts`: resilience 8, defence 14 dressed) |
+| ~~**Which level-table column is which.**~~ **Settled 22 September 2026**, by the published guide in `evidence/`: its Minstrel attribute table agrees with `level6` at all 72 values it gives, so columns 1 to 9 are as read; column 10 is **the skill points gained, all told**, agreeing with the guide's skill-point table at every level on all twelve vocations' files. Column 0, the experience, is still INFERRED | — | game-formats' FORMAT.md, "Level tables", "Confirmed by the guide" |
+| ~~**Whether the Hero is a Minstrel.**~~ **Settled 22 September 2026**: the guide says the Hero "starts the main game as a minstrel", and `level6` is the Minstrel's table (above); its spell list agrees with the spell table's 6, spell for spell and level for level. `level0` agrees with the attribute table at 2 values of 72 | — | `hero.ts`; FORMAT.md, "The spell table" |
 | **Whether monsters run from a party at the level we think.** `fld_mondata`'s values 1 and 2 are read as a monster's level and the margin the party must pass it by — INFERRED, with rank agreement of 0.84 against maximum HP and 0.88 against experience over 280 non-boss monsters | how often a fight ends in a monster fleeing, which at low level is most of them | level 5, fight slimes, count the escapes; Shift+L to 6 and count again — ours says they stop running at 6. A let's play would confirm. `docs/next.md`, "Monsters run from a strong party" |
 | **Whether the damage formula holds up the curve.** It is translated from DQIX/BattleEmulator and held to golden values, and checked against the let's play at low level only | every blow struck and taken | fights at levels 5, 20 and 50 against any video's damage numbers. `packages/sim/src/battle` |
-| **How experience is shared among a party.** The result strings name up to four members each with an amount, so the game pays per member; the split itself is not on the cartridge | Ivor's level, and the party's pace through the slice | `?ivor=1`, win a fight, read both amounts: they should sit in the ratio of the levels and sum to the monsters' total |
+| **How experience is shared among a party.** The result strings name up to four members each with an amount, so the game pays per member; the split itself is not on the cartridge. The guide says only that "lower-level characters suffer an experience penalty while leveling with a higher-level party" | Ivor's level, and the party's pace through the slice | `?ivor=1`, win a fight, read both amounts: they should sit in the ratio of the levels and sum to the monsters' total |
 | **Ivor's numbers as a guest.** 25 HP if `attnpc`'s numbers are in the level tables' order — INFERRED | whether he survives the fights he is brought into | his HP in a let's play's fight beside him, or his status screen in the emulator |
 
 ### 1b. Needs the emulator, or a video
@@ -67,7 +67,19 @@ confirm a find, and what to do if the binaries do not give it up.
   is never taken over thirty blows, the bit is defending. `docs/conformance.md`,
   "The open one".
 - **The inn's price.** No string in the binaries names an inn; no table looks
-  like prices. `INN_PRICE` is a stand-in.
+  like prices. `INN_PRICE` is a stand-in. Every line that names a price is
+  **Ivor's**, at "Ivor's Inn", and the inn opens only from 2.7, past the slice.
+- **Erinn's rest, free — seen, and not reached.** The guide says that in the
+  slice, "talk to Erinn, who'll let you get some rest. This restores HP and MP
+  without cost" (p. 59). Her talk file `098` has the offer — "Do you want to
+  call it a day?" — as labels 194 by day and 197 by night at 2.2 and 193 at
+  2.4, and the records that choose 194 and 197 go on to **event 2360**. They
+  need flag 0 set and, for 194, mark 4 (`17:0 4:0 2:4`; `17:1 4:0` for 197 —
+  op 17 not established, INFERRED day and night). Talked to with no flags,
+  Erinn gives her ordinary lines at every stage. Not traced: whether flag 0
+  and mark 4 are set in play by 2.2, and whether event 2360 restores anything
+  — no opcode in our event player restores HP. Until it is, herbs and Heal
+  aside, nothing in the slice restores the Hero whole but losing a battle.
 - ~~**The Hero's critical chance.**~~ **Settled 19 September 2026**, from the
   game's own `CalculateCritRate`: two in a hundred, plus a hundredth of a point
   for each point of deftness *past 150*, with an accessory's, a book's and a
@@ -93,10 +105,19 @@ confirm a find, and what to do if the binaries do not give it up.
   talked to.
 - **Whether the village's theme carries on into a house** or starts again, and
   what the church plays.
-- **The monsters' drop chances.** Two item ids a monster are read (INFERRED);
-  the table the drop-rate field indexes is not found, and **nothing awards a
-  drop after a battle** — `spoils` pays experience and gold only.
-- **The shops' selling price.** Ours is half, rounded down.
+- **The monsters' drop chances.** ~~Not found.~~ **Read 22 September 2026**,
+  against the guide's bestiary: the two items at `+0x04` are the ordinary and
+  the rare drop, and the bytes at `+0x02` their chances — 0 always, 1 to 6 one
+  in `2^(step+2)`, 7 none (`dropOneIn`; INFERRED, from 20 drops and 3 bosses;
+  the table in code is not found). **Nothing awards a drop after a battle** —
+  `spoils` pays experience and gold only. That is now §3, read and not
+  modelled.
+- ~~**The shops' selling price.**~~ **Settled 22 September 2026**: it is the
+  item's own, the word at `+0x06` — not half what a shop asks. The copper sword
+  sells for 15, not 75. `+0x08` is what a shop asks, and the bamboo lance's and
+  the halberd's, read before at twice the word, are their prices themselves.
+  FORMAT.md, "Items", "The price". Whether a shop's rate touches the selling
+  price is not established.
 - **The Hero's starting purse.** 180 gold — seen in a let's play, not read.
 
 ---
@@ -110,8 +131,8 @@ lives; this is the gathered list.
 |---|---|
 | battle numbers | **the Hero's attack and defence are strength and resilience plus what they wear** — the equipment's numbers are read, the adding is ours; the battle reference takes attack and defence as given |
 | battle | the flee chance, 50 in 100; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
-| defeat | the Hero comes round in the village church with half the gold gone — the game sends them to a church, which is not modelled; no text says where |
-| shops, inn | the inn's price; selling at half, rounded down |
+| defeat | the Hero comes round in the village church — the game sends them to a church, which is not modelled; no text says where. **Half the gold going is the game's**: the guide, "Money on hand is halved when your characters die"; rounding down is ours |
+| shops, inn | the inn's price |
 | items | Evacuazam to the region's outside; holy water's calm; the chimaera wing's one destination |
 | time of day | 120 s to evening, 150 s to night, from the let's play; the zone kind by the time of day — 0 by day, 1 at dusk, 2 by night |
 | chests | how far a lid goes back (110°), that it goes at the rate of the hands, and the text waiting for the motion. INFERRED: that the lid rises with the hands at all — no file animates one |
@@ -127,7 +148,10 @@ lives; this is the gathered list.
   sight spoils misses on five faces of a die of eight. Not yet modelled.
 - **Dazzle, sand, and Weird Dance (MP drain)**, and `calls for backup`: read
   from the monsters' actions, landing as ordinary attacks.
-- **The monsters' drops**: ids read, nothing awarded (§1b).
+- **The monsters' drops**: the items and their chances read, nothing awarded
+  (§1b).
+- **Erinn's rest**: the offer and the event it leads to are read, and not
+  reached in play (§1b).
 - **The field sprites' ids**: the pot, barrel and bubble numbering was found
   in overlay 17 (`0x4AFCC`) and no parser reads it yet; how a treasure's kind
   chooses among them is still in code, unread.

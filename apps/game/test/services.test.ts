@@ -8,7 +8,6 @@ import {
   INN_PRICE,
   leaveVisit,
   moveVisit,
-  sellPrice,
   viewOf,
   visitChurch,
   visitInn,
@@ -21,17 +20,23 @@ const prices = new Map([
   [2, 120],
   [3, 0],
 ])
+/** What the shop gives: the item's own selling price — thing 1's a tenth of its asking, as the copper sword's is. */
+const gives = new Map([
+  [1, 2],
+  [2, 60],
+  [3, 0],
+])
 const counter: Counter = {
   name: (id) => `thing ${id}`,
   price: (id) => prices.get(id),
+  sells: (id) => gives.get(id),
   divination: () => 'Soon.',
 }
 
 describe('the shop', () => {
-  it('asks the price at its rate, and gives half back, rounded down', () => {
+  it('asks the price at its rate', () => {
     expect(buyPrice(shop, 15)).toBe(15)
     expect(buyPrice({ ...shop, rate: 500 }, 15)).toBe(75)
-    expect(sellPrice(15)).toBe(7)
   })
 
   it('buys: takes the gold and puts the item in the bag, or says it cannot be afforded', () => {
@@ -48,13 +53,13 @@ describe('the shop', () => {
     expect(dear.visit?.kind === 'shop' && dear.visit.said).toContain('cannot afford')
   })
 
-  it('sells what the bag holds for half, and will not buy what has no price', () => {
+  it('sells what the bag holds for its own selling price, and will not buy what has none', () => {
     const bag = take(take(take(EMPTY_BAG, { item: 1 }), { item: 1 }), { item: 3 })
     const selling = chooseInVisit(moveVisit(visitShop(shop), 1, bag, counter), bag, counter).visit
     if (!selling) throw new Error('no selling')
-    expect(viewOf(selling, bag, counter).rows).toEqual(['thing 1 ×2 — 7 G', 'thing 3 — not bought'])
+    expect(viewOf(selling, bag, counter).rows).toEqual(['thing 1 ×2 — 2 G', 'thing 3 — not bought'])
     const sold = chooseInVisit(selling, bag, counter)
-    expect(sold.bag.gold).toBe(7)
+    expect(sold.bag.gold).toBe(2)
     expect(sold.bag.items.get(1)).toBe(1)
     const refused = chooseInVisit(moveVisit(selling, 1, bag, counter), bag, counter)
     expect(refused.bag).toBe(bag)
