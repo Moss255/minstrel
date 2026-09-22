@@ -29,7 +29,10 @@ import {
  * - an attack's damage, `FUN_0207564c`;
  * - a monster's blow dodged 2 times in 100;
  * - defending halving a blow, from the round's start — though not the 0-or-1
- *   blow;
+ *   blow. **Still the reference's**: the halving found in the game's own
+ *   resolver belongs to a fighter at maximum tension, not to a defence, and
+ *   the Defend command's own handler is not located — `docs/conformance.md`,
+ *   "It was not defending";
  * - the party's critical hit: a draw below 10,000 under {@link Rules.critical},
  *   dealing the attacker's attack power times 0.95 to 1.05;
  * - a spell's going haywire multiplying its amount by 1.5 to 2.0

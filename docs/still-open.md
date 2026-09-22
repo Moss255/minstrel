@@ -57,15 +57,15 @@ confirm a find, and what to do if the binaries do not give it up.
   for a battle that can be fled; what would still be worth seeing is the flag —
   that a boss's HP does not vary. **The witness**: the same monster in two battles falling to
   different totals of damage — a slime's 8 would be 6 to 8.
-- **Whether a defended blow that comes to nothing can still deal 1.** The
-  game halves a damaging action on a status bit of the target's that is
-  INFERRED to be defending, and does it *after* the 0-or-1 coin — so a
-  defended 0-or-1 would always be 0, and the party's blows on a defending
-  monster would be halved too. The reference says a defended 0-or-1 still
-  deals 0 or 1, and the sim keeps that until this is seen. **The witness**:
-  defend with a defence high enough that a slime's blow comes to nothing; if 1
-  is never taken over thirty blows, the bit is defending. `docs/conformance.md`,
-  "The open one".
+- ~~**Whether a defended blow that comes to nothing can still deal 1.**~~ The
+  question is **gone as it stood — 22 September 2026**: the bit that halves was
+  read as defending and is **maximum tension**, set by the psyche-up ladder and
+  by nothing else in the ROM (`docs/conformance.md`, "It was not defending").
+  So the game's halving is not a defence, and no witness settles our defending
+  by watching it. **What is open now**: what the Defend command does at all —
+  the status word has no one-turn flag, so it lives in the command's own
+  handler or in the action data, neither located. Ours is the reference's half,
+  and the 0-or-1 coin before it.
 - **The inn's price.** No string in the binaries names an inn; no table looks
   like prices. `INN_PRICE` is a stand-in. Every line that names a price is
   **Ivor's**, at "Ivor's Inn", and the inn opens only from 2.7, past the slice.
@@ -134,7 +134,7 @@ lives; this is the gathered list.
 |---|---|
 | drops | the seed of the generator a drop is rolled from, and the order the kinds of monster are rolled in — the roll itself and its table are the game's |
 | battle numbers | **the Hero's attack and defence are strength and resilience plus what they wear** — the equipment's numbers are read, the adding is ours; the battle reference takes attack and defence as given |
-| battle | the flee chance, 50 in 100; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
+| battle | defending, which halves a blow — the reference's, the game's own Defend command being unlocated; the flee chance, 50 in 100; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
 | defeat | the Hero comes round in the village church — the game sends them to a church, which is not modelled; no text says where. **Half the gold going is the game's**: the guide, "Money on hand is halved when your characters die"; rounding down is ours |
 | shops, inn | the inn's price |
 | items | Evacuazam to the region's outside; holy water's calm; the chimaera wing's one destination |

@@ -34,7 +34,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **The rate doubling** | `× 2.0f` when the character has trait `0x11d` and `func_ov000_02155a04` of them is under `0.25f` | not modelled | read, not understood: what the trait is and what the quarter is a quarter *of* are not established |
 | **A coin instead of the roll** | actions `0x48` and `0x70` take `NextRandomMax(2) == 0` in place of the critical roll, in `func_ov024_021eb5d0` | not modelled | read. INFERRED: the all-or-nothing blows, which land a critical half the time |
 | **A blow that comes to nothing** | the end of `func_ov024_021e6a90`, `0x021e7824`: damage not above nothing, not dodged, not blocked → `NextRandomMax(2)` | `below(2)` | **the game's, and it changed ours.** The code never asks whose blow it is: **the party's feeble blows deal 0 or 1 as a monster's do.** The reference had it for monsters only. Closed 20 September |
-| **Defending** | `× 0.5f` at `0x021e7a80`, on an action of kind 1 whose target carries status bit `0x1000000` | the reference's halving | **read, and not taken up.** The bit is INFERRED to be defending and nothing that sets it was found. If it is, the game halves *after* the coin — a defended 0-or-1 is always 0 — and halves the party's blows on a defending monster too; the reference says otherwise on the first. See below |
+| **Defending** | not found. The halving at `0x021e7a80` belongs to **maximum tension**, not to a defence — see below | the reference's halving | **ours.** The bit `0x1000000` is tension at level 4, set by the psyche-up ladder and by nothing else in the ROM; the Defend command's own handler is not located. What the simulation halves is the reference's rule |
 | **The whole number, and the cap** | `_ffix` at `0x021e7b28`, then the lower of it and the action's `+0x1C` low 14 bits | truncates; no cap | read into the oracle. Frizz 999, Frizzle 1999, Kafrizz 2999; the plain Attack has none |
 | **A shield's chance of blocking** | `func_ov000_02156118` → `func_02084ee8`: every worn piece's ten bits over `10.0f`, summed; nothing without a shield; not truncated | `blockChance`, from the item table | **the game's, exactly**, at every value the field can hold. It was once in a hundred for any shield, the reference's — which is what the game's comes to for the bronze and the iron. Closed 20 September |
 | **Each target's die** | `NextRandomMax(100)` at the top of each target's pass, kept at `[battle + 0x8e6e]` | `below(100)`, spent | **the game's.** Missed in the first reading of the resolver; read by the dodge for a target in a state not established, and otherwise by nothing |
@@ -48,7 +48,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
-| **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
+| **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's; and the **level's own multiplier**, `func_02074738` reading the table at `0x020e88f8`: `1.0 1.5 2.5 4.0 6.0` for the party, `1.0 1.3 2.0 3.0 4.5` for a monster | not modelled | read into the oracle; levels 10 to 19 all double the bonus. A fighter's tension level is `[status + 0x24]`, 0 to 4, with bits `0x800000` and `0x1000000` saying which — see below. Nothing in the slice psyches up |
 | **Buffs** | the six `Calculate…BuffMultiplier`s | `levelled`, for defence and agility | **the game's for the two the slice casts** — Kasap's and Deceleratle's levels multiply as the game's do, half again up and a half then a quarter down. The other four are read into the oracle and not modelled, there being no spell in the slice that casts them. A quarter a level on attack; a half on defence, agility and the magics; defence *down* is a half and then three quarters, not a half a level; charm never falls below whole |
 | **A stat after its multiplier** | `RoundUp` — `0.5f + x`, truncated | `levelled` | **the game's**, at every stat from 0 to 2,000 at each of the five levels. It truncated, the reference's way, which was a point low on every odd half: a defence of 41 at −1 is 21 to the game and was 20 to us |
 
@@ -510,26 +510,53 @@ In the game's order:
 10. Action `0xAF` — **Double-Edged Slash** — has a quarter of the number kept
     at `[battle + 0x8e38]`: INFERRED, the recoil.
 
-### The open one: is `0x1000000` defending?
+### It was not defending: `0x1000000` is maximum tension — 22 September 2026
 
-For: it halves, it halves only what does damage, and it is the target's.
-Against: the same bit on an *attacker* means something at steps 6 and the
-head, which defending has no business meaning; nothing that sets it was found
-(the status object at combatant `+0x138` is never written through that path in
-overlays 0 or 24 — it is set by a method elsewhere); and it puts the halving
-after the coin, where the reference is explicit that a defended 0-or-1 still
-deals 0 or 1.
+**Settled, and it closes the question the ledger carried.** The bit lives at
+`[combatant + 0x138] + 0x14`, the status object's flag word, which overlay 24
+reads through the one-line predicate `func_ov024_021dd260`. Its writers are all
+in the ARM9, and there are four: `func_02088150` sets it (`0x0208819c`,
+`orr r2, r2, #0x1000000`), `func_020881ac` clears it, `func_02087704` clears it
+as a step decays, and `func_02088474` clears it conditionally.
 
-So the simulation keeps the reference's defending, and the oracle states the
-game's reading with the bit's name left as a number. **A witness settles it**:
-defend with a defence high enough that a slime's blow comes to nothing, and
-see whether 1 is ever taken. Never, over thirty blows, and the bit is
-defending and the reference is wrong.
+**What sets it is the tension ladder, not a Defend command.** The setter also
+stores **4** in the byte at `[status + 0x24]`, and its callers are the
+psyche-up routines: `func_0208767c`, which steps that byte 1, 2, 3 and sets the
+bit only as it reaches 4, and the ladder in `func_ov024_021dc93c`, which emits
+messages `0x31`, `0x32`, `0x33` through `func_02088220` — the setter of
+`0x800000`, which stores the level in the same byte — and calls this one with
+message `0x34` when the level to reach is 4. So:
+
+- **`0x800000`** is tension at levels 1 to 3, **`0x1000000`** tension at 4, and
+  **`[status + 0x24]`** is the level itself, a signed byte from 0 to 4;
+- the level indexes a table of ten floats at `0x020e88f8` through
+  `func_02074738(level, isMonster)` — **`1.0 1.5 2.5 4.0 6.0`** for the party
+  and **`1.0 1.3 2.0 3.0 4.5`** for a monster — and the symbol immediately
+  after it in the ARM9 is `CalculateTensionBonus`, already named by the decomp;
+- it is spent when its carrier acts: `ResolveAction` clears both tension bits
+  once the action resolves, and `func_02087704` decays the level, swapping
+  `0x1000000` off for `0x800000` at 3 and clearing that at 0.
+
+That also explains the bit on the *attacker*, which was what made "defending"
+doubtful: at the head of the resolver it writes a message code — 1 psyched up,
+2 at maximum — for tension spent on a blow that does nothing, and at step 6 it
+multiplies the damage by that table.
+
+**So the halving at `0x021e7a80` is not a defence.** It is *a target at
+maximum tension takes half from an action of kind 1*. The simulation's
+defending is the reference's, and stays **ours**: nothing in the ARM9 or any of
+the 35 overlays sets that bit from a Defend command, and the Defend command's
+own handler is not located — the search covered every module's writes of the
+status word and every call into the flag class, and every other bit of that
+word carries a multi-turn duration byte, which a one-turn defence would not.
+The witness experiment is no longer needed to settle the bit; what it would now
+measure is our own stand-in.
 
 ## Still to read, in the order it is wanted
 
-- what sets status bit `0x1000000`, which says whether the halving is
-  defending — or the witness above, which is cheaper;
+- **what the Defend command does**, which is still unlocated: the status word
+  has no one-turn flag, so the halving may live in the command's own handler or
+  in the action data rather than in a status bit;
 - the steps of the end of a blow marked *not followed* above: the metal body's
   zeroing, the party's one more, the attacker's status table, the combo table;
 - what armour and accessories do to the party's resistances, and the wards;

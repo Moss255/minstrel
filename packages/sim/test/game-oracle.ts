@@ -133,6 +133,26 @@ export function calculateTensionBonus(tension: number, attackerLevel: number): n
   return f(levelMultiplier * f(tension))
 }
 
+/**
+ * What a fighter's tension level multiplies its damage by — `func_02074738`,
+ * which indexes the ten floats at `0x020e88f8` by the level at
+ * `[status + 0x24]`, 0 to 4, the party's column and a monster's.
+ *
+ * The level is the psyche-up ladder's: bit `0x800000` of the status word says
+ * 1 to 3 and `0x1000000` says 4, and both are cleared once its carrier acts.
+ * Nothing in the slice psyches up, so this is read and not modelled — see
+ * `docs/conformance.md`, "It was not defending".
+ */
+export const TENSION_MULTIPLIER = {
+  party: [1.0, 1.5, 2.5, 4.0, 6.0],
+  monster: [1.0, 1.3, 2.0, 3.0, 4.5],
+} as const
+
+export function tensionMultiplier(level: number, isMonster: boolean): number {
+  const table = isMonster ? TENSION_MULTIPLIER.monster : TENSION_MULTIPLIER.party
+  return f(table[Math.max(0, Math.min(4, level))] as number)
+}
+
 /** The buff multipliers of `BasicAttackCalculation.cpp`, by level. */
 export const buffMultiplier = {
   /** A quarter a level, either way. */

@@ -42,6 +42,7 @@ import {
   rollsEvade,
   rollsLands,
   roundUp,
+  tensionMultiplier,
 } from './game-oracle.ts'
 
 /**
@@ -287,6 +288,15 @@ describe('what is read and not yet in the simulation', () => {
     // Charm never goes below whole.
     expect(buffMultiplier.charm(-2)).toBe(1)
     expect(buffMultiplier.magic(-1)).toBe(0.5)
+  })
+
+  it('tension multiplies a blow by its level’s own number, the party’s and a monster’s apart', () => {
+    expect([0, 1, 2, 3, 4].map((l) => tensionMultiplier(l, false))).toEqual([1, 1.5, 2.5, 4, 6])
+    expect(tensionMultiplier(4, true)).toBe(4.5)
+    // A monster's 1.3 is a float, and not a tenth and three.
+    expect(tensionMultiplier(1, true)).toBe(Math.fround(1.3))
+    // Past the ends it holds, as the byte cannot pass them.
+    expect(tensionMultiplier(9, false)).toBe(6)
   })
 
   it('a stat is rounded half up after its multiplier, before the blow is worked out', () => {
