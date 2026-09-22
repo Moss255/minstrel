@@ -3,6 +3,7 @@ import {
   criticalDamage,
   dealt,
   drawnAmount,
+  GUARD_LEVELS,
   initiative,
   partyAmount,
   physicalDamage,
@@ -222,6 +223,8 @@ export interface Spell {
    * rules' flat chance stands.
    */
   readonly criticalPercent?: number
+  /** Whether a guard halves it — its record's `defendable`; 243 actions carry it. */
+  readonly defendable?: boolean
 }
 
 /** What a change of state does, and its chance in 100 of landing — see `states.ts`. */
@@ -352,6 +355,8 @@ export interface BattleState {
   readonly canFlee: boolean
   /** How the fight opened, which decides who sits the first round out — see {@link Opening}. */
   readonly opening?: Opening
+  /** How many times the party has tried to flee this battle — see {@link fleeChance}. */
+  readonly fleeAttempts?: number
 }
 
 export interface Rules {
@@ -359,8 +364,6 @@ export interface Rules {
   readonly critical: number
   /** One of the party dodging a blow, in 100 — the game's own two, `func_ov000_02156270`. */
   readonly dodge: number
-  /** Fleeing, in 100 — ours: the reference does not model it. */
-  readonly flee: number
   /** A spell going haywire, in 10,000 — the reference's, for every spell it casts. */
   readonly magicCritical: number
   /**
@@ -374,7 +377,6 @@ export interface Rules {
 export const DEFAULT_RULES: Rules = {
   critical: 200,
   dodge: 2,
-  flee: 50,
   magicCritical: 100,
   choice: [43, 42, 43, 43, 42, 43],
 }
@@ -444,6 +446,7 @@ export function startBattle(
     outcome: 'ongoing',
     canFlee,
     opening,
+    fleeAttempts: 0,
   }
 }
 
@@ -475,6 +478,56 @@ export function withMp(state: BattleState, mp: ReadonlyMap<number, number>): Bat
  * `0x0215d790`.
  */
 export const SURPRISED_ACTS_BELOW = 67
+
+/**
+ * The least chance in a hundred a flight has, by how many have been tried in
+ * this battle — the game's table at `0x02182c04`, `25 50 75 100`, which its
+ * roll takes the greater of against what the party's own numbers give. **Ours**:
+ * holding the count at the table's end, where the game reads on into `65535`
+ * and then zeroes that nothing was found to reach.
+ */
+export const FLEE_FLOOR = [25, 50, 75, 100] as const
+
+/**
+ * Whether the party gets away, and what it costs in draws — the game's
+ * `func_ov000_0215f7a8`, which `func_ov026_021dd3dc` calls once for the
+ * members who chose to flee.
+ *
+ * In the game's order:
+ *
+ * 1. a battle whose setup forbids it never lets go — {@link BattleState.canFlee};
+ * 2. the party **surprised the monsters**: away, and no draw;
+ * 3. **nothing left that can act**: away, and no draw;
+ * 4. **three times what the monsters have** — the mean of attack and defence
+ *    over each side, unbuffed — **not above the party's**: away, and no draw;
+ * 5. otherwise a chance of `10 + deftness ÷ 20` — INFERRED: the field the game
+ *    reads is ten bits of the combatant's, and what it holds is not
+ *    established — held up to the floor above, and a draw below a hundred has
+ *    to come in under it.
+ *
+ * **The draw is the world's**, `GetBTRandom()`, not the battle's: fleeing
+ * spends none of the battle's own numbers. The caller hands the world's
+ * generator in; without one this takes the battle's, which is **ours**.
+ */
+export function fleeChance(
+  state: BattleState,
+  fighters: readonly FighterState[],
+  actor: number,
+): { certain: boolean; chance: number } {
+  const mine = fighters[actor]
+  if (!state.canFlee || !mine) return { certain: false, chance: 0 }
+  if (state.opening === 'monstersSitOut') return { certain: true, chance: 100 }
+  const standing = (side: Side) =>
+    fighters.filter((f) => f.side === side && f.hp > 0 && !f.fled && f.states.sleep === undefined)
+  const foes = standing('foes')
+  if (foes.length === 0) return { certain: true, chance: 100 }
+  const worth = (of: readonly FighterState[]) =>
+    of.reduce((sum, f) => sum + f.attack + f.defence, 0) / Math.max(1, of.length)
+  if (3 * worth(foes) <= worth(standing('party'))) return { certain: true, chance: 100 }
+  const own = Math.trunc(Math.fround(Math.fround(mine.deftness ?? 0) * Math.fround(0.05))) + 10
+  const floor = FLEE_FLOOR[Math.min(state.fleeAttempts ?? 0, FLEE_FLOOR.length - 1)] as number
+  return { certain: false, chance: Math.max(own, floor) }
+}
 
 /** Standing and still in the battle: not fallen, and not fled. */
 const alive = (f: FighterState) => f.hp > 0 && !f.fled
@@ -554,6 +607,11 @@ export function playRound(
   commands: ReadonlyMap<number, Command>,
   rng: BattleRng,
   rules: Rules = DEFAULT_RULES,
+  /**
+   * The world's generator, which a flight is drawn from — `GetBTRandom()`.
+   * Without it the battle's own stands in, which is **ours**.
+   */
+  world?: BattleRng,
 ): { state: BattleState; events: BattleEvent[] } {
   if (state.outcome !== 'ongoing') return { state, events: [] }
   const events: BattleEvent[] = []
@@ -589,6 +647,7 @@ export function playRound(
     .map(({ i }) => i)
 
   let outcome: Outcome = 'ongoing'
+  let attempts = state.fleeAttempts ?? 0
   const setStates = (target: number, patch: Partial<States>) => {
     fighters = fighters.map((f, i) =>
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
@@ -643,7 +702,12 @@ export function playRound(
       continue
     }
     if (command.kind === 'flee') {
-      const escaped = state.canFlee && rng.below(100) < rules.flee
+      // **The game's**: a flight that is certain spends no draw, and the rest
+      // is a draw below a hundred under the chance — from the world's
+      // generator, so a battle's own numbers are untouched by it.
+      const { certain, chance } = fleeChance({ ...state, fleeAttempts: attempts }, fighters, actor)
+      const escaped = certain || (chance > 0 && (world ?? rng).below(100) < chance)
+      if (!certain && chance > 0) attempts++
       events.push({ kind: 'flee', actor, escaped })
       if (escaped) {
         outcome = 'fled'
@@ -737,6 +801,9 @@ export function playRound(
             critical,
             resistance: resistanceTo(them.resist, spell.element ?? 0),
             ...(spell.cap ? { cap: spell.cap } : {}),
+            // A guard halves what defending works on — Frizz and Crack are
+            // among them, a heal and a herb are not.
+            ...(them.defending && spell.defendable ? { guard: GUARD_LEVELS[1] } : {}),
           })
         } else if (critical && spell.amount) amount = criticalDamage(rng, amount)
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
@@ -902,26 +969,20 @@ export function playRound(
     // or blocked, zeroed late and given no coin; and for one that came to
     // nothing and was neither, a draw below 2 — **whoever struck it**, which
     // the reference had for a monster's blow only.
-    // What was worked out, before the coin: the reference's halving is not the coin's.
-    const worked = damage
+    // **Defending is the game's** — the guard level the Defend command sets,
+    // which halves the damage where the action is one defending works on
+    // (`0x021e75d0`: the plain attack is, a heal and a herb are not). It is
+    // applied before the 0-or-1 coin, so a defended blow that comes to
+    // nothing still deals 0 or 1; and the code never asks whose blow it is,
+    // so a monster's guard halves the party's blow as well.
     damage = dealt(rng, damage, {
       critical,
       attack: me.attack,
       resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
       dodged,
       blocked,
+      ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),
     })
-    if (dodged || blocked || damage <= 0 || worked <= 0) {
-      // Nothing to halve — and the 0-or-1 blow is not halved, the reference's.
-    } else if (me.side === 'foes' && !critical && them.defending) {
-      // The reference's: defending halves a monster's blow that deals
-      // something. The game halves a damaging action (×0.5 at 0x021e7a80) on a
-      // status bit of the target's that is INFERRED to be defending, and does
-      // so after the coin above, whoever strikes — which would make a defended
-      // 0-or-1 always 0 and halve the party's blows too. Not taken up until the
-      // bit is known; `docs/conformance.md`, "What the rest of a blow does".
-      damage = Math.trunc(damage / 2)
-    }
     // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
     // Rolled only for a blow that has dealt something, and not for one already
     // poisoned — both the game's, from the rider's handler (`func_ov024_021e303c`),
@@ -974,7 +1035,10 @@ export function playRound(
   }
 
   fighters = fighters.map((f) => ({ ...f, defending: false }))
-  return { state: { ...state, fighters, round: state.round + 1, outcome }, events }
+  return {
+    state: { ...state, fighters, round: state.round + 1, outcome, fleeAttempts: attempts },
+    events,
+  }
 }
 
 /** What winning is worth: every foe's experience and gold, added up. */

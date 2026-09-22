@@ -378,6 +378,58 @@ describe('a battle', () => {
     expect(state.fighters[0]?.hp).toBe(0)
   })
 
+  it('halves the party’s blow on a guarding monster, as the game halves either way', () => {
+    // The game never asks whose blow it is: it reads the target's guard level.
+    const foe = blob('slime', 99, 1)
+    const both = new Map<number, Command>([
+      [0, { kind: 'attack', target: 1 }],
+      [1, { kind: 'defend' }],
+    ])
+    let halved = 0
+    let open = 0
+    for (let seed = 1n; seed <= 60n; seed++) {
+      const guard = playRound(
+        startBattle([{ ...hero, agility: 99 }, foe]),
+        both,
+        new BattleRng(seed),
+      )
+      const plain = playRound(
+        startBattle([{ ...hero, agility: 99 }, foe]),
+        attackFirstFoe,
+        new BattleRng(seed),
+      )
+      const hit = (events: typeof guard.events) =>
+        events.find((e) => e.kind === 'attack' && e.target === 1)
+      const a = hit(guard.events)
+      const b = hit(plain.events)
+      if (a?.kind !== 'attack' || b?.kind !== 'attack' || a.dodged || b.dodged) continue
+      halved += a.damage
+      open += b.damage
+    }
+    expect(halved).toBeGreaterThan(0)
+    // Half, give or take what truncation and the 0-or-1 coin do.
+    expect(halved).toBeLessThan(open * 0.75)
+  })
+
+  it('lets a defended blow that comes to nothing still deal 1, the game’s order', () => {
+    // A guard is applied before the coin, so a blow it takes to nothing is
+    // still 0 or 1 — which is what the reference said and the game bears out.
+    const feeble = { ...blob('slime', 99, 1), agility: 99 }
+    const defend = new Map<number, Command>([[0, { kind: 'defend' }]])
+    const dealt = new Set<number>()
+    for (let seed = 1n; seed <= 80n; seed++) {
+      const round = playRound(
+        startBattle([{ ...hero, defence: 400 }, feeble]),
+        defend,
+        new BattleRng(seed),
+      )
+      for (const event of round.events) {
+        if (event.kind === 'attack' && event.target === 0 && !event.dodged) dealt.add(event.damage)
+      }
+    }
+    expect([...dealt].sort()).toEqual([0, 1])
+  })
+
   it('lets a defending hero take half, and never a critical from a foe', () => {
     const strong = { ...blob('ogre', 999, 40), agility: 1 }
     const defend = new Map<number, Command>([[0, { kind: 'defend' }]])
@@ -453,7 +505,6 @@ describe('a battle', () => {
     expect(DEFAULT_RULES).toEqual({
       critical: 200,
       dodge: 2,
-      flee: 50,
       magicCritical: 100,
       choice: [43, 42, 43, 43, 42, 43],
     })

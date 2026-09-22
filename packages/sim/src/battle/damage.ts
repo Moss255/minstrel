@@ -269,6 +269,11 @@ export function dealt(
     readonly dodged?: boolean
     readonly blocked?: boolean
     readonly cap?: number
+    /**
+     * What the target's guard does to it — {@link GUARD_LEVELS} at its guard
+     * level, 0.5 for one defending. Whole when not given.
+     */
+    readonly guard?: number
   },
 ): number {
   const f = Math.fround
@@ -284,12 +289,24 @@ export function dealt(
     if (d < floor) d = floor
   }
   d = f(d * f(to.resistance))
+  // The target's guard, before the coin below — `0x021e7614`.
+  if (to.guard !== undefined && to.guard !== 1) d = f(d * f(to.guard))
   if (to.blocked || to.dodged) d = 0
   else if (d <= 0 && to.resistance > 0) d = f(rng.below(2))
   let whole = Math.trunc(d)
   if (to.cap && to.cap < whole) whole = to.cap
   return whole
 }
+
+/**
+ * What a guard does to a blow, by the guard level a fighter carries — the
+ * game's table of four floats at `0x020e88c0`, which
+ * `CalculateFinalDamage` reads through `func_02074938` (`0x021e7608`).
+ *
+ * **Defending sets level 1**, a half. Levels 2 and 3 are in the table and
+ * nothing was found to set them.
+ */
+export const GUARD_LEVELS = [1, 0.5, 0.1, 0] as const
 
 /**
  * The HP a monster comes to a battle with — the game's `func_02089630`, which

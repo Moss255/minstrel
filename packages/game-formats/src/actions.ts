@@ -125,6 +125,12 @@ export interface Action {
    * fleeing and the medicinal herb do not. 156 of 681 actions have it.
    */
   readonly evadable: boolean
+  /**
+   * Whether defending halves it — `+0x10`, bit 4. `CalculateFinalDamage`
+   * (`0x021e75d0`) looks at this before it reads the target's guard level:
+   * without it, defending does nothing against the action.
+   */
+  readonly defendable: boolean
   /** Whether a shield may block it — `+0x10`, bit 6, read the same way by `func_ov000_02156e30`. 162 of 681. */
   readonly blockable: boolean
   /**
@@ -312,6 +318,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       reach: (bytes[at + 0x17] as number) >> 4,
       evadable: (view.getUint32(at + 0x10, true) & 0x20) !== 0,
       blockable: (view.getUint32(at + 0x10, true) & 0x40) !== 0,
+      defendable: (view.getUint32(at + 0x10, true) & 0x10) !== 0,
       alwaysCritical: ((view.getUint32(at + 8, true) >>> 29) & 1) === 1,
       criticalPercent: (view.getUint32(at + 0x14, true) >>> 21) & 0x7f,
       spoiltBySight: (view.getUint32(at + 0x10, true) & 8) !== 0,

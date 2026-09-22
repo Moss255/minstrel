@@ -249,6 +249,7 @@ export interface Castable {
     readonly foeChance: number
     readonly chanceIsAccuracy: boolean
     readonly evadable: boolean
+    readonly defendable?: boolean
     readonly haywire: boolean
     /** Its record's own multiplier on a caster's chance of going haywire. */
     readonly criticalPercent?: number
@@ -299,6 +300,7 @@ export function battleSpellOf(
       ...(action.rolls?.criticalPercent === undefined
         ? {}
         : { criticalPercent: action.rolls.criticalPercent }),
+      ...(action.rolls?.defendable === undefined ? {} : { defendable: action.rolls.defendable }),
     },
     name: { name: action.name },
     message: action.message,
@@ -464,6 +466,11 @@ export interface BattleScene {
   readonly state: BattleState
   /** The battle's own numbers. Drawn from as the battle goes: not copied. */
   readonly rng: BattleRng
+  /**
+   * The world's numbers, which a flight is drawn from — the game's
+   * `GetBTRandom()`, not the battle's. See `fleeChance`.
+   */
+  readonly world?: BattleRng
   readonly phase: Phase
   readonly cursor: number
   /** The message on show while telling — the first — and those still to come. */
@@ -492,6 +499,8 @@ export function beginBattle(
   seed: bigint,
   options: {
     readonly canFlee: boolean
+    /** The world's generator, which a flight is drawn from — see `BattleScene.world`. */
+    readonly world?: BattleRng
     readonly hp?: ReadonlyMap<number, number>
     /** MP each fighter comes in with, where it is not all of it. */
     readonly mp?: ReadonlyMap<number, number>
@@ -507,6 +516,7 @@ export function beginBattle(
   const scene: BattleScene = {
     state,
     rng: new BattleRng(seed),
+    ...(options.world ? { world: options.world } : {}),
     phase: 'telling',
     cursor: 0,
     pages: [],
@@ -910,7 +920,13 @@ export function withPages(scene: BattleScene, pages: readonly string[]): BattleS
 
 function play(scene: BattleScene, command: Command): BattleScene {
   const party = partyIndex(scene.state)
-  const { state, events } = playRound(scene.state, new Map([[party, command]]), scene.rng)
+  const { state, events } = playRound(
+    scene.state,
+    new Map([[party, command]]),
+    scene.rng,
+    undefined,
+    scene.world,
+  )
   const pages = events.map((event) => tell(scene, event, state))
   const cues = events.map((event) => cuesOf(event, state))
   const hero = labelsOf(state)[party] ?? '?'

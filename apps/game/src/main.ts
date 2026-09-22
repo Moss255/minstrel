@@ -3112,6 +3112,9 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
   playBattleMusic()
   battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
+    // A flight is drawn from the world's generator, not the battle's — the
+    // game's `GetBTRandom()`; see `fleeChance`.
+    world: roamRng,
     hp,
     mp: new Map([[0, heroMp ?? row.maxMp]]),
     known,

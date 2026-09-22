@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Fighter, playRound, startBattle } from '../src/battle/battle.ts'
+import { type Fighter, fleeChance, playRound, startBattle } from '../src/battle/battle.ts'
 import { BattleRng } from '../src/battle/rng.ts'
 
 /**
@@ -64,5 +64,70 @@ describe('the round a surprise opens', () => {
     const on = { ...first.state, opening: 'partySitsOut' as const }
     const second = playRound(on, defending, new BattleRng(5n))
     expect(second.events.some((event) => 'actor' in event && event.actor === 0)).toBe(true)
+  })
+})
+
+describe('what it takes to get away', () => {
+  const strong = (name: string) => ({ ...monster(name, 7), attack: 60, defence: 60 })
+  const fleeing = new Map([[0, { kind: 'flee' as const }]])
+
+  it('gets away outright, and spends no draw, where the party opened the fight', () => {
+    const world = new BattleRng(9n)
+    const state = startBattle([hero, strong('a')], true, 'monstersSitOut')
+    const { events } = playRound(state, fleeing, new BattleRng(1n), undefined, world)
+    expect(events).toContainEqual({ kind: 'flee', actor: 0, escaped: true })
+    expect(world.drawn).toBe(0)
+  })
+
+  it('gets away outright where three times the monsters’ numbers are not above the party’s', () => {
+    const world = new BattleRng(9n)
+    const feeble = { ...monster('a', 7), attack: 1, defence: 1 }
+    const { events } = playRound(
+      startBattle([{ ...hero, attack: 40, defence: 40 }, feeble]),
+      fleeing,
+      new BattleRng(1n),
+      undefined,
+      world,
+    )
+    expect(events).toContainEqual({ kind: 'flee', actor: 0, escaped: true })
+    expect(world.drawn).toBe(0)
+  })
+
+  it('rises to a quarter, a half, three quarters and then certainty as it is tried', () => {
+    const chances: number[] = []
+    let state = startBattle([hero, strong('a')])
+    for (let tried = 0; tried < 5; tried++) {
+      chances.push(fleeChance(state, state.fighters, 0).chance)
+      state = { ...state, fleeAttempts: tried + 1 }
+    }
+    expect(chances).toEqual([25, 50, 75, 100, 100])
+  })
+
+  it('draws from the world’s generator, and never from the battle’s', () => {
+    const world = new BattleRng(3n)
+    const battleRng = new BattleRng(3n)
+    const state = startBattle([hero, strong('a')])
+    const before = battleRng.drawn
+    playRound(state, fleeing, battleRng, undefined, world)
+    expect(world.drawn).toBe(1)
+    // The battle's own numbers are untouched by the attempt: only the
+    // monster's turn draws from them.
+    expect(battleRng.drawn).toBeGreaterThanOrEqual(before)
+  })
+
+  it('counts the attempts, so a second try is likelier than the first', () => {
+    // A generator whose draw is high enough to fail a quarter's chance, and a
+    // Hero who acts first and survives the round.
+    const world = new BattleRng(2n)
+    const tough = { ...hero, maxHp: 999, agility: 99 }
+    const { state } = playRound(
+      startBattle([tough, strong('a')]),
+      fleeing,
+      new BattleRng(1n),
+      undefined,
+      world,
+    )
+    expect(state.fleeAttempts).toBe(1)
+    expect(fleeChance(state, state.fighters, 0).chance).toBe(50)
   })
 })
