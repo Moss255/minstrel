@@ -8,6 +8,7 @@ import {
   criticalHit,
   dealt,
   drawnAmount,
+  levelled,
   monsterHp,
   partyAmount,
   physicalDamage,
@@ -292,6 +293,16 @@ describe('what is read and not yet in the simulation', () => {
     expect(roundUp(10.4)).toBe(10)
     expect(roundUp(10.5)).toBe(11)
     expect(roundUp(100 * buffMultiplier.attack(1))).toBe(125)
+  })
+
+  it('is the game’s for a stat at a level, at every stat a fighter can carry', () => {
+    let wrong = 0
+    for (let value = 0; value <= 2000; value++) {
+      for (const level of [-2, -1, 0, 1, 2]) {
+        if (levelled(value, level) !== roundUp(value * buffMultiplier.defence(level))) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
   })
 
   it('rolls a blow’s critical first, then the dodge, then the block, then the damage', () => {

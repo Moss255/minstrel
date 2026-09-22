@@ -14,8 +14,11 @@ const drawing = (value: number) => ({ below: () => value }) as unknown as Battle
 
 describe('changes of state, as the reference keeps them', () => {
   it('multiplies a stat by its level — a quarter, a half, as it is, one and a half, twice', () => {
-    expect([-2, -1, 0, 1, 2].map((level) => levelled(10, level))).toEqual([2, 5, 10, 15, 20])
-    expect(levelled(9, 1)).toBe(13)
+    expect([-2, -1, 0, 1, 2].map((level) => levelled(10, level))).toEqual([3, 5, 10, 15, 20])
+    // Rounded half up, as the game's `RoundUp` does: 9 at a level and a half
+    // is 13.5, and 10 at a quarter is 2.5.
+    expect(levelled(9, 1)).toBe(14)
+    expect(levelled(10, -2)).toBe(3)
     expect(levelled(9, 5)).toBe(18)
   })
 

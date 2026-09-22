@@ -49,8 +49,8 @@ a float is in the simulation stays written down beside the proof it matches.
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67` | not modelled | read into the oracle |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
 | **Tension** | `CalculateTensionBonus` — `tension × (1 + level / 10)`, the division a whole number's | not modelled | read into the oracle; levels 10 to 19 all double it |
-| **Buffs** | the six `Calculate…BuffMultiplier`s | not modelled | read into the oracle. A quarter a level on attack; a half on defence, agility and the magics; defence *down* is a half and then three quarters, not a half a level; charm never falls below whole |
-| **A stat after its multiplier** | `RoundUp` | not modelled | round half up, before the blow is worked out |
+| **Buffs** | the six `Calculate…BuffMultiplier`s | `levelled`, for defence and agility | **the game's for the two the slice casts** — Kasap's and Deceleratle's levels multiply as the game's do, half again up and a half then a quarter down. The other four are read into the oracle and not modelled, there being no spell in the slice that casts them. A quarter a level on attack; a half on defence, agility and the magics; defence *down* is a half and then three quarters, not a half a level; charm never falls below whole |
+| **A stat after its multiplier** | `RoundUp` — `0.5f + x`, truncated | `levelled` | **the game's**, at every stat from 0 to 2,000 at each of the five levels. It truncated, the reference's way, which was a point low on every odd half: a defence of 41 at −1 is 21 to the game and was 20 to us |
 
 ---
 

@@ -5,7 +5,8 @@ import type { BattleRng } from './rng.ts'
  * (MIT — see `damage.ts`), which reproduces the game's code:
  *
  * - **defence and agility levels**, −2 to +2, multiplying the stat by 0.25,
- *   0.5, 1, 1.5 and 2 — `RecalculateBuff` — the product truncated;
+ *   0.5, 1, 1.5 and 2 — the game's own multipliers, and the product **rounded
+ *   half up** as its `RoundUp` does (see {@link levelled});
  * - a level lasting {@link LEVEL_TURNS} turns, a turn off after each of its
  *   holder's turns, then wearing off by 62, 75, 87 and 100 in 100 as the turns
  *   run past — the reference's `0x0215a8a8`, whose 75 wants the draw one lower;
@@ -46,17 +47,32 @@ export const LEVEL_TURNS = 7
 /** How long sleep holds before its sleeper may wake — the reference's Sweet Breath. */
 export const SLEEP_TURNS = 2
 
-/** Each level's multiplier, in quarters: 0.25, 0.5, 1, 1.5, 2. */
-const QUARTERS = [1, 2, 4, 6, 8]
+/**
+ * Each level's multiplier — the game's `CalculateDefenceBuffMultiplier` and
+ * the agility one beside it (`src/Combat/Main/BasicAttackCalculation.cpp`):
+ * half again a level up, and going down a half at −1 and a quarter at −2.
+ * Worked in the game's floats, as `docs/conformance.md` says these are.
+ */
+function multiplier(level: number): number {
+  return level >= 0
+    ? Math.fround(1 + Math.fround(level * 0.5))
+    : Math.fround(1 + Math.fround(Math.fround((level + 1) * 0.25) - 0.5))
+}
 /** Waking, in 100, as the turns run past — `sleepTable`. */
 const WAKE = [37, 62, 87, 100]
 /** A level wearing off, in 100, as the turns run past. */
 const WEAR = [62, 75, 87, 100]
 
-/** A stat at a level: its value times the level's multiplier, truncated. */
+/**
+ * A stat at a level: its value times the level's multiplier, **rounded half
+ * up** — the game's `RoundUp` (`0.5f + x`, truncated), which it applies to a
+ * stat after its multiplier and before the blow is worked out. It was
+ * truncated here, the reference's way, which is a point low on every odd
+ * half: a defence of 41 at −1 is 21 to the game and was 20 to us.
+ */
 export function levelled(value: number, level: number): number {
-  const quarters = QUARTERS[Math.max(-2, Math.min(2, level)) + 2] as number
-  return Math.trunc((value * quarters) / 4)
+  const level2 = Math.max(-2, Math.min(2, level))
+  return Math.trunc(Math.fround(0.5 + Math.fround(Math.fround(value) * multiplier(level2))))
 }
 
 /** A level moved by `by` for {@link LEVEL_TURNS} — undefined when it is already at the end it moves toward. */
