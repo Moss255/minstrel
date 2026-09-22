@@ -609,23 +609,50 @@ a copper sword, so the error is whatever those carry, if anything.
 
 ## Still to read, in the order it is wanted
 
-- **what the Defend command does**, which is still unlocated: the status word
-  has no one-turn flag, so the halving may live in the command's own handler or
-  in the action data rather than in a status bit;
-- the steps of the end of a blow marked *not followed* above: the metal body's
-  zeroing, the party's one more, the attacker's status table, the combo table;
 - **what fills `char + 0x2F4` from the item table**, which is the last step
   between the cartridge and the party's own resistances — see above;
-
+- **what sets `[battle + 0xe49]`**, how a fight opened, which is the last step
+  between the field and the surprise round the simulation already plays;
 - what seeds the C library's generator, which a drop is rolled from, and what
   the drop roll's four further passes scale their chance by —
   `func_ov023_021f454c` at `0x021f4628` on, one pass a standing party member
   above half its HP: the series' item-finding abilities, which the slice has
   not;
-- what the four ways that do not draw by weights do, exactly — a round robin
-  (3 and 7), a pair and a coin (5), two passes (6) — and what makes a slot
-  unusable, which the game scans past rather than re-drawing;
+- what the four ways of choosing that do not draw by weights do, exactly — a
+  round robin (3 and 7), a pair and a coin (5), two passes (6) — and what
+  makes a slot unusable, which the game scans past rather than re-drawing;
 - what the boss bit at `+0x27` does, now that it is known not to choose the
   weight table;
 - action kind `0x22`, which `ProcessCombatTurn` draws again rather than
-  taking.
+  taking;
+- what the trait `0x11d` is, and what `func_ov000_02155a04`'s quarter is a
+  quarter of, which together double a critical rate.
+
+## Where the phase stands — 22 September 2026
+
+**Twenty-two of the ledger's rows are the game's own.** What is left is of
+three kinds, and none of it is a blow being worked out wrongly:
+
+1. **Read, and not modelled, because the slice cannot reach it**: tension and
+   its table, the four buff multipliers the slice casts no spell for, the coin
+   that stands in for the critical roll on Thunder Thrust and Hatchet Man, the
+   critical-rate doubling, the metal body, the combo table, the wards, the
+   slayer multipliers, the drop roll's four further passes. Each is in this
+   file with its addresses; each would be a small piece of work the day a
+   later slice needs it.
+2. **Ours, and marked**: the four ways of choosing a monster's action that are
+   not weight tables (34 of the 438 monsters, the hammerhood among the
+   slice's); the party's resistances, all whole; how a tie in initiative
+   breaks; the seed of the generator a drop is rolled from; which monster the
+   game counts as first in a surprised round; reading "nothing that can act"
+   as fallen or asleep.
+3. **Wanted from outside the code**: the damage formula against a video at
+   levels 5, 20 and 50 — `docs/still-open.md` §1a — which no amount of
+   reading settles.
+
+**What the phase changed in play**, beyond the readings: a monster's ways are
+drawn by the game's table rather than by a bit that does not choose it; the
+Hero's critical chance climbs with deftness; a stat under Kasap rounds the
+game's way; defending halves either side's blow and can still leave a 1; a
+flight climbs a quarter, a half, three quarters, then certainty; a battle pays
+what it drops; and a round's order is the game's floats.
