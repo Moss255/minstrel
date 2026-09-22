@@ -79,9 +79,11 @@ describe("the battle's random numbers and arithmetic, against the reference", ()
 
     it(`orders turns as the reference does from seed ${seed}`, () => {
       const rng = new BattleRng(BigInt(seed))
-      const scale = 100 * 2 ** 32
+      // The score at an agility of 1 is the draw itself, 0.51 to 1.0. The
+      // reference works in doubles and the game in floats — see `initiative` —
+      // so they agree to about seven figures, not to the reference's own.
       for (const expected of golden.turn) {
-        expect(Number(initiative(rng, 1)) / scale).toBeCloseTo(expected, 12)
+        expect(initiative(rng, 1)).toBeCloseTo(expected, 6)
       }
     })
 

@@ -544,9 +544,9 @@ export function playRound(
   const order = fighters
     .map((f, i) => ({
       i,
-      key: alive(f) ? initiative(rng, levelled(f.agility, f.states.agility.level)) : -1n,
+      key: alive(f) ? initiative(rng, levelled(f.agility, f.states.agility.level)) : -1,
     }))
-    .filter(({ key }) => key >= 0n)
+    .filter(({ key }) => key >= 0)
     .sort((a, b) => (a.key === b.key ? a.i - b.i : a.key > b.key ? -1 : 1))
     .map(({ i }) => i)
 

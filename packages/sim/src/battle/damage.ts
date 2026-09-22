@@ -47,13 +47,23 @@ export function physicalDamage(rng: BattleRng, attack: number, defence: number):
 }
 
 /**
- * Who goes first: agility times a draw from 0.51 to 1.0 — the reference's
- * `speed × floatRand(0.51, 1.0)` — kept as the exact integer
- * `agility × (51·2³² + 49·top)`, which is that product scaled by 100·2³².
- * Compare two with `>`; the reference goes first on a strictly greater one.
+ * Who goes first — **the game's**, inlined in `ProcessCombatTurn` (overlay 0,
+ * `0x0215d800`): the agility as a float times `NextRandomFloatBetween(0.51,
+ * 1.0)`, and the round's order is those scores sorted highest first.
+ *
+ * The agility is the **buffed** one, which the game recomputes just before
+ * this and holds to 999; `levelled` is what hands it over here. `0.51f`
+ * appears once in the whole build, so this is the only such roll.
+ *
+ * It was `agility × (51·2³² + 49·top)`, an exact integer scaled by 100·2³² —
+ * the reference's arithmetic in whole numbers. The game rounds each step to a
+ * 32-bit float, which can order two close scores the other way about.
+ *
+ * **Ours**: how a tie breaks. The game sorts with a quicksort that is not
+ * stable; this keeps the fighters' own order.
  */
-export function initiative(rng: BattleRng, agility: number): bigint {
-  return BigInt(agility) * (51n * (1n << 32n) + 49n * BigInt(rng.top32()))
+export function initiative(rng: BattleRng, agility: number): number {
+  return Math.fround(Math.fround(agility) * rng.floatBetween(0.51, 1))
 }
 
 /**
