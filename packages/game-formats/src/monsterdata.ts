@@ -18,6 +18,7 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | `+0x04` | `u16` ×2 | two item ids — its drops, the ordinary and the rare |
  * | `+0x08` | `u32` | experience |
  * | `+0x0C` | `u16` | gold |
+ * | `+0x10`, bits 5–7 | | **how it chooses among its six ways** — see {@link MonsterBattle.aiType} |
  * | `+0x18` | `u16` ×6 | six action words, not established |
  * | `+0x5C` | `u16` | maximum HP |
  * | `+0x5E` | `u16` | maximum MP |
@@ -55,6 +56,27 @@ export interface MonsterBattle {
   readonly exp: number
   readonly gold: number
   readonly actions: readonly number[]
+  /**
+   * How it chooses among its six ways — the game's own selector, bits 5 to 7
+   * of the word at `+0x10`, which index eight handlers at `0x020f10b0` in the
+   * ARM9 (`func_0208a91c`):
+   *
+   * | type | how it picks | of the 438 |
+   * |---|---|---|
+   * | 0 | the even weights, `43 42 43 43 42 43` | 96 |
+   * | 1 | the falling weights, `68 58 48 38 27 17` | 281 |
+   * | 2 | the steep weights, `210 29 10 4 2 1` | 2 |
+   * | 4 | the fourth weights, `70 70 70 16 15 15` | 25 |
+   * | 3, 7 | round robin, by a counter kept for the monster | 9 |
+   * | 5 | a counter picks a pair, a coin picks within it | 22 |
+   * | 6 | two passes over the slots, the first often skipped | 3 |
+   *
+   * The four weight tables are one array in the ARM9, `monsterActionWeights`
+   * at `0x020e8caa` — see `readWeightTables`. **Not** {@link bossAi}, which was
+   * INFERRED to select between the first two and does not: the two commonest
+   * types fall on both sides of that bit, and Hexagoon — a boss — is type 0.
+   */
+  readonly aiType: number
   readonly maxHp: number
   readonly maxMp: number
   readonly attack: number
@@ -83,6 +105,10 @@ export interface MonsterBattle {
    * battle emulator draws its own boss's ways, Ragin' Contagion's, by the
    * falling weight table and every other monster's by the even one; this bit
    * is set on it. See FORMAT.md, "Battle weight tables".
+   *
+   * **It does not choose the weight table**, which was INFERRED here until the
+   * game's own selector was read: that is {@link aiType}, and it cuts across
+   * this bit. What this bit does is not established.
    */
   readonly bossAi: boolean
   /** The whole record, for what is not read. */
@@ -143,6 +169,7 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
       exp: view.getUint32(at + 8, true),
       gold: u16(12),
       actions: [0, 1, 2, 3, 4, 5].map((i) => u16(0x18 + i * 2)),
+      aiType: (view.getUint32(at + 0x10, true) >>> 5) & 7,
       maxHp: u16(0x5c),
       maxMp: u16(0x5e),
       attack: u16(0x60),

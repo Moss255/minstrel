@@ -1095,21 +1095,45 @@ emulator's `ProcessEnemyRandomAction2A` has it. `readWeightTables` in
 
 | table | weights | who draws by it |
 |---|---|---|
-| 0 | 43 42 43 43 42 43 | every monster without the boss bit — the reference's even table |
-| 1 | 68 58 48 38 27 17 | monsters with the boss bit — the reference's table for its own boss |
-| 2 | 210 29 10 4 2 1 | not read |
-| 3 | 70 70 70 16 15 15 | not read |
+| 0 | 43 42 43 43 42 43 | a monster of way 0 — 96 of the 438; the reference's even table |
+| 1 | 68 58 48 38 27 17 | way 1 — 281; the reference's table for its own boss |
+| 2 | 210 29 10 4 2 1 | way 2 — 2 |
+| 3 | 70 70 70 16 15 15 | way 4 — 25 |
 
 The first two are the reference emulator's two tables exactly, which it
 took from the game's disassembly — the witness that this run is the one.
-**The boss bit** is bit 4 of the byte at `+0x27` of a monster's battle
-record (`MonsterBattle.bossAi`), INFERRED from where it is set: on 144 of
-the 159 boss-coded monsters and on the five grotto bosses that carry
+
+**What chooses among them — read 22 September 2026, from the game.** The run
+is one array, named `monsterActionWeights` in the decomp's symbols at
+`0x020e8caa`, and the only code that reads it is `func_0208a370`: it draws
+`NextRandomMax(256) + 1` and walks the six weights down, taking the first the
+draw does not pass — which is the draw this repository already made.
+
+Which table, and whether weights are used at all, is **bits 5 to 7 of the word
+at `+0x10`** of the monster's battle record — `MonsterBattle.aiType`. The
+three bits index eight handlers at `0x020f10b0` (`func_0208a91c`), read by one
+instruction in the whole build:
+
+| way | what it does | of the 438 |
+|---|---|---|
+| 0, 1, 2, 4 | draws by weight table 0, 1, 2 and 3 in that order | 96, 281, 2, 25 |
+| 3, 7 | round robin over the six, by a counter kept for the monster | 9 |
+| 5 | a counter picks a pair of slots, a coin picks within it | 22 |
+| 6 | two passes over the slots, the first often skipped | 3 |
+
+A slot the monster cannot use — no MP, a once-a-battle way already spent, no
+target — is not re-drawn: the game scans down from the slot it picked and then
+up, and falls back to action 2 if nothing serves.
+
+**The boss bit does not choose the table**, which this file had INFERRED and
+`apps/game` acted on. It is bit 4 of the byte at `+0x27` (`MonsterBattle.bossAi`),
+set on 144 of the 159 boss-coded monsters and on five grotto bosses with
 ordinary codes — Equinox, Atlas, Shogum, Trauminator, Nemean — and clear on
-the bosses' minions (scarlet fever, octagoon, cannibelle, the whales …) and
-on every other monster; set on Ragin' Contagion, the reference's boss, and
-on the Hexagoon. The byte's other bits (`0x09`, `0x0C`, `0x19` are its
-other values) are not read, and neither is what chooses tables 2 and 3.
+the bosses' minions and every other monster. But the two commonest ways stand
+on both sides of it, and **Hexagoon, the slice's own boss, is way 0**: the
+even table, where the bit had it drawing by the falling one. What the bit does
+is not established. The byte's other bits (`0x09`, `0x0C`, `0x19` are its
+other values) are not read.
 `docs/binaries.md` keeps the record of what else lies beside them.
 
 **Word 0** is set on 137 entries, whose descriptions speak of resistances — to
@@ -2646,7 +2670,8 @@ and `readMonsterNames` read them.
 | `+0x64` | `u16` | agility | high on the metal family; likewise |
 | `+0x6C` | `u8` ×22 | **resistances**: what it takes of each of the game's 21 elements, a hundredth each, by `element − 1`. From the game's code — see below | firespirit 50 fire, 150 ice; slime 125 of all seven; metal slime 0 of every status; **element 8, the plain Attack's, 100 on all 438**. Fifteen values in all: 0, 1, 5, 10, 15, 25, 30, 35, 50, 60, 75, 100, 125, 150, 200 |
 | `+0x82` | `u8` ×2 | copied into the battle beside them; not established | 0 on every monster looked at |
-| `+0x27`, bit 4 | | fights as a boss: draws its ways by the falling weight table — INFERRED, see "Battle weight tables" | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster |
+| `+0x10`, bits 5–7 | | **how it chooses among its six ways**: one of eight handlers, four of which draw by a weight table — see "Battle weight tables" | the game's own selector, `func_0208a91c` |
+| `+0x27`, bit 4 | | set on the bosses; **not** what chooses the weight table, which this file had INFERRED | set on 144 of 159 boss-coded monsters and the five grotto bosses; clear on the bosses' minions and every ordinary monster. What it does is not established |
 
 ### Confirmed by the guide — 22 September 2026
 

@@ -623,6 +623,15 @@ let menu: MenuState | undefined
 const openedTreasure = new Set<string>()
 /** When each pot or barrel opened this visit was smashed, by its treasure key — see `pots.ts`. */
 const smashedAt = new Map<string, number>()
+/**
+ * Which of the four weight tables each of the game's eight ways of choosing
+ * draws by, in the order `readWeightTables` finds them — the even, the
+ * falling, the steep and the fourth. Types 3, 5, 6 and 7 pick another way
+ * altogether (a round robin, a pair and a coin, two passes) and are not
+ * modelled; they fall to the even table, which is **ours**.
+ */
+const WAYS_BY_AI: Readonly<Record<number, number>> = { 0: 0, 1: 1, 2: 2, 4: 3 }
+
 /** What the Hero carries — see `bag.ts` — starting from the purse the slice opens with, `STARTING_GOLD`. */
 let bag: Bag = take(EMPTY_BAG, { gold: STARTING_GOLD })
 /** What the Hero wears — see `equipment.ts`. */
@@ -3028,9 +3037,12 @@ function startFight(codes: readonly string[], canFlee: boolean): void {
     for (const [action, spell] of ways.known) known.set(action, spell)
     foes.push({
       acts: ways.acts,
-      // A boss draws its ways by the falling table, the rest by the even one — see `MonsterBattle.bossAi`.
+      // Which weights it draws its ways by: **the game's own selector**, the
+      // record's `aiType` — see `MonsterBattle.aiType` and `WAYS_BY_AI`. Its
+      // four other types do not draw by weights at all, and take the even
+      // table here: **ours**, and marked so in `docs/still-open.md`.
       ...(loaded.weightTables
-        ? { choice: loaded.weightTables.tables[numbers.bossAi ? 1 : 0] }
+        ? { choice: loaded.weightTables.tables[WAYS_BY_AI[numbers.aiType] ?? 0] }
         : {}),
       name: renderName(who.name),
       side: 'foes',

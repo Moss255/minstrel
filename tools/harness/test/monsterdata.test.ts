@@ -42,6 +42,45 @@ describe.skipIf(!romPath)('monster data on a real cartridge', { timeout: 60_000 
     expect(hp(true)).toBeGreaterThan(10 * hp(false))
   })
 
+  it('reads how each monster chooses its ways, which is not the boss bit', () => {
+    const fs = readNitroFs(new Uint8Array(readFileSync(romPath as string)))
+    let battle: ReturnType<typeof readMonsterBattle> = []
+    let named: ReturnType<typeof readMonsterNames> = []
+    for (const file of walkFiles(fs.root)) {
+      if (file.path === '/data/prm/mon_btldata.nat')
+        battle = readMonsterBattle(decompressIfNeeded(fs.read(file)))
+      if (file.path !== '/data/prm/mon_data.gp2') continue
+      const bytes = fs.read(file)
+      if (!isGpc(bytes)) continue
+      const archive = readGpc(bytes)
+      for (const member of archive.members) {
+        if (member.name.endsWith('_en.nat'))
+          named = readMonsterNames(decompressIfNeeded(archive.read(member)))
+      }
+    }
+    // Seven of the eight handlers are used, and the two commonest are the even
+    // and the falling weights — see `MonsterBattle.aiType`.
+    const counts = new Map<number, number>()
+    for (const m of battle) counts.set(m.aiType, (counts.get(m.aiType) ?? 0) + 1)
+    expect(counts.get(0)).toBe(96)
+    expect(counts.get(1)).toBe(281)
+    expect(counts.get(6)).toBe(3)
+    expect(counts.has(7)).toBe(false)
+    // It is not the boss bit: both of the commonest types stand on both sides
+    // of it, and the slice's own boss draws by the even table.
+    const kinds = (type: number, boss: boolean) =>
+      battle.filter((m) => m.aiType === type && m.bossAi === boss).length
+    for (const type of [0, 1]) {
+      expect(kinds(type, true), `type ${type}`).toBeGreaterThan(0)
+      expect(kinds(type, false), `type ${type}`).toBeGreaterThan(0)
+    }
+    const at = (name: string) => battle[named.findIndex((n) => n.name === name)]?.aiType
+    expect(at('hexagoon')).toBe(0)
+    expect(at('slime')).toBe(0)
+    expect(at('batterfly')).toBe(1)
+    expect(at('cruelcumber')).toBe(4)
+  })
+
   it('reads what each monster takes of each element, as the game does', () => {
     const fs = readNitroFs(new Uint8Array(readFileSync(romPath as string)))
     let battle: ReturnType<typeof readMonsterBattle> = []

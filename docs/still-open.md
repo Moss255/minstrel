@@ -90,9 +90,12 @@ confirm a find, and what to do if the binaries do not give it up.
   **Looked for on 19 September and not found** — `docs/conformance.md` says
   where it is not. The words beside the weight tables, long the candidates,
   are heap sizes handed to `SafeAllocator::Allocate`.
-- **How a monster weights its six ways**, and **which monsters draw by the
-  third and fourth weight tables** — the four tables are read from the ARM9,
-  and only the boss bit chooses between the first two.
+- ~~**How a monster weights its six ways**~~ **Read 22 September 2026**: the
+  record's `+0x10` bits 5–7 choose among eight ways, four of which draw by one
+  of the four tables (`MonsterBattle.aiType`), and the boss bit — which this
+  repository had chosen by — does not come into it. **Still ours**: the other
+  four ways, a round robin and the rest, fall back to the even table; 34 of
+  the 438 monsters use them, the hammerhood among the slice's.
 - **How the game keeps time**, and **what ends the night of 2.2** — sleeping,
   or time. The decomp names five lengths at USA `0x020f030c`–`0x020f031c` to
   read first.
@@ -134,7 +137,7 @@ lives; this is the gathered list.
 |---|---|
 | drops | the seed of the generator a drop is rolled from, and the order the kinds of monster are rolled in — the roll itself and its table are the game's |
 | battle numbers | **the Hero's attack and defence are strength and resilience plus what they wear** — the equipment's numbers are read, the adding is ours; the battle reference takes attack and defence as given |
-| battle | defending, which halves a blow — the reference's, the game's own Defend command being unlocated; the flee chance, 50 in 100; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
+| battle | the four ways of choosing that are not weight tables — a round robin, a pair and a coin, two passes — which fall back to the even table; defending, which halves a blow — the reference's, the game's own Defend command being unlocated; the flee chance, 50 in 100; a monster attacking when its drawn Flee is refused; that the margin is weighed in battle at all, and that the party's level is the highest standing |
 | defeat | the Hero comes round in the village church — the game sends them to a church, which is not modelled; no text says where. **Half the gold going is the game's**: the guide, "Money on hand is halved when your characters die"; rounding down is ours |
 | shops, inn | the inn's price |
 | items | Evacuazam to the region's outside; holy water's calm; the chimaera wing's one destination |
