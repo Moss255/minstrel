@@ -430,6 +430,89 @@ not it was given anywhere to put it, so a two-argument call writes one place
 past the end of its own arguments. That is the game's; this engine does not
 copy it.
 
+## 5e. The worklist head, and the towns' shared set — 23 September 2026
+
+Two more clusters read out of the decomp, both picked from the coverage table
+rather than from a hunch: the head of the story-ordered worklist, and the seven
+numbers the eight towns had in common.
+
+**The brightness family is eighteen functions, not two.** `100` to `122` are
+one block: the handlers from `109` up are all the same three-instruction stub,
+`mov r0,#<type>` into one dispatcher at `0x0215b074`, and the type picks one of
+nine setters — three screens (both, the top, the bottom) times three locking
+kinds (set, set-and-lock, unlock-and-set). Every one takes **a frame count and
+an optional level**, the level defaulting to **−16, black** (`mvn r5, #0xf` in
+all nine), and the frame count being turned into milliseconds (`× 1000/60`)
+inside the setter. The even half of each pair passes a level of 0 whatever it
+was given; the odd half passes the argument.
+
+| | both screens | top | bottom |
+|---|---|---|---|
+| to black | `101` | | `105`, `120` |
+| to normal | `100` | `121` | |
+
+So **`120` is the bottom screen**, not the top — it is the pair of `121`, not
+its opposite. This engine draws one screen, so the bottom's darkness is kept
+and not drawn; `101` now blacks both, which it always did.
+
+**`211` moves a character to a point without turning it**, which is what tells
+it from `207`. It queues one of two commands on the character's own queue: with
+no fifth argument, or one not above zero, **opcode `0x10`, which sets the
+position outright**; with one above zero, **opcode `0x11`, which works out
+`(there − here) ÷ frames` on the first tick and adds it each frame after**.
+
+**`322` is not two points.** It queues two commands on two of the camera's
+queues at once — the look-at point to its first three numbers, the orbit (yaw,
+height above the point, distance from it) to its next three, both over the
+seventh. The eye it hands the first command is a zero vector, and that zero
+never shows: the command sets the flag that makes the camera recompute its eye
+from point and orbit at the end of the frame. `304`, which looks the same
+shape, genuinely is two points.
+
+**The camera's angles are radians, in fixed point.** The yaw is wrapped modulo
+`0x6488` — 25,736, which is 2π × 4096. `322`'s eighth number is which way round
+the yaw turns: **−1, the short way**, when the scene does not say; 0 backwards;
+anything else forwards. The game finds the short way by taking both wrapped
+differences and choosing the smaller. That settles a unit this file had only
+inferred from `310`'s values.
+
+**`703` to `709` are empty.** All seven are the same two instructions —
+`mov r0,#1; bx lr` — at `0x021634e0` through `0x02163510`: no arguments, no
+reads, no writes, the success code every other handler returns. Whatever they
+were for was taken out before this build, and there is nothing in it to find.
+They leave the worklist for good rather than being answered with 0 and counted.
+
+| fn | what it does |
+|---|---|
+| 105, 120 | fade the **bottom** screen to a level, −16 by default, over a count |
+| 233 | load a monster model out of `data/pack_lv5/enemy.gp2` into a game-object slot; a negative slot maps by `-x + 0x9f` onto `0xa0`–`0xbf` |
+| 328 | move the camera back to its idle eye and look-at point over a count |
+| 547 | begin the scripted battle: a placement id for the transition's model, and a record index into `data/event/eventbattle.bin` which picks the battle and, from `+0x0e`, its music — **−1** when the scene gives one number |
+| 558 | which of a message's choices is highlighted, 0-based, stored through a reference |
+| 573 | take a placed `.spr` away — the exact inverse of `521`, which builds one. **Its second argument is read by nothing** |
+| 574 | show or hide a thing the map placed: group key, record id, and a third number that **clears the hidden bit when it is not zero** |
+| 603 | read one of the game's story flags into a reference, 1 or 0. Ids from `0x400` up are displaced by 1,786 bits into a second range of the bank; nothing is bounds-checked |
+| 715 | the sound's master volume, **clamped to 0..127**, ramped over a tick count; the manager scales it by the player's own 1-to-5 setting before the mixer |
+| 721 | fade the live sequence player to silence over a count, **30 by default**; 0 stops it outright |
+
+**Two of these write through a reference**, and the store is worth knowing:
+`func_ov017_021d6134` writes **only the four-byte value** of the thing referred
+to, and only when its tag is 3. It leaves the tag alone. That is how `558` and
+`603` both answer.
+
+**What was not determined**, and is written down so it is not re-read:
+
+- What holds the brightness lock that `120` and `121` clear, and the byte at
+  `+0x102` that the odd fade types poke through `func_ov017_0218b5b0`.
+- What bit 6 of a map placement's flags is for — `574` always sets it, and
+  nothing found reads it. Bit 2 is confirmed hidden, by the draw path.
+- What tells placement kind 2 from kind 6 in `573`, or what kinds 0, 4 and 5
+  are: nothing in overlay 1 assigns the tag.
+- The size of `603`'s flag bank, and what its two id ranges mean.
+- Which mixer channels `715`'s indices 5, 6 and 7 are.
+- The fixed-point base of `233`'s `0x10a` scale. It is **not** the `0x1000`
+  the neighbouring code uses for 1.0, so it is not applied here.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -468,20 +551,20 @@ side by side in the same towns are usually one feature.
 | 9, 218, 540, 543, 544, 563, 597, 800 | C02's own seven, and a sibling | 68 | 35 |
 | 317, 301, 305, 306 | the camera's shake, and its moves | 62 | 32 |
 | 554, 728, 731, 726, 730, 732, 712, 222, 595, 596, 545, 546, 541, 542, 561 | sound, and the rest of the head | 55 | 30 |
+| 105, 120, 211, 233, 322, 328, 547, 558, 573, 574, 603, 703–709, 715, 721 | the worklist head, and the towns' shared set | 48 | 21 |
 
-The count of what is unanswered across the cartridge went 150 to 107, and what
-the host implements 36 to 75.
+The count of what is unanswered across the cartridge went 150 to 90, and what
+the host implements 36 to 100. The head of the story-ordered list has moved from
+`ev01130` to `ev01515`, and its one want is `538`.
 
 ## 7. Open questions
 
-- What each engine function does, beyond the handful above. The game's host,
-  `apps/game/src/event.ts`, plays the ones in the table with a reading; the
-  morning, `ev02130`, calls 21 more — 9, 101, 120, 121, 221, 509, 532, 540,
-  554, 570, 571, 589, 595, 713, 714, 720, 721, 724, 725, 727, 731 — which it
-  answers with 0 and counts. Nothing the morning shows waits on them.
-- Where the DS's camera sits for 303 and 310: the eye is read as the target
-  plus a yaw, a rise and a straight-line distance, but how much of the room
-  that shows depends on a field of view not yet read.
+- What each engine function does, beyond the hundred the host now plays.
+  `apps/game/src/event.ts` names the reading beside each; 90 numbers across
+  the cartridge are still answered with 0 and counted, and
+  `apps/game/test/event-coverage.test.ts` prints them in the order the story
+  wants them. Of the morning's own 21, only 509, 589, 713, 714, 724 and 725
+  are left.
 - What starts the morning. No trigger names it; a new game plays it.
 - The order the sections run in, and whether 300 runs after 100 or beside it.
 - `0x0E` 42–45, `0x12` and `0x19` beyond the cases seen.

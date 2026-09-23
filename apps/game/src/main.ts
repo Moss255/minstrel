@@ -152,6 +152,7 @@ import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
 import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED, slotOf } from './equipment.ts'
 import {
+  BGM_FADE_FRAMES,
   type EventCamera,
   EventPlayer,
   type EventStage,
@@ -3736,13 +3737,22 @@ function playEvent(elapsedMs: number): void {
 
 /** Sound what a scene asks for — see `726`, `720` and `727` in `event.ts`. */
 async function playSound(sound: {
-  kind: 'effect' | 'jingle' | 'stop'
+  kind: 'effect' | 'jingle' | 'stop' | 'stopMusic'
   index: number
   slot?: number
+  frames?: number
 }): Promise<void> {
   if (!cartridge) return
   if (sound.kind === 'stop') {
     music.stopEffects()
+    return
+  }
+  if (sound.kind === 'stopMusic') {
+    // **Ours**: `721` ramps the live sequence player's own volume down over
+    // its count. This player's only fade is a master gain that the effects sit
+    // under too, so what is done instead is the sequencer's own release — the
+    // count decides only whether it is cut off, not how long it takes.
+    music.stop((sound.frames ?? BGM_FADE_FRAMES) <= 0)
     return
   }
   const played =

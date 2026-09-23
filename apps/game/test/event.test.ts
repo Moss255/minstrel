@@ -753,3 +753,185 @@ describe('the camera shakes, and the rest of the 300s', () => {
     expect(stage.camera?.target?.[0]).toBeCloseTo(10, 6)
   })
 })
+
+describe('the worklist head, read from the cartridge', () => {
+  it('moves a character to a point without turning it — 211', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(206, [0, 0, 0, 0], t)
+    stage.host.call(208, [0, 0, 1.5, 0], t)
+    stage.host.call(211, [0, 10, 0, 0, 10], t)
+    for (let i = 0; i < 5; i++) stage.advance()
+    const actor = stage.actors.get(0)
+    expect(actor?.x).toBeCloseTo(5, 6)
+    // The queued command holds a point and a count, so the facing is untouched.
+    expect(actor?.facing).toBeCloseTo(1.5, 6)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(actor?.x).toBeCloseTo(10, 6)
+  })
+
+  it('puts it there at once without a count — 211', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(206, [0, 0, 0, 0], t)
+    stage.host.call(211, [0, 3, 4, 5], t)
+    const actor = stage.actors.get(0)
+    expect([actor?.x, actor?.y, actor?.z]).toEqual([3, 4, 5])
+    expect(actor?.walk).toBeUndefined()
+  })
+
+  it('fades the bottom screen apart from the top — 105, 120, 121', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(120, [10], t)
+    for (let i = 0; i < 10; i++) stage.advance()
+    expect(stage.subDarkness).toBeCloseTo(1, 6)
+    expect(stage.darkness).toBe(0)
+    // 121 is the even half of its pair: it passes 0 whatever level it is given.
+    stage.host.call(121, [0, -16], t)
+    expect(stage.darkness).toBe(0)
+    // 105 takes the level the scene gives it.
+    stage.host.call(105, [0, -8], t)
+    expect(stage.subDarkness).toBeCloseTo(0.5, 6)
+  })
+
+  it('blacks both screens on 101, which is SetBrightness', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(101, [0], t)
+    expect(stage.darkness).toBe(1)
+    expect(stage.subDarkness).toBe(1)
+  })
+
+  it('moves the look-at point and the orbit together — 322', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 10], t)
+    stage.host.call(322, [10, 0, 0, Math.PI / 2, 3, 20, 10], t)
+    for (let i = 0; i < 10; i++) stage.advance()
+    expect(stage.camera?.target?.[0]).toBeCloseTo(10, 6)
+    expect(stage.camera?.yaw).toBeCloseTo(Math.PI / 2, 6)
+    expect(stage.camera?.distance).toBeCloseTo(20, 6)
+  })
+
+  it('turns the yaw the way its eighth number says — 322', () => {
+    const turn = (dir: number) => {
+      const stage = new EventStage(1)
+      const { thread: t } = thread()
+      stage.host.call(303, [0, 0, 0], t)
+      stage.host.call(310, [0, 1, 10], t)
+      // Three quarters of a turn forward, a quarter back.
+      stage.host.call(322, [0, 0, 0, (3 * Math.PI) / 2, 1, 10, 4, dir], t)
+      stage.advance()
+      return stage.camera?.yaw ?? 0
+    }
+    // -1 takes the short way, which is backwards; 1 is forced forwards.
+    expect(turn(-1)).toBeCloseTo(-Math.PI / 8, 6)
+    expect(turn(1)).toBeCloseTo((3 * Math.PI) / 8, 6)
+  })
+
+  it('gives the camera back after a count — 328', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 10], t)
+    stage.host.call(328, [5], t)
+    stage.host.call(301, [ref(1)], t)
+    expect(written.get(1)).toBe(1)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.camera).toBeUndefined()
+    stage.host.call(301, [ref(2)], t)
+    expect(written.get(2)).toBe(0)
+  })
+
+  it('fades the music out over a count, 30 by default — 721', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(721, [], t)
+    stage.host.call(721, [0], t)
+    expect(stage.sounds).toEqual([
+      { kind: 'stopMusic', index: 0, frames: 30 },
+      { kind: 'stopMusic', index: 0, frames: 0 },
+    ])
+  })
+
+  it('answers the seven empty sound functions rather than counting them — 703 to 709', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    for (let id = 703; id <= 709; id++) expect(stage.host.call(id, [], t)).toBe(1)
+    expect([...stage.unhandled.keys()]).toEqual([])
+  })
+})
+
+describe("the towns' shared set, read from the cartridge", () => {
+  it('clamps the volume to 0..127 and ramps it — 715', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.volume).toBe(127)
+    stage.host.call(715, [999], t)
+    expect(stage.volume).toBe(127)
+    stage.host.call(715, [-5], t)
+    expect(stage.volume).toBe(0)
+    stage.host.call(715, [100, 10], t)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.volume).toBeCloseTo(50, 6)
+  })
+
+  it('hides and shows a placed thing — 574', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(574, [3, 7, 0], t)
+    expect([...stage.placementsHidden]).toEqual(['3,7'])
+    // Anything but zero shows it: the flag bit is cleared, not set.
+    stage.host.call(574, [3, 7, 2], t)
+    expect([...stage.placementsHidden]).toEqual([])
+  })
+
+  it('reads a story flag, clear until one is set — 603', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(603, [42, ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.flags.add(42)
+    stage.host.call(603, [42, ref(2)], t)
+    expect(written.get(2)).toBe(1)
+  })
+
+  it('answers which choice was picked — 558', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(558, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.choice = 2
+    stage.host.call(558, [ref(2)], t)
+    expect(written.get(2)).toBe(2)
+  })
+
+  it('folds a monster into the game-object slots — 233', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(233, ['m001', -1], t)
+    stage.host.call(233, ['m002', -0x20], t)
+    expect([...stage.monsters]).toEqual([
+      [0xa0, 'm001'],
+      [0xbf, 'm002'],
+    ])
+  })
+
+  it('keeps the battle a scene asks for, -1 when it names none — 547', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(547, [4], t)
+    expect(stage.battleFrom).toEqual({ placement: 4, battle: -1 })
+    stage.host.call(547, [4, 12], t)
+    expect(stage.battleFrom).toEqual({ placement: 4, battle: 12 })
+  })
+
+  it('drops a placed sprite, ignoring its second number — 573', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(573, [9, 1], t)
+    expect([...stage.spritesDropped]).toEqual([9])
+  })
+})

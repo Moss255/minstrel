@@ -48,15 +48,16 @@ import {
  * | 321 | x, y, z, frames | move where the camera looks over so many frames — the switch's shake in the Hexagon, `ev02530`, sixteen short ones |
  * | 400 | message | show one of the event's messages |
  * | 405 | reference | whether a message is still up |
- * | 101 | frames | fade the screen to black over so many frames — see `darkness`. The script waits them out itself |
- * | 121 | frames | fade it back from black over so many frames |
  * | 560 | reference | whether the scene carries straight on from a conversation — see `afterTalk` |
- * | 726 | effect | sound an effect: all 240 distinct values are indices of sequence archives with a file in `se_norm.sdat` |
- * | 730 | effect | likewise, taken to be: its six values, 364 the commonest, are such indices too. How it differs from `726` is not read |
  * | 720 | jingle | play a jingle: its six values, 55–67, fall where `bgm.sdat` keeps its `ME_` sequences, 50–68 |
- * | 727 | — | the scene's sounds stop: called on the last frame of 663 of the 664 scenes that call it, paired with `731`, which is not read. 72 of the 279 effects hold a looping wave for ever until stopped, and 134 of the 137 scenes sounding one call `727` after |
- * | 729 | 0, frames | the sounds stop, over so many frames — 38 of those 137 call it after the effect; the fade is not done |
  * | 840 | reference | how long the frame was, in halves — see {@link FRAME_IN_HALVES} |
+ *
+ * The rest are **read from the cartridge's own code** and say so where they
+ * are handled: the sound block (`723`, `726`–`733`), the brightness family
+ * (`101`, `105`, `120`, `121`), the staging block (`502`–`508`), the path
+ * (`214`–`217`), the balloons (`541`–`546`), `211`, `233`, `317`, `322`,
+ * `328`, `532`, `547`, `554`, `558`, `573`, `574`, `595`–`597`, `603`,
+ * `703`–`709`, `712`, `715`, `721`, `800`.
  *
  * Positions are in the files' own units, and the stage takes them into the
  * world by one scale, as the cast's placements are. **Character 0 is the
@@ -270,6 +271,32 @@ export const SOUND_SLOTS = 16
  */
 export const BASE_EFFECTS = 100
 
+/**
+ * The loudest the sound goes — `715` clamps its number to 0..127 before the
+ * sound manager takes it, and the game snaps it back to 127 when a scripted
+ * battle begins.
+ */
+export const SOUND_LOUDEST = 127
+
+/** How long `721` takes to fade the music out when a scene does not say. */
+export const BGM_FADE_FRAMES = 30
+
+/**
+ * Which game-object slot a monster goes in, from the number `233` is given:
+ * the game's `if (x < 0) x = -x + 0x9f`, which folds the negative numbers
+ * every scene uses onto slots `0xa0` to `0xbf`.
+ */
+export function monsterSlot(id: number): number {
+  return id < 0 ? -id + 0x9f : id
+}
+
+/**
+ * The level the brightness family takes a screen to when a scene names none:
+ * `-16`, which is black. The DS's master brightness is a 5-bit fade either
+ * way, and every one of the nine setters defaults to `mvn r5, #0xf`.
+ */
+export const BRIGHTNESS_BLACK = 16
+
 /** A balloon parked over a character's head — see `541`. */
 export interface Marker {
   /** The character it hangs over. */
@@ -364,6 +391,19 @@ function towards(from: number, to: number): number {
   return from + ((((to - from + Math.PI) % full) + full) % full) - Math.PI
 }
 
+/**
+ * The facing to turn to from `from`, the way `turn` says: `-1` the short way,
+ * `0` backwards, anything else forwards — `322`'s eighth argument.
+ */
+function turning(from: number, to: number, turn: number): number {
+  const full = 2 * Math.PI
+  if (turn === -1) return towards(from, to)
+  const forward = (((to - from) % full) + full) % full
+  // Both ways round are nothing when it is already there, as the game's are.
+  if (forward === 0) return from
+  return turn === 0 ? from - (full - forward) : from + forward
+}
+
 /** Who stands where in an event, what they play, and what is on show — the engine functions' side. */
 export class EventStage {
   readonly actors = new Map<number, EventActor>()
@@ -375,6 +415,13 @@ export class EventStage {
   /** How dark the screen is, from 0, clear, to 1, black — see `101` and `121`. */
   darkness = 0
   private darkening: Fade | undefined
+  /**
+   * How dark the **bottom** screen is — see `105` and `120`. The game keeps
+   * the two screens' brightness apart and a scene fades them apart; this
+   * engine draws only the top one, so this is kept and not drawn.
+   */
+  subDarkness = 0
+  private subDarkening: Fade | undefined
   /**
    * Whether the scene carries straight on from a conversation — what `560`
    * answers, set by the game. INFERRED: answered so, 100 of the 118 scenes that
@@ -393,11 +440,13 @@ export class EventStage {
    * header. The page drains this each frame.
    */
   readonly sounds: {
-    readonly kind: 'effect' | 'jingle' | 'stop'
+    readonly kind: 'effect' | 'jingle' | 'stop' | 'stopMusic'
     /** The sound archive it comes from — see `726`. */
     readonly index: number
     /** Which of the archive's own sounds, where the scene names one — see `728`. */
     readonly slot?: number
+    /** How many frames to fade it out over, where the scene fades — see `721`. */
+    readonly frames?: number
   }[] = []
   /** Frames played. */
   frame = 0
@@ -405,6 +454,32 @@ export class EventStage {
   readonly queued: string[] = []
   /** The door placements a scene has opened, `group,object` — see `540`. */
   readonly doorsOpened = new Set<string>()
+  /** The map placements a scene has hidden, `group,object` — see `574`. */
+  readonly placementsHidden = new Set<string>()
+  /** The placed sprites a scene has taken away, by placement id — see `573`. */
+  readonly spritesDropped = new Set<number>()
+  /**
+   * How loud the sound is, 0 to 127 — see `715`. Whole until a scene turns it
+   * down. Nothing here sounds it; the page reads it.
+   */
+  volume = SOUND_LOUDEST
+  private volumeRamp: Fade | undefined
+  /**
+   * Which of a message's choices is picked — what `558` answers. **Ours**:
+   * this engine shows no choice window, so whoever plays the event sets it
+   * and it is the first option until they do.
+   */
+  choice = 0
+  /**
+   * The game's story flags, by the number `603` asks for. **Ours**: nothing
+   * here sets them, so a scene that asks finds them clear; whoever plays the
+   * event may fill it.
+   */
+  readonly flags = new Set<number>()
+  /** Monster models a scene has put in a game-object slot — see `233`. */
+  readonly monsters = new Map<number, string>()
+  /** The scripted battle a scene has asked for — see `547`. */
+  battleFrom: { readonly placement: number; readonly battle: number } | undefined
   /** The balloon over a character's head, where a scene has put one — see `541`. */
   marker: Marker | undefined
   /** How many sound handles have been handed out — see `712`. */
@@ -449,6 +524,8 @@ export class EventStage {
   /** The shot's eye, where `302` put it; its yaw, rise and distance follow from it until `310` gives them. */
   private eye: Vec3 | undefined
   private angled = false
+  /** The frame `328` gives the camera back on. */
+  private handingBack: { readonly at: number } | undefined
   private targetMove: CameraMove<Vec3> | undefined
   private angleMove: CameraMove<{ yaw: number; rise: number; distance: number }> | undefined
   readonly host: ScriptHost
@@ -557,6 +634,18 @@ export class EventStage {
       this.darkness = from + (to - from) * t
       if (t >= 1) this.darkening = undefined
     }
+    if (this.subDarkening) {
+      const { from, to, start, frames } = this.subDarkening
+      const t = Math.min(1, (this.frame - start) / frames)
+      this.subDarkness = from + (to - from) * t
+      if (t >= 1) this.subDarkening = undefined
+    }
+    if (this.volumeRamp) {
+      const { from, to, start, frames } = this.volumeRamp
+      const t = Math.min(1, (this.frame - start) / frames)
+      this.volume = from + (to - from) * t
+      if (t >= 1) this.volumeRamp = undefined
+    }
     for (const actor of this.actors.values()) {
       if (actor.walk) {
         const { from, to, start, frames } = actor.walk
@@ -594,6 +683,14 @@ export class EventStage {
         actor.opacity = from + (to - from) * t
         if (t >= 1) actor.fade = undefined
       }
+    }
+    if (this.handingBack && this.frame >= this.handingBack.at) {
+      this.handingBack = undefined
+      this.camera = undefined
+      this.eye = undefined
+      this.angled = false
+      this.targetMove = undefined
+      this.angleMove = undefined
     }
     const shot = this.camera
     if (shot && this.targetMove) {
@@ -682,13 +779,23 @@ export class EventStage {
     }
   }
 
-  /** Move the camera's yaw, rise and distance over so many frames — the yaw the short way round. */
-  private moveAngle(to: { yaw: number; rise: number; distance: number }, frames: number): void {
+  /**
+   * Move the camera's yaw, rise and distance over so many frames.
+   *
+   * `turn` is which way round the yaw goes, as `322` gives it: `-1` the short
+   * way, `0` backwards, anything else forwards. The game works this out by
+   * taking both wrapped differences and, for `-1`, the smaller of the two.
+   */
+  private moveAngle(
+    to: { yaw: number; rise: number; distance: number },
+    frames: number,
+    turn = -1,
+  ): void {
     const shot = this.shot()
     const from = { yaw: shot.yaw, rise: shot.rise, distance: shot.distance }
     this.angleMove = {
       from,
-      to: { ...to, yaw: towards(from.yaw, to.yaw) },
+      to: { ...to, yaw: turning(from.yaw, to.yaw, turn) },
       start: this.frame,
       frames: Math.max(1, frames),
     }
@@ -724,6 +831,30 @@ export class EventStage {
           to,
           start: this.frame,
           frames: Math.max(1, num(args[4])),
+        }
+        return 0
+      }
+      // **Move a character to a point**, `211` — read from overlay 1. It
+      // queues one of two commands on the character's own queue: with no fifth
+      // argument, or one that is not above zero, **opcode 0x10, which sets the
+      // position outright**; with one above zero, **opcode 0x11, which works
+      // out a velocity of `(there − here) ÷ frames` on the first tick and adds
+      // it each frame after**. So the count is frames, as `207`'s is.
+      //
+      // **It does not turn the character**, which is what tells it from `207`:
+      // the queued command holds a point and a count and nothing else.
+      case 211: {
+        const actor = this.actor(num(args[0]))
+        const to = [num(args[1]) * s, num(args[2]) * s, num(args[3]) * s] as const
+        const frames = args.length >= 5 ? num(args[4]) : 0
+        actor.placed = true
+        if (frames > 0) {
+          actor.walk = { from: [actor.x, actor.y, actor.z], to, start: this.frame, frames }
+        } else {
+          actor.x = to[0]
+          actor.y = to[1]
+          actor.z = to[2]
+          actor.walk = undefined
         }
         return 0
       }
@@ -784,16 +915,48 @@ export class EventStage {
       case 224:
         this.actor(num(args[0])).after = text(args[1])
         return 0
+      // **The screens' brightness**, `101`, `105`, `120` and `121` — read from
+      // overlay 1. They are four of an eighteen-strong family: the handlers
+      // from `109` up are all the same stub, `mov r0,#<type>` into one
+      // dispatcher, and the type picks one of nine setters across three
+      // screens — both, the top, the bottom — times three locking kinds: set,
+      // set-and-lock, unlock-and-set. Every one of them takes the same two
+      // arguments, **a frame count and an optional level**, the level being
+      // **−16, black,** when the scene does not give one, and the frame count
+      // being turned into milliseconds (`× 1000/60`) inside the setter.
+      //
+      // | | both screens | top | bottom |
+      // |---|---|---|---|
+      // | to black | `101` | | `105`, `120` |
+      // | to normal | `100` | `121` | |
+      //
+      // `120` and `121` are the unlocking pair: they clear the screen's lock
+      // byte before setting it. Whatever holds that lock, this engine has not
+      // got, so the two are the plain setters here.
       case 101:
-      case 121: {
-        // The screen to black over so many frames, or back from it — see `darkness`.
-        const to = id === 101 ? 1 : 0
+      case 121:
+      case 105:
+      case 120: {
+        // The bottom screen's own: kept, and not drawn — this engine has one screen.
+        const sub = id === 105 || id === 120
+        // How black −16 is, so that a level the scene gives lands between.
+        // `121` is the even half of its pair and passes 0 whatever it is given.
+        const level = id === 121 ? 0 : args.length >= 2 ? num(args[1]) : -BRIGHTNESS_BLACK
+        const to = Math.min(1, Math.max(0, -level / BRIGHTNESS_BLACK))
         const frames = num(args[0])
-        if (frames > 0) {
-          this.darkening = { from: this.darkness, to, start: this.frame, frames }
+        const from = sub ? this.subDarkness : this.darkness
+        const fade = frames > 0 ? { from, to, start: this.frame, frames } : undefined
+        if (sub) {
+          this.subDarkening = fade
+          if (!fade) this.subDarkness = to
         } else {
-          this.darkness = to
-          this.darkening = undefined
+          this.darkening = fade
+          if (!fade) this.darkness = to
+          // `101` is both screens, not just the top: it is `SetBrightness`.
+          if (id === 101) {
+            this.subDarkening = fade && { ...fade, from: this.subDarkness }
+            if (!fade) this.subDarkness = to
+          }
         }
         return 0
       }
@@ -861,6 +1024,7 @@ export class EventStage {
         this.angled = false
         this.targetMove = undefined
         this.angleMove = undefined
+        this.handingBack = undefined
         return 0
       case 302:
         this.eye = [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s]
@@ -905,6 +1069,42 @@ export class EventStage {
         this.moveAngle(lookFrom(eye, target), num(args[3]))
         return 0
       }
+      // **Move what the camera looks at and how it is framed together**, `322`
+      // — read from overlay 1. The game queues two commands on two of the
+      // camera's queues at once: one that moves the look-at point to the first
+      // three numbers, and one that moves the orbit — yaw, height above the
+      // point, and distance from it — to the next three, both over the seventh.
+      //
+      // **It is not two points.** `304` is: its first triple is the eye. `322`
+      // hands its first command a zero eye, and that zero never shows, because
+      // the command sets the flag that makes the camera work its eye back out
+      // of the point and the orbit at the end of the frame.
+      //
+      // **The angles are radians**, in fixed point: the yaw is wrapped modulo
+      // `0x6488`, which is 2π × 4096. The eighth number is which way round the
+      // yaw turns — `-1`, the short way, when the scene does not say.
+      case 322: {
+        const target: Vec3 = [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s]
+        const frames = num(args[6])
+        this.moveTarget(target, frames)
+        this.moveAngle(
+          { yaw: num(args[3]), rise: num(args[4]) * s, distance: num(args[5]) * s },
+          frames,
+          args.length >= 8 ? num(args[7]) : -1,
+        )
+        return 0
+      }
+      // **Give the camera back**, `328` — read from overlay 1. The game asks
+      // the camera for the eye and look-at point its idle placement would
+      // have, and queues a move to them over the count it is given.
+      //
+      // **Ours**: the field camera is that idle placement, and this engine
+      // cannot ask it where it will be in `n` frames' time — it follows the
+      // Hero. So the shot is held where it is and handed back when the count
+      // runs out, which is `300` after a wait rather than a move.
+      case 328:
+        this.handingBack = { at: this.frame + Math.max(1, num(args[0])) }
+        return 0
       case 321:
         // The game works out a new eye from the camera's own yaw, height and
         // distance and moves eye and target together, so the framing is kept
@@ -918,7 +1118,10 @@ export class EventStage {
       case 301: {
         const ref = args[0]
         const busy =
-          this.targetMove !== undefined || this.angleMove !== undefined || this.shake !== undefined
+          this.targetMove !== undefined ||
+          this.angleMove !== undefined ||
+          this.shake !== undefined ||
+          this.handingBack !== undefined
         if (isRef(ref)) thread.write(ref, busy ? 1 : 0)
         return 0
       }
@@ -993,6 +1196,53 @@ export class EventStage {
       case 720:
         this.sounds.push({ kind: 'jingle', index: num(args[0]) })
         return 0
+      // **Fade the music out**, `721` — read from overlay 1. It takes a frame
+      // count, **30 when the scene does not give one**, and hands it to the
+      // sound manager, which ramps whichever of its two sequence players is
+      // live down to silence over that many ticks and marks it stopping. A
+      // count of zero stops it outright rather than fading.
+      case 721:
+        this.sounds.push({
+          kind: 'stopMusic',
+          index: 0,
+          frames: args.length >= 1 ? num(args[0]) : BGM_FADE_FRAMES,
+        })
+        return 0
+      // **How loud the sound is**, `715` — read from overlay 1. The number is
+      // **clamped to 0..127** and kept as the script's own level, which the
+      // manager then scales by the player's 1-to-5 sound setting before it
+      // reaches the mixer; the second number is how many ticks to ramp over,
+      // and zero is at once.
+      //
+      // **Ours**: the player's setting is not kept here, so what is held is
+      // the script's level unscaled. Nothing here sounds it yet.
+      case 715: {
+        const to = Math.min(SOUND_LOUDEST, Math.max(0, num(args[0])))
+        const frames = args.length >= 2 ? num(args[1]) : 0
+        if (frames > 0) {
+          this.volumeRamp = { from: this.volume, to, start: this.frame, frames }
+        } else {
+          this.volume = to
+          this.volumeRamp = undefined
+        }
+        return 0
+      }
+      // **The sound functions the cartridge does nothing for**, `703` to `709`
+      // — read from overlay 1. All seven are the same two instructions,
+      // `mov r0,#1; bx lr`: they take no arguments, read nothing, write
+      // nothing and hand back the success every other handler hands back.
+      //
+      // There is nothing to implement and nothing more to find: whatever they
+      // were for was taken out before this build. They are answered, not
+      // counted, so they leave the worklist for good.
+      case 703:
+      case 704:
+      case 705:
+      case 706:
+      case 707:
+      case 708:
+      case 709:
+        return 1
       // **The voice a line is spoken in**, `554` — not speech but the blip
       // that runs while a message types itself out: the game plays one of
       // three looping sounds of its base archive, `10` at its own pitch, `12`
@@ -1002,6 +1252,72 @@ export class EventStage {
       // **Ours**: nothing here blips, so the pitch is kept and not sounded.
       case 554:
         this.talkPitch = num(args[0])
+        return 0
+      // **Which choice was picked**, `558` — read from overlay 1. It reads one
+      // field of the message window and stores it through the reference it is
+      // handed. That field is the highlighted option: the d-pad handler walks
+      // it up and down, wrapping against the option count beside it, and the
+      // code that builds a two-option prompt sets it to a default the moment
+      // the prompt goes up. It is **0-based**, and the handler checks nothing.
+      //
+      // **Ours**: no choice window is drawn here, so the answer is
+      // {@link choice}, which is the first option until whoever plays the
+      // event says otherwise.
+      case 558: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.choice)
+        return 0
+      }
+      // **Read one of the game's story flags**, `603` — read from overlay 1.
+      // The number indexes a bitfield, and **ids from `0x400` up are shifted
+      // by 1786 bits** into a second range of it; nothing is bounds-checked.
+      // What comes back is **1 or 0**, stored through the reference — and the
+      // store writes only the four-byte value of the thing referred to and
+      // leaves its tag as it was.
+      //
+      // **Ours**: nothing here sets these flags, so a scene that asks finds
+      // them clear unless whoever plays the event has filled {@link flags}.
+      case 603: {
+        const ref = args[1]
+        if (isRef(ref)) thread.write(ref, this.flags.has(num(args[0])) ? 1 : 0)
+        return 0
+      }
+      // **Put a monster's model in a game-object slot**, `233` — read from
+      // overlay 1. It takes a name and a slot: the name is looked up in
+      // `data/pack_lv5/enemy.gp2`, the first `.cchr` of the archive it finds
+      // is decompressed and loaded as a model, and that model goes into the
+      // game's own object table at the slot. **A negative slot maps to
+      // `-slot + 0x9f`**, so `-1` is `0xa0` and `-0x20` is `0xbf` — which is
+      // the range every scene uses. The model is scaled by `0x10a` on all
+      // three axes and set to animation 0; whatever was in the slot is
+      // overwritten rather than freed. A third number picks which allocator.
+      //
+      // **Ours**: the model is named and kept against its slot. The `0x10a`
+      // scale is not applied — the base its fixed point is in was not
+      // established, and it is not the `0x1000` the neighbouring code uses.
+      case 233: {
+        const name = text(args[0])
+        if (name === '') return 0
+        this.monsters.set(monsterSlot(num(args[1])), name)
+        return 0
+      }
+      // **Begin the scripted battle**, `547` — read from overlay 1. The first
+      // number is a placement id whose entry must be of kind 1 and hold a
+      // model: that model is made visible, flagged, and becomes the
+      // transition's foreground — **a wrong kind or an empty entry makes the
+      // whole call do nothing**. The second is a record index into
+      // `data/event/eventbattle.bin`, which picks the battle and, from `+0x0e`
+      // of its record, the music; **`-1` when the scene gives only one
+      // number**, which skips the lookup and plays sequence `0x17`. The
+      // transition then blacks both screens and snaps the volume back to whole.
+      //
+      // **Ours**: no battle begins from a scene yet, so what it asked for is
+      // kept for whoever plays the event to act on.
+      case 547:
+        this.battleFrom = {
+          placement: num(args[0]),
+          battle: args.length >= 2 ? num(args[1]) : -1,
+        }
         return 0
       // **Stop what a character is playing**, `222` — queued behind whatever
       // else it has been told to do, so it stops when its turn comes.
@@ -1178,6 +1494,39 @@ export class EventStage {
         return 0
       case 563:
         this.doorsOpened.delete(`${num(args[0])},${num(args[1])}`)
+        return 0
+      // **Show or hide a thing the map has placed**, `574` — read from overlay
+      // 1. The two numbers find a record: the first is a group key on a linked
+      // list of the map's placements, the second a 16-bit id within the
+      // group's own array of `0x70`-byte records. The third **clears bit 2 of
+      // the record's flags when it is not zero and sets it when it is**, and
+      // bit 2 is what the draw path tests to skip a record — so a third
+      // argument of zero hides it and anything else shows it.
+      //
+      // Its neighbours settle the record: `575` writes a position at `+0x08`,
+      // `577` another vector at `+0x14`, `576` a halfword at `+0x06`.
+      //
+      // **Ours**: this engine draws no map placements yet — as with `540`'s
+      // doors — so which ones a scene has hidden is what is kept.
+      case 574: {
+        const at = `${num(args[0])},${num(args[1])}`
+        if (num(args[2]) === 0) this.placementsHidden.add(at)
+        else this.placementsHidden.delete(at)
+        return 0
+      }
+      // **Take a placed sprite away**, `573` — read from overlay 1, the exact
+      // inverse of `521`, which builds one: `521` loads `data/ani/<name>.spr`
+      // and registers it in the map's placement manager, and `573` gives the
+      // cached resource back, destroys the model if one was made instead, and
+      // empties the slot. It takes the placement id, and **the placement table
+      // has 32 entries with no check that the id is among them**.
+      //
+      // **Its second argument is read by nothing**: the handler calls the
+      // argument reader exactly once. The `ii` shape hands it a number that
+      // goes nowhere. (Nor is `521` implemented here, so there is nothing yet
+      // for this to undo.)
+      case 573:
+        this.spritesDropped.add(num(args[0]))
         return 0
       // **`9` clears a flag of the game's**, and `8` sets it: one global
       // boolean, which decides whether entering a zone applies its masks of

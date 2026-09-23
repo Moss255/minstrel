@@ -172,6 +172,20 @@ lives; this is the gathered list.
   chooses among them is still in code, unread.
 - **`.bmmp` tags** left over on the top screen's panel are constant, and the
   fuller panel in the sprite set is for a screen not seen.
+- **The bottom screen's own brightness** — `105` and `120` fade it apart from
+  the top, and this engine draws one screen, so the level is kept and nothing
+  shows it (`docs/event-scripts.md` §5e).
+- **What a scene places on the map** — `573` takes a placed `.spr` away and
+  `574` shows or hides a placed thing, but `521`, which builds them, is not
+  implemented, and nothing draws map placements yet. Both are kept, as `540`'s
+  doors are.
+- **The scripted battle**, `547`: read, including the `eventbattle.bin` record
+  that picks the battle and its music, and kept — no battle begins from a scene
+  yet.
+- **The game's story flags**, which `603` reads: this engine keeps none, so a
+  scene that asks finds them clear.
+- **A message's choices**, which `558` answers: no choice window is drawn, so
+  the answer is always the first option unless the caller sets it.
 
 ---
 

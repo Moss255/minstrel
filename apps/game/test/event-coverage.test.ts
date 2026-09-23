@@ -274,7 +274,7 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     expect(slice, 'no triggers for the slice area').toBeDefined()
     const here = slice as AreaReport
     expect(here.events).toBe(49)
-    expect(here.unhandled.size).toBe(55)
+    expect(here.unhandled.size).toBe(48)
   })
 
   it('shows the gap is front-loaded — the same functions, area after area', () => {
@@ -298,47 +298,50 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // implementing one of them shows up here as a shorter list.
     const first = Math.min(...[...wanted.values()].map((row) => row.event))
     // ev01130's whole want — 222, 532, 543, 554, 595, 596, 728 and 731 — has
-    // been read, so the head of the list has moved on to ev01150.
-    expect(first).toBe(1150)
+    // been read, and then ev01150's one want, 120, the bottom screen's fade;
+    // so the head of the list has moved on to ev01515.
+    expect(first).toBe(1515)
     const head = [...wanted]
       .filter(([, row]) => row.event === first)
       .map(([fn]) => fn)
       .sort((a, b) => a - b)
-    expect(head).toEqual([120])
+    expect(head).toEqual([538])
     // Still wanted by a great many areas, which is why it is first: the
     // earliest scenes and the latest want the same handful.
     for (const fn of head) {
-      expect(wanted.get(fn)?.areas.size, `fn ${fn}`).toBeGreaterThan(20)
+      expect(wanted.get(fn)?.areas.size, `fn ${fn}`).toBeGreaterThanOrEqual(20)
     }
   })
 
   it('keeps what each unread function was handed, which is what reading it starts from', () => {
-    // A signature apiece, in `docs/event-scripts.md`'s letters: 574 takes
-    // three integers, 211 a character and a place, 558 a reference to fill.
-    expect([...(wanted.get(574)?.shapes ?? [])]).toEqual(['iii'])
-    expect([...(wanted.get(211)?.shapes ?? [])].sort()).toContain('ifff')
-    expect([...(wanted.get(558)?.shapes ?? [])]).toEqual(['r'])
+    // A signature apiece, in `docs/event-scripts.md`'s letters: 512 takes two
+    // integers, 238 a character and a place, 327 one number either way.
+    expect([...(wanted.get(512)?.shapes ?? [])]).toEqual(['ii'])
+    expect([...(wanted.get(238)?.shapes ?? [])].sort()).toContain('ifff')
+    expect([...(wanted.get(327)?.shapes ?? [])].sort()).toEqual(['f', 'i'])
   })
 
   it('says what a town beyond the slice adds, which is what the phase is sized by', () => {
     // Eight areas have 15 events or more. **The cheapest of them now adds
     // nothing**: C02 wants no engine function the slice does not want
     // already, which is the first town outside the slice to stand level with
-    // it. The eight together add 30, where the raw count of what is
-    // unanswered is 107 — the earliest scenes and the latest want the same
+    // it. The eight together add 21, where the raw count of what is
+    // unanswered is 90 — the earliest scenes and the latest want the same
     // handful, which is what the phase's order rests on.
     //
-    // **This is the measure of the phase.** It moved three times in a day:
+    // **This is the measure of the phase.** It moved four times in two days:
     // the waypoint path (214 to 217) took the cheapest town from 11 to 7, the
     // cast-staging block (502 to 508 with 203, 205, 212) took the slice's own
-    // count down eight, and C02's last seven — 9, 218, 540, 544, 563, 597 and
-    // 800 — took it to nothing.
+    // count down eight, C02's last seven — 9, 218, 540, 544, 563, 597 and
+    // 800 — took it to nothing, and the worklist head with the towns' shared
+    // set (105, 120, 211, 233, 322, 328, 547, 558, 573, 574, 603, 703 to 709,
+    // 715, 721) took the union from 30 to 21 and the raw count from 107 to 90.
     expect(towns.length).toBe(8)
     const cheapest = towns[0] as Town
     expect(cheapest.area).toBe('C02')
     expect(cheapest.beyond.length).toBe(0)
     const union = new Set(towns.flatMap((town) => town.beyond))
-    expect(union.size).toBe(30)
+    expect(union.size).toBe(21)
     // And none of them is a fresh start: every town wants far more that the
     // slice wanted too than it wants on its own.
     for (const town of towns) {
@@ -351,11 +354,10 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // cartridge, "met by running every event against a host that answers
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
-    // line, and then more than 139 are reached: 150 are unanswered here, on
-    // top of the 66 the host implements — 36 this morning. The notes' figure
-    // is a floor.
+    // line, and then more than 139 are reached. The notes' figure is a floor:
+    // what the host has read since has taken this from 150 down to 90.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(107)
+    expect(everywhere.size).toBe(90)
   })
 })
