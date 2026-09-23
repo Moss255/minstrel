@@ -265,7 +265,7 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
 
   it('counts what the slice itself still wants', () => {
     // M01 is the slice's own area and it plays — which is not the same as
-    // being complete. Its events call **69** functions the host answers with
+    // being complete. Its events call **68** functions the host answers with
     // 0, and the slice is playable because none of them stops a scene it
     // needs. The number is a pin: implementing one lowers it, and a change
     // that loses one raises it. It was 78 before the scene's field of view
@@ -274,7 +274,7 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     expect(slice, 'no triggers for the slice area').toBeDefined()
     const here = slice as AreaReport
     expect(here.events).toBe(49)
-    expect(here.unhandled.size).toBe(69)
+    expect(here.unhandled.size).toBe(68)
   })
 
   it('shows the gap is front-loaded — the same functions, area after area', () => {
@@ -302,8 +302,8 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
       .filter(([, row]) => row.event === first)
       .map(([fn]) => fn)
       .sort((a, b) => a - b)
-    // 532, the scene's field of view, was among these until it was read.
-    expect(head).toEqual([222, 543, 554, 595, 596, 728, 731])
+    // 532 and 543 were among these until they were read.
+    expect(head).toEqual([222, 554, 595, 596, 728, 731])
     // Every one of them is wanted by a great many areas, which is why they are
     // first: the earliest scenes and the latest want the same handful.
     for (const fn of head) {
@@ -320,19 +320,24 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
   })
 
   it('says what a town beyond the slice adds, which is what the phase is sized by', () => {
-    // Eight areas have 15 events or more. The cheapest of them adds 7
-    // functions to what the slice already wanted, and all eight together add
-    // 44 — not the 146 the raw count suggests, because the earliest scenes and
-    // the latest want the same handful. **This is the measure of the phase**:
-    // implementing a function the towns share drops every one of these, as
-    // the waypoint path (214 to 217) did — it took the cheapest town from 11
-    // to 7 and the eight together from 48 to 44.
+    // Eight areas have 15 events or more. **The cheapest of them now adds
+    // nothing**: C02 wants no engine function the slice does not want
+    // already, which is the first town outside the slice to stand level with
+    // it. The eight together add 35, where the raw count of what is
+    // unanswered is 126 — the earliest scenes and the latest want the same
+    // handful, which is what the phase's order rests on.
+    //
+    // **This is the measure of the phase.** It moved three times in a day:
+    // the waypoint path (214 to 217) took the cheapest town from 11 to 7, the
+    // cast-staging block (502 to 508 with 203, 205, 212) took the slice's own
+    // count down eight, and C02's last seven — 9, 218, 540, 544, 563, 597 and
+    // 800 — took it to nothing.
     expect(towns.length).toBe(8)
     const cheapest = towns[0] as Town
     expect(cheapest.area).toBe('C02')
-    expect(cheapest.beyond.length).toBe(7)
+    expect(cheapest.beyond.length).toBe(0)
     const union = new Set(towns.flatMap((town) => town.beyond))
-    expect(union.size).toBe(44)
+    expect(union.size).toBe(35)
     // And none of them is a fresh start: every town wants far more that the
     // slice wanted too than it wants on its own.
     for (const town of towns) {
@@ -346,11 +351,11 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
     // line, and then more than 139 are reached: 150 are unanswered here, on
-    // top of the 49 the host implements — 36 before the waypoint path, the
-    // scene's field of view and the cast-staging block went in. The notes'
-    // figure is a floor.
+    // top of the 56 the host implements — 36 this morning, before the
+    // waypoint path, the scene's field of view, the cast-staging block and
+    // C02's own seven went in. The notes' figure is a floor.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(137)
+    expect(everywhere.size).toBe(126)
   })
 })

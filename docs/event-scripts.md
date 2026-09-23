@@ -354,6 +354,35 @@ and nothing to wait for. `apps/game/src/event.ts` keeps the two things a script
 can see — the list `506` asked for, and `507`'s answer that nothing is still
 loading, which is what lets the spin end — and does nothing for the partitions.
 
+## 5c. The seven the next town wanted — 23 September 2026
+
+Read together because the coverage table said one area, C02, wanted these
+seven and nothing else the slice did not want already.
+
+| fn | handed | what it does |
+|---|---|---|
+| 8, 9 | — | **set and clear one global flag**, which decides whether entering a zone applies its masks of opened chests and doors. Every event's section 200 clears it. What the flag is *for* was not established |
+| 218 | character, ticks | **waits**, on the same queue the character's motions run on — a pause between them |
+| 543 | character, 3 references | **where it is**: the vector that goes to its position |
+| 544 | character, 3 references | **which way it faces**: the vector that goes to its rotation, in **degrees** |
+| 540 | group, object | **opens a door placement**, swinging it 35° or 28° or sliding it along its facing, with a sound its material picks. 584, 585 and 586 are the same with another swing |
+| 563 | group, object | **closes it again** |
+| 597 | reference | the **lighting's time of day**, a slot of 0 to 6 |
+| 800 | reference | **1 where the Hero is a man**, 0 where a woman — a bit of the protagonist's own record, which `sg00m.chr` and `sg00w.chr` pair up with |
+
+**What this engine does with them.** It waits, hands back a position and a
+facing, says the Hero is a man — the slice's is a preset — and keeps which
+door placements a scene has opened. Three are **ours** where the game's is
+something this engine has not got: the rotation's x and z, since a character
+here keeps one angle; the time of day, since the game's slot runs 0 to 6 and
+this engine has three; and the doors, which here are the doorways a walk goes
+through rather than placements that swing, so nothing draws them yet. The flag
+`8` and `9` toggle has no counterpart at all, there being no masks to apply.
+
+**What it was worth**: C02, the cheapest town outside the slice, wanted seven
+engine functions the slice did not. It now wants none — the first area outside
+the slice to stand level with it.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -379,12 +408,20 @@ than twenty areas. 554 and 532 are the two most-called of all — 2,416 and
 1,653 calls — and take one integer apiece. That is where reading out of the
 decomp pays for itself soonest.
 
-**What it looks like when one lands.** The waypoint path above was four
-numbers that the worklist showed arriving together — 214, 215, 216 and 217,
-wanted by four towns at once. Reading and implementing them took the cheapest
-town outside the slice from 11 functions to 7, and the eight towns together
-from 48 to 44. The cluster was visible in the table before anything was read:
-numbers that turn up side by side in the same towns are usually one feature.
+**What it looks like when one lands.** Three clusters came out of the table in
+one day, each visible in it before anything was read — numbers that turn up
+side by side in the same towns are usually one feature.
+
+| cluster | what it was | the slice's own | the towns together |
+|---|---|---|---|
+| — | where it stood | 78 | 48 |
+| 214–217 | a character's waypoint path | 78 | 44 |
+| 532 | the scene's field of view | 77 | 44 |
+| 502–508, 203, 205, 212 | staging a scene's cast | 69 | 44 |
+| 9, 218, 540, 543, 544, 563, 597, 800 | C02's own seven, and a sibling | 68 | 35 |
+
+The count of what is unanswered across the cartridge went 150 to 126, and what
+the host implements 36 to 56.
 
 ## 7. Open questions
 

@@ -573,3 +573,71 @@ describe('staging a scene’s cast — the game’s 502 to 508, 203, 205 and 212
     expect(stage.actors.get(4)?.model).toBeUndefined()
   })
 })
+
+describe('the seven the next town wanted', () => {
+  it('makes a character wait, and busy while it does — 218', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(218, [1, 5], t)
+    expect(stage.busy(1)).toBe(true)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.busy(1)).toBe(false)
+    // A wait of nothing is over before it starts.
+    stage.host.call(218, [1, 0], t)
+    expect(stage.busy(1)).toBe(false)
+  })
+
+  it('hands back where a character is and which way it faces — 543 and 544', () => {
+    const stage = new EventStage(1 / 8)
+    const { written, thread: t } = thread()
+    stage.host.call(206, [1, 8, 16, 24], t)
+    stage.host.call(208, [1, 0, Math.PI / 2, 0], t)
+    stage.host.call(543, [1, ref(1), ref(2), ref(3)], t)
+    // The script's own units, which is what 206 was given.
+    expect(written.get(1)).toBeCloseTo(8, 6)
+    expect(written.get(2)).toBeCloseTo(16, 6)
+    expect(written.get(3)).toBeCloseTo(24, 6)
+    stage.host.call(544, [1, ref(4), ref(5), ref(6)], t)
+    // Degrees, as the game's angles are.
+    expect(written.get(5)).toBeCloseTo(90, 6)
+    expect(written.get(4)).toBe(0)
+  })
+
+  it('hands back the time of day, which is the engine’s own — 597', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.timeOfDay = 2
+    stage.host.call(597, [ref(7)], t)
+    expect(written.get(7)).toBe(2)
+  })
+
+  it('says the Hero is a man — 800', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(800, [ref(8)], t)
+    expect(written.get(8)).toBe(1)
+  })
+
+  it('opens a door placement and closes it again — 540 and 563', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(540, [3, 7], t)
+    stage.host.call(585, [4, 1], t)
+    expect([...stage.doorsOpened].sort()).toEqual(['3,7', '4,1'])
+    stage.host.call(563, [3, 7], t)
+    expect([...stage.doorsOpened]).toEqual(['4,1'])
+  })
+
+  it('counts none of them as unread any more', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(9, [], t)
+    stage.host.call(218, [1, 1], t)
+    stage.host.call(540, [1, 1], t)
+    stage.host.call(544, [1, ref(1)], t)
+    stage.host.call(563, [1, 1], t)
+    stage.host.call(597, [ref(2)], t)
+    stage.host.call(800, [ref(3)], t)
+    expect([...stage.unreadCalls.keys()]).toEqual([])
+  })
+})

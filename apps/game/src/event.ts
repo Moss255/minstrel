@@ -144,6 +144,8 @@ export interface EventActor {
   turn: Turn | undefined
   /** The waypoint path being built or followed — see {@link Path} and `214`. */
   path: Path
+  /** The frame a wait of `218`'s ends on; undefined when it is not waiting. */
+  waiting: number | undefined
 }
 
 /**
@@ -358,6 +360,14 @@ export class EventStage {
   frame = 0
   /** What `506` asked the loader for, as the script named it — see `506`. */
   readonly queued: string[] = []
+  /** The door placements a scene has opened, `group,object` — see `540`. */
+  readonly doorsOpened = new Set<string>()
+  /**
+   * Which time of day the engine is on, for `597`. **Ours**: the game keeps a
+   * lighting slot of 0 to 6 and this engine has three times of day. Whoever
+   * plays the event sets it.
+   */
+  timeOfDay = 0
   /**
    * The whole vertical field of view the scene asked for, in radians — see
    * `532`. Undefined until it asks, and then the camera's until the event ends.
@@ -457,6 +467,7 @@ export class EventStage {
         fade: undefined,
         walk: undefined,
         path: { points: [], speed: 0, started: undefined, frames: 0 },
+        waiting: undefined,
         turn: undefined,
       }
       this.actors.set(id, found)
@@ -468,7 +479,13 @@ export class EventStage {
   busy(id: number): boolean {
     const actor = this.actors.get(id)
     if (!actor) return false
-    return actor.walk !== undefined || actor.turn !== undefined || actor.path.started !== undefined
+    if (actor.waiting !== undefined && this.frame >= actor.waiting) actor.waiting = undefined
+    return (
+      actor.walk !== undefined ||
+      actor.turn !== undefined ||
+      actor.path.started !== undefined ||
+      actor.waiting !== undefined
+    )
   }
 
   /** One frame on: whatever is walking or turning moves. */
@@ -489,6 +506,7 @@ export class EventStage {
         actor.z = from[2] + (to[2] - from[2]) * t
         if (t >= 1) actor.walk = undefined
       }
+      if (actor.waiting !== undefined && this.frame >= actor.waiting) actor.waiting = undefined
       // A path under way — `217`. The curve gives both where it is and which
       // way it faces, as the game's `Path_Update` writes both.
       if (actor.path.started !== undefined) {
@@ -822,6 +840,82 @@ export class EventStage {
         if (isRef(ref)) thread.write(ref, this.afterTalk ? 1 : 0)
         return 0
       }
+      // **A character waits**, `218` — the game queues a wait of N ticks on
+      // the same channel its motions run on, so it is a pause between them,
+      // and counts down on the character itself. One that is waiting is busy,
+      // which is what `204` reports.
+      case 218: {
+        const actor = this.actor(num(args[0]))
+        const frames = num(args[1])
+        actor.waiting = frames > 0 ? this.frame + frames : undefined
+        return 0
+      }
+      // **Where a character is, and which way it faces** — `543` and `544`,
+      // which are the same function over two vectors of the character's: the
+      // one that goes to its position and the one that goes to its rotation.
+      // Each is handed references to fill, and the game gives **degrees**
+      // (its angles are fixed-point degrees: `532` shows the unit).
+      //
+      // **Ours**: this engine keeps one angle for a character, its facing, so
+      // the x and z of a rotation are answered with nothing.
+      case 543:
+      case 544: {
+        const actor = this.actor(num(args[0]))
+        const triple =
+          id === 543
+            ? [actor.x / s, actor.y / s, actor.z / s]
+            : [0, (actor.facing * 180) / Math.PI, 0]
+        for (const [i, value] of triple.entries()) {
+          const ref = args[i + 1]
+          if (isRef(ref)) thread.write(ref, value)
+        }
+        return 0
+      }
+      // **The time of day the lighting is on**, `597` — the game keeps a slot
+      // of 0 to 6 in its lighting manager and hands it back.
+      //
+      // **Ours**: this engine has three times of day, not seven, and what its
+      // own numbers mean is not the game's. The slot it gives back is the
+      // engine's own — see `daytime.ts`.
+      case 597: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.timeOfDay)
+        return 0
+      }
+      // **Whether the Hero is a man**, `800`: 1 for a man and 0 for a woman,
+      // read from a bit of the protagonist's own record. The slice's Hero is
+      // a preset and is a man, so this is 1 until a character can be made.
+      case 800: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 1)
+        return 0
+      }
+      // **A door opens and closes**, `540` and `563`, by the two numbers that
+      // name a placement in the map's list — the group and the object. The
+      // game swings it by 35° or 28°, or slides it along its facing, and
+      // plays a sound the door's material picks; `584`, `585` and `586` are
+      // the same with another swing.
+      //
+      // **Ours**: this engine's doors are the doorways a walk goes through,
+      // not placements that open, so what is kept is which ones a scene has
+      // opened. Nothing draws them yet.
+      case 540:
+      case 584:
+      case 585:
+      case 586:
+        this.doorsOpened.add(`${num(args[0])},${num(args[1])}`)
+        return 0
+      case 563:
+        this.doorsOpened.delete(`${num(args[0])},${num(args[1])}`)
+        return 0
+      // **`9` clears a flag of the game's**, and `8` sets it: one global
+      // boolean, which decides whether entering a zone applies its masks of
+      // opened chests and doors. Every event's section 200 clears it. This
+      // engine applies no such masks, so nothing here answers to it — as with
+      // the VRAM partitions below. What the flag is *for* was not established.
+      case 8:
+      case 9:
+        return 0
       // **Staging a scene's cast**, the game's 502, 503, 506, 507 and 508 —
       // read from overlay 1. Together with 200 and 202 they are one block: a
       // VRAM partition is emptied and made current (`502`), the scene's files

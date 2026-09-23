@@ -3669,6 +3669,10 @@ function startEvent(number: number, afterTalk = false): boolean {
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
   playing.player.stage.afterTalk = afterTalk
+  // Which time of day the scene asks about — `597`. **Ours**: the game keeps
+  // a lighting slot of 0 to 6 and this engine has three, the same numbers a
+  // zone is picked by.
+  playing.player.stage.timeOfDay = ZONE_KIND_BY_TIME[timeNow()]
   // **Say it where it happens.** An engine function the host has not got is
   // answered with 0 so the scene goes on, which is the right thing to do and
   // the wrong thing to be quiet about: a scene half-plays and nothing says
