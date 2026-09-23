@@ -127,6 +127,18 @@ What makes the remaining areas cheap.
 - **Implement them**, cheapest and most-used first, reading from the decomp.
 - **The loader against all 669 maps headlessly** — the harness already does
   this kind of sweep for collision and spawns; extend it to a full load.
+  **Done, 24 September 2026**: `apps/game/test/maps.test.ts` runs the
+  game's own `load` over every map archive in about 50 seconds. **All 669
+  read**, none names a resource its archive has not got, and one doorway on
+  the cartridge leads to a map that is not there. 197 have no collision — 174
+  of them the whole `B` family, which has no region, doorway, cast or trigger
+  and is pieces rather than places; twelve are places the index names, and of
+  those `M12`, Wormwood Creek's outdoor map, has a cast of eleven and eight
+  doors. See `docs/still-open.md`.
+
+  This is what the dip sample could not do. Thirteen areas by hand found two of
+  the 197, by luck; the sweep is exhaustive, takes a minute, and needs no
+  browser, because `apps/game/src/load.ts` has no DOM in it.
 - **Text and talk at scale**: 1,646 event texts, with the markup fully read.
 - **Make a witness cheap** — jump to any map at any stage, a save state, and
   let's-play frames lined up against ours. See "The bottleneck moves" below:
