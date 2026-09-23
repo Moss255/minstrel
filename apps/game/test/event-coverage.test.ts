@@ -34,6 +34,8 @@ const romPath = process.env.MINSTREL_TEST_ROM
 describe.skipIf(!romPath)('what an area needs that the host has not got', () => {
   /** How many frames one event may take before it is called a runaway. */
   const FRAME_CAP = 20_000
+  /** Events enough for an area to count as a place rather than a room. */
+  const TOWN_EVENTS = 15
 
   interface AreaReport {
     readonly area: string
@@ -44,7 +46,17 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     readonly unhandled: Map<number, number>
   }
 
+  /** An area with events enough to be a place rather than a room, and what it would cost. */
+  interface Town {
+    readonly area: string
+    readonly events: number
+    readonly missing: number
+    /** The functions it wants that the slice's own area does not — the work it adds. */
+    readonly beyond: readonly number[]
+  }
+
   let reports: AreaReport[] = []
+  let towns: Town[] = []
   let scriptsByEvent: Map<number, Script>
   /** The earliest story stage that can reach each event, as `major × 100 + minor`. */
   const storyOf = new Map<number, number>()
@@ -176,6 +188,34 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
         `    ${String(fn).padStart(4)}  ${String(row.areas).padStart(3)} areas, ${row.calls} calls`,
       )
     }
+    // **What the next place costs.** The slice's own area wants 78 functions
+    // and plays regardless, so a count of what an area wants is an upper bound
+    // on the work and not a list of blockers. What it is good for is the
+    // *difference*: how much a new town adds over what the slice already
+    // wanted, which is the number Phase 1 is really sized by.
+    const mine = new Set(reports.find((r) => r.area === 'M01')?.unhandled.keys() ?? [])
+    towns = [...reports]
+      .filter((report) => report.area !== 'M01' && report.events >= TOWN_EVENTS)
+      .map((report) => ({
+        area: report.area,
+        events: report.events,
+        missing: report.unhandled.size,
+        beyond: [...report.unhandled.keys()].filter((fn) => !mine.has(fn)),
+      }))
+      .sort((a, b) => a.beyond.length - b.beyond.length)
+    console.log(`  the towns (${TOWN_EVENTS}+ events), by what they add to the slice's own want:`)
+    for (const town of towns) {
+      console.log(
+        `    ${town.area}  ${String(town.events).padStart(3)} events, ` +
+          `${String(town.missing).padStart(3)} missing, ${String(town.beyond.length).padStart(3)} beyond the slice` +
+          `${town.beyond.length > 0 ? `: ${town.beyond.slice(0, 12).join(' ')}` : ''}`,
+      )
+    }
+    const union = new Set(towns.flatMap((town) => town.beyond))
+    console.log(
+      `  all ${towns.length} of them together add ${union.size} functions the slice does not want`,
+    )
+
     const worst = [...reports].sort((a, b) => b.unhandled.size - a.unhandled.size).slice(0, 10)
     console.log('  the areas wanting most:')
     for (const r of worst) {
@@ -275,6 +315,25 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     expect([...(wanted.get(554)?.shapes ?? [])]).toEqual(['i'])
     expect([...(wanted.get(596)?.shapes ?? [])].sort()).toContain('ir')
     expect([...(wanted.get(731)?.shapes ?? [])]).toEqual([''])
+  })
+
+  it('says what a town beyond the slice adds, which is what the phase is sized by', () => {
+    // Eight areas have 15 events or more. The cheapest of them adds 11
+    // functions to what the slice already wanted, and all eight together add
+    // 48 — not the 150 the raw count suggests, because the earliest scenes and
+    // the latest want the same handful. **This is the measure of the phase**:
+    // implementing a function the towns share drops every one of these.
+    expect(towns.length).toBe(8)
+    const cheapest = towns[0] as Town
+    expect(cheapest.area).toBe('C02')
+    expect(cheapest.beyond.length).toBe(11)
+    const union = new Set(towns.flatMap((town) => town.beyond))
+    expect(union.size).toBe(48)
+    // And none of them is a fresh start: every town wants far more that the
+    // slice wanted too than it wants on its own.
+    for (const town of towns) {
+      expect(town.beyond.length, town.area).toBeLessThan(town.missing / 2)
+    }
   })
 
   it('reaches further than the count in the event-scripts notes', () => {
