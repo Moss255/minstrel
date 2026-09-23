@@ -367,3 +367,93 @@ describe('an engine function the host has not got', () => {
     expect(stage.unreadCalls.size).toBe(0)
   })
 })
+
+describe('a waypoint path — the game’s 214 to 217', () => {
+  /** Build a path for character 1 and set it going. */
+  const walk = (
+    stage: EventStage,
+    points: readonly (readonly [number, number, number])[],
+    speed: number,
+  ) => {
+    const { thread: t } = thread()
+    stage.host.call(214, [1], t)
+    for (const [x, y, z] of points) stage.host.call(216, [1, x, y, z], t)
+    stage.host.call(215, [1, speed], t)
+    stage.host.call(217, [1], t)
+  }
+
+  it('gathers points, keeps sixteen of them, and drops the rest as the game does', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(214, [1], t)
+    for (let i = 0; i < 22; i++) stage.host.call(216, [1, i, 0, 0], t)
+    expect(stage.actors.get(1)?.path.points).toHaveLength(16)
+    expect(stage.actors.get(1)?.path.points[15]).toEqual([15, 0, 0])
+  })
+
+  it('starts the character at the first point and walks it to the last', () => {
+    const stage = new EventStage(1)
+    walk(stage, [[0, 0, 0], [3, 0, 4]], 10)
+    const actor = stage.actors.get(1)
+    expect(actor).toMatchObject({ x: 0, y: 0, z: 0 })
+    // Five units at a speed of ten: half a second, thirty frames.
+    expect(actor?.path.frames).toBe(30)
+    for (let i = 0; i < 30; i++) stage.advance()
+    expect(actor?.x).toBeCloseTo(3, 6)
+    expect(actor?.z).toBeCloseTo(4, 6)
+    expect(actor?.path.started).toBeUndefined()
+  })
+
+  it('is busy while it walks, as 204 reports', () => {
+    const stage = new EventStage(1)
+    walk(stage, [[0, 0, 0], [0, 0, 10]], 5)
+    expect(stage.busy(1)).toBe(true)
+    for (let i = 0; i < stage.actors.get(1)!.path.frames; i++) stage.advance()
+    expect(stage.busy(1)).toBe(false)
+  })
+
+  it('faces the way the path is going', () => {
+    const stage = new EventStage(1)
+    walk(stage, [[0, 0, 0], [0, 0, 10]], 5)
+    stage.advance()
+    // Straight along +z, which is a facing of 0 in the Hero's own convention.
+    expect(stage.actors.get(1)?.facing).toBeCloseTo(0, 3)
+    const other = new EventStage(1)
+    walk(other, [[0, 0, 0], [10, 0, 0]], 5)
+    other.advance()
+    expect(other.actors.get(1)?.facing).toBeCloseTo(Math.PI / 2, 3)
+  })
+
+  it('curves through its points rather than cutting corners', () => {
+    // ev02810 bobs a character in place: x and z held, y stepped up and down.
+    const stage = new EventStage(1)
+    walk(stage, [
+      [0, 0.28, 0],
+      [0, 0.58, 0],
+      [0, 0.18, 0],
+      [0, 0.28, 0],
+    ], 2)
+    const actor = stage.actors.get(1)
+    const heights: number[] = []
+    for (let i = 0; i < (actor?.path.frames ?? 0); i++) {
+      stage.advance()
+      heights.push(actor?.y ?? 0)
+    }
+    expect(Math.max(...heights)).toBeGreaterThan(0.5)
+    expect(Math.min(...heights)).toBeLessThan(0.25)
+  })
+
+  it('takes its points at the stage’s scale, as 206 does', () => {
+    const stage = new EventStage(1 / 8)
+    const { thread: t } = thread()
+    stage.host.call(214, [1], t)
+    stage.host.call(216, [1, 8, 8, 16], t)
+    expect(stage.actors.get(1)?.path.points[0]).toEqual([1, 1, 2])
+  })
+
+  it('says nothing about them being unread any more', () => {
+    const stage = new EventStage(1)
+    walk(stage, [[0, 0, 0], [1, 0, 1]], 5)
+    for (const fn of [214, 215, 216, 217]) expect(stage.unreadCalls.has(fn)).toBe(false)
+  })
+})

@@ -318,17 +318,19 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
   })
 
   it('says what a town beyond the slice adds, which is what the phase is sized by', () => {
-    // Eight areas have 15 events or more. The cheapest of them adds 11
+    // Eight areas have 15 events or more. The cheapest of them adds 7
     // functions to what the slice already wanted, and all eight together add
-    // 48 — not the 150 the raw count suggests, because the earliest scenes and
+    // 44 — not the 146 the raw count suggests, because the earliest scenes and
     // the latest want the same handful. **This is the measure of the phase**:
-    // implementing a function the towns share drops every one of these.
+    // implementing a function the towns share drops every one of these, as
+    // the waypoint path (214 to 217) did — it took the cheapest town from 11
+    // to 7 and the eight together from 48 to 44.
     expect(towns.length).toBe(8)
     const cheapest = towns[0] as Town
     expect(cheapest.area).toBe('C02')
-    expect(cheapest.beyond.length).toBe(11)
+    expect(cheapest.beyond.length).toBe(7)
     const union = new Set(towns.flatMap((town) => town.beyond))
-    expect(union.size).toBe(48)
+    expect(union.size).toBe(44)
     // And none of them is a fresh start: every town wants far more that the
     // slice wanted too than it wants on its own.
     for (const town of towns) {
@@ -342,9 +344,10 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
     // line, and then more than 139 are reached: 150 are unanswered here, on
-    // top of the 36 the host implements. The notes' figure is a floor.
+    // top of the 40 the host implements — 36 before the waypoint path went
+    // in. The notes' figure is a floor.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(150)
+    expect(everywhere.size).toBe(146)
   })
 })

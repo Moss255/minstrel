@@ -141,6 +141,118 @@ export interface EventActor {
   fade: Fade | undefined
   walk: Walk | undefined
   turn: Turn | undefined
+  /** The waypoint path being built or followed — see {@link Path} and `214`. */
+  path: Path
+}
+
+/**
+ * A character's waypoint path: **the game's own**, read from overlay 1's
+ * handlers for 214 to 217 (`0x0215c40c` on) and the commands they queue.
+ *
+ * `214` resets it, `216` appends a point, `215` sets the speed and `217`
+ * runs it — a spline through the points, which is the many-point counterpart
+ * of `207`'s single walk. The game keeps the path on the character itself, at
+ * `+0x11C`, and follows it by sampling the curve into the same fields `206`
+ * writes.
+ */
+export interface Path {
+  /** The points, in order. The game keeps {@link PATH_POINTS} and drops the rest. */
+  readonly points: [number, number, number][]
+  /** What `215` set: the game divides the path's length by it to get how long it takes. */
+  speed: number
+  /** The frame `217` started it on; undefined while it is not running. */
+  started: number | undefined
+  /** How many frames it runs for, worked out when it starts. */
+  frames: number
+}
+
+/**
+ * The most points a path holds: the game's array is sixteen long and
+ * `Path_AddPoint` (`0x02157964`) drops anything past it without a word. Six
+ * paths on the cartridge hand it more — one of 22 — so the drop is not
+ * theoretical.
+ */
+export const PATH_POINTS = 16
+
+/**
+ * Where a path is at a fraction of its way, and which way it faces there —
+ * a Catmull-Rom spline through the points with the first and last doubled,
+ * which is what the game builds (`0x02156c14` duplicates both ends).
+ *
+ * **Ours: the curve's own arithmetic.** That the game's is Catmull-Rom is
+ * read from its shape, not from its coefficients, which were not followed.
+ * A path of two points comes to a straight line either way.
+ */
+export function pathAt(
+  points: readonly (readonly [number, number, number])[],
+  t: number,
+): { at: [number, number, number]; facing: number } | undefined {
+  if (points.length === 0) return undefined
+  if (points.length === 1) {
+    const only = points[0] as readonly [number, number, number]
+    return { at: [...only], facing: 0 }
+  }
+  const spans = points.length - 1
+  const along = Math.max(0, Math.min(1, t)) * spans
+  const span = Math.min(spans - 1, Math.floor(along))
+  const u = along - span
+  const at = (i: number) =>
+    points[Math.max(0, Math.min(points.length - 1, i))] as readonly [number, number, number]
+  const [p0, p1, p2, p3] = [at(span - 1), at(span), at(span + 1), at(span + 2)]
+  const point = (i: 0 | 1 | 2): number => {
+    const [a, b, c, d] = [p0[i], p1[i], p2[i], p3[i]]
+    return (
+      0.5 *
+      (2 * b +
+        (c - a) * u +
+        (2 * a - 5 * b + 4 * c - d) * u * u +
+        (-a + 3 * b - 3 * c + d) * u ** 3)
+    )
+  }
+  const here: [number, number, number] = [point(0), point(1), point(2)]
+  // The facing the game takes from the way the curve is going — a step on.
+  const ahead = Math.min(1, t + 1 / (spans * 16))
+  const next = ahead === t ? undefined : pathStep(points, ahead)
+  const dx = (next?.[0] ?? here[0]) - here[0]
+  const dz = (next?.[2] ?? here[2]) - here[2]
+  return { at: here, facing: dx === 0 && dz === 0 ? 0 : Math.atan2(dx, dz) }
+}
+
+/** The point alone, without the facing — what {@link pathAt} looks a step ahead with. */
+function pathStep(
+  points: readonly (readonly [number, number, number])[],
+  t: number,
+): [number, number, number] | undefined {
+  const spans = points.length - 1
+  if (spans <= 0) return undefined
+  const along = Math.max(0, Math.min(1, t)) * spans
+  const span = Math.min(spans - 1, Math.floor(along))
+  const u = along - span
+  const at = (i: number) =>
+    points[Math.max(0, Math.min(points.length - 1, i))] as readonly [number, number, number]
+  const [p0, p1, p2, p3] = [at(span - 1), at(span), at(span + 1), at(span + 2)]
+  const point = (i: 0 | 1 | 2): number => {
+    const [a, b, c, d] = [p0[i], p1[i], p2[i], p3[i]]
+    return (
+      0.5 *
+      (2 * b +
+        (c - a) * u +
+        (2 * a - 5 * b + 4 * c - d) * u * u +
+        (-a + 3 * b - 3 * c + d) * u ** 3)
+    )
+  }
+  return [point(0), point(1), point(2)]
+}
+
+/** How long a path is, as the game measures it: the straight runs between its points. */
+export function pathLength(points: readonly (readonly [number, number, number])[]): number {
+  let length = 0
+  for (let i = 1; i < points.length; i++) {
+    const [ax, ay, az] = points[i - 1] as readonly [number, number, number]
+    const [bx, by, bz] = points[i] as readonly [number, number, number]
+    length += Math.hypot(bx - ax, by - ay, bz - az)
+  }
+  return length
 }
 
 /** A fade under way — see `220`. */
@@ -336,6 +448,7 @@ export class EventStage {
         opacity: OPACITY_WHOLE,
         fade: undefined,
         walk: undefined,
+        path: { points: [], speed: 0, started: undefined, frames: 0 },
         turn: undefined,
       }
       this.actors.set(id, found)
@@ -346,7 +459,8 @@ export class EventStage {
   /** Whether a character is still walking or turning. */
   busy(id: number): boolean {
     const actor = this.actors.get(id)
-    return actor !== undefined && (actor.walk !== undefined || actor.turn !== undefined)
+    if (!actor) return false
+    return actor.walk !== undefined || actor.turn !== undefined || actor.path.started !== undefined
   }
 
   /** One frame on: whatever is walking or turning moves. */
@@ -366,6 +480,21 @@ export class EventStage {
         actor.y = from[1] + (to[1] - from[1]) * t
         actor.z = from[2] + (to[2] - from[2]) * t
         if (t >= 1) actor.walk = undefined
+      }
+      // A path under way — `217`. The curve gives both where it is and which
+      // way it faces, as the game's `Path_Update` writes both.
+      if (actor.path.started !== undefined) {
+        const { started, frames, points } = actor.path
+        const t = frames <= 0 ? 1 : Math.min(1, (this.frame - started) / frames)
+        const there = pathAt(points, t)
+        if (there) {
+          actor.x = there.at[0]
+          actor.y = there.at[1]
+          actor.z = there.at[2]
+          if (t < 1) actor.facing = there.facing
+          actor.placed = true
+        }
+        if (t >= 1) actor.path.started = undefined
       }
       if (actor.turn) {
         const { from, to, start, frames } = actor.turn
@@ -683,6 +812,56 @@ export class EventStage {
         // Whether the scene carries straight on from a conversation — see `afterTalk`.
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, this.afterTalk ? 1 : 0)
+        return 0
+      }
+      // **A waypoint path**, the game's 214 to 217 — read from overlay 1's
+      // handlers and the commands they queue: `214` resets the path, `216`
+      // appends a point to it, `215` says how fast it is walked and `217`
+      // sets it going and waits. Together they are the many-point counterpart
+      // of `207`, and 65 events use them.
+      case 214: {
+        const actor = this.actor(num(args[0]))
+        actor.path.points.length = 0
+        actor.path.speed = 0
+        actor.path.started = undefined
+        actor.path.frames = 0
+        return 0
+      }
+      case 215: {
+        // The second value is a **speed**, not a count of frames: the game
+        // divides the path's length by it (`0x021579ac`).
+        const actor = this.actor(num(args[0]))
+        actor.path.speed = num(args[1])
+        return 0
+      }
+      case 216: {
+        // Its fourth and fifth values are **read by nothing** in the game's
+        // own handler, which takes three floats and no more. They are angles
+        // where they appear, on 37 of the 767 calls.
+        const actor = this.actor(num(args[0]))
+        if (actor.path.points.length < PATH_POINTS) {
+          actor.path.points.push([num(args[1]) * s, num(args[2]) * s, num(args[3]) * s])
+        }
+        return 0
+      }
+      case 217: {
+        const actor = this.actor(num(args[0]))
+        const points = actor.path.points
+        if (points.length === 0) return 0
+        // **Ours: how long it takes.** The game divides the path's length by
+        // the speed, and what the answer is counted in was not read — the
+        // spline's own time base. A second is taken here, which puts the
+        // shuffles of `ev02810` at about a dozen frames apiece.
+        const seconds = actor.path.speed > 0 ? pathLength(points) / (actor.path.speed * s) : 0
+        actor.path.frames = Math.max(1, Math.round(seconds * 60))
+        actor.path.started = this.frame
+        const first = pathAt(points, 0)
+        if (first) {
+          actor.x = first.at[0]
+          actor.y = first.at[1]
+          actor.z = first.at[2]
+          actor.placed = true
+        }
         return 0
       }
       default:

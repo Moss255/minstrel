@@ -275,6 +275,54 @@ row says otherwise. "—" means not established.
 
 ---
 
+## 5a. The dispatch, and a first four read from it — 23 September 2026
+
+**How a number becomes code.** The VM's invoke (`0x021d4bc8`, overlay 17) does
+no searching: `fn = vm->fnTable[number]`, with the number checked against a
+count of 1,000 and a null slot answered by doing nothing. Overlay 1 fills that
+array from a static table of `{function, number}` pairs at `0x02164d6c` —
+**304 entries**, which is the event and field set; the ARM9 and overlay 23
+register their own tables into the same VM for other kinds of script. The
+numbers registered run 0–9, 100–122, 200–240, 300–328, 400–421, 500–522,
+530–603, 700–738 and 800–845.
+
+The 200-group handlers do not act at once: each queues a command on one of the
+character's eight queues, which a per-character tick (`0x0215a134`) walks, and
+a command that is not finished holds its queue for the frame.
+
+**214, 215, 216 and 217 are one feature — a waypoint path.** They share a
+queue with 206 and 207, and they work on a sub-object at the character's
+`+0x11C` that holds sixteen points, a speed and a spline:
+
+| fn | handed | what it does |
+|---|---|---|
+| 214 | character | **resets** the path — the sixteen points, the speed, the spline and its flags (`Path_Reset`, `0x02157908`) |
+| 216 | character, x, y, z | **appends a point**, each float times 4,096 into fixed point. **The fourth and fifth values are read by nothing.** Past sixteen points it drops them without a word (`0x02157964`) |
+| 215 | character, speed | **sets the speed**. The path's length divided by it is how long the walk takes (`0x021579ac`) |
+| 217 | character | **runs it, and waits**: builds the spline, activates it, and each frame samples it into the character's position and facing until it ends (`0x0215944c`) |
+
+The spline duplicates its first and last points, which is Catmull-Rom's shape.
+The counts bear the reading out: 1,153 calls across 65 events, with 214, 215
+and 217 called about 129 times each — once a path — and 216 767 times, six or
+so points apiece. The first point of a path is nearly always where `206` has
+just put the character.
+
+**Not read**: what the duration is counted in. The game divides the path's
+length by the speed and hands the answer to the spline; what the spline's time
+base is was not followed. `apps/game/src/event.ts` takes it for seconds, which
+puts `ev02810`'s shuffles at about a dozen frames apiece — **ours**, and
+marked.
+
+**532 is the camera's field of view**, in degrees, read at the same time
+(`0x0215f968` → `Camera_SetFov`, `0x0202e9a4`, whose `71/4096` is a degree in
+radians). The engine keeps its sine and cosine and hands them to the DS's
+perspective matrix. It takes an integer or a float. That is the number
+`docs/still-open.md` has as ours, set by eye at 50°.
+
+**554 is not read.** It stores its integer in a field of the global field
+controller which selects one of three variants of something; what that
+something is was not established, and nothing should be assumed from it.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -299,6 +347,13 @@ starts at 1.1, and the numbering runs with the story.
 than twenty areas. 554 and 532 are the two most-called of all — 2,416 and
 1,653 calls — and take one integer apiece. That is where reading out of the
 decomp pays for itself soonest.
+
+**What it looks like when one lands.** The waypoint path above was four
+numbers that the worklist showed arriving together — 214, 215, 216 and 217,
+wanted by four towns at once. Reading and implementing them took the cheapest
+town outside the slice from 11 functions to 7, and the eight towns together
+from 48 to 44. The cluster was visible in the table before anything was read:
+numbers that turn up side by side in the same towns are usually one feature.
 
 ## 7. Open questions
 
