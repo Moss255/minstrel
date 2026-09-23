@@ -27,14 +27,30 @@ export const DS_VERTICAL_FOV = (50 * Math.PI) / 180
  * A whole vertical field of view, in radians, from the number a scene's
  * camera is given — the game's engine function `532`.
  *
- * **The number is the half-angle, in degrees**, and the game says so itself:
- * `Camera_SetFov` (`0x0202e9a4`) multiplies the fixed-point number by
- * {@link DEGREE_IN_RADIANS} before it takes a sine or a cosine of it, which
- * is degrees into radians and nothing else. Its projection then divides the
- * cosine by the sine (`0x020c28c0`), putting `cot(angle)` in the matrix slot
- * that holds `cot(fov / 2)` — the same slot {@link perspective} fills below.
- * So the angle handed over is half of the whole field: the 15 the scenes pass
- * most often is a vertical field of 30°.
+ * **The number is in degrees** — that much the game says itself: `Camera_SetFov`
+ * (`0x0202e9a4`) multiplies the fixed-point number by {@link DEGREE_IN_RADIANS}
+ * before it takes a sine or a cosine of it, which is degrees into radians and
+ * nothing else.
+ *
+ * **Whether it is the half-angle or the whole field is not settled**, and the
+ * two readings differ by a factor of two, so this says what is known:
+ *
+ * - The projection divides the cosine by the sine (`0x020c28c0`) and puts
+ *   `cot × aspect` in the matrix's sixth word, with the first word coming from
+ *   a division. A plain perspective matrix holds `cot(fov / 2)` there, which
+ *   argues for the half-angle — **but the slot is not plain `cot`**, so the
+ *   argument is weaker than it first looked.
+ * - **The engine's own default is 60** (`0xF000` in fixed point, set by
+ *   `0x02155fe0`), and the scenes pass **15** in 1,668 of their 2,477 calls.
+ *   Read as half-angles those are a 120° field and a 30° one; read whole, 60°
+ *   and 15°. A 120° vertical field is implausible, and the field camera here
+ *   was independently tuned by eye to 50° — which sits much closer to 60 whole
+ *   than to 120.
+ *
+ * So the evidence now points the *other* way from the first reading. It is
+ * left as it was because this is what the scenes were watched with and it
+ * looks right; changing it is a decision to take with the game in front of
+ * you, not from the arithmetic. See `docs/still-open.md`.
  *
  * Everywhere else the engine's fixed-point angles are already **radians** —
  * `fix32ReduceAngle0To2Pi` (`0x02030f30`) wraps them modulo `0x6488`, which is

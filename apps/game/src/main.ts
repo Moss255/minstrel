@@ -662,8 +662,10 @@ let cueStarted = 0
 let playing:
   | {
       readonly player: EventPlayer
-      readonly event: number
-      readonly messages: ReadonlyMap<number, string>
+      /** Which script is running: the one started, or whatever `538` chained. */
+      event: number
+      /** That script's own messages — a chain brings its own. */
+      messages: ReadonlyMap<number, string>
       showing: number | undefined
       carry: number
       readonly framing: { pitch: number; distance: number; yaw: number }
@@ -3679,12 +3681,36 @@ function startEvent(number: number, afterTalk = false): boolean {
       .flatMap((m) => (m.text === undefined ? [] : [[m.id, m.text] as const])),
   )
   playing = {
-    player: new EventPlayer(script, WORLD_SCALE * worldScale, {
-      x: toFloat(self.state.x),
-      y: toFloat(self.state.y),
-      z: toFloat(self.state.z),
-      facing: self.facing,
-    }),
+    player: new EventPlayer(
+      script,
+      WORLD_SCALE * worldScale,
+      {
+        x: toFloat(self.state.x),
+        y: toFloat(self.state.y),
+        z: toFloat(self.state.z),
+        facing: self.facing,
+      },
+      // **A scene carrying on into another script**, the game's `538`. The
+      // scene keeps its cast and its camera and runs the next script on the
+      // same stage; what changes here is only which messages are on hand.
+      (id) => {
+        const next = loaded?.eventScript(id)
+        if (!next) {
+          status(`ev${String(id).padStart(5, '0')} will not read — the chain stops`)
+          return undefined
+        }
+        if (playing) {
+          playing.event = id
+          playing.messages = new Map(
+            (loaded?.eventMessages(id) ?? []).flatMap((m) =>
+              m.text === undefined ? [] : [[m.id, m.text] as const],
+            ),
+          )
+          playing.showing = undefined
+        }
+        return next
+      },
+    ),
     event: number,
     messages,
     showing: undefined,

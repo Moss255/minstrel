@@ -172,6 +172,15 @@ lives; this is the gathered list.
   chooses among them is still in code, unread.
 - **`.bmmp` tags** left over on the top screen's panel are constant, and the
   fuller panel in the sprite set is for a screen not seen.
+- **Whether `532`'s field of view is a half-angle or the whole field** —
+  unsettled, and the two differ by a factor of two. The first reading called
+  it a half-angle because the projection puts `cot` in the matrix slot that
+  holds `cot(fov / 2)`; reading `580` showed that slot actually takes
+  `cot × aspect`, which weakens that. Against the half-angle: the engine's own
+  default is **60**, and the field camera here was tuned by eye to 50 — close
+  to 60 read whole, nowhere near the 120 the half-angle reading would give.
+  Left as it was, because that is what the scenes were watched with. Settling
+  it wants the game in front of you (§1b), not more arithmetic.
 - **The bottom screen's own brightness** — `105` and `120` fade it apart from
   the top, and this engine draws one screen, so the level is kept and nothing
   shows it (`docs/event-scripts.md` §5e).
@@ -184,6 +193,16 @@ lives; this is the gathered list.
   yet.
 - **The game's story flags**, which `603` reads: this engine keeps none, so a
   scene that asks finds them clear.
+- **`559`'s byte**: written by the script and by a map transition, and **read
+  by nothing in the cartridge**. Kept so as to record that, not because it does
+  anything (`docs/event-scripts.md` §5i).
+- **What a character holds**, `550` and `556`: read in full, including the
+  twelve-row weapon-mount table in `data/bin/wpnpos.bin` and its two placements
+  a row. This engine draws the Hero's and Ivor's equipment from the wearer's
+  own record rather than from six object slots, so a scene's word about it is
+  kept against the character rather than acted on. Whether `556`'s second
+  number is stowed-versus-drawn is INFERRED — the two halves of a row are built
+  the same and nothing names them.
 - **A message's choices**, which `558` answers: no choice window is drawn, so
   the answer is always the first option unless the caller sets it.
 - **The caption**, `409` to `414`: read in full, and kept rather than drawn —

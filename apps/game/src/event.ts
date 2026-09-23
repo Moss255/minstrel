@@ -1,5 +1,5 @@
 import type { Script } from '@minstrel/game-formats'
-import { DEGREE_IN_RADIANS, fovOfHalfDegrees } from '@minstrel/render'
+import { DEGREE_IN_RADIANS, DS_VERTICAL_FOV, fovOfHalfDegrees } from '@minstrel/render'
 import {
   EventRun,
   ScriptError,
@@ -149,6 +149,16 @@ export interface EventActor {
   waiting: number | undefined
   /** The animation packages `230` has taken off, by the game's own id. */
   packsDropped: number[]
+  /**
+   * How far the character reaches, which the game keeps on the model itself
+   * and starts at 1 — see `226` and `227`.
+   */
+  radius: number
+  radiusMove: CameraMove<number> | undefined
+  /** Whether what the character holds is drawn — see `550`. */
+  holdingShown: boolean
+  /** Whether the weapon is mounted drawn rather than stowed — see `556`. INFERRED. */
+  weaponDrawn: boolean
   /** What `545` set the motion's rate to; 1 unless a scene says otherwise. */
   motionRate: number
 }
@@ -324,6 +334,35 @@ export interface Caption {
   readonly silent: boolean
   /** How many frames the caption holds for, where `409` timed it. */
   readonly hold?: number
+}
+
+/**
+ * Which bit of the story-flag bank an id names — the game's own rule: an id
+ * below `0x400` is the bit, and one above is **displaced by 1,786 bits** into
+ * a second range of the same bank. `603` applies this; `600` does not, which
+ * is how the bits between the two ranges are reached at all.
+ */
+export function storyBit(id: number): number {
+  return id < 0x400 ? id : id + 0x6fa
+}
+
+/** How many sprite placements the manager holds — see `521`. */
+export const SPRITE_SLOTS = 32
+
+/**
+ * The VRAM partition `521` stages a sprite's texture into when a scene does
+ * not name one: **27**, which is the very partition `502` and `503` bracket.
+ */
+export const SPRITE_PARTITION = 27
+
+/** A sprite a scene has put on the map — see `521`. */
+export interface SpritePlacement {
+  /** The file it came from, as the game builds the path. */
+  readonly file: string
+  /** Which of the eight allocators it was built from. */
+  readonly allocator: number
+  /** Which VRAM partition its texture was staged into. */
+  readonly partition: number
 }
 
 /** How `238`'s colour is applied, by the number it is given. */
@@ -606,6 +645,30 @@ export class EventStage {
   readonly recolours = new Map<number, Recolour>()
   /** The placements a scene has unhung — see `236`. */
   readonly detached = new Set<number>()
+  /**
+   * The script this scene runs on into when its own ends — see `538`. The
+   * game keeps 0 for "none", so 0 and undefined mean the same here.
+   */
+  nextScript: number | undefined
+  /**
+   * A second script the trigger carried, parked until `810` moves it into the
+   * chain — see `834`. **Ours**: whoever starts the event sets it, since this
+   * engine reads one event id from a trigger word.
+   */
+  queuedScript: number | undefined
+  /** The sprites a scene has put on the map, by their slot — see `521` and `522`. */
+  readonly sprites = new Map<number, SpritePlacement>()
+  /** What `509` has switched on each game object's own flag word, by slot. */
+  readonly objectFlags = new Map<number, number>()
+  /** Whether the scene has asked for the zone's light to be applied again — see `589`. */
+  relight = false
+  /** Which lighting a zone uses, where `548` has overridden it; 0 is none. */
+  lightingOverride = 0
+  /** Whether the day clock runs — see `579`, whose number means the opposite. */
+  dayClockRunning = true
+  /** `559`'s byte. **Nothing in the cartridge reads it**; it is kept so as to say so. */
+  unreadByte_0x490 = 0
+  private fovMove: CameraMove<number> | undefined
   /** What `512` set in the game's own flag word. */
   gameFlags = 0
   /** The camera a model's bones are driving — see `572` and `531`. */
@@ -793,6 +856,10 @@ export class EventStage {
         path: { points: [], speed: 0, started: undefined, frames: 0 },
         waiting: undefined,
         packsDropped: [],
+        radius: 1,
+        radiusMove: undefined,
+        holdingShown: true,
+        weaponDrawn: false,
         motionRate: 1,
         turn: undefined,
       }
@@ -834,6 +901,12 @@ export class EventStage {
       const t = Math.min(1, (this.frame - start) / frames)
       this.subDarkness = from + (to - from) * t
       if (t >= 1) this.subDarkening = undefined
+    }
+    if (this.fovMove) {
+      const { from, to, start, frames } = this.fovMove
+      const t = Math.min(1, (this.frame - start) / frames)
+      this.fov = from + (to - from) * t
+      if (t >= 1) this.fovMove = undefined
     }
     if (this.lightFade) {
       const { from, to, start, frames } = this.lightFade
@@ -877,6 +950,12 @@ export class EventStage {
         const t = Math.min(1, (this.frame - start) / frames)
         actor.facing = from + (to - from) * t
         if (t >= 1) actor.turn = undefined
+      }
+      if (actor.radiusMove) {
+        const { from, to, start, frames } = actor.radiusMove
+        const t = Math.min(1, (this.frame - start) / frames)
+        actor.radius = from + (to - from) * t
+        if (t >= 1) actor.radiusMove = undefined
       }
       if (actor.fade) {
         const { from, to, start, frames } = actor.fade
@@ -938,6 +1017,14 @@ export class EventStage {
       shot.target[1] + shaking.amp[1] * sign,
       shot.target[2] + shaking.amp[2] * sign,
     ]
+  }
+
+  /** The first of the 32 sprite slots with nothing in it, or −1 — the game's own search. */
+  private freeSprite(): number {
+    for (let slot = 0; slot < SPRITE_SLOTS; slot++) {
+      if (!this.sprites.has(slot)) return slot
+    }
+    return -1
   }
 
   /** The caption as it stands, so that each of `409` to `414` adds to the others. */
@@ -1096,6 +1183,298 @@ export class EventStage {
         if (frames !== undefined && actor.once) actor.waiting = actor.motionFrom + frames
         return 1
       }
+      // **Carry the scene on into another script**, `538` — read from overlay
+      // 1, and the head of the worklist for good reason: 95 events call it.
+      //
+      // It writes one halfword of the scene's own context, `+0x11a`. The VM's
+      // step, at the point where a script has run out, looks at that halfword:
+      // if a script is waiting there it **copies it into the scene's event id,
+      // re-arms the VM and answers "not finished"** instead of ending the
+      // scene (`0x021bca68`). The context is kept, so the cast, the camera and
+      // the shot carry straight over. That is how a long cutscene is cut into
+      // several scripts.
+      //
+      // The halfword is cleared to 0 when a scene begins and again by the
+      // re-arm, so **0 means no chain**. Nothing validates the id.
+      case 538:
+        this.nextScript = num(args[0]) & 0xffff
+        return 1
+      // **The second script a trigger carried**, `834` and `810` — read from
+      // overlay 1, the other two of `538`'s three. A trigger record holds
+      // **two** event ids: the first runs, and the second is parked in the
+      // context beside the chain at `+0x11c`. `834` answers whether one is
+      // parked — a **1 or 0, not the id** — and `810` moves it into the chain
+      // and clears it, so the scene runs on into it.
+      case 834: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.queuedScript ? 1 : 0)
+        return 1
+      }
+      case 810:
+        if (this.queuedScript) {
+          this.nextScript = this.queuedScript
+          this.queuedScript = undefined
+        }
+        return 1
+      // **Put a sprite on the map**, `521`, and **take it off**, `522` — read
+      // from overlay 1, an exact create-and-destroy pair over the 32 slots of
+      // the sprite manager.
+      //
+      // `521` takes a name, **finds the first free slot of the 32**, and
+      // **hands that slot back through its reference** — which is the whole
+      // reason its shape has one. It loads `data/ani/<name>.spr`, adding the
+      // suffix only when the name has not got one, builds a four-part record,
+      // and stages the sprite's texture into a VRAM partition. Its optional
+      // third number picks which of eight allocators to build from, and its
+      // optional fourth which partition — **27 by default, which is the very
+      // partition `502` and `503` bracket**. Neither is bounds-checked.
+      //
+      // The name it keeps is the **bare five characters** of the file, or
+      // seven where the name holds `_s`, which also sets a flag on the sprite;
+      // `522` puts `.spr` back on to find the cached resource again.
+      //
+      // `522` takes the slot back, gives the cached resource up, empties the
+      // slot, and clears any event placement of kind 2 or 6 whose own slot
+      // matches. It **does not free** what `521` allocated.
+      //
+      // **Ours**: this engine draws no map sprites yet, so what a scene put
+      // where is kept, and the slot is handed back so a scene can take it off
+      // again.
+      case 521: {
+        const slot = this.freeSprite()
+        const ref = args[1]
+        // The slot is written first, and the game writes it even where what
+        // follows fails — so a failed call still leaves an index behind.
+        if (isRef(ref)) thread.write(ref, slot)
+        if (slot < 0) return 0
+        const name = text(args[0])
+        this.sprites.set(slot, {
+          file: /\.spr$/i.test(name) ? `data/ani/${name}` : `data/ani/${name}.spr`,
+          allocator: args.length >= 3 ? num(args[2]) : 0,
+          partition: args.length >= 4 ? num(args[3]) : SPRITE_PARTITION,
+        })
+        return 1
+      }
+      case 522: {
+        const slot = num(args[0])
+        if (slot >= SPRITE_SLOTS) return 0
+        if (!this.sprites.delete(slot)) return 0
+        return 1
+      }
+      // **Copy a model into another slot**, `228` — read from overlay 1. It
+      // takes the game object out of one slot, makes a shallow copy of it into
+      // a fresh `0xac` block, and puts that copy in another slot; both numbers
+      // go through the same fold as `233`'s, so a negative one names a monster
+      // slot. The copy is then scaled by **`0x10a`** on all three axes and its
+      // animation reset.
+      //
+      // `0x10a` against the `0x1000` the object's own setup uses for 1.0 is
+      // **about a fifteenth of its size** — the copy is deliberately tiny. Why
+      // was not established, and the scale is not applied here.
+      //
+      // Its optional third number picks the allocator, and **no script on the
+      // cartridge passes one**.
+      case 228: {
+        const from = monsterSlot(num(args[0]))
+        const to = monsterSlot(num(args[1]))
+        const model = this.monsters.get(from)
+        if (model === undefined) return 0
+        this.monsters.set(to, model)
+        return 1
+      }
+      // **Stop the music and put the player back**, `738` — read from overlay
+      // 1. It takes no arguments and hands the sequence player to one routine
+      // that stops the track, fades to nothing over no frames, frees the
+      // player's heap, sets both of its current sequence numbers to −1 and
+      // **puts the master volume back to 127**. `737` is the same teardown
+      // with a track started after it.
+      case 738:
+        this.sounds.push({ kind: 'stopMusic', index: 0, frames: 0 })
+        this.musicArmed = undefined
+        this.volume = SOUND_LOUDEST
+        this.volumeRamp = undefined
+        return 1
+      // **Move the field of view over a count**, `580` — read from overlay 1,
+      // and `532`'s other half: the same camera field, the same degrees, the
+      // same `0x47/4096`. Where `532` sets it outright, `580` stores a target
+      // and a duration that the camera eases over — **and a duration of 0
+      // sets it outright too**, by calling `532`'s own setter.
+      //
+      // The duration is **frames**: the handler multiplies by 33, which is
+      // what the game's frame length is initialised to, and the camera's tween
+      // counts the same units down. It is truncated to 16 bits, so a count
+      // above 1,985 wraps.
+      case 580: {
+        const to = fovOfHalfDegrees(num(args[0]))
+        const frames = num(args[1])
+        if (frames > 0) {
+          this.fovMove = { from: this.fov ?? DS_VERTICAL_FOV, to, start: this.frame, frames }
+        } else {
+          this.fov = to
+          this.fovMove = undefined
+        }
+        return 1
+      }
+      // **Read a story flag by its raw bit**, `600` — read from overlay 1, and
+      // `603`'s sibling: the same bank, the same bit reader, **without the
+      // displacement**. `603` shifts an id of `0x400` or more by 1,786 bits;
+      // `600` does not shift at all.
+      //
+      // So the two agree below `0x400` and part above it, and **the bits
+      // between the two banks can only be reached through `600`** — which the
+      // game does use: other code reads raw `0xc02`–`0xc11` as a mask, and
+      // sets raw `0x1142` and `0x113a`.
+      case 600: {
+        const ref = args[1]
+        if (isRef(ref)) thread.write(ref, this.flags.has(num(args[0])) ? 1 : 0)
+        return 1
+      }
+      // **Switch a bit of a model's own flag word**, `509` — read from overlay
+      // 1. The first number names a game object, folded the way `233`'s and
+      // `230`'s are; the second is a **raw 32-bit mask, not a bit index**; the
+      // third says set or clear. It is the same word that shows and hides an
+      // object (bit 0) and that `556` sets bit 16 of, so `509` can do either
+      // by hand. It hands back **0** when the slot is empty.
+      case 509: {
+        const slot = monsterSlot(num(args[0]))
+        const mask = num(args[1])
+        const was = this.objectFlags.get(slot) ?? 0
+        this.objectFlags.set(slot, num(args[2]) !== 0 ? was | mask : was & ~mask)
+        return 1
+      }
+      // **What a character is holding**, `550` and `556` — read from overlay
+      // 1, and the two halves of the equipment-drawing path, which is in the
+      // slice.
+      //
+      // A character owns six objects beside itself, at `12n + 0x13`, `+0x14`,
+      // `+0x15`, `+0x1b`, `+0x1c` and `+0x1d`. **`+0x1c` is the weapon** —
+      // that is what `556` mounts — and `+0x1d` is INFERRED to be the off
+      // hand. `550` shows or hides those last two together, and skips either
+      // that has no model.
+      //
+      // `556` **re-mounts the weapon**: it reads a row of `data/bin/wpnpos.bin`
+      // — twelve rows, one a weapon class, each holding **two placements** of
+      // a bone, a position and a rotation — and attaches the weapon object to
+      // that bone with that offset. Its second number picks which of the two,
+      // **INFERRED to be stowed and drawn**: the two halves are built the same
+      // and nothing in the code names them. Its first number is an **event
+      // placement id**, of kind 0, 4 or 5, and the character it reaches is the
+      // placement's own slot.
+      //
+      // **Ours**: this engine draws the Hero's and Ivor's equipment from the
+      // wearer's own record rather than from six object slots, so what a scene
+      // asked for is kept against the character.
+      case 550: {
+        const actor = this.actor(num(args[0]))
+        actor.holdingShown = num(args[1]) !== 0
+        return 1
+      }
+      case 556: {
+        const actor = this.actor(num(args[0]))
+        actor.weaponDrawn = num(args[1]) !== 0
+        return 1
+      }
+      // **Who leads the party**, `598` — read from overlay 1: it hands back
+      // one byte, the **first entry of the array of party object indices**,
+      // whose count sits beside it. **Ours**: character 0 is the Hero, who
+      // leads, so that is the answer.
+      case 598: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 0)
+        return 1
+      }
+      // **A byte nothing reads**, `559` — read from overlay 1, and the
+      // clearest negative finding of the batch. It writes one byte of the
+      // progress block and returns. **The whole cartridge holds two writers
+      // and no reader**: this, and a map transition that puts `0xFF` back.
+      // Every byte and halfword load that could reach the offset was looked
+      // for. So there is nothing to implement, and nothing more to find
+      // without the parts of the game this project does not read.
+      case 559:
+        this.unreadByte_0x490 = num(args[0]) & 0xff
+        return 1
+      // **Pin the lighting to a time of day**, `588` and `589` — read from
+      // overlay 1, two compilations of one routine. `589` takes **no
+      // arguments** and reads the clock; `588` is given the index. Both set
+      // the lighting manager's time-of-day index and its day clock to the
+      // start of that phase — **0, 180, 210, 390 seconds of a 420-second
+      // day**, from a table the overlay builds at startup as running sums of
+      // `{180, 30, 180, 30}` — and then re-tint every model in the zone that
+      // a per-object table says to.
+      //
+      // **`589` runs once a zone**: a byte on the zone marks it done, and a
+      // second call does nothing at all, not even the index. Entering a zone
+      // re-arms it. `588` also handles the zones lit the other way, and
+      // recomputes more besides.
+      //
+      // **Ours**: this engine has three times of day where the game has four
+      // phases, and re-tints by rebuilding the map. `588`'s index is taken as
+      // the time of day; `589` asks for the light to be applied again, which
+      // whoever plays the event may act on.
+      case 588:
+        this.timeOfDay = num(args[0])
+        this.relight = true
+        return 1
+      case 589:
+        this.relight = true
+        return 1
+      // **Stop and start the day clock**, `579` — read from overlay 1.
+      // **The sense is inverted**: a 0 starts it, anything else stops it. The
+      // one thing that reads the flag is the routine that advances the day,
+      // which gives up at once while it is clear.
+      case 579:
+        this.dayClockRunning = num(args[0]) === 0
+        return 1
+      // **How long the staff roll has been running**, `838` — read from
+      // overlay 1. It asks overlay 28's stopwatch, whose only file is
+      // `data/evspt_lv5/staffroll.bin`, and hands back **milliseconds**:
+      // accumulated ticks times 64 over 33,514, which is the DS's own
+      // tick-to-millisecond form. `811` starts that stopwatch and `812` stops
+      // it. **Ours**: nothing rolls a staff, so the answer is 0.
+      case 838: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 0)
+        return 1
+      }
+      // **How big a character is to everything else**, `226` and `227` — read
+      // from overlay 1, and the exact shape of `219` and `220` over another
+      // field: `226` sets it, `227` eases it over a count. The number is
+      // fixed point over 4,096 and reaches `Object3D::radius_`, which starts
+      // at 1.0 and which the game uses as a **horizontal half-extent** when it
+      // builds a bounding volume — INFERRED from one reader of ninety.
+      //
+      // Two behaviours worth copying: the value only reaches the model where
+      // the character's own cast entry is of kind 1, and **a count of 0 writes
+      // nothing at all** rather than setting it.
+      case 226: {
+        const actor = this.actor(num(args[0]))
+        actor.radius = num(args[1])
+        actor.radiusMove = undefined
+        return 1
+      }
+      case 227: {
+        const actor = this.actor(num(args[0]))
+        const frames = num(args[2])
+        if (frames <= 0) return 1
+        actor.radiusMove = {
+          from: actor.radius,
+          to: num(args[1]),
+          start: this.frame,
+          frames,
+        }
+        return 1
+      }
+      // **Override which lighting a zone uses**, `548` and `549` — read from
+      // overlay 1, the other two of `588`'s family: `548` sets the override to
+      // its number and `549` puts it back to none. **`549` reads its one
+      // argument and then throws it away**, which is the clearest instance of
+      // that on the cartridge.
+      case 548:
+        this.lightingOverride = num(args[0])
+        return 1
+      case 549:
+        this.lightingOverride = 0
+        return 1
       // **Fade the scene's light**, `578` — read from overlay 1. The first
       // number is a **multiplier**, `1.0` being normal and `0` black; it is
       // taken as a float, turned into fixed point over 4,096, and handed to
@@ -1974,7 +2353,7 @@ export class EventStage {
       // them clear unless whoever plays the event has filled {@link flags}.
       case 603: {
         const ref = args[1]
-        if (isRef(ref)) thread.write(ref, this.flags.has(num(args[0])) ? 1 : 0)
+        if (isRef(ref)) thread.write(ref, this.flags.has(storyBit(num(args[0]))) ? 1 : 0)
         return 0
       }
       // **Put a monster's model in a game-object slot**, `233` — read from
@@ -2429,17 +2808,23 @@ function shapeOf(value: ScriptValue): string {
 /** An event's script, run against a stage a frame at a time. */
 export class EventPlayer {
   readonly stage: EventStage
-  private readonly run: EventRun
+  private run: EventRun
   private going = true
+  /** How to fetch a script a scene chains into — see `538`. */
+  private readonly load: ((id: number) => Script | undefined) | undefined
+  /** Which scripts have run, in order: the first, then whatever `538` chained. */
+  readonly chain: number[] = []
 
   constructor(
     script: Script,
     scale: number,
     hero?: { readonly x: number; readonly y: number; readonly z: number; readonly facing: number },
+    load?: (id: number) => Script | undefined,
   ) {
     this.stage = new EventStage(scale)
     if (hero) Object.assign(this.stage.actor(0), hero, { placed: true })
     this.run = new EventRun(script, this.stage.host)
+    this.load = load
   }
 
   get finished(): boolean {
@@ -2451,7 +2836,31 @@ export class EventPlayer {
     if (!this.going) return false
     this.stage.advance()
     this.going = this.run.step()
+    if (!this.going) this.going = this.chainOn()
     return this.going
+  }
+
+  /**
+   * **A scene carrying on into another script** — the game's `538`.
+   *
+   * When the VM's step runs out, the game looks at the scene context's
+   * `+0x11a`; if a script is waiting there it copies it into the scene's own
+   * event id, re-arms the VM and **answers "not finished"** instead of ending
+   * the scene. The context is kept — so the cast, the camera and everything
+   * else carry straight over, which is the whole point.
+   *
+   * This does the same, with whatever script loader it was given. Without one
+   * a chain simply ends the scene, which is what happened before this was read.
+   */
+  private chainOn(): boolean {
+    const next = this.stage.nextScript
+    this.stage.nextScript = undefined
+    if (next === undefined || next === 0 || !this.load) return false
+    const script = this.load(next)
+    if (!script) return false
+    this.chain.push(next)
+    this.run = new EventRun(script, this.stage.host)
+    return true
   }
 
   /** The message on show has been read. */

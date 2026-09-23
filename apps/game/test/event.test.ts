@@ -1,7 +1,16 @@
-import { DEGREE_IN_RADIANS } from '@minstrel/render'
+import type { Script, ScriptRoutine } from '@minstrel/game-formats'
+import { DEGREE_IN_RADIANS, fovOfHalfDegrees } from '@minstrel/render'
 import type { ScriptRef, ScriptThread, ScriptValue } from '@minstrel/script'
+import { OP, PUSH_FLOAT, PUSH_INT } from '@minstrel/script'
 import { describe, expect, it } from 'vitest'
-import { CAPTION_PLAIN, EventStage, SCENE_FLAGS, sceneMotion } from '../src/event.ts'
+import {
+  CAPTION_PLAIN,
+  EventPlayer,
+  EventStage,
+  SCENE_FLAGS,
+  sceneMotion,
+  storyBit,
+} from '../src/event.ts'
 
 /** A thread that only takes writes through a reference — all the stage asks of one. */
 function thread() {
@@ -366,22 +375,22 @@ describe('an engine function the host has not got', () => {
   it('is answered with 0, counted, and kept with what it was handed', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    expect(stage.host.call(538, [7, 1.5, 'hello'], t)).toBe(0)
-    stage.host.call(538, [9], t)
-    const call = stage.unreadCalls.get(538)
+    expect(stage.host.call(804, [7, 1.5, 'hello'], t)).toBe(0)
+    stage.host.call(804, [9], t)
+    const call = stage.unreadCalls.get(804)
     expect(call?.calls).toBe(2)
     // The signatures are `docs/event-scripts.md`'s: integer, float, string.
     expect([...(call?.shapes ?? [])].sort()).toEqual(['i', 'ifs'])
     expect(call?.examples[0]).toEqual([7, 1.5, 'hello'])
     // The count it kept before stands beside it, for whatever reads that.
-    expect(stage.unhandled.get(538)).toBe(2)
+    expect(stage.unhandled.get(804)).toBe(2)
   })
 
   it('keeps a few argument lists and no more, however often it is called', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    for (let i = 0; i < 50; i++) stage.host.call(538, [i], t)
-    const call = stage.unreadCalls.get(538)
+    for (let i = 0; i < 50; i++) stage.host.call(804, [i], t)
+    const call = stage.unreadCalls.get(804)
     expect(call?.calls).toBe(50)
     expect(call?.examples.length).toBeLessThanOrEqual(4)
   })
@@ -391,17 +400,17 @@ describe('an engine function the host has not got', () => {
     const { thread: t } = thread()
     const said: number[] = []
     stage.onUnread = (call) => said.push(call.fn)
-    stage.host.call(538, [1], t)
-    stage.host.call(538, [2], t)
-    stage.host.call(589, [], t)
-    expect(said).toEqual([538, 589])
+    stage.host.call(804, [1], t)
+    stage.host.call(804, [2], t)
+    stage.host.call(843, [], t)
+    expect(said).toEqual([804, 843])
   })
 
   it('stops the run instead, where the run is there to find them', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
     stage.strict = true
-    expect(() => stage.host.call(538, [7], t)).toThrow(/engine function 538 is not read/)
+    expect(() => stage.host.call(804, [7], t)).toThrow(/engine function 804 is not read/)
   })
 
   it('says nothing for a function the host answers', () => {
@@ -1270,5 +1279,254 @@ describe('the 200s that were not moves at all', () => {
     // A negative number folds onto a monster slot, as 233's does.
     stage.host.call(230, [-1], t)
     expect(stage.actors.get(0xa0)?.packsDropped).toEqual([3])
+  })
+})
+
+describe('a scene carrying on into another script — the game’s 538', () => {
+  /**
+   * A script that invokes each engine function in turn and returns — laid out
+   * as `FORMAT.md` describes, the way `packages/script/test/vm.test.ts` does
+   * it, since a fixture may hold no cartridge bytes.
+   */
+  const scriptOf = (calls: readonly (readonly [number, readonly number[]])[]): Script => {
+    const BASE = 0x100
+    const code: [number, number, number][] = []
+    const push = (n: number): void => {
+      code.push([OP.PUSH, PUSH_INT, n >>> 0])
+    }
+    for (const [fn, args] of calls) {
+      // The cartridge writes an engine number as a sum of its hundreds and the rest.
+      push(Math.floor(fn / 100) * 100)
+      push(fn % 100)
+      code.push([OP.ADD, 0, 0])
+      for (const arg of args) {
+        if (Number.isInteger(arg)) push(arg)
+        else {
+          const view = new DataView(new ArrayBuffer(4))
+          view.setFloat32(0, arg, true)
+          code.push([OP.PUSH, PUSH_FLOAT, view.getUint32(0, true)])
+        }
+      }
+      code.push([OP.INVOKE, args.length + 1, 0])
+    }
+    code.push([OP.RETURN, 0, 0])
+    const routine: ScriptRoutine = {
+      at: BASE,
+      unknown_0x04: 0,
+      locals: 0,
+      params: 0,
+      unknown_0x10: [],
+      code: code.map(([op, a, b], i) => ({ at: BASE + 0x38 + i * 12, op, a, b })),
+    }
+    return {
+      sharedSize: 0,
+      base: BASE,
+      unknown_0x18: 0,
+      sections: [{ id: 100, routine }],
+      routineAt: () => routine,
+      stringAt: () => new Uint8Array(),
+    }
+  }
+
+  it('runs on into the script 538 named, keeping the stage', () => {
+    const second = scriptOf([[208, [0, 0, 1.25, 0]]])
+    const first = scriptOf([
+      [206, [0, 5, 0, 0]],
+      [538, [77]],
+    ])
+    const asked: number[] = []
+    const player = new EventPlayer(first, 1, undefined, (id) => {
+      asked.push(id)
+      return id === 77 ? second : undefined
+    })
+    for (let i = 0; i < 40 && player.tick(); i++);
+    expect(asked).toEqual([77])
+    expect(player.chain).toEqual([77])
+    // The stage carried over: where the first script put the Hero, and the
+    // facing the second gave them.
+    expect(player.stage.actors.get(0)?.x).toBe(5)
+    expect(player.stage.actors.get(0)?.facing).toBeCloseTo(1.25, 6)
+  })
+
+  it('ends the scene when nothing can be loaded, or the chain is 0', () => {
+    const player = new EventPlayer(scriptOf([[538, [77]]]), 1)
+    for (let i = 0; i < 40 && player.tick(); i++);
+    expect(player.finished).toBe(true)
+    expect(player.chain).toEqual([])
+    // A chain of 0 is the game's own "none" — the field is cleared to it.
+    const zero = new EventPlayer(scriptOf([[538, [0]]]), 1, undefined, () => scriptOf([]))
+    for (let i = 0; i < 40 && zero.tick(); i++);
+    expect(zero.chain).toEqual([])
+  })
+
+  it('answers the second script a trigger carried, and moves it — 834, 810', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(834, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.queuedScript = 91
+    // A 1 or 0, not the id.
+    stage.host.call(834, [ref(2)], t)
+    expect(written.get(2)).toBe(1)
+    stage.host.call(810, [], t)
+    expect(stage.nextScript).toBe(91)
+    expect(stage.queuedScript).toBeUndefined()
+  })
+})
+
+describe('sprites on the map, and the rest of the cluster', () => {
+  it('hands back the first free slot of the 32 — 521, 522', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(521, ['dq_kaidan', ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    expect(stage.sprites.get(0)).toEqual({
+      file: 'data/ani/dq_kaidan.spr',
+      allocator: 0,
+      // 27 by default, which is the partition 502 and 503 bracket.
+      partition: 27,
+    })
+    stage.host.call(521, ['other.spr', ref(2), 1, 9], t)
+    expect(written.get(2)).toBe(1)
+    // The suffix is added only where the name has not got one.
+    expect(stage.sprites.get(1)?.file).toBe('data/ani/other.spr')
+    expect(stage.sprites.get(1)?.partition).toBe(9)
+    // Freeing the first leaves it the first free again.
+    stage.host.call(522, [0], t)
+    stage.host.call(521, ['third', ref(3)], t)
+    expect(written.get(3)).toBe(0)
+  })
+
+  it('refuses a slot past the 32, and one with nothing in it — 522', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.host.call(522, [32], t)).toBe(0)
+    expect(stage.host.call(522, [5], t)).toBe(0)
+  })
+
+  it('copies a model into another slot — 228', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(233, ['m001', -1], t)
+    expect(stage.host.call(228, [-1, -2], t)).toBe(1)
+    expect(stage.monsters.get(0xa1)).toBe('m001')
+    // Nothing in the slot to copy.
+    expect(stage.host.call(228, [-9, -3], t)).toBe(0)
+  })
+
+  it('stops the music and puts the volume back — 738', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(713, [4], t)
+    stage.volume = 20
+    stage.host.call(738, [], t)
+    expect(stage.sounds).toEqual([{ kind: 'stopMusic', index: 0, frames: 0 }])
+    expect(stage.musicArmed).toBeUndefined()
+    expect(stage.volume).toBe(127)
+  })
+})
+
+describe('the 500s tail, and the day’s own clock', () => {
+  it('eases the field of view over a count, and 0 sets it — 580, 532', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(532, [15], t)
+    stage.host.call(580, [25, 10], t)
+    for (let i = 0; i < 5; i++) stage.advance()
+    const half = (fovOfHalfDegrees(15) + fovOfHalfDegrees(25)) / 2
+    expect(stage.fov).toBeCloseTo(half, 9)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.fov).toBe(fovOfHalfDegrees(25))
+    // A count of nothing sets it there and then, as 532 does.
+    stage.host.call(580, [15, 0], t)
+    expect(stage.fov).toBe(fovOfHalfDegrees(15))
+  })
+
+  it('reads a flag raw where 603 displaces it — 600, 603', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    // Below 0x400 the two agree.
+    stage.flags.add(0x100)
+    stage.host.call(600, [0x100, ref(1)], t)
+    stage.host.call(603, [0x100, ref(2)], t)
+    expect([written.get(1), written.get(2)]).toEqual([1, 1])
+    // Above it they part: 603 shifts by 1,786 bits, 600 does not.
+    stage.flags.add(0x500)
+    stage.host.call(600, [0x500, ref(3)], t)
+    stage.host.call(603, [0x500, ref(4)], t)
+    expect([written.get(3), written.get(4)]).toEqual([1, 0])
+    stage.flags.add(storyBit(0x500))
+    stage.host.call(603, [0x500, ref(5)], t)
+    expect(written.get(5)).toBe(1)
+  })
+
+  it('switches a raw mask on a model’s flag word — 509', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(509, [-1, 0x10001, 1], t)
+    expect(stage.objectFlags.get(0xa0)).toBe(0x10001)
+    stage.host.call(509, [-1, 1, 0], t)
+    expect(stage.objectFlags.get(0xa0)).toBe(0x10000)
+  })
+
+  it('shows what a character holds, and mounts it — 550, 556', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.actor(1).holdingShown).toBe(true)
+    stage.host.call(550, [1, 0], t)
+    expect(stage.actor(1).holdingShown).toBe(false)
+    stage.host.call(556, [1, 1], t)
+    expect(stage.actor(1).weaponDrawn).toBe(true)
+  })
+
+  it('stops the day clock on anything but 0 — 579', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.dayClockRunning).toBe(true)
+    stage.host.call(579, [1], t)
+    expect(stage.dayClockRunning).toBe(false)
+    stage.host.call(579, [0], t)
+    expect(stage.dayClockRunning).toBe(true)
+  })
+
+  it('pins the lighting, and asks for it again — 588, 589, 548, 549', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(588, [2], t)
+    expect(stage.timeOfDay).toBe(2)
+    expect(stage.relight).toBe(true)
+    stage.relight = false
+    stage.host.call(589, [], t)
+    expect(stage.relight).toBe(true)
+    stage.host.call(548, [4], t)
+    expect(stage.lightingOverride).toBe(4)
+    // 549 reads its one argument and throws it away.
+    stage.host.call(549, [9], t)
+    expect(stage.lightingOverride).toBe(0)
+  })
+
+  it('sets and eases how far a character reaches — 226, 227', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.actor(1).radius).toBe(1)
+    stage.host.call(226, [1, 2.5], t)
+    expect(stage.actor(1).radius).toBe(2.5)
+    stage.host.call(227, [1, 0.5, 10], t)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.actor(1).radius).toBeCloseTo(1.5, 9)
+    // A count of nothing writes nothing at all, which is the game's own.
+    stage.host.call(227, [1, 9, 0], t)
+    expect(stage.actor(1).radius).toBeCloseTo(1.5, 9)
+  })
+
+  it('answers the leader, the staff roll and the byte nobody reads — 598, 838, 559', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(598, [ref(1)], t)
+    stage.host.call(838, [ref(2)], t)
+    expect([written.get(1), written.get(2)]).toEqual([0, 0])
+    stage.host.call(559, [7], t)
+    expect(stage.unreadByte_0x490).toBe(7)
+    expect([...stage.unhandled.keys()]).toEqual([])
   })
 })

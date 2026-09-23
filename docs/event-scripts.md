@@ -769,6 +769,89 @@ suggestive at p ≈ 10⁻³, but **nothing in the code links them**: their only
 shared callee is `GameState::GetInstance`. Read as a script idiom, not a
 feature.
 
+## 5i. Script chaining, and the end of the worklist — 23 September 2026
+
+### `538` is how a cutscene is cut into pieces
+
+The head of the worklist at 95 events, and it turns out to be **structural**.
+It writes one halfword of the scene's context, `+0x11a`. The VM's step, at the
+point where a script has run out, looks at that halfword: if a script is
+waiting there it **copies it into the scene's event id, re-arms the VM and
+answers "not finished"** instead of ending the scene. The context is kept, so
+the cast, the camera and the shot carry straight over.
+
+The halfword is cleared when a scene begins and again by the re-arm, so **0
+means no chain**. Nothing validates the id.
+
+`834` and `810` are the other two of the three. A trigger record carries **two**
+event ids: the first runs, and the second is parked beside the chain at
+`+0x11c`. `834` answers whether one is parked — **a 1 or 0, not the id** — and
+`810` moves it into the chain.
+
+This engine now honours it: `EventPlayer` takes a loader, and a chain builds a
+new run on the **same stage**.
+
+### `521` and `522` are the sprite pair
+
+`521` takes a name, **finds the first free of 32 slots**, and **hands that slot
+back through its reference** — which is the whole reason its shape has one. It
+loads `data/ani/<name>.spr`, adding the suffix only where the name has not got
+one, and stages the texture into a VRAM partition; its optional third number
+picks one of eight allocators and its fourth the partition, **27 by default,
+which is the very partition `502` and `503` bracket**. Neither is bounds-checked.
+
+**A correction to §5e.** That section called `573` the exact inverse of `521`.
+It is not quite: `522` is, taking the same 0-to-31 slot `521` hands back.
+`573` does the same teardown on the same manager but is indexed through the
+**event placement table** — it reads an entry of kind 2 or 6 and uses that
+entry's `slot` field. Two ways in to one destructor. The brief that went out
+with this read said `573` reached its manager through `GetCurrentZone`, which
+was **my error** — both go through the same accessor.
+
+### The rest
+
+| fn | what it does |
+|---|---|
+| 228 | copy a model into another slot, scaled by `0x10a` — about a fifteenth of its size, and why is not established |
+| 738 | stop the sequence player and put the master volume back to 127 |
+| 580 | ease the field of view to a target over a count of **frames**; 0 sets it outright, by calling `532`'s own setter |
+| 600 | read a story flag **by its raw bit**, where `603` displaces an id of `0x400` or more by 1,786 — so the bits between the two banks are reachable only through `600`, and the game does use them |
+| 509 | switch a **raw 32-bit mask** on a model's own flag word |
+| 550, 556 | what a character is holding: `550` shows or hides the weapon and the off hand, `556` re-mounts the weapon from `data/bin/wpnpos.bin` — twelve rows, one a weapon class, each holding two placements |
+| 588, 589 | pin the lighting to a time of day: `589` reads the clock, `588` is given the index. Both set the phase and re-tint the zone; **`589` runs once a zone** and a second call does nothing at all |
+| 548, 549 | override which lighting a zone uses, and put it back. **`549` reads its one argument and throws it away** |
+| 579 | stop and start the day clock — **inverted**: a 0 starts it |
+| 226, 227 | set and ease how far a character reaches (`Object3D::radius_`), the exact shape of `219` and `220` over another field. A count of 0 writes nothing at all |
+| 598 | who leads the party: the first entry of the array of party object indices |
+| 838 | how long the staff roll has run, in milliseconds, from overlay 28's stopwatch |
+
+### `559` writes a byte nothing reads
+
+The clearest negative finding of the phase. `559` writes one byte of the
+progress block and returns. **The whole cartridge holds two writers and no
+reader** — this, and a map transition that puts `0xFF` back. Every byte and
+halfword load that could reach the offset was searched for. There is nothing to
+implement and nothing more to find from the binaries.
+
+### Two measures had to be restated
+
+Both went false, and **neither because anything regressed**.
+
+The coverage test held that **most missing functions are wanted by many areas**
+— so the first town pays for most of the rest, and the phase's sequencing is
+sound. It was true for the whole phase and fell to 0.48. The shared base is
+exactly what has been implemented, so what is left is the long tail by
+construction: 29 numbers over 75 areas, half of them wanted by a single area.
+The premise was cashed in, not disproved.
+
+It also held that **the head of the worklist is wanted by more than twenty
+areas**. The head is now `223`, wanted by six. Same reason: the numbers the
+earliest scenes and the latest both wanted have all been read, so what is left
+at the head is a scene's own.
+
+Both now pin the thing the phase actually rests on — that the remaining work is
+small — and the shape of the tail is printed rather than asserted.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -812,9 +895,14 @@ side by side in the same towns are usually one feature.
 | 568 · 409–414, 401 · 713, 714, 716–719, 724, 725, 801 · 213, 327, 512, 531, 572, 587 | four clusters read at once | 24 | 17 |
 | 402–404, 417–421, 536, 569, 581, 582, 833 | what those four gave away for nothing | 21 | 14 |
 | 230, 236, 238, 578 | four that were not what their arguments suggested | 17 | 14 |
+| 538, 810, 834 · 521, 522, 228, 738 · 580, 600, 509, 550, 556, 598, 559 · 588, 589, 548, 549, 579, 838, 226, 227 | the last four clusters, script chaining among them | **4** | **9** |
 
-The count of what is unanswered across the cartridge went 150 to 47, and what
-the host implements 36 to 162.
+The count of what is unanswered across the cartridge went 150 to **29**, and
+what the host implements 36 to **184**. **C02 wants nothing at all** — not one
+engine function across twenty events — and the slice's own area wants four.
+The head of the story-ordered list has walked the whole slice: `ev01130`,
+`ev01150`, `ev01515`, and now **`ev02500`**, the Hexagon, which is the last
+scene of the slice.
 
 **One measure had to be restated rather than re-pinned.** The coverage test
 asserted that each town wanted at least twice as much the slice wanted too as
