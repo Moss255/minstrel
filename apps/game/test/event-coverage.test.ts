@@ -274,7 +274,7 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     expect(slice, 'no triggers for the slice area').toBeDefined()
     const here = slice as AreaReport
     expect(here.events).toBe(49)
-    expect(here.unhandled.size).toBe(4)
+    expect(here.unhandled.size).toBe(3)
   })
 
   it('shows the gap is front-loaded — the same functions, area after area', () => {
@@ -291,8 +291,8 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // 0.48.
     //
     // Nothing regressed. The shared base is what has been implemented, so what
-    // is left is the long tail by construction: 27 numbers over 75 areas, and
-    // half of them wanted by a single area. The premise was cashed in, not
+    // is left is the long tail by construction: 12 numbers over 75 areas, most
+    // of them wanted by one or two. The premise was cashed in, not
     // disproved.
     //
     // What is pinned now is the thing the phase actually rests on — **that the
@@ -308,19 +308,19 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // events that want anything at all, and what they want. Pinned so that
     // implementing one of them shows up here as a shorter list.
     const first = Math.min(...[...wanted.values()].map((row) => row.event))
-    // The head has walked the length of the slice: ev01130, then ev01150,
-    // then ev01515, and now **ev02500** — which is the Hexagon, the last scene
-    // of the slice. Everything before it is answered.
-    expect(first).toBe(2500)
+    // **The head has walked off the end of the slice.** It went ev01130,
+    // ev01150, ev01515, ev02500 — the Hexagon, the slice's last scene — and
+    // now ev05200, which is past it. Every scene the slice plays is answered.
+    expect(first).toBe(5200)
     const head = [...wanted]
       .filter(([, row]) => row.event === first)
       .map(([fn]) => fn)
       .sort((a, b) => a - b)
-    expect(head).toEqual([223])
+    expect(head).toEqual([804])
     // **The head is no longer wanted by a great many areas**, and that is the
     // phase ending rather than a regression: the numbers the earliest scenes
     // and the latest both wanted have all been read, so what is left at the
-    // head is a scene's own. 223 is wanted by 6 areas where the head once was
+    // head is a scene's own. 804 is wanted by 11 areas where the head once was
     // wanted by 50.
     for (const fn of head) {
       expect(wanted.get(fn)?.areas.size, `fn ${fn}`).toBeGreaterThanOrEqual(2)
@@ -328,9 +328,9 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
   })
 
   it('keeps what each unread function was handed, which is what reading it starts from', () => {
-    // A signature apiece, in `docs/event-scripts.md`'s letters: 223 and 843
-    // take two numbers, 804 one, 815 a reference with a number after it.
-    expect([...(wanted.get(223)?.shapes ?? [])]).toEqual(['ii'])
+    // A signature apiece, in `docs/event-scripts.md`'s letters: 843 takes two
+    // numbers, 804 one, 815 a reference with a number after it.
+    expect([...(wanted.get(843)?.shapes ?? [])]).toEqual(['ii'])
     expect([...(wanted.get(804)?.shapes ?? [])]).toEqual(['i'])
     expect([...(wanted.get(815)?.shapes ?? [])].sort()).toEqual(['r', 'ri'])
   })
@@ -339,9 +339,9 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // Eight areas have 15 events or more. **The cheapest of them now adds
     // nothing**: C02 wants no engine function the slice does not want
     // already, which is the first town outside the slice to stand level with
-    // it — **and it now wants nothing at all**, not one engine function in
-    // twenty events. The eight together add 9, where the raw count of what is
-    // unanswered across the cartridge is 27.
+    // it. **Four of the eight now want nothing at all**, and the eight
+    // together add 3, where the raw count of what is unanswered across the
+    // cartridge is 12.
     //
     // **This is the measure of the phase.** It moved four times in two days:
     // the waypoint path (214 to 217) took the cheapest town from 11 to 7, the
@@ -357,14 +357,16 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // with 213, 327, 512 and 587 — took it to 24, and the knobs those reads
     // gave away for nothing — 402 to 404, 417 to 421, 536, 569, 581, 582 and
     // 833 — to 21, the four that were not moves at all — 230, 236, 238 and
-    // 578 — to 17, and the last four clusters, script chaining among them, to
-    // **4**.
+    // 578 — to 17, the last four clusters with script chaining among them to
+    // 4, and the tail of the 200s, 300s, 500s and 700s to **3**.
     expect(towns.length).toBe(8)
-    const cheapest = towns[0] as Town
-    expect(cheapest.area).toBe('C02')
-    expect(cheapest.beyond.length).toBe(0)
+    // **Four of the eight now want nothing at all** — not one engine function
+    // between them — and a fifth wants one. So which sorts first is no longer
+    // meaningful; what is pinned is that half of them are finished.
+    const finished = towns.filter((town) => town.missing === 0)
+    expect(finished.length).toBeGreaterThanOrEqual(4)
     const union = new Set(towns.flatMap((town) => town.beyond))
-    expect(union.size).toBe(9)
+    expect(union.size).toBe(3)
     // **And none of them is a fresh start.** This used to be pinned as a
     // ratio — that each town wanted at least twice as much the slice wanted
     // too as it wanted on its own — and on 23 September 2026 M03 broke it at
@@ -389,9 +391,9 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
     // line, and then more than 139 are reached. The notes' figure is a floor:
-    // what the host has read since has taken this from 150 down to 27.
+    // what the host has read since has taken this from 150 down to 12.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(27)
+    expect(everywhere.size).toBe(12)
   })
 })

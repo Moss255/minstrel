@@ -890,6 +890,73 @@ left to whoever plays the event. The die, though, is wired: a scene's roll comes
 from the same generator the wandering monsters use, so it is of a piece with
 the rest of a run and the same on every machine.
 
+## 5k. The tail of the 200s, 300s, 500s and 700s — 23 September 2026
+
+### The movement family, finally sorted out
+
+`207`, `231` and `232` queue **the same command** on the same channel and
+differ by a mode word:
+
+| fn | takes | what it does |
+|---|---|---|
+| `207` | character, x, y, z, frames | glide to exactly there |
+| `232` | character, **x, z**, frames | glide there, and **take the height from the floor every frame** |
+| `231` | character, x, z | the same, at once |
+
+There is no y argument on `231` or `232`: the y the command carries is the
+constant `0xa000`, ten, which is only where the downward probe starts. Both
+also take an optional motion name played when the move ends — and the game
+makes that call whether or not one was given, with an empty name the animation
+setter ignores.
+
+This engine now walks a character onto real ground for those two, asking the
+same collision world the Hero stands on.
+
+### 317 and 326 are twins that differ in one word
+
+The two handlers are the same instruction for instruction and differ only in
+which command they queue. **`317` shakes the eye and the look-at together**, so
+the view slides without turning; **`326` shakes the look-at alone**, so the view
+turns about where the camera stands. Both run the same four-frame square wave,
+and both carry the same dead decay — the amplitude they apply is taken once and
+never written again.
+
+This engine keeps an eye derived from a look-at and an orbit, so `326` is done
+by working the orbit out afresh from the eye the camera had, which comes to the
+same thing.
+
+### `324` never ends by itself
+
+It queues a command that **runs every frame and returns "still going" for ever**:
+the camera's look-at becomes the character's position plus an offset. Only
+`325` stops it, and all `325` does is clear the character — the command then
+frees itself on its next frame.
+
+### The rest
+
+| fn | what it does |
+|---|---|
+| 223 | show or hide a thing the map placed — **and only when the cast entry is of kind 2** |
+| 234 | whether a cast member's animation is still running. **Where the kind carries a model and the model is missing it writes nothing at all**, so the script's variable keeps what it held |
+| 239, 240 | hang a model on a placement and take it off. The placement's draw puts it **before** its own model. The two numbers are read differently: the first entry for its *slot*, the second for its *model* |
+| 552 | the three-bone camera: two bones drive the eye and the look-at as `572`'s do, and **the third drags a second object about**, turning it to face the way it moved. Its fifth number is that object |
+| 557 | let go of whatever the Hero is on — **INFERRED**; the code says only which bit it clears |
+| 583 | one byte gating the path that enters a map. Fifteen places read it as a yes-or-no; **one tells 4, 8 and `0x0c` apart** |
+| 599, 805 | two render passes of the zone's, each written as **a whole word, not a bit**; a zero skips the pass whole |
+| 601, 602 | bits of the **progress record in hand** — the bank opens with five records of 28 bytes, one byte says which is current, and `601` reads that record's bitfield at `+0x03`, `602` its second at `+0x10` |
+| 736 | play the zone's own tune: the zone's id through a table of 47, two substitutions that follow the time of day, and an override list whose entries each carry **a story flag to test** |
+| 737 | the same whole teardown as `738`, then a tune on the manager's **second** player — the one a jingle uses, leaving the first slot empty so a later tune still plays |
+
+### A fifth function that reads the other way up
+
+`591` sets a zone bit when its number is **0** and clears it otherwise, and
+`735` does the same to the bit that makes the sound manager's play and fade
+both give up at once. With `536`, `581` and `833` that is **five** in the same
+shape: **a 0 means "on"**. It is consistent enough to be the house style rather
+than an accident, and worth expecting on any switch still unread.
+
+Neither `591`'s bit nor `559`'s byte has a reader anywhere in the cartridge.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -935,8 +1002,13 @@ side by side in the same towns are usually one feature.
 | 230, 236, 238, 578 | four that were not what their arguments suggested | 17 | 14 |
 | 538, 810, 834 · 521, 522, 228, 738 · 580, 600, 509, 550, 556, 598, 559 · 588, 589, 548, 549, 579, 838, 226, 227 | the last four clusters, script chaining among them | **4** | **9** |
 
-The count of what is unanswered across the cartridge went 150 to **27**, and
-what the host implements 36 to **184**. **C02 wants nothing at all** — not one
+| 223, 231, 232, 234, 239, 240, 324, 325, 326 · 552, 557, 583, 591, 599, 601, 602, 735, 736, 737, 805 | the tail of the 200s, 300s, 500s and 700s | **3** | **3** |
+
+The count of what is unanswered across the cartridge went 150 to **12**, and
+what the host implements 36 to **208**. **Four of the eight towns want nothing
+at all**, a fifth wants one, and the head of the story-ordered list has walked
+**off the end of the slice** — from `ev01130` through `ev02500`, the Hexagon,
+to `ev05200`, which is past it. Every scene the slice plays is answered. **C02 wants nothing at all** — not one
 engine function across twenty events — and the slice's own area wants four.
 The head of the story-ordered list has walked the whole slice: `ev01130`,
 `ev01150`, `ev01515`, and now **`ev02500`**, the Hexagon, which is the last

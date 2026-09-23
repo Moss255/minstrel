@@ -286,10 +286,10 @@ describe('an event’s stage', () => {
   it('answers what it does not read with nothing, and counts it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    // 599 is not read; 731 was, and is the sound archives being given back.
-    expect(stage.host.call(599, [], t)).toBe(0)
-    stage.host.call(599, [], t)
-    expect(stage.unhandled.get(599)).toBe(2)
+    // 809 is not read; 731 was, and is the sound archives being given back.
+    expect(stage.host.call(809, [], t)).toBe(0)
+    stage.host.call(809, [], t)
+    expect(stage.unhandled.get(809)).toBe(2)
   })
 
   it('hides and shows a character, and hangs one on another', () => {
@@ -1587,5 +1587,181 @@ describe('the lowest ten numbers, which are the player’s own input', () => {
     expect(written.get(2)).toBe(1)
     // None of them is counted as unread.
     expect([...stage.unhandled.keys()]).toEqual([])
+  })
+})
+
+describe('the last of the 200s and 300s', () => {
+  it('walks a character over the ground, and puts them there at once — 232, 231', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // The floor, which the stage has to be told: a step at x = 5.
+    stage.groundAt = (x) => (x < 5 ? 0 : 3)
+    stage.host.call(206, [0, 0, 0, 0], t)
+    stage.host.call(232, [0, 10, 4, 10], t)
+    for (let i = 0; i < 4; i++) stage.advance()
+    const actor = stage.actors.get(0)
+    expect(actor?.x).toBeCloseTo(4, 6)
+    expect(actor?.y).toBe(0)
+    for (let i = 0; i < 2; i++) stage.advance()
+    // Over the step, and the height came from the floor rather than the start.
+    expect(actor?.y).toBe(3)
+    // 231 is the same at once, with no count at all.
+    stage.host.call(231, [0, 0, 0], t)
+    expect([actor?.x, actor?.y, actor?.z]).toEqual([0, 0, 0])
+  })
+
+  it('answers whether a cast member is still moving — 234', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(206, [1, 0, 0, 0], t)
+    stage.host.call(234, [1, ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.host.call(207, [1, 10, 0, 0, 10], t)
+    stage.host.call(234, [1, ref(2)], t)
+    expect(written.get(2)).toBe(1)
+  })
+
+  it('shows a placed thing, and hangs a model on one — 223, 239, 240', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(223, [4, 0], t)
+    expect(stage.placedShown.get(4)).toBe(false)
+    stage.host.call(239, [4, 9], t)
+    expect(stage.hungOnPlacement.get(4)).toBe(9)
+    stage.host.call(240, [4], t)
+    expect(stage.hungOnPlacement.has(4)).toBe(false)
+  })
+
+  it('follows a character with the camera until it is told not to — 324, 325', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 10], t)
+    stage.host.call(206, [2, 5, 1, 7], t)
+    stage.host.call(324, [2, 0, 2, 0], t)
+    stage.advance()
+    expect(stage.camera?.target).toEqual([5, 3, 7])
+    // It keeps following, frame after frame, until 325.
+    stage.host.call(206, [2, 8, 1, 7], t)
+    stage.advance()
+    expect(stage.camera?.target?.[0]).toBe(8)
+    stage.host.call(325, [], t)
+    stage.host.call(206, [2, 0, 1, 0], t)
+    stage.advance()
+    expect(stage.camera?.target?.[0]).toBe(8)
+  })
+
+  it('shakes about a fixed eye where 317 moves it — 326', () => {
+    const eyeOf = (stage: EventStage) => {
+      const shot = stage.camera
+      if (!shot?.target) return [0, 0, 0]
+      const flat = Math.sqrt(Math.max(0, shot.distance ** 2 - shot.rise ** 2))
+      return [
+        shot.target[0] + Math.sin(shot.yaw) * flat,
+        shot.target[1] + shot.rise,
+        shot.target[2] + Math.cos(shot.yaw) * flat,
+      ]
+    }
+    const shaken = (id: number) => {
+      const stage = new EventStage(1)
+      const { thread: t } = thread()
+      stage.host.call(303, [0, 0, 0], t)
+      stage.host.call(310, [0, 0, 10], t)
+      const before = eyeOf(stage)
+      stage.host.call(id, [1, 0, 0, 12], t)
+      stage.advance()
+      return { before, after: eyeOf(stage), target: stage.camera?.target }
+    }
+    // 317 moves the view without turning it: the eye goes with the look-at.
+    const slid = shaken(317)
+    expect(slid.target?.[0]).toBeCloseTo(1, 6)
+    expect(slid.after[0] as number).toBeCloseTo((slid.before[0] as number) + 1, 6)
+    // 326 turns it about where the camera stands: the eye does not move.
+    const turned = shaken(326)
+    expect(turned.target?.[0]).toBeCloseTo(1, 6)
+    expect(turned.after[0] as number).toBeCloseTo(turned.before[0] as number, 6)
+    expect(turned.after[2] as number).toBeCloseTo(turned.before[2] as number, 6)
+  })
+})
+
+describe('the last of the 500s and 700s', () => {
+  it('reads five switches the other way up — 536, 581, 833, 591, 735', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // A 0 switches each one on; anything else switches it off.
+    stage.host.call(591, [0], t)
+    stage.host.call(735, [0], t)
+    expect([stage.zoneBit, stage.musicGated]).toEqual([true, true])
+    stage.host.call(591, [1], t)
+    stage.host.call(735, [1], t)
+    expect([stage.zoneBit, stage.musicGated]).toEqual([false, false])
+  })
+
+  it('plays the zone’s own tune, unless it is gated off — 736, 735', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(735, [0], t)
+    stage.host.call(736, [], t)
+    expect(stage.sounds).toEqual([])
+    stage.host.call(735, [1], t)
+    stage.host.call(736, [], t)
+    expect(stage.sounds).toEqual([{ kind: 'zoneMusic', index: 0 }])
+  })
+
+  it('tears the player down and starts on the second slot — 737', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.volume = 5
+    stage.host.call(737, [42], t)
+    expect(stage.sounds).toEqual([
+      { kind: 'stopMusic', index: 0, frames: 0 },
+      { kind: 'jingle', index: 42 },
+    ])
+    expect(stage.volume).toBe(127)
+  })
+
+  it('takes a third bone and the object it drags — 552', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(552, [-1, 'a', 'b', 'c', -2], t)
+    expect(stage.boneCamera).toEqual({
+      placement: 0xa0,
+      eye: 'a',
+      at: 'b',
+      third: 'c',
+      drags: 0xa1,
+    })
+    // 531 gives it back, as it does 572's.
+    stage.host.call(531, [], t)
+    expect(stage.boneCamera).toBeUndefined()
+  })
+
+  it('reads a bit of the record in hand — 601, 602', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(602, [7, ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.recordBits.add('0:b:7')
+    stage.host.call(602, [7, ref(2)], t)
+    // The two fields of a record are kept apart, and so are the five records.
+    stage.host.call(601, [7, ref(3)], t)
+    stage.record = 1
+    stage.host.call(602, [7, ref(4)], t)
+    expect([written.get(2), written.get(3), written.get(4)]).toEqual([1, 0, 0])
+  })
+
+  it('gates the zone’s two extra passes, and the rest — 599, 805, 557, 583', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.zonePasses).toEqual([1, 1])
+    stage.host.call(599, [0], t)
+    stage.host.call(805, [2], t)
+    expect(stage.zonePasses).toEqual([0, 2])
+    stage.riding = true
+    stage.host.call(557, [], t)
+    expect(stage.riding).toBe(false)
+    stage.host.call(583, [0x10c], t)
+    // The byte is masked, as the handler masks it.
+    expect(stage.fieldEntry).toBe(0x0c)
   })
 })

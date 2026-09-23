@@ -202,6 +202,14 @@ lives; this is the gathered list.
   not mapped onto the hardware's bits — doing so is a control-scheme decision,
   not a reading — so the three answer from fields the caller fills, and a scene
   that waits for a press waits. One scene on the cartridge does exactly that.
+- **`591`'s zone bit**: set when its number is 0 and cleared otherwise, and —
+  like `559`'s byte — **no reader was found anywhere in the cartridge**. Six
+  write sites, none reading.
+- **What the three models `599` and `805` draw are.** Both passes are walked
+  structurally — a count, a list of `0x24`-byte placements, two angles apiece —
+  but no filename was reached.
+- **`583`'s values.** Fifteen places read the byte as a yes-or-no gate on
+  entering a map; one tells 4, 8 and `0x0c` apart. What those mean is open.
 - **`559`'s byte**: written by the script and by a map transition, and **read
   by nothing in the cartridge**. Kept so as to record that, not because it does
   anything (`docs/event-scripts.md` §5i).

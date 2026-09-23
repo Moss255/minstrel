@@ -671,6 +671,12 @@ let playing:
       readonly framing: { pitch: number; distance: number; yaw: number }
     }
   | undefined
+/**
+ * How far above a point the floor is looked for, which the game's own probe
+ * starts from: ten, the constant `231` and `232` carry in place of a height.
+ */
+const GROUND_PROBE = 10
+
 /** The most monsters a battle here holds: ours, so the row stays in view. */
 const BATTLE_MOST = 5
 /** The Hero's hit points between battles; undefined is full. */
@@ -3722,6 +3728,21 @@ function startEvent(number: number, afterTalk = false): boolean {
   // own generator. This hands it the roamer's, so a scene's roll is of a piece
   // with the rest of the run and is the same on every machine.
   playing.player.stage.random = (span) => (span > 0 ? roamRng.below(span) : 0)
+  // **What the floor is under a point**, which `231` and `232` walk a
+  // character onto. The game probes downward from ten units up; this asks the
+  // same collision world the Hero stands on.
+  playing.player.stage.groundAt = (x, z, y) => {
+    const world = loaded?.world
+    if (!world) return undefined
+    const from = fx32(Math.round(((y + GROUND_PROBE) / worldScale) * FX32_ONE))
+    const hit = groundBelow(
+      world,
+      fx32(Math.round((x / worldScale) * FX32_ONE)),
+      fx32(Math.round((z / worldScale) * FX32_ONE)),
+      from,
+    )
+    return hit ? toFloat(hit.y) * worldScale : undefined
+  }
   // Which time of day the scene asks about — `597`. **Ours**: the game keeps
   // a lighting slot of 0 to 6 and this engine has three, the same numbers a
   // zone is picked by.
@@ -3789,7 +3810,7 @@ function playEvent(elapsedMs: number): void {
 
 /** Sound what a scene asks for — see `726`, `720` and `727` in `event.ts`. */
 async function playSound(sound: {
-  kind: 'effect' | 'jingle' | 'stop' | 'stopMusic' | 'music'
+  kind: 'effect' | 'jingle' | 'stop' | 'stopMusic' | 'music' | 'zoneMusic'
   index: number
   slot?: number
   frames?: number
@@ -3805,6 +3826,14 @@ async function playSound(sound: {
     // under too, so what is done instead is the sequencer's own release — the
     // count decides only whether it is cut off, not how long it takes.
     music.stop((sound.frames ?? BGM_FADE_FRAMES) <= 0)
+    return
+  }
+  if (sound.kind === 'zoneMusic') {
+    // `736` asks the zone for its own tune. The game resolves the zone's id
+    // through a table of 47, two substitutions that follow the time of day,
+    // and an override list of story flags; this engine keeps a map's music by
+    // name, so it plays that.
+    playMapMusic(true)
     return
   }
   if (sound.kind === 'music') {

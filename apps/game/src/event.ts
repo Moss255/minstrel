@@ -159,6 +159,8 @@ export interface EventActor {
   holdingShown: boolean
   /** Whether the weapon is mounted drawn rather than stowed — see `556`. INFERRED. */
   weaponDrawn: boolean
+  /** Whether the height comes from the ground each frame — see `231` and `232`. */
+  onGround: boolean
   /** What `545` set the motion's rate to; 1 unless a scene says otherwise. */
   motionRate: number
 }
@@ -362,6 +364,20 @@ export const SPRITE_SLOTS = 32
  */
 export const SPRITE_PARTITION = 27
 
+/** A camera driven by a model's own bones — see `572`, `530` and `552`. */
+export interface BoneCamera {
+  /** The placement or slot whose model drives it. */
+  readonly placement: number
+  /** The bone the eye sits on. */
+  readonly eye: string
+  /** The bone it looks at. */
+  readonly at: string
+  /** A third bone, `552`'s only. */
+  readonly third?: string
+  /** The object that third bone drags about, `552`'s only. */
+  readonly drags?: number
+}
+
 /** A sprite a scene has put on the map — see `521`. */
 export interface SpritePlacement {
   /** The file it came from, as the game builds the path. */
@@ -494,6 +510,12 @@ export interface Shake {
   readonly amp: Vec3
   readonly frames: number
   readonly started: number
+  /**
+   * Whether the eye stays where it is and only the view turns — `326`. `317`
+   * moves the eye and the look-at together, so the view slides without
+   * turning; `326` moves the look-at alone.
+   */
+  readonly turning?: boolean
 }
 
 /** A fade under way — see `220`. */
@@ -545,6 +567,16 @@ type Vec3 = [number, number, number]
  * the yaw of the eye from the target, its height above it, and the
  * straight-line distance between.
  */
+function eyeFrom(shot: EventCamera): Vec3 {
+  const target = shot.target ?? [0, 0, 0]
+  const flat = Math.sqrt(Math.max(0, shot.distance * shot.distance - shot.rise * shot.rise))
+  return [
+    target[0] + Math.sin(shot.yaw) * flat,
+    target[1] + shot.rise,
+    target[2] + Math.cos(shot.yaw) * flat,
+  ]
+}
+
 function lookFrom(eye: Vec3, target: Vec3): { yaw: number; rise: number; distance: number } {
   const dx = eye[0] - target[0]
   const dy = eye[1] - target[1]
@@ -598,6 +630,20 @@ export class EventStage {
   shake: Shake | undefined
   /** What the camera looked at before this frame's shake was added to it. */
   private shakeBase: Vec3 | undefined
+  /** And the orbit it had, where a turning shake worked out a new one — see `326`. */
+  private shakeOrbit: { yaw: number; rise: number; distance: number } | undefined
+  /** The character the camera's look-at follows, and by how much — see `324`. */
+  following: { readonly actor: number; readonly offset: Vec3 } | undefined
+  /** Which things the map placed a scene has shown or hidden — see `223`. */
+  readonly placedShown = new Map<number, boolean>()
+  /** What a scene has hung on a placement, placement to model — see `239` and `240`. */
+  readonly hungOnPlacement = new Map<number, number>()
+  /**
+   * What the floor is under a point, where whoever plays the event can say —
+   * what `231` and `232` walk a character onto. Undefined here, so the height
+   * is left alone.
+   */
+  groundAt: ((x: number, z: number, y: number) => number | undefined) | undefined
   /** How dark the screen is, from 0, clear, to 1, black — see `101` and `121`. */
   darkness = 0
   private darkening: Fade | undefined
@@ -691,8 +737,22 @@ export class EventStage {
   private fovMove: CameraMove<number> | undefined
   /** What `512` set in the game's own flag word. */
   gameFlags = 0
-  /** The camera a model's bones are driving — see `572` and `531`. */
-  boneCamera: { readonly placement: number; readonly eye: string; readonly at: string } | undefined
+  /** The camera a model's bones are driving — see `572`, `552` and `531`. */
+  boneCamera: BoneCamera | undefined
+  /** Whether the Hero is on something — `557` says they are not. **INFERRED**. */
+  riding = false
+  /** The byte `583` writes, which gates the path that enters a map. */
+  fieldEntry = 0
+  /** The zone bit `591` holds, which nothing in the cartridge was found to read. */
+  zoneBit = false
+  /** Whether the zone's two extra render passes run — see `599` and `805`. */
+  readonly zonePasses: [number, number] = [1, 1]
+  /** Which of the five progress records is in hand — see `601` and `602`. */
+  record = 0
+  /** The bits of those records that are set, as `record:field:bit` — see `602`. */
+  readonly recordBits = new Set<string>()
+  /** Whether the music is gated off — see `735`, whose number means the opposite. */
+  musicGated = false
   /**
    * How many of the event's own frames a motion lasts, where whoever plays
    * the event can say — what `213` waits out. Undefined here, so a wait on a
@@ -717,7 +777,7 @@ export class EventStage {
    * header. The page drains this each frame.
    */
   readonly sounds: {
-    readonly kind: 'effect' | 'jingle' | 'stop' | 'stopMusic' | 'music'
+    readonly kind: 'effect' | 'jingle' | 'stop' | 'stopMusic' | 'music' | 'zoneMusic'
     /** The sound archive it comes from — see `726`. */
     readonly index: number
     /** Which of the archive's own sounds, where the scene names one — see `728`. */
@@ -880,6 +940,7 @@ export class EventStage {
         radiusMove: undefined,
         holdingShown: true,
         weaponDrawn: false,
+        onGround: false,
         motionRate: 1,
         turn: undefined,
       }
@@ -909,6 +970,19 @@ export class EventStage {
     if (this.shakeBase && this.camera) {
       this.camera.target = [...this.shakeBase]
       this.shakeBase = undefined
+      if (this.shakeOrbit) {
+        Object.assign(this.camera, this.shakeOrbit)
+        this.shakeOrbit = undefined
+      }
+    }
+    // The camera's look-at follows a character until `325` takes it off.
+    if (this.following) {
+      const followed = this.actors.get(this.following.actor)
+      if (followed) {
+        const [dx, dy, dz] = this.following.offset
+        this.shot().target = [followed.x + dx, followed.y + dy, followed.z + dz]
+        this.targetMove = undefined
+      }
     }
     if (this.darkening) {
       const { from, to, start, frames } = this.darkening
@@ -947,6 +1021,9 @@ export class EventStage {
         actor.x = from[0] + (to[0] - from[0]) * t
         actor.y = from[1] + (to[1] - from[1]) * t
         actor.z = from[2] + (to[2] - from[2]) * t
+        // A walk of `231`'s or `232`'s takes its height from the floor rather
+        // than from where it set off — see those two.
+        if (actor.onGround) actor.y = this.groundAt?.(actor.x, actor.z, actor.y) ?? actor.y
         if (t >= 1) actor.walk = undefined
       }
       if (actor.waiting !== undefined && this.frame >= actor.waiting) actor.waiting = undefined
@@ -1031,12 +1108,21 @@ export class EventStage {
     const phase = ((t % 4) + 4) % 4
     const sign = phase === 0 ? 1 : phase === 2 ? -1 : 0
     if (sign === 0) return
+    // Where the camera stands now, so that a turning shake can keep it there.
+    const eye = shaking.turning ? eyeFrom(shot) : undefined
     this.shakeBase = [...shot.target]
     shot.target = [
       shot.target[0] + shaking.amp[0] * sign,
       shot.target[1] + shaking.amp[1] * sign,
       shot.target[2] + shaking.amp[2] * sign,
     ]
+    // `326` shakes the look-at and not the eye. This engine's eye follows from
+    // the look-at and the orbit, so the orbit is worked out afresh from the
+    // eye the camera had — which comes to the same thing.
+    if (eye) {
+      this.shakeOrbit = { yaw: shot.yaw, rise: shot.rise, distance: shot.distance }
+      Object.assign(shot, lookFrom(eye, shot.target))
+    }
   }
 
   /** The first of the 32 sprite slots with nothing in it, or −1 — the game's own search. */
@@ -1157,6 +1243,53 @@ export class EventStage {
           frames: Math.max(1, num(args[4])),
         }
         return 0
+      }
+      // **Walk a character over the ground**, `231` and `232` — read from
+      // overlay 1, and the pair that tells the movement family apart:
+      //
+      // | fn | takes | what it does |
+      // |---|---|---|
+      // | `207` | character, x, y, z, frames | glide to exactly there |
+      // | `232` | character, **x, z**, frames | glide there, and **take the height from the ground every frame** |
+      // | `231` | character, x, z | the same, at once |
+      //
+      // `207` and `232` queue the **same command** on the same channel and
+      // differ only in a mode word: mode 0 moves all three axes, mode 1 moves
+      // x and z and then asks the zone what the floor is under the character
+      // and writes that. **There is no y argument** — the y the command
+      // carries is the constant `0xa000`, ten, which is only the height the
+      // probe starts from.
+      //
+      // Both take an **optional motion name** which is played when the move
+      // ends, and the game's own end-of-move call is made whether or not one
+      // was given — with an empty name, which the animation setter ignores.
+      //
+      // **Ours**: the stage does not hold the world, so it asks
+      // {@link groundAt}; without an answer the height is left alone.
+      case 231:
+      case 232: {
+        const actor = this.actor(num(args[0]))
+        const x = num(args[1]) * s
+        const z = num(args[2]) * s
+        const frames = id === 232 ? num(args[3]) : 0
+        const after = args.length >= (id === 232 ? 5 : 4) ? text(args[id === 232 ? 4 : 3]) : ''
+        actor.placed = true
+        actor.onGround = true
+        if (after !== '') actor.after = after
+        if (frames > 0) {
+          actor.walk = {
+            from: [actor.x, actor.y, actor.z],
+            to: [x, actor.y, z],
+            start: this.frame,
+            frames,
+          }
+        } else {
+          actor.x = x
+          actor.z = z
+          actor.walk = undefined
+          actor.y = this.groundAt?.(x, z, actor.y) ?? actor.y
+        }
+        return 1
       }
       // **Move a character to a point**, `211` — read from overlay 1. It
       // queues one of two commands on the character's own queue: with no fifth
@@ -1494,6 +1627,176 @@ export class EventStage {
         return 1
       case 549:
         this.lightingOverride = 0
+        return 1
+      // **Is this one still moving**, `234` — read from overlay 1. It asks the
+      // cast member's own model whether its animation has stopped and answers
+      // **1 while it is still running**. Kinds without a model answer 1 too.
+      //
+      // **A sharp edge worth copying**: where the kind *does* carry a model
+      // and the model is missing, it writes **nothing at all** and hands back
+      // success — so the script's variable keeps whatever it held before.
+      case 234: {
+        const ref = args[1]
+        if (isRef(ref)) thread.write(ref, this.busy(num(args[0])) ? 1 : 0)
+        return 1
+      }
+      // **Show or hide a thing the map placed**, `223` — read from overlay 1,
+      // and **it does nothing unless the cast entry is of kind 2**, which is
+      // the kind that names a map placement rather than a model. Where it
+      // does, it clears or sets one bit of the placement's own word, or shows
+      // and hides the object hanging off it.
+      case 223:
+        this.placedShown.set(num(args[0]), num(args[1]) !== 0)
+        return 1
+      // **Hang a model on a placement, and take it off**, `239` and `240` —
+      // read from overlay 1, a set-and-clear pair over one pointer. The
+      // placement's draw puts what is there **before** its own model, so it is
+      // an extra thing drawn with it.
+      //
+      // Note the two numbers are read differently: the first entry is used
+      // for its **slot**, the second for its **model**.
+      case 239: {
+        const model = num(args[1])
+        this.hungOnPlacement.set(num(args[0]), model)
+        return 1
+      }
+      case 240:
+        this.hungOnPlacement.delete(num(args[0]))
+        return 1
+      // **The camera follows a character**, `324`, until `325` — read from
+      // overlay 1. `324` queues a command that **runs every frame and never
+      // ends**: it puts the camera's look-at at the character's position plus
+      // the offset it was given, and holds its channel. Only `325` stops it,
+      // and all `325` does is clear the character — the command then frees
+      // itself on its next frame.
+      //
+      // It moves **what the camera looks at and not where it is**.
+      case 324:
+        this.following = {
+          actor: num(args[0]),
+          offset: [
+            args.length >= 2 ? num(args[1]) * s : 0,
+            args.length >= 3 ? num(args[2]) * s : 0,
+            args.length >= 4 ? num(args[3]) * s : 0,
+          ],
+        }
+        return 1
+      case 325:
+        this.following = undefined
+        return 1
+      // **The camera shakes about a fixed eye**, `326` — read from overlay 1,
+      // and `317`'s twin: the two handlers are the same instruction for
+      // instruction and differ only in which command they queue. `317`'s
+      // shakes **the eye and the look-at together**, so the view moves without
+      // turning; `326`'s shakes **the look-at alone**, so the view turns about
+      // where the camera stands.
+      //
+      // Both run the same four-frame square wave and both have the same dead
+      // decay — the amplitude they apply is taken once and never written
+      // again. A count below zero shakes for ever.
+      case 326:
+        this.shake = {
+          amp: [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s],
+          frames: num(args[3]),
+          started: this.frame + 1,
+          // What tells it from `317`: the eye stays where it is.
+          turning: true,
+        }
+        return 1
+      // **Three bones instead of two**, `552` — read from overlay 1, and the
+      // third of the bone-camera family with `530` and `572`. It fills all
+      // three name slots and takes a **fifth number, which is a second object**
+      // — resolved exactly as the first is, by the same fold. Each frame the
+      // first two bones drive the eye and the look-at as `572`'s do, and the
+      // **third drags that second object about**: its position becomes the
+      // bone's, and it is turned to face the way it moved.
+      case 552:
+        this.boneCamera = {
+          placement: monsterSlot(num(args[0])),
+          eye: text(args[1]),
+          at: text(args[2]),
+          third: text(args[3]),
+          drags: monsterSlot(num(args[4])),
+        }
+        return 1
+      // **Let go of whatever the Hero is on**, `557` — read from overlay 1,
+      // and it takes nothing. It clears a bit of the Hero's own flag word,
+      // pushes their action state back a step, and resets the object the party
+      // array's first entry names. **INFERRED** to be getting off a mount or
+      // out of a carrier: the code says only what it clears, and the object it
+      // goes through has no name in the cartridge.
+      case 557:
+        this.riding = false
+        return 1
+      // **Which way the field is entered**, `583` — read from overlay 1: one
+      // byte of the game's own state, `&0xff`. Fifteen places read it, nearly
+      // all as a plain yes-or-no gate on the path that enters a map; **one
+      // place tells 4, 8 and `0x0c` apart**, so it is not only a flag. What
+      // the values mean was not established.
+      case 583:
+        this.fieldEntry = num(args[0]) & 0xff
+        return 1
+      // **Hold a zone's own bit**, `591` — read from overlay 1, and **another
+      // that reads the other way up**: a 0 sets the bit, anything else clears
+      // it, as `536`, `581`, `833` and `735` all do. It sits in a run of zone
+      // bytes that the field code sets and clears around loading and drawing.
+      // **Nothing in the cartridge was found that reads it.**
+      case 591:
+        this.zoneBit = num(args[0]) === 0
+        return 1
+      // **Two render passes of the zone's**, `599` and `805` — read from
+      // overlay 1, twins that write **a whole word, not a bit**, to two
+      // neighbouring places in the zone. Each is the first thing its pass
+      // tests: a zero and the pass is skipped whole. `599`'s draws a pair of
+      // models once for each of a list of placements the zone carries, two
+      // angles apiece; `805`'s draws a different list.
+      case 599:
+        this.zonePasses[0] = num(args[0])
+        return 1
+      case 805:
+        this.zonePasses[1] = num(args[0])
+        return 1
+      // **Read a bit of the progress record in hand**, `602` — read from
+      // overlay 1, and the fourth of the `600` family. The bank opens with
+      // **five records of 28 bytes**, and one byte of the block says which is
+      // in hand; `601` reads that record's bitfield at `+0x03` and `602` its
+      // second at `+0x10`, **twelve bytes, 96 bits**. Which record is chosen
+      // depends on which of several ranges an id falls in.
+      case 601:
+      case 602: {
+        const ref = args[1]
+        const which = `${this.record}:${id === 601 ? 'a' : 'b'}:${num(args[0])}`
+        if (isRef(ref)) thread.write(ref, this.recordBits.has(which) ? 1 : 0)
+        return 1
+      }
+      // **The music**, `735`, `736` and `737` — read from overlay 1, the last
+      // three of the sound range.
+      //
+      // **`735` is a gate, and it reads the other way up**: a 0 sets the bit
+      // that makes the sound manager's play and fade both **give up at once**,
+      // and anything else clears it. So `735(0)` silences the music until
+      // `735(1)`, and a `736` in between does nothing.
+      //
+      // **`736` plays the zone's own tune** and takes nothing: it asks the
+      // zone for its id and looks the sequence up — through a table of 47, a
+      // pair of substitutions that depend on the time of day, and an override
+      // list whose entries each carry **a story flag to test**.
+      //
+      // **`737` starts a tune on the manager's second player**, after the same
+      // whole teardown `738` does. The second player is the one a jingle uses
+      // and the one `PlayBGM` clears first, and `737` deliberately leaves the
+      // first player's slot empty so a later tune still plays.
+      case 735:
+        this.musicGated = num(args[0]) === 0
+        return 1
+      case 736:
+        if (!this.musicGated) this.sounds.push({ kind: 'zoneMusic', index: 0 })
+        return 1
+      case 737:
+        this.sounds.push({ kind: 'stopMusic', index: 0, frames: 0 })
+        this.sounds.push({ kind: 'jingle', index: num(args[0]) })
+        this.volume = SOUND_LOUDEST
+        this.volumeRamp = undefined
         return 1
       // **Fade the scene's light**, `578` — read from overlay 1. The first
       // number is a **multiplier**, `1.0` being normal and `0` black; it is
