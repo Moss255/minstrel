@@ -140,6 +140,13 @@ What makes the remaining areas cheap.
   the 197, by luck; the sweep is exhaustive, takes a minute, and needs no
   browser, because `apps/game/src/load.ts` has no DOM in it.
 - **Text and talk at scale**: 1,646 event texts, with the markup fully read.
+  **Measured, 24 September 2026**: `apps/game/test/text-coverage.test.ts` runs
+  every event's English text through the game's own renderer. There are
+  **5,157 texts in 687 events**, not 1,646 — the figure above was a third of
+  the real number. Nine render to nothing at all; **23 tags are unread**, and
+  `<ADD>` alone is in 429 of the 687 events. The game's own vocabulary of 127
+  tags has been found at `0x020f0600` and its parser at `0x0206a6b0`, so the
+  worklist is known and sequenced. Implementing them is the work that remains.
 - **Make a witness cheap** — jump to any map at any stage, a save state, and
   let's-play frames lined up against ours. See "The bottleneck moves" below:
   this is the highest-value work in the phase, because Phase 3 is paced by it

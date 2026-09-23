@@ -1139,6 +1139,71 @@ seventeen more numbers — among them `107` and `117`, which were the second and
 third most-wanted on the whole cartridge. Reading one function of a mechanical
 block is worth more than reading three scattered ones.
 
+## 7a. The text markup, and where the game keeps its own list of it — 24 September 2026
+
+A message is not plain text. It carries tags — `<Cap>`, `<PAGE>`, `<HERO>`,
+`<IF_MALE>` — and `apps/game/src/talk.ts`'s `runLine` renders them, keeping
+whatever it could not make sense of so the game can say `not shown: <TAG>` on
+its status line. That question had only ever been asked one message at a time,
+by whoever happened to be looking.
+
+`apps/game/test/text-coverage.test.ts` asks it of all of them.
+
+**5,157 texts across 687 events** — the plan's figure of 1,646 is a third of
+the real number. Of those, **nine render to nothing at all**, which is worse
+than a missing tag: the player gets a blank box and nothing says why. Which
+nine has not been looked at.
+
+**Twenty-three tags are unread**, and one of them is most of the problem:
+
+| tag | events | uses |
+|---|---|---|
+| `<ADD>` | **429** | **1,724** |
+| `<PAD_WAIT_NOCUR>`, `</QUEST>` | 94 | 115 |
+| `<QUEST_HAN>` | 52 | 52 |
+| `<QUEST>` | 50 | 51 |
+| `<TIME>` | 44 | 44 |
+| `<CEN>` | 43 | 166 |
+| `<ME_008>` | 32 | 33 |
+| `<ALL_RECOVER>` | 16 | 16 |
+| the rest | 1–16 each | |
+
+`<ADD>` alone is in **429 of the 687 events**. Whatever it does, it is the
+cheapest thing on the list to read next.
+
+### The game keeps its own vocabulary, and it is 127 tags
+
+At **`0x020f0600`–`0x020f0a00`** in the ARM9, as plain strings. Every one of
+the twenty-three above is in it, so none of them is a misparse:
+
+```
+WH= ST= LB_ XR= JP_ /XR NO> XY= val_ END> ART_ EXC> VAL_ HERO ACC_ DEF_
+SGL_ GEN_ DAT_ PLR_ QES> NOM_ YES> UKE> ADD> STR_ YAME> <INN= <SHOP TURN=
+TIME= SIZE= ACTOR PAGE> AUTO= PAD_T= CLOSE> SHAKE> /TITLE YESNO> NOYES>
+<BANK> RENKIN LEADER QUEST= INDEF_ I_NAME M_NAME TARGET ACTION REFLEX
+WIN_ON> CEN_ON> /QUEST> N_TURN> R_TURN> TURN_P> PAGE_T= WIN_OFF> CEN_OFF>
+<CHURCH= UKEYAME> TMAP_SEC PAD_WAIT> QUEST_SE> ADDRESSEE QUEST_HAN>
+END_R_TURN> ALL_RECOVER= YESNO_NOTSE> QUEST_FAILED> PAD_WAIT_NOCUR>
+YESNO_NOTSE_IIE> <VOICE_VOLUME= <ME_ <SE_ <N_TURN> <EXC> <QES> <RECT=
+<WIN> <CEN> <GYOU= <MOJI= <COLOR= <SKIP> <PAGE>
+```
+
+**The parser that dispatches them is at `0x0206a6b0`**, a chain of prefix
+comparisons through `func_020d85dc`. Two are already read from it, and they
+tie the markup to the engine functions:
+
+- **`<WIN>` writes `win+0x19b1 = 0`** — which is exactly what engine function
+  **`410`** does. The tag and the opcode are two ways to the same thing, and
+  §5f's caption block is the rest of that family.
+- **`<CEN>` writes `win+0x19b8 = 1`** — a different byte, and the table's
+  `CEN_ON>` / `CEN_OFF>` pair suggests it is a switch rather than a one-shot.
+
+`<GYOU=`, `<MOJI=`, `<COLOR=` and `<SKIP>` follow in the same chain and are not
+yet read.
+
+**That is where the next of this work starts**: the list is known, the parser
+is located, and the measurement will show each one landing.
+
 ## 7. Open questions
 
 - What each engine function does, beyond the hundred the host now plays.
