@@ -324,6 +324,20 @@ export interface Caption {
   readonly hold?: number
 }
 
+/**
+ * The message window's bytes that `417` to `421` write, by their offsets in
+ * the window — **their meanings are not established**, so they are carried as
+ * the game writes them rather than named for a guess.
+ */
+export interface Window {
+  unknown_0x195d?: number
+  unknown_0x19ae?: number
+  unknown_0x19c0?: number
+  unknown_0x19c1?: number
+  unknown_0x19ca?: number
+  unknown_0x19cb?: number
+}
+
 /** A message as `400` leaves it, before any of `409` to `414` has spoken. */
 export const CAPTION_PLAIN: Caption = {
   framed: true,
@@ -558,6 +572,12 @@ export class EventStage {
   wireless = false
   /** What the scene switched on for its own duration — see `568`. */
   sceneFlags = 0
+  /** The message window's other bytes, by their offsets — see `417` to `421`. */
+  readonly window: Window = {}
+  /** The path `569` put together in the scene's own buffer. */
+  queuedPath: string | undefined
+  /** Whether the map's placements are held still — see `581` and `582`. */
+  placementsHeld = false
   /** What `512` set in the game's own flag word. */
   gameFlags = 0
   /** The camera a model's bones are driving — see `572` and `531`. */
@@ -1195,6 +1215,47 @@ export class EventStage {
         if (num(args[1]) !== 0) this.gameFlags |= num(args[0])
         else this.gameFlags &= ~num(args[0])
         return 1
+      // **Named bits of the same flag word `512` pokes**, `536` and `833` —
+      // read from overlay 1. `536` takes a **kind** and a switch: kind 0 is
+      // bit `0x008`, kind 1 is bit `0x400`. `833` takes the switch alone, for
+      // bit `0x800`.
+      //
+      // **Both read their switch the other way up**: a **0 sets** the bit and
+      // anything else clears it. A set bit in this word **suppresses** a
+      // subsystem's update, so a 0 means "hold this still" — which is also
+      // what `568`'s setup does with the same two bits when a scene declares
+      // them, and why the two agree.
+      case 536: {
+        const mask = num(args[0]) === 0 ? 0x008 : num(args[0]) === 1 ? 0x400 : 0
+        if (num(args[1]) === 0) this.gameFlags |= mask
+        else this.gameFlags &= ~mask
+        return 1
+      }
+      case 833:
+        if (num(args[0]) === 0) this.gameFlags |= 0x800
+        else this.gameFlags &= ~0x800
+        return 1
+      // **A file the scene will want**, `569` — read from overlay 1, and one
+      // line of it: `sprintf(context + 0xD8, "data/%s", name)`. It puts a ROM
+      // path together in the scene's own buffer, where something later reads
+      // it. What reads it was not followed.
+      case 569:
+        this.queuedPath = `data/${text(args[0])}`
+        return 1
+      // **Hold the map's placements still**, `581` and `582` — read from
+      // overlay 1. `581` sets bit 2 of the placement manager's own word when
+      // its number is **0** and clears it otherwise, the same way up as `536`
+      // and `833`; it is also exactly what bit `0x20` of `568`'s mask switches
+      // when a scene declares it. `582` clears that bit **and** clears bit
+      // `0x10000` on every one of the manager's sub-objects.
+      //
+      // **Ours**: this engine has no such manager, so the switch is kept.
+      case 581:
+        this.placementsHeld = num(args[0]) === 0
+        return 1
+      case 582:
+        this.placementsHeld = false
+        return 1
       // **Let a model's own animation drive the camera**, `572`, and **give
       // the camera back**, `531` — read from overlay 1, a save-and-restore
       // pair joined by one word of the event's state.
@@ -1499,6 +1560,50 @@ export class EventStage {
         if (isRef(ref)) thread.write(ref, this.message === undefined ? 0 : 1)
         return 0
       }
+      // **The message window's other knobs**, `402` to `404` and `417` to
+      // `421` — read from overlay 1. All eight reach the same one window as
+      // the caption block below, and all eight are one or two stores or one
+      // read apiece. **What the bytes mean is not established**, so they are
+      // carried by their offsets, as opaque bytes, rather than named.
+      //
+      // | fn | what it does |
+      // |---|---|
+      // | 402 | reads the byte `+0x19b4` into a reference |
+      // | 403 | reads the word `+0x9a0` — the message's own state, which `401` and the end-of-text code both zero |
+      // | 404 | reads **the byte at the window's current text pointer** (`*(u8*)win[0x58]`) |
+      // | 417 | writes `+0x19c0 = 1` and `+0x195d = 0x1e` |
+      // | 418 | writes its number to the byte `+0x19ae` |
+      // | 419 | writes `+0x19ca = 0` |
+      // | 420 | writes `+0x19cb` as a boolean of its number |
+      // | 421 | writes `+0x19c1 = 1` |
+      //
+      // **Ours**: the three readers answer **0**, which is the safe way round
+      // for each of them — an idle state, and a zero byte for the end of the
+      // text — so a scene polling one carries on rather than spinning. The
+      // five writers are kept in {@link window}.
+      case 402:
+      case 403:
+      case 404: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 0)
+        return 0
+      }
+      case 417:
+        this.window.unknown_0x19c0 = 1
+        this.window.unknown_0x195d = 0x1e
+        return 1
+      case 418:
+        this.window.unknown_0x19ae = num(args[0]) & 0xff
+        return 1
+      case 419:
+        this.window.unknown_0x19ca = 0
+        return 1
+      case 420:
+        this.window.unknown_0x19cb = num(args[0]) !== 0 ? 1 : 0
+        return 1
+      case 421:
+        this.window.unknown_0x19c1 = 1
+        return 1
       // **Show the message as a caption over the scene**, `409` to `414` —
       // read from overlay 1. Six numbers that always travel together, and the
       // code says why: every one writes a field of **the one message window**

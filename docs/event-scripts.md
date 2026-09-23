@@ -663,6 +663,51 @@ bits reach — the script's way at all of it — and **`587`** rewinds one of th
 event's eight heaps to its start, dropping every saved state. Neither is
 bounds-checked; heap 0 holds the scene's own character and placement arrays.
 
+## 5g. What the clusters gave away for nothing — 23 September 2026
+
+Reading a cluster turns up its neighbours. These fourteen cost nothing beyond
+checking them against the binary, because the walks that settled `568`, the
+caption and the flag word had already passed through them.
+
+**Eight more knobs on the one message window**, joining the caption block:
+
+| fn | what it does |
+|---|---|
+| 402 | reads the byte `+0x19b4` into a reference |
+| 403 | reads the word `+0x9a0` — the message's own state, which `401` and the end-of-text code both zero |
+| 404 | reads **the byte at the window's current text pointer** (`*(u8*)win[0x58]`) |
+| 417 | writes `+0x19c0 = 1` and `+0x195d = 0x1e` |
+| 418 | writes its number to the byte `+0x19ae` |
+| 419 | writes `+0x19ca = 0` |
+| 420 | writes `+0x19cb` as a boolean of its number |
+| 421 | writes `+0x19c1 = 1` |
+
+**What those bytes mean is not established**, so this engine carries them by
+their offsets rather than naming them for a guess, and answers the three
+readers with 0 — an idle state and a zero byte for the end of the text, which
+is the direction that lets a scene polling one carry on.
+
+**The flag-word switches read the other way up.** `536` takes a kind and a
+switch — kind 0 is bit `0x008`, kind 1 is bit `0x400` — and `833` takes the
+switch alone for bit `0x800`; in both, **a 0 sets the bit** and anything else
+clears it. A set bit in that word *suppresses* a subsystem's update, so a 0
+means "hold this still". `581` reads the same way up on the map placement
+manager's own word, and `582` clears that bit and bit `0x10000` on every one of
+the manager's sub-objects.
+
+That polarity is worth having: it is the same sense `568`'s setup uses on the
+same two bits when a scene declares them, which is why the two agree.
+
+**`569` is one line**: `sprintf(context + 0xD8, "data/%s", name)`, putting a ROM
+path together in the scene's own buffer. What reads it was not followed.
+
+### One correction
+
+An earlier reading of `417` had it returning the message window's pointer
+rather than a success code, on the grounds that it has no `mov r0, #1`. It
+does — at `0x0215e90c`, where the 1 it is about to store is loaded — and that
+1 is still in `r0` at the `pop`. `417` returns 1 like everything else.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -704,9 +749,10 @@ side by side in the same towns are usually one feature.
 | 105, 120, 211, 233, 322, 328, 547, 558, 573, 574, 603, 703–709, 715, 721 | the worklist head, and the towns' shared set | 48 | 21 |
 | 100–122, 575–577 | the whole brightness block, the display swap, the screen colour, and `574`'s siblings | 37 | 19 |
 | 568 · 409–414, 401 · 713, 714, 716–719, 724, 725, 801 · 213, 327, 512, 531, 572, 587 | four clusters read at once | 24 | 17 |
+| 402–404, 417–421, 536, 569, 581, 582, 833 | what those four gave away for nothing | 21 | 14 |
 
-The count of what is unanswered across the cartridge went 150 to 58, and what
-the host implements 36 to 145. The head of the story-ordered list has moved from
+The count of what is unanswered across the cartridge went 150 to 51, and what
+the host implements 36 to 158. The head of the story-ordered list has moved from
 `ev01130` to `ev01515`, and its one want is `538`.
 
 **The brightness block came out of the table differently from the others**: not

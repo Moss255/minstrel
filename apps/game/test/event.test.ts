@@ -1170,3 +1170,60 @@ describe('what a scene declares, and the rest of the clusters', () => {
     expect(written.get(2)).toBe(0)
   })
 })
+
+describe('the free readings — knobs that fell out of the clusters', () => {
+  it('answers the window’s three readers with the safe zero — 402, 403, 404', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(400, [1], t)
+    for (const [i, id] of [402, 403, 404].entries()) stage.host.call(id, [ref(i)], t)
+    expect([written.get(0), written.get(1), written.get(2)]).toEqual([0, 0, 0])
+    expect([...stage.unhandled.keys()]).toEqual([])
+  })
+
+  it('keeps the window’s other bytes by their offsets — 417 to 421', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.window).toEqual({})
+    stage.host.call(417, [], t)
+    stage.host.call(418, [7], t)
+    stage.host.call(419, [], t)
+    stage.host.call(420, [3], t)
+    stage.host.call(421, [], t)
+    expect(stage.window).toEqual({
+      unknown_0x195d: 0x1e,
+      unknown_0x19ae: 7,
+      unknown_0x19c0: 1,
+      unknown_0x19c1: 1,
+      unknown_0x19ca: 0,
+      // A boolean of its number, not the number.
+      unknown_0x19cb: 1,
+    })
+  })
+
+  it('reads the flag switches the other way up — 536, 833, 581', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // A 0 sets the bit; anything else clears it. Same word 512 pokes.
+    stage.host.call(536, [0, 0], t)
+    stage.host.call(833, [0], t)
+    expect(stage.gameFlags).toBe(0x808)
+    stage.host.call(536, [1, 0], t)
+    expect(stage.gameFlags).toBe(0xc08)
+    stage.host.call(536, [0, 1], t)
+    stage.host.call(833, [1], t)
+    expect(stage.gameFlags).toBe(0x400)
+    // 581 is the same way up, on the placement manager's own word; 582 clears.
+    stage.host.call(581, [0], t)
+    expect(stage.placementsHeld).toBe(true)
+    stage.host.call(582, [], t)
+    expect(stage.placementsHeld).toBe(false)
+  })
+
+  it('puts a rom path together in the scene’s buffer — 569', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(569, ['ani/dq_kaidan.spr'], t)
+    expect(stage.queuedPath).toBe('data/ani/dq_kaidan.spr')
+  })
+})
