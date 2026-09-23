@@ -265,16 +265,16 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
 
   it('counts what the slice itself still wants', () => {
     // M01 is the slice's own area and it plays — which is not the same as
-    // being complete. Its events call **77** functions the host answers with
+    // being complete. Its events call **69** functions the host answers with
     // 0, and the slice is playable because none of them stops a scene it
     // needs. The number is a pin: implementing one lowers it, and a change
     // that loses one raises it. It was 78 before the scene's field of view
-    // (532) went in.
+    // and the cast-staging block went in.
     const slice = reports.find((r) => r.area === 'M01')
     expect(slice, 'no triggers for the slice area').toBeDefined()
     const here = slice as AreaReport
     expect(here.events).toBe(49)
-    expect(here.unhandled.size).toBe(77)
+    expect(here.unhandled.size).toBe(69)
   })
 
   it('shows the gap is front-loaded — the same functions, area after area', () => {
@@ -346,10 +346,11 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
     // line, and then more than 139 are reached: 150 are unanswered here, on
-    // top of the 41 the host implements — 36 before the waypoint path and the
-    // scene's field of view went in. The notes' figure is a floor.
+    // top of the 49 the host implements — 36 before the waypoint path, the
+    // scene's field of view and the cast-staging block went in. The notes'
+    // figure is a floor.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(145)
+    expect(everywhere.size).toBe(137)
   })
 })

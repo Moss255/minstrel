@@ -323,6 +323,37 @@ perspective matrix. It takes an integer or a float. That is the number
 controller which selects one of three variants of something; what that
 something is was not established, and nothing should be assumed from it.
 
+## 5b. Staging a scene's cast — 502, 503, 506, 507, 508, and 203, 205, 212
+
+Read 23 September 2026, from overlay 1. Eight numbers that turn up together in
+the same 118 events are one block: **loading the models a scene needs, and
+binding them to its characters.**
+
+| fn | handed | what it does |
+|---|---|---|
+| 502 | partition, reset? | makes one of the 33 VRAM partitions current, emptying it first unless told not to |
+| 506 | 1–3 names | queues them on the background loader — `chara/p_…` from `chara_pc.gp2`, `.mon` from `enemy.gp2`, anything else `data/<name>` |
+| 507 | reference | **1 while any queued file is still loading, 0 once all are done or failed** — the script spins on this |
+| 503 | partition | writes the partition's use back, ending the bracket |
+| 508 | — | drops the task list |
+| 203 | character | unbinds a character from its display entry and clears its movement state |
+| 205 | character, entry | points a character at a display entry |
+| 212 | slot | destroys the model object in a slot and clears every display entry that pointed at it |
+
+The order is: `502` → `506` → spin on `507` → `200` builds the model from the
+loaded bytes into a slot → `202` gives a display entry that slot → `205` points
+a character at the entry → `503` → `508`; and on the way out `212` and `203`.
+
+**A character and its display entry are always the same number**: all 1,324
+calls of `205` pass the same value twice, which is why this repository's `202`
+could dress a character directly and be right.
+
+**Nearly all of this is the DS's, and this engine has none of it.** It holds the
+whole cartridge and reads from it as it goes, so there is no VRAM to portion out
+and nothing to wait for. `apps/game/src/event.ts` keeps the two things a script
+can see — the list `506` asked for, and `507`'s answer that nothing is still
+loading, which is what lets the spin end — and does nothing for the partitions.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has

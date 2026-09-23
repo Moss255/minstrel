@@ -356,6 +356,8 @@ export class EventStage {
   readonly sounds: { readonly kind: 'effect' | 'jingle' | 'stop'; readonly index: number }[] = []
   /** Frames played. */
   frame = 0
+  /** What `506` asked the loader for, as the script named it — see `506`. */
+  readonly queued: string[] = []
   /**
    * The whole vertical field of view the scene asked for, in radians — see
    * `532`. Undefined until it asks, and then the camera's until the event ends.
@@ -818,6 +820,88 @@ export class EventStage {
         // Whether the scene carries straight on from a conversation — see `afterTalk`.
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, this.afterTalk ? 1 : 0)
+        return 0
+      }
+      // **Staging a scene's cast**, the game's 502, 503, 506, 507 and 508 —
+      // read from overlay 1. Together with 200 and 202 they are one block: a
+      // VRAM partition is emptied and made current (`502`), the scene's files
+      // are queued on the background loader (`506`), the script spins until
+      // they are in (`507`), the partition's use is written back (`503`) and
+      // the task list dropped (`508`).
+      //
+      // **Nearly all of it is the hardware's, and ours has none of it**: this
+      // engine holds the whole cartridge and loads from it as it goes, so
+      // there is no VRAM to portion out and nothing to wait for. What is kept
+      // is the part a script can see — the list of what it asked for, and the
+      // answer that nothing is still loading.
+      case 502:
+      case 503:
+        // The VRAM partition's bracket. Nothing to do: see above.
+        return 0
+      case 506:
+        // 1 to 3 file names, queued. The game routes a `chara/p_` name into
+        // `chara_pc.gp2` and a `.mon` into `enemy.gp2`, and everything else to
+        // `data/<name>`; they are kept here as the script gave them.
+        this.queued.length = 0
+        for (const name of args) if (typeof name === 'string') this.queued.push(name)
+        return 0
+      case 507: {
+        // **Whether anything queued is still loading.** The game stores 1
+        // through the reference while a task is unfinished and 0 once every
+        // one is done or failed; a script spins on it. Nothing here is ever
+        // still loading, so it is always 0 — which is what lets the spin end.
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 0)
+        return 0
+      }
+      case 508:
+        this.queued.length = 0
+        return 0
+      // **Binding a character to what was loaded**, the game's 203, 205 and
+      // 212. `200` loads a file into a slot; `202` gives a display entry that
+      // slot's model; `205` points a character at a display entry; `203`
+      // unbinds a character and clears what it was doing; `212` destroys the
+      // model in a slot and unbinds whoever wore it.
+      //
+      // **A character and its display entry are always the same number** on
+      // this cartridge — all 1,324 calls of `205` — so `202` above dresses the
+      // character directly and these three keep the two in step.
+      case 203: {
+        const actor = this.actor(num(args[0]))
+        actor.model = undefined
+        actor.packs.length = 0
+        actor.walk = undefined
+        actor.turn = undefined
+        actor.path.points.length = 0
+        actor.path.started = undefined
+        this.bound.delete(num(args[0]))
+        return 0
+      }
+      case 205: {
+        // Where the two numbers differ — which they never do here — the
+        // character takes the entry's model rather than its own.
+        const entry = num(args[1])
+        const slot = this.bound.get(entry)
+        const loaded = slot === undefined ? undefined : this.slots.get(slot)
+        const actor = this.actor(num(args[0]))
+        if (loaded) {
+          actor.model = loaded.model
+          actor.packs.push(...loaded.packs.filter((pack) => !actor.packs.includes(pack)))
+        }
+        this.bound.set(num(args[0]), slot ?? entry)
+        return 0
+      }
+      case 212: {
+        // The slot the script names, negative as `200` takes them.
+        const slot = num(args[0])
+        this.slots.delete(slot)
+        for (const [id, at] of [...this.bound]) {
+          if (at !== slot) continue
+          this.bound.delete(id)
+          const actor = this.actor(id)
+          actor.model = undefined
+          actor.packs.length = 0
+        }
         return 0
       }
       // **The scene's field of view**, `532` — the game's `Camera_SetFov`. Its

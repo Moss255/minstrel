@@ -511,3 +511,65 @@ describe('the scene’s field of view — the game’s 532', () => {
     expect(stage.unreadCalls.has(532)).toBe(false)
   })
 })
+
+describe('staging a scene’s cast — the game’s 502 to 508, 203, 205 and 212', () => {
+  it('keeps what 506 queued, and 508 drops it', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(506, ['chara/p_hero.chr', 'chara_sub/s016.chr'], t)
+    expect(stage.queued).toEqual(['chara/p_hero.chr', 'chara_sub/s016.chr'])
+    // A second 506 replaces the list, as the game resets its count.
+    stage.host.call(506, ['chara/p_other.chr'], t)
+    expect(stage.queued).toEqual(['chara/p_other.chr'])
+    stage.host.call(508, [], t)
+    expect(stage.queued).toEqual([])
+  })
+
+  it('answers 507 that nothing is still loading, which is what ends the spin', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(506, ['chara/p_hero.chr'], t)
+    stage.host.call(507, [ref(4)], t)
+    expect(written.get(4)).toBe(0)
+  })
+
+  it('has nothing to do for the VRAM partition, and says so by not counting it', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(502, [3, 1], t)
+    stage.host.call(503, [3], t)
+    for (const fn of [502, 503, 506, 507, 508]) expect(stage.unreadCalls.has(fn)).toBe(false)
+  })
+
+  it('points a character at a display entry with 205, and unbinds it with 203', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(200, ['chara_sub/s017.chr', -3], t)
+    stage.host.call(202, [2, -3, 1], t)
+    expect(stage.actors.get(2)?.model).toBe('chara_sub/s017.chr')
+    // 205 points character 2 at display entry 2, which is where it already is.
+    stage.host.call(205, [2, 2], t)
+    expect(stage.actors.get(2)?.model).toBe('chara_sub/s017.chr')
+    // 203 takes it off again, and stops whatever it was doing.
+    stage.host.call(214, [2], t)
+    stage.host.call(216, [2, 1, 0, 1], t)
+    stage.host.call(215, [2, 5], t)
+    stage.host.call(217, [2], t)
+    expect(stage.busy(2)).toBe(true)
+    stage.host.call(203, [2], t)
+    expect(stage.actors.get(2)?.model).toBeUndefined()
+    expect(stage.busy(2)).toBe(false)
+  })
+
+  it('destroys a slot’s model with 212, and undresses whoever wore it', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(200, ['chara_sub/s017.chr', -3], t)
+    stage.host.call(202, [2, -3, 1], t)
+    stage.host.call(212, [-3], t)
+    expect(stage.actors.get(2)?.model).toBeUndefined()
+    // And the slot is gone, so a later binding finds nothing.
+    stage.host.call(202, [4, -3, 1], t)
+    expect(stage.actors.get(4)?.model).toBeUndefined()
+  })
+})
