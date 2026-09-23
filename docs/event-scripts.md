@@ -275,6 +275,31 @@ row says otherwise. "—" means not established.
 
 ---
 
+## 6a. The worklist — what to read next, and in what order
+
+**Phase 1's first step, 23 September 2026.** An engine function the host has
+not got is answered with 0 so that a scene goes on rather than stopping dead.
+That is the right answer and the wrong thing to be quiet about, so the host now
+**says so where it happens**: `EventStage.unread` keeps each one with what it
+was handed — the signature, a few argument lists, the frame — tells
+`onUnread` the first time each number turns up, and `strict` turns it into a
+`ScriptError` for a run whose business is finding them. The game puts the
+first sighting on the status line as the scene plays, and names what the scene
+wanted when it ends.
+
+`apps/game/test/event-coverage.test.ts` runs **every event any area's triggers
+can reach** and prints the worklist two ways: by how many areas want a
+function, and **in the order the story wants it**. The story order is the
+earliest stage of any trigger that reaches an event, and then the event's own
+number — the stage alone says little, since a trigger's span nearly always
+starts at 1.1, and the numbering runs with the story.
+
+**What the first scenes want**, as of this writing: `ev01130` alone wants
+**222, 532, 543, 554, 595, 596, 728 and 731**, each of them wanted by more
+than twenty areas. 554 and 532 are the two most-called of all — 2,416 and
+1,653 calls — and take one integer apiece. That is where reading out of the
+decomp pays for itself soonest.
+
 ## 7. Open questions
 
 - What each engine function does, beyond the handful above. The game's host,

@@ -314,3 +314,56 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.size).toBe(0)
   })
 })
+
+describe('an engine function the host has not got', () => {
+  it('is answered with 0, counted, and kept with what it was handed', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.host.call(713, [7, 1.5, 'hello'], t)).toBe(0)
+    stage.host.call(713, [9], t)
+    const call = stage.unreadCalls.get(713)
+    expect(call?.calls).toBe(2)
+    // The signatures are `docs/event-scripts.md`'s: integer, float, string.
+    expect([...(call?.shapes ?? [])].sort()).toEqual(['i', 'ifs'])
+    expect(call?.examples[0]).toEqual([7, 1.5, 'hello'])
+    // The count it kept before stands beside it, for whatever reads that.
+    expect(stage.unhandled.get(713)).toBe(2)
+  })
+
+  it('keeps a few argument lists and no more, however often it is called', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    for (let i = 0; i < 50; i++) stage.host.call(713, [i], t)
+    const call = stage.unreadCalls.get(713)
+    expect(call?.calls).toBe(50)
+    expect(call?.examples.length).toBeLessThanOrEqual(4)
+  })
+
+  it('says so the first time, and only the first time', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    const said: number[] = []
+    stage.onUnread = (call) => said.push(call.fn)
+    stage.host.call(713, [1], t)
+    stage.host.call(713, [2], t)
+    stage.host.call(714, [], t)
+    expect(said).toEqual([713, 714])
+  })
+
+  it('stops the run instead, where the run is there to find them', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.strict = true
+    expect(() => stage.host.call(713, [7], t)).toThrow(/engine function 713 is not read/)
+  })
+
+  it('says nothing for a function the host answers', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.onUnread = () => {
+      throw new Error('206 is read')
+    }
+    stage.host.call(206, [1, 8, 0.8, 16], t)
+    expect(stage.unreadCalls.size).toBe(0)
+  })
+})

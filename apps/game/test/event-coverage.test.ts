@@ -46,6 +46,13 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
 
   let reports: AreaReport[] = []
   let scriptsByEvent: Map<number, Script>
+  /** The earliest story stage that can reach each event, as `major × 100 + minor`. */
+  const storyOf = new Map<number, number>()
+  /** Each unread engine function: how often, where, what it was handed, and how early it is wanted. */
+  const wanted = new Map<
+    number,
+    { calls: number; areas: Set<string>; shapes: Set<string>; at: number; event: number }
+  >()
 
   beforeAll(() => {
     const rom = new Uint8Array(readFileSync(romPath as string))
@@ -87,7 +94,14 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
         const events = new Set<number>()
         for (const trigger of triggers) {
           for (const word of triggerWords(trigger)) {
-            if (word.op === OP_EVENT && word.arg > 0) events.add(word.arg)
+            if (word.op !== OP_EVENT || word.arg <= 0) continue
+            events.add(word.arg)
+            // **Where it falls in the story**: the earliest stage of any
+            // trigger that can reach it. That is what turns the worklist from
+            // a heap into a sequence — see the story-ordered table below.
+            const at = trigger.from.major * 100 + trigger.from.minor
+            const was = storyOf.get(word.arg)
+            if (was === undefined || at < was) storyOf.set(word.arg, at)
           }
         }
         const unhandled = new Map<number, number>()
@@ -112,6 +126,27 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
           if (frames >= FRAME_CAP) runaway++
           for (const [fn, n] of player.stage.unhandled) {
             unhandled.set(fn, (unhandled.get(fn) ?? 0) + n)
+          }
+          // What each one was handed, and the earliest story stage that wants
+          // it — the two things reading it out of the decomp starts from.
+          for (const call of player.stage.unreadCalls.values()) {
+            const row = wanted.get(call.fn) ?? {
+              calls: 0,
+              areas: new Set<string>(),
+              shapes: new Set<string>(),
+              at: Number.POSITIVE_INFINITY,
+              event: id,
+            }
+            row.calls += call.calls
+            row.areas.add(area)
+            for (const shape of call.shapes) row.shapes.add(shape)
+            row.at = Math.min(row.at, storyOf.get(id) ?? Number.POSITIVE_INFINITY)
+            // The lowest-numbered event that wants it. The numbering runs with
+            // the story — the slice's own are `ev02xxx` — and it is the finer
+            // of the two orders, since a trigger's span nearly always starts
+            // at 1.1 and so says little.
+            row.event = Math.min(row.event, id)
+            wanted.set(call.fn, row)
           }
         }
         return { area, events: events.size, missingScripts, runaway, unhandled }
@@ -145,6 +180,27 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     console.log('  the areas wanting most:')
     for (const r of worst) {
       console.log(`    ${r.area}  ${r.events} events, ${r.unhandled.size} functions missing`)
+    }
+
+    // **The worklist as a sequence.** Ordered by the earliest story stage that
+    // wants a function, and within a stage by how often it is called: the top
+    // of this list is what the next scenes cannot play without.
+    const sequence = [...wanted].sort(
+      (a, b) => a[1].at - b[1].at || a[1].event - b[1].event || b[1].calls - a[1].calls,
+    )
+    const stages = new Set([...wanted.values()].map((row) => row.at))
+    console.log(
+      `  the stages the triggers give: ${[...stages].sort((a, b) => a - b).join(' ')} — a span that starts at 1.1 says little, so the event number orders within it`,
+    )
+    const stage = (at: number) =>
+      at === Number.POSITIVE_INFINITY ? '  —  ' : `${Math.floor(at / 100)}.${at % 100}`
+    console.log('  the worklist, in the order the story wants it:')
+    for (const [fn, row] of sequence.slice(0, 25)) {
+      console.log(
+        `    ${stage(row.at).padStart(5)}  fn ${String(fn).padStart(4)}  ` +
+          `${String(row.calls).padStart(6)} calls, ${String(row.areas.size).padStart(3)} areas, ` +
+          `(${[...row.shapes].sort().slice(0, 3).join('|')})  from ev${String(row.event).padStart(5, '0')}`,
+      )
     }
   }, 600_000)
 
@@ -193,6 +249,32 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // phase rather than the pipeline — see `docs/beyond-the-slice.md`.
     const shared = wanted.filter((areas) => areas > 1).length
     expect(shared / wanted.length).toBeGreaterThan(0.5)
+  })
+
+  it('puts the worklist in the story’s order, and names what the first scenes want', () => {
+    // The head of the list is the work that opens the most: the lowest-numbered
+    // events that want anything at all, and what they want. Pinned so that
+    // implementing one of them shows up here as a shorter list.
+    const first = Math.min(...[...wanted.values()].map((row) => row.event))
+    expect(first).toBe(1130)
+    const head = [...wanted]
+      .filter(([, row]) => row.event === first)
+      .map(([fn]) => fn)
+      .sort((a, b) => a - b)
+    expect(head).toEqual([222, 532, 543, 554, 595, 596, 728, 731])
+    // Every one of them is wanted by a great many areas, which is why they are
+    // first: the earliest scenes and the latest want the same handful.
+    for (const fn of head) {
+      expect(wanted.get(fn)?.areas.size, `fn ${fn}`).toBeGreaterThan(20)
+    }
+  })
+
+  it('keeps what each unread function was handed, which is what reading it starts from', () => {
+    // A signature apiece, in `docs/event-scripts.md`'s letters. 554 takes one
+    // integer; 596 takes a reference to fill.
+    expect([...(wanted.get(554)?.shapes ?? [])]).toEqual(['i'])
+    expect([...(wanted.get(596)?.shapes ?? [])].sort()).toContain('ir')
+    expect([...(wanted.get(731)?.shapes ?? [])]).toEqual([''])
   })
 
   it('reaches further than the count in the event-scripts notes', () => {

@@ -3667,6 +3667,15 @@ function startEvent(number: number, afterTalk = false): boolean {
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
   playing.player.stage.afterTalk = afterTalk
+  // **Say it where it happens.** An engine function the host has not got is
+  // answered with 0 so the scene goes on, which is the right thing to do and
+  // the wrong thing to be quiet about: a scene half-plays and nothing says
+  // why. The first sighting of each number says so on the status line, with
+  // what it was handed — see `EventStage.unread`.
+  playing.player.stage.onUnread = (unread) => {
+    const shape = [...unread.shapes][0] ?? ''
+    status(`ev${number} wants engine function ${unread.fn}(${shape}) — answered 0`)
+  }
   self.held.clear()
   closeTalk()
   menu = undefined
@@ -3786,10 +3795,17 @@ function endEvent(): void {
   // them, not from wherever they were before it: as on arriving. Ours.
   if (self) for (const trail of trails) resetFollower(trail, self.state)
   closeTalk()
-  const unread = [...done.player.stage.unhandled.keys()]
+  // What the scene wanted and did not get, most-called first: the worklist in
+  // miniature — see `apps/game/test/event-coverage.test.ts` for the whole of it.
+  const unread = [...done.player.stage.unreadCalls.values()].sort((a, b) => b.calls - a.calls)
   status(
     `ev${done.event} is over` +
-      (unread.length > 0 ? ` · functions not read: ${unread.sort((a, b) => a - b).join(' ')}` : ''),
+      (unread.length > 0
+        ? ` · wanted ${unread.length} function${unread.length === 1 ? '' : 's'} it has not got: ${unread
+            .slice(0, 6)
+            .map((call) => `${call.fn}×${call.calls}`)
+            .join(' ')}${unread.length > 6 ? ' …' : ''}`
+        : ''),
   )
   // Any of the map's cast it moved stays where it left them — the Hexagon's
   // figure, by the statue — over the step its record moves to: see `castLeft`.

@@ -1,6 +1,7 @@
 import type { Script } from '@minstrel/game-formats'
 import {
   EventRun,
+  ScriptError,
   type ScriptHost,
   type ScriptRef,
   type ScriptThread,
@@ -244,6 +245,20 @@ export class EventStage {
   frame = 0
   /** Engine functions answered with 0 because they are not read, and how often. */
   readonly unhandled = new Map<number, number>()
+  /** What each of them was handed, which is what reading it out of the decomp starts from. */
+  readonly unreadCalls = new Map<number, UnreadCall>()
+  /**
+   * Told the first time each unread function turns up, so a run can say so
+   * where it happens rather than leaving it to a count at the end. Set by
+   * whoever plays the event.
+   */
+  onUnread: ((call: UnreadCall) => void) | undefined
+  /**
+   * Whether an unread function stops the run instead of being answered with 0.
+   * Off in the game, where a scene half-played is better than a scene stopped;
+   * on in the tools, where silence is the thing being measured.
+   */
+  strict = false
   /** The second event folder's model slots: what `200` loaded into each, and the packs `229` added. */
   private readonly slots = new Map<number, { model: string; packs: string[] }>()
   /** Which slot each character wears — see `202`. */
@@ -257,6 +272,45 @@ export class EventStage {
 
   constructor(readonly scale: number) {
     this.host = { call: (id, args, thread) => this.call(id, args, thread) }
+  }
+
+  /**
+   * An engine function the host has not got: **answered with 0**, counted, and
+   * kept with what it was handed.
+   *
+   * Answering 0 is what lets a scene go on rather than stopping dead, and it
+   * is the wrong thing to be quiet about — so the first sighting of each
+   * number is told to {@link onUnread}, and {@link strict} turns it into an
+   * error for a run whose business is finding them.
+   */
+  private unread(id: number, args: readonly ScriptValue[]): ScriptValue {
+    const shape = args.map(shapeOf).join('')
+    const already = this.unreadCalls.get(id)
+    if (already) {
+      already.calls++
+      already.shapes.add(shape)
+      // A handful of each is enough to read a function by; one event polls
+      // functions 0 and 2 nearly ten thousand times apiece.
+      if (already.examples.length < UNREAD_EXAMPLES) already.examples.push(args)
+    }
+    const call: UnreadCall = already ?? {
+      fn: id,
+      calls: 1,
+      shapes: new Set([shape]),
+      examples: [args],
+      frame: this.frame,
+    }
+    if (!already) {
+      this.unreadCalls.set(id, call)
+      this.onUnread?.(call)
+    }
+    this.unhandled.set(id, call.calls)
+    if (this.strict) {
+      throw new ScriptError(
+        `engine function ${id} is not read — handed (${shape}) at frame ${this.frame}`,
+      )
+    }
+    return 0
   }
 
   /** A character, made the first time it is named. */
@@ -632,10 +686,33 @@ export class EventStage {
         return 0
       }
       default:
-        this.unhandled.set(id, (this.unhandled.get(id) ?? 0) + 1)
-        return 0
+        return this.unread(id, args)
     }
   }
+}
+
+/**
+ * An engine function the host has not got, and what it was handed — the
+ * worklist's own record. `shapes` are signatures as `docs/event-scripts.md`
+ * writes them, `i` integer, `f` float, `s` string, `r` reference.
+ */
+export interface UnreadCall {
+  readonly fn: number
+  calls: number
+  readonly shapes: Set<string>
+  readonly examples: (readonly ScriptValue[])[]
+  /** The frame its first call fell on. */
+  readonly frame: number
+}
+
+/** How many argument lists to keep for each unread function. */
+const UNREAD_EXAMPLES = 4
+
+/** What one argument is, for a signature: `i` integer, `f` float, `s` string, `r` reference. */
+function shapeOf(value: ScriptValue): string {
+  if (typeof value === 'string') return 's'
+  if (typeof value === 'object') return 'r'
+  return Number.isInteger(value) ? 'i' : 'f'
 }
 
 /** An event's script, run against a stage a frame at a time. */
