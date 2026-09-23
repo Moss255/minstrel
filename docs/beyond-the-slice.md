@@ -132,6 +132,13 @@ What makes the remaining areas cheap.
   let's-play frames lined up against ours. See "The bottleneck moves" below:
   this is the highest-value work in the phase, because Phase 3 is paced by it
   seventy-four times over.
+  **Started, 24 September 2026**: `tools/witness` takes an area and writes one
+  HTML page — the map, every doorway, every event its triggers reach, each with
+  its status line under it. Gleeba, a town a hundred events past the slice,
+  came out at 32 views in about three minutes with nothing failing to load;
+  Angel Falls at 59 views in 7.2 minutes. What it does not yet do is
+  the let's-play half: frames beside a recording, which wants the recording as
+  an input. Its README says what else it leaves out.
 
 **Done when** an area outside the slice loads, walks, talks and plays its
 events without new code — **and** somebody can satisfy themselves that it is

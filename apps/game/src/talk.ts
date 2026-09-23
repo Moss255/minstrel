@@ -842,3 +842,21 @@ function speakerOf(page: string): TalkPage {
   if (someone) return { speaker: undefined, text: trimmed.slice(someone[0].length) }
   return { speaker: undefined, text: trimmed }
 }
+
+/**
+ * Every event a map's triggers can reach, in order — what the witness looks
+ * at. A trigger names an event with `OP_EVENT`, and several may name the same
+ * one, so this is the set rather than the list.
+ *
+ * It ignores the conditions on a trigger deliberately: the witness wants
+ * everything an area *can* play, not what it would play now.
+ */
+export function eventsTriggered(triggers: readonly Trigger[]): number[] {
+  const events = new Set<number>()
+  for (const trigger of triggers) {
+    for (const word of wordsOf(trigger)) {
+      if (word.op === OP_EVENT && word.arg > 0) events.add(word.arg)
+    }
+  }
+  return [...events].sort((a, b) => a - b)
+}

@@ -239,6 +239,7 @@ import {
   answerNow,
   type Conversation,
   DEFAULT_CONTEXT,
+  eventsTriggered,
   letterForStage,
   moveChoice,
   nextPage,
@@ -1150,6 +1151,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
   loaded = opened
+  witnessHook()
   playMapMusic()
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
   dressHero()
@@ -3863,6 +3865,26 @@ async function playSound(sound: {
       ? await playEffect(cartridge, sound.index, sound.slot)
       : await playJingle(cartridge, sound.index)
   if (!played) status(`no ${sound.kind} ${sound.index} in the sound archive`)
+}
+
+/**
+ * **What a witness needs to know**, put on `window` so a headless run can ask
+ * the page rather than parse the cartridge again in Node — see `tools/witness`.
+ *
+ * It is a read-only view of what is already loaded: which map, which maps its
+ * doorways lead to, and which events its triggers can reach. It calls nothing
+ * and changes nothing, so it cannot alter what a shot shows. It exists because
+ * the alternative — reading triggers a second time, in another language, from
+ * another copy of the parsers — is the kind of duplication that drifts.
+ */
+function witnessHook(): void {
+  const here = loaded
+  if (!here) return
+  ;(globalThis as { __witness?: unknown }).__witness = {
+    map: here.code,
+    doorways: here.doorways.map((door) => door.to),
+    events: eventsTriggered(here.triggers),
+  }
 }
 
 /** Stand the Hero where the event has character 0. */
