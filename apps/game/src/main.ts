@@ -3737,7 +3737,7 @@ function playEvent(elapsedMs: number): void {
 
 /** Sound what a scene asks for — see `726`, `720` and `727` in `event.ts`. */
 async function playSound(sound: {
-  kind: 'effect' | 'jingle' | 'stop' | 'stopMusic'
+  kind: 'effect' | 'jingle' | 'stop' | 'stopMusic' | 'music'
   index: number
   slot?: number
   frames?: number
@@ -3753,6 +3753,15 @@ async function playSound(sound: {
     // under too, so what is done instead is the sequencer's own release — the
     // count decides only whether it is cut off, not how long it takes.
     music.stop((sound.frames ?? BGM_FADE_FRAMES) <= 0)
+    return
+  }
+  if (sound.kind === 'music') {
+    // `714` starts the tune `713` armed, from its beginning. This player has
+    // no arm-and-hold, so the arming is remembered on the stage and the tune
+    // is played here, which is where it would start being heard anyway.
+    if (!(await playTrack(cartridge, sound.index))) {
+      status(`no track ${sound.index} in the music archive`)
+    }
     return
   }
   const played =
@@ -3786,6 +3795,8 @@ function endEvent(): void {
   camera.pitch = done.framing.pitch
   camera.distance = done.framing.distance
   camera.actualDistance = done.framing.distance
+  // A scene may have banked the view; the field's is level.
+  camera.roll = 0
   if (self && world) {
     const reach = toFloat(self.state.y) + toFloat(person().height)
     const hit = groundBelow(world, self.state.x, self.state.z, fx32(Math.round(reach * FX32_ONE)))
@@ -3910,6 +3921,9 @@ function followEvent(event: number): void {
 function aimAtShot(shot: EventCamera, angled: boolean): void {
   if (!shot.target) return
   camera.focus = [shot.target[0], shot.target[1], shot.target[2]]
+  // The bank a `327` asked for — the one camera field a shot sets that is not
+  // part of its framing, so it is carried whether or not the shot is angled.
+  camera.roll = shot.roll
   if (!angled) return
   camera.yaw = shot.yaw
   // The distance is the straight line from target to eye, so the rise over it

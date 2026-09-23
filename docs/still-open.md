@@ -186,6 +186,19 @@ lives; this is the gathered list.
   scene that asks finds them clear.
 - **A message's choices**, which `558` answers: no choice window is drawn, so
   the answer is always the first option unless the caller sets it.
+- **The caption**, `409` to `414`: read in full, and kept rather than drawn —
+  this engine draws a message one way. The reading is in
+  `docs/event-scripts.md` §5f, so drawing it is work, not research.
+- **The bone-driven camera**, `572` and `531`: read in full. This engine has
+  the models and their poses but no way yet to hand a bone to the camera, so
+  what a scene asked for is kept.
+- **What a scene suppresses**, `568` and `512`: the masks are gathered and
+  nothing is suppressed, because this engine has none of the subsystems the
+  five readable bits gate. **Bits 6 to 26 of `568`'s field have no reader in
+  the cartridge at all.**
+- **Whether a jingle is still sounding**, `725`, and **whether a wireless
+  session is up**, `801`: both answered no, which lets a scene waiting on
+  either carry on. Multiplayer is out of the slice.
 
 ---
 

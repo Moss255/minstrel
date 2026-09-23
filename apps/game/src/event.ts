@@ -1,5 +1,5 @@
 import type { Script } from '@minstrel/game-formats'
-import { fovOfHalfDegrees } from '@minstrel/render'
+import { DEGREE_IN_RADIANS, fovOfHalfDegrees } from '@minstrel/render'
 import {
   EventRun,
   ScriptError,
@@ -297,8 +297,47 @@ export function monsterSlot(id: number): number {
  */
 export const BRIGHTNESS_BLACK = 16
 
+/**
+ * The bits of `568`'s mask the scene's own setup and teardown can reach: the
+ * low 27. The top five are a count of the characters `566` has spawned, and
+ * the game is careful to keep them — so this engine is too.
+ */
+export const SCENE_FLAGS = 0x07ffffff
+
 /** The whole of the DS's blend coefficient, which `103` asks for — see `102` and `103`. */
 export const TINT_WHOLE = 0x1f
+
+/**
+ * How a message is dressed — see `409` to `414`. The game keeps these as bits
+ * and bytes of the one message window, and `400` puts them all back.
+ */
+export interface Caption {
+  /** Whether the window box is drawn — `410` takes it away. */
+  readonly framed: boolean
+  /** Whether the text is centred on the screen rather than in the box — `411`. */
+  readonly centred: boolean
+  /** How the glyphs are drawn: `414` outlines them, `412` shadows them. */
+  readonly glyphs: 'plain' | 'shadow' | 'outline'
+  /** Whether the typing sound is off — `413`. */
+  readonly silent: boolean
+  /** How many frames the caption holds for, where `409` timed it. */
+  readonly hold?: number
+}
+
+/** A message as `400` leaves it, before any of `409` to `414` has spoken. */
+export const CAPTION_PLAIN: Caption = {
+  framed: true,
+  centred: false,
+  glyphs: 'plain',
+  silent: false,
+}
+
+/**
+ * How long `409`'s caption takes to fade in, and again to fade out, in frames.
+ * The game steps a level of `0x1f0000` by `0x8444` a frame, and those divide
+ * to exactly 60 — a second either side.
+ */
+export const CAPTION_FADE_FRAMES = 60
 
 /** What a scene has done to one thing the map placed — see `574` to `577`. */
 export interface Placement {
@@ -413,6 +452,8 @@ export interface EventCamera {
   target: [number, number, number] | undefined
   /** Turned about the target, in radians: the direction of the eye from it, as `atan2(x, z)`. */
   yaw: number
+  /** Banked about the view's own axis, in radians — see `327`. A Dutch angle, not a turn. */
+  roll: number
   /** How far above the target the eye is. */
   rise: number
   /** How far the eye is from the target in a straight line — not across the ground. */
@@ -450,6 +491,12 @@ const text = (value: ScriptValue | undefined): string => (typeof value === 'stri
 function towards(from: number, to: number): number {
   const full = 2 * Math.PI
   return from + ((((to - from + Math.PI) % full) + full) % full) - Math.PI
+}
+
+/** An angle wrapped to one turn, as `fix32ReduceAngle0To2Pi` wraps the engine's. */
+function wrapTurn(angle: number): number {
+  const full = 2 * Math.PI
+  return ((angle % full) + full) % full
 }
 
 /**
@@ -495,6 +542,32 @@ export class EventStage {
   screensSwapped = false
   /** The colour a scene has asked for over the screen — see `102` and `103`. */
   tint: Tint | undefined
+  /** How the message on show is dressed — see `409` to `414`. `400` puts it back. */
+  caption: Caption = { ...CAPTION_PLAIN }
+  /** The tune `713` has loaded and silenced, waiting for `714`. */
+  musicArmed: number | undefined
+  /**
+   * Whether `720`'s jingle is still going — what `725` answers. **Ours**:
+   * nothing here can say, so it is no until whoever plays the event says so.
+   */
+  jingleBusy = false
+  /**
+   * Whether a wireless session is up — what `801` answers. **Ours**: always
+   * no; multiplayer is out of the slice.
+   */
+  wireless = false
+  /** What the scene switched on for its own duration — see `568`. */
+  sceneFlags = 0
+  /** What `512` set in the game's own flag word. */
+  gameFlags = 0
+  /** The camera a model's bones are driving — see `572` and `531`. */
+  boneCamera: { readonly placement: number; readonly eye: string; readonly at: string } | undefined
+  /**
+   * How many of the event's own frames a motion lasts, where whoever plays
+   * the event can say — what `213` waits out. Undefined here, so a wait on a
+   * motion is over at once.
+   */
+  motionFrames: ((motion: string) => number | undefined) | undefined
   /**
    * Whether the scene carries straight on from a conversation — what `560`
    * answers, set by the game. INFERRED: answered so, 100 of the 118 scenes that
@@ -513,7 +586,7 @@ export class EventStage {
    * header. The page drains this each frame.
    */
   readonly sounds: {
-    readonly kind: 'effect' | 'jingle' | 'stop' | 'stopMusic'
+    readonly kind: 'effect' | 'jingle' | 'stop' | 'stopMusic' | 'music'
     /** The sound archive it comes from — see `726`. */
     readonly index: number
     /** Which of the archive's own sounds, where the scene names one — see `728`. */
@@ -812,6 +885,11 @@ export class EventStage {
     ]
   }
 
+  /** The caption as it stands, so that each of `409` to `414` adds to the others. */
+  private shown9(): Caption {
+    return this.caption
+  }
+
   /** The record a `574`-family call names, by its group key and id. */
   private placed(args: readonly ScriptValue[]): Placement {
     const at = `${num(args[0])},${num(args[1])}`
@@ -824,7 +902,7 @@ export class EventStage {
   }
 
   private shot(): EventCamera {
-    this.camera ??= { target: undefined, yaw: 0, rise: 0, distance: 0 }
+    this.camera ??= { target: undefined, yaw: 0, roll: 0, rise: 0, distance: 0 }
     return this.camera
   }
 
@@ -941,6 +1019,27 @@ export class EventStage {
           actor.walk = undefined
         }
         return 0
+      }
+      // **Wait for a character's animation to end**, `213` — read from overlay
+      // 1. It queues a command of its own on the character's **third** channel
+      // — not the one `206`, `207` and the path share — whose handler asks the
+      // character's placed model whether its animation has stopped and **holds
+      // the channel while it has not**.
+      //
+      // The game's own hazard, worth knowing: what it asks is set on the one
+      // frame an animation goes from playing to stopped and cleared after, so
+      // a wait begun *after* the animation ended never ends.
+      //
+      // **Ours**: the stage does not hold the animations — whoever plays the
+      // event does — so it asks {@link motionFrames} how long the motion runs
+      // and waits that out. Without an answer the wait is over at once, which
+      // is the safe way round. A motion that goes round and round is not
+      // waited on at all: it would never end.
+      case 213: {
+        const actor = this.actor(num(args[0]))
+        const frames = actor.motion !== undefined ? this.motionFrames?.(actor.motion) : undefined
+        if (frames !== undefined && actor.once) actor.waiting = actor.motionFrom + frames
+        return 1
       }
       case 570:
         this.actor(num(args[0])).hidden = num(args[1]) === 0
@@ -1060,6 +1159,72 @@ export class EventStage {
         }
         return 0
       }
+      // **What a scene switches on for its own duration**, `568` — read from
+      // overlay 1, and the most-wanted number on the cartridge: 309 calls
+      // across 476 of the 687 scripts. **It does nothing when it is called.**
+      //
+      // It is variadic, and ORs every number it is given into a **27-bit flag
+      // field** on the scene's context, keeping the top five bits — which are
+      // a count of the characters `566` has spawned, so the keeping is
+      // load-bearing. It never clears a bit and it never fails.
+      //
+      // The scene's **setup** reads the field and turns each bit's subsystem
+      // off; the scene's **teardown** reads it again and turns them back on.
+      // Five bits have readers: `0x01`, `0x02` and `0x08` suppress three
+      // subsystems apiece through the game's own flag word — `0x01` and `0x08`
+      // being exactly what `536` switches by hand — `0x04` clears a draw flag
+      // on the first four game objects and puts it back on the ones the
+      // scene's cast does not hold, and `0x20` is what `581` switches.
+      // **Bits 6 to 26 have no reader anywhere.**
+      //
+      // **Ours**: this engine has none of those subsystems, so the mask is
+      // gathered and nothing is suppressed. That is the whole of it: the
+      // number every scene calls is a scene declaring its switches.
+      case 568:
+        for (const arg of args) this.sceneFlags |= num(arg) & SCENE_FLAGS
+        return 1
+      // **Switch a bit of the game's own flag word**, `512` — read from
+      // overlay 1. The first number is a **raw 32-bit mask**, not a bit index,
+      // and the second says whether to set it or clear it. The word is one of
+      // three general subsystem-suppression masks, and a set bit **stops** a
+      // subsystem updating; `536` and `833` poke named bits of the same word,
+      // and `512` is the script's way at all of them.
+      //
+      // **Ours**: gathered, as `568`'s is, and nothing suppressed.
+      case 512:
+        if (num(args[1]) !== 0) this.gameFlags |= num(args[0])
+        else this.gameFlags &= ~num(args[0])
+        return 1
+      // **Let a model's own animation drive the camera**, `572`, and **give
+      // the camera back**, `531` — read from overlay 1, a save-and-restore
+      // pair joined by one word of the event's state.
+      //
+      // `572` takes a placement id and **two bone names**: it makes a camera
+      // that each frame reads the two bones out of the model's pose and puts
+      // its **eye at the first and what it looks at at the second**. The
+      // placement must be of kind 1 and hold a model, or the call does nothing
+      // at all. The camera it replaces is stashed; `531` puts it back, and
+      // takes no arguments whatever. `530` and `552` are the same thing over a
+      // monster slot and over three bones.
+      //
+      // **Ours**: this engine has the models and their poses but no way yet to
+      // hand a bone to the camera, so what a scene asked for is kept. Nothing
+      // frees the camera in the game either — `587` is what reclaims the heap.
+      case 572:
+        this.boneCamera = { placement: num(args[0]), eye: text(args[1]), at: text(args[2]) }
+        return 1
+      case 531:
+        this.boneCamera = undefined
+        return 1
+      // **Empty one of the event's heaps**, `587` — read from overlay 1. The
+      // number picks one of eight allocators and rewinds its front pointer to
+      // the start of its block, dropping every saved state with it. Nothing is
+      // bounds-checked, and heap 0 is the one holding the scene's own
+      // character and placement arrays.
+      //
+      // **Ours**: this engine has no such heaps. Answered, and nothing done.
+      case 587:
+        return 1
       // **A colour over the screen**, `102` and `103` — read from overlay 1,
       // and not brightness, though they sit in the middle of it.
       //
@@ -1250,6 +1415,22 @@ export class EventStage {
       case 328:
         this.handingBack = { at: this.frame + Math.max(1, num(args[0])) }
         return 0
+      // **Roll the camera**, `327` — read from overlay 1. The number is an
+      // angle in **degrees**: it is turned into radians by the same
+      // `0x47/4096` the field of view uses, wrapped to a turn, and written to
+      // the camera's `+0x7c`, which the view matrix reads. When it is zero the
+      // matrix takes the world's up straight; when it is not, it **rotates the
+      // world's up about the view's own axis** before building the frame. So
+      // this is a bank — a Dutch angle — and not a turn.
+      //
+      // Writing it also **zeroes the two halfwords that animate it**, so a
+      // roll under way is stopped dead by a new one.
+      //
+      // It is a second function converting degrees the same way, which is the
+      // strongest evidence yet that the engine's own angles are radians.
+      case 327:
+        this.shot().roll = wrapTurn(num(args[0]) * DEGREE_IN_RADIANS)
+        return 0
       case 321:
         // The game works out a new eye from the camera's own yaw, height and
         // distance and moves eye and target together, so the framing is kept
@@ -1289,15 +1470,82 @@ export class EventStage {
           started: this.frame + 1,
         }
         return 0
+      // **Show a message**, `400` — read from overlay 1, which confirms the
+      // earlier reading and adds three things to it.
+      //
+      // The number is a **key looked up linearly** in the event's text list,
+      // not an offset, and **an unknown key shows nothing and hands back 0**.
+      // A **raw string** (tag 2) is taken in its place, and used as the text
+      // directly. And there is an **optional second number whose bit 0 alone
+      // is read**, inverted, as the show routine's third argument.
+      //
+      // **It is also what resets the caption preset**: `func_0204500c` clears
+      // the whole flag byte, zeroes the fade, and puts the window frame and
+      // the message sound back on. So `409` to `414` are a scene's word about
+      // *this* message and are gone by the next one — see them below.
       case 400:
         this.message = num(args[0])
         this.shown.push(this.message)
+        this.caption = { ...CAPTION_PLAIN }
+        return 0
+      // **Close the message**, `401` — read from overlay 1: it zeroes the
+      // message's state and its "a message is up" word (`func_02043124`) and
+      // then tears the window down (`func_02043204`).
+      case 401:
+        this.message = undefined
         return 0
       case 405: {
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, this.message === undefined ? 0 : 1)
         return 0
       }
+      // **Show the message as a caption over the scene**, `409` to `414` —
+      // read from overlay 1. Six numbers that always travel together, and the
+      // code says why: every one writes a field of **the one message window**
+      // (`*(u32*)(0x02107800 + 0x1c)`), and every field they write is one that
+      // `400`'s show routine has just reset. So they are a scene's word about
+      // the message `400` has started, and the next `400` undoes them.
+      //
+      // | fn | what it writes | what that does |
+      // |---|---|---|
+      // | 410 | `+0x19b1 = 0` | **no window box** — and with it, the per-frame reset of the box's geometry stops |
+      // | 411 | flags `\|= 0x40` | **centre the text**: each frame it counts the lines, and puts the block at `(192 − (lines−1)×20 − 8) ÷ 2 − 16` instead of the box's own 116 |
+      // | 414 | flags `\|= 0x80` | **outline the glyphs**: four passes in colour 1 at the four neighbours of (2,2), then the glyph in colour 15 |
+      // | 412 | flags `\|= 0x02` | **shadow them** instead: one pass at (2,2) in colour 1, the glyph at (1,1) |
+      // | 413 | `+0x19b2 = 0` | **silent** — no sound as the text types |
+      // | 409 | `+0x19a8 = n`, flags `\|= 0x04` | **time it**: a second of hardware alpha in, `n` frames of hold, a second out, with the message tick frozen throughout |
+      //
+      // **Two of them are mechanically forced together**, which is why the
+      // co-occurrence is total: without `410` the window's geometry is rewritten
+      // to the bottom box every frame, so `411`'s centring never survives; and
+      // the outline of `414` exists so that text reads over scenery, which is
+      // only needed once the box is gone.
+      //
+      // The game has the same preset written out by hand in C++ in four
+      // places, each straight after the show routine — overlays 17, 25 and 26.
+      // These six are the event VM's way of saying it.
+      //
+      // **Ours**: kept and not drawn — this engine draws a message one way.
+      // `409`'s ramp is a second either side because the engine steps a
+      // `0x1f0000` level by `0x8444` a frame, and those divide to exactly 60.
+      case 409:
+        this.caption = { ...this.shown9(), hold: num(args[0]) }
+        return 0
+      case 410:
+        this.caption = { ...this.shown9(), framed: false }
+        return 0
+      case 411:
+        this.caption = { ...this.shown9(), centred: true }
+        return 0
+      case 412:
+        this.caption = { ...this.shown9(), glyphs: 'shadow' }
+        return 0
+      case 413:
+        this.caption = { ...this.shown9(), silent: true }
+        return 0
+      case 414:
+        this.caption = { ...this.shown9(), glyphs: 'outline' }
+        return 0
       case 840: {
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, FRAME_IN_HALVES)
@@ -1341,6 +1589,74 @@ export class EventStage {
       case 720:
         this.sounds.push({ kind: 'jingle', index: num(args[0]) })
         return 0
+      // **Arm a tune**, `713`, and **start it**, `714` — read from overlay 1,
+      // and the code makes them one feature.
+      //
+      // `713` hands its number to the sound manager's play routine, which
+      // **loads** the sequence and its bank into the sound heap, starts it and
+      // registers it as the current tune — and then `713` **stops the player
+      // dead** with a fade of no frames. So the tune is resident and silent.
+      // `714` takes no arguments at all and **restarts whatever is
+      // registered** — there is no load anywhere in its path — and slams the
+      // master volume to 127 with no ramp. One arms, the other goes.
+      //
+      // `713` takes the number either as its only argument or as its **second
+      // of two, the first being read and thrown away**; a negative number, or
+      // any other count of arguments, makes it fail. Zero is allowed and means
+      // no tune.
+      case 713: {
+        const n = args.length === 2 ? num(args[1]) : args.length === 1 ? num(args[0]) : -1
+        if (n < 0) return 0
+        this.musicArmed = n
+        return 1
+      }
+      case 714:
+        if (this.musicArmed !== undefined) {
+          this.sounds.push({ kind: 'music', index: this.musicArmed })
+        }
+        this.volume = SOUND_LOUDEST
+        this.volumeRamp = undefined
+        return 1
+      // **The sound functions the cartridge does nothing for**, `716` to `719`
+      // and `724` — four more of the same two instructions as `703` to `709`,
+      // `mov r0,#1; bx lr`. Twelve inert numbers in the sound range altogether.
+      case 716:
+      case 717:
+      case 718:
+      case 719:
+      case 724:
+        return 1
+      // **Is the jingle still going**, `725` — read from overlay 1. It answers
+      // 1 while `720`'s jingle is **either still waiting to start** (the
+      // manager keeps a latch for it) **or still sounding** (at least one live
+      // allocation is playing its sequence), and 0 once its number is back to
+      // −1 or the sequence has run out.
+      //
+      // **Ours**: nothing here can say, so the answer is {@link jingleBusy},
+      // which is **no** until whoever plays the event says otherwise. That is
+      // the safe way round: a scene waiting on it carries on rather than
+      // spinning for ever.
+      case 725: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.jingleBusy ? 1 : 0)
+        return 0
+      }
+      // **Is a wireless session up**, `801` — read from overlay 1. It asks one
+      // global object whether its state word is not zero, and stores 1 or 0
+      // through the reference. The object is started and stopped from four
+      // places in two overlays, and **INFERRED** to be the wireless manager:
+      // the module around it compares six consecutive bytes against a table of
+      // records, builds a 21-byte name with `"unknown"` for a default, and
+      // waits on a state word whose 1, 2, 8, 9 and 10 match the DS's own
+      // wireless states. No symbol or string names it.
+      //
+      // **Ours**: multiplayer is out of the slice, so the answer is always 0 —
+      // which is the same answer the cartridge gives a player who is alone.
+      case 801: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.wireless ? 1 : 0)
+        return 0
+      }
       // **Fade the music out**, `721` — read from overlay 1. It takes a frame
       // count, **30 when the scene does not give one**, and hands it to the
       // sound manager, which ramps whichever of its two sequence players is
@@ -1585,8 +1901,9 @@ export class EventStage {
       // **Where a character is, and which way it faces** — `543` and `544`,
       // which are the same function over two vectors of the character's: the
       // one that goes to its position and the one that goes to its rotation.
-      // Each is handed references to fill, and the game gives **degrees**
-      // (its angles are fixed-point degrees: `532` shows the unit).
+      // Each is handed references to fill. The numbers are fixed point over
+      // 4,096 — **radians**, as `fix32ReduceAngle0To2Pi` settles; only `532`'s
+      // field of view is in degrees, and it converts them itself.
       //
       // **Ours**: this engine keeps one angle for a character, its facing, so
       // the x and z of a rotation are answered with nothing.

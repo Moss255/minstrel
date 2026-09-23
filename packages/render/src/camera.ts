@@ -115,6 +115,15 @@ export interface FollowCamera {
   focus: [number, number, number]
   /** Rotation about the world's vertical axis. */
   yaw: number
+  /**
+   * Bank about the view's own axis — a Dutch angle, which the game's `327`
+   * sets. Zero for the field camera; only a scene tilts the view.
+   *
+   * The game keeps this on the camera itself and its view matrix reads it: at
+   * zero it takes the world's up straight, and otherwise rotates the world's
+   * up about the view axis before building the frame. This does the same.
+   */
+  roll?: number
   /** Rotation above the horizontal. Held between the limits below. */
   pitch: number
   /** How far back the camera wants to sit. */
@@ -329,7 +338,25 @@ export function viewMatrix(
     eye[2] - (focus[2] as number),
   ])
   const right = normalise(cross([0, 1, 0], forward))
-  const up = cross(forward, right)
+  let up = cross(forward, right)
+
+  // The bank a scene's `327` asked for: the up turned about the view's own
+  // axis, and `right` with it, which is what the game does to the world's up
+  // before it builds the frame.
+  const roll = camera.roll ?? 0
+  if (roll !== 0) {
+    const cos = Math.cos(roll)
+    const sin = Math.sin(roll)
+    const tilted: [number, number, number] = [
+      up[0] * cos - right[0] * sin,
+      up[1] * cos - right[1] * sin,
+      up[2] * cos - right[2] * sin,
+    ]
+    right[0] = right[0] * cos + up[0] * sin
+    right[1] = right[1] * cos + up[1] * sin
+    right[2] = right[2] * cos + up[2] * sin
+    up = tilted
+  }
 
   out[0] = right[0]
   out[1] = up[0]

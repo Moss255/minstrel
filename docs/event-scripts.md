@@ -550,6 +550,119 @@ to, and only when its tag is 3. It leaves the tag alone. That is how `558` and
 - The fixed-point base of `233`'s `0x10a` scale. It is **not** the `0x1000`
   the neighbouring code uses for 1.0, so it is not applied here.
 
+## 5f. Four clusters at once — 23 September 2026
+
+### `568`, the most-called number on the cartridge, does nothing
+
+309 calls across **476 of the 687 scripts**, and at the moment it is called it
+has no observable effect at all. It is variadic, and ORs each number it is
+given into a **27-bit flag field** on the scene's context — keeping the top
+five bits, which are a count of the characters `566` has spawned, so the
+keeping is load-bearing rather than incidental. It never clears a bit, never
+fails, and checks nothing.
+
+The effect is all later. The scene's **setup** reads the field and turns each
+bit's subsystem *off*; the scene's **teardown** reads it again and turns them
+back *on*. Five bits have readers:
+
+| bit | what the setup does |
+|---|---|
+| `0x01` | clears bit `0x008` of the game's flag word — exactly what `536` does with a first argument of 0 |
+| `0x02` | clears bit `0x010` of the same word |
+| `0x04` | clears a draw flag on game objects 0 to 3, and the teardown puts it back on the ones the scene's cast does not hold |
+| `0x08` | clears bit `0x400` — `536` with a first argument of 1 |
+| `0x20` | clears bit 2 of the placement manager's own word — what `581` switches |
+
+**Bits 6 to 26 have no reader anywhere in the cartridge.** So what every scene
+is doing when it calls `568` is declaring which subsystems to suppress while it
+plays. A reimplementation that has none of them has nothing to do — which is
+the useful answer, and not one that could have been guessed from the call
+count.
+
+### The caption — `409` to `414`
+
+Six numbers that always travel together, and the code says why: every one
+writes a field of **the one message window**, and every field they write is one
+that `400`'s show routine has just reset. They are a scene's word about the
+message `400` started, and the next `400` undoes them.
+
+| fn | what it writes | what that does |
+|---|---|---|
+| 410 | `+0x19b1 = 0` | **no window box** — and with it, the per-frame reset of the box's geometry stops |
+| 411 | flags `\|= 0x40` | **centre the text**: each frame it counts the lines and puts the block at `(192 − (lines−1)×20 − 8) ÷ 2 − 16` instead of the box's own 116 |
+| 414 | flags `\|= 0x80` | **outline the glyphs**: four passes in colour 1 at the four neighbours of (2,2), then the glyph in colour 15 |
+| 412 | flags `\|= 0x02` | **shadow them** instead — `414`'s alternative, not its companion |
+| 413 | `+0x19b2 = 0` | **silent**: no sound as the text types |
+| 409 | `+0x19a8 = n`, flags `\|= 0x04` | **time it**: a second of hardware alpha in, `n` frames of hold, a second out, the message tick frozen throughout |
+
+Together: *show this message as a caption over the scene rather than in a
+box.* Two of the couplings are mechanically forced, which is why the
+co-occurrence is total — without `410` the geometry is rewritten to the bottom
+box every frame so `411`'s centring never survives, and the outline of `414` is
+only needed once the box is gone. The game has the same preset written out by
+hand in C++ in four places, in overlays 17, 25 and 26.
+
+`409`'s second is a second because the engine steps a level of `0x1f0000` by
+`0x8444` a frame, and those divide to exactly 60.
+
+`400` itself came out better understood: the number is a **key looked up
+linearly**, not an offset, an unknown key shows nothing and hands back 0, a raw
+string is taken in its place, and there is an optional second number **only
+whose bit 0 is read**.
+
+### Arm and go — `713` and `714`
+
+`713` hands its number to the sound manager's play routine, which **loads** the
+sequence and its bank into the sound heap, starts it and registers it as the
+current tune — and then `713` **stops the player dead**. So the tune is
+resident and silent. `714` takes no arguments and **restarts whatever is
+registered**; there is no load anywhere in its path, which is the mechanical
+proof that it depends on `713`. It also slams the volume to 127.
+
+`713` takes its number either as its only argument or as the **second of two,
+the first read and thrown away**.
+
+**Five more inert numbers**: `716` to `719` and `724` are the same two
+instructions as `703` to `709`. Twelve in the sound range altogether.
+
+`725` answers whether `720`'s jingle is still pending or still sounding.
+`801` answers whether a session of one global subsystem is up — **INFERRED**
+to be the wireless manager, from a six-byte address compare, a 21-byte name
+with `"unknown"` for a default, and a state word whose values match the DS's
+own wireless states. Nothing names it.
+
+### The bone camera — `572`, `531`, and `213`
+
+`572` takes a placement id and **two bone names**, and installs a camera that
+each frame reads the two bones out of the model's pose and puts its **eye at
+the first and what it looks at at the second**. The placement must be of kind 1
+and hold a model or the call does nothing. The camera it replaces is stashed in
+one word of the event's state, and **`531` is that word's only reader** — a
+save-and-restore pair joined by data, not by numbering. `530` and `552` are the
+same thing over a monster slot and over three bones.
+
+**`213` is its synchronisation**: it queues a command on the character's
+*third* channel whose handler asks the placed model whether its animation has
+stopped, and holds the channel while it has not. So the idiom is: install the
+bone camera, wait for the animation, give the camera back.
+
+A hazard in the game worth recording: what `213` asks is set on the one frame
+an animation goes from playing to stopped and cleared after, so a wait begun
+*after* the animation ended never ends.
+
+**`327` is the camera's roll** — a bank, a Dutch angle, not a turn. Its number
+is in **degrees**, converted by the same `0x47/4096` the field of view uses and
+then wrapped to a turn; the view matrix takes the world's up straight when it
+is zero and rotates the world's up about the view axis when it is not. That is
+a *second* function converting degrees the same way, which is the strongest
+evidence yet that the engine's own angles are radians. Writing it also stops a
+roll already under way.
+
+**`512`** sets or clears a **raw 32-bit mask** in the same flag word `568`'s
+bits reach — the script's way at all of it — and **`587`** rewinds one of the
+event's eight heaps to its start, dropping every saved state. Neither is
+bounds-checked; heap 0 holds the scene's own character and placement arrays.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -590,9 +703,10 @@ side by side in the same towns are usually one feature.
 | 554, 728, 731, 726, 730, 732, 712, 222, 595, 596, 545, 546, 541, 542, 561 | sound, and the rest of the head | 55 | 30 |
 | 105, 120, 211, 233, 322, 328, 547, 558, 573, 574, 603, 703–709, 715, 721 | the worklist head, and the towns' shared set | 48 | 21 |
 | 100–122, 575–577 | the whole brightness block, the display swap, the screen colour, and `574`'s siblings | 37 | 19 |
+| 568 · 409–414, 401 · 713, 714, 716–719, 724, 725, 801 · 213, 327, 512, 531, 572, 587 | four clusters read at once | 24 | 17 |
 
-The count of what is unanswered across the cartridge went 150 to 75, and what
-the host implements 36 to 122. The head of the story-ordered list has moved from
+The count of what is unanswered across the cartridge went 150 to 58, and what
+the host implements 36 to 145. The head of the story-ordered list has moved from
 `ev01130` to `ev01515`, and its one want is `538`.
 
 **The brightness block came out of the table differently from the others**: not
