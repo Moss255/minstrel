@@ -1,3 +1,4 @@
+import { DEGREE_IN_RADIANS } from '@minstrel/render'
 import type { ScriptRef, ScriptThread, ScriptValue } from '@minstrel/script'
 import { describe, expect, it } from 'vitest'
 import { EventStage, sceneMotion } from '../src/event.ts'
@@ -548,12 +549,13 @@ describe('the scene’s field of view — the game’s 532', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
     expect(stage.fov).toBeUndefined()
-    // 15 is what 1,668 of its 2,477 calls pass: a vertical field of 30°.
+    // 15 is what 1,668 of its 2,477 calls pass: a vertical field of 30° —
+    // by the game's own degree, `0x47/4096`, which is 0.68% short of π/180.
     stage.host.call(532, [15], t)
-    expect((stage.fov ?? 0) * (180 / Math.PI)).toBeCloseTo(30, 6)
+    expect(stage.fov).toBe(30 * DEGREE_IN_RADIANS)
     // It takes a float as readily as an integer.
     stage.host.call(532, [12.5], t)
-    expect((stage.fov ?? 0) * (180 / Math.PI)).toBeCloseTo(25, 6)
+    expect(stage.fov).toBe(25 * DEGREE_IN_RADIANS)
     expect(stage.unreadCalls.has(532)).toBe(false)
   })
 })

@@ -2,6 +2,7 @@ export {
   applyStyle,
   type CameraStyle,
   cameraEye,
+  DEGREE_IN_RADIANS,
   DS_ASPECT,
   DS_VERTICAL_FOV,
   type FollowCamera,

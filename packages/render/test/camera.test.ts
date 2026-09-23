@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyStyle,
   cameraEye,
+  DEGREE_IN_RADIANS,
   DS_ASPECT,
   DS_VERTICAL_FOV,
   followCamera,
@@ -381,8 +382,16 @@ describe('moving the way the player is looking', () => {
 
 describe('a scene’s own field of view', () => {
   it('reads 532’s number as the half-angle, in degrees', () => {
-    expect(fovOfHalfDegrees(15)).toBeCloseTo((30 * Math.PI) / 180, 12)
-    expect(fovOfHalfDegrees(25)).toBeCloseTo((50 * Math.PI) / 180, 12)
+    // Near a degree in radians, but not π/180: the game's own conversion is
+    // 0x47/4096, which is 0.68% short — see `DEGREE_IN_RADIANS`.
+    for (const half of [15, 25]) {
+      const exact = (2 * half * Math.PI) / 180
+      expect(fovOfHalfDegrees(half)).toBe(2 * half * DEGREE_IN_RADIANS)
+      expect(fovOfHalfDegrees(half) / exact).toBeCloseTo(1, 1)
+    }
+    // Short, and by the same fraction whatever the angle.
+    expect(DEGREE_IN_RADIANS).toBeLessThan(Math.PI / 180)
+    expect(1 - DEGREE_IN_RADIANS / (Math.PI / 180)).toBeCloseTo(0.0068, 4)
   })
 
   it('frames a narrower field more tightly, and the projection with it', () => {
@@ -392,6 +401,6 @@ describe('a scene’s own field of view', () => {
     // The matrix slot that holds cot(fov / 2) — the one the game's own
     // projection fills by dividing the cosine by the sine.
     const projection = perspective(DS_ASPECT, 1, 100, new Float32Array(16), fovOfHalfDegrees(15))
-    expect(projection[5]).toBeCloseTo(1 / Math.tan((15 * Math.PI) / 180), 6)
+    expect(projection[5]).toBeCloseTo(1 / Math.tan(15 * DEGREE_IN_RADIANS), 6)
   })
 })

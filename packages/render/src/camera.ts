@@ -27,16 +27,32 @@ export const DS_VERTICAL_FOV = (50 * Math.PI) / 180
  * A whole vertical field of view, in radians, from the number a scene's
  * camera is given — the game's engine function `532`.
  *
- * **The number is the half-angle, in degrees.** The game takes the sine and
- * cosine of it as it stands (`Camera_SetFov`, `0x0202e9a4`) and its projection
- * divides the cosine by the sine (`0x020c28c0`), putting `cot(angle)` in the
- * matrix slot that holds `cot(fov / 2)` — the same slot {@link perspective}
- * fills below. So the angle handed over is half of the whole field: the 15 the
- * scenes pass most often is a vertical field of 30°.
+ * **The number is the half-angle, in degrees**, and the game says so itself:
+ * `Camera_SetFov` (`0x0202e9a4`) multiplies the fixed-point number by
+ * {@link DEGREE_IN_RADIANS} before it takes a sine or a cosine of it, which
+ * is degrees into radians and nothing else. Its projection then divides the
+ * cosine by the sine (`0x020c28c0`), putting `cot(angle)` in the matrix slot
+ * that holds `cot(fov / 2)` — the same slot {@link perspective} fills below.
+ * So the angle handed over is half of the whole field: the 15 the scenes pass
+ * most often is a vertical field of 30°.
+ *
+ * Everywhere else the engine's fixed-point angles are already **radians** —
+ * `fix32ReduceAngle0To2Pi` (`0x02030f30`) wraps them modulo `0x6488`, which is
+ * 2π × 4096. `532` is the one that takes degrees, and it converts.
  */
 export function fovOfHalfDegrees(degrees: number): number {
-  return (2 * degrees * Math.PI) / 180
+  return 2 * degrees * DEGREE_IN_RADIANS
 }
+
+/**
+ * A degree in radians, **as the game holds it**: `0x47 / 4096`, the constant
+ * `Camera_SetFov` multiplies a field of view by.
+ *
+ * It is 0.68% short of π/180 — 0.0173340 against 0.0174533 — so using π/180
+ * here would frame a scene a hair tighter than the DS does. The game's own
+ * number is the one that matches it.
+ */
+export const DEGREE_IN_RADIANS = 0x47 / 4096
 
 /**
  * The half-extents of the frustum at a given depth, for an aspect ratio.
