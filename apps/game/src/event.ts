@@ -161,6 +161,10 @@ export interface EventActor {
   weaponDrawn: boolean
   /** Whether the height comes from the ground each frame — see `231` and `232`. */
   onGround: boolean
+  /** What the character wears, by the game's own slot — see `828`. */
+  worn: Map<number, number>
+  /** What `828` has taken off and kept, waiting to be put back. */
+  stashed: Map<number, number>
   /** What `545` set the motion's rate to; 1 unless a scene says otherwise. */
   motionRate: number
 }
@@ -347,6 +351,13 @@ export interface Caption {
 export function storyBit(id: number): number {
   return id < 0x400 ? id : id + 0x6fa
 }
+
+/**
+ * The game's own four phases of the day, from the decomp's `TimeOfDay.h`.
+ * `588` pins the lighting to one, `808` sets it, `597` answers it — so all
+ * three speak these numbers, not this engine's three times of day.
+ */
+export const TIME_OF_DAY = { night: 0, morning: 1, day: 2, evening: 3 } as const
 
 /**
  * The four buttons engine function `0` counts, as the DS numbers them: two
@@ -753,6 +764,24 @@ export class EventStage {
   readonly recordBits = new Set<string>()
   /** Whether the music is gated off — see `735`, whose number means the opposite. */
   musicGated = false
+  /** Whether the scene has fog — see `804`. */
+  fog = true
+  /** The staff roll, and the frame it began on — see `811`, `812` and `838`. */
+  staffRoll: { readonly since: number } | undefined
+  /** The full-screen cards a scene has put up — see `820` and `826`. */
+  readonly cards: string[] = []
+  /** Whether each screen's state is saved — see `821` and `822`. */
+  readonly screenSaved: [boolean, boolean] = [false, false]
+  /** Whether the music heap has both regions — see `734`. */
+  musicHeapWhole = false
+  /** Cast members to tint with the zone's light — see `802`. */
+  readonly tinted = new Set<number>()
+  /** The camera's continuous sway — see `803`, which is not `317`'s shake. */
+  sway: { readonly speed: number; readonly amp: number } | undefined
+  /** Whether the scene's two props are shown — see `809`. */
+  readonly props: [boolean, boolean] = [true, true]
+  /** Whether a model is still being rebuilt after `828` — what `829` answers. */
+  redressing = false
   /**
    * How many of the event's own frames a motion lasts, where whoever plays
    * the event can say — what `213` waits out. Undefined here, so a wait on a
@@ -941,6 +970,8 @@ export class EventStage {
         holdingShown: true,
         weaponDrawn: false,
         onGround: false,
+        worn: new Map(),
+        stashed: new Map(),
         motionRate: 1,
         turn: undefined,
       }
@@ -1578,17 +1609,6 @@ export class EventStage {
       case 579:
         this.dayClockRunning = num(args[0]) === 0
         return 1
-      // **How long the staff roll has been running**, `838` — read from
-      // overlay 1. It asks overlay 28's stopwatch, whose only file is
-      // `data/evspt_lv5/staffroll.bin`, and hands back **milliseconds**:
-      // accumulated ticks times 64 over 33,514, which is the DS's own
-      // tick-to-millisecond form. `811` starts that stopwatch and `812` stops
-      // it. **Ours**: nothing rolls a staff, so the answer is 0.
-      case 838: {
-        const ref = args[0]
-        if (isRef(ref)) thread.write(ref, 0)
-        return 1
-      }
       // **How big a character is to everything else**, `226` and `227` — read
       // from overlay 1, and the exact shape of `219` and `220` over another
       // field: `226` sets it, `227` eases it over a count. The number is
@@ -1797,6 +1817,203 @@ export class EventStage {
         this.sounds.push({ kind: 'jingle', index: num(args[0]) })
         this.volume = SOUND_LOUDEST
         this.volumeRamp = undefined
+        return 1
+      // **The ending's own block**, `804`, `811`, `812`, `820`, `821`, `822`,
+      // `826` and `734` — read from overlay 1, and a real feature rather than
+      // a co-occurrence: **the staff roll and the credit cards around it**.
+      //
+      // The scripts name the files, and the cartridge has them:
+      // `chara_sub/horii.pac`, `toriyama.pac`, `sugiyama.pac`, `hino.pac`,
+      // `fujisawa.pac`, `ichimura.pac`, a company card and one per language.
+      // Each holds a `CHAR`, a `PALT` and a `SCRN` chunk — one full-screen
+      // 256-colour picture.
+      //
+      // | fn | what it does |
+      // |---|---|
+      // | `734` | re-size the two sound heaps: **non-zero gives the music heap both regions**, zero splits them back, so the ending's theme plays unbroken |
+      // | `811` | page in the overlay that holds the staff roll and start its per-frame task — the credits scroll up the bottom screen's own layer |
+      // | `812` | stop it and page the overlay back out |
+      // | `838` | how long that task has run, in milliseconds, so a script can keep its cards in step with a scroll it does not drive |
+      // | `821` | **save the whole display state** — which memory banks are mapped, four layer-control registers, which layers are on. 0 the top screen, 1 the bottom, anything else nothing |
+      // | `820` | load a `.pac` and put its picture on the top screen's **fourth layer**, with every other layer and the sprites switched off |
+      // | `826` | blank that layer again between cards |
+      // | `822` | put the saved state back, so the scene underneath resumes |
+      // | `804` | **fog on and off** — and this one is not inferred: the decomp's own C++ makes the very same call. It writes one byte of the lighting manager and two of the hardware's 3D registers |
+      //
+      // **Ours**: this engine draws one screen and has no layers to take over,
+      // so the cards are kept by name and the rest is switched state. `804` is
+      // kept too — nothing here fogs yet.
+      case 804:
+        this.fog = num(args[0]) !== 0
+        return 1
+      case 811:
+        this.staffRoll = { since: this.frame }
+        return 1
+      case 812:
+        this.staffRoll = undefined
+        return 1
+      case 820:
+        this.cards.push(`data/${text(args[0])}`)
+        return 1
+      case 821:
+        this.screenSaved[num(args[0]) === 1 ? 1 : 0] = true
+        return 1
+      case 822:
+        this.screenSaved[num(args[0]) === 1 ? 1 : 0] = false
+        return 1
+      case 826:
+        this.cards.length = 0
+        return 1
+      case 734:
+        this.musicHeapWhole = num(args[0]) !== 0
+        return 1
+      // **How long the staff roll has run**, `838` — read from overlay 1, and
+      // now placed: the stopwatch belongs to the overlay `811` pages in.
+      case 838: {
+        const ref = args[0]
+        const since = this.staffRoll
+        if (isRef(ref)) {
+          thread.write(ref, since ? Math.round(((this.frame - since.since) * 1000) / 60) : 0)
+        }
+        return 1
+      }
+      // **Queue more files for the scene**, `845` — read from overlay 1, and
+      // the middle of a set: `506` **opens** a batch, resetting the count;
+      // `845` **tops it up**; `507` waits until the loader has them all.
+      //
+      // **It has a slip in it, and this copies the slip.** Its loop runs from
+      // the batch's running count up to the *argument* count, but reads from
+      // the first argument each time. So it queues `argc − count` files,
+      // reading the **first** `argc − count` arguments and leaving the last
+      // `count` read by nothing — and where the batch already holds as many
+      // files as this call has arguments, it does nothing whatever.
+      case 845: {
+        const already = this.queued.length
+        for (let i = 0; i < args.length - already; i++) this.queued.push(text(args[i]))
+        return 1
+      }
+      // **Tint a cast member with the zone's light**, `802` — read from
+      // overlay 1. It walks the scene's cast for the first one whose own
+      // number matches, and sets a bit on it. The cast loader reads that bit
+      // when it spawns the model and, where it is set, **rewrites the model's
+      // palette colours in place** through the lighting manager's own
+      // transform. Nothing else in the cartridge reads it.
+      case 802:
+        this.tinted.add(num(args[0]))
+        return 1
+      // **Set the time of day**, `808` — read from overlay 1, one number
+      // straight into the game's own `SetTimeOfDay`. **A number of 4 or more
+      // does nothing at all**; −1 is not rejected there, and would read a
+      // table short — that is the game's, and this refuses it instead.
+      case 808: {
+        const to = num(args[0])
+        if (to >= 0 && to < 4) this.timeOfDay = to
+        return 1
+      }
+      // **A third kind of camera shake**, `803` — read from overlay 1, and not
+      // the one `317` and `326` queue. It is a **continuous sine** rather than
+      // a square wave: the camera keeps a phase that advances by the frame's
+      // length times a speed, looks the sine up in a table, scales it by an
+      // amplitude, and **adds the result to the eye's and the look-at's height
+      // only**. `803(0)` turns it off.
+      //
+      // Its second number is kept as a **plain float** with no fixed-point
+      // conversion, where the third is scaled by 4,096 — so the two are not
+      // the same kind of number, which the shape `(i, f, f)` hides.
+      //
+      // It reads all three arguments whatever it was given, so a call with one
+      // reads past its own arguments; that is the game's, and not copied.
+      case 803: {
+        if (num(args[0]) === 0) {
+          this.sway = undefined
+          return 1
+        }
+        this.sway = { speed: num(args[1]), amp: num(args[2]) * s }
+        return 1
+      }
+      // **Show and hide two of the scene's props**, `809` — read from overlay
+      // 1. Its first number says shown or hidden; **its second is optional and
+      // a mask**, and no script on the cartridge passes one — so in practice
+      // it is always the first prop alone. A mask of 0 and a mask with bit 0
+      // both reach that first prop, and bit 1 adds the second.
+      case 809: {
+        const shown = num(args[0]) !== 0
+        const mask = args.length >= 2 ? num(args[1]) : 0
+        if (mask === 0 || (mask & 1) !== 0) this.props[0] = shown
+        if ((mask & 2) !== 0) this.props[1] = shown
+        return 1
+      }
+      // **Is the cartridge as it should be**, `815` — read from overlay 1, and
+      // worth saying plainly: it is an **anti-tamper check**. It writes **1**
+      // through its reference before anything else, pages in an overlay whose
+      // code is obfuscated, calls three of its entry points through three
+      // stubs, and compares each answer against a constant; each stub also
+      // bumps a counter by 1, 2 and 3. Only if all three answers match **and**
+      // the counter reaches 6 does it go back and write **0**.
+      //
+      // So **0 is the good answer** and 1 means tampered-with or not checked —
+      // and the 1 is written first so that a check which is cut short leaves
+      // it. Its second argument is the "really check" switch and must be
+      // exactly 1; without it the answer is 0.
+      //
+      // **Ours**: 0, always. This engine reads the player's own cartridge.
+      case 815: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 0)
+        return 1
+      }
+      // **Did the church send us back**, `823` — read from overlay 1. It tests
+      // one bit of the game's state and, **where the bit is clear, writes
+      // nothing at all** — so the script's own variable keeps whatever it held.
+      // Only where it is set does it store, and what it stores is always 1.
+      // `819` is the other half: same bit, and it acts where this asks.
+      //
+      // **Ours**: the bit is never set here, so nothing is written — which is
+      // the faithful answer as well as the easy one.
+      case 823:
+        return 1
+      // **Take a thing off and put it back**, `828`, and **wait for the model
+      // to catch up**, `829` — read from overlay 1, a set-and-ask pair proved
+      // three ways: they are the only two numbers that touch one flag bit, that
+      // bit is what lets the rebuild queue run at all, and the node type `829`
+      // waits on is the one `828`'s request is built with.
+      //
+      // `828(who, slot [, back])` **stashes what is in the slot and empties
+      // it** when its third number is 0 or missing, and **puts the stash back**
+      // when it is not — and only then if the slot is still empty. It then
+      // asks for the wearer's model to be rebuilt. `829` answers **1 while
+      // that request is still queued**, so a script waits on it.
+      //
+      // Equipment drawn on a character is in the slice, so this is kept
+      // against the wearer rather than merely counted.
+      case 828: {
+        const who = num(args[0])
+        const slot = num(args[1])
+        const actor = this.actor(who)
+        if (args.length >= 3 && num(args[2]) !== 0) {
+          const stashed = actor.stashed.get(slot)
+          if (stashed !== undefined) actor.worn.set(slot, stashed)
+          actor.stashed.delete(slot)
+        } else {
+          const worn = actor.worn.get(slot)
+          if (worn !== undefined) actor.stashed.set(slot, worn)
+          actor.worn.delete(slot)
+        }
+        this.redressing = true
+        return 1
+      }
+      case 829: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.redressing ? 1 : 0)
+        // The game latches its own answer off once the queue has moved on.
+        this.redressing = false
+        return 1
+      }
+      // **A grotto's own request**, `806` — read from overlay 1: one byte of
+      // the zone's embedded grotto object, set to 1 and cleared by whatever
+      // takes the work off the queue. **Grottoes are out of the slice**
+      // (`CLAUDE.md`), so this is answered and nothing is done.
+      case 806:
         return 1
       // **Fade the scene's light**, `578` — read from overlay 1. The first
       // number is a **multiplier**, `1.0` being normal and `0` black; it is

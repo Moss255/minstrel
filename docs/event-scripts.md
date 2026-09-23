@@ -957,6 +957,107 @@ than an accident, and worth expecting on any switch still unread.
 
 Neither `591`'s bit nor `559`'s byte has a reader anywhere in the cartridge.
 
+## 5l. The 800 block is the ending — 23 September 2026
+
+The tightest cluster left was `804` with `820`, `821`, `822`, `826`, `811`,
+`734` and `845` at 100%. It is not a co-occurrence: **it is the staff roll and
+the credit cards around it**, and the scripts name the files.
+
+`ev29350` calls `820` with `chara_sub/toriyama.pac`, `sugiyama.pac`,
+`hino.pac`, `fujisawa.pac`; `ev29373` with `ichimura.pac`; `ev29306` with
+`chara_sub/tobe_<LG>.pac`. Every one of those exists on the cartridge, beside a
+company card and one card per language, and `horii.pac`'s members are literally
+`horii_san.bncg`, `.bncl`, `.bnsc` — a `CHAR`, a `PALT` and a `SCRN` chunk, one
+full-screen 256-colour picture.
+
+The mechanism, in the order a script does it:
+
+| fn | what it does |
+|---|---|
+| `734` | re-size the two sound heaps — **non-zero gives the music heap both regions**, zero splits them back, so the ending's theme plays unbroken across the segments |
+| `811` | page in the overlay holding the staff roll and start its per-frame task: the credits scroll up the bottom screen's own layer |
+| `838` | how long that task has run, **in milliseconds**, so a script keeps its cards in step with a scroll it does not drive |
+| `821` | save the whole display state — bank mapping, four layer registers, which layers are on |
+| `820` | put a `.pac`'s picture on the top screen's fourth layer, every other layer off |
+| `826` | blank that layer between cards |
+| `822` | put the saved state back |
+| `812` | stop the roll and page the overlay out |
+| `804` | **fog off and on** around all of it |
+
+**`804` is not inferred.** The decomp's own hand-written C++
+(`src/Graphics/LightingManager.cpp:818`) makes the identical call,
+`func_020c54a4(true, fog->type, fog->depthShift, fog->offset)`. It is the
+broadest of the block — 35 events — because it brackets *any* such takeover of
+the screen, which is why everything else sits inside it.
+
+**`845` is not part of it.** It is the middle of a different set: `506` opens a
+preload batch, `845` tops it up, `507` waits. It shares `804` for the same
+reason 124 other scripts share `506` — preloading precedes anything that
+repaints the screen.
+
+### `845` has a slip, and this copies it
+
+Its loop runs from the batch's **running count** up to the **argument count**,
+but reads from the **first** argument each time. So it queues `argc − count`
+files, reading the first `argc − count` arguments and leaving the last `count`
+read by nothing — and where the batch already holds as many files as the call
+has arguments, it does nothing whatever. `506`, its sibling, resets the count
+first and so never trips over this.
+
+### `815` is an anti-tamper check
+
+Worth saying plainly. It writes **1** through its reference *before anything
+else*, pages in an overlay whose code is obfuscated, calls three of its entry
+points through three stubs and compares each answer against a constant; each
+stub also bumps a counter by 1, 2 and 3. Only if all three match **and** the
+counter reaches 6 does it go back and write **0**.
+
+So **0 is the good answer**, 1 means tampered-with or not checked, and the 1 is
+written first so a check cut short leaves it. Its second argument is the
+"really check" switch and must be exactly 1.
+
+### `823` writes nothing where the bit is clear
+
+Like `234`'s missing model: where the flag it tests is clear it **writes
+nothing at all**, so the script's own variable keeps what it held. Only where
+it is set does it store, and what it stores is always 1.
+
+### `803` is a third kind of camera shake
+
+Not `317`'s or `326`'s queued square wave: a **continuous sine**. The camera
+keeps a phase that advances by the frame's length times a speed, looks the sine
+up in a table, scales it by an amplitude and adds the result to the eye's and
+the look-at's **height only**. `803(0)` turns it off. Its second number stays a
+**plain float** while its third is scaled by 4,096 — two different kinds of
+number that the shape `(i, f, f)` hides completely.
+
+### `828` and `829` are the equipment pair
+
+Proved three ways, none circumstantial: they are the only two numbers that
+touch one flag bit; that bit is what lets the model-rebuild queue run at all;
+and the node type `829` waits on is the one `828`'s request is built with.
+`828` stashes what is in a slot and empties it, or puts the stash back, then
+asks for the wearer's model to be rebuilt; `829` answers **1 while that request
+is still queued**. Equipment drawn on a character is in the slice, so this is
+kept against the wearer.
+
+### A correction `808` forced
+
+`808` is `GameState::SetTimeOfDay`, and the decomp's own header gives the enum:
+**night 0, morning 1, day 2, evening 3**. `597` answers that same field and
+`588` pins it — so all three speak the game's four phases.
+
+This engine was handing `597` its *own* three-way numbering (day 0, evening 1,
+night 2), which is the numbering a zone's monsters are picked by and nothing to
+do with the lighting. Every scene that asked got the wrong answer, and day and
+night were exactly swapped. Now mapped properly; there is no morning here, and
+the day's stretch covers it.
+
+### Out of scope, and flagged rather than done
+
+`806` writes one byte of a **grotto** object embedded in the zone. Grottoes are
+out of Slice 1, so it is answered and nothing is done.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -1004,11 +1105,19 @@ side by side in the same towns are usually one feature.
 
 | 223, 231, 232, 234, 239, 240, 324, 325, 326 · 552, 557, 583, 591, 599, 601, 602, 735, 736, 737, 805 | the tail of the 200s, 300s, 500s and 700s | **3** | **3** |
 
-The count of what is unanswered across the cartridge went 150 to **12**, and
-what the host implements 36 to **208**. **Four of the eight towns want nothing
-at all**, a fifth wants one, and the head of the story-ordered list has walked
-**off the end of the slice** — from `ev01130` through `ev02500`, the Hexagon,
-to `ev05200`, which is past it. Every scene the slice plays is answered. **C02 wants nothing at all** — not one
+| 734, 802, 803, 804, 806, 808, 809, 811, 812, 815, 820–823, 826, 828, 829, 845 | the 800 block: the ending's staff roll and credit cards | **0** | **2** |
+
+The count of what is unanswered across the cartridge went 150 to **5**, and
+what the host implements 36 to **226**.
+
+**The slice's own area wants nothing at all** — 49 events, every engine
+function they call answered. **Six of the eight towns want nothing either.**
+The head of the story-ordered list has walked off the end of the slice and most
+of the way through the game: `ev01130`, `ev01150`, `ev01515`, `ev02500` — the
+Hexagon, the slice's last scene — then `ev05200`, and now `ev23189`.
+
+What is left across the whole cartridge is **five numbers**: `807`, `837`,
+`843`, `839` and `844` — and nothing the slice ever reaches. **C02 wants nothing at all** — not one
 engine function across twenty events — and the slice's own area wants four.
 The head of the story-ordered list has walked the whole slice: `ev01130`,
 `ev01150`, `ev01515`, and now **`ev02500`**, the Hexagon, which is the last

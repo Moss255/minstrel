@@ -158,6 +158,7 @@ import {
   type EventStage,
   OPACITY_WHOLE,
   sceneMotion,
+  TIME_OF_DAY,
 } from './event.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
@@ -1736,6 +1737,16 @@ let fieldSeconds = 0
 let shownTime: TimeOfDay | undefined
 /** The colour the view is multiplied by — see `TINTS`. */
 const tintEl = document.querySelector<HTMLDivElement>('#tint')
+
+/**
+ * This engine's three times of day as the game's own four phases — see
+ * `TIME_OF_DAY`. There is no morning here; the day's stretch covers it.
+ */
+const GAME_PHASE: Record<TimeOfDay, number> = {
+  day: TIME_OF_DAY.day,
+  evening: TIME_OF_DAY.evening,
+  night: TIME_OF_DAY.night,
+}
 
 /** The scene's light scale as last shown, so the tint is only rewritten when it moves. */
 let shownScale = 1
@@ -3743,10 +3754,12 @@ function startEvent(number: number, afterTalk = false): boolean {
     )
     return hit ? toFloat(hit.y) * worldScale : undefined
   }
-  // Which time of day the scene asks about — `597`. **Ours**: the game keeps
-  // a lighting slot of 0 to 6 and this engine has three, the same numbers a
-  // zone is picked by.
-  playing.player.stage.timeOfDay = ZONE_KIND_BY_TIME[timeNow()]
+  // **Which time of day the scene asks about** — `597`, which `588` pins and
+  // `808` sets. Reading `808` settled the numbering: they all speak the game's
+  // own four phases, night 0, morning 1, day 2, evening 3. This engine has
+  // three times of day, so they map onto three of the four — there is no
+  // morning here, and the day's stretch covers it.
+  playing.player.stage.timeOfDay = GAME_PHASE[timeNow()]
   // **Say it where it happens.** An engine function the host has not got is
   // answered with 0 so the scene goes on, which is the right thing to do and
   // the wrong thing to be quiet about: a scene half-plays and nothing says

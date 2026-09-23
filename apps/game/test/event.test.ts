@@ -11,6 +11,7 @@ import {
   SCENE_FLAGS,
   sceneMotion,
   storyBit,
+  TIME_OF_DAY,
 } from '../src/event.ts'
 
 /** A thread that only takes writes through a reference — all the stage asks of one. */
@@ -286,10 +287,10 @@ describe('an event’s stage', () => {
   it('answers what it does not read with nothing, and counts it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    // 809 is not read; 731 was, and is the sound archives being given back.
-    expect(stage.host.call(809, [], t)).toBe(0)
-    stage.host.call(809, [], t)
-    expect(stage.unhandled.get(809)).toBe(2)
+    // 807 is not read; 731 was, and is the sound archives being given back.
+    expect(stage.host.call(807, [], t)).toBe(0)
+    stage.host.call(807, [], t)
+    expect(stage.unhandled.get(807)).toBe(2)
   })
 
   it('hides and shows a character, and hangs one on another', () => {
@@ -376,22 +377,22 @@ describe('an engine function the host has not got', () => {
   it('is answered with 0, counted, and kept with what it was handed', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    expect(stage.host.call(804, [7, 1.5, 'hello'], t)).toBe(0)
-    stage.host.call(804, [9], t)
-    const call = stage.unreadCalls.get(804)
+    expect(stage.host.call(807, [7, 1.5, 'hello'], t)).toBe(0)
+    stage.host.call(807, [9], t)
+    const call = stage.unreadCalls.get(807)
     expect(call?.calls).toBe(2)
     // The signatures are `docs/event-scripts.md`'s: integer, float, string.
     expect([...(call?.shapes ?? [])].sort()).toEqual(['i', 'ifs'])
     expect(call?.examples[0]).toEqual([7, 1.5, 'hello'])
     // The count it kept before stands beside it, for whatever reads that.
-    expect(stage.unhandled.get(804)).toBe(2)
+    expect(stage.unhandled.get(807)).toBe(2)
   })
 
   it('keeps a few argument lists and no more, however often it is called', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    for (let i = 0; i < 50; i++) stage.host.call(804, [i], t)
-    const call = stage.unreadCalls.get(804)
+    for (let i = 0; i < 50; i++) stage.host.call(807, [i], t)
+    const call = stage.unreadCalls.get(807)
     expect(call?.calls).toBe(50)
     expect(call?.examples.length).toBeLessThanOrEqual(4)
   })
@@ -401,17 +402,17 @@ describe('an engine function the host has not got', () => {
     const { thread: t } = thread()
     const said: number[] = []
     stage.onUnread = (call) => said.push(call.fn)
-    stage.host.call(804, [1], t)
-    stage.host.call(804, [2], t)
+    stage.host.call(807, [1], t)
+    stage.host.call(807, [2], t)
     stage.host.call(843, [], t)
-    expect(said).toEqual([804, 843])
+    expect(said).toEqual([807, 843])
   })
 
   it('stops the run instead, where the run is there to find them', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
     stage.strict = true
-    expect(() => stage.host.call(804, [7], t)).toThrow(/engine function 804 is not read/)
+    expect(() => stage.host.call(807, [7], t)).toThrow(/engine function 807 is not read/)
   })
 
   it('says nothing for a function the host answers', () => {
@@ -1763,5 +1764,134 @@ describe('the last of the 500s and 700s', () => {
     stage.host.call(583, [0x10c], t)
     // The byte is masked, as the handler masks it.
     expect(stage.fieldEntry).toBe(0x0c)
+  })
+})
+
+describe('the ending’s own block, and the rest of the 800s', () => {
+  it('puts the credit cards up and takes them down — 820, 826, 821, 822', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(821, [0], t)
+    expect(stage.screenSaved).toEqual([true, false])
+    stage.host.call(820, ['chara_sub/horii.pac'], t)
+    stage.host.call(820, ['chara_sub/toriyama.pac'], t)
+    expect(stage.cards).toEqual(['data/chara_sub/horii.pac', 'data/chara_sub/toriyama.pac'])
+    stage.host.call(826, [0], t)
+    expect(stage.cards).toEqual([])
+    stage.host.call(822, [0], t)
+    expect(stage.screenSaved).toEqual([false, false])
+  })
+
+  it('runs the staff roll and times it — 811, 838, 812', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(838, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.host.call(811, [], t)
+    for (let i = 0; i < 60; i++) stage.advance()
+    stage.host.call(838, [ref(2)], t)
+    expect(written.get(2)).toBe(1000)
+    stage.host.call(812, [], t)
+    stage.host.call(838, [ref(3)], t)
+    expect(written.get(3)).toBe(0)
+  })
+
+  it('switches the fog and the sound heap — 804, 734', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.fog).toBe(true)
+    stage.host.call(804, [0], t)
+    expect(stage.fog).toBe(false)
+    stage.host.call(734, [1], t)
+    expect(stage.musicHeapWhole).toBe(true)
+    stage.host.call(734, [0], t)
+    expect(stage.musicHeapWhole).toBe(false)
+  })
+
+  it('answers the tamper check with the good answer — 815', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    // 0 is clean; the game writes 1 first and only clears it on passing.
+    stage.host.call(815, [ref(1)], t)
+    stage.host.call(815, [ref(2), 1], t)
+    expect([written.get(1), written.get(2)]).toEqual([0, 0])
+  })
+
+  it('writes nothing where the bit is clear — 823', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(823, [ref(1)], t)
+    // Not 0 — nothing at all, so the script's own variable stands.
+    expect(written.has(1)).toBe(false)
+    expect([...stage.unhandled.keys()]).toEqual([])
+  })
+
+  it('takes a thing off and puts it back, and waits — 828, 829', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    const actor = stage.actor(1)
+    actor.worn.set(2, 55)
+    stage.host.call(828, [1, 2], t)
+    expect(actor.worn.has(2)).toBe(false)
+    expect(actor.stashed.get(2)).toBe(55)
+    stage.host.call(829, [ref(1)], t)
+    expect(written.get(1)).toBe(1)
+    // The answer latches off once the queue has moved on.
+    stage.host.call(829, [ref(2)], t)
+    expect(written.get(2)).toBe(0)
+    stage.host.call(828, [1, 2, 1], t)
+    expect(actor.worn.get(2)).toBe(55)
+    expect(actor.stashed.has(2)).toBe(false)
+  })
+
+  it('sways the camera on a sine, which is not 317’s shake — 803', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(803, [1, 0.5, 2], t)
+    // The speed stays a plain number; only the amplitude is scaled.
+    expect(stage.sway).toEqual({ speed: 0.5, amp: 2 })
+    stage.host.call(803, [0, 0, 0], t)
+    expect(stage.sway).toBeUndefined()
+  })
+
+  it('sets the time of day by the game’s own numbering — 808, 597', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(808, [TIME_OF_DAY.evening], t)
+    stage.host.call(597, [ref(1)], t)
+    expect(written.get(1)).toBe(3)
+    // 4 and above do nothing at all, and a negative is refused here.
+    stage.host.call(808, [4], t)
+    stage.host.call(808, [-1], t)
+    stage.host.call(597, [ref(2)], t)
+    expect(written.get(2)).toBe(3)
+  })
+
+  it('tops a preload batch up, slip and all — 845, 506', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(506, ['a.chr', 'b.chr'], t)
+    expect(stage.queued).toEqual(['a.chr', 'b.chr'])
+    // Two already queued and three arguments: one file, and it is the *first*.
+    stage.host.call(845, ['c.chr', 'd.chr', 'e.chr'], t)
+    expect(stage.queued).toEqual(['a.chr', 'b.chr', 'c.chr'])
+    // As many already as it was handed: nothing at all happens.
+    stage.host.call(845, ['f.chr', 'g.chr', 'h.chr'], t)
+    expect(stage.queued).toEqual(['a.chr', 'b.chr', 'c.chr'])
+  })
+
+  it('keeps the rest, and answers the grotto — 802, 809, 806', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(802, [6], t)
+    expect([...stage.tinted]).toEqual([6])
+    stage.host.call(809, [0], t)
+    // No mask means the first prop alone.
+    expect(stage.props).toEqual([false, true])
+    stage.host.call(809, [0, 2], t)
+    expect(stage.props).toEqual([false, false])
+    // Grottoes are out of the slice; answered, nothing done.
+    expect(stage.host.call(806, [], t)).toBe(1)
+    expect([...stage.unhandled.keys()]).toEqual([])
   })
 })

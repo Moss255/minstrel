@@ -202,6 +202,11 @@ lives; this is the gathered list.
   not mapped onto the hardware's bits — doing so is a control-scheme decision,
   not a reading — so the three answer from fields the caller fills, and a scene
   that waits for a press waits. One scene on the cartridge does exactly that.
+- **The four props `809` shows and hides** — two of four `Object3D` slots
+  filled from four file ids in a record whose owner was not chased, so what
+  they are is open.
+- **`806`, a grotto's request flag**: read, and **out of Slice 1's scope**, so
+  it is answered and nothing is done.
 - **`591`'s zone bit**: set when its number is 0 and cleared otherwise, and —
   like `559`'s byte — **no reader was found anywhere in the cartridge**. Six
   write sites, none reading.
