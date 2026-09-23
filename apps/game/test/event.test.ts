@@ -805,6 +805,81 @@ describe('the worklist head, read from the cartridge', () => {
     expect(stage.subDarkness).toBe(1)
   })
 
+  it('takes the top screen apart from the bottom — 106, 107', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(107, [0], t)
+    expect(stage.darkness).toBe(1)
+    expect(stage.subDarkness).toBe(0)
+    stage.host.call(106, [0], t)
+    expect(stage.darkness).toBe(0)
+  })
+
+  it('holds a locked screen against every later set — 112, 117', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    // Lock both screens black.
+    stage.host.call(112, [0], t)
+    expect(stage.darkness).toBe(1)
+    expect([...stage.brightnessLocked].sort()).toEqual(['sub', 'top'])
+    // A plain set does nothing at all while the lock holds.
+    stage.host.call(100, [0], t)
+    expect(stage.darkness).toBe(1)
+    expect(stage.subDarkness).toBe(1)
+    // Unlocking sets in the same breath.
+    stage.host.call(117, [0], t)
+    expect(stage.darkness).toBe(0)
+    expect([...stage.brightnessLocked]).toEqual([])
+    stage.host.call(100, [0], t)
+    expect(stage.darkness).toBe(0)
+  })
+
+  it('locks one screen without touching the other — 115, 113', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(115, [0], t)
+    expect([...stage.brightnessLocked]).toEqual(['top'])
+    stage.host.call(105, [0], t)
+    expect(stage.subDarkness).toBe(1)
+    stage.host.call(101, [0], t)
+    // The top is locked, so `101` reaches only the bottom.
+    expect(stage.darkness).toBe(0)
+    expect(stage.subDarkness).toBe(1)
+  })
+
+  it('keeps the colour a scene puts over the screen — 102, 103', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(103, [31, 0, 16, 20], t)
+    expect(stage.tint).toEqual({
+      red: 31,
+      green: 0,
+      blue: 16,
+      coefficient: 31,
+      frames: 20,
+      start: 0,
+    })
+    // 102 names no colour and asks for 1, not 31.
+    stage.host.call(102, [8], t)
+    expect(stage.tint).toEqual({ coefficient: 1, frames: 8, start: 0 })
+  })
+
+  it('keeps the display swap, which is not brightness — 108, 109, 110', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.screensSwapped).toBe(false)
+    stage.host.call(110, [], t)
+    expect(stage.screensSwapped).toBe(true)
+    stage.host.call(108, [], t)
+    expect(stage.screensSwapped).toBe(false)
+    stage.host.call(108, [], t)
+    expect(stage.screensSwapped).toBe(true)
+    stage.host.call(109, [], t)
+    expect(stage.screensSwapped).toBe(false)
+    // None of the three is counted as unread.
+    expect([...stage.unhandled.keys()]).toEqual([])
+  })
+
   it('moves the look-at point and the orbit together — 322', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
@@ -884,10 +959,27 @@ describe("the towns' shared set, read from the cartridge", () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
     stage.host.call(574, [3, 7, 0], t)
-    expect([...stage.placementsHidden]).toEqual(['3,7'])
+    expect(stage.placements.get('3,7')?.hidden).toBe(true)
     // Anything but zero shows it: the flag bit is cleared, not set.
     stage.host.call(574, [3, 7, 2], t)
-    expect([...stage.placementsHidden]).toEqual([])
+    expect(stage.placements.get('3,7')?.hidden).toBe(false)
+  })
+
+  it('moves, turns and sizes the same record — 575, 576, 577', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(575, [3, 7, 1, 2, 3], t)
+    stage.host.call(576, [3, 7, 4.9], t)
+    stage.host.call(577, [3, 7, 0.5, 0, -0.5], t)
+    stage.host.call(574, [3, 7, 0], t)
+    // One record, found the same way by all four.
+    expect(stage.placements.size).toBe(1)
+    expect(stage.placements.get('3,7')).toEqual({
+      hidden: true,
+      position: [1, 2, 3],
+      half: 4,
+      vector: [0.5, 0, -0.5],
+    })
   })
 
   it('reads a story flag, clear until one is set — 603', () => {

@@ -436,24 +436,60 @@ Two more clusters read out of the decomp, both picked from the coverage table
 rather than from a hunch: the head of the story-ordered worklist, and the seven
 numbers the eight towns had in common.
 
-**The brightness family is eighteen functions, not two.** `100` to `122` are
-one block: the handlers from `109` up are all the same three-instruction stub,
-`mov r0,#<type>` into one dispatcher at `0x0215b074`, and the type picks one of
-nine setters — three screens (both, the top, the bottom) times three locking
-kinds (set, set-and-lock, unlock-and-set). Every one takes **a frame count and
-an optional level**, the level defaulting to **−16, black** (`mvn r5, #0xf` in
-all nine), and the frame count being turned into milliseconds (`× 1000/60`)
-inside the setter. The even half of each pair passes a level of 0 whatever it
-was given; the odd half passes the argument.
+**The brightness family is eighteen functions, not two** — and the whole of it
+is now read. The handlers `111` to `122` are uniform three-instruction stubs,
+`mov r0,#<type>` into one dispatcher at `0x0215b074`, with **type = fn − 105**;
+`100`, `101` and `104` to `107` are bespoke handlers calling the same setters
+directly, filling types 0 to 5. So the **types run 0 to 17 unbroken while the
+numbers do not**: `102`, `103` and `108` to `110` are other features wedged
+into the range, which is why `106` is the top screen and `111` starts at type
+6 rather than 11.
+
+The type picks one of nine setters — three screens times three locking kinds:
 
 | | both screens | top | bottom |
 |---|---|---|---|
-| to black | `101` | | `105`, `120` |
-| to normal | `100` | `121` | |
+| set, to normal | `100` | `106` | `104` |
+| set, to a level | `101` | `107` | `105` |
+| set and lock, to normal | `111` | `115` | `113` |
+| set and lock, to a level | `112` | `116` | `114` |
+| unlock and set, to normal | `117` | `121` | `119` |
+| unlock and set, to a level | `118` | `122` | `120` |
+
+Every one takes **a frame count and an optional level**. An **even type passes
+0**, normal, whatever the scene gave it; an **odd type passes the argument**,
+defaulting to **−16, black** (`mvn r5, #0xf` in all nine setters). The frame
+count becomes milliseconds (`× 1000/60`, the literal `0x41855604`) inside the
+setter, and a count of 0 applies at once.
 
 So **`120` is the bottom screen**, not the top — it is the pair of `121`, not
-its opposite. This engine draws one screen, so the bottom's darkness is kept
-and not drawn; `101` now blacks both, which it always did.
+its opposite. And `107`, the second most-wanted number on the whole cartridge
+(162 events), is simply **the top screen fading to black**.
+
+**The lock is real.** `SetAndLock…` writes the level and then a lock byte —
+`+0x24` for the top screen, `+0x25` for the bottom — and a plain `Set…`
+**returns without doing anything at all** while its screen's lock is set
+(`0x0203b1a4`). `UnlockAndSet…` clears it first. A scene that locks a screen
+black and never unlocks it stays black through every later fade.
+
+This engine draws one screen, so the bottom's darkness is kept and not drawn.
+
+**`108`, `109` and `110` are not brightness.** All three write **bit 15 of
+`POWCNT1`** (`0x04000304`), the DS's display swap — which physical screen the
+main engine drives. `109` sets it, `110` clears it, `108` reads it and writes
+the opposite. They are three of the five numbers wedged into the block.
+
+**`102` and `103` are a colour over the screen**, and only half read. Both
+write the same small record at `0x02108d5c`: `103` packs its first three
+numbers as `r | g<<5 | b<<10` into a **halfword at `+0x02`**, which is the DS's
+own BGR555, and writes `0x1f` at `+0x04`; `102` writes `1` there and no colour
+at all. Both then write `frames × 1000/60` milliseconds at `+0x08` and `1` at
+`+0x00`. **What reads that record was not found** — no other address in the
+ARM9 holds its address — so the meaning is INFERRED: `+0x04` looks like the
+DS's 0-to-31 blend coefficient, which would make `103` a fade *to* the colour
+and `102` a fade back *from* it, and `102` naming no colour fits that. What
+this engine keeps is exactly what the two write, and no more. Note the packing
+masks nothing: a component above 31 runs into the next channel.
 
 **`211` moves a character to a point without turning it**, which is what tells
 it from `207`. It queues one of two commands on the character's own queue: with
@@ -491,6 +527,7 @@ They leave the worklist for good rather than being answered with 0 and counted.
 | 558 | which of a message's choices is highlighted, 0-based, stored through a reference |
 | 573 | take a placed `.spr` away — the exact inverse of `521`, which builds one. **Its second argument is read by nothing** |
 | 574 | show or hide a thing the map placed: group key, record id, and a third number that **clears the hidden bit when it is not zero** |
+| 575, 576, 577 | the same record's fixed-point position (`+0x08`), a halfword (`+0x06`) and a second vector (`+0x14`). Only the position's meaning is settled — `540`'s door code moves a door by writing it |
 | 603 | read one of the game's story flags into a reference, 1 or 0. Ids from `0x400` up are displaced by 1,786 bits into a second range of the bank; nothing is bounds-checked |
 | 715 | the sound's master volume, **clamped to 0..127**, ramped over a tick count; the manager scales it by the player's own 1-to-5 setting before the mixer |
 | 721 | fade the live sequence player to silence over a count, **30 by default**; 0 stops it outright |
@@ -552,10 +589,18 @@ side by side in the same towns are usually one feature.
 | 317, 301, 305, 306 | the camera's shake, and its moves | 62 | 32 |
 | 554, 728, 731, 726, 730, 732, 712, 222, 595, 596, 545, 546, 541, 542, 561 | sound, and the rest of the head | 55 | 30 |
 | 105, 120, 211, 233, 322, 328, 547, 558, 573, 574, 603, 703–709, 715, 721 | the worklist head, and the towns' shared set | 48 | 21 |
+| 100–122, 575–577 | the whole brightness block, the display swap, the screen colour, and `574`'s siblings | 37 | 19 |
 
-The count of what is unanswered across the cartridge went 150 to 90, and what
-the host implements 36 to 100. The head of the story-ordered list has moved from
+The count of what is unanswered across the cartridge went 150 to 75, and what
+the host implements 36 to 122. The head of the story-ordered list has moved from
 `ev01130` to `ev01515`, and its one want is `538`.
+
+**The brightness block came out of the table differently from the others**: not
+picked as a cluster, but fallen out of reading one member of it. `120` was the
+head of the worklist, and reading it exposed a dispatcher that answered
+seventeen more numbers — among them `107` and `117`, which were the second and
+third most-wanted on the whole cartridge. Reading one function of a mechanical
+block is worth more than reading three scattered ones.
 
 ## 7. Open questions
 

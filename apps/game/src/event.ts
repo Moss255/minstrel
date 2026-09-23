@@ -297,6 +297,67 @@ export function monsterSlot(id: number): number {
  */
 export const BRIGHTNESS_BLACK = 16
 
+/** The whole of the DS's blend coefficient, which `103` asks for — see `102` and `103`. */
+export const TINT_WHOLE = 0x1f
+
+/** What a scene has done to one thing the map placed — see `574` to `577`. */
+export interface Placement {
+  /** Whether bit 2 of the record's flags is set, which the draw path skips on. */
+  hidden: boolean
+  /** Where `575` put it. */
+  position?: Vec3
+  /** The second vector, `577`'s — meaning not established. */
+  vector?: Vec3
+  /** The halfword at `+0x06`, `576`'s — meaning not established. */
+  half?: number
+}
+
+/** A colour over the screen, as `102` and `103` write it. */
+export interface Tint {
+  /** The three components, 0 to 31 each, where the scene gave them — `103` only. */
+  readonly red?: number
+  readonly green?: number
+  readonly blue?: number
+  /** What goes in the record's `+0x04`: 31 from `103`, 1 from `102`. */
+  readonly coefficient: number
+  /** How long it was given, in frames — the game turns it into milliseconds. */
+  readonly frames: number
+  readonly start: number
+}
+
+/** Which screens a brightness function touches, how it locks, and whether it takes a level. */
+export type Brightness = readonly ['both' | 'top' | 'sub', 'set' | 'lock' | 'unlock', boolean]
+
+/**
+ * The whole brightness block, `100` to `122`, as the cartridge registers it.
+ *
+ * The eighteen **types** run 0 to 17 unbroken — three screens times three
+ * locking kinds, each an even half that sets the screen to normal and an odd
+ * half that takes the level it is given. The **numbers** do not: `102`, `103`
+ * and `108` to `110` are other features wedged into the range, which is why
+ * `106` is the top screen and `111` starts at type 6 rather than 11.
+ */
+export const BRIGHTNESS: Readonly<Record<number, Brightness>> = {
+  100: ['both', 'set', false],
+  101: ['both', 'set', true],
+  104: ['sub', 'set', false],
+  105: ['sub', 'set', true],
+  106: ['top', 'set', false],
+  107: ['top', 'set', true],
+  111: ['both', 'lock', false],
+  112: ['both', 'lock', true],
+  113: ['sub', 'lock', false],
+  114: ['sub', 'lock', true],
+  115: ['top', 'lock', false],
+  116: ['top', 'lock', true],
+  117: ['both', 'unlock', false],
+  118: ['both', 'unlock', true],
+  119: ['sub', 'unlock', false],
+  120: ['sub', 'unlock', true],
+  121: ['top', 'unlock', false],
+  122: ['top', 'unlock', true],
+}
+
 /** A balloon parked over a character's head — see `541`. */
 export interface Marker {
   /** The character it hangs over. */
@@ -423,6 +484,18 @@ export class EventStage {
   subDarkness = 0
   private subDarkening: Fade | undefined
   /**
+   * Which screens a `SetAndLock…` has locked — see `111` to `116`. A plain
+   * `Set…` does nothing to a locked screen until an `UnlockAndSet…` frees it.
+   */
+  readonly brightnessLocked = new Set<'top' | 'sub'>()
+  /**
+   * Whether the main engine has been put on the bottom screen — `108`, `109`
+   * and `110`, which write the DS's display swap. **Ours**: kept, not acted on.
+   */
+  screensSwapped = false
+  /** The colour a scene has asked for over the screen — see `102` and `103`. */
+  tint: Tint | undefined
+  /**
    * Whether the scene carries straight on from a conversation — what `560`
    * answers, set by the game. INFERRED: answered so, 100 of the 118 scenes that
    * ask skip their opening fade, and 89 of those 100 are begun by talking or
@@ -454,8 +527,8 @@ export class EventStage {
   readonly queued: string[] = []
   /** The door placements a scene has opened, `group,object` — see `540`. */
   readonly doorsOpened = new Set<string>()
-  /** The map placements a scene has hidden, `group,object` — see `574`. */
-  readonly placementsHidden = new Set<string>()
+  /** What a scene has done to the things the map placed, by `group,object` — see `574`. */
+  readonly placements = new Map<string, Placement>()
   /** The placed sprites a scene has taken away, by placement id — see `573`. */
   readonly spritesDropped = new Set<number>()
   /**
@@ -739,6 +812,17 @@ export class EventStage {
     ]
   }
 
+  /** The record a `574`-family call names, by its group key and id. */
+  private placed(args: readonly ScriptValue[]): Placement {
+    const at = `${num(args[0])},${num(args[1])}`
+    let record = this.placements.get(at)
+    if (!record) {
+      record = { hidden: false }
+      this.placements.set(at, record)
+    }
+    return record
+  }
+
   private shot(): EventCamera {
     this.camera ??= { target: undefined, yaw: 0, rise: 0, distance: 0 }
     return this.camera
@@ -915,51 +999,112 @@ export class EventStage {
       case 224:
         this.actor(num(args[0])).after = text(args[1])
         return 0
-      // **The screens' brightness**, `101`, `105`, `120` and `121` — read from
-      // overlay 1. They are four of an eighteen-strong family: the handlers
-      // from `109` up are all the same stub, `mov r0,#<type>` into one
-      // dispatcher, and the type picks one of nine setters across three
-      // screens — both, the top, the bottom — times three locking kinds: set,
-      // set-and-lock, unlock-and-set. Every one of them takes the same two
-      // arguments, **a frame count and an optional level**, the level being
-      // **−16, black,** when the scene does not give one, and the frame count
-      // being turned into milliseconds (`× 1000/60`) inside the setter.
+      // **The screens' brightness**, `100` to `122` — read from overlay 1.
+      // One block of eighteen, and the whole of it is here.
       //
-      // | | both screens | top | bottom |
-      // |---|---|---|---|
-      // | to black | `101` | | `105`, `120` |
-      // | to normal | `100` | `121` | |
+      // The handlers `111` to `122` are uniform three-instruction stubs,
+      // `mov r0,#<type>` into one dispatcher (`0x0215b074`), with **type =
+      // fn − 105**; `100`, `101` and `104` to `107` are bespoke handlers that
+      // call the same setters directly, and they fill types 0 to 5. So the
+      // eighteen types run unbroken while the *numbers* do not — `102`, `103`
+      // and `108` to `110` are other features wedged into the range.
       //
-      // `120` and `121` are the unlocking pair: they clear the screen's lock
-      // byte before setting it. Whatever holds that lock, this engine has not
-      // got, so the two are the plain setters here.
+      // The type picks one of nine setters: **three screens** — both, the
+      // top, the bottom — times **three locking kinds**. Every one takes a
+      // frame count and an optional level; an **even type passes 0**, normal,
+      // whatever the scene gave, and an **odd type passes the argument**,
+      // **−16, black,** by default. The frame count becomes milliseconds
+      // (`× 1000/60`) inside the setter, and a count of 0 applies at once.
+      //
+      // **The lock is real and worth keeping**: `SetAndLock…` writes the
+      // level and then a lock byte (`+0x24` top, `+0x25` bottom), and a plain
+      // `Set…` **returns without doing anything** while its screen's lock is
+      // set. `UnlockAndSet…` clears it first. A scene that locks a screen
+      // black and never unlocks it stays black through every later fade.
+      case 100:
       case 101:
-      case 121:
+      case 104:
       case 105:
-      case 120: {
-        // The bottom screen's own: kept, and not drawn — this engine has one screen.
-        const sub = id === 105 || id === 120
-        // How black −16 is, so that a level the scene gives lands between.
-        // `121` is the even half of its pair and passes 0 whatever it is given.
-        const level = id === 121 ? 0 : args.length >= 2 ? num(args[1]) : -BRIGHTNESS_BLACK
+      case 106:
+      case 107:
+      case 111:
+      case 112:
+      case 113:
+      case 114:
+      case 115:
+      case 116:
+      case 117:
+      case 118:
+      case 119:
+      case 120:
+      case 121:
+      case 122: {
+        const [screens, kind, takesLevel] = BRIGHTNESS[id] as Brightness
+        const level = takesLevel ? (args.length >= 2 ? num(args[1]) : -BRIGHTNESS_BLACK) : 0
         const to = Math.min(1, Math.max(0, -level / BRIGHTNESS_BLACK))
         const frames = num(args[0])
-        const from = sub ? this.subDarkness : this.darkness
-        const fade = frames > 0 ? { from, to, start: this.frame, frames } : undefined
-        if (sub) {
-          this.subDarkening = fade
-          if (!fade) this.subDarkness = to
-        } else {
-          this.darkening = fade
-          if (!fade) this.darkness = to
-          // `101` is both screens, not just the top: it is `SetBrightness`.
-          if (id === 101) {
-            this.subDarkening = fade && { ...fade, from: this.subDarkness }
+        for (const screen of screens === 'both' ? (['top', 'sub'] as const) : [screens]) {
+          if (kind === 'unlock') this.brightnessLocked.delete(screen)
+          else if (this.brightnessLocked.has(screen)) continue
+          const sub = screen === 'sub'
+          const from = sub ? this.subDarkness : this.darkness
+          const fade = frames > 0 ? { from, to, start: this.frame, frames } : undefined
+          if (sub) {
+            this.subDarkening = fade
             if (!fade) this.subDarkness = to
+          } else {
+            this.darkening = fade
+            if (!fade) this.darkness = to
           }
+          if (kind === 'lock') this.brightnessLocked.add(screen)
         }
         return 0
       }
+      // **A colour over the screen**, `102` and `103` — read from overlay 1,
+      // and not brightness, though they sit in the middle of it.
+      //
+      // Both write the same small record (`0x02108d5c`): `103` packs its
+      // first three numbers into a **halfword at `+0x02`** as `r | g<<5 |
+      // b<<10`, which is the DS's own BGR555, and writes `0x1f` at `+0x04`;
+      // `102` writes `1` there and no colour at all. Both then write
+      // `frames × 1000/60` **milliseconds** at `+0x08` — the same conversion
+      // the brightness setters do — and `1` at `+0x00`.
+      //
+      // **INFERRED, and not acted on**: `+0x04` looks like the blend
+      // coefficient the DS takes over 0 to 31, which would make `103` a fade
+      // *to* the colour and `102` a fade back *from* it — `102` writing no
+      // colour fits that. **What reads the record was not found**: nothing
+      // else in the ARM9 holds its address, so it is reached some other way.
+      // So what is kept here is exactly what the two write, and no more.
+      //
+      // Note the packing masks nothing: a component above 31 runs into the
+      // next channel. That is the game's.
+      case 102:
+      case 103:
+        this.tint = {
+          ...(id === 103 ? { red: num(args[0]), green: num(args[1]), blue: num(args[2]) } : {}),
+          coefficient: id === 103 ? TINT_WHOLE : 1,
+          frames: num(args[id === 103 ? 3 : 0]),
+          start: this.frame,
+        }
+        return 0
+      // **Which screen the main engine drives**, `108`, `109` and `110` — read
+      // from overlay 1, and nothing to do with the brightness they sit among.
+      // All three write **bit 15 of `POWCNT1`** (`0x04000304`), the DS's
+      // display swap: `109` sets it, `110` clears it, and `108` reads it and
+      // writes the opposite.
+      //
+      // **Ours**: this engine draws one screen, so which one the hardware
+      // would put it on is kept and not acted on.
+      case 108:
+        this.screensSwapped = !this.screensSwapped
+        return 0
+      case 109:
+        this.screensSwapped = false
+        return 0
+      case 110:
+        this.screensSwapped = true
+        return 0
       case 219: {
         // How much of it shows, at once — 255, three times, taken as whole: ours.
         const actor = this.actor(num(args[0]))
@@ -1508,10 +1653,36 @@ export class EventStage {
       //
       // **Ours**: this engine draws no map placements yet — as with `540`'s
       // doors — so which ones a scene has hidden is what is kept.
-      case 574: {
-        const at = `${num(args[0])},${num(args[1])}`
-        if (num(args[2]) === 0) this.placementsHidden.add(at)
-        else this.placementsHidden.delete(at)
+      case 574:
+        this.placed(args).hidden = num(args[2]) === 0
+        return 0
+      // **Move, turn and size a thing the map placed**, `575`, `576` and `577`
+      // — read from overlay 1, the same three siblings of `574`. Each finds
+      // the record the same way, by group key and `u16` id, and then writes:
+      //
+      // | fn | handed | where it lands |
+      // |---|---|---|
+      // | 575 | group, object, x, y, z | fixed-point position, record `+0x08` |
+      // | 576 | group, object, n | one fixed-point number, truncated to a halfword at `+0x06` |
+      // | 577 | group, object, x, y, z | a second fixed-point vector, record `+0x14` |
+      //
+      // The numbers are floats × 4,096, so a scene may hand them either way.
+      // **What `+0x14` and `+0x06` mean was not established** — `+0x08` is the
+      // position because `540`'s door code moves a door by writing it, and the
+      // other two are carried as the scene gave them.
+      //
+      // **Ours**: nothing draws map placements yet, as with `540`'s doors.
+      case 575: {
+        const at = this.placed(args)
+        at.position = [num(args[2]) * s, num(args[3]) * s, num(args[4]) * s]
+        return 0
+      }
+      case 576:
+        this.placed(args).half = Math.trunc(num(args[2]))
+        return 0
+      case 577: {
+        const at = this.placed(args)
+        at.vector = [num(args[2]) * s, num(args[3]) * s, num(args[4]) * s]
         return 0
       }
       // **Take a placed sprite away**, `573` — read from overlay 1, the exact
