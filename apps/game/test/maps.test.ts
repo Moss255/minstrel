@@ -200,7 +200,6 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
       'F01M02',
       'F10M01',
       'F34M01',
-      'M12',
       'M12M10',
       'M12M11',
       'M13M99',
@@ -208,18 +207,17 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
       'X04M25',
       'X05',
     ])
-    // **And one of those has a cast and doorways of its own**: `M12`, the
-    // outdoor map of Wormwood Creek, with eleven characters standing in it and
-    // eight doors leading out. Everything else on the list is named by the
-    // index but has neither. That makes `M12` the one most likely to be a gap
-    // here rather than a map the game assembles into something else — see
-    // `docs/still-open.md`.
+    // **No map with a cast of its own is left without somewhere to stand.**
+    // `M12`, the outdoor map of Wormwood Creek, was on this list with eleven
+    // characters and eight doors, and it was a fault here: the archive holds
+    // two descriptors and the loader kept whichever it saw last. It now keeps
+    // the one that describes the map. Only `F34M01` remains, with doors but
+    // nobody in it.
     const withOwnPeople = opened.filter(
       (m) => !m.threw && !m.world && (m.cast > 0 || m.doorways > 0),
     )
     expect(withOwnPeople.map((m) => `${m.code}: ${m.cast} cast, ${m.doorways} doors`)).toEqual([
       'F34M01: 0 cast, 2 doors',
-      'M12: 11 cast, 8 doors',
     ])
 
     expect(standless.filter((c) => !c.startsWith('B'))).toEqual([
@@ -237,7 +235,6 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
       'F01M02',
       'F10M01',
       'F34M01',
-      'M12',
       'M12M10',
       'M12M11',
       'M13M99',

@@ -1643,7 +1643,25 @@ function walkOnce(rom: Uint8Array, paths: readonly string[]): Walk {
       parts.offer(leaf.path, leaf.bytes)
       if (!isMapManifest(leaf.bytes)) return false
       try {
-        manifests.set(leaf.archive, readMapManifest(leaf.bytes))
+        const found = readMapManifest(leaf.bytes)
+        // **An archive may hold more than one descriptor, and the map's own is
+        // the one that describes the map.** Six of the cartridge's 1,348 do,
+        // and keying this by archive alone meant the last one seen won — not a
+        // decision, an overwrite.
+        //
+        // For five of the six that came to the same thing. For `M12` it did
+        // not: Wormwood Creek's outdoor map is described by `M12M0000.bmdj`
+        // with 24 resources, and `M12M0001.bmdj` with one sits after it in the
+        // archive. The map assembled from that one — a single piece, no
+        // collision, and so nowhere to stand — and never came up.
+        //
+        // Counting resources is a rule about the data rather than about the
+        // names, which vary; it agrees with what was already being picked
+        // everywhere but `M12`.
+        const already = manifests.get(leaf.archive)
+        if (!already || found.resources.length > already.resources.length) {
+          manifests.set(leaf.archive, found)
+        }
       } catch {
         // A descriptor that will not read leaves its map unassembled.
       }
