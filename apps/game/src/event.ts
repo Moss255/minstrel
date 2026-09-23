@@ -146,6 +146,8 @@ export interface EventActor {
   path: Path
   /** The frame a wait of `218`'s ends on; undefined when it is not waiting. */
   waiting: number | undefined
+  /** What `545` set the motion's rate to; 1 unless a scene says otherwise. */
+  motionRate: number
 }
 
 /**
@@ -258,6 +260,37 @@ export function pathLength(points: readonly (readonly [number, number, number])[
   return length
 }
 
+/** How many sound handles the game keeps, which a script may stop one at a time — see `712`. */
+export const SOUND_SLOTS = 16
+
+/**
+ * The archive a sound comes from when a scene has not loaded one of its own:
+ * the game's field manager mounts `se_norm.sdat`'s archive **100**, whose
+ * sounds the talking blips of `554` are among.
+ */
+export const BASE_EFFECTS = 100
+
+/** A balloon parked over a character's head — see `541`. */
+export interface Marker {
+  /** The character it hangs over. */
+  readonly actor: number
+  /** Which sheet, as the script names it: the game remaps a few of these. */
+  readonly kind: number
+  /** The pixels it is nudged by, on top of the 76 above the character. */
+  readonly dx: number
+  readonly dy: number
+}
+
+/**
+ * A camera shake — see `317`. The offset goes on and off over four frames and
+ * keeps its size throughout; `frames` below zero never ends.
+ */
+export interface Shake {
+  readonly amp: Vec3
+  readonly frames: number
+  readonly started: number
+}
+
 /** A fade under way — see `220`. */
 interface Fade {
   readonly from: number
@@ -335,6 +368,10 @@ function towards(from: number, to: number): number {
 export class EventStage {
   readonly actors = new Map<number, EventActor>()
   camera: EventCamera | undefined
+  /** The shake under way — see `317`. */
+  shake: Shake | undefined
+  /** What the camera looked at before this frame's shake was added to it. */
+  private shakeBase: Vec3 | undefined
   /** How dark the screen is, from 0, clear, to 1, black — see `101` and `121`. */
   darkness = 0
   private darkening: Fade | undefined
@@ -355,13 +392,29 @@ export class EventStage {
    * archive in the effects' SDAT, `720` a jingle in the music's — see the
    * header. The page drains this each frame.
    */
-  readonly sounds: { readonly kind: 'effect' | 'jingle' | 'stop'; readonly index: number }[] = []
+  readonly sounds: {
+    readonly kind: 'effect' | 'jingle' | 'stop'
+    /** The sound archive it comes from — see `726`. */
+    readonly index: number
+    /** Which of the archive's own sounds, where the scene names one — see `728`. */
+    readonly slot?: number
+  }[] = []
   /** Frames played. */
   frame = 0
   /** What `506` asked the loader for, as the script named it — see `506`. */
   readonly queued: string[] = []
   /** The door placements a scene has opened, `group,object` — see `540`. */
   readonly doorsOpened = new Set<string>()
+  /** The balloon over a character's head, where a scene has put one — see `541`. */
+  marker: Marker | undefined
+  /** How many sound handles have been handed out — see `712`. */
+  private soundSlots = 0
+  /** The archive a scene's own sounds come from — see `726`. */
+  effects: number | undefined
+  /** A second archive, `730`'s. */
+  effectsB: number | undefined
+  /** Which of the three talking blips a line uses — see `554`. */
+  talkPitch = 0
   /**
    * Which time of day the engine is on, for `597`. **Ours**: the game keeps a
    * lighting slot of 0 to 6 and this engine has three times of day. Whoever
@@ -468,6 +521,7 @@ export class EventStage {
         walk: undefined,
         path: { points: [], speed: 0, started: undefined, frames: 0 },
         waiting: undefined,
+        motionRate: 1,
         turn: undefined,
       }
       this.actors.set(id, found)
@@ -491,6 +545,12 @@ export class EventStage {
   /** One frame on: whatever is walking or turning moves. */
   advance(): void {
     this.frame++
+    // The shake is taken off before anything else moves, as the game takes it
+    // off at the head of its own frame — so it never builds up.
+    if (this.shakeBase && this.camera) {
+      this.camera.target = [...this.shakeBase]
+      this.shakeBase = undefined
+    }
     if (this.darkening) {
       const { from, to, start, frames } = this.darkening
       const t = Math.min(1, (this.frame - start) / frames)
@@ -554,6 +614,32 @@ export class EventStage {
       shot.distance = from.distance + (to.distance - from.distance) * t
       if (t >= 1) this.angleMove = undefined
     }
+    this.shakeFrame()
+  }
+
+  /**
+   * The shake's own frame — see `317`. Four frames to a cycle: the offset on,
+   * nothing, the offset off, nothing; and the camera's own place is kept so
+   * that the next frame can take it away again.
+   */
+  private shakeFrame(): void {
+    const shaking = this.shake
+    const shot = this.camera
+    if (!shaking || !shot?.target) return
+    const t = this.frame - shaking.started
+    if (shaking.frames >= 0 && t >= shaking.frames) {
+      this.shake = undefined
+      return
+    }
+    const phase = ((t % 4) + 4) % 4
+    const sign = phase === 0 ? 1 : phase === 2 ? -1 : 0
+    if (sign === 0) return
+    this.shakeBase = [...shot.target]
+    shot.target = [
+      shot.target[0] + shaking.amp[0] * sign,
+      shot.target[1] + shaking.amp[1] * sign,
+      shot.target[2] + shaking.amp[2] * sign,
+    ]
   }
 
   private shot(): EventCamera {
@@ -806,8 +892,54 @@ export class EventStage {
           num(args[3]),
         )
         return 0
-      case 321:
+      // **Move where the camera looks**, `305`, and **where it is**, `306`.
+      // The game keeps an eye and a target and moves each over the count it is
+      // given; here the eye is the target and an orbit about it, so moving the
+      // target is `305` and moving the eye is that orbit changing.
+      case 305:
         this.moveTarget([num(args[0]) * s, num(args[1]) * s, num(args[2]) * s], num(args[3]))
+        return 0
+      case 306: {
+        const eye: Vec3 = [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s]
+        const target = this.shot().target ?? [0, 0, 0]
+        this.moveAngle(lookFrom(eye, target), num(args[3]))
+        return 0
+      }
+      case 321:
+        // The game works out a new eye from the camera's own yaw, height and
+        // distance and moves eye and target together, so the framing is kept
+        // and only what it looks at changes. Here the eye *is* the target and
+        // an orbit, so moving the target alone comes to the same thing.
+        this.moveTarget([num(args[0]) * s, num(args[1]) * s, num(args[2]) * s], num(args[3]))
+        return 0
+      // **Whether the camera still has work to do**, `301` — the game asks
+      // whether any of its camera queues still holds a command, the shake's
+      // among them, and hands back 1 while one does.
+      case 301: {
+        const ref = args[0]
+        const busy =
+          this.targetMove !== undefined || this.angleMove !== undefined || this.shake !== undefined
+        if (isRef(ref)) thread.write(ref, busy ? 1 : 0)
+        return 0
+      }
+      // **The camera shakes**, `317` — the game adds the same offset to both
+      // the eye and what it looks at, so the view moves without turning, and
+      // takes it off again before the next frame. The offset is in the world's
+      // own axes, on a **four-frame square wave**: on, nothing, off, nothing.
+      // A count below zero shakes for ever.
+      //
+      // **It does not fade.** The game works out a decay every fourth frame
+      // and stores it where nothing reads it again — the offset it applies is
+      // the one it started with — so a shake holds its size for its whole
+      // length. That is the game's, bug and all, and not a simplification.
+      case 317:
+        this.shake = {
+          amp: [num(args[0]) * s, num(args[1]) * s, num(args[2]) * s],
+          frames: num(args[3]),
+          // The first frame it is looked at is the next one, and that is the
+          // one the game counts as nothing: on, nothing, off, nothing.
+          started: this.frame + 1,
+        }
         return 0
       case 400:
         this.message = num(args[0])
@@ -823,23 +955,162 @@ export class EventStage {
         if (isRef(ref)) thread.write(ref, FRAME_IN_HALVES)
         return 0
       }
+      // **The sound archives a scene uses**, and what it plays out of them —
+      // read from overlay 1. The game mounts one archive for the scene's own
+      // sounds (`726`, and `730` for a second) and plays a sound **out of that
+      // archive by its own number** (`728`, and `732`); `727` and `731` give
+      // the archives back, and `723`, `729` and `733` stop one sound by the
+      // handle it was given.
+      //
+      // This engine read `726` as *play archive n* until the code was read:
+      // it loads. What plays is `728`.
       case 726:
+        this.effects = num(args[0])
+        return 0
       case 730:
-        this.sounds.push({ kind: 'effect', index: num(args[0]) })
+        this.effectsB = num(args[0])
+        return 0
+      case 727:
+        this.effects = undefined
+        return 0
+      case 731:
+        this.effects = undefined
+        this.effectsB = undefined
+        return 0
+      case 728:
+      case 732: {
+        const from = (id === 728 ? this.effects : this.effectsB) ?? BASE_EFFECTS
+        this.sounds.push({ kind: 'effect', index: from, slot: num(args[0]) })
+        const ref = args[1]
+        if (isRef(ref)) thread.write(ref, this.soundSlots++ % SOUND_SLOTS)
+        return 0
+      }
+      case 723:
+      case 729:
+      case 733:
+        this.sounds.push({ kind: 'stop', index: 0 })
         return 0
       case 720:
         this.sounds.push({ kind: 'jingle', index: num(args[0]) })
         return 0
-      case 727:
-      case 729:
-        this.sounds.push({ kind: 'stop', index: 0 })
+      // **The voice a line is spoken in**, `554` — not speech but the blip
+      // that runs while a message types itself out: the game plays one of
+      // three looping sounds of its base archive, `10` at its own pitch, `12`
+      // low and `11` high, and this number picks which. It is called more than
+      // any other function on the cartridge, once a speaker.
+      //
+      // **Ours**: nothing here blips, so the pitch is kept and not sounded.
+      case 554:
+        this.talkPitch = num(args[0])
         return 0
+      // **Stop what a character is playing**, `222` — queued behind whatever
+      // else it has been told to do, so it stops when its turn comes.
+      case 222: {
+        const actor = this.actor(num(args[0]))
+        actor.motion = undefined
+        actor.after = undefined
+        actor.once = false
+        return 0
+      }
+      // **A flag of the field's**, `595` — the game hands back a word that is
+      // set on one path of a fade and read in one place. **What it means was
+      // not established**; nothing here sets it, so it answers as a field
+      // just made would: nothing.
+      case 595: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, 0)
+        return 0
+      }
+      // **Look up a character a scene registered**, `596`. The game keeps a
+      // list of them — `566` makes the entries — and hands back what kind it
+      // is, a state of 0, 1 or 2, and the object it became.
+      //
+      // **Ours**: this engine keeps no such list, so it answers as the game
+      // does for a name it does not find — a kind of −1 and the state 2.
+      // Note the game writes its second answer whether or not it was given
+      // somewhere to put it, which on a two-argument call is one place past
+      // the end; that is not copied here.
+      case 596: {
+        const kind = args[1]
+        const state = args[2]
+        if (isRef(kind)) thread.write(kind, -1)
+        if (isRef(state)) thread.write(state, 2)
+        return 0
+      }
       case 560: {
         // Whether the scene carries straight on from a conversation — see `afterTalk`.
         const ref = args[0]
         if (isRef(ref)) thread.write(ref, this.afterTalk ? 1 : 0)
         return 0
       }
+      // **A sound effect**, `712` — the game plays it on its own handle where
+      // it is given one, so that a later `723`, `729` or `733` can stop that
+      // one sound rather than all of them; the handle is a slot of sixteen and
+      // the script is handed its number. Without a second value it plays on
+      // the manager's own handle, as `726` does.
+      case 712: {
+        // The base archive's, not the scene's — the game plays this one
+        // through the manager's own group.
+        this.sounds.push({ kind: 'effect', index: BASE_EFFECTS, slot: num(args[0]) })
+        const ref = args[1]
+        if (isRef(ref)) {
+          const slot = this.soundSlots++ % SOUND_SLOTS
+          thread.write(ref, slot)
+        }
+        return 0
+      }
+      // **A character starts and stops walking**, `545` and `546`. The game
+      // sets a bit that picks the walking animations over the standing ones
+      // and gives the animation a rate — its second value is **a rate, not a
+      // speed over the ground** — and `546` puts both back, the rate to 1.
+      // A plain model with no walk of its own plays `run` and `stand` instead.
+      //
+      // **Ours**: this engine plays a motion by name, so these are the names
+      // `210` would be given; the rate is kept and nothing reads it yet.
+      case 545: {
+        const actor = this.actor(num(args[0]))
+        actor.motion = 'walk'
+        actor.motionFrom = this.frame
+        actor.once = false
+        actor.motionRate = num(args[1]) || 1
+        return 0
+      }
+      case 546: {
+        const actor = this.actor(num(args[0]))
+        actor.motion = 'stand'
+        actor.motionFrom = this.frame
+        actor.once = false
+        actor.motionRate = 1
+        return 0
+      }
+      // **A balloon over a character's head**, `541`, `561` and `542` — one of
+      // the field's sprite sheets (`fuki_com.spr` a speech balloon,
+      // `ev_mark.spr` a mark, `field_qu.spr` a question), parked at the
+      // character's place on the screen and 76 pixels above it, nudged by the
+      // pixels the script gives.
+      //
+      // **Ours**: which sheet each kind names is the game's own remapping and
+      // nothing here draws one yet, so what is kept is what a scene asked for.
+      case 541:
+        this.marker = {
+          actor: num(args[0]),
+          kind: num(args[1]),
+          dx: args.length > 2 ? num(args[2]) : 0,
+          dy: args.length > 3 ? num(args[3]) : 0,
+        }
+        return 0
+      case 561:
+        if (this.marker) {
+          this.marker = {
+            ...this.marker,
+            dx: this.marker.dx + num(args[0]),
+            dy: this.marker.dy + num(args[1]),
+          }
+        }
+        return 0
+      case 542:
+        this.marker = undefined
+        return 0
       // **A character waits**, `218` — the game queues a wait of N ticks on
       // the same channel its motions run on, so it is a pause between them,
       // and counts down on the character itself. One that is waiting is busy,

@@ -275,9 +275,10 @@ describe('an event’s stage', () => {
   it('answers what it does not read with nothing, and counts it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    expect(stage.host.call(731, [], t)).toBe(0)
-    stage.host.call(731, [], t)
-    expect(stage.unhandled.get(731)).toBe(2)
+    // 599 is not read; 731 was, and is the sound archives being given back.
+    expect(stage.host.call(599, [], t)).toBe(0)
+    stage.host.call(599, [], t)
+    expect(stage.unhandled.get(599)).toBe(2)
   })
 
   it('hides and shows a character, and hangs one on another', () => {
@@ -296,22 +297,67 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.size).toBe(0)
   })
 
-  it('queues the sounds a scene asks for, and their stopping', () => {
+  it('loads a scene’s sound archive, plays out of it, and gives it back', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
+    // 726 **loads** archive 261 — it plays nothing, which is what this engine
+    // had it doing until the game's own handler was read.
     stage.host.call(726, [261], t)
+    expect(stage.sounds).toEqual([])
+    // 728 plays one of that archive's own sounds.
+    stage.host.call(728, [3], t)
     stage.host.call(720, [55], t)
+    // 730 loads a second archive and 732 plays out of that one.
     stage.host.call(730, [364], t)
+    stage.host.call(732, [1], t)
     stage.host.call(729, [0, 16], t)
     stage.host.call(727, [], t)
+    // With the scene's archive given back, a play falls to the base archive.
+    stage.host.call(728, [5], t)
     expect(stage.sounds).toEqual([
-      { kind: 'effect', index: 261 },
+      { kind: 'effect', index: 261, slot: 3 },
       { kind: 'jingle', index: 55 },
-      { kind: 'effect', index: 364 },
+      { kind: 'effect', index: 364, slot: 1 },
       { kind: 'stop', index: 0 },
-      { kind: 'stop', index: 0 },
+      { kind: 'effect', index: 100, slot: 5 },
     ])
     expect(stage.unhandled.size).toBe(0)
+  })
+
+  it('plays a sound of the base archive, and hands back a handle — 712', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(712, [7, ref(3)], t)
+    expect(stage.sounds).toEqual([{ kind: 'effect', index: 100, slot: 7 }])
+    expect(written.get(3)).toBe(0)
+  })
+
+  it('keeps which blip a line is spoken with — 554', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.talkPitch).toBe(0)
+    stage.host.call(554, [1], t)
+    expect(stage.talkPitch).toBe(1)
+  })
+
+  it('stops what a character is playing — 222', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(210, [1, 'walk'], t)
+    expect(stage.actors.get(1)?.motion).toBe('walk')
+    stage.host.call(222, [1], t)
+    expect(stage.actors.get(1)?.motion).toBeUndefined()
+  })
+
+  it('answers a look-up of a character it does not keep — 595 and 596', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(595, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.host.call(596, [4, ref(2), ref(3)], t)
+    // The game's own answer for a name it does not find.
+    expect(written.get(2)).toBe(-1)
+    expect(written.get(3)).toBe(2)
   })
 })
 
@@ -639,5 +685,71 @@ describe('the seven the next town wanted', () => {
     stage.host.call(597, [ref(2)], t)
     stage.host.call(800, [ref(3)], t)
     expect([...stage.unreadCalls.keys()]).toEqual([])
+  })
+})
+
+describe('the camera shakes, and the rest of the 300s', () => {
+  /** A shot to shake: a target, and an angle so the camera is the scene's own. */
+  const shot = (stage: EventStage) => {
+    const { thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 10], t)
+    return t
+  }
+
+  it('moves the view on and off over four frames, and does not fade — 317', () => {
+    const stage = new EventStage(1)
+    const t = shot(stage)
+    stage.host.call(317, [0.2, 0, 0.14, 12], t)
+    const seen: number[] = []
+    for (let i = 0; i < 12; i++) {
+      stage.advance()
+      seen.push(stage.camera?.target?.[0] ?? 0)
+    }
+    // On, nothing, off, nothing — and the same size throughout, the game's own
+    // decay never reaching the camera.
+    expect(seen.slice(0, 4).map((x) => Math.round(x * 100) / 100)).toEqual([0.2, 0, -0.2, 0])
+    expect(seen.slice(4, 8).map((x) => Math.round(x * 100) / 100)).toEqual([0.2, 0, -0.2, 0])
+    expect(Math.max(...seen)).toBeCloseTo(0.2, 6)
+  })
+
+  it('puts the view back when it is over, and leaves it where it was', () => {
+    const stage = new EventStage(1)
+    const t = shot(stage)
+    stage.host.call(317, [1, 0, 0, 4], t)
+    for (let i = 0; i < 6; i++) stage.advance()
+    expect(stage.shake).toBeUndefined()
+    expect(stage.camera?.target).toEqual([0, 0, 0])
+  })
+
+  it('shakes for ever on a count below zero', () => {
+    const stage = new EventStage(1)
+    const t = shot(stage)
+    stage.host.call(317, [1, 0, 0, -1], t)
+    for (let i = 0; i < 100; i++) stage.advance()
+    expect(stage.shake).toBeDefined()
+  })
+
+  it('says whether the camera still has work — 301', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 10], t)
+    stage.host.call(301, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    // A shake counts as work, as it does in the game's own queues.
+    stage.host.call(317, [1, 0, 0, 10], t)
+    stage.host.call(301, [ref(2)], t)
+    expect(written.get(2)).toBe(1)
+  })
+
+  it('moves what the camera looks at — 305', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(303, [0, 0, 0], t)
+    stage.host.call(310, [0, 1, 10], t)
+    stage.host.call(305, [10, 0, 0, 10], t)
+    for (let i = 0; i < 10; i++) stage.advance()
+    expect(stage.camera?.target?.[0]).toBeCloseTo(10, 6)
   })
 })

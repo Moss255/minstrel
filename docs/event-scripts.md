@@ -383,6 +383,53 @@ through rather than placements that swing, so nothing draws them yet. The flag
 engine functions the slice did not. It now wants none — the first area outside
 the slice to stand level with it.
 
+## 5d. Sound, the camera's shake, and the rest — 23 September 2026
+
+**The sound block, 700 to 738, is NNS SDAT**, and this engine had one of its
+numbers backwards. `726` **loads** an archive of a scene's own sounds and
+`730` a second; `728` and `732` **play a sound out of the archive loaded**, by
+its number within it; `727` and `731` give the archives back; `723`, `729` and
+`733` stop one sound by the handle it was given, of sixteen. `712` plays out of
+the **base** archive — `se_norm.sdat`'s 100 — which is what the field mounts.
+This file had `726` as *play archive n*, INFERRED from its values all being
+archive numbers. They are; it loads them.
+
+**`554` is the talking blip**, and it is the most-called function on the
+cartridge — 13,496 calls across 487 events, once a speaker. It picks which of
+three looping sounds of the base archive runs while a message types itself
+out: `10` at its own pitch, `12` low, `11` high. The names in the sound
+archive say it plainly — `SE_SY010_L_kaiwa_n_010`, *kaiwa* being conversation.
+It was the one number an earlier reading could not place.
+
+**`317` is a camera shake**, and the most widely wanted number on the
+worklist. It adds the same offset to the camera's eye and to what it looks at,
+so the view moves without turning, and takes it off again before the next
+frame; the offset is in the world's own axes, on a four-frame square wave — on,
+nothing, off, nothing — for as many frames as it is given, or for ever below
+zero.
+
+**It does not fade, and that is a bug in the game.** The handler works out a
+decay every fourth frame and stores it in the queued command's amplitude,
+while the offset it actually applies is a copy taken once at the start and
+never written again. The decay is therefore dead: a shake holds its size for
+its whole length. This engine copies the behaviour, not the intent.
+
+| fn | what it does |
+|---|---|
+| 301 | whether the camera still has work queued |
+| 305, 306 | move what the camera looks at, and where it is, over a count |
+| 321 | aim at a point, keeping the camera's own distance and angle |
+| 222 | stop what a character is playing, queued behind its other commands |
+| 545, 546 | a character starts and stops walking — the second value is an **animation rate**, not a speed over the ground |
+| 541, 561, 542 | a balloon over a character's head — one of the field's sprite sheets, parked 76 pixels above it, nudged, taken down |
+| 595 | a flag of the field's, **meaning not established** |
+| 596 | look up a character a scene registered: its kind, a state, and the object it became |
+
+**A thing worth knowing about `596`**: it writes its second answer whether or
+not it was given anywhere to put it, so a two-argument call writes one place
+past the end of its own arguments. That is the game's; this engine does not
+copy it.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -419,9 +466,11 @@ side by side in the same towns are usually one feature.
 | 532 | the scene's field of view | 77 | 44 |
 | 502–508, 203, 205, 212 | staging a scene's cast | 69 | 44 |
 | 9, 218, 540, 543, 544, 563, 597, 800 | C02's own seven, and a sibling | 68 | 35 |
+| 317, 301, 305, 306 | the camera's shake, and its moves | 62 | 32 |
+| 554, 728, 731, 726, 730, 732, 712, 222, 595, 596, 545, 546, 541, 542, 561 | sound, and the rest of the head | 55 | 30 |
 
-The count of what is unanswered across the cartridge went 150 to 126, and what
-the host implements 36 to 56.
+The count of what is unanswered across the cartridge went 150 to 107, and what
+the host implements 36 to 75.
 
 ## 7. Open questions
 

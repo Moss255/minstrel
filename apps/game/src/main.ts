@@ -3738,6 +3738,7 @@ function playEvent(elapsedMs: number): void {
 async function playSound(sound: {
   kind: 'effect' | 'jingle' | 'stop'
   index: number
+  slot?: number
 }): Promise<void> {
   if (!cartridge) return
   if (sound.kind === 'stop') {
@@ -3746,7 +3747,7 @@ async function playSound(sound: {
   }
   const played =
     sound.kind === 'effect'
-      ? await playEffect(cartridge, sound.index)
+      ? await playEffect(cartridge, sound.index, sound.slot)
       : await playJingle(cartridge, sound.index)
   if (!played) status(`no ${sound.kind} ${sound.index} in the sound archive`)
 }
