@@ -209,7 +209,7 @@ lives; this is the gathered list.
 
   - **174 are the whole `B` family** — region `"None"`, no doorway, no cast,
     no trigger. Pieces rather than places, and grottoes are assembled at
-    runtime and out of the slice. Nothing to do.
+    runtime and not built here. Nothing to do.
   - **Twelve are places the map index names**: `C04M10` Gittingham Palace,
     `D17M07` Oubliette, `F01M02`, `F10M01`, `F34M01`, `M12`, `M12M10`,
     `M12M11`, `M13M99` Upover, `X01` and `X05` Observatory, `X04M25`. Ten of
@@ -264,7 +264,7 @@ lives; this is the gathered list.
   the cartridge at all.**
 - **Whether a jingle is still sounding**, `725`, and **whether a wireless
   session is up**, `801`: both answered no, which lets a scene waiting on
-  either carry on. Multiplayer is out of the slice.
+  either carry on. Multiplayer is not built here, and stays out.
 
 ---
 

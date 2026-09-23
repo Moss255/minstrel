@@ -13,7 +13,9 @@ The explorer is not a side project. It's what keeps the parser packages honest a
 
 Codename: `minstrel`. Do not use the game's real name in code, filenames, package names, commit messages, or the README.
 
-Full strategy and milestones live in `docs/PLAN.md`. This file is the operational layer.
+Full strategy and milestones live in `docs/beyond-the-slice.md`, and the slice's
+own plan in `dq9-slice1-angel-falls.md` at the repository root. This file is the
+operational layer.
 
 ---
 
@@ -177,13 +179,21 @@ committed.
 
 ## Scope
 
-Current target is Slice 1 (see `docs/PLAN.md` §6). The out-of-scope list there is a contract, not a wishlist:
+**The slice is done and its out-of-scope list is retired.** It read: no
+character creation, no vocations, no alchemy, no grottoes, no multiplayer, no
+party recruitment. Those were a contract for Slice 1, and they are no longer
+one — most of them are now the work itself. Kept here only so that a comment
+in the code citing "out of the slice" can be read as history rather than as a
+live rule.
 
-no character creation · no vocations · no alchemy · no grottoes · no multiplayer · no party recruitment.
+What replaces it is the phase order in `docs/beyond-the-slice.md`, which is
+about sequence rather than exclusion: the systems that restructure data come
+before mass content, because each of them changes shapes the content depends
+on. **Multiplayer is the one thing still deliberately out**, and it stays out
+until the rest ships.
 
-Equipment drawn on the Hero and Ivor was brought into the slice on 15 September 2026, at the owner's word.
-
-If a task drifts toward any of these, stop and flag it.
+If a task would build content that a not-yet-built system will later
+restructure, that is the thing to stop and flag.
 
 ---
 

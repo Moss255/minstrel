@@ -1890,7 +1890,7 @@ describe('the ending’s own block, and the rest of the 800s', () => {
     expect(stage.props).toEqual([false, true])
     stage.host.call(809, [0, 2], t)
     expect(stage.props).toEqual([false, false])
-    // Grottoes are out of the slice; answered, nothing done.
+    // Grottoes are not built here; answered, nothing done.
     expect(stage.host.call(806, [], t)).toBe(1)
     expect([...stage.unhandled.keys()]).toEqual([])
   })

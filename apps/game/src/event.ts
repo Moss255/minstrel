@@ -688,7 +688,7 @@ export class EventStage {
   jingleBusy = false
   /**
    * Whether a wireless session is up — what `801` answers. **Ours**: always
-   * no; multiplayer is out of the slice.
+   * no; multiplayer is not built here, and stays out.
    */
   wireless = false
   /** What the scene switched on for its own duration — see `568`. */
@@ -2011,8 +2011,8 @@ export class EventStage {
       }
       // **A grotto's own request**, `806` — read from overlay 1: one byte of
       // the zone's embedded grotto object, set to 1 and cleared by whatever
-      // takes the work off the queue. **Grottoes are out of the slice**
-      // (`CLAUDE.md`), so this is answered and nothing is done.
+      // takes the work off the queue. **Grottoes are not built here**, so
+      // this is answered and nothing is done.
       case 806:
         return 1
       // **Fade the scene's light**, `578` — read from overlay 1. The first
@@ -2803,7 +2803,7 @@ export class EventStage {
       // waits on a state word whose 1, 2, 8, 9 and 10 match the DS's own
       // wireless states. No symbol or string names it.
       //
-      // **Ours**: multiplayer is out of the slice, so the answer is always 0 —
+      // **Ours**: multiplayer is not built here, so the answer is always 0 —
       // which is the same answer the cartridge gives a player who is alone.
       case 801: {
         const ref = args[0]

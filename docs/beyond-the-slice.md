@@ -175,6 +175,21 @@ What makes the remaining areas cheap.
 events without new code — **and** somebody can satisfy themselves that it is
 right in minutes rather than an evening.
 
+**Where that stands, 24 September 2026.** The done-when has four verbs and
+each now has a measurement of its own rather than an assumption:
+
+| verb | measured by | where it stands |
+|---|---|---|
+| loads | `apps/game/test/maps.test.ts` | **669 of 669 read.** 196 have no collision, 174 of them one family of pieces |
+| plays its events | `apps/game/test/event-coverage.test.ts` | **5 engine functions unanswered** on the whole cartridge; the slice's own area wants none |
+| talks | `apps/game/test/talk-coverage.test.ts` | **1,116 of 1,135 speak**, in all 43 areas that have anybody standing in them; none renders blank |
+| walks | `tools/harness/test/cartridge.test.ts` | every collision mesh is walked — but as a *safety* property, "never leaves the world", which is **not** the same as "the town is navigable" |
+
+So three of the four are evidenced and **walking is the weak one**: nothing
+yet says a player could get from a town's gate to its inn. The second half of
+the done-when — satisfying a person in minutes — has `tools/witness` for the
+looking and still wants frames beside a let's play.
+
 ### Phase 2 — The systems that restructure data
 
 Before mass content, because each changes shapes that content depends on.
