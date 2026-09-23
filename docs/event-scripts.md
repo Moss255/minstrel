@@ -708,6 +708,67 @@ rather than a success code, on the grounds that it has no `mov r0, #1`. It
 does — at `0x0215e90c`, where the 1 it is about to store is loaded — and that
 1 is still in `r0` at the `pop`. `417` returns 1 like everything else.
 
+## 5h. Four that were not what their arguments suggested — 23 September 2026
+
+A caution about reading shapes. `238` is handed a number and then three more,
+and 172 times across 72 events; the observed signatures are `ifff`, `iiii` and
+`iiiii`. That is exactly the shape of `207` and `211`, which walk a character to
+a point, so it was read out of the table **as a third member of that family**
+and the decomp was asked what made it different.
+
+**It is a palette recolour.** The three numbers are a colour, not a place.
+
+| | `207` / `211` | `238` |
+|---|---|---|
+| first argument resolves through | `GetEventActor`, ×`0x588` | the **event placement array**, ×`0x10` — a different index space |
+| next three read with | `ScriptValueToFloat` | `ScriptValueToInt` |
+| and converted by | `_fmul(4096.0f)` then `_ffix` — fix32 world coordinates | `r \| g<<5 \| b<<10`, truncated to 16 bits — **BGR555** |
+| queues a command record | yes | **no**, it acts at once |
+| touches position | yes | **no** |
+| touches texture palette VRAM | no | **yes** |
+
+There is no `_fmul` and no `_ffix` anywhere in `238`, and it never calls
+`GetEventActor`. The resemblance was entirely in how the harness reports a
+literal's tag. **Shape is a hint about arity, not about meaning** — worth
+remembering, because the same trap is waiting under every `(iff…)` on the list.
+
+What `238` actually does: packs the colour, stores an optional fifth number as
+a **mode** on the model itself, and hands both to a worker that rebuilds the
+model's texture palette into a staging buffer and DMAs it to VRAM. Three modes:
+**0, the default, adds** the colour to each entry and holds at 31; **1 fills**,
+every entry becoming the colour; **2 multiplies** each entry by the colour over
+31. Where the placement is one of the first four game objects the colour goes
+to the **whole party member** — the model and twelve object slots beside it, at
+`id × 12 + 0x13` and up, INFERRED to be what they wear.
+
+**`236` unhangs** a placement's model: the same array, the same kind filter
+(`0`, `1`, `4`, `5`, `6`), the same missing bounds check, and then
+`Object3D::Detach` — which clears the two links holding it in its parent's list
+of children and sets the bone it hung on to −1, and, if it is itself the
+anchor, walks its whole list of children and clears each. Unlike `238` it hands
+back **0** on a wrong kind or an empty entry.
+
+**`230` takes a set of motions off a character.** It reads the animation flags
+and **the name of what is playing** first, because what comes next clears them;
+unloads every animation package with the id it is given — **3 when the scene
+does not say, which is every call on the cartridge** — and then sets the same
+animation again by name. **If the name no longer resolves it falls back to
+`stand`.** That fallback is one this engine already does, since `sceneMotion`
+resolves an unknown motion to `stand`.
+
+**`578` fades the scene's light.** A multiplier — `1.0` normal, `0` black —
+over a count of **frames**, which the handler turns into milliseconds by
+multiplying by the frame's own length; **0, or no second number, sets it
+outright**. It reaches one scale over the scene's two light colours and the
+horizon's inner and outer colours, each scaled channel by channel, interpolated
+in float. This engine tints by one overlay rather than scaling the lights, so
+that is where the scale lands — but it does land, and it shows.
+
+`230` and `578` co-occur in all three of the events that call `578`, which is
+suggestive at p ≈ 10⁻³, but **nothing in the code links them**: their only
+shared callee is `GameState::GetInstance`. Read as a script idiom, not a
+feature.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -750,9 +811,18 @@ side by side in the same towns are usually one feature.
 | 100–122, 575–577 | the whole brightness block, the display swap, the screen colour, and `574`'s siblings | 37 | 19 |
 | 568 · 409–414, 401 · 713, 714, 716–719, 724, 725, 801 · 213, 327, 512, 531, 572, 587 | four clusters read at once | 24 | 17 |
 | 402–404, 417–421, 536, 569, 581, 582, 833 | what those four gave away for nothing | 21 | 14 |
+| 230, 236, 238, 578 | four that were not what their arguments suggested | 17 | 14 |
 
-The count of what is unanswered across the cartridge went 150 to 51, and what
-the host implements 36 to 158. The head of the story-ordered list has moved from
+The count of what is unanswered across the cartridge went 150 to 47, and what
+the host implements 36 to 162.
+
+**One measure had to be restated rather than re-pinned.** The coverage test
+asserted that each town wanted at least twice as much the slice wanted too as
+it wanted on its own; M03 broke it at 4 of 8. Nothing regressed — what has been
+implemented *is* the shared base, so what is left over is town-specific by
+construction, and the ratio was bound to fall. The claim now rests on the
+absolute number: no town adds more than a handful, where each wanted dozens
+when the phase began. The head of the story-ordered list has moved from
 `ev01130` to `ev01515`, and its one want is `538`.
 
 **The brightness block came out of the table differently from the others**: not

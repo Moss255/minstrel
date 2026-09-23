@@ -1227,3 +1227,48 @@ describe('the free readings — knobs that fell out of the clusters', () => {
     expect(stage.queuedPath).toBe('data/ani/dq_kaidan.spr')
   })
 })
+
+describe('the 200s that were not moves at all', () => {
+  it('fades the scene’s light over a count, or sets it outright — 578', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.lightScale).toBe(1)
+    stage.host.call(578, [0, 10], t)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.lightScale).toBeCloseTo(0.5, 6)
+    for (let i = 0; i < 5; i++) stage.advance()
+    expect(stage.lightScale).toBe(0)
+    // No count, or a count of nothing, sets it there and then.
+    stage.host.call(578, [1], t)
+    expect(stage.lightScale).toBe(1)
+  })
+
+  it('takes 238’s three numbers as a colour, not a place — 238', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(238, [4, 31, 0, 16], t)
+    expect(stage.recolours.get(4)).toEqual({ red: 31, green: 0, blue: 16, how: 'add' })
+    // The fifth number is how it is applied, and it is 0 — add — by default.
+    stage.host.call(238, [4, 1, 2, 3, 2], t)
+    expect(stage.recolours.get(4)?.how).toBe('multiply')
+    stage.host.call(238, [4, 1, 2, 3, 1], t)
+    expect(stage.recolours.get(4)?.how).toBe('fill')
+    // A mode the game itself does nothing for is said to be unread, not guessed.
+    stage.host.call(238, [4, 1, 2, 3, 9], t)
+    expect(stage.recolours.get(4)?.how).toBe('unread')
+  })
+
+  it('records an unhanging and a dropped motion pack — 236, 230', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(236, [6], t)
+    expect([...stage.detached]).toEqual([6])
+    // The package id is 3 when the scene does not say, which is every call.
+    stage.host.call(230, [2], t)
+    stage.host.call(230, [2, 7], t)
+    expect(stage.actors.get(2)?.packsDropped).toEqual([3, 7])
+    // A negative number folds onto a monster slot, as 233's does.
+    stage.host.call(230, [-1], t)
+    expect(stage.actors.get(0xa0)?.packsDropped).toEqual([3])
+  })
+})

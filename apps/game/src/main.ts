@@ -1729,6 +1729,26 @@ let shownTime: TimeOfDay | undefined
 /** The colour the view is multiplied by — see `TINTS`. */
 const tintEl = document.querySelector<HTMLDivElement>('#tint')
 
+/** The scene's light scale as last shown, so the tint is only rewritten when it moves. */
+let shownScale = 1
+
+/**
+ * Put the view's tint up: the time of day's colour, **multiplied by the light
+ * scale a scene asked for** — the game's `578`, which scales its two light
+ * colours and the horizon's the same way. Ours in where it lands: this engine
+ * tints by one overlay where the game scales the lights themselves.
+ */
+function showTint(time: TimeOfDay): void {
+  const scale = playing?.player.stage.lightScale ?? 1
+  if (!tintEl || (time === shownTime && scale === shownScale)) return
+  shownScale = scale
+  const held = Math.max(0, Math.min(1, scale))
+  const rgb = /(\d+)\D+(\d+)\D+(\d+)/.exec(TINTS[time])
+  if (!rgb) return
+  const [r, g, b] = [1, 2, 3].map((i) => Math.round(Number(rgb[i]) * held))
+  tintEl.style.background = `rgb(${r} ${g} ${b})`
+}
+
 /** The time of day now: `?time=evening` forces one, `?lighting=night` the night, else the story's. */
 function timeNow(): TimeOfDay {
   const forced = params.get('time')
@@ -1751,11 +1771,13 @@ function keepTime(elapsedMs: number): void {
     fieldSeconds += elapsedMs / 1000
   }
   const time = timeNow()
+  // A scene's own light scale changes every frame while it fades, so the tint
+  // is put up again whether or not the time of day turned — see `578`.
+  showTint(time)
   if (time === shownTime) return
   const relit = shownTime !== undefined && lightingFor(time) !== lightingFor(shownTime)
   const turned = shownTime !== undefined
   shownTime = time
-  if (tintEl) tintEl.style.background = TINTS[time]
   wantedLighting = lightingFor(time)
   if (relit) {
     enter(here.code, {
@@ -3789,6 +3811,9 @@ function endEvent(): void {
   const done = playing
   playing = undefined
   if (!done) return
+  // A scene may have dimmed the light; the field's is whole — see `578`.
+  shownScale = 1
+  if (tintEl) tintEl.style.background = TINTS[timeNow()]
   // A scene that ends in the dark leaves the field to come back — see `showDarkness`.
   const dark = done.player.stage.darkness
   if (dark > 0) returning = { from: dark, since: performance.now() }

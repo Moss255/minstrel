@@ -147,6 +147,8 @@ export interface EventActor {
   path: Path
   /** The frame a wait of `218`'s ends on; undefined when it is not waiting. */
   waiting: number | undefined
+  /** The animation packages `230` has taken off, by the game's own id. */
+  packsDropped: number[]
   /** What `545` set the motion's rate to; 1 unless a scene says otherwise. */
   motionRate: number
 }
@@ -322,6 +324,22 @@ export interface Caption {
   readonly silent: boolean
   /** How many frames the caption holds for, where `409` timed it. */
   readonly hold?: number
+}
+
+/** How `238`'s colour is applied, by the number it is given. */
+export const RECOLOUR = ['add', 'fill', 'multiply'] as const
+
+/** The package id `230` takes off when a scene does not name one. */
+export const PACKAGE_DEFAULT = 3
+
+/** A colour a scene has put over a placed model — see `238`. */
+export interface Recolour {
+  /** The three components, five bits each, as the game packs them. */
+  readonly red: number
+  readonly green: number
+  readonly blue: number
+  /** How it is applied — `'unread'` for a number the game itself does nothing for. */
+  readonly how: (typeof RECOLOUR)[number] | 'unread'
 }
 
 /**
@@ -578,6 +596,16 @@ export class EventStage {
   queuedPath: string | undefined
   /** Whether the map's placements are held still — see `581` and `582`. */
   placementsHeld = false
+  /**
+   * How bright the scene's light is, 1 being normal and 0 black — see `578`.
+   * The game keeps one scale over both light colours and the horizon's.
+   */
+  lightScale = 1
+  private lightFade: Fade | undefined
+  /** The colours a scene has asked for over placed models — see `238`. */
+  readonly recolours = new Map<number, Recolour>()
+  /** The placements a scene has unhung — see `236`. */
+  readonly detached = new Set<number>()
   /** What `512` set in the game's own flag word. */
   gameFlags = 0
   /** The camera a model's bones are driving — see `572` and `531`. */
@@ -764,6 +792,7 @@ export class EventStage {
         walk: undefined,
         path: { points: [], speed: 0, started: undefined, frames: 0 },
         waiting: undefined,
+        packsDropped: [],
         motionRate: 1,
         turn: undefined,
       }
@@ -805,6 +834,12 @@ export class EventStage {
       const t = Math.min(1, (this.frame - start) / frames)
       this.subDarkness = from + (to - from) * t
       if (t >= 1) this.subDarkening = undefined
+    }
+    if (this.lightFade) {
+      const { from, to, start, frames } = this.lightFade
+      const t = Math.min(1, (this.frame - start) / frames)
+      this.lightScale = from + (to - from) * t
+      if (t >= 1) this.lightFade = undefined
     }
     if (this.volumeRamp) {
       const { from, to, start, frames } = this.volumeRamp
@@ -1059,6 +1094,100 @@ export class EventStage {
         const actor = this.actor(num(args[0]))
         const frames = actor.motion !== undefined ? this.motionFrames?.(actor.motion) : undefined
         if (frames !== undefined && actor.once) actor.waiting = actor.motionFrom + frames
+        return 1
+      }
+      // **Fade the scene's light**, `578` — read from overlay 1. The first
+      // number is a **multiplier**, `1.0` being normal and `0` black; it is
+      // taken as a float, turned into fixed point over 4,096, and handed to
+      // the lighting manager. The second is a count of **frames**, which the
+      // handler turns into milliseconds by multiplying by the frame's own
+      // length — and **0, or no second number at all, sets it outright**.
+      //
+      // What it reaches is one scale over the scene's two light colours and
+      // the horizon's inner and outer colours, each scaled channel by channel;
+      // the manager interpolates it in float over the count.
+      case 578: {
+        const to = num(args[0])
+        const frames = args.length >= 2 ? num(args[1]) : 0
+        if (frames > 0) {
+          this.lightFade = { from: this.lightScale, to, start: this.frame, frames }
+        } else {
+          this.lightScale = to
+          this.lightFade = undefined
+        }
+        return 1
+      }
+      // **Recolour a placed model**, `238` — read from overlay 1, and **not a
+      // move**: its three numbers are **a colour**, not a place. They are
+      // packed as `r | g<<5 | b<<10` — the DS's own BGR555, five bits a
+      // channel — and handed to a worker that rebuilds the model's texture
+      // palette into a staging buffer and sends that to VRAM. Nothing about
+      // the model's position is touched.
+      //
+      // An **optional fifth number is the way the colour is applied**, kept on
+      // the model itself, and there are three:
+      //
+      // | | |
+      // |---|---|
+      // | `0`, the default | **add** it to each palette entry, held at 31 |
+      // | `1` | **fill**: every entry becomes the colour |
+      // | `2` | **multiply** each entry by the colour over 31 |
+      //
+      // The first number is an **event placement id**, of kind 0, 1, 4, 5 or 6
+      // — and it is **not bounds-checked** against the 32 there are. A wrong
+      // kind or an empty entry does nothing, and it still hands back success.
+      //
+      // Where the placement is one of the first four game objects the colour
+      // goes to **the whole party member** — the model and twelve object slots
+      // beside it, at `id × 12 + 0x13` and up, INFERRED to be what they wear.
+      //
+      // **Ours**: this engine has no per-model palette recolour, so what a
+      // scene asked for is kept.
+      case 238: {
+        const mode = args.length >= 5 ? num(args[4]) & 0xff : 0
+        this.recolours.set(num(args[0]), {
+          red: num(args[1]),
+          green: num(args[2]),
+          blue: num(args[3]),
+          how: RECOLOUR[mode] ?? 'unread',
+        })
+        return 1
+      }
+      // **Unhang a placed model**, `236` — read from overlay 1: it finds the
+      // placement the same way `238` does, with the same kinds and the same
+      // missing bounds check, and calls the model's own detach — which clears
+      // the two links that hold it in its parent's list of children and sets
+      // the bone it hung on to −1. **If it is itself the anchor**, it walks
+      // its whole list of children and clears each of them too.
+      //
+      // Unlike `238` it **hands back 0** on a wrong kind or an empty entry.
+      //
+      // **Ours**: this engine hangs a character on another's bone by `235`,
+      // over the *characters*' numbering — whether that is the same numbering
+      // as a placement's was not established — so the detach is recorded and
+      // no character is unhung by it.
+      case 236:
+        this.detached.add(num(args[0]))
+        return 1
+      // **Take a set of motions off a character**, `230` — read from overlay
+      // 1. It reads the character's animation flags and the **name of what it
+      // is playing** first, because what comes next clears them; unloads every
+      // animation package with the id it is given — **3 when the scene does
+      // not say, which is every call on the cartridge** — and then sets the
+      // same animation again by name. **If the name no longer resolves it
+      // falls back to `stand`.**
+      //
+      // Its character number goes through the same fold as `233`'s, so a
+      // negative one names a monster slot.
+      //
+      // **Ours**: this engine keys a character's motion packs by file name
+      // where the game keys them by a numeric package id, so which pack to
+      // take off cannot be told. The id is recorded — and the fallback the
+      // game ends with is one this engine already does, since `sceneMotion`
+      // resolves an unknown motion to `stand`.
+      case 230: {
+        const actor = this.actor(monsterSlot(num(args[0])))
+        actor.packsDropped.push(args.length >= 2 ? num(args[1]) : PACKAGE_DEFAULT)
         return 1
       }
       case 570:
