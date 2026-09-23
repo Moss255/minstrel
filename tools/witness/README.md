@@ -33,6 +33,21 @@ node tools/witness/witness.mjs C02                 # terminal 2
 # then open out/witness/C02/index.html
 ```
 
+**Several areas at once**, which is what a dip sample across the game wants —
+they share the one browser and the one fetch of the cartridge, and get a
+summary page of their own:
+
+```sh
+node tools/witness/witness.mjs --events=0 C01 D01 H01 M03 O00 R01 S02 T01
+# then open out/witness/index.html
+```
+
+`--events=0` is usually right for a broad sample. What the witness tells you
+that nothing else does is **whether maps render**; whether an area's *events*
+want anything the host has not got is already answered exhaustively, for all
+75 areas, in two seconds, by `apps/game/test/event-coverage.test.ts`. Paying
+seven minutes an area to learn that again is the wrong trade.
+
 | option | meaning |
 |---|---|
 | `--stage=2.2` | open at a story stage, so the cast and the triggers are that stage's |
@@ -43,8 +58,27 @@ node tools/witness/witness.mjs C02                 # terminal 2
 
 `CHROME` in the environment overrides the browser binary, as with `tools/shot`.
 
-It exits non-zero if anything failed to load, so it can gate a change as well
-as inform a person.
+It exits non-zero if anything failed to load **or is worth a look**, so it can
+gate a change as well as inform a person.
+
+## "Worth a look" is the part that earns its keep
+
+A page that did not say *failed* has not thereby succeeded. The first run of
+this tool reported `O00` as a good view: the map has no collision mesh, the
+game stopped on its own title card, and nothing here noticed because the title
+never said the word. **A witness that reports success on a blank page is worse
+than no witness.**
+
+So two things are checked besides loading:
+
+- **The overlay names the map it should be showing.** It names one whenever one
+  is up, so an overlay that does not is a view with no map in it. The code to
+  expect is not always the area — a doorway lands in the map it leads to, and
+  checking that against the source flagged every doorway on the first attempt.
+- **The status line is read, not only shown.** It is the game's own account of
+  what went wrong, in prose meant for a person, so `TROUBLE` is a list of the
+  words it uses rather than a rule. Missing a phrase makes this quieter than it
+  should be; anything added to the game's complaints belongs there too.
 
 ## Why it is not `tools/shot` in a loop
 

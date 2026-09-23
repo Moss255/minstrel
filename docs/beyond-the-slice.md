@@ -136,7 +136,19 @@ What makes the remaining areas cheap.
   HTML page — the map, every doorway, every event its triggers reach, each with
   its status line under it. Gleeba, a town a hundred events past the slice,
   came out at 32 views in about three minutes with nothing failing to load;
-  Angel Falls at 59 views in 7.2 minutes. What it does not yet do is
+  Angel Falls at 59 views in 7.2 minutes.
+  **Dip-sampled 13 areas across all seven families** the same day, maps and
+  doorways only (what an area's *events* want is already answered for all 75
+  areas, headlessly, in two seconds — paying seven minutes an area to learn it
+  again is the wrong trade). 68 views, none failed. **Two are worth a look**:
+  `O00` and `O01` have no collision mesh, so the engine has nowhere to stand
+  the Hero and the map never comes up. They are the whole `O` family, 2 of 75,
+  and may be backdrops rather than somewhere walked — see `docs/still-open.md`.
+
+  The sample also caught a fault in the witness itself, which is the argument
+  for sampling: the first run called `O00` a good view, because the page had
+  not said the word *failed*. It now checks that the overlay names the map it
+  should be showing, and reads the status line rather than only displaying it. What it does not yet do is
   the let's-play half: frames beside a recording, which wants the recording as
   an input. Its README says what else it leaves out.
 

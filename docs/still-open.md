@@ -202,6 +202,13 @@ lives; this is the gathered list.
   not mapped onto the hardware's bits — doing so is a control-scheme decision,
   not a reading — so the three answer from fields the caller fills, and a scene
   that waits for a press waits. One scene on the cartridge does exactly that.
+- **`O00` has no collision mesh** — `/data/map/O00a.amdj`, so the engine has
+  nowhere to stand the Hero and the map never comes up. Found by dip-sampling
+  twelve areas with `tools/witness` on 24 September 2026; `O01` behaves the
+  same way. **Whether this is a gap in the reader or a map that genuinely has
+  none is not established**: the `O` family is two areas out of 75 and may be
+  a backdrop rather than somewhere walked. Worth a look before it is called a
+  bug.
 - **The four props `809` shows and hides** — two of four `Object3D` slots
   filled from four file ids in a record whose owner was not chased, so what
   they are is open.

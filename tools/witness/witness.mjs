@@ -33,7 +33,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const args = process.argv.slice(2)
-const area = (args.find((a) => !a.startsWith('--')) ?? 'M01').toUpperCase()
+/**
+ * One area, or several. Several share the one browser and the one fetch of the
+ * cartridge, which is what makes a dip sample across the game cheap rather
+ * than an hour of relaunching.
+ */
+const areas = args.filter((a) => !a.startsWith('--')).map((a) => a.toUpperCase())
+if (areas.length === 0) areas.push('M01')
 const flag = (name, fallback) => {
   const found = args.find((a) => a.startsWith(`--${name}=`))
   return found === undefined ? fallback : found.slice(name.length + 3)
@@ -43,7 +49,6 @@ const time = flag('time', '')
 const wantEvents = flag('events', '1') !== '0'
 const port = Number(flag('port', '8765'))
 const [width, height] = flag('size', '960x600').split('x').map(Number)
-const outDir = join('out', 'witness', area)
 
 const CHROME =
   process.env.CHROME ??
@@ -152,71 +157,28 @@ const lines = async () =>
     'document.querySelector("#overlay").textContent.split("\\n")[0] + "\\u241F" + document.querySelector("#status").textContent',
   )) ?? ''
 
-mkdirSync(outDir, { recursive: true })
-const shots = []
-async function capture(name, label, query, settle = 900) {
-  const title = await visit(query)
-  await sleep(settle)
-  const [where = '', status = ''] = (await lines()).split('␟')
-  const file = `${name}.png`
-  if (title === 'failed') {
-    shots.push({ file: undefined, label, query, where, status, failed: true })
-    console.log(`  ${label} — FAILED to load`)
-    return
-  }
-  const shot = await send('Page.captureScreenshot', { format: 'png' })
-  writeFileSync(join(outDir, file), Buffer.from(shot.result.data, 'base64'))
-  shots.push({ file, label, query, where, status })
-  console.log(`  ${label} — ${status || where}`)
-}
-
-console.log(`witness ${area}${stage ? ` at ${stage}` : ''}${time ? ` (${time})` : ''}`)
-
-// The map itself, first — and it is this visit that fills `__witness` and puts
-// the cartridge in the browser's store for everything after it.
-await capture('00-map', `${area} — where it starts`, `map=${area}`)
-const plan = (await evaluate('JSON.stringify(window.__witness ?? null)')) ?? 'null'
-const { doorways = [], events = [] } = JSON.parse(plan) ?? {}
-console.log(`  ${doorways.length} doorways, ${events.length} events`)
-
-let n = 1
-for (const to of doorways) {
-  await capture(
-    `${String(n++).padStart(2, '0')}-door-${to}`,
-    `through the door to ${to}`,
-    `map=${area}&door=${to}`,
-  )
-}
-if (wantEvents) {
-  for (const event of events) {
-    const name = `ev${String(event).padStart(5, '0')}`
-    // Scenes open on a fade and take a moment to put their cast down, so this
-    // waits longer than a map does before looking.
-    await capture(
-      `${String(n++).padStart(2, '0')}-${name}`,
-      `${name} playing`,
-      `map=${area}&event=${event}`,
-      2500,
-    )
-  }
-}
-
 const esc = (t) =>
   String(t)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-const failed = shots.filter((s) => s.failed).length
-const page$ = `<!doctype html>
-<meta charset="utf-8">
-<title>witness ${esc(area)}</title>
-<style>
+
+/**
+ * What the game says when something is wrong, in the words it uses. It is a
+ * list rather than a rule because the status line is prose meant for a person.
+ * Missing a phrase makes the witness quieter than it should be, so anything
+ * added to the game's own complaints belongs here too.
+ */
+const TROUBLE = /\b(no |not |nowhere|will not|failed|missing|cannot|unread)/i
+
+const STYLE = `<style>
   :root { color-scheme: dark }
   body { margin: 0; padding: 24px; background: #14161a; color: #e6e8ec;
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif }
   h1 { font-size: 18px; margin: 0 0 4px }
   p.sub { margin: 0 0 24px; color: #9aa1ad }
+  a { color: #8fc0ff }
   .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)) }
   figure { margin: 0; background: #1c1f25; border: 1px solid #2a2f38; border-radius: 8px; overflow: hidden }
   img { display: block; width: 100%; height: auto; background: #000 }
@@ -225,10 +187,96 @@ const page$ = `<!doctype html>
   .where, .status { color: #9aa1ad; font-size: 12px; margin-top: 4px;
                     font-family: ui-monospace, monospace; word-break: break-word }
   .bad { color: #ff9b9b }
+  .ok { color: #9ae6a0 }
   .none { padding: 40px 12px; text-align: center; color: #ff9b9b }
-</style>
+  table { border-collapse: collapse; width: 100% }
+  td, th { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid #2a2f38 }
+</style>`
+
+/** One area: the map, its doorways, its events, and a page of them. */
+async function witness(area) {
+  const outDir = join('out', 'witness', area)
+  mkdirSync(outDir, { recursive: true })
+  const shots = []
+
+  /**
+   * `expect` is the map code the overlay should be naming once this view has
+   * settled — which is **not** always the area: a doorway lands in the map it
+   * leads to, and checking that against the source was the first version's
+   * bug, reporting every doorway as a concern.
+   */
+  async function capture(name, label, query, expect, settle = 900) {
+    const title = await visit(query)
+    await sleep(settle)
+    const [where = '', status = ''] = (await lines()).split('\u241F')
+    if (title === 'failed') {
+      shots.push({ file: undefined, label, where, status, failed: true })
+      console.log(`  ${label} — FAILED to load`)
+      return
+    }
+    const file = `${name}.png`
+    const shot = await send('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(join(outDir, file), Buffer.from(shot.result.data, 'base64'))
+    // **A page that did not say "failed" has not thereby succeeded.** The
+    // first run of this tool called O00 a good view: the map had no collision
+    // mesh, the game stopped on its own title card, and nothing here noticed
+    // because the title never said the word. A witness that reports success on
+    // a blank page is worse than no witness, so two things are checked.
+    //
+    // The overlay's first line names the map whenever one is up, so an overlay
+    // that does not mention the area means no map was drawn. And the status
+    // line is the game's own account of what went wrong, so it is read for
+    // trouble rather than only shown.
+    const blank = !where.toUpperCase().includes(expect.toUpperCase())
+    const wrong = TROUBLE.test(status)
+    shots.push({ file, label, where, status, concern: blank || wrong })
+    const note = blank ? ' — NO MAP DRAWN' : wrong ? ' — trouble' : ''
+    console.log(`  ${label} — ${status || where}${note}`)
+  }
+
+  console.log(`witness ${area}${stage ? ` at ${stage}` : ''}${time ? ` (${time})` : ''}`)
+
+  // The map itself, first — and it is this visit that fills `__witness` and,
+  // on the very first area, puts the cartridge in the browser's own store.
+  await capture('00-map', `${area} — where it starts`, `map=${area}`, area)
+  const plan = (await evaluate('JSON.stringify(window.__witness ?? null)')) ?? 'null'
+  const { doorways = [], events = [] } = JSON.parse(plan) ?? {}
+  console.log(`  ${doorways.length} doorways, ${events.length} events`)
+
+  let n = 1
+  for (const to of doorways) {
+    await capture(
+      `${String(n++).padStart(2, '0')}-door-${to}`,
+      `through the door to ${to}`,
+      `map=${area}&door=${to}`,
+      to,
+    )
+  }
+  if (wantEvents) {
+    for (const event of events) {
+      const name = `ev${String(event).padStart(5, '0')}`
+      // Scenes open on a fade and take a moment to put their cast down, so
+      // this waits longer than a map does before looking.
+      await capture(
+        `${String(n++).padStart(2, '0')}-${name}`,
+        `${name} playing`,
+        `map=${area}&event=${event}`,
+        area,
+        2500,
+      )
+    }
+  }
+
+  const failed = shots.filter((s) => s.failed).length
+  const concerns = shots.filter((s) => s.concern).length
+  writeFileSync(
+    join(outDir, 'index.html'),
+    `<!doctype html>
+<meta charset="utf-8">
+<title>witness ${esc(area)}</title>
+${STYLE}
 <h1>witness · ${esc(area)}${stage ? ` · stage ${esc(stage)}` : ''}${time ? ` · ${esc(time)}` : ''}</h1>
-<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''} · ${esc(new Date().toISOString())}</p>
+<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''} · ${esc(new Date().toISOString())}</p>
 <div class="grid">
 ${shots
   .map(
@@ -237,14 +285,55 @@ ${shots
     <figcaption>
       <div class="label">${esc(s.label)}</div>
       <div class="where">${esc(s.where)}</div>
-      <div class="status${/no |will not|failed|missing/i.test(s.status) ? ' bad' : ''}">${esc(s.status)}</div>
+      <div class="status${s.concern ? ' bad' : ''}">${esc(s.status)}</div>
     </figcaption>
   </figure>`,
   )
   .join('\n')}
 </div>
-`
-writeFileSync(join(outDir, 'index.html'), page$)
-console.log(`\n${shots.length} views, ${failed} failed · open ${join(outDir, 'index.html')}`)
+`,
+  )
+  console.log(`  → ${shots.length} views, ${failed} failed, ${concerns} worth a look\n`)
+  return {
+    area,
+    views: shots.length,
+    failed,
+    concerns,
+    doorways: doorways.length,
+    events: events.length,
+  }
+}
+
+const results = []
+for (const area of areas) results.push(await witness(area))
+
+// A sample of areas gets a page of its own, so the question "does the pipeline
+// hold outside the slice" is one scroll rather than one folder per area.
+if (results.length > 1) {
+  const bad = results.reduce((n, r) => n + r.failed, 0)
+  const look = results.reduce((n, r) => n + r.concerns, 0)
+  writeFileSync(
+    join('out', 'witness', 'index.html'),
+    `<!doctype html>
+<meta charset="utf-8">
+<title>witness · ${results.length} areas</title>
+${STYLE}
+<h1>witness · ${results.length} areas${stage ? ` · stage ${esc(stage)}` : ''}</h1>
+<p class="sub">${results.reduce((n, r) => n + r.views, 0)} views · <span class="${bad ? 'bad' : 'ok'}">${bad} failed to load</span> · <span class="${look ? 'bad' : 'ok'}">${look} worth a look</span> · ${esc(new Date().toISOString())}</p>
+<table>
+<tr><th>area</th><th>views</th><th>doorways</th><th>events</th><th>failed</th><th>worth a look</th></tr>
+${results
+  .map(
+    (r) =>
+      `<tr><td><a href="${esc(r.area)}/index.html">${esc(r.area)}</a></td><td>${r.views}</td><td>${r.doorways}</td><td>${r.events}</td><td class="${r.failed ? 'bad' : 'ok'}">${r.failed}</td><td class="${r.concerns ? 'bad' : 'ok'}">${r.concerns}</td></tr>`,
+  )
+  .join('\n')}
+</table>
+`,
+  )
+  console.log(
+    `${results.length} areas · ${bad} failed · ${look} worth a look · open out/witness/index.html`,
+  )
+}
 ws.close()
-process.exit(failed > 0 ? 1 : 0)
+process.exit(results.some((r) => r.failed > 0 || r.concerns > 0) ? 1 : 0)
