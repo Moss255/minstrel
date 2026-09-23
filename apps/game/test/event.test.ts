@@ -7,6 +7,7 @@ import {
   CAPTION_PLAIN,
   EventPlayer,
   EventStage,
+  FACE_BUTTONS,
   SCENE_FLAGS,
   sceneMotion,
   storyBit,
@@ -1527,6 +1528,64 @@ describe('the 500s tail, and the day’s own clock', () => {
     expect([written.get(1), written.get(2)]).toEqual([0, 0])
     stage.host.call(559, [7], t)
     expect(stage.unreadByte_0x490).toBe(7)
+    expect([...stage.unhandled.keys()]).toEqual([])
+  })
+})
+
+describe('the lowest ten numbers, which are the player’s own input', () => {
+  it('counts the four face buttons held — 0', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(0, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.held = 0x0001 | 0x0800
+    stage.host.call(0, [ref(2)], t)
+    expect(written.get(2)).toBe(2)
+    stage.held = 0xffff
+    stage.host.call(0, [ref(3)], t)
+    // Only the four it tests, not every bit set.
+    expect(written.get(3)).toBe(FACE_BUTTONS.length)
+  })
+
+  it('answers whether a mask was newly pressed — 1', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.held = 0x0001
+    stage.host.call(1, [0x0001, ref(1)], t)
+    // Held is not pressed.
+    expect(written.get(1)).toBe(0)
+    stage.pressed = 0x0001
+    stage.host.call(1, [0x0001, ref(2)], t)
+    stage.host.call(1, [0x0002, ref(3)], t)
+    expect([written.get(2), written.get(3)]).toEqual([1, 0])
+  })
+
+  it('draws a number between two bounds, both ends in — 7', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    // The default draws nothing, so a roll is its low bound.
+    stage.host.call(7, [3, 8, ref(1)], t)
+    expect(written.get(1)).toBe(3)
+    // The span handed to the generator covers both ends: high - low + 1.
+    const spans: number[] = []
+    stage.random = (span) => {
+      spans.push(span)
+      return span - 1
+    }
+    stage.host.call(7, [3, 8, ref(2)], t)
+    expect(spans).toEqual([6])
+    expect(written.get(2)).toBe(8)
+  })
+
+  it('leaves a scene waiting on a press waiting, as the game does — 0, 2', () => {
+    const stage = new EventStage(1)
+    const { written, thread: t } = thread()
+    stage.host.call(2, [ref(1)], t)
+    expect(written.get(1)).toBe(0)
+    stage.touching = true
+    stage.host.call(2, [ref(2)], t)
+    expect(written.get(2)).toBe(1)
+    // None of them is counted as unread.
     expect([...stage.unhandled.keys()]).toEqual([])
   })
 })

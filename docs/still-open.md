@@ -193,6 +193,15 @@ lives; this is the gathered list.
   yet.
 - **The game's story flags**, which `603` reads: this engine keeps none, so a
   scene that asks finds them clear.
+- **Engine functions `4`, `5` and `6`** — one and two numbers of maths,
+  answered as floats. The shapes say sine, cosine and arc tangent, and that is
+  as far as it goes: a wrong guess would put a wrong number into a scene's own
+  arithmetic, so they are counted rather than answered
+  (`docs/event-scripts.md` §5j).
+- **The DS's buttons**, which `0`, `1` and `2` report. This engine's keys are
+  not mapped onto the hardware's bits — doing so is a control-scheme decision,
+  not a reading — so the three answer from fields the caller fills, and a scene
+  that waits for a press waits. One scene on the cartridge does exactly that.
 - **`559`'s byte**: written by the script and by a map transition, and **read
   by nothing in the cartridge**. Kept so as to record that, not because it does
   anything (`docs/event-scripts.md` §5i).

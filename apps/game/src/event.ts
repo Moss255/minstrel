@@ -346,6 +346,13 @@ export function storyBit(id: number): number {
   return id < 0x400 ? id : id + 0x6fa
 }
 
+/**
+ * The four buttons engine function `0` counts, as the DS numbers them: two
+ * face buttons and two shoulder-side ones. The handler tests each separately
+ * and adds the answers.
+ */
+export const FACE_BUTTONS = [0x0001, 0x0002, 0x0400, 0x0800] as const
+
 /** How many sprite placements the manager holds — see `521`. */
 export const SPRITE_SLOTS = 32
 
@@ -668,6 +675,19 @@ export class EventStage {
   dayClockRunning = true
   /** `559`'s byte. **Nothing in the cartridge reads it**; it is kept so as to say so. */
   unreadByte_0x490 = 0
+  /** Which buttons are held, as the DS numbers them — what `0` counts. */
+  held = 0
+  /** Which were pressed this frame and not last — what `1` asks about. */
+  pressed = 0
+  /** What `2` answers. **What its two fields are was not established.** */
+  touching = false
+  /**
+   * A number from 0 to `span - 1` — what `7` draws from, which in the game is
+   * the battle's own generator through `NextRandomBetween`. **Ours**: a plain
+   * counter unless whoever plays the event gives it one, so that a headless
+   * run of a scene is the same every time.
+   */
+  random: (span: number) => number = () => 0
   private fovMove: CameraMove<number> | undefined
   /** What `512` set in the game's own flag word. */
   gameFlags = 0
@@ -2629,6 +2649,54 @@ export class EventStage {
       case 573:
         this.spritesDropped.add(num(args[0]))
         return 0
+      // **The lowest ten numbers are the player's own input, and a little
+      // arithmetic** — read from overlay 1. `0` to `7`, with `8` and `9` below.
+      //
+      // | fn | handed | what it does |
+      // |---|---|---|
+      // | 0 | reference | **how many of the four face buttons are held**, 0 to 4 — it adds the four tests together |
+      // | 1 | mask, reference | whether the buttons in the mask were **newly pressed**: held now and not held last frame |
+      // | 2 | reference | a flag of the input object and a count of its below ten, ANDed — **what the two fields are was not established** |
+      // | 3 | flag | switches something of the loader's on or off, by two calls that differ only in which |
+      // | 4, 5 | float, reference | one number of maths apiece, answered as a **float** — **INFERRED** a sine and a cosine, from the shape: one double in, one out |
+      // | 6 | float, float, reference | two numbers in, one float out — **INFERRED** an arc tangent |
+      // | 7 | low, high, reference | **a random number from low to high, both ends included** — `NextRandomBetween` over the battle's own generator |
+      //
+      // The four buttons `0` counts are the ones the DS numbers `0x0001`,
+      // `0x0002`, `0x0400` and `0x0800`.
+      //
+      // **Ours**: nothing here presses a button during a scene unless whoever
+      // plays it says so, so `0`, `1` and `2` answer from {@link held},
+      // {@link pressed} and {@link touching}, all of which start empty. **A
+      // scene that waits for a press will wait**, which is what the game does
+      // too — one scene on the cartridge does exactly that. The maths is not
+      // answered, because guessing which function it is would be inventing.
+      case 0: {
+        const ref = args[0]
+        if (isRef(ref)) {
+          let count = 0
+          for (const button of FACE_BUTTONS) if ((this.held & button) !== 0) count++
+          thread.write(ref, count)
+        }
+        return 1
+      }
+      case 1: {
+        const ref = args[1]
+        if (isRef(ref)) thread.write(ref, (this.pressed & num(args[0])) !== 0 ? 1 : 0)
+        return 1
+      }
+      case 2: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.touching ? 1 : 0)
+        return 1
+      }
+      case 7: {
+        const ref = args[2]
+        const low = num(args[0])
+        const high = num(args[1])
+        if (isRef(ref)) thread.write(ref, low + this.random(high - low + 1))
+        return 1
+      }
       // **`9` clears a flag of the game's**, and `8` sets it: one global
       // boolean, which decides whether entering a zone applies its masks of
       // opened chests and doors. Every event's section 200 clears it. This

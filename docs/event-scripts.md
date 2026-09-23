@@ -852,6 +852,44 @@ at the head is a scene's own.
 Both now pin the thing the phase actually rests on — that the remaining work is
 small — and the shape of the tail is printed rather than asserted.
 
+## 5j. The lowest ten numbers are the player — 23 September 2026
+
+Found by chasing a runaway rather than by the worklist. Running every one of
+the 687 scripts with chaining on, **thirteen run to a 10,000-frame cap** — and
+one of them, `ev53174`, spends 9,992 of those frames calling engine functions
+**`0` and `2`** and getting 0 back. Those are the two lowest numbers on the
+cartridge, and nothing had looked at them.
+
+They are **input**.
+
+| fn | handed | what it does |
+|---|---|---|
+| 0 | reference | **how many of four buttons are held**, 0 to 4 — it tests `0x0001`, `0x0002`, `0x0400` and `0x0800` separately and adds the answers |
+| 1 | mask, reference | whether the buttons in the mask were **newly pressed**: held now and not held last frame |
+| 2 | reference | a flag of the input object and a count of its below ten, ANDed — **what those two fields are was not established** |
+| 3 | flag | switches something of the loader's on or off, by two calls differing only in which |
+| 4, 5 | float, reference | one number of maths apiece, answered through the **float** store — **INFERRED** a sine and a cosine, from the shape alone: one double in, one out |
+| 6 | float, float, reference | two in, one float out — **INFERRED** an arc tangent |
+| 7 | low, high, reference | **a random number from low to high, both ends included** — `NextRandomBetween` over the battle's own generator, whose body is `low + below(high − low + 1)` |
+| 8, 9 | — | set and clear the zone-mask flag, already read |
+
+So **the runaway is not a bug — it is a scene waiting for the player**, which
+in a headless sweep never comes. That is worth knowing before anyone tries to
+"fix" a script that will not finish: of the thirteen that hit the cap, this one
+is explained and the others ask for nothing at all.
+
+`4`, `5` and `6` are **left unanswered on purpose**. Their shape says "one
+double in, one out" and "two in, one out", and sine, cosine and arc tangent are
+the obvious guesses — but a guess here would put a wrong number into a scene's
+arithmetic, and the rule is to leave it. They are counted, not answered.
+
+The buttons are answered from fields the caller fills, which start empty — so a
+scene waiting on a press waits, exactly as the game does. Mapping this engine's
+keys onto the DS's button bits would be inventing a control scheme, so it is
+left to whoever plays the event. The die, though, is wired: a scene's roll comes
+from the same generator the wandering monsters use, so it is of a piece with
+the rest of a run and the same on every machine.
+
 ## 6a. The worklist — what to read next, and in what order
 
 **Phase 1's first step, 23 September 2026.** An engine function the host has
@@ -897,7 +935,7 @@ side by side in the same towns are usually one feature.
 | 230, 236, 238, 578 | four that were not what their arguments suggested | 17 | 14 |
 | 538, 810, 834 · 521, 522, 228, 738 · 580, 600, 509, 550, 556, 598, 559 · 588, 589, 548, 549, 579, 838, 226, 227 | the last four clusters, script chaining among them | **4** | **9** |
 
-The count of what is unanswered across the cartridge went 150 to **29**, and
+The count of what is unanswered across the cartridge went 150 to **27**, and
 what the host implements 36 to **184**. **C02 wants nothing at all** — not one
 engine function across twenty events — and the slice's own area wants four.
 The head of the story-ordered list has walked the whole slice: `ev01130`,

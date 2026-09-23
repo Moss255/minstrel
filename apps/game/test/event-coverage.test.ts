@@ -291,7 +291,7 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // 0.48.
     //
     // Nothing regressed. The shared base is what has been implemented, so what
-    // is left is the long tail by construction: 29 numbers over 75 areas, and
+    // is left is the long tail by construction: 27 numbers over 75 areas, and
     // half of them wanted by a single area. The premise was cashed in, not
     // disproved.
     //
@@ -341,7 +341,7 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // already, which is the first town outside the slice to stand level with
     // it — **and it now wants nothing at all**, not one engine function in
     // twenty events. The eight together add 9, where the raw count of what is
-    // unanswered across the cartridge is 29.
+    // unanswered across the cartridge is 27.
     //
     // **This is the measure of the phase.** It moved four times in two days:
     // the waypoint path (214 to 217) took the cheapest town from 11 to 7, the
@@ -389,9 +389,9 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
     // line, and then more than 139 are reached. The notes' figure is a floor:
-    // what the host has read since has taken this from 150 down to 29.
+    // what the host has read since has taken this from 150 down to 27.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(29)
+    expect(everywhere.size).toBe(27)
   })
 })

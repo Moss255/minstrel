@@ -3718,6 +3718,10 @@ function startEvent(number: number, afterTalk = false): boolean {
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
   playing.player.stage.afterTalk = afterTalk
+  // **A scene rolling a die**, the game's `7`, which draws from the battle's
+  // own generator. This hands it the roamer's, so a scene's roll is of a piece
+  // with the rest of the run and is the same on every machine.
+  playing.player.stage.random = (span) => (span > 0 ? roamRng.below(span) : 0)
   // Which time of day the scene asks about — `597`. **Ours**: the game keeps
   // a lighting slot of 0 to 6 and this engine has three, the same numbers a
   // zone is picked by.
