@@ -8,6 +8,7 @@ import {
   DS_ASPECT,
   DS_VERTICAL_FOV,
   followCamera,
+  fovOfHalfDegrees,
   frustumAt,
   INDOORS,
   moveRelativeToCamera,
@@ -375,5 +376,22 @@ describe('moving the way the player is looking', () => {
 
   it('stands still when nothing is pressed', () => {
     expect(moveRelativeToCamera(0.7, 0, 0)).toEqual({ x: 0, z: 0 })
+  })
+})
+
+describe('a scene’s own field of view', () => {
+  it('reads 532’s number as the half-angle, in degrees', () => {
+    expect(fovOfHalfDegrees(15)).toBeCloseTo((30 * Math.PI) / 180, 12)
+    expect(fovOfHalfDegrees(25)).toBeCloseTo((50 * Math.PI) / 180, 12)
+  })
+
+  it('frames a narrower field more tightly, and the projection with it', () => {
+    const wide = frustumAt(10, DS_ASPECT)
+    const narrow = frustumAt(10, DS_ASPECT, fovOfHalfDegrees(15))
+    expect(narrow.halfHeight).toBeLessThan(wide.halfHeight)
+    // The matrix slot that holds cot(fov / 2) — the one the game's own
+    // projection fills by dividing the cosine by the sine.
+    const projection = perspective(DS_ASPECT, 1, 100, new Float32Array(16), fovOfHalfDegrees(15))
+    expect(projection[5]).toBeCloseTo(1 / Math.tan((15 * Math.PI) / 180), 6)
   })
 })

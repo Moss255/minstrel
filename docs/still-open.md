@@ -184,8 +184,11 @@ settled — heard as right at the tempo read, 17 September, with no factor.
   between tracks on a map change (`Music.fade` exists, unused); whether the
   village theme should restart indoors (ours: it carries on).
 - **The scenes' feel:** the camera's pace over a `304`/`311` move (ours is
-  even) and its field of view, 50° — both want a measurement against the let's
-  play at 12 fps; opcode `223`, 14 calls, unread.
+  even); opcode `223`, 14 calls, unread. **A scene's field of view is no
+  longer ours** — read 23 September from `Camera_SetFov`: engine function
+  `532` hands it the half-angle in degrees, so the 15 that 1,668 of its 2,477
+  calls pass is a vertical field of 30°. The **field** camera's 50° is still
+  by eye: what sets that one has not been read.
 - **The scale and the light:** the character against the village, the dusk and
   night colours.
 

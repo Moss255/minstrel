@@ -393,7 +393,14 @@ describe('a waypoint path — the game’s 214 to 217', () => {
 
   it('starts the character at the first point and walks it to the last', () => {
     const stage = new EventStage(1)
-    walk(stage, [[0, 0, 0], [3, 0, 4]], 10)
+    walk(
+      stage,
+      [
+        [0, 0, 0],
+        [3, 0, 4],
+      ],
+      10,
+    )
     const actor = stage.actors.get(1)
     expect(actor).toMatchObject({ x: 0, y: 0, z: 0 })
     // Five units at a speed of ten: half a second, thirty frames.
@@ -406,7 +413,14 @@ describe('a waypoint path — the game’s 214 to 217', () => {
 
   it('is busy while it walks, as 204 reports', () => {
     const stage = new EventStage(1)
-    walk(stage, [[0, 0, 0], [0, 0, 10]], 5)
+    walk(
+      stage,
+      [
+        [0, 0, 0],
+        [0, 0, 10],
+      ],
+      5,
+    )
     expect(stage.busy(1)).toBe(true)
     for (let i = 0; i < stage.actors.get(1)!.path.frames; i++) stage.advance()
     expect(stage.busy(1)).toBe(false)
@@ -414,12 +428,26 @@ describe('a waypoint path — the game’s 214 to 217', () => {
 
   it('faces the way the path is going', () => {
     const stage = new EventStage(1)
-    walk(stage, [[0, 0, 0], [0, 0, 10]], 5)
+    walk(
+      stage,
+      [
+        [0, 0, 0],
+        [0, 0, 10],
+      ],
+      5,
+    )
     stage.advance()
     // Straight along +z, which is a facing of 0 in the Hero's own convention.
     expect(stage.actors.get(1)?.facing).toBeCloseTo(0, 3)
     const other = new EventStage(1)
-    walk(other, [[0, 0, 0], [10, 0, 0]], 5)
+    walk(
+      other,
+      [
+        [0, 0, 0],
+        [10, 0, 0],
+      ],
+      5,
+    )
     other.advance()
     expect(other.actors.get(1)?.facing).toBeCloseTo(Math.PI / 2, 3)
   })
@@ -427,12 +455,16 @@ describe('a waypoint path — the game’s 214 to 217', () => {
   it('curves through its points rather than cutting corners', () => {
     // ev02810 bobs a character in place: x and z held, y stepped up and down.
     const stage = new EventStage(1)
-    walk(stage, [
-      [0, 0.28, 0],
-      [0, 0.58, 0],
-      [0, 0.18, 0],
-      [0, 0.28, 0],
-    ], 2)
+    walk(
+      stage,
+      [
+        [0, 0.28, 0],
+        [0, 0.58, 0],
+        [0, 0.18, 0],
+        [0, 0.28, 0],
+      ],
+      2,
+    )
     const actor = stage.actors.get(1)
     const heights: number[] = []
     for (let i = 0; i < (actor?.path.frames ?? 0); i++) {
@@ -453,7 +485,29 @@ describe('a waypoint path — the game’s 214 to 217', () => {
 
   it('says nothing about them being unread any more', () => {
     const stage = new EventStage(1)
-    walk(stage, [[0, 0, 0], [1, 0, 1]], 5)
+    walk(
+      stage,
+      [
+        [0, 0, 0],
+        [1, 0, 1],
+      ],
+      5,
+    )
     for (const fn of [214, 215, 216, 217]) expect(stage.unreadCalls.has(fn)).toBe(false)
+  })
+})
+
+describe('the scene’s field of view — the game’s 532', () => {
+  it('takes the half-angle in degrees and keeps the whole field in radians', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    expect(stage.fov).toBeUndefined()
+    // 15 is what 1,668 of its 2,477 calls pass: a vertical field of 30°.
+    stage.host.call(532, [15], t)
+    expect((stage.fov ?? 0) * (180 / Math.PI)).toBeCloseTo(30, 6)
+    // It takes a float as readily as an integer.
+    stage.host.call(532, [12.5], t)
+    expect((stage.fov ?? 0) * (180 / Math.PI)).toBeCloseTo(25, 6)
+    expect(stage.unreadCalls.has(532)).toBe(false)
   })
 })

@@ -360,7 +360,13 @@ export class ModelRenderer {
    * the hardware would produce, rather than being a letterboxed crop of a
    * widescreen frame.
    */
-  draw(camera: Camera, wireframe: boolean, viewport?: { width: number; height: number }): void {
+  draw(
+    camera: Camera,
+    wireframe: boolean,
+    viewport?: { width: number; height: number },
+    /** The whole vertical field of view, in radians — a scene's own, where it has one. */
+    fov?: number,
+  ): void {
     const gl = this.gl
     const canvas = gl.canvas as HTMLCanvasElement
     if (!viewport) {
@@ -381,7 +387,7 @@ export class ModelRenderer {
     // Framing and the view come from `@minstrel/render`, so what the viewer
     // shows at any window shape is the same rule the game will use — never
     // less of the world than the hardware showed.
-    const projection = perspective(width / height, 0.01, 1000)
+    const projection = perspective(width / height, 0.01, 1000, new Float32Array(16), fov)
     const view = viewMatrix(camera)
     const mvp = multiply(projection, view, new Float32Array(16))
 

@@ -265,15 +265,16 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
 
   it('counts what the slice itself still wants', () => {
     // M01 is the slice's own area and it plays — which is not the same as
-    // being complete. Its events call **78** functions the host answers with
+    // being complete. Its events call **77** functions the host answers with
     // 0, and the slice is playable because none of them stops a scene it
     // needs. The number is a pin: implementing one lowers it, and a change
-    // that loses one raises it.
+    // that loses one raises it. It was 78 before the scene's field of view
+    // (532) went in.
     const slice = reports.find((r) => r.area === 'M01')
     expect(slice, 'no triggers for the slice area').toBeDefined()
     const here = slice as AreaReport
     expect(here.events).toBe(49)
-    expect(here.unhandled.size).toBe(78)
+    expect(here.unhandled.size).toBe(77)
   })
 
   it('shows the gap is front-loaded — the same functions, area after area', () => {
@@ -301,7 +302,8 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
       .filter(([, row]) => row.event === first)
       .map(([fn]) => fn)
       .sort((a, b) => a - b)
-    expect(head).toEqual([222, 532, 543, 554, 595, 596, 728, 731])
+    // 532, the scene's field of view, was among these until it was read.
+    expect(head).toEqual([222, 543, 554, 595, 596, 728, 731])
     // Every one of them is wanted by a great many areas, which is why they are
     // first: the earliest scenes and the latest want the same handful.
     for (const fn of head) {
@@ -344,10 +346,10 @@ describe.skipIf(!romPath)('what an area needs that the host has not got', () => 
     // everything with 0 — so only the paths that run that way are seen".
     // Reading each message as it comes up opens the paths after the first
     // line, and then more than 139 are reached: 150 are unanswered here, on
-    // top of the 40 the host implements — 36 before the waypoint path went
-    // in. The notes' figure is a floor.
+    // top of the 41 the host implements — 36 before the waypoint path and the
+    // scene's field of view went in. The notes' figure is a floor.
     const everywhere = new Set<number>()
     for (const report of reports) for (const fn of report.unhandled.keys()) everywhere.add(fn)
-    expect(everywhere.size).toBe(146)
+    expect(everywhere.size).toBe(145)
   })
 })

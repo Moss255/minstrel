@@ -1,4 +1,5 @@
 import type { Script } from '@minstrel/game-formats'
+import { fovOfHalfDegrees } from '@minstrel/render'
 import {
   EventRun,
   ScriptError,
@@ -355,6 +356,11 @@ export class EventStage {
   readonly sounds: { readonly kind: 'effect' | 'jingle' | 'stop'; readonly index: number }[] = []
   /** Frames played. */
   frame = 0
+  /**
+   * The whole vertical field of view the scene asked for, in radians — see
+   * `532`. Undefined until it asks, and then the camera's until the event ends.
+   */
+  fov: number | undefined
   /** Engine functions answered with 0 because they are not read, and how often. */
   readonly unhandled = new Map<number, number>()
   /** What each of them was handed, which is what reading it out of the decomp starts from. */
@@ -814,6 +820,12 @@ export class EventStage {
         if (isRef(ref)) thread.write(ref, this.afterTalk ? 1 : 0)
         return 0
       }
+      // **The scene's field of view**, `532` — the game's `Camera_SetFov`. Its
+      // number is the half-angle in degrees, so 15, which 1,668 of its 2,477
+      // calls pass, is a vertical field of 30°. It takes an integer or a float.
+      case 532:
+        this.fov = fovOfHalfDegrees(num(args[0]))
+        return 0
       // **A waypoint path**, the game's 214 to 217 — read from overlay 1's
       // handlers and the commands they queue: `214` resets the path, `216`
       // appends a point to it, `215` says how fast it is walked and `217`

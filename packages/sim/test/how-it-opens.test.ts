@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DropRng } from '../src/battle/drops.ts'
+import type { DropRng } from '../src/battle/drops.ts'
 import { FACING_CONE, facingOff, howItOpens } from '../src/battle/opening.ts'
 
 /**
@@ -45,7 +45,12 @@ describe('how a fight opens', () => {
     const met = { theirs: 0, ours: 0, deftness: 0 }
     expect(howItOpens(drawing(1), met)).toBe('monstersSitOut')
     // The first draw fails, the second lands: the party is surprised instead.
-    const rng = { below: (() => { let n = 0; return () => (n++ === 0 ? 50 : 1) })() } as unknown as DropRng
+    const rng = {
+      below: (() => {
+        let n = 0
+        return () => (n++ === 0 ? 50 : 1)
+      })(),
+    } as unknown as DropRng
     expect(howItOpens(rng, met)).toBe('partySitsOut')
     expect(howItOpens(drawing(50), met)).toBe('even')
   })

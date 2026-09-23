@@ -6,6 +6,7 @@ export {
   DS_VERTICAL_FOV,
   type FollowCamera,
   followCamera,
+  fovOfHalfDegrees,
   frustumAt,
   INDOORS,
   moveRelativeToCamera,

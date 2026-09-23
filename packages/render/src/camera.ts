@@ -13,13 +13,30 @@ import { type CharacterShape, type CollisionWorld, groundBelow } from '@minstrel
 export const DS_ASPECT = 256 / 192
 
 /**
- * Vertical field of view, in radians.
+ * Vertical field of view, in radians — what the field camera uses.
  *
- * **Tuned by eye.** The game's own value lives in code this repository does not
- * read; what is kept faithful here is the *framing rule* below, which does not
- * depend on knowing it.
+ * **Tuned by eye**, and still ours: what a scene's camera uses is read from
+ * the game (see {@link fovOfHalfDegrees}), but what the *field* camera uses is
+ * set elsewhere in the game's code and has not been read. What is kept
+ * faithful either way is the *framing rule* below, which does not depend on
+ * knowing it.
  */
 export const DS_VERTICAL_FOV = (50 * Math.PI) / 180
+
+/**
+ * A whole vertical field of view, in radians, from the number a scene's
+ * camera is given — the game's engine function `532`.
+ *
+ * **The number is the half-angle, in degrees.** The game takes the sine and
+ * cosine of it as it stands (`Camera_SetFov`, `0x0202e9a4`) and its projection
+ * divides the cosine by the sine (`0x020c28c0`), putting `cot(angle)` in the
+ * matrix slot that holds `cot(fov / 2)` — the same slot {@link perspective}
+ * fills below. So the angle handed over is half of the whole field: the 15 the
+ * scenes pass most often is a vertical field of 30°.
+ */
+export function fovOfHalfDegrees(degrees: number): number {
+  return (2 * degrees * Math.PI) / 180
+}
 
 /**
  * The half-extents of the frustum at a given depth, for an aspect ratio.
@@ -41,8 +58,9 @@ export const DS_VERTICAL_FOV = (50 * Math.PI) / 180
 export function frustumAt(
   depth: number,
   aspect: number,
+  fov: number = DS_VERTICAL_FOV,
 ): { halfWidth: number; halfHeight: number } {
-  const referenceHalfHeight = depth * Math.tan(DS_VERTICAL_FOV / 2)
+  const referenceHalfHeight = depth * Math.tan(fov / 2)
   const referenceHalfWidth = referenceHalfHeight * DS_ASPECT
   if (aspect >= DS_ASPECT) {
     return { halfHeight: referenceHalfHeight, halfWidth: referenceHalfHeight * aspect }
@@ -56,8 +74,9 @@ export function perspective(
   near: number,
   far: number,
   out: Float32Array = new Float32Array(16),
+  fov: number = DS_VERTICAL_FOV,
 ): Float32Array {
-  const { halfWidth, halfHeight } = frustumAt(near, aspect)
+  const { halfWidth, halfHeight } = frustumAt(near, aspect, fov)
   out.fill(0)
   out[0] = near / halfWidth
   out[5] = near / halfHeight

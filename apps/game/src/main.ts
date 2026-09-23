@@ -1631,7 +1631,9 @@ function frame(now = 0): void {
     canvas.width = width
     canvas.height = height
   }
-  renderer.draw(camera, false)
+  // A scene frames itself: `532` gives the event's camera its own field of
+  // view, and the field's stands until one asks — see `fovOfHalfDegrees`.
+  renderer.draw(camera, false, undefined, playing?.player.stage.fov)
   requestAnimationFrame(frame)
 }
 

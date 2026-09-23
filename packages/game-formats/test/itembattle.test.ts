@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import {
-  readItemBattleParams,
-  RESISTANCE_ELEMENTS,
-  wornResistances,
-} from '../src/itembattle.ts'
+import { RESISTANCE_ELEMENTS, readItemBattleParams, wornResistances } from '../src/itembattle.ts'
 
 /** Built in code, from FORMAT.md: a count word, then 44-byte records. */
 function build(items: { id: number; resistances?: readonly number[] }[]): Uint8Array {
@@ -24,10 +20,7 @@ function build(items: { id: number; resistances?: readonly number[] }[]): Uint8A
 describe('what a worn thing does in a battle', () => {
   it('reads each record: its item, and the twenty numbers it adds to a resistance', () => {
     const [first, second] = readItemBattleParams(
-      build([
-        { id: 12170, resistances: [0, 0, 0, -30, 0, 0, 0, -30] },
-        { id: 20004 },
-      ]),
+      build([{ id: 12170, resistances: [0, 0, 0, -30, 0, 0, 0, -30] }, { id: 20004 }]),
     )
     expect(first?.id).toBe(12170)
     expect(first?.resistances).toHaveLength(20)
