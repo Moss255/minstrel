@@ -119,6 +119,33 @@ main {
   pointer-events: none;
 }
 
+/* `<CEN>` — the narration card, which the game centres rather than ranging
+   left like speech. See `docs/event-scripts.md` §7a. */
+#talk.centred {
+  text-align: center;
+}
+
+/* `<SHAKE>` — the game jogs the whole message window from a four-entry table,
+   x = {-2, 0, 0, 0} and y = {0, 0, -3, 0}, stepped on `timer & 3` for 30
+   frames. Four frames a cycle at 60Hz is 1/15s; 30 frames is half a second. */
+@keyframes talk-shake {
+  0%,
+  100% {
+    translate: -2px 0;
+  }
+  25%,
+  75% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -3px;
+  }
+}
+
+#talk.shaking {
+  animation: talk-shake 0.0667s steps(1, end) 7;
+}
+
 #talk .speaker {
   margin-bottom: 0.25em;
   font-size: 0.8em;

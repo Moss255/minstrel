@@ -4376,6 +4376,10 @@ function showEquipScreens(): boolean {
   return true
 }
 
+/** The run and page whose sound cues have been played, so they play once. */
+let cuedRun: unknown
+let cuedPage = -1
+
 /** Draw the conversation's page into the text box, or put the box away when it is over. */
 function showTalk(): void {
   if (!talking) {
@@ -4384,7 +4388,30 @@ function showTalk(): void {
   }
   const { who, source, texts, notes, line, page, run, choice, aside } = talking
   const shown = run.pages[page]
+  // **A sound written into the line is played when its page comes up.** The
+  // game compiles `<ME_008>` and `<SE_014>` to control codes carried in the
+  // message itself, so they sound where they stand rather than before or after
+  // — see `docs/event-scripts.md` §7a. Guarded on the page, because moving
+  // between a prompt's answers redraws the same one.
+  if (cuedRun !== run || cuedPage !== page) {
+    cuedRun = run
+    cuedPage = page
+    for (const cue of run.cues) {
+      if (cue.page !== page) continue
+      void playSound({ kind: cue.kind === 'ME' ? 'jingle' : 'effect', index: cue.id })
+    }
+  }
   talkEl.replaceChildren()
+  // `<CEN>` centres the box — the game's narration card, "Some days later…".
+  talkEl.classList.toggle('centred', shown?.centred === true)
+  // `<SHAKE>` shakes the message window for 30 frames — half a second. The
+  // game moves the whole window rect by a hardcoded four-step table, −2px in x
+  // and −3px in y; this is the same movement and duration in CSS.
+  if (run.shake) {
+    talkEl.classList.remove('shaking')
+    void talkEl.offsetWidth
+    talkEl.classList.add('shaking')
+  }
   if (shown?.speaker) {
     const name = document.createElement('div')
     name.className = 'speaker'

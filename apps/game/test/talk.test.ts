@@ -71,13 +71,13 @@ describe('letterForStage', () => {
 describe('renderLine', () => {
   it('reads accents, apostrophes and the pause as the characters they are', () => {
     expect(renderLine("*: Cr<`e>me br<^u>l<'e>e<,> na<:i>ve<1>s").pages).toEqual([
-      { speaker: undefined, text: 'Crème brûlée, naïve’s' },
+      { speaker: undefined, text: 'Crème brûlée, naïve’s', centred: false },
     ])
   })
 
   it('puts the Hero in, capitalised when asked, and names a speaker', () => {
     const line = renderLine('//Mira// Evening<,> <HERO>!<ADD>')
-    expect(line.pages).toEqual([{ speaker: 'Mira', text: 'Evening, Hero!' }])
+    expect(line.pages).toEqual([{ speaker: 'Mira', text: 'Evening, Hero!', centred: false }])
     expect(renderLine('<Cap><HERO>? Is that you?').pages[0]?.text).toBe('Hero? Is that you?')
     expect(
       renderLine('*: Hi<,> <Cap>hero.', { ...DEFAULT_CONTEXT, heroName: 'x' }).pages[0]?.text,
@@ -85,15 +85,55 @@ describe('renderLine', () => {
   })
 
   it('leaves out what it does not know, and says so', () => {
-    const line = renderLine('*: Will you come?<SHAKE>')
+    // `<.|>` is one of the six the cartridge uses that the game's own markup
+    // compiler has no entry for — see `text-coverage.test.ts`. The stand-in
+    // here has had to be changed twice as tags were read; picking one from
+    // outside the compiled vocabulary should end that.
+    const line = renderLine('*: Will you come?<.|>')
     expect(line.pages[0]?.text).toBe('Will you come?')
-    expect(line.unhandled).toEqual(['SHAKE'])
+    expect(line.unhandled).toEqual(['.|'])
+  })
+
+  it('reads the commonest tag on the cartridge, and the turn that is not one', () => {
+    // `<ADD>` leaves the window standing for the next message; `<N_TURN>` is
+    // "no turn", suppressing the face-the-player every message otherwise does.
+    const add = runLine(parseMarkup('*: Anything else?<ADD>'))
+    expect(add.continues).toBe(true)
+    expect(add.unhandled).toEqual([])
+    expect(runLine(parseMarkup('*: Morning.')).turn).toEqual({ kind: 'player' })
+    expect(runLine(parseMarkup('<N_TURN>*: Morning.')).turn).toEqual({ kind: 'keep' })
+    // `<END_R_TURN>` ends the message as `<END>` does, and sends them back.
+    const back = runLine(parseMarkup('*: Bye.<END_R_TURN>*: never read'))
+    expect(back.pages.map((p) => p.text)).toEqual(['Bye.'])
+    expect(back.turn).toEqual({ kind: 'back' })
+  })
+
+  it('takes a sound out of the line rather than putting it in the text', () => {
+    // `<ME_n>` and `<SE_n>` are not formatting: the game's markup compiler
+    // turns them into control codes carried in the message, so they sound
+    // where they stand. See `docs/event-scripts.md` §7a.
+    const line = runLine(parseMarkup('*: Ta-daa!<ME_008><PAGE>*: And off.<SE_014>'))
+    expect(line.pages.map((p) => p.text)).toEqual(['Ta-daa!', 'And off.'])
+    expect(line.unhandled).toEqual([])
+    expect(line.cues).toEqual([
+      { kind: 'ME', id: 8, page: 0 },
+      { kind: 'SE', id: 14, page: 1 },
+    ])
+  })
+
+  it('centres a narration card, and stops when told to', () => {
+    // `<CEN>` writes 1 to the window's byte at +0x9b8 and nothing writes it
+    // back, so it holds for the rest of the message.
+    const card = renderLine('<CEN>Some days later<,> the rains came.<PAGE>*: Morning!')
+    expect(card.pages.map((p) => p.centred)).toEqual([true, true])
+    const off = renderLine('<CEN_ON>Later.<PAGE><CEN_OFF>*: Morning!')
+    expect(off.pages.map((p) => p.centred)).toEqual([true, false])
   })
 
   it('splits pages, and keeps line breaks within a page', () => {
     expect(renderLine('*: One.\\nStill one.<PAGE>*: Two.').pages).toEqual([
-      { speaker: undefined, text: 'One.\nStill one.' },
-      { speaker: undefined, text: 'Two.' },
+      { speaker: undefined, text: 'One.\nStill one.', centred: false },
+      { speaker: undefined, text: 'Two.', centred: false },
     ])
   })
 

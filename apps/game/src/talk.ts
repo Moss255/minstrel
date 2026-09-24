@@ -107,6 +107,81 @@ export interface Service {
 
 const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
 
+/**
+ * A sound a line asks for: `<ME_008>` a jingle, `<SE_014>` an effect.
+ *
+ * These are not formatting. **The game's markup compiler turns them into
+ * control codes carried in the message itself** — `<ME_n>` becomes `0xFF34 + n`
+ * and `<SE_n>` becomes `0xFF4B` — so the sound is played by whatever walks the
+ * message, at the point in the text where it was written. See
+ * `docs/event-scripts.md` §7a.
+ *
+ * `page` is the page it falls on, since that is when it should be heard.
+ */
+export interface SoundCue {
+  readonly kind: 'ME' | 'SE'
+  readonly id: number
+  readonly page: number
+}
+
+/**
+ * How the character being talked to should be facing.
+ *
+ * **Every message turns them to face the player by default.** The engine's
+ * prefix pass at `0x0206a3c0` sets the pending-turn flag and the target angle
+ * to `atan2(player − npc)` before it looks at a single tag, and the tags below
+ * only ever override that. So the interesting case is `<N_TURN>`, which is 208
+ * of the cartridge's turns: it is not "turn" at all but **"no turn"**, putting
+ * the target back to the angle saved when the conversation opened and clearing
+ * the flag. See `docs/event-scripts.md` §7a.
+ *
+ * - `player` — the default, and `<TURN_P>`.
+ * - `keep` — `<N_TURN>`: stay as you were.
+ * - `back` — `<R_TURN>` and `<END_R_TURN>`: return to the saved facing. The
+ *   two differ in whether the box waits for the rotation, which this does not
+ *   record because nothing here animates it yet.
+ * - `angle` — `<TURN=n>`, an absolute facing in radians.
+ */
+export interface Turn {
+  readonly kind: 'player' | 'keep' | 'back' | 'angle'
+  /** For `angle` only. The game stores fx32 radians; this is the float. */
+  readonly radians?: number
+}
+
+/**
+ * A balloon over the speaker's head: `<EXC>` is `!`, `<QES>` is `?`.
+ *
+ * Both write 60 to the window's `+0x959` and 1 to `+0x9b7`, and differ only in
+ * a kind byte at `+0x95c` — 0 and 1 — and the sound they ask for, 6 and 28.
+ * Sixty frames is a second.
+ */
+export type Emote = 'EXC' | 'QES'
+
+/**
+ * What a line does to the quest log. None of it is text.
+ *
+ * `<QUEST=n>` binds a quest to the window — the compiler turns the number into
+ * the index of its slot in the 204-entry active-quest list and stashes it, and
+ * the interpreter copies it onto the window at `0x020668e8`. The rest act on
+ * whatever is bound:
+ *
+ * - `HAN` (`<QUEST_HAN>`) and `FAILED` (`<QUEST_FAILED>`) open a banner over
+ *   the message, by identical code differing only in one bit and the sound
+ *   asked for. **What `HAN` abbreviates is not established** — it is symmetric
+ *   with `FAILED`, which is suggestive and no more, so it is left as the tag
+ *   spells it.
+ * - `CLOSE` (`</QUEST>`) closes it.
+ *
+ * `commit` is `<QUEST_SE>`, which writes a packed word per quest and asks for
+ * a fanfare. **None of this is drawn or recorded yet**; it is read so that the
+ * line is no longer a mystery and the banner can be built against it.
+ */
+export interface QuestNote {
+  readonly id: number | undefined
+  readonly banner: 'HAN' | 'FAILED' | 'CLOSE' | undefined
+  readonly commit: boolean
+}
+
 export const DEFAULT_CONTEXT: TextContext = {
   heroName: 'Hero',
   conditions: {
@@ -176,6 +251,8 @@ export function glyphOf(name: string): string | undefined {
 export interface TalkPage {
   readonly speaker: string | undefined
   readonly text: string
+  /** Whether the box is centred — `<CEN>`, the narration card. */
+  readonly centred: boolean
 }
 
 /** One of a prompt's answers: the marker its branch opens with, and what the box shows. */
@@ -193,9 +270,16 @@ export interface Prompt {
 
 /**
  * The prompts and the markers their branches open with — see `FORMAT.md`,
- * "Prompts". `<UKE>` and `<YAME>` as accept and decline is **INFERRED**, from
- * the Japanese, from standing at quest offers, and from the system strings
+ * "Prompts".
+ *
+ * `<UKE>` and `<YAME>` as accept and decline used to be marked `INFERRED` here,
+ * from the Japanese, from standing at quest offers, and from the system strings
  * listing "Yes", "No", "Accept", "Decline" in that order (messages 27 to 30).
+ * **The game's own markup compiler settles it.** Every tag compiles to a
+ * two-byte code, and these four are consecutive in the order their two prompts
+ * introduce them — `<YES>` 0xFF14, `<NO>` 0xFF15, `<UKE>` 0xFF16, `<YAME>`
+ * 0xFF17, against `<YESNO>` 0xFF04 and `<UKEYAME>` 0xFF08. The pairing is the
+ * compiler's, not a reading of the text: see `docs/event-scripts.md` §7a.
  */
 const PROMPTS: Readonly<Record<string, readonly Answer[]>> = {
   YESNO: [
@@ -209,6 +293,9 @@ const PROMPTS: Readonly<Record<string, readonly Answer[]>> = {
 }
 const MARKERS = new Set(Object.values(PROMPTS).flatMap((answers) => answers.map((a) => a.marker)))
 
+/** `<ME_008>`, `<SE_014>` — see {@link SoundCue}. The digits are decimal. */
+const SOUND = /^(ME|SE)_(\d+)$/
+
 /** What running a line from one point came to: its pages, then a prompt or the end. */
 export interface Run {
   readonly pages: readonly TalkPage[]
@@ -218,6 +305,45 @@ export interface Run {
   readonly prompt: Prompt | undefined
   /** The service the run hands over to at its end, if it names one. */
   readonly service: Service | undefined
+  /** The jingles and effects the line asks for, in the order it asks. */
+  readonly cues: readonly SoundCue[]
+  /**
+   * `<ADD>`: the box stays open and the next message is drawn **into it**
+   * rather than into a fresh one.
+   *
+   * The game does this by leaving the message in wait-state 3 — which nothing
+   * else ever writes — so that the next `ShowMessage` takes the append path at
+   * `0x02044f3c` instead of tearing the window down. It is the commonest tag
+   * on the cartridge: 429 of 687 events, 1,724 uses.
+   *
+   * **Nothing acts on this yet.** It is read and carried so that the tag is no
+   * longer a mystery and so the append can be built against it; this host
+   * already keeps its box up across a conversation's messages, and starting
+   * the next one mid-line is work in the box, not in the markup.
+   */
+  readonly continues: boolean
+  /** How the speaker should be facing — see {@link Turn}. Read, not yet acted on. */
+  readonly turn: Turn
+  /** The balloon over the speaker's head, if the line asks for one. */
+  readonly emote: Emote | undefined
+  /** `<SHAKE>`: the box shakes for 30 frames. */
+  readonly shake: boolean
+  /** `<TIME=n>`: hold for `n` ticks before going on. */
+  readonly pause: number | undefined
+  /**
+   * `<ALL_RECOVER=a,b,c>`: a gameplay action written where a line would go —
+   * the one thing on the cartridge whose whole message is a single tag.
+   *
+   * The compiler stores `a != 0` and `b != 0` as two flags and `c` as a count,
+   * and the interpreter hands all three to an overlay. **What the two flags
+   * select is not established**, so they are carried under the names the bytes
+   * justify rather than a guess at what is being restored.
+   */
+  readonly restore:
+    | { readonly flagA: boolean; readonly flagB: boolean; readonly amount: number }
+    | undefined
+  /** What the line does to the quest log — see {@link QuestNote}. */
+  readonly quest: QuestNote | undefined
 }
 
 /** A line read straight through, as far as its first prompt. */
@@ -241,11 +367,29 @@ export function runLine(
   from = 0,
   context: TextContext = DEFAULT_CONTEXT,
 ): Run {
-  const pages: string[] = []
+  const pages: { text: string; centred: boolean }[] = []
   const unhandled = new Set<string>()
   let page = ''
   let capitalise = false
+  /**
+   * Whether the box is centred. `<CEN>` writes 1 to the window's byte at
+   * `+0x9b8` and nothing writes it back, so it holds for the rest of the
+   * message — see `docs/event-scripts.md` §7a. It is how the game sets a
+   * narration card: "Some days later, the landslide is cleared…".
+   */
+  let centred = false
   let service: Service | undefined
+  const cues: SoundCue[] = []
+  let continues = false
+  // Every message faces the speaker at the player unless a tag says otherwise.
+  let turn: Turn = { kind: 'player' }
+  let emote: Emote | undefined
+  let shake = false
+  let pause: number | undefined
+  let restore: Run['restore']
+  let questId: number | undefined
+  let banner: QuestNote['banner']
+  let commit = false
   /** For each open condition, whether the branch being read is the one shown. */
   const shown: boolean[] = []
   const visible = () => shown.every(Boolean)
@@ -257,10 +401,26 @@ export function runLine(
     } else page += piece
   }
   const done = (prompt?: Prompt): Run => {
-    const kept = pages.filter((p) => p.trim() !== '')
+    const kept = pages.filter((p) => p.text.trim() !== '')
     // A prompt is asked on the page it ends, even one with nothing before it.
-    if (prompt || page.trim() !== '') kept.push(page)
-    return { pages: kept.map(speakerOf), unhandled: [...unhandled], prompt, service }
+    if (prompt || page.trim() !== '') kept.push({ text: page, centred })
+    return {
+      pages: kept.map(speakerOf),
+      unhandled: [...unhandled],
+      prompt,
+      service,
+      cues,
+      continues,
+      turn,
+      emote,
+      shake,
+      pause,
+      restore,
+      quest:
+        questId === undefined && banner === undefined && !commit
+          ? undefined
+          : { id: questId, banner, commit },
+    }
   }
 
   // A jump that never reaches a prompt would go round for ever; no line needs
@@ -288,6 +448,13 @@ export function runLine(
     if (!visible()) continue
     const answers = PROMPTS[name]
     if (answers) return done({ kind: name, answers, at })
+    // `<END_R_TURN>` is 0xFF02, which the interpreter treats exactly as
+    // `<END>` 0xFF01 — and additionally sends the speaker back to the facing
+    // it had before the conversation, without waiting for the rotation.
+    if (name === 'END_R_TURN') {
+      turn = { kind: 'back' }
+      return done()
+    }
     if (MARKERS.has(name) || name === 'END' || name === 'CLOSE') return done()
     if (name.startsWith('JP_')) {
       const label = tokens.findIndex((t) => t.kind === 'tag' && t.name === `LB_${name.slice(3)}`)
@@ -296,13 +463,56 @@ export function runLine(
       continue
     }
     if (name.startsWith('LB_')) continue
-    if (name === 'PAGE') {
-      pages.push(page)
+    if (name === 'PAGE' || name === 'PAD_WAIT' || name === 'PAD_WAIT_NOCUR') {
+      // All three stop and wait for a button. `<PAD_WAIT_NOCUR>` differs only
+      // in not showing the arrow, which this box does not draw anyway.
+      pages.push({ text: page, centred })
       page = ''
+    } else if (name === 'ADD') {
+      // A message terminator that leaves the window standing — see `Run`.
+      continues = true
+    } else if (name === 'N_TURN') {
+      turn = { kind: 'keep' }
+    } else if (name === 'R_TURN') {
+      turn = { kind: 'back' }
+    } else if (name === 'TURN_P') {
+      turn = { kind: 'player' }
+    } else if (name === 'TURN' && Number.isFinite(Number(token.args[0]))) {
+      turn = { kind: 'angle', radians: Number(token.args[0]) }
+    } else if (name === 'EXC' || name === 'QES') {
+      emote = name
+    } else if (name === 'SHAKE') {
+      shake = true
+    } else if (name === 'TIME' && Number.isInteger(Number(token.args[0]))) {
+      pause = Number(token.args[0])
+    } else if (name === 'ALL_RECOVER' && token.args.length === 3) {
+      restore = {
+        flagA: Number(token.args[0]) !== 0,
+        flagB: Number(token.args[1]) !== 0,
+        amount: Number(token.args[2]),
+      }
+    } else if (name === 'QUEST' && Number.isInteger(Number(token.args[0]))) {
+      questId = Number(token.args[0])
+    } else if (name === 'QUEST_HAN' || name === 'QUEST_FAILED') {
+      banner = name === 'QUEST_HAN' ? 'HAN' : 'FAILED'
+    } else if (name === '/QUEST') {
+      banner = 'CLOSE'
+    } else if (name === 'QUEST_SE') {
+      commit = true
+    } else if (name === 'CEN' || name === 'CEN_ON') {
+      centred = true
+    } else if (name === 'CEN_OFF') {
+      centred = false
     } else if (name === 'Cap') {
       capitalise = true
     } else if (name === 'HERO' || name === 'LEADER') {
       put(context.heroName)
+    } else if (SOUND.test(name)) {
+      // A sound is not text. The compiler gives it a control code of its own
+      // and the message tick plays it where it stands, so it comes out of the
+      // line rather than going into it.
+      const [kind, digits] = name.split('_') as [string, string]
+      cues.push({ kind: kind as SoundCue['kind'], id: Number(digits), page: pages.length })
     } else if (SERVICES.has(name) && Number.isInteger(Number(token.args[0]))) {
       service = { kind: name as Service['kind'], id: Number(token.args[0]) }
     } else if (context.values?.[name] !== undefined) {
@@ -834,13 +1044,13 @@ function labelOnward(
   return undefined
 }
 
-function speakerOf(page: string): TalkPage {
+function speakerOf({ text: page, centred }: { text: string; centred: boolean }): TalkPage {
   const trimmed = page.replace(/^\s+/, '')
   const named = /^\/\/(.+?)\/\/\s*/.exec(trimmed)
-  if (named) return { speaker: named[1], text: trimmed.slice(named[0].length) }
+  if (named) return { speaker: named[1], text: trimmed.slice(named[0].length), centred }
   const someone = /^\*:\s*/.exec(trimmed)
-  if (someone) return { speaker: undefined, text: trimmed.slice(someone[0].length) }
-  return { speaker: undefined, text: trimmed }
+  if (someone) return { speaker: undefined, text: trimmed.slice(someone[0].length), centred }
+  return { speaker: undefined, text: trimmed, centred }
 }
 
 /**

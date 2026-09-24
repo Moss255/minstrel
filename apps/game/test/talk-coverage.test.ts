@@ -191,13 +191,21 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
   })
 
   it('counts the markup talk asks for that events do not', () => {
-    // **A different tail from `text-coverage.test.ts`.** There `<ADD>` leads
-    // by a distance; here it is third, behind `<N_TURN>` and `<END_R_TURN>`,
-    // which barely show up in event text at all. Reading the markup has to
-    // satisfy both, and this is the half that would otherwise be invisible.
+    // **A different tail from `text-coverage.test.ts`.** There `<ADD>` led by
+    // a distance; here it was third, behind `<N_TURN>` and `<END_R_TURN>`,
+    // which barely show up in event text at all. Reading the markup had to
+    // satisfy both, and this was the half that would otherwise be invisible —
+    // `<N_TURN>` alone was 208 of the cartridge's turns, and it turned out not
+    // to be a turn: it is *no* turn, suppressing the face-the-player every
+    // message otherwise does. See `docs/event-scripts.md` §7a.
+    //
+    // Fourteen became five, and what is left is honest residue:
+    // `<WIN_ON>`/`<WIN_OFF>` are codes whose **direction is not established**
+    // — `<WIN>` writes 0 to the frame byte and the pair plainly toggles it,
+    // but plainly is not read — and `<val_2>` is a value the engine supplies.
     const worst = [...t.unread].sort((a, b) => b[1] - a[1]).map(([name]) => name)
-    expect(worst.slice(0, 3)).toEqual(['N_TURN', 'END_R_TURN', 'ADD'])
-    expect(t.unread.size).toBe(14)
+    expect(worst).toEqual(['-', 'WIN_OFF', 'WIN_ON', 'val_2', '.|'])
+    expect(t.unread.size).toBe(5)
   })
 })
 

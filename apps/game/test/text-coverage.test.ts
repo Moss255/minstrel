@@ -30,6 +30,7 @@ describe.skipIf(!romPath)('what the event texts ask for that the host has not go
   let texts = 0
   let events = 0
   let empty = 0
+  const blanks: string[] = []
 
   beforeAll(() => {
     const rom = new Uint8Array(readFileSync(romPath as string))
@@ -57,7 +58,13 @@ describe.skipIf(!romPath)('what the event texts ask for that the host has not go
       for (const text of lines) {
         texts++
         const run = runLine(parseMarkup(text))
-        if (run.pages.every((page) => page.text.trim() === '')) empty++
+        if (run.pages.every((page) => page.text.trim() === '')) {
+          empty++
+          // The count on its own is unchaseable. A blank box is worse than a
+          // missing tag — nothing tells the player why — so say which event
+          // and what the source was, and the next person can go and look.
+          blanks.push(`ev${String(event).padStart(5, '0')}: ${JSON.stringify(text.slice(0, 96))}`)
+        }
         for (const name of run.unhandled) {
           const found = unread.get(name) ?? { uses: 0, events: new Set<number>(), example: text }
           found.uses++
@@ -69,6 +76,7 @@ describe.skipIf(!romPath)('what the event texts ask for that the host has not go
 
     const worst = [...unread].sort((a, b) => b[1].events.size - a[1].events.size)
     console.log(`${texts} texts in ${events} events · ${empty} come out empty`)
+    for (const line of blanks) console.log(`  blank — ${line}`)
     console.log(`${unread.size} tags the renderer does not read:`)
     for (const [name, { uses, events: where, example }] of worst.slice(0, 30)) {
       const shown = example.replace(/\s+/g, ' ').slice(0, 64)
@@ -82,46 +90,48 @@ describe.skipIf(!romPath)('what the event texts ask for that the host has not go
   })
 
   it('counts the texts that come out empty', () => {
-    // A text rendering to nothing is worse than one with a tag missing: the
-    // player gets a blank box and nothing says why. **Nine of 5,157** do, and
-    // which they are has not been looked at.
+    // A text rendering to nothing would normally be worse than one with a tag
+    // missing: the player gets a blank box and nothing says why. **Nine of
+    // 5,157** do — and having finally looked at which, not one is a fault.
+    //
+    // Eight are the same string, `<PAD_WAIT_NOCUR></QUEST><CLOSE>`, in the
+    // quest events `ev50160`–`ev50224`: all control and no words, by
+    // construction. The ninth is `ev28792`'s `<ALL_RECOVER=0,0,999>`, which is
+    // not a text at all but **an action carried down the message channel** —
+    // the party healed by something written where a line would go.
+    //
+    // So the number to watch is not nine going up but a *tenth kind* showing
+    // up, which is what the printed list beside it is for.
     expect(empty).toBe(9)
   })
 
   it('counts the markup the renderer does not read', () => {
-    // **The worklist.** Pinned by name so that reading one shows up as a
-    // shorter list and losing one as a longer. The game's own vocabulary is
-    // 127 tags — see `docs/event-scripts.md` §7a for where it is and what is
-    // in it — so this is the part of it the texts actually use and this
-    // renderer does not yet know.
+    // **The worklist, and what is left of it.** It began at twenty-three.
+    // Reading the game's own markup compiler — the tag table at 0x020e7f84 and
+    // the prefix chain at 0x0206a3c0, see `docs/event-scripts.md` §7a — took it
+    // to these six, and they are six of a different kind:
+    //
+    // - `<.|>` and `<.|.|>` are **not in the compiler's vocabulary at all**,
+    //   so they belong to an earlier pass this has not found. Eleven of the
+    //   twelve uses are Petra's and Fanny's songs, which is a hint.
+    // - `<tmap_sec1>`–`<tmap_sec3>`, `<str_5>` are **values the engine
+    //   supplies**, like `<val_1>`. `runLine` already puts them in when the
+    //   context has them; nothing here has a treasure map to name, so they
+    //   come out unread and would come out unread in the game too.
+    //
+    // So this is not the same list made shorter — it is the residue after the
+    // compiled vocabulary was read out.
     expect([...unread.keys()].sort()).toEqual([
       '.|',
       '.|.|',
-      '/QUEST',
-      'ADD',
-      'ALL_RECOVER',
-      'CEN',
-      'ME_004',
-      'ME_007',
-      'ME_008',
-      'ME_015',
-      'ME_018',
-      'N_TURN',
-      'PAD_WAIT_NOCUR',
-      'QUEST',
-      'QUEST_HAN',
-      'QUEST_SE',
-      'SE_014',
-      'SHAKE',
-      'TIME',
       'str_5',
       'tmap_sec1',
       'tmap_sec2',
       'tmap_sec3',
     ])
-    // **`<ADD>` is most of the problem on its own**: 429 of the 687 events use
-    // it, 1,724 times. Whatever it does, it is the single cheapest thing to
-    // read next.
-    expect(unread.get('ADD')?.events.size).toBe(429)
+    // `<ADD>` was most of the problem on its own — 429 of the 687 events, 1,724
+    // uses. It is a message terminator that leaves the window standing so the
+    // next message is drawn into it; `Run.continues` carries it now.
+    expect(unread.has('ADD')).toBe(false)
   })
 })

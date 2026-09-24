@@ -1150,9 +1150,30 @@ by whoever happened to be looking.
 `apps/game/test/text-coverage.test.ts` asks it of all of them.
 
 **5,157 texts across 687 events** — the plan's figure of 1,646 is a third of
-the real number. Of those, **nine render to nothing at all**, which is worse
-than a missing tag: the player gets a blank box and nothing says why. Which
-nine has not been looked at.
+the real number. Of those, **nine render to nothing at all**, which would
+normally be worse than a missing tag: the player gets a blank box and nothing
+says why.
+
+Having looked at which nine, **not one of them is a fault.** Eight are the
+same string in the quest events `ev50160`–`ev50224`:
+
+```
+<PAD_WAIT_NOCUR></QUEST><CLOSE>
+```
+
+— all control and no words, by construction. The ninth is `ev28792`:
+
+```
+<ALL_RECOVER=0,0,999>
+```
+
+which is not a text at all. **It is an action carried down the message
+channel** — the party healed by something written where a line would go — and
+it is the first sign that the markup is not only formatting. What the three
+arguments are is not established.
+
+So the number to watch is not nine going up but a *tenth kind* appearing,
+which is why the test now prints the offenders beside the count.
 
 **Twenty-three tags are unread**, and one of them is most of the problem:
 
@@ -1198,11 +1219,268 @@ tie the markup to the engine functions:
 - **`<CEN>` writes `win+0x19b8 = 1`** — a different byte, and the table's
   `CEN_ON>` / `CEN_OFF>` pair suggests it is a switch rather than a one-shot.
 
-`<GYOU=`, `<MOJI=`, `<COLOR=` and `<SKIP>` follow in the same chain and are not
-yet read.
+`<GYOU=`, `<MOJI=` and `<COLOR=` follow in the same chain, and reading it
+through gives the rest. All three are Japanese words for what they set, which
+is a useful reminder that the names are the authors' and not the localisers':
 
-**That is where the next of this work starts**: the list is known, the parser
-is located, and the measurement will show each one landing.
+- **`<GYOU=n>`** — 行, *line*. `win[0x9a4] = max(n, 1)`. How many lines the box
+  has.
+- **`<MOJI=w,h>`** — 文字, *character*. `win+0x1000[0x860] = w` and `[0x864] =
+  h`, **defaulting to 12 and 16** when either is given as zero or less. A DS
+  font cell.
+- **`<COLOR=…>`** — each component parsed as decimal and clamped to `0`–`255`,
+  a negative one coming out as `255`.
+
+None of the three is used by the cartridge's event text, so none is on the
+worklist; they are recorded because the chain had to be read anyway and
+because the defaults are the kind of thing that is expensive to rediscover.
+
+### The tags are a source form: they compile to two-byte codes
+
+There is a **second** parser, and it is a table rather than a chain. Every one
+of the eight tags the coverage test could not read — `<ADD>`, `<N_TURN>`,
+`</QUEST>`, `<QUEST=`, `<SHAKE>`, `<TIME=`, `<CEN_ON>`, `<WIN_ON>` — is
+referenced from one contiguous stretch of `0x020e7f9c`–`0x020e80bc`, which is
+what a dispatch table looks like and what scattered special cases do not.
+
+It is **40 entries of `{const char* tag, int (*handler)(…)}` at `0x020e7f84`**,
+running to `0x020e80c4`. Each plain handler has the same nine-instruction
+shape — load a 16-bit literal, `memcpy` two bytes to the output, return 2:
+
+```
+0206980c  push {r3, lr}          ; <ADD>
+02069810  ldr  r0, [r0]
+02069814  ldr  r3, [pc, #0x14]   ; → 0x02069830 = 0x0000ff0a
+02069818  add  r1, sp, #0
+0206981c  mov  r2, #2
+02069820  strh r3, [sp]
+02069824  bl   #0x2001a40        ; memcpy
+02069828  mov  r0, #2            ; bytes written
+0206982c  pop  {r3, pc}
+```
+
+So **the ASCII is a source form**: an authored `<ADD>` becomes the halfword
+`0xFF0A`, and what the tag *means* lives in whatever reads that code, not here.
+That is why the tag's name is no evidence of its behaviour — a point worth
+holding onto, because several of these names invite a guess.
+
+Read out of the table, handler by handler:
+
+| tag | handler | code | tag | handler | code |
+|---|---|---|---|---|---|
+| `<END>` | `0x02069f74` | `0xFF01` | `<YAME>` | `0x02069f4c` | `0xFF17` |
+| `<END_R_TURN>` | `0x02069e0c` | `0xFF02` | `<PAD_WAIT>` | `0x02069884` | `0xFF1D` |
+| `<CLOSE>` | `0x02069f9c` | `0xFF03` | `<PAD_WAIT_NOCUR>` | `0x020698fc` | `0xFF1F` |
+| `<YESNO>` | `0x02069ae4` | `0xFF04` | `<WIN_ON>` | `0x02069924` | `0xFF26` |
+| `<NOYES>` | `0x02069b0c` | `0xFF05` | `<WIN_OFF>` | `0x0206994c` | `0xFF27` |
+| `<YESNO_NOTSE>` | `0x02069b34` | `0xFF06` | `<CEN_ON>` | `0x02069974` | `0xFF28` |
+| `<YESNO_NOTSE_IIE>` | `0x02069b5c` | `0xFF07` | `<CEN_OFF>` | `0x0206999c` | `0xFF29` |
+| `<UKEYAME>` | `0x02069b84` | `0xFF08` | `<N_TURN>` | `0x02069de4` | `0xFF2B` |
+| `<ADD>` | `0x0206980c` | `0xFF0A` | `<R_TURN>` | `0x02069e34` | `0xFF2C` |
+| `<PAGE>` | `0x02069790` | `0xFF0D` | `<TURN_P>` | `0x02069e5c` | `0xFF2D` |
+| `<SHAKE>` | `0x02069fc4` | `0xFF0E` | `<EXC>` | `0x02069e84` | `0xFF2E` |
+| `<QUEST_SE>` | `0x02069ce0` | `0xFF0F` | `<QES>` | `0x02069eac` | `0xFF2F` |
+| `<QUEST_HAN>` | `0x02069d6c` | `0xFF11` | `<YES>` | `0x02069ed4` | `0xFF14` |
+| `</QUEST>` | `0x02069dbc` | `0xFF12` | `<NO>` | `0x02069efc` | `0xFF15` |
+| `<QUEST_FAILED>` | `0x02069d94` | `0xFF13` | `<UKE>` | `0x02069f24` | `0xFF16` |
+
+The remaining eight — `<PAGE_T=`, `<AUTO=`, `<TIME=`, `<PAD_T=`,
+`<ALL_RECOVER=`, `<ST=`, `<TURN=`, `<QUEST=` — take an argument and have
+longer handlers, and **their encoding is not yet read**. They are the ones
+ending in `=`, which is how the compiler tells them apart.
+
+**`<LB_x>` and `<JP_x>` are a range, not a prefix.** Their handlers
+(`0x02069bac`, `0x02069be4`) read the single character after the underscore,
+subtract `0x40` — the character before `A` — and add it to a base:
+
+```
+02069bb0  ldrsb r1, [r1]         ; the letter
+02069bb4  ldr   r2, [pc, #0x24]  ; → 0x02069be0 = 0x0000ffd0
+02069bbc  sub   r1, r1, #0x40
+02069bc4  add   r3, r2, r1, lsr #16
+```
+
+So `<LB_A>` is `0xFFD1` and `<JP_A>` is `0xFFE1`, and a label is **one letter,
+`A` to `O`** — sixteen slots each, of which the letter form can reach fifteen.
+`runLine` pairs them by name and so is unaffected, but it pins the limit.
+
+### The compiler, and how an argument is carried
+
+The loop that does all this is at **`0x0206a020`**, and reading it settles
+several things at once. It walks the authored string a character at a time:
+
+- **`\n`, CRLF and a bare LF all compile to `0xFF18`.** That is the line
+  break, confirmed three ways in the one function. It also **corrects an
+  earlier reading here**, which had the line-count scan at `0x0206b6b8`
+  stopping on `0xFF01`/`0xFF0B`/`0xFF0C` and counting `0xFF17`. Read from the
+  bases rather than recalled, that function loads `0xFF01` and forms
+  `r6 = +0xB`, `r5 = +0xC`, `r4 = +0x17` — so it stops on `0xFF01` (`<END>`),
+  `0xFF0C` and `0xFF0D` (`<PAGE>`), and counts **`0xFF18`**, the newline.
+  Every one of the four was off by one.
+- On `<` it finds the matching `>` and walks the table at `0x020e7f84`,
+  prefix-comparing with `func_020d85dc` and calling the handler with the output
+  pointer and the text just past the tag name. The handler's return value is
+  how far the output moved — which is why every plain one returns 2.
+- **Five tags are dropped on the floor.** If no table entry matched, a second
+  list at `0x020e7e74` — `<INN=`, `<CHURCH=`, `<BANK>`, `<SHOP`, `RENKIN` — is
+  compared, and a match causes the compiler to scan past the `>` and emit
+  *nothing*. So the services never reach the window at all; something upstream
+  reads them from the source. `talk.ts` reads them off the tokens, which turns
+  out to be the same arrangement.
+
+**An argument is not encoded in the stream. It is put in a slot, and the code
+carries the slot.** `<VOICE_VOLUME=n>` is the clearest case:
+
+```
+0206a1b0  bl   #0x2005a94          ; atoi, past the 14 characters of the name
+0206a1d8  strb r0, [r1, #0x94a]    ; → win + 0x1000 + 0x94a + slot
+0206a1dc  add  r0, r6, #0x4d
+0206a1e0  add  r3, r0, #0xff00     ; the code is 0xFF4D + slot
+0206a210  and  r6, r0, #3          ; and the slot rotates, four deep
+```
+
+So four voice volumes can be in flight in one message, at codes `0xFF4D`–
+`0xFF50`, and a fifth overwrites the first. That is very likely the mechanism
+the eight `=` tags use too, but **only `<VOICE_VOLUME=` has actually been
+read**; the others are still open.
+
+Two more come out of the same stretch, and they close the `<ME_>`/`<SE_>` line
+of the worklist:
+
+- **`<ME_nnn>` → `0xFF34 + n`**, the number parsed as decimal from the three
+  characters after the underscore (`add r0, r0, #0x334` then `add r3, r0,
+  #0xfc00`). A jingle, played where it stands.
+- **`<SE_nnn>` → `0xFF4B`**, and the number is looked up in a list held at
+  `0x020e7e04+0x24`. That list is **one entry long — `14`** — with `0xFFFF`
+  after it as a terminator, and the cartridge's text uses `<SE_014>` and
+  nothing else. The compiler and the content agree exactly.
+
+`runLine` now reads both as `SoundCue`s rather than text, which is what they
+are: they come *out* of the line instead of going into it.
+
+### One inference the codes settle
+
+`talk.ts` reads `<UKE>` and `<YAME>` as accept and decline, and says so as an
+`INFERRED` from the Japanese and from the system strings' ordering. The codes
+are better evidence than either: **`<YES>` `0xFF14`, `<NO>` `0xFF15`, `<UKE>`
+`0xFF16`, `<YAME>` `0xFF17`** are four consecutive values in the order their
+two prompts introduce them — `<YESNO>` then `<UKEYAME>`. The compiler was
+built round the pairing, so it is not a reading of the text any more.
+
+### What the codes do
+
+Read from the interpreter, not from the names. The interpreter is the message
+state machine at **`0x02065990`–`0x02066a60`**, and the reason a search for
+these constants finds nothing is that **it loads one literal — `0xFF4B` at
+`0x02066958` — and derives every comparand by subtraction.** Anyone looking
+for `cmp rX, #0xff0a` will conclude the code is dead.
+
+**`<ADD>` `0xFF0A` — the commonest tag on the cartridge, and not what it
+sounds like.** 429 of 687 events, 1,724 uses. Its arm at `0x02066048`:
+
+```
+02066054  mov r1, #3
+0206605c  str r1, [sl, #0x9a0]   ; wait-state 3
+02066060  bl  #0x2045688         ; stop the typing sound
+02066064  b   #0x2066a5c         ; return WITHOUT advancing the cursor
+```
+
+Nothing else in the ARM9 writes state 3. The payoff is at `0x0204513c`, where
+the next `ShowMessage` branches on it: state 3 takes the **append** path at
+`0x02044f3c`, which sets a continuation flag and rebuilds the text *without*
+the teardown the normal path does. So **`<ADD>` ends a message and leaves the
+window standing, so the next one is drawn into it.** It is punctuation between
+messages, not anything in the text — which is why it was invisible.
+
+**`<N_TURN>` `0xFF2B` is not a turn.** It is the second-commonest through NPC
+dialogue — 208 uses — and the compiled code has *no consumer anywhere*. It is
+handled as ASCII instead, in the prefix pass at `0x0206a3c0`, whose prologue
+runs before it looks at a single tag:
+
+```
+0206a3cc  mov  r0, #1
+0206a3e0  strb r0, [r2, #0x9b6]   ; a turn IS pending
+0206a3e4..0206a45c                 ; atan2(player − npc)
+0206a460  str  r0, [r1, #0x844]    ; target = face the player
+```
+
+**Every message turns the speaker to face you.** The tags only override that,
+and `<N_TURN>` is "no turn":
+
+```
+0206a498  ldr  r2, [r0, #0x83c]   ; the facing saved when the talk opened
+0206a4a0  str  r2, [r0, #0x844]
+0206a4a4  strb r1, [r0, #0x9b6]   ; r1 = 0 — flag CLEARED
+```
+
+The rest of the family, from the interpreter: **`<TURN_P>` `0xFF2D`** faces the
+party leader by the same `atan2`; **`<R_TURN>` `0xFF2C`** returns to the saved
+facing and makes the box wait for the rotation; **`<END_R_TURN>` `0xFF02`**
+does what `<END>` does *and* restores the facing without waiting;
+**`<TURN=n>` `0xFF2A`** is an absolute angle, `n × 4096` — fx32 radians, which
+agrees with §5's finding that engine angles are radians.
+
+**`<EXC>` and `<QES>`** are the balloons over a head. Both write `60` to
+`+0x959` and `1` to `+0x9b7`; they differ in one byte at `+0x95c` — 0 and 1 —
+and the sound asked for, 6 and 28. Sixty frames is a second.
+
+**`<SHAKE>` `0xFF0E`** shakes the **message window**, not the screen and not
+the text: `+0x19c0 = 1`, `+0x195d = 30` frames, and the offset comes from two
+four-byte tables at `0x020e7e10` and `0x020e7e1c` stepped on `timer & 3` —
+x = `{−2, 0, 0, 0}`, y = `{0, 0, −3, 0}`. Hardcoded; no operand.
+
+**`<TIME=n>` `0xFF1A`** is a pause of `n` ticks, decremented once per
+interpreter tick and holding the cursor on the code until it reaches zero. It
+is not a typing speed — that is `<AUTO=n>` `0xFF0B` and `<PAGE_T=n>` `0xFF0C`.
+
+**The quest family** acts on a quest bound by `<QUEST=n>` `0xFF10`, whose
+number the compiler turns into an index into a 204-entry active-quest list and
+stashes; the interpreter copies it onto the window. `<QUEST_HAN>` `0xFF11` and
+`<QUEST_FAILED>` `0xFF13` open a banner by identical code differing in one bit
+and a sound id; `</QUEST>` `0xFF12` closes it; `<QUEST_SE>` `0xFF0F` writes a
+packed word per quest and asks for the fanfare. **What `HAN` abbreviates is
+not established**, and neither is what the banner draws.
+
+**`<ALL_RECOVER=a,b,c>` `0xFF1B`** is the gameplay action found earlier as a
+blank text: two flags at `+0x19c6`/`+0x19c7` and a count at `+0x187e`, handed
+to an overlay. **What the two flags select is not established.**
+
+And the parameterised form in general, which one agent established and another
+corroborated: **an argument never enters the stream.** It is parsed as decimal
+at compile time and written into a window field, and the code carries only
+enough to find it. The consequence is worth stating because it is a real
+constraint on the format: **only the last `<QUEST=n>`, `<AUTO=n>` or
+`<PAGE_T=n>` in a message takes effect**, and `<ST=>` has exactly four slots.
+Corroboration that nothing is inline: the length helper at `0x0206abf8` gives
+a non-zero operand count for `0xFF20`–`0xFF25` and zero for everything else.
+
+### Two things this pass got wrong, and one it could not settle
+
+Recording these because the wrong ones were plausible:
+
+- An earlier note here had the line-count scan stopping on `0xFF0B`/`0xFF0C`
+  and counting `0xFF17`. Every one of those was off by one; corrected above.
+- One reading offered the table at `0x020e7efc` — `DEF_`, `INDEF_`, `NOM_`,
+  `GEN_`, `I_NAME`, `ACTOR`… — as "the sub-table for the `LB_`/`JP_`
+  handlers". **It is not.** `LB_` and `JP_` were read here directly and take
+  the single letter after the underscore; `0x020e7efc` is a separate
+  ASCII-to-ASCII substitution pass walked from `0x02069234`, which is also why
+  its `0xFF04`–`0xFF09` values do not collide with `<YESNO>`…`<UKEYAME>`.
+  A neat-looking adjacency in memory is not a relationship.
+- **`0xFF20`–`0xFF25` are emitted by nothing** in the ARM9 or any of the
+  overlays. `0xFF20` sets the running x to at least its operand and `0xFF23`
+  advances x by it — absolute and relative horizontal positioning — and the
+  other four have no consumer either. An authoring path that is not in this
+  build is the obvious guess and it stays a guess.
+
+**Where this leaves the worklist.** Event text went from twenty-three unread
+tags to six, and NPC dialogue from fourteen to five. What remains is of a
+different kind: `<.|>` and `<.|.|>` are not in the compiler's vocabulary at
+all, and `<tmap_sec1>`–`<str_5>`, `<val_2>` are values the engine supplies and
+this host has nothing to supply. `<WIN_ON>`/`<WIN_OFF>` are left deliberately:
+`<WIN>` writes 0 to the frame byte and the pair obviously toggles it, but
+obviously is not read, and this is the file where that distinction is the
+whole point.
 
 ## 7. Open questions
 
