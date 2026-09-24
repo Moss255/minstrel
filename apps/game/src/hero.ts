@@ -381,6 +381,17 @@ export function faceName(id: number): string | undefined {
  * A part the wardrobe has not got is left out rather than guessed at, which is
  * what `has` is for; a preset naming nothing for a slot uses 0 or
  * `0xFFFFFFFF`, and both fail `partName` or `has` and fall out the same way.
+ *
+ * **Except the body and legs, which the rig must have**, and there the same
+ * rule as {@link outfitOf}: the underclothes, {@link BARE_OUTFIT}. That is not
+ * a guess to paper over a gap — **the presets really do name legwear that is
+ * not on the cartridge**. Twelve of the twenty-nine want one of `p_p190`,
+ * `p_p201`, `p_p101`, `p_p102`, `p_p110` or `p_p112`, and none of the six is
+ * in `chara_pc.gp2` or `chara_pd.gp2` while their neighbours — `p_p191`,
+ * `p_p200`, `p_p202`, `p_p100`, `p_p103` — are. FORMAT.md notices two of them
+ * by hand ("her legwear 16190 naming no item"); the sweep found the rest.
+ * So bare legs under a preset's armour is the file's own arrangement, read
+ * the way the Hero's slots already are.
  */
 export function outfitOfPreset(
   preset: PresetOutfit,
@@ -391,10 +402,13 @@ export function outfitOfPreset(
     const name = partName(id)
     return name !== undefined && has(name) ? name : undefined
   }
-  const body = named(preset.armour)
-  const legs = named(preset.legwear)
-  // Without a body and legs there is nothing on the rig to dress, and a
-  // half-built figure is worse than saying so.
+  // The rig needs a body and legs, so these fall back to the underclothes and
+  // then to the Hero's own, exactly as `outfitOf` does for an empty slot.
+  const underneath = (id: number, bare: number, fallback: number): string | undefined =>
+    named(id) ?? named(bare) ?? named(fallback)
+  const body = underneath(preset.armour, BARE_OUTFIT.armour, HERO_OUTFIT.armour)
+  const legs = underneath(preset.legwear, BARE_OUTFIT.legwear, HERO_OUTFIT.legwear)
+  // Only when even the underclothes are missing is there nothing to dress.
   if (!body || !legs) return undefined
   const face = faceName(preset.face)
   const headgear = named(preset.headgear)
@@ -402,7 +416,7 @@ export function outfitOfPreset(
   const shield = named(preset.shield)
   const bones = CARRY_BONES[carry]
   // Gloves take the arms' place when there are any; otherwise the body's own.
-  const arms = named(preset.gloves) ?? named(preset.arms)
+  const arms = named(preset.gloves) ?? named(preset.arms) ?? named(armsFor(preset.armour) ?? 0)
   return {
     body,
     legs,

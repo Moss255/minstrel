@@ -210,15 +210,30 @@ file**. That is the end of the chain the phase was worried about: file →
 parser → outfit → assembled figure → drawn.
 
 `apps/game/test/presets-dressed.test.ts` asks it of all twenty-nine, and
-**sixteen dress**. The thirteen that do not are almost all one problem:
+**all twenty-nine dress**.
 
-- **Twelve name parts that are well-formed and not in `chara_pc.gp2`** —
-  `p_b501`, `p_p201`, `p_p190` and others. Whether they live in
-  `chara_pd.gp2`, the larger rig `FORMAT.md`'s "Character parts" mentions, is
-  **not established**. Five of the twelve want the same `p_p190`, so finding
-  that one archive would answer most of it at once.
-- **One is the file being odd**, and `FORMAT.md` already says so by hand:
-  preset 23's legwear is `8001`, which is in no part band and names nothing.
+It was sixteen first, and the thirteen were worth the chase. The failure said
+`armour X legwear Y — not in this wardrobe` and named both when only one was
+wrong: **every missing armour is in `chara_pc.gp2`.** Only the legwear was
+absent — and absent from `chara_pd.gp2` too, so the larger rig was not the
+answer either.
+
+The presets really do name legwear the cartridge has not got. Six parts
+between them — `p_p190`, `p_p201`, `p_p101`, `p_p102`, `p_p110`, `p_p112` —
+while their neighbours `p_p191`, `p_p200`, `p_p202`, `p_p100`, `p_p103` are
+all there. A seventh, preset 23's `8001`, is in no part band at all;
+`FORMAT.md` already noticed that one by hand.
+
+So the rig falls back to the underclothes, `p_p090`, which is the rule
+`outfitOf` has always used for an empty slot. Thirteen of the twenty-nine do
+that, and the test names them.
+
+**Why the file is like that — INFERRED, and only two were looked at.** Preset
+11 is a woman in a full-length orange dress and preset 23 a sage in a hooded
+robe to the ankles: **the body covers the legs, so there is no legwear to
+name.** That fits every borrower having a `b5xx`, `b6xx`, `b3xx` or `b0xx`
+body, and the other eleven have not been looked at. It also explains why the
+fallback is invisible rather than a character in their underwear.
 
 Two things in the dressing are **ours** and say so in the code. Hair: a preset
 names a face, armour, legwear, gloves, footwear, headgear, a weapon, a shield
@@ -318,9 +333,10 @@ with a test that now does exactly that round trip.
 - What writes the party slots and the count.
 - What vocation an attending character has. `attnpc` does not say, so whoever
   joins is given the Hero's.
-- **Where `p_p190`, `p_b501`, `p_p201` and the rest live.** Twelve of the
-  twenty-nine presets want parts that are not in `chara_pc.gp2`;
-  `chara_pd.gp2` is the obvious place and has not been looked in.
+- **Why six legwear parts the presets name are on neither archive.** The
+  reading — that those bodies are robes and dresses that cover the legs — is
+  INFERRED from looking at two of the thirteen. The other eleven have not
+  been looked at, and that is eyes-on work.
 - Where a preset's hair comes from, if anywhere: the record names none.
 - What the 75 item ids at the head of a preset are for.
 - What values 75, 77, 88, 89 and 92–101 of a preset mean.
