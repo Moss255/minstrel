@@ -781,9 +781,17 @@ const trailWas = new Int32Array((PARTY_MOST - 1) * 2)
 let marshCarry = 0
 /** One of those beside the Hero in the battle under way: who, their place in it, and their look. */
 interface BattleCompanion {
-  readonly id: number
+  /** Their number in `attnpc`; undefined for a created character. */
+  readonly id: number | undefined
   readonly index: number
-  readonly model: string
+  /** Their place in the party, which is their place in `dressed` too. */
+  readonly place: number
+  /**
+   * The whole model a story companion is drawn from, and its motion packs.
+   * **Undefined for a created character**, who is built out of parts like the
+   * Hero and posed from `dressed` instead — see `companionPiecesOf`.
+   */
+  readonly model: string | undefined
   readonly packs: readonly string[]
 }
 let battleCompanions: readonly BattleCompanion[] = []
@@ -3504,9 +3512,21 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
   // Only the story companions have a `.chr` model to show in a battle. What a
   // created character looks like in one is **not built** — see
   // `docs/party-and-vocations.md`; they fight, and nothing draws them.
-  battleCompanions = behind.flatMap(({ who }, i) =>
-    who ? [{ id: who.id, index: i + 1, ...companionLook(who) }] : [],
-  )
+  // **Everyone who fights is drawn**, whatever they are: a story companion
+  // from their whole `.chr`, a created character from the parts they are
+  // assembled out of. Their figure carries the battle motions the cues name —
+  // `attack1a`, `damage`, `death` — because it is built the same way the
+  // Hero's is.
+  battleCompanions = behind.map(({ who }, i): BattleCompanion => {
+    const look = who ? companionLook(who) : undefined
+    return {
+      id: who?.id,
+      index: i + 1,
+      place: i + 1,
+      model: look?.model,
+      packs: look?.packs ?? [],
+    }
+  })
   battleLooks = [...party.map(() => undefined), ...looks]
   battleSpots = [undefined, ...party.slice(1).map((_, i) => besideHero(i)), ...foeSpots]
   cueStarted = performance.now()
@@ -3767,8 +3787,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   if (!scene || !rom || !self) return []
   const fighter = scene.state.fighters[at.index]
   const spot = battleSpots[at.index]
-  const look = actorLookOf(rom, at.model, at.packs)
-  if (!fighter || !spot || !look) return []
+  if (!fighter || !spot) return []
   const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
   const cue = onShow.find((c) => c.fighter === at.index)
   // Fallen, but not yet told of: still standing.
@@ -3777,6 +3796,42 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   )
   const lying = fighter.hp <= 0 && toldOf
   const name = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
+
+  // **A created character is posed from the parts they are built of.** Their
+  // figure carries the same motion names a companion's model does, so the cue
+  // above needs no translating — see `dressParty`.
+  const built = at.model === undefined ? dressed[at.place] : undefined
+  if (built && loaded) {
+    const own = built.figure.motions.get(name) ?? built.figure.motions.get('stand')
+    const length = own?.frameCount ?? 1
+    const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
+    const at3 = cue
+      ? Math.min(since, length - 1)
+      : lying
+        ? length - 1
+        : Math.floor((now / 1000) * MAP_FPS) % Math.max(1, length)
+    return playerPieces(
+      {
+        ...self,
+        state: {
+          ...self.state,
+          x: fx32(Math.round(spot.x * FX32_ONE)),
+          y: fx32(Math.round(spot.y * FX32_ONE)),
+          z: fx32(Math.round(spot.z * FX32_ONE)),
+        },
+        facing: self.facing,
+        motionFrame: at3,
+      },
+      built.figure,
+      built.pieces,
+      loaded.catalogue,
+      measurements,
+      own,
+    )
+  }
+
+  const look = at.model === undefined ? undefined : actorLookOf(rom, at.model, at.packs)
+  if (!look) return []
   const motion = look.motions.get(name) ?? look.motions.get('stand')
   const length = motion?.frameCount ?? 1
   const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
@@ -3794,7 +3849,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     facing: self.facing,
     offset: 0,
   } as NpcPlacement
-  const member = { name: at.model, model: look.model, motion, floor: look.floor, placement }
+  const member = { name: at.model ?? '', model: look.model, motion, floor: look.floor, placement }
   return [
     ...castPieces(member, look.catalogue, characterScale, frame),
     // What they hold, in their hands — see `heldOf`.
@@ -3996,7 +4051,8 @@ function settleBattle(): void {
     const fighter = battle.state.fighters[at.index]
     if (!fighter) continue
     const left = battle.state.outcome === 'lost' ? fighter.maxHp : Math.max(1, fighter.hp)
-    const along = memberOf(at.id)
+    // By their place, so a created character keeps their wounds too.
+    const along = members[at.place]
     if (along) along.hp = left >= fighter.maxHp ? undefined : left
   }
   battle = { ...withPages(battle, lines), settled: true }
@@ -4238,6 +4294,9 @@ function witnessHook(): void {
       id: m.placement.id,
       name: m.name,
     })),
+    // What the Hero's assembled figure can be posed with, which is also what
+    // a created character can: they are built the same way.
+    motions: [...here.figure.motions.keys()],
     // The party, so that what came back from a save can be read from outside
     // rather than counted off a canvas — see `Member`.
     party: members.map((member) => ({

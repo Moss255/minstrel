@@ -307,6 +307,19 @@ the field, the mini-map and the battle all did — would have put a created
 character in somebody else's footsteps the moment one walked in front of a
 story companion. `followersNow` keys by place instead.
 
+### A created character stands in a battle
+
+**Done, 24 September 2026.** They fought and nothing drew them:
+`battleCompanions` held only story companions, because only those have a
+`.chr` model. A created character is posed from the parts they are assembled
+out of, the same way the Hero is — and it needed no translating, because
+**their figure carries the same motion names a companion's model does**:
+`attack1a`, `damage`, `death`, `guard`, `magic`, `stand`. The cue table
+`COMPANION_MOTIONS` already spoke both languages without anyone noticing.
+
+Their wounds are kept by their place in the party rather than by an `attnpc`
+number, which a created character has not got.
+
 ### What is still missing, and why
 
 None of this is guesswork about the game; it is work not done. Listed so that
@@ -323,10 +336,6 @@ what the phase left behind is visible rather than discovered later.
 - **The skill trees.** Only the 12×5 table of tree *numbers* is read — no
   panels, costs, abilities or unlock levels — and skill points are read and
   shown and **cannot be spent**.
-- **A created character in a battle scene.** They fight, and nothing draws
-  them: `battleCompanions` only has entries for story companions, because
-  only those have a `.chr` model to show. What the game draws for an
-  assembled character in a battle has not been looked at.
 - **Per-member equipment.** Every place has an `equipped` of its own and the
   equip panel still acts on the leader, so a companion's cannot be changed.
 - **Per-member spells.** `spellsLearnt` is asked with the leader's vocation
