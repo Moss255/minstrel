@@ -1,5 +1,12 @@
 import type { Outfit } from '@minstrel/actor'
-import { armsFor, type LevelRow, type LevelTable, levelAt, partName } from '@minstrel/game-formats'
+import {
+  armsFor,
+  type LevelRow,
+  type LevelTable,
+  levelAt,
+  type PresetOutfit,
+  partName,
+} from '@minstrel/game-formats'
 import type { Equipped, Slot } from './equipment.ts'
 
 /**
@@ -343,4 +350,71 @@ export function levelGainsText(before: LevelRow, after: LevelRow): string {
     const moved = after[stat] - before[stat]
     return `${label} ${moved < 0 ? '' : '+'}${moved}`
   }).join(' · ')
+}
+
+/**
+ * The face a preset's value 78 names: `9000` and its number, so `9006` is
+ * `p_f006`.
+ *
+ * **INFERRED** (FORMAT.md, "Character presets"): on all 41 presets in
+ * `charapreset.bin` and `presetdt` the value lands on a face file that exists,
+ * and it is `f006` on every man's vocation record and `f005` on every woman's.
+ * It is kept apart from {@link partName} because that answers "which part is
+ * this *item* worn as", and no item is a face.
+ */
+export function faceName(id: number): string | undefined {
+  return Number.isInteger(id) && Math.floor(id / 1000) === 9
+    ? `p_f${String(id % 1000).padStart(3, '0')}`
+    : undefined
+}
+
+/**
+ * A character preset, dressed — see `readCharacterPresets`.
+ *
+ * This is `outfitOf`'s sibling: that one dresses whoever is wearing a set of
+ * equipment, this one dresses a ready-made character out of the ids the file
+ * gives. **Hair is not among them.** A preset names a face, armour, legwear,
+ * gloves, footwear, headgear, a weapon, a shield and the arms, and nothing
+ * about hair at all — so the hair here is the Hero's, and **ours**, exactly as
+ * it is everywhere else until character creation offers a choice.
+ *
+ * A part the wardrobe has not got is left out rather than guessed at, which is
+ * what `has` is for; a preset naming nothing for a slot uses 0 or
+ * `0xFFFFFFFF`, and both fail `partName` or `has` and fall out the same way.
+ */
+export function outfitOfPreset(
+  preset: PresetOutfit,
+  carry: Carry,
+  has: (name: string) => boolean,
+): Outfit | undefined {
+  const named = (id: number): string | undefined => {
+    const name = partName(id)
+    return name !== undefined && has(name) ? name : undefined
+  }
+  const body = named(preset.armour)
+  const legs = named(preset.legwear)
+  // Without a body and legs there is nothing on the rig to dress, and a
+  // half-built figure is worse than saying so.
+  if (!body || !legs) return undefined
+  const face = faceName(preset.face)
+  const headgear = named(preset.headgear)
+  const weapon = named(preset.weapon)
+  const shield = named(preset.shield)
+  const bones = CARRY_BONES[carry]
+  // Gloves take the arms' place when there are any; otherwise the body's own.
+  const arms = named(preset.gloves) ?? named(preset.arms)
+  return {
+    body,
+    legs,
+    ...(face && has(face) ? { face } : {}),
+    hair: HERO_HAIR.model,
+    ...(headgear ? { headgear } : {}),
+    textures: [arms, named(preset.footwear), HERO_HAIR.colour].filter(
+      (name): name is string => name !== undefined && has(name),
+    ),
+    attached: [
+      ...(weapon ? [{ part: weapon, bone: bones.weapon }] : []),
+      ...(shield ? [{ part: shield, bone: bones.shield }] : []),
+    ],
+  }
 }

@@ -14,6 +14,7 @@ import {
   type ActionRange,
   type AttendingCharacter,
   type BattleZone,
+  type CharacterPreset,
   type EventBattle,
   type EventMessage,
   type FieldMonster,
@@ -43,6 +44,7 @@ import {
   readActions,
   readAttendingCharacters,
   readBattleEncounters,
+  readCharacterPresets,
   readEventBattles,
   readEventMessages,
   readFieldEncounters,
@@ -110,6 +112,8 @@ export interface Loaded {
   readonly figure: Figure
   /** The parts the Hero is dressed from, to dress them again in what they wear — see `outfitOf`. */
   readonly wardrobe: Library
+  /** The ready-made characters — see `readCharacterPresets`. */
+  readonly presets: readonly CharacterPreset[]
   readonly pieces: readonly FigurePiece[]
   /** Who else stands in this map. */
   readonly cast: Cast
@@ -969,6 +973,29 @@ function attendingOf(rom: Uint8Array): readonly AttendingCharacter[] {
   return found
 }
 
+const PRESETS_FILE = '/data/bin/charapreset.bin'
+const presetsRead = new WeakMap<Uint8Array, readonly CharacterPreset[]>()
+
+/**
+ * The ready-made characters — see `readCharacterPresets`. Empty when the file
+ * will not read, which leaves nobody to dress from one.
+ */
+function presetsOf(rom: Uint8Array): readonly CharacterPreset[] {
+  const already = presetsRead.get(rom)
+  if (already) return already
+  let found: readonly CharacterPreset[] = []
+  for (const leaf of scanCartridge(rom, { pathFilter: PRESETS_FILE })) {
+    if (leaf.path !== PRESETS_FILE) continue
+    try {
+      found = readCharacterPresets(leaf.bytes)
+    } catch {
+      // A file that will not read leaves nobody to dress from a preset.
+    }
+  }
+  presetsRead.set(rom, found)
+  return found
+}
+
 const SHOP_TABLE = '/data/bin/menu/shopdata1.bin'
 const shopsRead = new WeakMap<Uint8Array, Map<number, Shop>>()
 
@@ -1795,6 +1822,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     levels: levelsOf(rom),
     shops: shopsOf(rom),
     attending: attendingOf(rom),
+    presets: presetsOf(rom),
     mapCodeOf: codeOf(cat),
     goods: goodsOf(rom),
     itemResistances: itemBattleOf(rom),

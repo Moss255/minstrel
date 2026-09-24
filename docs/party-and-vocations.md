@@ -200,6 +200,33 @@ vocation, because **`attnpc` has no vocation field at all** — it carries a
 level, stats, a weapon and a shield. What vocation an attending character has
 is not read, and until it is, anyone who joins is a Minstrel.
 
+### A preset can be dressed, and sixteen of twenty-nine are
+
+**Done, 24 September 2026.** `outfitOfPreset` turns a preset's ids into the
+`Outfit` that `dressFigure` takes, and `?preset=n` puts one on screen. Preset
+0, the warrior, comes up in red armour and a helm with a sword and shield on
+his back — **somebody who is not the slice's hardcoded Hero, built out of the
+file**. That is the end of the chain the phase was worried about: file →
+parser → outfit → assembled figure → drawn.
+
+`apps/game/test/presets-dressed.test.ts` asks it of all twenty-nine, and
+**sixteen dress**. The thirteen that do not are almost all one problem:
+
+- **Twelve name parts that are well-formed and not in `chara_pc.gp2`** —
+  `p_b501`, `p_p201`, `p_p190` and others. Whether they live in
+  `chara_pd.gp2`, the larger rig `FORMAT.md`'s "Character parts" mentions, is
+  **not established**. Five of the twelve want the same `p_p190`, so finding
+  that one archive would answer most of it at once.
+- **One is the file being odd**, and `FORMAT.md` already says so by hand:
+  preset 23's legwear is `8001`, which is in no part band and names nothing.
+
+Two things in the dressing are **ours** and say so in the code. Hair: a preset
+names a face, armour, legwear, gloves, footwear, headgear, a weapon, a shield
+and the arms, and **nothing about hair at all**, so every preset wears the
+Hero's until character creation offers a choice. And the face mapping —
+`9006` to `p_f006` — is INFERRED, from `FORMAT.md`'s note that the value lands
+on a face that exists across all 41 presets.
+
 ### What is still missing
 
 Alltrades and the change flow; the skill trees, of which only the 12×5 table
@@ -291,6 +318,10 @@ with a test that now does exactly that round trip.
 - What writes the party slots and the count.
 - What vocation an attending character has. `attnpc` does not say, so whoever
   joins is given the Hero's.
+- **Where `p_p190`, `p_b501`, `p_p201` and the rest live.** Twelve of the
+  twenty-nine presets want parts that are not in `chara_pc.gp2`;
+  `chara_pd.gp2` is the obvious place and has not been looked in.
+- Where a preset's hair comes from, if anywhere: the record names none.
 - What the 75 item ids at the head of a preset are for.
 - What values 75, 77, 88, 89 and 92–101 of a preset mean.
 - Everything else in §2, and the rest of §3.

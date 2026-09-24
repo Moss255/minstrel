@@ -1,4 +1,4 @@
-import { dressFigure, figurePieces, figureScale, Measurements } from '@minstrel/actor'
+import { dressFigure, figurePieces, figureScale, Measurements, type Outfit } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
@@ -174,6 +174,7 @@ import {
   HERO_VOCATION_NUMBER,
   levelGainsText,
   outfitOf,
+  outfitOfPreset,
   STARTING_EQUIPMENT,
   STARTING_GOLD,
   standing,
@@ -1008,6 +1009,9 @@ function begin(bytes: Uint8Array, map: string): void {
   // clamped to the table's ends; see `levelTo`.
   const level = Number(params.get('level'))
   if (Number.isInteger(level) && level > 0) levelTo(level)
+  // `?preset=3` dresses the Hero as a ready-made character — see `showPreset`.
+  const asPreset = params.get('preset')
+  if (asPreset !== null && /^\d+$/.test(asPreset)) showPreset(Number(asPreset))
   if (wantedEvent !== undefined) startEvent(wantedEvent)
   else playEntryEvent()
   // `?talk=12` stands the Hero behind cast member 12 and talks to them —
@@ -4242,8 +4246,57 @@ function dressHero(): void {
   if (!loaded) return
   const wardrobe = loaded.wardrobe
   const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-  const figure = dressFigure(wardrobe, outfitOf(leader().equipped, battle ? 'hands' : 'back', has))
+  // `?preset=n` dresses the Hero as the nth ready-made character instead of
+  // in what they wear — **ours, and for looking**. Character creation is what
+  // this becomes; until then it is the only way to see that the presets read,
+  // that a vocation's outfit is a set of parts the wardrobe has, and that
+  // `dressFigure` builds somebody who is not the slice's hardcoded Hero.
+  const outfit = presetOutfit ?? outfitOf(leader().equipped, battle ? 'hands' : 'back', has)
+  const figure = dressFigure(wardrobe, outfit)
   loaded = { ...loaded, figure, pieces: figurePieces(figure) }
+}
+
+/** The preset the Hero is being shown as, if `?preset=` asked for one. */
+let presetOutfit: Outfit | undefined
+
+/**
+ * Dress the Hero as a preset, by its place in `charapreset.bin`. What the
+ * status line says is what a person needs to judge it: which one, how it is
+ * dressed, and what was missing.
+ */
+function showPreset(at: number): void {
+  if (!loaded) return
+  const preset = loaded.presets[at]
+  if (!preset) {
+    status(`no preset ${at}; the cartridge has ${loaded.presets.length}`)
+    return
+  }
+  const wardrobe = loaded.wardrobe
+  const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
+  const outfit = outfitOfPreset(preset.outfit, 'back', has)
+  if (!outfit) {
+    // Say which, and what it was looking for: "no body or legs" on its own
+    // tells nobody whether the file is odd or the wardrobe is short.
+    const want = (id: number) => `${id} (${partName(id) ?? 'no part name'})`
+    status(
+      `preset ${at} will not dress: armour ${want(preset.outfit.armour)}` +
+        ` legwear ${want(preset.outfit.legwear)} — not in this wardrobe`,
+    )
+    return
+  }
+  presetOutfit = outfit
+  dressHero()
+  const o = preset.outfit
+  const missing = (['headgear', 'weapon', 'shield'] as const).filter((slot) => {
+    const name = partName(o[slot])
+    return name !== undefined && !has(name)
+  })
+  status(
+    `preset ${at} of ${loaded.presets.length} · ${preset.sex === 0 ? 'man' : 'woman'}` +
+      ` · ${outfit.body} ${outfit.legs}${outfit.face ? ` ${outfit.face}` : ''}` +
+      ` · ${outfit.attached?.length ?? 0} carried, ${outfit.textures?.length ?? 0} textures` +
+      (missing.length > 0 ? ` · not in the wardrobe: ${missing.join(' ')}` : ''),
+  )
 }
 
 /** How high over the Hero's feet the mark stands, in a person's heights: above their head. Ours. */
