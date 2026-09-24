@@ -157,6 +157,26 @@ lives; this is the gathered list.
 
 ## 3. Read and not modelled
 
+- **`ev03030` in Stornway plays with the camera inside a wall** (24 September
+  2026, found by the area's first Phase 3 checkpoint — `docs/areas.md`). The
+  scene moves the Hero to `0.73, -0.06, -3.88`, against the north wall, and
+  the view is masonry. The text is right and nothing reports a fault.
+
+  What has been ruled out: the scene's own camera *is* what occlusion is
+  computed from — `aimAtShot` sets `camera.focus` at `main.ts:1626`, before
+  `occludedChunks` runs at `:1638`. And the mechanism works elsewhere: the
+  castle's throne room hides two wall chunks in the same run.
+
+  **Not established:** why `occludedChunks` hides nothing there. The overlay
+  shows no chunk count at all, so it returned empty — either the wall's box
+  does not test as between eye and focus (both may be inside it), or the wall
+  is in `mapBackdrop` and exempt. Whether the game shows this scene from
+  somewhere else entirely has not been looked at.
+
+  **The witness cannot see this class of fault.** It reads the status line and
+  checks a map was drawn; a view of the inside of a wall passes both. Worth
+  keeping in mind for every "0 worth a look" it reports.
+
 - **`<TURN=n>`'s absolute angle** (24 September, `docs/event-scripts.md` §7a).
   The rest of the turn family is now done — `turnSpeaker` in `main.ts` turns
   the speaker through `castPlaced`, and `talk-coverage.test.ts` pins the
