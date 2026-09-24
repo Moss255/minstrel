@@ -143,10 +143,27 @@ What makes the remaining areas cheap.
   **Measured, 24 September 2026**: `apps/game/test/text-coverage.test.ts` runs
   every event's English text through the game's own renderer. There are
   **5,157 texts in 687 events**, not 1,646 — the figure above was a third of
-  the real number. Nine render to nothing at all; **23 tags are unread**, and
-  `<ADD>` alone is in 429 of the 687 events. The game's own vocabulary of 127
-  tags has been found at `0x020f0600` and its parser at `0x0206a6b0`, so the
-  worklist is known and sequenced. Implementing them is the work that remains.
+  the real number. Nine render to nothing at all; **23 tags were unread**, and
+  `<ADD>` alone was in 429 of the 687 events.
+
+  **Read, 24 September 2026.** Reading them one at a time would have been the
+  wrong shape of work: every tag the measurement could not read is reachable
+  from **one 40-entry dispatch table** in the ARM9, and the tags turn out to
+  be a *source form* — each compiles to a two-byte control code, so the
+  meaning lives in the interpreter and not in the name. Two of the commonest
+  were traps. `<ADD>` is not an "add": it ends a message and leaves the window
+  standing for the next. `<N_TURN>` is not a turn: every message turns the
+  speaker to face the player, and it is the one that says *don't*.
+
+  Event text went **23 unread tags to 6**, NPC dialogue **14 to 5**, and what
+  is left is of a different kind — two tags the compiler has no entry for and
+  four values the engine supplies. The nine blank texts were looked at and
+  none is a fault. `docs/event-scripts.md` §7a has the whole reading, and it
+  is also a wiki page.
+
+  Not everything read is acted on: the speaker's facing is carried but nothing
+  here turns a speaker yet, and the quest banner is read but not drawn. The
+  doc comments say which is which rather than implying otherwise.
 - **Make a witness cheap** — jump to any map at any stage, a save state, and
   let's-play frames lined up against ours. See "The bottleneck moves" below:
   this is the highest-value work in the phase, because Phase 3 is paced by it

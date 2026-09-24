@@ -157,6 +157,28 @@ lives; this is the gathered list.
 
 ## 3. Read and not modelled
 
+- **The speaker's facing, and the whole turn family** (24 September,
+  `docs/event-scripts.md` §7a). Every message the game shows turns the speaker
+  to face the player, and `<N_TURN>` — 208 uses through NPC dialogue, the
+  second-commonest tag there — is the one that suppresses it. `<R_TURN>`,
+  `<END_R_TURN>`, `<TURN_P>` and `<TURN=n>` are the rest. `runLine` carries all
+  five on `Run.turn`; **nothing here turns a speaker at all yet**, so a
+  character who should look up when spoken to does not, and one the text is
+  careful to leave alone is indistinguishable from them.
+- **The quest banner** (24 September). `<QUEST=n>` binds a quest to the box and
+  `<QUEST_HAN>` / `<QUEST_FAILED>` / `</QUEST>` / `<QUEST_SE>` open, close and
+  commit a banner over it. All five are read onto `Run.quest`; none is drawn,
+  and what the banner looks like has not been read either — only the request
+  bits that ask for it.
+- **`<ALL_RECOVER=a,b,c>`** (24 September): a gameplay action written where a
+  line of dialogue would go — one event's entire message is that single tag.
+  It is carried on `Run.restore` and does nothing. **What its two flags select
+  is not established**, so they are named `flagA` and `flagB` rather than
+  guessed at.
+- **`<ADD>`'s continuation** (24 September): the game leaves the window
+  standing so the next message is drawn *into* it, continuing mid-line if the
+  text says so. `Run.continues` records it; this host starts the next message
+  on a fresh page. 1,724 uses, so if any of this shows, it is this.
 - **The wards, and the two statuses that shift a resistance** — a quarter off
   fire or ice for five turns, a half against one family of monsters for four,
   and a flat 25 either way on everything but a plain blow. Read 22 September
