@@ -14,6 +14,7 @@
  *     --out <dir>          destination directory for --extract (default ./out)
  *     --limit <n>          cap listing output (default 200, 0 for no cap)
  *     --regions            list every map that names a region, with its code
+ *     --recipes            list every alchemy recipe, with its ingredients
  *
  * Everything this prints or writes is derived from the cartridge. Keep it in
  * `out/`, which is gitignored, and never commit it.
@@ -21,8 +22,16 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { isMapList, readMapList } from '@minstrel/game-formats'
-import { tryDecompressLz10 } from '@minstrel/nitro-comp'
+import {
+  isMapList,
+  type Recipe,
+  readItemKinds,
+  readItemNames,
+  readMapList,
+  readRecipes,
+} from '@minstrel/game-formats'
+import { readGpc } from '@minstrel/l5-gpc'
+import { decompressIfNeeded, tryDecompressLz10 } from '@minstrel/nitro-comp'
 import {
   checkHeaderIntegrity,
   gameCodeRegion,
@@ -47,6 +56,7 @@ interface Options {
   limit: number
   deep: boolean
   regions: boolean
+  recipes: boolean
 }
 
 /**
@@ -82,6 +92,122 @@ function printRegions(fs: ReturnType<typeof readNitroFs>): void {
   }
 }
 
+/** One member of a `.gp2` archive, decompressed; undefined where there is none. */
+function gpcMember(
+  fs: ReturnType<typeof readNitroFs>,
+  path: string,
+  want: RegExp,
+): Uint8Array | undefined {
+  const file = [...walkFiles(fs.root)].find((f) => f.path.toLowerCase() === path)
+  if (!file) return undefined
+  let archive: ReturnType<typeof readGpc>
+  try {
+    archive = readGpc(fs.read(file))
+  } catch {
+    return undefined
+  }
+  for (const member of archive.members) {
+    if (want.test(member.name)) return decompressIfNeeded(archive.read(member))
+  }
+  return undefined
+}
+
+/**
+ * The combining mark each accent tag stands for — see `latin-text.ts` in the
+ * game, which spells them the other way round: é is `<'e>`, ü is `<:u>`.
+ */
+const ACCENTS: Readonly<Record<string, string>> = {
+  "'": '\u0301',
+  '`': '\u0300',
+  '^': '\u0302',
+  ':': '\u0308',
+  '~': '\u0303',
+  ',': '\u0327',
+}
+
+/** The characters the text spells with a tag of their own. */
+const SPELLED: Readonly<Record<string, string>> = {
+  '<1>': '\u2019',
+  '<,>': ',',
+  '<-->': '\u2014',
+  '<ss>': '\u00df',
+  '<ae>': '\u00e6',
+  '<AE>': '\u00c6',
+  '<oe>': '\u0153',
+  '<OE>': '\u0152',
+  '<<>': '<',
+  '<>>': '>',
+}
+
+/**
+ * An item name as the text box would show it.
+ *
+ * The names carry the message system's own markup — `warrior<1>s sword` is an
+ * apostrophe and `<:u>ber falcon blade` is a diaeresis — and this CLI has no
+ * message machinery. It handles the tags the item names use and **leaves
+ * anything else visible**, so an unhandled one shows up as itself rather than
+ * vanishing.
+ */
+export function plainName(name: string): string {
+  let out = name
+  for (const [tag, character] of Object.entries(SPELLED)) out = out.split(tag).join(character)
+  return out.replace(/<(['`^:~,])([A-Za-z])>/g, (_, mark: string, letter: string) =>
+    `${letter}${ACCENTS[mark] ?? ''}`.normalize('NFC'),
+  )
+}
+
+/**
+ * Every alchemy recipe, with its ingredients named.
+ *
+ * **Its output is the cartridge's own data**, so it is printed and never
+ * written into the repository — the same rule as `--regions`. See
+ * `packages/game-formats/FORMAT.md`, "Alchemy recipes", for what the fields
+ * are and how the reading was checked.
+ *
+ * Tab-separated, so it can be pasted or piped into whatever wants it.
+ */
+function printRecipes(fs: ReturnType<typeof readNitroFs>): void {
+  const file = gpcMember(fs, '/data/bin/recipe.gp2', /recipe_en\.bin/i)
+  if (!file) {
+    console.log('\nno /data/bin/recipe.gp2 on this cartridge')
+    return
+  }
+  let recipes: Recipe[]
+  try {
+    recipes = readRecipes(file)
+  } catch (error) {
+    console.log(`\nrecipe.gp2 does not read: ${(error as Error).message}`)
+    return
+  }
+  const namesFile = gpcMember(fs, '/data/prm/itemname.gp2', /itemname_en\.nat/i)
+  const names = new Map(
+    (namesFile ? readItemNames(namesFile) : []).map((one) => [one.id, plainName(one.singular)]),
+  )
+  const sortFile = gpcMember(fs, '/data/prm/itemsort.gp2', /itemsort_en\.bin/i)
+  const kinds = sortFile ? readItemKinds(sortFile) : new Map()
+  const name = (id: number) => names.get(id) ?? `item ${id}`
+
+  console.log(`\nAlchemy — ${recipes.length} recipes`)
+  console.log('id\tcategory\tsubtype\tmakes\tingredients\tchance\tinstead\tfallback\torder')
+  for (const recipe of [...recipes].sort((a, b) => a.order - b.order)) {
+    const kind = kinds.get(recipe.makes)
+    const wants = recipe.ingredients.map(({ item, count }) => `${count}× ${name(item)}`).join(' + ')
+    console.log(
+      [
+        recipe.id,
+        kind?.category ?? recipe.category,
+        kind?.subtype ?? recipe.subtype,
+        name(recipe.makes),
+        wants,
+        recipe.chance,
+        recipe.instead ?? '',
+        recipe.fallback ?? '',
+        recipe.order,
+      ].join('\t'),
+    )
+  }
+}
+
 /** A file's bytes, decompressed if it is packed. */
 function readFileBytes(fs: ReturnType<typeof readNitroFs>, file: NitroFile): Uint8Array {
   const raw = fs.read(file)
@@ -98,7 +224,7 @@ function parseArgs(argv: string[]): Options {
       continue
     }
     const name = arg.slice(2)
-    if (name === 'tree' || name === 'deep' || name === 'regions') {
+    if (name === 'tree' || name === 'deep' || name === 'regions' || name === 'recipes') {
       flags.set(name, 'true')
       continue
     }
@@ -115,6 +241,7 @@ function parseArgs(argv: string[]): Options {
     tree: flags.has('tree'),
     deep: flags.has('deep'),
     regions: flags.has('regions'),
+    recipes: flags.has('recipes'),
     find: flags.get('find'),
     ext: flags.get('ext'),
     kind: flags.get('kind'),
@@ -327,6 +454,7 @@ async function main(): Promise<void> {
   }
 
   if (options.regions) printRegions(fs)
+  if (options.recipes) printRecipes(fs)
 
   const listing = catalogued.filter((c) => {
     if (options.find && !c.file.path.toLowerCase().includes(options.find.toLowerCase()))

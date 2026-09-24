@@ -69,6 +69,10 @@ wherever you like — **and do not commit it.** It is the cartridge's own text,
 which rule 1 of `CLAUDE.md` keeps out of this repository; the tool exists so
 the list can be made from your own dump whenever you want it instead.
 
+`--recipes` is the same arrangement for the [alchemy
+recipes](https://github.com/DQIX/wiki/wiki/Alchemy-Recipes): all 470 with
+their ingredients named, tab-separated, printed and never written here.
+
 The codes themselves are internal identifiers and carry no such weight, so a
 few are worth knowing by heart:
 
