@@ -136,7 +136,16 @@ const base = `http://localhost:${port}/`
  * the first reads it from there instead of over the wire. That is the whole
  * trick: the first shot pays for the dump and the rest do not.
  */
-const common = [`rom=/rom.nds`, 'keep=1', stage && `stage=${stage}`, time && `time=${time}`]
+// `probe=1` puts the camera on `window` — see `crowded` below and
+// `docs/regions.md`. It allocates per frame, which is why the game does not
+// do it unless asked, and why every view here asks.
+const common = [
+  `rom=/rom.nds`,
+  'keep=1',
+  'probe=1',
+  stage && `stage=${stage}`,
+  time && `time=${time}`,
+]
   .filter(Boolean)
   .join('&')
 
@@ -217,6 +226,25 @@ const TROUBLE = new RegExp(
  */
 const GUESSED = /—\s*a guess\b/i
 
+/**
+ * How far in the camera has to come before the view stops being worth
+ * trusting.
+ *
+ * **This is the fault the witness could not see.** Stornway's `ev03030` drew
+ * the inside of a wall and every check here passed: the page did not say
+ * "failed", the overlay named the map, and the status line complained about
+ * nothing, because nothing here knows what geometry looks like from within.
+ *
+ * Now that the camera pulls in short of whatever is between it and what it is
+ * looking at, how far it had to come is the tell. A view where it kept the
+ * distance it wanted is unobstructed; one where it gave up most of it is a
+ * close-up of somebody's back, whether or not anything says so.
+ *
+ * Reported and not counted as trouble, like a guessed line: a legitimate
+ * close shot pulls in too, and the point is to put it in front of a person.
+ */
+const CROWDED = 0.6
+
 const STYLE = `<style>
   :root { color-scheme: dark }
   body { margin: 0; padding: 24px; background: #14161a; color: #e6e8ec;
@@ -273,11 +301,26 @@ async function witness(area) {
     // that does not mention the area means no map was drawn. And the status
     // line is the game's own account of what went wrong, so it is read for
     // trouble rather than only shown.
+    // What the camera came to — see `CROWDED`.
+    const cam = await evaluate('JSON.stringify(window.__cam ?? null)')
+    const seen = cam ? JSON.parse(cam) : undefined
+    const crowded =
+      seen && seen.wanted > 0 && seen.distance < seen.wanted * CROWDED
+        ? seen.distance / seen.wanted
+        : undefined
     const blank = !where.toUpperCase().includes(expect.toUpperCase())
     const guessed = GUESSED.test(status)
     const wrong = !guessed && TROUBLE.test(status)
-    shots.push({ file, label, where, status, guessed, concern: blank || wrong })
-    const note = blank ? ' — NO MAP DRAWN' : wrong ? ' — trouble' : guessed ? ' — a guess' : ''
+    shots.push({ file, label, where, status, guessed, crowded, concern: blank || wrong })
+    const note = blank
+      ? ' — NO MAP DRAWN'
+      : wrong
+        ? ' — trouble'
+        : crowded !== undefined
+          ? ` — camera crowded to ${Math.round(crowded * 100)}%`
+          : guessed
+            ? ' — a guess'
+            : ''
     console.log(`  ${label} — ${status || where}${note}`)
     return blank ? undefined : await plan()
   }
@@ -355,6 +398,7 @@ async function witness(area) {
   const failed = shots.filter((s) => s.failed).length
   const concerns = shots.filter((s) => s.concern).length
   const guesses = shots.filter((s) => s.guessed).length
+  const crowded = shots.filter((s) => s.crowded !== undefined).length
   writeFileSync(
     join(outDir, 'index.html'),
     `<!doctype html>
@@ -362,7 +406,7 @@ async function witness(area) {
 <title>witness ${esc(area)}</title>
 ${STYLE}
 <h1>witness · ${esc(area)}${stage ? ` · stage ${esc(stage)}` : ''}${time ? ` · ${esc(time)}` : ''}</h1>
-<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''}${guesses ? ` · <span class="guess">${guesses} the game guessed</span>` : ''} · ${esc(new Date().toISOString())}</p>
+<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''}${guesses ? ` · <span class="guess">${guesses} the game guessed</span>` : ''}${crowded ? ` · <span class="guess">${crowded} with the camera crowded</span>` : ''} · ${esc(new Date().toISOString())}</p>
 <div class="grid">
 ${shots
   .map(
@@ -371,7 +415,7 @@ ${shots
     <figcaption>
       <div class="label">${esc(s.label)}</div>
       <div class="where">${esc(s.where)}</div>
-      <div class="status${s.concern ? ' bad' : s.guessed ? ' guess' : ''}">${esc(s.status)}</div>
+      <div class="status${s.concern ? ' bad' : s.guessed || s.crowded !== undefined ? ' guess' : ''}">${esc(s.status)}${s.crowded === undefined ? '' : ` · camera crowded to ${Math.round(s.crowded * 100)}%`}</div>
     </figcaption>
   </figure>`,
   )
@@ -380,7 +424,7 @@ ${shots
 `,
   )
   console.log(
-    `  → ${shots.length} views, ${failed} failed, ${concerns} worth a look${guesses ? `, ${guesses} the game guessed` : ''}\n`,
+    `  → ${shots.length} views, ${failed} failed, ${concerns} worth a look${guesses ? `, ${guesses} the game guessed` : ''}${crowded ? `, ${crowded} with the camera crowded` : ''}\n`,
   )
   return {
     area,

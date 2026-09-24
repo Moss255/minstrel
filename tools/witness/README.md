@@ -89,6 +89,25 @@ So two things are checked besides loading:
   conversations in Angel Falls came back flagged. A witness that flags the
   ordinary case is as useless as one that flags nothing.
 
+## The camera, and the fault this could not see
+
+`ev03030` in Stornway drew the inside of a wall and **every check here
+passed**: the page did not say *failed*, the overlay named the map, and the
+status line complained about nothing — because nothing here knows what
+geometry looks like from within. That is worth remembering about every "0
+worth a look" this has ever printed.
+
+It can see it now, indirectly. The camera pulls in short of whatever stands
+between it and what it is looking at, so **how much distance it gave up** is
+the tell: a view that kept what it wanted is unobstructed, and one down to
+under 60% of it is a close-up of somebody's back whether or not anything says
+so. Every view asks the game for `?probe=1` and reads it back.
+
+Shown in amber with the percentage and **not counted as trouble**, like a
+guessed line — a legitimate close shot pulls in too, and the job is to put it
+in front of a person rather than to judge it. Angel Falls at stage 3.1: two
+of nineteen.
+
 ## Talking
 
 The witness used to show three of the four verbs the phase asks for — an area
