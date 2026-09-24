@@ -317,17 +317,53 @@ and the spend is per tree; neither belongs to the vocation being left.
 `?vocation=0:0,0:6` changes party place 0 to vocation 0 and then back — ours,
 for driving, until the Abbey's own flow is found.
 
-**What is ours, and flagged in the code**: which vocations may be chosen, and
-anything Alltrades asks of a character before it will change them. The routine
-the Abbey calls **was not found** in the ARM9 or any overlay — the vocation
-setter's only caller is character creation — and the five engine functions the
-event VM still lacks are all in the 800 block, so it is not an event-script
-call either. It is most likely a menu, as the shop and the inn are. A read is
-out for it.
+**And the Abbey's own rules are read now** — it is a menu, dispatched exactly
+as the shop and the inn are (service 46). The wiki's `Party` page has the
+chain; what matters here:
+
+- **Six vocations with no gate at all** — 1 to 6, Warrior through Minstrel,
+  the six a game begins with. Then six more, `[7, 9, 8, 12, 10, 11]` in the
+  Abbey's own non-numeric order, each behind event flag `0x113F + its number`.
+  `vocationsOffered` builds that list.
+- **Valid ids are 1 to 12, and zero is refused.** Zero is the Guardian, which
+  the game writes when it creates the Hero and the Abbey's own bounds check
+  rejects. `changeVocation` refuses it and `isVocation` says why.
+- **No level requirement, nothing reads the held mask, and the vocation
+  already held is not excluded** — the builder does none of those, and what it
+  builds is handed to the setter unfiltered.
+- **Skill points survive a change.** Neither the pool nor the points spent per
+  tree is touched by the apply or by revocation.
+
+That the ungated six are exactly the starting vocations, and the gated six the
+advanced ones, is an independent check on the numbering `FORMAT.md` infers
+from the status screen's order.
+
+**Not established, and flagged where it matters:** whether this host's story
+flags are numbered as the game's event flags are. `VOCATION_FLAG` is the
+game's `0x113F`; ours come from the trigger files' own flag words, and nothing
+has tied the two together.
+
+### What Alltrades does that this does not: equipment per vocation
+
+**Read and not modelled.** The apply routine stows the outgoing vocation's
+eight equipment slot ids at `live+0x4A4 + (v-1)*16`, restores the incoming
+vocation's, and **drops to the bag anything the new vocation or that
+character's sex may not wear**.
+
+`Member.equipped` is one set, so changing vocation here keeps whatever was
+worn. That is the next data-shape item, and it is the same argument as
+experience: a field that ought to be per vocation and is not.
+
+### Revocation
+
+**Read, not built.** `0x02155e38` resets **only the vocation currently held**
+to level 1 and no experience, and increments a counter for it, hard-capped at
+ten; everything else — other vocations, skill points, equipment — is
+untouched. Reaching ten does something, and what is not established.
 
 ### What is still missing
 
-The Abbey's own flow, above. A skill screen, so the panels can be looked at
+Revocation and the equipment swap, above. A skill screen, so the panels can be looked at
 and bought — the data is read and the pool is modelled, and nothing spends it.
 Character creation, recruitment and alchemy. And why every tree's eleventh
 panel costs nothing.

@@ -3,12 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   attendingStanding,
   changeVocation,
-  expOf,
   companionFighter,
   companionLook,
   companionModel,
   companionNamed,
   companionsAt,
+  expOf,
   IVOR,
   joinerOf,
   type Member,
@@ -16,6 +16,8 @@ import {
   partyAfter,
   partyRestored,
   partySaved,
+  VOCATION_FLAG,
+  vocationsOffered,
 } from '../src/companion.ts'
 import { HERO_VOCATION_NUMBER } from '../src/hero.ts'
 import { decodeSave, encodeSave, SAVE_VERSION, type SaveGame } from '../src/save.ts'
@@ -138,18 +140,41 @@ describe('the party, the Hero first', () => {
     who.exp.set(6, 900)
     expect(expOf(who)).toBe(900)
 
-    changeVocation(who, 0)
-    expect(who.vocation).toBe(0)
+    // To the Warrior, 1 — vocation 0 is the Guardian and the Abbey refuses it.
+    changeVocation(who, 1)
+    expect(who.vocation).toBe(1)
     expect(expOf(who)).toBe(0)
     // Untouched, not overwritten.
     expect(expOf(who, 6)).toBe(900)
     // And both are remembered as held, the way the game's mask does.
-    expect([...who.held].sort()).toEqual([0, HERO_VOCATION_NUMBER])
+    expect([...who.held].sort()).toEqual([1, HERO_VOCATION_NUMBER])
 
-    who.exp.set(0, 40)
+    who.exp.set(1, 40)
     changeVocation(who, HERO_VOCATION_NUMBER)
     expect(expOf(who)).toBe(900)
-    expect(expOf(who, 0)).toBe(40)
+    expect(expOf(who, 1)).toBe(40)
+  })
+
+  it('offers the six, then whichever of the other six are unlocked', () => {
+    // Read from the Abbey's own list builder: six written with no gate, then
+    // a table of six each behind a flag — and **in the Abbey's order**, which
+    // is not numeric.
+    expect(vocationsOffered(() => false)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(vocationsOffered(() => true)).toEqual([1, 2, 3, 4, 5, 6, 7, 9, 8, 12, 10, 11])
+    // One flag, one vocation: 7 is 0x1146.
+    expect(vocationsOffered((flag) => flag === VOCATION_FLAG + 9)).toEqual([1, 2, 3, 4, 5, 6, 9])
+  })
+
+  it('refuses a number that is not a vocation, zero among them', () => {
+    // **Zero is the Guardian**, which the game writes when it makes the Hero
+    // and the Abbey's bounds check rejects — it is what you are before the
+    // game, not a trade to take up.
+    const who = place(undefined)
+    expect(changeVocation(who, 0)).toBeUndefined()
+    expect(changeVocation(who, 13)).toBeUndefined()
+    expect(changeVocation(who, -1)).toBeUndefined()
+    expect(who.vocation).toBe(HERO_VOCATION_NUMBER)
+    expect(changeVocation(who, 12)?.vocation).toBe(12)
   })
 
   it('goes into a save and comes back the same party', () => {

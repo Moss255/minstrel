@@ -129,6 +129,61 @@ export const expOf = (member: Member, vocation = member.vocation): number =>
   member.exp.get(vocation) ?? 0
 
 /**
+ * The six vocations Alltrades offers from the start, by number.
+ *
+ * Read from the list builder, ov003 `0x02156054`, which writes 1 to 6 into
+ * the list with no gate of any kind: `mov r2, #1` … `cmp r2, #7 / blo`.
+ * In the level tables' numbering those are Warrior, Priest, Mage, Martial
+ * Artist, Thief and Minstrel — the six a game begins with, which is a good
+ * independent check on that numbering.
+ */
+export const VOCATIONS_ALWAYS: readonly number[] = [1, 2, 3, 4, 5, 6]
+
+/**
+ * The other six, **in the order the Abbey lists them**, which is not numeric:
+ * Gladiator, Paladin, Armamentalist, Ranger, Sage, Luminary. Read from the
+ * table at ov003 `0x0217f304`, terminated by a zero.
+ */
+export const VOCATIONS_UNLOCKED: readonly number[] = [7, 9, 8, 12, 10, 11]
+
+/**
+ * The story flag that unlocks one of {@link VOCATIONS_UNLOCKED}: its number
+ * plus this. `add r2, r8, #0x3f` then `add r2, r2, #0x1100` — so vocation 7 is
+ * flag `0x1146`.
+ *
+ * **Whether this host's story flags are numbered the same way is not
+ * established.** Ours come from the trigger files' own flag words; these are
+ * the game's own event-flag ids, read from a different place.
+ */
+export const VOCATION_FLAG = 0x113f
+
+/**
+ * Whether a number is a vocation somebody can be. **Zero is not** — the
+ * Abbey's bounds check rejects it (`cmp r1, #0 / ble fail; cmp r1, #0xd /
+ * blt ok`, ov003 `0x02155e14`), though it is what the game writes when it
+ * creates the Hero. In the level tables' numbering zero is the Guardian,
+ * which is what the Hero is before the game rather than a trade to take up.
+ */
+export const isVocation = (vocation: number): boolean =>
+  Number.isInteger(vocation) && vocation >= 1 && vocation <= 12
+
+/**
+ * What Alltrades would offer, in its own order: the six, then whichever of
+ * the other six their flag has been set for.
+ *
+ * `unlocked` is asked for the game's flag id, {@link VOCATION_FLAG} plus the
+ * vocation — see the caution there. Nothing is filtered out for being the
+ * vocation somebody already has: **the builder does not do that**, and what
+ * it builds is handed to the setter unfiltered.
+ */
+export function vocationsOffered(unlocked: (flag: number) => boolean): number[] {
+  return [
+    ...VOCATIONS_ALWAYS,
+    ...VOCATIONS_UNLOCKED.filter((vocation) => unlocked(VOCATION_FLAG + vocation)),
+  ]
+}
+
+/**
  * Change a member's vocation, as Alltrades Abbey would.
  *
  * **Almost nothing happens**, and that is the point of having read the data
@@ -142,13 +197,20 @@ export const expOf = (member: Member, vocation = member.vocation): number =>
  * character**, not a vocation's, and the points already spent are per tree;
  * neither belongs to the vocation being left.
  *
- * **Ours**: which vocations may be chosen, and anything Alltrades asks of a
- * character before it will change them, is **not established** — the routine
- * the Abbey calls was not found in the ARM9 or in any overlay. This changes
- * whoever it is given to, to whatever it is given. See
- * `docs/party-and-vocations.md`.
+ * **What the Abbey asks is read now** (ov003 `0x0215582c`, reached through
+ * the same service dispatcher the shop and the inn use, service 46): nothing.
+ * There is no level requirement, nothing consults the "has held" mask, and
+ * the vocation somebody already has is not excluded. What may be chosen is
+ * {@link vocationsOffered}; this refuses only what is not a vocation at all.
+ *
+ * **One thing the Abbey does that this does not.** Equipment is kept *per
+ * vocation* — `live+0x4A4 + (v-1)*16`, eight slot ids — so changing stows
+ * what the old vocation wore, brings back what the new one had, and drops to
+ * the bag anything the new one may not wear. `Member.equipped` is still one
+ * set. See `docs/party-and-vocations.md`.
  */
-export function changeVocation(member: Member, vocation: number): Member {
+export function changeVocation(member: Member, vocation: number): Member | undefined {
+  if (!isVocation(vocation)) return undefined
   member.held.add(member.vocation)
   member.held.add(vocation)
   member.vocation = vocation

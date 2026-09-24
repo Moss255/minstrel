@@ -1064,7 +1064,10 @@ function begin(bytes: Uint8Array, map: string): void {
     if (!asked || !who) continue
     const to = Number(asked[2])
     const was = who.vocation
-    changeVocation(who, to)
+    if (!changeVocation(who, to)) {
+      status(`${to} is not a vocation — the Abbey's own bounds are 1 to 12`)
+      continue
+    }
     dressParty()
     status(
       `${nameFor(who)} was ${vocationWord(was)} at level ${levelOf({ ...who, vocation: was })?.level ?? '?'}` +
