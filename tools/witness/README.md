@@ -78,8 +78,16 @@ So two things are checked besides loading:
   checking that against the source flagged every doorway on the first attempt.
 - **The status line is read, not only shown.** It is the game's own account of
   what went wrong, in prose meant for a person, so `TROUBLE` is a list of the
-  words it uses rather than a rule. Missing a phrase makes this quieter than it
-  should be; anything added to the game's complaints belongs there too.
+  phrases it complains in rather than a rule. Missing one makes this quieter
+  than it should be; anything added to the game's complaints belongs there too.
+
+  **It has to be a complaint, not a negative word.** `TROUBLE` began as
+  `/\b(no |not |nowhere|…)/`, which was fine until the witness started talking
+  to people: `pickLine` explains its choice on the status line, and the
+  ordinary case — a character no trigger names, saying their default line —
+  reads "the plain line — no trigger names them here". Seven of eight
+  conversations in Angel Falls came back flagged. A witness that flags the
+  ordinary case is as useless as one that flags nothing.
 
 ## Talking
 
@@ -87,6 +95,13 @@ The witness used to show three of the four verbs the phase asks for — an area
 that **loads**, its doorways, and the **events** it plays. Whether a villager
 says anything, and whether they look round when spoken to, it could not show
 at all.
+
+Whoever is worth talking to is gathered as the doorways are walked through,
+because **a town's people are behind its doors** — the area's own map is the
+square, and the cast is in the houses, the shop and the inn. Angel Falls has
+two people in the square and 31 across the town. The conversations are then
+spread one per room rather than taken in order, so a house with eight people
+in it is not the whole sample.
 
 `?talk=<placement>` stands the Hero **behind** that character and opens the
 conversation. Behind on purpose: every message the game shows turns the
@@ -144,8 +159,9 @@ cannot alter what a shot shows.
   be walked is answered exhaustively by
   `apps/game/test/walk-coverage.test.ts`, which floods each one from where the
   game stands you.
-- **It only talks to the area's own map.** A town's people are mostly behind
-  its doors, and those are captured as maps but nobody in them is spoken to.
+- **It does not walk to anyone.** A conversation is opened by standing the
+  Hero at the person, not by going there, so a character behind a locked door
+  or across a gap is spoken to exactly as if they were not.
 - **It reads the triggers' events, not the conditions on them.** A scene that
   could never play at the stage you asked for is still captured. That is
   deliberate: the question is whether the engine can play it at all.

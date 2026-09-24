@@ -167,12 +167,41 @@ const esc = (t) =>
     .replace(/"/g, '&quot;')
 
 /**
- * What the game says when something is wrong, in the words it uses. It is a
- * list rather than a rule because the status line is prose meant for a person.
- * Missing a phrase makes the witness quieter than it should be, so anything
- * added to the game's own complaints belongs here too.
+ * What the game says when something is wrong, in the words it uses.
+ *
+ * **A list of complaints, not a rule about negative words.** The first
+ * version of this was `/\b(no |not |nowhere|…)/`, and it was wrong in a way
+ * that only showed once the witness started talking to people: `pickLine`
+ * explains its choice on the status line, and the ordinary case — a character
+ * no trigger names, saying their default line — reads "the plain line — no
+ * trigger names them here". Seven of eight conversations in Angel Falls were
+ * flagged as trouble for containing the word "no".
+ *
+ * A witness that flags the ordinary case is as useless as one that flags
+ * nothing, so these are the phrases the game actually complains in, gathered
+ * from the `status` calls. Missing one makes the witness quieter than it
+ * should be, so a new complaint belongs here too — but it has to be a
+ * complaint, not prose that happens to be negative.
  */
-const TROUBLE = /\b(no |not |nowhere|will not|failed|missing|cannot|unread)/i
+const TROUBLE = new RegExp(
+  [
+    'nowhere', // no collision, or no floor under the arrival
+    'will not read',
+    'not load',
+    'answered 0', // an engine function the host has not got
+    'no .{0,30} in the ', // no track 3 in the music archive, no monster …
+    'no treasure',
+    'names no monster',
+    'not in the event battles',
+    'not be kept in this browser',
+    'not shown', // markup the renderer does not read
+    'failed',
+    'missing',
+    'cannot',
+    'unread',
+  ].join('|'),
+  'i',
+)
 
 /**
  * **The game saying it guessed is not the game being wrong.**
@@ -250,26 +279,40 @@ async function witness(area) {
     shots.push({ file, label, where, status, guessed, concern: blank || wrong })
     const note = blank ? ' — NO MAP DRAWN' : wrong ? ' — trouble' : guessed ? ' — a guess' : ''
     console.log(`  ${label} — ${status || where}${note}`)
+    return blank ? undefined : await plan()
   }
+
+  /** What the page says is worth looking at here — see `witnessHook`. */
+  const plan = async () =>
+    JSON.parse((await evaluate('JSON.stringify(window.__witness ?? null)')) ?? 'null') ?? undefined
 
   console.log(`witness ${area}${stage ? ` at ${stage}` : ''}${time ? ` (${time})` : ''}`)
 
   // The map itself, first — and it is this visit that fills `__witness` and,
   // on the very first area, puts the cartridge in the browser's own store.
-  await capture('00-map', `${area} — where it starts`, `map=${area}`, area)
-  const plan = (await evaluate('JSON.stringify(window.__witness ?? null)')) ?? 'null'
-  const { doorways = [], events = [], cast = [] } = JSON.parse(plan) ?? {}
-  console.log(`  ${doorways.length} doorways, ${events.length} events, ${cast.length} to talk to`)
+  const here = await capture('00-map', `${area} — where it starts`, `map=${area}`, area)
+  const { doorways = [], events = [] } = here ?? {}
+
+  // **A town's people are behind its doors.** The area's own map is the
+  // square; the cast is in the houses, the shop and the inn. So whoever is
+  // worth talking to is gathered as the doorways are walked through, and the
+  // conversations are chosen from all of it rather than from the square alone.
+  const people = (map, cast = []) => cast.map((who) => ({ ...who, map }))
+  let candidates = people(area, here?.cast)
 
   let n = 1
   for (const to of doorways) {
-    await capture(
+    const beyond = await capture(
       `${String(n++).padStart(2, '0')}-door-${to}`,
       `through the door to ${to}`,
       `map=${area}&door=${to}`,
       to,
     )
+    candidates = candidates.concat(people(to, beyond?.cast))
   }
+  console.log(
+    `  ${doorways.length} doorways, ${events.length} events, ${candidates.length} to talk to`,
+  )
   if (wantEvents) {
     for (const event of events) {
       const name = `ev${String(event).padStart(5, '0')}`
@@ -289,12 +332,22 @@ async function witness(area) {
   // and the events were all visible; whether a villager says anything, and
   // whether they look round when spoken to, was not. `?talk=` stands the Hero
   // behind them, so a speaker who turns has turned a half-circle to do it.
-  for (const who of cast.slice(0, Math.max(0, wantTalk))) {
+  // Spread across maps rather than taken in order: six conversations from six
+  // rooms says more about a town than six from whichever room happened to be
+  // fullest, and a house with eight people in it would otherwise be the whole
+  // sample. One from each map, then a second from each, and so on.
+  const byMap = new Map()
+  for (const who of candidates) byMap.set(who.map, [...(byMap.get(who.map) ?? []), who])
+  const spread = []
+  for (let round = 0; spread.length < candidates.length; round++) {
+    for (const [, group] of byMap) if (group[round]) spread.push(group[round])
+  }
+  for (const who of spread.slice(0, Math.max(0, wantTalk))) {
     await capture(
-      `${String(n++).padStart(2, '0')}-talk-${who.id}`,
-      `talking to ${who.name} #${who.id}`,
-      `map=${area}&talk=${who.id}`,
-      area,
+      `${String(n++).padStart(2, '0')}-talk-${who.map}-${who.id}`,
+      `talking to ${who.name} #${who.id} in ${who.map}`,
+      `map=${who.map}&talk=${who.id}`,
+      who.map,
       1400,
     )
   }
