@@ -293,13 +293,9 @@ describe('the main menu', () => {
       // **The game's own name for the skill screen**, `str_tm` 4003 —
       // "Allocate Skill Points", which is what the field menu calls it.
       'Allocate Skill Points',
-      // The Krak Pot's is ours: `str_ren` is what the pot says once it is
-      // open, and no `str_tm` entry names it in the menu.
-      'Alchemy',
-      // And the appearance screen's is ours twice over — the game makes
-      // characters at the Observatory and the Quester's Rest, not from a
-      // menu at all. See `appearance.ts`.
-      'Appearance',
+      // **And that is the whole list.** The Krak Pot and character creation
+      // were here and should not have been: the pot is spoken to and
+      // creation is its own scene. See `UNLISTED_PANELS` in `menu.ts`.
     ])
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
   })

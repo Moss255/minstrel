@@ -90,14 +90,27 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'equip', label: 'Equipment', word: MENU_WORDS.equipment },
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
-  // **Ours, where the pot's own words have no menu label.** The Krak Pot's
-  // `str_ren` is what it says once it is open, not what the menu calls it.
-  { id: 'pot', label: 'Alchemy' },
-  // **Ours, and not where the game puts it.** Characters are made at the
-  // Observatory and the Quester's Rest, neither of which is built; the menu
-  // is somewhere a person can reach it meanwhile. See `docs/party-and-vocations.md`.
-  { id: 'make', label: 'Appearance' },
 ]
+
+/**
+ * **Two panels that are not menu commands**, and never were in the game.
+ *
+ * Read 25 September 2026, after a play session found them in the wrong place:
+ *
+ * - `pot` — the **Krak Pot** is spoken to. `<RENKIN>` at the end of its own
+ *   talk line is facility code 7, the same mechanism `<SHOP=n>` and
+ *   `<CHURCH=n>` use; the pot stands in the Quester's Rest at Stornway
+ *   (`R01M01`, "Lobby Interior 1") and says "A pot I may be, but I am in no
+ *   way potty!" before it opens. See `Service` in `talk.ts`.
+ * - `make` — **character creation** is its own scene. The protagonist's runs
+ *   once from `main`'s game-mode 3; a party member's is a step inside Patty's
+ *   flow at the Quester's Rest. Neither is built, so this panel is reachable
+ *   only by `?make=1` until recruitment is.
+ *
+ * They keep their `MenuCommand` ids because the panels are real; what they
+ * lost is a row in the list, which is the thing that was wrong.
+ */
+export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make']
 
 /** What can be done with the item chosen in the items panel. */
 export const ITEM_ACTIONS: readonly MenuEntry<'use' | 'discard' | 'cancel'>[] = [

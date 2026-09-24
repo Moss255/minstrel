@@ -112,15 +112,44 @@ export interface TextContext {
 
 /**
  * A service a line hands over to when it is done: `<ADD><SHOP=32>`,
- * `<ADD><INN=2>`, `<ADD><CHURCH=1>`. The number is the shop's in the shop
- * table; what the inn's and the church's numbers select is not established.
+ * `<ADD><INN=2>`, `<ADD><CHURCH=1>`, `<ADD><RENKIN>`. The number is the
+ * shop's in the shop table; what the inn's and the church's numbers select is
+ * not established, and the bare tags carry none.
+ *
+ * **This is how the game opens a facility**, read 25 September 2026. The
+ * message system's compiler turns each of these tags into a **facility code**
+ * carried in the message, and `func_0206f6cc` — the one function service 5,
+ * the talk service, calls for this — switches on that byte through a table at
+ * `0x0206f70c`:
+ *
+ * ```
+ * 0206f6fc  ldrb  r1, [r5, r4]           ; the facility code
+ * 0206f700  cmp   r1, #0xc
+ * 0206f704  addls pc, pc, r1, lsl #2     ; so code n is at 0x0206f70c + 4n
+ * ```
+ *
+ * 1 the inn, 2 the church, 3 the bank, 4 the shop, **5 and 8 Patty's party
+ * planning**, 6 and 12 the Quester's Rest counter, **7 the Krak Pot**, 9 and
+ * 10 Alltrades, 11 the Starflight Express. Each arm begins the matching
+ * service record — see `docs/event-scripts.md`.
+ *
+ * So a facility is not a menu command and never was: **it is a tag at the end
+ * of somebody's talk line**, which is why the pot has to be spoken to.
  */
 export interface Service {
-  readonly kind: 'SHOP' | 'INN' | 'CHURCH'
+  readonly kind: 'SHOP' | 'INN' | 'CHURCH' | 'RENKIN'
   readonly id: number
 }
 
+/** Services whose tag carries a number, `<SHOP=32>`. */
 const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
+
+/**
+ * Services whose tag is bare, `<RENKIN>` — they select nothing, because there
+ * is only one of each. `<BANK>` and `<LUIDA>` are the same shape and are not
+ * here yet: the bank and Patty's party planning are not built.
+ */
+const BARE_SERVICES = new Set<string>(['RENKIN'])
 
 /**
  * A sound a line asks for: `<ME_008>` a jingle, `<SE_014>` an effect.
@@ -486,7 +515,18 @@ export function runLine(
       turn = { kind: 'back' }
       return done()
     }
-    if (MARKERS.has(name) || name === 'END' || name === 'CLOSE') return done()
+    if (MARKERS.has(name) || name === 'END' || name === 'CLOSE') {
+      // **A bare service tag may sit immediately after the end.** The Krak
+      // Pot's hand-over line is `…<END><RENKIN>`, where `<ADD><SHOP=32>` puts
+      // its tag before the end instead. Only the very next token is taken:
+      // scanning further could reach a tag belonging to another answer's
+      // branch, which is a different conversation.
+      const next = tokens[at + 1]
+      if (name === 'END' && next?.kind === 'tag' && BARE_SERVICES.has(next.name)) {
+        service = { kind: next.name as Service['kind'], id: 0 }
+      }
+      return done()
+    }
     if (name.startsWith('JP_')) {
       const label = tokens.findIndex((t) => t.kind === 'tag' && t.name === `LB_${name.slice(3)}`)
       if (label >= 0) at = label
@@ -548,6 +588,9 @@ export function runLine(
       cues.push({ kind: kind as SoundCue['kind'], id, page: pages.length })
     } else if (SERVICES.has(name) && Number.isInteger(Number(token.args[0]))) {
       service = { kind: name as Service['kind'], id: Number(token.args[0]) }
+    } else if (BARE_SERVICES.has(name)) {
+      // There is one Krak Pot, so its tag selects nothing and its id is 0.
+      service = { kind: name as Service['kind'], id: 0 }
     } else if (context.values?.[name] !== undefined) {
       put(context.values[name] as string)
     } else {

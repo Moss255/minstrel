@@ -611,6 +611,54 @@ instead, that one names this one to fall back to, and **both take the same
 ingredients** — supernova sword to hypernova sword. The odds are the *better*
 recipe's own value 9, not the one being attempted.
 
+### Corrected 25 September 2026: the pot is spoken to
+
+A play session found the Krak Pot as a **field-menu command**, which it never
+is. It was put there as a stand-in, the comment said so, and the stand-in
+should not have stood.
+
+**A facility is a tag at the end of somebody's talk line.** The message
+compiler turns `<SHOP=n>`, `<INN=n>`, `<CHURCH=n>`, `<BANK>` and `<RENKIN>`
+into a **facility code**, and `func_0206f6cc` — the one function the talk
+service calls for it — switches on that byte:
+
+```
+0206f6fc  ldrb  r1, [r5, r4]           ; the facility code
+0206f700  cmp   r1, #0xc
+0206f704  addls pc, pc, r1, lsl #2     ; code n at 0x0206f70c + 4n
+```
+
+1 inn · 2 church · 3 bank · 4 shop · **5 and 8 Patty's party planning** ·
+6 and 12 the Quester's Rest counter · **7 the Krak Pot** · 9 and 10 Alltrades
+· 11 the Starflight Express.
+
+So `<RENKIN>` is a `Service` now, alongside the three we already read, and
+`openService` opens the pot. It is **bare** — there is one pot, so the tag
+selects nothing — and it appears two ways on the cartridge: as a line of its
+own, and as `…<END><RENKIN>`, which is why `runLine` takes a bare service tag
+that immediately follows the end.
+
+**The pot is in the Quester's Rest at Stornway**, `R01M01` — "Stornway, Lobby
+Interior 1" in the map index. Its own line: *"I am in tip-top shape, I assure
+you. Mentally and physically. A pot I may be, but I am in no way potty!"*
+
+**And the pot's whole interface is on the cartridge**, in `bm_rrb`: **Use A
+Recipe** ("Pick a recipe from the Alchenomicon and get kraking"), **Try Your
+Luck** ("Take pot luck with your own pick of ingredients"), Cancel, and "How
+many?". Then the Alchenomicon's own grouping — All Recipes, Weapons, Armour,
+Accessories, Items, ???, Shields, Head, Torso, Arms, Legs, Feet, and **By
+Type**: Swords, Spears, Knives, Wands, Whips, Staves, Claws, Fans, Axes,
+Hammers, Boomerangs, Bows.
+
+**Which means recipe values 14 and 15 are that grouping**, not merely the
+cross-check this file called them. The screen built here is a flat list and
+has neither mode; that is the next piece of work on it.
+
+**The Alchenomicon is a second way in**, and the pot says so when it hands the
+book over: *"The Alchenomicon is now accessible from the battle records
+menu."* Which agrees with the code — Battle Records (service 41) begins
+service 43, the alchemy overlay.
+
 **Ours, and marked so:** the menu shows what the bag can make first and the
 rest after, because the game shows only the recipes whose book you have found
 and **where a book is found is not read** — a published guide says bookcases,

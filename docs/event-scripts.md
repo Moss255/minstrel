@@ -1328,6 +1328,35 @@ several things at once. It walks the authored string a character at a time:
   reads them from the source. `talk.ts` reads them off the tokens, which turns
   out to be the same arrangement.
 
+**What those codes reach, read 25 September 2026.** `func_0206f6cc` is the one
+function the talk service (5) calls for a facility, and it switches on the
+code byte through a table at `0x0206f70c`:
+
+```
+0206f6fc  ldrb  r1, [r5, r4]           ; the facility code out of the message
+0206f700  cmp   r1, #0xc
+0206f704  addls pc, pc, r1, lsl #2     ; so code n is at 0x0206f70c + 4n
+```
+
+| code | begins | what |
+|---|---|---|
+| 1 | `0x21bac24` | the inn |
+| 2 | `0x21ba8e0` | the church |
+| 3 | `0x217e300` | the bank |
+| 4 | `0x21b2c24` | the shop |
+| 5, 8 | `0x21b65e0` | Patty's party planning (modes 0 and 1) |
+| 6, 12 | `0x218d77c` | the Quester's Rest counter |
+| **7** | `0x21b146c` | **the Krak Pot** |
+| 9, 10 | `0x21c12fc` | Alltrades (modes 0 and 1, the second being revocation) |
+| 11 | `0x21a8614` | the Starflight Express |
+
+Only five of those have a text tag in the list above, so the other flows are
+begun some other way and **where their code comes from is not established**.
+
+`<RENKIN>` is read as a service by `apps/game/src/talk.ts` now. It is bare —
+there is one pot — and it appears both as a line of its own and as
+`…<END><RENKIN>`.
+
 **An argument is not encoded in the stream. It is put in a slot, and the code
 carries the slot.** `<VOICE_VOLUME=n>` is the clearest case:
 

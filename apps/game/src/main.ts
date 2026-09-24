@@ -1135,6 +1135,14 @@ function begin(bytes: Uint8Array, map: string): void {
     for (let n = 0; n < Number(asked[2] ?? 1); n++) bag = take(bag, { item })
   }
   if (params.get('give')) status(`bag: ${bagLines(bag, nameOf).join(' · ')}`)
+  // `?make=1` opens the appearance panel — **ours, and the only way in until
+  // recruitment is built**: character creation is a scene of the game's own
+  // (the protagonist's from `main`'s mode 3, a recruit's inside Patty's flow
+  // at the Quester's Rest), never a menu command. See `UNLISTED_PANELS`.
+  if (params.get('make') === '1') {
+    menu = { ...openMenu(), panel: 'make' }
+    showMenu()
+  }
   // `?look=0:sex=1,hair=7,build=0` sets a member's appearance knob by knob —
   // **ours**, standing in for the Observatory and the Quester's Rest, neither
   // of which is built. See `appearance.ts` for what the knobs are.
@@ -3424,6 +3432,14 @@ function openService(service: Service): void {
       return
     }
     visit = visitShop(shop)
+  } else if (service.kind === 'RENKIN') {
+    // **The Krak Pot is spoken to, not chosen from a menu.** `<RENKIN>` at the
+    // end of the pot's own talk line is facility code 7 — see `Service` in
+    // `talk.ts` — so this is the pot's real entry point and the only one.
+    menu = { ...openMenu(), panel: 'pot' }
+    self?.held.clear()
+    showMenu()
+    return
   } else {
     visit = service.kind === 'INN' ? visitInn(service.id) : visitChurch(service.id)
   }

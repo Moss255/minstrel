@@ -46,6 +46,7 @@ is one the menu will not know about.
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `make=1` | open the appearance panel — **the only way in until recruitment is built**, because character creation is a scene of the game's own and never a menu command |
 | `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
 | `fight=z000a,z000a` | the monsters `p` fights |

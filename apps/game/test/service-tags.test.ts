@@ -12,6 +12,23 @@ describe('a line that hands over to a service', () => {
     expect(runLine(parseMarkup('Just talk.<END>')).service).toBeUndefined()
   })
 
+  it('takes the Krak Pot’s bare tag, which carries no number', () => {
+    // **The pot's own line**, as the cartridge has it — `<RENKIN>` after the
+    // end, with nothing to select, because there is one pot. Facility code 7;
+    // see `Service` in `talk.ts`.
+    const pot = runLine(parseMarkup('A pot I may be<,> but I am in no way potty!<END><RENKIN>'))
+    expect(pot.service).toEqual({ kind: 'RENKIN', id: 0 })
+    expect(pot.pages.map((p) => p.text)).toEqual(['A pot I may be, but I am in no way potty!'])
+  })
+
+  it('does not take a bare tag it has no service for', () => {
+    // `<LUIDA>` is Patty's and `<BANK>` the bank's, both the same shape. They
+    // are not services here because neither flow is built — and a tag that
+    // quietly became a service nobody wrote would be worse than one ignored.
+    expect(runLine(parseMarkup('Hello.<END><LUIDA>')).service).toBeUndefined()
+    expect(runLine(parseMarkup('Hello.<END><BANK>')).service).toBeUndefined()
+  })
+
   it("fills in the engine's values when it is given them, and leaves them out when not", () => {
     const line = parseMarkup("That'll be <val_2> gold coins.<ADD><INN=2>")
     const priced = runLine(line, 0, { ...DEFAULT_CONTEXT, values: { val_2: '10' } })
