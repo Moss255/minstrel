@@ -142,6 +142,7 @@ import {
   companionsAt,
   FOLLOW_TICKS,
   IVOR,
+  type Member,
   PARTY_MOST,
   partyAfter,
 } from './companion.ts'
@@ -150,7 +151,7 @@ import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
 import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
-import { choicesFor, type Equipped, equip, NOTHING_EQUIPPED, slotOf } from './equipment.ts'
+import { choicesFor, equip, NOTHING_EQUIPPED, slotOf } from './equipment.ts'
 import {
   BGM_FADE_FRAMES,
   type EventCamera,
@@ -165,7 +166,6 @@ import {
   CARRY_BONES,
   expAtLevel,
   expLevelledBy,
-  type Gains,
   gain,
   HERO_VOCATION_NUMBER,
   levelGainsText,
@@ -524,10 +524,40 @@ function stepNow(): number | undefined {
 }
 const storyFlags = new Set<number>()
 /**
- * Who goes along, by their number in `attnpc`: whoever an event's record has
- * brought in and not since sent away — see `partyAfter`. Kept in the save.
+ * **The party, the Hero first.** Each place holds what used to be a loose
+ * variable — experience, hit points, magic, seeds, what is worn — and whoever
+ * an event's record has brought in and not since sent away holds the places
+ * after. See `Member` in `companion.ts`, and `docs/party-and-vocations.md`
+ * for the game's own four ordered slots that this is the shape of.
+ *
+ * Kept in the save, though only the Hero's numbers are yet written there.
  */
-let party = new Set<number>()
+let members: Member[] = [freshMember(undefined)]
+
+/**
+ * The Hero: the party's first place, whom the player moves and commands.
+ *
+ * Named for the game's own arrangement rather than for the Hero, because that
+ * is what it is — `0x0200fddc`, the function the message system asks who a
+ * speaker should turn to face, is simply "slot 0".
+ */
+const leader = (): Member => members[0] as Member
+
+/** The place an attending character holds, if they are along. */
+const memberOf = (attnpc: number): Member | undefined =>
+  members.find((member) => member.attnpc === attnpc)
+
+/** A place with nothing in it yet: whole, at no experience, wearing the start. */
+function freshMember(attnpc: number | undefined): Member {
+  return {
+    attnpc,
+    hp: undefined,
+    mp: undefined,
+    exp: 0,
+    gains: {},
+    equipped: attnpc === undefined ? STARTING_EQUIPMENT : NOTHING_EQUIPPED,
+  }
+}
 /**
  * Where cast members stand that an event moved and left there, by placement
  * id — see {@link castPlaced}. Ours: kept until the story's step next moves or
@@ -668,10 +698,6 @@ const WAYS_BY_AI: Readonly<Record<number, number>> = { 0: 0, 1: 1, 2: 2, 4: 3 }
 
 /** What the Hero carries — see `bag.ts` — starting from the purse the slice opens with, `STARTING_GOLD`. */
 let bag: Bag = take(EMPTY_BAG, { gold: STARTING_GOLD })
-/** What the Hero wears — see `equipment.ts`. */
-let equipped: Equipped = STARTING_EQUIPMENT
-/** The Hero's experience. Nothing gives any until there are battles; a save can. */
-let heroExp = 0
 /** The shop, inn or church being visited — see `services.ts`. */
 let visit: Visit | undefined
 /** What the conversation is read with: the defaults, or those with the inn's price. */
@@ -708,17 +734,17 @@ const GROUND_PROBE = 10
 
 /** The most monsters a battle here holds: ours, so the row stays in view. */
 const BATTLE_MOST = 5
-/** The Hero's hit points between battles; undefined is full. */
-let heroHp: number | undefined
-/** The Hero's MP now; undefined is full. */
-let heroMp: number | undefined
-/** Each companion's hit points between battles, by their number in `attnpc`; one not here is whole. */
-const companionHp = new Map<number, number>()
 /**
  * Footsteps behind the Hero: a trail for each place in the party after
  * theirs, each a pace further back — see `follow.ts`; begun anew in each map.
  */
 let trails: Follower[] = []
+/**
+ * `PARTY_MOST - 1` and not `PARTY_MOST` because **the Hero follows nobody** —
+ * `trails[i]` belongs to `members[i + 1]`. That stays right now the Hero is
+ * member 0, and it was right before; the sizing was never the thing the old
+ * shape got wrong.
+ */
 /** Which way each place in the line faces in the field, and whether its footsteps moved this frame. */
 const trailFacing = new Float64Array(PARTY_MOST - 1)
 const trailWalking = new Uint8Array(PARTY_MOST - 1)
@@ -734,8 +760,6 @@ interface BattleCompanion {
   readonly packs: readonly string[]
 }
 let battleCompanions: readonly BattleCompanion[] = []
-/** What seeds have added to the Hero's numbers, for good — see `hero.ts`. */
-let heroGains: Gains = {}
 /** Battles fought this session, which seeds the next one's numbers. */
 let battlesFought = 0
 /**
@@ -956,7 +980,7 @@ function begin(bytes: Uint8Array, map: string): void {
   }
   // `?ivor=1` opens it with Ivor in the party, as his call leaves him, for
   // looking at a stage he goes along over; an event's record may send him away.
-  if (params.get('ivor') === '1') party.add(IVOR)
+  if (params.get('ivor') === '1' && !memberOf(IVOR)) members.push(freshMember(IVOR))
   // `?at=x,z` stands the Hero there, in world units, on the highest floor —
   // ours, for looking at a spot a headless browser cannot walk to.
   const spot = /^(-?[\d.]+),(-?[\d.]+)$/.exec(params.get('at') ?? '')
@@ -1026,13 +1050,16 @@ function restore(game: SaveGame): void {
   storyFlags.clear()
   storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
-  party = new Set(game.party ?? [])
+  // Only the Hero's numbers are in the save yet, so a companion comes back
+  // whole — which is what happened before the party was a list, when their hit
+  // points were a side table that was never written. See `save.ts`.
+  members = [leader(), ...(game.party ?? []).map((id) => freshMember(id))]
   bag = bagOf(game)
-  equipped = equippedOf(game)
-  heroExp = game.exp
-  heroHp = game.hp ?? undefined
-  heroMp = game.mp ?? undefined
-  heroGains = { ...game.gains }
+  leader().equipped = equippedOf(game)
+  leader().exp = game.exp
+  leader().hp = game.hp ?? undefined
+  leader().mp = game.mp ?? undefined
+  leader().gains = { ...game.gains }
   openedTreasure.clear()
   for (const key of game.opened) openedTreasure.add(key)
 }
@@ -1054,15 +1081,17 @@ function confess(): string {
     stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
     step: storyStep,
     flags: [...storyFlags],
-    party: [...party],
+    party: members
+      .slice(1)
+      .flatMap((member) => (member.attnpc === undefined ? [] : [member.attnpc])),
     gold: bag.gold,
     items: [...bag.items],
-    equipped: equippedRecord(equipped),
+    equipped: equippedRecord(leader().equipped),
     opened: [...openedTreasure],
-    exp: heroExp,
-    hp: heroHp ?? null,
-    mp: heroMp ?? null,
-    gains: heroGains,
+    exp: leader().exp,
+    hp: leader().hp ?? null,
+    mp: leader().mp ?? null,
+    gains: leader().gains,
   }
   return writeSave(storage(), game)
     ? 'Your progress is recorded.'
@@ -1871,7 +1900,7 @@ Object.defineProperty(window, 'minstrelPortrait', {
 // For a headless check: what the Hero wears, readable from the page.
 Object.defineProperty(window, 'minstrelWorn', {
   get: () => ({
-    equipped: [...equipped.entries()],
+    equipped: [...leader().equipped.entries()],
     parts: loaded ? [...loaded.wardrobe.parts.keys()].filter((n) => /^p_[ws]/.test(n)) : [],
   }),
 })
@@ -1893,7 +1922,7 @@ Object.defineProperty(window, 'minstrelLevel', {
     const worn = wornNumbers()
     return {
       level: row.level,
-      exp: heroExp,
+      exp: leader().exp,
       maxHp: row.maxHp,
       maxMp: row.maxMp,
       strength: row.strength,
@@ -1960,10 +1989,10 @@ function wearWanted(): void {
     const slot = slotOf(partName(id)?.split('_')[1]?.[0])
     if (!slot) continue
     bag = take(bag, { item: id })
-    const worn = equip(bag, equipped, slot, id)
+    const worn = equip(bag, leader().equipped, slot, id)
     if (worn) {
       bag = worn.bag
-      equipped = worn.equipped
+      leader().equipped = worn.equipped
     }
   }
   dressHero()
@@ -2523,7 +2552,7 @@ function nameOf(id: number): string {
 function menuContext(): MenuContext {
   const levels = loaded?.heroLevels
   const words = loaded?.menuWords
-  const now = levels ? standing(levels, heroExp, heroGains) : undefined
+  const now = levels ? standing(levels, leader().exp, leader().gains) : undefined
   return {
     hero: DEFAULT_CONTEXT.heroName,
     map: loaded?.code,
@@ -2533,10 +2562,10 @@ function menuContext(): MenuContext {
       ...now,
       vocation: words?.get(VOCATION_WORDS + HERO_VOCATION_NUMBER) ?? now.vocation,
     },
-    hp: heroHp,
-    mp: heroMp,
+    hp: leader().hp,
+    mp: leader().mp,
     bag,
-    equipped,
+    equipped: leader().equipped,
     numbersOf: (id) => loaded?.itemStats.get(id),
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
@@ -2646,14 +2675,14 @@ let wakeInChurch = false
 /** The Hero's numbers now: their level's, with what seeds have added. */
 function heroRow(): LevelRow | undefined {
   const levels = loaded?.heroLevels
-  return levels ? standing(levels, heroExp, heroGains).level : undefined
+  return levels ? standing(levels, leader().exp, leader().gains).level : undefined
 }
 
 function heroVitals(row: LevelRow): Vitals {
   return {
-    hp: Math.min(heroHp ?? row.maxHp, row.maxHp),
+    hp: Math.min(leader().hp ?? row.maxHp, row.maxHp),
     maxHp: row.maxHp,
-    mp: Math.min(heroMp ?? row.maxMp, row.maxMp),
+    mp: Math.min(leader().mp ?? row.maxMp, row.maxMp),
     maxMp: row.maxMp,
   }
 }
@@ -2680,12 +2709,16 @@ function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
     status('the level table did not load, so the Hero has no level to move')
     return undefined
   }
-  const before = standing(levels, heroExp, heroGains).level
-  heroExp = level === undefined ? expLevelledBy(levels, heroExp, by) : expAtLevel(levels, level)
-  const after = standing(levels, heroExp, heroGains).level
+  const before = standing(levels, leader().exp, leader().gains).level
+  leader().exp =
+    level === undefined ? expLevelledBy(levels, leader().exp, by) : expAtLevel(levels, level)
+  const after = standing(levels, leader().exp, leader().gains).level
   // Undefined is whole, and stays whole at the new maximum.
-  if (heroHp !== undefined) heroHp = Math.min(after.maxHp, heroHp + (after.maxHp - before.maxHp))
-  if (heroMp !== undefined) heroMp = Math.min(after.maxMp, heroMp + (after.maxMp - before.maxMp))
+  const moved = leader()
+  if (moved.hp !== undefined)
+    moved.hp = Math.min(after.maxHp, moved.hp + (after.maxHp - before.maxHp))
+  if (moved.mp !== undefined)
+    moved.mp = Math.min(after.maxMp, moved.mp + (after.maxMp - before.maxMp))
   const worn = wornNumbers()
   const numbers = `attack ${after.strength + worn.attack} · defence ${after.resilience + worn.defence}`
   // At an end of the table a key press moves nothing, which is worth saying.
@@ -2725,20 +2758,20 @@ function settle(outcome: Outcome, row: LevelRow): string {
   const hero = heroNamed()
   switch (outcome.kind) {
     case 'hp':
-      heroHp = outcome.hp >= row.maxHp ? undefined : outcome.hp
+      leader().hp = outcome.hp >= row.maxHp ? undefined : outcome.hp
       return (
         actionSay(outcome.message, { target: hero }) ??
         menuSay(MENU_SAYS.healed, { target: hero }) ??
         `${hero.name} recovers ${outcome.amount} HP.`
       )
     case 'mp':
-      heroMp = outcome.mp >= row.maxMp ? undefined : outcome.mp
+      leader().mp = outcome.mp >= row.maxMp ? undefined : outcome.mp
       return (
         actionSay(outcome.message, { target: hero }) ??
         `${hero.name} recovers ${outcome.amount} MP.`
       )
     case 'gain':
-      heroGains = gain(heroGains, outcome.stat, outcome.amount)
+      leader().gains = gain(leader().gains, outcome.stat, outcome.amount)
       return (
         actionSay(outcome.message, { target: hero, values: { val_1: outcome.amount } }) ??
         `${hero.name}'s ${outcome.stat} rises by ${outcome.amount}.`
@@ -2818,9 +2851,9 @@ function evacuate(spell: { readonly name: string; readonly cost: number }): stri
   if (!outside || outside === here.code || !/^D/i.test(outside)) {
     return [casts, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
   }
-  const mp = heroMp ?? row.maxMp
+  const mp = leader().mp ?? row.maxMp
   if (mp < spell.cost) return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
-  heroMp = mp - spell.cost
+  leader().mp = mp - spell.cost
   menu = undefined
   showMenu()
   if (enter(outside)) status(casts)
@@ -2847,7 +2880,7 @@ function castInField(action: number): string[] {
   if (cast.outcome.kind === 'unknown') {
     return [`What ${spell.name} does outside a battle is not read yet.`]
   }
-  heroMp = cast.mp >= row.maxMp ? undefined : cast.mp
+  leader().mp = cast.mp >= row.maxMp ? undefined : cast.mp
   const casts =
     menuSay(MENU_SAYS.casts, { actor: hero, values: { str_2: spell.name } }) ??
     `${hero.name} casts ${spell.name}.`
@@ -2883,7 +2916,7 @@ function counter(): Counter {
     divination: () => {
       const levels = loaded?.heroLevels
       if (!levels) return 'The level table did not load.'
-      const s = standing(levels, heroExp)
+      const s = standing(levels, leader().exp)
       return s.next
         ? `${s.next.exp - s.exp} more experience to reach level ${s.next.level}.`
         : 'There are no more levels to reach.'
@@ -3080,7 +3113,7 @@ function wornNumbers(): { attack: number; defence: number; agility: number; bloc
   let attack = 0
   let defence = 0
   let agility = 0
-  for (const item of equipped.values()) {
+  for (const item of leader().equipped.values()) {
     const numbers = loaded?.itemStats.get(item)
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
@@ -3117,7 +3150,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     status('the level table did not load, so the Hero has no numbers to fight with')
     return
   }
-  const row = standing(levels, heroExp, heroGains).level
+  const row = standing(levels, leader().exp, leader().gains).level
   const foes: Fighter[] = []
   const names: Named[] = []
   const looks: (MonsterLook | undefined)[] = []
@@ -3197,7 +3230,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     // added on — the game's own sum (`wornResistances`). Nothing the slice
     // wears carries any, so these are all whole; something later will not be.
     resist: wornResistances(
-      [...equipped.values()].flatMap((id) => {
+      [...leader().equipped.values()].flatMap((id) => {
         const own = loaded?.itemResistances.get(id)
         return own ? [own] : []
       }),
@@ -3205,9 +3238,9 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     // What a spell's amount may scale by — the level's own; what is worn is not added, ours.
     might: row.magicalMight,
     mending: row.magicalMending,
-    shield: equipped.has('shield'),
+    shield: leader().equipped.has('shield'),
     // The game's: what is worn says, and only behind a shield — `blockChance`.
-    block: blockChance(equipped.has('shield'), worn.block),
+    block: blockChance(leader().equipped.has('shield'), worn.block),
     exp: 0,
     gold: 0,
     // What a monster weighs before it runs — see `Fighter.runsFrom`.
@@ -3220,9 +3253,9 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     hero,
     ...companions.map((who) => companionFighter(who, (id) => loaded?.itemStats.get(id))),
   ]
-  const hp = new Map([[0, heroHp ?? row.maxHp]])
+  const hp = new Map([[0, leader().hp ?? row.maxHp]])
   for (const [i, who] of companions.entries()) {
-    hp.set(i + 1, companionHp.get(who.id) ?? who.numbers.maxHp)
+    hp.set(i + 1, memberOf(who.id)?.hp ?? who.numbers.maxHp)
   }
   battlesFought++
   // The monsters' places first: they turn the Hero to face them.
@@ -3235,7 +3268,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     // game's `GetBTRandom()`; see `fleeChance`.
     world: roamRng,
     hp,
-    mp: new Map([[0, heroMp ?? row.maxMp]]),
+    mp: new Map([[0, leader().mp ?? row.maxMp]]),
     known,
     words: loaded.battleWords,
     names: [heroNamed(), ...companions.map(companionNamed), ...names],
@@ -3310,22 +3343,22 @@ function inMarshNow(state: Player['state']): boolean {
 function marshToll(): void {
   const row = heroRow()
   if (!row) return
-  const hp = afterMarsh(heroHp ?? row.maxHp)
-  heroHp = hp >= row.maxHp ? undefined : hp
+  const hp = afterMarsh(leader().hp ?? row.maxHp)
+  leader().hp = hp >= row.maxHp ? undefined : hp
   const told = [`HP ${hp}/${row.maxHp}`]
   for (const who of companionsNow()) {
     const max = who.numbers.maxHp
-    const left = afterMarsh(companionHp.get(who.id) ?? max)
-    if (left >= max) companionHp.delete(who.id)
-    else companionHp.set(who.id, left)
+    const along = memberOf(who.id)
+    const left = afterMarsh(along?.hp ?? max)
+    if (along) along.hp = left >= max ? undefined : left
     told.push(`${who.name} ${left}/${max}`)
   }
   status(`the poison marsh stings · ${told.join(' · ')}`)
 }
 
-/** Who goes along with the Hero now, in their places after them: the {@link party}'s — see `companionsAt`. */
+/** Who goes along with the Hero now, in their places after them — see `companionsAt`. */
 function companionsNow(): readonly AttendingCharacter[] {
-  return companionsAt(loaded?.attending ?? [], party)
+  return companionsAt(loaded?.attending ?? [], members)
 }
 
 /**
@@ -3629,14 +3662,14 @@ function settleBattle(): void {
   if (eventFight) eventFight = { ...eventFight, won: battle.state.outcome === 'won' }
   if (battle.state.outcome === 'won' && hero && levels) {
     const { exp, gold } = spoils(battle.state)
-    const before = standing(levels, heroExp, heroGains).level
-    heroExp += exp
+    const before = standing(levels, leader().exp, leader().gains).level
+    leader().exp += exp
     bag = take(bag, { gold })
-    const after = standing(levels, heroExp, heroGains).level
-    heroHp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
+    const after = standing(levels, leader().exp, leader().gains).level
+    leader().hp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
     // MP spent in the battle stay spent, but a level's new MP come with it.
     const mp = Math.min(after.maxMp, hero.mp + (after.maxMp - before.maxMp))
-    heroMp = mp >= after.maxMp ? undefined : mp
+    leader().mp = mp >= after.maxMp ? undefined : mp
     const earned = said(RESULT_SAYS.earns, { values: { str_1: name, val_1: exp } })
     const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), values: { val_1: gold } })
     lines.push(
@@ -3666,8 +3699,8 @@ function settleBattle(): void {
       )
     }
   } else if (battle.state.outcome === 'lost') {
-    heroHp = undefined
-    heroMp = undefined
+    leader().hp = undefined
+    leader().mp = undefined
     // Half the gold is the game's — a published guide: "Money on hand is halved
     // when your characters die" — though the rule is not found in code, and
     // rounding down is ours. Coming round in the village church is ours — see
@@ -3676,8 +3709,8 @@ function settleBattle(): void {
     wakeInChurch = true
     lines.push(`${name} comes round in the church, restored — but half the gold is gone.`)
   } else if (hero) {
-    heroHp = hero.hp
-    heroMp = hero.mp >= hero.maxMp ? undefined : hero.mp
+    leader().hp = hero.hp
+    leader().mp = hero.mp >= hero.maxMp ? undefined : hero.mp
   }
   // Each companion's wounds go on with them; one who fell gets up with 1 HP,
   // and after a loss they come round whole with the Hero — ours, all.
@@ -3685,8 +3718,8 @@ function settleBattle(): void {
     const fighter = battle.state.fighters[at.index]
     if (!fighter) continue
     const left = battle.state.outcome === 'lost' ? fighter.maxHp : Math.max(1, fighter.hp)
-    if (left >= fighter.maxHp) companionHp.delete(at.id)
-    else companionHp.set(at.id, left)
+    const along = memberOf(at.id)
+    if (along) along.hp = left >= fighter.maxHp ? undefined : left
   }
   battle = { ...withPages(battle, lines), settled: true }
 }
@@ -3713,7 +3746,7 @@ function endFight(): void {
       return
     }
   }
-  status(`back on the map · HP ${heroHp ?? 'full'}`)
+  status(`back on the map · HP ${leader().hp ?? 'full'}`)
   if (fought) followBattle(fought)
 }
 
@@ -4084,12 +4117,17 @@ function followEvent(event: number): void {
   }
   for (const flag of outcome.flags) storyFlags.add(flag)
   // Whoever its record brings in or sends away — Ivor, over 2.2 and 2.3.
-  party = partyAfter(party, outcome)
+  members = partyAfter(members, outcome, freshMember)
   status(
     `ev${event} is over · the story is at ${storyStage?.major ?? '?'}.${storyStage?.minor ?? '?'}` +
       `, step ${storyStep}` +
       (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : '') +
-      (party.size > 0 ? ` · party ${[...party].sort((a, b) => a - b).join(' ')}` : ''),
+      (members.length > 1
+        ? ` · party ${members
+            .slice(1)
+            .map((m) => m.attnpc)
+            .join(' ')}`
+        : ''),
   )
   // Patty rescued and the story past the slice: its title card — see `card.ts`.
   if (closing) showCard()
@@ -4159,7 +4197,7 @@ function dressHero(): void {
   if (!loaded) return
   const wardrobe = loaded.wardrobe
   const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-  const figure = dressFigure(wardrobe, outfitOf(equipped, battle ? 'hands' : 'back', has))
+  const figure = dressFigure(wardrobe, outfitOf(leader().equipped, battle ? 'hands' : 'back', has))
   loaded = { ...loaded, figure, pieces: figurePieces(figure) }
 }
 
@@ -4370,11 +4408,11 @@ function heroPortrait(): HTMLCanvasElement | undefined {
   }
   // Dressed with the weapon and shield in hand, as the screenshots' figure
   // holds them; kept until what is worn changes.
-  const key = [...equipped.entries()].map(([slot, item]) => `${slot}=${item}`).join(',')
+  const key = [...leader().equipped.entries()].map(([slot, item]) => `${slot}=${item}`).join(',')
   if (portraitFigure?.key !== key) {
     const wardrobe = here.wardrobe
     const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-    const figure = dressFigure(wardrobe, outfitOf(equipped, 'hands', has))
+    const figure = dressFigure(wardrobe, outfitOf(leader().equipped, 'hands', has))
     portraitFigure = { key, figure, pieces: figurePieces(figure) }
   }
   const { figure, pieces: dressed } = portraitFigure
@@ -4794,9 +4832,11 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       // A night at the inn restores the Hero whole, and the morning comes.
       if (outcome.rested) {
         fieldSeconds = 0
-        heroHp = undefined
-        heroMp = undefined
-        companionHp.clear()
+        // The whole party rests, not only the Hero.
+        for (const member of members) {
+          member.hp = undefined
+          member.mp = undefined
+        }
       }
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
     } else if (action === 'cancel' || action === 'menu') visit = leaveVisit(visit)
@@ -4824,10 +4864,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
               : undefined
       if (said && menu) menu = { ...keptInBag(menu), said }
       if (taken.equip) {
-        const worn = equip(bag, equipped, taken.equip.slot, taken.equip.item)
+        const worn = equip(bag, leader().equipped, taken.equip.slot, taken.equip.item)
         if (worn) {
           bag = worn.bag
-          equipped = worn.equipped
+          leader().equipped = worn.equipped
           // Drawn in what they now wear — see `dressHero`.
           dressHero()
         }

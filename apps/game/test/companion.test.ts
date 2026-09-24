@@ -8,6 +8,7 @@ import {
   companionsAt,
   IVOR,
   joinerOf,
+  type Member,
   PARTY_MOST,
   partyAfter,
 } from '../src/companion.ts'
@@ -50,28 +51,58 @@ const attending = [
   other(5, 'Erinn'),
 ]
 
-describe('the party beside the Hero', () => {
+/** A place with nothing in it, as `main.ts`'s `freshMember` makes one. */
+const place = (attnpc: number | undefined): Member => ({
+  attnpc,
+  hp: undefined,
+  mp: undefined,
+  exp: 0,
+  gains: {},
+  equipped: new Map(),
+})
+/** The party at the start: the Hero, and nobody behind them. */
+const alone: Member[] = [place(undefined)]
+
+describe('the party, the Hero first', () => {
   it('counts an event’s joining word from the table’s first place', () => {
     expect(joinerOf(1)).toBe(IVOR)
     expect(joinerOf(2)).toBe(3)
   })
 
   it('takes Ivor in and sends him away as the events’ records say, in the slice’s order', () => {
-    const joined = partyAfter(new Set(), { joins: [1], leaves: false })
+    const joined = partyAfter(alone, { joins: [1], leaves: false }, place)
     expect(companionsAt(attending, joined)).toEqual([ivor])
-    const ahead = partyAfter(joined, { joins: [], leaves: true })
+    // **The Hero is member 0 and stays.** A record that sends the party away
+    // sends away whoever is behind them.
+    const ahead = partyAfter(joined, { joins: [], leaves: true }, place)
+    expect(ahead).toHaveLength(1)
     expect(companionsAt(attending, ahead)).toEqual([])
-    const again = partyAfter(ahead, { joins: [1], leaves: false })
+    const again = partyAfter(ahead, { joins: [1], leaves: false }, place)
     expect(companionsAt(attending, again)).toEqual([ivor])
     // An event with neither word leaves the party as it was.
-    expect(partyAfter(again, { joins: [], leaves: false })).toEqual(again)
+    expect(partyAfter(again, { joins: [], leaves: false }, place)).toEqual(again)
   })
 
-  it('brings whoever is in the party, in the table’s order, and no more than the party holds', () => {
-    expect(companionsAt(attending, new Set())).toEqual([])
-    const everyone = companionsAt(attending, new Set([5, 4, 3, 2, 1]))
+  it('brings whoever joined, in the order they joined, and no more than fits', () => {
+    expect(companionsAt(attending, alone)).toEqual([])
+    // Joined last first: Erinn (5), Sterling (4), Dr Phlegming (3), then two
+    // who do not fit. **The order is the party's, not the table's.**
+    const everyone = companionsAt(
+      attending,
+      partyAfter(alone, { joins: [4, 3, 2, 1, 0], leaves: false }, place),
+    )
     expect(everyone).toHaveLength(PARTY_MOST - 1)
-    expect(everyone.map((w) => w.name)).toEqual(['Aquila', 'Ivor', 'Dr Phlegming'])
+    expect(everyone.map((w) => w.name)).toEqual(['Erinn', 'Sterling', 'Dr Phlegming'])
+    // The same five in the other order give the other three, which is the
+    // whole of the change: this used to be the table's order and said so,
+    // marked "ours" because nothing decided it. The game has ordered slots,
+    // so joining decides. With one companion — the slice's party — the two
+    // are the same, which is why nothing in the slice could tell them apart.
+    const reversed = companionsAt(
+      attending,
+      partyAfter(alone, { joins: [0, 1, 2, 3, 4], leaves: false }, place),
+    )
+    expect(reversed.map((w) => w.name)).toEqual(['Aquila', 'Ivor', 'Dr Phlegming'])
   })
 
   it('names Ivor as he, as his events do, and others by name alone', () => {

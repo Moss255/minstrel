@@ -2,6 +2,8 @@ import type { AttendingCharacter } from '@minstrel/game-formats'
 import { blockChance, type Fighter } from '@minstrel/sim'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
+import type { Equipped } from './equipment.ts'
+import type { Gains } from './hero.ts'
 
 /**
  * The party beside the Hero: who goes along and when, the fighter each is, and
@@ -13,8 +15,49 @@ import type { Named } from './battle-text.ts'
  * after the Hero, in battle and in the field, up to {@link PARTY_MOST}.
  */
 
-/** The most a party holds, the Hero among them: the game's four — not read from its data here. */
+/**
+ * The most a party holds, the Hero among them.
+ *
+ * **Four, and the game's own shape** — read 24 September 2026, see
+ * `docs/party-and-vocations.md`. The game keeps an ordered byte array of
+ * character indices at `+0x397c` off its state and the count at `+0x3980`,
+ * which leaves exactly the four bytes `+0x397c`–`+0x397f` for the slots. That
+ * the four is a bound rather than what happens to fit is INFERRED: no check
+ * against 4 has been found.
+ */
 export const PARTY_MOST = 4
+
+/**
+ * A place in the party — **the Hero is one of them, and they are first.**
+ *
+ * This used to be a set of companions beside a Hero made of loose variables,
+ * which is not the game's shape and cost more than it looks: the trail buffers
+ * were sized `PARTY_MOST - 1`, only the Hero had experience, equipment or
+ * magic, and a companion had nothing but hit points. Every one of those is a
+ * consequence of the Hero standing outside the list.
+ *
+ * The game puts the leader in slot 0 of the same array as everyone else, and
+ * `0x0200fddc` — the function the message system asks who a speaker should
+ * turn to face — is simply "slot 0". So the Hero is member 0 here.
+ */
+export interface Member {
+  /**
+   * Their number in `attnpc`. **The Hero has none**: they are in no table of
+   * attending characters, which is exactly what makes them the Hero here.
+   */
+  readonly attnpc: number | undefined
+  /** Hit points between battles; undefined is whole. */
+  hp: number | undefined
+  /** Magic between battles; undefined is whole. */
+  mp: number | undefined
+  exp: number
+  /** What seeds have added, for good — see `hero.ts`. */
+  gains: Gains
+  equipped: Equipped
+}
+
+/** The Hero, who is member 0 — see {@link Member}. */
+export const isHero = (member: Member): boolean => member.attnpc === undefined
 
 /** Ivor's number in `attnpc`. */
 export const IVOR = 2
@@ -34,26 +77,48 @@ export function joinerOf(arg: number): number {
  * (`ev02210`), goes on ahead at the pass (`ev22591`), joins again at the
  * landslide (`ev02350`) and goes home with his father (`ev02400`). No record
  * does both, so which comes first is ours.
+ *
+ * **The Hero is member 0 and never leaves.** A record that sends the party
+ * away sends away everyone behind them.
+ *
+ * `joining` makes the member for someone arriving, so that this stays about
+ * the roster and knows nothing about hit points or equipment. Whoever is
+ * already here keeps the place — and the state — they had, which is the point
+ * of ordering the party rather than rebuilding it: Ivor rejoining at the
+ * landslide is the same Ivor who left at the pass.
  */
 export function partyAfter(
-  party: ReadonlySet<number>,
+  members: readonly Member[],
   outcome: { readonly joins: readonly number[]; readonly leaves: boolean },
-): Set<number> {
-  const next = outcome.leaves ? new Set<number>() : new Set(party)
-  for (const arg of outcome.joins) next.add(joinerOf(arg))
-  return next
+  joining: (attnpc: number) => Member,
+): Member[] {
+  const next = outcome.leaves ? members.slice(0, 1) : [...members]
+  for (const arg of outcome.joins) {
+    const id = joinerOf(arg)
+    if (!next.some((member) => member.attnpc === id)) next.push(joining(id))
+  }
+  return next.slice(0, PARTY_MOST)
 }
 
 /**
- * Who goes along, in their places after the Hero: those in the party, by their
- * number, in the table's order, and no more than the party holds beside the
- * Hero. Which place each takes — the table's order — is ours.
+ * Who goes along, in their places after the Hero: the attending character for
+ * each member after the first, in the party's own order.
+ *
+ * **The order is the party's, not the table's.** It used to be the table's,
+ * marked "ours" because nothing said otherwise; now that the party is an
+ * ordered list it is the order people joined in, which is the order the
+ * game's own slots would hold them in. With one companion the two agree, so
+ * nothing in the slice can tell them apart.
+ *
+ * A member whose number is in no table is left out rather than guessed at.
  */
 export function companionsAt(
   attending: readonly AttendingCharacter[],
-  party: ReadonlySet<number>,
+  members: readonly Member[],
 ): AttendingCharacter[] {
-  return attending.filter((who) => party.has(who.id)).slice(0, PARTY_MOST - 1)
+  return members
+    .slice(1)
+    .flatMap((member) => attending.filter((who) => who.id === member.attnpc).slice(0, 1))
 }
 
 /** The gender the game's own text gives a character, where it is known: Ivor's "He's got something or other he wants to talk about" (`ev02130`). */
