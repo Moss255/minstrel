@@ -3056,17 +3056,27 @@ export class EventStage {
       // one that goes to its position and the one that goes to its rotation.
       // Each is handed references to fill. The numbers are fixed point over
       // 4,096 — **radians**, as `fix32ReduceAngle0To2Pi` settles; only `532`'s
-      // field of view is in degrees, and it converts them itself.
+      // field of view and `327`'s camera roll are in degrees, and both convert
+      // them themselves with `0x47/4096`.
+      //
+      // **This answered degrees until 24 September 2026**, against its own
+      // comment. The handler at ov001 `0x0215ffc0` reads the three components
+      // of the character's rotation, converts each with `_fflt` and then
+      // `_fdiv` by `0x45800000` — 4096.0f — and hands the result back. That is
+      // the plain fixed-point-to-float conversion and nothing else: no `0x47`
+      // appears in it. So what a script gets is radians.
+      //
+      // The old reading was self-refuting, and the test that pinned it said so
+      // without noticing: `208` *sets* a facing in radians, so a script that
+      // read one back with `544` and set it again with `208` would have turned
+      // a character through fifty-seven times the angle it asked for.
       //
       // **Ours**: this engine keeps one angle for a character, its facing, so
       // the x and z of a rotation are answered with nothing.
       case 543:
       case 544: {
         const actor = this.actor(num(args[0]))
-        const triple =
-          id === 543
-            ? [actor.x / s, actor.y / s, actor.z / s]
-            : [0, (actor.facing * 180) / Math.PI, 0]
+        const triple = id === 543 ? [actor.x / s, actor.y / s, actor.z / s] : [0, actor.facing, 0]
         for (const [i, value] of triple.entries()) {
           const ref = args[i + 1]
           if (isRef(ref)) thread.write(ref, value)

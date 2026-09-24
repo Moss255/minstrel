@@ -657,9 +657,17 @@ describe('the seven the next town wanted', () => {
     expect(written.get(2)).toBeCloseTo(16, 6)
     expect(written.get(3)).toBeCloseTo(24, 6)
     stage.host.call(544, [1, ref(4), ref(5), ref(6)], t)
-    // Degrees, as the game's angles are.
-    expect(written.get(5)).toBeCloseTo(90, 6)
+    // **Radians — the same units `208` was given two lines up.** This asserted
+    // 90 until 24 September 2026, and the pairing is what gives it away: a
+    // script that read a facing back and set it again would have turned the
+    // character through fifty-seven times the angle. The handler at ov001
+    // `0x0215ffc0` divides by 4096.0f and does nothing else; see `event.ts`.
+    expect(written.get(5)).toBeCloseTo(Math.PI / 2, 6)
     expect(written.get(4)).toBe(0)
+    // Set it back from what was read, and nothing has moved.
+    stage.host.call(208, [1, 0, written.get(5) ?? 0, 0], t)
+    stage.host.call(544, [1, ref(7), ref(8), ref(9)], t)
+    expect(written.get(8)).toBeCloseTo(Math.PI / 2, 6)
   })
 
   it('hands back the time of day, which is the engine’s own — 597', () => {

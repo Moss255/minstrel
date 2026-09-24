@@ -185,6 +185,26 @@ Not yet read. The slice plan calls runtime character assembly "the hardest
 asset problem in the project", and it is the thing most likely to decide
 whether this phase's done-when is reachable.
 
+## A correction this reading turned up elsewhere
+
+Reading the party led to the wiki's engine-function page, which said the
+engine's angles are fixed-point radians and then, thirty lines later, that
+engine function **`544`** hands a character's facing back **in degrees**. Only
+one of those can be true.
+
+`544`'s handler (ov001 `0x0215ffc0`) reads the three components of the
+rotation, converts each with `_fflt` and divides by `0x45800000` — `4096.0f` —
+and does nothing else. That is the plain fixed-point-to-float conversion; the
+`0x47/4096` that `532` and `327` use to take degrees does not appear. **`544`
+hands back radians.**
+
+`apps/game/src/event.ts` had the same contradiction — a comment saying radians
+over a line returning `(facing * 180) / Math.PI` — and so did the test that
+pinned it. The pairing is what gives it away: `208` *sets* a facing in
+radians, so a script that read one back with `544` and set it again would have
+turned the character through fifty-seven times the angle it asked for. Fixed,
+with a test that now does exactly that round trip.
+
 ## Not established
 
 - What bit `0x800` on a character's halfword actually means.
