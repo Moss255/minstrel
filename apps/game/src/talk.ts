@@ -128,8 +128,24 @@ const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
  * These are not formatting. **The game's markup compiler turns them into
  * control codes carried in the message itself** — `<ME_n>` becomes `0xFF34 + n`
  * and `<SE_n>` becomes `0xFF4B` — so the sound is played by whatever walks the
- * message, at the point in the text where it was written. See
- * `docs/event-scripts.md` §7a.
+ * message, at the point in the text where it was written.
+ *
+ * **`id` is the game's own request id, not the number in the tag.** The
+ * interpreter's arms at `0x02066860` and `0x020668b0` were read for this:
+ *
+ * - `<ME_n>` → `id = code − 0xFF03`, so **`n + 49`**. `<ME_008>` asks for 57.
+ * - `<SE_n>` → the code is always `0xFF4B` and **the runtime answers it with a
+ *   flat 14** (`mov r1, #0xe`); the tag's number never reaches it at all, and
+ *   only 14 is in the compiler's list anyway.
+ *
+ * The two go to different calls — `0x209c830` for a jingle, `0x205eaa0` for an
+ * effect, the latter shared with `<EXC>` and `<QES>` at ids 6 and 28.
+ *
+ * **What that id space is has not been read**, and it is not this host's:
+ * `playEffect` takes an index into the effect archive's SSAR records, and the
+ * cartridge has no record 14. So the cue is carried and nothing plays it —
+ * see `docs/still-open.md`. Playing the archive's 14th effect because the
+ * game asked for sound 14 would be an invented mapping that appeared to work.
  *
  * `page` is the page it falls on, since that is when it should be heard.
  */
@@ -527,7 +543,9 @@ export function runLine(
       // and the message tick plays it where it stands, so it comes out of the
       // line rather than going into it.
       const [kind, digits] = name.split('_') as [string, string]
-      cues.push({ kind: kind as SoundCue['kind'], id: Number(digits), page: pages.length })
+      // The id the runtime would ask for, not the number in the tag.
+      const id = kind === 'ME' ? Number(digits) + 49 : 14
+      cues.push({ kind: kind as SoundCue['kind'], id, page: pages.length })
     } else if (SERVICES.has(name) && Number.isInteger(Number(token.args[0]))) {
       service = { kind: name as Service['kind'], id: Number(token.args[0]) }
     } else if (context.values?.[name] !== undefined) {

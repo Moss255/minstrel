@@ -217,8 +217,39 @@ each now has a measurement of its own rather than an assumption:
 | walks | `apps/game/test/walk-coverage.test.ts` | ten areas walked from where the game stands you, with the game's own controller. **Nobody is stranded**; eight of the ten reach every one of their doorways |
 
 **All four are now evidenced.** The second half of the done-when — satisfying a
-person in minutes — has `tools/witness` for the looking and still wants frames
-beside a let's play.
+person in minutes — has `tools/witness` for the looking.
+
+**And the done-when has now been performed rather than assumed.** Gleeba —
+`C02`, a town a hundred events past the slice — at stage 5.1, everything on:
+
+```
+40 views, 0 failed, 0 worth a look, 5 the game guessed      3m 24s
+```
+
+The square, nine doorways, its events, and eight conversations spread across
+eight rooms. A villager turns to face the Hero and says "Welcome, wanderer, to
+the glorious queendom of Gleeba…"; the mini-map names the town; the Mirage
+Mahal's approach event fires on its own. **Three and a half minutes, and a
+person can see it is right.** That is the phase's sentence, carried out.
+
+The five "the game guessed" are `pickLine` saying no trigger names a character
+at the stage asked for — the tool working, not a fault.
+
+**The first run of it was not clean, and that is the point of running it.**
+One view of forty reported `no effect 14 in the sound archive`, which was a
+bug half a day old and mine: `<SE_014>`'s number is a *compile-time selector*
+and never reaches the runtime, and the id the runtime asks for belongs to the
+game's own sound-request space, not to `playEffect`'s index into the effect
+archive. The mapping had been assumed rather than read, which is the one thing
+`CLAUDE.md` says not to do. It has been read now — `<ME_n>` asks for `n + 49`,
+`<SE_n>` for a flat 14 — and since what those ids index is still unread, the
+cues are carried and nothing plays them. See `docs/still-open.md`.
+
+An exhaustive headless measurement would never have found it: the sound only
+fails when something asks for it. That is what the witness is for.
+
+What remains of this bullet is **frames beside a let's play**, which wants the
+recording as input and is the one item here that cannot be moved without it.
 
 Two things the walking sweep taught, both of which had been assumed:
 

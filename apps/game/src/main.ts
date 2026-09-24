@@ -4505,10 +4505,14 @@ function showTalk(): void {
     cuedRun = run
     cuedPage = page
     turnSpeaker(who, run.turn)
-    for (const cue of run.cues) {
-      if (cue.page !== page) continue
-      void playSound({ kind: cue.kind === 'ME' ? 'jingle' : 'effect', index: cue.id })
-    }
+    // **The cues are read and nothing plays them**, on purpose. `run.cues`
+    // carries the id the game would ask for — `<ME_008>` is 57, `<SE_014>` is
+    // a flat 14 — and that id belongs to the game's own sound-request space,
+    // which is not `playEffect`'s index into the effect archive's records.
+    // This did play them for half a day, and Gleeba's witness caught it:
+    // "no effect 14 in the sound archive". Playing the archive's 14th effect
+    // because the game asked for sound 14 is the kind of mapping that appears
+    // to work. See `SoundCue` and `docs/still-open.md`.
   }
   talkEl.replaceChildren()
   // `<CEN>` centres the box — the game's narration card, "Some days later…".

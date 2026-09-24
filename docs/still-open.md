@@ -173,6 +173,14 @@ lives; this is the gathered list.
   read. **Ours**: `closeTalk` puts them back. Leaving them turned would have a
   town slowly rotating to face wherever the Hero last stood, which is worse
   than either answer, but it is a choice and not a reading.
+- **The game's sound-request id space** (24 September). `<ME_n>` asks for
+  `n + 49` and `<SE_n>` for a flat 14, both read from the interpreter's arms
+  at `0x02066860` and `0x020668b0`; `<EXC>` and `<QES>` use the same call with
+  6 and 28. **What those ids index is not read**, and it is not this host's:
+  `playEffect` takes an index into the effect archive's SSAR records and the
+  cartridge has no record 14. `Run.cues` carries the ids and nothing plays
+  them. Playing the archive's fourteenth effect because the game asked for
+  sound 14 would appear to work and be wrong for ever.
 - **The quest banner** (24 September). `<QUEST=n>` binds a quest to the box and
   `<QUEST_HAN>` / `<QUEST_FAILED>` / `</QUEST>` / `<QUEST_SE>` open, close and
   commit a banner over it. All five are read onto `Run.quest`; none is drawn,

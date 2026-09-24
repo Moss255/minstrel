@@ -1355,8 +1355,36 @@ of the worklist:
   after it as a terminator, and the cartridge's text uses `<SE_014>` and
   nothing else. The compiler and the content agree exactly.
 
-`runLine` now reads both as `SoundCue`s rather than text, which is what they
-are: they come *out* of the line instead of going into it.
+`runLine` reads both as `SoundCue`s rather than text, which is what they are:
+they come *out* of the line instead of going into it.
+
+**And the number in the tag is not the sound.** This was got wrong here for
+half a day and caught by running the witness over Gleeba, which reported
+`no effect 14 in the sound archive` on one of forty views. The interpreter's
+arms say what is actually asked for:
+
+```
+02066860  ldr  r1, [sp, #0x64]    ; 0xFF34 — the <ME_ range
+0206687c  bl   #0x2045688         ; stop the typing sound
+02066884  ldr  r1, =0xffff00fd    ; −0xFF03
+0206688c  add  r1, r2, r1         ; id = code − 0xFF03
+02066890  bl   #0x209c830         ; a jingle request
+...
+020668bc  ldr  r1, =0x0000ff4b    ; the <SE_ code, and there is only the one
+020668d8  mov  r1, #0xe           ; …answered with a flat 14
+020668e0  bl   #0x205eaa0         ; a different call — the one <EXC>/<QES> use
+```
+
+So **`<ME_n>` asks for `n + 49`**, and `<ME_008>` means 57. And `<SE_n>`'s
+number never reaches the runtime at all: the code is always `0xFF4B` and the
+answer is always 14.
+
+**What that id space is has not been read.** It is not this host's:
+`playEffect` takes an index into the effect archive's SSAR records and the
+cartridge has no record 14. So the cue is carried and nothing plays it.
+Playing the archive's fourteenth effect because the game asked for sound 14
+would be exactly the invented mapping this file exists to prevent — it would
+have appeared to work, and quietly played the wrong sound for ever.
 
 ### One inference the codes settle
 

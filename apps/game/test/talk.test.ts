@@ -152,8 +152,12 @@ describe('renderLine', () => {
     const line = runLine(parseMarkup('*: Ta-daa!<ME_008><PAGE>*: And off.<SE_014>'))
     expect(line.pages.map((p) => p.text)).toEqual(['Ta-daa!', 'And off.'])
     expect(line.unhandled).toEqual([])
+    // **The id is the game's request id, not the tag's number.** `<ME_n>`
+    // compiles to 0xFF34 + n and the interpreter asks for `code - 0xFF03`, so
+    // 8 becomes 57; `<SE_n>` compiles to a flat 0xFF4B, which the interpreter
+    // answers with a flat 14 whatever the tag said. See `SoundCue`.
     expect(line.cues).toEqual([
-      { kind: 'ME', id: 8, page: 0 },
+      { kind: 'ME', id: 57, page: 0 },
       { kind: 'SE', id: 14, page: 1 },
     ])
   })
