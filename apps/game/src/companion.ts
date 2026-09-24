@@ -51,11 +51,24 @@ export interface Member {
   hp: number | undefined
   /** Magic between battles; undefined is whole. */
   mp: number | undefined
-  exp: number
   /**
-   * Which vocation's level table their experience is read against, by its
-   * number — `HERO_VOCATION_NUMBER` is the Minstrel's 6. It is a member's and
-   * not a constant because Alltrades is the point of this phase.
+   * Their experience, **by vocation** — see {@link expOf}.
+   *
+   * **The game keeps thirteen**, one per vocation, and thirteen levels beside
+   * them: the character record has `exp[v]` at `+0x1C` four bytes apart and
+   * `level[v]` at `+0x02` one byte apart, both written by the same
+   * thirteen-iteration loop at `0x02086450`, and `GetExperience`
+   * (ov023 `0x021eea98`) reads `exp[current vocation]`.
+   *
+   * So changing vocation does not re-read one number against another table.
+   * It changes an index, and what the old vocation had sits untouched until
+   * they change back. This was a single number until 24 September 2026, which
+   * would have quietly ruined Alltrades. See `docs/party-and-vocations.md`.
+   */
+  exp: Map<number, number>
+  /**
+   * Which vocation they are, by its number — `HERO_VOCATION_NUMBER` is the
+   * Minstrel's 6. It picks which of their thirteen levels is theirs now.
    */
   vocation: number
   /**
@@ -98,6 +111,15 @@ export interface Member {
 export const levelsUp = (member: Member): boolean => member.attnpc === undefined
 
 /**
+ * The experience a member has in a vocation — none until they earn some.
+ *
+ * Their current vocation's unless another is asked for, which is what
+ * Alltrades needs: a character who changes back finds what they left.
+ */
+export const expOf = (member: Member, vocation = member.vocation): number =>
+  member.exp.get(vocation) ?? 0
+
+/**
  * The party as a save keeps it, and back — see `SaveMember` in `save.ts`.
  *
  * These live here rather than in `main.ts` so that the round trip can be
@@ -111,7 +133,8 @@ export const levelsUp = (member: Member): boolean => member.attnpc === undefined
 export function partySaved(members: readonly Member[]): SaveMember[] {
   return members.map((member) => ({
     attnpc: member.attnpc ?? null,
-    exp: member.exp,
+    // Kept as pairs, the way the bag's items are — JSON has no integer keys.
+    exp: [...member.exp].sort((a, b) => a[0] - b[0]),
     hp: member.hp ?? null,
     mp: member.mp ?? null,
     vocation: member.vocation,
@@ -128,7 +151,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     attnpc: member.attnpc ?? undefined,
     hp: member.hp ?? undefined,
     mp: member.mp ?? undefined,
-    exp: member.exp,
+    exp: new Map(member.exp),
     // A save from before vocations were a member's has none, and everyone in
     // it was the Minstrel the Hero is — see `HERO_VOCATION_NUMBER`.
     vocation: member.vocation ?? HERO_VOCATION_NUMBER,

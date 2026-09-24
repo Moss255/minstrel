@@ -242,11 +242,69 @@ Hero's until character creation offers a choice. And the face mapping —
 `9006` to `p_f006` — is INFERRED, from `FORMAT.md`'s note that the value lands
 on a face that exists across all 41 presets.
 
+### Experience is per vocation, and so is level
+
+**Read 24 September 2026**, and it changed the data model.
+
+The game keeps a character in a `0x23C`-byte record, and inside it:
+
+| offset | what |
+|---|---|
+| `+0x02` … `+0x0E` | **level, thirteen bytes — one per vocation** |
+| `+0x0F` … `+0x1B` | thirteen more bytes, 0–10; a revocation count, INFERRED |
+| `+0x1C` … `+0x4F` | **experience, thirteen words — one per vocation** |
+| `+0x50` | the current vocation, which picks among them |
+| `+0x54` | a bitmask: which vocations they have ever been |
+| `+0xF4` | **the skill-point pool — one per character, not per vocation** |
+| `+0xF6` … `+0x110` | points spent, twenty-seven bytes, one per tree |
+
+The decisive instruction is the initialiser's thirteen-iteration loop at
+`0x02086450`, which writes all three per-vocation arrays together:
+
+```
+02086454  add  r1, r6, r5, lsl #2
+02086458  str  r4, [r1, #0x1c]     ; exp[v]   = 0
+0208645c  add  r1, r6, r5
+02086460  strb sb, [r1, #2]        ; level[v] = 1
+02086464  strb r4, [r1, #0xf]      ; revoc[v] = 0
+02086470  cmp  r5, #0xd            ; thirteen of them
+```
+
+and `GetExperience` (ov023 `0x021eea98`) reads `exp[current vocation]`:
+`ldr r0,[r1,#0x950]` then `ldr r0,[r0,#0x138]`.
+
+**So changing vocation does not re-read one number against another table.** It
+changes an index, and what the old vocation had sits untouched until they
+change back. `Member.exp` was a single number, which would have quietly
+ruined Alltrades the moment it was built — a character switching would have
+had their Warrior experience read as a Mage's.
+
+It is a `Map` from vocation to experience now, and the save keeps pairs the
+way the bag keeps its items. **Version 4**, because a field changed shape
+rather than being added; a version-3 save's single number becomes the
+experience of the vocation it says they were.
+
+**Not established:** the Alltrades routine itself. The setter at `0x02086598`
+writes the vocation and ORs the "has been" bit, and its only caller in the
+ARM9 and all thirty-five overlays is character creation. Whatever the Abbey
+calls was not found.
+
+### The skill trees have contents now
+
+`/data/prm/skilltable.bin` — see `packages/game-formats/FORMAT.md`, "Skill
+panels". 287 panels, 26 trees of 11, with a cost, what they give and the
+message they say. `readSkillTable` reads it.
+
+So skill points can be spent, in principle: the pool is one per character and
+the spend is per tree, which the record above confirms. **Nothing spends them
+yet**, and the menu has no skill screen.
+
 ### What is still missing
 
-Alltrades and the change flow; the skill trees, of which only the 12×5 table
-of tree *numbers* is read and nothing of panels, costs or abilities; and
-spending skill points, which are read and shown and cannot be spent.
+Alltrades and the change flow — the data shape is right for it now, and the
+routine that does it in the game has not been found. A skill screen, so the
+panels can be looked at and bought. And why every tree's eleventh panel costs
+nothing.
 
 ## 3. What a character is
 

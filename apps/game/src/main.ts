@@ -151,6 +151,7 @@ import {
   companionModel,
   companionNamed,
   companionsAt,
+  expOf,
   FOLLOW_TICKS,
   IVOR,
   levelsUp,
@@ -570,7 +571,7 @@ function freshMember(attnpc: number | undefined): Member {
     attnpc,
     hp: undefined,
     mp: undefined,
-    exp: 0,
+    exp: new Map(),
     // **Ours, and a stand-in.** Everyone starts as the Minstrel the Hero is,
     // because what vocation an attending character has is not read — `attnpc`
     // carries a level, stats, a weapon and a shield, and no vocation at all.
@@ -1250,7 +1251,6 @@ function enter(map: string, arrival?: Arrival): boolean {
   // The cast where the story stage has them.
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
   loaded = opened
-  witnessHook()
   playMapMusic()
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
   dressHero()
@@ -1285,6 +1285,13 @@ function enter(map: string, arrival?: Arrival): boolean {
     createFollower(FOLLOW_TICKS * (i + 1), at),
   )
   if (via) self.facing = via.facing
+  // **Dress the party for the map they are now in.** `load` builds the Hero's
+  // figure out of the map's own wardrobe; everybody else's is built here, and
+  // until this was called on entering a map rather than only when equipment
+  // changed, a party restored from a save came back with nobody assembled.
+  dressParty()
+  // After the dressing, so what it reports is what is actually built.
+  witnessHook()
   beginRoaming()
 
   // The character is put down inside the doorway they came out of more often
@@ -2031,7 +2038,7 @@ Object.defineProperty(window, 'minstrelLevel', {
     const worn = wornNumbers()
     return {
       level: row.level,
-      exp: leader().exp,
+      exp: expOf(leader()),
       maxHp: row.maxHp,
       maxMp: row.maxMp,
       strength: row.strength,
@@ -2686,7 +2693,7 @@ function menuMember(member: Member): MenuMember {
     }
   }
   const levels = levelsFor(member)
-  const now = levels ? standing(levels, member.exp, member.gains) : undefined
+  const now = levels ? standing(levels, expOf(member), member.gains) : undefined
   return {
     name: nameFor(member),
     // The vocation in the menu's own words — `str_tm` 2106, the Minstrel.
@@ -2726,7 +2733,7 @@ function nameFor(member: Member): string {
 function menuContext(): MenuContext {
   const levels = levelsFor(leader())
   const words = loaded?.menuWords
-  const now = levels ? standing(levels, leader().exp, leader().gains) : undefined
+  const now = levels ? standing(levels, expOf(leader()), leader().gains) : undefined
   return {
     party: members.map(menuMember),
     hero: DEFAULT_CONTEXT.heroName,
@@ -2850,7 +2857,7 @@ let wakeInChurch = false
 /** The Hero's numbers now: their level's, with what seeds have added. */
 function heroRow(): LevelRow | undefined {
   const levels = levelsFor(leader())
-  return levels ? standing(levels, leader().exp, leader().gains).level : undefined
+  return levels ? standing(levels, expOf(leader()), leader().gains).level : undefined
 }
 
 function heroVitals(row: LevelRow): Vitals {
@@ -2884,10 +2891,13 @@ function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
     status('the level table did not load, so the Hero has no level to move')
     return undefined
   }
-  const before = standing(levels, leader().exp, leader().gains).level
-  leader().exp =
-    level === undefined ? expLevelledBy(levels, leader().exp, by) : expAtLevel(levels, level)
-  const after = standing(levels, leader().exp, leader().gains).level
+  const before = standing(levels, expOf(leader()), leader().gains).level
+  // Into the vocation they are, which is the only one this moves.
+  leader().exp.set(
+    leader().vocation,
+    level === undefined ? expLevelledBy(levels, expOf(leader()), by) : expAtLevel(levels, level),
+  )
+  const after = standing(levels, expOf(leader()), leader().gains).level
   // Undefined is whole, and stays whole at the new maximum.
   const moved = leader()
   if (moved.hp !== undefined)
@@ -3091,7 +3101,7 @@ function counter(): Counter {
     divination: () => {
       const levels = levelsFor(leader())
       if (!levels) return 'The level table did not load.'
-      const s = standing(levels, leader().exp)
+      const s = standing(levels, expOf(leader()))
       return s.next
         ? `${s.next.exp - s.exp} more experience to reach level ${s.next.level}.`
         : 'There are no more levels to reach.'
@@ -3306,7 +3316,7 @@ function wornNumbers(worn: ReadonlyMap<Slot, number> = leader().equipped): {
 /** A member's level row, where their vocation's table read — see `levelsFor`. */
 function levelOf(member: Member): LevelRow | undefined {
   const levels = levelsFor(member)
-  return levels ? standing(levels, member.exp, member.gains).level : undefined
+  return levels ? standing(levels, expOf(member), member.gains).level : undefined
 }
 
 /**
@@ -3373,7 +3383,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     status('the level table did not load, so the Hero has no numbers to fight with')
     return
   }
-  const row = standing(levels, leader().exp, leader().gains).level
+  const row = standing(levels, expOf(leader()), leader().gains).level
   const foes: Fighter[] = []
   const names: Named[] = []
   const looks: (MonsterLook | undefined)[] = []
@@ -4000,10 +4010,11 @@ function settleBattle(): void {
   if (eventFight) eventFight = { ...eventFight, won: battle.state.outcome === 'won' }
   if (battle.state.outcome === 'won' && hero && levels) {
     const { exp, gold } = spoils(battle.state)
-    const before = standing(levels, leader().exp, leader().gains).level
-    leader().exp += exp
+    const before = standing(levels, expOf(leader()), leader().gains).level
+    // Into the vocation that earned it; the other twelve are untouched.
+    leader().exp.set(leader().vocation, expOf(leader()) + exp)
     bag = take(bag, { gold })
-    const after = standing(levels, leader().exp, leader().gains).level
+    const after = standing(levels, expOf(leader()), leader().gains).level
     leader().hp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
     // MP spent in the battle stay spent, but a level's new MP come with it.
     const mp = Math.min(after.maxMp, hero.mp + (after.maxMp - before.maxMp))

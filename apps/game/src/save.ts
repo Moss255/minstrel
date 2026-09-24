@@ -1,6 +1,6 @@
 import type { Bag } from './bag.ts'
 import { type Equipped, SLOTS, type Slot } from './equipment.ts'
-import { GAIN_STATS, type GainStat } from './hero.ts'
+import { GAIN_STATS, type GainStat, HERO_VOCATION_NUMBER } from './hero.ts'
 
 /**
  * Saving and loading, in our own format: JSON, in the browser's own storage,
@@ -20,7 +20,7 @@ import { GAIN_STATS, type GainStat } from './hero.ts'
  */
 
 export const SAVE_KEY = 'minstrel.save'
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 
 /**
  * One place in the party, as a save keeps it — see `Member` in `companion.ts`,
@@ -30,7 +30,17 @@ export const SAVE_VERSION = 3
 export interface SaveMember {
   /** Their number in `attnpc`; **null for the Hero**, who is in no such table. */
   readonly attnpc: number | null
-  readonly exp: number
+  /**
+   * Their experience, **by vocation**: pairs of `[vocation, experience]`, the
+   * way the bag keeps its items, because JSON has no integer keys.
+   *
+   * **Version 3 and earlier kept one number**, which is what the running game
+   * kept: a character had one experience read against whichever table their
+   * vocation named. The game keeps thirteen — see `Member.exp` — so version 4
+   * does, and an older save's single number becomes the experience of the
+   * vocation that save says they were.
+   */
+  readonly exp: readonly (readonly [number, number])[]
   /** HP and MP; null when whole. */
   readonly hp: number | null
   readonly mp: number | null
@@ -209,6 +219,26 @@ function membersOf(s: Record<string, unknown>): SaveMember[] {
   ]
 }
 
+/**
+ * The experience a place holds, whatever version wrote it: pairs from version
+ * 4, and from before that the one number against the vocation it names.
+ */
+function expOf(m: Record<string, unknown>, where: string): (readonly [number, number])[] {
+  if (Array.isArray(m.exp)) {
+    if (
+      !m.exp.every(
+        (pair) => Array.isArray(pair) && pair.length === 2 && isCount(pair[0]) && isCount(pair[1]),
+      )
+    ) {
+      throw new SaveError(`${where} has experience that does not read`)
+    }
+    return m.exp as (readonly [number, number])[]
+  }
+  if (!isCount(m.exp)) throw new SaveError(`${where} has no experience count`)
+  const vocation = isCount(m.vocation) ? (m.vocation as number) : HERO_VOCATION_NUMBER
+  return m.exp === 0 ? [] : [[vocation, m.exp as number]]
+}
+
 /** One place, checked field by field; `place` is only for saying which is wrong. */
 function member(raw: unknown, place: number): SaveMember {
   const where = place === 0 ? 'the Hero' : `party place ${place}`
@@ -219,7 +249,7 @@ function member(raw: unknown, place: number): SaveMember {
   }
   if (m.hp !== null && !isCount(m.hp)) throw new SaveError(`${where} has HP that do not read`)
   if (m.mp !== null && !isCount(m.mp)) throw new SaveError(`${where} has MP that do not read`)
-  if (!isCount(m.exp)) throw new SaveError(`${where} has no experience count`)
+  const exp = expOf(m, where)
   if (m.vocation !== undefined && !isCount(m.vocation)) {
     throw new SaveError(`${where} has a vocation that does not read`)
   }
@@ -248,7 +278,7 @@ function member(raw: unknown, place: number): SaveMember {
   }
   return {
     attnpc: m.attnpc as number | null,
-    exp: m.exp,
+    exp,
     hp: m.hp as number | null,
     mp: m.mp as number | null,
     ...(m.vocation === undefined ? {} : { vocation: m.vocation as number }),

@@ -61,7 +61,7 @@ const place = (attnpc: number | undefined): Member => ({
   attnpc,
   hp: undefined,
   mp: undefined,
-  exp: 0,
+  exp: new Map(),
   vocation: HERO_VOCATION_NUMBER,
   appearance: undefined,
   name: undefined,
@@ -135,7 +135,7 @@ describe('the party, the Hero first', () => {
         attnpc: undefined,
         hp: 12,
         mp: undefined,
-        exp: 340,
+        exp: new Map([[6, 340]]),
         vocation: HERO_VOCATION_NUMBER,
         appearance: undefined,
         name: undefined,
@@ -146,7 +146,7 @@ describe('the party, the Hero first', () => {
         attnpc: IVOR,
         hp: undefined,
         mp: 4,
-        exp: 40,
+        exp: new Map([[0, 40]]),
         // **A vocation that is not the Hero's** — the whole point of it being
         // a member's field rather than a constant.
         vocation: 0,
@@ -159,7 +159,7 @@ describe('the party, the Hero first', () => {
         attnpc: 5,
         hp: 1,
         mp: 0,
-        exp: 0,
+        exp: new Map(),
         vocation: 11,
         appearance: 12,
         name: 'Brittany',
@@ -210,6 +210,7 @@ describe('the party, the Hero first', () => {
       might: ivor.numbers.magicalMight,
       mending: ivor.numbers.magicalMending,
       shield: true,
+      // A Fighter's `exp` is what beating it awards, not a Member's.
       exp: 0,
       gold: 0,
       level: ivor.level,

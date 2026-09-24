@@ -23,13 +23,13 @@ const game: SaveGame = {
   members: [
     {
       attnpc: null,
-      exp: 0,
+      exp: [],
       hp: 12,
       mp: null,
       gains: { maxHp: 3, skillPoints: 2 },
       equipped: { weapon: 20004 },
     },
-    { attnpc: 2, exp: 40, hp: 7, mp: null, gains: {}, equipped: { shield: 22000 } },
+    { attnpc: 2, exp: [[0, 40]], hp: 7, mp: null, gains: {}, equipped: { shield: 22000 } },
   ],
   gold: 85,
   items: [
@@ -86,7 +86,7 @@ describe('saves', () => {
     expect(back.members).toHaveLength(2)
     expect(back.members[1]).toEqual({
       attnpc: 2,
-      exp: 40,
+      exp: [[0, 40]],
       hp: 7,
       mp: null,
       gains: {},
@@ -96,7 +96,7 @@ describe('saves', () => {
 
   it('are refused whole, saying why, when a field does not read', () => {
     expect(() => decodeSave('not json')).toThrow(/not JSON/)
-    expect(() => decodeSave(encodeSave({ ...game, version: 4 as 3 }))).toThrow(/version 4/)
+    expect(() => decodeSave(encodeSave({ ...game, version: 5 as 4 }))).toThrow(/version 5/)
     const withHero = (over: Record<string, unknown>) =>
       JSON.stringify({ ...game, members: [{ ...hero, ...over }, game.members[1]] })
     expect(() => decodeSave(withHero({ hp: -1 }))).toThrow(/Hero has HP/)
@@ -104,6 +104,9 @@ describe('saves', () => {
     expect(() => decodeSave(withHero({ gains: { luck: 1 } }))).toThrow(/Hero has seeds/)
     expect(() => decodeSave(withHero({ equipped: { hat: 1 } }))).toThrow(/Hero wears hat/)
     expect(() => decodeSave(withHero({ exp: -1 }))).toThrow(/Hero has no experience/)
+    expect(() => decodeSave(withHero({ exp: [[1]] }))).toThrow(
+      /Hero has experience that does not read/,
+    )
     // **Which place is wrong is said**, because "HP that do not read" in a
     // party of four is not a thing anyone can act on.
     const broken = JSON.stringify({ ...game, members: [hero, { ...game.members[1], hp: -1 }] })
@@ -121,6 +124,25 @@ describe('saves', () => {
     expect(decodeSave(JSON.stringify({ ...game, stage: null })).stage).toBeNull()
   })
 
+  it('read from version 3, turning one experience into the vocation’s', () => {
+    // **The game keeps thirteen experiences, one per vocation.** Version 3
+    // kept one, which was what the running game kept; an older save's single
+    // number becomes the experience of the vocation that save says they were.
+    const v3 = {
+      ...game,
+      version: 3,
+      members: [
+        { attnpc: null, exp: 900, hp: null, mp: null, vocation: 6, gains: {}, equipped: {} },
+        { attnpc: 2, exp: 0, hp: null, mp: null, vocation: 0, gains: {}, equipped: {} },
+      ],
+    }
+    const back = decodeSave(JSON.stringify(v3))
+    expect(back.version).toBe(SAVE_VERSION)
+    expect(back.members[0]?.exp).toEqual([[6, 900]])
+    // None at all stays none rather than becoming a zero nobody asked for.
+    expect(back.members[1]?.exp).toEqual([])
+  })
+
   it('read from version 2, lifting the Hero’s loose fields into the party', () => {
     // **A person part-way through the slice has no other copy**, so the older
     // shapes are read rather than refused. Version 2 kept the Hero's five
@@ -130,7 +152,7 @@ describe('saves', () => {
     expect(back.version).toBe(SAVE_VERSION)
     expect(back.members).toEqual([
       hero,
-      { attnpc: 2, exp: 0, hp: null, mp: null, gains: {}, equipped: {} },
+      { attnpc: 2, exp: [], hp: null, mp: null, gains: {}, equipped: {} },
     ])
   })
 
