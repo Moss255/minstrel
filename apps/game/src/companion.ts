@@ -63,8 +63,22 @@ export interface Member {
   equipped: Equipped
 }
 
-/** The Hero, who is member 0 — see {@link Member}. */
-export const isHero = (member: Member): boolean => member.attnpc === undefined
+/**
+ * A member whose numbers come from a vocation's level table rather than being
+ * fixed: **the Hero, and anyone created**.
+ *
+ * This was `isHero` for about an hour, and it was wrong in a way that would
+ * have been expensive later. The Hero is not a different kind of thing from a
+ * recruit — in this game the Hero is *made*, at the Observatory the slice
+ * cuts, and the three who join at the Quester's Rest are made the same way.
+ * All four have no `attnpc` number, so "has no number" cannot mean "is the
+ * Hero".
+ *
+ * **The Hero is member 0, by position**, which is how the game has it: the
+ * function the message system asks who a speaker should face is literally
+ * "slot 0" — see `docs/party-and-vocations.md`.
+ */
+export const levelsUp = (member: Member): boolean => member.attnpc === undefined
 
 /**
  * The party as a save keeps it, and back — see `SaveMember` in `save.ts`.
@@ -122,6 +136,12 @@ export function joinerOf(arg: number): number {
  * (`ev02210`), goes on ahead at the pass (`ev22591`), joins again at the
  * landslide (`ev02350`) and goes home with his father (`ev02400`). No record
  * does both, so which comes first is ours.
+ *
+ * **`attnpc`'s five are all temporary.** Ivor is along for one stretch and
+ * gone for good once the slice returns to Angel Falls; the others are the
+ * same shape of thing. A party that stays four is made of *created*
+ * characters recruited at the Quester's Rest, which is a different mechanism
+ * that happens to fill the same slots — see `docs/party-and-vocations.md`.
  *
  * **The Hero is member 0 and never leaves.** A record that sends the party
  * away sends away everyone behind them.

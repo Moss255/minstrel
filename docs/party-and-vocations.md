@@ -118,6 +118,33 @@ could tell them apart.
 which looks like the old "Hero outside the party" assumption and is not: the
 Hero follows nobody, so three followers is right for four members either way.
 
+### A party of four is made of *created* characters, not these five
+
+Worth stating plainly, because it decides what the rest of this phase is for
+and what can be tested against the cartridge at all.
+
+**`attnpc`'s five are temporary.** Ivor joins when his call ends, goes on
+ahead at the pass, joins again at the landslide, and **goes home for good once
+the slice returns to Angel Falls** (`ev02400`). The other four are the same
+shape of thing: along for a stretch of story, then gone. They carry fixed
+numbers because they do not grow.
+
+A party that *stays* four is something else: the Hero plus three characters
+**created** at the Quester's Rest, each with an appearance and a vocation, who
+level, equip and change vocation. They happen to fill the same four slots the
+game keeps at `+0x397c`, and that is the whole of what they share.
+
+Two consequences:
+
+- **The slice's own content never puts more than two in the party**, so
+  everything about four is unexercised by the cartridge until recruitment
+  exists. Tests can build a party of four; no event on the cartridge will.
+- The Hero is not a different kind of thing from a recruit. In this game the
+  Hero is *made*, at the Observatory prologue the slice cuts. So "has no
+  `attnpc` number" means **created**, not "is the Hero" — the Hero is member
+  0, by position, the way the game has it. A predicate here briefly said
+  otherwise and was corrected before anything leaned on it.
+
 ### The save follows the same shape
 
 **Done, 24 September 2026.** The save kept the Hero's experience, hit points,
@@ -181,9 +208,41 @@ spending skill points, which are read and shown and cannot be spent.
 
 ## 3. What a character is
 
-Not yet read. The slice plan calls runtime character assembly "the hardest
-asset problem in the project", and it is the thing most likely to decide
-whether this phase's done-when is reachable.
+### The presets can be read now
+
+**Done, 24 September 2026** — the first step of the phase's hardest item.
+
+`/data/bin/charapreset.bin` holds twenty-nine ready-made characters:
+twenty-three naming a vocation and a sex, and four named people. Its layout
+has been written down in `packages/game-formats/FORMAT.md` since September and
+**no code read it**, which meant the description had never been held against a
+parser. `readCharacterPresets` does now, and
+`tools/harness/test/presets.test.ts` holds it to the cartridge.
+
+Every claim in the description survived: the count, the 27 distinct names over
+29 records, the face band, the sex values, value 77's two values, and the item
+bands — including the sage man's legwear of 8001, which the description says
+names nothing and which the test expects for that reason.
+
+Two things the reader does not do, on purpose:
+
+- **It does not decode the names.** They are Shift-JIS, alone among the
+  strings this package reads, and the table turns each byte into one character
+  — lossless, and not text. Whoever wants words can have the bytes.
+- **It reads ten values of 102 and carries the rest.** 75 item ids whose
+  purpose is not established, and eleven other values, go through as
+  `unknown_*` rather than being dropped.
+
+### What is still missing
+
+The good news the survey found: the Hero is **already** assembled from parts
+at runtime and it works — `dressFigure` over `chara_pc.gp2`, re-dressed live
+on every equipment change. So assembly is not the blocker anyone feared.
+
+What is: `Loaded` holds exactly one `figure`, so a second assembled character
+needs that lifted out into a per-member record. The shared part library is
+already the right shape to serve several. And nothing yet turns a preset into
+an `Outfit`, or offers a choice of face, hair or proportions.
 
 ### The menu shows the party
 
@@ -232,4 +291,6 @@ with a test that now does exactly that round trip.
 - What writes the party slots and the count.
 - What vocation an attending character has. `attnpc` does not say, so whoever
   joins is given the Hero's.
-- Everything else in §2, and all of §3.
+- What the 75 item ids at the head of a preset are for.
+- What values 75, 77, 88, 89 and 92–101 of a preset mean.
+- Everything else in §2, and the rest of §3.

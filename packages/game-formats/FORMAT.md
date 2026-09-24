@@ -3664,6 +3664,14 @@ with which headgear; and the items worn with no part of their own.
 
 # Character presets — `/data/bin/charapreset.bin` and `presetdt_<lang>.bin`
 
+`readCharacterPresets` in `presets.ts` reads it. **Everything below was
+written from a reading of the file in September 2026 and nothing read it until
+24 September**, so the description and a parser had never been held against
+each other; `tools/harness/test/presets.test.ts` now does that on a real
+cartridge, and every claim here survived it — the count, the 27 distinct names
+over 29 records, the face band, the sex values, value 77's two values, and the
+item bands including the sage man's 8001 that names nothing.
+
 **`charapreset.bin`**, a loose tagged data table: a `0x64` record holding 29,
 then 29 `0x65` records of 102 values. Every value is an integer by its kind
 bits but value 76, a string, and 90 and 91, floats. The strings are Shift-JIS.
