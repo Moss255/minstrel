@@ -2,7 +2,7 @@ import type { AttendingCharacter } from '@minstrel/game-formats'
 import { blockChance, type Fighter } from '@minstrel/sim'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
-import type { Equipped } from './equipment.ts'
+import { type Equipped, NOTHING_EQUIPPED } from './equipment.ts'
 import { type Gains, HERO_VOCATION_NUMBER, type Standing } from './hero.ts'
 import { equippedOf, equippedRecord, type SaveMember } from './save.ts'
 
@@ -99,7 +99,18 @@ export interface Member {
   name: string | undefined
   /** What seeds have added, for good — see `hero.ts`. */
   gains: Gains
-  equipped: Equipped
+  /**
+   * What they wear, **by vocation** — see {@link wornBy}.
+   *
+   * The game keeps eight equipment slot ids per vocation, at
+   * `live+0x4A4 + (v - 1) * 16`, and changing vocation stows the outgoing
+   * one's set and brings back the incoming one's. So a Warrior's armour waits
+   * where it was while they are a Mage, exactly as their level does.
+   *
+   * Indexed from `v - 1` there because **zero is not a vocation** — see
+   * {@link isVocation}. Here it is keyed by the vocation itself.
+   */
+  outfits: Map<number, Equipped>
 }
 
 /**
@@ -127,6 +138,23 @@ export const levelsUp = (member: Member): boolean => member.attnpc === undefined
  */
 export const expOf = (member: Member, vocation = member.vocation): number =>
   member.exp.get(vocation) ?? 0
+
+/**
+ * What a member wears in a vocation — nothing, until they put something on as
+ * that vocation. Theirs now unless another is asked for.
+ *
+ * **A vocation they have never been wears nothing**, which is what the game
+ * does: the incoming vocation's block is empty the first time, and what it
+ * holds is what goes on. Somebody taking up a new trade arrives in their
+ * underclothes and has to dress again.
+ */
+export const wornBy = (member: Member, vocation = member.vocation): Equipped =>
+  member.outfits.get(vocation) ?? NOTHING_EQUIPPED
+
+/** Put something on, in the vocation they are — see {@link wornBy}. */
+export function wear(member: Member, worn: Equipped): void {
+  member.outfits.set(member.vocation, worn)
+}
 
 /**
  * The six vocations Alltrades offers from the start, by number.
@@ -203,11 +231,14 @@ export function vocationsOffered(unlocked: (flag: number) => boolean): number[] 
  * the vocation somebody already has is not excluded. What may be chosen is
  * {@link vocationsOffered}; this refuses only what is not a vocation at all.
  *
- * **One thing the Abbey does that this does not.** Equipment is kept *per
- * vocation* — `live+0x4A4 + (v-1)*16`, eight slot ids — so changing stows
- * what the old vocation wore, brings back what the new one had, and drops to
- * the bag anything the new one may not wear. `Member.equipped` is still one
- * set. See `docs/party-and-vocations.md`.
+ * **Equipment comes with them**, because it is kept per vocation too — see
+ * {@link Member.outfits}. Changing stows nothing and restores nothing: what
+ * the vocation wears is simply what that vocation's set holds, which is
+ * empty the first time anybody takes a trade up.
+ *
+ * The one thing the Abbey does that this does not is **drop to the bag
+ * whatever the new vocation may not wear**. Ours keeps it; see
+ * `docs/party-and-vocations.md`.
  */
 export function changeVocation(member: Member, vocation: number): Member | undefined {
   if (!isVocation(vocation)) return undefined
@@ -240,7 +271,10 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     ...(member.name === undefined ? {} : { name: member.name }),
     ...(member.held.size === 0 ? {} : { held: [...member.held].sort((a, b) => a - b) }),
     gains: member.gains,
-    equipped: equippedRecord(member.equipped),
+    // Each vocation's, the way the experiences are kept.
+    outfits: [...member.outfits]
+      .sort((a, b) => a[0] - b[0])
+      .map(([vocation, worn]) => [vocation, equippedRecord(worn)] as const),
   }))
 }
 
@@ -258,7 +292,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     name: member.name,
     held: new Set(member.held ?? []),
     gains: { ...member.gains },
-    equipped: equippedOf(member),
+    outfits: new Map(member.outfits.map(([vocation, worn]) => [vocation, equippedOf(worn)])),
   }))
 }
 

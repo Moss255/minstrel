@@ -18,6 +18,8 @@ import {
   partySaved,
   VOCATION_FLAG,
   vocationsOffered,
+  wear,
+  wornBy,
 } from '../src/companion.ts'
 import { HERO_VOCATION_NUMBER } from '../src/hero.ts'
 import { decodeSave, encodeSave, SAVE_VERSION, type SaveGame } from '../src/save.ts'
@@ -71,7 +73,7 @@ const place = (attnpc: number | undefined): Member => ({
   appearance: undefined,
   name: undefined,
   gains: {},
-  equipped: new Map(),
+  outfits: new Map(),
 })
 /** The party at the start: the Hero, and nobody behind them. */
 const alone: Member[] = [place(undefined)]
@@ -155,6 +157,28 @@ describe('the party, the Hero first', () => {
     expect(expOf(who, 1)).toBe(40)
   })
 
+  it('keeps what each vocation wears, and arrives in nothing the first time', () => {
+    // **The game keeps eight equipment slots per vocation** at
+    // `live+0x4A4 + (v-1)*16`, so a Warrior's armour waits where it was while
+    // they are a Mage — exactly as their level does.
+    const who = place(undefined)
+    wear(who, new Map([['weapon', 20004]]))
+    expect(wornBy(who).get('weapon')).toBe(20004)
+
+    // A trade they have never taken up starts with nothing on. That is the
+    // game's own behaviour: the incoming block is empty the first time.
+    changeVocation(who, 1)
+    expect([...wornBy(who)]).toEqual([])
+
+    wear(who, new Map([['shield', 22000]]))
+    changeVocation(who, HERO_VOCATION_NUMBER)
+    // Back to the first vocation, and the sword is where it was left.
+    expect(wornBy(who).get('weapon')).toBe(20004)
+    expect(wornBy(who).has('shield')).toBe(false)
+    // And the Warrior's shield is still the Warrior's.
+    expect(wornBy(who, 1).get('shield')).toBe(22000)
+  })
+
   it('offers the six, then whichever of the other six are unlocked', () => {
     // Read from the Abbey's own list builder: six written with no gate, then
     // a table of six each behind a flag — and **in the Abbey's order**, which
@@ -192,7 +216,7 @@ describe('the party, the Hero first', () => {
         appearance: undefined,
         name: undefined,
         gains: { maxHp: 3 },
-        equipped: new Map([['weapon', 20004]]),
+        outfits: new Map([[HERO_VOCATION_NUMBER, new Map([['weapon', 20004]])]]),
       },
       {
         attnpc: IVOR,
@@ -206,7 +230,7 @@ describe('the party, the Hero first', () => {
         appearance: 4,
         name: undefined,
         gains: {},
-        equipped: new Map([['shield', 22000]]),
+        outfits: new Map([[0, new Map([['shield', 22000]])]]),
       },
       {
         attnpc: 5,
@@ -218,7 +242,7 @@ describe('the party, the Hero first', () => {
         appearance: 12,
         name: 'Brittany',
         gains: { skillPoints: 2 },
-        equipped: new Map(),
+        outfits: new Map(),
       },
     ]
     const after = partyRestored(

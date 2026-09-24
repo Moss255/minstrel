@@ -343,16 +343,33 @@ flags are numbered as the game's event flags are. `VOCATION_FLAG` is the
 game's `0x113F`; ours come from the trigger files' own flag words, and nothing
 has tied the two together.
 
-### What Alltrades does that this does not: equipment per vocation
+### Equipment is per vocation too
 
-**Read and not modelled.** The apply routine stows the outgoing vocation's
-eight equipment slot ids at `live+0x4A4 + (v-1)*16`, restores the incoming
-vocation's, and **drops to the bag anything the new vocation or that
-character's sex may not wear**.
+**Done, 24 September 2026.** The game keeps eight equipment slot ids per
+vocation at `live+0x4A4 + (v - 1) * 16` — indexed from `v - 1` because zero is
+not a vocation — and the apply stows the outgoing set and brings back the
+incoming one.
 
-`Member.equipped` is one set, so changing vocation here keeps whatever was
-worn. That is the next data-shape item, and it is the same argument as
-experience: a field that ought to be per vocation and is not.
+`Member.equipped` became `Member.outfits`, a map from vocation to what is
+worn, the same shape experience took. **Changing vocation then stows and
+restores nothing**: what a vocation wears is simply what its set holds, and
+the index moving is the whole of it. A Warrior's armour waits where it was
+while they are a Mage.
+
+A trade nobody has taken up **wears nothing**, which is the game's behaviour
+rather than an omission: the incoming block is empty the first time. Shown
+live — the Hero changes from Minstrel to Warrior at Alltrades and stands
+there in their underclothes.
+
+The save keeps pairs, as it does for experience. **Version 5**, and a
+version-4 save's single set becomes the set of the vocation it says they were.
+
+**One thing the Abbey does that this does not**: drop to the bag whatever the
+new vocation or that character's sex may not wear. The apply reads item flags
+at `[item + 4]` — two sex bits and a restriction bit — and unequips what
+fails. Ours keeps it. The data for the rule is on the cartridge (armour
+carries a vocation bit; weapons and shields go by skill tree), so this is work
+not done rather than something unread.
 
 ### Revocation
 
@@ -363,7 +380,8 @@ untouched. Reaching ten does something, and what is not established.
 
 ### What is still missing
 
-Revocation and the equipment swap, above. A skill screen, so the panels can be looked at
+Revocation, above. Dropping what a vocation may not wear, above. A skill
+screen, so the panels can be looked at and bought. A skill screen, so the panels can be looked at
 and bought — the data is read and the pool is modelled, and nothing spends it.
 Character creation, recruitment and alchemy. And why every tree's eleventh
 panel costs nothing.

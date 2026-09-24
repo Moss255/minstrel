@@ -9,7 +9,7 @@ const game: SaveGame = {
   stage: { major: 2, minor: 2 },
   step: 2,
   flags: [0],
-  members: [{ attnpc: null, exp: [], hp: null, mp: null, gains: {}, equipped: {} }],
+  members: [{ attnpc: null, exp: [], hp: null, mp: null, gains: {}, outfits: [] }],
   gold: 100,
   items: [],
   opened: [],

@@ -20,7 +20,7 @@ import { GAIN_STATS, type GainStat, HERO_VOCATION_NUMBER } from './hero.ts'
  */
 
 export const SAVE_KEY = 'minstrel.save'
-export const SAVE_VERSION = 4
+export const SAVE_VERSION = 5
 
 /**
  * One place in the party, as a save keeps it — see `Member` in `companion.ts`,
@@ -64,7 +64,15 @@ export interface SaveMember {
   readonly held?: readonly number[]
   /** What seeds have added — see `Gains`. */
   readonly gains: Readonly<Partial<Record<GainStat, number>>>
-  readonly equipped: Readonly<Partial<Record<Slot, number>>>
+  /**
+   * What they wear, **by vocation**: pairs of `[vocation, worn]` — see
+   * `Member.outfits`.
+   *
+   * **Version 4 and earlier kept one set**, because the running game did.
+   * The game keeps one per vocation, so version 5 does, and an older save's
+   * single set becomes the set of the vocation that save says they were.
+   */
+  readonly outfits: readonly (readonly [number, Readonly<Partial<Record<Slot, number>>>])[]
 }
 
 export interface SaveGame {
@@ -109,11 +117,11 @@ export function bagOf(save: SaveGame): Bag {
   return { gold: save.gold, items: new Map(save.items.map(([id, count]) => [id, count])) }
 }
 
-/** What one of a save's places has on. */
-export function equippedOf(member: SaveMember): Equipped {
+/** One of a save's equipment records, as the game holds it. */
+export function equippedOf(record: Readonly<Partial<Record<Slot, number>>>): Equipped {
   const worn = new Map<Slot, number>()
   for (const { slot } of SLOTS) {
-    const item = member.equipped[slot]
+    const item = record[slot]
     if (item !== undefined) worn.set(slot, item)
   }
   return worn
@@ -225,6 +233,38 @@ function membersOf(s: Record<string, unknown>): SaveMember[] {
 }
 
 /**
+ * What a place wears, whatever version wrote it: pairs from version 5, and
+ * from before that the one set against the vocation it names.
+ */
+function outfitsOf(
+  m: Record<string, unknown>,
+  where: string,
+): (readonly [number, Readonly<Partial<Record<Slot, number>>>])[] {
+  const slots = new Set<string>(SLOTS.map((entry) => entry.slot))
+  const checked = (worn: unknown): Readonly<Partial<Record<Slot, number>>> => {
+    if (typeof worn !== 'object' || worn === null) {
+      throw new SaveError(`${where} has no equipment record`)
+    }
+    for (const [slot, item] of Object.entries(worn)) {
+      if (!slots.has(slot) || !isCount(item)) throw new SaveError(`${where} wears ${slot} wrongly`)
+    }
+    return worn as Readonly<Partial<Record<Slot, number>>>
+  }
+  if (Array.isArray(m.outfits)) {
+    return m.outfits.map((pair) => {
+      if (!Array.isArray(pair) || pair.length !== 2 || !isCount(pair[0])) {
+        throw new SaveError(`${where} has an outfit that does not read`)
+      }
+      return [pair[0] as number, checked(pair[1])] as const
+    })
+  }
+  const worn = checked(m.equipped)
+  if (Object.keys(worn).length === 0) return []
+  const vocation = isCount(m.vocation) ? (m.vocation as number) : HERO_VOCATION_NUMBER
+  return [[vocation, worn]]
+}
+
+/**
  * The experience a place holds, whatever version wrote it: pairs from version
  * 4, and from before that the one number against the vocation it names.
  */
@@ -276,14 +316,7 @@ function member(raw: unknown, place: number): SaveMember {
   ) {
     throw new SaveError(`${where} has seeds’ gains that do not read`)
   }
-  const equipped = m.equipped as Record<string, unknown> | undefined
-  if (typeof equipped !== 'object' || equipped === null) {
-    throw new SaveError(`${where} has no equipment record`)
-  }
-  const slots = new Set<string>(SLOTS.map((entry) => entry.slot))
-  for (const [slot, item] of Object.entries(equipped)) {
-    if (!slots.has(slot) || !isCount(item)) throw new SaveError(`${where} wears ${slot} wrongly`)
-  }
+  const outfits = outfitsOf(m, where)
   return {
     attnpc: m.attnpc as number | null,
     exp,
@@ -294,7 +327,7 @@ function member(raw: unknown, place: number): SaveMember {
     ...(m.name === undefined ? {} : { name: m.name as string }),
     ...(m.held === undefined ? {} : { held: m.held as number[] }),
     gains: gains as SaveMember['gains'],
-    equipped: equipped as SaveMember['equipped'],
+    outfits,
   }
 }
 

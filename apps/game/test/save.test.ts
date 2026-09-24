@@ -27,9 +27,9 @@ const game: SaveGame = {
       hp: 12,
       mp: null,
       gains: { maxHp: 3, skillPoints: 2 },
-      equipped: { weapon: 20004 },
+      outfits: [[6, { weapon: 20004 }]],
     },
-    { attnpc: 2, exp: [[0, 40]], hp: 7, mp: null, gains: {}, equipped: { shield: 22000 } },
+    { attnpc: 2, exp: [[0, 40]], hp: 7, mp: null, gains: {}, outfits: [[0, { shield: 22000 }]] },
   ],
   gold: 85,
   items: [
@@ -78,8 +78,9 @@ describe('saves', () => {
       [20004, 1],
       [22000, 3],
     ])
-    expect(equippedOf(back.members[0] as SaveMember).get('weapon')).toBe(20004)
-    expect(equippedRecord(equippedOf(back.members[0] as SaveMember))).toEqual({ weapon: 20004 })
+    const heroWears = (back.members[0] as SaveMember).outfits[0]?.[1] ?? {}
+    expect(equippedOf(heroWears).get('weapon')).toBe(20004)
+    expect(equippedRecord(equippedOf(heroWears))).toEqual({ weapon: 20004 })
     // **The party goes round too**, which it never did before: the old format
     // kept companions as bare numbers, so a wounded Ivor with a shield came
     // back whole and empty-handed.
@@ -90,19 +91,19 @@ describe('saves', () => {
       hp: 7,
       mp: null,
       gains: {},
-      equipped: { shield: 22000 },
+      outfits: [[0, { shield: 22000 }]],
     })
   })
 
   it('are refused whole, saying why, when a field does not read', () => {
     expect(() => decodeSave('not json')).toThrow(/not JSON/)
-    expect(() => decodeSave(encodeSave({ ...game, version: 5 as 4 }))).toThrow(/version 5/)
+    expect(() => decodeSave(encodeSave({ ...game, version: 6 as 5 }))).toThrow(/version 6/)
     const withHero = (over: Record<string, unknown>) =>
       JSON.stringify({ ...game, members: [{ ...hero, ...over }, game.members[1]] })
     expect(() => decodeSave(withHero({ hp: -1 }))).toThrow(/Hero has HP/)
     expect(() => decodeSave(withHero({ mp: 'lots' }))).toThrow(/Hero has MP/)
     expect(() => decodeSave(withHero({ gains: { luck: 1 } }))).toThrow(/Hero has seeds/)
-    expect(() => decodeSave(withHero({ equipped: { hat: 1 } }))).toThrow(/Hero wears hat/)
+    expect(() => decodeSave(withHero({ outfits: [[6, { hat: 1 }]] }))).toThrow(/Hero wears hat/)
     expect(() => decodeSave(withHero({ exp: -1 }))).toThrow(/Hero has no experience/)
     expect(() => decodeSave(withHero({ exp: [[1]] }))).toThrow(
       /Hero has experience that does not read/,
@@ -152,7 +153,7 @@ describe('saves', () => {
     expect(back.version).toBe(SAVE_VERSION)
     expect(back.members).toEqual([
       hero,
-      { attnpc: 2, exp: [], hp: null, mp: null, gains: {}, equipped: {} },
+      { attnpc: 2, exp: [], hp: null, mp: null, gains: {}, outfits: [] },
     ])
   })
 

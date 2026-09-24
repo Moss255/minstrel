@@ -161,6 +161,8 @@ import {
   partyAfter,
   partyRestored,
   partySaved,
+  wear,
+  wornBy,
 } from './companion.ts'
 import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
 import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
@@ -548,7 +550,14 @@ const storyFlags = new Set<number>()
  *
  * Kept in the save, though only the Hero's numbers are yet written there.
  */
-let members: Member[] = [{ ...freshMember(undefined), equipped: STARTING_EQUIPMENT }]
+let members: Member[] = [heroAtStart()]
+
+/** The Hero as a new game finds them: the slice's kit, in the vocation they are. */
+function heroAtStart(): Member {
+  const hero = freshMember(undefined)
+  hero.outfits.set(hero.vocation, STARTING_EQUIPMENT)
+  return hero
+}
 
 /** A vocation's name in the field menu's own words — `str_tm` 2100 on. */
 const vocationWord = (vocation: number): string =>
@@ -588,8 +597,8 @@ function freshMember(attnpc: number | undefined): Member {
     // **Only the Hero starts in the slice's kit.** `freshMember` is used for
     // the Hero at the start, for a story companion joining, and for a created
     // character being recruited; of the three only the first has any claim on
-    // `STARTING_EQUIPMENT`, so it is the caller's to give.
-    equipped: NOTHING_EQUIPPED,
+    // `STARTING_EQUIPMENT`, so it is the caller's to give — see `heroAtStart`.
+    outfits: new Map(),
   }
 }
 /**
@@ -2041,7 +2050,7 @@ Object.defineProperty(window, 'minstrelPortrait', {
 // For a headless check: what the Hero wears, readable from the page.
 Object.defineProperty(window, 'minstrelWorn', {
   get: () => ({
-    equipped: [...leader().equipped.entries()],
+    equipped: [...wornBy(leader()).entries()],
     parts: loaded ? [...loaded.wardrobe.parts.keys()].filter((n) => /^p_[ws]/.test(n)) : [],
   }),
 })
@@ -2130,10 +2139,10 @@ function wearWanted(): void {
     const slot = slotOf(partName(id)?.split('_')[1]?.[0])
     if (!slot) continue
     bag = take(bag, { item: id })
-    const worn = equip(bag, leader().equipped, slot, id)
+    const worn = equip(bag, wornBy(leader()), slot, id)
     if (worn) {
       bag = worn.bag
-      leader().equipped = worn.equipped
+      wear(leader(), worn.equipped)
     }
   }
   dressHero()
@@ -2714,7 +2723,7 @@ function menuMember(member: Member): MenuMember {
       standing: attendingStanding(along),
       hp: member.hp,
       mp: member.mp,
-      equipped: member.equipped,
+      equipped: wornBy(member),
     }
   }
   const levels = levelsFor(member)
@@ -2728,7 +2737,7 @@ function menuMember(member: Member): MenuMember {
     },
     hp: member.hp,
     mp: member.mp,
-    equipped: member.equipped,
+    equipped: wornBy(member),
     // Their vocation's, at their level — not the Hero's.
     spells: heroSpells(member),
   }
@@ -2772,7 +2781,7 @@ function menuContext(): MenuContext {
     hp: leader().hp,
     mp: leader().mp,
     bag,
-    equipped: leader().equipped,
+    equipped: wornBy(leader()),
     numbersOf: (id) => loaded?.itemStats.get(id),
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
@@ -3318,7 +3327,7 @@ function roamerPieces(now: number): Piece[] {
  * What the Hero's worn equipment adds to their attack, defence and agility, as
  * read — see `itemStatsOf` in `load.ts`.
  */
-function wornNumbers(worn: ReadonlyMap<Slot, number> = leader().equipped): {
+function wornNumbers(worn: ReadonlyMap<Slot, number> = wornBy(leader())): {
   attack: number
   defence: number
   agility: number
@@ -3355,7 +3364,7 @@ function levelOf(member: Member): LevelRow | undefined {
 function createdFighter(member: Member): Fighter | undefined {
   const row = levelOf(member)
   if (!row) return undefined
-  const worn = wornNumbers(member.equipped)
+  const worn = wornNumbers(wornBy(member))
   return {
     name: nameFor(member),
     side: 'party',
@@ -3366,15 +3375,15 @@ function createdFighter(member: Member): Fighter | undefined {
     agility: row.agility + worn.agility,
     deftness: row.deftness,
     resist: wornResistances(
-      [...member.equipped.values()].flatMap((id) => {
+      [...wornBy(member).values()].flatMap((id) => {
         const own = loaded?.itemResistances.get(id)
         return own ? [own] : []
       }),
     ),
     might: row.magicalMight,
     mending: row.magicalMending,
-    shield: member.equipped.has('shield'),
-    block: blockChance(member.equipped.has('shield'), worn.block),
+    shield: wornBy(member).has('shield'),
+    block: blockChance(wornBy(member).has('shield'), worn.block),
     exp: 0,
     gold: 0,
     level: row.level,
@@ -3488,7 +3497,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     // added on — the game's own sum (`wornResistances`). Nothing the slice
     // wears carries any, so these are all whole; something later will not be.
     resist: wornResistances(
-      [...leader().equipped.values()].flatMap((id) => {
+      [...wornBy(leader()).values()].flatMap((id) => {
         const own = loaded?.itemResistances.get(id)
         return own ? [own] : []
       }),
@@ -3496,9 +3505,9 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     // What a spell's amount may scale by — the level's own; what is worn is not added, ours.
     might: row.magicalMight,
     mending: row.magicalMending,
-    shield: leader().equipped.has('shield'),
+    shield: wornBy(leader()).has('shield'),
     // The game's: what is worn says, and only behind a shield — `blockChance`.
-    block: blockChance(leader().equipped.has('shield'), worn.block),
+    block: blockChance(wornBy(leader()).has('shield'), worn.block),
     exp: 0,
     gold: 0,
     // What a monster weighs before it runs — see `Fighter.runsFrom`.
@@ -4621,8 +4630,8 @@ function dressParty(): void {
       member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
     const outfit =
       shown ??
-      (made && outfitOfPreset(made, carry, has, member.equipped)) ??
-      outfitOf(member.equipped, carry, has)
+      (made && outfitOfPreset(made, carry, has, wornBy(member))) ??
+      outfitOf(wornBy(member), carry, has)
     const figure = dressFigure(wardrobe, outfit)
     return { figure, pieces: figurePieces(figure) }
   })
@@ -4922,11 +4931,11 @@ function heroPortrait(): HTMLCanvasElement | undefined {
   }
   // Dressed with the weapon and shield in hand, as the screenshots' figure
   // holds them; kept until what is worn changes.
-  const key = [...leader().equipped.entries()].map(([slot, item]) => `${slot}=${item}`).join(',')
+  const key = [...wornBy(leader()).entries()].map(([slot, item]) => `${slot}=${item}`).join(',')
   if (portraitFigure?.key !== key) {
     const wardrobe = here.wardrobe
     const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-    const figure = dressFigure(wardrobe, outfitOf(leader().equipped, 'hands', has))
+    const figure = dressFigure(wardrobe, outfitOf(wornBy(leader()), 'hands', has))
     portraitFigure = { key, figure, pieces: figurePieces(figure) }
   }
   const { figure, pieces: dressed } = portraitFigure
@@ -5381,10 +5390,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         // **Whoever the attributes panel chose**, not always the Hero — the
         // bag is the party's, so anybody can be dressed out of it.
         const dressing = members[menu?.member ?? 0] ?? leader()
-        const worn = equip(bag, dressing.equipped, taken.equip.slot, taken.equip.item)
+        const worn = equip(bag, wornBy(dressing), taken.equip.slot, taken.equip.item)
         if (worn) {
           bag = worn.bag
-          dressing.equipped = worn.equipped
+          wear(dressing, worn.equipped)
           // Drawn in what they now wear — see `dressParty`.
           dressHero()
         }
