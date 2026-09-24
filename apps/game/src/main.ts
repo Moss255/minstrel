@@ -1651,6 +1651,22 @@ function frame(now = 0): void {
           : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
       )
 
+    if (probing && self && loaded?.world) {
+      // Where the Hero is against the floor under them: a scene that puts a
+      // character below it is why `ev03030` looks the way it does.
+      const w = loaded.world
+      const hit = groundBelow(
+        w,
+        self.state.x,
+        self.state.z,
+        fx32(Math.round(w.bounds.maxY + FX32_ONE)),
+      )
+      ;(globalThis as { __floor?: unknown }).__floor = {
+        hero: toFloat(self.state.y),
+        ground: hit ? toFloat(hit.y) : null,
+        under: hit ? toFloat(self.state.y) - toFloat(hit.y) : null,
+      }
+    }
     if (probing) {
       ;(globalThis as { __cam?: unknown }).__cam = {
         focus: [...camera.focus],

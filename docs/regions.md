@@ -41,6 +41,7 @@ All of these are **ours**, for development. None is a thing the game has.
 | `save=1` | write a save where you stand. The church is otherwise the only way |
 | `fight=z000a,z000a` | the monsters `p` fights |
 | `bgm=BG_001`, `se=113` | play a track or an effect |
+| `probe=1` | put the scene camera, the real camera and the Hero's height over the floor on `window` as `__shot`, `__cam` and `__floor`. Off by default because it allocates every frame |
 
 ## Set the stage, or the place will be empty of words
 

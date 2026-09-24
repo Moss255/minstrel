@@ -190,6 +190,33 @@ lives; this is the gathered list.
   already promises, which changes every frame of every view and wants doing on
   its own rather than at the end of an afternoon.
 
+  **And a pull-in would not have fixed this one**, which is the part worth
+  passing on. Chased further with `?probe=1`, the Hero in `ev03030` stands at
+  `y = -0.063` where **the floor under them is 0.260** — a third of a unit
+  below it. That is why the focus is inside a shape's box in the first place.
+
+  Measured across C01's scenes, it is not one scene:
+
+  | event | Hero y | floor | under by |
+  |---|---|---|---|
+  | `ev03030` | −0.063 | 0.260 | 0.32 |
+  | `ev20780` | 0.012 | 0.295 | 0.28 |
+  | `ev20800` | 0.012 | 0.208 | 0.20 |
+  | `ev03050` | 0.073 | 0.110 | 0.04 |
+  | `ev03031` | 0.012 | 0.012 | 0 |
+
+  **It is not a missing snap to the ground.** `206` takes the script's `y`
+  literally, and that is deliberate and read: `231` and `232` are the
+  move-to-the-ground pair and set `onGround`, which snaps through `groundAt`.
+  The scripts that carry a height mean to carry one.
+
+  So the question is **why a script's `y` disagrees with our floor**, by an
+  amount that varies from nothing to a third of a unit. Either our collision
+  floor is high in places or a script's `y` is not in the units `206` scales
+  it by — `206` multiplies x, y and z alike, and nothing has checked whether
+  the game scales height the same way it scales the ground plane. That is the
+  thread, and `docs/findings.md`'s earlier scale work is where it starts.
+
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth
   keeping in mind for every "0 worth a look" it reports.
