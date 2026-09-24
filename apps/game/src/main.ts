@@ -1,4 +1,12 @@
-import { dressFigure, figurePieces, figureScale, Measurements, type Outfit } from '@minstrel/actor'
+import {
+  dressFigure,
+  type Figure,
+  type FigurePiece,
+  figurePieces,
+  figureScale,
+  Measurements,
+  type Outfit,
+} from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
@@ -144,6 +152,7 @@ import {
   companionsAt,
   FOLLOW_TICKS,
   IVOR,
+  levelsUp,
   type Member,
   PARTY_MOST,
   partyAfter,
@@ -155,7 +164,7 @@ import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
 import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
-import { choicesFor, equip, NOTHING_EQUIPPED, slotOf } from './equipment.ts'
+import { choicesFor, equip, NOTHING_EQUIPPED, type Slot, slotOf } from './equipment.ts'
 import {
   BGM_FADE_FRAMES,
   type EventCamera,
@@ -168,6 +177,7 @@ import {
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
+  type Carry,
   expAtLevel,
   expLevelledBy,
   gain,
@@ -529,7 +539,7 @@ const storyFlags = new Set<number>()
  *
  * Kept in the save, though only the Hero's numbers are yet written there.
  */
-let members: Member[] = [freshMember(undefined)]
+let members: Member[] = [{ ...freshMember(undefined), equipped: STARTING_EQUIPMENT }]
 
 /** The level table a member's experience is read against — see `Member.vocation`. */
 const levelsFor = (member: Member): LevelTable | undefined => loaded?.levels.get(member.vocation)
@@ -558,8 +568,14 @@ function freshMember(attnpc: number | undefined): Member {
     // because what vocation an attending character has is not read — `attnpc`
     // carries a level, stats, a weapon and a shield, and no vocation at all.
     vocation: HERO_VOCATION_NUMBER,
+    appearance: undefined,
+    name: undefined,
     gains: {},
-    equipped: attnpc === undefined ? STARTING_EQUIPMENT : NOTHING_EQUIPPED,
+    // **Only the Hero starts in the slice's kit.** `freshMember` is used for
+    // the Hero at the start, for a story companion joining, and for a created
+    // character being recruited; of the three only the first has any claim on
+    // `STARTING_EQUIPMENT`, so it is the caller's to give.
+    equipped: NOTHING_EQUIPPED,
   }
 }
 /**
@@ -1012,6 +1028,15 @@ function begin(bytes: Uint8Array, map: string): void {
   // `?preset=3` dresses the Hero as a ready-made character — see `showPreset`.
   const asPreset = params.get('preset')
   if (asPreset !== null && /^\d+$/.test(asPreset)) showPreset(Number(asPreset))
+  // `?party=4:0,12:3,21:9` fills the party with created characters: a preset
+  // and a vocation each — **ours**, standing in for the Quester's Rest until
+  // recruitment is built. See `recruit`.
+  const asParty = params.get('party')
+  if (asParty) recruit(asParty)
+  // `?save=1` writes a save where it stands — **ours**, and only for driving.
+  // The church is the one place a player can record anything, which makes the
+  // save impossible to exercise from outside without walking to a priest.
+  if (params.get('save') === '1') status(confess())
   if (wantedEvent !== undefined) startEvent(wantedEvent)
   else playEntryEvent()
   // `?talk=12` stands the Hero behind cast member 12 and talks to them —
@@ -1416,12 +1441,16 @@ function drawCorner(): void {
     z: toFloat(self.state.z) / unit,
     name: DEFAULT_CONTEXT.heroName,
   }
-  // Each companion where they walk, or on the Hero while they stand on them.
+  // Each of the party where they walk, or on the Hero while they stand on
+  // them. Keyed by place rather than by the story companions' compacted list,
+  // so a created character gets a dot too — see `followersNow`.
   const walking = companionsInField()
-  const companions = companionsNow().flatMap((who, place) => {
-    if (standingHere(who)) return []
+  const companions = followersNow().flatMap(({ who, member, place }) => {
+    if (who && standingHere(who)) return []
     const seen = walking.find((w) => w.place === place)
-    return [{ x: seen ? seen.x / unit : hero.x, z: seen ? seen.z / unit : hero.z, name: who.name }]
+    return [
+      { x: seen ? seen.x / unit : hero.x, z: seen ? seen.z / unit : hero.z, name: nameFor(member) },
+    ]
   })
   drawMinimap(context, minimapShown, [hero, ...companions], loaded?.region)
 }
@@ -2586,12 +2615,21 @@ function menuMember(member: Member): MenuMember {
 }
 
 /**
- * What a member is called: the Hero's own name, or the attending character's.
- * A member whose number is in no table falls back to their place, which
- * nothing on this cartridge reaches.
+ * What a member is called.
+ *
+ * The Hero's own name; a story companion's from `attnpc`; and a created
+ * character's own. **A created character's name is the player's**, given at
+ * the Quester's Rest, and nothing here asks for one yet — so until character
+ * creation does, one made by `?party=` is named for the ready-made character
+ * they were built from, which at least tells them apart.
  */
 function nameFor(member: Member): string {
-  if (member.attnpc === undefined) return DEFAULT_CONTEXT.heroName
+  if (member.name !== undefined) return member.name
+  if (member.attnpc === undefined) {
+    return member.appearance === undefined
+      ? DEFAULT_CONTEXT.heroName
+      : `preset ${member.appearance}`
+  }
   const who = loaded?.attending.find((one) => one.id === member.attnpc)
   return who?.name ?? `party member ${member.attnpc}`
 }
@@ -3157,12 +3195,17 @@ function roamerPieces(now: number): Piece[] {
  * What the Hero's worn equipment adds to their attack, defence and agility, as
  * read — see `itemStatsOf` in `load.ts`.
  */
-function wornNumbers(): { attack: number; defence: number; agility: number; block: number[] } {
+function wornNumbers(worn: ReadonlyMap<Slot, number> = leader().equipped): {
+  attack: number
+  defence: number
+  agility: number
+  block: number[]
+} {
   const block: number[] = []
   let attack = 0
   let defence = 0
   let agility = 0
-  for (const item of leader().equipped.values()) {
+  for (const item of worn.values()) {
     const numbers = loaded?.itemStats.get(item)
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
@@ -3170,6 +3213,49 @@ function wornNumbers(): { attack: number; defence: number; agility: number; bloc
     block.push(numbers?.block ?? 0)
   }
   return { attack, defence, agility, block }
+}
+
+/** A member's level row, where their vocation's table read — see `levelsFor`. */
+function levelOf(member: Member): LevelRow | undefined {
+  const levels = levelsFor(member)
+  return levels ? standing(levels, member.exp, member.gains).level : undefined
+}
+
+/**
+ * A created character as a fighter: their vocation's numbers at their level,
+ * plus what they wear — **built exactly as the Hero's is**, because they are
+ * the same kind of thing. See `docs/party-and-vocations.md`.
+ *
+ * Undefined when their vocation's level table did not read, which leaves them
+ * out of the fight rather than standing there with nothing.
+ */
+function createdFighter(member: Member): Fighter | undefined {
+  const row = levelOf(member)
+  if (!row) return undefined
+  const worn = wornNumbers(member.equipped)
+  return {
+    name: nameFor(member),
+    side: 'party',
+    maxHp: row.maxHp,
+    maxMp: row.maxMp,
+    attack: row.strength + worn.attack,
+    defence: row.resilience + worn.defence,
+    agility: row.agility + worn.agility,
+    deftness: row.deftness,
+    resist: wornResistances(
+      [...member.equipped.values()].flatMap((id) => {
+        const own = loaded?.itemResistances.get(id)
+        return own ? [own] : []
+      }),
+    ),
+    might: row.magicalMight,
+    mending: row.magicalMending,
+    shield: member.equipped.has('shield'),
+    block: blockChance(member.equipped.has('shield'), worn.block),
+    exp: 0,
+    gold: 0,
+    level: row.level,
+  }
 }
 
 /**
@@ -3295,16 +3381,23 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     // What a monster weighs before it runs — see `Fighter.runsFrom`.
     level: row.level,
   }
-  // Whoever goes along stands and fights beside the Hero, in their places —
-  // see `companionsAt`.
-  const companions = companionsNow()
+  // **Everyone after the Hero fights, whatever they are.** A story companion
+  // is `attnpc`'s fixed numbers; a created character is their own vocation's
+  // level table and what they wear, exactly as the Hero is. Keyed by place
+  // rather than by the story companions' compacted list — see `followersNow`.
+  const behind = followersNow()
   const party: Fighter[] = [
     hero,
-    ...companions.map((who) => companionFighter(who, (id) => loaded?.itemStats.get(id))),
+    ...behind.flatMap(({ who, member }) => {
+      if (who) return [companionFighter(who, (id) => loaded?.itemStats.get(id))]
+      const made = createdFighter(member)
+      return made ? [made] : []
+    }),
   ]
   const hp = new Map([[0, leader().hp ?? row.maxHp]])
-  for (const [i, who] of companions.entries()) {
-    hp.set(i + 1, memberOf(who.id)?.hp ?? who.numbers.maxHp)
+  for (const [i, { who, member }] of behind.entries()) {
+    const max = who ? who.numbers.maxHp : (levelOf(member)?.maxHp ?? 0)
+    hp.set(i + 1, member.hp ?? max)
   }
   battlesFought++
   // The monsters' places first: they turn the Hero to face them.
@@ -3320,17 +3413,24 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     mp: new Map([[0, leader().mp ?? row.maxMp]]),
     known,
     words: loaded.battleWords,
-    names: [heroNamed(), ...companions.map(companionNamed), ...names],
+    names: [
+      heroNamed(),
+      ...behind.flatMap(({ who, member }) =>
+        who ? [companionNamed(who)] : createdFighter(member) ? [{ name: nameFor(member) }] : [],
+      ),
+      ...names,
+    ],
   })
   // The weapon and shield to the Hero's hands — see `dressHero`.
   dressHero()
-  battleCompanions = companions.map((who, i) => ({
-    id: who.id,
-    index: i + 1,
-    ...companionLook(who),
-  }))
+  // Only the story companions have a `.chr` model to show in a battle. What a
+  // created character looks like in one is **not built** — see
+  // `docs/party-and-vocations.md`; they fight, and nothing draws them.
+  battleCompanions = behind.flatMap(({ who }, i) =>
+    who ? [{ id: who.id, index: i + 1, ...companionLook(who) }] : [],
+  )
   battleLooks = [...party.map(() => undefined), ...looks]
-  battleSpots = [undefined, ...companions.map((_, i) => besideHero(i)), ...foeSpots]
+  battleSpots = [undefined, ...party.slice(1).map((_, i) => besideHero(i)), ...foeSpots]
   cueStarted = performance.now()
   self.held.clear()
   closeTalk()
@@ -3411,6 +3511,27 @@ function companionsNow(): readonly AttendingCharacter[] {
 }
 
 /**
+ * Each place after the Hero's, with whoever is in it and their trail.
+ *
+ * **Not `companionsNow()` indexed**, which would be wrong the moment a
+ * created character walks in front of a story one: that list leaves out
+ * anybody with no `attnpc` record, so its indices stop matching the trails.
+ * They match today because every member after the Hero is a story companion;
+ * they would not once the party is made of created characters, and the bug
+ * would be somebody wearing the wrong person's footsteps.
+ */
+function followersNow(): { place: number; member: Member; who: AttendingCharacter | undefined }[] {
+  return members.slice(1).map((member, place) => ({
+    place,
+    member,
+    who:
+      member.attnpc === undefined
+        ? undefined
+        : loaded?.attending.find((one) => one.id === member.attnpc),
+  }))
+}
+
+/**
  * Whether the map has a companion standing in it — Ivor, waiting in Erinn's
  * house at 2.2 — by the model they share: see `companionModel`. Then they are
  * not with the Hero: not following, and not on the top screen. Ours.
@@ -3430,7 +3551,8 @@ function standingHere(who: AttendingCharacter): boolean {
  * see `companionModel`. Ours too.
  */
 function companionsInField(): {
-  who: AttendingCharacter
+  who: AttendingCharacter | undefined
+  member: Member
   place: number
   x: number
   y: number
@@ -3440,14 +3562,15 @@ function companionsInField(): {
   const hx = toFloat(self.state.x)
   const hz = toFloat(self.state.z)
   const near = toFloat(person().radius) * 2
-  return companionsNow().flatMap((who, place) => {
+  return followersNow().flatMap(({ who, member, place }) => {
     const trail = trails[place]
     if (!trail) return []
-    if (standingHere(who)) return []
+    // A story companion the map already has standing in it is not drawn twice.
+    if (who && standingHere(who)) return []
     const x = toFloat(trail.x)
     const z = toFloat(trail.z)
     if (Math.hypot(x - hx, z - hz) < near) return []
-    return [{ who, place, x, y: toFloat(trail.y), z }]
+    return [{ who, member, place, x, y: toFloat(trail.y), z }]
   })
 }
 
@@ -3458,8 +3581,36 @@ function companionsInField(): {
 function companionFieldPieces(now: number): Piece[] {
   const rom = cartridge
   const hero = self
-  if (!rom || !hero) return []
+  const here = loaded
+  if (!rom || !hero || !here) return []
   return companionsInField().flatMap(({ who, place, x, y, z }) => {
+    const walkingNow = trailWalking[place] === 1
+    // **A created character is built from parts, like the Hero**, so they are
+    // posed the same way rather than drawn from a whole `.chr` model. This is
+    // what a party of four is made of; a story companion keeps their model.
+    const built = dressed[place + 1]
+    if (built && !who) {
+      const motion = built.figure.motions.get(walkingNow ? 'run' : 'stand')
+      return playerPieces(
+        {
+          ...hero,
+          state: {
+            ...hero.state,
+            x: fx32(Math.round(x * FX32_ONE)),
+            y: fx32(Math.round(y * FX32_ONE)),
+            z: fx32(Math.round(z * FX32_ONE)),
+          },
+          facing: trailFacing[place] ?? 0,
+          motionFrame: walkingNow ? hero.motionFrame : 0,
+        },
+        built.figure,
+        built.pieces,
+        here.catalogue,
+        measurements,
+        motion,
+      )
+    }
+    if (!who) return []
     const { model } = companionLook(who)
     const look = actorLookOf(rom, model, [])
     if (!look) return []
@@ -4009,6 +4160,15 @@ function witnessHook(): void {
       id: m.placement.id,
       name: m.name,
     })),
+    // The party, so that what came back from a save can be read from outside
+    // rather than counted off a canvas — see `Member`.
+    party: members.map((member) => ({
+      name: nameFor(member),
+      vocation: member.vocation,
+      appearance: member.appearance ?? null,
+      attnpc: member.attnpc ?? null,
+      dressed: dressed[members.indexOf(member)] !== undefined,
+    })),
   }
 }
 
@@ -4243,17 +4403,93 @@ function bubbleKindNow(at: { x: number; z: number; facing: number }): BubbleKind
  * shield in their hands while a battle is on and on their back otherwise.
  */
 function dressHero(): void {
+  dressParty()
+}
+
+/** One member built out of parts, ready to pose — see `dressParty`. */
+interface Dressed {
+  readonly figure: Figure
+  readonly pieces: readonly FigurePiece[]
+}
+
+/**
+ * Every member who is assembled from parts, dressed — by their place.
+ *
+ * **Only the created ones.** A story companion is a whole `.chr` model and
+ * has no outfit to build (`companionLook`), so their place here is empty. The
+ * Hero is place 0, and `loaded.figure` is kept as a view of it because the
+ * motion and chest code asks the Hero specifically.
+ */
+let dressed: (Dressed | undefined)[] = []
+
+/**
+ * Dress the party.
+ *
+ * What each created member wears: the preset they were made from, or — for
+ * the Hero, who has none until character creation — what they are actually
+ * wearing. Everyone carries on their back in the field and in their hands in
+ * a battle, as the Hero always has.
+ */
+function dressParty(): void {
   if (!loaded) return
   const wardrobe = loaded.wardrobe
   const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-  // `?preset=n` dresses the Hero as the nth ready-made character instead of
-  // in what they wear — **ours, and for looking**. Character creation is what
-  // this becomes; until then it is the only way to see that the presets read,
-  // that a vocation's outfit is a set of parts the wardrobe has, and that
-  // `dressFigure` builds somebody who is not the slice's hardcoded Hero.
-  const outfit = presetOutfit ?? outfitOf(leader().equipped, battle ? 'hands' : 'back', has)
-  const figure = dressFigure(wardrobe, outfit)
-  loaded = { ...loaded, figure, pieces: figurePieces(figure) }
+  const carry: Carry = battle ? 'hands' : 'back'
+  dressed = members.map((member, place) => {
+    if (!levelsUp(member)) return undefined
+    // `?preset=` dresses the Hero as a ready-made character — see `showPreset`.
+    const shown = place === 0 ? presetOutfit : undefined
+    const made =
+      member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
+    const outfit =
+      shown ?? (made && outfitOfPreset(made, carry, has)) ?? outfitOf(member.equipped, carry, has)
+    const figure = dressFigure(wardrobe, outfit)
+    return { figure, pieces: figurePieces(figure) }
+  })
+  const hero = dressed[0]
+  if (hero) loaded = { ...loaded, figure: hero.figure, pieces: hero.pieces }
+}
+
+/**
+ * Fill the party from `?party=`, each `preset:vocation` — **ours**.
+ *
+ * The game recruits created characters at the Quester's Rest, which is a
+ * whole flow of its own: naming, a face, a body, a vocation. None of that is
+ * built. This makes the same *thing* — a member with no `attnpc` record, a
+ * vocation of their own and an appearance from `charapreset.bin` — so that
+ * the rest of the party machinery can be exercised and looked at before the
+ * flow that would normally produce one exists.
+ *
+ * A vocation left out is the Minstrel's, as everyone's is by default.
+ */
+function recruit(asked: string): void {
+  if (!loaded) return
+  const made: Member[] = []
+  for (const one of asked.split(',')) {
+    const [preset, vocation] = one.split(':')
+    if (!/^\d+$/.test(preset ?? '')) continue
+    const member = freshMember(undefined)
+    made.push({
+      ...member,
+      appearance: Number(preset),
+      vocation: /^\d+$/.test(vocation ?? '') ? Number(vocation) : HERO_VOCATION_NUMBER,
+    })
+  }
+  members = [leader(), ...made].slice(0, PARTY_MOST)
+  // Everyone comes in on the Hero, with no footsteps behind them yet.
+  if (self) {
+    const at = { x: self.state.x, y: self.state.y, z: self.state.z }
+    trails = Array.from({ length: PARTY_MOST - 1 }, (_, i) =>
+      createFollower(FOLLOW_TICKS * (i + 1), at),
+    )
+  }
+  dressParty()
+  status(
+    `party of ${members.length}: ` +
+      members
+        .map((m, i) => `${i}:${nameFor(m)}${m.appearance === undefined ? '' : `/p${m.appearance}`}`)
+        .join(' '),
+  )
 }
 
 /** The preset the Hero is being shown as, if `?preset=` asked for one. */

@@ -63,6 +63,8 @@ const place = (attnpc: number | undefined): Member => ({
   mp: undefined,
   exp: 0,
   vocation: HERO_VOCATION_NUMBER,
+  appearance: undefined,
+  name: undefined,
   gains: {},
   equipped: new Map(),
 })
@@ -135,6 +137,8 @@ describe('the party, the Hero first', () => {
         mp: undefined,
         exp: 340,
         vocation: HERO_VOCATION_NUMBER,
+        appearance: undefined,
+        name: undefined,
         gains: { maxHp: 3 },
         equipped: new Map([['weapon', 20004]]),
       },
@@ -146,6 +150,8 @@ describe('the party, the Hero first', () => {
         // **A vocation that is not the Hero's** — the whole point of it being
         // a member's field rather than a constant.
         vocation: 0,
+        appearance: 4,
+        name: undefined,
         gains: {},
         equipped: new Map([['shield', 22000]]),
       },
@@ -155,6 +161,8 @@ describe('the party, the Hero first', () => {
         mp: 0,
         exp: 0,
         vocation: 11,
+        appearance: 12,
+        name: 'Brittany',
         gains: { skillPoints: 2 },
         equipped: new Map(),
       },

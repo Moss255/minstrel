@@ -40,6 +40,13 @@ export interface SaveMember {
    * Hero is — adding a field takes no new version.
    */
   readonly vocation?: number
+  /**
+   * Which ready-made character they were made from — see `Member.appearance`.
+   * Absent where there is none, which is the Hero's own look.
+   */
+  readonly appearance?: number
+  /** What they are called, where somebody chose — see `Member.name`. */
+  readonly name?: string
   /** What seeds have added — see `Gains`. */
   readonly gains: Readonly<Partial<Record<GainStat, number>>>
   readonly equipped: Readonly<Partial<Record<Slot, number>>>
@@ -216,6 +223,12 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.vocation !== undefined && !isCount(m.vocation)) {
     throw new SaveError(`${where} has a vocation that does not read`)
   }
+  if (m.appearance !== undefined && !isCount(m.appearance)) {
+    throw new SaveError(`${where} has an appearance that does not read`)
+  }
+  if (m.name !== undefined && typeof m.name !== 'string') {
+    throw new SaveError(`${where} has a name that does not read`)
+  }
   const stats = new Set<string>(GAIN_STATS)
   const gains = m.gains as Record<string, unknown> | undefined
   if (
@@ -239,6 +252,8 @@ function member(raw: unknown, place: number): SaveMember {
     hp: m.hp as number | null,
     mp: m.mp as number | null,
     ...(m.vocation === undefined ? {} : { vocation: m.vocation as number }),
+    ...(m.appearance === undefined ? {} : { appearance: m.appearance as number }),
+    ...(m.name === undefined ? {} : { name: m.name as string }),
     gains: gains as SaveMember['gains'],
     equipped: equipped as SaveMember['equipped'],
   }

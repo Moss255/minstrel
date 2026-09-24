@@ -275,16 +275,67 @@ Two things the reader does not do, on purpose:
   purpose is not established, and eleven other values, go through as
   `unknown_*` rather than being dropped.
 
-### What is still missing
+### A party of four created characters, dressed, fighting, saved and loaded
 
-The good news the survey found: the Hero is **already** assembled from parts
-at runtime and it works — `dressFigure` over `chara_pc.gp2`, re-dressed live
-on every equipment change. So assembly is not the blocker anyone feared.
+**Done, 24 September 2026 — the phase's done-when.**
 
-What is: `Loaded` holds exactly one `figure`, so a second assembled character
-needs that lifted out into a per-member record. The shared part library is
-already the right shape to serve several. And nothing yet turns a preset into
-an `Outfit`, or offers a choice of face, hair or proportions.
+`Member` gained an `appearance` (which ready-made character they were built
+from) and a `name`. `dressParty` dresses every *created* member from parts,
+by place, so `Loaded.figure` is now a view of place 0 rather than the only
+figure there is. A created follower is posed by `playerPieces` like the Hero;
+a story companion keeps their whole `.chr` model.
+
+`?party=0:0,11:3,21:10` makes a party of three created characters beside the
+Hero, each a preset and a vocation — **ours**, standing in for the Quester's
+Rest. `?save=1` writes a save where it stands, because the church is
+otherwise the only way to record anything and that makes the save impossible
+to drive from outside.
+
+What that demonstrates, end to end and in a browser:
+
+- four walk in a line, each built from different parts, and the mini-map
+  names all four;
+- a battle opens with four on the party's side at **their own vocations'
+  numbers** — Minstrel 20/6, Warrior 30/10, Mage 18/16, Sage 29/30;
+- the save writes version 3 with four members, each with their appearance and
+  vocation; a fresh page with no parameters offers the save, and all four come
+  back, all four assembled.
+
+One latent bug was fixed on the way rather than waited for: `companionsAt`
+leaves out anybody with no `attnpc` record, so indexing it by place — which
+the field, the mini-map and the battle all did — would have put a created
+character in somebody else's footsteps the moment one walked in front of a
+story companion. `followersNow` keys by place instead.
+
+### What is still missing, and why
+
+None of this is guesswork about the game; it is work not done. Listed so that
+what the phase left behind is visible rather than discovered later.
+
+- **Character creation itself.** `?party=` makes the *thing* a recruit is — a
+  member with no `attnpc`, a vocation and an appearance — but nothing asks a
+  player for a name, a face, a hair style or proportions. A preset is
+  currently the whole of an appearance, which means choosing one chooses face
+  and clothes together rather than separately.
+- **Recruitment at the Quester's Rest**, which is where the game makes them.
+- **Alltrades and the vocation change flow.** `Member.vocation` is a field
+  nothing can change in play.
+- **The skill trees.** Only the 12×5 table of tree *numbers* is read — no
+  panels, costs, abilities or unlock levels — and skill points are read and
+  shown and **cannot be spent**.
+- **A created character in a battle scene.** They fight, and nothing draws
+  them: `battleCompanions` only has entries for story companions, because
+  only those have a `.chr` model to show. What the game draws for an
+  assembled character in a battle has not been looked at.
+- **Per-member equipment.** Every place has an `equipped` of its own and the
+  equip panel still acts on the leader, so a companion's cannot be changed.
+- **Per-member spells.** `spellsLearnt` is asked with the leader's vocation
+  only, so the spells panel is the Hero's.
+- **Alchemy and mini medals**, which the phase lists and which nothing here
+  has touched.
+- **Hair.** A preset names none, so every created character wears the Hero's.
+  Where a preset's hair comes from — if it comes from anywhere — is on the
+  wiki's "not established" list.
 
 ### The menu shows the party
 

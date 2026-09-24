@@ -58,6 +58,23 @@ export interface Member {
    * not a constant because Alltrades is the point of this phase.
    */
   vocation: number
+  /**
+   * Which ready-made character they were made from, by its place in
+   * `charapreset.bin` — see `readCharacterPresets`.
+   *
+   * **Undefined means the Hero's own look**, dressed from what they wear.
+   * Character creation is what fills this in properly; until it does, a
+   * preset is the whole of a created character's appearance, and choosing
+   * one is choosing a face, a body and clothes together rather than
+   * separately.
+   */
+  appearance: number | undefined
+  /**
+   * What they are called, where somebody chose. **A created character's name
+   * is the player's**, given at the Quester's Rest; the Hero's and a story
+   * companion's come from elsewhere, so both leave this undefined.
+   */
+  name: string | undefined
   /** What seeds have added, for good — see `hero.ts`. */
   gains: Gains
   equipped: Equipped
@@ -98,6 +115,8 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     hp: member.hp ?? null,
     mp: member.mp ?? null,
     vocation: member.vocation,
+    ...(member.appearance === undefined ? {} : { appearance: member.appearance }),
+    ...(member.name === undefined ? {} : { name: member.name }),
     gains: member.gains,
     equipped: equippedRecord(member.equipped),
   }))
@@ -113,6 +132,8 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     // A save from before vocations were a member's has none, and everyone in
     // it was the Minstrel the Hero is — see `HERO_VOCATION_NUMBER`.
     vocation: member.vocation ?? HERO_VOCATION_NUMBER,
+    appearance: member.appearance,
+    name: member.name,
     gains: { ...member.gains },
     equipped: equippedOf(member),
   }))

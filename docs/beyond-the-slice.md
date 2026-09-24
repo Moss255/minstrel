@@ -278,6 +278,22 @@ slice deliberately cut.
 **Done when** a created character of any vocation, in a party of four, can be
 saved and loaded.
 
+**Done, 24 September 2026**, and demonstrated rather than argued:
+`?party=0:0,11:3,21:10` makes three created characters beside the Hero, each
+from a `charapreset.bin` preset and each with a vocation of their own. Four
+walk in a line built from parts, the mini-map names all four, a battle opens
+with four on the party's side at their own vocations' numbers — Minstrel
+20/6, Warrior 30/10, Mage 18/16, Sage 29/30 — and a save written where they
+stand brings all four back, assembled, on a fresh page with no parameters.
+
+**What that leaves behind is listed in `docs/party-and-vocations.md`** under
+"What is still missing, and why", and it is a real list: character creation
+itself, recruitment at the Quester's Rest, Alltrades and the change flow, the
+skill trees and spending skill points, drawing a created character in a
+battle scene, per-member equipment and spells, and alchemy. The done-when is
+a sentence about the *model* holding, and the model holds; the systems built
+on it mostly do not exist yet.
+
 ### Phase 3 — The world
 
 Now content scales. Area by area in story order, each one a checkpoint.
