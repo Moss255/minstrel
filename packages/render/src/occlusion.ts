@@ -262,3 +262,57 @@ export function covered(boxes: readonly Box[], at: Vec3, headroom: number): bool
   }
   return false
 }
+
+/**
+ * How far back the camera can sit without something between it and what it is
+ * looking at: the distance to the nearest box the line of sight enters, less
+ * a margin, or `wanted` when the way is clear.
+ *
+ * **This is what `FollowCamera.actualDistance` has always promised.** Its own
+ * doc says "how far back it actually sits, after anything in the way", and
+ * nothing ever reduced it — both the follow camera and a scene's shot set it
+ * to the distance they want and leave it. The only answer to geometry was
+ * {@link occludedChunks}, which hides what is in the way instead of moving
+ * away from it, and that cannot help when the thing in the way belongs to a
+ * shape the focus is standing inside: Stornway's `ev03030` frames a child
+ * against a wall, and the wall is all you see.
+ *
+ * **A box holding the focus is skipped**, which is the whole reason this can
+ * be used where hiding could not. The ground under a character, and the wall
+ * they are pressed against, both hold the focus; neither is between the
+ * camera and them, and pulling in because of either would jam the camera into
+ * their back.
+ *
+ * **What counts as in the way is {@link occludes}' own rule** — the segment
+ * has to leave the box again before reaching the focus. Without that, every
+ * patch of ground the camera looks across counts: the line from a character
+ * to an eye a little above them clips the next cell of floor, and the camera
+ * is dragged onto their nose. Asking that it comes out the other side is what
+ * tells a wall from the ground underfoot, and it is the same question
+ * {@link occludes} was written to answer.
+ *
+ * `margin` is how far short of the obstruction to stop, so the near plane has
+ * somewhere to be; `clearance` is passed through to {@link occludes}.
+ */
+export function clearDistance(
+  boxes: readonly Box[],
+  focus: Vec3,
+  eye: Vec3,
+  wanted: number,
+  margin = 0.1,
+  exempt: readonly boolean[] = [],
+  clearance = 0.25,
+): number {
+  if (wanted <= 0) return wanted
+  let nearest = 1
+  for (let i = 0; i < boxes.length; i++) {
+    const box = boxes[i]
+    if (!box || exempt[i] || holds(box, focus)) continue
+    if (!occludes(box, eye, focus, clearance)) continue
+    // How far along from the focus it begins, which is where to stop short of.
+    const hit = span(box, focus, eye)
+    if (hit && hit.enter < nearest) nearest = hit.enter
+  }
+  if (nearest >= 1) return wanted
+  return Math.max(0, nearest * wanted - margin)
+}

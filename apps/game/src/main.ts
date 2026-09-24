@@ -45,6 +45,7 @@ import {
   boxOfTriangles,
   cameraEye,
   cellsOf,
+  clearDistance,
   covered,
   followCamera,
   INDOORS,
@@ -358,6 +359,12 @@ const TILT_RATE = Math.PI / 2
 
 /** How much clear air there has to be past a piece for it to count as in the way. */
 const CLEARANCE = toFloat(PERSON.radius)
+/**
+ * How far short of an obstruction the camera stops when it pulls in — see
+ * `clearDistance`. A character's radius, so it scales with the world as the
+ * rest of the framing does, and the near plane has somewhere to be.
+ */
+const CAMERA_MARGIN = toFloat(PERSON.radius)
 /**
  * The side of the squares a map's shapes are cut into for deciding what is in
  * the way: two and a half character heights, about half a house. A choice —
@@ -1651,20 +1658,46 @@ function frame(now = 0): void {
           : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
       )
 
+    // **Pull the camera in short of anything between it and what it is
+    // looking at** — what `actualDistance` has always been documented to be,
+    // and what nothing did. Hiding chunks answers a building the camera looks
+    // over; it cannot answer a wall belonging to a shape the focus is inside,
+    // which is what a close shot against one gives. See `clearDistance`.
+    if (chunkBoxes.length > 0) {
+      camera.actualDistance = clearDistance(
+        chunkBoxes,
+        camera.focus,
+        cameraEye(camera, camera.actualDistance),
+        camera.actualDistance,
+        CAMERA_MARGIN,
+      )
+    }
+
     if (probing && self && loaded?.world) {
       // Where the Hero is against the floor under them: a scene that puts a
       // character below it is why `ev03030` looks the way it does.
       const w = loaded.world
-      const hit = groundBelow(
+      // **From the top and from just over their head.** Searching down from
+      // the top of the world finds whatever is highest over that spot — a
+      // balcony, a bridge, an upper floor — and not the floor the character
+      // is standing on. Both are reported so the difference is visible.
+      const top = groundBelow(
         w,
         self.state.x,
         self.state.z,
         fx32(Math.round(w.bounds.maxY + FX32_ONE)),
       )
+      const near = groundBelow(
+        w,
+        self.state.x,
+        self.state.z,
+        fx32(self.state.y + Math.round(0.25 * FX32_ONE)),
+      )
       ;(globalThis as { __floor?: unknown }).__floor = {
         hero: toFloat(self.state.y),
-        ground: hit ? toFloat(hit.y) : null,
-        under: hit ? toFloat(self.state.y) - toFloat(hit.y) : null,
+        highest: top ? toFloat(top.y) : null,
+        underfoot: near ? toFloat(near.y) : null,
+        under: near ? toFloat(self.state.y) - toFloat(near.y) : null,
       }
     }
     if (probing) {
@@ -1673,6 +1706,7 @@ function frame(now = 0): void {
         eye: cameraEye(camera),
         yaw: camera.yaw,
         pitch: camera.pitch,
+        wanted: camera.distance,
         distance: camera.actualDistance,
         hidden: hiddenPieces,
       }

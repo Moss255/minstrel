@@ -73,10 +73,12 @@ stands between, and nothing hides it, because `occludedChunks` vetoes every
 chunk of a shape the focus is inside — which is right for the ground and
 wrong for a wall somebody is against.
 
-Underneath that is something larger: `FollowCamera.actualDistance` is
+Underneath that was something larger: `FollowCamera.actualDistance` is
 documented as "how far back it actually sits, after anything in the way", and
-**nothing ever reduces it**. The pull-in that would answer this has never been
-built. See `docs/still-open.md`; it wants its own piece of work.
+**nothing ever reduced it**. That pull-in is now built (`clearDistance`), it
+is inert in ordinary play, and `ev03030` shows the Hero instead of a wall —
+though still from 0.28 behind them, which is not a good shot. See
+`docs/still-open.md`.
 
 ## Still to do
 

@@ -4,6 +4,7 @@ import {
   boxOfTriangles,
   cellsOf,
   keepTriangles,
+  clearDistance,
   occludedChunks,
 } from '../src/occlusion.ts'
 
@@ -67,6 +68,52 @@ const box = (minX: number, maxX: number, minZ: number, maxZ: number, minY = 0, m
   maxY,
   minZ,
   maxZ,
+})
+
+describe('clearDistance', () => {
+  const focus: [number, number, number] = [0, 1, 0]
+
+  it('leaves the camera where it wants to be when nothing is between', () => {
+    const eye: [number, number, number] = [0, 1, 10]
+    expect(clearDistance([box(-1, 1, 20, 21)], focus, eye, 10)).toBe(10)
+  })
+
+  it('pulls in short of the nearest thing between', () => {
+    // A wall across the view at z = 4..5, the camera wanting to be at z = 10.
+    const eye: [number, number, number] = [0, 1, 10]
+    // It is entered four tenths of the way along, so four units, less the margin.
+    expect(clearDistance([box(-6, 6, 4, 5)], focus, eye, 10, 0.1)).toBeCloseTo(3.9, 6)
+  })
+
+  it('ignores a box that holds what it is looking at', () => {
+    // **The ground the character stands on, and the wall they are against.**
+    // Both hold the focus, neither is between, and pulling in for either would
+    // put the camera in their back — which is what `ev03030` needed.
+    const eye: [number, number, number] = [0, 1, 10]
+    const ground = box(-10, 10, -10, 20, 0, 1.5)
+    expect(clearDistance([ground], focus, eye, 10)).toBe(10)
+  })
+
+  it('takes the nearest of several', () => {
+    const eye: [number, number, number] = [0, 1, 10]
+    const far = box(-6, 6, 8, 9)
+    const near = box(-6, 6, 2, 3)
+    expect(clearDistance([far, near], focus, eye, 10, 0)).toBeCloseTo(2, 6)
+  })
+
+  it('leaves a wall the character is pressed against alone', () => {
+    // **`occludes`' own clearance rule, and it is right here too.** A wall a
+    // hair from the focus has not got open air past it, so it does not count
+    // as in the way — otherwise the camera would be dragged onto the
+    // character's nose every time they stood against something.
+    const eye: [number, number, number] = [0, 1, 10]
+    expect(clearDistance([box(-6, 6, 0.01, 0.02)], focus, eye, 10, 0, [], 1)).toBe(10)
+  })
+
+  it('never pulls in for a shape marked exempt', () => {
+    const eye: [number, number, number] = [0, 1, 10]
+    expect(clearDistance([box(-6, 6, 4, 5)], focus, eye, 10, 0.1, [true])).toBe(10)
+  })
 })
 
 describe('occludedChunks', () => {

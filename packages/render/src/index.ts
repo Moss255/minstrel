@@ -22,6 +22,7 @@ export {
   cellsOf,
   covered,
   keepTriangles,
+  clearDistance,
   occludedChunks,
   occluders,
   occludes,

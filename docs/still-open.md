@@ -186,9 +186,24 @@ lives; this is the gathered list.
   eye and its target will show the something**, and the field camera is only
   spared because it sits further back and hides what it crosses.
 
-  Fixing it properly means implementing the pull-in that `actualDistance`
-  already promises, which changes every frame of every view and wants doing on
-  its own rather than at the end of an afternoon.
+  **The pull-in is built, 24 September 2026.** `clearDistance` in
+  `packages/render` answers what `actualDistance` always promised: how far
+  back the camera can sit before something is between it and what it is
+  looking at. What counts as "between" is `occludes`' own rule — the segment
+  has to come out the other side before reaching the focus — because without
+  that every patch of floor the camera looks across drags it onto the
+  character's nose. A box holding the focus is skipped, which is what lets
+  this work where hiding could not: the ground underfoot and the wall somebody
+  is against both hold the focus and neither is in the way.
+
+  It is inert in ordinary play. Measured across `C01`, `M01`, `F02`, `C01M14`
+  and `D01`, the distance the camera wants and the distance it gets are the
+  same number, and `C01M14` still hides its two wall chunks. It fires only
+  where something genuinely blocks a close shot.
+
+  `ev03030` now shows the Hero rather than masonry. **It is still not a good
+  shot** — the camera is jammed 0.28 behind them — and whether the game frames
+  this scene from somewhere else entirely is not established.
 
   **And a pull-in would not have fixed this one**, which is the part worth
   passing on. Chased further with `?probe=1`, the Hero in `ev03030` stands at
