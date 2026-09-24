@@ -3,8 +3,8 @@ import {
   type Box,
   boxOfTriangles,
   cellsOf,
-  keepTriangles,
   clearDistance,
+  keepTriangles,
   occludedChunks,
 } from '../src/occlusion.ts'
 

@@ -1084,6 +1084,62 @@ same rows either way.
 **Not read:** whether the Omnivocational passives, which let one character
 wield a kind "regardless of vocation", show on the screen's grid.
 
+# Skill panels — `/data/prm/skilltable.bin`
+
+**Found 24 September 2026.** The ARM9 carries a per-tag handler table for this
+file immediately before the file's own path string, and the `0x66` handler
+reads exactly nine values into a twelve-byte record — which is where the nine
+fields below come from, rather than from counting bytes. `readSkillTable` in
+`skills.ts` reads it.
+
+A loose [tagged data table]: one `0x64` record, one `0x65`, and **287 `0x66`
+records of nine integers**. 287 is **26 trees × 11 panels**, plus one record
+belonging to no tree. The trees are the ones the vocation table numbers, 1 to
+26 — fourteen weapon and shield trees, then one per vocation.
+
+| value | meaning | evidence |
+|---|---|---|
+| 0 | the panel's id, 0–286 | every id present once; it is how `sklname` and `sta_skl` name the same panel |
+| 1 | its tree, 1–26; 0 on the one odd record | eleven to a tree for all twenty-six |
+| 2 | skill points it costs | rises within a tree; each tree has one panel at 0 and one at 100 |
+| 3 | the action it teaches, 0 for none | |
+| 4 | what it gives — the list below, **INFERRED** | each value goes with exactly one `str_gskl` message, and the message says what it does |
+| 5 | how much: the message's `<val_1>` | |
+| 6 | a second action, on ten panels — **INFERRED** to be the out-of-battle form | all ten are field-usable abilities, and it equals value 3 on eight of them |
+| 7 | `unknown_7`: a second 0–286 index, also eleven to a tree, ordering the trees differently | the game keeps both, so both matter to something |
+| 8 | the `str_gskl` message shown when it is bought, 1–23 | |
+
+**What value 4 means — INFERRED**, read off the messages: `0` the message says
+it all · `1` an ability · `2` attack · `3` critical hit rate · `4` the tree's
+weapon whatever the vocation · `5` shield block · `6` strength · `7`
+resilience · `8` agility · `9` deftness · `10` charm · `11` max HP · `12` max
+MP · `13` MP absorption · `14` evasion · `15` magical mending · `16` magical
+might · `17` spell critical rate.
+
+**The joint witness.** `/data/prm/sklname.gp2` names the same 287 panels in a
+separate file, and its tree and cost agree on **every one**, as does its
+"grants an ability" flag against value 4 being 1. Two files agreeing
+everywhere is better evidence than reading either alone.
+
+## Where the words are
+
+| what | file |
+|---|---|
+| tree names, the 26 | `str_sklc` 15–26 (system strings) |
+| panel label, long | `/data/prm/sklname.gp2` — 287 `0x66` records of six values |
+| panel label, short | `/data/bin/menu/sta_skl.gp2` — `0x67` records, id and string |
+| ability name | `/data/prm/skl_art.gp2` |
+| ability description | `/data/prm/actexp.gp2`, which `readSystemStrings` already parses |
+| the sentence on unlock | `/data/prm/str_gskl.gp2` — 1–22 the messages, 101–114 weapon nouns, 202–216 stat nouns |
+
+## Not established
+
+- **Why each tree's eleventh panel costs nothing.** It is a real panel with a
+  real reward, and it is **not** the hundred-point one — every tree has a
+  hundred-cost panel of its own.
+- What value 7 orders by.
+- The record with tree 0: `[286, 0, 0, 168, 1, 0, 0, 286, 0]`, named "Egg On".
+
 # Battle weight tables — in the ARM9 binary
 
 **Found 16 September 2026, in the unpacked ARM9**, at `0xE8CBA` on the

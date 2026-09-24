@@ -177,6 +177,19 @@ export {
 } from './script.ts'
 export { readShops, SHOP_SLOTS, SHOP_TAG, type Shop } from './shops.ts'
 export {
+  GRANTS,
+  GRANTS_ABILITY,
+  GSKL_STAT_NOUN,
+  GSKL_WEAPON_NOUN,
+  PANELS_A_TREE,
+  panelsBought,
+  panelsOfTree,
+  readSkillTable,
+  SKILL_PANEL_TAG,
+  SKILL_TREES,
+  type SkillPanel,
+} from './skills.ts'
+export {
   LEARNT_TAG,
   readSpellTable,
   SPELL_TAG,
