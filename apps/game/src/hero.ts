@@ -397,33 +397,44 @@ export function outfitOfPreset(
   preset: PresetOutfit,
   carry: Carry,
   has: (name: string) => boolean,
+  worn: Equipped = new Map(),
 ): Outfit | undefined {
-  const named = (id: number): string | undefined => {
+  const named = (id: number | undefined): string | undefined => {
+    if (id === undefined) return undefined
     const name = partName(id)
     return name !== undefined && has(name) ? name : undefined
   }
+  /**
+   * **What they wear beats what they were made in.** A preset is where a
+   * character starts, not a costume they cannot take off: equip a created
+   * character with a helm and they should be wearing it. The face is the
+   * exception, because no item is one.
+   */
+  const slotted = (slot: Slot, made: number): string | undefined =>
+    named(worn.get(slot)) ?? named(made)
   // The rig needs a body and legs, so these fall back to the underclothes and
   // then to the Hero's own, exactly as `outfitOf` does for an empty slot.
-  const underneath = (id: number, bare: number, fallback: number): string | undefined =>
-    named(id) ?? named(bare) ?? named(fallback)
-  const body = underneath(preset.armour, BARE_OUTFIT.armour, HERO_OUTFIT.armour)
-  const legs = underneath(preset.legwear, BARE_OUTFIT.legwear, HERO_OUTFIT.legwear)
+  const underneath = (slot: Slot, id: number, bare: number, fallback: number) =>
+    slotted(slot, id) ?? named(bare) ?? named(fallback)
+  const body = underneath('body', preset.armour, BARE_OUTFIT.armour, HERO_OUTFIT.armour)
+  const legs = underneath('legs', preset.legwear, BARE_OUTFIT.legwear, HERO_OUTFIT.legwear)
   // Only when even the underclothes are missing is there nothing to dress.
   if (!body || !legs) return undefined
   const face = faceName(preset.face)
-  const headgear = named(preset.headgear)
-  const weapon = named(preset.weapon)
-  const shield = named(preset.shield)
+  const headgear = slotted('head', preset.headgear)
+  const weapon = slotted('weapon', preset.weapon)
+  const shield = slotted('shield', preset.shield)
   const bones = CARRY_BONES[carry]
   // Gloves take the arms' place when there are any; otherwise the body's own.
-  const arms = named(preset.gloves) ?? named(preset.arms) ?? named(armsFor(preset.armour) ?? 0)
+  const arms =
+    slotted('arms', preset.gloves) ?? named(preset.arms) ?? named(armsFor(preset.armour) ?? 0)
   return {
     body,
     legs,
     ...(face && has(face) ? { face } : {}),
     hair: HERO_HAIR.model,
     ...(headgear ? { headgear } : {}),
-    textures: [arms, named(preset.footwear), HERO_HAIR.colour].filter(
+    textures: [arms, slotted('feet', preset.footwear), HERO_HAIR.colour].filter(
       (name): name is string => name !== undefined && has(name),
     ),
     attached: [

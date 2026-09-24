@@ -320,6 +320,23 @@ out of, the same way the Hero is — and it needed no translating, because
 Their wounds are kept by their place in the party rather than by an `attnpc`
 number, which a created character has not got.
 
+### The menu is about one of the party at a time
+
+**Done, 24 September 2026.** `MenuState` gained a `member`, and the
+attributes panel's row is what sets it — which is how the game reads: you
+pick a character, then look at them. Equipment and spells follow whoever was
+picked rather than asking again.
+
+Two things fell out of it:
+
+- **The bag is the party's; the equipment is not.** Anybody can be dressed
+  out of the one bag, which is why `taken.equip` acts on the chosen member.
+- **What they wear now beats what they were made in.** A created character was
+  dressed from their preset and nothing else, so equipping them changed
+  nothing at all — a costume they could not take off. The preset is where
+  they start; a worn item wins per slot, and only the face stays the
+  preset's, because no item is one.
+
 ### What is still missing, and why
 
 None of this is guesswork about the game; it is work not done. Listed so that
@@ -336,10 +353,6 @@ what the phase left behind is visible rather than discovered later.
 - **The skill trees.** Only the 12×5 table of tree *numbers* is read — no
   panels, costs, abilities or unlock levels — and skill points are read and
   shown and **cannot be spent**.
-- **Per-member equipment.** Every place has an `equipped` of its own and the
-  equip panel still acts on the leader, so a companion's cannot be changed.
-- **Per-member spells.** `spellsLearnt` is asked with the leader's vocation
-  only, so the spells panel is the Hero's.
 - **Alchemy and mini medals**, which the phase lists and which nothing here
   has touched.
 - **Hair.** A preset names none, so every created character wears the Hero's.

@@ -2697,6 +2697,8 @@ function menuMember(member: Member): MenuMember {
     hp: member.hp,
     mp: member.mp,
     equipped: member.equipped,
+    // Their vocation's, at their level — not the Hero's.
+    spells: heroSpells(member),
   }
 }
 
@@ -3061,12 +3063,12 @@ function castInField(action: number): string[] {
 }
 
 /** The spells the Hero has learnt by their level, with what each costs and whether it is cast here. */
-function heroSpells(): MenuSpell[] | undefined {
+function heroSpells(member: Member = leader()): MenuSpell[] | undefined {
   const here = loaded
   const table = here?.spellTable
-  const row = heroRow()
+  const row = levelOf(member)
   if (!here || !table || !row) return undefined
-  return spellsLearnt(table, leader().vocation, row.level).flatMap((spell) => {
+  return spellsLearnt(table, member.vocation, row.level).flatMap((spell) => {
     const action = here.actions.get(spell.action)
     return action
       ? [{ action: spell.action, name: action.name, cost: action.cost, field: action.field }]
@@ -3852,8 +3854,11 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   const member = { name: at.model ?? '', model: look.model, motion, floor: look.floor, placement }
   return [
     ...castPieces(member, look.catalogue, characterScale, frame),
-    // What they hold, in their hands — see `heldOf`.
-    ...(loaded ? heldPieces(member, heldOf(at.id), loaded.catalogue, characterScale, frame) : []),
+    // What they hold, by their `attnpc` number; a created character reaches
+    // here only when they have no figure to pose, which cannot happen.
+    ...(loaded && at.id !== undefined
+      ? heldPieces(member, heldOf(at.id), loaded.catalogue, characterScale, frame)
+      : []),
   ]
 }
 
@@ -4579,7 +4584,9 @@ function dressParty(): void {
     const made =
       member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
     const outfit =
-      shown ?? (made && outfitOfPreset(made, carry, has)) ?? outfitOf(member.equipped, carry, has)
+      shown ??
+      (made && outfitOfPreset(made, carry, has, member.equipped)) ??
+      outfitOf(member.equipped, carry, has)
     const figure = dressFigure(wardrobe, outfit)
     return { figure, pieces: figurePieces(figure) }
   })
@@ -5335,11 +5342,14 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
               : undefined
       if (said && menu) menu = { ...keptInBag(menu), said }
       if (taken.equip) {
-        const worn = equip(bag, leader().equipped, taken.equip.slot, taken.equip.item)
+        // **Whoever the attributes panel chose**, not always the Hero — the
+        // bag is the party's, so anybody can be dressed out of it.
+        const dressing = members[menu?.member ?? 0] ?? leader()
+        const worn = equip(bag, dressing.equipped, taken.equip.slot, taken.equip.item)
         if (worn) {
           bag = worn.bag
-          leader().equipped = worn.equipped
-          // Drawn in what they now wear — see `dressHero`.
+          dressing.equipped = worn.equipped
+          // Drawn in what they now wear — see `dressParty`.
           dressHero()
         }
       }

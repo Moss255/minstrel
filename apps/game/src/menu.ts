@@ -94,6 +94,14 @@ export function labelOf(
  * the items panel, the item whose use is being chosen.
  */
 export interface MenuState {
+  /**
+   * Which of the party the panels are about, by their place — the Hero at 0.
+   *
+   * **The attributes panel's row chooses it**, which is how the game reads:
+   * you pick a character and then look at them. Equipment and spells follow
+   * whoever was picked there rather than asking again.
+   */
+  readonly member: number
   readonly cursor: number
   readonly panel: MenuCommand | undefined
   readonly row: number
@@ -105,7 +113,7 @@ export interface MenuState {
 }
 
 export function openMenu(): MenuState {
-  return { cursor: 0, panel: undefined, row: 0, picking: undefined }
+  return { member: 0, cursor: 0, panel: undefined, row: 0, picking: undefined }
 }
 
 /** A spell the Hero has learnt, as the spells panel shows it. */
@@ -188,6 +196,8 @@ export interface MenuMember {
   /** MP now, when spent; full when undefined. */
   readonly mp?: number | undefined
   readonly equipped?: Equipped | undefined
+  /** The spells they have learnt at their level, in their vocation. */
+  readonly spells?: readonly MenuSpell[] | undefined
 }
 
 /** What a panel knows to say. */
@@ -236,9 +246,22 @@ function equipRows(state: MenuState, context: MenuContext): (number | undefined)
   return choicesFor(state.picking, context.bag ?? EMPTY, context.tableOf ?? (() => undefined))
 }
 
+/**
+ * The one of the party a panel is about — see `MenuState.member`. Undefined
+ * before a cartridge is in, where the context has no party at all.
+ */
+const whose = (
+  context: MenuContext | undefined,
+  state?: { readonly member?: number },
+): MenuMember | undefined => context?.party?.[state?.member ?? 0]
+
+/** What the chosen member wears, or the context's own where there is no party. */
+const wearing = (context: MenuContext, state?: { readonly member?: number }) =>
+  whose(context, state)?.equipped ?? context.equipped
+
 /** The spells that can be cast here, which are the spells panel's rows. */
-const castable = (context: MenuContext | undefined) =>
-  (context?.spells ?? []).filter((spell) => spell.field)
+const castable = (context: MenuContext | undefined, state?: { readonly member?: number }) =>
+  (whose(context, state)?.spells ?? context?.spells ?? []).filter((spell) => spell.field)
 
 /** Choose another command, round and round — or, in a panel with rows, another row. */
 export function moveCursor(state: MenuState, by: number, context?: MenuContext): MenuState {
@@ -253,12 +276,15 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
   if (state.panel === 'status') {
-    // The attributes panel's row is which of the party is being read.
+    // The attributes panel's row is which of the party is being read, and it
+    // is what the other panels then follow.
     const count = context?.party?.length ?? 0
-    return count <= 1 ? state : { ...state, row: wrap(state.row, count) }
+    if (count <= 1) return state
+    const row = wrap(state.row, count)
+    return { ...state, row, member: row }
   }
   if (state.panel === 'spells') {
-    const count = castable(context).length
+    const count = castable(context, state).length
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
   if (state.panel) return state
@@ -315,7 +341,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     }
   }
   if (state.panel === 'spells') {
-    const spell = castable(context)[state.row]
+    const spell = castable(context, state)[state.row]
     return spell ? { state, talk: false, cast: spell.action } : { state, talk: false }
   }
   if (state.panel) return { state, talk: false }
@@ -342,7 +368,7 @@ export function panelLines(
   panel: MenuCommand,
   context: MenuContext,
   state?: Pick<MenuState, 'row' | 'picking'> &
-    Partial<Pick<MenuState, 'panel' | 'said' | 'acting'>>,
+    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member'>>,
 ): string[] {
   const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   const nameOf = context.itemName ?? byId
@@ -419,7 +445,11 @@ export function panelLines(
       const row = state?.row ?? 0
       if (state?.picking) {
         const label = SLOTS.find((s) => s.slot === state.picking)?.label ?? state.picking
-        const choices = equipRows({ cursor: 0, panel, row, picking: state.picking }, context) ?? []
+        const choices =
+          equipRows(
+            { member: state.member ?? 0, cursor: 0, panel, row, picking: state.picking },
+            context,
+          ) ?? []
         return [
           `${label}:`,
           ...choices.map(
@@ -428,27 +458,33 @@ export function panelLines(
           ),
         ]
       }
-      const worn = context.equipped ?? new Map<Slot, number>()
+      // **Whoever the attributes panel last chose**, not always the Hero.
+      const who = whose(context, state)
+      const worn = wearing(context, state) ?? new Map<Slot, number>()
       return [
+        ...(who && (context.party?.length ?? 0) > 1 ? [`${who.name}:`] : []),
         ...SLOTS.map(({ slot, label }, i) => {
           const item = worn.get(slot)
           return `${mark(i === row)}${label}: ${item === undefined ? '—' : nameOf(item)}${numbersText(context, item)}`
         }),
-        wornText(context),
+        wornText(context, worn),
       ]
     }
     case 'spells': {
-      if (!context.spells) return ['No spells are read: the spell table did not load.']
+      const learnt = whose(context, state)?.spells ?? context.spells
+      if (!learnt) return ['No spells are read: the spell table did not load.']
       const row = state?.panel === 'spells' ? state.row : -1
       const lines = [
-        ...castable(context).map(
+        ...castable(context, state).map(
           (spell, i) => `${mark(i === row)}${spell.name} — ${spell.cost} ${mp}`,
         ),
-        ...context.spells
+        ...learnt
           .filter((spell) => !spell.field)
           .map((spell) => `   ${spell.name} — ${spell.cost} ${mp}, in battle`),
       ]
-      if (castable(context).length === 0) lines.push(context.noSpells ?? 'No spells to cast here.')
+      if (castable(context, state).length === 0) {
+        lines.push(context.noSpells ?? 'No spells to cast here.')
+      }
       return [...lines, ...(state?.said ?? [])]
     }
     case 'talk':

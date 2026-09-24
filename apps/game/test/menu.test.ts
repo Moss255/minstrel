@@ -15,7 +15,7 @@ import {
   panelLines,
 } from '../src/menu.ts'
 
-const at = (cursor: number) => ({ cursor, panel: undefined, row: 0, picking: undefined })
+const at = (cursor: number) => ({ member: 0, cursor, panel: undefined, row: 0, picking: undefined })
 
 describe('the main menu', () => {
   it('opens on the first command and chooses round and round', () => {
@@ -136,6 +136,54 @@ describe('the main menu', () => {
     // A party of one is listed no differently from how it always was.
     const alone = panelLines('status', { ...context, party: [context.party?.[0] as never] })
     expect(alone[0]).toContain('Hero —')
+  })
+
+  it('shows the equipment and spells of whoever the attributes panel chose', () => {
+    // **The bag is the party's; the equipment is not.** Until this, the equip
+    // and spells panels were the Hero's whatever was selected, so three
+    // quarters of a party of four could not be dressed or read.
+    const context: MenuContext = {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      itemName: (id) => (id === 20004 ? 'copper sword' : 'pot lid'),
+      party: [
+        {
+          name: 'Hero',
+          equipped: new Map([['weapon', 20004]]),
+          spells: [{ action: 1, name: 'Heal', cost: 2, field: true }],
+        },
+        {
+          name: 'Ivor',
+          equipped: new Map([['shield', 21296]]),
+          spells: [{ action: 2, name: 'Frizz', cost: 3, field: false }],
+        },
+      ],
+    }
+    const equipFor = (member: number) =>
+      panelLines('equip', context, { member, row: -1, picking: undefined }).join(' | ')
+    expect(equipFor(0)).toContain('copper sword')
+    expect(equipFor(0)).not.toContain('pot lid')
+    expect(equipFor(1)).toContain('pot lid')
+    expect(equipFor(1)).not.toContain('copper sword')
+    // With more than one in the party the panel says whose it is.
+    expect(equipFor(1)).toContain('Ivor:')
+
+    const spellsFor = (member: number) =>
+      panelLines('spells', context, { member, row: -1, picking: undefined }).join(' | ')
+    expect(spellsFor(0)).toContain('Heal')
+    expect(spellsFor(1)).toContain('Frizz')
+    // Frizz is not a field spell, so Ivor has nothing to cast out here.
+    expect(spellsFor(1)).toContain('No spells to cast here')
+  })
+
+  it('carries the chosen member from the attributes panel to the others', () => {
+    const party = [{ name: 'Hero' }, { name: 'Ivor' }, { name: 'Erinn' }]
+    const context: MenuContext = { hero: 'Hero', map: undefined, stage: undefined, party }
+    const panel = { ...openMenu(), panel: 'status' as const, row: 0 }
+    // Moving down the attributes panel is choosing who the menu is about.
+    expect(moveCursor(panel, 1, context).member).toBe(1)
+    expect(moveCursor(panel, -1, context).member).toBe(2)
   })
 
   it('moves between the party on the status panel, and not when there is one', () => {
