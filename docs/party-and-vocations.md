@@ -118,6 +118,33 @@ could tell them apart.
 which looks like the old "Hero outside the party" assumption and is not: the
 Hero follows nobody, so three followers is right for four members either way.
 
+### The save follows the same shape
+
+**Done, 24 September 2026.** The save kept the Hero's experience, hit points,
+magic, seeds and equipment as five fields of its own and everyone else as a
+bare list of `attnpc` numbers — so a companion came back whole and
+empty-handed, which was honest, because that is all the running game gave them
+too.
+
+Version 3 keeps one list of places, each with its own. Versions 1 and 2 are
+still read and lifted into it: **the save is one slot in a browser's own
+storage, and somebody part-way through the slice has no other copy.**
+
+The round trip lives in `companion.ts` as `partySaved` and `partyRestored`
+rather than in `main.ts`, because the phase's done-when is "can be saved and
+loaded" and it had been two anonymous blocks in a four-thousand-line module
+that nothing could reach to test.
+
+One asymmetry is deliberate: a save writes `null` for the Hero's `attnpc`,
+because JSON has no `undefined`, and reads it back as `undefined`, because
+that is what "is in no table of attending characters" means in the running
+game.
+
+**Adding a field takes no new version; moving one does.** `step`, `flags` and
+`party` were all added as optional fields that older saves simply lack. That
+is the pattern, and it is why the vocation — which is next — will not need a
+version 4.
+
 ## 2. Vocations
 
 Not yet read. See `docs/beyond-the-slice.md` for what the phase asks for: 13

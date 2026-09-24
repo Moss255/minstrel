@@ -9,14 +9,10 @@ const game: SaveGame = {
   stage: { major: 2, minor: 2 },
   step: 2,
   flags: [0],
+  members: [{ attnpc: null, exp: 0, hp: null, mp: null, gains: {}, equipped: {} }],
   gold: 100,
   items: [],
-  equipped: {},
   opened: [],
-  exp: 0,
-  hp: null,
-  mp: null,
-  gains: {},
 }
 
 describe('the story in a save', () => {

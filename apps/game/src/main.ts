@@ -145,6 +145,8 @@ import {
   type Member,
   PARTY_MOST,
   partyAfter,
+  partyRestored,
+  partySaved,
 } from './companion.ts'
 import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
 import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
@@ -209,16 +211,7 @@ import {
   WALK_SPEED,
 } from './player.ts'
 import { breakingFrame, isPotOrBarrel } from './pots.ts'
-import {
-  bagOf,
-  equippedOf,
-  equippedRecord,
-  readSave,
-  SAVE_VERSION,
-  type SaveGame,
-  type SaveStore,
-  writeSave,
-} from './save.ts'
+import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
 import {
   type Counter,
   chooseInVisit,
@@ -1050,16 +1043,10 @@ function restore(game: SaveGame): void {
   storyFlags.clear()
   storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
-  // Only the Hero's numbers are in the save yet, so a companion comes back
-  // whole — which is what happened before the party was a list, when their hit
-  // points were a side table that was never written. See `save.ts`.
-  members = [leader(), ...(game.party ?? []).map((id) => freshMember(id))]
+  // The whole party, each with their own — see `SaveMember`. An older save's
+  // companions come back with nothing, which is all they ever had.
+  members = partyRestored(game.members)
   bag = bagOf(game)
-  leader().equipped = equippedOf(game)
-  leader().exp = game.exp
-  leader().hp = game.hp ?? undefined
-  leader().mp = game.mp ?? undefined
-  leader().gains = { ...game.gains }
   openedTreasure.clear()
   for (const key of game.opened) openedTreasure.add(key)
 }
@@ -1081,17 +1068,10 @@ function confess(): string {
     stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
     step: storyStep,
     flags: [...storyFlags],
-    party: members
-      .slice(1)
-      .flatMap((member) => (member.attnpc === undefined ? [] : [member.attnpc])),
+    members: partySaved(members),
     gold: bag.gold,
     items: [...bag.items],
-    equipped: equippedRecord(leader().equipped),
     opened: [...openedTreasure],
-    exp: leader().exp,
-    hp: leader().hp ?? null,
-    mp: leader().mp ?? null,
-    gains: leader().gains,
   }
   return writeSave(storage(), game)
     ? 'Your progress is recorded.'

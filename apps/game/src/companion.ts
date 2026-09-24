@@ -4,6 +4,7 @@ import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
 import type { Equipped } from './equipment.ts'
 import type { Gains } from './hero.ts'
+import { equippedOf, equippedRecord, type SaveMember } from './save.ts'
 
 /**
  * The party beside the Hero: who goes along and when, the fighter each is, and
@@ -58,6 +59,40 @@ export interface Member {
 
 /** The Hero, who is member 0 — see {@link Member}. */
 export const isHero = (member: Member): boolean => member.attnpc === undefined
+
+/**
+ * The party as a save keeps it, and back — see `SaveMember` in `save.ts`.
+ *
+ * These live here rather than in `main.ts` so that the round trip can be
+ * tested at all. It is the phase's done-when — "can be saved and loaded" —
+ * and it was two anonymous blocks in a four-thousand-line module.
+ *
+ * The one asymmetry is deliberate: a save writes `null` for the Hero's
+ * `attnpc` because JSON has no `undefined`, and reads it back as `undefined`
+ * because that is what "is in no table" means in the running game.
+ */
+export function partySaved(members: readonly Member[]): SaveMember[] {
+  return members.map((member) => ({
+    attnpc: member.attnpc ?? null,
+    exp: member.exp,
+    hp: member.hp ?? null,
+    mp: member.mp ?? null,
+    gains: member.gains,
+    equipped: equippedRecord(member.equipped),
+  }))
+}
+
+/** The party a save holds, ready to play. */
+export function partyRestored(kept: readonly SaveMember[]): Member[] {
+  return kept.map((member) => ({
+    attnpc: member.attnpc ?? undefined,
+    hp: member.hp ?? undefined,
+    mp: member.mp ?? undefined,
+    exp: member.exp,
+    gains: { ...member.gains },
+    equipped: equippedOf(member),
+  }))
+}
 
 /** Ivor's number in `attnpc`. */
 export const IVOR = 2

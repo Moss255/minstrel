@@ -11,7 +11,10 @@ import {
   type Member,
   PARTY_MOST,
   partyAfter,
+  partyRestored,
+  partySaved,
 } from '../src/companion.ts'
+import { decodeSave, encodeSave, SAVE_VERSION, type SaveGame } from '../src/save.ts'
 
 /** Records as the reader gives them, written out for the test; no cartridge bytes. */
 const ivor: AttendingCharacter = {
@@ -63,6 +66,19 @@ const place = (attnpc: number | undefined): Member => ({
 /** The party at the start: the Hero, and nobody behind them. */
 const alone: Member[] = [place(undefined)]
 
+/** A save with nothing in it but a party, for the round trip below. */
+const blank = {
+  version: SAVE_VERSION,
+  savedAt: '2026-09-24T10:00:00.000Z',
+  map: 'C01',
+  at: { x: 0, y: 0, z: 0, facing: 0 },
+  stage: null,
+  members: [],
+  gold: 0,
+  items: [],
+  opened: [],
+} as unknown as SaveGame
+
 describe('the party, the Hero first', () => {
   it('counts an event’s joining word from the table’s first place', () => {
     expect(joinerOf(1)).toBe(IVOR)
@@ -103,6 +119,39 @@ describe('the party, the Hero first', () => {
       partyAfter(alone, { joins: [0, 1, 2, 3, 4], leaves: false }, place),
     )
     expect(reversed.map((w) => w.name)).toEqual(['Aquila', 'Ivor', 'Dr Phlegming'])
+  })
+
+  it('goes into a save and comes back the same party', () => {
+    // **The phase's done-when is "can be saved and loaded"**, and until this
+    // the round trip was two anonymous blocks in `main.ts` that nothing could
+    // reach. A party of three, each with something of their own.
+    const before: Member[] = [
+      {
+        attnpc: undefined,
+        hp: 12,
+        mp: undefined,
+        exp: 340,
+        gains: { maxHp: 3 },
+        equipped: new Map([['weapon', 20004]]),
+      },
+      {
+        attnpc: IVOR,
+        hp: undefined,
+        mp: 4,
+        exp: 40,
+        gains: {},
+        equipped: new Map([['shield', 22000]]),
+      },
+      { attnpc: 5, hp: 1, mp: 0, exp: 0, gains: { skillPoints: 2 }, equipped: new Map() },
+    ]
+    const after = partyRestored(
+      decodeSave(encodeSave({ ...blank, members: partySaved(before) })).members,
+    )
+    expect(after).toEqual(before)
+    // The Hero is the one in no table, and JSON has no `undefined` — so the
+    // save writes null and the game reads it back as nothing.
+    expect(partySaved(before)[0]?.attnpc).toBeNull()
+    expect(after[0]?.attnpc).toBeUndefined()
   })
 
   it('names Ivor as he, as his events do, and others by name alone', () => {
