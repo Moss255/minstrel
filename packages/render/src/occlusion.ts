@@ -179,7 +179,8 @@ export function keepTriangles(
 
 /**
  * The chunks to leave out: each one in the way **whose whole shape is in the
- * way too**, and none of a shape marked `exempt` — the sky.
+ * way too**, plus any the camera is standing inside; and none of a shape
+ * marked `exempt` — the sky.
  *
  * Asking of the shape as well keeps what shapes alone got right. The ground
  * the character stands on is never in the way, because the line to them ends
@@ -187,6 +188,18 @@ export function keepTriangles(
  * character would be, and asked alone it would leave a hole. So the chunks
  * hidden are always among the ones hiding whole shapes would have hidden —
  * only fewer of them.
+ *
+ * **And one that is not.** A shape whose box holds *both* the eye and the
+ * focus is not in the way by that rule — the segment never leaves it — so
+ * none of its chunks are even considered. That is right for the ground and
+ * wrong for a wall: a character pressed against one, with the camera behind,
+ * puts both inside the wall's box and the view becomes the inside of the
+ * masonry. Stornway's `ev03030` did exactly that, and nothing was hidden.
+ *
+ * So a chunk the camera is **inside** goes regardless of its shape. There is
+ * no view past such a chunk to protect, which is what the shape gate exists
+ * to protect; the terrain is untouched because being over the ground is not
+ * being inside it.
  */
 export function occludedChunks(
   shapes: readonly Box[],
@@ -202,10 +215,27 @@ export function occludedChunks(
   for (let i = 0; i < chunks.length; i++) {
     const shape = shapeOf[i]
     const box = chunks[i]
-    if (shape === undefined || !box || !inTheWay[shape]) continue
+    if (shape === undefined || !box || exempt[shape]) continue
+    if (holds(box, eye)) {
+      hidden.push(i)
+      continue
+    }
+    if (!inTheWay[shape]) continue
     if (occludes(box, eye, focus, clearance)) hidden.push(i)
   }
   return hidden
+}
+
+/** Whether a point is inside a box, edges included. */
+function holds(box: Box, at: Vec3): boolean {
+  return (
+    at[0] >= box.minX &&
+    at[0] <= box.maxX &&
+    at[1] >= box.minY &&
+    at[1] <= box.maxY &&
+    at[2] >= box.minZ &&
+    at[2] <= box.maxZ
+  )
 }
 
 /**

@@ -1623,6 +1623,21 @@ function frame(now = 0): void {
     showDarkness(eventStage, now)
     revealTalk(now)
     const shot = eventStage?.camera
+    // `?probe=1` puts the scene's camera and the real one on `window`, so a
+    // badly framed view can be told from a scene that never framed itself —
+    // see `docs/areas.md`. **Behind a flag because this allocates**, and the
+    // frame is not a place to allocate.
+    if (probing) {
+      ;(globalThis as { __shot?: unknown }).__shot = shot
+        ? {
+            target: shot.target,
+            yaw: shot.yaw,
+            rise: shot.rise,
+            distance: shot.distance,
+            angled: eventStage?.cameraAngled ?? false,
+          }
+        : null
+    }
     if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
     else
       updateFollowCamera(
@@ -1635,6 +1650,17 @@ function frame(now = 0): void {
           ? person()
           : { ...person(), height: fx32(Math.round(person().height * worldScale)) },
       )
+
+    if (probing) {
+      ;(globalThis as { __cam?: unknown }).__cam = {
+        focus: [...camera.focus],
+        eye: cameraEye(camera),
+        yaw: camera.yaw,
+        pitch: camera.pitch,
+        distance: camera.actualDistance,
+        hidden: hiddenPieces,
+      }
+    }
 
     const hidden = occludedChunks(
       mapBoxes,
@@ -1758,6 +1784,8 @@ const padAxes = axesFrom(params.get('axes'), params.get('lookbuttons'))
 /** A layout given on the URL wins over anything known about the pad. */
 const padOverridden = params.get('axes') !== null || params.get('lookbuttons') !== null
 const showPad = params.get('pad') === '1'
+/** `?probe=1`: put the scene camera and the real one on `window` each frame. */
+const probing = params.get('probe') === '1'
 /** `?collision=1`, or `c` at any time: draw the collision mesh over the map. */
 let showCollision = params.get('collision') === '1'
 /** Built per map, and again whenever the fit below is moved. */

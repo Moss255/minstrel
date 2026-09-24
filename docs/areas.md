@@ -66,6 +66,18 @@ That is the checkpoint earning its keep in the way the plan predicted: an
 area that passes every headless measure and still has something a person can
 see is wrong.
 
+**Chased the same day, and it was not the camera.** `?probe=1` puts the
+scene's camera and the real one on `window`; the scene asks for a close shot
+of the Hero and `aimAtShot` places the eye exactly where it should be. A wall
+stands between, and nothing hides it, because `occludedChunks` vetoes every
+chunk of a shape the focus is inside — which is right for the ground and
+wrong for a wall somebody is against.
+
+Underneath that is something larger: `FollowCamera.actualDistance` is
+documented as "how far back it actually sits, after anything in the way", and
+**nothing ever reduces it**. The pull-in that would answer this has never been
+built. See `docs/still-open.md`; it wants its own piece of work.
+
 ## Still to do
 
 The areas in story order after Stornway, as far as the story is read:

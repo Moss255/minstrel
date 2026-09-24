@@ -158,20 +158,37 @@ lives; this is the gathered list.
 ## 3. Read and not modelled
 
 - **`ev03030` in Stornway plays with the camera inside a wall** (24 September
-  2026, found by the area's first Phase 3 checkpoint — `docs/areas.md`). The
-  scene moves the Hero to `0.73, -0.06, -3.88`, against the north wall, and
-  the view is masonry. The text is right and nothing reports a fault.
+  2026, found by the area's first Phase 3 checkpoint — `docs/areas.md`).
+  Chased with `?probe=1`, which puts the scene's camera and the real one on
+  `window`, and the answer is not where it looked:
 
-  What has been ruled out: the scene's own camera *is* what occlusion is
-  computed from — `aimAtShot` sets `camera.focus` at `main.ts:1626`, before
-  `occludedChunks` runs at `:1638`. And the mechanism works elsewhere: the
-  castle's throne room hides two wall chunks in the same run.
+  **The camera is exactly where the scene asks.** `ev03030` sets a shot —
+  target the Hero at `(0.739, 0.031, -3.842)`, yaw 0, rise 0.75, distance
+  1.375 — and `aimAtShot` puts the eye at `(0.739, 0.781, -2.690)`, 1.15 south
+  of the target looking north at it. The framing is right. What is wrong is
+  that a wall stands between, and **nothing hides it**: `hiddenPieces` is 0.
 
-  **Not established:** why `occludedChunks` hides nothing there. The overlay
-  shows no chunk count at all, so it returned empty — either the wall's box
-  does not test as between eye and focus (both may be inside it), or the wall
-  is in `mapBackdrop` and exempt. Whether the game shows this scene from
-  somewhere else entirely has not been looked at.
+  **Why nothing hides it.** `occludedChunks` gates every chunk on its whole
+  shape being in the way, deliberately — that is what stops a chunk of the
+  ground the character stands on leaving a hole. But the Hero here is *inside
+  the wall shape's bounding box*, so the segment never leaves that box, so the
+  shape is not "in the way", so none of its chunks are even considered. The
+  gate is right for terrain and wrong for a wall somebody is pressed against.
+
+  **And the design that was meant to answer this was never built.**
+  `FollowCamera.actualDistance` is documented as "how far back it actually
+  sits, **after anything in the way**" — the standard pull-the-camera-in
+  answer. Nothing reduces it. Both `updateFollowCamera` and `aimAtShot` set it
+  to `distance` and leave it; the only collision either does is `lift`, which
+  raises the eye out of the ground, and a scene camera does not even get that.
+
+  So this is not one bad scene. **Any close shot with something between the
+  eye and its target will show the something**, and the field camera is only
+  spared because it sits further back and hides what it crosses.
+
+  Fixing it properly means implementing the pull-in that `actualDistance`
+  already promises, which changes every frame of every view and wants doing on
+  its own rather than at the end of an afternoon.
 
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth

@@ -89,6 +89,31 @@ describe('occludedChunks', () => {
     expect(occludedChunks([ground], [hillock], [0], eye, focus)).toEqual([])
   })
 
+  it('hides the chunk the camera is inside, whatever its shape says', () => {
+    // **The case a Stornway scene found.** A long wall, with the character
+    // pressed against it and the camera behind — so the wall's box holds both
+    // the eye and the focus, the segment never leaves it, and by the rule
+    // above the shape is not in the way at all. Nothing was hidden, and the
+    // view was the inside of the masonry.
+    //
+    // A chunk the camera is *inside* is a different thing from a chunk in the
+    // way: there is no view past it to protect, so it goes regardless.
+    const wall = box(-6, 6, -2, 2, 0, 4)
+    const chunks = [box(-6, -2, -2, 2, 0, 4), box(-2, 2, -2, 2, 0, 4), box(2, 6, -2, 2, 0, 4)]
+    const inside: [number, number, number] = [0, 1, -1]
+    const ahead: [number, number, number] = [0, 1, 1]
+    expect(occludedChunks([wall], chunks, [0, 0, 0], inside, ahead)).toEqual([1])
+  })
+
+  it('still leaves the ground alone when the camera is above it, not in it', () => {
+    // The fix must not take the terrain with it. The camera at y = 1 is over
+    // the ground, whose box tops out at 1.5 — but it is not *in* any chunk of
+    // it that matters, and the hillock stays.
+    const ground = box(-10, 10, -10, 20, 0, 1.5)
+    const hillock = box(-1, 1, 4, 6, 0, 1.5)
+    expect(occludedChunks([ground], [hillock], [0], eye, focus)).toEqual([])
+  })
+
   it('never hides a shape marked exempt', () => {
     const wall = box(-6, 6, 4, 5)
     expect(occludedChunks([wall], [wall], [0], eye, focus, 0.25, [true])).toEqual([])
