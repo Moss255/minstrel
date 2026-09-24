@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@minstrel/nitrofs": "workspace:*",
+    "@minstrel/game-formats": "workspace:*",
     "@minstrel/nitro-comp": "workspace:*",
     "@minstrel/l5-gpc": "workspace:*",
     "@minstrel/nitro-snd": "workspace:*"

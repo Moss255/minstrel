@@ -13,6 +13,7 @@
  *     --extract <path>     write one file's bytes out
  *     --out <dir>          destination directory for --extract (default ./out)
  *     --limit <n>          cap listing output (default 200, 0 for no cap)
+ *     --regions            list every map that names a region, with its code
  *
  * Everything this prints or writes is derived from the cartridge. Keep it in
  * `out/`, which is gitignored, and never commit it.
@@ -20,6 +21,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { isMapList, readMapList } from '@minstrel/game-formats'
 import { tryDecompressLz10 } from '@minstrel/nitro-comp'
 import {
   checkHeaderIntegrity,
@@ -44,6 +46,46 @@ interface Options {
   out: string
   limit: number
   deep: boolean
+  regions: boolean
+}
+
+/**
+ * Every map the index gives a region, with the code that loads it.
+ *
+ * This is what answers "how do I get to Gleeba without playing to it": the
+ * code goes in `apps/game`'s `?map=`. See `docs/regions.md`.
+ *
+ * **Its output is the cartridge's own text**, so it is printed and never
+ * written into the repository — the same rule as everything else this tool
+ * produces. `maplist9.bin` is read by `readMapList`; see
+ * `packages/game-formats/FORMAT.md`, "Map list".
+ */
+function printRegions(fs: ReturnType<typeof readNitroFs>): void {
+  const found = [...walkFiles(fs.root)].find((f) => f.name.toLowerCase() === 'maplist9.bin')
+  if (!found) {
+    console.log('\nno maplist9.bin on this cartridge')
+    return
+  }
+  const bytes = readFileBytes(fs, found)
+  if (!isMapList(bytes)) {
+    console.log('\nmaplist9.bin does not read as a map list')
+    return
+  }
+  const list = readMapList(bytes)
+  const rows = list.maps.filter((entry) => entry.region !== undefined && entry.code !== '')
+  console.log(`\nRegions — ${rows.length} of ${list.maps.length} map entries name one`)
+  console.log('code\tregion\tlabel\tspace')
+  for (const entry of rows) {
+    console.log(
+      `${entry.code}\t${entry.region ?? ''}\t${entry.label ?? ''}\t${entry.indoors ? 'indoors' : 'outdoors'}`,
+    )
+  }
+}
+
+/** A file's bytes, decompressed if it is packed. */
+function readFileBytes(fs: ReturnType<typeof readNitroFs>, file: NitroFile): Uint8Array {
+  const raw = fs.read(file)
+  return tryDecompressLz10(raw) ?? raw
 }
 
 function parseArgs(argv: string[]): Options {
@@ -56,7 +98,7 @@ function parseArgs(argv: string[]): Options {
       continue
     }
     const name = arg.slice(2)
-    if (name === 'tree' || name === 'deep') {
+    if (name === 'tree' || name === 'deep' || name === 'regions') {
       flags.set(name, 'true')
       continue
     }
@@ -72,6 +114,7 @@ function parseArgs(argv: string[]): Options {
     romPath,
     tree: flags.has('tree'),
     deep: flags.has('deep'),
+    regions: flags.has('regions'),
     find: flags.get('find'),
     ext: flags.get('ext'),
     kind: flags.get('kind'),
@@ -282,6 +325,8 @@ async function main(): Promise<void> {
     console.log('\nTree')
     printTree(fs.root)
   }
+
+  if (options.regions) printRegions(fs)
 
   const listing = catalogued.filter((c) => {
     if (options.find && !c.file.path.toLowerCase().includes(options.find.toLowerCase()))

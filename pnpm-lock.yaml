@@ -239,6 +239,9 @@ importers:
 
   tools/inventory:
     dependencies:
+      '@minstrel/game-formats':
+        specifier: workspace:*
+        version: link:../../packages/game-formats
       '@minstrel/l5-gpc':
         specifier: workspace:*
         version: link:../../packages/l5-gpc
