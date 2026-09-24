@@ -46,6 +46,8 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
     /** Resources its manifest names that the archive holds no readable file for. */
     readonly missing: number
     readonly doorways: number
+    /** Where its doorways lead, so that what leads *here* can be worked out. */
+    readonly doorwayCodes: readonly string[]
     /** Doorways naming a map this cartridge has no archive for. */
     readonly danglingDoors: readonly string[]
     readonly cast: number
@@ -56,20 +58,24 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
   }
 
   /**
-   * **A map with no collision is not necessarily a fault.** Most of them are
-   * not places at all: the index calls their region `"None"`, they have no
-   * doorway, no cast and no trigger. They are pieces the game assembles
-   * something else out of — the `B` family is 174 of them, and grottoes are
-   * built at runtime.
+   * **A map with no collision is not necessarily a fault**, and the question is
+   * which ones a player could ever be standing in.
    *
-   * A map the story *visits* and cannot be stood in is a different thing
-   * entirely, and this is what tells them apart.
+   * The first version of this asked whether the map had triggers, doorways, a
+   * cast or a named region. Three of those four are properties of the **area**,
+   * not the map: every map in Wormwood Creek reports the area's 139 triggers,
+   * and `F34M01` reports the same two exits `F34` does. So it counted twelve
+   * "places the story visits", and most of that was the area showing through.
+   *
+   * **What a map cannot inherit is something leading to it.** `M12` has eight
+   * doorways into it, `C02` nine, `M01` nine; of the eleven that survived the
+   * old heuristic, **nothing on the cartridge leads to any of them**. That is
+   * the test — a map nothing opens onto is not somewhere a player walks into,
+   * whether or not it has collision.
    */
-  const isPlace = (m: Opened) =>
-    m.triggers > 0 ||
-    m.doorways > 0 ||
-    m.cast > 0 ||
-    (m.region !== undefined && m.region !== 'None')
+  const isPlace = (m: Opened) => (leadsTo.get(m.code)?.length ?? 0) > 0
+  /** Each map, and the maps whose doorways open onto it — built from the same walk. */
+  const leadsTo = new Map<string, string[]>()
 
   let opened: Opened[] = []
   let codes: string[] = []
@@ -107,6 +113,7 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
           meshes: map.map.meshes.length,
           missing: map.map.missing.length,
           doorways: doorways.length,
+          doorwayCodes: doorways,
           danglingDoors: doorways.filter((to) => !resolves(to)),
           cast: map.cast.members.length + map.cast.sprites2d.length,
           treasures: map.treasures.length,
@@ -122,6 +129,7 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
           meshes: 0,
           missing: 0,
           doorways: 0,
+          doorwayCodes: [],
           danglingDoors: [],
           cast: 0,
           treasures: 0,
@@ -130,6 +138,10 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
         }
       }
     })
+
+    for (const m of opened) {
+      for (const to of m.doorwayCodes) leadsTo.set(to, [...(leadsTo.get(to) ?? []), m.code])
+    }
 
     const threw = opened.filter((m) => m.threw)
     const standless = opened.filter((m) => !m.threw && !m.world)
@@ -154,12 +166,12 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
       )
     }
     const placeless = standless.filter(isPlace)
-    console.log(`  ${placeless.length} of those are places the story visits:`)
+    console.log(`  ${placeless.length} of those are maps something leads to:`)
     for (const m of placeless) {
-      console.log(
-        `    ${m.code} — ${m.region ?? 'not in the index'} · ${m.triggers} triggers · ${m.doorways} doors · ${m.cast} cast`,
-      )
+      console.log(`    ${m.code} — reached from ${leadsTo.get(m.code)?.join(' ')}`)
     }
+    const nowhere = opened.filter((m) => !m.threw && !isPlace(m)).length
+    console.log(`  (${nowhere} of all ${opened.length} maps have nothing leading to them)`)
     console.log(`  ${missing.length} name a resource their archive has not got`)
     for (const m of missing.slice(0, 12)) console.log(`    ${m.code}: ${m.missing} missing`)
     console.log(`  ${dangling.length} have a doorway to a map that is not there`)
@@ -190,35 +202,20 @@ describe.skipIf(!romPath)('every map, through the game’s own loader', () => {
     expect(standless.filter((c) => c.startsWith('B')).length).toBe(174)
     // The rest are the ones worth a person's time, and they are pinned by name
     // so that one more showing up is visible.
-    // **Of the 197, twelve are places the map index names.** The rest have no
-    // region, no doorway, no cast and no trigger — pieces rather than places.
-    // These twelve are pinned by name so that a thirteenth is visible.
-    const places = opened.filter((m) => !m.threw && !m.world && isPlace(m)).map((m) => m.code)
-    expect(places).toEqual([
-      'C04M10',
-      'D17M07',
-      'F01M02',
-      'F10M01',
-      'F34M01',
-      'M12M10',
-      'M12M11',
-      'M13M99',
-      'X01',
-      'X04M25',
-      'X05',
-    ])
-    // **No map with a cast of its own is left without somewhere to stand.**
-    // `M12`, the outdoor map of Wormwood Creek, was on this list with eleven
-    // characters and eight doors, and it was a fault here: the archive holds
-    // two descriptors and the loader kept whichever it saw last. It now keeps
-    // the one that describes the map. Only `F34M01` remains, with doors but
-    // nobody in it.
-    const withOwnPeople = opened.filter(
-      (m) => !m.threw && !m.world && (m.cast > 0 || m.doorways > 0),
-    )
-    expect(withOwnPeople.map((m) => `${m.code}: ${m.cast} cast, ${m.doorways} doors`)).toEqual([
-      'F34M01: 0 cast, 2 doors',
-    ])
+    // **Every map a doorway opens onto has somewhere to stand.** Of the 196
+    // without collision, not one is ever led to — and 237 of all 669 maps have
+    // nothing leading to them, which is what a cartridge full of assembled
+    // pieces looks like. This is the assertion that would catch another `M12`.
+    const reachableAndStandless = opened
+      .filter((m) => !m.threw && !m.world && isPlace(m))
+      .map((m) => m.code)
+    expect(reachableAndStandless).toEqual([])
+
+    // The same question from the other side: no map with a cast of its own is
+    // left without collision. `M12`, Wormwood Creek, was the one that was, and
+    // it was a fault here rather than in the cartridge.
+    const withOwnPeople = opened.filter((m) => !m.threw && !m.world && m.cast > 0)
+    expect(withOwnPeople.map((m) => m.code)).toEqual([])
 
     expect(standless.filter((c) => !c.startsWith('B'))).toEqual([
       'C04M10',

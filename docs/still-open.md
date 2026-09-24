@@ -202,26 +202,39 @@ lives; this is the gathered list.
   not mapped onto the hardware's bits — doing so is a control-scheme decision,
   not a reading — so the three answer from fields the caller fills, and a scene
   that waits for a press waits. One scene on the cartridge does exactly that.
-- **197 of the cartridge's 669 maps have no collision**, so the engine has
-  nowhere to stand the Hero and the map never comes up. Swept with
-  `apps/game/test/maps.test.ts` on 24 September 2026, which runs the game's
-  own loader over every one. **Most of that is expected and one part is not:**
+- **196 of the cartridge's 669 maps have no collision**, so the engine has
+  nowhere to stand the Hero. Swept with `apps/game/test/maps.test.ts` on 24
+  September 2026, which runs the game's own loader over every one. **None of
+  them is a place a player is kept out of**, and it took two goes to be able
+  to say that.
 
   - **174 are the whole `B` family** — region `"None"`, no doorway, no cast,
-    no trigger. Pieces rather than places, and grottoes are assembled at
-    runtime and not built here. Nothing to do.
-  - **Twelve are places the map index names**: `C04M10` Gittingham Palace,
-    `D17M07` Oubliette, `F01M02`, `F10M01`, `F34M01`, `M12`, `M12M10`,
-    `M12M11`, `M13M99` Upover, `X01` and `X05` Observatory, `X04M25`. Ten of
-    those have no doorway and no cast of their own, so they may still be
-    pieces the index happens to name.
-  - **`M12`, the outdoor map of Wormwood Creek, has eleven characters standing
-    in it and eight doors leading out** — and one piece and no collision. It is
-    the one that least looks like a piece and most looks like a gap here.
-    **Start there.**
+    no trigger. Pieces rather than places; grottoes are assembled at runtime
+    and not built here. Nothing to do.
+  - **`M12`, Wormwood Creek, was the one real fault**, and it is fixed — which
+    is what took the count from 197 to 196. Its archive holds **two**
+    descriptors, `M12M0000.bmdj` with 24 resources and `M12M0001.bmdj` with
+    one, and the loader kept whichever it saw last because they were keyed by
+    archive. It now keeps the one that describes the map. Six of the 1,348
+    archives hold more than one and `M12` is the only one where it mattered.
+  - **The other 22 are not places either**, though the first reading said
+    twelve of them were. That reading asked whether a map had triggers,
+    doorways or a named region — and **three of those are properties of the
+    *area*, not the map**. Every map in Wormwood Creek reports the area's 139
+    triggers; `F34M01` reports the same two exits `F34` does, and its archive
+    holds no collision file at all because `F34`'s holds 66 KB of it for the
+    whole field.
 
-  Whether any of this is the reader or the cartridge is **not established**.
-  The sweep says what the loader makes of each map, not what the map is.
+    **What a map cannot inherit is something leading to it.** `M12` has eight
+    doorways into it, `C02` nine, `M01` nine — and **nothing on the cartridge
+    leads to any of the 196**. 237 of all 669 maps have nothing leading to
+    them, which is what a cartridge full of assembled pieces looks like.
+
+  So the sweep now asserts the thing worth asserting: **every map a doorway
+  opens onto has somewhere to stand**. Whether any individual one of the 196
+  is the reader or the cartridge is still not established — the sweep says
+  what the loader makes of a map, not what the map is — but none of them is
+  reachable and none has a cast.
 - **One doorway on the cartridge names a map that is not there**: `M07` has a
   door to `M07M07`, for which there is no archive. Walking into it is refused
   and leaves the player where they were — `enter` keeps the map it has when a
