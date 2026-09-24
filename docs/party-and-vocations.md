@@ -147,9 +147,37 @@ version 4.
 
 ## 2. Vocations
 
-Not yet read. See `docs/beyond-the-slice.md` for what the phase asks for: 13
-level tables rather than one, the skill trees, and the change flow at
-Alltrades.
+### The vocation is a member's, and all thirteen tables are read
+
+**Done, 24 September 2026** — the first of the phase's three vocation items.
+
+The cartridge has thirteen level tables, `/data/prm/level0.bin` to `level12`,
+one to a vocation in the order the status screen names them. The parser has
+read any of them since M0 and `tools/harness/test/levels.test.ts` proves it on
+all thirteen — but `apps/game` loaded exactly one, because
+`HERO_LEVELS` was `level6.bin` and a party could only ever hold one vocation.
+
+Now `Loaded.levels` is all thirteen by number, and `Member.vocation` says
+which each place reads against. Three things that named the constant now ask
+the member instead: the level table, the status screen's vocation word
+(`str_tm` 2100 + n), and `spellsLearnt`. The Minstrel is 6 in all three
+numberings, which is what made the substitution safe.
+
+**The Hero being a Minstrel stays where it was** — `HERO_VOCATION_NUMBER`,
+settled by a published guide agreeing with `level6` at all 72 values it gives.
+What changed is that it is now a *default* rather than a fact about the
+engine.
+
+**Ours, and flagged as such:** a companion joining is given the Hero's
+vocation, because **`attnpc` has no vocation field at all** — it carries a
+level, stats, a weapon and a shield. What vocation an attending character has
+is not read, and until it is, anyone who joins is a Minstrel.
+
+### What is still missing
+
+Alltrades and the change flow; the skill trees, of which only the 12×5 table
+of tree *numbers* is read and nothing of panels, costs or abilities; and
+spending skill points, which are read and shown and cannot be spent.
 
 ## 3. What a character is
 
@@ -162,4 +190,6 @@ whether this phase's done-when is reachable.
 - What bit `0x800` on a character's halfword actually means.
 - That the party is four, as opposed to four being what fits.
 - What writes the party slots and the count.
-- Everything in §2 and §3.
+- What vocation an attending character has. `attnpc` does not say, so whoever
+  joins is given the Hero's.
+- Everything else in §2, and all of §3.

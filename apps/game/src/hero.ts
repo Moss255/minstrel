@@ -20,8 +20,8 @@ import type { Equipped, Slot } from './equipment.ts'
 export const HERO_VOCATION = 'Minstrel'
 /** The Minstrel's number — see above. */
 export const HERO_VOCATION_NUMBER = 6
-/** The Minstrel's level table — the seventh vocation the status screen names; confirmed, see above. */
-export const HERO_LEVELS = `/data/prm/level${HERO_VOCATION_NUMBER}.bin`
+/** Where every vocation's level table lives: `level0` to `level12`, one each. */
+export const LEVELS_FOLDER = '/data/prm/level'
 /** Where the field menu's names for the vocations begin in `str_tm`: 2100 the Guardian. */
 export const VOCATION_WORDS = 2100
 

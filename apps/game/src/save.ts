@@ -34,6 +34,12 @@ export interface SaveMember {
   /** HP and MP; null when whole. */
   readonly hp: number | null
   readonly mp: number | null
+  /**
+   * Which vocation's numbers theirs are, by number. **Absent from saves made
+   * before a party could hold more than one**, which read as the Minstrel the
+   * Hero is — adding a field takes no new version.
+   */
+  readonly vocation?: number
   /** What seeds have added — see `Gains`. */
   readonly gains: Readonly<Partial<Record<GainStat, number>>>
   readonly equipped: Readonly<Partial<Record<Slot, number>>>
@@ -207,6 +213,9 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.hp !== null && !isCount(m.hp)) throw new SaveError(`${where} has HP that do not read`)
   if (m.mp !== null && !isCount(m.mp)) throw new SaveError(`${where} has MP that do not read`)
   if (!isCount(m.exp)) throw new SaveError(`${where} has no experience count`)
+  if (m.vocation !== undefined && !isCount(m.vocation)) {
+    throw new SaveError(`${where} has a vocation that does not read`)
+  }
   const stats = new Set<string>(GAIN_STATS)
   const gains = m.gains as Record<string, unknown> | undefined
   if (
@@ -229,6 +238,7 @@ function member(raw: unknown, place: number): SaveMember {
     exp: m.exp,
     hp: m.hp as number | null,
     mp: m.mp as number | null,
+    ...(m.vocation === undefined ? {} : { vocation: m.vocation as number }),
     gains: gains as SaveMember['gains'],
     equipped: equipped as SaveMember['equipped'],
   }

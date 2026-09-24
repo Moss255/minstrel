@@ -14,6 +14,7 @@ import {
   partyRestored,
   partySaved,
 } from '../src/companion.ts'
+import { HERO_VOCATION_NUMBER } from '../src/hero.ts'
 import { decodeSave, encodeSave, SAVE_VERSION, type SaveGame } from '../src/save.ts'
 
 /** Records as the reader gives them, written out for the test; no cartridge bytes. */
@@ -60,6 +61,7 @@ const place = (attnpc: number | undefined): Member => ({
   hp: undefined,
   mp: undefined,
   exp: 0,
+  vocation: HERO_VOCATION_NUMBER,
   gains: {},
   equipped: new Map(),
 })
@@ -131,6 +133,7 @@ describe('the party, the Hero first', () => {
         hp: 12,
         mp: undefined,
         exp: 340,
+        vocation: HERO_VOCATION_NUMBER,
         gains: { maxHp: 3 },
         equipped: new Map([['weapon', 20004]]),
       },
@@ -139,10 +142,21 @@ describe('the party, the Hero first', () => {
         hp: undefined,
         mp: 4,
         exp: 40,
+        // **A vocation that is not the Hero's** — the whole point of it being
+        // a member's field rather than a constant.
+        vocation: 0,
         gains: {},
         equipped: new Map([['shield', 22000]]),
       },
-      { attnpc: 5, hp: 1, mp: 0, exp: 0, gains: { skillPoints: 2 }, equipped: new Map() },
+      {
+        attnpc: 5,
+        hp: 1,
+        mp: 0,
+        exp: 0,
+        vocation: 11,
+        gains: { skillPoints: 2 },
+        equipped: new Map(),
+      },
     ]
     const after = partyRestored(
       decodeSave(encodeSave({ ...blank, members: partySaved(before) })).members,

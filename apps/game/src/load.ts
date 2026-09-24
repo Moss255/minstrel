@@ -89,7 +89,7 @@ import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@
 import type { BattleWords } from './battle-scene.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
-import { HERO_LEVELS, heroOutfit } from './hero.ts'
+import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
 import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
 import { type SlidingPiece, slidingPieces } from './slide.ts'
@@ -189,8 +189,13 @@ export interface Loaded {
   readonly eventBattles: ReadonlyMap<number, EventBattle>
   /** How each monster goes about the field, by number — see `readFieldMonsters`. */
   readonly fieldMonsters: ReadonlyMap<number, FieldMonster>
-  /** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
-  readonly heroLevels: LevelTable | undefined
+  /**
+   * Every vocation's level table, by its number — see `hero.ts`. The cartridge
+   * has thirteen, `level0` to `level12`, and until a party could hold more
+   * than one vocation only the Minstrel's was read. One that will not read is
+   * absent rather than empty.
+   */
+  readonly levels: ReadonlyMap<number, LevelTable>
   /** What each shop sells, by the number a talk line's `<SHOP=n>` names — see `readShops`. */
   readonly shops: ReadonlyMap<number, Shop>
   /** Who goes along with the Hero for a stretch, in English — see `readAttendingCharacters`. Empty when it will not read. */
@@ -922,23 +927,25 @@ function randomTreasureOf(rom: Uint8Array): Map<string, RandomTreasure[]> {
   return tables
 }
 
-/** The level tables read so far, by cartridge: a loose file, not an archive member. */
-const levelsRead = new WeakMap<Uint8Array, LevelTable | undefined>()
+/** The level tables read so far, by cartridge: loose files, not archive members. */
+const levelsRead = new WeakMap<Uint8Array, ReadonlyMap<number, LevelTable>>()
 
-/** The Hero's vocation's level table — see `hero.ts`. Undefined when it will not read. */
-function heroLevelsOf(rom: Uint8Array): LevelTable | undefined {
-  if (levelsRead.has(rom)) return levelsRead.get(rom)
-  let table: LevelTable | undefined
-  for (const leaf of scanCartridge(rom, { pathFilter: HERO_LEVELS })) {
-    if (leaf.path !== HERO_LEVELS) continue
+/** Every vocation's level table, by number — `/data/prm/level<n>.bin`. Read once. */
+function levelsOf(rom: Uint8Array): ReadonlyMap<number, LevelTable> {
+  const already = levelsRead.get(rom)
+  if (already) return already
+  const tables = new Map<number, LevelTable>()
+  for (const leaf of scanCartridge(rom, { pathFilter: LEVELS_FOLDER })) {
+    const named = /\/level(\d+)\.bin$/i.exec(leaf.path)
+    if (!named) continue
     try {
-      table = readLevelTable(leaf.bytes)
+      tables.set(Number(named[1]), readLevelTable(leaf.bytes))
     } catch {
-      // A table that will not read leaves the Hero without numbers.
+      // A table that will not read leaves that vocation without numbers.
     }
   }
-  levelsRead.set(rom, table)
-  return table
+  levelsRead.set(rom, tables)
+  return tables
 }
 
 /** The shop table: a loose file, beside the menus. */
@@ -1785,7 +1792,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     battleZones: battleEncountersOf(rom),
     eventBattles: eventBattlesOf(rom),
     fieldMonsters: fieldMonstersOf(rom),
-    heroLevels: heroLevelsOf(rom),
+    levels: levelsOf(rom),
     shops: shopsOf(rom),
     attending: attendingOf(rom),
     mapCodeOf: codeOf(cat),

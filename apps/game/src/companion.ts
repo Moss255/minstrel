@@ -3,7 +3,7 @@ import { blockChance, type Fighter } from '@minstrel/sim'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
 import type { Equipped } from './equipment.ts'
-import type { Gains } from './hero.ts'
+import { type Gains, HERO_VOCATION_NUMBER } from './hero.ts'
 import { equippedOf, equippedRecord, type SaveMember } from './save.ts'
 
 /**
@@ -52,6 +52,12 @@ export interface Member {
   /** Magic between battles; undefined is whole. */
   mp: number | undefined
   exp: number
+  /**
+   * Which vocation's level table their experience is read against, by its
+   * number — `HERO_VOCATION_NUMBER` is the Minstrel's 6. It is a member's and
+   * not a constant because Alltrades is the point of this phase.
+   */
+  vocation: number
   /** What seeds have added, for good — see `hero.ts`. */
   gains: Gains
   equipped: Equipped
@@ -77,6 +83,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     exp: member.exp,
     hp: member.hp ?? null,
     mp: member.mp ?? null,
+    vocation: member.vocation,
     gains: member.gains,
     equipped: equippedRecord(member.equipped),
   }))
@@ -89,6 +96,9 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     hp: member.hp ?? undefined,
     mp: member.mp ?? undefined,
     exp: member.exp,
+    // A save from before vocations were a member's has none, and everyone in
+    // it was the Minstrel the Hero is — see `HERO_VOCATION_NUMBER`.
+    vocation: member.vocation ?? HERO_VOCATION_NUMBER,
     gains: { ...member.gains },
     equipped: equippedOf(member),
   }))

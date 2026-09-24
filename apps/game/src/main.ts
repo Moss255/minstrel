@@ -11,6 +11,7 @@ import {
   eventOutcome,
   inArea,
   type LevelRow,
+  type LevelTable,
   type NpcPlacement,
   partName,
   type StoryArea,
@@ -527,6 +528,9 @@ const storyFlags = new Set<number>()
  */
 let members: Member[] = [freshMember(undefined)]
 
+/** The level table a member's experience is read against — see `Member.vocation`. */
+const levelsFor = (member: Member): LevelTable | undefined => loaded?.levels.get(member.vocation)
+
 /**
  * The Hero: the party's first place, whom the player moves and commands.
  *
@@ -547,6 +551,10 @@ function freshMember(attnpc: number | undefined): Member {
     hp: undefined,
     mp: undefined,
     exp: 0,
+    // **Ours, and a stand-in.** Everyone starts as the Minstrel the Hero is,
+    // because what vocation an attending character has is not read — `attnpc`
+    // carries a level, stats, a weapon and a shield, and no vocation at all.
+    vocation: HERO_VOCATION_NUMBER,
     gains: {},
     equipped: attnpc === undefined ? STARTING_EQUIPMENT : NOTHING_EQUIPPED,
   }
@@ -2530,7 +2538,7 @@ function nameOf(id: number): string {
 
 /** What the menu's panels are told. */
 function menuContext(): MenuContext {
-  const levels = loaded?.heroLevels
+  const levels = levelsFor(leader())
   const words = loaded?.menuWords
   const now = levels ? standing(levels, leader().exp, leader().gains) : undefined
   return {
@@ -2540,7 +2548,7 @@ function menuContext(): MenuContext {
     // The vocation in the menu's own words — `str_tm` 2106, the Minstrel.
     standing: now && {
       ...now,
-      vocation: words?.get(VOCATION_WORDS + HERO_VOCATION_NUMBER) ?? now.vocation,
+      vocation: words?.get(VOCATION_WORDS + leader().vocation) ?? now.vocation,
     },
     hp: leader().hp,
     mp: leader().mp,
@@ -2601,7 +2609,7 @@ function battleSpells(): BattleSpell[] {
   const table = here?.spellTable
   const row = heroRow()
   if (!here || !table || !row) return []
-  return spellsLearnt(table, HERO_VOCATION_NUMBER, row.level).flatMap((learnt) => {
+  return spellsLearnt(table, leader().vocation, row.level).flatMap((learnt) => {
     const action = here.actions.get(learnt.action)
     const spell = action && battleSpellOf(action)
     return spell ? [spell] : []
@@ -2654,7 +2662,7 @@ let wakeInChurch = false
 
 /** The Hero's numbers now: their level's, with what seeds have added. */
 function heroRow(): LevelRow | undefined {
-  const levels = loaded?.heroLevels
+  const levels = levelsFor(leader())
   return levels ? standing(levels, leader().exp, leader().gains).level : undefined
 }
 
@@ -2684,7 +2692,7 @@ function heroVitals(row: LevelRow): Vitals {
  * the level's own numbers, for a headless check to read.
  */
 function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
-  const levels = loaded?.heroLevels
+  const levels = levelsFor(leader())
   if (!levels) {
     status('the level table did not load, so the Hero has no level to move')
     return undefined
@@ -2873,7 +2881,7 @@ function heroSpells(): MenuSpell[] | undefined {
   const table = here?.spellTable
   const row = heroRow()
   if (!here || !table || !row) return undefined
-  return spellsLearnt(table, HERO_VOCATION_NUMBER, row.level).flatMap((spell) => {
+  return spellsLearnt(table, leader().vocation, row.level).flatMap((spell) => {
     const action = here.actions.get(spell.action)
     return action
       ? [{ action: spell.action, name: action.name, cost: action.cost, field: action.field }]
@@ -2894,7 +2902,7 @@ function counter(): Counter {
     price: (id) => loaded?.goods.get(id)?.price,
     sells: (id) => loaded?.goods.get(id)?.sells,
     divination: () => {
-      const levels = loaded?.heroLevels
+      const levels = levelsFor(leader())
       if (!levels) return 'The level table did not load.'
       const s = standing(levels, leader().exp)
       return s.next
@@ -3125,7 +3133,7 @@ function runsFromOf(number: number): { runsFrom?: number } {
  */
 function startFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
   if (!loaded || !self || !cartridge) return
-  const levels = loaded.heroLevels
+  const levels = levelsFor(leader())
   if (!levels) {
     status('the level table did not load, so the Hero has no numbers to fight with')
     return
@@ -3630,7 +3638,7 @@ function settleBattle(): void {
   if (!battle || battle.settled || battle.state.outcome === 'ongoing') return
   const hero = battle.state.fighters[0]
   const name = DEFAULT_CONTEXT.heroName
-  const levels = loaded?.heroLevels
+  const levels = levelsFor(leader())
   const words = loaded?.battleWords
   const said = (number: number, telling: Telling) => {
     const template = words?.results.get(number)

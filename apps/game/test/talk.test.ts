@@ -5,6 +5,7 @@ import { load } from '../src/load.ts'
 import {
   branchOf,
   DEFAULT_CONTEXT,
+  facingToward,
   letterForStage,
   moveChoice,
   nextPage,
@@ -15,7 +16,6 @@ import {
   runLine,
   startConversation,
   type Talker,
-  facingToward,
   talkTarget,
 } from '../src/talk.ts'
 
