@@ -183,12 +183,21 @@ each now has a measurement of its own rather than an assumption:
 | loads | `apps/game/test/maps.test.ts` | **669 of 669 read.** 196 have no collision, 174 of them one family of pieces |
 | plays its events | `apps/game/test/event-coverage.test.ts` | **5 engine functions unanswered** on the whole cartridge; the slice's own area wants none |
 | talks | `apps/game/test/talk-coverage.test.ts` | **1,116 of 1,135 speak**, in all 43 areas that have anybody standing in them; none renders blank |
-| walks | `tools/harness/test/cartridge.test.ts` | every collision mesh is walked — but as a *safety* property, "never leaves the world", which is **not** the same as "the town is navigable" |
+| walks | `apps/game/test/walk-coverage.test.ts` | ten areas walked from where the game stands you, with the game's own controller. **Nobody is stranded**; eight of the ten reach every one of their doorways |
 
-So three of the four are evidenced and **walking is the weak one**: nothing
-yet says a player could get from a town's gate to its inn. The second half of
-the done-when — satisfying a person in minutes — has `tools/witness` for the
-looking and still wants frames beside a let's play.
+**All four are now evidenced.** The second half of the done-when — satisfying a
+person in minutes — has `tools/witness` for the looking and still wants frames
+beside a let's play.
+
+Two things the walking sweep taught, both of which had been assumed:
+
+- **A map is not one walkable region.** `C04`, Gittingham Palace, reaches 2 of
+  its 12 doorways from where you arrive, and that is right: the forecourt is
+  567 cells with two ways out, and the palace grounds beyond are a separate
+  region of 11,000 reached through the building.
+- **Arrivals are not reciprocal.** `M11`'s entrance is from a dungeon interior
+  while its own exits lead to the field, so "you can leave the way you came" is
+  not an invariant and cannot be asserted.
 
 ### Phase 2 — The systems that restructure data
 
