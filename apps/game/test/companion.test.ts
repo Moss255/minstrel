@@ -16,6 +16,9 @@ import {
   partyAfter,
   partyRestored,
   partySaved,
+  REVOCATIONS_MOST,
+  revocationsOf,
+  revoke,
   VOCATION_FLAG,
   vocationsOffered,
   wear,
@@ -71,9 +74,13 @@ const place = (attnpc: number | undefined): Member => ({
   vocation: HERO_VOCATION_NUMBER,
   held: new Set([HERO_VOCATION_NUMBER]),
   appearance: undefined,
+  sex: undefined,
   name: undefined,
   gains: {},
   outfits: new Map(),
+  skillPool: 0,
+  treePoints: new Map(),
+  revocations: new Map(),
 })
 /** The party at the start: the Hero, and nobody behind them. */
 const alone: Member[] = [place(undefined)]
@@ -179,6 +186,51 @@ describe('the party, the Hero first', () => {
     expect(wornBy(who, 1).get('shield')).toBe(22000)
   })
 
+  it('revokes the vocation held, and only that one', () => {
+    // **Read from `0x02155e38`**, which loads the current vocation once and
+    // uses it for every store it makes: level 1, no experience, one more mark.
+    // Other vocations, the skill points and the equipment are untouched.
+    const who = place(undefined)
+    who.exp.set(HERO_VOCATION_NUMBER, 12_000)
+    who.exp.set(1, 4_000)
+    who.skillPool = 38
+    who.treePoints.set(1, 22)
+    wear(who, new Map([['weapon', 20004]]))
+
+    expect(revoke(who)).toBe(1)
+    expect(expOf(who)).toBe(0)
+    expect(revocationsOf(who)).toBe(1)
+    // The Warrior's four thousand are not theirs to take.
+    expect(expOf(who, 1)).toBe(4_000)
+    // Nor are the skill points, which are the character's and not a
+    // vocation's — neither the pool nor the tree is touched.
+    expect(who.skillPool).toBe(38)
+    expect(who.treePoints.get(1)).toBe(22)
+    // Nor the equipment.
+    expect(wornBy(who).get('weapon')).toBe(20004)
+
+    // A second time marks it again; each vocation counts its own.
+    who.exp.set(HERO_VOCATION_NUMBER, 9_000)
+    expect(revoke(who)).toBe(2)
+    expect(revocationsOf(who, 1)).toBe(0)
+  })
+
+  it('stops the marks at ten', () => {
+    // `0x02155e9c: cmp r0, #0xa / movhi r0, #0xa` — incremented, then clamped,
+    // so an eleventh revocation happens and adds nothing to the count.
+    const who = place(undefined)
+    for (let n = 0; n < 12; n++) revoke(who)
+    expect(revocationsOf(who)).toBe(REVOCATIONS_MOST)
+  })
+
+  it('will not revoke what is not a vocation', () => {
+    const who = place(undefined)
+    who.vocation = 0
+    who.exp.set(0, 500)
+    expect(revoke(who)).toBeUndefined()
+    expect(expOf(who)).toBe(500)
+  })
+
   it('offers the six, then whichever of the other six are unlocked', () => {
     // Read from the Abbey's own list builder: six written with no gate, then
     // a table of six each behind a flag — and **in the Abbey's order**, which
@@ -214,9 +266,19 @@ describe('the party, the Hero first', () => {
         vocation: HERO_VOCATION_NUMBER,
         held: new Set([HERO_VOCATION_NUMBER]),
         appearance: undefined,
+        sex: undefined,
         name: undefined,
         gains: { maxHp: 3 },
         outfits: new Map([[HERO_VOCATION_NUMBER, new Map([['weapon', 20004]])]]),
+        // Points earned and put into two trees — the pool is the character's
+        // and the spend is per tree, so both have to survive the round trip.
+        skillPool: 17,
+        treePoints: new Map([
+          [1, 22],
+          [20, 4],
+        ]),
+        // A vocation revoked twice, which the round trip has to keep.
+        revocations: new Map([[HERO_VOCATION_NUMBER, 2]]),
       },
       {
         attnpc: IVOR,
@@ -228,9 +290,13 @@ describe('the party, the Hero first', () => {
         vocation: 0,
         held: new Set([0]),
         appearance: 4,
+        sex: 0,
         name: undefined,
         gains: {},
         outfits: new Map([[0, new Map([['shield', 22000]])]]),
+        skillPool: 0,
+        treePoints: new Map(),
+        revocations: new Map(),
       },
       {
         attnpc: 5,
@@ -240,9 +306,13 @@ describe('the party, the Hero first', () => {
         vocation: 11,
         held: new Set([11]),
         appearance: 12,
+        sex: 1,
         name: 'Brittany',
         gains: { skillPoints: 2 },
         outfits: new Map(),
+        skillPool: 3,
+        treePoints: new Map([[13, 100]]),
+        revocations: new Map(),
       },
     ]
     const after = partyRestored(

@@ -296,8 +296,61 @@ panels". 287 panels, 26 trees of 11, with a cost, what they give and the
 message they say. `readSkillTable` reads it.
 
 So skill points can be spent, in principle: the pool is one per character and
-the spend is per tree, which the record above confirms. **Nothing spends them
-yet**, and the menu has no skill screen.
+the spend is per tree, which the record above confirms.
+
+### And they can be spent
+
+**Done, 24 September 2026.** The menu has a sixth command, in the game's own
+words — `str_tm` 4003, **"Allocate Skill Points"** — and it works: the five
+trees the member's vocation may spend in, their points out of a hundred, the
+ladder of panels with what each still needs, and the game's own sentence when
+one lands. Shown live at Angel Falls: the Hero at level 20 with **38 points**,
+Sword taken to 13, *Dragon Slash*, *Attack+10* and *Metal Slash* ticked, and
+**"Hero learns Metal Slash!"** underneath.
+
+The five trees are the Minstrel's own — Sword, Whip, Fan, Shield, Litheness —
+which is the ARM9 table read against `str_sklc`, and a first check on both.
+
+What was read to build it, all on 24 September:
+
+- **Spending is a point at a time, into the tree.** There is no "buy a panel":
+  the menu keeps a delta per tree, `+1` at ov013 `0x02186398`, and on leaving
+  writes `tree += delta`, `pool -= Σ delta` (`0x02184c8c`). A panel is *had*
+  once the tree's total reaches its cost. `spend` is that; `buy` is the same
+  thing done in one press, which suits a list rather than a grid.
+- **Three guards**: the pool above zero, the tree not already at 100, the
+  total staying under 100 (`0x02186324`). **No refunds** — the delta clamps at
+  zero, so only this visit's points come back.
+- **A level's award is `column10(new) − column10(old)`** on the vocation's own
+  table (`0x020826e8`), clamped to the headroom under **2,600** before it is
+  added (`ov023 0x021f0c70`). 2,600 is 200 × 13 — a table's whole column, once
+  per vocation. So taking up a second vocation earns its column again, which
+  is what makes the pool worth keeping per character.
+- **A seed adds 2**, under the same cap (`0x02084df4`).
+
+Ours: the pool is a stored number here as it is there, rather than derived,
+because **revocation resets a vocation's level and leaves the pool alone** — a
+derived pool would fall when it should not.
+
+### Why the eleventh panel costs nothing: it is unreachable
+
+**Settled 24 September 2026**, and it was worth settling, because the obvious
+reading — "cost 0 means free" — would have handed every character Gigagash.
+
+Every tree has a panel reading cost 0, and in all twenty-six it is **eleventh**:
+last in the file and last by the second index, after the hundred-point panel.
+It holds the tree's best thing — Sword's Gigagash, Shield's Critical Hit Guard,
+Courage's Auto Counter.
+
+The ownership walk at `0x0209a678` goes through a tree's eleven records in file
+order, counting while the points *exceed* the cost and taking one more if they
+*equal* it, then stopping. The tenth costs exactly 100 and a tree caps at 100,
+so the walk always stops there. The skill menu draws **ten** a tree
+(ov013 `0x02187b64: cmp r7, #0xa`).
+
+So neither of the game's two consumers can reach it. `climbable` leaves it
+out and the screen says "not yet" rather than pretending. **What grants it is
+still not established** — no code was found that reads it.
 
 ### Changing vocation
 
@@ -364,27 +417,151 @@ there in their underclothes.
 The save keeps pairs, as it does for experience. **Version 5**, and a
 version-4 save's single set becomes the set of the vocation it says they were.
 
-**One thing the Abbey does that this does not**: drop to the bag whatever the
-new vocation or that character's sex may not wear. The apply reads item flags
-at `[item + 4]` — two sex bits and a restriction bit — and unequips what
-fails. Ours keeps it. The data for the rule is on the cartridge (armour
-carries a vocation bit; weapons and shields go by skill tree), so this is work
-not done rather than something unread.
+### The Abbey does **not** drop what a vocation may not wear
+
+**Corrected 24 September 2026**, and this file said the opposite four hours
+earlier. The reading then was that the apply "unequips to the bag anything the
+new vocation or that character's sex may not wear". It does not, and the
+correction matters because it turned a piece of missing work into no work at
+all.
+
+`0x0215582c` **never calls `0x020dd4c4`**, the game's own "may this character
+equip this?" — the ARM9 has no caller of it anywhere, and every overlay caller
+is an equip menu. Verified here by disassembly rather than taken on report.
+What it really does is two plain loops:
+
+- `0x02155958` — **everything worn goes into the bag, unconditionally.** It
+  walks the `0xff`-terminated slot list at `0x0217f2c4` over the equipment
+  entries at `live+0x194 + i*0x20` and calls `0x0207c378` with each item id.
+- `0x02155bcc` — for each of the eight stored ids, **put it back on if the bag
+  still holds one**, else clear the slot. No vocation test, no sex test: the
+  block was recorded while that vocation was worn, so it was already legal.
+
+There is one conditional removal and it is narrow: `0x02155b04` does nothing
+unless the incoming block's accessory is **item 18048** *and* the bag no longer
+holds one, and only then clears what that accessory's sex exemption had been
+covering.
+
+So our model — per-vocation outfits, the index moving, nothing stowed or
+dropped — is what the game does. The thing that *was* missing is a different
+thing, and it is done now.
+
+### Who may wear what, which is the rule that was actually missing
+
+**Done, 24 September 2026.** `mayWear` in `equipment.ts` is `0x020dd4c4`'s two
+vocation rules, and the equip panel now leaves out what the chosen member may
+not wear.
+
+- **Armour, headgear, gloves, legwear, footwear, accessories** — the in-RAM
+  categories 2 to 7 — against a **12-bit mask**, bit `v − 1` for vocation `v`,
+  in bits 0 to 11 of the item record's second word (`0x020dd63c`/`0x020dd644`).
+  That is `ItemStats.usedBy`, and reading it in the game **confirms the bit
+  order** that `charapreset.bin` had only inferred.
+- **Weapons and shields** skip that mask entirely and go by the **skill
+  trees**: the item's tree against the four weapon trees the vocation holds
+  (`0x020dd19c` — whose loop really is `i < 4`, because the fifth is the
+  vocation's own tree and never a weapon's, which is what `vocationsWielding`
+  already did), **or** the character having earned that tree's Omnivocational
+  panel, which `0x020dd4c4` asks *first* (`0x020dd200`, a per-character bit
+  array at `live+0x8EC`).
+
+That last one is the single place the skill screen reaches into what somebody
+may hold, and it is built: buy the hundred-point panel of a weapon tree and
+the vocation stops mattering for it.
+
+`apps/game/test/may-wear.test.ts` holds it to the cartridge: 313 weapons and
+shields and 631 pieces of armour, nothing in between, every vocation with
+something it may wear and something it may not, and **27 of the 29 presets**
+dressed in a kit that agrees on one vocation bit — every piece of which
+`mayWear` allows that vocation and refuses another.
+
+### And the sex rule, which the cartridge names for us
+
+**Done, 24 September 2026**, and it is the nicest piece of evidence in this
+file, because the game labels its own answer.
+
+Bits 27 and 28 of the item word are "sex 0 may wear it" and "sex 1 may wear
+it", used as a **two-entry lookup indexed by bit 0 of `live+0x49C`** rather
+than compared (`0x020dd6f8`). `readItemStats` reads them now as `wornBySex`,
+and bit 29 as `sexLock`.
+
+Which bit is which is **not a guess**. Of 944 pieces of equipment, 823 are
+open to both and **none is closed to both** — already a sign the pair is read
+right. Of the rest, bit 0 carries *holy mail*, the *rogue's robes*, the
+warrior's gloves, the flamenco shirt and the twinkling tuxedo; bit 1 carries
+*holy femail*, the *roguess's robes*, the priestess's pinafore, the dancer's
+dress and the bunny suit. **mail/femail and robes/roguess settle it**: bit 0
+is male, bit 1 female, and 40 items are his to 81 hers.
+
+`charapreset.bin`'s own `sex` field numbers them the same way, checked
+independently: across the 29 ready-made characters, **33 of 33** sex-restricted
+pieces they are dressed in allow the sex their record names.
+
+And the exemption is named too. `0x020dd6b8` compares equipment slot 9 with
+the literal **18048** before the sex test; on this cartridge item 18048 is the
+**wear-with-all award**, an accessory — which is precisely what an item that
+lifts the sex rule should be called. 20 of the 121 sex-restricted pieces carry
+`sexLock`, which is what the award cannot help with; the bikini tops and
+bustiers are among them, the dresses are not.
+
+`Member.sex` holds it, **undefined until somebody chooses** — which leaves the
+rule unapplied for the Hero and for a story companion rather than guessing at
+one. A created character takes their preset's.
+
+### A correction this turned up in the item parser
+
+`ItemStats.kind` was read as **five** bits of word 3 and is **four**:
+`0x020dd5a4` isolates it with `lsl #0x15 / lsr #0x1c`, which is bits 7 to 10.
+
+The cartridge shows the difference plainly. With five bits the values are 0 to
+13 on 941 items and **16 on exactly three** — 15100, 15103 and 15106, all
+gloves in table `a`. Sixteen is no weapon tree, and armour is supposed to carry
+none; read as four bits they are 0, and the vocation mask decides them like
+every other glove. Before the fix, preset 17's gloves were refused to the
+vocation whose kit they are.
+
+**Bit 11 is something else**, set on those three and nothing else in 944. Not
+established; `unknown_entry` carries it.
 
 ### Revocation
 
-**Read, not built.** `0x02155e38` resets **only the vocation currently held**
-to level 1 and no experience, and increments a counter for it, hard-capped at
-ten; everything else — other vocations, skill points, equipment — is
-untouched. Reaching ten does something, and what is not established.
+**Done, 24 September 2026.** `0x02155e38`, reached from the Abbey's step slot
+4, loads the current vocation from `live+0x950` **once** and uses it for every
+store it makes — level 1, no experience, one more mark at `live+0x186 + v`,
+clamped at ten by `cmp r0, #0xa / movhi r0, #0xa`.
+
+`revoke` in `companion.ts` is that, and it is short for the same reason
+changing vocation was: the shape was read first. Setting the experience to
+nothing *is* setting the level to one, because the level falls out of the
+experience here; the other twelve vocations keep theirs; and the **skill
+points survive**, pool and trees both, which is the whole point of the
+character keeping them rather than the vocation.
+
+`Member.revocations` is the thirteen bytes the record has at `+0x0F`, and the
+attributes panel says "revoked 2×" where there is a count. `?revoke=0` drives
+it, standing in for the Abbey's own step until that flow is built.
+
+**Not built, and read**: the first-time flag per vocation, `0x118B + v`, which
+drives a line the first time — `REVOCATION_FLAG` names it and nothing sets it.
+And what reaching ten grants: `0x02157c50` loops the twelve counters and calls
+`0x021ed6cc` for each at ten, and what that does is not established.
 
 ### What is still missing
 
-Revocation, above. Dropping what a vocation may not wear, above. A skill
-screen, so the panels can be looked at and bought. A skill screen, so the panels can be looked at
-and bought — the data is read and the pool is modelled, and nothing spends it.
-Character creation, recruitment and alchemy. And why every tree's eleventh
-panel costs nothing.
+**Struck off since this list was written**: the skill screen is built, the
+"drop what a vocation may not wear" item turned out to be something the Abbey
+does not do, and the eleventh panel's zero is settled.
+
+What is left:
+
+- **Character creation**: a name, a face, hair and proportions.
+- **Recruitment at the Quester's Rest**.
+- **Alchemy and mini medals**.
+- **How a battle's experience is split among the party.** Only the leader
+  earns anything here, so only the leader levels and only the leader's pool
+  grows — which a party of four makes plain. The award is read from
+  `battleState + 0x5758 + i*4` for `i < 4`, and how that word is computed is
+  not.
 
 ## 3. What a character is
 

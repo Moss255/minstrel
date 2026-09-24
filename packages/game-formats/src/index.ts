@@ -179,6 +179,7 @@ export { readShops, SHOP_SLOTS, SHOP_TAG, type Shop } from './shops.ts'
 export {
   GRANTS,
   GRANTS_ABILITY,
+  GRANTS_REGARDLESS,
   GSKL_STAT_NOUN,
   GSKL_WEAPON_NOUN,
   PANELS_A_TREE,

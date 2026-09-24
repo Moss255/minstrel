@@ -88,6 +88,17 @@ describe('readSkillTable', () => {
     expect(panelsBought(panels, 1, 100)).toHaveLength(3)
   })
 
+  it('does not hand out the eleventh panel, whose zero is not a price', () => {
+    // Every tree on the cartridge has one panel reading cost 0, and it is the
+    // tree's best ability sitting last in the file — see `SkillPanel.cost`.
+    // Nobody with no points has bought it.
+    const panels = readSkillTable(
+      build([panel({ 0: 0, 2: 3 }), panel({ 0: 1, 2: 100 }), panel({ 0: 2, 2: 0 })]),
+    )
+    expect(panelsBought(panels, 1, 0)).toEqual([])
+    expect(panelsBought(panels, 1, 100).map((p) => p.id)).toEqual([0, 1])
+  })
+
   it('refuses a table with no panels, a short record, or a value of the wrong kind', () => {
     expect(() => readSkillTable(build([{ tag: 0x64, values: [1] }]))).toThrow(/no skill panels/)
     expect(() => readSkillTable(build([{ tag: SKILL_PANEL_TAG, values: [1, 2, 3] }]))).toThrow(

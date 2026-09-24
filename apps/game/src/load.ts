@@ -66,6 +66,7 @@ import {
   readRandomTreasure,
   readScript,
   readShops,
+  readSkillTable,
   readSpellTable,
   readSystemStrings,
   readTableMessages,
@@ -76,6 +77,7 @@ import {
   readWeightTables,
   type Script,
   type Shop,
+  type SkillPanel,
   type SpellTable,
   type TalkLine,
   type Treasure,
@@ -158,6 +160,18 @@ export interface Loaded {
    * undefined when the binary will not unpack or holds no run.
    */
   readonly weightTables: WeightTables | undefined
+  /**
+   * The 287 skill panels — see `readSkillTable`. What a point buys, and the
+   * contents the trees above are only the numbers of. Empty when
+   * `/data/prm/skilltable.bin` is not on this cartridge or will not read.
+   */
+  readonly skillPanels: readonly SkillPanel[]
+  /**
+   * The skill screen's words in English: the trees' names by number, the
+   * panels' short labels by panel id, and `str_gskl`'s sentences. See
+   * `skillWordsOf`. Empty maps where a file did not read.
+   */
+  readonly skillWords: SkillWords
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
   readonly battleMusic: number | undefined
   readonly bossMusic: number | undefined
@@ -1060,6 +1074,10 @@ export interface ItemNumbers {
   readonly usedBy: number
   /** Its kind: a weapon's subtype plus one, 13 a shield, 0 the rest — the skill tree's number. See `ItemStats.kind`. */
   readonly kind: number
+  /** Which sexes may wear it: bit 0 sex 0, bit 1 sex 1 — see `ItemStats.wornBySex`. */
+  readonly wornBySex: number
+  /** Whether accessory 18048 cannot lift its sex restriction — see `ItemStats.sexLock`. */
+  readonly sexLock: boolean
 }
 
 const statsRead = new WeakMap<Uint8Array, Map<number, ItemNumbers>>()
@@ -1102,6 +1120,8 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
             block: entry.block,
             usedBy: entry.usedBy,
             kind: entry.kind,
+            wornBySex: entry.wornBySex,
+            sexLock: entry.sexLock,
           })
         }
       }
@@ -1493,6 +1513,66 @@ function vocationTreesOf(rom: Uint8Array): VocationTrees | undefined {
   return trees
 }
 
+/** Where the skill panels are — a loose file beside the parameter tables. */
+const SKILL_TABLE = '/data/prm/skilltable.bin'
+
+const panelsRead = new WeakMap<Uint8Array, readonly SkillPanel[]>()
+
+/**
+ * The skill panels — `/data/prm/skilltable.bin`, see `readSkillTable`. Empty
+ * where the file is not there or will not read, which leaves the skill screen
+ * with trees it can name and no contents.
+ */
+function skillPanelsOf(rom: Uint8Array): readonly SkillPanel[] {
+  const already = panelsRead.get(rom)
+  if (already) return already
+  let panels: readonly SkillPanel[] = []
+  for (const leaf of scanCartridge(rom, { pathFilter: SKILL_TABLE })) {
+    if (leaf.path !== SKILL_TABLE) continue
+    try {
+      panels = readSkillTable(leaf.bytes)
+    } catch {
+      // A table that will not read leaves every tree empty.
+    }
+  }
+  panelsRead.set(rom, panels)
+  return panels
+}
+
+/** The skill screen's words — see {@link Loaded.skillWords}. */
+export interface SkillWords {
+  /**
+   * The trees' names by tree number, 1 to 26 — `str_sklc`, **which numbers
+   * them exactly as the panels do**: 1 "Sword Skill" to 14 "Fisticuffs
+   * Skill", then 15 "Courage" to 26 "Ruggedness", the vocations' own.
+   */
+  readonly trees: ReadonlyMap<number, string>
+  /** Each panel's short label by its id, 0 to 286 — `sta_skl`, the menu's own. */
+  readonly panels: ReadonlyMap<number, string>
+  /**
+   * `str_gskl`: 1 to 22 the sentence a panel says when it is bought, 101 to
+   * 114 the weapon nouns and 202 to 216 the stat nouns it substitutes — see
+   * `GSKL_WEAPON_NOUN` and `GSKL_STAT_NOUN`.
+   */
+  readonly said: ReadonlyMap<number, string>
+}
+
+/** `str_sklc`, `sta_skl` and `str_gskl` are each a table of `0x67` (number, string) records. */
+const SKILL_STRING_TAG = 0x67
+
+/** The skill screen's words in English — see {@link SkillWords}. */
+function skillWordsOf(rom: Uint8Array): SkillWords {
+  const strings = (archive: string, member: string) =>
+    englishText(rom, archive, member, (bytes) =>
+      messagesBy(readTableMessages(bytes, SKILL_STRING_TAG)),
+    )
+  return {
+    trees: strings('/data/bin/str_sklc.gp2', 'str_sklc_en.bin'),
+    panels: strings('/data/bin/menu/sta_skl.gp2', 'sta_skl_en.bin'),
+    said: strings('/data/prm/str_gskl.gp2', 'str_gskl_en.bin'),
+  }
+}
+
 /** The weight tables read once from the ARM9 binary, by cartridge. */
 const weightsRead = new WeakMap<Uint8Array, WeightTables | undefined>()
 
@@ -1868,6 +1948,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     mapId: id,
     vocationTrees: vocationTreesOf(rom),
     weightTables: weightTablesOf(rom),
+    skillPanels: skillPanelsOf(rom),
+    skillWords: skillWordsOf(rom),
     region: regionHead(entry?.region),
     regionExterior: exteriorOf(cat, code),
     ...tracks,

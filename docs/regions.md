@@ -38,6 +38,8 @@ All of these are **ours**, for development. None is a thing the game has.
 | `level=25` | put the Hero at a level, with the experience for it |
 | `event=23198` | play a scene |
 | `preset=7` | dress the Hero as a ready-made character |
+| `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
+| `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
 | `fight=z000a,z000a` | the monsters `p` fights |
 | `bgm=BG_001`, `se=113` | play a track or an effect |

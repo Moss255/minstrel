@@ -290,6 +290,9 @@ describe('the main menu', () => {
       'Items',
       'Equipment',
       'Spells & Abilities',
+      // **The game's own name for the skill screen**, `str_tm` 4003 —
+      // "Allocate Skill Points", which is what the field menu calls it.
+      'Allocate Skill Points',
     ])
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
   })

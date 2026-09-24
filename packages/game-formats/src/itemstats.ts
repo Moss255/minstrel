@@ -58,8 +58,24 @@ export interface ItemStats {
   /** Word 6, bits 20–29 — INFERRED, on one witness: the chance of a critical hit. */
   readonly critical: number
   /**
-   * Word 3, bits 7–11: a weapon's kind plus one — `itemsort`'s subtype + 1 on
-   * every weapon — 13 on a shield, and 0 on the rest.
+   * Word 3, **bits 7–10**: a weapon's kind plus one — `itemsort`'s subtype + 1
+   * on every weapon — 13 on a shield, and 0 on the rest. It is the number of
+   * the [skill tree](vocations.ts) that decides who may wield it.
+   *
+   * **Four bits, read from the game**: `func_020dd4c4`, which decides whether
+   * a character may equip something, isolates it with
+   * `arm9 0x020dd5a4: lsl r1, r1, #0x15 / lsr r1, r1, #0x1c` — a shift of 21
+   * then 28, which is bits 7 to 10 and nothing above.
+   *
+   * It was read as five bits until 24 September 2026, and that was wrong in a
+   * way the cartridge shows plainly: with five bits the values are 0 to 13 on
+   * 941 items and **16 on exactly three**, all of them gloves in table `a` —
+   * 15100, 15103 and 15106. Sixteen is no weapon tree, and armour is supposed
+   * to carry none. Read as four bits they are 0, which is what a glove is, and
+   * the vocation mask decides them like every other piece of armour.
+   *
+   * So **bit 11 is something else**, set on those three gloves and nothing
+   * else in 944. What it is is **not established**; `unknown_entry` carries it.
    */
   readonly kind: number
   /**
@@ -75,6 +91,35 @@ export interface ItemStats {
    * whose use goes by the vocations' weapon skills, not read.
    */
   readonly usedBy: number
+  /**
+   * Which sexes may wear it: **bit 0 for sex 0, bit 1 for sex 1** — word 4's
+   * bits 27 and 28, read from the game.
+   *
+   * `func_020dd4c4` puts the two bits in a two-element array and **indexes it
+   * by the character's own sex bit** rather than comparing them, which is what
+   * fixes which is which:
+   *
+   * ```
+   * 020dd6e0  lsl r2, r1, #4          ; bit 27 -> sp[0]
+   * 020dd6e4  lsl r1, r1, #3          ; bit 28 -> sp[1]
+   * 020dd6f8  ldr r0, [r0, r6, lsl #2]    ; sp[sex]
+   * 020dd700  movne r0, #0            ; set: may wear
+   * 020dd704  moveq r0, #0x80         ; clear: refused
+   * ```
+   *
+   * Which of sex 0 and sex 1 is male is **not established** from code.
+   */
+  readonly wornBySex: number
+  /**
+   * Word 4 bit 29: **this item's sex restriction cannot be lifted** by the
+   * accessory that otherwise lifts them.
+   *
+   * It is not a plain restriction bit. `0x020dd6bc` first asks whether the
+   * character has item **18048** in equipment slot 9; only then does bit 29
+   * decide, and a clear bit there skips the sex test altogether. So on its own
+   * this bit means nothing — it is read as "18048 does not help with this".
+   */
+  readonly sexLock: boolean
   /**
    * The entry's 32 bytes as they stand, for what is not read. The first
    * entry's first eight are the last record's actions, id and price.
@@ -132,8 +177,10 @@ export function readItemStats(bytes: Uint8Array): ItemStats[] {
       block: word6 & 0x3ff,
       evasion: (word6 >>> 10) & 0x3ff,
       critical: (word6 >>> 20) & 0x3ff,
-      kind: (word3 >>> 7) & 0x1f,
+      kind: (word3 >>> 7) & 0xf,
       usedBy: word4 & 0xfff,
+      wornBySex: ((word4 >>> 27) & 1) | (((word4 >>> 28) & 1) << 1),
+      sexLock: ((word4 >>> 29) & 1) === 1,
       unknown_entry: bytes.subarray(entry, entry + ENTRY),
     })
   }

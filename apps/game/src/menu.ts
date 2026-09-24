@@ -1,6 +1,7 @@
 import { type Bag, bagLines } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import type { Standing } from './hero.ts'
+import type { SkillTreeView } from './skills.ts'
 
 /**
  * The main menu — the commands, and moving between them.
@@ -20,7 +21,7 @@ import type { Standing } from './hero.ts'
  * outside a battle.
  */
 
-export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells'
+export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells' | 'skills'
 
 /**
  * The field menu's messages, by their numbers in `str_tm` — about using an
@@ -42,6 +43,10 @@ export const MENU_SAYS = {
   noUse: 9012,
   discarded: 9062,
   emptyBag: 9065,
+  /** "Allows you to distribute any unused skill points your party members have saved up." */
+  aboutSkills: 4022,
+  /** "<Cap><DEF_ART_TARGET> earns <val_1> skill point(s)." */
+  earnsPoints: 31131,
 } as const
 
 /** The field menu's own words, by their numbers in `str_tm`. */
@@ -55,6 +60,10 @@ export const MENU_WORDS = {
   cancel: 1204,
   equipment: 1903,
   mp: 4351,
+  /** "Allocate Skill Points" — the game's own name for the skill screen. */
+  skills: 4003,
+  /** "Points Remaining:" */
+  pointsLeft: 4101,
 } as const
 
 export interface MenuEntry<Id extends string> {
@@ -71,6 +80,7 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'items', label: 'Items', word: MENU_WORDS.items },
   { id: 'equip', label: 'Equipment', word: MENU_WORDS.equipment },
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
+  { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
 ]
 
 /** What can be done with the item chosen in the items panel. */
@@ -106,6 +116,11 @@ export interface MenuState {
   readonly panel: MenuCommand | undefined
   readonly row: number
   readonly picking: Slot | undefined
+  /**
+   * In the skill panel, the tree being climbed — the rows are then its panels
+   * rather than the five trees. Undefined at the list of trees.
+   */
+  readonly tree?: number | undefined
   /** The item chosen in the items panel and its row, while `row` chooses what to do with it. */
   readonly acting?: { readonly item: number; readonly row: number } | undefined
   /** What using an item or casting a spell came to, shown under the panel until the next choice. */
@@ -198,6 +213,18 @@ export interface MenuMember {
   readonly equipped?: Equipped | undefined
   /** The spells they have learnt at their level, in their vocation. */
   readonly spells?: readonly MenuSpell[] | undefined
+  /**
+   * Their skill points and the five trees their vocation may spend them in —
+   * see `skills.ts`. Undefined for a story companion, who does not level and
+   * has no skill screen in the game either.
+   */
+  readonly skills?: { readonly pool: number; readonly trees: readonly SkillTreeView[] } | undefined
+  /**
+   * How many times they have revoked the vocation they are in — see `revoke`
+   * in `companion.ts`. The game draws a row of stars from it; this says the
+   * number, and only when there is one.
+   */
+  readonly revocations?: number | undefined
 }
 
 /** What a panel knows to say. */
@@ -229,6 +256,12 @@ export interface MenuContext {
   readonly itemName?: ((id: number) => string) | undefined
   /** The item table an item is listed in — `w` weapons and so on. */
   readonly tableOf?: ((id: number) => string | undefined) | undefined
+  /**
+   * Whether the party's member at `place` may wear an item, in the vocation
+   * they are — see `mayWear` in `equipment.ts`. Absent leaves the equip panel
+   * offering the whole bag, as it did before the rule was read.
+   */
+  readonly mayWear?: ((id: number, place: number) => boolean) | undefined
   /** The spells the Hero has learnt; undefined when the spell table did not read. */
   readonly spells?: readonly MenuSpell[] | undefined
   /** What the spells panel says when there is nothing to cast. */
@@ -243,7 +276,14 @@ const EMPTY: Bag = { gold: 0, items: new Map() }
 /** The rows of the equip panel: its slots, or what can go in the slot being filled. */
 function equipRows(state: MenuState, context: MenuContext): (number | undefined)[] | undefined {
   if (!state.picking) return undefined
-  return choicesFor(state.picking, context.bag ?? EMPTY, context.tableOf ?? (() => undefined))
+  return choicesFor(
+    state.picking,
+    context.bag ?? EMPTY,
+    context.tableOf ?? (() => undefined),
+    // **Whoever the attributes panel chose**, in the vocation they are — see
+    // `mayWear`. Without the rule nothing is refused.
+    (id) => context.mayWear?.(id, state.member) ?? true,
+  )
 }
 
 /**
@@ -258,6 +298,21 @@ const whose = (
 /** What the chosen member wears, or the context's own where there is no party. */
 const wearing = (context: MenuContext, state?: { readonly member?: number }) =>
   whose(context, state)?.equipped ?? context.equipped
+
+/** The chosen member's trees, which are the skill panel's first rows. */
+const treesOfMember = (
+  context: MenuContext | undefined,
+  state?: { readonly member?: number },
+): readonly SkillTreeView[] => whose(context, state)?.skills?.trees ?? []
+
+/** The tree the skill panel is inside, when it is inside one. */
+const treeOpen = (
+  context: MenuContext | undefined,
+  state?: { readonly member?: number; readonly tree?: number | undefined },
+): SkillTreeView | undefined =>
+  state?.tree === undefined
+    ? undefined
+    : treesOfMember(context, state).find((one) => one.tree === state.tree)
 
 /** The spells that can be cast here, which are the spells panel's rows. */
 const castable = (context: MenuContext | undefined, state?: { readonly member?: number }) =>
@@ -287,6 +342,11 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = castable(context, state).length
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
+  if (state.panel === 'skills') {
+    const open = treeOpen(context, state)
+    const count = open ? open.steps.length : treesOfMember(context, state).length
+    return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
+  }
   if (state.panel) return state
   return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length) }
 }
@@ -303,6 +363,8 @@ export interface Taken {
   readonly discard?: number
   /** Cast this spell, by its action. */
   readonly cast?: number
+  /** Put points into this tree until they reach this panel, by its id — see `buy` in `skills.ts`. */
+  readonly buy?: { readonly tree: number; readonly panel: number }
 }
 
 /**
@@ -344,16 +406,31 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     const spell = castable(context, state)[state.row]
     return spell ? { state, talk: false, cast: spell.action } : { state, talk: false }
   }
+  if (state.panel === 'skills') {
+    // A tree opens its panels; a panel in an open tree is bought into.
+    const open = treeOpen(context, state)
+    if (!open) {
+      const tree = treesOfMember(context, state)[state.row]
+      return { state: tree ? { ...state, tree: tree.tree, row: 0 } : state, talk: false }
+    }
+    const step = open.steps[state.row]
+    if (!step?.buyable || step.bought) return { state, talk: false }
+    return { state, talk: false, buy: { tree: open.tree, panel: step.panel.id } }
+  }
   if (state.panel) return { state, talk: false }
   const command = MENU_COMMANDS[state.cursor]?.id
   if (command === undefined) return { state, talk: false }
   if (command === 'talk') return { state: undefined, talk: true }
-  return { state: { ...state, panel: command, row: 0, picking: undefined }, talk: false }
+  return {
+    state: { ...state, panel: command, row: 0, picking: undefined, tree: undefined },
+    talk: false,
+  }
 }
 
 /** Go back a step: out of an item's uses, out of a slot's choices, out of a panel, or out of the menu. */
 export function back(state: MenuState): MenuState | undefined {
   if (state.acting) return { ...state, acting: undefined, row: state.acting.row }
+  if (state.tree !== undefined) return { ...state, tree: undefined, row: 0, said: undefined }
   if (state.picking) {
     const row = SLOTS.findIndex((s) => s.slot === state.picking)
     return { ...state, picking: undefined, row: Math.max(0, row) }
@@ -368,7 +445,7 @@ export function panelLines(
   panel: MenuCommand,
   context: MenuContext,
   state?: Pick<MenuState, 'row' | 'picking'> &
-    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member'>>,
+    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member' | 'tree'>>,
 ): string[] {
   const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   const nameOf = context.itemName ?? byId
@@ -408,7 +485,8 @@ export function panelLines(
       const theirMp = who ? who.mp : context.mp
       return [
         ...roster,
-        `${who?.name ?? context.hero} — ${s.vocation ? `${s.vocation}, ` : ''}level ${l.level}`,
+        `${who?.name ?? context.hero} — ${s.vocation ? `${s.vocation}, ` : ''}level ${l.level}` +
+          (who?.revocations ? ` · revoked ${who.revocations}×` : ''),
         `Exp. ${s.exp}${s.next ? `, level ${s.next.level} at ${s.next.exp}` : ''}`,
         `HP ${Math.min(hp ?? l.maxHp, l.maxHp)}/${l.maxHp} · ${mp} ${Math.min(theirMp ?? l.maxMp, l.maxMp)}/${l.maxMp}`,
         `Strength ${l.strength} · Resilience ${l.resilience} · Agility ${l.agility} · Deftness ${l.deftness} · Charm ${l.charm}`,
@@ -486,6 +564,53 @@ export function panelLines(
         lines.push(context.noSpells ?? 'No spells to cast here.')
       }
       return [...lines, ...(state?.said ?? [])]
+    }
+    case 'skills': {
+      // **The trees, then one tree's panels.** The game's own screen is a
+      // grid; this is the same choice made twice in a list, which is what the
+      // rest of this menu is made of.
+      const who = whose(context, state)
+      const skills = who?.skills
+      if (!skills) {
+        return [
+          `${who?.name ?? context.hero} has no skill screen.`,
+          'Only somebody who levels has skill points — see `skills.ts`.',
+        ]
+      }
+      const left = `${word(MENU_WORDS.pointsLeft, 'Points Remaining:')} ${skills.pool}`
+      const row = state?.panel === 'skills' ? (state.row ?? 0) : -1
+      const open =
+        state?.tree === undefined
+          ? undefined
+          : skills.trees.find((tree) => tree.tree === state.tree)
+      if (skills.trees.length === 0) {
+        return [
+          `${who?.name ?? context.hero} — ${left}`,
+          'Which trees this vocation may spend in is not read: the ARM9 table did not load.',
+        ]
+      }
+      if (!open) {
+        return [
+          `${who?.name ?? context.hero} — ${left}`,
+          ...skills.trees.map((tree, i) => `${mark(i === row)}${tree.name} — ${tree.spent}/100`),
+          ...(state?.said ?? []),
+        ]
+      }
+      return [
+        `${who?.name ?? context.hero} — ${open.name} ${open.spent}/100 · ${left}`,
+        ...open.steps.map((step, i) => {
+          // A panel past the points already in the tree says what reaching it
+          // would cost; the eleventh says nothing, because nothing here knows
+          // what unlocks it — see `climbable` in `skills.ts`.
+          const state_ = step.bought
+            ? '✓'
+            : step.buyable
+              ? `${step.panel.cost} (${step.toBuy} to go)`
+              : 'not yet'
+          return `${mark(i === row)}${step.name} — ${state_}`
+        }),
+        ...(state?.said ?? []),
+      ]
     }
     case 'talk':
       return []

@@ -42,6 +42,17 @@ export const SKILL_TREES = 26
  * Guard, Auto Counter and the rest, which have no amount and no stat.
  */
 export const GRANTS_ABILITY = 1
+/**
+ * "…becomes able to equip `<str_2>` regardless of vocation" — the hundred-point
+ * panel of each of the fourteen weapon and shield trees.
+ *
+ * **It is a real rule in the game, not a sentence.** `func_020dd4c4`, which
+ * decides whether a character may hold a weapon, asks whether they have earned
+ * this panel *before* it asks whether their vocation holds the tree
+ * (`arm9 0x020dd5b0`, through `0x020dd200`'s thirteen-entry table) — so it
+ * lifts the vocation restriction outright.
+ */
+export const GRANTS_REGARDLESS = 4
 export const GRANTS: Readonly<Record<number, string>> = {
   0: 'what its message says',
   1: 'an ability',
@@ -70,12 +81,24 @@ export const GSKL_STAT_NOUN = 200
 export interface SkillPanel {
   /** Its number, 0 to 286, which is how `sklname` and `sta_skl` name it. */
   readonly id: number
-  /** Its tree, 1 to 26 — `str_sklc` 14 + this. Zero on the one odd record. */
+  /**
+   * Its tree, 1 to 26 — **`str_sklc`'s own number for it**, checked 24
+   * September 2026: `str_sklc` 1 is "Sword Skill" and tree 1's panels are
+   * Dragon Slash, Metal Slash and Gigaslash; `str_sklc` 20 is "Litheness" and
+   * tree 20's are the Minstrel's, whose own tree the ARM9 table says is 20.
+   * Zero on the one odd record.
+   */
   readonly tree: number
   /**
-   * The skill points it costs. Rising within a tree — **but each tree's
-   * eleventh panel costs nothing**, and what unlocks it is not established.
-   * It is not the hundred-point reward: that is a panel of its own.
+   * The skill points it costs, rising within a tree — **but each tree's
+   * eleventh panel reads 0, and it is not free.**
+   *
+   * Read 24 September 2026: in all twenty-six trees that panel is **last** in
+   * the file and last by {@link unknown_7}, after the hundred-point one, and
+   * it holds the tree's marquee ability — Sword's Gigagash, Shield's Critical
+   * Hit Guard, Courage's Auto Counter. So the zero is a threshold this field
+   * does not carry, not an absence of one. What unlocks it is **not
+   * established**; see {@link panelsBought}.
    */
   readonly cost: number
   /** The action it teaches, or 0 where it teaches none. */
@@ -146,9 +169,14 @@ export function panelsOfTree(panels: readonly SkillPanel[], tree: number): Skill
  *
  * **Ours, and the obvious reading**: a tree's panels have rising costs and the
  * game spends into a tree rather than onto a panel, so the points in a tree
- * are a high-water mark. The eleventh panel costs nothing and so is always
- * included, which is very likely wrong — see {@link SkillPanel.cost}.
+ * are a high-water mark.
+ *
+ * **The eleventh panel is left out**, because its cost reads 0 and it is not
+ * free — see {@link SkillPanel.cost}. Including it would hand a character with
+ * no points at all Gigagash, Critical Hit Guard and Auto Counter, which is
+ * plainly not the game. What does unlock it is not established, so nothing
+ * here grants it.
  */
 export function panelsBought(panels: readonly SkillPanel[], tree: number, spent: number) {
-  return panelsOfTree(panels, tree).filter((panel) => panel.cost <= spent)
+  return panelsOfTree(panels, tree).filter((panel) => panel.cost > 0 && panel.cost <= spent)
 }

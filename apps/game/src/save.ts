@@ -55,6 +55,8 @@ export interface SaveMember {
    * Absent where there is none, which is the Hero's own look.
    */
   readonly appearance?: number
+  /** Which sex they are — see `Member.sex`. Absent where nobody has chosen. */
+  readonly sex?: number
   /** What they are called, where somebody chose — see `Member.name`. */
   readonly name?: string
   /**
@@ -73,6 +75,21 @@ export interface SaveMember {
    * single set becomes the set of the vocation that save says they were.
    */
   readonly outfits: readonly (readonly [number, Readonly<Partial<Record<Slot, number>>>])[]
+  /**
+   * Skill points not yet spent — see `Member.skillPool`. **Absent from saves
+   * made before a point could be spent**, and adding a field takes no new
+   * version; what such a save's party had earned is worked out from their
+   * levels when it is loaded, because nothing had taken any of it.
+   */
+  readonly skillPool?: number
+  /** Points put into each tree: pairs of `[tree, points]` — see `Member.treePoints`. */
+  readonly treePoints?: readonly (readonly [number, number])[]
+  /**
+   * How many times each vocation has been revoked: pairs of
+   * `[vocation, marks]` — see `Member.revocations`. Left out where nobody has
+   * revoked anything, which is most saves.
+   */
+  readonly revocations?: readonly (readonly [number, number])[]
 }
 
 export interface SaveGame {
@@ -301,6 +318,9 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.appearance !== undefined && !isCount(m.appearance)) {
     throw new SaveError(`${where} has an appearance that does not read`)
   }
+  if (m.sex !== undefined && !isCount(m.sex)) {
+    throw new SaveError(`${where} has a sex that does not read`)
+  }
   if (m.name !== undefined && typeof m.name !== 'string') {
     throw new SaveError(`${where} has a name that does not read`)
   }
@@ -316,6 +336,20 @@ function member(raw: unknown, place: number): SaveMember {
   ) {
     throw new SaveError(`${where} has seeds’ gains that do not read`)
   }
+  if (m.skillPool !== undefined && !isCount(m.skillPool)) {
+    throw new SaveError(`${where} has a skill-point pool that does not read`)
+  }
+  const pairs = (value: unknown) =>
+    Array.isArray(value) &&
+    value.every(
+      (pair) => Array.isArray(pair) && pair.length === 2 && isCount(pair[0]) && isCount(pair[1]),
+    )
+  if (m.treePoints !== undefined && !pairs(m.treePoints)) {
+    throw new SaveError(`${where} has skill trees that do not read`)
+  }
+  if (m.revocations !== undefined && !pairs(m.revocations)) {
+    throw new SaveError(`${where} has revocations that do not read`)
+  }
   const outfits = outfitsOf(m, where)
   return {
     attnpc: m.attnpc as number | null,
@@ -324,10 +358,18 @@ function member(raw: unknown, place: number): SaveMember {
     mp: m.mp as number | null,
     ...(m.vocation === undefined ? {} : { vocation: m.vocation as number }),
     ...(m.appearance === undefined ? {} : { appearance: m.appearance as number }),
+    ...(m.sex === undefined ? {} : { sex: m.sex as number }),
     ...(m.name === undefined ? {} : { name: m.name as string }),
     ...(m.held === undefined ? {} : { held: m.held as number[] }),
     gains: gains as SaveMember['gains'],
     outfits,
+    ...(m.skillPool === undefined ? {} : { skillPool: m.skillPool as number }),
+    ...(m.treePoints === undefined
+      ? {}
+      : { treePoints: m.treePoints as (readonly [number, number])[] }),
+    ...(m.revocations === undefined
+      ? {}
+      : { revocations: m.revocations as (readonly [number, number])[] }),
   }
 }
 

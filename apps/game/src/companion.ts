@@ -92,6 +92,19 @@ export interface Member {
    */
   appearance: number | undefined
   /**
+   * Which sex they are — see `SEX` in `equipment.ts`. It decides what they may
+   * wear and nothing else here.
+   *
+   * **Undefined until somebody chooses.** A created character's comes from the
+   * ready-made character they were built from; the Hero's is settled at the
+   * Observatory prologue the slice cuts, and a story companion's is in no
+   * table read. Undefined leaves the sex rule unapplied rather than guessing.
+   *
+   * The game keeps it as bit 0 of the live struct's `+0x49C`; where it lives
+   * in the persistent record is **not established**.
+   */
+  sex: number | undefined
+  /**
    * What they are called, where somebody chose. **A created character's name
    * is the player's**, given at the Quester's Rest; the Hero's and a story
    * companion's come from elsewhere, so both leave this undefined.
@@ -111,6 +124,30 @@ export interface Member {
    * {@link isVocation}. Here it is keyed by the vocation itself.
    */
   outfits: Map<number, Equipped>
+  /**
+   * Skill points not yet spent. **One pool per character, not per vocation** —
+   * the character record keeps it as a halfword at `+0xF4`, outside the
+   * thirteen-of-everything arrays, and neither changing vocation nor
+   * revocation touches it.
+   *
+   * It is a stored number rather than a derived one because the game's is:
+   * a vocation reset to level 1 by revocation does not take its points back.
+   * See `skills.ts`.
+   */
+  skillPool: number
+  /**
+   * How many times each vocation has been revoked, by vocation — see
+   * {@link revoke}. The character record keeps thirteen bytes of it at
+   * `+0x0F`, written by the same loop that writes the levels and the
+   * experiences, and the live mirror has them at `+0x186 + v`.
+   */
+  revocations: Map<number, number>
+  /**
+   * Points put into each skill tree, by tree number, each 0 to 100 — the
+   * record's 27 bytes at `+0xF6`. **Per tree, not per vocation**, so what was
+   * learnt as a Warrior is still learnt as a Mage.
+   */
+  treePoints: Map<number, number>
 }
 
 /**
@@ -249,6 +286,59 @@ export function changeVocation(member: Member, vocation: number): Member | undef
 }
 
 /**
+ * The most times one vocation may be revoked. `0x02155e9c`:
+ * `cmp r0, #0xa / movhi r0, #0xa` — the counter is incremented and then
+ * clamped, so an eleventh revocation happens and adds nothing.
+ */
+export const REVOCATIONS_MOST = 10
+
+/**
+ * The flag set the first time a vocation is revoked, plus its number — ours
+ * only in that nothing here reads it yet; the game uses it to say a line once.
+ * `0x118B + v`.
+ */
+export const REVOCATION_FLAG = 0x118b
+
+/** How many times a vocation has been revoked — none, until it is. */
+export const revocationsOf = (member: Member, vocation = member.vocation): number =>
+  member.revocations.get(vocation) ?? 0
+
+/**
+ * Revoke the vocation a member is in: back to level 1 and no experience, with
+ * one more mark against it.
+ *
+ * **It touches that one vocation and nothing else** — read from `0x02155e38`,
+ * reached from the Abbey's step slot 4, which loads the current vocation from
+ * `live+0x950` and uses it for every store it makes:
+ *
+ * ```
+ * 02155e5c  ldr  r5, [r1, #0x950]   ; the current vocation, and only it
+ * 02155e74  strh r2, [r0, #0x6c]    ; live+0x16C + v*2 -> level 1
+ * 02155e84  str  r2, [r0, #0x138]   ; live+0x138 + v*4 -> experience 0
+ * 02155e8c  ldrb r0, [r2, r5]       ; the counter at live+0x186 + v
+ * 02155e9c  cmp  r0, #0xa / movhi r0, #0xa
+ * ```
+ *
+ * So the other twelve vocations keep their levels, the **skill points keep
+ * theirs** — neither the pool nor the points in a tree is touched, which is
+ * the whole point of the character keeping them rather than the vocation —
+ * and the equipment stays where it is.
+ *
+ * The level is not stored here: it falls out of the experience, so setting the
+ * experience to nothing *is* setting the level to one.
+ *
+ * Returns the number of marks the vocation now has, or undefined where there
+ * is nothing to revoke — a vocation that is not one.
+ */
+export function revoke(member: Member): number | undefined {
+  if (!isVocation(member.vocation)) return undefined
+  member.exp.set(member.vocation, 0)
+  const marks = Math.min(REVOCATIONS_MOST, revocationsOf(member) + 1)
+  member.revocations.set(member.vocation, marks)
+  return marks
+}
+
+/**
  * The party as a save keeps it, and back — see `SaveMember` in `save.ts`.
  *
  * These live here rather than in `main.ts` so that the round trip can be
@@ -268,6 +358,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     mp: member.mp ?? null,
     vocation: member.vocation,
     ...(member.appearance === undefined ? {} : { appearance: member.appearance }),
+    ...(member.sex === undefined ? {} : { sex: member.sex }),
     ...(member.name === undefined ? {} : { name: member.name }),
     ...(member.held.size === 0 ? {} : { held: [...member.held].sort((a, b) => a - b) }),
     gains: member.gains,
@@ -275,6 +366,12 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     outfits: [...member.outfits]
       .sort((a, b) => a[0] - b[0])
       .map(([vocation, worn]) => [vocation, equippedRecord(worn)] as const),
+    skillPool: member.skillPool,
+    // Pairs, as the experiences and the outfits are.
+    treePoints: [...member.treePoints].sort((a, b) => a[0] - b[0]),
+    ...(member.revocations.size === 0
+      ? {}
+      : { revocations: [...member.revocations].sort((a, b) => a[0] - b[0]) }),
   }))
 }
 
@@ -289,10 +386,16 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     // it was the Minstrel the Hero is — see `HERO_VOCATION_NUMBER`.
     vocation: member.vocation ?? HERO_VOCATION_NUMBER,
     appearance: member.appearance,
+    sex: member.sex,
     name: member.name,
     held: new Set(member.held ?? []),
     gains: { ...member.gains },
     outfits: new Map(member.outfits.map(([vocation, worn]) => [vocation, equippedOf(worn)])),
+    // A save from before the trees could be spent in has neither, and nobody
+    // in it had spent a point — so an empty tree and no pool is exactly right.
+    skillPool: member.skillPool ?? 0,
+    treePoints: new Map(member.treePoints ?? []),
+    revocations: new Map(member.revocations ?? []),
   }))
 }
 

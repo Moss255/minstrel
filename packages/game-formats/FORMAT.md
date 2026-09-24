@@ -999,10 +999,20 @@ none of them.
 | 6 | **the chance of blocking, in tenths of a hundredth** — read from the game's code, 20 September: `func_02084ee8` sums these ten bits over the eleven pieces worn, each over `10.0f`, and the battle's block rate (`func_ov000_02156118`) is that sum behind a shield. Set only on shields, 42 of the 45, 5–100: bronze 5, iron 10, steel 15 | **evasion**, in tenths likewise — `func_02084f58` reads these bits the same way for the evasion rate, which confirms what was INFERRED: all five body pieces that set it say so — the cloak of evasion "makes evading enemy attacks easier" 30, the dark robe "sends enemy attacks astray" 20; on 55 pieces of footwear too, whose words do not say; 5–60 | **the chance of a critical hit**, INFERRED on one witness: the critical acclaim, which "cranks up the chance of a critical hit", 40 |
 | 7 | **deftness**, INFERRED: the utility belt "does wonders for deftness" 25, the medal of freedom "upgrades deftness" 100; on 43 of the 78 gloves | **agility**, INFERRED: the agility ring "accentuates agility" 20, the meteorite bracer "insanely agile" 100, the Mercury prize 120 | **magical might**, INFERRED: the sorcerer's stone "a little" 2, the brainy bracer 8, the mager achievement "maximises magical might" 50; on 66 hats and 40 body pieces |
 
-**Word 3**: bit 0 is set on all 936. **Bits 7–11 are a weapon's kind plus
+**Word 3**: bit 0 is set on all 936. **Bits 7–10 are a weapon's kind plus
 one** — exactly `itemsort`'s subtype + 1 on all 267 weapons, two files agreeing
-— 13 on all 44 shields, and 0 on 622 of the other 625. Its top bits are not
+— 13 on all 44 shields, and 0 on everything else. Its top bits are not
 established.
+
+**Four bits, corrected 24 September 2026 — it was read as five.** The game
+isolates the field in `func_020dd4c4`, which decides whether a character may
+equip something: `arm9 0x020dd5a4: lsl r1, r1, #0x15 / lsr r1, r1, #0x1c`, a
+shift of 21 then 28, which is bits 7 to 10 and nothing above. Read as five the
+cartridge gives 0 to 13 on 941 items and **16 on exactly three** — 15100,
+15103 and 15106, all gloves in table `a`. Sixteen is no weapon tree and armour
+is supposed to carry none; read as four they are 0, which is what a glove is.
+So **bit 11 is something else**, set on those three and nothing else in 944,
+and what it is is not established.
 
 **Word 4**: on the weapons, bits 12–15 are one number for each kind — swords
 1, hammers 3, knives 4, wands 5, spears 6, axes 7, boomerangs 8, bows 9, whips
@@ -1030,6 +1040,35 @@ to 26 — Courage, Faith, Spellcraft, Focus, Acquisitiveness, Litheness, Guts,
 Force, Virtue, Enlightenment, Je Ne Sais Quoi, Ruggedness — run in the same
 order. An earlier pass matched the entries to the records by position and
 found the bits inconsistent; they are matched by name (above), and consistent.
+
+**Bits 27, 28 and 29 are the sex rule — read 24 September 2026.** Bit 27 is
+"sex 0 may wear it" and bit 28 "sex 1 may wear it", and `func_020dd4c4` puts
+the two in a two-element array and **indexes it by the character's own sex
+bit** (`live+0x49C` bit 0) rather than comparing them:
+`0x020dd6e0 lsl r2, r1, #4` / `0x020dd6e4 lsl r1, r1, #3` /
+`0x020dd6f8 ldr r0, [r0, r6, lsl #2]`. Bit 29 is not a plain restriction: only
+with item **18048** in equipment slot 9 does it matter, and a clear bit there
+skips the sex test altogether — so it reads as "18048 does not help with
+this".
+
+**Which bit is which, off the cartridge and not inferred:** 823 of the 944
+pieces are open to both and **none is closed to both**. Of the rest, bit 27
+carries *holy mail*, the *rogue's robes*, the warrior's gloves and the
+twinkling tuxedo; bit 28 carries *holy femail*, the *roguess's robes*, the
+priestess's pinafore and the dancer's dress. The mail/femail and robes/roguess
+pairs settle it: **bit 27 is male, bit 28 female**, 40 to 81. Item 18048 is
+the **wear-with-all award**, an accessory. `charapreset.bin`'s own `sex` field
+agrees on all 33 sex-restricted pieces the 29 presets wear.
+
+**Confirmed in the game, 24 September 2026**, which turns this from INFERRED
+into read for the bit order itself: `func_020dd4c4` tests `1 << (v - 1)`
+against bits 0 to 11 of this word — `arm9 0x020dd63c: lsl r0, r1, r0` over
+`0x020dd644: tst r0, r1, lsr #20`, with `v` taken from `live+0x950` — and does
+so **only for the in-RAM categories 2 to 7**, headgear through accessories.
+Categories 0 and 1, weapons and shields, skip the mask entirely, which is why
+their word is zero. Which vocation is which number is still the level tables'
+order and still INFERRED; what is now read is that the mask is a mask and how
+it is indexed. See the wiki's `Items`, "Who may wear it".
 
 **Weapons and shields carry no bits.** Their use goes by the vocations' weapon
 skills — `str_gskl` 5, "becomes able to equip <str_2> regardless of
@@ -1100,8 +1139,8 @@ belonging to no tree. The trees are the ones the vocation table numbers, 1 to
 | value | meaning | evidence |
 |---|---|---|
 | 0 | the panel's id, 0–286 | every id present once; it is how `sklname` and `sta_skl` name the same panel |
-| 1 | its tree, 1–26; 0 on the one odd record | eleven to a tree for all twenty-six |
-| 2 | skill points it costs | rises within a tree; each tree has one panel at 0 and one at 100 |
+| 1 | its tree, 1–26; 0 on the one odd record | eleven to a tree for all twenty-six, and **`str_sklc`'s own number for it** — 1 "Sword Skill" holds Dragon Slash and Gigaslash, 20 "Litheness" the Minstrel's, whose own tree the ARM9 table says is 20 |
+| 2 | skill points it costs | rises within a tree; each tree has one at 100 and one reading 0, **which is not a price** — see below |
 | 3 | the action it teaches, 0 for none | |
 | 4 | what it gives — the list below, **INFERRED** | each value goes with exactly one `str_gskl` message, and the message says what it does |
 | 5 | how much: the message's `<val_1>` | |
@@ -1125,18 +1164,36 @@ everywhere is better evidence than reading either alone.
 
 | what | file |
 |---|---|
-| tree names, the 26 | `str_sklc` 15–26 (system strings) |
+| tree names, the 26 | `str_sklc` **1–26** (system strings) — the same numbers the panels use: 1–14 the weapons, the shield and fisticuffs, 15–26 the vocations' own |
 | panel label, long | `/data/prm/sklname.gp2` — 287 `0x66` records of six values |
 | panel label, short | `/data/bin/menu/sta_skl.gp2` — `0x67` records, id and string |
 | ability name | `/data/prm/skl_art.gp2` |
 | ability description | `/data/prm/actexp.gp2`, which `readSystemStrings` already parses |
 | the sentence on unlock | `/data/prm/str_gskl.gp2` — 1–22 the messages, 101–114 weapon nouns, 202–216 stat nouns |
 
+## The eleventh panel is unreachable, not free
+
+**Settled 24 September 2026.** Every tree has a record reading cost 0, and in
+all twenty-six it is **eleventh**: last in the file and last by value 7, after
+the hundred-point panel. Tree 1 reads `3, 7, 13, 22, 35, 42, 58, 76, 88, 100,
+0`. It holds the tree's marquee ability — Sword's Gigagash, Shield's Critical
+Hit Guard, Courage's Auto Counter.
+
+The game's ownership walk (`arm9 0x0209a678`) goes through a tree's eleven
+records in file order, counting while the points *exceed* the cost and taking
+one more if they *equal* it, then stopping. A tree's points cap at 100 and the
+tenth costs exactly 100, so the walk always stops there. The skill menu agrees
+from the other side: it draws **ten** entries a tree, `ov013 0x02187b64: cmp
+r7, #0xa`.
+
+So neither of the game's two consumers reaches it. `panelsBought` leaves it
+out; treating the zero as a price would hand a character with no points at all
+the best thing in every tree. **What, if anything, grants it is not
+established** — no code was found that reads it.
+
 ## Not established
 
-- **Why each tree's eleventh panel costs nothing.** It is a real panel with a
-  real reward, and it is **not** the hundred-point one — every tree has a
-  hundred-cost panel of its own.
+- What, if anything, grants the eleventh panel.
 - What value 7 orders by.
 - The record with tree 0: `[286, 0, 0, 168, 1, 0, 0, 286, 0]`, named "Egg On".
 

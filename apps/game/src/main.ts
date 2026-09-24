@@ -17,6 +17,7 @@ import {
   areasOf,
   entryPlay,
   eventOutcome,
+  GRANTS_REGARDLESS,
   inArea,
   type LevelRow,
   type LevelTable,
@@ -161,6 +162,8 @@ import {
   partyAfter,
   partyRestored,
   partySaved,
+  revocationsOf,
+  revoke,
   wear,
   wornBy,
 } from './companion.ts'
@@ -169,7 +172,15 @@ import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
 import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
-import { choicesFor, equip, NOTHING_EQUIPPED, type Slot, slotOf } from './equipment.ts'
+import {
+  choicesFor,
+  equip,
+  mayWear,
+  NOTHING_EQUIPPED,
+  type Slot,
+  slotOf,
+  WEAR_WITH_ALL,
+} from './equipment.ts'
 import {
   BGM_FADE_FRAMES,
   type EventCamera,
@@ -245,6 +256,16 @@ import {
 } from './services.ts'
 import { revealedCharacters } from './settings.ts'
 import { shadowPieces } from './shadows.ts'
+import {
+  buy,
+  POOL_MOST,
+  panelsHeld,
+  type SkillTreeView,
+  type SkillWords,
+  saidOf,
+  treesOf,
+  treeView,
+} from './skills.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
@@ -592,6 +613,7 @@ function freshMember(attnpc: number | undefined): Member {
     vocation: HERO_VOCATION_NUMBER,
     held: new Set([HERO_VOCATION_NUMBER]),
     appearance: undefined,
+    sex: undefined,
     name: undefined,
     gains: {},
     // **Only the Hero starts in the slice's kit.** `freshMember` is used for
@@ -599,6 +621,12 @@ function freshMember(attnpc: number | undefined): Member {
     // character being recruited; of the three only the first has any claim on
     // `STARTING_EQUIPMENT`, so it is the caller's to give — see `heroAtStart`.
     outfits: new Map(),
+    // Nothing earned and nothing spent. Points come with levels — see
+    // `earnSkillPoints` — and a story companion, who does not level, earns
+    // none, which is right: they have no skill screen in the game either.
+    skillPool: 0,
+    treePoints: new Map(),
+    revocations: new Map(),
   }
 }
 /**
@@ -1083,6 +1111,22 @@ function begin(bytes: Uint8Array, map: string): void {
         ` · now ${vocationWord(to)} at level ${levelOf(who)?.level ?? '?'}`,
     )
   }
+  // `?revoke=1` revokes party place 1's vocation — **ours**, standing in for
+  // the Abbey's own step slot 4. See `revoke`.
+  for (const one of (params.get('revoke') ?? '').split(',')) {
+    if (!/^\d+$/.test(one)) continue
+    const who = members[Number(one)]
+    if (!who) continue
+    const was = levelOf(who)?.level
+    const marks = revoke(who)
+    status(
+      marks === undefined
+        ? `${nameFor(who)} is ${vocationWord(who.vocation)}, which cannot be revoked`
+        : `${nameFor(who)} revoked ${vocationWord(who.vocation)} from level ${was ?? '?'}` +
+            ` · now level ${levelOf(who)?.level ?? '?'}, ${marks} mark${marks === 1 ? '' : 's'}` +
+            ` · ${who.skillPool} skill points kept`,
+    )
+  }
   // `?save=1` writes a save where it stands — **ours**, and only for driving.
   // The church is the one place a player can record anything, which makes the
   // save impossible to exercise from outside without walking to a priest.
@@ -1135,6 +1179,15 @@ function restore(game: SaveGame): void {
   // The whole party, each with their own — see `SaveMember`. An older save's
   // companions come back with nothing, which is all they ever had.
   members = partyRestored(game.members)
+  // **A save written before a point could be spent has no pool**, and nobody
+  // in it had spent one — so what they are owed is simply what their levels
+  // earned. Worked out here rather than in `partyRestored`, which has no level
+  // tables to read. See `earnSkillPoints`.
+  members.forEach((member, place) => {
+    if (game.members[place]?.skillPool !== undefined) return
+    const levels = levelsFor(member)
+    member.skillPool = levels ? standing(levels, expOf(member), member.gains).level.skillPoints : 0
+  })
   bag = bagOf(game)
   openedTreasure.clear()
   for (const key of game.opened) openedTreasure.add(key)
@@ -2740,7 +2793,116 @@ function menuMember(member: Member): MenuMember {
     equipped: wornBy(member),
     // Their vocation's, at their level — not the Hero's.
     spells: heroSpells(member),
+    // **Only somebody who levels has a pool to spend** — see `skills.ts`. A
+    // story companion took the branch above and never reaches this.
+    skills: skillsOf(member),
+    revocations: revocationsOf(member),
   }
+}
+
+/**
+ * Whether a member may wear a piece of equipment, in the vocation they are —
+ * see `mayWear` in `equipment.ts`, which is the game's own rule.
+ *
+ * The two halves it needs come from two different places: armour's 12-bit
+ * mask from the item table (`itemStats`), and a weapon's from the vocations'
+ * skill trees in the ARM9 — or from the character having bought that tree's
+ * **Omnivocational panel**, which is the one place the skill screen reaches
+ * into what somebody may hold.
+ */
+function wearableBy(member: Member, item: number): boolean {
+  const trees = loaded?.vocationTrees
+  return mayWear(
+    loaded?.itemStats.get(item),
+    {
+      vocation: member.vocation,
+      sex: member.sex,
+      // The award is worn like anything else, so this is simply what is in
+      // their accessory slot — see `WEAR_WITH_ALL`.
+      wearWithAll: wornBy(member).get('accessory') === WEAR_WITH_ALL,
+    },
+    {
+      wielding: trees ? (tree) => vocationsWielding(trees, tree) : undefined,
+      regardless: (tree) =>
+        panelsHeld(member, loaded?.skillPanels ?? []).some(
+          (panel) => panel.tree === tree && panel.grants === GRANTS_REGARDLESS,
+        ),
+    },
+  )
+}
+
+/**
+ * A member's skill points and the five trees their vocation may spend them
+ * in, as the skill screen shows them — see `skills.ts`.
+ *
+ * The trees are the vocation's, read out of the ARM9; the panels are
+ * `skilltable.bin`'s; the words are `str_sklc` and `sta_skl`. Any of the
+ * three missing leaves a shorter screen that says so rather than one made up.
+ */
+function skillsOf(member: Member): { pool: number; trees: SkillTreeView[] } {
+  return {
+    pool: member.skillPool,
+    trees: treesOf(loaded?.vocationTrees, member.vocation).map((tree) =>
+      treeView(member, tree, loaded?.skillPanels ?? [], skillWords()),
+    ),
+  }
+}
+
+/**
+ * The skill screen's words — the three tables `Loaded.skillWords` holds, with
+ * the abilities named out of the action table beside them.
+ *
+ * The labels are run through `renderName` because they carry the same markup
+ * item names do: `sta_skl`'s "Critical Hit Rate `<u_arrow>`" is an arrow
+ * glyph, not four letters and two brackets.
+ */
+function skillWords(): SkillWords {
+  const words = loaded?.skillWords
+  return {
+    trees: words?.trees ?? new Map(),
+    panels: new Map([...(words?.panels ?? [])].map(([id, text]) => [id, renderName(text)])),
+    said: words?.said ?? new Map(),
+    abilityOf: (action) => loaded?.actions.get(action)?.name,
+  }
+}
+
+/**
+ * Put points into a tree until they reach a panel, for whoever the menu is
+ * about — see `buy` in `skills.ts`. What it says is the game's own sentence
+ * for the panel where `str_gskl` has one.
+ */
+function buyPanel(tree: number, id: number, state: MenuState | undefined): MenuState | undefined {
+  const member = members[state?.member ?? 0] ?? leader()
+  const panel = loaded?.skillPanels.find((one) => one.id === id)
+  if (!state || !panel) return state
+  const spent = buy(member, tree, panel)
+  if (spent === undefined) {
+    return { ...state, said: [`${member.skillPool} points is not enough for that.`] }
+  }
+  const words = skillWords()
+  const name = words.panels.get(panel.id) ?? `panel ${panel.id}`
+  const says = saidOf(panel, words.said, words.abilityOf?.(panel.action))
+  return {
+    ...state,
+    said: [
+      `${nameFor(member)} spends ${spent} on ${name}.`,
+      ...(says === undefined ? [] : [plainMarkup(says, nameFor(member))]),
+    ],
+  }
+}
+
+/**
+ * A `str_gskl` sentence with the message system's own markup taken out —
+ * **ours, and a stand-in**: `<Cap>`, `<ACTOR>` and `<1>` are the same
+ * vocabulary the conversation machinery handles, and the skill screen does
+ * not go through it yet. See `docs/still-open.md`.
+ */
+function plainMarkup(text: string, actor: string): string {
+  return text
+    .replaceAll('<Cap>', '')
+    .replaceAll('<ACTOR>', actor)
+    .replaceAll('<1>', '’')
+    .replaceAll(/<[^>]*>/g, '')
 }
 
 /**
@@ -2785,6 +2947,7 @@ function menuContext(): MenuContext {
     numbersOf: (id) => loaded?.itemStats.get(id),
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
+    mayWear: (id, place) => wearableBy(members[place] ?? leader(), id),
     spells: heroSpells(),
     noSpells: menuSay(MENU_SAYS.noFieldSpells, { actor: heroNamed() }),
     words,
@@ -2932,6 +3095,7 @@ function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
     level === undefined ? expLevelledBy(levels, expOf(leader()), by) : expAtLevel(levels, level),
   )
   const after = standing(levels, expOf(leader()), leader().gains).level
+  earnSkillPoints(leader(), before, after)
   // Undefined is whole, and stays whole at the new maximum.
   const moved = leader()
   if (moved.hp !== undefined)
@@ -2991,6 +3155,13 @@ function settle(outcome: Outcome, row: LevelRow): string {
       )
     case 'gain':
       leader().gains = gain(leader().gains, outcome.stat, outcome.amount)
+      // **A seed of skill goes into the pool**, which is not a level's number
+      // and so is not in `withGains`. The game adds it to `live+0x564` under
+      // the same 2,600 cap a level's award has — `0x02084df4`, whose amount
+      // is the literal 2.
+      if (outcome.stat === 'skillPoints') {
+        leader().skillPool = Math.min(POOL_MOST, leader().skillPool + outcome.amount)
+      }
       return (
         actionSay(outcome.message, { target: hero, values: { val_1: outcome.amount } }) ??
         `${hero.name}'s ${outcome.stat} rises by ${outcome.amount}.`
@@ -3345,6 +3516,39 @@ function wornNumbers(worn: ReadonlyMap<Slot, number> = wornBy(leader())): {
     block.push(numbers?.block ?? 0)
   }
   return { attack, defence, agility, block }
+}
+
+/**
+ * What a level brought in skill points, added to the member's pool.
+ *
+ * **The level table's column 10 is cumulative** — "the skill points gained by
+ * this level, all told", 0 at level 1 and 200 at 99 — so what a level brings
+ * is the difference between the two rows. The pool is the character's, not a
+ * vocation's, which is why levelling in a *new* vocation earns again: the
+ * table read is that vocation's, and the points go to the same pool.
+ *
+ * **Clamped to the headroom under `POOL_MOST`**, which is what the game does:
+ * `ov023 0x021f0c70` works out `2600 − pool` and cuts the award down to it
+ * before adding, so the *award itself* is reduced rather than the sum being
+ * truncated afterwards.
+ *
+ * ```
+ * 021f0c70  sub   r0, r0, r1         ; headroom = 2600 - pool
+ * 021f0c80  cmp   r1, r0, lsr #23    ; headroom < award ?
+ * 021f0c94  strhlo r0, [r8, #4]      ; cut the award to the headroom
+ * 021f0cb4  add   r8, ip, r8, lsr #23
+ * 021f0cb8  strh  r8, [r1, #0x64]    ; pool += award
+ * ```
+ *
+ * Moving down a level gives nothing back. The game has no way down, so
+ * nothing about it is read; `?level` can go down and this declines to take
+ * points that may already have been spent.
+ */
+function earnSkillPoints(member: Member, before: LevelRow, after: LevelRow): number {
+  const wanted = Math.max(0, after.skillPoints - before.skillPoints)
+  const gained = Math.min(wanted, POOL_MOST - member.skillPool)
+  member.skillPool += gained
+  return gained
 }
 
 /** A member's level row, where their vocation's table read — see `levelsFor`. */
@@ -4066,6 +4270,14 @@ function settleBattle(): void {
           `${name} reaches level ${after.level}!`,
       )
       lines.push(levelGainsText(before, after))
+      // A level's skill points, into the one pool a character has — see
+      // `earnSkillPoints`. The game's own sentence for it is `str_gskl`'s
+      // "<val_1> skill point(s) earned"; ours until that table is wired to
+      // the battle's words.
+      const points = earnSkillPoints(leader(), before, after)
+      if (points > 0) {
+        lines.push(`${name} earns ${points} skill point${points === 1 ? '' : 's'}.`)
+      }
     }
     // What the monsters dropped — rolled the game's way, from its own
     // generator, after the experience and the gold are settled; see `dropsWon`.
@@ -4661,6 +4873,9 @@ function recruit(asked: string): void {
     made.push({
       ...member,
       appearance: Number(preset),
+      // The ready-made character's own sex, which decides what they may wear
+      // — see `SEX` in `equipment.ts`. Character creation is what will ask.
+      sex: loaded?.presets[Number(preset)]?.sex,
       vocation: /^\d+$/.test(vocation ?? '') ? Number(vocation) : HERO_VOCATION_NUMBER,
     })
   }
@@ -4981,6 +5196,7 @@ function showEquipScreens(): boolean {
   if (!equipScreens || !top || !bottom) return false
   const context = menuContext()
   const tableOf = context.tableOf ?? (() => undefined)
+  const dressing = members[menu.member] ?? leader()
   equipScreens.draw(top, bottom, {
     hero: context.hero,
     level: context.standing?.level.level,
@@ -4989,7 +5205,12 @@ function showEquipScreens(): boolean {
     itemName: nameOf,
     row: menu.row,
     picking: menu.picking,
-    choices: menu.picking ? choicesFor(menu.picking, bag, tableOf) : undefined,
+    // What this vocation may not wear is left out — see `mayWear`. The panel
+    // still *says* who may wear what, by `usedByOf`, because that is what
+    // makes the absence legible rather than puzzling.
+    choices: menu.picking
+      ? choicesFor(menu.picking, bag, tableOf, (id) => wearableBy(dressing, id))
+      : undefined,
     describe: (id) => {
       const words = loaded?.itemDescriptions.get(id)
       return words === undefined ? undefined : renderName(words)
@@ -5398,6 +5619,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
           dressHero()
         }
       }
+      if (taken.buy) menu = buyPanel(taken.buy.tree, taken.buy.panel, menu)
       if (taken.talk) {
         showMenu()
         talk()
