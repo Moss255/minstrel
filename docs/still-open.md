@@ -157,14 +157,22 @@ lives; this is the gathered list.
 
 ## 3. Read and not modelled
 
-- **The speaker's facing, and the whole turn family** (24 September,
-  `docs/event-scripts.md` §7a). Every message the game shows turns the speaker
-  to face the player, and `<N_TURN>` — 208 uses through NPC dialogue, the
-  second-commonest tag there — is the one that suppresses it. `<R_TURN>`,
-  `<END_R_TURN>`, `<TURN_P>` and `<TURN=n>` are the rest. `runLine` carries all
-  five on `Run.turn`; **nothing here turns a speaker at all yet**, so a
-  character who should look up when spoken to does not, and one the text is
-  careful to leave alone is indistinguishable from them.
+- **`<TURN=n>`'s absolute angle** (24 September, `docs/event-scripts.md` §7a).
+  The rest of the turn family is now done — `turnSpeaker` in `main.ts` turns
+  the speaker through `castPlaced`, and `talk-coverage.test.ts` pins the
+  measure: of 1,116 spoken lines, **780 face the player, 198 stay put and 138
+  turn back**. `<TURN=n>` is handled with them, but the cartridge's dialogue
+  never uses it, so **nothing exercises it** and the reading that its argument
+  is fx32 radians is untested against anything.
+- **`<R_TURN>` waits and `<END_R_TURN>` does not** — the game makes the
+  message box hold until the rotation finishes in the first case. **Ours**:
+  this turns instantly, so the two are indistinguishable. Rotating over time
+  is the thing that would make the difference visible, and nothing here
+  animates a cast member's facing at all.
+- **What restores a speaker whose last message asks for no turn** has not been
+  read. **Ours**: `closeTalk` puts them back. Leaving them turned would have a
+  town slowly rotating to face wherever the Hero last stood, which is worse
+  than either answer, but it is a choice and not a reading.
 - **The quest banner** (24 September). `<QUEST=n>` binds a quest to the box and
   `<QUEST_HAN>` / `<QUEST_FAILED>` / `</QUEST>` / `<QUEST_SE>` open, close and
   commit a banner over it. All five are read onto `Run.quest`; none is drawn,

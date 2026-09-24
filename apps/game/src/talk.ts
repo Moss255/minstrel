@@ -60,6 +60,21 @@ export function talkTarget(
 }
 
 /**
+ * The facing that looks from one point at another.
+ *
+ * The player's convention throughout: facing `f` is the direction
+ * `(sin f, cos f)` in x and z, which is what {@link talkTarget} tests against.
+ * The game computes the same thing for a speaker with `atan2(player − npc)` in
+ * the pass at `0x0206a3c0`, and every message it shows does it — see `Turn`.
+ */
+export function facingToward(
+  from: { readonly x: number; readonly z: number },
+  to: { readonly x: number; readonly z: number },
+): number {
+  return Math.atan2(to.x - from.x, to.z - from.z)
+}
+
+/**
  * The chapter letter whose talk files go with a story stage.
  *
  * **INFERRED**: the letter's place in the alphabet read as the stage's major

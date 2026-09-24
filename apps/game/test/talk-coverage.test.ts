@@ -59,6 +59,8 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     areasWithSpeech: Set<string>
     /** Markup the renderer did not read, met through talk rather than events. */
     unread: Map<string, number>
+    /** How each spoken line would have the speaker facing — see `Run.turn`. */
+    turns: Map<string, number>
   }
 
   const t: Tally = {
@@ -73,6 +75,7 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     speakers: new Set(),
     areasWithSpeech: new Set(),
     unread: new Map(),
+    turns: new Map(),
   }
   /** Areas with people in them where none of them speaks. */
   const quiet: string[] = []
@@ -137,6 +140,7 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
           const run = runLine(parseMarkup(text))
           if (run.pages.every((page) => page.text.trim() === '')) t.blank++
           for (const name of run.unhandled) t.unread.set(name, (t.unread.get(name) ?? 0) + 1)
+          t.turns.set(run.turn.kind, (t.turns.get(run.turn.kind) ?? 0) + 1)
         }
       }
       if (spokeHere > 0) t.areasWithSpeech.add(area)
@@ -152,6 +156,12 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     if (quiet.length > 0)
       console.log(`  ${quiet.length} with people who say nothing: ${quiet.join(' ')}`)
     console.log(`  ${t.blank} lines rendered blank`)
+    console.log(
+      `  the speaker would face: ${[...t.turns]
+        .sort((a, b) => b[1] - a[1])
+        .map(([kind, n]) => `${kind} ${n}`)
+        .join(' · ')}`,
+    )
     const worst = [...t.unread].sort((a, b) => b[1] - a[1])
     console.log(`  ${worst.length} tags unread through talk:`)
     for (const [name, n] of worst.slice(0, 15)) console.log(`    <${name}>\t${n}`)
@@ -206,6 +216,25 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     const worst = [...t.unread].sort((a, b) => b[1] - a[1]).map(([name]) => name)
     expect(worst).toEqual(['-', 'WIN_OFF', 'WIN_ON', 'val_2', '.|'])
     expect(t.unread.size).toBe(5)
+  })
+
+  it('knows which speakers should stay put', () => {
+    // **Nearly a third of spoken lines are not the default.** Every message
+    // the game shows turns the speaker to face the player — the pass at
+    // 0x0206a3c0 does it before reading a tag — and 336 of the 1,116 override
+    // that: 198 `<N_TURN>` say stay as you are, 138 `<R_TURN>`/`<END_R_TURN>`
+    // send them back to the facing they had. See `docs/event-scripts.md` §7a.
+    //
+    // Before this was read, `apps/game` turned nobody, so all 1,116 were
+    // wrong in the same direction and the 336 were invisible. The numbers are
+    // pinned because getting the default right and the exceptions wrong would
+    // look like an improvement and be a town of swivelling villagers.
+    expect([...t.turns].sort((a, b) => b[1] - a[1])).toEqual([
+      ['player', 780],
+      ['keep', 198],
+      ['back', 138],
+    ])
+    expect([...t.turns.values()].reduce((a, b) => a + b, 0)).toBe(t.spoke)
   })
 })
 

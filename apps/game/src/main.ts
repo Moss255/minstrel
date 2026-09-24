@@ -240,6 +240,7 @@ import {
   type Conversation,
   DEFAULT_CONTEXT,
   eventsTriggered,
+  facingToward,
   letterForStage,
   moveChoice,
   nextPage,
@@ -254,6 +255,7 @@ import {
   TALK_REACH,
   type Talker,
   type TextContext,
+  type Turn,
   talkTarget,
 } from './talk.ts'
 import {
@@ -534,6 +536,26 @@ let party = new Set<number>()
 const castLeft = new Map<number, { x: number; y: number; z: number; facing: number }>()
 
 /**
+ * The speaker's facing while a conversation is open, and the facing they had
+ * before it — see `turnSpeaker`.
+ *
+ * **Every message the game shows turns the speaker to face the player.** The
+ * leading-tag pass at `0x0206a3c0` sets the target angle to
+ * `atan2(player − npc)` before it reads a single tag, and the turn markup only
+ * ever overrides that: `<N_TURN>` suppresses it, `<R_TURN>` and
+ * `<END_R_TURN>` send them back, `<TURN=n>` gives an absolute angle. See
+ * `docs/event-scripts.md` §7a.
+ *
+ * One record, because one conversation is open at a time — which is how the
+ * game holds it too: the message window keeps a single actor handle at
+ * `+0x1838` and the facing it had at `+0x183c`.
+ *
+ * `was` is captured before the first turn, so `castPlaced` gives the un-turned
+ * facing at that moment.
+ */
+let turned: { id: number; was: number; facing: number } | undefined
+
+/**
  * A cast member's placement as it stands now: where the event playing has it,
  * when one of its characters is that member (`EventActor.cast`, INFERRED from
  * `566(5, id, …)`); or where an event left it (`castLeft`); or else its own.
@@ -600,13 +622,18 @@ function castOpacity(id: number): number {
  * of it shows then — or where an event left it; or else its own.
  */
 function castPlaced<P extends NpcPlacement>(placement: P): P {
+  // Being talked to turns only the head, so to speak: it overrides the facing
+  // whatever decided the position, and an event that has hold of the character
+  // still says where they stand.
+  const looking = turned?.id === placement.id ? turned.facing : undefined
+  const facing = (p: P): P => (looking === undefined ? p : { ...p, facing: looking })
   for (const actor of playing?.player.stage.actors.values() ?? []) {
     if (actor.cast === placement.id && actor.placed) {
-      return { ...placement, x: actor.x, y: actor.y, z: actor.z, facing: actor.facing }
+      return facing({ ...placement, x: actor.x, y: actor.y, z: actor.z, facing: actor.facing })
     }
   }
   const left = castLeft.get(placement.id)
-  return left ? { ...placement, ...left } : placement
+  return facing(left ? { ...placement, ...left } : placement)
 }
 /**
  * The second set of flags, "marks" — see `OP_IF_MARK` in `@minstrel/game-formats`.
@@ -4380,6 +4407,42 @@ function showEquipScreens(): boolean {
 let cuedRun: unknown
 let cuedPage = -1
 
+/**
+ * Turn the speaker, as the message asks — see {@link turned}.
+ *
+ * The one that matters is `keep`, which is 208 of the cartridge's turns:
+ * without it every speaker would swivel, including the ones the text is
+ * careful to leave alone. `back` is `<R_TURN>` and `<END_R_TURN>`; the game
+ * makes the box wait for the rotation in the first case and not the second,
+ * and this turns instantly either way, so the two come out the same.
+ *
+ * Only a cast member is turned. A spot — something to examine — has a
+ * placement and a facing, and a signpost does not look round at you.
+ */
+function turnSpeaker(who: Talker, wanted: Turn): void {
+  if (!loaded || !self) return
+  const member = [...loaded.cast.members, ...loaded.cast.sprites2d].find(
+    (m) => m.placement.id === who.id,
+  )
+  if (!member) return
+  // Captured before the first turn, so this reads the un-turned facing.
+  if (turned?.id !== who.id) {
+    turned = { id: who.id, was: castPlaced(member.placement).facing, facing: 0 }
+  }
+  const was = turned.was
+  const hero = self
+  const atPlayer = () => facingToward(who, { x: toFloat(hero.state.x), z: toFloat(hero.state.z) })
+  turned = {
+    ...turned,
+    facing:
+      wanted.kind === 'keep' || wanted.kind === 'back'
+        ? was
+        : wanted.kind === 'angle'
+          ? (wanted.radians ?? was)
+          : atPlayer(),
+  }
+}
+
 /** Draw the conversation's page into the text box, or put the box away when it is over. */
 function showTalk(): void {
   if (!talking) {
@@ -4396,6 +4459,7 @@ function showTalk(): void {
   if (cuedRun !== run || cuedPage !== page) {
     cuedRun = run
     cuedPage = page
+    turnSpeaker(who, run.turn)
     for (const cue of run.cues) {
       if (cue.page !== page) continue
       void playSound({ kind: cue.kind === 'ME' ? 'jingle' : 'effect', index: cue.id })
@@ -4486,6 +4550,12 @@ function closeTalk(): void {
   talking = undefined
   revealing = undefined
   talkEvent = undefined
+  // The speaker goes back to the way they were standing. **Ours**: the game
+  // holds the saved angle on the message window and restores it through the
+  // turn family, and what it does to a speaker whose last message asked for
+  // none of them has not been read. Leaving them turned would mean a town
+  // slowly rotating to face wherever the Hero last stood.
+  turned = undefined
   talkEl.hidden = true
   talkEl.replaceChildren()
 }

@@ -15,6 +15,7 @@ import {
   runLine,
   startConversation,
   type Talker,
+  facingToward,
   talkTarget,
 } from '../src/talk.ts'
 
@@ -46,6 +47,42 @@ describe('talkTarget', () => {
 
   it('turns with the Hero', () => {
     expect(talkTarget({ x: 0, z: 0, facing: Math.PI / 2 }, [someone(1, 0.2, 0)])?.id).toBe(1)
+  })
+})
+
+describe('facingToward', () => {
+  /**
+   * **Held against `talkTarget`, not against a number I wrote down.** Both
+   * sides use the same convention — facing `f` is `(sin f, cos f)` — and a
+   * sign error in either would be invisible on its own and obvious here: if
+   * the speaker is turned to look at the Hero, then from where the speaker
+   * stands, looking that way, the Hero is who they would be talking to.
+   *
+   * This is the geometry every message applies. The game does it in the pass
+   * at 0x0206a3c0, before it reads a tag; `<N_TURN>` is what suppresses it.
+   */
+  it('looks the way it is pointed, by the same rule talkTarget reads', () => {
+    const npc = { x: 3, z: 7 }
+    for (const hero of [
+      { x: 3, z: 7.2 },
+      { x: 3, z: 6.8 },
+      { x: 3.2, z: 7 },
+      { x: 2.8, z: 7 },
+      { x: 3.15, z: 7.15 },
+      { x: 2.9, z: 7.2 },
+    ]) {
+      const facing = facingToward(npc, hero)
+      const seen = talkTarget({ ...npc, facing }, [{ id: 9, name: 'Hero', ...hero }])
+      expect(seen?.id, `facing ${facing.toFixed(3)} from the npc should see the Hero`).toBe(9)
+    }
+  })
+
+  it('is a quarter turn apart for the four compass points', () => {
+    const at = { x: 0, z: 0 }
+    expect(facingToward(at, { x: 0, z: 1 })).toBeCloseTo(0)
+    expect(facingToward(at, { x: 1, z: 0 })).toBeCloseTo(Math.PI / 2)
+    expect(facingToward(at, { x: 0, z: -1 })).toBeCloseTo(Math.PI)
+    expect(facingToward(at, { x: -1, z: 0 })).toBeCloseTo(-Math.PI / 2)
   })
 })
 
