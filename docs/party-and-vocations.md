@@ -554,14 +554,117 @@ does not do, and the eleventh panel's zero is settled.
 
 What is left:
 
-- **Character creation**: a name, a face, hair and proportions.
+- **Character creation.** The *knobs* are read now (25 September 2026) and
+  none of them is built. Written down here because the read changed what the
+  job is:
+  - **The appearance is not where this file said it was.** `+0x14C`–`+0x15C`
+    is the **stats** — fourteen 10-bit fields whose live words are summed from
+    worn equipment and clamped to **999**, the game's stat cap. The appearance
+    is at **`+0x160`–`+0x17B`**, which is the live struct's `+0x488` copied
+    whole: ten equipment slots, then **sex at `+0x174` bit 0** (so it *is* in
+    the record after all), three colour fields, and **the build** at `+0x178`
+    as two `fx16` from a ten-pair table at `0x020E6D98`, indexed
+    `sex * 5 + rand(5)`. The face is `+0x01` bits 0–3, added to a part's model
+    id when that id is 1000.
+  - **The knob set** is confirmed from overlay 15's debug viewer, whose own
+    labels are `[Gender] [Face] [Eye Colour] [Skin Colour] [Hairstyle]
+    [Hair Colour]`, seven equipment slots, and `[Build]`. Which of the three
+    colour fields is skin, hair and eye is **not established**, and none of
+    them can be drawn here anyway: nothing in `render` does palette swaps.
+  - **`charapreset.bin` may not be the game's own file.** The string
+    `charapreset` appears in **none** of the ARM9 or the 35 overlays —
+    verified here, not taken on report. What the game reads is
+    `/data/bin/presetdt.gp2`: a tagged data table of **12 records of 35
+    values**, with two name lists of 20, whose values are plainly a name
+    offset, a sex, the thirteen levels, a face and a kit. `readCharacterPresets`
+    still reads `charapreset.bin` correctly and its 29 records still dress —
+    what is now in doubt is only whether the *game* uses it, and a file id
+    could be computed at runtime. Flagged rather than acted on.
+  - **No player-driven creation UI was found.** `func_0201099c` builds three
+    characters from `presetdt` plus RNG — a default party, not a menu.
+    Overlay 9 is INFERRED to be the chara-make overlay from its own file names
+    (`keyboard_cm.bin`, `str_cm.gp2`, `chara_pd.gp2`), and the scene-name table
+    at `0x020E8F24` lists `charamake` and `charamake2`, but nothing maps a
+    scene name to an overlay id.
+  - **The name** is one byte per character, at most twelve, zero-terminated,
+    `0xFF` a space — a game-internal glyph code, not ASCII or Shift-JIS.
 - **Recruitment at the Quester's Rest**.
-- **Alchemy and mini medals**.
+- **Mini medals**: the two reward tables are read and nothing hands a medal
+  over or spends one.
 - **How a battle's experience is split among the party.** Only the leader
   earns anything here, so only the leader levels and only the leader's pool
   grows — which a party of four makes plain. The award is read from
   `battleState + 0x5758 + i*4` for `i < 4`, and how that word is computed is
   not.
+
+## 2a. Alchemy
+
+### The Krak Pot cooks
+
+**Done, 24 September 2026**, and it is one of Phase 2's four named systems.
+
+`/data/bin/recipe.gp2` holds **470 recipes of twenty integers** — one tagged
+data table, no string table, because a recipe has no name of its own and is
+shown by the name of what it makes. Found by reading **overlay 6**, the pot,
+which carries `renkin`, the path and the pot's own art side by side.
+
+| value | what |
+|---|---|
+| 0 | the recipe's number, 1 to 471 — **359 is absent**, which is why 470 records |
+| 1 | the item it makes |
+| 2, 4, 6 / 3, 5, 7 | up to three ingredients and their counts; the empty slots are always a suffix |
+| 9 | the chance **this** recipe is what comes out, in per cent |
+| 14, 15 | the result's own category and subtype |
+| 16, 17 | the alchemiracle's two ways |
+| 18, 19 | two display ranks |
+| 8, 10, 11, 12, 13 | **not established**, and carried |
+
+**The game's own reader was not found**, unlike the skill panels: no per-tag
+handler table in the ARM9 or any of the 35 overlays belongs to this file. So
+the reading rests on the data and on outside witnesses, and it is worth being
+plain that this is a weaker footing than an instruction. What holds it up:
+
+- **`/data/prm/itemsort.gp2`, which the recipe file does not point at**, gives
+  every item a category and a subtype. Value 14 matches the result's on
+  **470 of 470** and value 15 on **469** — the miss is the leather kilt, a
+  skirt filed under trousers. That only lines up if value 1 is the result.
+- Value 19's order matches `itemsort`'s own alphabetical rank at **all 469
+  steps**.
+- A published strategy guide agrees on the eight recipes sampled from it,
+  **counts included**, which is what pins values 3, 5 and 7.
+- And the pot's own words vouch for the rest. `str_ren` 18 is "there's a
+  `<val_2>` per cent chance of success"; 19 "A successful alchemiracle results
+  in an item superior to the one indicated in the recipe"; 20 "even if you
+  fail … you shan't go away empty-handed". Values 9, 16 and 17 are read as
+  exactly those three sentences.
+
+The 22 alchemiracle recipes pair up: each names a better recipe to reach
+instead, that one names this one to fall back to, and **both take the same
+ingredients** — supernova sword to hypernova sword. The odds are the *better*
+recipe's own value 9, not the one being attempted.
+
+**Ours, and marked so:** the menu shows what the bag can make first and the
+rest after, because the game shows only the recipes whose book you have found
+and **where a book is found is not read** — a published guide says bookcases,
+rooms and quest rewards, which is event-script work. And **how the game draws
+the alchemiracle is not read**, so `cook` takes the roll rather than borrowing
+the battle RNG, whose sequence *is* read and should not be spent on a guess.
+
+Shown live at Angel Falls with `?give=20005,18002,12400`: soldier's sword,
+raging ruby and warrior's helm go in, and the pot says **"Wow! A warrior's
+sword!"** — its own sentence, through the same renderer the battle's words use.
+
+### Mini medals — read, not built
+
+Two arrays in overlay 4, each `(u16 medals, u16 item)`: **ten milestones**
+(4 thief's key, 8 Mercury's bandana, 13 bunny suit … 80 dragon robe) bounded by
+`cmp r3, #0xa`, and **six repeatable** (3 prayer ring … 20 pixie boots) bounded
+by `cmp r4, #6`. `str_mdl` 40 is the milestone line and 60 and 130 the
+pick-your-own shop after eighty, which is what says which array is which —
+INFERRED.
+
+**How many medals exist is not found.** The mini medal is item 22039 and
+nothing in the data counts them; quests award them too.
 
 ## 3. What a character is
 

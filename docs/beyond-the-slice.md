@@ -287,12 +287,24 @@ with four on the party's side at their own vocations' numbers — Minstrel
 stand brings all four back, assembled, on a fresh page with no parameters.
 
 **What that leaves behind is listed in `docs/party-and-vocations.md`** under
-"What is still missing, and why", and it is a real list: character creation
-itself, recruitment at the Quester's Rest, Alltrades and the change flow, the
-skill trees and spending skill points, drawing a created character in a
-battle scene, per-member equipment and spells, and alchemy. The done-when is
-a sentence about the *model* holding, and the model holds; the systems built
-on it mostly do not exist yet.
+"What is still missing, and why". The done-when is a sentence about the
+*model* holding, and the model holds; the systems built on it were, that
+evening, mostly not there.
+
+**24–25 September 2026, the systems went in.** Of the four this phase names —
+party of four, vocations and Alltrades, character creation, alchemy and mini
+medals — three are built:
+
+| | |
+|---|---|
+| **Party of four** | done 24 September, and demonstrated above |
+| **Vocations and Alltrades** | the change, the six-plus-six list, per-vocation experience, level and equipment, **revocation**, the **skill screen** with all 26 trees and 287 panels, and the game's own **who-may-wear-what** rule including the sex bits and the wear-with-all award |
+| **Alchemy** | the Krak Pot: 470 recipes read, the alchemiracle pairs, cooking out of the bag in the pot's own words. The **mini medal** tables are read and nothing spends one |
+| **Character creation** | **not built.** Its knobs were read on 25 September — where the appearance really lives, the build table, the name encoding — and what the job is changed as a result. See `docs/party-and-vocations.md` |
+
+Also still open: **recruitment at the Quester's Rest**, and **how a battle's
+experience is split among the party** — only the leader earns anything here,
+which a party of four makes plain.
 
 ### Phase 3 — The world
 

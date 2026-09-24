@@ -1197,6 +1197,62 @@ established** — no code was found that reads it.
 - What value 7 orders by.
 - The record with tree 0: `[286, 0, 0, 168, 1, 0, 0, 286, 0]`, named "Egg On".
 
+# Alchemy recipes — `/data/bin/recipe.gp2`
+
+**Found 25 September 2026** by reading **overlay 6**, the Krak Pot, which
+carries `renkin`, the path and the pot's own art side by side. A tagged data
+table of one `0x66` record holding the count and **470 `0x67` records of
+twenty integers** — no string table, because a recipe has no name of its own
+and is shown by the name of what it makes. `readRecipes` in `recipes.ts`.
+
+| value | meaning |
+|---|---|
+| 0 | the recipe's number, 1–471. **359 is absent**, hence 470 records |
+| 1 | **the item it makes**; all 470 distinct |
+| 2, 4, 6 | up to three ingredients' item ids, 0 for an empty slot |
+| 3, 5, 7 | their counts, 1–3 in the first slot and 0–9 in the others |
+| 8 | 0 on 448, 1–7 on the 22 alchemiracles — not established |
+| 9 | **the per-cent chance this recipe is what comes out**: 100 on 448, 10 on 17, 20 on 5 |
+| 10, 11, 12, 13 | not established, and carried |
+| 14, 15 | the result's own item category and subtype |
+| 16 | **the recipe to reach instead** when an alchemiracle works, `−1` for none |
+| 17 | **the recipe to fall back to**, `−1` for none |
+| 18 | a display rank by equipment slot — the Alchenomicon's order |
+| 19 | a display rank, **alphabetical by the result's name** |
+
+The empty ingredient slots are always a suffix, checked on all 470; 331
+recipes use three, 135 two and 4 one.
+
+**The game's own reader was not found**, unlike the skill panels: 21 per-tag
+handler tables exist across the ARM9 and the 35 overlays and none belongs to
+this file, and the load site in overlay 6 was disassembled without locating the
+record consumer. So the fields are read from the data and from outside
+witnesses, which is a weaker footing than an instruction, and worth saying.
+
+**What holds it up:**
+
+- `/data/prm/itemsort.gp2`, **which this file does not point at**, gives every
+  item a category and a subtype. Value 14 matches the result's on **470 of
+  470** and value 15 on **469** — the miss is the leather kilt, a skirt filed
+  under trousers. That only lines up if value 1 is the result.
+- Value 19's order matches `itemsort`'s own alphabetical rank at **all 469
+  steps**.
+- A published strategy guide agrees on eight sampled recipes, **counts
+  included**, which is what pins values 3, 5 and 7.
+- The pot's own words: `str_ren` 18 "there's a `<val_2>` per cent chance of
+  success", 19 "A successful alchemiracle results in an item superior to the
+  one indicated in the recipe", 20 "even if you fail … you shan't go away
+  empty-handed". Values 9, 16 and 17 are read as those three sentences.
+
+**The alchemiracle pairs.** 22 recipes name a better one at value 16 and 22
+name a fallback at 17; each pairs with the other both ways and **takes the
+same ingredients**, at two grades of the same thing. The odds are the *better*
+recipe's own value 9, not the one being attempted.
+
+**Where a recipe book is found is not read.** No item in any of the nine
+`itemdt_*` tables is a recipe, so the books are world objects and quest
+rewards driven by scripts.
+
 # Battle weight tables — in the ARM9 binary
 
 **Found 16 September 2026, in the unpacked ARM9**, at `0xE8CBA` on the

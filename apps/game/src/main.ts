@@ -94,7 +94,8 @@ import {
   waysOut,
 } from '@minstrel/world'
 import { actorLookOf, packMotions } from './actors.ts'
-import { type Bag, drop, EMPTY_BAG, pay, take } from './bag.ts'
+import { cook, POT_SAYS, potList } from './alchemy.ts'
+import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
   type BattleItem,
   type BattleScene,
@@ -1111,6 +1112,16 @@ function begin(bytes: Uint8Array, map: string): void {
         ` · now ${vocationWord(to)} at level ${levelOf(who)?.level ?? '?'}`,
     )
   }
+  // `?give=22010:3,22011` puts items in the bag — **ours**, and only for
+  // driving: the Krak Pot and the equip screen both need a bag with something
+  // in it, and walking to a shop for each is not a test.
+  for (const one of (params.get('give') ?? '').split(',')) {
+    const asked = /^(\d+)(?::(\d+))?$/.exec(one)
+    if (!asked) continue
+    const item = Number(asked[1])
+    for (let n = 0; n < Number(asked[2] ?? 1); n++) bag = take(bag, { item })
+  }
+  if (params.get('give')) status(`bag: ${bagLines(bag, nameOf).join(' · ')}`)
   // `?revoke=1` revokes party place 1's vocation — **ours**, standing in for
   // the Abbey's own step slot 4. See `revoke`.
   for (const one of (params.get('revoke') ?? '').split(',')) {
@@ -2892,6 +2903,48 @@ function buyPanel(tree: number, id: number, state: MenuState | undefined): MenuS
 }
 
 /**
+ * Cook a recipe at the Krak Pot and say what came out — see `cook` in
+ * `alchemy.ts`. The pot's own words where it has them.
+ *
+ * **The roll is `Math.random`**, and deliberately not the battle's RNG: how
+ * the game draws an alchemiracle is not read, and borrowing a generator whose
+ * sequence *is* read would make a reproducible thing out of a guess.
+ */
+function cookRecipe(id: number, state: MenuState | undefined): MenuState | undefined {
+  const recipe = loaded?.recipes.find((one) => one.id === id)
+  if (!state || !recipe || !loaded) return state
+  const made = cook(recipe, bag, loaded.recipes)
+  if (!made) {
+    return { ...state, said: [potSay(POT_SAYS.lacking) ?? 'You have not got what that wants.'] }
+  }
+  bag = made.bag
+  const item = itemNamed(made.item)
+  return {
+    ...state,
+    said: [
+      ...(made.miracle ? [potSay(POT_SAYS.miracle) ?? 'An alchemiracle!'] : []),
+      // "Wow! <INDEF_ART_SGL_I_NAME>!" — one of them, so `val_1` is 1.
+      potTell(POT_SAYS.behold, { item, values: { val_1: 1 } }) ?? `Out comes ${item.name}.`,
+    ],
+  }
+}
+
+/** One of the Krak Pot's own lines, with the message system's markup taken out. */
+function potSay(number: number): string | undefined {
+  const text = loaded?.potWords.get(number)
+  return text === undefined ? undefined : plainMarkup(text, DEFAULT_CONTEXT.heroName)
+}
+
+/** The pot's lines, readable — see `potSay`. Undefined before a cartridge is in. */
+function potLines(): ReadonlyMap<number, string> | undefined {
+  if (!loaded) return undefined
+  const out = new Map<number, string>()
+  for (const [number, text] of loaded.potWords)
+    out.set(number, plainMarkup(text, DEFAULT_CONTEXT.heroName))
+  return out
+}
+
+/**
  * A `str_gskl` sentence with the message system's own markup taken out —
  * **ours, and a stand-in**: `<Cap>`, `<ACTOR>` and `<1>` are the same
  * vocabulary the conversation machinery handles, and the skill screen does
@@ -2948,6 +3001,10 @@ function menuContext(): MenuContext {
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
     mayWear: (id, place) => wearableBy(members[place] ?? leader(), id),
+    pot: loaded ? potList(loaded.recipes, bag, nameOf) : undefined,
+    // The pot's lines carry the same markup item names do — `you<1>re` is an
+    // apostrophe — so they go through `renderName` as the skill labels do.
+    potWords: potLines(),
     spells: heroSpells(),
     noSpells: menuSay(MENU_SAYS.noFieldSpells, { actor: heroNamed() }),
     words,
@@ -3132,6 +3189,13 @@ function told(words: ReadonlyMap<number, string> | undefined, number: number, te
 
 /** A field menu message, `str_tm`. */
 const menuSay = (number: number, telling: Telling) => told(loaded?.menuWords, number, telling)
+/**
+ * One of the Krak Pot's messages, `str_ren`, told properly — through the same
+ * machinery the battle's words go through, because the pot's lines use the
+ * same vocabulary: `<IF_SING val_1>`, `<INDEF_ART_SGL_I_NAME>`, `<Cap>`.
+ * Rendering them by stripping tags gives "Wow! ! warrior's sword."
+ */
+const potTell = (number: number, telling: Telling) => told(loaded?.potWords, number, telling)
 /** An action's message, `actmsg`. */
 const actionSay = (number: number, telling: Telling) =>
   told(loaded?.battleWords.actions, number, telling)
@@ -5620,6 +5684,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         }
       }
       if (taken.buy) menu = buyPanel(taken.buy.tree, taken.buy.panel, menu)
+      if (taken.cook !== undefined) menu = cookRecipe(taken.cook, menu)
       if (taken.talk) {
         showMenu()
         talk()

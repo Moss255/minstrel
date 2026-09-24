@@ -1,3 +1,4 @@
+import type { PotEntry } from './alchemy.ts'
 import { type Bag, bagLines } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import type { Standing } from './hero.ts'
@@ -21,7 +22,7 @@ import type { SkillTreeView } from './skills.ts'
  * outside a battle.
  */
 
-export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells' | 'skills'
+export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells' | 'skills' | 'pot'
 
 /**
  * The field menu's messages, by their numbers in `str_tm` — about using an
@@ -81,6 +82,9 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'equip', label: 'Equipment', word: MENU_WORDS.equipment },
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
+  // **Ours, where the pot's own words have no menu label.** The Krak Pot's
+  // `str_ren` is what it says once it is open, not what the menu calls it.
+  { id: 'pot', label: 'Alchemy' },
 ]
 
 /** What can be done with the item chosen in the items panel. */
@@ -262,6 +266,13 @@ export interface MenuContext {
    * offering the whole bag, as it did before the rule was read.
    */
   readonly mayWear?: ((id: number, place: number) => boolean) | undefined
+  /**
+   * The Krak Pot's recipes against the bag — see `potList` in `alchemy.ts`.
+   * Undefined before a cartridge is in, or where the recipes did not read.
+   */
+  readonly pot?: readonly PotEntry[] | undefined
+  /** The pot's own words, `str_ren`, by number. */
+  readonly potWords?: ReadonlyMap<number, string> | undefined
   /** The spells the Hero has learnt; undefined when the spell table did not read. */
   readonly spells?: readonly MenuSpell[] | undefined
   /** What the spells panel says when there is nothing to cast. */
@@ -347,6 +358,10 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = open ? open.steps.length : treesOfMember(context, state).length
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
+  if (state.panel === 'pot') {
+    const count = context?.pot?.length ?? 0
+    return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
+  }
   if (state.panel) return state
   return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length) }
 }
@@ -365,6 +380,8 @@ export interface Taken {
   readonly cast?: number
   /** Put points into this tree until they reach this panel, by its id — see `buy` in `skills.ts`. */
   readonly buy?: { readonly tree: number; readonly panel: number }
+  /** Cook this recipe, by its id — see `cook` in `alchemy.ts`. */
+  readonly cook?: number
 }
 
 /**
@@ -405,6 +422,11 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
   if (state.panel === 'spells') {
     const spell = castable(context, state)[state.row]
     return spell ? { state, talk: false, cast: spell.action } : { state, talk: false }
+  }
+  if (state.panel === 'pot') {
+    const entry = context?.pot?.[state.row]
+    // A recipe the bag will not cover says so rather than doing nothing.
+    return entry?.ready ? { state, talk: false, cook: entry.recipe.id } : { state, talk: false }
   }
   if (state.panel === 'skills') {
     // A tree opens its panels; a panel in an open tree is bought into.
@@ -608,6 +630,34 @@ export function panelLines(
               ? `${step.panel.cost} (${step.toBuy} to go)`
               : 'not yet'
           return `${mark(i === row)}${step.name} — ${state_}`
+        }),
+        ...(state?.said ?? []),
+      ]
+    }
+    case 'pot': {
+      // **The Krak Pot.** What can be cooked now comes first — ours, and what
+      // makes a list of 470 usable before the recipe books are read; see
+      // `potList`. What each is short of is named, because "you can't make
+      // that" without saying why is the worst sort of menu.
+      const pot = context.pot
+      if (!pot) return ['The recipes are not read: `recipe.gp2` did not load.']
+      const ready = pot.filter((entry) => entry.ready)
+      const row = state?.panel === 'pot' ? (state.row ?? 0) : -1
+      const potSay = (number: number, ours: string) => context.potWords?.get(number) ?? ours
+      // Only a window's worth, around the row: 470 lines is not a panel.
+      const from = Math.max(0, Math.min(row < 0 ? 0 : row - 4, pot.length - 12))
+      return [
+        potSay(1, 'Choose the recipe for the item you’re hoping to cook up.'),
+        `${ready.length} of ${pot.length} recipes can be made from the bag.`,
+        ...pot.slice(from, from + 12).map((entry, i) => {
+          const at = from + i
+          const wanted = entry.recipe.ingredients
+            .map(({ item, count }) => `${count}× ${nameOf(item)}`)
+            .join(' + ')
+          const state_ = entry.ready
+            ? ''
+            : ` — short ${entry.short.map((s) => `${s.short}× ${nameOf(s.item)}`).join(', ')}`
+          return `${mark(at === row)}${entry.name} = ${wanted}${state_}`
         }),
         ...(state?.said ?? []),
       ]

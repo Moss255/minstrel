@@ -293,6 +293,9 @@ describe('the main menu', () => {
       // **The game's own name for the skill screen**, `str_tm` 4003 —
       // "Allocate Skill Points", which is what the field menu calls it.
       'Allocate Skill Points',
+      // The Krak Pot's is ours: `str_ren` is what the pot says once it is
+      // open, and no `str_tm` entry names it in the menu.
+      'Alchemy',
     ])
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
   })

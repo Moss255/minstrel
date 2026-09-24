@@ -40,6 +40,7 @@ import {
   type NpcState,
   placeNpcs,
   type RandomTreasure,
+  type Recipe,
   readActionRanges,
   readActions,
   readAttendingCharacters,
@@ -64,6 +65,7 @@ import {
   readNpcPlacements,
   readNpcStates,
   readRandomTreasure,
+  readRecipes,
   readScript,
   readShops,
   readSkillTable,
@@ -172,6 +174,17 @@ export interface Loaded {
    * `skillWordsOf`. Empty maps where a file did not read.
    */
   readonly skillWords: SkillWords
+  /**
+   * The alchemy recipes — `/data/bin/recipe.gp2`, see `readRecipes`. Empty
+   * where the file is not there or will not read.
+   */
+  readonly recipes: readonly Recipe[]
+  /**
+   * The Krak Pot's own words in English — `str_ren`, by number. Message 18
+   * names the per-cent chance and 19 and 20 the alchemiracle's two ways, which
+   * is what `Recipe.chance`, `instead` and `fallback` are read as.
+   */
+  readonly potWords: ReadonlyMap<number, string>
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
   readonly battleMusic: number | undefined
   readonly bossMusic: number | undefined
@@ -1573,6 +1586,35 @@ function skillWordsOf(rom: Uint8Array): SkillWords {
   }
 }
 
+const recipesRead = new WeakMap<Uint8Array, readonly Recipe[]>()
+
+/** Where the recipes are: inside the Krak Pot's own archive. */
+const RECIPE_ARCHIVE = '/data/bin/recipe.gp2'
+
+/**
+ * The alchemy recipes — see {@link Loaded.recipes}. The five language members
+ * are the same file; the table holds no text, so `_<LG>` is convention only
+ * and English is taken for consistency with the rest of this module.
+ */
+function recipesOf(rom: Uint8Array): readonly Recipe[] {
+  const already = recipesRead.get(rom)
+  if (already) return already
+  const { cat } = walkOnce(rom, [RECIPE_ARCHIVE])
+  let recipes: readonly Recipe[] = []
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('recipe_en.bin')) continue
+      try {
+        recipes = readRecipes(bytes)
+      } catch {
+        // A table that will not read leaves the pot with nothing to cook.
+      }
+    }
+  }
+  recipesRead.set(rom, recipes)
+  return recipes
+}
+
 /** The weight tables read once from the ARM9 binary, by cartridge. */
 const weightsRead = new WeakMap<Uint8Array, WeightTables | undefined>()
 
@@ -1950,6 +1992,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     weightTables: weightTablesOf(rom),
     skillPanels: skillPanelsOf(rom),
     skillWords: skillWordsOf(rom),
+    recipes: recipesOf(rom),
+    potWords: englishText(rom, '/data/bin/menu/str_ren.gp2', 'str_ren_en.nat', readSystemStrings),
     region: regionHead(entry?.region),
     regionExterior: exteriorOf(cat, code),
     ...tracks,
