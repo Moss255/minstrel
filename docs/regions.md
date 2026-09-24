@@ -41,6 +41,7 @@ All of these are **ours**, for development. None is a thing the game has.
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
 | `fight=z000a,z000a` | the monsters `p` fights |
 | `bgm=BG_001`, `se=113` | play a track or an effect |

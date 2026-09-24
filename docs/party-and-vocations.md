@@ -554,41 +554,9 @@ does not do, and the eleventh panel's zero is settled.
 
 What is left:
 
-- **Character creation.** The *knobs* are read now (25 September 2026) and
-  none of them is built. Written down here because the read changed what the
-  job is:
-  - **The appearance is not where this file said it was.** `+0x14C`–`+0x15C`
-    is the **stats** — fourteen 10-bit fields whose live words are summed from
-    worn equipment and clamped to **999**, the game's stat cap. The appearance
-    is at **`+0x160`–`+0x17B`**, which is the live struct's `+0x488` copied
-    whole: ten equipment slots, then **sex at `+0x174` bit 0** (so it *is* in
-    the record after all), three colour fields, and **the build** at `+0x178`
-    as two `fx16` from a ten-pair table at `0x020E6D98`, indexed
-    `sex * 5 + rand(5)`. The face is `+0x01` bits 0–3, added to a part's model
-    id when that id is 1000.
-  - **The knob set** is confirmed from overlay 15's debug viewer, whose own
-    labels are `[Gender] [Face] [Eye Colour] [Skin Colour] [Hairstyle]
-    [Hair Colour]`, seven equipment slots, and `[Build]`. Which of the three
-    colour fields is skin, hair and eye is **not established**, and none of
-    them can be drawn here anyway: nothing in `render` does palette swaps.
-  - **`charapreset.bin` may not be the game's own file.** The string
-    `charapreset` appears in **none** of the ARM9 or the 35 overlays —
-    verified here, not taken on report. What the game reads is
-    `/data/bin/presetdt.gp2`: a tagged data table of **12 records of 35
-    values**, with two name lists of 20, whose values are plainly a name
-    offset, a sex, the thirteen levels, a face and a kit. `readCharacterPresets`
-    still reads `charapreset.bin` correctly and its 29 records still dress —
-    what is now in doubt is only whether the *game* uses it, and a file id
-    could be computed at runtime. Flagged rather than acted on.
-  - **No player-driven creation UI was found.** `func_0201099c` builds three
-    characters from `presetdt` plus RNG — a default party, not a menu.
-    Overlay 9 is INFERRED to be the chara-make overlay from its own file names
-    (`keyboard_cm.bin`, `str_cm.gp2`, `chara_pd.gp2`), and the scene-name table
-    at `0x020E8F24` lists `charamake` and `charamake2`, but nothing maps a
-    scene name to an overlay id.
-  - **The name** is one byte per character, at most twelve, zero-terminated,
-    `0xFF` a space — a game-internal glyph code, not ASCII or Shift-JIS.
-- **Recruitment at the Quester's Rest**.
+- **Recruitment at the Quester's Rest**, which is where a created character
+  is *given out*. The making of one is built (see §3a); handing it a place in
+  the party at the inn is not.
 - **Mini medals**: the two reward tables are read and nothing hands a medal
   over or spends one.
 - **How a battle's experience is split among the party.** Only the leader
@@ -754,6 +722,83 @@ Two things fell out of it:
   nothing at all — a costume they could not take off. The preset is where
   they start; a worn item wins per slot, and only the face stays the
   preset's, because no item is one.
+
+### 3a. Character creation
+
+**Done, 25 September 2026** — Phase 2's fourth system, and the one the slice
+plan called "the hardest asset problem in the project".
+
+`Appearance` in `apps/game/src/appearance.ts` is the character's own look, and
+its **knob set is the game's**, read from overlay 15's debug viewer whose
+labels are `[Gender] [Face] [Eye Colour] [Skin Colour] [Hairstyle] [Hair
+Colour]`, seven equipment slots and `[Build]`. Equipment is a member's, so the
+other seven are here — plus the hair's shape, because a style has both a shape
+and a colour and the two are different files.
+
+`Member.look` holds it, the save keeps it, and the menu has a panel that turns
+each knob. `?look=0:sex=1,hair=7,hairColour=3` drives it from outside.
+
+**What changes on screen: the face, the hair style, the hair shape, the hair
+colour and the build.** Shown live at Angel Falls — the Hero in hairstyle 7
+colour 3 comes up with tall pink hair, and turning the hairstyle knob from the
+menu to 4 changes the model under them, which the vertex count moves with.
+
+**What does not: the three colour fields.** Skin and eye colour are read and
+carried, and the panel says "not drawn here" on their rows rather than
+pretending. Nothing in `render` swaps a palette, which is where that work
+belongs and is not Phase 2's.
+
+#### The build is a real table, and it is in the ARM9
+
+Ten pairs of `fx16`, five to a sex, indexed `sex * 5 + rand(5)` at creation
+(`0x02010c58` on). `readBuildTable` finds it **by shape** — twenty halfwords
+in a band around 4096 whose second of each pair falls strictly across each row
+of five — as `readVocationTrees` does, so another build yields it or says it
+is not there.
+
+**It is in the European binary exactly once**, at `0xe6da8`, and gives the
+same twenty numbers the USA build has at `0x020E6D98`. Two builds agreeing on
+twenty values found two different ways is what makes it more than a pattern
+that happened to fit. 0.888 to 1.039 of the figure's own size.
+
+`playerPieces` applies it, and **only to what is drawn**: the collision
+radius, the camera and the length of a step are untouched, so a broad
+character and a slim one walk the same. Whether the game does more with the
+numbers is not established.
+
+#### How hair is named, which the rig already knew
+
+A style is `p_h<style×10><variant>.nsbmd` and its colour a texture
+`p_h<style×10 + colour>a.nsbtx` — 24 styles of 5 shapes over 121 models, and
+207 texture files. `Outfit` has carried the two separately since the slice, so
+this needed no rig work at all; only the *choice* was fixed.
+
+**The bands are not full**, and the fallbacks are pinned rather than assumed:
+of the 360 shapes and colours the panel offers, **33** land on a file the
+cartridge has not got and fall back to the band's own — the high styles, whose
+textures are 210, 216, 220, 226, 230, 234 and nothing between.
+`apps/game/test/looks.test.ts` walks every one.
+
+#### Two things read and deliberately not acted on
+
+- **`charapreset.bin` may not be the game's own file.** The string
+  `charapreset` appears in **none** of the ARM9 or the 35 overlays — checked
+  here, not taken on report. What the game reads is `/data/bin/presetdt.gp2`,
+  a tagged table of 12 records of 35 values with two name lists of 20.
+  `readCharacterPresets` still reads `charapreset.bin` and its 29 records
+  still dress; what is in doubt is only whether the *game* uses it, and a file
+  id could be computed at runtime. Left alone.
+- **No player-driven creation flow was found in the game.**
+  `func_0201099c` builds three characters from `presetdt` plus RNG — a default
+  party, not a menu. Overlay 9 is INFERRED to be the chara-make overlay from
+  its own file names, and the scene table lists `charamake`, but nothing maps
+  a scene name to an overlay. So **where** the screen goes is ours: the menu,
+  until the Observatory and the Quester's Rest exist.
+
+**The name is not asked for yet.** It is one byte per character, at most
+twelve, zero-terminated, `0xFF` a space — a game-internal glyph code, not
+ASCII or Shift-JIS. `Member.name` holds a string and nothing asks a player to
+type one.
 
 ### What is still missing, and why
 

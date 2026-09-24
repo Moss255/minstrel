@@ -14,6 +14,7 @@ import {
   type ActionRange,
   type AttendingCharacter,
   type BattleZone,
+  type BuildTable,
   type CharacterPreset,
   type EventBattle,
   type EventMessage,
@@ -45,6 +46,7 @@ import {
   readActions,
   readAttendingCharacters,
   readBattleEncounters,
+  readBuildTable,
   readCharacterPresets,
   readEventBattles,
   readEventMessages,
@@ -156,6 +158,12 @@ export interface Loaded {
    * no such table. Which vocations may wield a weapon or shield follows.
    */
   readonly vocationTrees: VocationTrees | undefined
+  /**
+   * The ten builds a character can be made in, out of the ARM9 binary — see
+   * `readBuildTable`. Undefined when the binary will not unpack or holds no
+   * such run, which leaves every figure its own size.
+   */
+  readonly buildTable: BuildTable | undefined
   /**
    * The weights a monster's six ways are drawn by, out of the ARM9 binary —
    * see `readWeightTables`: the even table first, the falling one second;
@@ -1615,6 +1623,23 @@ function recipesOf(rom: Uint8Array): readonly Recipe[] {
   return recipes
 }
 
+/** The build table read once from the ARM9 binary, by cartridge. */
+const buildsRead = new WeakMap<Uint8Array, BuildTable | undefined>()
+
+/** The builds out of the ARM9 binary — see game-formats' FORMAT.md, "Builds". */
+function buildTableOf(rom: Uint8Array): BuildTable | undefined {
+  if (buildsRead.has(rom)) return buildsRead.get(rom)
+  let table: BuildTable | undefined
+  try {
+    const binary = arm9Of(rom)
+    table = binary ? readBuildTable(binary) : undefined
+  } catch {
+    // A binary with no such run leaves every figure its own size.
+  }
+  buildsRead.set(rom, table)
+  return table
+}
+
 /** The weight tables read once from the ARM9 binary, by cartridge. */
 const weightsRead = new WeakMap<Uint8Array, WeightTables | undefined>()
 
@@ -1989,6 +2014,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
     mapId: id,
     vocationTrees: vocationTreesOf(rom),
+    buildTable: buildTableOf(rom),
     weightTables: weightTablesOf(rom),
     skillPanels: skillPanelsOf(rom),
     skillWords: skillWordsOf(rom),

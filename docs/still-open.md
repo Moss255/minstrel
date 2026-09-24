@@ -448,8 +448,15 @@ settled — heard as right at the tempo read, 17 September, with no factor.
 
 ## 7. Out of the slice's scope
 
-The plan's own list, which is a contract rather than a wishlist: the story on
+The plan's own list, which was a contract rather than a wishlist: the story on
 from 2.5, the world beyond Angel Falls, character creation, vocations, alchemy,
 grottoes, multiplayer, party recruitment. Equipment drawn on the Hero and Ivor
 was brought into the slice on 15 September 2026 at the owner's word; nothing
-else has been.
+else was.
+
+**That list is retired**, and `CLAUDE.md` says so. Most of it is now the work
+itself: by 25 September 2026 the party of four, vocations and Alltrades,
+alchemy and character creation are all built — see `docs/beyond-the-slice.md`
+and `docs/party-and-vocations.md`. **Multiplayer is the one thing still
+deliberately out**, and grottoes wait for Phase 4. A comment in the code
+citing "out of the slice" should be read as history.

@@ -291,20 +291,21 @@ stand brings all four back, assembled, on a fresh page with no parameters.
 *model* holding, and the model holds; the systems built on it were, that
 evening, mostly not there.
 
-**24–25 September 2026, the systems went in.** Of the four this phase names —
-party of four, vocations and Alltrades, character creation, alchemy and mini
-medals — three are built:
+**24–25 September 2026: all four systems went in.**
 
 | | |
 |---|---|
 | **Party of four** | done 24 September, and demonstrated above |
 | **Vocations and Alltrades** | the change, the six-plus-six list, per-vocation experience, level and equipment, **revocation**, the **skill screen** with all 26 trees and 287 panels, and the game's own **who-may-wear-what** rule including the sex bits and the wear-with-all award |
 | **Alchemy** | the Krak Pot: 470 recipes read, the alchemiracle pairs, cooking out of the bag in the pot's own words. The **mini medal** tables are read and nothing spends one |
-| **Character creation** | **not built.** Its knobs were read on 25 September — where the appearance really lives, the build table, the name encoding — and what the job is changed as a result. See `docs/party-and-vocations.md` |
+| **Character creation** | the game's own knob set — gender, face, hairstyle, hair shape, hair colour, build, skin, eyes — with `Member.look` holding it, the save keeping it and a menu panel turning it. The build comes from a ten-pair table found by shape in the ARM9. **Three knobs are read and not drawn**: the colours need palette work in `render` |
 
-Also still open: **recruitment at the Quester's Rest**, and **how a battle's
-experience is split among the party** — only the leader earns anything here,
-which a party of four makes plain.
+Still open, and each written down rather than discovered later:
+**recruitment at the Quester's Rest** — the making of a character is built,
+the handing of one a place is not; **mini medals**, whose reward tables are
+read and which nothing hands over or spends; and **how a battle's experience
+is split among the party**, which a party of four makes plain because only the
+leader earns anything here.
 
 ### Phase 3 — The world
 

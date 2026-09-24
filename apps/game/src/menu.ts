@@ -22,7 +22,15 @@ import type { SkillTreeView } from './skills.ts'
  * outside a battle.
  */
 
-export type MenuCommand = 'talk' | 'status' | 'items' | 'equip' | 'spells' | 'skills' | 'pot'
+export type MenuCommand =
+  | 'talk'
+  | 'status'
+  | 'items'
+  | 'equip'
+  | 'spells'
+  | 'skills'
+  | 'pot'
+  | 'make'
 
 /**
  * The field menu's messages, by their numbers in `str_tm` — about using an
@@ -85,6 +93,10 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   // **Ours, where the pot's own words have no menu label.** The Krak Pot's
   // `str_ren` is what it says once it is open, not what the menu calls it.
   { id: 'pot', label: 'Alchemy' },
+  // **Ours, and not where the game puts it.** Characters are made at the
+  // Observatory and the Quester's Rest, neither of which is built; the menu
+  // is somewhere a person can reach it meanwhile. See `docs/party-and-vocations.md`.
+  { id: 'make', label: 'Appearance' },
 ]
 
 /** What can be done with the item chosen in the items panel. */
@@ -273,6 +285,13 @@ export interface MenuContext {
   readonly pot?: readonly PotEntry[] | undefined
   /** The pot's own words, `str_ren`, by number. */
   readonly potWords?: ReadonlyMap<number, string> | undefined
+  /**
+   * The chosen member's look, knob by knob, as the appearance panel shows it
+   * — see `appearanceRows` in `main.ts`. Undefined before a cartridge is in.
+   */
+  readonly look?:
+    | readonly { readonly knob: string; readonly label: string; readonly shown: string }[]
+    | undefined
   /** The spells the Hero has learnt; undefined when the spell table did not read. */
   readonly spells?: readonly MenuSpell[] | undefined
   /** What the spells panel says when there is nothing to cast. */
@@ -362,6 +381,10 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = context?.pot?.length ?? 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
+  if (state.panel === 'make') {
+    const count = context?.look?.length ?? 0
+    return count === 0 ? state : { ...state, row: wrap(state.row, count) }
+  }
   if (state.panel) return state
   return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length) }
 }
@@ -382,6 +405,8 @@ export interface Taken {
   readonly buy?: { readonly tree: number; readonly panel: number }
   /** Cook this recipe, by its id — see `cook` in `alchemy.ts`. */
   readonly cook?: number
+  /** Turn one of the appearance's knobs — see `turned` in `appearance.ts`. */
+  readonly turn?: { readonly knob: string; readonly by: number }
 }
 
 /**
@@ -422,6 +447,13 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
   if (state.panel === 'spells') {
     const spell = castable(context, state)[state.row]
     return spell ? { state, talk: false, cast: spell.action } : { state, talk: false }
+  }
+  if (state.panel === 'make') {
+    // **Taking a row turns its knob on.** Left and right would be the game's
+    // way; this menu has only up, down and take, so take is one step forward
+    // and it wraps — which is how the game's own arrows behave at the end.
+    const knob = context?.look?.[state.row]?.knob
+    return knob ? { state, talk: false, turn: { knob, by: 1 } } : { state, talk: false }
   }
   if (state.panel === 'pot') {
     const entry = context?.pot?.[state.row]
@@ -659,6 +691,20 @@ export function panelLines(
             : ` — short ${entry.short.map((s) => `${s.short}× ${nameOf(s.item)}`).join(', ')}`
           return `${mark(at === row)}${entry.name} = ${wanted}${state_}`
         }),
+        ...(state?.said ?? []),
+      ]
+    }
+    case 'make': {
+      // **The knobs the game has**, read from overlay 15's debug viewer —
+      // Gender, Face, Eye Colour, Skin Colour, Hairstyle, Hair Colour, Build.
+      // Three of them cannot be drawn here and say so; see `appearance.ts`.
+      const knobs = context.look
+      if (!knobs) return ['There is nobody to look at yet.']
+      const who = whose(context, state)
+      const row = state?.panel === 'make' ? (state.row ?? 0) : -1
+      return [
+        `${who?.name ?? context.hero} — take a row to change it`,
+        ...knobs.map((knob, i) => `${mark(i === row)}${knob.label}: ${knob.shown}`),
         ...(state?.said ?? []),
       ]
     }

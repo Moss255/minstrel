@@ -1197,6 +1197,30 @@ established** — no code was found that reads it.
 - What value 7 orders by.
 - The record with tree 0: `[286, 0, 0, 168, 1, 0, 0, 286, 0]`, named "Egg On".
 
+# Builds — in the ARM9 binary
+
+**Found 25 September 2026.** The ten builds a character can be made in — the
+"Build" knob of character creation — are **ten pairs of `fx16`**, five to a
+sex, and the game picks one with `sex * 5 + rand(5)` (`0x02010c58` on, USA).
+`readBuildTable` in `builds.ts` finds them **by shape**, as the vocation skill
+trees are found: twenty halfwords in a band around 4096 whose second of each
+pair falls strictly across each row of five.
+
+On the European dump that shape occurs **exactly once**, at `0xe6da8`, and
+gives the same twenty numbers the USA build has at `0x020E6D98` — two builds
+agreeing, found two different ways.
+
+| sex | the five, as (height, width) in 4096ths |
+|---|---|
+| 0 | (3768, 4255) (3637, 4136) (3850, 4014) (4132, 3891) (3870, 3764) |
+| 1 | (3768, 4177) (3641, 4091) (3809, 3973) (4132, 3891) (3768, 3764) |
+
+0.888 to 1.039 of the figure's own size. **Which of a pair is which is
+INFERRED**: the second falls steadily across each row and the first does not,
+which is what a "slim to broad" row looks like; nothing in the code names
+them. The two sexes share the middle build and differ elsewhere, which is what
+makes it a table of ten rather than five used twice.
+
 # Alchemy recipes — `/data/bin/recipe.gp2`
 
 **Found 25 September 2026** by reading **overlay 6**, the Krak Pot, which

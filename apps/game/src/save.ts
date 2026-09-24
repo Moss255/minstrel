@@ -1,6 +1,19 @@
+import type { Appearance } from './appearance.ts'
 import type { Bag } from './bag.ts'
 import { type Equipped, SLOTS, type Slot } from './equipment.ts'
 import { GAIN_STATS, type GainStat, HERO_VOCATION_NUMBER } from './hero.ts'
+
+/** Every field of an `Appearance`, so a save can be checked field by field. */
+const APPEARANCE_KNOBS: readonly (keyof Appearance)[] = [
+  'sex',
+  'face',
+  'hair',
+  'hairVariant',
+  'hairColour',
+  'build',
+  'skin',
+  'eyes',
+]
 
 /**
  * Saving and loading, in our own format: JSON, in the browser's own storage,
@@ -57,6 +70,11 @@ export interface SaveMember {
   readonly appearance?: number
   /** Which sex they are — see `Member.sex`. Absent where nobody has chosen. */
   readonly sex?: number
+  /**
+   * What they look like — see `Member.look`. Absent where nobody has chosen,
+   * which is every save written before character creation existed.
+   */
+  readonly look?: Appearance
   /** What they are called, where somebody chose — see `Member.name`. */
   readonly name?: string
   /**
@@ -321,6 +339,13 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.sex !== undefined && !isCount(m.sex)) {
     throw new SaveError(`${where} has a sex that does not read`)
   }
+  const look = m.look as Record<string, unknown> | undefined
+  if (
+    look !== undefined &&
+    (typeof look !== 'object' || look === null || !APPEARANCE_KNOBS.every((k) => isCount(look[k])))
+  ) {
+    throw new SaveError(`${where} has a look that does not read`)
+  }
   if (m.name !== undefined && typeof m.name !== 'string') {
     throw new SaveError(`${where} has a name that does not read`)
   }
@@ -359,6 +384,7 @@ function member(raw: unknown, place: number): SaveMember {
     ...(m.vocation === undefined ? {} : { vocation: m.vocation as number }),
     ...(m.appearance === undefined ? {} : { appearance: m.appearance as number }),
     ...(m.sex === undefined ? {} : { sex: m.sex as number }),
+    ...(m.look === undefined ? {} : { look: m.look as Appearance }),
     ...(m.name === undefined ? {} : { name: m.name as string }),
     ...(m.held === undefined ? {} : { held: m.held as number[] }),
     gains: gains as SaveMember['gains'],

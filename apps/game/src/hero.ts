@@ -83,12 +83,15 @@ export const STARTING_EQUIPMENT: Equipped = new Map<Slot, number>([
 export const HERO_FACE = 'p_f006'
 
 /**
- * The Hero's hair — **ours**: style 00 in its variant `a`, in colour 0. The
- * player chooses hair at character creation, which the slice leaves out
- * ("Preset appearance — no character creation"), so a fixed choice is the
- * slice's own and not a gap. Hair is a style (`p_h<ss>0<v>.nsbmd`, 24 styles in
- * variants `a` to `e`) coloured by a texture file (`p_h<ss><c>a.nsbtx`, up to
- * ten colours to a style). FORMAT.md, "Character parts".
+ * The Hero's hair — **ours**: style 00 in its variant `a`, in colour 0. Hair
+ * is a style (`p_h<ss>0<v>.nsbmd`, 24 styles in variants `a` to `e`) coloured
+ * by a texture file (`p_h<ss><c>a.nsbtx`, up to ten colours to a style).
+ * FORMAT.md, "Character parts".
+ *
+ * **Character creation chooses all three now** — see `appearance.ts`, whose
+ * `HERO_APPEARANCE` is these same values so that the Hero looks as the slice
+ * drew them until somebody turns a knob. What was a fixed choice because the
+ * slice cut the prologue is now the default of a choice that exists.
  */
 export const HERO_HAIR = { model: 'p_h000a', colour: 'p_h000a' } as const
 

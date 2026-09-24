@@ -186,6 +186,12 @@ one — most of them are now the work itself. Kept here only so that a comment
 in the code citing "out of the slice" can be read as history rather than as a
 live rule.
 
+**Phase 2 closed on 25 September 2026**, with all four of its systems built:
+the party of four, vocations and Alltrades, alchemy, and character creation.
+What it left behind is listed in `docs/party-and-vocations.md` under "What is
+still missing, and why" — recruitment at the Quester's Rest, mini medals, and
+how a battle's experience is split.
+
 What replaces it is the phase order in `docs/beyond-the-slice.md`, which is
 about sequence rather than exclusion: the systems that restructure data come
 before mass content, because each of them changes shapes the content depends

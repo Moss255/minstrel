@@ -225,6 +225,21 @@ export function advanceMotion(
  * result is scaled into the world, turned to face the way it is walking, and
  * set down at the feet by one offset for the whole motion.
  */
+/** A character's build as a pair of multipliers on the figure — see the parameter below. */
+export interface Build {
+  readonly height: number
+  readonly width: number
+}
+
+/**
+ * No build at all: the figure's own size.
+ *
+ * A module constant rather than a default `{ height: 1, width: 1 }`, because
+ * `playerPieces` runs for every character every frame and a fresh object each
+ * time is exactly the per-frame allocation `CLAUDE.md` keeps out of hot paths.
+ */
+const OWN_SIZE: Build = { height: 1, width: 1 }
+
 export function playerPieces(
   self: Player,
   figure: Figure,
@@ -232,11 +247,26 @@ export function playerPieces(
   cat: Catalogue,
   measurements: Measurements,
   motion: Animation | undefined,
+  /**
+   * The character's **build**, as a pair of multipliers on the figure —
+   * `scaleOf` in `appearance.ts`, from the ten-pair table in the ARM9. One and
+   * one is the figure's own size, which is what everybody had before character
+   * creation could ask.
+   *
+   * **It scales what is drawn and nothing else.** The Hero's collision radius,
+   * the camera's height and how far a step carries them are all untouched, so
+   * a broad character and a slim one walk the same. Whether the game does more
+   * than this with the numbers is **not established** — only that it keeps
+   * them per character and picks them by sex.
+   */
+  build: Build = OWN_SIZE,
 ): Piece[] {
   if (pieces.length === 0) return []
   const sin = Math.sin(self.facing)
   const cos = Math.cos(self.facing)
   const { scale } = self
+  const wide = scale * build.width
+  const tall = scale * build.height
   const atX = toFloat(self.state.x)
   const atY = toFloat(self.state.y)
   const atZ = toFloat(self.state.z)
@@ -245,9 +275,11 @@ export function playerPieces(
   return poseFigure(figure, pieces, motion, Math.floor(self.motionFrame)).map(
     ({ piece, posed }) => {
       const vertices = posed.vertices.map((v) => {
-        const x = v.x * scale
-        const y = (v.y - floor) * scale
-        const z = v.z * scale
+        const x = v.x * wide
+        // The floor is subtracted before the scale, so a tall character still
+        // stands on the ground rather than sinking or hovering.
+        const y = (v.y - floor) * tall
+        const z = v.z * wide
         return { ...v, x: atX + x * cos + z * sin, y: atY + y, z: atZ - x * sin + z * cos }
       })
       const geometry = { ...posed, vertices }

@@ -1,5 +1,6 @@
 import type { AttendingCharacter } from '@minstrel/game-formats'
 import { blockChance, type Fighter } from '@minstrel/sim'
+import type { Appearance } from './appearance.ts'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
 import { type Equipped, NOTHING_EQUIPPED } from './equipment.ts'
@@ -91,6 +92,18 @@ export interface Member {
    * separately.
    */
   appearance: number | undefined
+  /**
+   * What they look like — the knobs character creation turns; see
+   * `appearance.ts`. **Undefined is the look they were made in**, which for a
+   * created character is their preset's and for the Hero is `HERO_APPEARANCE`.
+   *
+   * This is separate from {@link appearance} on purpose: a preset is where a
+   * created character's *clothes* come from, and the game itself keeps no
+   * preset number in a character record — it copies the fields it wants and
+   * rolls the rest. So this is the record's own, and the preset is a
+   * stand-in for the kit until recruitment gives one out properly.
+   */
+  look: Appearance | undefined
   /**
    * Which sex they are — see `SEX` in `equipment.ts`. It decides what they may
    * wear and nothing else here.
@@ -359,6 +372,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     vocation: member.vocation,
     ...(member.appearance === undefined ? {} : { appearance: member.appearance }),
     ...(member.sex === undefined ? {} : { sex: member.sex }),
+    ...(member.look === undefined ? {} : { look: member.look }),
     ...(member.name === undefined ? {} : { name: member.name }),
     ...(member.held.size === 0 ? {} : { held: [...member.held].sort((a, b) => a - b) }),
     gains: member.gains,
@@ -386,6 +400,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     // it was the Minstrel the Hero is — see `HERO_VOCATION_NUMBER`.
     vocation: member.vocation ?? HERO_VOCATION_NUMBER,
     appearance: member.appearance,
+    look: member.look,
     sex: member.sex,
     name: member.name,
     held: new Set(member.held ?? []),

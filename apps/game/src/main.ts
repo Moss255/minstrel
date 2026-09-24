@@ -95,6 +95,17 @@ import {
 } from '@minstrel/world'
 import { actorLookOf, packMotions } from './actors.ts'
 import { cook, POT_SAYS, potList } from './alchemy.ts'
+import {
+  type Appearance,
+  buildOf,
+  faceOf,
+  HAIR_VARIANTS,
+  HERO_APPEARANCE,
+  hairColourOf,
+  hairOf,
+  scaleOf,
+  turned as turnKnob,
+} from './appearance.ts'
 import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
   type BattleItem,
@@ -178,6 +189,7 @@ import {
   equip,
   mayWear,
   NOTHING_EQUIPPED,
+  SEX,
   type Slot,
   slotOf,
   WEAR_WITH_ALL,
@@ -614,6 +626,7 @@ function freshMember(attnpc: number | undefined): Member {
     vocation: HERO_VOCATION_NUMBER,
     held: new Set([HERO_VOCATION_NUMBER]),
     appearance: undefined,
+    look: undefined,
     sex: undefined,
     name: undefined,
     gains: {},
@@ -1122,6 +1135,28 @@ function begin(bytes: Uint8Array, map: string): void {
     for (let n = 0; n < Number(asked[2] ?? 1); n++) bag = take(bag, { item })
   }
   if (params.get('give')) status(`bag: ${bagLines(bag, nameOf).join(' · ')}`)
+  // `?look=0:sex=1,hair=7,build=0` sets a member's appearance knob by knob —
+  // **ours**, standing in for the Observatory and the Quester's Rest, neither
+  // of which is built. See `appearance.ts` for what the knobs are.
+  for (const one of (params.get('look') ?? '').split(';')) {
+    const asked = /^(\d+):(.*)$/.exec(one)
+    const who = asked ? members[Number(asked[1])] : undefined
+    if (!asked || !who) continue
+    let look = who.look ?? HERO_APPEARANCE
+    for (const pair of (asked[2] ?? '').split(',')) {
+      const set = /^([a-zA-Z]+)=(\d+)$/.exec(pair)
+      if (!set || !((set[1] as string) in look)) continue
+      look = { ...look, [set[1] as string]: Number(set[2]) }
+    }
+    who.look = look
+    who.sex = look.sex
+    status(
+      `${nameFor(who)}: ${appearanceRows(who)
+        .map((row) => `${row.label} ${row.shown}`)
+        .join(' · ')}`,
+    )
+  }
+  if (params.get('look')) dressParty()
   // `?revoke=1` revokes party place 1's vocation — **ours**, standing in for
   // the Abbey's own step slot 4. See `revoke`.
   for (const one of (params.get('revoke') ?? '').split(',')) {
@@ -3002,6 +3037,7 @@ function menuContext(): MenuContext {
     tableOf: (id) => loaded?.goods.get(id)?.table,
     mayWear: (id, place) => wearableBy(members[place] ?? leader(), id),
     pot: loaded ? potList(loaded.recipes, bag, nameOf) : undefined,
+    look: loaded ? appearanceRows(members[menu?.member ?? 0] ?? leader()) : undefined,
     // The pot's lines carry the same markup item names do — `you<1>re` is an
     // apostrophe — so they go through `renderName` as the skill labels do.
     potWords: potLines(),
@@ -4020,6 +4056,7 @@ function companionFieldPieces(now: number): Piece[] {
         here.catalogue,
         measurements,
         motion,
+        buildScale(members[place]),
       )
     }
     if (!who) return []
@@ -4141,6 +4178,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
       loaded.catalogue,
       measurements,
       own,
+      buildScale(members[at.place]),
     )
   }
 
@@ -4908,11 +4946,126 @@ function dressParty(): void {
       shown ??
       (made && outfitOfPreset(made, carry, has, wornBy(member))) ??
       outfitOf(wornBy(member), carry, has)
-    const figure = dressFigure(wardrobe, outfit)
+    // **What they were made to look like beats what the clothes decide.** The
+    // face and the hair are the character's, not the kit's — see `lookOver`.
+    const figure = dressFigure(wardrobe, lookOver(outfit, member.look, has))
     return { figure, pieces: figurePieces(figure) }
   })
   const hero = dressed[0]
   if (hero) loaded = { ...loaded, figure: hero.figure, pieces: hero.pieces }
+}
+
+/**
+ * A member's look as the appearance panel shows it, knob by knob.
+ *
+ * **Seven knobs**, which is the set overlay 15's debug viewer names. Four of
+ * them change what is drawn here; the three colours do not, and say so on the
+ * row rather than being left off the screen — a knob that is there in the game
+ * and does nothing here is worth seeing.
+ */
+function appearanceRows(member: Member): { knob: string; label: string; shown: string }[] {
+  const look = member.look ?? HERO_APPEARANCE
+  const build = buildOf(look, loaded?.buildTable)
+  const scale = scaleOf(build)
+  const per = (n: number) => `${Math.round(n * 1000) / 10}%`
+  return [
+    { knob: 'sex', label: 'Gender', shown: look.sex === SEX.female ? 'female' : 'male' },
+    { knob: 'face', label: 'Face', shown: `${look.face} · ${faceOf(look)}` },
+    { knob: 'hair', label: 'Hairstyle', shown: `${look.hair} · ${hairOf(look)}` },
+    {
+      knob: 'hairVariant',
+      label: 'Hair shape',
+      shown: `${HAIR_VARIANTS[look.hairVariant] ?? '?'}`,
+    },
+    {
+      knob: 'hairColour',
+      label: 'Hair Colour',
+      shown: `${look.hairColour} · ${hairColourOf(look)}`,
+    },
+    {
+      knob: 'build',
+      label: 'Build',
+      shown: build
+        ? `${look.build} · ${per(scale.height)} tall, ${per(scale.width)} broad`
+        : `${look.build} · the build table did not read`,
+    },
+    { knob: 'skin', label: 'Skin Colour', shown: `${look.skin} — not drawn here` },
+    { knob: 'eyes', label: 'Eye Colour', shown: `${look.eyes} — not drawn here` },
+  ]
+}
+
+/**
+ * Turn one of a member's appearance knobs and redress them — see `turned` in
+ * `appearance.ts`.
+ *
+ * Changing sex moves the build to that sex's row of five, which is what the
+ * game's own `sex * 5 + n` does; nothing else follows from it here, though
+ * **what they may wear does** — see `mayWear`.
+ */
+function turnLook(knob: string, by: number, state: MenuState | undefined): MenuState | undefined {
+  const member = members[state?.member ?? 0]
+  if (!state || !member) return state
+  const look = member.look ?? HERO_APPEARANCE
+  if (!(knob in look)) return state
+  member.look = turnKnob(look, knob as keyof Appearance, by)
+  member.sex = member.look.sex
+  dressParty()
+  dressHero()
+  const shown = appearanceRows(member).find((row) => row.knob === knob)
+  return { ...state, said: shown ? [`${shown.label}: ${shown.shown}`] : undefined }
+}
+
+/**
+ * The scale a member's build asks for — one and one where they have no look
+ * of their own, or where the ARM9's table did not read. See `playerPieces`,
+ * which applies it to what is drawn and to nothing else.
+ */
+function buildScale(member: Member | undefined): { height: number; width: number } {
+  const look = member?.look
+  if (!look) return OWN_SIZE
+  // **Kept per look rather than worked out per frame.** This runs for every
+  // character every frame, and an `Appearance` is immutable — `turned` makes a
+  // new one — so the object itself is the key. See `CLAUDE.md` on per-frame
+  // allocation in hot paths.
+  const already = scaleCache.get(look)
+  if (already) return already
+  const scale = scaleOf(buildOf(look, loaded?.buildTable))
+  scaleCache.set(look, scale)
+  return scale
+}
+
+/** The figure's own size, shared so that no frame makes one — see `buildScale`. */
+const OWN_SIZE = { height: 1, width: 1 }
+const scaleCache = new WeakMap<Appearance, { height: number; width: number }>()
+
+/**
+ * An outfit with a character's own face and hair put over it — see
+ * `appearance.ts`.
+ *
+ * The clothes come from what they wear and what they were made in; the face
+ * and the hair come from the character. The game keeps them apart too: the
+ * face is the record's `+0x01` and the hair `+0x175`, neither of them in the
+ * equipment block. A part the wardrobe has not got is left as it was rather
+ * than naming a file that is not there.
+ */
+function lookOver(
+  outfit: Outfit,
+  look: Appearance | undefined,
+  has: (name: string) => boolean,
+): Outfit {
+  if (!look) return outfit
+  const face = faceOf(look)
+  const hair = hairOf(look, has)
+  const colour = hairColourOf(look, has)
+  // The hair colour replaces whichever `p_h` texture the outfit carried.
+  const textures = [...(outfit.textures ?? []).filter((name) => !name.startsWith('p_h'))]
+  if (has(colour)) textures.push(colour)
+  return {
+    ...outfit,
+    ...(has(face) ? { face } : {}),
+    ...(has(hair) ? { hair } : {}),
+    textures,
+  }
 }
 
 /**
@@ -5219,7 +5372,15 @@ function heroPortrait(): HTMLCanvasElement | undefined {
   }
   const { figure, pieces: dressed } = portraitFigure
   const motion = figure.motions.get('stand')
-  const pieces = playerPieces(standing, figure, dressed, here.catalogue, measurements, motion)
+  const pieces = playerPieces(
+    standing,
+    figure,
+    dressed,
+    here.catalogue,
+    measurements,
+    motion,
+    buildScale(leader()),
+  )
   if (pieces.length === 0) return undefined
   // The figure's own height as posed, in world units, frames it.
   let height = 0
@@ -5685,6 +5846,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       }
       if (taken.buy) menu = buyPanel(taken.buy.tree, taken.buy.panel, menu)
       if (taken.cook !== undefined) menu = cookRecipe(taken.cook, menu)
+      if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)
       if (taken.talk) {
         showMenu()
         talk()

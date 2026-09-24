@@ -296,6 +296,10 @@ describe('the main menu', () => {
       // The Krak Pot's is ours: `str_ren` is what the pot says once it is
       // open, and no `str_tm` entry names it in the menu.
       'Alchemy',
+      // And the appearance screen's is ours twice over — the game makes
+      // characters at the Observatory and the Quester's Rest, not from a
+      // menu at all. See `appearance.ts`.
+      'Appearance',
     ])
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
   })

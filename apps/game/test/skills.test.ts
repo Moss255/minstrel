@@ -79,6 +79,7 @@ const someone = (over: Partial<Member> = {}): Member => ({
   vocation: HERO_VOCATION_NUMBER,
   held: new Set([HERO_VOCATION_NUMBER]),
   appearance: undefined,
+  look: undefined,
   sex: undefined,
   name: undefined,
   gains: {},

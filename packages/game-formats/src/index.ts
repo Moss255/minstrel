@@ -20,6 +20,15 @@ export {
   type WeightTables,
 } from './battle-tables.ts'
 export {
+  BUILD_ONE,
+  BUILD_SEXES,
+  BUILDS_A_SEX,
+  type Build,
+  type BuildTable,
+  buildFor,
+  readBuildTable,
+} from './builds.ts'
+export {
   COLLISION_KIND,
   type CollisionBounds,
   type CollisionCell,
