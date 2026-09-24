@@ -983,6 +983,15 @@ function begin(bytes: Uint8Array, map: string): void {
   if (Number.isInteger(level) && level > 0) levelTo(level)
   if (wantedEvent !== undefined) startEvent(wantedEvent)
   else playEntryEvent()
+  // `?talk=12` stands the Hero behind cast member 12 and talks to them —
+  // **ours**, so a headless browser can see a conversation without walking to
+  // it. Behind rather than in front on purpose: the default turn is then a
+  // half-circle and plainly visible, and a line that asks for `<N_TURN>`
+  // leaves the speaker's back to the camera, which is the whole difference.
+  // `Number(null)` is 0, not NaN, so the parameter's presence is what is
+  // tested — otherwise every plain map view tries to talk to placement 0.
+  const talkTo = params.get('talk')
+  if (talkTo !== null && /^\d+$/.test(talkTo)) standAndTalk(Number(talkTo))
 }
 
 /**
@@ -3911,7 +3920,43 @@ function witnessHook(): void {
     map: here.code,
     doorways: here.doorways.map((door) => door.to),
     events: eventsTriggered(here.triggers),
+    // Who can be talked to, for `?talk=` — the 2D villagers as much as the 3D
+    // ones, since most of a town is 2D. Spots (something to examine) are left
+    // out: they answer, but a signpost has nothing to show a witness.
+    cast: [...here.cast.members, ...here.cast.sprites2d].map((m) => ({
+      id: m.placement.id,
+      name: m.name,
+    })),
   }
+}
+
+/**
+ * Stand the Hero behind a cast member and talk to them — see `?talk=`.
+ *
+ * The distance is well inside {@link TALK_REACH}, so `talkTarget` picks them
+ * and not a neighbour, and the Hero is turned to look at them so that the
+ * reach test's 60° cone holds.
+ */
+function standAndTalk(id: number): void {
+  if (!loaded || !self) return
+  const member = [...loaded.cast.members, ...loaded.cast.sprites2d].find(
+    (m) => m.placement.id === id,
+  )
+  if (!member) {
+    status(`nobody with placement ${id} is in ${loaded.code}`)
+    return
+  }
+  const at = castPlaced(member.placement)
+  const back = TALK_REACH * 0.5
+  const spot = { x: at.x - Math.sin(at.facing) * back, z: at.z - Math.cos(at.facing) * back }
+  self.state = {
+    ...self.state,
+    x: fx32(Math.round(spot.x * FX32_ONE)),
+    y: fx32(Math.round(at.y * FX32_ONE)),
+    z: fx32(Math.round(spot.z * FX32_ONE)),
+  }
+  self.facing = facingToward(spot, at)
+  talk()
 }
 
 /** Stand the Hero where the event has character 0. */

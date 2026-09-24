@@ -47,6 +47,8 @@ const flag = (name, fallback) => {
 const stage = flag('stage', '')
 const time = flag('time', '')
 const wantEvents = flag('events', '1') !== '0'
+/** `--talk=0` skips the conversations; `--talk=6` caps how many are opened. */
+const wantTalk = Number(flag('talk', '6'))
 const port = Number(flag('port', '8765'))
 const [width, height] = flag('size', '960x600').split('x').map(Number)
 
@@ -240,8 +242,8 @@ async function witness(area) {
   // on the very first area, puts the cartridge in the browser's own store.
   await capture('00-map', `${area} — where it starts`, `map=${area}`, area)
   const plan = (await evaluate('JSON.stringify(window.__witness ?? null)')) ?? 'null'
-  const { doorways = [], events = [] } = JSON.parse(plan) ?? {}
-  console.log(`  ${doorways.length} doorways, ${events.length} events`)
+  const { doorways = [], events = [], cast = [] } = JSON.parse(plan) ?? {}
+  console.log(`  ${doorways.length} doorways, ${events.length} events, ${cast.length} to talk to`)
 
   let n = 1
   for (const to of doorways) {
@@ -265,6 +267,20 @@ async function witness(area) {
         2500,
       )
     }
+  }
+
+  // **Talking is the verb the witness could not show.** The map, the doorways
+  // and the events were all visible; whether a villager says anything, and
+  // whether they look round when spoken to, was not. `?talk=` stands the Hero
+  // behind them, so a speaker who turns has turned a half-circle to do it.
+  for (const who of cast.slice(0, Math.max(0, wantTalk))) {
+    await capture(
+      `${String(n++).padStart(2, '0')}-talk-${who.id}`,
+      `talking to ${who.name} #${who.id}`,
+      `map=${area}&talk=${who.id}`,
+      area,
+      1400,
+    )
   }
 
   const failed = shots.filter((s) => s.failed).length

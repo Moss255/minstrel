@@ -173,6 +173,20 @@ What makes the remaining areas cheap.
   its status line under it. Gleeba, a town a hundred events past the slice,
   came out at 32 views in about three minutes with nothing failing to load;
   Angel Falls at 59 views in 7.2 minutes.
+  **Talking, 24 September 2026.** The witness showed three of the four verbs —
+  an area loads, its doorways open, its events play — and could not show the
+  fourth at all. `?talk=<placement>` stands the Hero **behind** a character
+  and opens the conversation, so the default face-the-player turn is a
+  half-circle and visible in a still, and a line asking `<N_TURN>` leaves
+  their back to the camera. `R01` at stage 3.1: Pavo turns round, says their
+  line, and the box is on the page beside the map and the doorways.
+
+  Two things it taught immediately. "Nothing to say" is nearly always the
+  *stage* rather than a fault — at the default 2.1 most of the cartridge is
+  silent, because the chapter letter follows the stage. And a line the game
+  had to guess is flagged *worth a look*, which on an area far from its own
+  chapter is most of them; that is the tool working, not noise.
+
   **Dip-sampled 13 areas across all seven families** the same day, maps and
   doorways only (what an area's *events* want is already answered for all 75
   areas, headlessly, in two seconds — paying seven minutes an area to learn it

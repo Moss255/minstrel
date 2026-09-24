@@ -53,6 +53,7 @@ seven minutes an area to learn that again is the wrong trade.
 | `--stage=2.2` | open at a story stage, so the cast and the triggers are that stage's |
 | `--time=night` | force the hour |
 | `--events=0` | maps and doorways only, no scenes — much faster |
+| `--talk=0` | skip the conversations; a number caps how many are opened (default 6) |
 | `--size=1280x800` | how big each picture is |
 | `--port=8765` | where `serve.mjs` is listening |
 
@@ -79,6 +80,31 @@ So two things are checked besides loading:
   what went wrong, in prose meant for a person, so `TROUBLE` is a list of the
   words it uses rather than a rule. Missing a phrase makes this quieter than it
   should be; anything added to the game's complaints belongs there too.
+
+## Talking
+
+The witness used to show three of the four verbs the phase asks for — an area
+that **loads**, its doorways, and the **events** it plays. Whether a villager
+says anything, and whether they look round when spoken to, it could not show
+at all.
+
+`?talk=<placement>` stands the Hero **behind** that character and opens the
+conversation. Behind on purpose: every message the game shows turns the
+speaker to face the player, so the default turn is a half-circle and plainly
+visible — and a line that asks for `<N_TURN>` leaves their back to the camera,
+which is the whole difference. See `docs/event-scripts.md` §7a.
+
+Two things to expect:
+
+- **"Nothing to say" is usually the stage, not a fault.** Which lines a
+  character has depends on the chapter letter, which follows the story stage;
+  at the default 2.1 most of the cartridge is silent. `--stage=3.1` and later
+  is where a town outside the slice talks.
+- **A guessed line is flagged.** When no trigger names a character at the
+  stage asked for, the game says so on its status line and picks the first
+  line that covers it — and the witness marks that *worth a look*, because it
+  is. On an area far from its own chapter most speakers will be flagged, and
+  that is the tool working.
 
 ## Why it is not `tools/shot` in a loop
 
@@ -112,8 +138,13 @@ cannot alter what a shot shows.
 - **It does not compare against a let's play.** Frames lined up beside a
   recording is the next thing, and it wants the recording as input.
 - **It does not walk.** Every view is a place the game can be *put* — a map, a
-  doorway, a scene. Somewhere only reachable by walking is not covered; use
-  `tools/shot`'s `--hold` for one of those.
+  doorway, a scene, a person. Somewhere only reachable by walking is not
+  covered; use `tools/shot`'s `--hold` for one of those. Whether an area *can*
+  be walked is answered exhaustively by
+  `apps/game/test/walk-coverage.test.ts`, which floods each one from where the
+  game stands you.
+- **It only talks to the area's own map.** A town's people are mostly behind
+  its doors, and those are captured as maps but nobody in them is spoken to.
 - **It reads the triggers' events, not the conditions on them.** A scene that
   could never play at the stage you asked for is still captured. That is
   deliberate: the question is whether the engine can play it at all.
