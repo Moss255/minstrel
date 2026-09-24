@@ -57,6 +57,11 @@ export interface SaveMember {
   readonly appearance?: number
   /** What they are called, where somebody chose — see `Member.name`. */
   readonly name?: string
+  /**
+   * Every vocation they have ever been — see `Member.held`. Absent where they
+   * have only ever been the one they are, which a save need not say twice.
+   */
+  readonly held?: readonly number[]
   /** What seeds have added — see `Gains`. */
   readonly gains: Readonly<Partial<Record<GainStat, number>>>
   readonly equipped: Readonly<Partial<Record<Slot, number>>>
@@ -259,6 +264,9 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.name !== undefined && typeof m.name !== 'string') {
     throw new SaveError(`${where} has a name that does not read`)
   }
+  if (m.held !== undefined && (!Array.isArray(m.held) || !m.held.every(isCount))) {
+    throw new SaveError(`${where} has vocations held that do not read`)
+  }
   const stats = new Set<string>(GAIN_STATS)
   const gains = m.gains as Record<string, unknown> | undefined
   if (
@@ -284,6 +292,7 @@ function member(raw: unknown, place: number): SaveMember {
     ...(m.vocation === undefined ? {} : { vocation: m.vocation as number }),
     ...(m.appearance === undefined ? {} : { appearance: m.appearance as number }),
     ...(m.name === undefined ? {} : { name: m.name as string }),
+    ...(m.held === undefined ? {} : { held: m.held as number[] }),
     gains: gains as SaveMember['gains'],
     equipped: equipped as SaveMember['equipped'],
   }

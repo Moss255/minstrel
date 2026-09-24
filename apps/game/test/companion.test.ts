@@ -2,6 +2,8 @@ import type { AttendingCharacter } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
   attendingStanding,
+  changeVocation,
+  expOf,
   companionFighter,
   companionLook,
   companionModel,
@@ -63,6 +65,7 @@ const place = (attnpc: number | undefined): Member => ({
   mp: undefined,
   exp: new Map(),
   vocation: HERO_VOCATION_NUMBER,
+  held: new Set([HERO_VOCATION_NUMBER]),
   appearance: undefined,
   name: undefined,
   gains: {},
@@ -126,6 +129,29 @@ describe('the party, the Hero first', () => {
     expect(reversed.map((w) => w.name)).toEqual(['Aquila', 'Ivor', 'Dr Phlegming'])
   })
 
+  it('changes vocation without losing what the last one earned', () => {
+    // **The whole reason the data shape was read first.** The game keeps
+    // thirteen experiences and thirteen levels, so changing vocation moves an
+    // index: a Minstrel with 900 who becomes a Warrior starts the Warrior at
+    // nothing, and finds the 900 again when they change back.
+    const who = place(undefined)
+    who.exp.set(6, 900)
+    expect(expOf(who)).toBe(900)
+
+    changeVocation(who, 0)
+    expect(who.vocation).toBe(0)
+    expect(expOf(who)).toBe(0)
+    // Untouched, not overwritten.
+    expect(expOf(who, 6)).toBe(900)
+    // And both are remembered as held, the way the game's mask does.
+    expect([...who.held].sort()).toEqual([0, HERO_VOCATION_NUMBER])
+
+    who.exp.set(0, 40)
+    changeVocation(who, HERO_VOCATION_NUMBER)
+    expect(expOf(who)).toBe(900)
+    expect(expOf(who, 0)).toBe(40)
+  })
+
   it('goes into a save and comes back the same party', () => {
     // **The phase's done-when is "can be saved and loaded"**, and until this
     // the round trip was two anonymous blocks in `main.ts` that nothing could
@@ -137,6 +163,7 @@ describe('the party, the Hero first', () => {
         mp: undefined,
         exp: new Map([[6, 340]]),
         vocation: HERO_VOCATION_NUMBER,
+        held: new Set([HERO_VOCATION_NUMBER]),
         appearance: undefined,
         name: undefined,
         gains: { maxHp: 3 },
@@ -150,6 +177,7 @@ describe('the party, the Hero first', () => {
         // **A vocation that is not the Hero's** — the whole point of it being
         // a member's field rather than a constant.
         vocation: 0,
+        held: new Set([0]),
         appearance: 4,
         name: undefined,
         gains: {},
@@ -161,6 +189,7 @@ describe('the party, the Hero first', () => {
         mp: 0,
         exp: new Map(),
         vocation: 11,
+        held: new Set([11]),
         appearance: 12,
         name: 'Brittany',
         gains: { skillPoints: 2 },

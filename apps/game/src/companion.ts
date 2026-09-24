@@ -72,6 +72,15 @@ export interface Member {
    */
   vocation: number
   /**
+   * Every vocation they have ever been, this one included.
+   *
+   * The game keeps this as a bitmask at the character record's `+0x54`, set
+   * by the same function that writes the vocation — so it is not bookkeeping
+   * anyone added, it is part of what changing vocation *is*. What reads it is
+   * not established; it is kept because the game keeps it.
+   */
+  held: Set<number>
+  /**
    * Which ready-made character they were made from, by its place in
    * `charapreset.bin` — see `readCharacterPresets`.
    *
@@ -120,6 +129,33 @@ export const expOf = (member: Member, vocation = member.vocation): number =>
   member.exp.get(vocation) ?? 0
 
 /**
+ * Change a member's vocation, as Alltrades Abbey would.
+ *
+ * **Almost nothing happens**, and that is the point of having read the data
+ * shape first. Experience and level are already per vocation, so changing is
+ * moving an index: what they had as a Warrior waits where it was, and a
+ * vocation they have never been starts at no experience, which is level one.
+ * The game's own setter does exactly this and one thing more — it ORs the
+ * bit in the "has been held" mask — so this does too.
+ *
+ * Skill points are deliberately untouched. They are **one pool per
+ * character**, not a vocation's, and the points already spent are per tree;
+ * neither belongs to the vocation being left.
+ *
+ * **Ours**: which vocations may be chosen, and anything Alltrades asks of a
+ * character before it will change them, is **not established** — the routine
+ * the Abbey calls was not found in the ARM9 or in any overlay. This changes
+ * whoever it is given to, to whatever it is given. See
+ * `docs/party-and-vocations.md`.
+ */
+export function changeVocation(member: Member, vocation: number): Member {
+  member.held.add(member.vocation)
+  member.held.add(vocation)
+  member.vocation = vocation
+  return member
+}
+
+/**
  * The party as a save keeps it, and back — see `SaveMember` in `save.ts`.
  *
  * These live here rather than in `main.ts` so that the round trip can be
@@ -140,6 +176,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     vocation: member.vocation,
     ...(member.appearance === undefined ? {} : { appearance: member.appearance }),
     ...(member.name === undefined ? {} : { name: member.name }),
+    ...(member.held.size === 0 ? {} : { held: [...member.held].sort((a, b) => a - b) }),
     gains: member.gains,
     equipped: equippedRecord(member.equipped),
   }))
@@ -157,6 +194,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     vocation: member.vocation ?? HERO_VOCATION_NUMBER,
     appearance: member.appearance,
     name: member.name,
+    held: new Set(member.held ?? []),
     gains: { ...member.gains },
     equipped: equippedOf(member),
   }))

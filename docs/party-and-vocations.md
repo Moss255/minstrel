@@ -299,12 +299,38 @@ So skill points can be spent, in principle: the pool is one per character and
 the spend is per tree, which the record above confirms. **Nothing spends them
 yet**, and the menu has no skill screen.
 
+### Changing vocation
+
+**Done, 24 September 2026 — and almost nothing happens**, which is the payoff
+for having read the data shape first.
+
+`changeVocation` moves the index and ORs the "has been held" bit, exactly as
+the game's own setter at `0x02086598` does. Experience and level are already
+per vocation, so what a character had as a Minstrel waits where it was, and a
+vocation they have never been begins at no experience, which is level one.
+Shown live: the Hero at Minstrel level 20 becomes a Guardian at level 1 and
+comes back a Minstrel at level 20.
+
+Skill points are deliberately untouched. They are **one pool per character**
+and the spend is per tree; neither belongs to the vocation being left.
+
+`?vocation=0:0,0:6` changes party place 0 to vocation 0 and then back — ours,
+for driving, until the Abbey's own flow is found.
+
+**What is ours, and flagged in the code**: which vocations may be chosen, and
+anything Alltrades asks of a character before it will change them. The routine
+the Abbey calls **was not found** in the ARM9 or any overlay — the vocation
+setter's only caller is character creation — and the five engine functions the
+event VM still lacks are all in the 800 block, so it is not an event-script
+call either. It is most likely a menu, as the shop and the inn are. A read is
+out for it.
+
 ### What is still missing
 
-Alltrades and the change flow — the data shape is right for it now, and the
-routine that does it in the game has not been found. A skill screen, so the
-panels can be looked at and bought. And why every tree's eleventh panel costs
-nothing.
+The Abbey's own flow, above. A skill screen, so the panels can be looked at
+and bought — the data is read and the pool is modelled, and nothing spends it.
+Character creation, recruitment and alchemy. And why every tree's eleventh
+panel costs nothing.
 
 ## 3. What a character is
 

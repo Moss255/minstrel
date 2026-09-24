@@ -146,6 +146,7 @@ import {
 import {
   attendingStanding,
   COMPANION_MOTIONS,
+  changeVocation,
   companionFighter,
   companionLook,
   companionModel,
@@ -549,6 +550,10 @@ const storyFlags = new Set<number>()
  */
 let members: Member[] = [{ ...freshMember(undefined), equipped: STARTING_EQUIPMENT }]
 
+/** A vocation's name in the field menu's own words — `str_tm` 2100 on. */
+const vocationWord = (vocation: number): string =>
+  loaded?.menuWords?.get(VOCATION_WORDS + vocation) ?? `vocation ${vocation}`
+
 /** The level table a member's experience is read against — see `Member.vocation`. */
 const levelsFor = (member: Member): LevelTable | undefined => loaded?.levels.get(member.vocation)
 
@@ -576,6 +581,7 @@ function freshMember(attnpc: number | undefined): Member {
     // because what vocation an attending character has is not read — `attnpc`
     // carries a level, stats, a weapon and a shield, and no vocation at all.
     vocation: HERO_VOCATION_NUMBER,
+    held: new Set([HERO_VOCATION_NUMBER]),
     appearance: undefined,
     name: undefined,
     gains: {},
@@ -1049,6 +1055,22 @@ function begin(bytes: Uint8Array, map: string): void {
   // recruitment is built. See `recruit`.
   const asParty = params.get('party')
   if (asParty) recruit(asParty)
+  // `?vocation=1:3` changes party place 1 to vocation 3 — **ours**, standing
+  // in for Alltrades Abbey until the flow the Abbey uses is found. See
+  // `changeVocation`.
+  for (const one of (params.get('vocation') ?? '').split(',')) {
+    const asked = /^(\d+):(\d+)$/.exec(one)
+    const who = asked ? members[Number(asked[1])] : undefined
+    if (!asked || !who) continue
+    const to = Number(asked[2])
+    const was = who.vocation
+    changeVocation(who, to)
+    dressParty()
+    status(
+      `${nameFor(who)} was ${vocationWord(was)} at level ${levelOf({ ...who, vocation: was })?.level ?? '?'}` +
+        ` · now ${vocationWord(to)} at level ${levelOf(who)?.level ?? '?'}`,
+    )
+  }
   // `?save=1` writes a save where it stands — **ours**, and only for driving.
   // The church is the one place a player can record anything, which makes the
   // save impossible to exercise from outside without walking to a priest.
