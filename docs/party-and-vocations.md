@@ -185,6 +185,26 @@ Not yet read. The slice plan calls runtime character assembly "the hardest
 asset problem in the project", and it is the thing most likely to decide
 whether this phase's done-when is reachable.
 
+### The menu shows the party
+
+**Done, 24 September 2026.** The attributes panel knew only the Hero, because
+only the Hero had numbers. It now lists the party and the row chooses whose
+block to read.
+
+Looking at it in the browser immediately showed something no test would have:
+**Ivor came up as level 1 with 20 hit points.** He is level 3 with 25 in
+`attnpc`, and `companionFighter` already fights with those — the menu was
+reading him against the Minstrel's level table, so it showed the Hero's
+numbers under somebody else's name.
+
+A story companion does not level, so their numbers are `attnpc`'s own and
+`attendingStanding` builds them. They have no experience and no next level
+there, because they gain neither — and **no vocation**, because the record
+has no such column, so the line names none rather than borrowing the Hero's.
+
+Whoever is in no such table — the Hero, and anyone created later — is read
+against their vocation's level table, which is what levelling means.
+
 ## A correction this reading turned up elsewhere
 
 Reading the party led to the wiki's engine-function page, which said the

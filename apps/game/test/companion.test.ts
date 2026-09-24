@@ -1,6 +1,7 @@
 import type { AttendingCharacter } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
+  attendingStanding,
   companionFighter,
   companionLook,
   companionModel,
@@ -166,6 +167,21 @@ describe('the party, the Hero first', () => {
     // save writes null and the game reads it back as nothing.
     expect(partySaved(before)[0]?.attnpc).toBeNull()
     expect(after[0]?.attnpc).toBeUndefined()
+  })
+
+  it('gives a companion their own numbers, not a level table’s', () => {
+    // **Ivor is level 3 with 25 hit points in `attnpc`**, and the battle
+    // already fights with those. The menu read him against the Minstrel's
+    // level table instead and showed level 1 with the Hero's 20 — wrong in
+    // the menu and right nowhere.
+    const s = attendingStanding(ivor)
+    expect(s.level.level).toBe(3)
+    expect(s.level.maxHp).toBe(ivor.numbers.maxHp)
+    expect(s.level.strength).toBe(ivor.numbers.strength)
+    // They do not gain levels or experience, and `attnpc` names no vocation.
+    expect(s.next).toBeUndefined()
+    expect(s.exp).toBe(0)
+    expect(s.vocation).toBeUndefined()
   })
 
   it('names Ivor as he, as his events do, and others by name alone', () => {

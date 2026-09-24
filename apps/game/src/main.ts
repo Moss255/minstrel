@@ -135,6 +135,7 @@ import {
   NO_FIT,
 } from './collisionview.ts'
 import {
+  attendingStanding,
   COMPANION_MOTIONS,
   companionFighter,
   companionLook,
@@ -187,6 +188,7 @@ import {
   MENU_COMMANDS,
   MENU_SAYS,
   type MenuContext,
+  type MenuMember,
   type MenuSpell,
   type MenuState,
   moveCursor,
@@ -2536,12 +2538,67 @@ function nameOf(id: number): string {
   return name === undefined ? `item 0x${id.toString(16)}` : renderName(name)
 }
 
+/**
+ * How the menu reads one of the party.
+ *
+ * **A story companion's numbers are `attnpc`'s own, not a level table's.**
+ * Ivor is level 3 with 25 hit points in that table, and the battle already
+ * fights with those (`companionFighter`); reading him against the Minstrel's
+ * level table instead showed him as level 1 with the Hero's 20, which was
+ * wrong in the menu and right nowhere. `attnpc` has no vocation column, so
+ * his line names none — see `docs/party-and-vocations.md`.
+ *
+ * Whoever is in no such table — the Hero, and anyone created later — is read
+ * against their vocation's level table, which is what levelling means.
+ */
+function menuMember(member: Member): MenuMember {
+  const words = loaded?.menuWords
+  const along =
+    member.attnpc === undefined
+      ? undefined
+      : loaded?.attending.find((one) => one.id === member.attnpc)
+  if (along) {
+    return {
+      name: along.name,
+      standing: attendingStanding(along),
+      hp: member.hp,
+      mp: member.mp,
+      equipped: member.equipped,
+    }
+  }
+  const levels = levelsFor(member)
+  const now = levels ? standing(levels, member.exp, member.gains) : undefined
+  return {
+    name: nameFor(member),
+    // The vocation in the menu's own words — `str_tm` 2106, the Minstrel.
+    standing: now && {
+      ...now,
+      vocation: words?.get(VOCATION_WORDS + member.vocation) ?? now.vocation,
+    },
+    hp: member.hp,
+    mp: member.mp,
+    equipped: member.equipped,
+  }
+}
+
+/**
+ * What a member is called: the Hero's own name, or the attending character's.
+ * A member whose number is in no table falls back to their place, which
+ * nothing on this cartridge reaches.
+ */
+function nameFor(member: Member): string {
+  if (member.attnpc === undefined) return DEFAULT_CONTEXT.heroName
+  const who = loaded?.attending.find((one) => one.id === member.attnpc)
+  return who?.name ?? `party member ${member.attnpc}`
+}
+
 /** What the menu's panels are told. */
 function menuContext(): MenuContext {
   const levels = levelsFor(leader())
   const words = loaded?.menuWords
   const now = levels ? standing(levels, leader().exp, leader().gains) : undefined
   return {
+    party: members.map(menuMember),
     hero: DEFAULT_CONTEXT.heroName,
     map: loaded?.code,
     stage: storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined,

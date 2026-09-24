@@ -3,7 +3,7 @@ import { blockChance, type Fighter } from '@minstrel/sim'
 import type { Cue } from './battle-scene.ts'
 import type { Named } from './battle-text.ts'
 import type { Equipped } from './equipment.ts'
-import { type Gains, HERO_VOCATION_NUMBER } from './hero.ts'
+import { type Gains, HERO_VOCATION_NUMBER, type Standing } from './hero.ts'
 import { equippedOf, equippedRecord, type SaveMember } from './save.ts'
 
 /**
@@ -164,6 +164,44 @@ export function companionsAt(
   return members
     .slice(1)
     .flatMap((member) => attending.filter((who) => who.id === member.attnpc).slice(0, 1))
+}
+
+/**
+ * An attending character's own numbers, in the shape a level table's row has
+ * so that the menu can show them the same way.
+ *
+ * **A story companion does not level.** Their numbers are `attnpc`'s — Ivor is
+ * level 3 with 25 hit points there, and `companionFighter` already fights with
+ * them. Reading one against a level table instead gives the Hero's numbers
+ * under somebody else's name.
+ *
+ * Their experience is not in `attnpc` and neither is a next level, because
+ * they gain neither. **Nor is a vocation**: the record carries a level, nine
+ * stats, a weapon and a shield and nothing that names one of the thirteen, so
+ * the vocation is undefined rather than guessed — see
+ * `docs/party-and-vocations.md`.
+ */
+export function attendingStanding(who: AttendingCharacter): Standing {
+  const n = who.numbers
+  return {
+    vocation: undefined,
+    exp: 0,
+    next: undefined,
+    level: {
+      level: who.level,
+      exp: 0,
+      strength: n.strength,
+      resilience: n.resilience,
+      agility: n.agility,
+      deftness: n.deftness,
+      charm: n.charm,
+      magicalMight: n.magicalMight,
+      magicalMending: n.magicalMending,
+      maxHp: n.maxHp,
+      maxMp: n.maxMp,
+      skillPoints: 0,
+    },
+  }
 }
 
 /** The gender the game's own text gives a character, where it is known: Ivor's "He's got something or other he wants to talk about" (`ev02130`). */

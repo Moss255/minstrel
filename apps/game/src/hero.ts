@@ -275,7 +275,12 @@ export function withGains(row: LevelRow, gains: Gains): LevelRow {
 
 /** Where the Hero stands: their vocation, their level, and the next one. */
 export interface Standing {
-  readonly vocation: string
+  /**
+   * The vocation's name. **Undefined where there is none to give**: a story
+   * companion's numbers come from `attnpc`, which has no vocation column at
+   * all — see `docs/party-and-vocations.md`.
+   */
+  readonly vocation: string | undefined
   readonly exp: number
   /** This level's numbers, with the seeds' gains. */
   readonly level: LevelRow

@@ -130,11 +130,14 @@ function numbersText(context: MenuContext, item: number | undefined): string {
 }
 
 /** What the worn equipment adds, item by item as read; nothing when the numbers did not read. */
-function wornTotals(context: MenuContext): { attack: number; defence: number; agility: number } {
+function wornTotals(
+  context: MenuContext,
+  worn: Equipped | undefined = context.equipped,
+): { attack: number; defence: number; agility: number } {
   let attack = 0
   let defence = 0
   let agility = 0
-  for (const item of (context.equipped ?? new Map<Slot, number>()).values()) {
+  for (const item of (worn ?? new Map<Slot, number>()).values()) {
     const numbers = context.numbersOf?.(item)
     attack += numbers?.attack ?? 0
     defence += numbers?.defence ?? 0
@@ -144,9 +147,9 @@ function wornTotals(context: MenuContext): { attack: number; defence: number; ag
 }
 
 /** What the worn equipment adds, item by item as read. The words are ours. */
-function wornText(context: MenuContext): string {
+function wornText(context: MenuContext, worn?: Equipped | undefined): string {
   if (!context.numbersOf) return 'What equipment adds is not read.'
-  const { attack, defence, agility } = wornTotals(context)
+  const { attack, defence, agility } = wornTotals(context, worn)
   return `Equipment worn: attack +${attack}, defence +${defence}${agility ? `, agility +${agility}` : ''}.`
 }
 
@@ -160,13 +163,39 @@ function wornText(context: MenuContext): string {
  * line shows is what a battle would use, which is what makes the numbers
  * worth watching as the levels go by.
  */
-function fightingText(context: MenuContext, strength: number, resilience: number): string {
-  const worn = wornTotals(context)
+function fightingText(
+  context: MenuContext,
+  strength: number,
+  resilience: number,
+  wearing?: Equipped | undefined,
+): string {
+  const worn = wornTotals(context, wearing)
   return `In a fight: attack ${strength + worn.attack} · defence ${resilience + worn.defence} — ours, added.`
+}
+
+/**
+ * One of the party, as the menu shows them — see `Member` in `companion.ts`.
+ *
+ * The attributes panel used to know only the Hero, because only the Hero had
+ * numbers of their own. Everyone has now, so everyone is here.
+ */
+export interface MenuMember {
+  readonly name: string
+  /** Their level and numbers, when their vocation's level table read. */
+  readonly standing?: Standing | undefined
+  /** Hit points now, when wounded; full when undefined. */
+  readonly hp?: number | undefined
+  /** MP now, when spent; full when undefined. */
+  readonly mp?: number | undefined
+  readonly equipped?: Equipped | undefined
 }
 
 /** What a panel knows to say. */
 export interface MenuContext {
+  /**
+   * The party, the Hero first. Empty only before a cartridge is in.
+   */
+  readonly party?: readonly MenuMember[] | undefined
   readonly hero: string
   readonly map: string | undefined
   readonly stage: string | undefined
@@ -222,6 +251,11 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     if (state.acting) return { ...state, row: wrap(state.row, ITEM_ACTIONS.length) }
     const count = context?.bag?.items.size ?? 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
+  }
+  if (state.panel === 'status') {
+    // The attributes panel's row is which of the party is being read.
+    const count = context?.party?.length ?? 0
+    return count <= 1 ? state : { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'spells') {
     const count = castable(context).length
@@ -316,27 +350,50 @@ export function panelLines(
   const mp = word(MENU_WORDS.mp, 'MP')
   switch (panel) {
     case 'status': {
-      const s = context.standing
+      // **The whole party, and one of them at a time.** This showed only the
+      // Hero for as long as only the Hero had numbers; now every place has
+      // its own vocation, experience and equipment, so the row chooses whose
+      // to read and the rest are listed above it — see `MenuMember`.
+      const party = context.party ?? []
+      const at = party.length === 0 ? 0 : Math.min(state?.row ?? 0, party.length - 1)
+      const who = party[at]
+      const s = who?.standing ?? context.standing
+      const roster =
+        party.length > 1
+          ? party.map((member, i) => {
+              const l = member.standing?.level
+              const numbers = l
+                ? `level ${l.level} · HP ${Math.min(member.hp ?? l.maxHp, l.maxHp)}/${l.maxHp}`
+                : 'numbers not read'
+              return `${i === at ? '▸' : ' '} ${member.name} — ${numbers}`
+            })
+          : []
       if (!s) {
         return [
-          context.hero,
+          ...roster,
+          who?.name ?? context.hero,
           where,
           'Level, HP, MP and the rest are not read: the level table did not load.',
         ]
       }
+      const worn = who?.equipped ?? context.equipped
       const { level: l } = s
+      const hp = who ? who.hp : context.hp
+      const theirMp = who ? who.mp : context.mp
       return [
-        `${context.hero} — ${s.vocation}, level ${l.level}`,
+        ...roster,
+        `${who?.name ?? context.hero} — ${s.vocation ? `${s.vocation}, ` : ''}level ${l.level}`,
         `Exp. ${s.exp}${s.next ? `, level ${s.next.level} at ${s.next.exp}` : ''}`,
-        `HP ${Math.min(context.hp ?? l.maxHp, l.maxHp)}/${l.maxHp} · ${mp} ${Math.min(context.mp ?? l.maxMp, l.maxMp)}/${l.maxMp}`,
+        `HP ${Math.min(hp ?? l.maxHp, l.maxHp)}/${l.maxHp} · ${mp} ${Math.min(theirMp ?? l.maxMp, l.maxMp)}/${l.maxMp}`,
         `Strength ${l.strength} · Resilience ${l.resilience} · Agility ${l.agility} · Deftness ${l.deftness} · Charm ${l.charm}`,
         `Magical might ${l.magicalMight} · Magical mending ${l.magicalMending}`,
-        wornText(context),
-        fightingText(context, l.strength, l.resilience),
+        wornText(context, worn),
+        fightingText(context, l.strength, l.resilience, worn),
         'Which level-table column is which is inferred.',
         where,
       ]
     }
+
     case 'items': {
       if (!context.bag) return ['There is no bag yet.']
       const chosen = state?.panel === 'items' ? (state.acting?.row ?? state.row) : undefined

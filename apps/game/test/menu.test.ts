@@ -78,6 +78,76 @@ describe('the main menu', () => {
     expect(standing(table, 99).next).toBeUndefined()
   })
 
+  it('lists the whole party on the status panel, and reads one of them at a time', () => {
+    // **Only the Hero used to have numbers, so only the Hero was shown.** Now
+    // every place has a vocation, experience and equipment of its own, so the
+    // panel lists them and the row chooses whose block to read.
+    const row = (level: number, exp: number, maxHp: number) => ({
+      level,
+      exp,
+      strength: 9,
+      resilience: 8,
+      agility: 7,
+      deftness: 6,
+      charm: 5,
+      magicalMight: 4,
+      magicalMending: 3,
+      maxHp,
+      maxMp: 2,
+      skillPoints: 0,
+    })
+    const hero = { levels: [row(1, 0, 20)], unknown: [] }
+    const other = { levels: [row(1, 0, 33)], unknown: [] }
+    const context: MenuContext = {
+      hero: 'Hero',
+      map: 'C01',
+      stage: undefined,
+      party: [
+        { name: 'Hero', standing: standing(hero, 0), hp: 12 },
+        { name: 'Ivor', standing: standing(other, 0), hp: undefined },
+      ],
+    }
+    const first = panelLines('status', context, { row: 0, picking: undefined })
+    expect(first[0]).toBe('▸ Hero — level 1 · HP 12/20')
+    expect(first[1]).toBe('  Ivor — level 1 · HP 33/33')
+    expect(first[2]).toContain('Hero —')
+    expect(first[4]).toBe('HP 12/20 · MP 2/2')
+
+    // The second row reads Ivor's, and his are not the Hero's.
+    const second = panelLines('status', context, { row: 1, picking: undefined })
+    expect(second[0]).toBe('  Hero — level 1 · HP 12/20')
+    expect(second[1]).toBe('▸ Ivor — level 1 · HP 33/33')
+    expect(second[2]).toContain('Ivor —')
+    expect(second[4]).toBe('HP 33/33 · MP 2/2')
+
+    // **A member with no vocation says so by saying nothing** — `attnpc` has
+    // no vocation column, so a story companion's line names none rather than
+    // borrowing the Hero's.
+    const noVocation = panelLines(
+      'status',
+      {
+        ...context,
+        party: [{ name: 'Ivor', standing: { ...standing(other, 0), vocation: undefined } }],
+      },
+      { row: 0, picking: undefined },
+    )
+    expect(noVocation[0]).toBe('Ivor — level 1')
+
+    // A party of one is listed no differently from how it always was.
+    const alone = panelLines('status', { ...context, party: [context.party?.[0] as never] })
+    expect(alone[0]).toContain('Hero —')
+  })
+
+  it('moves between the party on the status panel, and not when there is one', () => {
+    const party = [{ name: 'Hero' }, { name: 'Ivor' }, { name: 'Erinn' }]
+    const context: MenuContext = { hero: 'Hero', map: undefined, stage: undefined, party }
+    const panel = { ...openMenu(), panel: 'status' as const, row: 0 }
+    expect(moveCursor(panel, 1, context).row).toBe(1)
+    expect(moveCursor(panel, -1, context).row).toBe(2)
+    const one = { ...context, party: [{ name: 'Hero' }] }
+    expect(moveCursor(panel, 1, one)).toBe(panel)
+  })
+
   it('lists the bag on the items panel, naming each item', () => {
     const bag = take(take(EMPTY_BAG, { gold: 20 }), { item: 0x55f0 })
     const context = { hero: 'Hero', map: undefined, stage: undefined, bag }
