@@ -24,6 +24,11 @@ Build the app first if you have not — `pnpm --filter @minstrel/game build`.
 
 All of these are **ours**, for development. None is a thing the game has.
 
+**This table is also the specification for the debug menu** that
+`docs/beyond-the-slice.md` defers — when that is built, this is the list it
+collects. So keep it complete: a route added to `main.ts` and not added here
+is one the menu will not know about.
+
 | | |
 |---|---|
 | `map=M13` | the map code — see "Finding a code" |
@@ -46,6 +51,20 @@ All of these are **ours**, for development. None is a thing the game has.
 | `fight=z000a,z000a` | the monsters `p` fights |
 | `bgm=BG_001`, `se=113` | play a track or an effect |
 | `probe=1` | put the scene camera, the real camera and the Hero's height over the floor on `window` as `__shot`, `__cam` and `__floor`. Off by default because it allocates every frame |
+| `talk=12` | stand behind that cast member and talk to them |
+| `wear=21002,20004` | those items into the bag and onto the Hero, to see them worn |
+| `bag=w,s:3` | one of every item in those tables into the bag — `w` weapons, `s` shields and so on |
+| `new=1` | start a new game past a kept save |
+| `keep=1` | keep the cartridge in the browser's own store, so every load after the first is instant |
+| `rom=/rom.nds` | fetch a cartridge from a URL instead of using the file picker |
+| `lighting=night` | build the map's night lighting whatever the hour |
+| `tempo=0.9` | multiply the music's tempo — a knob for judging by ear |
+| `collision=1` | draw the collision mesh over the map; `c` toggles it |
+| `fit=scale,x,y,z` | move and scale the collision, walked as well as drawn, to fit it over the room |
+| `room=`, `world=`, `person=` | the three scales, each also movable by keys — see `n`/`m`, `g`/`h`, `j`/`i` |
+| `pad=1` | show what a gamepad reports |
+| `axes=0,1,2,3` | move the sticks to other axes |
+| `lookbuttons=6,7` | read the look stick from two analog buttons |
 
 ## Set the stage, or the place will be empty of words
 

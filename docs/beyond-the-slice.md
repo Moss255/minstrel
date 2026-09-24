@@ -328,6 +328,32 @@ expect that to stop.
 
 ---
 
+## Deferred: a debug menu
+
+**Asked for 25 September 2026, and deliberately not built yet.**
+
+Everything a developer can do from outside is a URL parameter — `?look=`,
+`?party=`, `?vocation=`, `?revoke=`, `?give=`, `?level=`, `?event=`, `?fight=`
+and the rest, all listed in `docs/regions.md`. That is fine from a terminal
+and poor from a couch: it cannot be reached while playing, and the interesting
+cases are the ones you find *during* a session.
+
+So: **one debug menu, collecting them**, including the screens whose real
+entry points are elsewhere in the game — character creation, battle records —
+plus the plain conveniences like giving the player an item.
+
+**Why it is deferred rather than done now.** It is the wrong thing to build
+first, because a debug menu that reaches a screen makes the screen *look*
+finished while the flow that should lead to it is still missing. The real
+entry points come first; the debug menu is then a second way in, which is
+what it should be. See the note under Phase 2 about the field menu.
+
+It would earn its keep in **Phase 3**, where 74 areas have to be looked at
+one at a time — see "The bottleneck moves". Worth revisiting once a few areas
+have been witnessed and it is clear which parameters actually get reached for.
+
+---
+
 ## What could stop this finishing
 
 Named plainly, because the worry that prompted the scope decision is the right
