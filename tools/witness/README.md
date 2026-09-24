@@ -100,11 +100,12 @@ Two things to expect:
   character has depends on the chapter letter, which follows the story stage;
   at the default 2.1 most of the cartridge is silent. `--stage=3.1` and later
   is where a town outside the slice talks.
-- **A guessed line is flagged.** When no trigger names a character at the
-  stage asked for, the game says so on its status line and picks the first
-  line that covers it — and the witness marks that *worth a look*, because it
-  is. On an area far from its own chapter most speakers will be flagged, and
-  that is the tool working.
+- **A guessed line is shown, in amber, and not counted.** When no trigger
+  names a character at the stage asked for, the game says so on its status
+  line and picks the first line that covers it. That is worth a person's eye
+  and it is not a fault — and the difference matters, because the exit code
+  gates changes and on a town far from its own chapter nearly every speaker is
+  a guess. Counting those would make the gate mean nothing within a day.
 
 ## Why it is not `tools/shot` in a loop
 

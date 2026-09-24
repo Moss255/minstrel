@@ -174,6 +174,20 @@ const esc = (t) =>
  */
 const TROUBLE = /\b(no |not |nowhere|will not|failed|missing|cannot|unread)/i
 
+/**
+ * **The game saying it guessed is not the game being wrong.**
+ *
+ * When no trigger names a character at the stage asked for, `pickLine` takes
+ * the first line that covers it and says so — "so the first that does — a
+ * guess". That is worth a person's eye and it is not a fault, and the
+ * difference matters because the exit code gates changes: on a town far from
+ * its own chapter nearly every speaker is a guess, and letting those fail the
+ * run would make the gate mean nothing within a day.
+ *
+ * So it is shown, in its own colour, and not counted.
+ */
+const GUESSED = /—\s*a guess\b/i
+
 const STYLE = `<style>
   :root { color-scheme: dark }
   body { margin: 0; padding: 24px; background: #14161a; color: #e6e8ec;
@@ -189,6 +203,7 @@ const STYLE = `<style>
   .where, .status { color: #9aa1ad; font-size: 12px; margin-top: 4px;
                     font-family: ui-monospace, monospace; word-break: break-word }
   .bad { color: #ff9b9b }
+  .guess { color: #d9b25f }
   .ok { color: #9ae6a0 }
   .none { padding: 40px 12px; text-align: center; color: #ff9b9b }
   table { border-collapse: collapse; width: 100% }
@@ -230,9 +245,10 @@ async function witness(area) {
     // line is the game's own account of what went wrong, so it is read for
     // trouble rather than only shown.
     const blank = !where.toUpperCase().includes(expect.toUpperCase())
-    const wrong = TROUBLE.test(status)
-    shots.push({ file, label, where, status, concern: blank || wrong })
-    const note = blank ? ' — NO MAP DRAWN' : wrong ? ' — trouble' : ''
+    const guessed = GUESSED.test(status)
+    const wrong = !guessed && TROUBLE.test(status)
+    shots.push({ file, label, where, status, guessed, concern: blank || wrong })
+    const note = blank ? ' — NO MAP DRAWN' : wrong ? ' — trouble' : guessed ? ' — a guess' : ''
     console.log(`  ${label} — ${status || where}${note}`)
   }
 
@@ -285,6 +301,7 @@ async function witness(area) {
 
   const failed = shots.filter((s) => s.failed).length
   const concerns = shots.filter((s) => s.concern).length
+  const guesses = shots.filter((s) => s.guessed).length
   writeFileSync(
     join(outDir, 'index.html'),
     `<!doctype html>
@@ -292,7 +309,7 @@ async function witness(area) {
 <title>witness ${esc(area)}</title>
 ${STYLE}
 <h1>witness · ${esc(area)}${stage ? ` · stage ${esc(stage)}` : ''}${time ? ` · ${esc(time)}` : ''}</h1>
-<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''} · ${esc(new Date().toISOString())}</p>
+<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''}${guesses ? ` · <span class="guess">${guesses} the game guessed</span>` : ''} · ${esc(new Date().toISOString())}</p>
 <div class="grid">
 ${shots
   .map(
@@ -301,7 +318,7 @@ ${shots
     <figcaption>
       <div class="label">${esc(s.label)}</div>
       <div class="where">${esc(s.where)}</div>
-      <div class="status${s.concern ? ' bad' : ''}">${esc(s.status)}</div>
+      <div class="status${s.concern ? ' bad' : s.guessed ? ' guess' : ''}">${esc(s.status)}</div>
     </figcaption>
   </figure>`,
   )
@@ -309,7 +326,9 @@ ${shots
 </div>
 `,
   )
-  console.log(`  → ${shots.length} views, ${failed} failed, ${concerns} worth a look\n`)
+  console.log(
+    `  → ${shots.length} views, ${failed} failed, ${concerns} worth a look${guesses ? `, ${guesses} the game guessed` : ''}\n`,
+  )
   return {
     area,
     views: shots.length,
