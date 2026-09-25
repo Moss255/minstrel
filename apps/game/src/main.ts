@@ -3017,7 +3017,13 @@ function askPatty(
   const before: Roster = { party: members, kept: withPatty }
   const done =
     asked.does === 'recruit'
-      ? applyFor(before, { ...freshMember(undefined), vocation: asked.vocation })
+      ? applyFor(before, {
+          ...freshMember(undefined),
+          vocation: asked.vocation,
+          // What the eight screens settled on — see `CREATION_ORDER`.
+          look: asked.look,
+          sex: asked.look.sex,
+        })
       : asked.does === 'callUp'
         ? callUp(before, asked.at)
         : asked.does === 'dropOff'
@@ -3037,7 +3043,10 @@ function askPatty(
           : asked.does === 'dropOff'
             ? (pattySay(PATTY_SAYS.takeABreak) ?? 'They stay with Patty.')
             : (pattySay(PATTY_SAYS.leaves) ?? 'They leave for good.')
-  return { ...state, said: [said], row: 0 }
+  // **Back to her menu when it is done**, which is what her step 4 does: it
+  // says "All done. Your application has been processed!" and returns. Staying
+  // on the last knob made a finished character look unfinished.
+  return { ...state, patty: { at: 'top' }, said: [said], row: 0 }
 }
 
 /** One of Patty's lines — see `pattyLines`. */

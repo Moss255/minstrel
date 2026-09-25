@@ -118,19 +118,73 @@ export const CREATION_ORDER: readonly (keyof Appearance)[] = [
   'eyes',
 ]
 
+/**
+ * How many settings each knob has.
+ *
+ * The game's own counts, from overlay 9's grids: two sexes, five figures, ten
+ * each for hair, hair colour and face, eight each for the two colours. The
+ * hair *shape* is ours — the game's ten hair options are what this file calls
+ * a style, and the `a`–`e` variants are a separate axis the screens do not
+ * offer. See `docs/party-and-vocations.md`.
+ */
+export const KNOB_SETTINGS: Readonly<Record<keyof Appearance, number>> = {
+  sex: 2,
+  face: FACES,
+  hair: HAIR_STYLES,
+  hairVariant: HAIR_VARIANTS.length,
+  hairColour: HAIR_COLOURS,
+  build: BUILDS_A_SEX,
+  skin: SKINS,
+  eyes: EYES,
+}
+
+/**
+ * How many settings each knob's **creation screen** offers, which is not
+ * always how many the field holds.
+ *
+ * Read from overlay 9's grids: two sexes, five figures, **ten** hairstyles,
+ * ten hair colours, ten faces, **eight** skin colours and **eight** eye
+ * colours. Two of those differ from {@link KNOB_SETTINGS}:
+ *
+ * - the cartridge has **24** hair styles and the screen offers ten — ten a
+ *   sex, INFERRED, since the files are `bg_cm_ht_m` and `bg_cm_ht_f`;
+ * - the eye-colour field is four bits and so holds sixteen, but the screen is
+ *   a 4×2 grid of **eight**.
+ *
+ * So the screens are a subset, and the appearance panel can still reach the
+ * rest. Which settings the ten hairstyles *are* is **not established**.
+ */
+export const CREATION_SETTINGS: Readonly<Record<keyof Appearance, number>> = {
+  sex: 2,
+  build: 5,
+  hair: 10,
+  hairColour: 10,
+  face: 10,
+  skin: 8,
+  eyes: 8,
+  hairVariant: HAIR_VARIANTS.length,
+}
+
+/** What a knob is called, in our words — the game's captions are drawn art, not text. */
+export const KNOB_NAMES: Readonly<Record<keyof Appearance, string>> = {
+  sex: 'Gender',
+  build: 'Figure',
+  hair: 'Hairstyle',
+  hairColour: 'Hair Colour',
+  face: 'Face',
+  skin: 'Skin Colour',
+  eyes: 'Eye Colour',
+  hairVariant: 'Hair shape',
+}
+
 /** An appearance with one knob turned, wrapping round — what a creation screen does. */
 export function turned(look: Appearance, knob: keyof Appearance, by: number): Appearance {
-  const counts: Record<keyof Appearance, number> = {
-    sex: 2,
-    face: FACES,
-    hair: HAIR_STYLES,
-    hairVariant: HAIR_VARIANTS.length,
-    hairColour: HAIR_COLOURS,
-    build: BUILDS_A_SEX,
-    skin: SKINS,
-    eyes: EYES,
-  }
-  return { ...look, [knob]: wrap(look[knob] + by, counts[knob]) }
+  return { ...look, [knob]: wrap(look[knob] + by, KNOB_SETTINGS[knob]) }
+}
+
+/** An appearance with one knob set outright — what choosing a grid cell does. */
+export function setKnob(look: Appearance, knob: keyof Appearance, to: number): Appearance {
+  return { ...look, [knob]: wrap(to, KNOB_SETTINGS[knob]) }
 }
 
 /** The face part an appearance names: `p_f006`. */

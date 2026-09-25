@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   type Appearance,
   buildOf,
+  CREATION_ORDER,
+  CREATION_SETTINGS,
   EYES,
   FACES,
   faceOf,
@@ -12,8 +14,10 @@ import {
   HERO_APPEARANCE,
   hairColourOf,
   hairOf,
+  KNOB_SETTINGS,
   SKINS,
   scaleOf,
+  setKnob,
   turned,
 } from '../src/appearance.ts'
 import { SEX } from '../src/equipment.ts'
@@ -126,6 +130,43 @@ describe('the build', () => {
     const male = scaleOf(buildOf(look({ sex: SEX.male, build: 4 }), TABLE))
     const female = scaleOf(buildOf(look({ sex: SEX.female, build: 4 }), TABLE))
     expect(male.height).not.toBeCloseTo(female.height, 5)
+  })
+})
+
+describe('what the creation screens offer', () => {
+  it('asks in overlay 9’s own order', () => {
+    // sex → figure → hair → hair colour → face → skin colour → eye colour,
+    // which is its thirteen-step table; the name is asked after and is not
+    // built. `build` is the game's "figure".
+    expect(CREATION_ORDER).toEqual(['sex', 'build', 'hair', 'hairColour', 'face', 'skin', 'eyes'])
+  })
+
+  it('offers what the grids offer, which is not always the field’s range', () => {
+    // **Two of them differ**, and that is the point of having both tables:
+    // the cartridge has 24 hair styles and the screen offers ten; the
+    // eye-colour field is four bits and the screen is a 4×2 grid of eight.
+    expect(CREATION_SETTINGS.hair).toBe(10)
+    expect(KNOB_SETTINGS.hair).toBe(HAIR_STYLES)
+    expect(CREATION_SETTINGS.eyes).toBe(8)
+    expect(KNOB_SETTINGS.eyes).toBe(EYES)
+    // And where they agree, they agree.
+    for (const knob of ['sex', 'build', 'hairColour', 'skin'] as const) {
+      expect(CREATION_SETTINGS[knob], knob).toBe(KNOB_SETTINGS[knob])
+    }
+  })
+
+  it('never offers a setting the field cannot hold', () => {
+    for (const knob of CREATION_ORDER) {
+      expect(CREATION_SETTINGS[knob], knob).toBeLessThanOrEqual(KNOB_SETTINGS[knob])
+    }
+  })
+})
+
+describe('setting a knob outright', () => {
+  it('is what choosing a grid cell does, and wraps what is out of range', () => {
+    expect(setKnob(look(), 'face', 11).face).toBe(11)
+    expect(setKnob(look(), 'face', FACES).face).toBe(0)
+    expect(setKnob(look(), 'face', -1).face).toBe(FACES - 1)
   })
 })
 

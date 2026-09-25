@@ -1,6 +1,17 @@
 import { POT_CATEGORIES, POT_LABELS, type PotEntry, type PotSort } from './alchemy.ts'
+import {
+  type Appearance,
+  CREATION_ORDER,
+  CREATION_SETTINGS,
+  faceOf,
+  HERO_APPEARANCE,
+  hairColourOf,
+  hairOf,
+  KNOB_NAMES,
+  setKnob,
+} from './appearance.ts'
 import { type Bag, bagLines } from './bag.ts'
-import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
+import { choicesFor, type Equipped, SEX, SLOTS, type Slot } from './equipment.ts'
 import type { Standing } from './hero.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
@@ -197,7 +208,17 @@ export interface PotWhere {
  * question. Her own steps 1 to 5, without the Rapportal side.
  */
 export interface PattyWhere {
-  readonly at: 'top' | 'callUp' | 'dropOff' | 'partWith' | 'vocation'
+  readonly at: 'top' | 'callUp' | 'dropOff' | 'partWith' | 'vocation' | 'making'
+  /**
+   * The character being made, while `at` is `making` — the vocation chosen,
+   * the look so far, and which of `CREATION_ORDER` is being asked.
+   *
+   * **One screen a knob**, which is how overlay 9 does it: its thirteen-step
+   * table is a step per knob, each laying out a grid and reading one choice.
+   */
+  readonly making?:
+    | { readonly vocation: number; readonly look: Appearance; readonly at: number }
+    | undefined
 }
 
 export function openPatty(): PattyWhere {
@@ -424,6 +445,10 @@ function pattyRows(context: MenuContext | undefined, where: PattyWhere | undefin
   // Every list has a last row that goes back, so none can be a dead end.
   if (where.at === 'top') return pattyTop(context).length + 1
   if (where.at === 'vocation') return RECRUIT_VOCATIONS.length + 1
+  if (where.at === 'making') {
+    const knob = CREATION_ORDER[where.making?.at ?? 0]
+    return knob ? CREATION_SETTINGS[knob] : 0
+  }
   if (where.at === 'dropOff') return (context?.party?.length ?? 0) + 1
   return (context?.kept?.length ?? 0) + 1
 }
@@ -528,7 +553,12 @@ export interface Taken {
   /** What Patty was asked to do — see `recruit.ts`. */
   readonly patty?:
     | { readonly does: 'callUp' | 'dropOff' | 'partWith'; readonly at: number }
-    | { readonly does: 'recruit'; readonly vocation: number }
+    | {
+        readonly does: 'recruit'
+        readonly vocation: number
+        /** The look its screens settled on — see `CREATION_ORDER`. */
+        readonly look: Appearance
+      }
   /** Turn one of the appearance's knobs — see `turned` in `appearance.ts`. */
   readonly turn?: { readonly knob: string; readonly by: number }
 }
@@ -590,9 +620,33 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     const back = { ...state, patty: { at: 'top' as const }, row: 0, said: undefined }
     if (where.at === 'vocation') {
       const vocation = RECRUIT_VOCATIONS[state.row]
-      return vocation === undefined
-        ? { state: back, talk: false }
-        : { state, talk: false, patty: { does: 'recruit', vocation } }
+      if (vocation === undefined) return { state: back, talk: false }
+      // **The vocation is the first question, and the appearance follows** —
+      // exactly as her step 4 hands off to overlay 9.
+      return {
+        state: {
+          ...state,
+          patty: { at: 'making', making: { vocation, look: HERO_APPEARANCE, at: 0 } },
+          row: 0,
+          said: undefined,
+        },
+        talk: false,
+      }
+    }
+    if (where.at === 'making') {
+      const making = where.making
+      const knob = making && CREATION_ORDER[making.at]
+      if (!making || !knob) return { state: back, talk: false }
+      const look = setKnob(making.look, knob, state.row)
+      const next = making.at + 1
+      // The last knob answered files the character with Patty.
+      if (next >= CREATION_ORDER.length) {
+        return { state, talk: false, patty: { does: 'recruit', vocation: making.vocation, look } }
+      }
+      return {
+        state: { ...state, patty: { at: 'making', making: { ...making, look, at: next } }, row: 0 },
+        talk: false,
+      }
     }
     const most =
       where.at === 'dropOff' ? (context?.party?.length ?? 0) : (context?.kept?.length ?? 0)
@@ -946,6 +1000,32 @@ export function panelLines(
           her(PATTY_SAYS.greeting, 'So, what can I do for you, sweetie?'),
           ...pattyTop(context).map((one, i) => `${mark(i === row)}${label(one.label, one.at)}`),
           `${mark(row >= pattyTop(context).length)}Cancel`,
+          ...(state?.said ?? []),
+        ]
+      }
+      if (where.at === 'making') {
+        // **One screen a knob**, as overlay 9 has it. The captions there are
+        // drawn art rather than text, so the knob's name is ours; what each
+        // setting *is* comes from the look being built, so the rows show the
+        // part a choice names where there is one.
+        const making = where.making
+        const knob = making && CREATION_ORDER[making.at]
+        if (!making || !knob) return ['Nothing is being made.']
+        const shown = (at: number) => {
+          const look = setKnob(making.look, knob, at)
+          if (knob === 'sex') return at === SEX.female ? 'Female' : 'Male'
+          if (knob === 'face') return faceOf(look)
+          if (knob === 'hair') return hairOf(look)
+          if (knob === 'hairColour') return hairColourOf(look)
+          return `${at + 1}`
+        }
+        return [
+          her(PATTY_SAYS.whatKind, 'What kinda person are you looking for?'),
+          `${KNOB_NAMES[knob]} — ${making.at + 1} of ${CREATION_ORDER.length}`,
+          ...Array.from(
+            { length: CREATION_SETTINGS[knob] },
+            (_, i) => `${mark(i === row)}${shown(i)}`,
+          ),
           ...(state?.said ?? []),
         ]
       }

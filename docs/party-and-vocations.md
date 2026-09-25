@@ -572,12 +572,24 @@ or on the list, **never both**, which is how the game has it — her list *is*
 the thirteen-record array, and the party is four slots naming ids in it. The
 save keeps the list beside the party.
 
-**Two things that are not built and say so.** Overlay 9's eight screens — sex,
-figure, hair, hair colour, face, skin colour, eye colour, name — do not run
-here: a recruit is made with a default look and the appearance panel dresses
-them after. And **nobody asks for a name**; the game offers 201 given names to
-roll from (`str_cm` 20000–20100 and 21000–21100) and neither those nor the
-keyboard is read, so an unnamed recruit goes by their trade.
+**The creation screens run at the moment of recruiting**, one knob a screen,
+in overlay 9's own order: **sex → figure → hair → hair colour → face → skin
+colour → eye colour**. Seven screens, then Patty says "That's it! All done.
+Your application has been processed!" — her message 22 — and returns to her
+menu with the character on her list.
+
+`CREATION_SETTINGS` is what the *screens* offer and `KNOB_SETTINGS` what the
+*field* holds, because **two of them differ**: the cartridge has 24 hair
+styles and the screen offers ten (ten a sex, INFERRED from `bg_cm_ht_m` and
+`bg_cm_ht_f`), and the eye-colour field is four bits while the screen is a
+4×2 grid of eight. Which ten hairstyles the screen offers is **not
+established**, so ours are the first ten.
+
+**The name is the one screen that does not run.** It is overlay 9's eighth,
+with its own keyboard (`keyboard_cm.bin`), and the game offers **201 given
+names** to roll from — `str_cm` 20000–20100 male and 21000–21100 female.
+Neither the keyboard nor those names is read, so an unnamed recruit goes by
+their trade: "a Warrior".
 
 **A bug this turned up**: `nameFor` called *any* unnamed created character
 "Hero", so Patty's list showed a second Hero the moment it had somebody on it.
