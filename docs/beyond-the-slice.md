@@ -492,10 +492,19 @@ Every hour spent there is repaid seventy-four times.
 
 - Phases 0 to 2 are the slice's kind of work, and the slice's calibration
   applies to them. They are weeks, not months.
-- Phase 3 is a different kind of work and its cost is the witness loop, which
-  has never been measured here. **Measure it**: take one area outside the slice
-  through Phase 3 end to end, time it, and multiply by 74. That single
-  measurement is worth more than any estimate in this document.
+- Phase 3 is a different kind of work and its cost is the witness loop.
+  **Measured, 25 September 2026.** Zere (`M02`) end to end: **28 views in five
+  minutes** of machine time, and the reading of them is the same order again.
+  Stornway before it was 67 views in eleven minutes. So an area is roughly a
+  **quarter-hour of attention**, not an evening, and 74 of them is on the
+  order of a fortnight of days rather than a year of them.
+
+  Two caveats, because a single measurement is easy to over-trust. Zere is a
+  small town — Coffinwell next door has seventeen doorways to Zere's nine and
+  207 triggers to its 90, and takes longer. And the machine time is the cheap
+  half: what the phase is really sized by is somebody reading the page, which
+  the tool cannot do. `docs/areas.md` records each area's own number as it
+  goes, so the average improves rather than resting on the first.
 - Phase 4 is Phase 3 plus one translation job.
 
 The mitigation for a project that might not finish is not a better estimate. It
