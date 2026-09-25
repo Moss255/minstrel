@@ -1007,22 +1007,39 @@ type one.
 None of this is guesswork about the game; it is work not done. Listed so that
 what the phase left behind is visible rather than discovered later.
 
-- **Character creation itself.** `?party=` makes the *thing* a recruit is — a
-  member with no `attnpc`, a vocation and an appearance — but nothing asks a
-  player for a name, a face, a hair style or proportions. A preset is
-  currently the whole of an appearance, which means choosing one chooses face
-  and clothes together rather than separately.
-- **Recruitment at the Quester's Rest**, which is where the game makes them.
-- **Alltrades and the vocation change flow.** `Member.vocation` is a field
-  nothing can change in play.
-- **The skill trees.** Only the 12×5 table of tree *numbers* is read — no
-  panels, costs, abilities or unlock levels — and skill points are read and
-  shown and **cannot be spent**.
-- **Alchemy and mini medals**, which the phase lists and which nothing here
-  has touched.
-- **Hair.** A preset names none, so every created character wears the Hero's.
-  Where a preset's hair comes from — if it comes from anywhere — is on the
-  wiki's "not established" list.
+**Rewritten 25 September 2026.** This list had gone stale in the worst
+direction: it named character creation, recruitment, Alltrades, the skill
+trees and alchemy as missing, and all five had been built — three of them
+described as built *elsewhere in this same file*. What follows is what is
+actually left.
+
+- **Mini medals.** Both reward tables are read — ten milestone rewards and six
+  repeatable — and **nothing hands one over or spends one**. Nothing in
+  `apps/game/src` so much as names them. How many exist is not established
+  either: item 22039 is the medal, no table counts them, and quests award them
+  too. See §"Mini medals" above.
+- **Name entry.** The seven knob screens are built and run both for the Hero
+  (`askCreation`) and for a recruit (Patty's step 4), but the game's eighth
+  screen is the name and this has none. One byte a character, at most twelve,
+  `0xFF` a space, in game-internal glyph codes rather than ASCII —
+  `Member.name` holds a string and nothing asks a player to type one. The 201
+  given names in `str_cm` (20000–20100 male, 21000–21100 female) and
+  `keyboard_cm.bin` are both unread.
+- **Three of the seven knobs are read and not drawn**: skin colour, eye
+  colour and hair colour. Each is a palette swap and nothing in `render` swaps
+  one, so the creation screens offer them and the figure does not change. Not
+  Phase 2's work.
+- **Where a preset's hair comes from**, if anywhere. The record names none, so
+  a character made from a preset wears the Hero's. Still on the wiki's "not
+  established" list — this one *is* an unknown rather than work not done.
+- **What writes the party slots and the count.** Three reads of `+0x397c` in
+  the ARM9 and **no write anywhere**, in the ARM9 or any overlay. This was
+  written down as the thread to pull when recruitment was implemented;
+  recruitment is now implemented and the thread is still unpulled.
+- **How a battle's experience is split among the party.** The game pays each
+  member — its result strings name up to four — and the split itself has not
+  been found on the cartridge. Only the leader earns anything here, which a
+  party of four makes visible.
 
 ### The menu shows the party
 

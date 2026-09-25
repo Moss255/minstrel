@@ -292,9 +292,9 @@ self-consistent by name, `BG_001` selecting `BANK_BG_001` selecting
 `bgm.sdat` holds 82 named sequences, 82 banks, 81 wave archives and 3 streams.
 They extract under their own names.
 
-What remains is **playback** — nothing decodes SSEQ's sequence commands, SBNK's
-instruments or SWAR's ADPCM. That is a different job, scheduled late, and having
-the resources named, extracted and chained is its prerequisite.
+Playback came later and is done: `packages/audio` decodes SSEQ's sequence
+commands, SBNK's instruments and SWAR's samples, and having the resources
+named, extracted and chained was its prerequisite.
 
 An important subtlety in the record table: only sequence, sequence-archive,
 bank, wave-archive and stream records carry file ids. Treating every record kind
@@ -675,9 +675,13 @@ what is in there is a map's **textures**, which is why a map assembled from the
 They use the same container as `.bmdj` and `.bats`. **The string table reads on
 667 of 667**, and the header's own string count matches the names found on 667
 of 667 — so the container header is right, and the earlier note here that the
-shared parser "cannot read them" was too broad. It is the *record stream* that
-is not read: a walk of `M01M0000.bmbl` desynchronises after five records, and
-`readDataTable` throws on 387 of the 667 for that reason.
+shared parser "cannot read them" was too broad.
+
+**The record stream reads too, since the record header's padding was
+understood.** This entry said it desynchronised after five records and that
+`readDataTable` threw on 387 of the 667; every file now walks exactly to its
+string table, which is the check
+`tools/harness/test/cartridge.test.ts` makes.
 
 What the string table holds is the useful part. `M01M0000.bmbl` names twelve:
 its own two textures (`M01M00T1`, `M01M00T2`), the map itself (`M01M0000`), and
@@ -691,19 +695,23 @@ graph, and it is the first thing found that says which maps reach which — the
 map index carries no link field, and this was presumed to be in the event
 bytecode.
 
-**It is adjacency, not per-door targeting.** `M01` has ten doorway models
-(`M01M00D1`..`DA`) and names nine maps; across the cartridge the two counts
-agree on only 60 of the 172 maps that have both. So the set of neighbours is
-here; which doorway leads to which of them is not, and would have to come from
-the record stream.
+**The string table is adjacency, not per-door targeting.** `M01` has ten
+doorway models (`M01M00D1`..`DA`) and names nine maps; across the cartridge
+the two counts agree on only 60 of the 172 maps that have both. So the set of
+neighbours is what the *names* give — and which doorway leads to which of them
+came from the record stream, exactly as this entry predicted it would have to.
+See "Answered since" below.
 
-Nothing is parsed from them yet and no parser claims them. What the record tags
-mean is not established: the one reading that looked clean — tag `0x6c`, two
-values `0` and `9`, the byte offsets of the two texture names — is not
-trustworthy on its own, because offset `0` is a valid name and zero-valued
-fields are everywhere, so any scan for "values that resolve to a string" reports
-the first name constantly. That trap is why the record stream is being left
-alone rather than guessed at.
+**Three tags of the stream are read; the rest are not.** `0x72`, `0x73` and
+`0x74` are the transitions, and they were settled because each has a fixed
+destination slot and a fixed distance to the arrival, so there was nothing to
+search for and so nothing to get wrong. What the other tags mean is still not
+established, and the reason is worth keeping: the one reading that looked
+clean — tag `0x6c`, two values `0` and `9`, the byte offsets of the two
+texture names — is not trustworthy on its own, because offset `0` is a valid
+name and zero-valued fields are everywhere, so any scan for "values that
+resolve to a string" reports the first name constantly. That trap is why the
+rest of the stream is left alone rather than guessed at.
 
 **`.spr` — the format most of a village's cast is drawn from.** 1,316 files in
 `/data/ani`, a directory nothing had opened. **24 of the slice's 33 villagers
@@ -822,20 +830,26 @@ a sequence index would sit in 0–81, and 68 records is far too few to cover ~1,
 maps. The per-map `.bats` and `.bmdj` files parse completely and carry no music
 field. Recorded as an unsolved lead, not an answer.
 
-**Where a door leads.** Not located, with three candidates ruled out: the map
-index carries no link field, the per-map `.bats` tables are float-valued fog and
-lighting, and `apinfo.bin` is battle-road and network data. The remaining
-candidate is the event scripts, which fits — doors in this kind of game are
-events rather than geometry.
+**Answered since, and kept here as history.** Three entries stood on this list
+after they had been settled, and were caught on 25 September 2026 by reading
+the code against them rather than by anything going wrong.
 
-**`SB2` event script bytecode.** Every event unpacks to one `.stb` carrying
-magic `SB2\0` plus one string table per language. Per-event data exists as data,
-with its text separated from its structure — a strong signal — but whether `SB2`
-is bytecode for an interpreter or parameters for hardcoded routines has not been
-examined.
-
-**SSEQ/SBNK/SWAR playback.** Resources are named, extracted and chained;
-nothing decodes sequence commands, instruments or ADPCM.
+- **Where a door leads** — *located.* It is the `.bmbl` record stream, not the
+  event scripts as guessed here: tag `0x72` carries a doorway whole, and
+  `0x73`+`0x74` a trigger and the action that says what it does. The
+  destination is a fixed slot in each form and the arrival is always three
+  slots past it. `packages/game-formats/src/transitions.ts` reads both forms,
+  and `tools/harness/test/cartridge.test.ts` checks every `.bmbl`'s doorways
+  against its own string table — two halves of the file, read by different
+  code, agreeing.
+- **`SB2` event script bytecode** — *bytecode, for an interpreter.* Read in
+  full: sections, routines, instructions and strings in
+  `packages/game-formats/src/script.ts`, the interpreter in
+  `apps/game/src/event.ts`, which now answers **226** engine functions with
+  five left across the whole cartridge. `docs/event-scripts.md` is the write-up.
+- **SSEQ/SBNK/SWAR playback** — *decoded.* `packages/audio` has the sequencer,
+  the channel mixer and the worklet; `decodeWave`, `readSseq`, `readSbnk` and
+  `readSwar` are in `@minstrel/nitro-snd`. `?bgm=BG_001` plays a track.
 
 ---
 

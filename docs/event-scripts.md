@@ -1541,12 +1541,18 @@ whole point.
 
 ## 7. Open questions
 
-- What each engine function does, beyond the hundred the host now plays.
-  `apps/game/src/event.ts` names the reading beside each; 90 numbers across
-  the cartridge are still answered with 0 and counted, and
-  `apps/game/test/event-coverage.test.ts` prints them in the order the story
-  wants them. Of the morning's own 21, only 509, 589, 713, 714, 724 and 725
-  are left.
+- What each engine function does, beyond the **226** the host now plays.
+  `apps/game/src/event.ts` names the reading beside each, and
+  `apps/game/test/event-coverage.test.ts` prints what is left in the order the
+  story wants it. **Five numbers** across the whole cartridge are still
+  answered with 0 and counted — `843`, `807`, `837`, `839`, `844` — and the
+  slice's own area wants none of them. The morning's own 21 are all answered;
+  509, 589, 713, 714, 724 and 725 were the last of them and are done.
+
+  This bullet said 90 and "the hundred the host now plays" until 25 September
+  2026, long after §"What the cartridge asks for" above had the real counts.
+  The table there is generated from the cartridge; this list is written by
+  hand, so where they disagree the table is right.
 - What starts the morning. No trigger names it; a new game plays it.
 - The order the sections run in, and whether 300 runs after 100 or beside it.
 - `0x0E` 42–45, `0x12` and `0x19` beyond the cases seen.
