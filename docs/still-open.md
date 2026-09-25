@@ -559,6 +559,46 @@ had put a number on it before.
 The way down is step 1: more of the selection coming from triggers. Every
 character a trigger does name is chosen the game's way already.
 
+## 5b. Fifty-six maps draw every piece at the origin
+
+**Found 25 September 2026, from a play report**: in `D03M06` a door stands as
+a flat slab in the middle of the room, intersecting the floor, beside the
+party. The same in `C02M02`.
+
+**It is not the doorways.** Their records are reciprocal, the arrival
+positions match where the Hero lands to the digit, and the 0.96 gap between
+the two north volumes is ordinary — 27 side-by-side pairs on the cartridge
+have one. All of that was checked and none of it is the fault.
+
+**The pieces are unplaced.** `MapPlacement` in `mapmanifest.ts` says what that
+looks like, and it is exactly what the screenshot shows:
+
+> the village's ten doorways are ten models each spanning about a unit and a
+> half from the origin, and without this they are drawn stacked on top of each
+> other in the middle of the map
+
+`D03M0600.bmdj` has **nine resources and not one placement**, so its two door
+models, its extra piece and its collision all sit at the origin.
+
+**And it is deliberate, which is the part to fix.** `readMapManifest` sets
+`placementsPair` false when the placement records do not pair one-to-one with
+the resources, and leaves every resource unplaced rather than risk "a
+positional guess that could be off by one all the way down". That is careful
+reasoning with a worse outcome than the risk it avoids: a door in the wrong
+place is a door in the wrong place, and a door stacked at the origin is a slab
+through the floor of every room.
+
+**Fifty-six of the 755 manifests are unpaired**, and they include
+`C01M0000` — Stornway's own main map — as well as `C02M0200` and
+`D03M0600`. 1,010 resources across the cartridge are left unplaced against
+4,332 placed.
+
+**What a fix wants** is the pairing those 56 actually use. A resource carries
+a `slot`, and a placement carries a `parent` naming one, and the file's own
+note says slot and list position "do not track each other" — so pairing by
+slot rather than by order is the thing to try before falling back on refusing
+to place at all.
+
 ## 6. The repository itself
 
 - **Nothing is checked automatically.** The gate is `pnpm typecheck && pnpm
