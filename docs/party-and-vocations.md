@@ -160,12 +160,59 @@ Patty edits is the bitmask at `0x020fefec`. What is established is the
 negative and the two globals; that the mirror is written by a bulk copy is the
 only mechanism left standing, not something seen happening.
 
-**What is genuinely still open** is narrower than this entry used to claim:
-not "what writes `+0x397c`" but **what Patty's confirm does to the roster
-bitmask**, and when the mirror is refreshed from it. The state's initialiser
-is `0x0200f3a4` — it memsets `state+8` for `0x3a4` bytes and initialises a
-block at `state+0x2a04` through `0x0208660c` — and is where a copy of that
-kind would be visible.
+### The party is a sixteen-bit mask, and two instructions change it
+
+Read 25 September 2026, continuing from Patty rather than from the address.
+
+**A third fixed global.** The membership getter `0x0202bc8c` has two sources,
+and the live one is `0x0202d698`: `ldr r0, [pc]; ldrh r0, [r0, #0xa]` over the
+word `0x021015a0`. **So the party in play is the halfword at `0x021015aa`.**
+
+**Exactly two instructions write it**, found by taking every halfword store to
+`+0xa` whose base is that global — five sites, two of which are the pair that
+matters, and both arms of one dispatcher:
+
+```
+0202ca74  ldr  r0, =0x021015a0
+0202ca78  ldrh r1, [r0, #0xa]
+0202ca7c  orr  r1, r1, r5, lsr #16     ; mask |= bits
+0202ca80  strh r1, [r0, #0xa]
+0202ca84  ldr  r1, [r0, #0x18]         ; a callback
+0202ca94  blx  r1
+
+0202ca9c  ldr  r1, =0x021015a0
+0202caa0  mvn  r2, r5, lsr #16
+0202caa4  ldrh r3, [r1, #0xa]
+0202caa8  and  r2, r3, r2              ; mask &= ~bits
+0202caac  strh r2, [r1, #0xa]
+0202cab0  ldr  r1, [r1, #0x18]
+                                        ; and the same callback
+```
+
+The bits come from the **high half of a command word** (`r5 lsr #16`), so
+joining and leaving are not calls but *messages*: something posts a command
+and this pair applies it. **Both arms then fire a callback held at `+0x18` of
+the same global**, which is the shape a mirror would be refreshed by —
+INFERRED, and the one link not yet closed, because nothing installs that
+pointer with a pc-relative base, so where it is set has not been found.
+
+**Sixteen bits is the whole roster.** The mask is a halfword and the generic
+setter beside it (`0x02028c64`) refuses an index of 16 or more. Twelve on
+Patty's list plus four in the party is sixteen — which is `LIST_MOST` in
+`recruit.ts`, arrived at from her own screens, meeting the same number from
+the other side.
+
+**A false trail, recorded so it is not walked twice.** `0x02028c64` looks
+exactly like the party setter — bounded at 16, `mask |= 1 << index`, written
+back to a halfword at `+4` — and is not. It is a generic bitfield helper with
+three callers, and the one in overlay 17 (`0x021d1a10`) is a script flag
+handler taking its object from `0x02027ca4` and its index from a parameter
+block, not the roster.
+
+**So what remains** is the callback at `+0x18`: what installs it, and whether
+it is what refreshes `+0x397c`. The state's initialiser `0x0200f3a4` — it
+memsets `state+8` for `0x3a4` bytes and initialises a block at `state+0x2a04`
+through `0x0208660c` — is the other place a whole-block copy would show.
 
 ### What this means for `minstrel`, and what was done about it
 
