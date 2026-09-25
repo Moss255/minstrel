@@ -223,6 +223,22 @@ another map"** — three of the nine cast are placed somewhere other than the
 map they are listed in. Not looked into; noted because it is the kind of thing
 that is easy to mistake for a fault later.
 
+## Porth Llaffan — `M05`
+
+**25 September 2026.** `--stage=7.1 --talk=10`, **32 views in six minutes: 0
+failed, 0 worth a look, 8 the game guessed, 4 with the camera crowded.**
+
+18 pieces, **14 collision meshes** — by far the most of any area so far, where
+most have one or two — 10 doorways, 5 treasure, and only 3 characters on the
+exterior. The fishing village is built out of many small pieces, which is
+presumably why.
+
+Its four crowded shots are **49%, 49%, 49% and 35%**, and they are the useful
+half of the evidence for the floor: under the rule derived at Coffinwell the
+three at 49% stay as they are and only the 35% is pulled back. A floor that
+moved all four would have been too blunt, and this is the area that shows the
+difference.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
