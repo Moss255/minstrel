@@ -18,6 +18,7 @@ by tests that run in seconds:
 | it walks | `apps/game/test/walk-coverage.test.ts` — flooded from where the game stands you |
 | it talks | `apps/game/test/talk-coverage.test.ts` — every character asked, in every area |
 | it plays its events | `apps/game/test/event-coverage.test.ts` — every engine function each event wants |
+| its events exist | `apps/game/test/event-scripts-exist.test.ts` — 23 of the 512 events a trigger names have no script, and the shape of those 23 |
 
 So a checkpoint is not "does it work" — that is known before anyone looks. A
 checkpoint is **somebody looking at the area and saying whether it is right**,
