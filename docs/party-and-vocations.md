@@ -959,24 +959,43 @@ textures are 210, 216, 220, 226, 230, 234 and nothing between.
   `readCharacterPresets` still reads `charapreset.bin` and its 29 records
   still dress; what is in doubt is only whether the *game* uses it, and a file
   id could be computed at runtime. Left alone.
-- **Where the creation screens are reached from, now read.** A scene id *is*
-  an overlay id — the table at `0x020e8f20` — so the scene table's `charamake`
-  is overlay 21 and `charamake2` is overlay 9. Overlay 21 is scene 21, which
-  `main` runs when its game mode is 3, and the mode is set from the Observatory
-  prologue flag at `[GameState+0x6000+0x3D6]`; Patty's step 4 drives overlay 9
-  directly. **So the game runs the same screens for the Hero and for a
-  recruit**, which is why the walk is one piece of code here too — `Making` in
-  `appearance.ts`, driven by `askCreation` in `main.ts` and by
-  `PattyWhere.making`.
+- **Where the creation screens are reached from, now read.** The scene table
+  is at `0x020e8f20`: 35 records of `{group, name}`, the count `0x20a1940`
+  bounds its argument against. Scene 21 is `charamake`, scene 9 `charamake2`,
+  scene 17 `gamemain`.
+
+  `main`'s game-mode dispatch is at `0x0200111c` (`cmp r0,#9; addls pc, pc,
+  r0, lsl #2`, table at `0x02001124`). Each arm loads one scene:
+
+  | mode | loads | scene |
+  |---|---|---|
+  | 0, 4, 5, 9 | 17 | `gamemain` |
+  | 1 | 15 | `charaview` |
+  | **2** | **21** | **`charamake`** |
+  | 3 | 16 | `movieview` |
+  | 6, 7 | — | falls to the loop bottom |
+  | 8 | 27 | `sub_staffroll` |
+
+  **Mode 2 is set in exactly one place** — `ov004 0x0216d19c`, checked by
+  scanning the ARM9 and all 35 overlays for a `BL` to the mode setter
+  `0x0200fb94`. The same overlay sets the modes for 5, 6, 7, 8 and 9, which
+  makes it the boot menu. **So the game makes the Hero straight off the title
+  screen, before any map is entered**, and Patty's step 4 drives overlay 9 for
+  a recruit. The same screens serve both, which is why the walk is one piece
+  of code here too — `Making` in `appearance.ts`, driven by `askCreation` in
+  `main.ts` and by `PattyWhere.making`.
+
+  **Corrected:** an earlier note here said mode 3, set from the Observatory
+  prologue flag at `[GameState+0x6000+0x3D6]`, was what ran `charamake`. It is
+  not. That flag does set mode 3, but mode 3 loads scene 16 `movieview`; the
+  byte queues a movie, which is also how `ov017 0x021618d0` reads it.
 
   `func_0201099c` builds three characters from `presetdt` plus RNG — a default
   party, not a menu — and is a separate thing.
 
-  **What is still ours is the Hero's trigger.** The slice cut the Observatory
-  prologue, so there is no moment in the story yet at which the game would
-  ask; `?create=1` hangs the walk off the start screen instead, before the map
-  is entered, as scene 21 runs before `gamemain`. When the prologue is built
-  this moves behind it and the parameter goes.
+  **What is ours is only the way in.** `?create=1` runs the walk off the start
+  screen, before the map, which is where the game runs it; there is no title
+  screen yet to hang a New Game item on.
 
 **The name is not asked for yet.** It is one byte per character, at most
 twelve, zero-terminated, `0xFF` a space — a game-internal glyph code, not

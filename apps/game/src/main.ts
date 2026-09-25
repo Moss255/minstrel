@@ -1099,20 +1099,22 @@ function begin(bytes: Uint8Array, map: string): Promise<void> {
 /**
  * **The Hero's own character creation, at the front door.**
  *
- * *Where the game puts it*: overlay 21 `charamake`, scene 21, which `main`
- * runs when its game mode is 3; the mode is set from the Observatory prologue
- * flag at `[GameState+0x6000+0x3D6]`. The screens it drives are overlay 9's —
- * **the same ones Patty's step 4 drives for a recruit**, which is why the
- * walk itself is shared; see `Making` in `appearance.ts`.
+ * *Where the game puts it*: scene 21 `charamake`, which `main` loads when its
+ * game mode is 2 — read from the mode dispatch at `0x0200111c`, whose arm at
+ * `0x02001184` calls `LoadScene(0x15)`, against the scene table at
+ * `0x020e8f20`. **Mode 2 is set in exactly one place**, `ov004 0x0216d19c`,
+ * the boot menu that also sets the modes for the staff roll and the rest; so
+ * the game makes the Hero **straight off the title screen, before any map**.
+ * The screens it drives are overlay 9's — **the same ones Patty's step 4
+ * drives for a recruit** — which is why the walk itself is shared; see
+ * `Making` in `appearance.ts`.
  *
- * *Where ours is, and why*: the slice cut the prologue, so there is no moment
- * in the story yet at which the game would ask. Rather than invent one, this
- * hangs the walk off the start screen behind `?create=1`: the knobs are the
- * game's, the trigger is ours and is marked as ours. When the prologue is
- * built this moves behind it and the parameter goes.
- *
- * The seven screens run before the map is entered, as scene 21 runs before
- * `gamemain`; the look they settle on is the Hero's, and then the world opens.
+ * *So ours sits where the game's sits*: before the world, off the front
+ * screen. What is ours is only that it is asked for with `?create=1` rather
+ * than by a New Game item on a title screen, because there is no title screen
+ * yet. The Observatory prologue is **not** what triggers it: the flag at
+ * `[GameState+0x6000+0x3D6]` sets mode **3**, which loads scene 16
+ * `movieview`. An earlier note here had that wrong.
  */
 function askCreation(map: string): Promise<void> {
   let making = startMaking()

@@ -48,7 +48,7 @@ is one the menu will not know about.
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
 | `patty=1` | open Patty's Party Planning Place. Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest |
 | `pot=1` | open the Krak Pot. Its real way in is `<RENKIN>` on the pot's own talk line in the Quester's Rest, which needs the story far enough along for it to be placed |
-| `create=1` | **make the Hero before the map opens**, the seven creation screens in the game's own order, then enter. The game runs the same screens here — scene 21, from `main`'s game mode 3 — but reaches them through the Observatory prologue the slice cut, so the trigger is ours until that prologue is built |
+| `create=1` | **make the Hero before the map opens**, the seven creation screens in the game's own order, then enter. This is where the game puts it too: scene 21 `charamake` runs at game mode 2, which only the boot menu sets, so the Hero is made off the title screen before any map. Ours is the parameter, standing in for a New Game item until there is a title screen |
 | `make=1` | open the appearance *editor* — turns one knob on a character who already exists. The game has no equivalent; creation itself is a scene, reached by `?create=1` above or, for a recruit, through Patty |
 | `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
