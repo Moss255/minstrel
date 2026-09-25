@@ -96,7 +96,8 @@ which is the thing to fix. See `docs/still-open.md`.
 ## Zere — `M02`
 
 **25 September 2026.** `--stage=3.6 --talk=10`, **28 views in five minutes: 0
-failed, 1 worth a look, 6 the game guessed.** Five minutes is the number the
+failed, 1 worth a look, 6 the game guessed** — and the same again at 6.1, on
+which see below. Five minutes is the number the
 plan asked Phase 3 to measure and had not: an area is minutes, not an evening.
 
 Read through, the town is right. The Hero comes in under the gate's arch with
@@ -118,15 +119,23 @@ arrival, and the map index says `M02` is an exterior. Both are right: `inside`
 is whether there is a roof over the character's head, checked from the
 geometry as they walk, and the Hero arrives standing under the gate's arch.
 
-**Six of eight conversations were guesses**, which is worth more attention
-than the missing event. The reading is always "no such line covers 3.6, so the
-first that does" — so the cast's lines are written for another point in the
-story, and 3.6 is probably the wrong stage for this town rather than the lines
-being absent. Zere's triggers are busiest at **6.1** (36 of its 90). The
-stages here were taken from the earliest span with five or more triggers,
-which is a guess and this is the first evidence it is a poor one. Worth
-re-running at 6.1 and comparing before the same guess is made for nine more
-areas.
+**Six of ten conversations were guesses** — "no such line covers 3.6, so the
+first that does". The obvious reading is that 3.6 is the wrong stage for this
+town, and **that was checked and is wrong.**
+
+Zere was run again at **6.1**, its busiest stage, 36 of its 90 triggers. The
+stage reached a different chapter — **`E0` against 3.6's `C0`** — so the input
+genuinely varied, and the result was **28 views, 0 failed, 1 worth a look, 6
+guessed**: the same numbers exactly. What changed is *which* six. Three of
+them are the same characters at both stages (`n012a`, `n015a`, `n097a`) and
+three are different.
+
+So the guess rate is not a symptom of a badly chosen stage. It is a property
+of the town: about six of ten of Zere's cast have no line naming them at any
+one point in the story, and which six depends on where you ask. That also
+means the stages picked for the other areas — earliest span with five or more
+triggers — do not need re-deriving before those runs, which is worth knowing
+before spending fifty minutes on them.
 
 ## Still to do
 
