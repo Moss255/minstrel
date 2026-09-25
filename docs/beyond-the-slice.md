@@ -348,6 +348,20 @@ anything here.
 
 ### Phase 3 — The world
 
+**Phase 0 no longer gates this — decided 25 September 2026.** The order above
+said nothing else starts until conformance does, and in practice Phases 1 and
+2 had already run ahead of it. The decision makes that deliberate rather than
+drift, and the reason is specific: **Phase 0's remaining work is headless and
+content-independent.** The RNG from the decomp, the battle draw order and a
+seed-replay are all tested against `packages/sim/test/game-oracle.ts` and a
+synthetic fixture; none of them needs an area to exist, and no area's content
+changes shape because of them. That is not true of Phase 2's systems, which is
+why those genuinely had to come first — a party of four changed the save, the
+menus and the battle model.
+
+So the two run side by side. What would still stop content is a system that
+*restructures* what content is made of, and Phase 2 closed those.
+
 Now content scales. Area by area in story order, each one a checkpoint.
 
 The 74 areas are the unit, not the 669 maps — a map archive is usually one
