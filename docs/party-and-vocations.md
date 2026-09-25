@@ -651,8 +651,44 @@ Type**: Swords, Spears, Knives, Wands, Whips, Staves, Claws, Fans, Axes,
 Hammers, Boomerangs, Bows.
 
 **Which means recipe values 14 and 15 are that grouping**, not merely the
-cross-check this file called them. The screen built here is a flat list and
-has neither mode; that is the next piece of work on it.
+cross-check this file called them — **and values 18 and 19 are its two sort
+buttons**, By Type and By Name, which this file called "two display ranks"
+and left there.
+
+#### The book's grouping, read and held to the cartridge
+
+`bm_rrb` is a `0x67` table of 48 labels, the same shape as `sta_skl`, so the
+words are **read at runtime and not copied here**. Its grouping:
+
+| the book's category | `itemsort` categories | recipes |
+|---|---|---|
+| All Recipes | all | 470 |
+| Weapons | 0 | 185 |
+| Armour | 1–6 | 224 |
+| Accessories | 7 | 30 |
+| Items | 8, 9 | 31 |
+| ??? | none | **0** |
+
+And eighteen **By Type** headings: the twelve weapon types, then Shields,
+Head, Torso, Arms, Legs, Feet. Those cover Weapons and Armour and nothing
+else, because Accessories and Items have no sub-kinds — so a recipe has
+exactly one heading if it is in one of those two categories and none if it is
+not, which is what `tools/harness/test/recipes.test.ts` now holds.
+
+Every recipe falls in exactly one category with **none left over**, which is
+what makes this the book's grouping rather than a plausible arrangement.
+**What `???` is for is not established**: nothing on the cartridge lands in
+it.
+
+**Try Your Luck** is the pot's other mode — ingredients in, see what comes
+out. `tryYourLuck` matches a recipe whose ingredients are *exactly* what went
+in, counts and all; a superset is a different attempt rather than a near
+miss, which is the reading `str_ren` 11 implies. **Ours**: the game's own
+matching was not found.
+
+**"How many?"** cooks a batch, and each one rolls its own alchemiracle — so
+ten attempts can come out as some of each, which is what rolling per attempt
+means.
 
 **The Alchenomicon is a second way in**, and the pot says so when it hands the
 book over: *"The Alchenomicon is now accessible from the battle records

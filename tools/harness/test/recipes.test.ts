@@ -4,6 +4,7 @@ import { readGpc } from '@minstrel/l5-gpc'
 import { decompressIfNeeded } from '@minstrel/nitro-comp'
 import { readNitroFs, walkFiles } from '@minstrel/nitrofs'
 import { describe, expect, it } from 'vitest'
+import { POT_CATEGORIES, POT_TYPES } from '../../../apps/game/src/alchemy.ts'
 
 /**
  * The alchemy recipes, on a real cartridge.
@@ -143,6 +144,60 @@ describe.skipIf(!romPath)('the alchemy recipes on a real cartridge', { timeout: 
       expect(better?.ingredients).toEqual(one.ingredients)
       expect(better?.chance).toBeLessThan(100)
     }
+  })
+
+  /**
+   * **The Alchenomicon's grouping accounts for every recipe.**
+   *
+   * `bm_rrb` names six categories — All Recipes, Weapons, Armour,
+   * Accessories, Items, ??? — and eighteen By Type headings. If those are
+   * really the book's grouping rather than a plausible arrangement, then
+   * every one of the 470 recipes falls in exactly one category and exactly
+   * one heading, with none left over. That is what this checks, and it is the
+   * thing that would rot silently if a subtype were ever reassigned.
+   */
+  it('groups every recipe exactly once, the way the Alchenomicon does', () => {
+    const cartridge = rom()
+    const file = member(cartridge, RECIPES, /recipe_en\.bin/i)
+    const sorted = member(cartridge, '/data/prm/itemsort.gp2', /itemsort_en\.bin/i)
+    if (!file || !sorted) throw new Error('the cartridge is missing a file this needs')
+    const recipes = readRecipes(file)
+    const kinds = readItemKinds(sorted)
+
+    // Every recipe in exactly one category, and `???` in none of them.
+    const counts = new Map<number, number>()
+    for (const one of recipes) {
+      const category = kinds.get(one.makes)?.category ?? -1
+      const matched = POT_CATEGORIES.flatMap((pot, at) =>
+        pot.categories.length > 0 && pot.categories.includes(category) ? [at] : [],
+      )
+      expect(matched, `recipe ${one.id}`).toHaveLength(1)
+      counts.set(matched[0] as number, (counts.get(matched[0] as number) ?? 0) + 1)
+    }
+    // Weapons 185, Armour 224, Accessories 30, Items 31 — and nothing in ???.
+    expect([...counts].sort((a, b) => a[0] - b[0])).toEqual([
+      [1, 185],
+      [2, 224],
+      [3, 30],
+      [4, 31],
+    ])
+
+    // **By Type covers Weapons and Armour and nothing else**, which is what
+    // `bm_rrb` lists: twelve weapon types, then Shields, Head, Torso, Arms,
+    // Legs, Feet. Accessories and Items have no sub-kinds and so no heading —
+    // so a recipe has exactly one heading if it is in one of those two
+    // categories, and none if it is not.
+    let headed = 0
+    for (const one of recipes) {
+      const kind = kinds.get(one.makes)
+      const subtype = kind?.subtype ?? -1
+      const headings = POT_TYPES.filter((type) => type.subtypes.includes(subtype))
+      const under = [0, 1, 2, 3, 4, 5, 6].includes(kind?.category ?? -1)
+      expect(headings, `recipe ${one.id} subtype ${subtype}`).toHaveLength(under ? 1 : 0)
+      if (under) headed++
+    }
+    // The 185 weapons and the 224 armour; the 61 accessories and items not.
+    expect(headed).toBe(185 + 224)
   })
 
   it('orders its second rank alphabetically by what it makes', () => {

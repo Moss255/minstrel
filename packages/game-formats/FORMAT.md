@@ -1238,11 +1238,11 @@ and is shown by the name of what it makes. `readRecipes` in `recipes.ts`.
 | 8 | 0 on 448, 1–7 on the 22 alchemiracles — not established |
 | 9 | **the per-cent chance this recipe is what comes out**: 100 on 448, 10 on 17, 20 on 5 |
 | 10, 11, 12, 13 | not established, and carried |
-| 14, 15 | the result's own item category and subtype |
+| 14, 15 | the result's own item category and subtype — **and the Alchenomicon's own grouping**, see below |
 | 16 | **the recipe to reach instead** when an alchemiracle works, `−1` for none |
 | 17 | **the recipe to fall back to**, `−1` for none |
-| 18 | a display rank by equipment slot — the Alchenomicon's order |
-| 19 | a display rank, **alphabetical by the result's name** |
+| 18 | the Alchenomicon's **By Type** order, by equipment slot |
+| 19 | its **By Name** order, alphabetical by the result's name |
 
 The empty ingredient slots are always a suffix, checked on all 470; 331
 recipes use three, 135 two and 4 one.
@@ -1272,6 +1272,16 @@ witnesses, which is a weaker footing than an instruction, and worth saying.
 name a fallback at 17; each pairs with the other both ways and **takes the
 same ingredients**, at two grades of the same thing. The odds are the *better*
 recipe's own value 9, not the one being attempted.
+
+**Values 14, 15, 18 and 19 are the book's own screen**, read 25 September
+2026 from `bm_rrb` — a `0x67` table of 48 labels, the same shape as `sta_skl`.
+The Alchenomicon groups by category (All Recipes · Weapons = `itemsort`
+category 0 · Armour = 1–6 · Accessories = 7 · Items = 8, 9 · `???`), then by
+eighteen **By Type** headings — the twelve weapon types, then Shields, Head,
+Torso, Arms, Legs, Feet — and sorts each by **By Type** (value 18) or **By
+Name** (value 19). Every one of the 470 recipes falls in exactly one category
+with none left over, and `???` gets nothing; what it is for is not
+established.
 
 **Where a recipe book is found is not read.** No item in any of the nine
 `itemdt_*` tables is a recipe, so the books are world objects and quest
