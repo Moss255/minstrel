@@ -209,10 +209,35 @@ three callers, and the one in overlay 17 (`0x021d1a10`) is a script flag
 handler taking its object from `0x02027ca4` and its index from a parameter
 block, not the roster.
 
-**So what remains** is the callback at `+0x18`: what installs it, and whether
-it is what refreshes `+0x397c`. The state's initialiser `0x0200f3a4` — it
-memsets `state+8` for `0x3a4` bytes and initialises a block at `state+0x2a04`
-through `0x0208660c` — is the other place a whole-block copy would show.
+**The callback is never installed, and that closes it.** Every pc-relative
+reference to `0x021015a0` was followed into the register that receives it and
+every load and store off it collected — 106 sites. `+0x18` is **read by ten
+and written by none**; the offset written is `+0x10`, 115 times, which is the
+status word the arms above also set. The struct is in `.bss` — `arm9.bin`
+ends at `0x020f2e60`, well short of it — so it begins zeroed, the pointer at
+`+0x18` is null, and every one of those ten reads is guarded by
+`cmp r1, #0; beq`. **The hook exists and this build never fills it.**
+
+So the mask changes notify nobody, and `+0x397c` is not refreshed that way.
+Taken with the section above — nothing addresses `+0x397c` to write it, at
+all — the picture is complete and consistent:
+
+| | where | how it changes |
+|---|---|---|
+| the party in play | `0x021015aa`, sixteen bits | two instructions, by message |
+| the roster | `0x020fefec` | Patty's screens |
+| the ordered slots | `state+0x397c` | **nothing writes them field-wise** |
+
+**So the slots are serialisation, not state.** That is the answer to the
+question this section has carried since the party was first read: they are
+written when the block is written, and read back by the four readers, and the
+party the game actually plays is the mask. INFERRED still in one respect —
+the bulk copy is the only mechanism left rather than one seen running — but
+the negative behind it is now exhaustive rather than partial.
+
+**What this means for `minstrel`** is that the shape we built is the right
+one. `members` is an ordered list with the leader first, which is the mask
+plus an order, and the save writes it out — the same division the game makes.
 
 ### What this means for `minstrel`, and what was done about it
 
