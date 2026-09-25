@@ -273,6 +273,51 @@ the page it writes is read by eye, but the summary line at the top is what
 decides whether anyone reads it carefully, and it is currently blind to the
 worst thing it captures.
 
+## A blank-frame check, written after Gleeba, found two more
+
+Gleeba's black frame was found by eye. That was luck, so the check the witness
+lacks was written as a separate pass over the images already captured —
+`out/witness/<area>/*.png`, sampling the middle-left band that the mini-map,
+the status text and the message box all leave alone, and asking how dark and
+how **flat** it is.
+
+**Flatness is the signal, not darkness.** A blank view is not black: it comes
+out a uniform grey of about 22. What distinguishes it is a spread of exactly
+**0** between the lightest and darkest pixel in the band. Across the seven
+areas swept, three images have it — and the witness scored every one of them
+fine:
+
+| view | cause |
+|---|---|
+| `C02/23-ev20960` | camera crowded to 15%, inside the geometry |
+| `C02/37-talk-C02M09-10` | **the Hero has fallen out of the world** |
+| `M03/51-talk-M03M03-4` | **the Hero has fallen out of the world** |
+
+### `?talk=` can stand the Hero where there is no floor
+
+Two of the three are the same fault and it is not the camera. Their status
+lines read `C02M09 · 0.96, -6.51, -0.31 (falling)` and `M03M03 · 0.63, -6.39,
+-0.31 (falling)` — the same `z`, both falling, both in a small interior of
+four pieces and one collision mesh.
+
+Reproduced exactly: `?map=C02M09` alone stands the Hero on the floor with
+`under: 0`, and **`?map=C02M09&talk=10` puts them at `-0.31` with
+`underfoot: null`** — no surface beneath them at all.
+
+`standAndTalk` in `main.ts` is why. It takes the cast member's placement,
+steps half of `TALK_REACH` back along their facing, and writes that `x` and
+`z` into the Hero's state with the cast member's own `y` — **and never asks
+whether there is floor there.** In a room small enough, behind a character is
+outside the room.
+
+It is the same shape of fault as `?event=` playing a scene in whatever map was
+loaded: a development route with no guard, producing something that looks like
+an engine bug. The fix is to put the Hero on the ground under that spot, or to
+leave them where they are when there is none.
+
+Not fixed during the sweep, with the camera floor, so that the areas remain
+comparable with each other.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
