@@ -714,9 +714,57 @@ should not go looking for a feature that already exists.
 reads as trouble, no view drew nothing, and its four characters all speak.
 Left as it is rather than guessed at.
 
+## The last fifteen, and Phase 3's sweep is done
+
+**26 September 2026.** The areas with no map-index entry, plus `S04`, `X03`
+and `X05`.
+
+| area | views | concerns | note |
+|---|---|---|---|
+| `S01` | 16 | 0 | 2 crowded |
+| `D12` | 15 | 0 | |
+| `R01` Quester's Rest | 22 | 0 | |
+| `D06` | 6 | 0 | one trigger, the smallest on the cartridge |
+| `D16` | 17 | 0 | |
+| `D17` | 16 | 1 | one blank, `ev29146` |
+| `S13` | 6 | 0 | |
+| `R02` | 22 | **7** | all seven are missing events |
+| `R03` | 22 | **7** | the same, its own seven |
+| `R04` | 26 | **7** | the same |
+| `R05` | 8 | 0 | 372 triggers, the most after Stornway |
+| `S04` | 5 | 0 | missed from the exteriors and swept here |
+| `X03` Realm of the Almighty | 8 | 0 | **it opens** — see below |
+| `X05` Observatory | 1 | 1 | no collision, cannot be opened |
+
+**`R01` is clean**, which is the first time the witness has looked at the
+Quester's Rest — Patty's recruiting and the Krak Pot both live in `R01M01`.
+
+### The R-group's concerns are the cartridge's, and the test already knew
+
+`R02`'s seven are `ev20742`, `20746`, `20752`, `20836`, `20921`, `20988` and
+`53372` — **exactly the seven `R02` entries** that
+`apps/game/test/event-scripts-exist.test.ts` pins as named by a trigger and
+absent from the cartridge. Seven each for `R02`, `R03` and `R04` is 21 of the
+23. A headless test of the trigger data and a browser walking the area arrived
+at the same list by different routes, which is worth more than either alone.
+
+### `X03` opens, so it is two areas that cannot be, not three
+
+Recorded earlier that the three `All Events` areas were unwitnessable. `X03`
+is labelled that and has **10 pieces and a collision mesh**, and it swept
+clean in 8 views. **The label does not decide it; the collision does.** Only
+`X01` and `X05` have none, and those are the two `enter` refuses.
+
+### Where the sweep stands
+
+**73 of the 75 areas are checkpointed.** The two left are `X01` and `X05`,
+both the Observatory, and neither is a tooling problem: the engine will not
+open a map with nowhere to stand, and until it does they cannot be looked at.
+`X01` is where the story begins.
+
 ## Still to do
 
-**Done: 59 of the 75 — every exterior and every interior** — the thirteen exteriors of the original list, plus
+**Done: 73 of the 75.** Only `X01` and `X05` are left, and they need the engine rather than the tool — the thirteen exteriors of the original list, plus
 Zere Rocks, Brigadoom, Tower of Trades, Swinedimples, Gortress, Quarantomb,
 `S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`, with the
 Observatory attempted and found unwitnessable.
