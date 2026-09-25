@@ -653,9 +653,41 @@ its walk reaches, and Stornway's own map is in the list. **Their fault counts
 should be read as of the build they were taken on**, not as the state of the
 tree. Re-running them is cheap and has not been done.
 
+## The last eight exteriors — and that group is done
+
+**26 September 2026.** `S08` Slurry Quay 19.1, `S10` Lonely Plains 19.1, `S11`
+Mt Ulbaruun 10.8, `S12` Bloomingdale Region 9.4, `S15` Wyrmward 13.9, `T02`
+Tower of Nod 19.2, `X04` Realm of the Mighty 17.1, `S09` Ship's Deck 1.1.
+
+**Sixty-four views, nothing failed, nothing blank, one worth a look.** Five
+crowded, all in `T02` and `X04`, the two with buildings in them.
+
+They are small — four to twenty views. `S10`, `S12` and `S15` are four each,
+the size of a corridor between two places. `X04` is the largest at twenty
+despite having **27 sub-maps**, more than any area on the cartridge.
+
+**`X04`'s one concern is a known gap, not a new fault**: `ev29230` reports
+`no effect 100 in the sound archive`. That is the sound-request id space in
+`docs/still-open.md` §5 — the ids a scene asks for are read and what they
+index is not, and the archive has no record 100.
+
+### The thirty exteriors are checkpointed
+
+That is the whole of the group the checkpoint as built was made for: stand in
+the map, walk the doorways, play the events, talk. **39 of the 75 areas.**
+
+What is left is three groups that each want something different, and none of
+them wants more of this:
+
+- the **15 with no map-index entry** — `R05` alone has 372 triggers, more than
+  any area but Stornway, and `D03` showed these open a sub-map instead;
+- the **20 `H` interiors**, one room each, where walking doorways and playing
+  events buys almost nothing and the talking is the point;
+- the **3 `All Events` areas**, which the witness cannot open at all.
+
 ## Still to do
 
-**Done: 31 of the 75** — the thirteen exteriors of the original list, plus
+**Done: 39 of the 75 — every exterior** — the thirteen exteriors of the original list, plus
 Zere Rocks, Brigadoom, Tower of Trades, Swinedimples, Gortress, Quarantomb,
 `S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`, with the
 Observatory attempted and found unwitnessable.
