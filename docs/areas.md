@@ -375,6 +375,30 @@ area is called checked.
 
 `1 unclassified` is a phrase no other area produced. Not looked into.
 
+**Run again at 16.1, its busiest stage** — kept beside it as
+`out/witness/C04-at-7.1`. **32 views, 0 failed, 0 worth a look, 2 with the
+camera crowded, and 2 conversations with 0 guesses.** So the palace is not
+simply mis-staged: its *exterior* has no cast at either point, and the two
+characters at 16.1 are in sub-maps — but both of them are named by triggers
+and chosen the game's own way, which no other area managed. An entry event,
+`ev29100`, plays at 16.1 and does not at 7.1.
+
+The 16.1 run is the one to treat as the checkpoint.
+
+**And it has a blank frame of its own**, in a third context again: not a scene
+and not a conversation but **a doorway**, `05-door-F34`, crowded to 43%. `F34`
+is the Gittish Empire's overworld; what draws is two of its red guards and the
+top of the Hero's head seen from directly above, with everything else black,
+while 9,220 vertices and 5,226 triangles are reported submitted. It is also
+labelled `indoors`, on an overworld map.
+
+**43% is above the bracket** that Coffinwell's shots suggested was safe — 49%
+and 56% looked fine there — so either the bracket is not a constant, or a
+doorway view is captured before the camera has settled where a conversation
+gives it 1,400 ms. **Not established**, and it is the reason the blank-frame
+check belongs in the witness: three areas, three contexts, three different
+causes, one test that found them all.
+
 ## Bloomingdale — `M09`
 
 **25 September 2026.** `--stage=9.1 --talk=10`, **39 views in eight minutes: 0
