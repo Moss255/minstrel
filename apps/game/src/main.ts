@@ -8,7 +8,7 @@ import {
   type Outfit,
 } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
-import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
+import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
 import {
   ActionEffect,
   type AttendingCharacter,
@@ -5005,30 +5005,50 @@ function standAndTalk(id: number): void {
   }
   const at = castPlaced(member.placement)
   const back = TALK_REACH * 0.5
-  const spot = { x: at.x - Math.sin(at.facing) * back, z: at.z - Math.cos(at.facing) * back }
-  const x = fx32(Math.round(spot.x * FX32_ONE))
-  const z = fx32(Math.round(spot.z * FX32_ONE))
-  // **Stand them on the floor there, and not at all if there is none.**
-  // This wrote the spot straight into the Hero's state with the cast
-  // member's own `y` and never asked, so in a room small enough — behind a
-  // character is sometimes outside the room — the Hero was put over nothing
-  // and fell out of the world. Two of the four blank frames the area sweep
-  // turned up were this, and both read `(falling)` at about `y = -6.4`. See
-  // `docs/areas.md`, "`?talk=` can stand the Hero where there is no floor".
+  // **Stand them on the floor, and go round the character to find some.**
+  // This took the one spot behind the character, wrote it straight into the
+  // Hero's state with the cast member's own `y`, and never asked whether
+  // there was floor there — so in a room small enough, where behind a
+  // character is outside the room, the Hero was put over nothing and fell out
+  // of the world. Two of the four blank frames the area sweep found were
+  // this, both reading `(falling)` at about `y = -6.4`.
+  //
+  // Behind is still tried first, because a half-circle turn is the thing
+  // worth seeing — see the note on `?talk=` above. The others are tried in
+  // turn rather than giving up, because giving up loses the conversation the
+  // route exists to show: the first attempt at this fix stood the Hero where
+  // they already were, and then nobody was near enough to talk to.
   const world = loaded.world
-  const ground = world
-    ? groundBelow(world, x, z, fx32(Math.round((at.y + 0.25) * FX32_ONE)))
-    : undefined
-  if (!ground) {
-    // Better a conversation from where they already are than a view of the
-    // underside of the map: the point of the route is to see the talking.
-    status(`no floor behind placement ${id} — talking from where the Hero stands`)
-    self.facing = facingToward({ x: toFloat(self.state.x), z: toFloat(self.state.z) }, at)
+  const around = [Math.PI, Math.PI / 2, -Math.PI / 2, 0]
+  let put: { spot: { x: number; z: number }; y: Fx32 } | undefined
+  for (const turn of around) {
+    const angle = at.facing + turn
+    const spot = { x: at.x + Math.sin(angle) * back, z: at.z + Math.cos(angle) * back }
+    const ground = world
+      ? groundBelow(
+          world,
+          fx32(Math.round(spot.x * FX32_ONE)),
+          fx32(Math.round(spot.z * FX32_ONE)),
+          fx32(Math.round((at.y + 0.25) * FX32_ONE)),
+        )
+      : undefined
+    if (ground) {
+      put = { spot, y: ground.y }
+      break
+    }
+  }
+  if (!put) {
+    status(`no floor around placement ${id} — the Hero stays where they are`)
     talk()
     return
   }
-  self.state = { ...self.state, x, y: ground.y, z }
-  self.facing = facingToward(spot, at)
+  self.state = {
+    ...self.state,
+    x: fx32(Math.round(put.spot.x * FX32_ONE)),
+    y: put.y,
+    z: fx32(Math.round(put.spot.z * FX32_ONE)),
+  }
+  self.facing = facingToward(put.spot, at)
   talk()
 }
 
