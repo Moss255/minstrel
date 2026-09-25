@@ -375,6 +375,43 @@ area is called checked.
 
 `1 unclassified` is a phrase no other area produced. Not looked into.
 
+## Bloomingdale — `M09`
+
+**25 September 2026.** `--stage=9.1 --talk=10`, **39 views in eight minutes: 0
+failed, 0 worth a look, 7 the game guessed, 7 with the camera crowded, 1
+blank.** 22 pieces, 7 collision meshes, 16 doorways, 13 characters all 2D,
+chapter `I0`, reached from `F10` — which is the overworld's Bloomingdale, and
+confirms the correction above.
+
+**Seven crowded shots, the most of any area**, at 23%, 30%, 37%, 44%, 44% and
+two more.
+
+### A blank frame the camera floor will not fix
+
+`ev09100` comes out blank, and it is **not** the same fault as Gleeba's. The
+numbers, probed:
+
+| | wanted | distance | below the 0.579 floor? |
+|---|---|---|---|
+| Gleeba `ev20960` | 1.54 | **0.235** | yes — the floor fixes it |
+| Bloomingdale `ev09100` | 4.56 | **1.686** | **no** — the floor does nothing |
+
+So the claim made at Gleeba, that the floor is worth more than it looked
+because the worst case is a blank screen, is **half right**: it fixes that
+blank screen and not this one. Recorded because the floor is written and it
+would be easy to assume the class is closed.
+
+What is wrong here instead is the **shot's focus**. The eye is at y `−0.361`
+and the focus at `−0.926`, while the Hero stands at `−0.229` on a floor of
+`−0.241` — so the scene is aiming at a point **0.7 below the Hero's feet** and
+looking down into it from 1.69 back. Whether the focus is a cast member placed
+under the floor, or the shot's target is computed wrongly, is **not
+established**.
+
+**So blank frames have at least two causes**, and the flat-band check finds
+both without knowing either — which is the argument for folding it into the
+witness rather than keeping it as a side script.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
