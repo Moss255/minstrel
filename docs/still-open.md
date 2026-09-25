@@ -226,11 +226,39 @@ lives; this is the gathered list.
   The scripts that carry a height mean to carry one.
 
   So the question is **why a script's `y` disagrees with our floor**, by an
-  amount that varies from nothing to a third of a unit. Either our collision
-  floor is high in places or a script's `y` is not in the units `206` scales
-  it by — `206` multiplies x, y and z alike, and nothing has checked whether
-  the game scales height the same way it scales the ground plane. That is the
-  thread, and `docs/findings.md`'s earlier scale work is where it starts.
+  amount that varies from nothing to a third of a unit. Two candidates were
+  named: our collision floor is high in places, or a script's `y` is not in
+  the units `206` scales it by.
+
+  **The second is now read out of the game and refuted — 25 September 2026.**
+  The VM's invoke does no searching: `fn = vm->fnTable[number]`, filled from
+  the `{function, number}` table at `0x02164d6c`, whose 304 entries all
+  resolve. Number 206 is `0x0215bfd4` in overlay 1, and it does this to each
+  of x, y and z in turn:
+
+      arg = arg_at(r5 + 0x08 | 0x10 | 0x18)
+      arg = __mulsf3(arg, *0x0215c068)     // 0x45800000 = 4096.0f
+      arg = __fixsfsi(arg)                 // float -> int, truncating
+
+  **The same constant word is loaded for all three** — the three pc-relative
+  loads at `0x0215bff4`, `0x0215c010` and `0x0215c02c` all resolve to
+  `0x0215c068`. Then `0x0215a330` takes the character and the three values,
+  claims a queue slot, writes command type 1 and `memcpy`s the twelve bytes
+  in unchanged. **No separate height scaling exists to find.**
+
+  And ×4096 is not a world scale at all: it is the fx32 conversion, where
+  4096 is 1.0. So the game reads a script's `y` as world units one to one,
+  exactly as it reads x and z — which `216` corroborates, appending each path
+  point "times 4,096 into fixed point". Ours multiplies all three by
+  `WORLD_SCALE`, one eighth, which is the same treatment of the three.
+
+  **So the thread is the floor, not the script.** `docs/findings.md`'s scale
+  work is still where it starts — in particular the per-file `.col2 +0x04`
+  shift, since a floor built through that and a script `y` scaled by a flat
+  `WORLD_SCALE` are the two halves that have to agree. What that does not yet
+  explain is why the disagreement *varies between scenes of the same area*,
+  which a per-file shift would not do; worth checking first whether those five
+  scenes are in the same map or in different rooms of C01.
 
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth
