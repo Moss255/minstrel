@@ -98,12 +98,17 @@ import { cook, POT_SAYS, potList, tryYourLuck } from './alchemy.ts'
 import {
   type Appearance,
   buildOf,
+  CREATION_ORDER,
   faceOf,
   HAIR_VARIANTS,
   HERO_APPEARANCE,
   hairColourOf,
   hairOf,
+  makingPick,
+  makingRows,
+  makingTitle,
   scaleOf,
+  startMaking,
   turned as turnKnob,
 } from './appearance.ts'
 import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
@@ -346,6 +351,10 @@ const equipEl = must<HTMLDivElement>('#equip')
 const equipTopEl = must<HTMLCanvasElement>('#equip-top')
 const equipBottomEl = must<HTMLCanvasElement>('#equip-bottom')
 const startEl = must<HTMLDivElement>('#start')
+const createEl = must<HTMLDivElement>('#create')
+const createTitle = must<HTMLHeadingElement>('#create-title')
+const createRows = must<HTMLDivElement>('#create-rows')
+const createHint = must<HTMLParagraphElement>('#create-hint')
 const canvas = must<HTMLCanvasElement>('#gl')
 const talkEl = must<HTMLDivElement>('#talk')
 /**
@@ -1059,7 +1068,15 @@ function posedNodes(
  * upwards of 128 MiB and going through one costs a second copy and, in some
  * browsers, a spill to disk. Only this one array is held.
  */
-function begin(bytes: Uint8Array, map: string): void {
+/**
+ * A new game or a kept one, from the cartridge's bytes.
+ *
+ * **Resolves when the world is open**, which is not always at once: the
+ * Hero's creation runs before the map is entered, and the caller has work
+ * that must wait for the map — the entry door, and the title `tools/shot`
+ * watches. See `askCreation`.
+ */
+function begin(bytes: Uint8Array, map: string): Promise<void> {
   startEl.hidden = true
   // Kept for the rest of the session: every doorway taken reads the cartridge
   // again for the map behind it.
@@ -1070,8 +1087,79 @@ function begin(bytes: Uint8Array, map: string): void {
   const saved = resumeEl.checked ? savedGame : undefined
   if (saved) {
     restore(saved)
-    if (enter(saved.map, saved.at)) return
+    if (enter(saved.map, saved.at)) return Promise.resolve()
   }
+  // A new game may begin by making the Hero, which is where the game begins
+  // too — but only when asked for. See `askCreation`.
+  if (params.get('create') === '1') return askCreation(map)
+  openWorld(map)
+  return Promise.resolve()
+}
+
+/**
+ * **The Hero's own character creation, at the front door.**
+ *
+ * *Where the game puts it*: overlay 21 `charamake`, scene 21, which `main`
+ * runs when its game mode is 3; the mode is set from the Observatory prologue
+ * flag at `[GameState+0x6000+0x3D6]`. The screens it drives are overlay 9's —
+ * **the same ones Patty's step 4 drives for a recruit**, which is why the
+ * walk itself is shared; see `Making` in `appearance.ts`.
+ *
+ * *Where ours is, and why*: the slice cut the prologue, so there is no moment
+ * in the story yet at which the game would ask. Rather than invent one, this
+ * hangs the walk off the start screen behind `?create=1`: the knobs are the
+ * game's, the trigger is ours and is marked as ours. When the prologue is
+ * built this moves behind it and the parameter goes.
+ *
+ * The seven screens run before the map is entered, as scene 21 runs before
+ * `gamemain`; the look they settle on is the Hero's, and then the world opens.
+ */
+function askCreation(map: string): Promise<void> {
+  let making = startMaking()
+  let opened: () => void
+  const draw = () => {
+    createTitle.textContent = makingTitle(making)
+    createRows.replaceChildren(
+      ...makingRows(making).map((shown, at) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.textContent = shown
+        button.addEventListener('click', () => took(at))
+        return button
+      }),
+    )
+    createHint.textContent = `Making the Hero — screen ${making.at + 1} of ${CREATION_ORDER.length}.`
+  }
+  const took = (at: number) => {
+    const picked = makingPick(making, at)
+    if ('next' in picked) {
+      making = picked.next
+      draw()
+      return
+    }
+    createEl.hidden = true
+    const hero = leader()
+    hero.look = picked.made
+    hero.sex = picked.made.sex
+    openWorld(map)
+    dressParty()
+    status(
+      `the Hero: ${appearanceRows(hero)
+        .map((row) => `${row.label} ${row.shown}`)
+        .join(' · ')}`,
+    )
+    opened()
+  }
+  const open = new Promise<void>((resolve) => {
+    opened = resolve
+  })
+  createEl.hidden = false
+  draw()
+  return open
+}
+
+/** A new game's world, once anything asked before it is done — the rest of `begin`. */
+function openWorld(map: string): void {
   // Development convenience: `?stage=2.2` opens a new game at that stage,
   // `?step=4` at that step of it, and `?flags=0,1` with those story flags set.
   const stage = /^(\d+)\.(\d+)$/.exec(params.get('stage') ?? '')
@@ -2297,7 +2385,7 @@ async function checkAndBegin(bytes: Uint8Array, keep: boolean): Promise<void> {
   identity = await identifyCartridge(bytes)
   const said = describeIdentity(identity)
   status(said)
-  begin(bytes, wantedMap)
+  await begin(bytes, wantedMap)
   // Said again after the map's own line, where a difference matters most.
   if (identity.verdict !== 'reference') status(said)
   if (!keep) return
@@ -2321,7 +2409,7 @@ async function offerKept(): Promise<void> {
     keptRow.hidden = true
     identity = kept.identity
     status(describeIdentity(kept.identity))
-    begin(kept.bytes, wantedMap)
+    void begin(kept.bytes, wantedMap)
   }
   keptForget.onclick = () => {
     keptRow.hidden = true

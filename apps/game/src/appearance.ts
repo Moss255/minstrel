@@ -230,3 +230,70 @@ export function scaleOf(build: Build | undefined): { height: number; width: numb
     ? { height: build.height / BUILD_ONE, width: build.width / BUILD_ONE }
     : { height: 1, width: 1 }
 }
+
+/**
+ * A character part-made: the look so far, and which of {@link CREATION_ORDER}
+ * is being asked.
+ *
+ * **One screen a knob**, which is how overlay 9 does it: its thirteen-step
+ * table is a step per knob, each laying out a grid and reading one choice.
+ * The walk is the same one whoever is being made — the game runs overlay 9
+ * both for the Hero, from scene 21, and for a recruit, from Patty's step 4 —
+ * so it lives here rather than in either caller.
+ */
+export interface Making {
+  readonly look: Appearance
+  readonly at: number
+}
+
+/** The first screen, with nothing yet chosen. */
+export const startMaking = (look: Appearance = HERO_APPEARANCE): Making => ({ look, at: 0 })
+
+/** The knob a step asks, or undefined once every one has been answered. */
+export const knobAt = (at: number): keyof Appearance | undefined => CREATION_ORDER[at]
+
+/**
+ * The heading over a creation screen.
+ *
+ * **Ours.** Overlay 9's captions are drawn art rather than text, so there is
+ * no string to read for them; what the screen *is* asking comes from
+ * {@link KNOB_NAMES}, and the count from the step chain.
+ */
+export function makingTitle(making: Making): string {
+  const knob = knobAt(making.at)
+  return knob
+    ? `${KNOB_NAMES[knob]} — ${making.at + 1} of ${CREATION_ORDER.length}`
+    : 'Nothing is being made.'
+}
+
+/**
+ * What the settings of the knob being asked show, one a row.
+ *
+ * The part a choice names where there is one — a face and a hair style are
+ * files on the cartridge and can be named; a skin or eye colour is a palette
+ * swap nothing here reads, so those count instead.
+ */
+export function makingRows(making: Making): string[] {
+  const knob = knobAt(making.at)
+  if (!knob) return []
+  return Array.from({ length: CREATION_SETTINGS[knob] }, (_, at) => {
+    const look = setKnob(making.look, knob, at)
+    if (knob === 'sex') return at === SEX.female ? 'Female' : 'Male'
+    if (knob === 'face') return faceOf(look)
+    if (knob === 'hair') return hairOf(look)
+    if (knob === 'hairColour') return hairColourOf(look)
+    return `${at + 1}`
+  })
+}
+
+/**
+ * Answering the knob being asked: the next screen, or the finished look once
+ * the last of {@link CREATION_ORDER} has been answered.
+ */
+export function makingPick(making: Making, row: number): { made: Appearance } | { next: Making } {
+  const knob = knobAt(making.at)
+  if (!knob) return { made: making.look }
+  const look = setKnob(making.look, knob, row)
+  const at = making.at + 1
+  return at >= CREATION_ORDER.length ? { made: look } : { next: { look, at } }
+}

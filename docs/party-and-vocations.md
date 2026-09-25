@@ -959,12 +959,24 @@ textures are 210, 216, 220, 226, 230, 234 and nothing between.
   `readCharacterPresets` still reads `charapreset.bin` and its 29 records
   still dress; what is in doubt is only whether the *game* uses it, and a file
   id could be computed at runtime. Left alone.
-- **No player-driven creation flow was found in the game.**
+- **Where the creation screens are reached from, now read.** A scene id *is*
+  an overlay id — the table at `0x020e8f20` — so the scene table's `charamake`
+  is overlay 21 and `charamake2` is overlay 9. Overlay 21 is scene 21, which
+  `main` runs when its game mode is 3, and the mode is set from the Observatory
+  prologue flag at `[GameState+0x6000+0x3D6]`; Patty's step 4 drives overlay 9
+  directly. **So the game runs the same screens for the Hero and for a
+  recruit**, which is why the walk is one piece of code here too — `Making` in
+  `appearance.ts`, driven by `askCreation` in `main.ts` and by
+  `PattyWhere.making`.
+
   `func_0201099c` builds three characters from `presetdt` plus RNG — a default
-  party, not a menu. Overlay 9 is INFERRED to be the chara-make overlay from
-  its own file names, and the scene table lists `charamake`, but nothing maps
-  a scene name to an overlay. So **where** the screen goes is ours: the menu,
-  until the Observatory and the Quester's Rest exist.
+  party, not a menu — and is a separate thing.
+
+  **What is still ours is the Hero's trigger.** The slice cut the Observatory
+  prologue, so there is no moment in the story yet at which the game would
+  ask; `?create=1` hangs the walk off the start screen instead, before the map
+  is entered, as scene 21 runs before `gamemain`. When the prologue is built
+  this moves behind it and the parameter goes.
 
 **The name is not asked for yet.** It is one byte per character, at most
 twelve, zero-terminated, `0xFF` a space — a game-internal glyph code, not

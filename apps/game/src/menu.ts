@@ -1,17 +1,14 @@
 import { POT_CATEGORIES, POT_LABELS, type PotEntry, type PotSort } from './alchemy.ts'
 import {
   type Appearance,
-  CREATION_ORDER,
-  CREATION_SETTINGS,
-  faceOf,
   HERO_APPEARANCE,
-  hairColourOf,
-  hairOf,
-  KNOB_NAMES,
-  setKnob,
+  type Making,
+  makingPick,
+  makingRows,
+  makingTitle,
 } from './appearance.ts'
 import { type Bag, bagLines } from './bag.ts'
-import { choicesFor, type Equipped, SEX, SLOTS, type Slot } from './equipment.ts'
+import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import type { Standing } from './hero.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
@@ -115,10 +112,12 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
  *   `<CHURCH=n>` use; the pot stands in the Quester's Rest at Stornway
  *   (`R01M01`, "Lobby Interior 1") and says "A pot I may be, but I am in no
  *   way potty!" before it opens. See `Service` in `talk.ts`.
- * - `make` — **character creation** is its own scene. The protagonist's runs
- *   once from `main`'s game-mode 3; a party member's is a step inside Patty's
- *   flow at the Quester's Rest. Neither is built, so this panel is reachable
- *   only by `?make=1` until recruitment is.
+ * - `make` — **character creation** is its own scene, never a menu command.
+ *   The protagonist's runs once from `main`'s game-mode 3, a party member's is
+ *   a step inside Patty's flow at the Quester's Rest, and both are built now —
+ *   see `askCreation` in `main.ts` and `PattyWhere.making`. What is left here
+ *   is an *editor*, which the game has no equivalent of: it turns a knob on a
+ *   character who already exists, and is reachable only by `?make=1`.
  *
  * - `patty` — **Patty's Party Planning Place**, service 23, reached by talking
  *   to her at the Quester's Rest. `<LUIDA>` is her tag, the same shape as the
@@ -216,9 +215,7 @@ export interface PattyWhere {
    * **One screen a knob**, which is how overlay 9 does it: its thirteen-step
    * table is a step per knob, each laying out a grid and reading one choice.
    */
-  readonly making?:
-    | { readonly vocation: number; readonly look: Appearance; readonly at: number }
-    | undefined
+  readonly making?: (Making & { readonly vocation: number }) | undefined
 }
 
 export function openPatty(): PattyWhere {
@@ -445,10 +442,7 @@ function pattyRows(context: MenuContext | undefined, where: PattyWhere | undefin
   // Every list has a last row that goes back, so none can be a dead end.
   if (where.at === 'top') return pattyTop(context).length + 1
   if (where.at === 'vocation') return RECRUIT_VOCATIONS.length + 1
-  if (where.at === 'making') {
-    const knob = CREATION_ORDER[where.making?.at ?? 0]
-    return knob ? CREATION_SETTINGS[knob] : 0
-  }
+  if (where.at === 'making') return where.making ? makingRows(where.making).length : 0
   if (where.at === 'dropOff') return (context?.party?.length ?? 0) + 1
   return (context?.kept?.length ?? 0) + 1
 }
@@ -635,16 +629,22 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     }
     if (where.at === 'making') {
       const making = where.making
-      const knob = making && CREATION_ORDER[making.at]
-      if (!making || !knob) return { state: back, talk: false }
-      const look = setKnob(making.look, knob, state.row)
-      const next = making.at + 1
+      if (!making) return { state: back, talk: false }
+      const picked = makingPick(making, state.row)
       // The last knob answered files the character with Patty.
-      if (next >= CREATION_ORDER.length) {
-        return { state, talk: false, patty: { does: 'recruit', vocation: making.vocation, look } }
+      if ('made' in picked) {
+        return {
+          state,
+          talk: false,
+          patty: { does: 'recruit', vocation: making.vocation, look: picked.made },
+        }
       }
       return {
-        state: { ...state, patty: { at: 'making', making: { ...making, look, at: next } }, row: 0 },
+        state: {
+          ...state,
+          patty: { at: 'making', making: { ...making, ...picked.next } },
+          row: 0,
+        },
         talk: false,
       }
     }
@@ -1004,28 +1004,14 @@ export function panelLines(
         ]
       }
       if (where.at === 'making') {
-        // **One screen a knob**, as overlay 9 has it. The captions there are
-        // drawn art rather than text, so the knob's name is ours; what each
-        // setting *is* comes from the look being built, so the rows show the
-        // part a choice names where there is one.
+        // The same walk the Hero's own creation runs — see `Making` in
+        // `appearance.ts`, which is where overlay 9's step-per-knob lives.
         const making = where.making
-        const knob = making && CREATION_ORDER[making.at]
-        if (!making || !knob) return ['Nothing is being made.']
-        const shown = (at: number) => {
-          const look = setKnob(making.look, knob, at)
-          if (knob === 'sex') return at === SEX.female ? 'Female' : 'Male'
-          if (knob === 'face') return faceOf(look)
-          if (knob === 'hair') return hairOf(look)
-          if (knob === 'hairColour') return hairColourOf(look)
-          return `${at + 1}`
-        }
+        if (!making) return ['Nothing is being made.']
         return [
           her(PATTY_SAYS.whatKind, 'What kinda person are you looking for?'),
-          `${KNOB_NAMES[knob]} — ${making.at + 1} of ${CREATION_ORDER.length}`,
-          ...Array.from(
-            { length: CREATION_SETTINGS[knob] },
-            (_, i) => `${mark(i === row)}${shown(i)}`,
-          ),
+          makingTitle(making),
+          ...makingRows(making).map((shown, i) => `${mark(i === row)}${shown}`),
           ...(state?.said ?? []),
         ]
       }

@@ -15,9 +15,14 @@ import {
   hairColourOf,
   hairOf,
   KNOB_SETTINGS,
+  type Making,
+  makingPick,
+  makingRows,
+  makingTitle,
   SKINS,
   scaleOf,
   setKnob,
+  startMaking,
   turned,
 } from '../src/appearance.ts'
 import { SEX } from '../src/equipment.ts'
@@ -180,5 +185,69 @@ describe('the Hero’s own look', () => {
     expect(buildOf(HERO_APPEARANCE, TABLE)).toEqual(
       buildOf({ ...HERO_APPEARANCE, sex: SEX.female }, TABLE),
     )
+  })
+})
+
+/**
+ * The creation walk, which both the Hero's own screens and Patty's step 4
+ * run — see `Making`. The walk is the thing tested here; who is being made
+ * is the caller's business.
+ */
+describe('the creation walk', () => {
+  const walk = (answers: readonly number[]) => {
+    let making: Making = startMaking()
+    const seen: string[] = []
+    for (const answer of answers) {
+      seen.push(makingTitle(making))
+      const picked = makingPick(making, answer)
+      if ('made' in picked) return { seen, made: picked.made }
+      making = picked.next
+    }
+    return { seen, made: undefined }
+  }
+
+  it("asks one knob a screen, in the game's order", () => {
+    const { seen } = walk(CREATION_ORDER.map(() => 0))
+    expect(seen).toHaveLength(CREATION_ORDER.length)
+    expect(seen[0]).toBe('Gender — 1 of 7')
+    expect(seen.at(-1)).toBe(`Eye Colour — ${CREATION_ORDER.length} of ${CREATION_ORDER.length}`)
+  })
+
+  it('offers exactly what the screen offers, not what the field holds', () => {
+    let making: Making = startMaking()
+    for (const knob of CREATION_ORDER) {
+      expect(makingRows(making)).toHaveLength(CREATION_SETTINGS[knob])
+      const picked = makingPick(making, 0)
+      if ('next' in picked) making = picked.next
+    }
+    // The two that differ: the cartridge has more hair and more eye colours
+    // than the screens put on offer.
+    expect(CREATION_SETTINGS.hair).toBeLessThan(KNOB_SETTINGS.hair)
+    expect(CREATION_SETTINGS.eyes).toBeLessThan(KNOB_SETTINGS.eyes)
+  })
+
+  it('names the part a choice names, and counts where there is no part', () => {
+    const rows = makingRows(startMaking())
+    expect(rows).toEqual(['Male', 'Female'])
+    const face = { look: HERO_APPEARANCE, at: CREATION_ORDER.indexOf('face') }
+    expect(makingRows(face)[0]).toBe('p_f000')
+    const skin = { look: HERO_APPEARANCE, at: CREATION_ORDER.indexOf('skin') }
+    expect(makingRows(skin)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8'])
+  })
+
+  it('keeps every answer, and is done after the last', () => {
+    const answers = [1, 2, 3, 4, 5, 6, 7]
+    const { made } = walk(answers)
+    expect(made).toBeDefined()
+    for (const [at, knob] of CREATION_ORDER.entries()) {
+      expect(made?.[knob]).toBe(answers[at])
+    }
+  })
+
+  it('has nothing to ask past the last knob', () => {
+    const past: Making = { look: HERO_APPEARANCE, at: CREATION_ORDER.length }
+    expect(makingRows(past)).toEqual([])
+    expect(makingTitle(past)).toBe('Nothing is being made.')
+    expect(makingPick(past, 0)).toEqual({ made: HERO_APPEARANCE })
   })
 })

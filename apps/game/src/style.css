@@ -260,6 +260,46 @@ main {
   font: inherit;
 }
 
+/*
+ * The Hero's creation, over the start screen and before the world: one
+ * screen a knob, as overlay 9 lays them out in a grid. See `askCreation`.
+ */
+#create:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: rgb(20 22 26 / 96%);
+}
+#create h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+}
+#create-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 42ch;
+}
+#create-rows button {
+  background: #1b1b1f;
+  color: inherit;
+  border: 1px solid #33333a;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font: inherit;
+  min-width: 8ch;
+}
+#create-rows button:hover {
+  border-color: #5a5a66;
+}
+
 #start p {
   max-width: 46ch;
   margin: 0;
