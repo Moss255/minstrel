@@ -554,9 +554,48 @@ does not do, and the eleventh panel's zero is settled.
 
 What is left:
 
-- **Recruitment at the Quester's Rest**, which is where a created character
-  is *given out*. The making of one is built (see §3a); handing it a place in
-  the party at the inn is not.
+- **Recruitment at the Quester's Rest** — **read 25 September 2026, not
+  built.** It is Patty's Party Planning Place, service 23, a sixteen-step flow
+  in overlay 3 at `0x0217ff68`, and what it does is written down here so that
+  building it is transcription rather than invention.
+
+  **Her top-level menu** is four or five items depending on whether the party
+  is only the Hero (`0x02162084` opens window `0x1D` instead of `0x1E`):
+  **Call Up a Friend · Recruit a Friend · Drop Off a Friend · Part With a
+  Friend · Cancel**.
+
+  **Recruiting asks the vocation first and the appearance second.** Step 4
+  opens a window of six — Warrior, Priest, Mage, Martial Artist, Thief,
+  Minstrel — and hands the choice to service 24, which is character creation
+  in overlay 9. **Only the six starting vocations**, which is the same six
+  Alltrades offers with no gate.
+
+  **Overlay 9 asks in this order**, from its own thirteen-step table at
+  `0x0218ab9c`: **sex → figure → hair → hair colour → face → skin colour → eye
+  colour → name**. Five options for the figure, ten each for hair, hair colour
+  and face, eight each for the two colours. That is the same knob set
+  `appearance.ts` holds, and **the order to ask them in**, which it did not
+  have.
+
+  **A new character goes onto Patty's list, not into the party.** Overlay 9
+  files them with `func_02086778`, which appends to the thirteen-record array
+  at `GameState+0x3984` and bumps the count at `+0x5690` — so **the list and
+  the record array are the same thing**, and party membership is the four
+  slots at `+0x397c` naming ids within it. Only then does she ask whether they
+  should join now.
+
+  **Two limits, and both are checked.** The party is **four**
+  (`cmp r0, #4` at `0x021621a4`, `0x021628a4`, `0x0216322c`, `0x021632f0`),
+  and the list holds `min(n + 8, 12)` — 8 to 12 — with its own refusals.
+
+  **No cost in gold was found**, and that is a negative result rather than a
+  citation: no purse access appears in any of steps 1 to 8, and `str_lui`
+  carries no price or refusal-for-money line.
+
+  **Not established:** `str_lui` ids 15 and 16 are absent from the English
+  file though the code shows message 16; and where overlay 9's two confirm
+  sentences (18000, 18001) are looked up — neither constant appears anywhere
+  in that overlay.
 - **Mini medals**: the two reward tables are read and nothing hands a medal
   over or spends one.
 - **How a battle's experience is split among the party.** Only the leader

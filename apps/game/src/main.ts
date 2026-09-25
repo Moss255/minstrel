@@ -94,7 +94,7 @@ import {
   waysOut,
 } from '@minstrel/world'
 import { actorLookOf, packMotions } from './actors.ts'
-import { cook, POT_SAYS, potList } from './alchemy.ts'
+import { cook, POT_SAYS, potList, tryYourLuck } from './alchemy.ts'
 import {
   type Appearance,
   buildOf,
@@ -233,6 +233,7 @@ import {
   type MenuState,
   moveCursor,
   openMenu,
+  openPot,
   panelLines,
 } from './menu.ts'
 import {
@@ -1135,6 +1136,14 @@ function begin(bytes: Uint8Array, map: string): void {
     for (let n = 0; n < Number(asked[2] ?? 1); n++) bag = take(bag, { item })
   }
   if (params.get('give')) status(`bag: ${bagLines(bag, nameOf).join(' · ')}`)
+  // `?pot=1` opens the Krak Pot — **ours, for driving**. Its real way in is
+  // `<RENKIN>` at the end of the pot's own talk line in the Quester's Rest,
+  // which needs the story far enough along for the pot to be placed and
+  // talking; this reaches the same panel without walking there.
+  if (params.get('pot') === '1') {
+    menu = { ...openMenu(), panel: 'pot', pot: openPot() }
+    showMenu()
+  }
   // `?make=1` opens the appearance panel — **ours, and the only way in until
   // recruitment is built**: character creation is a scene of the game's own
   // (the protagonist's from `main`'s mode 3, a recruit's inside Patty's flow
@@ -2972,6 +2981,27 @@ function cookRecipe(id: number, state: MenuState | undefined): MenuState | undef
   }
 }
 
+/**
+ * **Try Your Luck** — throw what was picked in and see what the pot makes of
+ * it. `str_ren` 11 is its own refusal: "I don't seem to be able to make
+ * anything with that particular combination of ingredients."
+ */
+function tryLuck(picked: readonly number[], state: MenuState | undefined): MenuState | undefined {
+  if (!state || !loaded) return state
+  const recipe = tryYourLuck(loaded.recipes, picked)
+  if (!recipe) {
+    return {
+      ...state,
+      pot: state.pot ? { ...state.pot, picked: [] } : undefined,
+      said: [potSay(POT_SAYS.cannot) ?? 'Nothing comes of that combination.'],
+    }
+  }
+  const cooked = cookRecipe(recipe.id, state)
+  return cooked
+    ? { ...cooked, pot: cooked.pot ? { ...cooked.pot, picked: [] } : undefined }
+    : cooked
+}
+
 /** One of the Krak Pot's own lines, with the message system's markup taken out. */
 function potSay(number: number): string | undefined {
   const text = loaded?.potWords.get(number)
@@ -2994,11 +3024,18 @@ function potLines(): ReadonlyMap<number, string> | undefined {
  * not go through it yet. See `docs/still-open.md`.
  */
 function plainMarkup(text: string, actor: string): string {
-  return text
-    .replaceAll('<Cap>', '')
-    .replaceAll('<ACTOR>', actor)
-    .replaceAll('<1>', '’')
-    .replaceAll(/<[^>]*>/g, '')
+  return (
+    text
+      .replaceAll('<Cap>', '')
+      .replaceAll('<ACTOR>', actor)
+      // The punctuation the text spells as tags — an apostrophe, a comma and a
+      // dash. Without these a stripped line reads "So how will you be
+      // conducting your alchemy hm?".
+      .replaceAll('<1>', '\u2019')
+      .replaceAll('<,>', ',')
+      .replaceAll('<-->', '\u2014')
+      .replaceAll(/<[^>]*>/g, '')
+  )
 }
 
 /**
@@ -3044,7 +3081,24 @@ function menuContext(): MenuContext {
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
     mayWear: (id, place) => wearableBy(members[place] ?? leader(), id),
-    pot: loaded ? potList(loaded.recipes, bag, nameOf) : undefined,
+    // The list the pot is looking at: the Alchenomicon's chosen category, in
+    // its chosen order — see `potList`.
+    pot: loaded
+      ? potList(loaded.recipes, bag, nameOf, {
+          category: menu?.pot?.category,
+          sort: menu?.pot?.sort,
+          kindOf: (item) => loaded?.itemKinds.get(item),
+        })
+      : undefined,
+    potLabels: loaded?.potLabels,
+    /** How many a category holds, which is what empties `???` from the list. */
+    potCount: (at) =>
+      loaded
+        ? potList(loaded.recipes, bag, nameOf, {
+            category: at,
+            kindOf: (item) => loaded?.itemKinds.get(item),
+          }).length
+        : 0,
     look: loaded ? appearanceRows(members[menu?.member ?? 0] ?? leader()) : undefined,
     // The pot's lines carry the same markup item names do — `you<1>re` is an
     // apostrophe — so they go through `renderName` as the skill labels do.
@@ -3436,7 +3490,7 @@ function openService(service: Service): void {
     // **The Krak Pot is spoken to, not chosen from a menu.** `<RENKIN>` at the
     // end of the pot's own talk line is facility code 7 — see `Service` in
     // `talk.ts` — so this is the pot's real entry point and the only one.
-    menu = { ...openMenu(), panel: 'pot' }
+    menu = { ...openMenu(), panel: 'pot', pot: openPot() }
     self?.held.clear()
     showMenu()
     return
@@ -5862,6 +5916,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       }
       if (taken.buy) menu = buyPanel(taken.buy.tree, taken.buy.panel, menu)
       if (taken.cook !== undefined) menu = cookRecipe(taken.cook, menu)
+      if (taken.luck) menu = tryLuck(taken.luck, menu)
       if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)
       if (taken.talk) {
         showMenu()

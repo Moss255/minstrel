@@ -1,4 +1,4 @@
-import type { PotEntry } from './alchemy.ts'
+import { POT_CATEGORIES, POT_LABELS, type PotEntry, type PotSort } from './alchemy.ts'
 import { type Bag, bagLines } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import type { Standing } from './hero.ts'
@@ -146,6 +146,15 @@ export interface MenuState {
   readonly row: number
   readonly picking: Slot | undefined
   /**
+   * Where the Krak Pot is: which of its two modes, which of the
+   * Alchenomicon's categories, how it is sorted, and what has been dropped in
+   * for Try Your Luck. Undefined until the pot is opened.
+   *
+   * **The pot's navigation is all state**, so it lives here and is done in
+   * `choose`; only the cooking leaves the menu.
+   */
+  readonly pot?: PotWhere | undefined
+  /**
    * In the skill panel, the tree being climbed — the rows are then its panels
    * rather than the five trees. Undefined at the list of trees.
    */
@@ -154,6 +163,29 @@ export interface MenuState {
   readonly acting?: { readonly item: number; readonly row: number } | undefined
   /** What using an item or casting a spell came to, shown under the panel until the next choice. */
   readonly said?: readonly string[] | undefined
+}
+
+/** Where the Krak Pot is — see `MenuState.pot`. */
+export interface PotWhere {
+  /**
+   * `top` its two modes, `category` the Alchenomicon's categories, `recipes`
+   * the list inside one, `luck` picking ingredients by hand.
+   *
+   * **There is a fourth level in the game and not here**: within Weapons and
+   * Armour the book narrows again by `POT_TYPES` — Swords, Shields, Torso and
+   * the rest. The data for it is read and held to the cartridge; the panel
+   * does not offer it yet.
+   */
+  readonly at: 'top' | 'category' | 'recipes' | 'luck'
+  /** Which of `POT_CATEGORIES`, by its place. */
+  readonly category: number
+  readonly sort: PotSort
+  /** What has been put in for Try Your Luck: item ids, repeated for a count. */
+  readonly picked: readonly number[]
+}
+
+export function openPot(): PotWhere {
+  return { at: 'top', category: 0, sort: 'type', picked: [] }
 }
 
 export function openMenu(): MenuState {
@@ -298,6 +330,10 @@ export interface MenuContext {
   readonly pot?: readonly PotEntry[] | undefined
   /** The pot's own words, `str_ren`, by number. */
   readonly potWords?: ReadonlyMap<number, string> | undefined
+  /** The pot's menu labels, `bm_rrb`, by number — see `POT_LABELS`. */
+  readonly potLabels?: ReadonlyMap<number, string> | undefined
+  /** How many recipes the Alchenomicon's category at `at` holds — see `POT_CATEGORIES`. */
+  readonly potCount?: ((at: number) => number) | undefined
   /**
    * The chosen member's look, knob by knob, as the appearance panel shows it
    * — see `appearanceRows` in `main.ts`. Undefined before a cartridge is in.
@@ -341,6 +377,21 @@ const whose = (
 /** What the chosen member wears, or the context's own where there is no party. */
 const wearing = (context: MenuContext, state?: { readonly member?: number }) =>
   whose(context, state)?.equipped ?? context.equipped
+
+/** The Alchenomicon's categories that have anything in them, with their places kept. */
+const potCategories = (context: MenuContext | undefined) =>
+  POT_CATEGORIES.map((one, at) => ({ at, label: one.label })).filter(
+    ({ at }) => (context?.potCount?.(at) ?? 0) > 0,
+  )
+
+/** What the pot's rows are, wherever it is. */
+function potRows(context: MenuContext | undefined, where: PotWhere | undefined): number {
+  if (!where) return 0
+  if (where.at === 'top') return 3
+  if (where.at === 'category') return potCategories(context).length
+  if (where.at === 'luck') return (context?.bag?.items.size ?? 0) + 1
+  return (context?.pot?.length ?? 0) + 1
+}
 
 /** The chosen member's trees, which are the skill panel's first rows. */
 const treesOfMember = (
@@ -391,7 +442,7 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
   if (state.panel === 'pot') {
-    const count = context?.pot?.length ?? 0
+    const count = potRows(context, state.pot)
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
   if (state.panel === 'make') {
@@ -418,6 +469,8 @@ export interface Taken {
   readonly buy?: { readonly tree: number; readonly panel: number }
   /** Cook this recipe, by its id — see `cook` in `alchemy.ts`. */
   readonly cook?: number
+  /** Throw these ingredients in and see — see `tryYourLuck` in `alchemy.ts`. */
+  readonly luck?: readonly number[]
   /** Turn one of the appearance's knobs — see `turned` in `appearance.ts`. */
   readonly turn?: { readonly knob: string; readonly by: number }
 }
@@ -469,7 +522,41 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     return knob ? { state, talk: false, turn: { knob, by: 1 } } : { state, talk: false }
   }
   if (state.panel === 'pot') {
-    const entry = context?.pot?.[state.row]
+    const where = state.pot ?? openPot()
+    const at = (next: Partial<PotWhere>) => ({
+      state: { ...state, pot: { ...where, ...next }, row: 0, said: undefined },
+      talk: false,
+    })
+    if (where.at === 'top') {
+      // Use A Recipe · Try Your Luck · Cancel.
+      if (state.row === 0) return at({ at: 'category' })
+      if (state.row === 1) return at({ at: 'luck', picked: [] })
+      return { state: { ...state, panel: undefined, pot: undefined, row: 0 }, talk: false }
+    }
+    if (where.at === 'category') {
+      const chosen = potCategories(context)[state.row]
+      return chosen ? at({ at: 'recipes', category: chosen.at }) : { state, talk: false }
+    }
+    if (where.at === 'luck') {
+      // The last row throws in what has been picked; the rest add an item.
+      const items = [...(context?.bag?.items.keys() ?? [])]
+      if (state.row >= items.length) {
+        return where.picked.length > 0
+          ? { state, talk: false, luck: where.picked }
+          : { state, talk: false }
+      }
+      const item = items[state.row] as number
+      // No more of an item than the bag holds, and no more than three in all.
+      const already = where.picked.filter((one) => one === item).length
+      const room = already < (context?.bag?.items.get(item) ?? 0) && where.picked.length < 3
+      return room ? at({ at: 'luck', picked: [...where.picked, item] }) : { state, talk: false }
+    }
+    // A list of recipes: the last row is the sort toggle.
+    const entries = context?.pot ?? []
+    if (state.row >= entries.length) {
+      return at({ at: 'recipes', sort: where.sort === 'type' ? 'name' : 'type' })
+    }
+    const entry = entries[state.row]
     // A recipe the bag will not cover says so rather than doing nothing.
     return entry?.ready ? { state, talk: false, cook: entry.recipe.id } : { state, talk: false }
   }
@@ -498,6 +585,10 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
 export function back(state: MenuState): MenuState | undefined {
   if (state.acting) return { ...state, acting: undefined, row: state.acting.row }
   if (state.tree !== undefined) return { ...state, tree: undefined, row: 0, said: undefined }
+  if (state.pot && state.pot.at !== 'top') {
+    // Out of a list and back to the two modes, rather than out of the pot.
+    return { ...state, pot: { ...state.pot, at: 'top', picked: [] }, row: 0, said: undefined }
+  }
   if (state.picking) {
     const row = SLOTS.findIndex((s) => s.slot === state.picking)
     return { ...state, picking: undefined, row: Math.max(0, row) }
@@ -512,7 +603,7 @@ export function panelLines(
   panel: MenuCommand,
   context: MenuContext,
   state?: Pick<MenuState, 'row' | 'picking'> &
-    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member' | 'tree'>>,
+    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member' | 'tree' | 'pot'>>,
 ): string[] {
   const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   const nameOf = context.itemName ?? byId
@@ -680,30 +771,70 @@ export function panelLines(
       ]
     }
     case 'pot': {
-      // **The Krak Pot.** What can be cooked now comes first — ours, and what
-      // makes a list of 470 usable before the recipe books are read; see
-      // `potList`. What each is short of is named, because "you can't make
-      // that" without saying why is the worst sort of menu.
+      // **The Krak Pot**, as the pot has it: two modes, then the
+      // Alchenomicon's own categories, then a list. Its words are the
+      // cartridge's — `bm_rrb` for the labels, `str_ren` for what it says.
+      const where = state?.pot
+      const row = state?.panel === 'pot' ? (state.row ?? 0) : -1
+      const potSay = (number: number, ours: string) => context.potWords?.get(number) ?? ours
+      const label = (number: number, ours: string) => context.potLabels?.get(number) ?? ours
+      const title = label(POT_LABELS.title, 'Krak Pot')
+      if (!where || where.at === 'top') {
+        return [
+          potSay(0, 'So, how will you be conducting your alchemy, hm?'),
+          `${mark(row === 0)}${label(POT_LABELS.useRecipe, 'Use A Recipe')}`,
+          `${mark(row === 1)}${label(POT_LABELS.tryLuck, 'Try Your Luck')}`,
+          `${mark(row === 2)}${label(POT_LABELS.cancel, 'Cancel')}`,
+          ...(state?.said ?? []),
+        ]
+      }
+      if (where.at === 'category') {
+        const shown = potCategories(context)
+        return [
+          `${title} — ${label(POT_LABELS.alchenomicon, 'Alchenomicon')}`,
+          ...shown.map(
+            (one, i) =>
+              `${mark(i === row)}${label(one.label, `category ${one.at}`)} (${context.potCount?.(one.at) ?? 0})`,
+          ),
+          ...(state?.said ?? []),
+        ]
+      }
+      if (where.at === 'luck') {
+        // **Try Your Luck**: up to three things in, and see. The bag's own
+        // order, with what has been picked so far shown above it.
+        const items = [...(context.bag?.items ?? [])]
+        const put = where.picked.map((item) => nameOf(item)).join(' + ')
+        return [
+          potSay(3, 'So, you want to pop all the necessary ingredients into the pot?'),
+          `In the pot: ${put || '(nothing yet)'}`,
+          ...items.map(([item, held], i) => `${mark(i === row)}${nameOf(item)} ×${held}`),
+          `${mark(row >= items.length)}Get kraking`,
+          ...(state?.said ?? []),
+        ]
+      }
       const pot = context.pot
       if (!pot) return ['The recipes are not read: `recipe.gp2` did not load.']
       const ready = pot.filter((entry) => entry.ready)
-      const row = state?.panel === 'pot' ? (state.row ?? 0) : -1
-      const potSay = (number: number, ours: string) => context.potWords?.get(number) ?? ours
-      // Only a window's worth, around the row: 470 lines is not a panel.
-      const from = Math.max(0, Math.min(row < 0 ? 0 : row - 4, pot.length - 12))
+      const sortLabel =
+        where.sort === 'type'
+          ? label(POT_LABELS.byType, 'By Type')
+          : label(POT_LABELS.byName, 'By Name')
+      // Only a window's worth around the row: a category can hold hundreds.
+      const from = Math.max(0, Math.min(row < 0 ? 0 : row - 4, Math.max(0, pot.length - 10)))
       return [
-        potSay(1, 'Choose the recipe for the item you’re hoping to cook up.'),
-        `${ready.length} of ${pot.length} recipes can be made from the bag.`,
-        ...pot.slice(from, from + 12).map((entry, i) => {
+        `${title} — ${label(POT_CATEGORIES[where.category]?.label ?? 0, 'All Recipes')}` +
+          ` · ${ready.length} of ${pot.length} can be made · ${sortLabel}`,
+        ...pot.slice(from, from + 10).map((entry, i) => {
           const at = from + i
           const wanted = entry.recipe.ingredients
             .map(({ item, count }) => `${count}× ${nameOf(item)}`)
             .join(' + ')
-          const state_ = entry.ready
+          const short = entry.ready
             ? ''
             : ` — short ${entry.short.map((s) => `${s.short}× ${nameOf(s.item)}`).join(', ')}`
-          return `${mark(at === row)}${entry.name} = ${wanted}${state_}`
+          return `${mark(at === row)}${entry.name} = ${wanted}${short}`
         }),
+        `${mark(row >= pot.length)}Sort: ${sortLabel}`,
         ...(state?.said ?? []),
       ]
     }

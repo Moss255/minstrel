@@ -193,6 +193,12 @@ export interface Loaded {
    * is what `Recipe.chance`, `instead` and `fallback` are read as.
    */
   readonly potWords: ReadonlyMap<number, string>
+  /**
+   * The Krak Pot's menu labels — `bm_rrb`, a `0x67` table of 48 read like
+   * `sta_skl`. `POT_LABELS` and `POT_CATEGORIES` in `alchemy.ts` are the
+   * numbers into this; the words themselves stay on the cartridge.
+   */
+  readonly potLabels: ReadonlyMap<number, string>
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
   readonly battleMusic: number | undefined
   readonly bossMusic: number | undefined
@@ -1578,14 +1584,18 @@ export interface SkillWords {
   readonly said: ReadonlyMap<number, string>
 }
 
-/** `str_sklc`, `sta_skl` and `str_gskl` are each a table of `0x67` (number, string) records. */
-const SKILL_STRING_TAG = 0x67
+/**
+ * A table of `0x67` (number, string) records — the shape `str_sklc`,
+ * `sta_skl`, `str_gskl` and `bm_rrb` all share, and which `readTableMessages`
+ * reads. See game-formats' FORMAT.md, "The tagged data table".
+ */
+const STRING_TABLE_TAG = 0x67
 
 /** The skill screen's words in English — see {@link SkillWords}. */
 function skillWordsOf(rom: Uint8Array): SkillWords {
   const strings = (archive: string, member: string) =>
     englishText(rom, archive, member, (bytes) =>
-      messagesBy(readTableMessages(bytes, SKILL_STRING_TAG)),
+      messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
     )
   return {
     trees: strings('/data/bin/str_sklc.gp2', 'str_sklc_en.bin'),
@@ -2020,6 +2030,9 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     skillWords: skillWordsOf(rom),
     recipes: recipesOf(rom),
     potWords: englishText(rom, '/data/bin/menu/str_ren.gp2', 'str_ren_en.nat', readSystemStrings),
+    potLabels: englishText(rom, '/data/bin/menu/bm_rrb.gp2', 'bm_rrb_en.bin', (bytes) =>
+      messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
+    ),
     region: regionHead(entry?.region),
     regionExterior: exteriorOf(cat, code),
     ...tracks,
