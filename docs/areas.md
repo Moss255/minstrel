@@ -93,12 +93,51 @@ floor-versus-script-`y` chase that followed was measuring the same mistake.
 `?event=` plays a scene in whatever map is loaded and warns about nothing,
 which is the thing to fix. See `docs/still-open.md`.
 
+## Zere — `M02`
+
+**25 September 2026.** `--stage=3.6 --talk=10`, **28 views in five minutes: 0
+failed, 1 worth a look, 6 the game guessed.** Five minutes is the number the
+plan asked Phase 3 to measure and had not: an area is minutes, not an evening.
+
+Read through, the town is right. The Hero comes in under the gate's arch with
+the fence and the path drawn, and the mini-map names Zere and marks its inn.
+Petra's House is the best of it — a candle with its glow on the table, stools,
+the bed, flowers by the window, and Petra answering **"Wheesht, Alanna! There
+you go again, blethering about the old days."**
+
+**The one worth a look is the cartridge's, not ours.** `ev03131` is named by a
+trigger in `M02` and no `ev03131.gp2` exists anywhere; `ev03130` does. The
+host says so and carries on, which is what should happen. Measured across the
+cartridge afterwards: 512 events are named by a trigger and **23 have no
+script**, 21 of them `R02`/`R03`/`R04` in exact triples — three parallel areas
+whose scenes were cut together — leaving only `ev00003` and this one outside
+the pattern. `apps/game/test/event-scripts-exist.test.ts` pins it.
+
+**A thing that looks wrong and is not.** The status line says `indoors` on
+arrival, and the map index says `M02` is an exterior. Both are right: `inside`
+is whether there is a roof over the character's head, checked from the
+geometry as they walk, and the Hero arrives standing under the gate's arch.
+
+**Six of eight conversations were guesses**, which is worth more attention
+than the missing event. The reading is always "no such line covers 3.6, so the
+first that does" — so the cast's lines are written for another point in the
+story, and 3.6 is probably the wrong stage for this town rather than the lines
+being absent. Zere's triggers are busiest at **6.1** (36 of its 90). The
+stages here were taken from the earliest span with five or more triggers,
+which is a guess and this is the first evidence it is a poor one. Worth
+re-running at 6.1 and comparing before the same guess is made for nine more
+areas.
+
 ## Still to do
 
-The areas in story order after Stornway, as far as the story is read:
-Zere (`M02`), Coffinwell (`M03`), Alltrades Abbey (`X02`), Dourbridge (`M08`),
+The areas in story order after Zere, as far as the story is read:
+Coffinwell (`M03`), Alltrades Abbey (`X02`), Dourbridge (`M08`),
 Porth Llaffan (`M05`), Bloomingdale (`F10`), Gleeba (`C02`), Batsureg
 (`M10`), Upover (`M13`), Wormwood Creek (`M12`), Gittingham Palace (`C04`).
+
+**`F10` has no trigger file**, so Bloomingdale cannot be opened at a stage the
+way the others can; whether it is named differently or genuinely has none is
+not established.
 
 `pnpm inventory --regions` lists every place with the code that loads it, and
 `docs/regions.md` says how to go to one.
