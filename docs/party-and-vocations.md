@@ -125,9 +125,47 @@ and **`0x800` is what the accessor tests** before handing the character back.
 That is where the bit earns the reading this file gives it above: a record
 whose `0x800` is clear is not returned at all, whoever asks.
 
-**Still not pulled**, and the next move is not another offset search. The
-thing to follow is the behaviour — Patty's call-up and drop-off, which are
-what reorder the party — rather than the address.
+### Followed from Patty, and the answer is that nothing writes them
+
+Followed 25 September 2026, from the facility launcher rather than from the
+address. It ends in a positive conclusion, not another miss.
+
+**Patty is `0x021b65e0` in overlay 17.** The launcher's arms give her twice —
+`mov r1, #0` for facility code 5 and `mov r1, #1` for code 8 — so the mode
+byte is the difference between her two doors, and everything else is shared.
+
+**Two fixed globals, not one.** `0x0200f398` is `ldr r0, [pc]; bx lr` over the
+word `0x020f33d8`: **the game state is a global at a fixed address**, so the
+slots are `0x020f6d54` absolutely and the count `0x020f6d58`. Patty's setup
+then calls `0x0202ae18`, which is the same shape over `0x020fefec` — **a
+second global, the roster**, and it is that one she works on.
+
+**The roster keeps the party as a bitmask.** `0x0202bd34` asks whether a
+character is in the party and answers `tst r0, r1, lsl r4` — a bit per member
+— after `0x0202bcbc` turns a character id into a bit index by searching a
+signed-byte array at the roster's own `+0x1038`. Neither is the state block.
+
+**So the search for a writer is finished, and it found that there is none.**
+Taken with the previous section: no store anywhere addresses the window by an
+immediate offset; the offsets and both absolute addresses appear in no literal
+pool; and **no `ADD` immediate anywhere in the ARM9 or the 35 overlays builds
+a base into `+0x3900`–`+0x39ff`**, which is the last way to reach the array at
+all. Four instructions read it. Nothing writes it field by field, because
+nothing addresses it to write.
+
+**INFERRED, and this is the inference the rest rests on:** `+0x397c` is a
+*mirror* of a party that is really kept in the roster global, written only
+when the state block is copied whole — a save, or an init. The live party
+Patty edits is the bitmask at `0x020fefec`. What is established is the
+negative and the two globals; that the mirror is written by a bulk copy is the
+only mechanism left standing, not something seen happening.
+
+**What is genuinely still open** is narrower than this entry used to claim:
+not "what writes `+0x397c`" but **what Patty's confirm does to the roster
+bitmask**, and when the mirror is refreshed from it. The state's initialiser
+is `0x0200f3a4` — it memsets `state+8` for `0x3a4` bytes and initialises a
+block at `state+0x2a04` through `0x0208660c` — and is where a copy of that
+kind would be visible.
 
 ### What this means for `minstrel`, and what was done about it
 
