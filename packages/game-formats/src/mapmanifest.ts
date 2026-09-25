@@ -135,13 +135,37 @@ export function readMapManifest(data: Uint8Array): MapManifest {
     )
   }
 
-  // Placements pair with resources by position, so they are only trusted when
-  // there is exactly one for each. A minority of manifests carry more
-  // placements than resources — things placed in the map that are not in its
-  // resource list — and pairing positionally through those would put pieces
-  // confidently in the wrong places. No placement is better than a wrong one,
-  // so those maps get none and say so.
+  // **A placement names the resource it places, so nothing pairs by position.**
+  //
+  // `values[0]` is which instance it is and **`values[1]` is the index of the
+  // resource**. The counts differ not from a mismatch but because a resource
+  // can be placed **more than once**: `D03M06` lists two door models and
+  // places them four times — `D03M0602` at both (0.98, 12.34) and
+  // (0.98, 17.70) — so thirteen placements serve nine resources.
+  //
+  // This used to pair by order and, where the counts disagreed, give every
+  // resource no placement rather than risk an off-by-one. Fifty-six of the 755
+  // manifests are in that state and the result is what {@link MapPlacement}
+  // warns of: every piece at the origin, a door standing as a slab through the
+  // floor. `S07M0000` is one — Gortress had its six doors and both gates piled
+  // at the origin, so the fortress could be walked straight through.
+  //
+  // **The last instance wins, and that is not arbitrary.** The Hexagon places
+  // its sliding statue `D01M01S1` twice, at `(-3.45, 0, 0)` and at the origin,
+  // each with its own collision parented to it — the two ends of the slide.
+  // The origin is where it rests and where the step-5 record stands on it, and
+  // it is the later of the two. Taking the first put the statue 0.431 out,
+  // which is `-3.45` scaled, and `story.test.ts` caught it.
+  //
+  // **Pairing by `values[0]` instead is wrong** and was tried: it puts a
+  // door's collision on the far side of the room from its door and discards
+  // the parent link, which is the fault {@link MapPlacement} describes.
   const placements = table.withTag(TAG_PLACEMENT)
+  const byResource = new Map<number, (typeof placements)[number]>()
+  for (const record of placements) {
+    const names = record.values[1]
+    if (names !== undefined) byResource.set(names, record)
+  }
   const placementsPair = placements.length === entries.length
 
   const resources = entries.map((entry, position) => {
@@ -157,7 +181,7 @@ export function readMapManifest(data: Uint8Array): MapManifest {
       )
     }
     const dot = name.lastIndexOf('.')
-    const record = placementsPair ? placements[position] : undefined
+    const record = byResource.get(index) ?? (placementsPair ? placements[position] : undefined)
     const at = record?.floats
     // A parent of -1 means none, and reads as NaN through the float view.
     // Placement records carry fourteen values, so their header is eight bytes

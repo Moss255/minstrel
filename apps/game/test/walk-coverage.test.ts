@@ -158,19 +158,30 @@ describe.skipIf(!romPath)('whether a map can be walked from its door to its door
 
   it('never strands the player where they arrive', () => {
     // **The invariant.** A map may be several regions and a doorway may only
-    // open from one of them, but somewhere to go there must be — and on every
-    // map sampled there are at least two, so it is not a dead end either.
+    // open from one of them, but somewhere to go there must be.
     const stranded = walked.filter((w) => w.reached < 1)
     expect(stranded.map((w) => w.code)).toEqual([])
-    for (const w of walked) expect(w.reached, w.code).toBeGreaterThanOrEqual(2)
+    // **Two, except at Gortress, where one is the fortress working.** `S07`
+    // is one of the 56 maps whose pieces were all left at the origin until
+    // placements were paired by the resource they name — see `mapmanifest.ts`.
+    // Six doors and both gates now stand where they belong, and the barrier
+    // across the gateway is visible in play, so the way in is one doorway and
+    // not two. It reached two when the barrier was piled at the origin.
+    for (const w of walked) {
+      expect(w.reached, w.code).toBeGreaterThanOrEqual(w.code === 'S07' ? 1 : 2)
+    }
   })
 
   it('reaches most of the doorways on most maps', () => {
-    // Eight of the ten sampled reach **all** of theirs. `C04` is a walled
+    // Seven of the ten sampled reach **all** of theirs. `C04` is a walled
     // palace routed through its building, and `M12` has one door its forecourt
     // does not open onto. Pinned as a measurement: a map dropping out of the
     // "all of them" group is worth a look, and is not by itself a fault.
+    //
+    // **`S07` left this group when its gates were placed**, which is the one
+    // case here of a map dropping out and being *more* right for it — see the
+    // note above.
     const whole = walked.filter((w) => w.reached === w.doors).map((w) => w.code)
-    expect(whole).toEqual(['M01', 'M11', 'C02', 'S07', 'D03', 'M03', 'M05', 'M13'])
+    expect(whole).toEqual(['M01', 'M11', 'C02', 'D03', 'M03', 'M05', 'M13'])
   })
 })

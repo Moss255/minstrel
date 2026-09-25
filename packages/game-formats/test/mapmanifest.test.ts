@@ -19,7 +19,13 @@ function buildManifest(
   options: {
     declared?: number
     /** One per name: where the map puts it, and what it hangs off. */
-    places?: readonly { at?: [number, number, number]; slot: number; parent?: number }[]
+    places?: readonly {
+      at?: [number, number, number]
+      slot: number
+      parent?: number
+      /** The resource this places, by index. Defaults to the slot. */
+      names?: number
+    }[]
   } = {},
 ): Uint8Array {
   const strings: number[] = []
@@ -62,7 +68,7 @@ function buildManifest(
       // to look like a leading value was the record's second type byte.
       record(0x6f, 165, [
         place.slot,
-        0,
+        place.names ?? place.slot,
         asWord(x),
         asWord(y),
         asWord(z),
@@ -213,15 +219,37 @@ describe('placement', () => {
     ).toMatchObject({ x: 0, y: 0, z: 0 })
   })
 
-  it('places nothing when the placements do not pair with the resources', () => {
-    // Placements pair by position, so one extra or one missing would put every
-    // piece after it in the wrong place with complete confidence. Some of the
-    // cartridge's maps carry more placements than resources.
-    const uneven = buildManifest(['a.imd', 'b.imd'], { places: [{ slot: 0 }] })
+  it('pairs a placement with the resource it names, not with its position', () => {
+    // **The counts need not match.** Fifty-six manifests carry more placements
+    // than resources, and every piece of those maps used to be left at the
+    // origin — a door standing as a slab through the floor. They carry more
+    // because a resource can be placed more than once, and `values[1]` says
+    // which resource, so the pairing never needed the counts to agree.
+    const uneven = buildManifest(['a.imd', 'b.imd'], {
+      places: [
+        { slot: 0, names: 1, at: [3, 0, 4] },
+        { slot: 1, names: 0, at: [1, 0, 2] },
+      ],
+    })
     const manifest = readMapManifest(uneven)
-    expect(manifest.placementsPair).toBe(false)
-    expect(manifest.resources[0]?.placement).toBeUndefined()
-    expect(manifest.resources[1]?.placement).toBeUndefined()
+    // Out of order on purpose: pairing by position would swap them.
+    expect(manifest.resources[0]?.placement).toMatchObject({ x: 1, z: 2 })
+    expect(manifest.resources[1]?.placement).toMatchObject({ x: 3, z: 4 })
+  })
+
+  it('takes the last of several placements of one resource', () => {
+    // **The Hexagon's sliding statue is placed twice**, at one end of its
+    // slide and at the other, each with its own collision. The later is where
+    // it rests and where the step-5 record stands on it; taking the first put
+    // it 0.431 out and `story.test.ts` caught it.
+    const twice = buildManifest(['a.imd'], {
+      places: [
+        { slot: 0, names: 0, at: [-3.45, 0, 0] },
+        { slot: 1, names: 0, at: [0, 0, 0] },
+      ],
+    })
+    const manifest = readMapManifest(twice)
+    expect(manifest.resources[0]?.placement).toMatchObject({ x: 0, z: 0 })
   })
 
   it('does not hang on a chain that names itself', () => {
