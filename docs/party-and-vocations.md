@@ -82,12 +82,52 @@ uses to decide who a speaker turns to face — see `docs/event-scripts.md` §7a.
 ### What writes the slots has not been found
 
 Three reads of `+0x397c` exist in the ARM9 (`0x0200fde4`, `0x020100b4`,
-`0x0201064c`) and **no write, in the ARM9 or in any of the overlays** — nor
-any access at all to `+0x3980` besides the one above. Searched as both
-`[base+0x3000, #0x97c]` and `[base, #0x397c]` forms. So recruitment writes
-them some other way: through a held pointer, or as part of a bulk copy when a
-save is loaded. That is the thread to pull when recruitment is implemented,
-and it is not pulled yet.
+`0x0201064c`) and **no write**, and the search behind that is now much wider
+than the two forms first tried — 25 September 2026.
+
+Every ARM single-data-transfer with an immediate offset was decoded across the
+ARM9 and all 35 overlays, of any width and with **any base register**, and
+every one landing in `0x97c`–`0x980` or `0x397c`–`0x3980` collected. Nine
+turned up: the four known reads, four pc-relative literal loads, and one
+apparent `strb` at `0x020002dc` that is Thumb code being decoded as ARM — it
+sits among the SDK stubs, beside `LZ77UnCompReadByCallbackWrite16bit` at
+`0x020002cc`. **No store.** The constants `0x397c`, `0x097c` and `0x3980` do
+not appear as literal-pool words anywhere either.
+
+That is worth stating precisely, because it rules out the shape the reader
+uses. The walk folds the index into the base and keeps the offset —
+`add r0, sl, r6` then `add r0, r0, #0x3000` then `ldrb r7, [r0, #0x97c]` — so
+a writer built the same way would have been found. **It was not, so the array
+is not addressed by that offset at all**: whatever writes it holds a pointer
+that is neither the state nor `state + 0x3000`, or writes the block in bulk.
+
+Three candidates were followed and are not it: the register-offset store at
+`0x020c6d64` is `+0x3f7c`, a different field; the read-modify-write at
+`0x020106ec`, immediately after the slot walk, halves a bitfield at `+0x3970`;
+and the `ORR`/`BIC #0x800` pairs in the character-record region
+(`0x02087914`, `0x02089188`) act on words at `+0x14` and `+0x18` of their
+struct, not on a record's first halfword.
+
+**What the accessor does say**, read the same day and new here.
+`GetPartyMemberByIndex` at `0x0200fdf0`:
+
+```
+0200fdf0  cmp   r1, #0          ; index < 0 -> null
+0200fdfc  cmp   r1, #0xe9       ; index >= 233 -> null
+0200fe08  add   r0, r0, r1, lsl #2
+0200fe0c  ldr   r0, [r0, #8]    ; a pointer array at state+8, one word each
+0200fe1c  ldrh  r1, [r0]
+0200fe20  tst   r1, #0x800      ; clear -> null
+```
+
+So a slot holds an index into a **233-entry pointer table at `state+0x08`**,
+and **`0x800` is what the accessor tests** before handing the character back.
+That is where the bit earns the reading this file gives it above: a record
+whose `0x800` is clear is not returned at all, whoever asks.
+
+**Still not pulled**, and the next move is not another offset search. The
+thing to follow is the behaviour — Patty's call-up and drop-off, which are
+what reorder the party — rather than the address.
 
 ### What this means for `minstrel`, and what was done about it
 
