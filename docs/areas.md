@@ -436,6 +436,71 @@ established**.
 both without knowing either — which is the argument for folding it into the
 witness rather than keeping it as a side script.
 
+## Where the twelve areas ended up
+
+**25 September 2026**, measured against the build in the tree: the `?talk=`
+grounding in, the camera floor tried and reverted. The entries above record
+each area as it was first seen; this is the state afterwards.
+
+| area | views | guessed | crowded | blank |
+|---|---|---|---|---|
+| Stornway `C01` | 67 | 8 | — | 0 |
+| Zere `M02` | 28 | 6/10 | 0 | 0 |
+| Coffinwell `M03` | 55 | 7/10 | 5 | **0** *(was 1)* |
+| Alltrades `X02` | 18 | 8/9 | 1 | 0 |
+| Dourbridge `M08` | 29 | 6/10 | 0 | 0 |
+| Porth Llaffan `M05` | 32 | 8/10 | 4 | 0 |
+| Gleeba `C02` | 42 | 4/10 | 4 | **2** |
+| Batsureg `M10` | 29 | 8/10 | 0 | 0 |
+| Bloomingdale `M09` | 39 | 7/10 | 7 | 1 |
+| Upover `M13` | 37 | **1/10** | 0 | 0 |
+| Wormwood Creek `M12` | 31 | 8/10 | 3 | 0 |
+| Gittingham `C04` @16.1 | 32 | 0/2 | 2 | 1 |
+
+**No area failed to load, and no map failed to draw**, in any run of any
+build. Every fault the phase found was in how the tools drive the engine, or
+in one camera rule.
+
+### What the three fixes came to
+
+- **`?talk=` grounding — kept.** It stood the Hero wherever the trigonometry
+  landed, with no floor check, and in a small room that is outside the room:
+  two blank frames, both reading `(falling)` at about `y = -6.4`. Now it tries
+  four spots around the character and takes the first with ground under it.
+  Coffinwell's blank is gone and Gleeba holds all ten conversations.
+- **The witness's blank-frame check — kept, and it earned the day.** Four
+  views drew nothing while naming their map, reporting thousands of triangles
+  and printing their dialogue, so every test the tool had scored them fine. It
+  found those, and then caught **both** versions of the camera floor ruining
+  views that nothing else would have flagged.
+- **The camera floor — reverted.** It removed 19 of 22 crowded shots and was
+  still the wrong trade, because both ways of applying it turn an ugly frame
+  into a blank one. See `clearDistance` and `docs/still-open.md`; the crowding
+  stays, and stays cosmetic.
+
+### The four blank frames, and where each stands
+
+| view | cause | state |
+|---|---|---|
+| `M03 talk-M03M03-4` | `?talk=` with no floor | **fixed** |
+| `C02 talk-C02M09-10` | `?talk=` with no floor | **fixed** |
+| `C02 ev20960` | camera pulled to 15% of what it asked | open — the floor fixed it and cost more elsewhere |
+| `C02 ev11310` | borderline at 45 from the first sweep, now 0 | open, and not established |
+| `M09 ev09100` | the shot's focus sits 0.7 below the Hero's feet | open — never a distance fault |
+| `C04` door to `F34` | the overworld draws only its guards and the Hero's crown | open |
+
+### What the sweep says about the phase
+
+**An area is about six minutes of machine time and a quarter-hour of
+attention**, which is the number `docs/beyond-the-slice.md` said was worth
+more than any estimate in it. Cost tracks size: Alltrades' 18 views took three
+and a half minutes, Coffinwell's 55 took twelve.
+
+**The guess rate is per-area and it varies enormously** — 1 in 10 at Upover, 8
+in 9 at Alltrades, 59% across the cartridge. It is how many of a town's cast a
+trigger names, so it is a lever that can be pulled one area at a time rather
+than one global gap.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
