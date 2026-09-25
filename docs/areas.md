@@ -347,6 +347,34 @@ not say on its own: the guessing is **not** evenly spread. Some areas are
 almost fully read and some are almost entirely fallback, and the difference is
 how many of the cast a trigger names. That is the lever, and it is per-area.
 
+## Wormwood Creek — `M12`
+
+**25 September 2026.** `--stage=7.1 --talk=10`, **31 views in five and a half
+minutes: 0 failed, 0 worth a look, 8 the game guessed, 3 with the camera
+crowded, none blank.** 13 pieces, 8 doorways, 9 characters of whom **1 stands
+in another map**, chapter `J0`.
+
+The map whose collision fault took the collisionless count from 197 to 196 —
+see `docs/still-open.md` — reads and walks without complaint here. Its three
+crowded shots join the tally for the floor.
+
+## Gittingham Palace — `C04`
+
+**25 September 2026.** `--stage=7.1 --talk=10`, **30 views in six minutes: 0
+failed, 0 worth a look, and no conversations at all.** 23 pieces, 12 doorways,
+2 treasure, reached from `F34`.
+
+**It has no cast at 7.1** — the status reads `0 characters, 1 unclassified`.
+So there was nobody to talk to, which is why it is the only area with no guess
+rate: not a good score but no score. Whether the palace is genuinely empty at
+this point in the story or 7.1 is the wrong stage for it is **not
+established** — its triggers are busiest at 16.1, far later, and unlike the
+line-picking question at Zere this one would really change what is on screen,
+because the cast is placed by stage. Worth a second run at 16.1 before this
+area is called checked.
+
+`1 unclassified` is a phrase no other area produced. Not looked into.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
