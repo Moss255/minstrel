@@ -518,11 +518,20 @@ a stage for scenes to play on, never a place to walk, so a tool whose first
 move is to stand in the map has nothing to do.
 
 **Three of the 75 areas are like this**: `X01` and `X05`, both the
-Observatory, and `X03`, the Realm of the Almighty. They want a different
-checkpoint — play their events and look, without standing anywhere — which
-the witness does not do. Until it does, they are unchecked rather than
-checked-and-clean, and the distinction matters because `X01` is where the
-story begins.
+Observatory, and `X03`, the Realm of the Almighty.
+
+**And it is the engine that cannot open them, not the witness — corrected 26
+September 2026.** `enter` in `main.ts` refuses a map with no collision world:
+"there is nowhere to stand", and puts the previous map back. So the page never
+finishes loading, `witnessHook` never runs, and `window.__witness` is not set
+at all — checked directly, it comes back `{have: false}`. A tool that played
+events without standing anywhere would still have nothing to play, because it
+reads the event list from the page.
+
+So the work is in the engine: **open a map for a scene to play on, with
+nobody standing in it.** That is not a small change — `self`, the camera and
+the walk all assume a world — and it is the only way `X01` gets checked, which
+matters because `X01` is where the story begins.
 
 ### What Phase 3's 75 areas actually are
 
