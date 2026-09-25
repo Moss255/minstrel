@@ -713,81 +713,6 @@ name and zero-valued fields are everywhere, so any scan for "values that
 resolve to a string" reports the first name constantly. That trap is why the
 rest of the stream is left alone rather than guessed at.
 
-**`.spr` — the format most of a village's cast is drawn from.** 1,316 files in
-`/data/ani`, a directory nothing had opened. **24 of the slice's 33 villagers
-are sprites**, not models: every `kind` 0 character in `<map>npc.bin` has a
-`<name>.spr` here and no 3D model anywhere on the cartridge, and every `kind` 2
-has a model and no sprite. So the "which parts make a named character" problem
-was never theirs.
-
-Established by decoding and looking at the result:
-
-| offset | type | meaning |
-|---|---|---|
-| `0x00` | `u16` | frame count — **not** the width, as the compression section here used to say |
-| `0x02` | `u16` | version; `3` on 1,315 of 1,316 |
-| `0x04` | `u16` | frame width |
-| `0x06` | `u16` | frame height |
-| `0x08` | `u32` | frames per row of the sheet |
-| `0x0C` | `u32` | zero on every file seen |
-| `0x10` | | 4bpp pixel indices, linear, sheet width = width x columns |
-
-`n003a.spr` is 16 frames of 32x40 laid out two across, and rendering it at 64
-pixels wide from `0x10` gives a clean two-column grid of villagers — head, body,
-arms, aligned on a grid with transparent margins. At 32 or 40 wide it shears
-into noise, which is what makes the layout a reading rather than a guess. 1,314
-of the 1,316 files fit 4bpp pixels inside their own length.
-
-The tail carries an animation table of 16-byte records — `(1, 0, 60, frame)` —
-eight of them for `n003a`, which is what a walk cycle with a frame duration
-looks like.
-
-**The palette is found.** It sits at the end of the pixel data behind a count
-word: a `u32` equal to `16`, then 16 `u16` in BGR555 with bit 15 clear.
-`n003a.spr` has it at `0x2984`, and the colours that come out — `#209c83`
-teal, `#392018` and `#4a2920` browns, `#eeb473` skin, `#f6f6f6` white — decode
-the sheet into a bearded villager in a purple robe and olive tunic, in several
-facings. Five of six village characters decode to recognisable, sensibly
-coloured people this way.
-
-Finding it needs the size equation, not a scan: a backward search for the count
-word lands on stray `16`s in the animation table. Enumerating every candidate
-and keeping the one where `palette - frames x width x height / 8bpp` lands at or
-after the header solves **1,265 of the 1,316** files, and puts the pixels at
-`0x2c` on 1,011 of them.
-
-The animation names are readable too, in a string table before the tables:
-`walk_down`, `walk_left`, `walk_up`, `walk_right`, and eight `stand_*` — an
-eight-direction character.
-
-**What is still not resolved is where each frame begins**, and the reason now
-looks structural rather than like a missing constant.
-
-`n003a` holds 663 rows of 32 pixels between the header and the palette. Its
-header says 16 frames of 32x40, and 16 x 40 = 640, so seven rows are unaccounted
-for. Autocorrelation of the row-ink profile peaks at a lag of **41** (0.812),
-not 40 — and 16 x 41 = 656 still leaves seven.
-
-Cutting on measured seams says why. Rows quieter than 45% of the sheet mean fall
-at rows 40, 81, 124, 164, 206, 247, 289, 330, 371, 413, 454, 496, 537, 579 and
-620 — **fifteen seams, so sixteen frames, agreeing with the header** — but their
-spacings are 40, 41, 43, 40, 42, 41, 42, 41, 41, 42, 41, 42, 41, 42, 41, 43.
-**The frames are not uniformly pitched.** No single stride explains them, which
-is why every fixed-pitch reading drifts across the sheet, and why 17 frames of
-39 — which divides 663 exactly — shears worse rather than better.
-
-If the heights vary, something must record them, and it has not been found. The
-region between the header and the pixels is four bytes on this file, too small
-for a table. The tables in the tail hold frame *indices* (0 to 11) and records
-of `(1, 0, 60, index)`, not row offsets. Two further readings were tried and
-disproved: rows stored bottom-up, and a per-frame table before the pixels — that
-region is pixel data.
-
-So the sheet decodes, the palette is right, and individual villagers are legible
-and correctly coloured; what is missing is the per-frame geometry. Until it is
-found a billboard would show a figure sliced across two frames, so nothing draws
-them yet.
-
 **GPC2 codec 7.** Five members, one archive, one per language. The only files on
 the cartridge that do not come out.
 
@@ -830,7 +755,7 @@ a sequence index would sit in 0–81, and 68 records is far too few to cover ~1,
 maps. The per-map `.bats` and `.bmdj` files parse completely and carry no music
 field. Recorded as an unsolved lead, not an answer.
 
-**Answered since, and kept here as history.** Three entries stood on this list
+**Answered since, and kept here as history.** Four entries stood on this list
 after they had been settled, and were caught on 25 September 2026 by reading
 the code against them rather than by anything going wrong.
 
@@ -850,6 +775,22 @@ the code against them rather than by anything going wrong.
 - **SSEQ/SBNK/SWAR playback** — *decoded.* `packages/audio` has the sequencer,
   the channel mixer and the worklet; `decodeWave`, `readSseq`, `readSbnk` and
   `readSwar` are in `@minstrel/nitro-snd`. `?bgm=BG_001` plays a track.
+- **`.spr` per-frame geometry** — *there is no sheet.* This entry described a
+  grid whose frames could not be cut, and looked for the stride that would cut
+  it. A frame is built of **parts**, as the DS's own hardware sprites are:
+  each frame carries its own size and part count, each part its position, its
+  size as powers of two and its own 4bpp pixels, one after another — so a
+  frame begins where the last one ended and no stride was ever going to
+  explain it. The measured seams were real frame boundaries; the varying gaps
+  between them were frames of genuinely different sizes, which is why the old
+  reading agreed with the truth on the villagers without knowing why.
+
+  `packages/game-formats/src/sprite.ts` reads it and FORMAT.md, "`.spr`", has
+  the layout. The structure checks itself — walking the frames by nothing but
+  their own sizes must land exactly on the palette's count word — and it does
+  so on **1,315 of the 1,316**, the exception being `n001a_test.spr`, whose
+  palette count is 0. `cast.ts` draws them, and a villager stands in Angel
+  Falls whole rather than sliced across two frames.
 
 ---
 
