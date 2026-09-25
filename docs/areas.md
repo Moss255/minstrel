@@ -501,6 +501,47 @@ in 9 at Alltrades, 59% across the cartridge. It is how many of a town's cast a
 trigger names, so it is a lever that can be pulled one area at a time rather
 than one global gap.
 
+## The Observatory — `X01`, and three areas the witness cannot check
+
+**25 September 2026.** `--stage=1.2`, and the run stops at the first line:
+
+```
+X01 — where it starts — /data/map/X01.amdj has no collision —
+there is nowhere to stand — NO MAP DRAWN
+0 doorways, 0 events, 0 to talk to
+```
+
+**This is right, not a fault.** The index labels `X01` **"All Events"**, and
+it is one of the 196 maps with no collision mesh — see `docs/still-open.md`,
+where the sweep's own line is "0 of those are maps something leads to". It is
+a stage for scenes to play on, never a place to walk, so a tool whose first
+move is to stand in the map has nothing to do.
+
+**Three of the 75 areas are like this**: `X01` and `X05`, both the
+Observatory, and `X03`, the Realm of the Almighty. They want a different
+checkpoint — play their events and look, without standing anywhere — which
+the witness does not do. Until it does, they are unchecked rather than
+checked-and-clean, and the distinction matters because `X01` is where the
+story begins.
+
+### What Phase 3's 75 areas actually are
+
+Worth knowing before the remaining sixty are planned, because they are not
+sixty towns:
+
+| what the index labels them | how many |
+|---|---|
+| Exterior — a town or place | **30** |
+| Interior — the `H` areas, one room each, no sub-maps | 20 |
+| not in the index at all — `D`, `R`, `S01`, `S13`, `S14` | **15** |
+| All Events | 3 |
+| one-offs — a cliff, a deck, a cave, the ocean, the sky | 7 |
+
+So the checkpoint as it stands — stand, walk the doorways, play the events,
+talk — fits the 30 exteriors, of which **13 are now done**. The other 45 want
+either a smaller pass or a different one, and the fifteen with no index entry
+have not been looked at at all.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
