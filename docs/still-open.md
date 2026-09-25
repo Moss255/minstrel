@@ -614,11 +614,30 @@ serve nine resources. There was never a mismatch to be careful about.
   reach all of theirs. A walkability regression is worse than a cosmetic
   fault, so it was reverted rather than landed.
 
-**What is left to do** is find out why `S07` loses a doorway. Its collision
-moves with everything else, and the question is whether the new placement is
-right and `S07` was walkable by accident, or whether `S07` is a case the
-`values[1]` reading does not cover. Everything else about the change is
-measured and holds.
+**`S07` is the fix working, not a regression.** `S07M0000` is one of the 56:
+29 resources, 45 placements, everything at the origin. Pairing moves 14 pieces
+into place, among them **six door models and both gates** — `S07M00D1`, `D6`,
+`DB`, `DC`, `DD`, `DE`, `G1`, `G2`. Gortress is a fortress, and its gates had
+been piled invisibly at the origin, so it could be walked straight through.
+Reaching one doorway instead of two is a gate standing where a gate belongs.
+The walk-coverage expectations were calibrated against the fortress with its
+gates open and want adjusting rather than defending.
+
+**Pairing by `values[0]` was tried and is wrong.** It puts a door's collision
+on the far side of the room from its door and throws the parent link away —
+the fault {@link MapPlacement} describes. `values[0]` is the instance number.
+
+**What actually blocks it is the Hexagon's statue.** `story.test.ts` pins that
+the sliding statue `D01M01S1` sits exactly where cast member 202 stands at
+step 5 — the character stands *on* it — and the new placement puts it **0.434
+away**. `D01M0100` is also one of the 56, so the statue moves from the origin
+to a real position, and unlike Gortress's gates there is no reading under
+which being 0.434 out is right. Either that placement is not the statue's, or
+the cast spot and the placement are not in the same space.
+
+**That one question is all that is left.** Everything else is measured: the
+encoding, the 4,251 untouched resources, the 22 corrected doors, Gortress's
+gates, and `D03M06` verified by eye against `evidence/D03M06.png`.
 
 ## 6. The repository itself
 
