@@ -497,6 +497,43 @@ settled — heard as right at the tempo read, 17 September, with no factor.
 
 ---
 
+## 5a. What "a guess" means, and how much of the talking is one
+
+**59% of everything the engine says is its own choice — 25 September 2026.**
+Measured by `apps/game/test/talk-coverage.test.ts`, which now counts it:
+**662 of 1116** spoken lines across all 70 areas are guesses, and the figure
+is pinned so it moves only on purpose.
+
+The witness reports the same thing per area — Zere 6 of 10, Coffinwell 7 of
+10, Alltrades 8 of 9, Dourbridge 6 of 10, Porth Llaffan 8 of 10 — and the
+cartridge-wide number says those towns are typical rather than unlucky.
+
+**What is being guessed is which line a character says**, and it is a double
+fallback in `pickLine`, which is INFERRED throughout:
+
+1. A trigger in this map, over a span covering the stage, naming the character
+   with a talk operation and whose flag conditions hold, gives a **label**.
+   **When none does**, the label is `PLAIN` (16) — "no trigger names them
+   here".
+2. The line is then the tag-1 line with that label whose range covers the
+   sub-stage. **When no line has that label**, the first line that covers the
+   sub-stage is taken whatever its label — and that is the guess.
+
+Every guess seen in five areas carried *both* markers, so in practice it is
+always the same story: nothing names them, and the plain line does not reach
+this point in the story either.
+
+**What this does and does not mean.** The character does say something, the
+text is the cartridge's, and it renders — so a guessed line is not a wrong
+line so much as an unchosen one. What is not reproduced is the game's own
+*selection*, and a scene where the town's mood changes with the story is
+exactly where an unchosen line would show. It is the largest single gap
+between this engine and the game that is not a missing feature, and nothing
+had put a number on it before.
+
+The way down is step 1: more of the selection coming from triggers. Every
+character a trigger does name is chosen the game's way already.
+
 ## 6. The repository itself
 
 - **Nothing is checked automatically.** The gate is `pnpm typecheck && pnpm

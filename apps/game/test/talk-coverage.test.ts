@@ -4,6 +4,9 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import { pickLine, runLine } from '../src/talk.ts'
 
+/** `pickLine` says so itself when it fell back — see its `why`. */
+const GUESSED = /a guess/
+
 const romPath = process.env.MINSTREL_TEST_ROM
 
 /**
@@ -46,6 +49,8 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     asked: number
     /** Those that chose a line with text. */
     spoke: number
+    /** Of those, how many `pickLine` fell back to — see `GUESSED`. */
+    guessed: number
     /** Those that chose an event to play instead. */
     events: number
     /** Those that chose a line whose text is empty or absent. */
@@ -68,6 +73,7 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     maps: 0,
     asked: 0,
     spoke: 0,
+    guessed: 0,
     events: 0,
     silent: 0,
     nothing: 0,
@@ -135,6 +141,9 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
             continue
           }
           t.spoke++
+          // **What the line was chosen by**, which is the fidelity
+          // question behind all of this — see the note above.
+          if (GUESSED.test(choice.why)) t.guessed++
           spokeHere++
           t.speakers.add(`${area}#${id}`)
           const run = runLine(parseMarkup(text))
@@ -155,6 +164,10 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     console.log(`  ${empty.length} areas with nobody standing in them: ${empty.join(' ')}`)
     if (quiet.length > 0)
       console.log(`  ${quiet.length} with people who say nothing: ${quiet.join(' ')}`)
+    console.log(
+      `  ${t.guessed} of ${t.spoke} lines were guessed — ` +
+        `${Math.round((t.guessed / t.spoke) * 100)}% of what the engine says`,
+    )
     console.log(`  ${t.blank} lines rendered blank`)
     console.log(
       `  the speaker would face: ${[...t.turns]
@@ -188,6 +201,12 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // **two have nothing at all**. Two is small enough to be worth naming one
     // day and too small to chase now.
     expect(t.spoke).toBe(1116)
+    // **Most of what the engine says is its own choice, not the game's.**
+    // No trigger names the character, so `pickLine` takes the plain
+    // line; no line with that label covers the sub-stage, so it takes
+    // the first that does. Pinned so the number moves only on purpose —
+    // down when the selection is read better, up if it regresses.
+    expect(t.guessed).toBe(662)
     expect(t.events).toBe(17)
     expect(t.nothing).toBe(2)
     expect(t.silent).toBe(0)
