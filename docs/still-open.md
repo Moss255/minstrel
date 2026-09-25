@@ -635,9 +635,37 @@ to a real position, and unlike Gortress's gates there is no reading under
 which being 0.434 out is right. Either that placement is not the statue's, or
 the cast spot and the placement are not in the same space.
 
-**That one question is all that is left.** Everything else is measured: the
-encoding, the 4,251 untouched resources, the 22 corrected doors, Gortress's
-gates, and `D03M06` verified by eye against `evidence/D03M06.png`.
+**Landed 26 September 2026** — see `mapmanifest.ts`. The statue was the last
+question and the answer was that it is placed twice, at each end of its slide,
+each end with its own collision; the origin is where it rests and it is the
+*later* of the two, so the last instance wins. Gortress's expectations were
+adjusted rather than defended: its gates now stand and the barrier across its
+gateway is visible in play, so it reaches one doorway where it reached two.
+
+### What is left: a resource placed twice is drawn once
+
+**The fix places 56 maps properly and still draws only one piece per
+resource**, so `D03M06` has no slab and **two of its four doors**. Its two
+door models are placed at z 12.34 and z 17.70; the last instance wins, so the
+pair at 12.34 is not drawn.
+
+**Drawing every instance was tried and reverted.** `placementsOf` and a loop
+over placements in `assemble.ts` gave `D03M06` six pieces and five collision
+meshes against four and three — all four doors — and then put **two statues in
+the Hexagon**. Both matched cast record 202, at `(0, −1.705)` and
+`(0.434, −1.709)`: the statue's two placements are where it stands at step 4
+and at step 5, which is the same statue at two moments rather than two
+statues.
+
+**So an instance means two different things** and the data alone does not say
+which: four doors in a room, or one piece before and after it moves. What
+tells them apart is that a sliding piece is named for it — `D01M01S1` takes
+its collision from `D01A01S1` — and that rule is title-specific and lives in
+`apps/game/src/slide.ts`, where the assembly loop in `packages/world` cannot
+reach it without dragging the title into the engine.
+
+That is the shape of the remaining work: either the engine learns which pieces
+move, or the game hands it that knowledge, and neither is a line of code.
 
 ## 6. The repository itself
 
