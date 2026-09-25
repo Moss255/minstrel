@@ -142,12 +142,24 @@ before spending fifty minutes on them.
 
 The areas in story order after Zere, as far as the story is read:
 Coffinwell (`M03`), Alltrades Abbey (`X02`), Dourbridge (`M08`),
-Porth Llaffan (`M05`), Bloomingdale (`F10`), Gleeba (`C02`), Batsureg
+Porth Llaffan (`M05`), Bloomingdale (`M09`), Gleeba (`C02`), Batsureg
 (`M10`), Upover (`M13`), Wormwood Creek (`M12`), Gittingham Palace (`C04`).
 
-**`F10` has no trigger file**, so Bloomingdale cannot be opened at a stage the
-way the others can; whether it is named differently or genuinely has none is
-not established.
+**Bloomingdale is `M09`, not `F10` — corrected 25 September 2026.** The list
+said `F10`, which has no trigger file, and the reason is that `F10` is not the
+town: the index gives it the region "Bloomingdale" and the *label*
+"Bloomingdale", which is how the overworld names a place you can see from
+outside. The town is `M09`, labelled "Exterior" in the same region, with
+`M09M01` Mayor's House, `M09M02` Workshop, `M09M03` Church and `M09M04`
+Marion's House beneath it — and `triggerM09.bin` exists, with 155 triggers,
+busiest at 9.1 of the story stages that are not the catch-all spans.
+
+Twenty-three maps carry the Bloomingdale region across four area codes:
+`M09` the town, `F10` and `F54` outside it, and `S12` — eleven triggers, all
+at 9.4. So "an area" and "a region" are not the same unit, which is worth
+holding on to for the areas still on this list.
+
+A checkpoint wants the *town*. `M09` at 9.1 is the run to make.
 
 `pnpm inventory --regions` lists every place with the code that loads it, and
 `docs/regions.md` says how to go to one.
