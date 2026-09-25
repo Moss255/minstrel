@@ -694,9 +694,29 @@ them wants more of this:
   events buys almost nothing and the talking is the point;
 - the **3 `All Events` areas**, which the witness cannot open at all.
 
+## The twenty `H` interiors, in five and a half minutes
+
+**26 September 2026.** `--events=0 --talk=10 H01 … H20`, **58 views across
+twenty areas in 331 seconds: 0 failed, 1 worth a look, 1 crowded, 0 blank.**
+
+**No tool work was needed.** The witness already takes several areas in one
+invocation — they share the one browser and the one fetch of the cartridge —
+and `--events=0` drops the scenes, which is the right trade here: the
+interiors are one room each and what they have to show is the talking. Twenty
+areas at six minutes apiece would have been two hours; this was five and a
+half minutes, and the page is the same to read.
+
+So the cheap shape the list asked for was an invocation rather than a change.
+It is written down here because the next person to face twenty small areas
+should not go looking for a feature that already exists.
+
+`H20` carries the one concern and it is not identified — nothing in its lines
+reads as trouble, no view drew nothing, and its four characters all speak.
+Left as it is rather than guessed at.
+
 ## Still to do
 
-**Done: 39 of the 75 — every exterior** — the thirteen exteriors of the original list, plus
+**Done: 59 of the 75 — every exterior and every interior** — the thirteen exteriors of the original list, plus
 Zere Rocks, Brigadoom, Tower of Trades, Swinedimples, Gortress, Quarantomb,
 `S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`, with the
 Observatory attempted and found unwitnessable.
