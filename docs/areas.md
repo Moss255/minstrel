@@ -329,6 +329,24 @@ Clean on both of the new measures — the first area checked against the
 blank-frame pass from the start, and it has nothing. Eight of ten guessed puts
 it at the high end, with Alltrades and Porth Llaffan.
 
+## Upover — `M13`
+
+**25 September 2026.** `--stage=14.1 --talk=10`, **37 views in six and a half
+minutes: 0 failed, 0 worth a look, 1 the game guessed, none crowded, none
+blank.** 21 pieces, 14 doorways, 3 characters outside, chapter `N0`, reached
+from `D16M02`.
+
+**One of ten guessed, and that is the headline.** Every other area has run
+between four and eight of ten; Upover's cast is almost entirely named by its
+own triggers at 14.1, so nearly every line here is chosen the game's way
+rather than fallen back to.
+
+Set against Alltrades' eight of nine, the range across nine areas is now **1
+in 10 to 8 in 9**, which settles something the 59% cartridge-wide figure could
+not say on its own: the guessing is **not** evenly spread. Some areas are
+almost fully read and some are almost entirely fallback, and the difference is
+how many of the cast a trigger names. That is the lever, and it is per-area.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
