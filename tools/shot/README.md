@@ -34,23 +34,34 @@ node tools/shot/screenshot.mjs \
   out/inn.png 1600 1000
 ```
 
-Development query parameters. `rom` is common to both apps; the rest belong to
-whichever one is being served.
+## Development query parameters
 
-| parameter | app | meaning |
-|---|---|---|
-| `rom` | both | URL of a cartridge dump to fetch instead of using the file picker |
-| `path` | explorer | only scan cartridge paths containing this substring |
-| `model` | explorer | select the first model whose path contains this substring |
-| `animation`, `frame` | explorer | pick an animation by name and hold one frame |
-| `reference` | explorer | `1` renders at the DS's own resolution and colour depth |
-| `yaw`, `pitch` | explorer | camera angles, in radians |
-| `map` | game | which map archive to open, by name; `M01` by default |
-| `door` | game | take that map's doorway to the named map as soon as it loads |
-| `sprite` | game | `1` shows the sprite cut and turns its keys on — see below |
-| `cut` | game | `start,pitch,height,odd` — start from those numbers instead of the parser's |
-| `collision` | game | `1` draws the collision mesh over the map: green stands, red stops |
-| `fit` | game | `scale,x,y,z` — move and scale the collision, to fit it over the room |
+Both apps take `?rom=<url>`, which fetches a cartridge dump over HTTP instead
+of using the file picker. It fetches only what the URL names, so it stays
+inert unless a developer asks for it.
+
+**The game's parameters are listed in `docs/regions.md`**, which is the
+complete set and is also the specification for the debug menu that
+`docs/beyond-the-slice.md` defers. They are not repeated here, because a list
+kept in two places drifts: this file carried `sprite` and `cut` for a while
+after both had been removed from the app.
+
+The explorer's are below. **All of them apply only on the `?rom=` path** —
+they are read where the fetched dump is loaded, so none of them does anything
+when the cartridge comes from the file picker.
+
+| parameter | meaning |
+|---|---|
+| `rom=/rom.nds` | fetch a cartridge from a URL instead of using the file picker |
+| `path=/data/map/` | scan only cartridge paths containing this substring — a whole-cartridge scan is slow, and this is how a sweep is narrowed |
+| `model=M01M0000` | select the first model whose path contains this substring; says so if nothing matches |
+| `animation=walk` | choose the first animation whose name contains this substring, and rewind to frame 0. An empty value clears the animation |
+| `frame=12` | hold that frame and stop playback. Needs an animation to be chosen first |
+| `reference=1` | render at the DS's own resolution and colour depth |
+| `yaw=0.8`, `pitch=0.3` | camera angles, in radians |
+
+Both apps set `document.title` to `ready — …` once loaded and `failed` if they
+throw, which is what `screenshot.mjs` waits on rather than guessing a delay.
 
 `CHROME` in the environment overrides the browser binary. A flatpak Chromium is
 `/var/lib/flatpak/exports/bin/org.chromium.Chromium`, which is on no `PATH` and
