@@ -314,9 +314,14 @@ export function covered(boxes: readonly Box[], at: Vec3, headroom: number): bool
  * made by looking, and nothing has been read about what the game does when a
  * wall stands this close. See `docs/still-open.md`.
  *
- * Below the floor there is nothing useful to do with the camera, so it stops
- * there and lets the obstruction clip, which is what happened before the
- * pull-in existed and is better than a view of somebody's hair.
+ * **Below the floor the pull-in does not happen at all**, and that is not the
+ * same as stopping at the floor. The first version stopped there, and the
+ * area sweep's own blank-frame check caught what that does: the camera ends
+ * up *behind* the obstruction it was avoiding and draws the inside of it, or
+ * nothing. Re-running four areas, it fixed one blank view and made blanks of
+ * two that had been fine. Leaving the camera where the shot asked for it puts
+ * the obstruction back in `occludedChunks`' hands, which is where it was
+ * before any of this existed.
  */
 /**
  * How close the camera may be pulled, in world units — see {@link clearDistance}.
@@ -348,7 +353,13 @@ export function clearDistance(
     if (hit && hit.enter < nearest) nearest = hit.enter
   }
   if (nearest >= 1) return wanted
-  // Never past the floor, and never past `wanted` either: a floor larger than
-  // the distance actually asked for must not push the camera *out*.
-  return Math.max(Math.min(floor, wanted), nearest * wanted - margin)
+  const clear = nearest * wanted - margin
+  // **Below the floor, do not pull in at all.** Coming closer than the floor
+  // puts the camera in the focus's own head; stopping *at* the floor puts it
+  // behind the very thing it was avoiding, which draws the inside of a wall
+  // or nothing whatever. Neither is a shot, so the camera stays where it was
+  // asked for and `occludedChunks` hides the obstruction as it did before any
+  // of this existed. Measured: stopping at the floor turned one blank view
+  // into a good one and two good ones into blanks — see `docs/areas.md`.
+  return clear < Math.min(floor, wanted) ? wanted : clear
 }

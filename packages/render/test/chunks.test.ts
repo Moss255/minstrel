@@ -95,18 +95,32 @@ describe('clearDistance', () => {
     expect(clearDistance([ground], focus, eye, 10)).toBe(10)
   })
 
-  it('does not pull closer than the floor, however near the obstruction', () => {
+  it('does not pull in at all when doing so would go below the floor', () => {
     // **Coffinwell's `ev04010`.** A wall right in front of the eye pulled the
-    // camera to a fifth of the distance it asked for, and the back of the
-    // Hero's head filled the frame. Below the floor there is nothing useful
-    // left to do with the camera, so it stops and lets the wall clip.
+    // camera to a fifth of the distance it asked for and the back of the
+    // Hero's head filled the frame.
+    //
+    // **And stopping at the floor is not the answer either**, which cost two
+    // good views to find out: at the floor the camera sits behind the wall it
+    // was avoiding and draws the inside of it. So it stays where it was asked
+    // for and the wall goes back to `occludedChunks`.
     const eye: [number, number, number] = [0, 1, 10]
     // Past `occludes`' clearance, so it counts, but still right in the eye.
     const rightThere = box(-6, 6, 0.5, 0.6)
-    expect(clearDistance([rightThere], focus, eye, 10)).toBeCloseTo(CROWDING_FLOOR, 6)
+    expect(clearDistance([rightThere], focus, eye, 10)).toBe(10)
   })
 
-  it('never pushes the camera out to reach the floor', () => {
+  it('still pulls in when the room left is above the floor', () => {
+    // The floor must not switch the pull-in off in general: a wall far enough
+    // away still moves the camera, which is the whole point of it.
+    const eye: [number, number, number] = [0, 1, 10]
+    const wall = box(-6, 6, 4, 5)
+    const got = clearDistance([wall], focus, eye, 10, 0.1)
+    expect(got).toBeCloseTo(3.9, 6)
+    expect(got).toBeGreaterThan(CROWDING_FLOOR)
+  })
+
+  it('never pushes the camera out past what was asked for', () => {
     // A shot that wants to be closer than the floor is asking for a close-up,
     // not being crowded into one. The floor must not become a minimum.
     const eye: [number, number, number] = [0, 1, 0.3]
