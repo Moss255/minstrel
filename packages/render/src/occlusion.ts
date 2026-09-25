@@ -294,44 +294,32 @@ export function covered(boxes: readonly Box[], at: Vec3, headroom: number): bool
  * `margin` is how far short of the obstruction to stop, so the near plane has
  * somewhere to be; `clearance` is passed through to {@link occludes}.
  *
- * **`floor` is how close it may come, and it exists because it did not.**
- * This returned `Math.max(0, …)` until 25 September 2026, so a wall standing
- * close in front of the eye pulled the camera the whole way onto the focus.
- * Coffinwell's checkpoint found `ev04010` drawn at a fifth of the distance it
- * asked for, with the back of the Hero's head filling the frame and the
- * speaker out of sight, and Alltrades found the same thing in a conversation.
+ * **A minimum distance was tried here and taken out again — 25 September
+ * 2026.** Coffinwell's checkpoint found a shot drawn at a fifth of the
+ * distance it asked for, with the back of the Hero's head filling the frame,
+ * and 22 crowded shots turned up across six areas. A floor derived from the
+ * frustum — the distance at which a figure of `PERSON.height` fills a third
+ * of a 50° frame, about 0.58 — removed all but three of them.
  *
- * **Where the default comes from.** A figure of height `h` fills
- * `h / (2 · d · tan(fov/2))` of the frame. At the DS's 50° vertical field and
- * `PERSON.height` of 0.18, the shot that was unusable filled 55% of the frame
- * and the one that was fine filled 20%. Holding the focus to **no more than a
- * third of the frame height** gives `0.18 / (2 · tan 25° · ⅓)` ≈ 0.58, which
- * rejects every crowded shot that was judged bad — 20%, 28%, 31% and 32% of
- * what was wanted — and allows both that were judged good, 49% and 56%.
+ * It was reverted because **a blank view is worse than an ugly one**, and
+ * both ways of applying the floor produced blank views where this produces
+ * merely close ones:
  *
- * **The third is ours.** The frustum is the game's and the arithmetic
- * follows from it, but what share of the frame is too much is a judgement
- * made by looking, and nothing has been read about what the game does when a
- * wall stands this close. See `docs/still-open.md`.
+ * - *stopping at the floor* puts the eye behind the very obstruction it was
+ *   avoiding, and it draws the inside of that. Measured: one blank view fixed
+ *   and two good ones ruined, `C04`'s `ev16300` going from a clean frame to
+ *   nothing at all.
+ * - *declining to pull in below the floor* leaves the obstruction between the
+ *   eye and the focus, and `occludedChunks` does not always hide it.
+ *   Measured: `C02`'s `ev20960` fixed and `M03`'s `ev24596` ruined, the
+ *   latter having been a perfectly good frame before either version.
  *
- * **Below the floor the pull-in does not happen at all**, and that is not the
- * same as stopping at the floor. The first version stopped there, and the
- * area sweep's own blank-frame check caught what that does: the camera ends
- * up *behind* the obstruction it was avoiding and draws the inside of it, or
- * nothing. Re-running four areas, it fixed one blank view and made blanks of
- * two that had been fine. Leaving the camera where the shot asked for it puts
- * the obstruction back in `occludedChunks`' hands, which is where it was
- * before any of this existed.
+ * Pulling the whole way in is ugly and is never blank, which is why it is
+ * what this still does. **A floor is only worth having with a third branch**:
+ * come closer than it when the alternative is drawing nothing, which needs to
+ * know what `occludedChunks` will actually hide and is a real piece of work
+ * rather than a constant. See `docs/areas.md` and `docs/still-open.md`.
  */
-/**
- * How close the camera may be pulled, in world units — see {@link clearDistance}.
- *
- * `PERSON.height / (2 · tan(DS_VERTICAL_FOV / 2) · MOST_OF_THE_FRAME)`, with
- * the height and the field the game's and the share ours. Written out rather
- * than imported so that `render` keeps no dependency on `sim` for a constant.
- */
-export const CROWDING_FLOOR = 0.18 / (2 * Math.tan((50 * Math.PI) / 180 / 2) * (1 / 3))
-
 export function clearDistance(
   boxes: readonly Box[],
   focus: Vec3,
@@ -340,7 +328,6 @@ export function clearDistance(
   margin = 0.1,
   exempt: readonly boolean[] = [],
   clearance = 0.25,
-  floor = CROWDING_FLOOR,
 ): number {
   if (wanted <= 0) return wanted
   let nearest = 1
@@ -353,13 +340,5 @@ export function clearDistance(
     if (hit && hit.enter < nearest) nearest = hit.enter
   }
   if (nearest >= 1) return wanted
-  const clear = nearest * wanted - margin
-  // **Below the floor, do not pull in at all.** Coming closer than the floor
-  // puts the camera in the focus's own head; stopping *at* the floor puts it
-  // behind the very thing it was avoiding, which draws the inside of a wall
-  // or nothing whatever. Neither is a shot, so the camera stays where it was
-  // asked for and `occludedChunks` hides the obstruction as it did before any
-  // of this existed. Measured: stopping at the floor turned one blank view
-  // into a good one and two good ones into blanks — see `docs/areas.md`.
-  return clear < Math.min(floor, wanted) ? wanted : clear
+  return Math.max(0, nearest * wanted - margin)
 }

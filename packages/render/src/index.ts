@@ -19,7 +19,6 @@ export {
 export {
   type Box,
   boxOfTriangles,
-  CROWDING_FLOOR,
   cellsOf,
   clearDistance,
   covered,

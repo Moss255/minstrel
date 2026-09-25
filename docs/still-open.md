@@ -294,9 +294,25 @@ lives; this is the gathered list.
   allows both judged good (49%, 56%). The third is ours and marked so; the
   rest is the frustum.
 
-  **Not applied yet, on purpose**: changing the camera mid-sweep would make
-  the later areas' checkpoints incomparable with the earlier ones. It goes in
-  once the areas are covered. See `docs/areas.md`, Coffinwell and Alltrades.
+  **Applied, measured, and taken out again.** Both ways of using the floor
+  trade an ugly frame for a blank one, which is the wrong way round:
+
+  - *stopping at the floor* puts the eye behind the obstruction it was
+    avoiding — one blank view fixed, two good ones ruined, `C04`'s `ev16300`
+    going from a clean frame to nothing;
+  - *declining to pull in below it* leaves the obstruction in the way and
+    `occludedChunks` does not always hide it — `C02`'s `ev20960` fixed,
+    `M03`'s `ev24596` ruined, having been fine before either version.
+
+  Pulling the whole way in is ugly and never blank, so that is what
+  `clearDistance` does again. The crowding is therefore **still open, and
+  cosmetic**: 22 crowded shots across six areas, the worst at a fifth of the
+  distance asked for.
+
+  **What a fix needs is a third branch**: come closer than the floor when the
+  alternative is drawing nothing. That needs to know what `occludedChunks`
+  will actually hide, which is work rather than a constant — and it is the
+  reason this was reverted rather than tuned. See `docs/areas.md`.
 
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth

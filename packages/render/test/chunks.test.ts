@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   type Box,
   boxOfTriangles,
-  CROWDING_FLOOR,
   cellsOf,
   clearDistance,
   keepTriangles,
@@ -93,51 +92,6 @@ describe('clearDistance', () => {
     const eye: [number, number, number] = [0, 1, 10]
     const ground = box(-10, 10, -10, 20, 0, 1.5)
     expect(clearDistance([ground], focus, eye, 10)).toBe(10)
-  })
-
-  it('does not pull in at all when doing so would go below the floor', () => {
-    // **Coffinwell's `ev04010`.** A wall right in front of the eye pulled the
-    // camera to a fifth of the distance it asked for and the back of the
-    // Hero's head filled the frame.
-    //
-    // **And stopping at the floor is not the answer either**, which cost two
-    // good views to find out: at the floor the camera sits behind the wall it
-    // was avoiding and draws the inside of it. So it stays where it was asked
-    // for and the wall goes back to `occludedChunks`.
-    const eye: [number, number, number] = [0, 1, 10]
-    // Past `occludes`' clearance, so it counts, but still right in the eye.
-    const rightThere = box(-6, 6, 0.5, 0.6)
-    expect(clearDistance([rightThere], focus, eye, 10)).toBe(10)
-  })
-
-  it('still pulls in when the room left is above the floor', () => {
-    // The floor must not switch the pull-in off in general: a wall far enough
-    // away still moves the camera, which is the whole point of it.
-    const eye: [number, number, number] = [0, 1, 10]
-    const wall = box(-6, 6, 4, 5)
-    const got = clearDistance([wall], focus, eye, 10, 0.1)
-    expect(got).toBeCloseTo(3.9, 6)
-    expect(got).toBeGreaterThan(CROWDING_FLOOR)
-  })
-
-  it('never pushes the camera out past what was asked for', () => {
-    // A shot that wants to be closer than the floor is asking for a close-up,
-    // not being crowded into one. The floor must not become a minimum.
-    const eye: [number, number, number] = [0, 1, 0.3]
-    const wanted = CROWDING_FLOOR / 2
-    expect(clearDistance([box(-6, 6, 0.1, 0.2)], focus, eye, wanted)).toBeLessThanOrEqual(wanted)
-  })
-
-  it('puts the floor where a figure fills a third of the frame', () => {
-    // The arithmetic the default is, so a change to it reads as a decision
-    // rather than a number moving: PERSON.height over twice the tangent of
-    // half the DS's vertical field, over the share of the frame allowed.
-    const height = 0.18
-    const fov = (50 * Math.PI) / 180
-    expect(CROWDING_FLOOR).toBeCloseTo(height / (2 * Math.tan(fov / 2) * (1 / 3)), 9)
-    // And the shots that prompted it fall the right side of it.
-    expect(0.353).toBeLessThan(CROWDING_FLOOR) // ev04010, unusable
-    expect(0.98).toBeGreaterThan(CROWDING_FLOOR) // ev04020, fine
   })
 
   it('takes the nearest of several', () => {
