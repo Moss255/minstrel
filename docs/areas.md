@@ -584,34 +584,49 @@ capturing when the scene says it is over rather than on a timer.
 
 ## Still to do
 
-The areas in story order after Zere, as far as the story is read:
-Coffinwell (`M03`), Alltrades Abbey (`X02`), Dourbridge (`M08`),
-Porth Llaffan (`M05`), Bloomingdale (`M09`), Gleeba (`C02`), Batsureg
-(`M10`), Upover (`M13`), Wormwood Creek (`M12`), Gittingham Palace (`C04`).
+**Done: 19 of the 75** — the thirteen exteriors of the original list, plus
+Zere Rocks, Brigadoom, Tower of Trades, Swinedimples and Gortress, with the
+Observatory attempted and found unwitnessable.
 
-**Bloomingdale is `M09`, not `F10` — corrected 25 September 2026.** The list
-said `F10`, which has no trigger file, and the reason is that `F10` is not the
-town: the index gives it the region "Bloomingdale" and the *label*
-"Bloomingdale", which is how the overworld names a place you can see from
-outside. The town is `M09`, labelled "Exterior" in the same region, with
-`M09M01` Mayor's House, `M09M02` Workshop, `M09M03` Church and `M09M04`
-Marion's House beneath it — and `triggerM09.bin` exists, with 155 triggers,
-busiest at 9.1 of the story stages that are not the catch-all spans.
+The list below is by *shape* rather than story order, because the shapes want
+different work — see "What Phase 3's 75 areas actually are" above.
 
-Twenty-three maps carry the Bloomingdale region across four area codes:
-`M09` the town, `F10` and `F54` outside it, and `S12` — eleven triggers, all
-at 9.4. So "an area" and "a region" are not the same unit, which is worth
-holding on to for the areas still on this list.
+**The exteriors still wanting a checkpoint (17).** These take the checkpoint
+as it stands:
 
-A checkpoint wants the *town*. `M09` at 9.1 is the run to make.
+| | |
+|---|---|
+| dungeons and caves | `D01` Hexagon, `D04` Quarantomb, `D07` Heights of Loneliness, `D09` Bad Cave, `D14` Bowhole |
+| places | `S02` Loch Storn, `S03`, `S05` Cuddiedig Cliff, `S06` Hunters' Yurts, `S08` Slurry Quay, `S09` Ship, `S10` Lonely Plains, `S11` Mt Ulbaruun, `S12`, `S15` Wyrmward |
+| towers and realms | `T02` Tower of Nod, `X04` Realm of the Mighty |
 
-**The rest of the list was then checked for the same fault, and is clean.**
-Every one of the eleven codes is labelled "Exterior" in the index, has its own
-`trigger<code>.bin`, and has sub-maps beneath it — Zere 7, Coffinwell 13,
-Alltrades 2, Dourbridge 8, Porth Llaffan 6, Bloomingdale 16, Gleeba 19,
-Batsureg 7, Upover 12, Wormwood Creek 11, Gittingham Palace 10. **Bloomingdale
-is the only one whose region spans other area codes at all**, which is why it
-was the one that went wrong and why the others can be taken at face value.
+**The fifteen with no index entry.** `D03` showed what these do: the area code
+has no map of its own, so the witness opens a sub-map instead — `D03M01`.
+That worked, but it was not designed for, and it means the area's *own* first
+view is whatever sub-map sorts first. `D06`, `D08`, `D12`, `D13`, `D16`,
+`D17`, `R01`–`R05`, `S01`, `S13`, `S14`. `R05` has **372 triggers**, more than
+any area but Stornway.
 
-`pnpm inventory --regions` lists every place with the code that loads it, and
-`docs/regions.md` says how to go to one.
+**The twenty `H` interiors.** One room each, no sub-maps, between 4 and 64
+triggers. A checkpoint that walks doorways and plays events is mostly wasted
+on them; what they want is the talking, so `--events=0 --talk=` and several at
+once is the right shape.
+
+**The three that cannot be witnessed at all**: `X01` and `X05`, the
+Observatory, and `X03`, the Realm of the Almighty. They need the witness to
+play events without standing in a map, which it does not do.
+
+**And four one-offs**: `O00` the ocean, `O01` the sky, and the two that are
+neither town nor dungeon.
+
+### What the tool wants before the rest of them
+
+Three things the sweep has asked for, in the order they would pay:
+
+1. **Capture when a scene says it is over**, not on a 2.5-second timer — see
+   Gortress. Until then `0 RENDERED NOTHING` means "drew something when
+   looked at" rather than "drew something".
+2. **A pass for the `All Events` areas**, which is the only way `X01` gets
+   checked, and `X01` is where the story begins.
+3. **A cheaper shape for the `H` interiors**, so twenty of them are an hour
+   rather than three.
