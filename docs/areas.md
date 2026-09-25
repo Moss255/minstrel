@@ -208,6 +208,21 @@ Two things worth carrying forward:
   all scenes. So a floor on `clearDistance` would fix both, and the fault is
   wider than the first area made it look.
 
+## Dourbridge — `M08`
+
+**25 September 2026.** `--stage=6.1 --talk=10`, **29 views in five minutes: 0
+failed, 0 worth a look, 6 the game guessed, none crowded.**
+
+22 pieces, 10 doorways, 9 characters all 2D, chapter `H0`. The cleanest
+checkpoint so far — **no crowded camera at all**, which is worth as much as
+Coffinwell's five: the fault is not everywhere, it belongs to particular
+interiors where something stands close in front of the eye.
+
+Its status line carries a phrase the earlier areas did not: **"3 stand in
+another map"** — three of the nine cast are placed somewhere other than the
+map they are listed in. Not looked into; noted because it is the kind of thing
+that is easy to mistake for a fault later.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:

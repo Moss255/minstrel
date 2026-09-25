@@ -281,9 +281,22 @@ lives; this is the gathered list.
   the floor is zero and a wall standing close in front pulls the eye the whole
   way to the focus. 56% was still a usable shot and 20% was not, which brackets
   it. What the floor should be is ours to decide, because the pull-in is ours
-  and what the game does in this case has not been read — a minimum tied to
-  the person's height, or letting the wall clip as it did before the pull-in
-  existed. See `docs/areas.md`, Coffinwell.
+  and what the game does in this case has not been read.
+
+  **A floor derived rather than fitted.** Probed at `ev04010`: the camera
+  wants **1.75** and gets **0.353**, with the eye at head height a third of a
+  unit behind, which is why the head fills the frame. `PERSON.height` is
+  **0.18** and the vertical field is **50°**, so the figure's share of the
+  frame is `h / (2 · d · tan(fov/2))` — **55%** at 0.353, and **20%** at
+  `ev04020`'s 0.98. Holding the focus to **no more than a third of the frame
+  height** gives a floor of `0.18 / (2 · tan 25° · ⅓)` = **0.58** world units,
+  which rejects every shot judged bad (20%, 28%, 31%, 32% of wanted) and
+  allows both judged good (49%, 56%). The third is ours and marked so; the
+  rest is the frustum.
+
+  **Not applied yet, on purpose**: changing the camera mid-sweep would make
+  the later areas' checkpoints incomparable with the earlier ones. It goes in
+  once the areas are covered. See `docs/areas.md`, Coffinwell and Alltrades.
 
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth
