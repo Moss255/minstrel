@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type Box,
   boxOfTriangles,
+  CROWDING_FLOOR,
   cellsOf,
   clearDistance,
   keepTriangles,
@@ -92,6 +93,37 @@ describe('clearDistance', () => {
     const eye: [number, number, number] = [0, 1, 10]
     const ground = box(-10, 10, -10, 20, 0, 1.5)
     expect(clearDistance([ground], focus, eye, 10)).toBe(10)
+  })
+
+  it('does not pull closer than the floor, however near the obstruction', () => {
+    // **Coffinwell's `ev04010`.** A wall right in front of the eye pulled the
+    // camera to a fifth of the distance it asked for, and the back of the
+    // Hero's head filled the frame. Below the floor there is nothing useful
+    // left to do with the camera, so it stops and lets the wall clip.
+    const eye: [number, number, number] = [0, 1, 10]
+    // Past `occludes`' clearance, so it counts, but still right in the eye.
+    const rightThere = box(-6, 6, 0.5, 0.6)
+    expect(clearDistance([rightThere], focus, eye, 10)).toBeCloseTo(CROWDING_FLOOR, 6)
+  })
+
+  it('never pushes the camera out to reach the floor', () => {
+    // A shot that wants to be closer than the floor is asking for a close-up,
+    // not being crowded into one. The floor must not become a minimum.
+    const eye: [number, number, number] = [0, 1, 0.3]
+    const wanted = CROWDING_FLOOR / 2
+    expect(clearDistance([box(-6, 6, 0.1, 0.2)], focus, eye, wanted)).toBeLessThanOrEqual(wanted)
+  })
+
+  it('puts the floor where a figure fills a third of the frame', () => {
+    // The arithmetic the default is, so a change to it reads as a decision
+    // rather than a number moving: PERSON.height over twice the tangent of
+    // half the DS's vertical field, over the share of the frame allowed.
+    const height = 0.18
+    const fov = (50 * Math.PI) / 180
+    expect(CROWDING_FLOOR).toBeCloseTo(height / (2 * Math.tan(fov / 2) * (1 / 3)), 9)
+    // And the shots that prompted it fall the right side of it.
+    expect(0.353).toBeLessThan(CROWDING_FLOOR) // ev04010, unusable
+    expect(0.98).toBeGreaterThan(CROWDING_FLOOR) // ev04020, fine
   })
 
   it('takes the nearest of several', () => {

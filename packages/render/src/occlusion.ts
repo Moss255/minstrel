@@ -293,7 +293,40 @@ export function covered(boxes: readonly Box[], at: Vec3, headroom: number): bool
  *
  * `margin` is how far short of the obstruction to stop, so the near plane has
  * somewhere to be; `clearance` is passed through to {@link occludes}.
+ *
+ * **`floor` is how close it may come, and it exists because it did not.**
+ * This returned `Math.max(0, …)` until 25 September 2026, so a wall standing
+ * close in front of the eye pulled the camera the whole way onto the focus.
+ * Coffinwell's checkpoint found `ev04010` drawn at a fifth of the distance it
+ * asked for, with the back of the Hero's head filling the frame and the
+ * speaker out of sight, and Alltrades found the same thing in a conversation.
+ *
+ * **Where the default comes from.** A figure of height `h` fills
+ * `h / (2 · d · tan(fov/2))` of the frame. At the DS's 50° vertical field and
+ * `PERSON.height` of 0.18, the shot that was unusable filled 55% of the frame
+ * and the one that was fine filled 20%. Holding the focus to **no more than a
+ * third of the frame height** gives `0.18 / (2 · tan 25° · ⅓)` ≈ 0.58, which
+ * rejects every crowded shot that was judged bad — 20%, 28%, 31% and 32% of
+ * what was wanted — and allows both that were judged good, 49% and 56%.
+ *
+ * **The third is ours.** The frustum is the game's and the arithmetic
+ * follows from it, but what share of the frame is too much is a judgement
+ * made by looking, and nothing has been read about what the game does when a
+ * wall stands this close. See `docs/still-open.md`.
+ *
+ * Below the floor there is nothing useful to do with the camera, so it stops
+ * there and lets the obstruction clip, which is what happened before the
+ * pull-in existed and is better than a view of somebody's hair.
  */
+/**
+ * How close the camera may be pulled, in world units — see {@link clearDistance}.
+ *
+ * `PERSON.height / (2 · tan(DS_VERTICAL_FOV / 2) · MOST_OF_THE_FRAME)`, with
+ * the height and the field the game's and the share ours. Written out rather
+ * than imported so that `render` keeps no dependency on `sim` for a constant.
+ */
+export const CROWDING_FLOOR = 0.18 / (2 * Math.tan((50 * Math.PI) / 180 / 2) * (1 / 3))
+
 export function clearDistance(
   boxes: readonly Box[],
   focus: Vec3,
@@ -302,6 +335,7 @@ export function clearDistance(
   margin = 0.1,
   exempt: readonly boolean[] = [],
   clearance = 0.25,
+  floor = CROWDING_FLOOR,
 ): number {
   if (wanted <= 0) return wanted
   let nearest = 1
@@ -314,5 +348,7 @@ export function clearDistance(
     if (hit && hit.enter < nearest) nearest = hit.enter
   }
   if (nearest >= 1) return wanted
-  return Math.max(0, nearest * wanted - margin)
+  // Never past the floor, and never past `wanted` either: a floor larger than
+  // the distance actually asked for must not push the camera *out*.
+  return Math.max(Math.min(floor, wanted), nearest * wanted - margin)
 }
