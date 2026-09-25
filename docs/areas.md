@@ -239,6 +239,40 @@ three at 49% stay as they are and only the 35% is pulled back. A floor that
 moved all four would have been too blunt, and this is the area that shows the
 difference.
 
+## Gleeba — `C02`
+
+**25 September 2026.** `--stage=6.1 --talk=10`, **42 views in eight minutes: 0
+failed, 0 worth a look, 4 the game guessed, 3 with the camera crowded.**
+
+24 pieces, 11 doorways, 16 characters all 2D, chapter `K0`. **Four of ten
+guessed is the lowest rate of any area so far** — against Zere's six,
+Coffinwell's seven and Alltrades' eight of nine — so more of Gleeba's cast are
+named by triggers and chosen the game's own way. Nothing about the town
+explains it yet, and it is the first evidence that the 59% cartridge-wide
+figure has a real spread behind it rather than being flat.
+
+### A crowded camera can draw nothing at all, and the witness scores it fine
+
+`ev20960` is crowded to **15%**, the worst seen, and the result is not a bad
+shot but **a black frame**. The mini-map draws, the box reads "Serena: Oh,
+sorry, I didn't see you there, I was in such a hurry…", the status says 6,727
+vertices and 3,541 triangles were submitted and two chunks moved out of the
+way — and the 3D view is empty. The camera is inside the geometry it was
+pulled into.
+
+**The witness called the area `0 worth a look`.** Its blank test is whether
+the overlay names the area, and the overlay does; its trouble test reads the
+status line, and the status is clean. So the one view on the page that is
+plainly wrong is the one nothing flagged. This is the same limit `still-open.md`
+records — a view of the inside of a wall passes both tests — met head on.
+
+Two things follow. The camera floor already written raises this shot from 15%
+to the floor and is worth more than it looked when the worst case was a view
+of the Hero's hair. And **the witness wants a blank-frame test of its own**:
+the page it writes is read by eye, but the summary line at the top is what
+decides whether anyone reads it carefully, and it is currently blind to the
+worst thing it captures.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:

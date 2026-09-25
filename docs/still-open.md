@@ -302,6 +302,15 @@ lives; this is the gathered list.
   checks a map was drawn; a view of the inside of a wall passes both. Worth
   keeping in mind for every "0 worth a look" it reports.
 
+  **Met head on at Gleeba, 25 September 2026.** `ev20960` is crowded to 15%
+  and draws **a black frame** — mini-map, dialogue and status all fine, 6,727
+  vertices submitted, nothing visible, because the camera is inside the
+  geometry it was pulled into. The witness scored that area `0 worth a look`.
+  So the tool wants a **blank-frame test**: its summary line is what decides
+  whether anyone reads the page carefully, and it is blind to the worst thing
+  it captures. Checking the captured image for near-uniform darkness is the
+  obvious way and has not been written. See `docs/areas.md`, Gleeba.
+
 - **`<TURN=n>`'s absolute angle** (24 September, `docs/event-scripts.md` §7a).
   The rest of the turn family is now done — `turnSpeaker` in `main.ts` turns
   the speaker through `castPlaced`, and `talk-coverage.test.ts` pins the
