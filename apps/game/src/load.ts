@@ -199,6 +199,13 @@ export interface Loaded {
    * numbers into this; the words themselves stay on the cartridge.
    */
   readonly potLabels: ReadonlyMap<number, string>
+  /**
+   * Patty's own words — `str_lui`, by number; and her menu labels,
+   * `bm_lui`, which is the same `0x67` table shape. `PATTY_SAYS` and
+   * `PATTY_LABELS` in `recruit.ts` are the numbers into these.
+   */
+  readonly pattyWords: ReadonlyMap<number, string>
+  readonly pattyLabels: ReadonlyMap<number, string>
   /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
   readonly battleMusic: number | undefined
   readonly bossMusic: number | undefined
@@ -2031,6 +2038,10 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     recipes: recipesOf(rom),
     potWords: englishText(rom, '/data/bin/menu/str_ren.gp2', 'str_ren_en.nat', readSystemStrings),
     potLabels: englishText(rom, '/data/bin/menu/bm_rrb.gp2', 'bm_rrb_en.bin', (bytes) =>
+      messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
+    ),
+    pattyWords: englishText(rom, '/data/bin/menu/str_lui.gp2', 'str_lui_en.nat', readSystemStrings),
+    pattyLabels: englishText(rom, '/data/bin/menu/bm_lui.gp2', 'bm_lui_en.bin', (bytes) =>
       messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
     ),
     region: regionHead(entry?.region),

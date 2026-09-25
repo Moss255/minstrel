@@ -2,6 +2,7 @@ import { POT_CATEGORIES, POT_LABELS, type PotEntry, type PotSort } from './alche
 import { type Bag, bagLines } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import type { Standing } from './hero.ts'
+import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
 
 /**
@@ -31,6 +32,7 @@ export type MenuCommand =
   | 'skills'
   | 'pot'
   | 'make'
+  | 'patty'
 
 /**
  * The field menu's messages, by their numbers in `str_tm` — about using an
@@ -107,10 +109,14 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
  *   flow at the Quester's Rest. Neither is built, so this panel is reachable
  *   only by `?make=1` until recruitment is.
  *
+ * - `patty` — **Patty's Party Planning Place**, service 23, reached by talking
+ *   to her at the Quester's Rest. `<LUIDA>` is her tag, the same shape as the
+ *   pot's `<RENKIN>`.
+ *
  * They keep their `MenuCommand` ids because the panels are real; what they
  * lost is a row in the list, which is the thing that was wrong.
  */
-export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make']
+export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make', 'patty']
 
 /** What can be done with the item chosen in the items panel. */
 export const ITEM_ACTIONS: readonly MenuEntry<'use' | 'discard' | 'cancel'>[] = [
@@ -154,6 +160,8 @@ export interface MenuState {
    * `choose`; only the cooking leaves the menu.
    */
   readonly pot?: PotWhere | undefined
+  /** Where Patty's flow is — see `recruit.ts`. Undefined until she is spoken to. */
+  readonly patty?: PattyWhere | undefined
   /**
    * In the skill panel, the tree being climbed — the rows are then its panels
    * rather than the five trees. Undefined at the list of trees.
@@ -182,6 +190,18 @@ export interface PotWhere {
   readonly sort: PotSort
   /** What has been put in for Try Your Luck: item ids, repeated for a count. */
   readonly picked: readonly number[]
+}
+
+/**
+ * Where Patty's flow is: her top menu, one of its lists, or the vocation
+ * question. Her own steps 1 to 5, without the Rapportal side.
+ */
+export interface PattyWhere {
+  readonly at: 'top' | 'callUp' | 'dropOff' | 'partWith' | 'vocation'
+}
+
+export function openPatty(): PattyWhere {
+  return { at: 'top' }
 }
 
 export function openPot(): PotWhere {
@@ -334,6 +354,11 @@ export interface MenuContext {
   readonly potLabels?: ReadonlyMap<number, string> | undefined
   /** How many recipes the Alchenomicon's category at `at` holds — see `POT_CATEGORIES`. */
   readonly potCount?: ((at: number) => number) | undefined
+  /** Patty's own words, `str_lui`, and her menu labels, `bm_lui`. */
+  readonly pattyWords?: ReadonlyMap<number, string> | undefined
+  readonly pattyLabels?: ReadonlyMap<number, string> | undefined
+  /** Those left with Patty, named and described as her lists show them. */
+  readonly kept?: readonly { readonly name: string; readonly said: string }[] | undefined
   /**
    * The chosen member's look, knob by knob, as the appearance panel shows it
    * — see `appearanceRows` in `main.ts`. Undefined before a cartridge is in.
@@ -377,6 +402,31 @@ const whose = (
 /** What the chosen member wears, or the context's own where there is no party. */
 const wearing = (context: MenuContext, state?: { readonly member?: number }) =>
   whose(context, state)?.equipped ?? context.equipped
+
+/**
+ * What Patty's top menu offers, in her own order — and **Drop Off is left out
+ * when the party is only the Hero**, which is her window `0x1D` instead of
+ * `0x1E` (`0x02162084`).
+ */
+function pattyTop(context: MenuContext | undefined): { at: PattyWhere['at']; label: number }[] {
+  const alone = (context?.party?.length ?? 1) <= 1
+  return [
+    { at: 'callUp' as const, label: PATTY_LABELS.callUp },
+    { at: 'vocation' as const, label: PATTY_LABELS.recruit },
+    ...(alone ? [] : [{ at: 'dropOff' as const, label: PATTY_LABELS.dropOff }]),
+    { at: 'partWith' as const, label: PATTY_LABELS.partWith },
+  ]
+}
+
+/** How many rows Patty's flow has, wherever it is. */
+function pattyRows(context: MenuContext | undefined, where: PattyWhere | undefined): number {
+  if (!where) return 0
+  // Every list has a last row that goes back, so none can be a dead end.
+  if (where.at === 'top') return pattyTop(context).length + 1
+  if (where.at === 'vocation') return RECRUIT_VOCATIONS.length + 1
+  if (where.at === 'dropOff') return (context?.party?.length ?? 0) + 1
+  return (context?.kept?.length ?? 0) + 1
+}
 
 /** The Alchenomicon's categories that have anything in them, with their places kept. */
 const potCategories = (context: MenuContext | undefined) =>
@@ -445,6 +495,10 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = potRows(context, state.pot)
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
+  if (state.panel === 'patty') {
+    const count = pattyRows(context, state.patty)
+    return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
+  }
   if (state.panel === 'make') {
     const count = context?.look?.length ?? 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
@@ -471,6 +525,10 @@ export interface Taken {
   readonly cook?: number
   /** Throw these ingredients in and see — see `tryYourLuck` in `alchemy.ts`. */
   readonly luck?: readonly number[]
+  /** What Patty was asked to do — see `recruit.ts`. */
+  readonly patty?:
+    | { readonly does: 'callUp' | 'dropOff' | 'partWith'; readonly at: number }
+    | { readonly does: 'recruit'; readonly vocation: number }
   /** Turn one of the appearance's knobs — see `turned` in `appearance.ts`. */
   readonly turn?: { readonly knob: string; readonly by: number }
 }
@@ -520,6 +578,26 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     // and it wraps — which is how the game's own arrows behave at the end.
     const knob = context?.look?.[state.row]?.knob
     return knob ? { state, talk: false, turn: { knob, by: 1 } } : { state, talk: false }
+  }
+  if (state.panel === 'patty') {
+    const where = state.patty ?? openPatty()
+    if (where.at === 'top') {
+      const chosen = pattyTop(context)[state.row]
+      return chosen
+        ? { state: { ...state, patty: { at: chosen.at }, row: 0, said: undefined }, talk: false }
+        : { state: { ...state, panel: undefined, patty: undefined, row: 0 }, talk: false }
+    }
+    const back = { ...state, patty: { at: 'top' as const }, row: 0, said: undefined }
+    if (where.at === 'vocation') {
+      const vocation = RECRUIT_VOCATIONS[state.row]
+      return vocation === undefined
+        ? { state: back, talk: false }
+        : { state, talk: false, patty: { does: 'recruit', vocation } }
+    }
+    const most =
+      where.at === 'dropOff' ? (context?.party?.length ?? 0) : (context?.kept?.length ?? 0)
+    if (state.row >= most) return { state: back, talk: false }
+    return { state, talk: false, patty: { does: where.at, at: state.row } }
   }
   if (state.panel === 'pot') {
     const where = state.pot ?? openPot()
@@ -585,6 +663,9 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
 export function back(state: MenuState): MenuState | undefined {
   if (state.acting) return { ...state, acting: undefined, row: state.acting.row }
   if (state.tree !== undefined) return { ...state, tree: undefined, row: 0, said: undefined }
+  if (state.patty && state.patty.at !== 'top') {
+    return { ...state, patty: { at: 'top' }, row: 0, said: undefined }
+  }
   if (state.pot && state.pot.at !== 'top') {
     // Out of a list and back to the two modes, rather than out of the pot.
     return { ...state, pot: { ...state.pot, at: 'top', picked: [] }, row: 0, said: undefined }
@@ -603,7 +684,7 @@ export function panelLines(
   panel: MenuCommand,
   context: MenuContext,
   state?: Pick<MenuState, 'row' | 'picking'> &
-    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member' | 'tree' | 'pot'>>,
+    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member' | 'tree' | 'pot' | 'patty'>>,
 ): string[] {
   const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   const nameOf = context.itemName ?? byId
@@ -784,7 +865,7 @@ export function panelLines(
           potSay(0, 'So, how will you be conducting your alchemy, hm?'),
           `${mark(row === 0)}${label(POT_LABELS.useRecipe, 'Use A Recipe')}`,
           `${mark(row === 1)}${label(POT_LABELS.tryLuck, 'Try Your Luck')}`,
-          `${mark(row === 2)}${label(POT_LABELS.cancel, 'Cancel')}`,
+          `${mark(row === 2)}Cancel`,
           ...(state?.said ?? []),
         ]
       }
@@ -849,6 +930,60 @@ export function panelLines(
       return [
         `${who?.name ?? context.hero} — take a row to change it`,
         ...knobs.map((knob, i) => `${mark(i === row)}${knob.label}: ${knob.shown}`),
+        ...(state?.said ?? []),
+      ]
+    }
+    case 'patty': {
+      // **Patty's Party Planning Place.** Her four-or-five item menu, then a
+      // list; her words are `str_lui` and her labels `bm_lui`.
+      const where = state?.patty
+      const row = state?.panel === 'patty' ? (state.row ?? 0) : -1
+      const her = (number: number, ours: string) => context.pattyWords?.get(number) ?? ours
+      const label = (number: number, ours: string) => context.pattyLabels?.get(number) ?? ours
+      const kept = context.kept ?? []
+      if (!where || where.at === 'top') {
+        return [
+          her(PATTY_SAYS.greeting, 'So, what can I do for you, sweetie?'),
+          ...pattyTop(context).map((one, i) => `${mark(i === row)}${label(one.label, one.at)}`),
+          `${mark(row >= pattyTop(context).length)}Cancel`,
+          ...(state?.said ?? []),
+        ]
+      }
+      if (where.at === 'vocation') {
+        return [
+          her(PATTY_SAYS.whatKind, 'So, you wanna apply for a new party member, huh?'),
+          `${label(PATTY_LABELS.vocation, 'Vocation')}:`,
+          ...RECRUIT_VOCATIONS.map(
+            (vocation, i) =>
+              `${mark(i === row)}${label(pattyVocation(vocation), `vocation ${vocation}`)}`,
+          ),
+          `${mark(row >= RECRUIT_VOCATIONS.length)}Cancel`,
+          ...(state?.said ?? []),
+        ]
+      }
+      if (where.at === 'dropOff') {
+        const party = context.party ?? []
+        return [
+          her(PATTY_SAYS.whoToDrop, 'So, who do you wanna drop off with me, then?'),
+          ...party.map((who, i) => {
+            // The Hero is slot 0 and cannot be dropped — shown, and refused.
+            const level = who.standing?.level.level
+            const at = i === 0 ? '  ' : mark(i === row)
+            return `${at}${who.name}${level ? ` — ${label(PATTY_LABELS.level, 'Lv.')} ${level}` : ''}${i === 0 ? ' (stays)' : ''}`
+          }),
+          `${mark(row >= party.length)}Cancel`,
+          ...(state?.said ?? []),
+        ]
+      }
+      const asking =
+        where.at === 'partWith'
+          ? her(29, 'You wanna say goodbye to one of your party members?')
+          : her(PATTY_SAYS.whoIsHere, 'Let me tell you who’s hanging out here right now.')
+      return [
+        asking,
+        `${label(PATTY_LABELS.recruited, 'Friends Recruited')}: ${kept.length}/${LIST_MOST}`,
+        ...kept.map((who, i) => `${mark(i === row)}${who.name} — ${who.said}`),
+        `${mark(row >= kept.length)}Cancel`,
         ...(state?.said ?? []),
       ]
     }

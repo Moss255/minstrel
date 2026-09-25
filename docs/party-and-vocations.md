@@ -554,8 +554,44 @@ does not do, and the eleventh panel's zero is settled.
 
 What is left:
 
-- **Recruitment at the Quester's Rest** — **read 25 September 2026, not
-  built.** It is Patty's Party Planning Place, service 23, a sixteen-step flow
+### Recruitment: Patty's Party Planning Place
+
+**Built 25 September 2026**, from the read below, and reached the way she is
+reached: `<LUIDA>` at the end of her own talk line, facility code 5 — the same
+shape as the pot's `<RENKIN>`. (ルイーダ is the tavern's Japanese name, which
+is why the tag is not "PATTY".)
+
+Her four-or-five item menu, in her own words: **Call Up a Friend · Recruit a
+Friend · Drop Off a Friend · Part With a Friend**, with Drop Off left out when
+the party is only the Hero — her window `0x1D` instead of `0x1E`. Recruiting
+asks the **vocation first**, the six a game begins with, and the new character
+goes **onto her list, not into the party**.
+
+`recruit.ts` is the model and `Roster` its shape: a character is in the party
+or on the list, **never both**, which is how the game has it — her list *is*
+the thirteen-record array, and the party is four slots naming ids in it. The
+save keeps the list beside the party.
+
+**Two things that are not built and say so.** Overlay 9's eight screens — sex,
+figure, hair, hair colour, face, skin colour, eye colour, name — do not run
+here: a recruit is made with a default look and the appearance panel dresses
+them after. And **nobody asks for a name**; the game offers 201 given names to
+roll from (`str_cm` 20000–20100 and 21000–21100) and neither those nor the
+keyboard is read, so an unnamed recruit goes by their trade.
+
+**A bug this turned up**: `nameFor` called *any* unnamed created character
+"Hero", so Patty's list showed a second Hero the moment it had somebody on it.
+Only party slot 0 is the Hero.
+
+**And a smaller one worth remembering**: her Cancel row printed "Drop Off a
+Friend", because it used `bm_rrb`'s label 3 against `bm_lui`. A label number
+belongs to the file it came from. Patty's own Cancel id is **not
+established** — her window's item 186 maps through `bm_lui_txt`, which is not
+read — so that row is ours.
+
+#### What was read
+
+**Read 25 September 2026.** It is Patty's Party Planning Place, service 23, a sixteen-step flow
   in overlay 3 at `0x0217ff68`, and what it does is written down here so that
   building it is transcription rather than invention.
 

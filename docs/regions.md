@@ -46,6 +46,7 @@ is one the menu will not know about.
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `patty=1` | open Patty's Party Planning Place. Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest |
 | `pot=1` | open the Krak Pot. Its real way in is `<RENKIN>` on the pot's own talk line in the Quester's Rest, which needs the story far enough along for it to be placed |
 | `make=1` | open the appearance panel — **the only way in until recruitment is built**, because character creation is a scene of the game's own and never a menu command |
 | `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |

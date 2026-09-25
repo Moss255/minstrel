@@ -300,12 +300,18 @@ evening, mostly not there.
 | **Alchemy** | the Krak Pot: 470 recipes read, the alchemiracle pairs, cooking out of the bag in the pot's own words. The **mini medal** tables are read and nothing spends one |
 | **Character creation** | the game's own knob set — gender, face, hairstyle, hair shape, hair colour, build, skin, eyes — with `Member.look` holding it, the save keeping it and a menu panel turning it. The build comes from a ten-pair table found by shape in the ARM9. **Three knobs are read and not drawn**: the colours need palette work in `render` |
 
-Still open, and each written down rather than discovered later:
-**recruitment at the Quester's Rest** — the making of a character is built,
-the handing of one a place is not; **mini medals**, whose reward tables are
-read and which nothing hands over or spends; and **how a battle's experience
-is split among the party**, which a party of four makes plain because only the
-leader earns anything here.
+**Recruitment followed on 25 September**: Patty's Party Planning Place, with
+her own four-or-five item menu, the six vocations she offers, and a list that
+is the same thirteen-record array the game keeps — a character is in the party
+or on the list, never both. Reached by talking to her, as the Krak Pot is
+reached by talking to it.
+
+Still open, and each written down rather than discovered later: **character
+creation's eight screens** at the moment of recruiting, and the **name** the
+game asks for; **mini medals**, whose reward tables are read and which nothing
+hands over or spends; and **how a battle's experience is split among the
+party**, which a party of four makes plain because only the leader earns
+anything here.
 
 ### Phase 3 — The world
 

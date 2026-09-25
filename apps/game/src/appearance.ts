@@ -93,6 +93,31 @@ export const HERO_APPEARANCE: Appearance = {
 
 const wrap = (value: number, count: number) => ((value % count) + count) % count
 
+/**
+ * The order character creation asks in — overlay 9's own thirteen-step table
+ * at `0x0218ab9c`, one screen a knob:
+ *
+ * **sex → figure → hair → hair colour → face → skin colour → eye colour →
+ * name.**
+ *
+ * Five options for the figure, ten each for hair, hair colour and face, eight
+ * each for the two colours — which is the same set and the same counts this
+ * file holds, arrived at from the parts on the cartridge rather than from the
+ * screens. The names of the three colour knobs are INFERRED from the file
+ * basenames (`sc`, `ec`, `hc`); the *order* is the step chain and is not.
+ *
+ * `build` is the game's "figure"; the name is not asked for here yet.
+ */
+export const CREATION_ORDER: readonly (keyof Appearance)[] = [
+  'sex',
+  'build',
+  'hair',
+  'hairColour',
+  'face',
+  'skin',
+  'eyes',
+]
+
 /** An appearance with one knob turned, wrapping round — what a creation screen does. */
 export function turned(look: Appearance, knob: keyof Appearance, by: number): Appearance {
   const counts: Record<keyof Appearance, number> = {

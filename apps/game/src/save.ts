@@ -135,6 +135,15 @@ export interface SaveGame {
    * with no Hero is a save of nobody, and `decodeSave` refuses it.
    */
   readonly members: readonly SaveMember[]
+  /**
+   * Those left with Patty at the Quester's Rest — see `recruit.ts`. **Absent
+   * from saves made before recruitment existed**, which read as nobody kept;
+   * adding a field takes no new version.
+   *
+   * The party and the list never share a character, so this is everyone who
+   * is not in `members`.
+   */
+  readonly kept?: readonly SaveMember[]
   /** The bag is the party's, not a member's. */
   readonly gold: number
   /** Each item and how many, in the bag's order. */
@@ -204,6 +213,9 @@ export function decodeSave(text: string): SaveGame {
   if (s.flags !== undefined && (!Array.isArray(s.flags) || !s.flags.every(isCount))) {
     throw new SaveError('the save has story flags that do not read')
   }
+  if (s.kept !== undefined && !Array.isArray(s.kept)) {
+    throw new SaveError('the save has a list of kept party members that does not read')
+  }
   if (!isCount(s.gold)) throw new SaveError('the save has no gold count')
   if (
     !Array.isArray(s.items) ||
@@ -217,7 +229,16 @@ export function decodeSave(text: string): SaveGame {
   if (!Array.isArray(s.opened) || !s.opened.every((key) => typeof key === 'string')) {
     throw new SaveError('the save has an opened-treasure list that does not read')
   }
-  return { ...(s as unknown as SaveGame), version: SAVE_VERSION, members } as SaveGame
+  // Patty's list is read with the same checks the party is, so a bad record
+  // in it says which one rather than coming back as a half-made character.
+  const kept =
+    s.kept === undefined ? undefined : (s.kept as unknown[]).map((raw, at) => member(raw, at + 1))
+  return {
+    ...(s as unknown as SaveGame),
+    version: SAVE_VERSION,
+    members,
+    ...(kept === undefined ? {} : { kept }),
+  } as SaveGame
 }
 
 /**

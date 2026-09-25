@@ -233,8 +233,10 @@ import {
   type MenuState,
   moveCursor,
   openMenu,
+  openPatty,
   openPot,
   panelLines,
+  type Taken,
 } from './menu.ts'
 import {
   drawMinimap,
@@ -255,6 +257,7 @@ import {
   WALK_SPEED,
 } from './player.ts'
 import { breakingFrame, isPotOrBarrel } from './pots.ts'
+import { applyFor, callUp, dropOff, PATTY_SAYS, partWith, type Roster } from './recruit.ts'
 import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
 import {
   type Counter,
@@ -608,6 +611,12 @@ const levelsFor = (member: Member): LevelTable | undefined => loaded?.levels.get
  * is what it is — `0x0200fddc`, the function the message system asks who a
  * speaker should turn to face, is simply "slot 0".
  */
+/**
+ * Those left with Patty at the Quester's Rest — see `recruit.ts`. A character
+ * is in the party or on this list, never both.
+ */
+let withPatty: Member[] = []
+
 const leader = (): Member => members[0] as Member
 
 /** The place an attending character holds, if they are along. */
@@ -1140,6 +1149,12 @@ function begin(bytes: Uint8Array, map: string): void {
   // `<RENKIN>` at the end of the pot's own talk line in the Quester's Rest,
   // which needs the story far enough along for the pot to be placed and
   // talking; this reaches the same panel without walking there.
+  // `?patty=1` opens Patty's Party Planning Place — **ours, for driving**.
+  // Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest.
+  if (params.get('patty') === '1') {
+    menu = { ...openMenu(), panel: 'patty', patty: openPatty() }
+    showMenu()
+  }
   if (params.get('pot') === '1') {
     menu = { ...openMenu(), panel: 'pot', pot: openPot() }
     showMenu()
@@ -1242,6 +1257,7 @@ function restore(game: SaveGame): void {
   // The whole party, each with their own — see `SaveMember`. An older save's
   // companions come back with nothing, which is all they ever had.
   members = partyRestored(game.members)
+  withPatty = game.kept ? partyRestored(game.kept) : []
   // **A save written before a point could be spent has no pool**, and nobody
   // in it had spent one — so what they are owed is simply what their levels
   // earned. Worked out here rather than in `partyRestored`, which has no level
@@ -1274,6 +1290,7 @@ function confess(): string {
     step: storyStep,
     flags: [...storyFlags],
     members: partySaved(members),
+    ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
     gold: bag.gold,
     items: [...bag.items],
     opened: [...openedTreasure],
@@ -2982,6 +2999,53 @@ function cookRecipe(id: number, state: MenuState | undefined): MenuState | undef
 }
 
 /**
+ * Do what Patty was asked — see `recruit.ts`, which holds the rules; this puts
+ * the result back into the party and her list, and says what she says.
+ *
+ * **Recruiting makes the character here and now**, with a default look. The
+ * game runs overlay 9's eight screens at this point — sex, figure, hair, hair
+ * colour, face, skin colour, eye colour, name — and that flow is **not
+ * built**: `CREATION_ORDER` in `appearance.ts` holds the order it asks in, and
+ * the appearance panel can dress them afterwards. See
+ * `docs/party-and-vocations.md`.
+ */
+function askPatty(
+  asked: NonNullable<Taken['patty']>,
+  state: MenuState | undefined,
+): MenuState | undefined {
+  if (!state) return state
+  const before: Roster = { party: members, kept: withPatty }
+  const done =
+    asked.does === 'recruit'
+      ? applyFor(before, { ...freshMember(undefined), vocation: asked.vocation })
+      : asked.does === 'callUp'
+        ? callUp(before, asked.at)
+        : asked.does === 'dropOff'
+          ? dropOff(before, asked.at, (who) => who.hp === 0)
+          : partWith(before, asked.at)
+  members = [...done.roster.party]
+  withPatty = [...done.roster.kept]
+  dressParty()
+  dressHero()
+  const said =
+    done.refused !== undefined
+      ? (pattySay(done.refused) ?? 'Patty cannot do that.')
+      : asked.does === 'recruit'
+        ? (pattySay(PATTY_SAYS.processed) ?? 'Your application has been processed!')
+        : asked.does === 'callUp'
+          ? (pattySay(PATTY_SAYS.comeUp) ?? 'They join the party.')
+          : asked.does === 'dropOff'
+            ? (pattySay(PATTY_SAYS.takeABreak) ?? 'They stay with Patty.')
+            : (pattySay(PATTY_SAYS.leaves) ?? 'They leave for good.')
+  return { ...state, said: [said], row: 0 }
+}
+
+/** One of Patty's lines — see `pattyLines`. */
+function pattySay(number: number): string | undefined {
+  return pattyLines()?.get(number)
+}
+
+/**
  * **Try Your Luck** — throw what was picked in and see what the pot makes of
  * it. `str_ren` 11 is its own refusal: "I don't seem to be able to make
  * anything with that particular combination of ingredients."
@@ -3006,6 +3070,16 @@ function tryLuck(picked: readonly number[], state: MenuState | undefined): MenuS
 function potSay(number: number): string | undefined {
   const text = loaded?.potWords.get(number)
   return text === undefined ? undefined : plainMarkup(text, DEFAULT_CONTEXT.heroName)
+}
+
+/** Patty's lines, readable — her `str_lui`, with the markup spelled out. */
+function pattyLines(): ReadonlyMap<number, string> | undefined {
+  if (!loaded) return undefined
+  const out = new Map<number, string>()
+  for (const [number, text] of loaded.pattyWords) {
+    out.set(number, plainMarkup(text, DEFAULT_CONTEXT.heroName))
+  }
+  return out
 }
 
 /** The pot's lines, readable — see `potSay`. Undefined before a cartridge is in. */
@@ -3050,9 +3124,15 @@ function plainMarkup(text: string, actor: string): string {
 function nameFor(member: Member): string {
   if (member.name !== undefined) return member.name
   if (member.attnpc === undefined) {
-    return member.appearance === undefined
-      ? DEFAULT_CONTEXT.heroName
-      : `preset ${member.appearance}`
+    // **Only party slot 0 is the Hero.** Anyone else with no `attnpc` is a
+    // created character, and calling them "Hero" was what Patty's list showed
+    // the first time it had somebody on it — see `docs/party-and-vocations.md`.
+    if (members[0] === member) return DEFAULT_CONTEXT.heroName
+    if (member.appearance !== undefined) return `preset ${member.appearance}`
+    // **The game asks for a name** at overlay 9's last screen, and offers 201
+    // given names to roll from — `str_cm` 20000–20100 and 21000–21100. Neither
+    // the keyboard nor those names is read, so a recruit goes by their trade.
+    return `a ${vocationWord(member.vocation)}`
   }
   const who = loaded?.attending.find((one) => one.id === member.attnpc)
   return who?.name ?? `party member ${member.attnpc}`
@@ -3091,6 +3171,13 @@ function menuContext(): MenuContext {
         })
       : undefined,
     potLabels: loaded?.potLabels,
+    pattyWords: loaded ? pattyLines() : undefined,
+    pattyLabels: loaded?.pattyLabels,
+    // Those left with Patty, as her lists name them.
+    kept: withPatty.map((who) => ({
+      name: nameFor(who),
+      said: `${vocationWord(who.vocation)}, level ${levelOf(who)?.level ?? '?'}`,
+    })),
     /** How many a category holds, which is what empties `???` from the list. */
     potCount: (at) =>
       loaded
@@ -3486,6 +3573,12 @@ function openService(service: Service): void {
       return
     }
     visit = visitShop(shop)
+  } else if (service.kind === 'LUIDA') {
+    // **Patty is spoken to**, as the pot is — `<LUIDA>` is facility code 5.
+    menu = { ...openMenu(), panel: 'patty', patty: openPatty() }
+    self?.held.clear()
+    showMenu()
+    return
   } else if (service.kind === 'RENKIN') {
     // **The Krak Pot is spoken to, not chosen from a menu.** `<RENKIN>` at the
     // end of the pot's own talk line is facility code 7 — see `Service` in
@@ -5917,6 +6010,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       if (taken.buy) menu = buyPanel(taken.buy.tree, taken.buy.panel, menu)
       if (taken.cook !== undefined) menu = cookRecipe(taken.cook, menu)
       if (taken.luck) menu = tryLuck(taken.luck, menu)
+      if (taken.patty) menu = askPatty(taken.patty, menu)
       if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)
       if (taken.talk) {
         showMenu()

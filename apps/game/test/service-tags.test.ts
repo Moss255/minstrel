@@ -21,11 +21,18 @@ describe('a line that hands over to a service', () => {
     expect(pot.pages.map((p) => p.text)).toEqual(['A pot I may be, but I am in no way potty!'])
   })
 
+  it('takes Patty’s bare tag too', () => {
+    // `<LUIDA>` is Patty's Party Planning Place — facility code 5. ルイーダ is
+    // the tavern's Japanese name, which is why the tag is not "PATTY".
+    expect(runLine(parseMarkup('Hey there!<END><LUIDA>')).service).toEqual({
+      kind: 'LUIDA',
+      id: 0,
+    })
+  })
+
   it('does not take a bare tag it has no service for', () => {
-    // `<LUIDA>` is Patty's and `<BANK>` the bank's, both the same shape. They
-    // are not services here because neither flow is built — and a tag that
+    // `<BANK>` is the same shape and the bank is not built. A tag that
     // quietly became a service nobody wrote would be worse than one ignored.
-    expect(runLine(parseMarkup('Hello.<END><LUIDA>')).service).toBeUndefined()
     expect(runLine(parseMarkup('Hello.<END><BANK>')).service).toBeUndefined()
   })
 

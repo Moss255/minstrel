@@ -137,7 +137,7 @@ export interface TextContext {
  * of somebody's talk line**, which is why the pot has to be spoken to.
  */
 export interface Service {
-  readonly kind: 'SHOP' | 'INN' | 'CHURCH' | 'RENKIN'
+  readonly kind: 'SHOP' | 'INN' | 'CHURCH' | 'RENKIN' | 'LUIDA'
   readonly id: number
 }
 
@@ -145,11 +145,14 @@ export interface Service {
 const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
 
 /**
- * Services whose tag is bare, `<RENKIN>` — they select nothing, because there
- * is only one of each. `<BANK>` and `<LUIDA>` are the same shape and are not
- * here yet: the bank and Patty's party planning are not built.
+ * Services whose tag is bare — they select nothing, because there is only one
+ * of each. `<RENKIN>` is the Krak Pot (facility code 7) and `<LUIDA>` is
+ * Patty's Party Planning Place (codes 5 and 8; ルイーダ is the tavern's
+ * Japanese name, which is why the tag is not "PATTY").
+ *
+ * `<BANK>` is the same shape and is not here: the bank is not built.
  */
-const BARE_SERVICES = new Set<string>(['RENKIN'])
+const BARE_SERVICES = new Set<string>(['RENKIN', 'LUIDA'])
 
 /**
  * A sound a line asks for: `<ME_008>` a jingle, `<SE_014>` an effect.

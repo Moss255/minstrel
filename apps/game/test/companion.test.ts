@@ -254,6 +254,34 @@ describe('the party, the Hero first', () => {
     expect(changeVocation(who, 12)?.vocation).toBe(12)
   })
 
+  it('keeps Patty’s list beside the party, and never both', () => {
+    // A character is in the party or on the list — see `recruit.ts`. The save
+    // holds the two apart, and reading it back must not merge them.
+    const party = [place(undefined)]
+    const named = (name: string) => ({ ...place(undefined), name })
+    const list = [named('Brittany'), named('Cecil')]
+    const written = encodeSave({
+      ...blank,
+      members: partySaved(party),
+      kept: partySaved(list),
+    })
+    const read = decodeSave(written)
+    expect(read.members).toHaveLength(1)
+    expect(read.kept).toHaveLength(2)
+    expect(partyRestored(read.kept as never).map((one) => one.name)).toEqual(['Brittany', 'Cecil'])
+  })
+
+  it('reads a save written before there was a list', () => {
+    const read = decodeSave(encodeSave({ ...blank, members: partySaved([place(undefined)]) }))
+    expect(read.kept).toBeUndefined()
+  })
+
+  it('refuses a list that does not read, saying which place is wrong', () => {
+    const bad = JSON.parse(encodeSave({ ...blank, members: partySaved([place(undefined)]) }))
+    bad.kept = [{ attnpc: null, exp: 'not a list', hp: null, mp: null, gains: {}, outfits: [] }]
+    expect(() => decodeSave(JSON.stringify(bad))).toThrow(/party place 1/)
+  })
+
   it('goes into a save and comes back the same party', () => {
     // **The phase's done-when is "can be saved and loaded"**, and until this
     // the round trip was two anonymous blocks in `main.ts` that nothing could
