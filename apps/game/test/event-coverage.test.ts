@@ -22,10 +22,28 @@ const romPath = process.env.MINSTREL_TEST_ROM
  * to be quiet about: a scene half-plays and nothing says why.
  *
  * So this runs every event an area's triggers can reach and reports what was
- * missing. The report is the worklist: 139 numbers are invoked across the
- * cartridge and about 40 have a reading (`docs/event-scripts.md`), and the ones
- * called most, in the areas that come first, are the ones worth reading out of
- * the decomp next.
+ * missing. The report is the worklist, and the ones called most, in the areas
+ * that come first, are the ones worth reading out of the decomp next.
+ *
+ * **Where the numbers stand**, measured 25 September 2026: the cartridge has
+ * **687** events with a script, **512** of which a trigger can reach. Running
+ * those 512 invokes **186** distinct engine functions; running all 687
+ * invokes **216**. The host answers **226** of them and **five** are left —
+ * `843`, `807`, `837`, `839`, `844` — none of which the slice's own area
+ * wants. See `docs/event-scripts.md`.
+ *
+ * **Those two counts are a floor, not a census.** They come from running the
+ * scripts, so a function sitting behind a branch that did not happen to be
+ * taken is not counted. Measured by wrapping `EventStage.prototype.call` in a
+ * throwaway test, because this file records only the *unanswered* calls and
+ * so cannot produce them from its own output. One script will not run at all
+ * (`opcode 0x1e is not read`), which is why the whole-cartridge pass has to
+ * tolerate a throw and the 512 pass does not.
+ *
+ * This comment said "139 are invoked and about 40 have a reading" until that
+ * measurement was made. Both had been overtaken; 40 against 226 is the one
+ * that mattered, because it made the tail look like the project's biggest
+ * risk long after it had stopped being one.
  *
  * It is a measurement as much as a test. The assertions pin what is known so
  * that implementing a function shows up as a smaller number and losing one

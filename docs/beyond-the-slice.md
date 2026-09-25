@@ -57,7 +57,13 @@ new area costs no art. What a new area actually costs is:
    slice's morning alone called 21 the host answered with 0; the host now
    answers **226**, and **five** numbers are unanswered across the whole
    cartridge — `843`, `807`, `837`, `839`, `844`. The slice's own area wants
-   none of them, and six of the eight towns want none either. A new area may
+   none of them, and six of the eight towns want none either.
+
+   The cartridge has **687** events with a script, **512** of which a trigger
+   can reach; running those invokes **186** distinct engine functions and
+   running all 687 invokes **216**. Both are a floor rather than a census,
+   since a function behind a branch that was not taken is not counted — which
+   is also why 216 invoked sits below 226 answered. A new area may
    still call one that has never *run*, which is not the same as one that has
    never been read, but the tail this item was about is gone.
 2. **Systems it is the first to need.** A town with an Abbey needs vocations; a
