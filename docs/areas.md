@@ -542,6 +542,46 @@ talk — fits the 30 exteriors, of which **13 are now done**. The other 45 want
 either a smaller pass or a different one, and the fifteen with no index entry
 have not been looked at at all.
 
+## Five more — `M07`, `D03`, `T01`, `M11`, `S07`
+
+**25 September 2026**, same build as the closing table above.
+
+| area | stage | views | guessed | crowded | blank |
+|---|---|---|---|---|---|
+| Zere Rocks `M07` | 8.1 | 24 | 2 | 1 | 0 |
+| Brigadoom `D03` | 2.1 | 29 | 0 | 7 | **2** |
+| Tower of Trades `T01` | 6.4 | 7 | 0 | 0 | 0 |
+| Swinedimples `M11` | 12.1 | 35 | 9 | 2 | **1** |
+| Gortress `S07` | 14.4 | 41 | 0 | 1 | **3** |
+
+Nothing failed to load and no map failed to draw. `T01` is the smallest area
+yet at seven views and entirely clean. `D03` is the first area whose *main
+map* is not its own code — it opens `D03M01`, since `D03` has no entry in the
+map index, which is true of fifteen of the 75.
+
+**`D03`'s and `M11`'s blanks are scenes**, not doorways — `ev23170`,
+`ev23195`, `ev12120` — so they join the list of blank frames whose cause is
+not established.
+
+### A third signature: the scene is already over
+
+`S07`'s three read differently, and all three the same way:
+
+```
+ev14781 playing — ev14781 is over · the story is at 14.4, step 0 — NOTHING RENDERED
+```
+
+**The scene has finished before the picture is taken.** The witness waits a
+fixed 2.5 seconds after starting an event, which is enough for most to reach
+something worth seeing and too long for one that ends at once — so what is
+captured is whatever the screen holds after it, which here is nothing.
+
+That is the tool's timing rather than the engine's fault, and it is a
+different thing again from the four blanks found in the first sweep. It also
+means **`0 RENDERED NOTHING` is not quite "every view drew something"**: it is
+"every view drew something at the moment it was looked at". Worth fixing by
+capturing when the scene says it is over rather than on a timer.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
