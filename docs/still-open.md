@@ -201,18 +201,66 @@ lives; this is the gathered list.
   same number, and `C01M14` still hides its two wall chunks. It fires only
   where something genuinely blocks a close shot.
 
-  `ev03030` now shows the Hero rather than masonry. **It is still not a good
-  shot** — the camera is jammed 0.28 behind them — and whether the game frames
-  this scene from somewhere else entirely is not established.
+  **Resolved, 25 September 2026: the scene was being played in the wrong
+  map.** Everything below this paragraph was measured with `?map=C01`, and
+  `ev03030` does not happen in `C01`. A trigger record carries the map it
+  applies in (`Trigger.map`, the map's own id), and the five scenes measured
+  here carry five different ones:
 
-  **And a pull-in would not have fixed this one**, which is the part worth
-  passing on. Chased further with `?probe=1`, the Hero in `ev03030` stands at
-  `y = -0.063` where **the floor under them is 0.260** — a third of a unit
-  below it. That is why the focus is inside a shape's box in the first place.
+  | event | map | | event | map |
+  |---|---|---|---|---|
+  | `ev03030` | `C01M16` | | `ev03050` | `C01M18` |
+  | `ev20780` | `C01M19` | | `ev03031` | `C01M15` |
+  | `ev20800` | `C01M14` | | | |
 
-  Measured across C01's scenes, it is not one scene:
+  Played in its own map, `ev03030` is **a good shot**: Stornway Castle's hall,
+  the Hero on the floor, the armour stands either side, "Chaaarge! Take that,
+  you no-good Wight Knight!" in the box. No masonry, no pull-in needed.
 
-  | event | Hero y | floor | under by |
+  The old numbers reproduce exactly under `?map=C01` — hero `−0.0625`, floor
+  `0.260`, so `0.32` under — which is what says the original measurement was
+  made that way rather than the engine having changed since. In the right map
+  the Hero is a little **above** the floor, not a third of a unit below it:
+
+  | event | map | hero `y` | floor underfoot | over by |
+  |---|---|---|---|---|
+  | `ev03030` | `C01M16` | −0.0625 | −0.0747 | 0.0122 |
+  | `ev20780` | `C01M19` | 0.0125 | 0 | 0.0125 |
+  | `ev20800` | `C01M14` | 0.0125 | 0 | 0.0125 |
+  | `ev03050` | `C01M18` | 0.0725 | 0.0608 | 0.0117 |
+  | `ev03031` | `C01M15` | 0 | 0 | 0 |
+
+  **So there is no scale disagreement to chase.** What is left is a clearance
+  of about `0.012` in four of the five — near enough constant, about a tenth
+  of a script unit before `WORLD_SCALE` — which is the kind of number a script
+  carries on purpose and is not the third of a unit that started this.
+
+  Two things were read out of the game on the way and hold regardless, since
+  both were candidate causes:
+
+  - **`206` does not scale height apart from the ground plane.** Its handler
+    is `0x0215bfd4` in overlay 1, from the `{function, number}` table at
+    `0x02164d6c`; it multiplies each of x, y and z by the *same* constant word
+    at `0x0215c068` — `0x45800000`, `4096.0f` — and `0x0215a330` queues the
+    twelve bytes unchanged. The 4096 is the fx32 conversion, not a world
+    scale, so the game reads a script's `y` as world units one to one.
+  - **The per-file `.col2` shift does not explain it either.** `C01M14`,
+    `C01M15`, `C01M18` and `C01M19` all carry `shift=2` and gave four
+    different answers under the old measurement; `C01M16` carries `shift=3`.
+
+  **What this cost, and the cheap guard.** `?event=` plays a scene in whatever
+  map is loaded and says nothing when that is not the scene's own map, so a
+  mistyped route produced a fault that was chased into the renderer, the
+  collision scale and the decomp. The triggers know the answer — `?event=`
+  could select the map itself, or refuse when the loaded map is not one a
+  trigger names. That is the fix worth having.
+
+  **What was measured before, kept as the record of the mistake.** The table
+  below is the `?map=C01` reading, and the reasoning built on it. It is wrong
+  in its premise, not in its arithmetic — each row reproduces exactly when the
+  wrong map is loaded.
+
+  | event | Hero y | "floor" | under by |
   |---|---|---|---|
   | `ev03030` | −0.063 | 0.260 | 0.32 |
   | `ev20780` | 0.012 | 0.295 | 0.28 |
@@ -220,45 +268,11 @@ lives; this is the gathered list.
   | `ev03050` | 0.073 | 0.110 | 0.04 |
   | `ev03031` | 0.012 | 0.012 | 0 |
 
-  **It is not a missing snap to the ground.** `206` takes the script's `y`
-  literally, and that is deliberate and read: `231` and `232` are the
-  move-to-the-ground pair and set `onGround`, which snaps through `groundAt`.
-  The scripts that carry a height mean to carry one.
-
-  So the question is **why a script's `y` disagrees with our floor**, by an
-  amount that varies from nothing to a third of a unit. Two candidates were
-  named: our collision floor is high in places, or a script's `y` is not in
-  the units `206` scales it by.
-
-  **The second is now read out of the game and refuted — 25 September 2026.**
-  The VM's invoke does no searching: `fn = vm->fnTable[number]`, filled from
-  the `{function, number}` table at `0x02164d6c`, whose 304 entries all
-  resolve. Number 206 is `0x0215bfd4` in overlay 1, and it does this to each
-  of x, y and z in turn:
-
-      arg = arg_at(r5 + 0x08 | 0x10 | 0x18)
-      arg = __mulsf3(arg, *0x0215c068)     // 0x45800000 = 4096.0f
-      arg = __fixsfsi(arg)                 // float -> int, truncating
-
-  **The same constant word is loaded for all three** — the three pc-relative
-  loads at `0x0215bff4`, `0x0215c010` and `0x0215c02c` all resolve to
-  `0x0215c068`. Then `0x0215a330` takes the character and the three values,
-  claims a queue slot, writes command type 1 and `memcpy`s the twelve bytes
-  in unchanged. **No separate height scaling exists to find.**
-
-  And ×4096 is not a world scale at all: it is the fx32 conversion, where
-  4096 is 1.0. So the game reads a script's `y` as world units one to one,
-  exactly as it reads x and z — which `216` corroborates, appending each path
-  point "times 4,096 into fixed point". Ours multiplies all three by
-  `WORLD_SCALE`, one eighth, which is the same treatment of the three.
-
-  **So the thread is the floor, not the script.** `docs/findings.md`'s scale
-  work is still where it starts — in particular the per-file `.col2 +0x04`
-  shift, since a floor built through that and a script `y` scaled by a flat
-  `WORLD_SCALE` are the two halves that have to agree. What that does not yet
-  explain is why the disagreement *varies between scenes of the same area*,
-  which a per-file shift would not do; worth checking first whether those five
-  scenes are in the same map or in different rooms of C01.
+  One thing from that reasoning stands on its own and is worth keeping: **it
+  was never a missing snap to the ground.** `206` takes the script's `y`
+  literally, deliberately — `231` and `232` are the move-to-the-ground pair,
+  and they set `onGround`, which snaps through `groundAt`. A script that
+  carries a height means to carry one.
 
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth

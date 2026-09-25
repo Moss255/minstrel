@@ -75,10 +75,23 @@ wrong for a wall somebody is against.
 
 Underneath that was something larger: `FollowCamera.actualDistance` is
 documented as "how far back it actually sits, after anything in the way", and
-**nothing ever reduced it**. That pull-in is now built (`clearDistance`), it
-is inert in ordinary play, and `ev03030` shows the Hero instead of a wall —
-though still from 0.28 behind them, which is not a good shot. See
-`docs/still-open.md`.
+**nothing ever reduced it**. That pull-in is now built (`clearDistance`) and
+is inert in ordinary play.
+
+**Corrected, 25 September 2026: `ev03030` was never a wrong view.** It was
+being played with `?map=C01`, and it does not happen in `C01` — its trigger
+names `C01M16`, Stornway Castle. Played there it is a good shot: the Hero on
+the floor of the hall, the armour stands either side, the line in the box.
+The camera was inside a wall because the scene was standing its cast in
+another map's geometry.
+
+So the passage above is right about the *witness* — it reads the status line
+and checks a map was drawn, and a view from inside a wall passes both — and
+wrong about the area. Nothing here needed fixing. The pull-in it led to is
+real work and stays, but it was not what this scene wanted, and the
+floor-versus-script-`y` chase that followed was measuring the same mistake.
+`?event=` plays a scene in whatever map is loaded and warns about nothing,
+which is the thing to fix. See `docs/still-open.md`.
 
 ## Still to do
 
