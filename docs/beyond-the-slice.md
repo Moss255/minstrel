@@ -52,21 +52,36 @@ a shop, a menu and a battle all work from cartridge data at runtime.
 **It is not 669 maps of work.** Assets come from the cartridge at runtime, so a
 new area costs no art. What a new area actually costs is:
 
-1. **Engine functions its events call.** 139 are invoked across the cartridge
-   and roughly 100 have no reading. The slice's morning alone calls 21 that the
-   host answers with 0. Every new area will call some that have never run.
+1. **Engine functions its events call.** This was the big one and it is
+   largely spent. When this was written roughly 100 had no reading and the
+   slice's morning alone called 21 the host answered with 0; the host now
+   answers **226**, and **five** numbers are unanswered across the whole
+   cartridge — `843`, `807`, `837`, `839`, `844`. The slice's own area wants
+   none of them, and six of the eight towns want none either. A new area may
+   still call one that has never *run*, which is not the same as one that has
+   never been read, but the tail this item was about is gone.
 2. **Systems it is the first to need.** A town with an Abbey needs vocations; a
    town with a Quester's Rest needs a party of four.
 3. **Per-area quirks.** A sliding piece, a lift, a boat, a poison marsh.
 
-Of those, (1) is the one that scales badly *and silently*. An unread engine
-function currently returns 0 and the event carries on, so a scene half-plays
-and nothing says why. **That is the single most important thing to fix before
-mass content**, and it is cheap.
+Of those, (1) *was* the one that scaled badly **and silently**: an unread
+engine function returns 0 and the event carries on, so a scene half-plays and
+nothing says why. That is why it was called the single most important thing to
+fix before mass content — and Phase 1 fixed it, by measuring the tail with
+`apps/game/test/event-coverage.test.ts` and reading it out of the decomp in
+the order the story wants. The silence itself is still the hazard, so the
+count is a test rather than a note: implementing one shows up as a smaller
+number and losing one as a larger.
 
-(2) is the one that scales badly *retroactively*. A party of four changes the
+**So (2) is now the one to watch.**
+
+It is the one that scales badly *retroactively*. A party of four changes the
 save format, the battle model, the menus and the field follow. Done after six
-hundred maps of content, every one of them needs revisiting.
+hundred maps of content, every one of them needs revisiting — which is why
+Phase 2 was put before Phase 3 and why it closed on 25 September 2026 with no
+content behind it to revisit. The argument is unchanged for the systems that
+have not landed yet; the party of four is now the worked example of it rather
+than the warning.
 
 ---
 
@@ -128,16 +143,28 @@ What makes the remaining areas cheap.
 - **The loader against all 669 maps headlessly** — the harness already does
   this kind of sweep for collision and spawns; extend it to a full load.
   **Done, 24 September 2026**: `apps/game/test/maps.test.ts` runs the
-  game's own `load` over every map archive in about 50 seconds. **All 669
+  game's own `load` over every map archive in under three minutes. **All 669
   read**, none names a resource its archive has not got, and one doorway on
-  the cartridge leads to a map that is not there. 197 have no collision — 174
-  of them the whole `B` family, which has no region, doorway, cast or trigger
-  and is pieces rather than places; twelve are places the index names, and of
-  those `M12`, Wormwood Creek's outdoor map, has a cast of eleven and eight
-  doors. See `docs/still-open.md`.
+  the cartridge leads to a map that is not there (`M07` → `M07M07`).
+
+  **196 have no collision, and none of them is reachable** — the sweep's own
+  line is "0 of those are maps something leads to", which is the thing worth
+  knowing and is stronger than counting them. 174 are the whole `B` family,
+  which has no region, doorway, cast or trigger and is pieces rather than
+  places; the other 22 are spread thin across `E`, `F`, `M`, `X`, `O`, `C` and
+  `D`.
+
+  This paragraph said **197**, and said that twelve of them were places the
+  index names, of which `M12` — Wormwood Creek's outdoor map — had a cast of
+  eleven and eight doors. Both were superseded and this was not updated.
+  `M12` was **the one real fault and it is fixed**, which is what took the
+  count from 197 to 196: its archive holds two descriptors and the loader kept
+  whichever it saw last. And the "twelve places" reading asked whether a map
+  had triggers, doorways or a named region — three properties of the *area*,
+  not the map. See `docs/still-open.md`, which has the full working.
 
   This is what the dip sample could not do. Thirteen areas by hand found two of
-  the 197, by luck; the sweep is exhaustive, takes a minute, and needs no
+  the 196, by luck; the sweep is exhaustive, takes minutes, and needs no
   browser, because `apps/game/src/load.ts` has no DOM in it.
 - **Text and talk at scale**: 1,646 event texts, with the markup fully read.
   **Measured, 24 September 2026**: `apps/game/test/text-coverage.test.ts` runs
@@ -367,7 +394,7 @@ worry.
 
 | risk | why it bites | what reduces it |
 |---|---|---|
-| **The engine-function tail** | ~100 unread, silently returning 0, discovered one scene at a time | Phase 1 measures and sequences them before content starts |
+| **The engine-function tail** *(largely retired)* | ~100 unread when this was written, silently returning 0, discovered one scene at a time | Phase 1 measured and sequenced them before content started, as planned. **Five** are left across the cartridge and the slice's area wants none. `event-coverage.test.ts` keeps the count honest |
 | **A system arriving late** | party of four after 600 maps means revisiting 600 maps | Phase 2 is deliberately before Phase 3 |
 | **Conformance never ending** | formula archaeology can absorb unlimited time | Phase 0 is timeboxed by its "done when", not by exhaustiveness |
 | **A red test going unnoticed** | nothing is checked automatically, and the tests that need a cartridge are skipped without one — so a failure can be invisible to everyone but the person holding a dump. Two assertions sat red from 16 to 19 September | Run `pnpm typecheck && pnpm test && pnpm lint` with `MINSTREL_TEST_ROM` set before committing. It is the whole of the defence, so it has to be habit |
