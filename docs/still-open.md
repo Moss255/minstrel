@@ -593,11 +593,32 @@ through the floor of every room.
 `D03M0600`. 1,010 resources across the cartridge are left unplaced against
 4,332 placed.
 
-**What a fix wants** is the pairing those 56 actually use. A resource carries
-a `slot`, and a placement carries a `parent` naming one, and the file's own
-note says slot and list position "do not track each other" — so pairing by
-slot rather than by order is the thing to try before falling back on refusing
-to place at all.
+**The pairing is read, and it is `values[1]`.** A placement's `values[0]` is
+which instance it is and **`values[1]` is the index of the resource it
+places**. The counts differ because **a resource can be placed more than
+once**: `D03M06` lists two door models and places them four times —
+`D03M0602` at both (0.98, 12.34) and (0.98, 17.70) — so thirteen placements
+serve nine resources. There was never a mismatch to be careful about.
+
+**Tried, and it is not landable yet.** Pairing by `values[1]`:
+
+- **fixes the visible fault.** `D03M06`'s doors take their real positions,
+  their collision follows by parent, and the slab through the floor is gone —
+  checked at the same spot as `evidence/D03M06.png`.
+- **corrects 22 more pieces** in maps whose counts *did* match, all of them
+  doors leaving the origin in `C04M01` and `C04M02`, which the positional
+  pairing had off by one. Of the 4,332 placed resources, 4,251 are untouched
+  and 59 pair with a different record carrying the same position.
+- **and breaks `S07`.** Gortress reaches one doorway from where the player
+  arrives where the invariant wants two, and drops out of the eight maps that
+  reach all of theirs. A walkability regression is worse than a cosmetic
+  fault, so it was reverted rather than landed.
+
+**What is left to do** is find out why `S07` loses a doorway. Its collision
+moves with everything else, and the question is whether the new placement is
+right and `S07` was walkable by accident, or whether `S07` is a case the
+`values[1]` reading does not cover. Everything else about the change is
+measured and holds.
 
 ## 6. The repository itself
 
