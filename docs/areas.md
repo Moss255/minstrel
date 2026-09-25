@@ -186,6 +186,28 @@ tied to the person's height, below which the figure fills the view whatever
 the scene wants; or leaving the wall to clip, which is what the engine did
 before the pull-in existed and is not obviously worse than this.
 
+## Alltrades Abbey — `X02`
+
+**25 September 2026.** `--stage=6.1 --talk=10`, **18 views in three and a half
+minutes: 0 failed, 0 worth a look, 8 the game guessed, 1 with the camera
+crowded.**
+
+The smallest area so far and the fastest: 7 pieces, 2 doorways, reached from
+`F07`. **Its exterior has no cast at all** and all nine of its characters are
+inside `X02M01`, which is the Abbey itself — so the vocation hall is where the
+people are, as it should be.
+
+Two things worth carrying forward:
+
+- **Eight of nine conversations were guesses**, the highest rate yet, against
+  Zere's six of ten and Coffinwell's seven of ten, and in a third chapter
+  again (`F0`). Three areas now agree that the rate is a property of the place
+  rather than of the stage chosen — see Zere.
+- **The crowded camera is not only an events problem.** X02's one crowded shot
+  is a *conversation*, `n017a #9` in `X02M01` at 31%. Coffinwell's five were
+  all scenes. So a floor on `clearDistance` would fix both, and the fault is
+  wider than the first area made it look.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
