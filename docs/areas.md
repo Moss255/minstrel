@@ -138,6 +138,54 @@ means the stages picked for the other areas — earliest span with five or more
 triggers — do not need re-deriving before those runs, which is worth knowing
 before spending fifty minutes on them.
 
+## Coffinwell — `M03`
+
+**25 September 2026.** `--stage=4.1 --talk=10`, **55 views in twelve minutes:
+0 failed, 0 worth a look, 7 the game guessed, 5 with the camera crowded.**
+
+Twice Zere's views and more than twice its minutes, which is the first
+evidence for the caveat put beside the five-minute figure in
+`docs/beyond-the-slice.md`: an area's cost tracks its size. Coffinwell has 17
+doorways to Zere's 9 and 207 triggers to its 90.
+
+The town is right — the Hero comes in on a walled path under autumn trees,
+the mini-map names Coffinwell and marks its inn, and the interiors are
+furnished and lit. Nothing failed and nothing was blank.
+
+### The camera can be pulled in until it is inside the Hero's head
+
+**This is the first real fault the phase has found**, and it is ours rather
+than the cartridge's.
+
+`ev04010` is drawn at **20% of the distance the camera asked for**: the back
+of the Hero's head fills the frame and Catarrhina, who is speaking, cannot be
+seen at all. The line reads and nothing errors, which is exactly the class of
+fault the headless checks pass and a person does not.
+
+The cause is one line. `clearDistance` in `packages/render/src/occlusion.ts`
+ends `return Math.max(0, nearest * wanted - margin)` — **the floor is zero**,
+so when something stands close in front of the eye the camera is pulled the
+whole way to the focus. It was written for `ev03030`, which turned out not to
+need it at all (see Stornway above), and Coffinwell is where it first fires in
+anger.
+
+The five crowded shots put a number on where it stops being acceptable:
+
+| scene | crowded to | usable |
+|---|---|---|
+| `ev04010` | 20% | **no** — head fills the frame |
+| `ev04140` | 32% | not looked at |
+| `ev24596` | 28% | not looked at |
+| `ev04040` | 49% | not looked at |
+| `ev04020` | 56% | **yes** — both speakers and the room in view |
+
+So the fix is a floor, and what the floor should *be* is a judgement rather
+than a reading: the pull-in is ours, and what the game does when a wall stands
+this close has not been read. Two candidates, neither yet chosen — a minimum
+tied to the person's height, below which the figure fills the view whatever
+the scene wants; or leaving the wall to clip, which is what the engine did
+before the pull-in existed and is not obviously worse than this.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:

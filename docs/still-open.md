@@ -274,6 +274,17 @@ lives; this is the gathered list.
   and they set `onGround`, which snaps through `groundAt`. A script that
   carries a height means to carry one.
 
+  **A floor for the pull-in is wanted — 25 September 2026.** Coffinwell's
+  checkpoint found `ev04010` drawn at 20% of the distance the camera asked
+  for, with the back of the Hero's head filling the frame and the speaker out
+  of sight. `clearDistance` ends `Math.max(0, nearest * wanted - margin)`, so
+  the floor is zero and a wall standing close in front pulls the eye the whole
+  way to the focus. 56% was still a usable shot and 20% was not, which brackets
+  it. What the floor should be is ours to decide, because the pull-in is ours
+  and what the game does in this case has not been read — a minimum tied to
+  the person's height, or letting the wall clip as it did before the pull-in
+  existed. See `docs/areas.md`, Coffinwell.
+
   **The witness cannot see this class of fault.** It reads the status line and
   checks a map was drawn; a view of the inside of a wall passes both. Worth
   keeping in mind for every "0 worth a look" it reports.
