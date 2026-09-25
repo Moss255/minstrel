@@ -318,6 +318,17 @@ leave them where they are when there is none.
 Not fixed during the sweep, with the camera floor, so that the areas remain
 comparable with each other.
 
+## Batsureg — `M10`
+
+**25 September 2026.** `--stage=10.1 --talk=10`, **29 views in five and a half
+minutes: 0 failed, 0 worth a look, 8 the game guessed, none crowded, none
+blank.** 16 pieces, 9 collision meshes, 9 doorways, 3 characters outside,
+chapter `J0`.
+
+Clean on both of the new measures — the first area checked against the
+blank-frame pass from the start, and it has nothing. Eight of ten guessed puts
+it at the high end, with Alltrades and Porth Llaffan.
+
 ## Still to do
 
 The areas in story order after Zere, as far as the story is read:
