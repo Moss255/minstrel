@@ -9,6 +9,75 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## Phase 3's sweep is done, and one engine change is what is left — 26 September
+
+**73 of the 75 areas are checkpointed** (`docs/areas.md`). Every exterior,
+every interior, every area with no map-index entry. Nothing failed to load and
+no map failed to draw, in any area, on any build.
+
+### Start here
+
+**`enter` will not open a map with no collision world.** `main.ts` says "there
+is nowhere to stand" and puts the previous map back, so the page never
+finishes loading and `window.__witness` is never set — checked, it comes back
+`{have: false}`. That leaves **`X01` and `X05`**, both the Observatory,
+unchecked rather than checked-and-clean.
+
+It is the only piece of engine work the whole sweep turned up, and it matters
+because **`X01` is where the story begins** — the prologue the slice cut. The
+game plays scenes on these maps; nobody stands in them. The change is to open
+one for a scene with no Hero placed, and it is not small: `self`, the camera
+and the walk all assume a world.
+
+**Do not assume the `All Events` label marks these.** `X03` carries it, has a
+collision mesh, and swept clean in eight views. The collision decides it.
+
+### What landed today
+
+- **56 maps place their pieces properly** (`mapmanifest.ts`). A placement's
+  `values[1]` names its resource and `values[0]` is the instance; the counts
+  differ because a resource can be placed more than once. The old code paired
+  by position and, when the counts disagreed, placed nothing — leaving every
+  piece at the origin. Found from `evidence/D03M06.png`, a door standing as a
+  slab through the floor.
+- **`?talk=` puts the Hero on the floor**, trying four spots around the cast
+  member. It used to write a position without asking and dropped them out of
+  the world.
+- **The witness looks at the picture**, not only at what the page says. Four
+  views drew nothing while naming their map and printing their dialogue.
+
+### What is open, in the order I would take it
+
+1. **`X01` and `X05`** — above.
+2. **A resource placed twice is drawn once.** `D03M06` has two of its four
+   doors. Drawing every instance was tried and put two statues in the Hexagon,
+   because an instance means "another door" in one map and "the same piece
+   after it moves" in another. What tells them apart is the sliding-piece
+   naming rule, which is title-specific and lives in `apps/game/src/slide.ts`
+   where `packages/world` cannot reach it. See `docs/still-open.md` §5b.
+3. **Thirteen checkpoints describe a build that is gone.** The placement fix
+   changed `C01`, `C02`, `D03` and `S07` among others. Re-running is cheap.
+4. **The crowded camera**, which is cosmetic and has no free fix — see the
+   note on `clearDistance`. 22 shots across six areas, concentrated in
+   built-up places; dungeons have none.
+5. **Blank frames with no known cause**: `M09 ev09100` (the shot's focus sits
+   0.7 below the Hero's feet), `C04`'s door to `F34`, `D17 ev29146`, `S14`'s
+   two, `D03`'s two, `M11 ev12120`.
+
+### Two things worth knowing before you start
+
+**The guess rate is 59% and it is per-area.** 662 of 1,116 spoken lines are
+`pickLine` falling back rather than the game's own selection, and it runs from
+1 in 10 at Upover to 8 in 9 at Alltrades. It is the largest gap between this
+engine and the game that is not a missing feature.
+
+**An area costs about six minutes.** Twenty interiors took five and a half
+minutes together — the witness takes several areas in one invocation and
+`--events=0` drops the scenes, which is the right shape for one-room areas.
+That was not a feature to write; it already existed.
+
+---
+
 ## The slice is held shippable — 18 September
 
 **Slice 1 is shippable at the owner's word.** Every point of the plan's
