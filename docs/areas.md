@@ -582,10 +582,42 @@ means **`0 RENDERED NOTHING` is not quite "every view drew something"**: it is
 "every view drew something at the moment it was looked at". Worth fixing by
 capturing when the scene says it is over rather than on a timer.
 
+## Six dungeons and a scene stage — `D04`, `S14`, `D07`, `D09`, `D08`, `D13`
+
+**25 September 2026.** In story order: Quarantomb 4.3, `S14` 4.7, Heights of
+Loneliness 7.1, The Bad Cave 9.1, `D08` 11.4, `D13` 12.5.
+
+| area | views | guessed | crowded | blank |
+|---|---|---|---|---|
+| `D04` Quarantomb | 12 | 0 | 1 | 0 |
+| `S14` | 20 | 0 | **10** | **2** |
+| `D07` Heights of Loneliness | **3** | 0 | 0 | 0 |
+| `D09` The Bad Cave | 10 | 0 | 0 | 0 |
+| `D08` | 11 | 0 | 0 | 0 |
+| `D13` | 13 | 6 | 3 | 0 |
+
+**Four of the six are entirely clean**, and that is the first real pattern in
+the sweep: **the crowded camera is a built-up problem.** The worst areas are
+`S14` at 10, Brigadoom and Bloomingdale at 7, Coffinwell at 5 — all places
+with interiors and scenes. The open dungeons and mountain paths have none at
+all, because nothing stands close in front of the eye in a cave corridor.
+
+**They are also tiny.** `D07` is three views: one piece, two doorways, no
+events and nobody to talk to — a mountain path between two places. `D09`,
+`D08` and `D04` are ten to twelve. A dungeon costs a minute where a town costs
+eight, which changes the sizing of the remainder: **the seventeen exteriors
+left are mostly of this kind**, not of Coffinwell's.
+
+`S14` is the exception and is not a dungeon at all: it opens **straight into a
+scene**, `ev24597`, with no map view first, and its ten crowded shots run from
+21% to 59%. Its two blank frames are scenes and are **not** the "already over"
+signature from Gortress, so they join the unexplained list.
+
 ## Still to do
 
-**Done: 19 of the 75** — the thirteen exteriors of the original list, plus
-Zere Rocks, Brigadoom, Tower of Trades, Swinedimples and Gortress, with the
+**Done: 25 of the 75** — the thirteen exteriors of the original list, plus
+Zere Rocks, Brigadoom, Tower of Trades, Swinedimples, Gortress, Quarantomb,
+`S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`, with the
 Observatory attempted and found unwitnessable.
 
 The list below is by *shape* rather than story order, because the shapes want
