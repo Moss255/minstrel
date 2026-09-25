@@ -5006,12 +5006,28 @@ function standAndTalk(id: number): void {
   const at = castPlaced(member.placement)
   const back = TALK_REACH * 0.5
   const spot = { x: at.x - Math.sin(at.facing) * back, z: at.z - Math.cos(at.facing) * back }
-  self.state = {
-    ...self.state,
-    x: fx32(Math.round(spot.x * FX32_ONE)),
-    y: fx32(Math.round(at.y * FX32_ONE)),
-    z: fx32(Math.round(spot.z * FX32_ONE)),
+  const x = fx32(Math.round(spot.x * FX32_ONE))
+  const z = fx32(Math.round(spot.z * FX32_ONE))
+  // **Stand them on the floor there, and not at all if there is none.**
+  // This wrote the spot straight into the Hero's state with the cast
+  // member's own `y` and never asked, so in a room small enough — behind a
+  // character is sometimes outside the room — the Hero was put over nothing
+  // and fell out of the world. Two of the four blank frames the area sweep
+  // turned up were this, and both read `(falling)` at about `y = -6.4`. See
+  // `docs/areas.md`, "`?talk=` can stand the Hero where there is no floor".
+  const world = loaded.world
+  const ground = world
+    ? groundBelow(world, x, z, fx32(Math.round((at.y + 0.25) * FX32_ONE)))
+    : undefined
+  if (!ground) {
+    // Better a conversation from where they already are than a view of the
+    // underside of the map: the point of the route is to see the talking.
+    status(`no floor behind placement ${id} — talking from where the Hero stands`)
+    self.facing = facingToward({ x: toFloat(self.state.x), z: toFloat(self.state.z) }, at)
+    talk()
+    return
   }
+  self.state = { ...self.state, x, y: ground.y, z }
   self.facing = facingToward(spot, at)
   talk()
 }

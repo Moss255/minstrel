@@ -31,6 +31,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { inflateSync } from 'node:zlib'
 
 const args = process.argv.slice(2)
 /**
@@ -225,6 +226,15 @@ const TROUBLE = new RegExp(
  * So it is shown, in its own colour, and not counted.
  */
 const GUESSED = /—\s*a guess\b/i
+/**
+ * How little variation in the band counts as nothing rendered.
+ *
+ * The four blank views found by hand all had a spread of exactly 0 — every
+ * pixel in the band identical. A dark but real view of an interior came out
+ * at 48 at its flattest and mostly well over 150, so a few points of slack
+ * costs nothing and catches a frame that is blank but for one stray pixel.
+ */
+const BLANK_SPREAD = 6
 
 /**
  * How far in the camera has to come before the view stops being worth
@@ -290,7 +300,11 @@ async function witness(area) {
     }
     const file = `${name}.png`
     const shot = await send('Page.captureScreenshot', { format: 'png' })
-    writeFileSync(join(outDir, file), Buffer.from(shot.result.data, 'base64'))
+    const png = Buffer.from(shot.result.data, 'base64')
+    writeFileSync(join(outDir, file), png)
+    // **Look at the picture, not only at what the page says about it.**
+    const spread = blankness(png)
+    const empty = spread !== undefined && spread <= BLANK_SPREAD
     // **A page that did not say "failed" has not thereby succeeded.** The
     // first run of this tool called O00 a good view: the map had no collision
     // mesh, the game stopped on its own title card, and nothing here noticed
@@ -311,18 +325,123 @@ async function witness(area) {
     const blank = !where.toUpperCase().includes(expect.toUpperCase())
     const guessed = GUESSED.test(status)
     const wrong = !guessed && TROUBLE.test(status)
-    shots.push({ file, label, where, status, guessed, crowded, concern: blank || wrong })
+    shots.push({
+      file,
+      label,
+      where,
+      status,
+      guessed,
+      crowded,
+      empty,
+      concern: blank || wrong || empty,
+    })
     const note = blank
       ? ' — NO MAP DRAWN'
-      : wrong
-        ? ' — trouble'
-        : crowded !== undefined
-          ? ` — camera crowded to ${Math.round(crowded * 100)}%`
-          : guessed
-            ? ' — a guess'
-            : ''
+      : empty
+        ? ' — NOTHING RENDERED'
+        : wrong
+          ? ' — trouble'
+          : crowded !== undefined
+            ? ` — camera crowded to ${Math.round(crowded * 100)}%`
+            : guessed
+              ? ' — a guess'
+              : ''
     console.log(`  ${label} — ${status || where}${note}`)
     return blank ? undefined : await plan()
+  }
+
+  /**
+   * Is the rendered view blank?
+   *
+   * **The status line cannot tell you.** Four views across the area sweep drew
+   * nothing at all while naming their map, reporting thousands of triangles
+   * submitted, and reading their dialogue correctly — so every test this tool
+   * had passed them. They had three different causes and this one check found
+   * all three, because it looks at the picture instead of at what the page says
+   * about it. See `docs/areas.md`.
+   *
+   * **Flatness is the signal, not darkness.** A blank view is not black: it
+   * comes out a uniform grey of about 22. What marks it is that the lightest
+   * and darkest pixel in the band are the *same* — a real view of a dark room
+   * still has a spread of a couple of hundred.
+   *
+   * The band is the middle-left of the frame, which the status text above, the
+   * message box below and the mini-map to the right all leave alone.
+   */
+  function blankness(png) {
+    // Chrome's screenshots are 8-bit and not interlaced, which is the only case
+    // this reads: IHDR for the size, the IDATs joined and inflated, then the
+    // scanline filters undone. Anything else gives up rather than guessing.
+    let at = 8
+    let width = 0
+    let height = 0
+    let colour = -1
+    let depth = 0
+    const idat = []
+    while (at + 8 <= png.length) {
+      const len = png.readUInt32BE(at)
+      const tag = png.toString('ascii', at + 4, at + 8)
+      const body = png.subarray(at + 8, at + 8 + len)
+      if (tag === 'IHDR') {
+        width = body.readUInt32BE(0)
+        height = body.readUInt32BE(4)
+        depth = body[8]
+        colour = body[9]
+        if (depth !== 8 || (colour !== 6 && colour !== 2) || body[12] !== 0) return undefined
+      } else if (tag === 'IDAT') idat.push(body)
+      else if (tag === 'IEND') break
+      at += 12 + len
+    }
+    if (!width || !height || idat.length === 0) return undefined
+    const step = colour === 6 ? 4 : 3
+    const stride = width * step
+    let raw
+    try {
+      raw = inflateSync(Buffer.concat(idat))
+    } catch {
+      return undefined
+    }
+    if (raw.length < (stride + 1) * height) return undefined
+    // Undo the filters in place, a scanline at a time.
+    const out = Buffer.alloc(stride * height)
+    for (let y = 0; y < height; y++) {
+      const filter = raw[y * (stride + 1)]
+      const src = raw.subarray(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride)
+      const row = out.subarray(y * stride, y * stride + stride)
+      const prior = y > 0 ? out.subarray((y - 1) * stride, y * stride) : undefined
+      for (let i = 0; i < stride; i++) {
+        const a = i >= step ? row[i - step] : 0
+        const b = prior ? prior[i] : 0
+        const c = prior && i >= step ? prior[i - step] : 0
+        let v = src[i]
+        if (filter === 1) v += a
+        else if (filter === 2) v += b
+        else if (filter === 3) v += (a + b) >> 1
+        else if (filter === 4) {
+          const pa = Math.abs(b - c)
+          const pb = Math.abs(a - c)
+          const pc = Math.abs(a + b - 2 * c)
+          v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+        }
+        row[i] = v & 0xff
+      }
+    }
+    let lo = 255
+    let hi = 0
+    const x0 = Math.floor(width * 0.02)
+    const x1 = Math.floor(width * 0.55)
+    const y0 = Math.floor(height * 0.3)
+    const y1 = Math.floor(height * 0.66)
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const i = y * stride + x * step
+        // Green alone is close enough to luminance for "is it all one value".
+        const v = out[i + 1]
+        if (v < lo) lo = v
+        if (v > hi) hi = v
+      }
+    }
+    return hi - lo
   }
 
   /** What the page says is worth looking at here — see `witnessHook`. */
@@ -397,6 +516,9 @@ async function witness(area) {
 
   const failed = shots.filter((s) => s.failed).length
   const concerns = shots.filter((s) => s.concern).length
+  // Counted apart from the rest of the concerns: a view that drew nothing
+  // is the one thing on the page that is certainly wrong.
+  const nothing = shots.filter((s) => s.empty).length
   const guesses = shots.filter((s) => s.guessed).length
   const crowded = shots.filter((s) => s.crowded !== undefined).length
   writeFileSync(
@@ -406,7 +528,7 @@ async function witness(area) {
 <title>witness ${esc(area)}</title>
 ${STYLE}
 <h1>witness · ${esc(area)}${stage ? ` · stage ${esc(stage)}` : ''}${time ? ` · ${esc(time)}` : ''}</h1>
-<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''}${guesses ? ` · <span class="guess">${guesses} the game guessed</span>` : ''}${crowded ? ` · <span class="guess">${crowded} with the camera crowded</span>` : ''} · ${esc(new Date().toISOString())}</p>
+<p class="sub">${shots.length} views${failed ? ` · <span class="bad">${failed} failed to load</span>` : ''}${concerns ? ` · <span class="bad">${concerns} worth a look</span>` : ''}${guesses ? ` · <span class="guess">${guesses} the game guessed</span>` : ''}${crowded ? ` · <span class="guess">${crowded} with the camera crowded</span>` : ''}${nothing ? ` · <span class="bad">${nothing} rendered nothing</span>` : ''} · ${esc(new Date().toISOString())}</p>
 <div class="grid">
 ${shots
   .map(
@@ -424,7 +546,7 @@ ${shots
 `,
   )
   console.log(
-    `  → ${shots.length} views, ${failed} failed, ${concerns} worth a look${guesses ? `, ${guesses} the game guessed` : ''}${crowded ? `, ${crowded} with the camera crowded` : ''}\n`,
+    `  → ${shots.length} views, ${failed} failed, ${concerns} worth a look${guesses ? `, ${guesses} the game guessed` : ''}${crowded ? `, ${crowded} with the camera crowded` : ''}${nothing ? `, ${nothing} RENDERED NOTHING` : ''}\n`,
   )
   return {
     area,
