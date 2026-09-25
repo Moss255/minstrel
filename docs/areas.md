@@ -161,5 +161,13 @@ holding on to for the areas still on this list.
 
 A checkpoint wants the *town*. `M09` at 9.1 is the run to make.
 
+**The rest of the list was then checked for the same fault, and is clean.**
+Every one of the eleven codes is labelled "Exterior" in the index, has its own
+`trigger<code>.bin`, and has sub-maps beneath it — Zere 7, Coffinwell 13,
+Alltrades 2, Dourbridge 8, Porth Llaffan 6, Bloomingdale 16, Gleeba 19,
+Batsureg 7, Upover 12, Wormwood Creek 11, Gittingham Palace 10. **Bloomingdale
+is the only one whose region spans other area codes at all**, which is why it
+was the one that went wrong and why the others can be taken at face value.
+
 `pnpm inventory --regions` lists every place with the code that loads it, and
 `docs/regions.md` says how to go to one.
