@@ -613,9 +613,49 @@ scene**, `ev24597`, with no map view first, and its ten crowded shots run from
 21% to 59%. Its two blank frames are scenes and are **not** the "already over"
 signature from Gortress, so they join the unexplained list.
 
+## Six more, all clean — `D01`, `S02`, `S03`, `S05`, `S06`, `D14`
+
+**26 September 2026**, the first batch against the placement fix.
+
+| area | stage | views | crowded | blank |
+|---|---|---|---|---|
+| The Hexagon `D01` | 2.4 | 10 | 1 | 0 |
+| Loch Storn `S02` | 3.2 | 6 | 1 | 0 |
+| Western Stornway `S03` | 4.1 | 7 | 0 | 0 |
+| Cuddiedig Cliff `S05` | 7.4 | 9 | 0 | 0 |
+| Hunters' Yurts `S06` | 10.2 | 7 | 0 | 0 |
+| The Bowhole `D14` | 13.1 | 11 | 3 | 0 |
+
+**Fifty views, nothing failed, nothing worth a look, nothing blank.** They are
+small — six to eleven views each, where a town runs thirty to fifty-five — and
+they hold to the pattern the dungeons set: the crowded camera belongs to
+built-up places, and these have five between them against Gortress's ten.
+
+### The Hexagon is where the placement fix earns its keep
+
+`D01` is in the slice and was one of the 56 maps drawing every piece at the
+origin. It now places properly, and the check that matters is the statue the
+story turns on:
+
+| | |
+|---|---|
+| sliding pieces found | **1** — two when every instance was drawn |
+| statue pieces drawn | **1** |
+| its home | `(0.434, −1.709)`, the step-5 record exactly |
+
+`story.test.ts` pins the arithmetic; this is the room, and the two agree.
+
+### The thirteen checkpoints above this line describe a build that is gone
+
+The placement fix changed **56 maps**, and `C01`, `C02`, `D03` and `S07` are
+among them — all four already checkpointed. Gortress's gates alone change what
+its walk reaches, and Stornway's own map is in the list. **Their fault counts
+should be read as of the build they were taken on**, not as the state of the
+tree. Re-running them is cheap and has not been done.
+
 ## Still to do
 
-**Done: 25 of the 75** — the thirteen exteriors of the original list, plus
+**Done: 31 of the 75** — the thirteen exteriors of the original list, plus
 Zere Rocks, Brigadoom, Tower of Trades, Swinedimples, Gortress, Quarantomb,
 `S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`, with the
 Observatory attempted and found unwitnessable.
