@@ -22,10 +22,12 @@ import {
   type LevelRow,
   type LevelTable,
   type NpcPlacement,
+  OP_EVENT,
   partName,
   type StoryArea,
   spellsLearnt,
   type Treasure,
+  triggerWords,
   vocationsWielding,
   wornResistances,
 } from '@minstrel/game-formats'
@@ -1299,8 +1301,10 @@ function openWorld(map: string): void {
   // The church is the one place a player can record anything, which makes the
   // save impossible to exercise from outside without walking to a priest.
   if (params.get('save') === '1') status(confess())
-  if (wantedEvent !== undefined) startEvent(wantedEvent)
-  else playEntryEvent()
+  if (wantedEvent !== undefined) {
+    goToEventsMap(wantedEvent)
+    startEvent(wantedEvent)
+  } else playEntryEvent()
   // `?talk=12` stands the Hero behind cast member 12 and talks to them —
   // **ours**, so a headless browser can see a conversation without walking to
   // it. Behind rather than in front on purpose: the default turn is then a
@@ -4715,6 +4719,54 @@ function endFight(): void {
  * will not read. `afterTalk` when a talk record plays it, so it carries straight
  * on from the conversation — see `EventStage.afterTalk`; ours, that only these do.
  */
+/**
+ * Put the Hero in the map a scene actually happens in, before playing it.
+ *
+ * **`?event=` used to play a scene in whatever map was loaded and say nothing
+ * about it**, and that cost more than anything else in this file. `ev03030`
+ * was driven with `?map=C01`, which is not where it happens: its camera came
+ * up inside a wall, the Hero came up a third of a unit under the floor, and
+ * the fault was chased into the renderer, then the collision scale, then the
+ * decomp before anyone checked the map. See `docs/still-open.md`.
+ *
+ * The triggers knew all along. A trigger record carries the map it applies in
+ * (`Trigger.map`, the map's own id), so the area's own trigger file answers
+ * "where does this scene happen" outright — `ev03030` names `C01M16`,
+ * Stornway Castle, and plays properly there.
+ *
+ * So this looks the event up and enters that map first. A scene named by no
+ * trigger is left alone rather than refused: `?event=` is also how a scene is
+ * looked at that nothing reaches yet, and that is worth keeping.
+ */
+function goToEventsMap(number: number): void {
+  if (!loaded || loaded.mapId === undefined) return
+  const wants = new Set<number>()
+  for (const trigger of loaded.triggers) {
+    for (const word of triggerWords(trigger)) {
+      if (word.op === OP_EVENT && word.arg === number) wants.add(trigger.map)
+    }
+  }
+  if (wants.size === 0 || wants.has(loaded.mapId)) return
+  // Several maps can name one scene. Taking the first in the triggers' own
+  // order is a choice, and the status line says which, so a shot taken in the
+  // wrong one of two is at least visible as that rather than silent.
+  const [first] = [...wants]
+  const code = first === undefined ? undefined : loaded.mapCodeOf(first)
+  const named = [...wants].map((id) => loaded?.mapCodeOf(id) ?? `map ${id}`).join(', ')
+  if (!code) {
+    status(`ev${String(number).padStart(5, '0')} is not in ${loaded.code}; its map is not named`)
+    return
+  }
+  const said = `ev${String(number).padStart(5, '0')} happens in ${named}, not ${loaded.code} — going there`
+  status(said)
+  // The status line holds one line and the scene's own "playing" message
+  // lands on it immediately, so the reason would be gone before it was read.
+  // The console keeps it, which is what a developer who typed the wrong map
+  // needs — the overlay shows the map they ended up in, not why.
+  console.info(said)
+  enter(code)
+}
+
 function startEvent(number: number, afterTalk = false): boolean {
   if (!loaded || !self) return false
   const name = `ev${String(number).padStart(5, '0')}`

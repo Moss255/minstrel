@@ -41,7 +41,7 @@ is one the menu will not know about.
 | `party=0:0,11:3,21:10` | a party of created characters, `preset:vocation` each — see `docs/party-and-vocations.md` |
 | `ivor=1` | open with Ivor along, as his call leaves him |
 | `level=25` | put the Hero at a level, with the experience for it |
-| `event=23198` | play a scene |
+| `event=23198` | play a scene. **It goes to the map the scene happens in first**, which its trigger names, and says so on the status line and the console; a scene no trigger names is played where you are. Driving a scene in the wrong map is what produced the `ev03030` "camera in a wall" that was chased for a day — see `docs/still-open.md` |
 | `preset=7` | dress the Hero as a ready-made character |
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
