@@ -101,7 +101,13 @@ main {
   bottom: 7vh;
   transform: translateX(-50%);
   width: min(92vw, 60rem);
-  min-height: 5.5em;
+  /* **A fixed size, as the game's window is**: three lines of text whatever
+     the page holds, the speaker's name on a tab over its top edge rather than
+     inside it — both as the let's play shows the game's own box. It grew and
+     shrank with every page, which play reported. Only a page that really
+     needs more than three lines makes it taller, so nothing is cut off. */
+  box-sizing: content-box;
+  min-height: calc(3 * 1.45em);
   padding: 0.9em 1.3em;
   border: 0.14em solid rgb(232 230 225 / 85%);
   border-radius: 0.5em;
@@ -147,7 +153,14 @@ main {
 }
 
 #talk .speaker {
-  margin-bottom: 0.25em;
+  position: absolute;
+  bottom: 100%;
+  left: 1em;
+  margin-bottom: -0.14em;
+  padding: 0.1em 0.8em;
+  border: 0.14em solid rgb(232 230 225 / 85%);
+  border-radius: 0.4em 0.4em 0 0;
+  background: rgb(8 10 18 / 88%);
   font-size: 0.8em;
   color: var(--dim);
   letter-spacing: 0.04em;
