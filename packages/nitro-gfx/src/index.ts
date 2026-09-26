@@ -79,6 +79,7 @@ export {
   type TextureInfo,
   type TextureSet,
   texelDataSize,
+  withPalettes,
 } from './nsbtx.ts'
 export {
   inverseBindMatrices,

@@ -3434,7 +3434,7 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
 
     // Any body and legs on the rig will do; these are the Hero's.
     const figure = dressFigure(
-      { parts, textures: new Map(), motions },
+      { parts, partTextures: new Map(), textures: new Map(), motions },
       { body: 'p_b007', legs: 'p_p215' },
     )
     const pieces = figurePieces(figure)

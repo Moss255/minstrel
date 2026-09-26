@@ -260,3 +260,58 @@ export function buildManifest(
   h32(names.length)
   return Uint8Array.from([...header, ...records, ...strings])
 }
+
+/**
+ * Build a tagged table. Fixtures may not contain cartridge bytes, so the layout
+ * is implemented here from the description in `FORMAT.md`.
+ */
+export interface FixtureRecord {
+  tag: number
+  type?: number
+  values?: number[]
+  floats?: number[]
+  /** Emit a word of 0xFF fill before this record. */
+  padBefore?: boolean
+}
+
+export function buildTable(records: FixtureRecord[], strings: string[] = []): Uint8Array {
+  const body: number[] = []
+  const push32 = (v: number) =>
+    body.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+
+  for (const record of records) {
+    if (record.padBefore) body.push(0xff, 0xff, 0xff, 0xff)
+    const values = record.values ?? []
+    const floats = record.floats ?? []
+    const count = values.length + floats.length
+    // Tag, count, then two bits of type per value, padded to a word. A record
+    // of five or more values therefore has an eight-byte head, not four.
+    const typeBytes = Math.max(1, Math.ceil(count / 4))
+    const header = Math.ceil((3 + typeBytes) / 4) * 4
+    body.push(record.tag & 0xff, (record.tag >>> 8) & 0xff, count, record.type ?? 0)
+    for (let i = 4; i < header; i++) body.push(0)
+    for (const v of values) push32(v)
+    for (const f of floats) {
+      const buf = new DataView(new ArrayBuffer(4))
+      buf.setFloat32(0, f, true)
+      push32(buf.getUint32(0, true))
+    }
+  }
+
+  const stringBytes: number[] = []
+  for (const s of strings) {
+    for (let i = 0; i < s.length; i++) stringBytes.push(s.charCodeAt(i) & 0xff)
+    stringBytes.push(0)
+  }
+
+  const stringOffset = 16 + body.length
+  const out = new Uint8Array(stringOffset + stringBytes.length)
+  const view = new DataView(out.buffer)
+  view.setUint32(0, 0, true)
+  view.setUint32(4, stringOffset, true)
+  view.setUint32(8, stringBytes.length, true)
+  view.setUint32(12, strings.length, true)
+  out.set(Uint8Array.from(body), 16)
+  out.set(Uint8Array.from(stringBytes), stringOffset)
+  return out
+}

@@ -62,17 +62,18 @@ export interface Appearance {
   readonly build: number
   /**
    * The skin colour, 0 to 7 — the appearance block's `+0x174` bits 1–3, which
-   * the game applies to **every** body part. **Not drawn here**: nothing in
-   * `render` swaps a palette, so this is carried and shown as a number.
+   * the game applies to **every** body part. **Drawn on the face** — see
+   * `skin.ts`; the rest of the body keeps its own skin until how many shades
+   * each worn part takes is read.
    */
   readonly skin: number
   /**
-   * The eye colour, 0 to 15 — `+0x174` bits 4–7, used only on the head.
-   * **Not drawn here**, as {@link skin} is not.
+   * The eye colour — `+0x174` bits 4–7, used only on the face. Eight on the
+   * cartridge's table, as creation's 4×2 grid offers. **Drawn** — see `skin.ts`.
    *
-   * **Which of the three colour fields is skin, hair and eye is not
-   * established**: only "bits 1–3 go on every part" is read, and skin is the
-   * one that fits that. The names here follow the debug viewer's labels.
+   * **Which field is which is read from the game's code**, 27 September 2026:
+   * `func_020730e0` hands the face's recolour the skin from bits 1–3, the eye
+   * colour from bits 4–7 and the hair colour from the next byte's low four.
    */
   readonly eyes: number
 }

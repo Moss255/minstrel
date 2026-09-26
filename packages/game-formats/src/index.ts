@@ -28,6 +28,7 @@ export {
   buildFor,
   readBuildTable,
 } from './builds.ts'
+export { type CharaColours, readCharaColours } from './characolours.ts'
 export {
   COLLISION_KIND,
   type CollisionBounds,

@@ -101,7 +101,7 @@ export interface TextureSet {
    * texture's palette carries the same name with `_pl` appended, but nothing
    * enforces that, so the caller passes the one it wants.
    */
-  decode(texture: TextureInfo, palette?: PaletteInfo): Uint8Array
+  decode(texture: TextureInfo, palette?: PaletteInfo, colours?: Uint8Array): Uint8Array
 }
 
 /** Bytes of texel data a format needs for the given dimensions. */
@@ -235,11 +235,15 @@ export function readTex0(block: Uint8Array): TextureSet {
       paletteDataOffset + palette.dataOffset + palette.dataSize,
     )
 
-  const decode = (texture: TextureInfo, palette?: PaletteInfo): Uint8Array => {
+  const decode = (
+    texture: TextureInfo,
+    palette?: PaletteInfo,
+    colours?: Uint8Array,
+  ): Uint8Array => {
     const { width, height, format } = texture
     const out = new Uint8Array(width * height * 4)
     const data = texels(texture)
-    const pal = palette ? paletteBytes(palette) : new Uint8Array(0)
+    const pal = colours ?? (palette ? paletteBytes(palette) : new Uint8Array(0))
     const colour = (i: number): number =>
       i * 2 + 1 < pal.length ? (pal[i * 2] as number) | ((pal[i * 2 + 1] as number) << 8) : 0
 
@@ -386,5 +390,43 @@ function decode4x4(
         }
       }
     }
+  }
+}
+
+/**
+ * The same textures, with their palettes' colours as `edit` makes them.
+ *
+ * A DS game can recolour a model by writing new colours over its palette in
+ * VRAM and leaving the texels alone — a character's skin, say. This is that:
+ * `edit` is handed each palette and its colours, as BGR555 bytes, and returns
+ * the colours to use in their place, or the same array to leave it be. Each
+ * palette is edited once, the first time it is asked for. The 4×4-compressed
+ * format reads its palette by its own offsets and is decoded as it was.
+ */
+export function withPalettes(
+  set: TextureSet,
+  edit: (palette: PaletteInfo, colours: Uint8Array) => Uint8Array,
+): TextureSet {
+  const edited = new Map<PaletteInfo, Uint8Array>()
+  const coloursOf = (palette: PaletteInfo): Uint8Array => {
+    let colours = edited.get(palette)
+    if (!colours) {
+      colours = edit(palette, set.paletteBytes(palette))
+      edited.set(palette, colours)
+    }
+    return colours
+  }
+  return {
+    ...set,
+    paletteBytes: coloursOf,
+    decode: (texture, palette, colours) =>
+      set.decode(
+        texture,
+        palette,
+        colours ??
+          (palette && texture.format !== TextureFormat.Compressed4x4
+            ? coloursOf(palette)
+            : undefined),
+      ),
   }
 }

@@ -71,6 +71,8 @@ export const RIG_BONES = 14
 /** Every part, texture file and motion a walk of the cartridge turned up. */
 export interface Library {
   readonly parts: ReadonlyMap<string, Model>
+  /** The textures each part carries inside itself, by part — `p_f006`'s face — for recolouring. */
+  readonly partTextures: ReadonlyMap<string, TextureSet>
   /** The texture files that dress the parts, by name — see {@link CHARACTER_TEXTURES}. */
   readonly textures: ReadonlyMap<string, TextureSet>
   /**
@@ -105,19 +107,23 @@ export interface LibraryBuilder extends Library {
 
 export function library(family = MOTION_FAMILY): LibraryBuilder {
   const parts = new Map<string, Model>()
+  const partTextures = new Map<string, TextureSet>()
   const textures = new Map<string, TextureSet>()
   const motions = new Map<string, Animation[]>()
 
   return {
     parts,
+    partTextures,
     textures,
     motions,
     offer(path, bytes) {
       const named = CHARACTER_PARTS.exec(path)
       if (named && isNsbmd(bytes)) {
         try {
-          const part = readNsbmd(bytes).models[0]
+          const read = readNsbmd(bytes)
+          const part = read.models[0]
           if (part?.numShapes) parts.set(named[1] as string, part)
+          if (part?.numShapes && read.textures) partTextures.set(named[1] as string, read.textures)
         } catch {
           // A part that will not read simply is not drawn.
         }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NitroGfxError } from '../src/errors.ts'
-import { readNsbtx, readTex0, TextureFormat, texelDataSize } from '../src/nsbtx.ts'
+import { readNsbtx, readTex0, TextureFormat, texelDataSize, withPalettes } from '../src/nsbtx.ts'
 
 /**
  * Build a TEX0 block. Fixtures may not contain cartridge bytes, so the layout
@@ -167,6 +167,25 @@ describe('readTex0', () => {
     // Byte 0x21 is index 1 in the low nibble, index 2 in the high one.
     expect(Array.from(pixels.subarray(0, 4))).toEqual([255, 0, 0, 255])
     expect(Array.from(pixels.subarray(4, 8))).toEqual([0, 255, 0, 255])
+  })
+
+  it('decodes through the palette as edited, leaving the texels alone', () => {
+    // A character's skin, recoloured by writing over palette entries: index 1
+    // becomes blue, and index 2, left as it was, stays green.
+    const set = withPalettes(readTex0(simple()), (_, colours) => {
+      const out = colours.slice()
+      out[2] = bgr(0, 0, 31) & 0xff
+      out[3] = bgr(0, 0, 31) >> 8
+      return out
+    })
+    const texture = set.texture('grass')
+    const palette = set.palette('grass_pl')
+    if (!texture || !palette) throw new Error('fixture is incomplete')
+    const pixels = set.decode(texture, palette)
+    expect(Array.from(pixels.subarray(0, 4))).toEqual([0, 0, 255, 255])
+    expect(Array.from(pixels.subarray(4, 8))).toEqual([0, 255, 0, 255])
+    // And the edited colours are what it hands out as its palette's bytes.
+    expect(Array.from(set.paletteBytes(palette).subarray(2, 4))).toEqual([0x00, 0x7c])
   })
 
   it('expands 5-bit colour components so full scale reaches 255', () => {

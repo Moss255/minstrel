@@ -1181,10 +1181,16 @@ actually left.
   game's own character codes; which code is which letter is not read. It can
   be, without a guess: the let's play's keyboard (ep1, about 3:45) shows which
   letter is at each place.
-- **Three of the seven knobs are read and not drawn**: skin colour, eye
-  colour and hair colour. Each is a palette swap and nothing in `render` swaps
-  one, so the creation screens offer them and the figure does not change. Not
-  Phase 2's work.
+- **Skin and eye colour: the face is done, 27 September 2026** — `skin.ts`,
+  read from the game's code (`game-formats/FORMAT.md`, "Character colours").
+  `palette.bin` is a script whose six opcodes fill six colour tables; the face
+  takes its brows from the hair colour at slots 2–3, its eyes at 4–5 and an
+  eight-shade skin ramp at 8–15, exactly as `func_02099e18` copies them. Which
+  appearance field is which is settled from the same code. **The rest of the
+  body keeps its own skin**: the game writes a two-, four- or eight-shade ramp
+  into every palette of each worn part, and *how many* comes from a record of
+  the item worn, per sex — a record whose file is not yet found, along with
+  which of our parts is which of the game's eight indices.
 - **Where a preset's hair comes from**, if anywhere. The record names none, so
   a character made from a preset wears the Hero's. Still on the wiki's "not
   established" list — this one *is* an unknown rather than work not done.

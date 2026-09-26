@@ -104,7 +104,8 @@ describe('monsters roaming a field', () => {
     ])
     const rng = new BattleRng(1n)
     let field = startRoaming()
-    for (let t = 0; t < 200; t++) field = tickRoaming(field, roofed, kinds, hero, rng, rules).roaming
+    for (let t = 0; t < 200; t++)
+      field = tickRoaming(field, roofed, kinds, hero, rng, rules).roaming
     expect(field.roamers.length).toBeGreaterThan(0)
     for (const r of field.roamers) expect(r.state.y).toBe(0)
   })

@@ -15,6 +15,7 @@ import {
   type AttendingCharacter,
   type BattleZone,
   type BuildTable,
+  type CharaColours,
   type CharacterPreset,
   type EventBattle,
   type EventMessage,
@@ -47,6 +48,7 @@ import {
   readAttendingCharacters,
   readBattleEncounters,
   readBuildTable,
+  readCharaColours,
   readCharacterPresets,
   readEventBattles,
   readEventMessages,
@@ -287,6 +289,8 @@ export interface Loaded {
   readonly standardWords: ReadonlyMap<number, string>
   /** The given names creation's last screen rolls from, out of `str_cm` — see `naming.ts`. */
   readonly givenNames: GivenNames
+  /** What a made character's face is recoloured with, out of `palette.bin` — see `skin.ts`. Undefined if it will not read. */
+  readonly charaColours: CharaColours | undefined
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
@@ -1188,6 +1192,18 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
 }
 
 /** One English text file out of its archive, read — or an empty map when it will not. */
+/** `/data/chara/palette.bin`, read — see `skin.ts`. A loose file, not an archive's member. */
+function charaColoursOf(rom: Uint8Array): CharaColours | undefined {
+  const { cat } = walkOnce(rom, ['/data/chara/palette.bin'])
+  const leaf = cat.other.find((candidate) => candidate.path.toLowerCase().endsWith('/palette.bin'))
+  if (!leaf) return undefined
+  try {
+    return readCharaColours(leaf.bytes)
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * The given names creation's last screen rolls from — see `naming.ts`. On its
  * own because the Hero is named before any map is loaded.
@@ -2039,6 +2055,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     itemKinds: itemKindsOf(rom),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     givenNames: givenNamesFrom(rom),
+    charaColours: charaColoursOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

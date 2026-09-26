@@ -7,10 +7,12 @@ import {
   measureBounds,
   multiply,
   type NodeTransform,
+  type PaletteInfo,
   poseGeometry,
   resolvePose,
   sampleAnimation,
   type TextureSet,
+  withPalettes,
 } from '@minstrel/nitro-gfx'
 import type { Library } from './library.ts'
 
@@ -60,6 +62,14 @@ export interface Outfit {
     readonly bone: string
     readonly turn?: Mat4
   }[]
+  /**
+   * Parts drawn with their own palettes edited, by part: `p_f006` with a
+   * character's skin and eyes written over its colours. The game recolours a
+   * character this way — new colours over the palette, the texels untouched —
+   * and which colours go where is the game's, so the caller says; see
+   * `withPalettes` in `@minstrel/nitro-gfx`.
+   */
+  readonly recolour?: ReadonlyMap<string, (palette: PaletteInfo, colours: Uint8Array) => Uint8Array>
 }
 
 /** One shape of one part, unposed, so a frame change is one pass over it. */
@@ -102,6 +112,14 @@ export function dressFigure(lib: Library, outfit: Outfit): Figure {
   ]
 
   const textures = new Map<string, { set: TextureSet; name: string }>()
+  // A recoloured part's own textures, taken before the catalogue's copy of the
+  // same name — which every character wearing that part shares.
+  for (const [part, edit] of outfit.recolour ?? []) {
+    const own = lib.partTextures.get(part)
+    if (!own) continue
+    const set = withPalettes(own, edit)
+    for (const texture of set.textures) textures.set(texture.name, { set, name: texture.name })
+  }
   for (const file of outfit.textures ?? []) {
     const set = lib.textures.get(file)
     if (!set) throw new Error(`no character texture file '${file}' on the cartridge`)

@@ -295,6 +295,7 @@ import {
   treesOf,
   treeView,
 } from './skills.ts'
+import { faceColours } from './skin.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
@@ -5614,8 +5615,10 @@ function appearanceRows(member: Member): { knob: string; label: string; shown: s
         ? `${look.build} · ${per(scale.height)} tall, ${per(scale.width)} broad`
         : `${look.build} · the build table did not read`,
     },
-    { knob: 'skin', label: 'Skin Colour', shown: `${look.skin} — not drawn here` },
-    { knob: 'eyes', label: 'Eye Colour', shown: `${look.eyes} — not drawn here` },
+    // The face takes both — see `skin.ts`; the rest of the body keeps its own
+    // skin until how many shades each worn part takes is read.
+    { knob: 'skin', label: 'Skin Colour', shown: `${look.skin} — on the face` },
+    { knob: 'eyes', label: 'Eye Colour', shown: `${look.eyes}` },
   ]
 }
 
@@ -5685,11 +5688,16 @@ function lookOver(
   // The hair colour replaces whichever `p_h` texture the outfit carried.
   const textures = [...(outfit.textures ?? []).filter((name) => !name.startsWith('p_h'))]
   if (has(colour)) textures.push(colour)
+  // Their skin, eyes and brows written over the face's palette — see `skin.ts`.
+  const colours = loaded?.charaColours
+  const recolour =
+    colours && has(face) ? new Map([[face, faceColours(colours, look)]]) : outfit.recolour
   return {
     ...outfit,
     ...(has(face) ? { face } : {}),
     ...(has(hair) ? { hair } : {}),
     textures,
+    ...(recolour ? { recolour } : {}),
   }
 }
 

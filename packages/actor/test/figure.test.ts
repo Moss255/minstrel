@@ -14,6 +14,7 @@ const textureFile = (...names: string[]) =>
 
 function lib(): Library {
   return {
+    partTextures: new Map(),
     parts: new Map(
       ['p_b007', 'p_p215', 'p_f006', 'p_h000a', 'p_m200'].map((name) => [name, part(name)]),
     ),

@@ -4045,3 +4045,54 @@ Not established: what the marsh does, and how much — the game's rule is in
 its code (the game's toll here is ours, `apps/game/src/marsh.ts`); whether
 `mud`, on the fields, does anything; and whether the collision marks the marsh
 too — the attribute word is not read.
+
+# Character colours — `/data/chara/palette.bin`
+
+**Read 27 September 2026, from the game's code as well as the file.** What a
+made character's skin, eyes and brows are recoloured with. `readCharaColours`.
+
+**The file is a script.** It is an ordinary tagged data table, and the ARM9
+does not read it as data: `func_02099cb8` loads it with `LoadFileIntoMemory`
+and runs it with `Script::Execute` against an opcode table at `0x020f1574` —
+six `{tag, handler}` pairs, ended by a zero pair. Each handler reads its
+record's values with `Script::Parameter::ToInt` and stores each as a
+**halfword**, in rows, into a table of its own. The tables stand back to back
+from `0x02109928`:
+
+| tag | handler | table | rows × each | read as |
+|---|---|---|---|---|
+| `0x64` | `0x02099ac4` | `0x02109928` | 10 × 2 | brows, a pair per hair colour |
+| `0x65` | `0x02099b20` | `0x02109950` | 8 × 2 | skin, two shades a tone |
+| `0x66` | `0x02099b7c` | `0x02109970` | 8 × 4 | skin, four shades a tone |
+| `0x67` | `0x02099bd8` | `0x021099b0` | 8 × 8 | skin, eight shades a tone |
+| `0x68` | `0x02099c34` | `0x02109a30` | 8 × 2 | eyes, a pair per colour |
+| `0x69` | `0x02099c90` | `0x02109a50` | 1 | not established |
+
+Colours are BGR555. On the reference cartridge the skin rows run pale to dark
+by tone and each ramp light to dark by shade; the eye pairs are greys, browns,
+red, gold, green, blue and purple.
+
+**How they are applied** — `func_020730e0` recolours a character part by part,
+by a part index 0–7:
+
+- **The face, index 2** — `func_02099e18(model, skin, hair colour, eye
+  colour)` copies into the start of the face's palette data, three copies from
+  byte offsets `{4, 8, 16}` (`0x020e8e20`) with lengths `{4, 4, 16}`
+  (`0x020e8e14`): the hair colour's brow pair at slots 2–3, the eye pair at 4–5,
+  the tone's eight shades at 8–15. Checked against the parts: every face
+  palette on the cartridge holds brow pair 0 at slot 2, eye pair 0 at 4–5, and
+  tone 3's eight shades at 8–15 (seven of eight to the bit) — the colours it is
+  painted in.
+- **Indices 0, 1, 5, 6, 7** — `func_02099d34(model, kind, tone, 4)`: `kind` 1,
+  2 or 4 picks the two-, four- or eight-shade table, and the tone's ramp is
+  copied to byte offset 4 — slot 2 — of **every** 32-byte palette in the
+  model's TEX0. Index 4 the same at byte 16, slot 8. Index 3 is skipped.
+- **`kind` comes from the item worn, not the part.** `func_020de2a4` reads a
+  four-bit field from a record found by item id among eleven at `+0x194`
+  (`func_02083554`): bits 15–18 of its first word for a man, 23–26 for a woman;
+  1, 2 or 4, or none. **Which file fills those records is not established**,
+  nor which of our parts each index 0–7 is (`func_02072afc` fills them).
+
+**The appearance fields**, from the same caller: the skin tone is bits 1–3 of
+the appearance record's `+0x14` byte, the eye colour bits 4–7, and the hair
+colour the low four bits of `+0x15`.
