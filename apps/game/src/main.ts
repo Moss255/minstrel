@@ -2217,11 +2217,29 @@ function showTint(time: TimeOfDay): void {
   tintEl.style.background = `rgb(${r} ${g} ${b})`
 }
 
-/** The time of day now: `?time=evening` forces one, `?lighting=night` the night, else the story's. */
+/**
+ * The time a scene last set with `808` — `GameState::SetTimeOfDay` in the
+ * decomp — as this engine's three: the game's morning is our day. It holds
+ * until a scene sets another. Not saved yet — ours.
+ */
+let sceneTime: TimeOfDay | undefined
+
+/** One of the game's four phases as this engine's three — see `GAME_PHASE`. */
+function fromGamePhase(phase: number): TimeOfDay {
+  if (phase === TIME_OF_DAY.night) return 'night'
+  if (phase === TIME_OF_DAY.evening) return 'evening'
+  return 'day'
+}
+
+/**
+ * The time of day now: `?time=evening` forces one, `?lighting=night` the
+ * night; else what a scene last set, else the story's.
+ */
 function timeNow(): TimeOfDay {
   const forced = params.get('time')
   if (forced === 'day' || forced === 'evening' || forced === 'night') return forced
   if (params.get('lighting') === 'night') return 'night'
+  if (sceneTime) return sceneTime
   return timeOfDay(storyStage, fieldSeconds)
 }
 
@@ -2237,6 +2255,14 @@ function keepTime(elapsedMs: number): void {
   if (!here || !self) return
   if (here.fieldZones.length > 0 && !playing && !battle && !menu && !visit && !talking) {
     fieldSeconds += elapsedMs / 1000
+  }
+  // **A scene's `808` sets the time**, and it stays set when the scene ends.
+  // It was kept on the scene and never read back, so a scene that made it
+  // night left the world as it was.
+  const setByScene = playing?.player.stage.timeOfDay
+  if (setByScene !== undefined && setByScene !== GAME_PHASE[timeNow()]) {
+    const wanted = fromGamePhase(setByScene)
+    if (wanted !== timeNow()) sceneTime = wanted
   }
   const time = timeNow()
   // A scene's own light scale changes every frame while it fades, so the tint
