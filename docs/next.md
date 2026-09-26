@@ -59,14 +59,16 @@ collision mesh, and swept clean in eight views. The collision decides it.
    after it moves" in another. What tells them apart is the sliding-piece
    naming rule, which is title-specific and lives in `apps/game/src/slide.ts`
    where `packages/world` cannot reach it. See `docs/still-open.md` §5b.
-3. **Thirteen checkpoints describe a build that is gone.** The placement fix
-   changed `C01`, `C02`, `D03` and `S07` among others. Re-running is cheap.
+3. ~~**Thirteen checkpoints describe a build that is gone.**~~ **Done, 26
+   September**: it was 23, all run again, nothing failed and no view count
+   moved. Three areas gained a crowded shot and Stornway a blank frame,
+   `ev23198` — see `docs/areas.md`, "run again".
 4. **The crowded camera**, which is cosmetic and has no free fix — see the
    note on `clearDistance`. 22 shots across six areas, concentrated in
    built-up places; dungeons have none.
 5. **Blank frames with no known cause**: `M09 ev09100` (the shot's focus sits
    0.7 below the Hero's feet), `C04`'s door to `F34`, `D17 ev29146`, `S14`'s
-   two, `D03`'s two, `M11 ev12120`.
+   two, `D03`'s two, `M11 ev12120`, and from the re-runs `C01 ev23198`.
 
 ### Two things worth knowing before you start
 

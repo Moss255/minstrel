@@ -682,13 +682,33 @@ story turns on:
 
 `story.test.ts` pins the arithmetic; this is the room, and the two agree.
 
-### The thirteen checkpoints above this line describe a build that is gone
+### The checkpoints taken before the placement fix, run again
 
 The placement fix changed **56 maps**, and `C01`, `C02`, `D03` and `S07` are
-among them — all four already checkpointed. Gortress's gates alone change what
-its walk reaches, and Stornway's own map is in the list. **Their fault counts
-should be read as of the build they were taken on**, not as the state of the
-tree. Re-running them is cheap and has not been done.
+among them. This said "thirteen checkpoints"; by the history it is **23** —
+the twelve towns, the five after them and the six dungeons all came before
+`ebefa75`. **All 23 were run again, 26 September 2026**, at the stage each
+one's last page was taken at and `--talk=10`, in 61 minutes. The pages from
+before are kept beside them as `out/witness/<area>-preplace`.
+
+**Nothing failed and no view count moved, in any of the 23.** Sixteen came
+back identical. The seven that did not:
+
+| area | before | after | why |
+|---|---|---|---|
+| Stornway `C01` | 67 · 0 worth a look · 8 guessed · — · 0 blank | 67 · **1** · 8 · 5 crowded · **1** blank | see below |
+| `X02`, `M05`, `M12` | no crowded count | 1, 4, 3 crowded | **not the fix**: all three ran at about 17:45 on 25 September, before the crowded check existed |
+| `S14`, `M11`, `S07` | 10, 2, 1 crowded | **11, 3, 2** | one more crowded shot each; placed pieces now stand where the camera goes |
+
+**Stornway's one blank frame is `ev23198`**, King Schott's "Ah! It's you,
+Hero!" in the throne room, `C01M18`: the box and the mini-map draw and the 3D
+view is empty, with two chunks moved out of the way — the crowded-camera
+signature, not a new one. Whether the fix caused it **is not established**:
+Stornway's checkpoint was taken on 24 September, before the blank-frame check
+was written, so the old run could not have said. It joins the unexplained
+list.
+
+So the fault counts above stand, with those seven amendments.
 
 ## The last eight exteriors — and that group is done
 
