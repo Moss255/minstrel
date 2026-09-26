@@ -72,6 +72,9 @@ collision mesh, and swept clean in eight views. The collision decides it.
    September**: it was 23, all run again, nothing failed and no view count
    moved. Three areas gained a crowded shot and Stornway a blank frame,
    `ev23198` — see `docs/areas.md`, "run again".
+   **And every checkpoint's scenes again, the same day**, after the cast fix:
+   46 areas, 501 scenes, nothing failed, 38 identical — see `docs/areas.md`,
+   "run again with their casts". `M01` needs a stage the next time.
 4. **The crowded camera**, which is cosmetic and has no free fix — see the
    note on `clearDistance`. 22 shots across six areas, concentrated in
    built-up places; dungeons have none.

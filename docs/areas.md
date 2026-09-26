@@ -742,6 +742,37 @@ list.
 
 So the fault counts above stand, with those seven amendments.
 
+### Every checkpoint's scenes, run again with their casts
+
+**26 September 2026.** From 23 September to today (`d33f9c7` to `00921fc`)
+a scene's own characters were loaded and then thrown away — `203` wiped the
+model `205` was about to point back at — so every scene view taken in that
+time shows its cast missing. **46 areas have scene views, 501 scenes
+between them; all 46 were run again** at their pages' own stages with
+`--talk=10`, on the build with that fix and not today's later ones. 61
+minutes. The old pages are kept as `out/witness/<area>-precast`.
+
+**Nothing failed to load, and no view count moved but `M01`'s.** 38 of the
+46 summaries came back identical — which is counts, not pictures: a scene
+that now has its cast and still frames it the same scores the same. The
+eight that differ:
+
+| area | what changed |
+|---|---|
+| `D03`, `M03` | **nothing** — their pages had been overwritten by a map-only run for the doors; against the full checkpoints kept as `-predoors` they are identical |
+| `S07` | `ev14782` **draws now**; three blank where four were |
+| `D17` | `ev29146`, its one blank frame, **draws now**; `ev16320` and `ev16322` blank instead — the first reads "is over", the "scene is already over" signature |
+| `X01` | `ev01515` blank, reading "ev1530 is over" — the same signature |
+| `D12`, `M11` | one crowded shot more, one fewer |
+| `M01` | 69 views where 59 were, and **eight doorway views blank** — see below |
+
+**`M01`'s blank doorways are the run, not the game.** Its page is from 24
+September and records no stage, so it ran at none: a new game, whose opening
+scene `ev22590` stands the Hero at its village spot, (1.87, −2.18), and every
+interior is then shown from there — outside the room. The 24 September page
+is blank at the same views; the blank-frame check did not exist to say so.
+`M01` wants a stage when it is next checkpointed.
+
 ## The last eight exteriors — and that group is done
 
 **26 September 2026.** `S08` Slurry Quay 19.1, `S10` Lonely Plains 19.1, `S11`
