@@ -227,7 +227,7 @@ import {
   standing,
   VOCATION_WORDS,
 } from './hero.ts'
-import { entranceOf, type Loaded, load, type Stage } from './load.ts'
+import { allTriggers, entranceOf, type Loaded, load, type Stage } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
 import {
   back,
@@ -268,6 +268,8 @@ import {
 import { breakingFrame, isPotOrBarrel } from './pots.ts'
 import { applyFor, callUp, dropOff, PATTY_SAYS, partWith, type Roster } from './recruit.ts'
 import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
+import { SceneBrowser } from './scene-browser.ts'
+import { type SceneConditions, sceneIndex } from './scenes.ts'
 import {
   type Counter,
   chooseInVisit,
@@ -1310,6 +1312,8 @@ function openWorld(map: string): void {
     goToEventsMap(wantedEvent)
     startEvent(wantedEvent)
   } else playEntryEvent()
+  // `?scenes=1` opens the scene browser — see `scene-browser.ts`.
+  if (params.get('scenes') === '1') openSceneBrowser()
   // `?talk=12` stands the Hero behind cast member 12 and talks to them —
   // **ours**, so a headless browser can see a conversation without walking to
   // it. Behind rather than in front on purpose: the default turn is then a
@@ -2091,6 +2095,7 @@ function frame(now = 0): void {
   // A scene frames itself: `532` gives the event's camera its own field of
   // view, and the field's stands until one asks — see `fovOfHalfDegrees`.
   renderer.draw(camera, false, undefined, playing?.player.stage.fov)
+  sceneBrowser?.tick()
   requestAnimationFrame(frame)
 }
 
@@ -4899,6 +4904,76 @@ function startEvent(number: number, afterTalk = false): boolean {
   return true
 }
 
+/** The scene browser's hold on the scene playing: paused, a frame wanted, and how fast. */
+let scenePaused = false
+let sceneStepWanted = false
+let sceneSpeed = 1
+let sceneBrowser: SceneBrowser | undefined
+
+/**
+ * Play a scene as the scene browser asks: the stage, step and flags its
+ * record wants, its map entered, and the scene begun — without playing the
+ * game up to it. A scene already playing is dropped without its outcome, so
+ * playing again does not move the story on. **Ours**; see `scenes.ts`.
+ */
+function playScene(wanted: SceneConditions): void {
+  if (!loaded) return
+  if (playing) {
+    playing = undefined
+    closeTalk()
+  }
+  storyStage = { major: wanted.stage.major, minor: wanted.stage.minor }
+  storyStep = wanted.step ?? 0
+  storyFlags.clear()
+  for (const flag of wanted.flags) storyFlags.add(flag)
+  storyMarks.clear()
+  castLeft.clear()
+  sceneTime = undefined
+  const code = loaded.mapCodeOf(wanted.map)
+  if (code && !enter(code)) return
+  if (!code) status(`map ${wanted.map} has no code — playing where you are`)
+  startEvent(wanted.event)
+}
+
+function openSceneBrowser(): void {
+  if (sceneBrowser) {
+    sceneBrowser.toggle()
+    return
+  }
+  const rom = cartridge
+  if (!rom) return
+  sceneBrowser = new SceneBrowser({
+    scenes: sceneIndex(allTriggers(rom)),
+    mapCodeOf: (map) => loaded?.mapCodeOf(map),
+    linesOf: (event) =>
+      (loaded?.eventMessages(event) ?? []).flatMap((m) => (m.text === undefined ? [] : [m.text])),
+    play: playScene,
+    now: () =>
+      playing
+        ? {
+            event: playing.event,
+            frame: playing.player.stage.frame,
+            message: playing.player.stage.message,
+          }
+        : undefined,
+    get paused() {
+      return scenePaused
+    },
+    set paused(on) {
+      scenePaused = on
+    },
+    get speed() {
+      return sceneSpeed
+    },
+    set speed(x) {
+      sceneSpeed = x
+    },
+    step: () => {
+      sceneStepWanted = true
+    },
+  })
+}
+
 /**
  * The event's frames for this much time — 60 a second, as the scripts count
  * them — and then what they came to: the message the text box shows, and
@@ -4907,7 +4982,13 @@ function startEvent(number: number, afterTalk = false): boolean {
 function playEvent(elapsedMs: number): void {
   const now = playing
   if (!now || !self) return
-  now.carry = Math.min(now.carry + elapsedMs, TICK_MS * 8)
+  // The scene browser's pause, speed and single frame — see `scene-browser.ts`.
+  if (scenePaused) {
+    now.carry = sceneStepWanted ? TICK_MS : 0
+    sceneStepWanted = false
+  } else {
+    now.carry = Math.min(now.carry + elapsedMs * sceneSpeed, TICK_MS * 8)
+  }
   while (now.carry >= TICK_MS) {
     now.carry -= TICK_MS
     let more = false
@@ -6153,6 +6234,12 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
+  // The backquote opens and closes the scene browser — see `scene-browser.ts`.
+  if (event.key === '`') {
+    openSceneBrowser()
+    event.preventDefault()
+    return
+  }
   // The controls panel takes every key while it is up — see `ControlsPanel`.
   if (controlsPanel.open) {
     if (controlsPanel.key(key)) event.preventDefault()

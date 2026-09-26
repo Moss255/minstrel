@@ -703,6 +703,25 @@ function talkOf(rom: Uint8Array, area: string): Map<string, Map<number, readonly
 }
 
 /**
+ * Every area's triggers, by area code, out of `/data/scenario` in one walk —
+ * for the scene browser, which lists every scene the triggers get to. An area
+ * whose file will not read is left out rather than stopping the rest.
+ */
+export function allTriggers(rom: Uint8Array): { code: string; triggers: Trigger[] }[] {
+  const out: { code: string; triggers: Trigger[] }[] = []
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/scenario/trigger' })) {
+    const named = /\/trigger([A-Z]\d\d)\.bin$/i.exec(leaf.path)
+    if (!named) continue
+    try {
+      out.push({ code: (named[1] as string).toUpperCase(), triggers: readTriggers(leaf.bytes) })
+    } catch {
+      // An area whose triggers will not read offers no scenes.
+    }
+  }
+  return out.sort((a, b) => a.code.localeCompare(b.code))
+}
+
+/**
  * The area's triggers, out of `/data/scenario/trigger<area>.bin` — a loose file
  * rather than an archive's member. None when there is no such file or it will
  * not read.

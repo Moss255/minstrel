@@ -465,3 +465,113 @@ body.dragging::after {
   font-size: 0.8em;
   opacity: 0.8;
 }
+
+/* The scene browser — `?scenes=1`, or the backquote key. See `scene-browser.ts`. */
+#scenes {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(26rem, 40vw);
+  display: flex;
+  flex-direction: column;
+  background: rgb(8 10 18);
+  border-left: 1px solid rgb(232 230 225 / 25%);
+  color: var(--ink);
+  font:
+    13px / 1.4 ui-monospace,
+    "SFMono-Regular",
+    Menlo,
+    Consolas,
+    monospace;
+  z-index: 20;
+}
+#scenes[hidden] {
+  display: none;
+}
+#scenes .head,
+#scenes .controls {
+  display: flex;
+  gap: 0.4em;
+  padding: 0.5em;
+  align-items: center;
+}
+#scenes input,
+#scenes select,
+#scenes button {
+  font: inherit;
+  color: inherit;
+  background: rgb(255 255 255 / 8%);
+  border: 1px solid rgb(232 230 225 / 25%);
+  border-radius: 0.3em;
+  padding: 0.2em 0.5em;
+}
+#scenes .head input {
+  flex: 1;
+}
+#scenes .list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0.5em;
+}
+#scenes .area {
+  margin-top: 0.6em;
+  color: var(--dim);
+}
+#scenes .scene {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  white-space: pre;
+}
+#scenes .scene:hover,
+#scenes .scene.chosen {
+  background: rgb(255 255 255 / 12%);
+}
+#scenes .detail {
+  max-height: 40%;
+  overflow-y: auto;
+  padding: 0.5em;
+  border-top: 1px solid rgb(232 230 225 / 25%);
+}
+#scenes .detail:empty {
+  display: none;
+}
+#scenes .title {
+  font-weight: 600;
+  margin-bottom: 0.3em;
+}
+#scenes .way {
+  display: block;
+}
+#scenes .set {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  margin: 0.5em 0;
+  align-items: center;
+}
+#scenes .set input {
+  width: 5em;
+}
+#scenes .note {
+  color: var(--dim);
+  font-size: 0.9em;
+}
+#scenes .counter {
+  margin-left: auto;
+  color: var(--dim);
+}
+
+/* While the browser is open, the text box keeps to the part of the view left
+   of it rather than running under it. */
+body.scenes-open #talk:not([hidden]) {
+  left: calc((100vw - min(26rem, 40vw)) / 2);
+  width: min(calc(92vw - min(26rem, 40vw)), 60rem);
+}
+body.scenes-open #minimap:not([hidden]) {
+  right: calc(min(26rem, 40vw) + 12px);
+  width: min(20vw, 256px);
+}
