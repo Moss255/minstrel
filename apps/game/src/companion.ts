@@ -109,9 +109,8 @@ export interface Member {
    * wear and nothing else here.
    *
    * **Undefined until somebody chooses.** A created character's comes from the
-   * ready-made character they were built from; the Hero's is settled at the
-   * Observatory prologue the slice cuts, and a story companion's is in no
-   * table read. Undefined leaves the sex rule unapplied rather than guessing.
+   * ready-made character they were built from; the Hero's is settled at
+   * character creation, and a story companion's is in no table read. Undefined leaves the sex rule unapplied rather than guessing.
    *
    * The game keeps it as bit 0 of the live struct's `+0x49C`; where it lives
    * in the persistent record is **not established**.

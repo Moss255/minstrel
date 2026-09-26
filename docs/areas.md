@@ -530,8 +530,36 @@ reads the event list from the page.
 
 So the work is in the engine: **open a map for a scene to play on, with
 nobody standing in it.** That is not a small change — `self`, the camera and
-the walk all assume a world — and it is the only way `X01` gets checked, which
-matters because `X01` is where the story begins.
+the walk all assume a world — and it is the only way `X01` gets checked.
+
+### What `X01` and `X05` are — corrected 26 September 2026
+
+Earlier text here called `X01` "where the story begins". **It is not.** The
+story begins with the starry-sky narration after character creation, then
+Angel Falls; `X01` comes about ten minutes in.
+
+**`X01` is the Observatory drawn for cutscenes.** `evidence/dq9-lp-ep1.mp4`,
+about 9:50–10:31: after the first fight at Angel Falls, Aquila and the Hero
+fly home, and the camera rises through cloud past the Observatory's outside —
+mossy arcaded walls, terraces with steps and trees, the colonnaded ring,
+Yggdrasil on its island, then a long hold on the tower in the clouds. Nobody
+stands in any of it, and the camera goes where no player could. It fades to
+white and cuts to the Hero landing by the petal pool, where control returns.
+That landing and everything walked in the episode — the library, the fountain
+rooms, Apus Major's hall, the path up to Yggdrasil — are other maps, with
+collision.
+
+**`X05` is the same set of maps for later in the story** — one before the
+prologue ends and one after, and `X05` is the one returned to later. This is
+from the player's own knowledge of the game, not from the recording
+— episode 1 never goes back.
+
+**Not yet confirmed:** that the fly-in is drawn from `X01` specifically. The
+check is to open `X01` in the explorer and see the tower, terraces and
+Yggdrasil as one piece.
+
+It is **not** the title screen: the title menu's backdrop in the same
+recording (about 1:20) is a different, gold-lit view.
 
 ### What Phase 3's 75 areas actually are
 
@@ -760,7 +788,8 @@ clean in 8 views. **The label does not decide it; the collision does.** Only
 **73 of the 75 areas are checkpointed.** The two left are `X01` and `X05`,
 both the Observatory, and neither is a tooling problem: the engine will not
 open a map with nowhere to stand, and until it does they cannot be looked at.
-`X01` is where the story begins.
+`X01` is the Observatory's cutscene stage — the fly-home at about ten minutes
+in — and `X05` the same for the return later.
 
 ## Still to do
 
@@ -808,6 +837,6 @@ Three things the sweep has asked for, in the order they would pay:
    Gortress. Until then `0 RENDERED NOTHING` means "drew something when
    looked at" rather than "drew something".
 2. **A pass for the `All Events` areas**, which is the only way `X01` gets
-   checked, and `X01` is where the story begins.
+   checked, and `X01` carries the first cutscene back at the Observatory.
 3. **A cheaper shape for the `H` interiors**, so twenty of them are an hour
    rather than three.

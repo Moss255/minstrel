@@ -290,7 +290,8 @@ Two consequences:
   everything about four is unexercised by the cartridge until recruitment
   exists. Tests can build a party of four; no event on the cartridge will.
 - The Hero is not a different kind of thing from a recruit. In this game the
-  Hero is *made*, at the Observatory prologue the slice cuts. So "has no
+  Hero is *made*, at character creation, off the title screen before any
+  map opens. So "has no
   `attnpc` number" means **created**, not "is the Hero" — the Hero is member
   0, by position, the way the game has it. A predicate here briefly said
   otherwise and was corrected before anything leaned on it.

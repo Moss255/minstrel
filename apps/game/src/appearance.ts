@@ -77,7 +77,7 @@ export interface Appearance {
   readonly eyes: number
 }
 
-/** The Hero's own look, until the Observatory prologue the slice cuts asks for one. */
+/** The Hero's own look, until character creation chooses one. */
 export const HERO_APPEARANCE: Appearance = {
   sex: SEX.male,
   // `p_f006`, the face the presets give the man of every vocation — `HERO_FACE`.

@@ -24,8 +24,12 @@ finishes loading and `window.__witness` is never set — checked, it comes back
 unchecked rather than checked-and-clean.
 
 It is the only piece of engine work the whole sweep turned up, and it matters
-because **`X01` is where the story begins** — the prologue the slice cut. The
-game plays scenes on these maps; nobody stands in them. The change is to open
+because **`X01` carries the first cutscene back at the Observatory** — the
+fly-home after Angel Falls, about ten minutes into the game — and `X05` the
+same set of maps for the return later in the story. (An earlier version of
+this note called `X01` "where the story begins"; it is not — see
+`docs/areas.md`, "What `X01` and `X05` are".) The game plays scenes on these
+maps; nobody stands in them. The change is to open
 one for a scene with no Hero placed, and it is not small: `self`, the camera
 and the walk all assume a world.
 
