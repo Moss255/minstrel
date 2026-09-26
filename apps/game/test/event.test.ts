@@ -620,6 +620,21 @@ describe('staging a scene’s cast — the game’s 502 to 508, 203, 205 and 212
     expect(stage.busy(2)).toBe(false)
   })
 
+  it('keeps the display entry’s model when 203 unbinds the character, so 205 can point back at it', () => {
+    // **The order every scene loads its cast in** — `ev22590`, the opening,
+    // does it for all seven: give entry N a model, clear character N, point
+    // character N at entry N. With the two kept as one record, 203 threw the
+    // entry's model away and Ivor's gang stood in the scene undrawn.
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(200, ['chara_sub/s016.chr', -2], t)
+    stage.host.call(202, [1, -2, 1], t)
+    stage.host.call(203, [1], t)
+    expect(stage.actors.get(1)?.model).toBeUndefined()
+    stage.host.call(205, [1, 1], t)
+    expect(stage.actors.get(1)?.model).toBe('chara_sub/s016.chr')
+  })
+
   it('destroys a slot’s model with 212, and undresses whoever wore it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

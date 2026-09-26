@@ -885,7 +885,9 @@ export class EventStage {
   strict = false
   /** The second event folder's model slots: what `200` loaded into each, and the packs `229` added. */
   private readonly slots = new Map<number, { model: string; packs: string[] }>()
-  /** Which slot each character wears — see `202`. */
+  /** Which slot each display entry shows — see `202`. */
+  private readonly entries = new Map<number, number>()
+  /** Which display entry each character is pointed at — see `205`. */
   private readonly bound = new Map<number, number>()
   /** The shot's eye, where `302` put it; its yaw, rise and distance follow from it until `310` gives them. */
   private eye: Vec3 | undefined
@@ -2423,8 +2425,8 @@ export class EventStage {
         if (!slot || typeof args[0] !== 'string') return 0
         slot.packs.push(args[0])
         // Whoever already wears the slot's model takes its motions too.
-        for (const [id, bound] of this.bound) {
-          if (bound === num(args[1])) this.actor(id).packs.push(args[0])
+        for (const [id, entry] of this.bound) {
+          if (this.entries.get(entry) === num(args[1])) this.actor(id).packs.push(args[0])
         }
         return 0
       }
@@ -2434,7 +2436,8 @@ export class EventStage {
         const actor = this.actor(num(args[0]))
         actor.model = slot.model
         actor.packs.push(...slot.packs)
-        this.bound.set(num(args[0]), num(args[1]))
+        this.entries.set(num(args[0]), num(args[1]))
+        this.bound.set(num(args[0]), num(args[0]))
         return 0
       }
       case 300:
@@ -3279,6 +3282,13 @@ export class EventStage {
       // **A character and its display entry are always the same number** on
       // this cartridge — all 1,324 calls of `205` — so `202` above dresses the
       // character directly and these three keep the two in step.
+      //
+      // **But they are two things, and `203` unbinds only the character.**
+      // Scenes load a cast as `202 N` then `203 N` then `205 N N`: give entry
+      // N a model, clear character N, point character N back at entry N.
+      // Kept as one record, `203` threw away the entry's model and `205` had
+      // nothing to point at — every character of the opening, Ivor's gang
+      // included, left undrawn.
       case 203: {
         const actor = this.actor(num(args[0]))
         actor.model = undefined
@@ -3294,22 +3304,28 @@ export class EventStage {
         // Where the two numbers differ — which they never do here — the
         // character takes the entry's model rather than its own.
         const entry = num(args[1])
-        const slot = this.bound.get(entry)
+        const slot = this.entries.get(entry)
         const loaded = slot === undefined ? undefined : this.slots.get(slot)
         const actor = this.actor(num(args[0]))
         if (loaded) {
           actor.model = loaded.model
           actor.packs.push(...loaded.packs.filter((pack) => !actor.packs.includes(pack)))
         }
-        this.bound.set(num(args[0]), slot ?? entry)
+        this.bound.set(num(args[0]), entry)
         return 0
       }
       case 212: {
         // The slot the script names, negative as `200` takes them.
         const slot = num(args[0])
         this.slots.delete(slot)
-        for (const [id, at] of [...this.bound]) {
+        const gone = new Set<number>()
+        for (const [entry, at] of [...this.entries]) {
           if (at !== slot) continue
+          this.entries.delete(entry)
+          gone.add(entry)
+        }
+        for (const [id, entry] of [...this.bound]) {
+          if (!gone.has(entry)) continue
           this.bound.delete(id)
           const actor = this.actor(id)
           actor.model = undefined
