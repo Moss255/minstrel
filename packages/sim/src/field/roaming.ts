@@ -199,7 +199,14 @@ export function tickRoaming(
       const reach = fx32(rules.near + rng.below(Math.max(1, rules.far - rules.near)))
       const x = fx32(hero.x + mul(sx, reach))
       const z = fx32(hero.z + mul(sz, reach))
-      const hit = groundBelow(world, x, z, fx32(world.bounds.maxY + FX32_ONE))
+      // **From a little above the Hero, not from the top of the map.** Probing
+      // from the sky took the first surface on the way down, and over the
+      // Hexagon that is its roof: play reported monsters turning up on top of
+      // it. Ground more than two heights above the Hero is not where they are
+      // walking, and a spot with none within reach is skipped as a bad spot
+      // always was. Ours, as the rest of the spawning is.
+      const from = fx32(hero.y + 2 * rules.shape.height)
+      const hit = groundBelow(world, x, z, from)
       if (hit && hit.slope >= rules.shape.maxSlope && onOpenGround(ground, x, z)) {
         kept.push({
           id: nextId++,

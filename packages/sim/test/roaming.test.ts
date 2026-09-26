@@ -95,6 +95,20 @@ describe('monsters roaming a field', () => {
     }
   })
 
+  it('turns up on the ground the Hero walks, not on a roof above it', () => {
+    // A roof over the whole field, six heights up — the Hexagon, as play
+    // found it: probed from the sky, every monster stood on top of it.
+    const roofed = createCollisionWorld([
+      floor(20),
+      { mesh: floor(20), offset: { x: 0, y: 6 * PERSON.height, z: 0 } },
+    ])
+    const rng = new BattleRng(1n)
+    let field = startRoaming()
+    for (let t = 0; t < 200; t++) field = tickRoaming(field, roofed, kinds, hero, rng, rules).roaming
+    expect(field.roamers.length).toBeGreaterThan(0)
+    for (const r of field.roamers) expect(r.state.y).toBe(0)
+  })
+
   it('is the same field from the same seed', () => {
     expect(run(9n, 300).field).toEqual(run(9n, 300).field)
     expect(run(9n, 300).field).not.toEqual(run(10n, 300).field)
