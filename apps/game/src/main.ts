@@ -269,7 +269,7 @@ import { breakingFrame, isPotOrBarrel } from './pots.ts'
 import { applyFor, callUp, dropOff, PATTY_SAYS, partWith, type Roster } from './recruit.ts'
 import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
 import { SceneBrowser } from './scene-browser.ts'
-import { type SceneConditions, sceneIndex } from './scenes.ts'
+import { conditionsFor, firstWay, type SceneConditions, sceneIndex } from './scenes.ts'
 import {
   type Counter,
   chooseInVisit,
@@ -1314,6 +1314,16 @@ function openWorld(map: string): void {
   } else playEntryEvent()
   // `?scenes=1` opens the scene browser — see `scene-browser.ts`.
   if (params.get('scenes') === '1') openSceneBrowser()
+  // `?scene=22510` plays a scene as the browser would: the stage, step and
+  // flags its record wants — `&way=1` for another of its ways. For the
+  // side-by-side comparisons, which name a scene and nothing else.
+  const wantedScene = Number(params.get('scene'))
+  if (Number.isInteger(wantedScene) && wantedScene > 0 && cartridge) {
+    const entry = sceneIndex(allTriggers(cartridge)).find((e) => e.event === wantedScene)
+    const way = entry?.ways[Number(params.get('way')) || 0] ?? (entry && firstWay(entry))
+    if (entry && way) playScene(conditionsFor(entry.event, way))
+    else status(`ev${wantedScene} is not played by any record`)
+  }
   // `?talk=12` stands the Hero behind cast member 12 and talks to them —
   // **ours**, so a headless browser can see a conversation without walking to
   // it. Behind rather than in front on purpose: the default turn is then a
@@ -4904,6 +4914,13 @@ function startEvent(number: number, afterTalk = false): boolean {
   return true
 }
 
+/**
+ * `?until=m101` reads a scene's lines on its own until message 101 is up,
+ * and holds it there; `?until=f250` holds it at its frame 250. For the
+ * side-by-side comparisons, which want the same moment every time. Ours.
+ */
+const until = /^([mf])(\d+)$/.exec(params.get('until') ?? '')
+let untilReached = false
 /** The scene browser's hold on the scene playing: paused, a frame wanted, and how fast. */
 let scenePaused = false
 let sceneStepWanted = false
@@ -5009,6 +5026,14 @@ function playEvent(elapsedMs: number): void {
   // The sounds the scene asked for this frame.
   for (const sound of now.player.stage.sounds.splice(0)) void playSound(sound)
   const shown = now.player.stage.message
+  // `?until=`: held once the moment asked for comes up — see `until`.
+  if (until && !untilReached) {
+    const at = Number(until[2])
+    if (until[1] === 'm' ? shown === at : now.player.stage.frame >= at) {
+      untilReached = true
+      scenePaused = true
+    }
+  }
   // The event's message stays up until it is read to its end: whatever closed
   // the box, it comes back — or the event would wait on it for ever, and the
   // Hero with it, still lying where the event last put them.
@@ -5021,6 +5046,10 @@ function playEvent(elapsedMs: number): void {
       [`message ${shown}`],
     )
     showTalk()
+    // Before the moment `?until=` asks for, each line is read as it comes.
+    if (until && !untilReached) {
+      for (let pages = 0; talking && pages < 64; pages++) talk()
+    }
   }
   heroAsEvent(now)
 }

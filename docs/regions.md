@@ -42,6 +42,9 @@ is one the menu will not know about.
 | `ivor=1` | open with Ivor along, as his call leaves him |
 | `level=25` | put the Hero at a level, with the experience for it |
 | `scenes=1` | open the **scene browser**, or press the backquote key at any time: every scene on the cartridge by area and story stage, found by number, area or a line it speaks, played with the stage, step and flags its trigger record wants — without playing up to it — with pause, one frame on, replay and speed. What the record does not carry, who is in the party, is not set; the conditions can be changed before playing. See `apps/game/src/scenes.ts` |
+| `scene=22510` | play a scene as the scene browser would: the stage, step and flags its trigger record wants. |
+| `way=1` | with `scene=`, play it by another of its ways, counted from 0 in the order the browser lists them |
+| `until=m101` | read a scene's lines on its own until message 101 is up, and hold it there; `until=f250` holds it at its frame 250. With `scene=`, the same moment every time — what `tools/compare` shoots |
 | `event=23198` | play a scene. **It goes to the map the scene happens in first**, which its trigger names, and says so on the status line and the console; a scene no trigger names is played where you are. Driving a scene in the wrong map is what produced the `ev03030` "camera in a wall" that was chased for a day — see `docs/still-open.md` |
 | `preset=7` | dress the Hero as a ready-made character |
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |

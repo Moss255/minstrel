@@ -102,6 +102,15 @@ const send = (method, params = {}) =>
 
 await send('Page.enable')
 await send('Runtime.enable')
+// The page itself at the size asked for: `--window-size` is the window's, and
+// the browser's own frame takes some of it, so a 960 × 720 shot came out
+// 960 × 633.
+await send('Emulation.setDeviceMetricsOverride', {
+  width,
+  height,
+  deviceScaleFactor: 1,
+  mobile: false,
+})
 await send('Page.navigate', { url })
 
 const started = Date.now()

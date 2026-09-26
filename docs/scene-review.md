@@ -28,6 +28,19 @@ see `docs/regions.md`); the reference is the two let's play videos in
 A note like `22510 · 1:12 in · motion: Hexagoon lands with no drop` is enough
 to start from. The scene's frame counter is on the browser's bottom line.
 
+## Side by side, many at once
+
+`tools/compare/compare.mjs` takes an index — one line a moment, `scene video
+time m101|f250 label` — and writes a page of pairs: the let's play's top
+screen at that time beside ours at that moment of that scene, played with
+`?scene=` and held with `?until=`. Pick the video's time while the same
+message is up and the pair lines up exactly. See the tool's own header;
+keep the index in `evidence/`, which is not committed.
+
+```
+22510  angel-falls-4  36:20  m101  trapped running away
+```
+
 ## What the footage covers
 
 | video | covers |
