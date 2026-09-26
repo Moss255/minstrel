@@ -506,15 +506,19 @@ const FACINGS = [
  * second, which is what it used to do.
  *
  * The direction shown is the character's own facing *relative to the camera*,
- * because a billboard is drawn from wherever you happen to be standing. A
- * character facing the same way the camera looks has its back to you — that is
- * `stand_up`, which is why zero lands four steps into the list.
+ * because a billboard is drawn from wherever you happen to be standing.
+ * **`yaw` is where the eye sits, not where it looks** — `cameraEye` puts the
+ * eye at the focus plus `(sin yaw, cos yaw)` — so a character whose facing
+ * equals it is looking straight at you, `stand_down`, the list's first. Taken
+ * as the direction the camera looks, as it was until 26 September 2026, every
+ * front came out a back: a villager turned to talk showed you the back of
+ * their head.
  *
- * **The list runs against the angle, not with it.** `down` and `up` are the
- * same either way, so only a side-on character shows the difference: taken the
- * other way round, the village dog stood with its head where its tail should
- * be. Negating the step swaps every `l_*` with its `r_*` and leaves the two
- * ends alone, which is exactly that mirror.
+ * Side on, that mistake was hidden rather than absent. It mirrored the sides
+ * too — the village dog stood with its head where its tail should be — and
+ * was answered then by running the list against the angle, which put the
+ * sides right and left the front and back swapped. Read with the eye's yaw,
+ * the list runs with the angle and all eight come right.
  */
 /** The four walks, in the order the sheet lists them: every other facing of {@link FACINGS}. */
 const WALKS = ['walk_down', 'walk_left', 'walk_up', 'walk_right'] as const
@@ -530,7 +534,7 @@ const WALKS = ['walk_down', 'walk_left', 'walk_up', 'walk_right'] as const
 export function walkingFrame(member: CastSprite, cameraYaw: number, ticks: number): number {
   const away = member.placement.facing - cameraYaw
   const quarter = Math.PI / 2
-  const index = (((2 - Math.round(away / quarter)) % 4) + 4) % 4
+  const index = ((Math.round(away / quarter) % 4) + 4) % 4
   const walk = member.sprite.animation(WALKS[index] as string)
   if (!walk || walk.steps.length === 0) return standingFrame(member, cameraYaw)
   // Round the chain from the first step, each naming the next — see `SpriteStep.order`.
@@ -573,7 +577,7 @@ export function propPieces(
 export function standingFrame(member: CastSprite, cameraYaw: number): number {
   const away = member.placement.facing - cameraYaw
   const step = Math.PI / 4
-  const index = (((4 - Math.round(away / step)) % 8) + 8) % 8
+  const index = ((Math.round(away / step) % 8) + 8) % 8
   const wanted = FACINGS[index] as string
   const found = member.sprite.animation(wanted) ?? member.sprite.animation('stand_down')
   return found?.steps[0]?.frame ?? 0
