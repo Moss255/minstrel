@@ -124,6 +124,7 @@ export function advance(
   elapsedMs: number,
   followers: readonly Follower[] = [],
   inMarsh?: (state: CharacterState) => boolean,
+  solid: readonly Solid[] = [],
 ): { moving: boolean; travelled: number; marshTicks: number } {
   let keyForward = 0
   let keyRight = 0
@@ -170,7 +171,7 @@ export function advance(
       while (turn < -Math.PI) turn += Math.PI * 2
       self.facing += turn * TURN_RATE
     }
-    self.state = step(world, self.state, fx32(dx), fx32(dz), PERSON)
+    self.state = standClear(step(world, self.state, fx32(dx), fx32(dz), PERSON), solid)
     for (const follower of followers) recordLeader(follower, self.state)
     const stepped = self.state.x !== from.x || self.state.z !== from.z
     if (stepped && inMarsh?.(self.state)) marshTicks++
@@ -180,6 +181,42 @@ export function advance(
     )
   }
   return { moving, travelled, marshTicks }
+}
+
+/**
+ * Something round the Hero cannot walk into, in fx32 world units: a chest.
+ * Collision meshes stop them at walls; this stops them at what the engine
+ * draws by itself — see `chestFootprints`.
+ */
+export interface Solid {
+  readonly x: number
+  readonly z: number
+  readonly radius: number
+}
+
+/**
+ * The state, put back outside any solid it has stepped into, along the line
+ * from that solid's middle. In whole fx32 steps throughout: the one square
+ * root is of a whole number, which IEEE-754 rounds the same on every machine.
+ */
+export function standClear(state: CharacterState, solid: readonly Solid[]): CharacterState {
+  let x: number = state.x
+  let z: number = state.z
+  for (const thing of solid) {
+    const reach = thing.radius + PERSON.radius
+    const dx = x - thing.x
+    const dz = z - thing.z
+    const squared = dx * dx + dz * dz
+    if (squared >= reach * reach) continue
+    const apart = Math.round(Math.sqrt(squared))
+    if (apart === 0) {
+      x = thing.x + reach
+      continue
+    }
+    x = thing.x + Math.round((dx * reach) / apart)
+    z = thing.z + Math.round((dz * reach) / apart)
+  }
+  return x === state.x && z === state.z ? state : { ...state, x: fx32(x), z: fx32(z) }
 }
 
 /**

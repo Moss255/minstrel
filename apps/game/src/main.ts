@@ -153,7 +153,7 @@ import {
   standingFrame,
   walkingFrame,
 } from './cast.ts'
-import { chestPieces, isChest } from './chests.ts'
+import { chestFootprints, chestPieces, isChest } from './chests.ts'
 import {
   type CollisionFit,
   collisionPieces,
@@ -261,6 +261,7 @@ import {
   type Player,
   player,
   playerPieces,
+  type Solid,
   TICK_MS,
   WALK_SPEED,
 } from './player.ts'
@@ -1831,7 +1832,7 @@ function frame(now = 0): void {
     const { moving, travelled, marshTicks } =
       playing || opening
         ? { moving: false, travelled: 0, marshTicks: 0 }
-        : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow)
+        : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
     marshCarry += marshTicks
     while (marshCarry >= MARSH_TICKS) {
@@ -2580,12 +2581,21 @@ function propPiecesNow(here: Loaded, now: number): Piece[] {
   })
 }
 
+/** Where the map's chests stand in the Hero's way, in fx32 — see `chestFootprints`. */
+let chestsInTheWay: Solid[] = []
+
 /** Redraw the treasure markers, after a map is entered or a treasure opened. */
 function refreshTreasures(): void {
   if (!loaded) {
     treasureDrawn = []
+    chestsInTheWay = []
     return
   }
+  chestsInTheWay = chestFootprints(loaded.treasures, loaded.chests).map((at) => ({
+    x: Math.round(at.x * FX32_ONE),
+    z: Math.round(at.z * FX32_ONE),
+    radius: Math.round(at.radius * FX32_ONE),
+  }))
   const { code, treasures } = loaded
   const isOpen = (treasure: Treasure, slot: number) =>
     openedTreasure.has(treasureKey(code, slot, treasure))

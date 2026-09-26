@@ -159,3 +159,38 @@ export function chestPieces(
   }
   return pieces
 }
+
+/**
+ * Where each chest stands in the way, in world units: the middle of its body
+ * as it is drawn, and a radius reaching its body's longer half-side.
+ *
+ * **Ours.** A chest is drawn by the engine, not the map, so no collision mesh
+ * comes with it, and play reported walking straight through one. The game's
+ * field objects carry a radius and a height of their own (`docs/binaries.md`,
+ * the field sprites), which is the shape this takes; the radius itself is the
+ * body model's, not read from those records.
+ */
+export function chestFootprints(
+  treasures: readonly Treasure[],
+  looks: readonly ChestLook[],
+): { readonly x: number; readonly z: number; readonly radius: number }[] {
+  const out: { x: number; z: number; radius: number }[] = []
+  for (const treasure of treasures) {
+    const at = treasure.position
+    if (!at || !isChest(treasure)) continue
+    const body = looks[chestLook(treasure)]?.body
+    if (!body) continue
+    const bounds = measureBounds(posedShapes(body).map((shape) => shape.geometry))
+    const middleX = ((bounds.minX + bounds.maxX) / 2) * WORLD_SCALE
+    const middleZ = ((bounds.minZ + bounds.maxZ) / 2) * WORLD_SCALE
+    const facing = treasure.facing ?? 0
+    const cos = Math.cos(facing)
+    const sin = Math.sin(facing)
+    out.push({
+      x: at.x + middleX * cos + middleZ * sin,
+      z: at.z - middleX * sin + middleZ * cos,
+      radius: (Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2) * WORLD_SCALE,
+    })
+  }
+  return out
+}
