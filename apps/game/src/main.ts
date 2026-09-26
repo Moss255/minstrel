@@ -227,7 +227,7 @@ import {
   standing,
   VOCATION_WORDS,
 } from './hero.ts'
-import { allTriggers, entranceOf, type Loaded, load, type Stage } from './load.ts'
+import { allTriggers, entranceOf, givenNamesFrom, type Loaded, load, type Stage } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
 import {
   back,
@@ -255,6 +255,7 @@ import {
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
 import { music, playBgm, playEffect, playJingle, playTrack } from './music.ts'
+import { NAME_MOST, rollName, tidyName } from './naming.ts'
 import {
   advance,
   advanceMotion,
@@ -1125,6 +1126,78 @@ function begin(bytes: Uint8Array, map: string): Promise<void> {
  * `[GameState+0x6000+0x3D6]` sets mode **3**, which loads scene 16
  * `movieview`. An earlier note here had that wrong.
  */
+/**
+ * Creation's eighth screen: the name, typed, or rolled from the game's own
+ * given names for the character's sex. Resolves with it once it is done.
+ * The screen is the creation panel's; the keyboard is this machine's — see
+ * `naming.ts` for why, and for what is read.
+ */
+/** Whether the name screen is up — Patty's menu keeps out of its way. */
+let naming = false
+
+function askName(sex: number, who: string): Promise<string> {
+  return new Promise((done) => {
+    naming = true
+    createEl.hidden = false
+    createTitle.textContent = `Name — 8 of 8`
+    const field = document.createElement('input')
+    field.type = 'text'
+    field.maxLength = NAME_MOST * 2
+    field.spellcheck = false
+    field.autocomplete = 'off'
+    field.placeholder = `up to ${NAME_MOST} letters`
+    const roll = document.createElement('button')
+    roll.type = 'button'
+    roll.textContent = 'Roll a name'
+    const ok = document.createElement('button')
+    ok.type = 'button'
+    ok.textContent = 'OK'
+    const names =
+      loaded?.givenNames ?? (cartridge ? givenNamesFrom(cartridge) : { male: [], female: [] })
+    // Ours: which of the list comes up is not the game's roll — see `naming.ts`.
+    const draw = (count: number) => {
+      const one = new Uint32Array(1)
+      crypto.getRandomValues(one)
+      return (one[0] as number) % count
+    }
+    const settle = () => {
+      const name = tidyName(field.value)
+      ok.disabled = name === ''
+      createHint.textContent = name
+        ? `${who} will be called ${name}.`
+        : `What is ${who} called? Type one, or roll one of the game's own.`
+    }
+    const finish = () => {
+      const name = tidyName(field.value)
+      if (name === '') return
+      createEl.removeEventListener('keydown', guard)
+      createEl.hidden = true
+      naming = false
+      done(name)
+    }
+    // Typing a name is not walking, or talking to whoever is in front of you.
+    const guard = (event: KeyboardEvent) => {
+      event.stopPropagation()
+      if (event.key === 'Enter') finish()
+    }
+    createEl.addEventListener('keydown', guard)
+    field.addEventListener('input', () => {
+      // Kept to eight letters as they are typed, as the game's eight slots are.
+      const tidy = [...field.value].slice(0, NAME_MOST).join('')
+      if (tidy !== field.value) field.value = tidy
+      settle()
+    })
+    roll.addEventListener('click', () => {
+      field.value = rollName(names, sex, draw) ?? field.value
+      settle()
+    })
+    ok.addEventListener('click', finish)
+    createRows.replaceChildren(field, roll, ok)
+    settle()
+    field.focus()
+  })
+}
+
 function askCreation(map: string): Promise<void> {
   let making = startMaking()
   let opened: () => void
@@ -1141,17 +1214,20 @@ function askCreation(map: string): Promise<void> {
     )
     createHint.textContent = `Making the Hero — screen ${making.at + 1} of ${CREATION_ORDER.length}.`
   }
-  const took = (at: number) => {
+  const took = async (at: number) => {
     const picked = makingPick(making, at)
     if ('next' in picked) {
       making = picked.next
       draw()
       return
     }
+    // The eighth screen, the name — see `naming.ts`.
+    const name = await askName(picked.made.sex, 'the Hero')
     createEl.hidden = true
     const hero = leader()
     hero.look = picked.made
     hero.sex = picked.made.sex
+    hero.name = name
     openWorld(map)
     dressParty()
     status(
@@ -1741,7 +1817,7 @@ function drawCorner(): void {
   const hero = {
     x: toFloat(self.state.x) / unit,
     z: toFloat(self.state.z) / unit,
-    name: DEFAULT_CONTEXT.heroName,
+    name: heroName(),
   }
   // Each of the party where they walk, or on the Hero while they stand on
   // them. Keyed by place rather than by the story companions' compacted list,
@@ -2689,6 +2765,7 @@ function openTreasureAhead(): boolean {
       `${cabinet?.stem ?? 'treasure'} in ${loaded.code}`,
       ['You open it. No treasure record is paired with it.'],
       ['unpaired'],
+      textContext(),
     )
     showTalk()
     return true
@@ -2713,6 +2790,7 @@ function openTreasureAhead(): boolean {
       `${cabinet ? `${cabinet.stem}, ` : ''}kind 0x${treasure.kind.toString(16)} in ${code}`,
       [treasureText(treasure, already, found.text)],
       [already ? 'already open' : found.note],
+      textContext(),
     )
     showTalk()
   }
@@ -2945,6 +3023,7 @@ function talk(everyLine = false): void {
         `ev${String(choice.event).padStart(5, '0')}: ${choice.why}`,
         messages.map((message) => message.text),
         messages.map((message) => `message ${message.id}`),
+        textContext(),
       )
       // What follows it follows once it is read — or at once, with nothing to
       // read: Patty's `ev22510` starts the fight with Hexagoon.
@@ -2970,8 +3049,25 @@ function talk(everyLine = false): void {
  */
 function contextFor(texts: readonly string[]): TextContext {
   return texts.some((text) => text.includes('<INN='))
-    ? { ...DEFAULT_CONTEXT, values: { val_1: '1', val_2: String(INN_PRICE) } }
-    : DEFAULT_CONTEXT
+    ? { ...textContext(), values: { val_1: '1', val_2: String(INN_PRICE) } }
+    : textContext()
+}
+
+/**
+ * What the Hero is called: the name creation's last screen gave them, or
+ * "Hero" for one made before there was a name screen — see `naming.ts`.
+ * Every line that names them names them so.
+ */
+function heroName(): string {
+  return members[0]?.name ?? DEFAULT_CONTEXT.heroName
+}
+
+/** The text a line is filled from, with the Hero's own name in it. */
+function textContext(): TextContext {
+  const name = heroName()
+  return name === DEFAULT_CONTEXT.heroName
+    ? DEFAULT_CONTEXT
+    : { ...DEFAULT_CONTEXT, heroName: name }
 }
 
 /** An item's name as the text box shows it, or its id when the names did not read. */
@@ -3151,27 +3247,45 @@ function cookRecipe(id: number, state: MenuState | undefined): MenuState | undef
  * Do what Patty was asked — see `recruit.ts`, which holds the rules; this puts
  * the result back into the party and her list, and says what she says.
  *
- * **Recruiting makes the character here and now**, with a default look. The
- * game runs overlay 9's eight screens at this point — sex, figure, hair, hair
- * colour, face, skin colour, eye colour, name — and that flow is **not
- * built**: `CREATION_ORDER` in `appearance.ts` holds the order it asks in, and
- * the appearance panel can dress them afterwards. See
- * `docs/party-and-vocations.md`.
+ * **Recruiting runs overlay 9's eight screens** — sex, figure, hair, hair
+ * colour, face, skin colour, eye colour, and then the name — the seven knobs
+ * in her menu (`CREATION_ORDER`) and the name on its own screen
+ * (`naming.ts`). See `docs/party-and-vocations.md`.
  */
 function askPatty(
   asked: NonNullable<Taken['patty']>,
   state: MenuState | undefined,
 ): MenuState | undefined {
   if (!state) return state
+  // **The eighth screen, the name**, before she files them — see `naming.ts`.
+  // Her menu waits behind it and takes the answer as though asked again.
+  if (asked.does === 'recruit' && asked.name === undefined) {
+    menuEl.hidden = true
+    void askName(asked.look.sex, 'the new recruit').then((name) => {
+      menu = askPatty({ ...asked, name }, menu)
+      showMenu()
+    })
+    return state
+  }
   const before: Roster = { party: members, kept: withPatty }
+  // Whom her answer is about, for its `<TARGET>`: the one called up, dropped
+  // off or parted with, before she moves them.
+  const about =
+    asked.does === 'recruit'
+      ? undefined
+      : asked.does === 'dropOff'
+        ? members[asked.at]
+        : withPatty[asked.at]
+  const target = about ? nameFor(about) : undefined
   const done =
     asked.does === 'recruit'
       ? applyFor(before, {
           ...freshMember(undefined),
           vocation: asked.vocation,
-          // What the eight screens settled on — see `CREATION_ORDER`.
+          // What the eight screens settled on — see `CREATION_ORDER` and `naming.ts`.
           look: asked.look,
           sex: asked.look.sex,
+          name: asked.name,
         })
       : asked.does === 'callUp'
         ? callUp(before, asked.at)
@@ -3188,20 +3302,27 @@ function askPatty(
       : asked.does === 'recruit'
         ? (pattySay(PATTY_SAYS.processed) ?? 'Your application has been processed!')
         : asked.does === 'callUp'
-          ? (pattySay(PATTY_SAYS.comeUp) ?? 'They join the party.')
+          ? (pattySay(PATTY_SAYS.comeUp, target) ?? 'They join the party.')
           : asked.does === 'dropOff'
-            ? (pattySay(PATTY_SAYS.takeABreak) ?? 'They stay with Patty.')
-            : (pattySay(PATTY_SAYS.leaves) ?? 'They leave for good.')
+            ? (pattySay(PATTY_SAYS.takeABreak, target) ?? 'They stay with Patty.')
+            : (pattySay(PATTY_SAYS.leaves, target) ?? 'They leave for good.')
   // **Back to her menu when it is done**, which is what her step 4 does: it
   // says "All done. Your application has been processed!" and returns. Staying
   // on the last knob made a finished character look unfinished.
   return { ...state, patty: { at: 'top' }, said: [said], row: 0 }
 }
 
-/** One of Patty's lines — see `pattyLines`. */
-function pattySay(number: number): string | undefined {
-  return pattyLines()?.get(number)
+/**
+ * One of Patty's lines — see `pattyLines` — with `<TARGET>`, whom it is about,
+ * filled in: "Hey, Rosa! You're up!". Left out, it read "Hey, ! You're up!".
+ */
+function pattySay(number: number, target?: string): string | undefined {
+  const line = pattyLines()?.get(number)
+  return line === undefined ? undefined : line.replaceAll(TARGET_MARK, target ?? '')
 }
+
+/** `<TARGET>`, kept through the markup's stripping for `pattySay` to fill. */
+const TARGET_MARK = '\u0000TARGET\u0000'
 
 /**
  * **Try Your Luck** — throw what was picked in and see what the pot makes of
@@ -3227,7 +3348,7 @@ function tryLuck(picked: readonly number[], state: MenuState | undefined): MenuS
 /** One of the Krak Pot's own lines, with the message system's markup taken out. */
 function potSay(number: number): string | undefined {
   const text = loaded?.potWords.get(number)
-  return text === undefined ? undefined : plainMarkup(text, DEFAULT_CONTEXT.heroName)
+  return text === undefined ? undefined : plainMarkup(text, heroName())
 }
 
 /** Patty's lines, readable — her `str_lui`, with the markup spelled out. */
@@ -3235,7 +3356,7 @@ function pattyLines(): ReadonlyMap<number, string> | undefined {
   if (!loaded) return undefined
   const out = new Map<number, string>()
   for (const [number, text] of loaded.pattyWords) {
-    out.set(number, plainMarkup(text, DEFAULT_CONTEXT.heroName))
+    out.set(number, plainMarkup(text.replaceAll('<TARGET>', TARGET_MARK), heroName()))
   }
   return out
 }
@@ -3244,8 +3365,7 @@ function pattyLines(): ReadonlyMap<number, string> | undefined {
 function potLines(): ReadonlyMap<number, string> | undefined {
   if (!loaded) return undefined
   const out = new Map<number, string>()
-  for (const [number, text] of loaded.potWords)
-    out.set(number, plainMarkup(text, DEFAULT_CONTEXT.heroName))
+  for (const [number, text] of loaded.potWords) out.set(number, plainMarkup(text, heroName()))
   return out
 }
 
@@ -3266,6 +3386,9 @@ function plainMarkup(text: string, actor: string): string {
       .replaceAll('<1>', '\u2019')
       .replaceAll('<,>', ',')
       .replaceAll('<-->', '\u2014')
+      // A line break written as the two characters backslash and n, as
+      // Patty's are: "I hear ya!" then "Hey, …" printed the backslash.
+      .replaceAll('\\n', '\n')
       .replaceAll(/<[^>]*>/g, '')
   )
 }
@@ -3285,11 +3408,10 @@ function nameFor(member: Member): string {
     // **Only party slot 0 is the Hero.** Anyone else with no `attnpc` is a
     // created character, and calling them "Hero" was what Patty's list showed
     // the first time it had somebody on it — see `docs/party-and-vocations.md`.
-    if (members[0] === member) return DEFAULT_CONTEXT.heroName
+    if (members[0] === member) return heroName()
     if (member.appearance !== undefined) return `preset ${member.appearance}`
-    // **The game asks for a name** at overlay 9's last screen, and offers 201
-    // given names to roll from — `str_cm` 20000–20100 and 21000–21100. Neither
-    // the keyboard nor those names is read, so a recruit goes by their trade.
+    // The name screen names everyone made since it was built — see
+    // `naming.ts`. One made before it, kept in a save, goes by their trade.
     return `a ${vocationWord(member.vocation)}`
   }
   const who = loaded?.attending.find((one) => one.id === member.attnpc)
@@ -3303,7 +3425,7 @@ function menuContext(): MenuContext {
   const now = levels ? standing(levels, expOf(leader()), leader().gains) : undefined
   return {
     party: members.map(menuMember),
-    hero: DEFAULT_CONTEXT.heroName,
+    hero: heroName(),
     map: loaded?.code,
     stage: storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined,
     // The vocation in the menu's own words — `str_tm` 2106, the Minstrel.
@@ -3356,7 +3478,7 @@ function menuContext(): MenuContext {
 
 /** The Hero as the words name them: the name alone, and he — the preset Hero's. */
 function heroNamed(): Named {
-  return { name: DEFAULT_CONTEXT.heroName, gender: 0 }
+  return { name: heroName(), gender: 0 }
 }
 
 /** A monster as the words name it, by its record's number — see `MonsterWords`. */
@@ -4109,7 +4231,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
   }
   const worn = wornNumbers()
   const hero: Fighter = {
-    name: DEFAULT_CONTEXT.heroName,
+    name: heroName(),
     side: 'party',
     maxHp: row.maxHp,
     maxMp: row.maxMp,
@@ -4658,7 +4780,7 @@ function showBattle(): void {
 function settleBattle(): void {
   if (!battle || battle.settled || battle.state.outcome === 'ongoing') return
   const hero = battle.state.fighters[0]
-  const name = DEFAULT_CONTEXT.heroName
+  const name = heroName()
   const levels = levelsFor(leader())
   const words = loaded?.battleWords
   const said = (number: number, telling: Telling) => {
@@ -4760,7 +4882,7 @@ function endFight(): void {
   if (wakeInChurch) {
     wakeInChurch = false
     if (enter(CHURCH.map, CHURCH.spot)) {
-      status(`${DEFAULT_CONTEXT.heroName} comes round in the church`)
+      status(`${heroName()} comes round in the church`)
       if (fought) followBattle(fought)
       return
     }
@@ -5039,11 +5161,14 @@ function playEvent(elapsedMs: number): void {
   // Hero with it, still lying where the event last put them.
   if (shown !== undefined && (shown !== now.showing || !talking)) {
     now.showing = shown
+    // A scene's lines name the Hero as the Hero is called — see `heroName`.
+    talkContext = textContext()
     talking = startConversation(
       { id: -1, name: `ev${now.event}`, x: 0, z: 0 },
       `ev${now.event}, message ${shown}`,
       [now.messages.get(shown) ?? `(message ${shown} says nothing)`],
       [`message ${shown}`],
+      talkContext,
     )
     showTalk()
     // Before the moment `?until=` asks for, each line is read as it comes.
@@ -5848,6 +5973,11 @@ function heroEventPose(): { readonly motion: Animation; readonly frame: number }
 
 /** Draw the main menu, or a visit, or put the box away when neither is up. */
 function showMenu(): void {
+  // The name screen is up in front of Patty's menu — see `askName`.
+  if (naming) {
+    menuEl.hidden = true
+    return
+  }
   if (battle) {
     showBattle()
     return

@@ -552,6 +552,8 @@ export interface Taken {
         readonly vocation: number
         /** The look its screens settled on — see `CREATION_ORDER`. */
         readonly look: Appearance
+        /** What they are called: the last screen's, once it has been answered — see `naming.ts`. */
+        readonly name?: string
       }
   /** Turn one of the appearance's knobs — see `turned` in `appearance.ts`. */
   readonly turn?: { readonly knob: string; readonly by: number }

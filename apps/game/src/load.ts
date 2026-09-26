@@ -98,6 +98,7 @@ import type { BattleWords } from './battle-scene.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
+import { type GivenNames, givenNamesOf } from './naming.ts'
 import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
 import { isSliding, type SlidingPiece, slidingPieces } from './slide.ts'
@@ -284,6 +285,8 @@ export interface Loaded {
   readonly itemKinds: ReadonlyMap<number, ItemKind>
   /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
   readonly standardWords: ReadonlyMap<number, string>
+  /** The given names creation's last screen rolls from, out of `str_cm` — see `naming.ts`. */
+  readonly givenNames: GivenNames
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
@@ -1185,6 +1188,16 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
 }
 
 /** One English text file out of its archive, read — or an empty map when it will not. */
+/**
+ * The given names creation's last screen rolls from — see `naming.ts`. On its
+ * own because the Hero is named before any map is loaded.
+ */
+export function givenNamesFrom(rom: Uint8Array): GivenNames {
+  return givenNamesOf(
+    englishText(rom, '/data/bin/menu/str_cm.gp2', 'str_cm_en.nat', readSystemStrings),
+  )
+}
+
 function englishText(
   rom: Uint8Array,
   archive: string,
@@ -2025,6 +2038,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     ),
     itemKinds: itemKindsOf(rom),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
+    givenNames: givenNamesFrom(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

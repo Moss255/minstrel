@@ -1169,13 +1169,18 @@ actually left.
   `apps/game/src` so much as names them. How many exist is not established
   either: item 22039 is the medal, no table counts them, and quests award them
   too. See §"Mini medals" above.
-- **Name entry.** The seven knob screens are built and run both for the Hero
-  (`askCreation`) and for a recruit (Patty's step 4), but the game's eighth
-  screen is the name and this has none. One byte a character, at most twelve,
-  `0xFF` a space, in game-internal glyph codes rather than ASCII —
-  `Member.name` holds a string and nothing asks a player to type one. The 201
-  given names in `str_cm` (20000–20100 male, 21000–21100 female) and
-  `keyboard_cm.bin` are both unread.
+- ~~**Name entry.**~~ **Done, 26 September 2026** — `naming.ts`. The eighth
+  screen runs after the seventh knob for the Hero and for everyone Patty
+  signs up: typed, or rolled from the 201 given names by sex (`str_cm`
+  20000–20100 and 21000–21100, read). Eight letters at most, from the let's
+  play's eight slots. The name is what every line calls them — King Schott's
+  "Ah! It's you, Tester!", Patty's "Hey, Rosa! You're up!", whose `<TARGET>`
+  had gone unfilled. **Ours**: typing on this machine's keyboard, where the
+  game's is on the bottom screen. `keyboard_cm.bin` is a tagged table, one
+  `0x65` record a key with its place on the 256 × 192 screen and two of the
+  game's own character codes; which code is which letter is not read. It can
+  be, without a guess: the let's play's keyboard (ep1, about 3:45) shows which
+  letter is at each place.
 - **Three of the seven knobs are read and not drawn**: skin colour, eye
   colour and hair colour. Each is a palette swap and nothing in `render` swaps
   one, so the creation screens offer them and the figure does not change. Not
