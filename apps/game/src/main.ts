@@ -203,6 +203,7 @@ import {
 } from './equipment.ts'
 import {
   BGM_FADE_FRAMES,
+  type EventActor,
   type EventCamera,
   EventPlayer,
   type EventStage,
@@ -1038,13 +1039,16 @@ function poseMap(frame: number): void {
   refit()
   castPiecesNow = [
     // Where an event has them, or left them — see `castPlaced`.
+    // Bar one a scene is drawing itself — see `takenOverModel`.
     ...loaded.cast.members.flatMap((member) =>
-      castPieces(
-        { ...member, placement: castPlaced(member.placement) },
-        cat,
-        characterScale,
-        frame,
-      ),
+      takenOver(member.placement.id)
+        ? []
+        : castPieces(
+            { ...member, placement: castPlaced(member.placement) },
+            cat,
+            characterScale,
+            frame,
+          ),
     ),
     // The 2D cast faces the camera, so it is rebuilt in the frame loop rather
     // than here; this is only its first placement before anyone has moved.
@@ -5575,20 +5579,66 @@ function eventPieces(): Piece[] {
         : standingFrame(member, camera.yaw)
       return spritePieces(member, toFloat(PERSON.height) * worldScale, camera.yaw, frame, opacity)
     }
-    if (!actor.model) return []
-    const look = actorLookOf(rom, actor.model, actor.packs)
+    const model = actor.model ?? takenOverModel(actor)
+    if (!model) return []
+    const look = actorLookOf(rom, model, actor.packs)
     if (!look) return []
     // One played once goes on to the next, or holds its last frame — see `sceneMotion`.
     const posed = sceneMotion((name) => look.motions.get(name), actor, stage.frame, MAP_FPS)
     const motion = posed?.motion
     const frame = posed?.frame ?? 0
-    const member = { name: actor.model, model: look.model, motion, floor: look.floor, placement }
+    const member = { name: model, model: look.model, motion, floor: look.floor, placement }
     const pieces = [
       ...castPieces(member, look.catalogue, characterScale, frame),
       ...hungPieces(rom, stage, id, member, frame),
     ]
     return opacity < 1 ? pieces.map((piece) => ({ ...piece, opacity })) : pieces
   })
+}
+
+/**
+ * The `.chr` of a cast member a scene has taken over, as `actorLookOf` names
+ * files — `chara_sub/s025.chr` — or undefined when it has not.
+ *
+ * **Taken over** is a cast member (`566` kinds 4 and 5) that the scene has
+ * placed *and* handed a motion or a motion pack: Patty on `ev02535`, given
+ * `ev02330s025.chr` to lie under the rubble in. Drawn as the map draws her,
+ * she stood in her idle through it. One the scene only moves keeps the map's
+ * own drawing and idle, which is what it had.
+ */
+function takenOverModel(actor: EventActor): string | undefined {
+  if (actor.cast === undefined || !actor.placed) return undefined
+  if (actor.motion === undefined && actor.packs.length === 0) return undefined
+  const member = loaded?.cast.members.find((m) => m.placement.id === actor.cast)
+  if (!member || !loaded) return undefined
+  const wanted = `/${member.name.toLowerCase()}.chr`
+  for (const archive of loaded.catalogue.members.keys()) {
+    const path = archive.toLowerCase()
+    if (path.endsWith(wanted)) return path.replace(/^\/data\//, '')
+  }
+  return undefined
+}
+
+/**
+ * Whether a scene is drawing this cast member itself: it has taken the member
+ * over (see {@link takenOverModel}), or it has loaded the member's own `.chr`
+ * for a character of its own.
+ *
+ * The second is INFERRED. `ev22510` loads Patty's `s025` as its character 2,
+ * frees her from the rubble and stands her up, and nothing in it hides the
+ * map's Patty — its `574`s name records 4, 6, 28 and 30, not her 203. Drawn
+ * both, she was twice in the room: pinned where the map has her and standing
+ * where the scene does. What supports the reading is `566`'s kind 4, which
+ * gives a scene its own copy of a cast member rather than the map's.
+ */
+function takenOver(id: number): boolean {
+  const member = loaded?.cast.members.find((m) => m.placement.id === id)
+  const own = member ? `/${member.name.toLowerCase()}.chr` : undefined
+  for (const actor of playing?.player.stage.actors.values() ?? []) {
+    if (actor.cast === id && takenOverModel(actor) !== undefined) return true
+    if (own && actor.model && `/${actor.model.toLowerCase()}`.endsWith(own)) return true
+  }
+  return false
 }
 
 /**

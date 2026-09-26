@@ -184,6 +184,16 @@ describe('an event’s stage', () => {
     expect(stage.unhandled.has(219) || stage.unhandled.has(220)).toBe(false)
   })
 
+  it('reads 566 kind 4 as a cast member too — Patty under the rubble', () => {
+    // The handler sends kinds 4 and 5 to one block; 4 also spawns the scene's
+    // own copy. `ev02535`: character 1 is cast member 203, given a pack to lie in.
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(566, [4, 203, 1], t)
+    stage.host.call(567, ['event_lv5/ev02330s025.chr', 1], t)
+    expect(stage.actors.get(1)).toMatchObject({ cast: 203, packs: ['event_lv5/ev02330s025.chr'] })
+  })
+
   it('knows which of the map’s cast a character is, and walks that one', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

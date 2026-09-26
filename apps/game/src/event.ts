@@ -2400,7 +2400,7 @@ export class EventStage {
         }
         return 0
       }
-      case 566:
+      case 566: {
         if (num(args[0]) === 2 && typeof args[1] === 'string') {
           this.actor(num(args[2])).model = args[1]
         }
@@ -2410,10 +2410,19 @@ export class EventStage {
         }
         // A character that is one of the map's cast, by placement id — INFERRED:
         // 186 of the 217 such numbers are in the event's own map's cast.
-        if (num(args[0]) === 5 && typeof args[1] === 'number') {
+        //
+        // **Kind 4 is the same**, read from the handler (`0x02160da8`, overlay
+        // 1): its jump table sends 4 and 5 to one block, which stores the
+        // placement id and the character alike. Kind 4 also takes a spawned
+        // game-object slot, `0xA0` plus the count `568`'s field keeps — the
+        // scene's own copy of that cast member. That copy is not modelled
+        // here. `ev02535` brings Patty in so, lying under the rubble.
+        const kind = num(args[0])
+        if ((kind === 4 || kind === 5) && typeof args[1] === 'number') {
           this.actor(num(args[2])).cast = args[1]
         }
         return 0
+      }
       case 567:
         if (typeof args[0] === 'string') this.actor(num(args[1])).packs.push(args[0])
         return 0
