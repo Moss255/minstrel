@@ -532,34 +532,66 @@ So the work is in the engine: **open a map for a scene to play on, with
 nobody standing in it.** That is not a small change — `self`, the camera and
 the walk all assume a world — and it is the only way `X01` gets checked.
 
-### What `X01` and `X05` are — corrected 26 September 2026
+**Superseded the next day:** it is not the only way. The sub-maps have
+collision and open like any other map; see below.
+
+### What `X01` and `X05` are — corrected 26 September 2026, twice
 
 Earlier text here called `X01` "where the story begins". **It is not.** The
 story begins with the starry-sky narration after character creation, then
-Angel Falls; `X01` comes about ten minutes in.
+Angel Falls; the Observatory comes about ten minutes in. A later correction
+then said the walkable Observatory was "other maps". **It is `X01`'s own.**
 
-**`X01` is the Observatory drawn for cutscenes.** `evidence/dq9-lp-ep1.mp4`,
-about 9:50–10:31: after the first fight at Angel Falls, Aquila and the Hero
-fly home, and the camera rises through cloud past the Observatory's outside —
-mossy arcaded walls, terraces with steps and trees, the colonnaded ring,
-Yggdrasil on its island, then a long hold on the tower in the clouds. Nobody
-stands in any of it, and the camera goes where no player could. It fades to
-white and cuts to the Hero landing by the petal pool, where control returns.
-That landing and everything walked in the episode — the library, the fountain
-rooms, Apus Major's hall, the path up to Yggdrasil — are other maps, with
-collision.
+**`X01` is an area with ten sub-maps, `X01M01`–`X01M10`, and they are the
+walkable Observatory.** Only the root map, `X01` itself, has no collision.
+`X05` is the same shape: a root with none and sub-maps `X05M01`–`X05M13`. The
+witness opens an area at its root, so it stopped on the one map in each that
+nobody stands in and never saw the rest. Read from the cartridge's triggers:
 
-**`X05` is the same set of maps for later in the story** — one before the
-prologue ends and one after, and `X05` is the one returned to later. This is
-from the player's own knowledge of the game, not from the recording
-— episode 1 never goes back.
+- **Angel Falls hands on to a sub-map.** `M01`'s `ev21593` goes on to
+  `X01M05`, `ev21597` — the landing by the petal pool in the recording.
+- **`S14` hands on to `X05M09`** (`ev15100`) and to `X05M04`, which is
+  the return later in the story.
+- **Nothing hands on to either root** — no trigger names map 4100 (`X01`) or
+  4500 (`X05`), and scripts name no maps at all (`docs/event-scripts.md`).
 
-**Not yet confirmed:** that the fly-in is drawn from `X01` specifically. The
-check is to open `X01` in the explorer and see the tower, terraces and
-Yggdrasil as one piece.
+**The root is where the fly-home's outside shots are, probably.**
+`evidence/dq9-lp-ep1.mp4`, about 9:50–10:31: after the first fight, Aquila
+and the Hero fly home, and the camera rises through cloud past the
+Observatory's outside — mossy arcaded walls, terraces, the colonnaded ring,
+Yggdrasil on its island, a long hold on the tower in the clouds — with nobody
+standing anywhere. It fades to white and cuts to the landing in `X01M05`.
+**Two things not established:** that those shots are drawn from the root
+`X01`, which the explorer can settle by eye; and how the game gets there,
+since no trigger leads to it. That is a question for the decomp or the
+emulator — what `ev21593` does between the fight and the landing.
 
 It is **not** the title screen: the title menu's backdrop in the same
 recording (about 1:20) is a different, gold-lit view.
+
+### The Observatory, checkpointed through its sub-maps
+
+**26 September 2026.** `X01M05 --stage=1.2 --talk=10` and
+`X05M09 --stage=5.1 --talk=10`. **No engine work was needed.**
+
+| area | opened on | views | failed | worth a look | guessed | crowded | blank |
+|---|---|---|---|---|---|---|---|
+| Observatory `X01` | `X01M05` | 39 | 0 | 2 | 1 | 2 | **1** |
+| Observatory `X05` | `X05M09` | 18 | 0 | 0 | 2 | 7 | 0 |
+
+`X01`'s two worth a look are **`ev01140`, blank** — "It is at the top of those
+stairs, where it has always been" over an empty view in `X01M05` — and
+`ev21510` asking for **sound effect 100, which the archive does not have**.
+The walk reached `X01M01`, `M04`–`M07` and `X05M03`–`M05`, `M07`, `M09`; the
+witness follows the opening map's own doorways and the scenes' maps, so the
+rest were not stood in. Read through, the library, Apus Major's terrace and
+the stairs draw properly.
+
+**The witness called every scene outside the opening map blank the first
+time** — 12 in `X01`, 9 in `X05` — because it expected the overlay to name the
+map the run opened on, and a scene goes to its own. `D03` never showed this
+because `D03M04` contains `D03`. Fixed in `witness.mjs`: a scene is expected
+to name the area.
 
 ### What Phase 3's 75 areas actually are
 
@@ -805,18 +837,15 @@ clean in 8 views. **The label does not decide it; the collision does.** Only
 
 ### Where the sweep stands
 
-**73 of the 75 areas are checkpointed.** The two left are `X01` and `X05`,
-both the Observatory, and neither is a tooling problem: the engine will not
-open a map with nowhere to stand, and until it does they cannot be looked at.
-`X01` is the Observatory's cutscene stage — the fly-home at about ten minutes
-in — and `X05` the same for the return later.
+**All 75 areas are checkpointed** — `X01` and `X05` through their sub-maps,
+added 26 September; see "The Observatory, checkpointed through its sub-maps".
+What the engine still cannot open is the two roots, which nobody stands in.
 
 ## Still to do
 
-**Done: 73 of the 75.** Only `X01` and `X05` are left, and they need the engine rather than the tool — the thirteen exteriors of the original list, plus
+**Done: all 75**, the Observatory last, through its sub-maps — the thirteen exteriors of the original list, plus
 Zere Rocks, Brigadoom, Tower of Trades, Swinedimples, Gortress, Quarantomb,
-`S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`, with the
-Observatory attempted and found unwitnessable.
+`S14`, Heights of Loneliness, The Bad Cave, `D08` and `D13`.
 
 The list below is by *shape* rather than story order, because the shapes want
 different work — see "What Phase 3's 75 areas actually are" above.

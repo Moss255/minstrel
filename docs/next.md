@@ -9,29 +9,38 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
-## Phase 3's sweep is done, and one engine change is what is left — 26 September
+## Phase 3's sweep is done — 26 September
 
-**73 of the 75 areas are checkpointed** (`docs/areas.md`). Every exterior,
-every interior, every area with no map-index entry. Nothing failed to load and
-no map failed to draw, in any area, on any build.
+**All 75 areas are checkpointed** (`docs/areas.md`). Every exterior, every
+interior, every area with no map-index entry, and the Observatory last. Nothing
+failed to load and no map failed to draw, in any area, on any build.
 
 ### Start here
 
-**`enter` will not open a map with no collision world.** `main.ts` says "there
-is nowhere to stand" and puts the previous map back, so the page never
-finishes loading and `window.__witness` is never set — checked, it comes back
-`{have: false}`. That leaves **`X01` and `X05`**, both the Observatory,
-unchecked rather than checked-and-clean.
+**The Observatory needed no engine work.** `X01` and `X05` are areas with
+sub-maps — `X01M01`–`M10`, `X05M01`–`M13` — and those are the walkable
+Observatory. Only each root map has no collision, and the witness had stopped
+on the root. Opened on `X01M05` and `X05M09` they swept with one blank frame
+between them (`X01 ev01140`). See `docs/areas.md`, "What `X01` and `X05` are".
 
-It is the only piece of engine work the whole sweep turned up, and it matters
-because **`X01` carries the first cutscene back at the Observatory** — the
-fly-home after Angel Falls, about ten minutes into the game — and `X05` the
-same set of maps for the return later in the story. (An earlier version of
-this note called `X01` "where the story begins"; it is not — see
-`docs/areas.md`, "What `X01` and `X05` are".) The game plays scenes on these
-maps; nobody stands in them. The change is to open
-one for a scene with no Hero placed, and it is not small: `self`, the camera
-and the walk all assume a world.
+**What is left of it is a question, not a change.** The fly-home after Angel
+Falls (the recording, about 9:50–10:31) shows the Observatory's outside with
+nobody in it, and that is probably the root `X01`. But **nothing hands on to
+either root** — no trigger names them and scripts name no maps — so how the
+game gets there is not in anything we read. Find that first, in the decomp or
+the emulator: what `ev21593` does between the fight and its hand-on to
+`X01M05` `ev21597`.
+
+Only then is the engine change worth making. `enter` refuses a map with no
+collision (`main.ts`, the `!world` return), and the frame's whole update —
+`playEvent`, the scene's camera, the fades — sits behind `self && loaded &&
+world`, so a scene there would neither run nor aim. `startEvent` needs `self`
+for the Hero's starting pose. The scene's floor probe, the talk placement and
+the backdrop already cope without a world.
+
+(Two earlier versions of this note called `X01` "where the story begins" and
+then the Observatory's cutscene stage; neither was right about what the area
+is.)
 
 **Do not assume the `All Events` label marks these.** `X03` carries it, has a
 collision mesh, and swept clean in eight views. The collision decides it.
@@ -52,7 +61,8 @@ collision mesh, and swept clean in eight views. The collision decides it.
 
 ### What is open, in the order I would take it
 
-1. **`X01` and `X05`** — above.
+1. **How the game reaches the root `X01`** — above. A question for the
+   decomp or the emulator first; the engine change waits on the answer.
 2. **A resource placed twice is drawn once.** `D03M06` has two of its four
    doors. Drawing every instance was tried and put two statues in the Hexagon,
    because an instance means "another door" in one map and "the same piece

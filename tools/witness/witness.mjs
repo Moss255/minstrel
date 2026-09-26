@@ -484,7 +484,10 @@ async function witness(area) {
         `${String(n++).padStart(2, '0')}-${name}`,
         `${name} playing`,
         `map=${area}&event=${event}`,
-        area,
+        // A scene goes to its own map first, which is any of the area's. So
+        // what is expected is the area's code, not the map the run opened on
+        // — started from `X01M05`, every scene in `X01M04` was called blank.
+        area.slice(0, 3),
         2500,
       )
     }
