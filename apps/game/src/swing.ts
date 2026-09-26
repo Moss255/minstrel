@@ -20,10 +20,19 @@ import { ownCollision } from './slide.ts'
  *   this they shut those rooms off for good.
  */
 
-/** How near the middle of a door the Hero comes before it opens, in world units. */
-export const DOOR_OPEN_NEAR = 0.25
+/**
+ * How near the door itself — its shut leaf, hinge to far edge — someone comes
+ * before it opens, in world units.
+ *
+ * **Ours, and derived rather than chosen**: far enough that it has swung clear
+ * by the time they reach it and no further — a person's radius, 0.025, plus
+ * what they walk in the quarter-second the swing takes, 0.54 × 0.25. It was
+ * 0.25 from the leaf's *middle*, a body-height and a half, and reported from
+ * play as doors opening while the Hero was still well away from them.
+ */
+export const DOOR_OPEN_NEAR = 0.16
 /** How far away they go before it shuts again: further, so it does not flap. */
-export const DOOR_CLOSE_FAR = 0.4
+export const DOOR_CLOSE_FAR = 0.25
 /** Radians a second: a quarter turn in a quarter of a second. */
 export const DOOR_SWING_SPEED = Math.PI * 2
 
@@ -120,12 +129,10 @@ export function moveDoors(
 ): boolean {
   let moved = false
   for (const door of doors) {
-    const middleX = door.hinge.x + door.leaf.x / 2
-    const middleZ = door.hinge.z + door.leaf.z / 2
     let nearest: { readonly x: number; readonly z: number } | undefined
     let distance = Number.POSITIVE_INFINITY
     for (const person of people) {
-      const away = Math.hypot(person.x - middleX, person.z - middleZ)
+      const away = toLeaf(door, person)
       if (away < distance) {
         distance = away
         nearest = person
@@ -144,6 +151,25 @@ export function moveDoors(
     moved = true
   }
   return moved
+}
+
+/** How far someone is from a door's shut leaf, the line from its hinge to its far edge. */
+function toLeaf(door: SwingDoor, at: { readonly x: number; readonly z: number }): number {
+  const length = door.leaf.x * door.leaf.x + door.leaf.z * door.leaf.z
+  const along =
+    length === 0
+      ? 0
+      : Math.min(
+          1,
+          Math.max(
+            0,
+            ((at.x - door.hinge.x) * door.leaf.x + (at.z - door.hinge.z) * door.leaf.z) / length,
+          ),
+        )
+  return Math.hypot(
+    at.x - (door.hinge.x + door.leaf.x * along),
+    at.z - (door.hinge.z + door.leaf.z * along),
+  )
 }
 
 /**

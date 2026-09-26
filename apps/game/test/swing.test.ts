@@ -8,6 +8,7 @@ import { WALK_SPEED } from '../src/player.ts'
 import {
   awayFrom,
   DOOR_CLOSE_FAR,
+  DOOR_OPEN_NEAR,
   doorCollisionName,
   doorShut,
   doorsOf,
@@ -70,6 +71,17 @@ describe('a door', () => {
     expect(doorShut(doors[0] as SwingDoor)).toBe(false)
     moveDoors(doors, [gone], 1)
     expect(doorShut(doors[0] as SwingDoor)).toBe(true)
+  })
+
+  it('waits until someone is close to the door itself — reported opening from too far away', () => {
+    // A leaf from (0, 0) to (0.2, 0). Two tenths out in front of its middle
+    // it opened before; now it waits for them.
+    const doors = [door()]
+    moveDoors(doors, [{ x: 0.1, z: -0.2 }], 1)
+    expect(doorShut(doors[0] as SwingDoor)).toBe(true)
+    // Beside the hinge rather than in front of the middle counts as near.
+    moveDoors(doors, [{ x: -DOOR_OPEN_NEAR + 0.02, z: 0 }], 1)
+    expect(doorShut(doors[0] as SwingDoor)).toBe(false)
   })
 
   it('opens again the way it was going when caught shutting', () => {
