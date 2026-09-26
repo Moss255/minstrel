@@ -95,6 +95,13 @@ describe('saves', () => {
     })
   })
 
+  it('keep the mini medals handed to Cap’n Max, and read an older save as none', () => {
+    const kept = decodeSave(encodeSave({ ...game, medalsGiven: 14 }))
+    expect(kept.medalsGiven).toBe(14)
+    expect(decodeSave(encodeSave(game)).medalsGiven).toBeUndefined()
+    expect(() => decodeSave(encodeSave({ ...game, medalsGiven: -1 }))).toThrow(/mini medal/)
+  })
+
   it('are refused whole, saying why, when a field does not read', () => {
     expect(() => decodeSave('not json')).toThrow(/not JSON/)
     expect(() => decodeSave(encodeSave({ ...game, version: 6 as 5 }))).toThrow(/version 6/)

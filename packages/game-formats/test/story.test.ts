@@ -6,6 +6,8 @@ import {
   entryEvent,
   entryPlay,
   eventOutcome,
+  FACILITY_MEDALS,
+  facilityFor,
   flagsHold,
   inArea,
   KIND_AREA_EVENT,
@@ -367,5 +369,43 @@ describe('the story in trigger records', () => {
     // Without the marks, as before: not read.
     expect(flagsHold(after, new Set())).toBe(true)
     expect(marksSet(firstTime)).toEqual([7])
+  })
+})
+
+describe('a facility a character opens — 145', () => {
+  const record = (
+    map: number,
+    from: [number, number],
+    to: [number, number],
+    words: [number, number][],
+  ) => ({
+    map,
+    from: { major: from[0], minor: from[1] },
+    to: { major: to[0], minor: to[1] },
+    unknown_5: 0,
+    values: Uint32Array.from(words.map(([op, arg]) => ((op << 16) | arg) >>> 0)),
+    floats: new Float32Array(words.length),
+    kinds: new Uint8Array(words.length).fill(1),
+    offset: 0,
+  })
+  // Cap'n Max's own record, in his castle.
+  const max = record(
+    1807,
+    [6, 1],
+    [19, 9],
+    [
+      [6, 103],
+      [145, 7],
+    ],
+  )
+
+  it('opens the one the character’s record names, in its map and span', () => {
+    expect(facilityFor([max], 1807, 103, { major: 8, minor: 1 })).toBe(FACILITY_MEDALS)
+  })
+
+  it('opens nothing for someone else, elsewhere, or outside the span', () => {
+    expect(facilityFor([max], 1807, 102, { major: 8, minor: 1 })).toBeUndefined()
+    expect(facilityFor([max], 1800, 103, { major: 8, minor: 1 })).toBeUndefined()
+    expect(facilityFor([max], 1807, 103, { major: 5, minor: 1 })).toBeUndefined()
   })
 })

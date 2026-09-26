@@ -1164,11 +1164,15 @@ trees and alchemy as missing, and all five had been built — three of them
 described as built *elsewhere in this same file*. What follows is what is
 actually left.
 
-- **Mini medals.** Both reward tables are read — ten milestone rewards and six
-  repeatable — and **nothing hands one over or spends one**. Nothing in
-  `apps/game/src` so much as names them. How many exist is not established
-  either: item 22039 is the medal, no table counts them, and quests award them
-  too. See §"Mini medals" above.
+- **Mini medals: handing them in is done, 27 September 2026** — `medals.ts`,
+  read from overlay 4's code (`game-formats/FORMAT.md`, "Mini medals"). Talking
+  to Cap'n Max in his castle opens his service by his record's `145:7`; the
+  medals held are handed over as the game hands them — a milestone takes only
+  what it needs and pays its reward, the rest go on to the next — the total is
+  saved, and his own lines say it. The eightieth medal's scene plays after.
+  **Not built**: the exchange he opens after 80, and the long introduction at
+  200 whose condition is not established. Medals themselves come from chests,
+  quests and scenes as any item does.
 - ~~**Name entry.**~~ **Done, 26 September 2026** — `naming.ts`. The eighth
   screen runs after the seventh knob for the Hero and for everyone Patty
   signs up: typed, or rolled from the 201 given names by sex (`str_cm`

@@ -150,6 +150,12 @@ export interface SaveGame {
   readonly items: readonly (readonly [number, number])[]
   /** The opened treasure, by `treasureKey`. */
   readonly opened: readonly string[]
+  /**
+   * How many mini medals have been handed to Cap'n Max — see `medals.ts`.
+   * **Absent from saves made before he took any**, which read as none; adding
+   * a field takes no new version.
+   */
+  readonly medalsGiven?: number
 }
 
 export class SaveError extends Error {
@@ -225,6 +231,9 @@ export function decodeSave(text: string): SaveGame {
     )
   ) {
     throw new SaveError('the save has a bag that does not read')
+  }
+  if (s.medalsGiven !== undefined && !isCount(s.medalsGiven)) {
+    throw new SaveError('the save has a mini medal count that does not read')
   }
   if (!Array.isArray(s.opened) || !s.opened.every((key) => typeof key === 'string')) {
     throw new SaveError('the save has an opened-treasure list that does not read')

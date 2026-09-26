@@ -409,3 +409,41 @@ export function flagsHold(
 export function marksSet(words: readonly TriggerWord[]): number[] {
   return words.filter((w) => w.op === OP_SET_MARK).map((w) => w.arg)
 }
+
+/**
+ * Talking to the character opens a facility — INFERRED from where it stands:
+ * `145` occurs 58 times on the cartridge, always on a character's record
+ * beside `6`, always in a place with a counter to serve at — 0, 2 and 3 in
+ * Stornway, which has the bank and a church; 2, 5 and 6 at the Quester's Rest,
+ * Patty's and the counter's — and **7 once, on Cap'n Max Meddlin'** in his
+ * castle (`M08`, map 1807: `6:103 145:7`), whose talk file is empty and whose
+ * lines are the medal service's own. The numbering is its own: the line-tag
+ * facility codes put the Krak Pot at 7.
+ */
+export const OP_FACILITY = 145
+/** The mini medal service, by {@link OP_FACILITY} — see there. */
+export const FACILITY_MEDALS = 7
+/** The character a talk record is about. */
+const OP_CHARACTER = 6
+
+/**
+ * The facility talking to `character` opens in `map` at `stage`: the first
+ * record for the map whose span covers the stage, naming the character and a
+ * facility. Undefined when none does.
+ */
+export function facilityFor(
+  triggers: readonly Trigger[],
+  map: number,
+  character: number,
+  stage: Stage,
+): number | undefined {
+  const at = order(stage)
+  for (const trigger of triggers) {
+    if (trigger.map !== map || at < order(trigger.from) || at > order(trigger.to)) continue
+    const words = triggerWords(trigger)
+    if (!words.some((w) => w.op === OP_CHARACTER && w.arg === character)) continue
+    const facility = words.find((w) => w.op === OP_FACILITY)
+    if (facility) return facility.arg
+  }
+  return undefined
+}

@@ -115,6 +115,13 @@ export {
 } from './mapmanifest.ts'
 export { isMarshTexture, isWaterTexture, textureTag } from './materials.ts'
 export {
+  MEDALS_MOST,
+  type MedalReward,
+  type MedalRewards,
+  MINI_MEDAL,
+  readMedalRewards,
+} from './medals.ts'
+export {
   isMinimapPicture,
   LAYOUT_BACKDROP,
   LAYOUT_CORNER,
@@ -235,6 +242,8 @@ export {
   entryEvent,
   entryPlay,
   eventOutcome,
+  FACILITY_MEDALS,
+  facilityFor,
   flagsHold,
   inArea,
   KIND_AREA_EVENT,
@@ -251,6 +260,7 @@ export {
   OP_ENTERED,
   OP_EVENT,
   OP_EVENT_OF,
+  OP_FACILITY,
   OP_IF_FLAG,
   OP_IF_MARK,
   OP_IN_AREA,

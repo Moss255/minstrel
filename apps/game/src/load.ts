@@ -34,6 +34,7 @@ import {
   type MapEntry,
   type MapManifest,
   type MapTransition,
+  type MedalRewards,
   type MonsterBattle,
   mapDoorways,
   NO_ACTION,
@@ -50,6 +51,7 @@ import {
   readBuildTable,
   readCharaColours,
   readCharacterPresets,
+  readDataTable,
   readEventBattles,
   readEventMessages,
   readFieldEncounters,
@@ -62,6 +64,7 @@ import {
   readLevelTable,
   readMapList,
   readMapManifest,
+  readMedalRewards,
   readMonsterBattle,
   readMonsterList,
   readMonsterNames,
@@ -93,7 +96,7 @@ import {
 } from '@minstrel/game-formats'
 import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
 import type { Model } from '@minstrel/nitro-gfx'
-import { parseRomHeader } from '@minstrel/nitrofs'
+import { parseRomHeader, readNitroFs } from '@minstrel/nitrofs'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import type { BattleWords } from './battle-scene.ts'
@@ -291,6 +294,10 @@ export interface Loaded {
   readonly givenNames: GivenNames
   /** What a made character's face is recoloured with, out of `palette.bin` — see `skin.ts`. Undefined if it will not read. */
   readonly charaColours: CharaColours | undefined
+  /** What Cap'n Max gives for mini medals, out of overlay 4 — see `medals.ts`. Undefined if not found. */
+  readonly medalRewards: MedalRewards | undefined
+  /** The medal service's lines by number, `str_mdl` — see `medals.ts`. */
+  readonly medalWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
@@ -1192,6 +1199,60 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
 }
 
 /** One English text file out of its archive, read — or an empty map when it will not. */
+/**
+ * One ARM9 overlay's code, unpacked: overlays are FAT files, and BLZ-packed
+ * where the overlay table says so — as the ARM9 binary is, see `arm9Of`.
+ */
+function overlayOf(rom: Uint8Array, id: number): Uint8Array | undefined {
+  try {
+    const fs = readNitroFs(rom)
+    const entry = fs.arm9Overlays.find((overlay) => overlay.overlayId === id)
+    if (!entry) return undefined
+    const packed = fs.read(entry.fileId)
+    return entry.compressed && looksBlz(packed) ? decompressBlz(packed) : packed
+  } catch {
+    return undefined
+  }
+}
+
+/** The medal service's code, where its reward tables are. */
+const MEDAL_OVERLAY = 4
+
+function medalRewardsOf(rom: Uint8Array): MedalRewards | undefined {
+  const code = overlayOf(rom, MEDAL_OVERLAY)
+  if (!code) return undefined
+  try {
+    return readMedalRewards(code)
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * `str_mdl`'s lines, by number: records of tag `0x67`, each its number and a
+ * string — the medal service's own words, 10 to 200. See `medals.ts`.
+ */
+function medalWordsOf(rom: Uint8Array): Map<number, string> {
+  const { cat } = walkOnce(rom, ['/data/bin/menu/str_mdl.gp2'])
+  const out = new Map<number, string>()
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('str_mdl_en.bin')) continue
+      try {
+        const table = readDataTable(bytes)
+        for (const record of table.withTag(0x67)) {
+          const number = record.values[0]
+          const text = record.values[1] === undefined ? undefined : table.stringAt(record.values[1])
+          if (number !== undefined && text) out.set(number, text)
+        }
+      } catch {
+        // Lines that will not read leave the service with nothing to say.
+      }
+    }
+  }
+  return out
+}
+
 /** `/data/chara/palette.bin`, read — see `skin.ts`. A loose file, not an archive's member. */
 function charaColoursOf(rom: Uint8Array): CharaColours | undefined {
   const { cat } = walkOnce(rom, ['/data/chara/palette.bin'])
@@ -2056,6 +2117,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     givenNames: givenNamesFrom(rom),
     charaColours: charaColoursOf(rom),
+    medalRewards: medalRewardsOf(rom),
+    medalWords: medalWordsOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

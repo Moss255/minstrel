@@ -4096,3 +4096,41 @@ by a part index 0–7:
 **The appearance fields**, from the same caller: the skin tone is bits 1–3 of
 the appearance record's `+0x14` byte, the eye colour bits 4–7, and the hair
 colour the low four bits of `+0x15`.
+
+# Mini medals — Cap'n Max Meddlin's service
+
+**Read 27 September 2026, from overlay 4's code** (US addresses). `readMedalRewards`,
+`facilityFor`.
+
+**Reaching him.** Max (`s083`, cast member 103 in `M08M07`, map 1807) has no talk
+file of his own. His record is `6:103 145:7`: operation `145` names a facility
+that talking to the character opens. It occurs 58 times on the cartridge, always
+beside `6` on a character's record, and always where there is a counter — 0, 2,
+3 in Stornway, 2, 5, 6 at the Quester's Rest — and 7 only on Max. INFERRED from
+that distribution; the numbering is not the line-tag facility codes', where 7 is
+the Krak Pot.
+
+**The tables** are two arrays of `(u16 medals, u16 item)` back to back:
+six exchanges then ten milestones (US overlay 4 `0x1c918` and `0x1c930`). Found
+by shape: six rising pairs, then ten rising pairs ending at 80, each naming an
+item. On the reference cartridge: milestones 4 thief's key, 8 Mercury's bandana,
+13 bunny suit, 18 jolly roger jumper, 25 transparent tights, 32 miracle sword,
+40 sacred armour, 50 meteorite bracer, 62 rusty helmet, 80 dragon robe;
+exchanges 3 prayer ring, 5 elfin elixir, 8 saint's ashes, 10 reset stone, 15
+orichalcum, 20 pixie boots.
+
+**The service** (`str_mdl`'s lines, tag `0x67` records of number and text):
+
+| function | what it does |
+|---|---|
+| `func_ov004_02167d90` | where a visit starts: a global set (not established) → 200; nothing handed in → 10; every milestone passed → 100; else 30 |
+| `func_ov004_0216794c` | the numbers: handed in so far (progress `+0xf74`), held (item 22039 in the bag), the next milestone — the first above the total — and whether handing in reaches it |
+| `func_ov004_02167b78` | fills the lines: `val_1` so far, `val_2` held, `val_3` the next milestone, `val_4` the total after, held to 80; the reward's name |
+| `func_ov004_02167adc` | hands over: **only as many as the next milestone needs** when they reach it, and its reward; otherwise all |
+| `func_ov004_02167a0c` | takes that many item 22039 out of the bag and adds them to `+0xf74`, **held to 500** |
+| `func_ov004_02167a6c` | gives an item |
+| `02167e28`, `02167e6c`, `02167eb0`, `02167f1c`, `02167fb0` | what follows: medals held → hand them over; none → the tally (50) on a later visit; reached → 40; not reached → 51, after 50 on a later visit; every milestone passed → 60 |
+
+The eightieth medal's scene is `ev28590`, whose own record is in map 1807; its
+lines are `str_mdl` 60 to 63 again. The exchange after 80 (100 to 151) is read
+and not built.

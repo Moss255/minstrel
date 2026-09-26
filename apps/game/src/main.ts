@@ -17,10 +17,13 @@ import {
   areasOf,
   entryPlay,
   eventOutcome,
+  FACILITY_MEDALS,
+  facilityFor,
   GRANTS_REGARDLESS,
   inArea,
   type LevelRow,
   type LevelTable,
+  MINI_MEDAL,
   type NpcPlacement,
   OP_EVENT,
   partName,
@@ -229,6 +232,7 @@ import {
 } from './hero.ts'
 import { allTriggers, entranceOf, givenNamesFrom, type Loaded, load, type Stage } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
+import { medalText, visitMax } from './medals.ts'
 import {
   back,
   choose,
@@ -1444,6 +1448,7 @@ function restore(game: SaveGame): void {
   storyFlags.clear()
   storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
+  medalsGiven = game.medalsGiven ?? 0
   // The whole party, each with their own — see `SaveMember`. An older save's
   // companions come back with nothing, which is all they ever had.
   members = partyRestored(game.members)
@@ -1479,6 +1484,7 @@ function confess(): string {
     stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
     step: storyStep,
     flags: [...storyFlags],
+    ...(medalsGiven > 0 ? { medalsGiven } : {}),
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
     gold: bag.gold,
@@ -2978,6 +2984,17 @@ function talk(everyLine = false): void {
     )
     return
   }
+  // **A character whose record names a facility opens it**, and says the
+  // facility's own lines rather than any of theirs — Cap'n Max and his medals.
+  // See `facilityFor`.
+  if (
+    loaded.mapId !== undefined &&
+    storyStage !== undefined &&
+    facilityFor(loaded.triggers, loaded.mapId, who.id, storyStage) === FACILITY_MEDALS
+  ) {
+    visitMedals(who)
+    return
+  }
   const letter = chapter()
   const lines = letter === undefined ? [] : loaded.linesOf(who.id, letter)
   talkContext = contextFor(lines.map((line) => line.text ?? ''))
@@ -3243,6 +3260,58 @@ function cookRecipe(id: number, state: MenuState | undefined): MenuState | undef
     ],
   }
 }
+
+/**
+ * How many mini medals have been handed to Cap'n Max, over the whole game —
+ * the game keeps it in its progress record at `+0xf74`. Saved.
+ */
+let medalsGiven = 0
+
+/**
+ * A visit to Cap'n Max: the medals in the bag handed over as the game hands
+ * them, his rewards given, and his lines said — see `medals.ts`. Once every
+ * milestone is passed, the scene that follows (`ev28590`, the Cap'n's
+ * Curtsy) plays when his lines are read, its record in his own map.
+ */
+function visitMedals(who: Talker): void {
+  if (!loaded) return
+  const rewards = loaded.medalRewards
+  if (!rewards) {
+    status('the mini medal tables did not read, so Cap’n Max has nothing to give')
+    return
+  }
+  const held = bag.items.get(MINI_MEDAL) ?? 0
+  const visit = visitMax(rewards, medalsGiven, held)
+  for (let n = 0; n < visit.handed; n++) bag = drop(bag, MINI_MEDAL) ?? bag
+  for (const gift of visit.gifts) bag = take(bag, { item: gift })
+  medalsGiven = visit.given
+  const words = loaded.medalWords
+  const texts = visit.lines.map((line) =>
+    medalText(words.get(line.message) ?? `(message ${line.message})`, line, nameOf),
+  )
+  talkContext = textContext()
+  talking = startConversation(
+    who,
+    `the mini medals: ${medalsGiven} handed in`,
+    texts,
+    visit.lines.map((line) => `str_mdl ${line.message}`),
+    talkContext,
+  )
+  // Every milestone passed: the scene he has waited for — see `CURTSY_SCENE`.
+  if (visit.allPassed && visit.handed > 0) talkThen = { event: CURTSY_SCENE, answer: undefined }
+  showTalk()
+  status(
+    `Cap’n Max: ${visit.handed} medal${visit.handed === 1 ? '' : 's'} handed in, ${medalsGiven} in all` +
+      (visit.gifts.length > 0 ? ` · given ${visit.gifts.map(nameOf).join(', ')}` : ''),
+  )
+}
+
+/**
+ * The scene of the eightieth medal, `ev28590`: his thanks, the exchange opened,
+ * and the Cap'n's Curtsy taught — his lines 60 to 63 are its own messages too.
+ * Its record stands in his map, 1807.
+ */
+const CURTSY_SCENE = 28590
 
 /**
  * Do what Patty was asked — see `recruit.ts`, which holds the rules; this puts
