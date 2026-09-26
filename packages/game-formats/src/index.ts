@@ -104,6 +104,7 @@ export {
 } from './maplist.ts'
 export {
   isMapManifest,
+  type MapInstance,
   type MapManifest,
   type MapPlacement,
   type MapResource,

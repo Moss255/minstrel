@@ -763,11 +763,24 @@ standing on that ground, it peaked at 8 — which is the village terrain's own
 That was `PLACEMENT_SCALE`, now removed: the engine takes placements into the
 world by the same `WORLD_SCALE` as everything else.
 
-**Placements are only used when they pair one-to-one.** They match resources by
-position, and 696 of the 755 manifests have exactly one per resource; the other
-59 carry *more* placements than resources. Pairing positionally through an extra
-record would place every piece after it confidently in the wrong spot, so those
-maps are left unplaced and `MapManifest.placementsPair` says so.
+**A placement names its resource, and a resource can have several.** A `0x6F`
+record's `values[0]` is its instance — what another placement's parent
+(`values[5]`) names — and `values[1]` is the index of the resource it places.
+This used to pair by position and leave the 56 manifests whose counts disagree
+unplaced; they disagree because a resource is placed more than once. `D03M06`
+places each of its two door models twice, a pair of doors at z 12.34 and
+another at z 17.70, and each door's collision twice, each hanging off one of
+the door's instances. `MapResource.instances` carries every one, and
+`placementOf` resolves a parent by instance.
+
+**Measured across the cartridge**: 81 resources are placed more than once, 144
+placements beyond the first, in 45 maps. 76 are doors (`…D1`, `…D2`), four are
+other repeated pieces (`D03M0602`/`03`, `D17M03G5`, `S07M0612`), all at
+distinct positions. **One is not several of a thing**: the Hexagon's sliding
+statue `D01M01S1` is placed at each end of its slide, and nothing in the
+manifest marks it apart — the flags are the doors' own. Which resources are one
+thing at several moments is the caller's to say (`AssembleOptions.once` in
+`packages/world`); this title's rule is the sliding-piece name, in the game.
 
 ## Evidence
 

@@ -642,30 +642,38 @@ each end with its own collision; the origin is where it rests and it is the
 adjusted rather than defended: its gates now stand and the barrier across its
 gateway is visible in play, so it reaches one doorway where it reached two.
 
-### What is left: a resource placed twice is drawn once
+### A resource placed twice is drawn twice — done, 26 September 2026
 
-**The fix places 56 maps properly and still draws only one piece per
-resource**, so `D03M06` has no slab and **two of its four doors**. Its two
-door models are placed at z 12.34 and z 17.70; the last instance wins, so the
-pair at 12.34 is not drawn.
+**It was not one room.** Across the cartridge 81 resources are placed more
+than once — 144 placements beyond the first, in 45 maps — and none of them was
+drawn. 76 are doors, `…D1` and `…D2`: Coffinwell's `M03M00D1` is placed five
+times, the Observatory is missing 12 in `X01` and 14 in `X05`. Four are other
+repeated pieces: `D03M06`'s own door models, which are named `M0602` and
+`M0603` rather than `D…`; `D17M03G5`, four gates in a row; and `S07M0612`,
+three on a diagonal. Every one is at a distinct position. Their collision was
+missing with them, so a shut door that should stand in a doorway did not.
 
-**Drawing every instance was tried and reverted.** `placementsOf` and a loop
-over placements in `assemble.ts` gave `D03M06` six pieces and five collision
-meshes against four and three — all four doors — and then put **two statues in
-the Hexagon**. Both matched cast record 202, at `(0, −1.705)` and
-`(0.434, −1.709)`: the statue's two placements are where it stands at step 4
-and at step 5, which is the same statue at two moments rather than two
-statues.
+**One is the same piece at two moments**: the Hexagon's statue. It is the
+only resource so placed whose name is a sliding piece's, and nothing else in
+the manifest marks it — its placements and flags are shaped exactly as a
+door's.
 
-**So an instance means two different things** and the data alone does not say
-which: four doors in a room, or one piece before and after it moves. What
-tells them apart is that a sliding piece is named for it — `D01M01S1` takes
-its collision from `D01A01S1` — and that rule is title-specific and lives in
-`apps/game/src/slide.ts`, where the assembly loop in `packages/world` cannot
-reach it without dragging the title into the engine.
+So **the engine draws every placement unless the caller says otherwise**:
 
-That is the shape of the remaining work: either the engine learns which pieces
-move, or the game hands it that knowledge, and neither is a line of code.
+- `MapResource.instances` in `game-formats` carries every placement, and
+  `placementOf` takes an instance and resolves its parent by instance. The
+  second door of a pair hangs its collision off the door's second instance;
+  resolved through the last, both collisions stood in one doorway.
+- `assembleMap` builds a piece and a collision mesh per placement, tagged with
+  the instance and, for collision, the instance it hangs off.
+  `AssembleOptions.once` names resources built once, at their last placement.
+- The game passes `isSliding` from `slide.ts` — the naming rule stays in the
+  game — and `swing.ts` and `slide.ts` pair each piece with the collision
+  hanging off its own instance rather than the first mesh of that name.
+
+`D03M06` has six pieces and five collision meshes, all four doors; Coffinwell
+38 pieces where it had 34. The statue test, the walk-coverage test and the rest
+of the suite pass unchanged.
 
 ## 6. The repository itself
 

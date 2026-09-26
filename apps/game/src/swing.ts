@@ -1,5 +1,6 @@
 import { type Geometry, poseGeometry } from '@minstrel/nitro-gfx'
 import type { AssembledMap } from '@minstrel/world'
+import { ownCollision } from './slide.ts'
 
 /**
  * Doors that swing open as the Hero comes up to them.
@@ -74,11 +75,10 @@ export function doorsOf(map: AssembledMap): SwingDoor[] {
         }
       }
     }
-    const mesh = map.meshes.findIndex((m) => m.source?.toLowerCase() === collision)
     doors.push({
       stem,
       piece,
-      mesh: mesh >= 0 ? mesh : undefined,
+      mesh: ownCollision(map, piece, collision),
       hinge: { x: place.x, z: place.z },
       leaf: { x: far.x * scale, z: far.z * scale },
       angle: 0,

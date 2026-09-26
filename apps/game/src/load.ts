@@ -100,7 +100,7 @@ import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
 import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
-import { type SlidingPiece, slidingPieces } from './slide.ts'
+import { isSliding, type SlidingPiece, slidingPieces } from './slide.ts'
 
 /**
  * Turn a cartridge into somewhere to stand.
@@ -1928,11 +1928,12 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     const manifest = manifests.get(path)
     const members = cat.members.get(path)
     if (!manifest || !members) continue
-    const built = assembleMap(
-      manifest,
-      members,
-      options.lighting === undefined ? {} : { lighting: options.lighting },
-    )
+    const built = assembleMap(manifest, members, {
+      ...(options.lighting === undefined ? {} : { lighting: options.lighting }),
+      // A sliding piece is placed at each end of its slide — one piece at two
+      // moments, not two pieces. See `slide.ts`.
+      once: isSliding,
+    })
     if (built.pieces.length === 0) continue
     archive = path
     map = built

@@ -48,6 +48,34 @@ export const SLIDE_SPEED = 0.5
 /** How near a piece's middle a record must stand to be the one it follows, in world units. */
 export const ON_THE_MIDDLE = 0.05
 
+/**
+ * Whether a resource is a sliding piece or its collision, by name —
+ * `D01M01S1` or `D01A01S1`.
+ *
+ * **The map places one at each end of its slide**, each with its collision:
+ * the Hexagon's statue at `(-3.45, 0, 0)` and at the origin. Drawn at both, it
+ * is two statues. It is the only resource so named that is placed twice, of
+ * the 81 on the cartridge placed more than once; the other 80 are doors and
+ * other repeated pieces, which are several of a thing. See
+ * `docs/still-open.md` §5b.
+ */
+export function isSliding(stem: string): boolean {
+  return /^[A-Z]\d\d[MA]\d\dS[0-9A-Z]$/i.test(stem)
+}
+
+/**
+ * The collision placed with a piece: named for it, and hanging off the same
+ * placement of it when the map places it more than once — a room's two pairs
+ * of doors each have their own.
+ */
+export function ownCollision(map: AssembledMap, piece: number, name: string): number | undefined {
+  const instance = map.pieces[piece]?.instance
+  const named = (m: AssembledMap['meshes'][number]) => m.source?.toLowerCase() === name
+  let found = map.meshes.findIndex((m) => named(m) && m.attachedTo === instance)
+  if (found < 0) found = map.meshes.findIndex(named)
+  return found >= 0 ? found : undefined
+}
+
 /** A sliding piece's collision, by name — `D01M01S1` to `D01A01S1` — or undefined when the name is not one. */
 export function slideCollisionName(stem: string): string | undefined {
   const named = /^([A-Z]\d\d)M(\d\d)(S[0-9A-Z])$/i.exec(stem)
@@ -91,11 +119,10 @@ export function slidingPieces(
       (record) => Math.hypot(record.x - middle.x, record.z - middle.z) < ON_THE_MIDDLE,
     )
     if (!on) continue
-    const mesh = map.meshes.findIndex((m) => m.source?.toLowerCase() === collision)
     found.push({
       stem,
       piece: index,
-      mesh: mesh >= 0 ? mesh : undefined,
+      mesh: ownCollision(map, index, collision),
       id: on.id,
       home: { x: on.x, z: on.z },
     })

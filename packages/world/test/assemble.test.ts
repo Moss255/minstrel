@@ -1,6 +1,17 @@
+import { readMapManifest } from '@minstrel/game-formats'
+import { buildCollision, buildManifest } from '@minstrel/game-formats/test/fixture.ts'
 import type { Geometry } from '@minstrel/nitro-gfx'
+import { buildNsbmd, triangleList } from '@minstrel/nitro-gfx/test/fixture.ts'
 import { describe, expect, it } from 'vitest'
-import { inMarsh, inWater, type MarshArea, placeGeometry, type WaterArea } from '../src/assemble.ts'
+import {
+  assembleMap,
+  inMarsh,
+  inWater,
+  type MarshArea,
+  placeGeometry,
+  type WaterArea,
+  WORLD_SCALE,
+} from '../src/assemble.ts'
 
 const river: WaterArea = { minX: -2, maxX: 2, minZ: -1, maxZ: 1, surface: -0.31 }
 /** The character's height, which is what "knee-deep" is measured against. */
@@ -98,5 +109,83 @@ describe('placeGeometry', () => {
   it('keeps everything else about a vertex', () => {
     const moved = placeGeometry(geometry(3), { x: 1, y: 0, z: 0 }, 1)
     expect(moved.vertices[0]).toMatchObject({ r: 0, g: 0, b: 0, u: 0, v: 0 })
+  })
+})
+
+describe('assembleMap', () => {
+  // `D03M06`'s shape, and the Hexagon's: a door model placed twice with its
+  // collision placed twice — each hanging off one of the door's placements —
+  // and a sliding piece placed at each end of its slide, likewise.
+  const model = () =>
+    buildNsbmd([{ name: 'm', shapes: [{ name: 's', displayList: triangleList() }] }])
+  // A floor triangle, so it is a wall rather than a doorway's marker.
+  const collision = () =>
+    buildCollision(
+      [
+        {
+          points: [
+            [0, 0, 0],
+            [100, 0, 0],
+            [0, 0, 100],
+          ],
+          normal: [0, 1, 0],
+          attributes: 0,
+        },
+      ],
+      [[0]],
+    )
+  const members = new Map([
+    ['M00M0602.nsbmd', model()],
+    ['M00A0602.col2', collision()],
+    ['M00M00S1.nsbmd', model()],
+    ['M00A00S1.col2', collision()],
+  ])
+  const manifest = readMapManifest(
+    buildManifest(['M00M0602.imd', 'M00A0602.imd', 'M00M00S1.imd', 'M00A00S1.imd'], {
+      places: [
+        { slot: 2, names: 0, at: [8, 0, 96] },
+        { slot: 6, names: 1, parent: 2 },
+        { slot: 4, names: 0, at: [8, 0, 144] },
+        { slot: 8, names: 1, parent: 4 },
+        { slot: 10, names: 2, at: [-24, 0, 0] },
+        { slot: 11, names: 3, parent: 10 },
+        { slot: 12, names: 2, at: [0, 0, 8] },
+        { slot: 13, names: 3, parent: 12 },
+      ],
+    }),
+  )
+  const sliding = (stem: string) => stem.endsWith('S1')
+
+  it('builds a piece for every placement of a resource', () => {
+    const doors = assembleMap(manifest, members).pieces.filter((p) => p.source === 'M00M0602')
+    expect(doors.map((p) => p.place.z)).toEqual([96 * WORLD_SCALE, 144 * WORLD_SCALE])
+    expect(doors.map((p) => p.instance)).toEqual([2, 4])
+  })
+
+  it("stands each collision on its own placement's parent", () => {
+    // Resolved through the door's last placement, both collisions would stand
+    // in the second doorway and the first would have none.
+    const walls = assembleMap(manifest, members).meshes.filter((m) => m.source === 'M00A0602')
+    expect(walls.map((m) => m.attachedTo)).toEqual([2, 4])
+    expect(walls.map((m) => (m.offset?.z ?? 0) / 4096)).toEqual([
+      96 * WORLD_SCALE,
+      144 * WORLD_SCALE,
+    ])
+  })
+
+  it('builds a piece the caller says moves once, at its last placement', () => {
+    const map = assembleMap(manifest, members, { once: sliding })
+    const piece = map.pieces.filter((p) => p.source === 'M00M00S1')
+    const wall = map.meshes.filter((m) => m.source === 'M00A00S1')
+    expect(piece.map((p) => p.place.z)).toEqual([8 * WORLD_SCALE])
+    expect(piece.map((p) => p.instance)).toEqual([12])
+    expect(wall.map((m) => m.attachedTo)).toEqual([12])
+    // And the doors are still two.
+    expect(map.pieces.filter((p) => p.source === 'M00M0602')).toHaveLength(2)
+  })
+
+  it('builds every placement of it when not told', () => {
+    const map = assembleMap(manifest, members)
+    expect(map.pieces.filter((p) => p.source === 'M00M00S1')).toHaveLength(2)
   })
 })

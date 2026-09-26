@@ -6,6 +6,7 @@
   "license": "MIT",
   "description": "Title-specific formats: the bitmap font. Browser-safe.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test/fixture.ts": "./test/fixture.ts"
   }
 }

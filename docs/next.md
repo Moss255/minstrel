@@ -63,12 +63,11 @@ collision mesh, and swept clean in eight views. The collision decides it.
 
 1. **How the game reaches the root `X01`** — above. A question for the
    decomp or the emulator first; the engine change waits on the answer.
-2. **A resource placed twice is drawn once.** `D03M06` has two of its four
-   doors. Drawing every instance was tried and put two statues in the Hexagon,
-   because an instance means "another door" in one map and "the same piece
-   after it moves" in another. What tells them apart is the sliding-piece
-   naming rule, which is title-specific and lives in `apps/game/src/slide.ts`
-   where `packages/world` cannot reach it. See `docs/still-open.md` §5b.
+2. ~~**A resource placed twice is drawn once.**~~ **Done, 26 September**:
+   every placement is drawn, and the game tells the engine which pieces are
+   one thing at two moments (`AssembleOptions.once`, from `slide.ts`). 144
+   placements in 45 maps were not drawn, 140 of them doors. See
+   `docs/still-open.md` §5b.
 3. ~~**Thirteen checkpoints describe a build that is gone.**~~ **Done, 26
    September**: it was 23, all run again, nothing failed and no view count
    moved. Three areas gained a crowded shot and Stornway a blank frame,

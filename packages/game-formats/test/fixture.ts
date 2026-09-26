@@ -1,3 +1,4 @@
+import { COLLISION_KIND } from '../src/collision.ts'
 import { glyphStride } from '../src/font.ts'
 
 /**
@@ -77,3 +78,185 @@ export const LETTER_L = [
   '######..',
   '........',
 ]
+
+export interface TriangleSpec {
+  readonly points: readonly [
+    readonly [number, number, number],
+    readonly [number, number, number],
+    readonly [number, number, number],
+  ]
+  readonly normal: readonly [number, number, number]
+  readonly attributes: number
+}
+
+/**
+ * Build a `.col2` from a triangle list and a per-cell index.
+ *
+ * Everything is assembled here from the format's own rules, so the fixture is
+ * synthetic — no cartridge bytes. The two arrays that describe the grid are
+ * padded to a word, as the real files pad them, because the parser has to find
+ * the end of the cell list by the tiling rather than by their length.
+ */
+export function buildCollision(
+  triangles: readonly TriangleSpec[],
+  perCell: readonly (readonly number[])[],
+  options: { kind?: number; cellSize?: number; gridX?: number; gridZ?: number } = {},
+): Uint8Array {
+  const bytes: number[] = []
+  const u8 = (v: number) => bytes.push(v & 0xff)
+  const u16 = (v: number) => bytes.push(v & 0xff, (v >>> 8) & 0xff)
+  const u32 = (v: number) =>
+    bytes.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+  const pad = () => {
+    while (bytes.length % 4 !== 0) u8(0)
+  }
+
+  const points = triangles.flatMap((t) => t.points)
+  const axis = (k: number) => points.map((p) => p[k] as number)
+  const box = points.length
+    ? [
+        Math.min(...axis(0)),
+        Math.min(...axis(1)),
+        Math.min(...axis(2)),
+        Math.max(...axis(0)),
+        Math.max(...axis(1)),
+        Math.max(...axis(2)),
+      ]
+    : [0, 0, 0, 0, 0, 0]
+
+  u32(options.kind ?? COLLISION_KIND)
+  u32(0)
+  for (const v of box) u16(v)
+  u32(triangles.length)
+  u16(options.cellSize ?? 4096)
+  u16(0)
+  u32(options.gridX ?? perCell.length)
+  u32(options.gridZ ?? 1)
+  const offsets = bytes.length
+  for (let i = 0; i < 4; i++) u32(0)
+  u32(perCell.length ? 1 : 0)
+  u32(0)
+
+  const patch = (slot: number, value: number) => {
+    for (let k = 0; k < 4; k++) bytes[offsets + slot * 4 + k] = (value >>> (k * 8)) & 0xff
+  }
+
+  patch(0, bytes.length)
+  for (const t of triangles) {
+    for (const p of t.points) for (const c of p) u16(c)
+    for (const c of t.normal) u16(Math.round(c * 4096))
+    u32(t.attributes)
+  }
+
+  patch(1, bytes.length)
+  for (const cell of perCell) u8(cell.length)
+  pad()
+
+  patch(2, bytes.length)
+  let start = 0
+  for (const cell of perCell) {
+    u16(start)
+    start += cell.length
+  }
+  pad()
+
+  patch(3, bytes.length)
+  for (const cell of perCell) for (const index of cell) u16(index)
+  pad()
+
+  // One trailing record, so the index list has a bound.
+  const trailingAt = bytes.length
+  for (let i = 0; i < 8; i++) u8(i)
+  for (let k = 0; k < 4; k++) bytes[offsets + 5 * 4 + k] = (trailingAt >>> (k * 8)) & 0xff
+
+  return Uint8Array.from(bytes)
+}
+
+/**
+ * Build a `.bmdj`: a tagged record stream then a string table.
+ *
+ * The resource records address their names by **byte offset** into the string
+ * section, which is the detail the reader exists to get right — an ordinal
+ * would work on the first name and drift on every one after it.
+ */
+export function buildManifest(
+  names: readonly string[],
+  options: {
+    declared?: number
+    /** One per name: where the map puts it, and what it hangs off. */
+    places?: readonly {
+      at?: [number, number, number]
+      slot: number
+      parent?: number
+      /** The resource this places, by index. Defaults to the slot. */
+      names?: number
+    }[]
+  } = {},
+): Uint8Array {
+  const strings: number[] = []
+  const offsets: number[] = []
+  for (const name of names) {
+    offsets.push(strings.length)
+    for (const ch of name) strings.push(ch.charCodeAt(0))
+    strings.push(0)
+  }
+
+  const records: number[] = []
+  const u16 = (v: number) => records.push(v & 0xff, (v >>> 8) & 0xff)
+  const u32 = (v: number) =>
+    records.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+  const record = (tag: number, type: number, values: readonly number[]) => {
+    u16(tag)
+    // Tag, count, then two bits of type per value, padded to a word: a record
+    // of five or more values has an eight-byte head, not four.
+    const typeBytes = Math.max(1, Math.ceil(values.length / 4))
+    const header = Math.ceil((3 + typeBytes) / 4) * 4
+    records.push(values.length, type)
+    for (let i = 4; i < header; i++) records.push(0)
+    for (const v of values) u32(v)
+  }
+
+  record(0x6a, 1, [options.declared ?? names.length])
+  names.forEach((_, i) => {
+    record(0x6c, 81, [i, offsets[i] as number, 0, 0])
+  })
+  if (options.places) {
+    const asWord = (value: number) => {
+      const buffer = new ArrayBuffer(4)
+      new DataView(buffer).setFloat32(0, value, true)
+      return new DataView(buffer).getUint32(0, true)
+    }
+    for (const place of options.places) {
+      const [x, y, z] = place.at ?? [0, 0, 0]
+      // The real layout, now that the record's header is counted properly: the
+      // slot leads, the translation is at 2 to 4 and the parent at 5. What used
+      // to look like a leading value was the record's second type byte.
+      record(0x6f, 165, [
+        place.slot,
+        place.names ?? place.slot,
+        asWord(x),
+        asWord(y),
+        asWord(z),
+        place.parent ?? 0xffffffff,
+        0,
+        asWord(1),
+        asWord(1),
+        asWord(1),
+        0,
+        0,
+        0,
+        0,
+      ])
+    }
+  }
+  record(0x6e, 0xff, [])
+
+  const header: number[] = []
+  const h32 = (v: number) =>
+    header.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
+  h32(0)
+  h32(16 + records.length)
+  h32(strings.length)
+  h32(names.length)
+  return Uint8Array.from([...header, ...records, ...strings])
+}

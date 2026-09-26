@@ -82,6 +82,13 @@ export interface PlacedMesh {
    * from another — a door's, which comes and goes as the door swings.
    */
   readonly source?: string
+  /** Which placement of that resource it is, when the map places it more than once. */
+  readonly instance?: number
+  /**
+   * The placement it hangs off, by instance: a door's collision names the
+   * door's. With two of a door, this is what says which collision is whose.
+   */
+  readonly attachedTo?: number
 }
 
 const ZERO = { x: 0, y: 0, z: 0 }

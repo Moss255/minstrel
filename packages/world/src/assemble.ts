@@ -5,7 +5,9 @@ import {
   isMarkerVolume,
   isMarshTexture,
   isWaterTexture,
+  type MapInstance,
   type MapManifest,
+  type MapResource,
   type Motion,
   placementOf,
   readCollisionMesh,
@@ -44,6 +46,11 @@ export interface MapPiece {
   readonly model: Model
   /** The resource the piece was built from, by its stem — `M01M00D1`. */
   readonly source?: string
+  /**
+   * Which of the resource's placements this is — see `MapInstance.slot`.
+   * Undefined for a resource the map does not place.
+   */
+  readonly instance?: number
   /**
    * The stretches of its animation its resource's `.bcfg` names, when it has
    * one — see `readMotionTable`. A piece with them plays one when asked, rather
@@ -135,6 +142,16 @@ export const WORLD_SCALE = 1 / 8
 export interface AssembleOptions {
   /** Defaults to `day`. */
   readonly lighting?: MapLighting
+  /**
+   * Resources that are **one thing at several moments** rather than several
+   * things, by stem: built once, at their last placement.
+   *
+   * A resource placed twice is usually two of it — a room's four doors are two
+   * models placed twice each. But a piece that moves can be placed at each end
+   * of its move, and drawing both puts two of it in the room. Nothing in a
+   * manifest tells the two apart; the caller knows which pieces move.
+   */
+  readonly once?: (stem: string) => boolean
 }
 
 /**
@@ -193,13 +210,35 @@ export function assembleMap(
     // The other lighting's copy of this piece is not a second piece.
     const belongs = lightingOf(resource.stem)
     if (belongs !== undefined && belongs !== lighting) continue
-    const authored = placementOf(manifest, resource)
+    // **Every placement is a piece**, unless the caller says this resource is
+    // one thing placed at each of its moments. A resource with no placement is
+    // built once, at the origin.
+    const all = resource.instances
+    const instances =
+      all.length === 0 ? [undefined] : options.once?.(resource.stem) ? [all[all.length - 1]] : all
+    for (const instance of instances) {
+      build(resource, files, instance)
+    }
+  }
+
+  return { pieces, meshes, water, marsh, missing }
+
+  /** One placement of a resource: its models drawn there, its collision stood there. */
+  function build(
+    resource: MapResource,
+    files: readonly string[],
+    instance: MapInstance | undefined,
+  ): void {
+    const authored = placementOf(manifest, resource, instance?.slot)
     // A placement is in the file's own units, like everything else here.
     const place = {
       x: authored.x * WORLD_SCALE,
       y: authored.y * WORLD_SCALE,
       z: authored.z * WORLD_SCALE,
     }
+    const own = instance ? { instance: instance.slot } : {}
+    const attached =
+      instance?.placement.parent !== undefined ? { attachedTo: instance.placement.parent } : {}
 
     // One authored resource compiles to several files under the same stem, so
     // take each for what it is rather than picking one and hoping. Choosing
@@ -228,6 +267,8 @@ export function assembleMap(
             // Stored halved `shift` times — see `CollisionMesh.shift`.
             scale: WORLD_SCALE * 2 ** mesh.shift,
             source: resource.stem,
+            ...own,
+            ...attached,
           })
         } catch {
           missing.push(file)
@@ -245,6 +286,7 @@ export function assembleMap(
           scale: WORLD_SCALE,
           animation: ownAnimation(model, file, files, members),
           source: resource.stem,
+          ...own,
           ...(motions ? { motions } : {}),
         })
         water.push(...waterOf(model, place, WORLD_SCALE))
@@ -254,8 +296,6 @@ export function assembleMap(
       }
     }
   }
-
-  return { pieces, meshes, water, marsh, missing }
 }
 
 /** The animation compiled from the same authored resource as this model. */

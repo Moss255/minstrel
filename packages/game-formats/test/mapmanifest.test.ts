@@ -6,95 +6,7 @@ import {
   readMapManifest,
   resolveMapResources,
 } from '../src/mapmanifest.ts'
-
-/**
- * Build a `.bmdj`: a tagged record stream then a string table.
- *
- * The resource records address their names by **byte offset** into the string
- * section, which is the detail the reader exists to get right — an ordinal
- * would work on the first name and drift on every one after it.
- */
-function buildManifest(
-  names: readonly string[],
-  options: {
-    declared?: number
-    /** One per name: where the map puts it, and what it hangs off. */
-    places?: readonly {
-      at?: [number, number, number]
-      slot: number
-      parent?: number
-      /** The resource this places, by index. Defaults to the slot. */
-      names?: number
-    }[]
-  } = {},
-): Uint8Array {
-  const strings: number[] = []
-  const offsets: number[] = []
-  for (const name of names) {
-    offsets.push(strings.length)
-    for (const ch of name) strings.push(ch.charCodeAt(0))
-    strings.push(0)
-  }
-
-  const records: number[] = []
-  const u16 = (v: number) => records.push(v & 0xff, (v >>> 8) & 0xff)
-  const u32 = (v: number) =>
-    records.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
-  const record = (tag: number, type: number, values: readonly number[]) => {
-    u16(tag)
-    // Tag, count, then two bits of type per value, padded to a word: a record
-    // of five or more values has an eight-byte head, not four.
-    const typeBytes = Math.max(1, Math.ceil(values.length / 4))
-    const header = Math.ceil((3 + typeBytes) / 4) * 4
-    records.push(values.length, type)
-    for (let i = 4; i < header; i++) records.push(0)
-    for (const v of values) u32(v)
-  }
-
-  record(0x6a, 1, [options.declared ?? names.length])
-  names.forEach((_, i) => {
-    record(0x6c, 81, [i, offsets[i] as number, 0, 0])
-  })
-  if (options.places) {
-    const asWord = (value: number) => {
-      const buffer = new ArrayBuffer(4)
-      new DataView(buffer).setFloat32(0, value, true)
-      return new DataView(buffer).getUint32(0, true)
-    }
-    for (const place of options.places) {
-      const [x, y, z] = place.at ?? [0, 0, 0]
-      // The real layout, now that the record's header is counted properly: the
-      // slot leads, the translation is at 2 to 4 and the parent at 5. What used
-      // to look like a leading value was the record's second type byte.
-      record(0x6f, 165, [
-        place.slot,
-        place.names ?? place.slot,
-        asWord(x),
-        asWord(y),
-        asWord(z),
-        place.parent ?? 0xffffffff,
-        0,
-        asWord(1),
-        asWord(1),
-        asWord(1),
-        0,
-        0,
-        0,
-        0,
-      ])
-    }
-  }
-  record(0x6e, 0xff, [])
-
-  const header: number[] = []
-  const h32 = (v: number) =>
-    header.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
-  h32(0)
-  h32(16 + records.length)
-  h32(strings.length)
-  h32(names.length)
-  return Uint8Array.from([...header, ...records, ...strings])
-}
+import { buildManifest } from './fixture.ts'
 
 const sample = () => buildManifest(['C01M0300.imd', 'C01A0300.imd', 'C01M03L1.imd', 'C01M03G1.imd'])
 
@@ -185,6 +97,18 @@ describe('placement', () => {
       places: [{ slot: 0 }, { slot: 7, at: [-28.56, -0.5, -9.472] }, { slot: 9, parent: 7 }],
     })
 
+  // A door placed twice, its collision placed twice — each hanging off one of
+  // the door's instances — and a ground plane with no placement.
+  const twoDoors = () =>
+    buildManifest(['M00M0602.imd', 'M00A0602.imd', 'M00M0600.imd'], {
+      places: [
+        { slot: 2, names: 0, at: [1, 0, 12] },
+        { slot: 6, names: 1, parent: 2 },
+        { slot: 4, names: 0, at: [1, 0, 18] },
+        { slot: 8, names: 1, parent: 4 },
+      ],
+    })
+
   it("reads a placement in the file's own units", () => {
     const manifest = readMapManifest(placedManifest())
     const door = manifest.resources[1] as (typeof manifest.resources)[number]
@@ -250,6 +174,26 @@ describe('placement', () => {
     })
     const manifest = readMapManifest(twice)
     expect(manifest.resources[0]?.placement).toMatchObject({ x: 0, z: 0 })
+  })
+
+  it('keeps every placement of a resource placed more than once', () => {
+    const manifest = readMapManifest(twoDoors())
+    const door = manifest.resources[0] as (typeof manifest.resources)[number]
+    expect(door.instances.map((i) => i.slot)).toEqual([2, 4])
+    expect(door.instances.map((i) => i.placement.z)).toEqual([12, 18])
+    expect(manifest.resources[2]?.instances).toEqual([])
+  })
+
+  it("places an attached resource by its own instance's parent", () => {
+    // `D03M06`'s shape: a door placed twice, and its collision placed twice,
+    // each collision hanging off one instance of the door. Resolved through the
+    // door's last instance, both collisions would stand in the second doorway.
+    const manifest = readMapManifest(twoDoors())
+    const collision = manifest.resources[1] as (typeof manifest.resources)[number]
+    expect(placementOf(manifest, collision, 6).z).toBe(12)
+    expect(placementOf(manifest, collision, 8).z).toBe(18)
+    // With no instance named, the last, as before.
+    expect(placementOf(manifest, collision).z).toBe(18)
   })
 
   it('does not hang on a chain that names itself', () => {

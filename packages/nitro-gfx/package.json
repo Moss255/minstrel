@@ -6,6 +6,7 @@
   "license": "MIT",
   "description": "NSBMD model and NSBTX texture parsing, and the DS geometry-engine display list. Game-agnostic, browser-safe.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test/fixture.ts": "./test/fixture.ts"
   }
 }

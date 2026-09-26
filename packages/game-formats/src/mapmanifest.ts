@@ -64,6 +64,22 @@ export interface MapPlacement {
   readonly values: Uint32Array
 }
 
+/**
+ * One of the places a map puts a resource.
+ *
+ * **A resource can be placed more than once**: `D03M06` lists two door models
+ * and places each twice, a pair of doors at z 12.34 and another at z 17.70, and
+ * each placement of a door has its own placement of the door's collision
+ * attached to it. 144 placements on the reference cartridge are a resource's
+ * second or later, in 45 maps, and 140 of them are doors or other repeated
+ * pieces — see `docs/still-open.md` §5b.
+ */
+export interface MapInstance {
+  /** Which instance this is, as a {@link MapPlacement.parent} names it: the record's `values[0]`. */
+  readonly slot: number
+  readonly placement: MapPlacement
+}
+
 /** One entry in a map's resource list. */
 export interface MapResource {
   /** Position in the list. */
@@ -82,8 +98,13 @@ export interface MapResource {
    * do not track each other.
    */
   readonly slot: number
-  /** Where the map puts it, when it carries a placement record. */
+  /** Where the map puts it, when it carries a placement record — the last, if several. */
   readonly placement: MapPlacement | undefined
+  /**
+   * Every place the map puts it, in the manifest's order; empty for a resource
+   * with no placement. The last is {@link placement}, and its slot {@link slot}.
+   */
+  readonly instances: readonly MapInstance[]
 }
 
 export interface MapManifest {
@@ -99,11 +120,12 @@ export interface MapManifest {
    */
   readonly table: DataTable
   /**
-   * Whether the placement records pair one-to-one with the resources.
+   * Whether there is one placement record per resource.
    *
-   * False for the minority of manifests carrying more placements than
-   * resources; those resources are left unplaced rather than placed by a
-   * positional guess that could be off by one all the way down.
+   * False for the 56 manifests that place a resource more than once. Nothing
+   * is left unplaced for it any more — a placement names its resource — and a
+   * resource named by none takes the record at its own position only when this
+   * is true.
    */
   readonly placementsPair: boolean
 }
@@ -150,7 +172,9 @@ export function readMapManifest(data: Uint8Array): MapManifest {
   // floor. `S07M0000` is one — Gortress had its six doors and both gates piled
   // at the origin, so the fortress could be walked straight through.
   //
-  // **The last instance wins, and that is not arbitrary.** The Hexagon places
+  // **`placement` is the last instance, and that is not arbitrary** — every
+  // instance is in `instances`, and a caller drawing one per resource draws
+  // this one. The Hexagon places
   // its sliding statue `D01M01S1` twice, at `(-3.45, 0, 0)` and at the origin,
   // each with its own collision parented to it — the two ends of the slide.
   // The origin is where it rests and where the step-5 record stands on it, and
@@ -161,10 +185,10 @@ export function readMapManifest(data: Uint8Array): MapManifest {
   // door's collision on the far side of the room from its door and discards
   // the parent link, which is the fault {@link MapPlacement} describes.
   const placements = table.withTag(TAG_PLACEMENT)
-  const byResource = new Map<number, (typeof placements)[number]>()
+  const byResource = new Map<number, (typeof placements)[number][]>()
   for (const record of placements) {
     const names = record.values[1]
-    if (names !== undefined) byResource.set(names, record)
+    if (names !== undefined) byResource.set(names, [...(byResource.get(names) ?? []), record])
   }
   const placementsPair = placements.length === entries.length
 
@@ -181,13 +205,13 @@ export function readMapManifest(data: Uint8Array): MapManifest {
       )
     }
     const dot = name.lastIndexOf('.')
-    const record = byResource.get(index) ?? (placementsPair ? placements[position] : undefined)
-    const at = record?.floats
-    // A parent of -1 means none, and reads as NaN through the float view.
-    // Placement records carry fourteen values, so their header is eight bytes
-    // rather than four — see `table.ts`. Every index here is one lower than it
-    // was while the extra type word was being read as a phantom record.
-    const parent = record?.values[5]
+    const fallback = placementsPair ? placements[position] : undefined
+    const records = byResource.get(index) ?? (fallback ? [fallback] : [])
+    const instances = records.map((record) => ({
+      slot: record.values[0] ?? position,
+      placement: placementFrom(record),
+    }))
+    const record = records.at(-1)
     return {
       index,
       name,
@@ -195,23 +219,32 @@ export function readMapManifest(data: Uint8Array): MapManifest {
       unknown_2: entry.values[2] ?? 0,
       unknown_3: entry.values[3] ?? 0,
       slot: record?.values[0] ?? position,
-      placement:
-        record && at
-          ? {
-              x: at[2] ?? 0,
-              y: at[3] ?? 0,
-              z: at[4] ?? 0,
-              scaleX: at[7] ?? 1,
-              scaleY: at[8] ?? 1,
-              scaleZ: at[9] ?? 1,
-              parent: parent === undefined || parent === 0xffffffff ? undefined : parent,
-              values: record.values,
-            }
-          : undefined,
+      placement: instances.at(-1)?.placement,
+      instances,
     }
   })
 
   return { resources, table, placementsPair }
+}
+
+/** A placement record, read. */
+function placementFrom(record: DataTable['records'][number]): MapPlacement {
+  const at = record.floats
+  // A parent of -1 means none, and reads as NaN through the float view.
+  // Placement records carry fourteen values, so their header is eight bytes
+  // rather than four — see `table.ts`. Every index here is one lower than it
+  // was while the extra type word was being read as a phantom record.
+  const parent = record.values[5]
+  return {
+    x: at[2] ?? 0,
+    y: at[3] ?? 0,
+    z: at[4] ?? 0,
+    scaleX: at[7] ?? 1,
+    scaleY: at[8] ?? 1,
+    scaleZ: at[9] ?? 1,
+    parent: parent === undefined || parent === 0xffffffff ? undefined : parent,
+    values: record.values,
+  }
 }
 
 /**
@@ -259,20 +292,31 @@ export function resolveMapResources(
  * the one it is attached to. Returns the origin for a resource with no
  * placement at all, so a caller can place everything uniformly.
  *
+ * `slot` picks which of the resource's {@link MapResource.instances} to place,
+ * and is the last when not given. A parent names an **instance**, not a
+ * resource: the second door of a pair hangs its collision off the door's
+ * second instance, and resolving it through the door's last would stack both
+ * collisions on one doorway.
+ *
  * The chain is followed to a bounded depth: a manifest that named a cycle would
  * otherwise hang the caller, and a malformed file should not be able to do that.
  */
 export function placementOf(
   manifest: MapManifest,
   resource: MapResource,
+  slot: number = resource.slot,
 ): { x: number; y: number; z: number; scaleX: number; scaleY: number; scaleZ: number } {
-  const bySlot = new Map<number, MapResource>()
-  for (const entry of manifest.resources) if (!bySlot.has(entry.slot)) bySlot.set(entry.slot, entry)
+  const bySlot = new Map<number, MapPlacement>()
+  for (const entry of manifest.resources) {
+    for (const instance of entry.instances) {
+      if (!bySlot.has(instance.slot)) bySlot.set(instance.slot, instance.placement)
+    }
+  }
 
-  let at: MapResource | undefined = resource
-  for (let depth = 0; at && depth < 8; depth++) {
-    const placement: MapPlacement | undefined = at.placement
-    if (!placement) break
+  const own =
+    resource.instances.find((instance) => instance.slot === slot)?.placement ?? resource.placement
+  let placement: MapPlacement | undefined = own
+  for (let depth = 0; placement && depth < 8; depth++) {
     // Not `!== 0`: one of the village's ten doorway collisions carries a
     // denormal of about -1e-9 where the other nine carry a clean zero, and
     // reading that as a translation of its own left that one doorway's wall at
@@ -292,11 +336,10 @@ export function placementOf(
       }
     }
     if (placement.parent === undefined) break
-    const next: MapResource | undefined = bySlot.get(placement.parent)
-    if (!next || next === at) break
-    at = next
+    const next: MapPlacement | undefined = bySlot.get(placement.parent)
+    if (!next || next === placement) break
+    placement = next
   }
-  const own = resource.placement
   return {
     x: 0,
     y: 0,
