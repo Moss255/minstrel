@@ -5579,6 +5579,20 @@ function eventPieces(): Piece[] {
         : standingFrame(member, camera.yaw)
       return spritePieces(member, toFloat(PERSON.height) * worldScale, camera.yaw, frame, opacity)
     }
+    // A monster a scene brought in — Hexagoon on `ev22510` — in its own motions.
+    if (actor.monster) {
+      const code = actor.monster.replace(/^.*\//, '').replace(/\.mon$/i, '')
+      const look = monsterLookOf(rom, code)
+      if (!look) return []
+      const posed = sceneMotion((name) => look.motions.get(name), actor, stage.frame, MAP_FPS)
+      const pieces = castPieces(
+        { name: code, model: look.model, motion: posed?.motion, floor: 0, placement },
+        look.catalogue,
+        characterScale,
+        posed?.frame ?? 0,
+      )
+      return opacity < 1 ? pieces.map((piece) => ({ ...piece, opacity })) : pieces
+    }
     const model = actor.model ?? takenOverModel(actor)
     if (!model) return []
     const look = actorLookOf(rom, model, actor.packs)

@@ -645,6 +645,17 @@ describe('staging a scene’s cast — the game’s 502 to 508, 203, 205 and 212
     expect(stage.actors.get(1)?.model).toBe('chara_sub/s016.chr')
   })
 
+  it('gives a character the monster 233 loaded, through 202 — Hexagoon on ev22510', () => {
+    const stage = new EventStage(1)
+    const { thread: t } = thread()
+    stage.host.call(233, ['enemy/b003a.mon', -1], t)
+    stage.host.call(202, [1, -1, 1], t)
+    stage.host.call(203, [1], t)
+    stage.host.call(205, [1, 1], t)
+    expect(stage.actors.get(1)?.monster).toBe('enemy/b003a.mon')
+    expect(stage.actors.get(1)?.model).toBeUndefined()
+  })
+
   it('destroys a slot’s model with 212, and undresses whoever wore it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()

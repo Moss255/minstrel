@@ -120,6 +120,11 @@ export interface EventActor {
   after: string | undefined
   /** Its model file, as the script names it: `chara_sub/s016.chr`. */
   model: string | undefined
+  /**
+   * The monster it wears, by code — `b003a`, Hexagoon — when `202` gives it a
+   * slot `233` loaded a monster into rather than one `200` loaded a model into.
+   */
+  monster: string | undefined
   /** The motion packs it is handed, as the script names them. */
   readonly packs: string[]
   /**
@@ -956,6 +961,7 @@ export class EventStage {
         once: false,
         after: undefined,
         model: undefined,
+        monster: undefined,
         packs: [],
         cast: undefined,
         sprite: undefined,
@@ -2441,6 +2447,17 @@ export class EventStage {
       }
       case 202: {
         const slot = this.slots.get(num(args[1]))
+        // **Or a monster**: `ev22510` loads Hexagoon with `233` into slot −1
+        // and gives it to character 1 with `202(1, −1, 1)`. The two share the
+        // negative slot numbers; which store a slot is in says which it is.
+        const monster = slot ? undefined : this.monsters.get(monsterSlot(num(args[1])))
+        if (monster) {
+          const actor = this.actor(num(args[0]))
+          actor.monster = monster
+          this.entries.set(num(args[0]), num(args[1]))
+          this.bound.set(num(args[0]), num(args[0]))
+          return 0
+        }
         if (!slot) return 0
         const actor = this.actor(num(args[0]))
         actor.model = slot.model
@@ -3301,6 +3318,7 @@ export class EventStage {
       case 203: {
         const actor = this.actor(num(args[0]))
         actor.model = undefined
+        actor.monster = undefined
         actor.packs.length = 0
         actor.walk = undefined
         actor.turn = undefined
@@ -3316,6 +3334,8 @@ export class EventStage {
         const slot = this.entries.get(entry)
         const loaded = slot === undefined ? undefined : this.slots.get(slot)
         const actor = this.actor(num(args[0]))
+        const monster = slot === undefined ? undefined : this.monsters.get(monsterSlot(slot))
+        if (!loaded && monster) actor.monster = monster
         if (loaded) {
           actor.model = loaded.model
           actor.packs.push(...loaded.packs.filter((pack) => !actor.packs.includes(pack)))
