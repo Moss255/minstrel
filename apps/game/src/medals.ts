@@ -28,8 +28,14 @@ import { MEDALS_MOST, type MedalRewards } from '@minstrel/game-formats'
  * **INFERRED** — the order of the lines where a step's handler was not tied to
  * its label: that a reward is followed by handing over again while medals are
  * left, and that 21 and 32 ("that's so many ye've given me") come after the
- * hand-over they count. The exchange after 80 is **not built**: a visit that
- * starts there says 110 and, holding medals, 150 and 151.
+ * hand-over they count.
+ *
+ * **The exchange after 80** (`021680cc` on): a list of the six, each at its
+ * price; choosing one says 130, "that'll cost ye", and asks, or 132 when the
+ * medals held fall short (`02168318`); yes hands the price over — counted
+ * into the total as any hand-over is — and gives the item, 140, which asks
+ * whether there is more (`02168400`); no says 131 and goes back to the list;
+ * more says 141 and goes back; leaving says 150 and 151.
  */
 
 /** One line of his: a number in `str_mdl`, and what fills it. */
@@ -80,11 +86,12 @@ export function visitMax(rewards: MedalRewards, given: number, held: number): Me
     })
   }
 
-  // Every milestone passed: the exchange, which is not built.
+  // Every milestone passed: the exchange — his greeting, and with medals held
+  // what he offers, before the list (`02168074`: held → 120, none → 151). The
+  // list and what follows it are the caller's: see `exchangeLine`.
   if (nextMilestone(rewards, given) < 0) {
     say(110)
-    if (held > 0) say(150)
-    say(151)
+    say(held > 0 ? 120 : 151)
     return { lines, handed, gifts, given, allPassed: true }
   }
 
@@ -138,6 +145,20 @@ export function visitMax(rewards: MedalRewards, given: number, held: number): Me
   return { lines, handed, gifts, given, allPassed }
 }
 
+/** One of the exchange's lines: `val_3` the price and the item the one picked. */
+export function exchangeLine(
+  message: number,
+  given: number,
+  held: number,
+  picked?: { readonly medals: number; readonly item: number },
+): MedalLine {
+  return {
+    message,
+    values: { given, held, next: picked?.medals ?? 0, after: Math.min(given + held, HELD_TO) },
+    item: picked?.item,
+  }
+}
+
 /**
  * One of his lines made plain for the text box: its numbers put in, and each
  * `<IF_SING val_n>` settled by the number it names — the text engine's
@@ -155,13 +176,18 @@ export function medalText(raw: string, line: MedalLine, itemName: (id: number) =
   }
   const name = line.item === undefined ? '' : itemName(line.item)
   const article = /^[aeiou]/i.test(name) ? 'an' : 'a'
-  return raw
-    .replace(
-      /<IF_SING (val_\d)>(.*?)<ELSE_NOT_SING>(.*?)<ENDIF_SING>/g,
-      (_, which: string, one: string, many: string) => (numbers[which] === 1 ? one : many),
-    )
-    .replace(/<(val_\d)>/g, (_, which: string) => String(numbers[which] ?? ''))
-    .replace(/<INDEF_ART_SGL_I_NAME>/g, `${article} ${name}`)
-    .replace(/<DEF_ART_SGL_I_NAME>/g, `the ${name}`)
-    .replace(/<SGL_I_NAME>/g, name)
+  return (
+    raw
+      .replace(
+        /<IF_SING (val_\d)>(.*?)<ELSE_NOT_SING>(.*?)<ENDIF_SING>/g,
+        (_, which: string, one: string, many: string) => (numbers[which] === 1 ? one : many),
+      )
+      .replace(/<(val_\d)>/g, (_, which: string) => String(numbers[which] ?? ''))
+      // Whether an item's name is a plural noun — "the pixie boots are" — is
+      // not read; every one is taken as singular. Ours.
+      .replace(/<IF_I_NAME_PLRNOUN>(.*?)<ELSE_NOT_PLRNOUN>(.*?)<ENDIF_PLRNOUN>/g, '$2')
+      .replace(/<INDEF_ART_SGL_I_NAME>/g, `${article} ${name}`)
+      .replace(/<DEF_ART_SGL_I_NAME>/g, `the ${name}`)
+      .replace(/<SGL_I_NAME>/g, name)
+  )
 }

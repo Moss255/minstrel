@@ -50,6 +50,7 @@ is one the menu will not know about.
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `medals=80` | the mini medals already handed to Cap'n Max, so his milestones or his exchange can be reached without collecting them — ours. Talking to him (`M08M07`, cast 103) opens his service; see `apps/game/src/medals.ts` |
 | `patty=1` | open Patty's Party Planning Place. Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest |
 | `pot=1` | open the Krak Pot. Its real way in is `<RENKIN>` on the pot's own talk line in the Quester's Rest, which needs the story far enough along for it to be placed |
 | `create=1` | **make the Hero before the map opens**, the seven creation screens in the game's own order, then enter. This is where the game puts it too: scene 21 `charamake` runs at game mode 2, which only the boot menu sets, so the Hero is made off the title screen before any map. Ours is the parameter, standing in for a New Game item until there is a title screen |

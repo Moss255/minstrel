@@ -34,6 +34,19 @@ export type Visit =
     }
   | { readonly kind: 'inn'; readonly id: number; readonly cursor: number; readonly said: string }
   | { readonly kind: 'church'; readonly id: number; readonly cursor: number; readonly said: string }
+  | {
+      /**
+       * Cap'n Max's exchange, once every milestone is passed: the six he
+       * offers, each at its price in mini medals — see `medals.ts`. Choosing
+       * one hands the choice back, for his own lines to take it on.
+       */
+      readonly kind: 'medals'
+      readonly title: string
+      readonly exchanges: readonly { readonly medals: number; readonly item: number }[]
+      readonly held: number
+      readonly cursor: number
+      readonly said: string
+    }
 
 /** What a visit needs to know about the items, and about the Hero. */
 export interface Counter {
@@ -52,6 +65,8 @@ export interface Outcome {
   readonly bag: Bag
   readonly rested?: boolean
   readonly confessed?: boolean
+  /** Cap'n Max's exchange: the one chosen, by place in his list, or -1 to leave. */
+  readonly medalPick?: number
 }
 
 /** How a visit looks: its rows, which is chosen, and the lines beside them. */
@@ -89,6 +104,15 @@ function forSale(bag: Bag): number[] {
 }
 
 function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
+  if (visit.kind === 'medals') {
+    return [
+      ...visit.exchanges.map(
+        (offer) =>
+          `${counter.name(offer.item)} — ${offer.medals} mini medal${offer.medals === 1 ? '' : 's'}`,
+      ),
+      'Leave',
+    ]
+  }
   if (visit.kind === 'inn') return INN_ROWS
   if (visit.kind === 'church') return CHURCH_ROWS
   if (visit.mode === 'top') return SHOP_TOP
@@ -108,6 +132,14 @@ function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
 }
 
 export function viewOf(visit: Visit, bag: Bag, counter: Counter): VisitView {
+  if (visit.kind === 'medals') {
+    return {
+      title: visit.title,
+      rows: rowsOf(visit, bag, counter),
+      cursor: visit.cursor,
+      lines: [visit.said, `${visit.held} mini medal${visit.held === 1 ? '' : 's'}`],
+    }
+  }
   const title =
     visit.kind === 'shop'
       ? `Shop ${visit.shop.id}${visit.mode === 'buy' ? ' — buying' : visit.mode === 'sell' ? ' — selling' : ''}`
@@ -138,6 +170,10 @@ export function leaveVisit(visit: Visit): Visit | undefined {
 
 /** Take the chosen row. */
 export function chooseInVisit(visit: Visit, bag: Bag, counter: Counter): Outcome {
+  if (visit.kind === 'medals') {
+    const picked = visit.cursor < visit.exchanges.length ? visit.cursor : -1
+    return { visit: undefined, bag, medalPick: picked }
+  }
   if (visit.kind === 'inn') {
     if (visit.cursor !== 0) return { visit: undefined, bag }
     const paid = pay(bag, INN_PRICE)

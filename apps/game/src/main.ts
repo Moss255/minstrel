@@ -23,6 +23,7 @@ import {
   inArea,
   type LevelRow,
   type LevelTable,
+  MEDALS_MOST,
   MINI_MEDAL,
   type NpcPlacement,
   OP_EVENT,
@@ -232,7 +233,7 @@ import {
 } from './hero.ts'
 import { allTriggers, entranceOf, givenNamesFrom, type Loaded, load, type Stage } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
-import { medalText, visitMax } from './medals.ts'
+import { exchangeLine, type MedalLine, medalText, visitMax } from './medals.ts'
 import {
   back,
   choose,
@@ -1286,6 +1287,10 @@ function openWorld(map: string): void {
   // `?level=20` puts the Hero at that level, with its experience — ours, so a
   // headless browser can see a fight through. The same move the `l` key makes,
   // clamped to the table's ends; see `levelTo`.
+  // `?medals=80` sets the mini medals already handed to Cap'n Max — ours, so
+  // his exchange can be reached without handing in eighty. See `medals.ts`.
+  const handedIn = Number(params.get('medals'))
+  if (Number.isInteger(handedIn) && handedIn > 0) medalsGiven = Math.min(handedIn, MEDALS_MOST)
   const level = Number(params.get('level'))
   if (Number.isInteger(level) && level > 0) levelTo(level)
   // `?preset=3` dresses the Hero as a ready-made character — see `showPreset`.
@@ -2943,12 +2948,20 @@ function talk(everyLine = false): void {
       talkThen = undefined
       if (go.answer === undefined || go.answer === talkAnswer) startEvent(go.event, true)
     }
+    // A conversation that goes on to something of the engine's own once read
+    // — Cap'n Max's list, after his lines — with the answer given.
+    if (!talking && afterTalk) {
+      const go = afterTalk
+      afterTalk = undefined
+      go(talkAnswer)
+    }
     return
   }
   // While an event plays, `f` only reads its messages.
   if (playing) return
   talkOnward = undefined
   talkThen = undefined
+  afterTalk = undefined
   talkAnswer = undefined
   const cast: Talker[] = [
     // Where they stand now, an event having left them there — see `castPlaced`.
@@ -3285,25 +3298,102 @@ function visitMedals(who: Talker): void {
   for (let n = 0; n < visit.handed; n++) bag = drop(bag, MINI_MEDAL) ?? bag
   for (const gift of visit.gifts) bag = take(bag, { item: gift })
   medalsGiven = visit.given
-  const words = loaded.medalWords
-  const texts = visit.lines.map((line) =>
-    medalText(words.get(line.message) ?? `(message ${line.message})`, line, nameOf),
-  )
-  talkContext = textContext()
-  talking = startConversation(
-    who,
-    `the mini medals: ${medalsGiven} handed in`,
-    texts,
-    visit.lines.map((line) => `str_mdl ${line.message}`),
-    talkContext,
-  )
+  medalTalker = who
+  sayMedals(visit.lines)
   // Every milestone passed: the scene he has waited for — see `CURTSY_SCENE`.
   if (visit.allPassed && visit.handed > 0) talkThen = { event: CURTSY_SCENE, answer: undefined }
-  showTalk()
+  // Past every milestone, with medals to trade: his list, once he has spoken.
+  else if (visit.allPassed && held > 0) afterTalk = () => openMedalList()
   status(
     `Cap’n Max: ${visit.handed} medal${visit.handed === 1 ? '' : 's'} handed in, ${medalsGiven} in all` +
       (visit.gifts.length > 0 ? ` · given ${visit.gifts.map(nameOf).join(', ')}` : ''),
   )
+}
+
+/** Cap'n Max, while his service is open: who the lines are said by. */
+let medalTalker: Talker | undefined
+
+/** What happens once the conversation up now is read, given the answer — see `talk`. */
+let afterTalk: ((answer: number | undefined) => void) | undefined
+
+/** Say some of his lines, as one conversation — see `medalText`. */
+function sayMedals(lines: readonly MedalLine[]): void {
+  if (!loaded || !medalTalker) return
+  const words = loaded.medalWords
+  talkContext = textContext()
+  talking = startConversation(
+    medalTalker,
+    `the mini medals: ${medalsGiven} handed in`,
+    lines.map((line) =>
+      medalText(words.get(line.message) ?? `(message ${line.message})`, line, nameOf),
+    ),
+    lines.map((line) => `str_mdl ${line.message}`),
+    talkContext,
+  )
+  showTalk()
+}
+
+/** His exchange's list — see `services.ts` and `medals.ts`. */
+function openMedalList(): void {
+  const rewards = loaded?.medalRewards
+  if (!loaded || !rewards) return
+  visit = {
+    kind: 'medals',
+    title: plainMarkup(loaded.medalWords.get(100) ?? 'Mini Medals', heroName()),
+    exchanges: rewards.exchanges,
+    held: bag.items.get(MINI_MEDAL) ?? 0,
+    cursor: 0,
+    said: '',
+  }
+  showMenu()
+}
+
+/**
+ * One of his list chosen, and his lines on it, as `02168318` and `02168400`
+ * run them: too few medals → 132 and the list again; enough → 130 and a
+ * yes-or-no — yes hands the price over, counted into the total, and gives
+ * it, 140, asking if there is more; no → 131 and the list again.
+ */
+function pickMedal(at: number): void {
+  const offer = loaded?.medalRewards?.exchanges[at]
+  if (!offer) {
+    medalFarewell()
+    return
+  }
+  const held = bag.items.get(MINI_MEDAL) ?? 0
+  if (held < offer.medals) {
+    sayMedals([exchangeLine(132, medalsGiven, held, offer)])
+    afterTalk = () => openMedalList()
+    return
+  }
+  sayMedals([exchangeLine(130, medalsGiven, held, offer)])
+  afterTalk = (answer) => {
+    if (answer !== 0) {
+      sayMedals([exchangeLine(131, medalsGiven, held, offer)])
+      afterTalk = () => openMedalList()
+      return
+    }
+    for (let n = 0; n < offer.medals; n++) bag = drop(bag, MINI_MEDAL) ?? bag
+    medalsGiven = Math.min(medalsGiven + offer.medals, MEDALS_MOST)
+    bag = take(bag, { item: offer.item })
+    const left = bag.items.get(MINI_MEDAL) ?? 0
+    status(`Cap’n Max: ${nameOf(offer.item)} for ${offer.medals} mini medals, ${left} left`)
+    sayMedals([exchangeLine(140, medalsGiven, left, offer)])
+    afterTalk = (more) => {
+      if (more !== 0) {
+        medalFarewell()
+        return
+      }
+      sayMedals([exchangeLine(141, medalsGiven, left, offer)])
+      afterTalk = () => openMedalList()
+    }
+  }
+}
+
+/** Leaving him: what is left, and his goodbye — 150 and 151. */
+function medalFarewell(): void {
+  const held = bag.items.get(MINI_MEDAL) ?? 0
+  sayMedals([exchangeLine(150, medalsGiven, held), exchangeLine(151, medalsGiven, held)])
 }
 
 /**
@@ -6581,7 +6671,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         }
       }
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
-    } else if (action === 'cancel' || action === 'menu') visit = leaveVisit(visit)
+      // Cap'n Max's list hands its choice back to his lines — see `pickMedal`.
+      if (outcome.medalPick !== undefined) pickMedal(outcome.medalPick)
+    } else if (action === 'cancel' || action === 'menu') {
+      const leaving = visit.kind === 'medals'
+      visit = leaveVisit(visit)
+      if (leaving) medalFarewell()
+    }
     showMenu()
     event.preventDefault()
     return handled

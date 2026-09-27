@@ -1,6 +1,6 @@
 import type { MedalRewards } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
-import { medalText, visitMax } from '../src/medals.ts'
+import { exchangeLine, medalText, visitMax } from '../src/medals.ts'
 
 // The reference cartridge's counts, with made-up items numbered for their count.
 const rewards: MedalRewards = {
@@ -52,8 +52,21 @@ describe('handing mini medals to Cap’n Max', () => {
     expect(visit.allPassed).toBe(true)
   })
 
-  it('opens at the exchange once all are passed, which is not built', () => {
-    expect(said(visitMax(rewards, 80, 2))).toEqual([110, 150, 151])
+  it('opens at the exchange once all are passed: the list follows with medals held', () => {
+    expect(said(visitMax(rewards, 80, 2))).toEqual([110, 120])
+    expect(said(visitMax(rewards, 80, 0))).toEqual([110, 151])
+  })
+
+  it('puts the price and the item picked in the exchange’s lines', () => {
+    const line = exchangeLine(130, 80, 9, { medals: 5, item: 22017 })
+    expect(medalText('cost ye <val_3> mini medals', line, () => '')).toBe('cost ye 5 mini medals')
+    expect(
+      medalText(
+        '<DEF_ART_SGL_I_NAME><IF_I_NAME_PLRNOUN> are<ELSE_NOT_PLRNOUN>’s<ENDIF_PLRNOUN> yours',
+        line,
+        () => 'elfin elixir',
+      ),
+    ).toBe('the elfin elixir’s yours')
   })
 
   it('fills the numbers, settles singular and plural, and names the item', () => {

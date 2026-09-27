@@ -4132,5 +4132,13 @@ orichalcum, 20 pixie boots.
 | `02167e28`, `02167e6c`, `02167eb0`, `02167f1c`, `02167fb0` | what follows: medals held → hand them over; none → the tally (50) on a later visit; reached → 40; not reached → 51, after 50 on a later visit; every milestone passed → 60 |
 
 The eightieth medal's scene is `ev28590`, whose own record is in map 1807; its
-lines are `str_mdl` 60 to 63 again. The exchange after 80 (100 to 151) is read
-and not built.
+lines are `str_mdl` 60 to 63 again.
+
+**The exchange after 80** (`func_ov004_021680cc` on): after his greeting, 110,
+medals held → 120 and the list, none → 151 (`02168074`). The list is the six
+exchanges at their prices, titled by line 100 (`021680cc`); choosing one sets
+`val_3` to its price and, with enough held, says 130 and asks, else 132
+(`02168318`). Yes takes the price through the same hand-over as a milestone —
+**so exchanges count towards the total** — gives the item, and says 140, which
+asks if there is more (`02168400`); no says 131; more says 141; leaving says
+150 and 151 (`02168244`, `02168268`).

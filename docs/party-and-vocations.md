@@ -1169,9 +1169,10 @@ actually left.
   to Cap'n Max in his castle opens his service by his record's `145:7`; the
   medals held are handed over as the game hands them — a milestone takes only
   what it needs and pays its reward, the rest go on to the next — the total is
-  saved, and his own lines say it. The eightieth medal's scene plays after.
-  **Not built**: the exchange he opens after 80, and the long introduction at
-  200 whose condition is not established. Medals themselves come from chests,
+  saved, and his own lines say it. The eightieth medal's scene plays after,
+  and then **his exchange**: the six he offers at their prices, a yes-or-no
+  on each, the price counted into the total as the game counts it. **Not
+  built**: the long introduction at 200, whose condition is not established. Medals themselves come from chests,
   quests and scenes as any item does.
 - ~~**Name entry.**~~ **Done, 26 September 2026** — `naming.ts`. The eighth
   screen runs after the seventh knob for the Hero and for everyone Patty
