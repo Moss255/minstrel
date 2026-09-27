@@ -806,3 +806,15 @@ describe('the draws of what is not a plain blow — the game’s', () => {
     expect(round(always).drawn).toBe(round(rules).drawn)
   })
 })
+
+describe('the rounds a member stood at the start of', () => {
+  it('counts one a round for each of the party standing, and none for a foe', () => {
+    const start = startBattle([hero, { ...hero, name: 'Down' }, blob('Wall', 999, 0)])
+    const down = withHp(start, new Map([[1, 0]]))
+    const { state } = fight(down, 5n, attackFirstFoe, 3)
+    expect(state.round).toBe(3)
+    expect(state.fighters[0]?.rounds).toBe(3)
+    expect(state.fighters[1]?.rounds).toBeUndefined()
+    expect(state.fighters[2]?.rounds).toBeUndefined()
+  })
+})

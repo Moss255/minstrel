@@ -56,6 +56,11 @@ export {
   readEventMessages,
   readTableMessages,
 } from './events.ts'
+export {
+  type ExperienceAdjust,
+  type ExperienceBand,
+  readExperienceAdjust,
+} from './expadj.ts'
 export { type FieldMonster, readFieldMonsters } from './fieldmonsters.ts'
 export {
   type BitmapFont,

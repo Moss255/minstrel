@@ -171,6 +171,10 @@ function changeOurs(kind: ChangeKind, result: ChangeResult, whom: string): strin
 
 /** `str_bres`'s messages, by what they say. */
 export const RESULT_SAYS = {
+  /**
+   * One earner's number; 7, 8 and 9 are two, three and four of them, each
+   * `<str_n>` and `<val_n>` a name and a number.
+   */
   earns: 6,
   level: 10,
   gold: 16,
@@ -183,6 +187,10 @@ export const RESULT_SAYS = {
    */
   chestHolds: 19,
   wipedOut: 20,
+  /** "<TARGET> receives some experience!" — one earner. */
+  receives: 25,
+  /** "Each party member receives some experience!" — more than one. */
+  eachReceives: 26,
 } as const
 
 /** Something the Items command offers: what it is, how many, and its heal if it has one. */

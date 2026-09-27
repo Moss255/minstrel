@@ -182,6 +182,14 @@ export interface FighterState extends Fighter {
   readonly fled: boolean
   /** Its changes of state — see `states.ts`. */
   readonly states: States
+  /**
+   * The rounds one of the party has been standing at the start of — what
+   * their share of the experience is weighed by; see `experienceShares`.
+   * The game's counter at `+0x19c` → `+8`, added to at `0x021dacb0` of
+   * overlay 26 — taken to be a round's start, and not for one who is down:
+   * INFERRED. Nothing before the first round.
+   */
+  readonly rounds?: number
 }
 
 /** What an item does when used: the HP it restores, as a base give or take a spread. */
@@ -623,6 +631,8 @@ export function playRound(
   let fighters: FighterState[] = state.fighters.map((f, i) => ({
     ...f,
     defending: alive(f) && f.states.sleep === undefined && commands.get(i)?.kind === 'defend',
+    // A round counted for each of the party standing at its start.
+    ...(f.side === 'party' && alive(f) ? { rounds: (f.rounds ?? 0) + 1 } : {}),
   }))
   // **The game's, in its order** (`ProcessCombatTurn`, `0x0215d740` on): each
   // fighter in turn is looked at, and one the opening leaves out is passed

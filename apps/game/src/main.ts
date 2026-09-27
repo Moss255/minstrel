@@ -64,6 +64,7 @@ import {
 } from '@minstrel/render'
 import {
   BattleRng,
+  type BattleState,
   blockChance,
   type CollisionWorld,
   calmFor,
@@ -71,6 +72,7 @@ import {
   createFollower,
   DropRng,
   dropsWon,
+  experienceShares,
   type Fighter,
   type Follower,
   facingOff,
@@ -86,6 +88,7 @@ import {
   type Roaming,
   type RoamRules,
   resetFollower,
+  type Sharer,
   spoils,
   startRoaming,
   tickRoaming,
@@ -4951,39 +4954,80 @@ function settleBattle(): void {
   }
   const lines: string[] = []
   if (eventFight) eventFight = { ...eventFight, won: battle.state.outcome === 'won' }
+  /** Hit points each companion's level brought, by place — added to their wounds below. */
+  const grown = new Map<number, number>()
   if (battle.state.outcome === 'won' && hero && levels) {
     const { exp, gold } = spoils(battle.state)
-    const before = standing(levels, expOf(leader()), leader().gains).level
-    // Into the vocation that earned it; the other twelve are untouched.
-    leader().exp.set(leader().vocation, expOf(leader()) + exp)
     bag = take(bag, { gold })
-    const after = standing(levels, expOf(leader()), leader().gains).level
-    leader().hp = Math.min(after.maxHp, hero.hp + (after.maxHp - before.maxHp))
-    // MP spent in the battle stay spent, but a level's new MP come with it.
-    const mp = Math.min(after.maxMp, hero.mp + (after.maxMp - before.maxMp))
-    leader().mp = mp >= after.maxMp ? undefined : mp
-    const earned = said(RESULT_SAYS.earns, { values: { str_1: name, val_1: exp } })
-    const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), values: { val_1: gold } })
+    // **Shared as the game shares it** — see `sharesOf`: by level and rounds
+    // taken part in, nothing to one down, each share rounded up.
+    const earners = sharesOf(battle.state, exp).filter((s) => s.share > 0)
+    // The game's own line: 26, "each party member", when more than one
+    // earns, and 25 naming the one otherwise — `func_ov023_021f03a0`, which
+    // counts the nonzero shares and chooses at `0x021f07fc`.
+    const one = earners.length === 1 ? earners[0] : undefined
+    const receives =
+      earners.length > 1
+        ? said(RESULT_SAYS.eachReceives, {})
+        : one
+          ? said(RESULT_SAYS.receives, { target: one.named })
+          : undefined
+    // How much each earns: the game shows the numbers in a results window of
+    // overlay 17's, which is not built — its lines 6 to 9, one for each
+    // number of earners, say them here instead. **Ours**, that use of them.
+    const values: Record<string, number | string> = {}
+    for (const [i, s] of earners.entries()) {
+      values[`str_${i + 1}`] = s.named.name
+      values[`val_${i + 1}`] = s.share
+    }
+    const earned =
+      earners.length > 0 && earners.length <= 4
+        ? said(RESULT_SAYS.earns + earners.length - 1, { values })
+        : undefined
+    // `<IF_SOLO>` taken to be a party of one — INFERRED from its name.
+    const solo = battle.state.fighters.filter((f) => f.side === 'party').length === 1
+    const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), solo, values: { val_1: gold } })
+    const told = [receives, earned, obtained].filter((line) => line !== undefined)
     lines.push(
-      earned !== undefined && obtained !== undefined
-        ? `${earned}\n${obtained}`
-        : `${name} gains ${exp} experience and ${gold} gold coin${gold === 1 ? '' : 's'}.`,
+      told.length === 3
+        ? told.join('\n')
+        : [
+            ...earners.map((s) => `${s.named.name} gains ${s.share} experience.`),
+            `The party obtains ${gold} gold coin${gold === 1 ? '' : 's'}.`,
+          ].join('\n'),
     )
-    if (after.level > before.level) {
+    // The Hero's wounds and magic go on as the battle left them, whether or
+    // not they earned; a level's new HP and MP come with it.
+    const heroBefore = standing(levels, expOf(leader()), leader().gains).level
+    for (const s of earners) {
+      const table = levelsFor(s.member)
+      if (!table) continue
+      const before = standing(table, expOf(s.member), s.member.gains).level
+      // Into the vocation that earned it; the other twelve are untouched.
+      s.member.exp.set(s.member.vocation, expOf(s.member) + s.share)
+      const after = standing(table, expOf(s.member), s.member.gains).level
+      if (s.place !== 0) grown.set(s.place, after.maxHp - before.maxHp)
+      if (after.level <= before.level) continue
+      const named = s.place === 0 ? heroNamed() : s.named
       lines.push(
-        said(RESULT_SAYS.level, { target: heroNamed(), values: { val_1: after.level } }) ??
-          `${name} reaches level ${after.level}!`,
+        said(RESULT_SAYS.level, { target: named, values: { val_1: after.level } }) ??
+          `${named.name} reaches level ${after.level}!`,
       )
       lines.push(levelGainsText(before, after))
       // A level's skill points, into the one pool a character has — see
       // `earnSkillPoints`. The game's own sentence for it is `str_gskl`'s
       // "<val_1> skill point(s) earned"; ours until that table is wired to
       // the battle's words.
-      const points = earnSkillPoints(leader(), before, after)
+      const points = earnSkillPoints(s.member, before, after)
       if (points > 0) {
-        lines.push(`${name} earns ${points} skill point${points === 1 ? '' : 's'}.`)
+        lines.push(`${named.name} earns ${points} skill point${points === 1 ? '' : 's'}.`)
       }
     }
+    const heroAfter = standing(levels, expOf(leader()), leader().gains).level
+    leader().hp = Math.min(heroAfter.maxHp, hero.hp + (heroAfter.maxHp - heroBefore.maxHp))
+    // MP spent in the battle stay spent, but a level's new MP come with it.
+    const mp = Math.min(heroAfter.maxMp, hero.mp + (heroAfter.maxMp - heroBefore.maxMp))
+    leader().mp = mp >= heroAfter.maxMp ? undefined : mp
     // What the monsters dropped — rolled the game's way, from its own
     // generator, after the experience and the gold are settled; see `dropsWon`.
     for (const won of dropsWon(battle.state, dropRng)) {
@@ -5017,12 +5061,61 @@ function settleBattle(): void {
   for (const at of battleCompanions) {
     const fighter = battle.state.fighters[at.index]
     if (!fighter) continue
-    const left = battle.state.outcome === 'lost' ? fighter.maxHp : Math.max(1, fighter.hp)
+    // A level reached in it adds its HP to what they have, as the Hero's does.
+    const gain = grown.get(at.place) ?? 0
+    const most = fighter.maxHp + gain
+    const left =
+      battle.state.outcome === 'lost'
+        ? fighter.maxHp
+        : Math.min(most, Math.max(1, fighter.hp) + gain)
     // By their place, so a created character keeps their wounds too.
     const along = members[at.place]
-    if (along) along.hp = left >= fighter.maxHp ? undefined : left
+    if (along) along.hp = left >= most ? undefined : left
   }
   battle = { ...withPages(battle, lines), settled: true }
+}
+
+/**
+ * Who shares a won battle's experience, in the party's places, and what each
+ * takes — `experienceShares`, the game's. Each is weighed by their level in
+ * the vocation they are and the rounds they stood at the start of; one down
+ * takes nothing.
+ *
+ * **A story companion takes no share and weighs nothing**: their numbers are
+ * `attnpc`'s and fixed (`levelsUp`), and the game's own party of four is the
+ * Hero and those made at the Quester's Rest — a guest who fights is ours.
+ */
+function sharesOf(
+  state: BattleState,
+  total: number,
+): { member: Member; place: number; named: Named; share: number }[] {
+  const fighting = [
+    { member: leader(), index: 0, place: 0 },
+    ...battleCompanions.map((at) => ({
+      member: members[at.place],
+      index: at.index,
+      place: at.place,
+    })),
+  ]
+  const places = fighting.map(({ member, index }): Sharer | undefined => {
+    const fighter = state.fighters[index]
+    const row = member && levelsUp(member) ? levelOf(member) : undefined
+    if (!member || !fighter || !row) return undefined
+    return { rounds: fighter.rounds ?? 0, level: row.level, down: fighter.hp <= 0 }
+  })
+  const shares = experienceShares(total, places, loaded?.experienceBands ?? [])
+  return fighting.flatMap(({ member, place }, i) =>
+    member && places[i]
+      ? [
+          {
+            member,
+            place,
+            named: place === 0 ? heroNamed() : { name: nameFor(member) },
+            share: shares[i] ?? 0,
+          },
+        ]
+      : [],
+  )
 }
 
 /** Put the battle away. */

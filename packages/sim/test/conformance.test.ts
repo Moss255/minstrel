@@ -8,6 +8,7 @@ import {
   criticalHit,
   dealt,
   drawnAmount,
+  experienceShares,
   levelled,
   monsterHp,
   partyAmount,
@@ -32,6 +33,8 @@ import {
   damageDealt,
   endOfBlow,
   evasionRate,
+  experienceAdd,
+  experienceShare,
   GameRandom,
   MONSTER_EVASION,
   partyBlockRate,
@@ -788,5 +791,50 @@ describe('the HP a monster comes to a battle with', () => {
     const rng = BattleRng.fromGameState(1n)
     expect(monsterHp(rng, 300, true)).toBe(300)
     expect(rng.drawn).toBe(0)
+  })
+})
+
+describe('a battle’s experience, shared', () => {
+  // The reference cartridge's bands' shape, made up: a bound, a lower bound, none.
+  const bands = [
+    { upTo: 10000, add: 4 },
+    { upTo: 20000, add: 3 },
+    { upTo: undefined, add: 2 },
+  ]
+
+  it('is the game’s, share for share, across parties, totals and rounds', () => {
+    let seed = 0x2545f491
+    const next = (below: number) => {
+      seed = (Math.imul(seed, 0x41c64e6d) + 0x3039) >>> 0
+      return (seed >>> 8) % below
+    }
+    let wrong = 0
+    for (let n = 0; n < 20000; n++) {
+      const total = next(4) === 0 ? next(60000) : next(3000)
+      const places = [0, 1, 2, 3].map((i) =>
+        i > 0 && next(5) === 0
+          ? undefined
+          : { rounds: next(40), level: 1 + next(99), down: next(6) === 0, bonus: next(8) === 0 },
+      )
+      const rounds = places.map((p) => (p && !p.down ? p.rounds : 0)) as [
+        number,
+        number,
+        number,
+        number,
+      ]
+      const levels = places.map((p) => (p && !p.down ? p.level : 0)) as [
+        number,
+        number,
+        number,
+        number,
+      ]
+      const add = experienceAdd(bands, total)
+      const ours = experienceShares(total, places, bands)
+      for (const [i, p] of places.entries()) {
+        const game = p && !p.down ? experienceShare(total, i, rounds, levels, add, p.bonus) : 0
+        if (ours[i] !== game) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
   })
 })

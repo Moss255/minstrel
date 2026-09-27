@@ -797,11 +797,8 @@ read — so that row is ours.
   in that overlay.
 - **Mini medals**: the two reward tables are read and nothing hands a medal
   over or spends one.
-- **How a battle's experience is split among the party.** Only the leader
-  earns anything here, so only the leader levels and only the leader's pool
-  grows — which a party of four makes plain. The award is read from
-  `battleState + 0x5758 + i*4` for `i < 4`, and how that word is computed is
-  not.
+- ~~**How a battle's experience is split among the party.**~~ **Done, 27
+  September 2026** — see "What is still missing, and why" below.
 
 ## 2a. Alchemy
 
@@ -1203,10 +1200,23 @@ actually left.
   the ARM9 and **no write anywhere**, in the ARM9 or any overlay. This was
   written down as the thread to pull when recruitment was implemented;
   recruitment is now implemented and the thread is still unpulled.
-- **How a battle's experience is split among the party.** The game pays each
-  member — its result strings name up to four — and the split itself has not
-  been found on the cartridge. Only the leader earns anything here, which a
-  party of four makes visible.
+- ~~**How a battle's experience is split among the party.**~~ **Done, 27
+  September 2026** — `experienceShares` in the simulation's battle,
+  translated from `func_ov023_021f4098` in the game's floats and held to the
+  oracle. Each member present and standing takes
+  ⌈ total × (k + level) × rounds ÷ Σ (k + level) × rounds ⌉: their level in
+  the vocation they are, the rounds they stood at the start of, and `k` from
+  `expadj.nat` — 4 up to 10,000 experience, 3 up to 20,000, 2 beyond — so a
+  big haul leans harder on level. One down takes nothing and weighs nothing;
+  every share is rounded up, so they can come to more than the total. The
+  line is the game's own: 26, "Each party member receives some
+  experience!", or 25 naming the one. **INFERRED**: that the counter it
+  weighs by counts rounds (`+0x19c` → `+8`, added to at one point of
+  overlay 26's loop), and that a member down is not counted. **Ours**: the
+  numbers said in lines 6–9 (the game shows them in a results window of
+  overlay 17's, not built); a story companion taking no share (the game's
+  party has no fighting guest); and the 1.05 bonus is carried but never set,
+  because which items carry its flag (`func_0208538c`) is not read.
 
 ### The menu shows the party
 

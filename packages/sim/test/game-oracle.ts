@@ -579,3 +579,54 @@ export function builtMonsterHp(random: GameRandom, tableHp: number, fixed: boole
   const draw = random.floatBetween(f(0.8), 1)
   return Math.trunc(f(f(0.5) + f(f(tableHp) * draw)))
 }
+
+/**
+ * A member's share of a won battle's experience — `func_ov023_021f4098`
+ * (`0x021f4098`), as its registers and stack slots go: `rounds` is
+ * `sp+0xc` on (`func_02053dfc`), `levels` `sp+0x1c` on (`func_0202053c`),
+ * each `_ffltu`, left 0 for a place empty or down. `add` is
+ * `func_ov023_021f5578`'s number, `players` the connected count (1 alone).
+ * Returns `_ffix` of the share.
+ */
+export function experienceShare(
+  total: number,
+  member: number,
+  rounds: readonly [number, number, number, number],
+  levels: readonly [number, number, number, number],
+  add: number,
+  bonus: boolean,
+  players = 1,
+): number {
+  const sp0 = f(total)
+  const r7 = f(players)
+  // 0x021f4214: (players − 1) / 10 + 1, times the total.
+  let factor = f(f(f(r7 - 1) / f(10)) + 1)
+  const sl = f(add)
+  const fp0 = f(f(sl + f(levels[3])) * f(rounds[3]))
+  const sp4 = f(f(sl + f(levels[2])) * f(rounds[2]))
+  const sp8 = f(f(sl + f(levels[0])) * f(rounds[0]))
+  const r0 = f(f(sl + f(levels[1])) * f(rounds[1]))
+  let fp = f(fp0 + f(sp4 + f(sp8 + r0)))
+  if (fp === 0) fp = 1
+  // 0x021f431c: the same factor again.
+  factor = f(f(f(r7 - 1) / f(10)) + 1)
+  const r7b = f(sp0 * factor)
+  const mine = f(f(sl + f(levels[member] ?? 0)) * f(rounds[member] ?? 0))
+  let r5 = f(r7b * f(mine / fp))
+  if (bonus) r5 = f(r5 * f(1.05))
+  const frac = f(r5 - f(Math.trunc(r5)))
+  if (0 < frac) r5 = f(r5 + 1)
+  return Math.trunc(r5)
+}
+
+/** `func_ov023_021f5534` and `021f5578`: the first band not passed, or unbounded; else 4. */
+export function experienceAdd(
+  bands: readonly { readonly upTo: number | undefined; readonly add: number }[],
+  scaledTotal: number,
+): number {
+  for (const band of bands) {
+    const bound = band.upTo ?? 0
+    if (bound === 0 || !(scaledTotal > bound)) return band.add
+  }
+  return 4
+}

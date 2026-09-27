@@ -19,6 +19,7 @@ import {
   type CharacterPreset,
   type EventBattle,
   type EventMessage,
+  type ExperienceBand,
   type FieldMonster,
   type FieldZone,
   type Grammar,
@@ -54,6 +55,7 @@ import {
   readDataTable,
   readEventBattles,
   readEventMessages,
+  readExperienceAdjust,
   readFieldEncounters,
   readFieldMonsters,
   readItemBattleParams,
@@ -294,6 +296,12 @@ export interface Loaded {
   readonly givenNames: GivenNames
   /** What a made character's face is recoloured with, out of `palette.bin` — see `skin.ts`. Undefined if it will not read. */
   readonly charaColours: CharaColours | undefined
+  /**
+   * `expadj.nat`'s bands: what a battle's experience adds to each member's
+   * level before it is shared — see `experienceShares`. Empty if it will not
+   * read, which the game's own default, 4, stands in for.
+   */
+  readonly experienceBands: readonly ExperienceBand[]
   /** What Cap'n Max gives for mini medals, out of overlay 4 — see `medals.ts`. Undefined if not found. */
   readonly medalRewards: MedalRewards | undefined
   /** The medal service's lines by number, `str_mdl` — see `medals.ts`. */
@@ -1253,6 +1261,18 @@ function medalWordsOf(rom: Uint8Array): Map<number, string> {
   return out
 }
 
+/** `/data/bin/expadj.nat`, read — a loose file, as `palette.bin` is. */
+function experienceBandsOf(rom: Uint8Array): readonly ExperienceBand[] {
+  const { cat } = walkOnce(rom, ['/data/bin/expadj.nat'])
+  const leaf = cat.other.find((candidate) => candidate.path.toLowerCase().endsWith('/expadj.nat'))
+  if (!leaf) return []
+  try {
+    return readExperienceAdjust(leaf.bytes).bands
+  } catch {
+    return []
+  }
+}
+
 /** `/data/chara/palette.bin`, read — see `skin.ts`. A loose file, not an archive's member. */
 function charaColoursOf(rom: Uint8Array): CharaColours | undefined {
   const { cat } = walkOnce(rom, ['/data/chara/palette.bin'])
@@ -2118,6 +2138,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     givenNames: givenNamesFrom(rom),
     charaColours: charaColoursOf(rom),
     medalRewards: medalRewardsOf(rom),
+    experienceBands: experienceBandsOf(rom),
     medalWords: medalWordsOf(rom),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],

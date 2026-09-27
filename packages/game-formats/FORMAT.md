@@ -4142,3 +4142,25 @@ exchanges at their prices, titled by line 100 (`021680cc`); choosing one sets
 **so exchanges count towards the total** — gives the item, and says 140, which
 asks if there is more (`02168400`); no says 131; more says 141; leaving says
 150 and 151 (`02168244`, `02168268`).
+
+# Experience adjust — `expadj.nat`
+
+**Read 27 September 2026, from the code that loads and reads it** (US overlay
+23). `readExperienceAdjust`.
+
+The victory state loads `data/bin/expadj.nat` (its name at `0x021fe338`,
+`func_ov023_021f5340`) and copies it in (`021f5448`):
+
+| bytes | what |
+|---|---|
+| `+0x00` u32 | bits 0–11 the number of bands (`021f5524` sizes them, four bytes each); bits 12–30 the size of a second block after them — **not established**, and none on the reference cartridge, carried as `unknown_tail` |
+| `+0x04` u32 × n | a band: bits 0–25 the most experience it holds, **0 for no bound**; bits 26–31 its number |
+
+`func_ov023_021f5534` walks the bands and takes the first whose bound the
+battle's total does not pass (`cmp; bgt` — signed), or that has none;
+`021f5578` returns its number, or 4 when none is found. The share of the
+experience adds it to each member's level before weighing — see
+`experienceShares` in the simulation.
+
+On the reference cartridge, sixteen bytes: three bands, up to 10,000 → 4, up
+to 20,000 → 3, unbounded → 2.
