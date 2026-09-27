@@ -11,6 +11,9 @@ oracle that confirmed them. Each finding says which it is.
 
 No cartridge content is reproduced here. Offsets, structures and counts only.
 
+What to contribute to the decompilation as C++ functions, rather than as
+findings, is planned in `decomp-contributions.md`.
+
 **Confidence**
 
 | | |
