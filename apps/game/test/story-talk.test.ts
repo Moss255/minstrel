@@ -86,21 +86,20 @@ describe('talk as the story’s flags stand', () => {
     )
     // The label's own line first, and the event once it is read.
     const first = pickLine({ ...asking, triggers: [chooses, leads] })
-    expect(first).toMatchObject({ kind: 'line', leadsTo: { event: 2350, answer: undefined } })
     expect(said(first)).toBe('*: Before.')
-    // Where no line has the label, the one that would be said is read first,
-    // as the Hexagon's inscription is; with no line at all, the event at once.
+    expect(first?.kind === 'line' && first.after.map((a) => [a.outcome.event, a.answer])).toEqual([
+      [2350, undefined],
+    ])
+    // Where no line holds for the label, nothing is said, and nothing runs
+    // after — as the game's talk ends when its script finds no line.
     const unlabelled = { ...asking, lines: asking.lines.filter((l) => l.text !== '*: Before.') }
-    const guessed = pickLine({ ...unlabelled, triggers: [chooses, leads] })
-    expect(guessed).toMatchObject({ kind: 'line', leadsTo: { event: 2350 } })
-    expect(said(guessed)).toBe('*: Plain.')
-    expect(pickLine({ ...asking, lines: [], triggers: [chooses, leads] })).toMatchObject({
-      kind: 'event',
-      event: 2350,
-    })
-    // Without the talk record, the label's own line.
-    expect(said(pickLine({ ...asking, triggers: [chooses] }))).toBe('*: Before.')
-    // A talk record for another label, or another character, leads nowhere.
+    expect(pickLine({ ...unlabelled, triggers: [chooses, leads] })?.kind).toBe('record')
+    expect(pickLine({ ...asking, lines: [], triggers: [chooses, leads] })?.kind).toBe('record')
+    // Without the talk record, the label's own line, and nothing after.
+    const alone = pickLine({ ...asking, triggers: [chooses] })
+    expect(said(alone)).toBe('*: Before.')
+    expect(alone?.kind === 'line' && alone.after).toEqual([])
+    // A talk record for another label leads nowhere.
     const other = trigger(
       [
         [6, 8],
@@ -109,7 +108,8 @@ describe('talk as the story’s flags stand', () => {
       ],
       1,
     )
-    expect(said(pickLine({ ...asking, triggers: [chooses, other] }))).toBe('*: Before.')
+    const elsewhere = pickLine({ ...asking, triggers: [chooses, other] })
+    expect(elsewhere?.kind === 'line' && elsewhere.after).toEqual([])
   })
 
   it('plays a first-time event once, by the mark its record sets, and the line after', () => {
@@ -128,7 +128,8 @@ describe('talk as the story’s flags stand', () => {
       ]),
     ]
     const first = pickLine({ ...asking, triggers, marks: new Set() })
-    expect(first).toMatchObject({ kind: 'event', event: 2430, marks: [7] })
+    expect(first).toMatchObject({ kind: 'event', event: 2430 })
+    expect(first?.kind === 'event' && first.record.marks).toEqual([7])
     expect(said(pickLine({ ...asking, triggers, marks: new Set([7]) }))).toBe('*: After.')
   })
 
@@ -191,17 +192,17 @@ describe('talk as the story’s flags stand', () => {
       ),
     ]
     // Each label's own line first, and its event once read — the fight on Yes.
-    expect(pickLine({ ...asking, triggers })).toMatchObject({
-      kind: 'line',
-      leadsTo: { event: 2535, answer: undefined },
-    })
-    expect(pickLine({ ...asking, triggers, flags: new Set([6]) })).toMatchObject({
-      kind: 'line',
-      leadsTo: { event: 22510, answer: 0 },
-    })
+    const before = pickLine({ ...asking, triggers })
+    expect(before?.kind === 'line' && before.after.map((a) => [a.outcome.event, a.answer])).toEqual(
+      [[2535, undefined]],
+    )
+    const after = pickLine({ ...asking, triggers, flags: new Set([6]) })
+    expect(after?.kind === 'line' && after.after.map((a) => [a.outcome.event, a.answer])).toEqual([
+      [22510, 0],
+    ])
   })
 
-  it('lets a talk record choose for someone with no record of their own', () => {
+  it('asks with the label of the talk box the Hero stands in, as a thing to examine is', () => {
     const triggers = [
       trigger(
         [
@@ -213,11 +214,16 @@ describe('talk as the story’s flags stand', () => {
         1,
       ),
     ]
-    // As the Hexagon's inscription: its line, labelled otherwise, read before the event.
-    const first = pickLine({ ...asking, triggers })
-    expect(first).toMatchObject({ kind: 'line', leadsTo: { event: 2500, answer: undefined } })
-    expect(said(first)).toBe('*: Plain.')
-    expect(pickLine({ ...asking, triggers, flags: new Set([0]) })).not.toHaveProperty('leadsTo')
+    // As the Hexagon's inscription: its box asks with 80, its line is 96, in
+    // the same group of 80, and the event plays once it is read.
+    const lines = [line([1, 99, 96], '*: The inscription.')]
+    const first = pickLine({ ...asking, lines, triggers, box: 80 })
+    expect(said(first)).toBe('*: The inscription.')
+    expect(first?.kind === 'line' && first.after.map((a) => a.outcome.event)).toEqual([2500])
+    const again = pickLine({ ...asking, lines, triggers, box: 80, flags: new Set([0]) })
+    expect(again?.kind === 'line' && again.after).toEqual([])
+    // Not from its box, nothing holds for label 0.
+    expect(pickLine({ ...asking, lines, triggers })).toBeUndefined()
   })
 
   it('holds a record to the story’s step when it names one', () => {
@@ -250,13 +256,15 @@ describe('talk as the story’s flags stand', () => {
         [193, 0],
       ]),
     ]
-    expect(said(pickLine({ ...asking, triggers, step: 1 }))).toBe('*: Before.')
-    // Its question read first, the switch's scene only on Yes — see `OP_EVENT_ANSWER`.
-    expect(pickLine({ ...asking, triggers, step: 4 })).toMatchObject({
-      kind: 'line',
-      leadsTo: { event: 2530, answer: 0 },
-    })
-    expect(said(pickLine({ ...asking, triggers, step: 5 }))).toBe('*: After.')
+    const lines = [...asking.lines, line([1, 1, 194], '*: Shall I?')]
+    expect(said(pickLine({ ...asking, lines, triggers, step: 1 }))).toBe('*: Before.')
+    // Its question read first, the switch's scene only on Yes — see `OP_ANSWER_IS`.
+    const asked = pickLine({ ...asking, lines, triggers, step: 4 })
+    expect(said(asked)).toBe('*: Shall I?')
+    expect(asked?.kind === 'line' && asked.after.map((a) => [a.outcome.event, a.answer])).toEqual([
+      [2530, 0],
+    ])
+    expect(said(pickLine({ ...asking, lines, triggers, step: 5 }))).toBe('*: After.')
   })
 
   it('goes on where a talk record says once its line is read, waiting for the answer it names', () => {
@@ -281,10 +289,12 @@ describe('talk as the story’s flags stand', () => {
     ]
     const choice = pickLine({ ...asking, triggers })
     expect(said(choice)).toBe('*: After.')
-    expect(choice).toMatchObject({ onward: { map: 1110, event: 2130, answer: 0 } })
+    const after = choice?.kind === 'line' ? choice.after : []
+    expect(after.map((a) => a.answer)).toEqual([0])
+    expect(after[0]?.outcome.onward).toEqual({ map: 1110, event: 2130 })
   })
 
-  it('does not take another character’s label from a record about someone else', () => {
+  it('hands on a talk with someone else rather than taking their label', () => {
     const triggers = [
       trigger([
         [6, 8],
@@ -292,6 +302,8 @@ describe('talk as the story’s flags stand', () => {
         [193, 0],
       ]),
     ]
-    expect(said(pickLine({ ...asking, triggers }))).toBe('*: Plain.')
+    const choice = pickLine({ ...asking, triggers })
+    expect(choice?.kind).toBe('record')
+    expect(choice?.kind === 'record' && choice.record.talk).toEqual({ character: 9, label: 193 })
   })
 })

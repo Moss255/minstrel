@@ -1,3 +1,4 @@
+import { flagBit } from './npc.ts'
 import type { Trigger } from './triggers.ts'
 
 /**
@@ -415,6 +416,8 @@ export interface EventOutcome {
   readonly unglobals: readonly number[]
   /** The event it plays, if it plays one — see {@link OP_EVENT}. */
   readonly event: number | undefined
+  /** Who it has the Hero talk to, and with which label — see {@link OP_TALK_TO}. */
+  readonly talk?: { readonly character: number; readonly label: number }
   /**
    * The areas it adds to the map as it runs — see {@link OP_AREA}. 143 is on
    * 80 settings records, and on 3 entry records, 3 talk records and one
@@ -446,6 +449,25 @@ export const OP_ALL_STAGES_TO = 148
 const HAND_ONS = new Set([OP_THEN_MAP, 138, 226])
 
 /**
+ * Sets a flag and plays an event: `155 : e` and a value whose high half is the
+ * flag. Read from the game's code: its action runs `104` with the flag
+ * (`func_02061c04`) and queues itself, and the queue starts the event as it
+ * does for `119` (`func_0206f81c`). 14 records, every one Gortress's at 14.4 —
+ * `52:203 7:2 155:28991 7:0`, talking to 203 while flag 7 is clear, sets it
+ * and plays `ev28991`.
+ */
+export const OP_FLAG_AND_EVENT = 155
+
+/**
+ * Talks to a character with a label: `118 : c` and a value whose high half is
+ * the label, as the game's parser keeps it (US ARM9 `func_0205ec70`). The
+ * queue (`func_0206f81c`) hands them to the talk, which says the label's line
+ * of their talk file and then runs their talk records for it — see `pickLine`
+ * in `apps/game`. Ivor at the landslide, `6:7 118:7 192:0`.
+ */
+export const OP_TALK_TO = 118
+
+/**
  * What a record does when it runs: every one of its actions, as the game runs
  * them all (US ARM9 `func_02064530`). Read from its entries — see
  * {@link entriesOf} — so an action's own values are taken as its own.
@@ -459,15 +481,17 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
     return { major, minor, step }
   }
   const go = entries.find((e) => HAND_ONS.has(e.op) && e.params.length === 1)
+  const talk = entries.find((e) => e.op === OP_TALK_TO && e.params.length === 1)
   const threads: { thread: number; stage: StoryPoint }[] = []
   for (const entry of entries) {
     if (entry.op !== OP_THREAD_STAGE_TO) continue
     const stage = point(entry)
     if (stage) threads.push({ thread: entry.arg, stage })
   }
+  const both = entries.filter((e) => e.op === OP_FLAG_AND_EVENT && e.params.length === 1)
   return {
     stage: point(entries.find((e) => e.op === OP_STAGE_TO)),
-    flags: args(OP_SET_FLAG),
+    flags: [...args(OP_SET_FLAG), ...both.map((e) => (e.params[0] as number) >>> 16)],
     onward: go ? { map: go.arg, event: (go.params[0] as number) >>> 16 } : undefined,
     battle: entries.find((e) => e.op === OP_BATTLE)?.arg,
     threads,
@@ -479,7 +503,8 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
     unmarks: args(OP_CLEAR_MARK),
     globals: args(OP_SET_GLOBAL),
     unglobals: args(OP_CLEAR_GLOBAL),
-    event: entries.find((e) => e.op === OP_EVENT)?.arg,
+    event: entries.find((e) => e.op === OP_EVENT || e.op === OP_FLAG_AND_EVENT)?.arg,
+    ...(talk ? { talk: { character: talk.arg, label: (talk.params[0] as number) >>> 16 } } : {}),
     areas: areasIn(trigger),
     actions: entries.filter((e) => !isCondition(e.op)),
   }
@@ -627,15 +652,84 @@ export interface Conditions {
   readonly globalsSure?: ReadonlySet<number>
   /** Whether it is night — see {@link OP_TIME}. Not read when not given. */
   readonly night?: boolean
+  /** Who is being talked to, by their id in the area's cast — see {@link OP_TALKED_TO}. Not read when not given. */
+  readonly character?: number
+  /** The label the talk was asked with — see {@link OP_LABEL_IS}. Not read when not given. */
+  readonly label?: number
+  /** The answer the last prompt was given, from 0 — see {@link OP_ANSWER_IS}. Not read when not given. */
+  readonly answer?: number
+  /** Whether the Hero is down — see {@link OP_HERO_DOWN}. Not read when not given. */
+  readonly down?: boolean
+  /** Whether the Hero stands in a box of the one talked to — see {@link OP_IN_TALK_BOX}. Not read when not given. */
+  readonly inBox?: boolean
 }
+
+/**
+ * Holds by whether the Hero stands in a talk box of the one being talked to
+ * (`func_0205faf4`, which walks the same list as the talk's target picker):
+ * `41 : 0` when not, any other argument when so. See `TalkBox`.
+ */
+export const OP_IN_TALK_BOX = 41
+
+/**
+ * Holds for the character being talked to: the game's lookups put who it is
+ * in the first word of the context they test a record in, and `6` compares
+ * its argument with it (US ARM9 `func_0205faf4`). The talk's two lookups do —
+ * see `KIND_OWN` and `KIND_TALK` in `apps/game`.
+ */
+export const OP_TALKED_TO = 6
+/**
+ * Holds for the label the talk was asked with — the context's word at `+0x14`,
+ * which the talk sets (`func_0205faf4`; see `OP_TALK_TO`).
+ */
+export const OP_LABEL_IS = 11
+/**
+ * Holds for the answer the last prompt was given, from 0 — Yes — as the text
+ * system keeps it (`func_020457e0`, a word at `+0x954`). Every talk's window
+ * sets it to 0 as it opens (`func_0204500c`), so after a line that asks
+ * nothing `16 : 0` holds.
+ */
+export const OP_ANSWER_IS = 16
+/**
+ * Holds by whether the Hero is down: `36 : 0` while a value of the Hero's
+ * (`GameState` object 0, `+0x130`, then `+4`) is above 0, any other argument
+ * while it is not (`func_0205faf4`). **INFERRED, that the value is the
+ * Hero's HP**: its block holds it beside another at `+6`, and the block at
+ * `+0x134` two more at `+0x30` and `+0x32`, and the field copies all four
+ * from a packet together (ov017 `0x021c9fac`) — HP and MP, and their
+ * maximums. A talk file's tag-5 lines ask the same (see `pickLine`), and say
+ * things like "You're <LEADER>, that friend of <HERO>'s" — to whoever leads
+ * while the Hero cannot.
+ */
+export const OP_HERO_DOWN = 36
+/**
+ * Holds when a game-wide flag is set, named by its number (US ARM9
+ * `func_0206eb98`): below `0x400` the bit itself, and from there displaced,
+ * as the cast script's flags are — see `flagBit`. `27` holds when it is clear.
+ */
+export const OP_IF_FLAG_NAMED = 26
+/** Holds when a game-wide flag named by its number is clear — see {@link OP_IF_FLAG_NAMED}. */
+export const OP_UNLESS_FLAG_NAMED = 27
+/**
+ * Holds when a game-wide flag of a block of 73 from bit 830 is set: `88 : n`
+ * tests bit `830 + n`, and fails for n from 73 (`func_0205faf4`). What the
+ * block is for is not established; the Quarantomb's records test 71 and 72.
+ * `89` holds when it is clear, and for n from 73.
+ */
+export const OP_IF_FLAG_FROM_830 = 88
+/** Holds when a flag of the block from bit 830 is clear — see {@link OP_IF_FLAG_FROM_830}. */
+export const OP_UNLESS_FLAG_FROM_830 = 89
+/** The first bit of {@link OP_IF_FLAG_FROM_830}'s block, and how many it holds. */
+const FROM_830 = 830
+const FROM_830_COUNT = 73
 
 /**
  * Whether a record's flag conditions hold: every {@link OP_IF_FLAG} flag set
  * and every {@link OP_UNLESS_FLAG} one not — and, given `marks`, the same for
  * the second set, {@link OP_IF_MARK} and {@link OP_UNLESS_MARK}; given `step`,
- * every {@link OP_AT_STEP} naming it; given `more`, the game-wide flags and
- * the time of day; and always {@link OP_PLAYERS}, as one playing alone.
- * Its other conditions are not read.
+ * every {@link OP_AT_STEP} naming it; given `more`, the game-wide flags, the
+ * time of day, and whatever else of {@link Conditions} it gives; and always
+ * {@link OP_PLAYERS}, as one playing alone. Its other conditions are not read.
  *
  * `words` should be a record's conditions — see {@link conditionsOf} — since a
  * word of operation 0 is also how an action's own values are written: the
@@ -663,7 +757,20 @@ export function flagsHold(
       (globals === undefined ||
         ((w.op !== OP_IF_GLOBAL || globals.has(w.arg)) &&
           (w.op !== OP_UNLESS_GLOBAL || !sure?.has(w.arg)))) &&
-      (night === undefined || w.op !== OP_TIME || (w.arg === 1) === night),
+      (night === undefined || w.op !== OP_TIME || (w.arg === 1) === night) &&
+      (globals === undefined ||
+        ((w.op !== OP_IF_FLAG_NAMED || globals.has(flagBit(w.arg))) &&
+          (w.op !== OP_UNLESS_FLAG_NAMED || !sure?.has(flagBit(w.arg))) &&
+          (w.op !== OP_IF_FLAG_FROM_830 ||
+            (w.arg < FROM_830_COUNT && globals.has(FROM_830 + w.arg))) &&
+          (w.op !== OP_UNLESS_FLAG_FROM_830 ||
+            w.arg >= FROM_830_COUNT ||
+            !sure?.has(FROM_830 + w.arg)))) &&
+      (more?.character === undefined || w.op !== OP_TALKED_TO || w.arg === more.character) &&
+      (more?.label === undefined || w.op !== OP_LABEL_IS || w.arg === more.label) &&
+      (more?.answer === undefined || w.op !== OP_ANSWER_IS || w.arg === more.answer) &&
+      (more?.down === undefined || w.op !== OP_HERO_DOWN || (w.arg !== 0) === more.down) &&
+      (more?.inBox === undefined || w.op !== OP_IN_TALK_BOX || (w.arg !== 0) === more.inBox),
   )
 }
 
@@ -821,13 +928,16 @@ export function entriesOf(trigger: Trigger): TriggerEntry[] {
  * perhaps, and **not read**: the composite is kept beside what it expands to,
  * so that part is left to hold, as other conditions not read are. 53 adds a
  * label (`11`) and an answer (`16`), 54 a `18`, 56 a `36`, 57 and 58 a `23`,
- * 61 a `23`. 1,409 records carry one, 537 of them `55`.
+ * 61 a `23`. 62 and 63 are 52's kind, with a game-wide flag set (`0`) and
+ * clear (`1`): 63 opens the Quester's Rest's counter, `63:99 161:2 36:0
+ * 100:161 118:99 222:0`, until flag 161 is set. 1,495 records carry one, 537
+ * of them `55`.
  */
 function expanded(entry: TriggerEntry): TriggerEntry[] {
   const halves = entry.params.flatMap((v) => [(v >> 16) & 0xffff, v & 0xffff])
   const half = (i: number) => halves[i] ?? 0
   const basic = (op: number, arg: number): TriggerEntry => ({ op, arg, params: [] })
-  const character = basic(OP_CHARACTER, entry.arg)
+  const character = basic(OP_TALKED_TO, entry.arg)
   switch (entry.op) {
     case 52:
       return [character, basic(OP_UNLESS_FLAG, half(0)), basic(OP_PLAYERS, half(1))]
@@ -842,6 +952,10 @@ function expanded(entry: TriggerEntry): TriggerEntry[] {
       return [entry, character, basic(OP_PLAYERS, half(3))]
     case 61:
       return [entry, character, basic(OP_PLAYERS, half(2))]
+    case 62:
+      return [character, basic(OP_IF_GLOBAL, half(0)), basic(OP_PLAYERS, half(1))]
+    case 63:
+      return [character, basic(OP_UNLESS_GLOBAL, half(0)), basic(OP_PLAYERS, half(1))]
     case 55:
     case 59:
     case 60:
@@ -850,11 +964,6 @@ function expanded(entry: TriggerEntry): TriggerEntry[] {
       return [entry]
   }
 }
-
-/** The talk label a talk record is for — see `pickLine` in `apps/game`. */
-const OP_LABEL_IS = 11
-/** The prompt's answer a talk record waits for — see `pickLine` in `apps/game`. */
-const OP_ANSWER_IS = 16
 
 /**
  * A record's conditions, without any action's own values — see
@@ -885,8 +994,6 @@ export function marksSet(words: readonly TriggerWord[]): number[] {
 export const OP_FACILITY = 145
 /** The mini medal service, by {@link OP_FACILITY} — see there. */
 export const FACILITY_MEDALS = 7
-/** The character a talk record is about. */
-const OP_CHARACTER = 6
 
 /**
  * The facility talking to `character` opens in `map` at `stage`: the first
@@ -902,7 +1009,7 @@ export function facilityFor(
   const at = order(stage)
   for (const trigger of triggers) {
     if (trigger.map !== map || at < order(trigger.from) || at > order(trigger.to)) continue
-    const named = conditionsOf(trigger).some((w) => w.op === OP_CHARACTER && w.arg === character)
+    const named = conditionsOf(trigger).some((w) => w.op === OP_TALKED_TO && w.arg === character)
     if (!named) continue
     const facility = triggerWords(trigger).find((w) => w.op === OP_FACILITY)
     if (facility) return facility.arg

@@ -18,10 +18,14 @@ cartridge by the engine's own rules and prints every break with why. It
 takes precedence over the list below, which was the sweep's.
 
 One walk now plays from 1.3 through the slice and chapter 3 to Loch Storn,
-and 62 breaks remain. The story's five threads, how the game runs a record,
-the maps' own areas and who stands where are read and built. What is left is
-mostly cascades and what starts set battles from scenes — see the list. Run
-the walk again after each change.
+and 47 breaks remain. The story's five threads, how the game runs a record,
+the maps' own areas, who stands where and **how the game talks** are read and
+built — talking is no longer guessed: a character's own record, the last line
+that holds for the label, then their talk records, and talk boxes. On the way,
+**372 files that begin with the word 16 had been read as empty**, the king's
+talk among them (see `docs/story-walk.md`). What is left is mostly cascades
+and what starts set battles from scenes — see the list. Run the walk again
+after each change.
 
 Decomp and wiki contributions are deferred until minstrel is finished. A
 function read from the game's code along the way goes in
@@ -104,10 +108,10 @@ collision mesh, and swept clean in eight views. The collision decides it.
 
 ### Two things worth knowing before you start
 
-**The guess rate is 59% and it is per-area.** 662 of 1,116 spoken lines are
-`pickLine` falling back rather than the game's own selection, and it runs from
-1 in 10 at Upover to 8 in 9 at Alltrades. It is the largest gap between this
-engine and the game that is not a missing feature.
+**The guess rate was 59% and it was per-area** — gone on 28 September, when
+`pickLine` became the game's own rule (`docs/story-walk.md`, cause 9). 662 of
+1,116 spoken lines had been `pickLine` falling back rather than the game's own
+selection, from 1 in 10 at Upover to 8 in 9 at Alltrades.
 
 **An area costs about six minutes.** Twenty interiors took five and a half
 minutes together — the witness takes several areas in one invocation and
@@ -1405,7 +1409,8 @@ FORMAT.md, "Triggers", "The words"; INFERRED throughout):
   You and I will never be able to shift this on our own", and the story moves
   to 2.3. A character's own record chooses their label, and a talk record (value
   5 = 1) makes an event of it — 97 of the 179 talk records with a label and an
-  event pair so (`labelEvent` in `talk.ts`).
+  event pair so (`labelEvent` in `talk.ts`, since replaced by the game's own
+  rule — `docs/story-walk.md`, cause 9).
 
 Walked through in the browser: Hugo's scene, the pass's arrival, and Ivor's at
 the landslide. **For testing, ours:** `?stage=2.2` opens a new game at a stage

@@ -107,6 +107,8 @@ export interface NpcPlacement {
   readonly map: number
   /** Byte offset of the block, for anything that wants the rest of it. */
   readonly offset: number
+  /** Where the Hero can stand to talk to them, and the label each asks with — see {@link TalkBox}. */
+  readonly boxes?: readonly TalkBox[]
 }
 
 /**
@@ -407,7 +409,37 @@ export interface CastPlacement {
   readonly unknown_after: number | undefined
   /** The record that placed them, for anything that wants the rest of it. */
   readonly record: PlaceRecord
+  /** Where the Hero can stand to talk to them, and the label each asks with — see {@link TalkBox}. */
+  readonly boxes?: readonly TalkBox[]
 }
+
+/**
+ * **A box round a character that the Hero talks to them from, and the label
+ * the talk asks with** — `place.bin`'s tag 6 (US ARM9 `func_0206c4e8`): the
+ * character, four floats and the label. The game keeps it on the character's
+ * placement in this map, the first of their chain at the time, and its talk
+ * target picker (ov017 `func_ov017_021a4e88`) takes a character whose box holds
+ * the Hero — strictly inside, on the ground: `minX < x < maxX` and
+ * `minZ < z < maxZ` — asking with its label. A thing to examine is talked to
+ * only so. Yggdrasil's, `199, 3.24, 1.27, −3.36, −2.52, 80`, is why its talk
+ * records name label 80. 570 on the cartridge.
+ */
+export interface TalkBox {
+  readonly label: number
+  /** In the file's own units, as a placement's. */
+  readonly maxX: number
+  readonly maxZ: number
+  readonly minX: number
+  readonly minZ: number
+}
+
+/** Whether a box holds a point on the ground, as the game tests it — see {@link TalkBox}. */
+export function inTalkBox(box: TalkBox, x: number, z: number): boolean {
+  return box.minX < x && x < box.maxX && box.minZ < z && z < box.maxZ
+}
+
+/** A talk box's record — see {@link TalkBox}. */
+const TAG_TALK_BOX = 6
 
 /** A block's opening record: a map, a character, and where they stand. */
 const TAG_BLOCK = 3
@@ -457,9 +489,11 @@ export function flagBit(id: number): number {
  *   others**. The Quarantomb's `29` stands in `7401` while flag 89 is set and
  *   in `7402` while 90 is, which its triggers set and clear.
  *
- * The other tags — 14 places a character by one of four states of an id
- * (quest progress, perhaps), and 4, 6, 8, 11, 15 and 18 to 22 — are not read.
- * So a character placed only by them stands nowhere here.
+ * - **A talk box, tag 6** — see {@link TalkBox}: kept on the placement.
+ *
+ * The other tags — 14 places a character by one of four states of a quest
+ * (`func_0206e120`; see `lineFor` in `apps/game`), and 4, 8, 11, 15 and 18 to
+ * 22 — are not read. So a character placed only by them stands nowhere here.
  *
  * `isSet` answers for a game-wide flag by its bit; without it, every flag is
  * clear, as in a new game.
@@ -472,7 +506,7 @@ export function castAtPoint(
   isSet: (bit: number, wanted: boolean) => boolean = (_, wanted) => !wanted,
 ): Map<number, CastPlacement> {
   interface Candidate {
-    readonly placement: CastPlacement
+    placement: CastPlacement
     /** The game's order of kinds: 3 a span into a sub-stage 0, 4 a span, 5 a block. */
     readonly kind: number
     readonly from: number
@@ -526,6 +560,20 @@ export function castAtPoint(
 
   records.forEach((record, index) => {
     const v = record.values
+    if (record.tag === TAG_TALK_BOX) {
+      // On the first placement of the character's chain in this map, now.
+      const first = chains.get(v[0] as number)?.[0]
+      if (!first || v.length < 6) return
+      const box: TalkBox = {
+        maxX: v[1] as number,
+        maxZ: v[2] as number,
+        minX: v[3] as number,
+        minZ: v[4] as number,
+        label: v[5] as number,
+      }
+      first.placement = { ...first.placement, boxes: [...(first.placement.boxes ?? []), box] }
+      return
+    }
     if (record.tag === TAG_WHILE) {
       // The pairs, as the game counts them: an odd count has no byte after the facing.
       const count = v.length

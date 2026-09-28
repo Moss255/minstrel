@@ -22,6 +22,7 @@ import {
   FACILITY_MEDALS,
   facilityFor,
   GRANTS_REGARDLESS,
+  inTalkBox,
   type LevelRow,
   type LevelTable,
   MEDALS_MOST,
@@ -311,6 +312,8 @@ import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './sl
 import { moveStory, type Story, swapThread, THREADS, threadOf, unstarted } from './story.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
+  type After,
+  afterFor,
   answerNow,
   type Conversation,
   DEFAULT_CONTEXT,
@@ -318,6 +321,7 @@ import {
   facingToward,
   letterForStage,
   moveChoice,
+  NEVER_TALKED,
   nextPage,
   noteOf,
   OPENING_STAGE,
@@ -328,6 +332,7 @@ import {
   stageOrder,
   startConversation,
   TALK_REACH,
+  type Talked,
   type Talker,
   type TextContext,
   type Turn,
@@ -1711,6 +1716,8 @@ function enter(map: string, arrival?: Arrival): boolean {
 
   // The story thread this map is in, and then the cast where its stage has them.
   enterThread(opened.mapId)
+  // Entering a map starts its talk counts again — see `Talked`.
+  enteredForTalk(opened.code)
   if (storyStage !== undefined)
     opened = {
       ...opened,
@@ -2327,7 +2334,7 @@ const params = new URLSearchParams(location.search)
  * scene at the Guardian statue, `ev22590`, by the village's own entry record
  * (see `entryPlay`). From a let's play of the European release: the slice opens
  * there, a day before the morning in Erinn's house, which follows that
- * evening's question of hers — see `labelOnward`. The morning was the opening
+ * evening's question of hers — her talk record after it, see `pickLine`. The morning was the opening
  * before; it is still what the evening goes on to.
  */
 const OPENING_MAP = 'M01'
@@ -3028,17 +3035,46 @@ function chestOpeningPose(
  */
 /** An event being read out for want of a script that will read — see `followEvent`. */
 let talkEvent: number | undefined
-/** Where the line being read goes on once read — see `labelOnward` in `talk.ts`. */
-let talkOnward: { map: number; event: number; answer: number | undefined } | undefined
-/** The event a line's label leads to, played once it is read — see `Choice.leadsTo`. */
-let talkThen: { event: number; answer: number | undefined } | undefined
 /**
- * What the line's label's own talk record does once read, on the answer it
- * waits for — a move of the story among it. See `Choice.after`.
+ * The talk records that may run once the line being read is read, and who it
+ * was said by — see `Choice.after`. The first whose answer holds runs.
  */
-let talkRecord: { outcome: EventOutcome; answer: number | undefined } | undefined
-/** The last of a prompt's answers given in this talk, from 0. */
-let talkAnswer: number | undefined
+let talkAfter: { after: readonly After[]; who: Talker } | undefined
+/**
+ * The answer the last prompt was given, from 0. Every talk's window sets it to
+ * 0 as it opens, as the game's does — see `OP_ANSWER_IS`.
+ */
+let talkAnswer = 0
+/**
+ * How often each character has been talked to, by id — see `Talked` — and the
+ * sub-stage and area they were counted in, since a new one of either starts
+ * some of them again.
+ */
+const talkCounts = new Map<number, Talked>()
+let talkCountsStage: Stage | undefined
+let talkCountsArea: string | undefined
+
+/** Entering a map: its counts start again, and all of them in another area. */
+function enteredForTalk(area: string): void {
+  if (area !== talkCountsArea) talkCounts.clear()
+  else for (const [id, counts] of talkCounts) talkCounts.set(id, { ...counts, map: 0 })
+  talkCountsArea = area
+}
+
+/** How often `id` has been talked to, as the game counts it — see `Talked`. */
+function talkedTo(id: number): Talked {
+  if (!sameStage(talkCountsStage, storyStage)) {
+    talkCounts.clear()
+    talkCountsStage = storyStage
+  }
+  return talkCounts.get(id) ?? NEVER_TALKED
+}
+
+/** A line said: both of the speaker's counts go up, to 15. */
+function countTalk(id: number): void {
+  const { area, map } = talkedTo(id)
+  talkCounts.set(id, { area: Math.min(area + 1, 15), map: Math.min(map + 1, 15) })
+}
 
 function talk(everyLine = false): void {
   if (!loaded || !self || opening) return
@@ -3063,30 +3099,15 @@ function talk(everyLine = false): void {
       talkEvent = undefined
       followEvent(read)
     }
-    // The label's own record runs once the line is read, on the answer it
-    // waits for — Alltrades Abbey at 6.1 moves on to 6.2 so.
-    if (!talking && talkRecord) {
-      const run = talkRecord
-      talkRecord = undefined
-      if (run.answer === undefined || run.answer === talkAnswer) storyFromRecord(run.outcome)
-    }
-    // A line whose talk record goes on — Erinn's evening question, on to the
-    // morning upstairs — goes, once read, if the answer it waits for was given.
-    if (!talking && talkOnward) {
-      const go = talkOnward
-      talkOnward = undefined
-      if (go.answer === undefined || go.answer === talkAnswer) {
-        const code = loaded.mapCodeOf(go.map)
-        if (code && (code === loaded.code || enter(code))) startEvent(go.event)
-      }
-    }
-    // A line whose label leads to an event — the Hexagon's inscription, the
-    // statue's button — plays it once read, on the answer it waits for, and
-    // carries straight on from the conversation: see `Choice.leadsTo`.
-    if (!talking && talkThen) {
-      const go = talkThen
-      talkThen = undefined
-      if (go.answer === undefined || go.answer === talkAnswer) startEvent(go.event, true)
+    // The talk records after the line, once it is read: the first whose
+    // answer holds runs — Alltrades Abbey at 6.1 moves on to 6.2 so, Erinn's
+    // evening question goes on to the morning upstairs, and the Hexagon's
+    // statue asks "Press the button?" before its scene. See `pickLine`.
+    if (!talking && talkAfter) {
+      const { after, who } = talkAfter
+      talkAfter = undefined
+      const outcome = afterFor(after, talkAnswer)
+      if (outcome && runTalkRecord(outcome, who)) return
     }
     // A conversation that goes on to something of the engine's own once read
     // — Cap'n Max's list, after his lines — with the answer given.
@@ -3099,11 +3120,8 @@ function talk(everyLine = false): void {
   }
   // While an event plays, `f` only reads its messages.
   if (playing) return
-  talkOnward = undefined
-  talkThen = undefined
-  talkRecord = undefined
+  talkAfter = undefined
   afterTalk = undefined
-  talkAnswer = undefined
   const cast: Talker[] = [
     // Where they stand now, an event having left them there — see `castPlaced`.
     ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((member) => {
@@ -3118,10 +3136,21 @@ function talk(everyLine = false): void {
       z: placement.z,
     })),
   ]
-  const who = talkTarget(
-    { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing },
-    cast,
-  )
+  const hero = { x: toFloat(self.state.x), z: toFloat(self.state.z), facing: self.facing }
+  const near = talkTarget(hero, cast)
+  // **A talk box the Hero stands in** picks its character too, and the talk
+  // asks with its label — the only way a thing to examine is talked to. Of
+  // those, and whoever is near, the game takes the one most nearly faced
+  // (ov017 `func_ov017_021a4e88`). See `TalkBox`.
+  const boxed = talkBoxesAt(hero.x, hero.z)
+  const turn = (t: Talker) => {
+    const d = Math.abs(hero.facing - facingToward(hero, t)) % (2 * Math.PI)
+    return Math.min(d, 2 * Math.PI - d)
+  }
+  const picked = [...boxed, ...(near ? [{ who: near, label: undefined }] : [])].sort(
+    (a, b) => turn(a.who) - turn(b.who),
+  )[0]
+  const who = picked?.who
   if (!who) {
     if (openTreasureAhead()) return
     const here = { x: toFloat(self.state.x), z: toFloat(self.state.z) }
@@ -3149,9 +3178,41 @@ function talk(everyLine = false): void {
     visitMedals(who)
     return
   }
+  talkWith(who, undefined, everyLine, picked?.label)
+}
+
+/** Whoever of this map's cast has a talk box holding the point, with the box's label — see `TalkBox`. */
+function talkBoxesAt(x: number, z: number): { who: Talker; label: number }[] {
+  if (!loaded) return []
+  const out: { who: Talker; label: number }[] = []
+  const all = [
+    ...[...loaded.cast.members, ...loaded.cast.sprites2d].map((m) => ({
+      placement: m.placement,
+      name: m.name,
+    })),
+    ...loaded.cast.spots.map(({ placement }) => ({ placement, name: 'something to examine' })),
+  ]
+  for (const { placement, name } of all) {
+    const box = (placement.boxes ?? []).find((b) => inTalkBox(b, x, z))
+    if (!box) continue
+    const at = castPlaced(placement)
+    out.push({ who: { id: placement.id, name, x: at.x, z: at.z }, label: box.label })
+  }
+  return out
+}
+
+/**
+ * Talk to `who` as the game does — see `pickLine` — with the label a record
+ * asked for, or without one as the Hero walks up to them. `everyLine` reads
+ * out every line of their file instead, for checking the choice.
+ */
+function talkWith(who: Talker, label: number | undefined, everyLine = false, box?: number): void {
+  if (!loaded) return
   const letter = chapter()
   const lines = letter === undefined ? [] : loaded.linesOf(who.id, letter)
   talkContext = contextFor(lines.map((line) => line.text ?? ''))
+  // The window opens, and the answer with it is 0 — see `talkAnswer`.
+  talkAnswer = 0
   if (everyLine || storyStage === undefined) {
     talking = startConversation(
       who,
@@ -3168,18 +3229,21 @@ function talk(everyLine = false): void {
       night: timeNow() === 'night',
       id: who.id,
       lines,
+      ...(label !== undefined ? { label } : {}),
+      ...(box !== undefined ? { box } : {}),
       flags: storyFlags,
       marks: storyMarks,
       alone: companionsNow().every(standingHere),
       step: stepNow(),
       globals: storyGlobals,
+      talked: talkedTo(who.id),
     })
-    // What the record that chose it sets — the first time they are talked to.
-    for (const mark of choice?.marks ?? []) storyMarks.add(mark)
-    // Everything else that record does, as the game runs every action of the
-    // record it takes; its event, if it has one, is played below.
-    if (choice?.record) storyFromRecord(choice.record)
+    // Everything the character's own record does, as the game runs every
+    // action of the record it takes; its event, if it has one, is played below.
+    if (choice && choice.kind !== 'line' && runTalkRecord(choice.record, who)) return
     if (choice?.kind === 'line') {
+      if (choice.record) storyFromRecord(choice.record)
+      countTalk(who.id)
       talking = startConversation(
         who,
         `chapter ${letter}: ${choice.why}`,
@@ -3187,38 +3251,82 @@ function talk(everyLine = false): void {
         [noteOf(choice.line)],
         talkContext,
       )
-      talkOnward = choice.onward
-      talkThen = choice.leadsTo
-      talkRecord = choice.after
-    } else if (choice?.kind === 'event') {
-      // The label's own record, where a label led to the event: it runs as the event does.
-      if (choice.after) storyFromRecord(choice.after.outcome)
-      // Played, not read out, so that what follows it follows — see `followEvent`.
-      // Begun by talking, it carries straight on from the conversation — see `afterTalk`.
-      if (loaded.eventScript(choice.event) && startEvent(choice.event, true)) return
-      const messages = loaded.eventMessages(choice.event)
-      talking = startConversation(
-        who,
-        `ev${String(choice.event).padStart(5, '0')}: ${choice.why}`,
-        messages.map((message) => message.text),
-        messages.map((message) => `message ${message.id}`),
-        textContext(),
+      talkAfter = { after: choice.after, who }
+    }
+    if (!talking && !playing) {
+      const when = storyStage ? ` at ${storyStage.major}.${storyStage.minor}` : ''
+      status(
+        choice?.kind === 'record'
+          ? `${who.name} (#${who.id}): ${choice.why}`
+          : `${who.name} (#${who.id}) has nothing to say in chapter ${letter ?? '—'}${when}` +
+              (label !== undefined ? ` for label ${label}` : ''),
       )
-      // What follows it follows once it is read — or at once, with nothing to
-      // read: Patty's `ev22510` starts the fight with Hexagoon.
-      if (!talking) {
-        followEvent(choice.event)
-        return
-      }
-      talkEvent = choice.event
+      return
     }
   }
-  if (!talking) {
-    const when = storyStage ? ` at ${storyStage.major}.${storyStage.minor}` : ''
-    status(`${who.name} (#${who.id}) has nothing to say in chapter ${letter ?? '—'}${when}`)
-    return
+  if (talking) showTalk()
+}
+
+/**
+ * Run a talk's record — a character's own, or a talk record after a line —
+ * and whatever it has follow: another talk (`118`), a hand-on to another map,
+ * or an event. True when something was started that takes over.
+ */
+function runTalkRecord(outcome: EventOutcome, who: Talker): boolean {
+  if (!loaded) return false
+  storyFromRecord(outcome)
+  // `106 : c` starts that character's counts again — see `Talked`.
+  for (const action of outcome.actions ?? []) if (action.op === 106) talkCounts.delete(action.arg)
+  if (outcome.talk) {
+    const to = outcome.talk.character === who.id ? who : talkerFor(outcome.talk.character)
+    if (to) {
+      talkWith(to, outcome.talk.label)
+      return talking !== undefined || playing !== undefined
+    }
   }
-  showTalk()
+  if (outcome.onward) {
+    const code = loaded.mapCodeOf(outcome.onward.map)
+    if (code && (code === loaded.code || enter(code))) startEvent(outcome.onward.event)
+    return true
+  }
+  if (outcome.event !== undefined) {
+    const event = outcome.event
+    // Played, not read out, so that what follows it follows — see `followEvent`.
+    // Begun by talking, it carries straight on from the conversation — see `afterTalk`.
+    if (loaded.eventScript(event) && startEvent(event, true)) return true
+    const messages = loaded.eventMessages(event)
+    talking = startConversation(
+      who,
+      `ev${String(event).padStart(5, '0')}`,
+      messages.map((message) => message.text),
+      messages.map((message) => `message ${message.id}`),
+      textContext(),
+    )
+    // What follows it follows once it is read — or at once, with nothing to
+    // read: Patty's `ev22510` starts the fight with Hexagoon.
+    if (!talking) {
+      followEvent(event)
+      return true
+    }
+    talkEvent = event
+    showTalk()
+    return true
+  }
+  return false
+}
+
+/** Whoever of the cast has id `id` in this map, to be talked to by a record's `118`. */
+function talkerFor(id: number): Talker | undefined {
+  if (!loaded) return undefined
+  const member = [...loaded.cast.members, ...loaded.cast.sprites2d].find(
+    (m) => m.placement.id === id,
+  )
+  if (member) {
+    const { x, z } = castPlaced(member.placement)
+    return { id, name: member.name, x, z }
+  }
+  const spot = loaded.cast.spots.find(({ placement }) => placement.id === id)
+  return spot && { id, name: 'something to examine', x: spot.placement.x, z: spot.placement.z }
 }
 
 /**
@@ -3449,7 +3557,7 @@ function visitMedals(who: Talker): void {
   medalTalker = who
   sayMedals(visit.lines)
   // Every milestone passed: the scene he has waited for — see `CURTSY_SCENE`.
-  if (visit.allPassed && visit.handed > 0) talkThen = { event: CURTSY_SCENE, answer: undefined }
+  if (visit.allPassed && visit.handed > 0) afterTalk = () => startEvent(CURTSY_SCENE, true)
   // Past every milestone, with medals to trade: his list, once he has spoken.
   else if (visit.allPassed && held > 0) afterTalk = () => openMedalList()
   status(
@@ -5671,7 +5779,7 @@ function witnessHook(): void {
  */
 function standAndTalk(id: number): void {
   if (!loaded || !self) return
-  const member = [...loaded.cast.members, ...loaded.cast.sprites2d].find(
+  const member = [...loaded.cast.members, ...loaded.cast.sprites2d, ...loaded.cast.spots].find(
     (m) => m.placement.id === id,
   )
   if (!member) {
@@ -5680,6 +5788,10 @@ function standAndTalk(id: number): void {
   }
   const at = castPlaced(member.placement)
   const back = TALK_REACH * 0.5
+  // **One with a talk box is talked to from it**, as the game has a thing to
+  // examine or a keeper over a counter talked to: its middle is tried first.
+  const box = member.placement.boxes?.[0]
+  const inBox = box && { x: (box.minX + box.maxX) / 2, z: (box.minZ + box.maxZ) / 2 }
   // **Stand them on the floor, and go round the character to find some.**
   // This took the one spot behind the character, wrote it straight into the
   // Hero's state with the cast member's own `y`, and never asked whether
@@ -5696,9 +5808,14 @@ function standAndTalk(id: number): void {
   const world = loaded.world
   const around = [Math.PI, Math.PI / 2, -Math.PI / 2, 0]
   let put: { spot: { x: number; z: number }; y: Fx32 } | undefined
-  for (const turn of around) {
-    const angle = at.facing + turn
-    const spot = { x: at.x + Math.sin(angle) * back, z: at.z + Math.cos(angle) * back }
+  const spots = [
+    ...(inBox ? [inBox] : []),
+    ...around.map((turn) => {
+      const angle = at.facing + turn
+      return { x: at.x + Math.sin(angle) * back, z: at.z + Math.cos(angle) * back }
+    }),
+  ]
+  for (const spot of spots) {
     const ground = world
       ? groundBelow(
           world,

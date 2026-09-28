@@ -5,6 +5,7 @@ import { load, type Stage } from '../src/load.ts'
 import {
   branchOf,
   letterForStage,
+  NEVER_TALKED,
   OPENING_STAGE,
   pickLine,
   runLine,
@@ -61,7 +62,14 @@ describe.skipIf(!romPath)('the village services on a real cartridge', { timeout:
         for (const member of [...cast.members, ...cast.sprites2d]) {
           const id = member.placement.id
           const lines = at.linesOf(id, letter)
-          for (const night of [false, true]) {
+          // As play can: by day and by night, from each of their talk boxes —
+          // a keeper is talked to over the counter — and more than once, as
+          // the lines that hand over often come second.
+          const boxes = [undefined, ...(member.placement.boxes ?? []).map((box) => box.label)]
+          const talks = [NEVER_TALKED, { area: 1, map: 1 }]
+          for (const [night, box, talked] of [false, true].flatMap((night) =>
+            boxes.flatMap((box) => talks.map((talked) => [night, box, talked] as const)),
+          )) {
             const choice = pickLine({
               triggers: at.triggers,
               map: at.mapId,
@@ -69,6 +77,8 @@ describe.skipIf(!romPath)('the village services on a real cartridge', { timeout:
               night,
               id,
               lines,
+              ...(box !== undefined ? { box } : {}),
+              talked,
             })
             if (choice?.kind !== 'line') continue
             const services = servicesIn(choice.line.text ?? '')

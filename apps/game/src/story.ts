@@ -182,6 +182,8 @@ export function moveStory(
     else if (op === 102) story.marks.add(arg)
     else if (op === 103) story.marks.delete(arg)
     else if (op === 104) story.flags.add(arg)
+    // `155 : e` sets the flag in its value's high half, as it runs — see `OP_FLAG_AND_EVENT`.
+    else if (op === 155 && params.length === 1) story.flags.add((params[0] as number) >>> 16)
     else if (op === 105) story.flags.delete(arg)
     else if (op === 132) {
       if (params.length === 3)

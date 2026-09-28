@@ -128,6 +128,12 @@ export function decompressLz10(data: Uint8Array): Uint8Array {
  * passed by accident, and that every one of the reference cartridge's 11,179
  * genuine streams passes.
  *
+ * **A declared size of 0 is not taken as a stream.** It decodes to nothing
+ * whatever follows, so the check above proves nothing, and it is exactly what a
+ * file whose first word is 16 looks like — a header's own size, say. On the
+ * reference cartridge 41 English talk files begin so and were read as empty;
+ * none of the 11,179 genuine streams declares 0 (see `FORMAT.md`).
+ *
  * Returning `undefined` means "not an LZ10 stream", which is an ordinary
  * answer, not an error. Callers wanting a hard failure should use
  * {@link decompressLz10} directly.
@@ -136,6 +142,7 @@ export function tryDecompressLz10(data: Uint8Array): Uint8Array | undefined {
   if (!isLz10(data)) return undefined
   try {
     const declared = readCompressionHeader(data).decompressedSize
+    if (declared === 0) return undefined
     const out = decompressLz10(data)
     return out.length === declared ? out : undefined
   } catch {

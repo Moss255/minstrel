@@ -643,6 +643,7 @@ function placedIn(
         z: at.z,
         facing: at.facing,
         offset: at.record.offset,
+        ...(at.boxes ? { boxes: at.boxes } : {}),
       }),
     })
   }
@@ -659,6 +660,14 @@ export interface StoryView {
     night?: boolean,
     isSet?: (bit: number, wanted: boolean) => boolean,
   ): number[]
+  /** The labels of the talk boxes of those who stand in the map, by id — see `TalkBox`. */
+  boxLabels(
+    map: number,
+    stage: Stage,
+    step?: number,
+    night?: boolean,
+    isSet?: (bit: number, wanted: boolean) => boolean,
+  ): Map<number, number[]>
   /** The chapter letters the area has talk for, in order — as `Loaded.letters`. */
   readonly letters: readonly string[]
   /** A character's lines in a chapter — as `Loaded.linesOf`. */
@@ -681,6 +690,15 @@ export function storyView(rom: Uint8Array, code: string): StoryView {
       area
         ? placedIn(area, map, stage, step, night, isSet).map(({ placement }) => placement.id)
         : [],
+    boxLabels: (map, stage, step, night, isSet) => {
+      const out = new Map<number, number[]>()
+      if (!area) return out
+      for (const { placement } of placedIn(area, map, stage, step, night, isSet)) {
+        const labels = [...new Set((placement.boxes ?? []).map((box) => box.label))]
+        if (labels.length > 0) out.set(placement.id, labels)
+      }
+      return out
+    },
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
   }
@@ -1947,6 +1965,17 @@ function placementInWorld(placement: NpcPlacement): NpcPlacement {
     x: placement.x * WORLD_SCALE,
     y: placement.y * WORLD_SCALE,
     z: placement.z * WORLD_SCALE,
+    ...(placement.boxes
+      ? {
+          boxes: placement.boxes.map((box) => ({
+            label: box.label,
+            maxX: box.maxX * WORLD_SCALE,
+            maxZ: box.maxZ * WORLD_SCALE,
+            minX: box.minX * WORLD_SCALE,
+            minZ: box.minZ * WORLD_SCALE,
+          })),
+        }
+      : {}),
   }
 }
 

@@ -281,7 +281,7 @@ Read while measuring the story (`docs/story-walk.md`); the findings are in
 | `0x020649b0` | `0x44` | find, then run every action of the record found, with a fresh queue | `TriggerTable::Run(int kind, Context*)` |
 | `0x0206f81c` | `0xb5c` | applies the queue: `132`, `148`, `214` through `0x020703c8`; `119` starts the event; `133`, `138` and `226` change map, `138` and `226` each setting one flag of the move | `TriggerTable::ApplyQueue` |
 | `0x020703c8` | `0x134` | sets a thread's stage, **only forward** (`major × 10000 + minor × 100 + step`), clearing the banks on a new major or minor; then copies the live thread back into `GameState` | `StoryThreads::MoveTo(int thread, int major, int minor, int step)` |
-| `0x0206474c` | `0xf0` | the composites' test: an id valid (`0x0206e31c`) and in one of four states (`0x0206e120`) by a mode from −1 to 5 | — (quest progress?) |
+| `0x0206474c` | `0xf0` | the composites' test of a quest: may be asked of (`0x0206e31c`), and by its mode −1 and 5 at state 0, 0 at 2, 1 its first flag, 2 at 3, 3 at 1, 4 never (`0x0206e120`) | `Quests::Test` |
 | `0x0202ae18`, `0x0202b7d8`, `0x0202c1a4` | small | a session object (`0x020fefec`), whether its first word is set, and a per-player byte: condition `23`, and the flag actions' sending over the link | — (multiplayer, INFERRED) |
 | `ov017 0x0219ca88` | `0x310` | the field's per-frame checks: doorways, fades, transitions, and then kind 6 for the current map | `Field::CheckWatch`? |
 | `ov017 0x0218cbd4` | `0x498` | the field's frame update, which reads the tick count and updates everything, `0x0219ca88` among it | `Field::Update` |
@@ -314,7 +314,43 @@ the game's code". **Where minstrel translates it**: `castAtPoint` and
 | `0x0206bf2c` | `0xe4` | a placement's initialiser (`0x78` bytes; `+0x46` = −1) | `CastPlacement::CastPlacement` |
 | `0x0206eb98` | `0x30` | a game-wide flag by number: from `0x400`, displaced by 1,786 bits — `603`'s rule | `TriggerTable::TestFlagById` |
 
-**Open**: which operations use the banks at `+0x08` and `+0x14`; what
-`0x0206e120`'s four states are; which kind each of the other lookups asks for
-(overlays 1 to 4 and 17); tags 4, 6, 8, 11, 14, 15 and 18 to 22 of
-`place.bin`; the JPN addresses.
+| `0x0206c4e8` | `0x12c` | tag 6: a talk box — character, four floats (x and z at most, then at least, ×4096), a label — appended to the character's first placement in this map (`+0x40`, nodes of `0x18`) | `CastScript_TalkBox` |
+| `0x0206c614` | `0xe0` | tag 7: four floats onto the placement (`+0x24`–`+0x30`), mode byte `+0x1f` = 7 — a wander box, perhaps | `CastScript_Area`? |
+| `0x0206db20` | `0x28` | a character's entry in the cast list by id (`+0x68` links) | `CastList::Find` |
+
+**Open**: which operations use the banks at `+0x08` and `+0x14`; which kind
+each of the other lookups asks for (overlays 1 to 4 and 17); tags 4, 8, 11,
+14, 15 and 18 to 22 of `place.bin`; the JPN addresses.
+
+### 6. How a talk runs — overlay 17 and ARM9, 28 September 2026
+
+Findings in `packages/game-formats/FORMAT.md`, "How a talk runs" and "A talk
+file is a script", and its conditions table. **Where minstrel translates
+it**: `pickLine`, `lineFor` and `afterFor` in `apps/game/src/talk.ts`, held
+by `apps/game/test/talk.test.ts`, `story-talk.test.ts`, `story.test.ts` and
+the walk; the conditions in `flagsHold` (`packages/game-formats/src/story.ts`).
+
+| address | size | what it does | proposed name |
+|---|---|---|---|
+| `ov017 0x021a476c` | `0x584` | the field's talk input: clears the label (`0x021d83a8`), picks the target (`0x021a4e88`), and on to `0x021a4cf0` | `Field::BeginTalk` |
+| `ov017 0x021a4e88` | `0x31c` | the talk target: of 32 characters, one whose talk box holds the Hero (its label kept), or one near — within `0x1800` across, `0x1c00` away, a spot (type 1) never so — the most nearly faced under `0x3244` | `Field::PickTalkTarget` |
+| `ov017 0x021a4cf0` | `0xe0` | runs kind 0 with who at `+0` and the label at `+0x14`; if none ran, starts the talk (`0x021b8d1c`, `+0x114` who, `+0x124` the label) | `Field::TalkTo` |
+| `ov017 0x021b8e8c` | `0xa6c` | the talk's machine, nine states: loads `data/scenario/%s%c0.gp2` and `%03d_<LG>.bin`, runs the line picker, counts the talk, shows the window, and once it closes runs kind 1 with who and the label (two places) | `TalkWindow::Update` |
+| `ov017 0x0218d2c4` | `0x2c` | a major stage's chapter letter, `ABCDEFGHIJSTKLMNOPQ` from 1 (`0x021d616c`) | `ChapterLetter` |
+| `ov017 0x021ba810` | `0xd0` | the line picker: context at `0x021d8438` (minor, label, the two counts, who), runs the talk file as a `Script` with the table at `0x021d7c58`; the line kept is `+0x10`, else `+0x14` | `TalkScript::PickLine` |
+| `ov017 0x021b9d00`, `0x021b9e30`, `0x021ba124`, `0x021ba280`, `0x021ba3dc`, `0x021ba524` | `0x130`–`0x2f4` | the talk file's tags 1 to 6: a line by sub-stage range and time; a quest's line by its state; 3 and 4 in a game played together; 5 and 6 as 1 and 2 while the Hero's value is 0 or below | `TalkScript_Line`, `_QuestLine`, … |
+| `ov017 0x021b9bcc` | `0x134` | whether a line's label holds for the one asked: same group of 80, then by place — counts, exact, or the step, highest | `TalkScript::LabelHolds` |
+| `0x0206ec1c`, `0x0206ec64`, `0x0206ece8` | small | a character's talk count (a nibble of `0x80` bytes): read, add one to 15, clear | `TalkCounts::Get`, `::Add`, `::Clear` |
+| `0x0206ebc8`, `0x0206ebdc`, `0x0206ebf4` | small | clear the area's counts, the map's, both | `TalkCounts::Clear…` |
+| `ov017 0x0219d250` | `0x874` | on a new map: clears the map's counts, and the area's when three bytes of the maps' records (`GameState` `+0x468`, `0x02099950`) differ | `Field::EnterMap` |
+| `0x0206445c` | `0x34` | queues an action's entry (`118`, `119`, `128`, `155`) at the context's `+0x30` | `TriggerQueue::Push` |
+| `0x0206e120`, `0x0206e164`, `0x0206e260`, `0x0206e2dc`, `0x0206e31c` | small | a quest's two bits of state at the trigger object's `+0x2cc`, 204 quests; set them; its two flags; whether it may be asked of (not below 174 in some session state) | `Quests::State`, `::SetState`, … |
+| `0x020457e0` | `0x8` | the text system's last answer (`+0x954`); `0x0204500c` sets it to 0 as a window opens | `TextWindow::Answer` |
+| cases of `0x0205faf4` | — | conditions 11, 16, 18, 19, 20, 26, 27, 36, 41, 62, 63, 86, 88, 89 — FORMAT.md's table | — |
+| cases of `0x02061c04` | — | actions `106` (clear a character's counts), `118`/`119`/`128` (queued), `129` (a quest to state 1), `155` (runs `104` with its value, then queued) | — |
+| case `0x0206fa98` of `0x0206f81c` | — | queue `118`: the character by id, `+0x114`, the label at `+0x124`, start the talk | — |
+
+**Open**: what `func_ov017_021a4700` measures (the pick's angle) and whether
+`0x3244` is π; what `0x0202c540` is (tags 5 and 6); which file the maps'
+records at `GameState` `+0x468` come from; what the quest system does to
+states 2 and 3; the JPN addresses.

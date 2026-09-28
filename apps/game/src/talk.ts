@@ -2,10 +2,10 @@ import {
   type Conditions,
   conditionsOf,
   type EventOutcome,
+  entriesOf,
   flagsHold,
   type MarkupToken,
-  marksSet,
-  OP_THEN_MAP,
+  OP_ANSWER_IS,
   outcomeOf,
   parseMarkup,
   type TalkLine,
@@ -79,12 +79,13 @@ export function facingToward(
 }
 
 /**
- * The chapter letter whose talk files go with a story stage.
- *
- * **INFERRED**: the letter's place in the alphabet read as the stage's major
- * number, `A` for 1 — the prologue's talk is under `A` and the village chapter's
- * under `B`, which is where the cast's stages 1 and 2 stand. An area without that
- * letter takes the latest one before it. With no stage, the first letter.
+ * The chapter letter whose talk files go with a story stage — read from the
+ * game's code: the talk opens `/data/scenario/<area><letter>0.gp2` (ov017
+ * `func_ov017_021b8e8c`), the letter being the live major stage's in
+ * `ABCDEFGHIJSTKLMNOPQ` from 1 (`func_ov017_0218d2c4`) — so 11 and 12 are `S`
+ * and `T`, and 13 to 19 `K` to `Q`. An area without that chapter's archive
+ * says nothing, as the game's load of it fails. With no stage, the first
+ * letter, for looking through.
  */
 export function letterForStage(
   letters: readonly string[],
@@ -92,12 +93,13 @@ export function letterForStage(
 ): string | undefined {
   if (letters.length === 0) return undefined
   if (stage === undefined) return letters[0]
-  let chosen = letters[0]
-  for (const letter of letters) {
-    if (letter.charCodeAt(0) - 64 <= stage.major) chosen = letter
-  }
-  return chosen
+  const letter = CHAPTER_LETTERS[stage.major - 1]
+  if (letter === undefined) return undefined
+  return letters.find((l) => l.startsWith(letter))
 }
+
+/** The talk's chapter letters by major stage, from 1 — see {@link letterForStage}. */
+export const CHAPTER_LETTERS = 'ABCDEFGHIJSTKLMNOPQ'
 
 /** What the text's conditions ask about the Hero, and the name it uses. */
 export interface TextContext {
@@ -785,98 +787,245 @@ export function stageOrder(stage: Stage): number {
  */
 export const OPENING_STAGE: Stage = { major: 2, minor: 1 }
 
-/**
- * A trigger word read as an operation, its high half, and an argument, its low
- * — see `triggerWords`. **INFERRED**, each with the measure behind it in
- * `FORMAT.md`; the story's own operations, flags among them, are `story.ts`'s.
- */
-/** The character a record is about: placed in the record's map on 66%, against 18% for another. */
-const OP_CHARACTER = 6
-/** A talk label: one of that character's line labels on 707 of 793, against 221 for a control. */
-const OP_LABEL = 11
-/** With argument 1, the label is the high half of a word whose low half is 0: 338 of 519, against 0. */
-const OP_LABEL_BY = 36
-/**
- * The same, on a character's own records (value 5 of 0): the word names the
- * character again, as `6` does on every one read, and the label follows as a
- * word whose low half is 0 — 192 or 193 as the story's flags stand.
- */
-const OP_LABEL_OF = 118
-/** An event, by number: 58 of 64 in Angel Falls name one. */
+/** An event, by number — see `OP_EVENT` in `@minstrel/game-formats`. */
 const OP_EVENT = 119
+/** Sets a flag and plays an event — see `OP_FLAG_AND_EVENT` in `@minstrel/game-formats`. */
+const OP_FLAG_AND_EVENT = 155
 /**
- * Holds when the Hero has no companion with them; its argument is 0 on all 7
- * in Angel Falls. Each of those records sits before a character's first-time
- * event and gives the label that comes after it instead — and in every one of
- * those events (2222, 2230, 2240, 2250, 2430, 2440, 2450) Ivor speaks. So
- * without Ivor the character just talks. INFERRED.
+ * Holds by whether someone goes along with the Hero: `86 : 0` alone, `86 : 1`
+ * not. **Partly read** (US ARM9 `func_0205faf4`): the game looks through the
+ * party for a member of a kind it marks (`func_02061bd8`) and asks whether they
+ * are up, and failing one whether its object `0xce` is there. That the object
+ * is whoever goes along — Ivor over 2.2 and 2.3 — is INFERRED: in every one of
+ * the events after Angel Falls' seven `86 : 0` records (2222, 2230, 2240,
+ * 2250, 2430, 2440, 2450) Ivor speaks.
  */
 const OP_ALONE = 86
-/** The label of a character's plain line — the commonest, and the one chapter B's day-to-day lines carry. INFERRED. */
-const PLAIN = 16
 
 const wordsOf = triggerWords
 
-/** A line's first two numbers as a range of sub-stages, 99 for "to the end". */
-function covers(line: TalkLine, minor: number): boolean {
-  const from = line.unknown_numbers[0] as number
-  const to = line.unknown_numbers[1] as number
-  return from <= minor && (minor <= to || to === 99)
-}
+/** Value 5 of a character's own record: the first thing the game asks for when they are talked to — see {@link pickLine}. */
+const KIND_OWN = 0
+/** Value 5 of a talk record: asked for once a line has been said — see {@link pickLine}. */
+const KIND_TALK = 1
 
-/** INFERRED: the four-number form is the night line — on tag 1, 42.5% of them use night words against 9.2% of the three-number ones. */
-const isNightLine = (line: TalkLine) => line.unknown_numbers.length === 4
-const labelOf = (line: TalkLine) => line.unknown_numbers[line.unknown_numbers.length - 1]
+/** A talk file's own lines, by their record's tag — see {@link lineFor}. */
+const TAG_LINE = 1
+/** A line for a quest, by its state — see {@link lineFor}. */
+const TAG_QUEST = 2
 
 /**
- * Where a talk goes on once it is read — see {@link labelOnward}: the map and
- * the event there, and the prompt's answer it waits for, from 0, if it waits.
+ * How many times a character has been talked to, as the game counts it for
+ * {@link lineFor}: two counts of up to 15 each, kept for every character, both
+ * going up each time a line is said (US ARM9 `func_0206ec64`, from ov017
+ * `func_ov017_021b8e8c`). A new sub-stage clears both (`func_020703c8`), and
+ * so does `106 : c` for its character. Entering a map clears `map`; entering
+ * one the game counts as another area clears `area` (ov017
+ * `func_ov017_0219d250`, which compares three bytes of each map's record in a
+ * table it keeps — which file that is, is not read; the engine takes the area
+ * to be the map's archive, `M01`, and that is ours).
  */
-export interface Onward {
+export interface Talked {
+  readonly area: number
   readonly map: number
-  readonly event: number
+}
+
+/** Never talked to — the counts a new sub-stage leaves. */
+export const NEVER_TALKED: Talked = { area: 0, map: 0 }
+
+/** Where the story stands for choosing a line — see {@link lineFor}. */
+export interface LineAt {
+  /** The sub-stage: a line's first two numbers are a range of them. */
+  readonly minor: number
+  /** The step, which labels 64 to 79 of each group count — see {@link lineFor}. */
+  readonly step: number
+  readonly night: boolean
+  readonly talked: Talked
+  /**
+   * Each quest's state as the game keeps it, by its number: two bits of state,
+   * then two flags (`func_0206e120`, `func_0206e260`, `func_0206e2dc`). Not
+   * given, {@link QUESTS_OPEN}.
+   */
+  readonly quest?: (id: number) => number
+}
+
+/**
+ * **The quests are not built, so every one is taken as open and not taken —
+ * state 1. Ours.** Read from the game's code, a quest's two bits run 0 before
+ * it opens, 1 open, 2 taken and 3 done: `129 : q` opens one (US ARM9
+ * `func_0206e164`), and the quest system's own code, not read, the rest. A
+ * new game leaves every one at 0, and so would leave Stornway's Bill, whose
+ * lines are all his quest's, with nothing to say; open, he offers it. Over the
+ * cartridge that is 1,178 of 1,619 characters speaking against 1,138, and the
+ * story walks the same either way. What accepting one does is the quest
+ * system's, and nothing here.
+ */
+export const QUESTS_OPEN = (_id: number): number => 1
+
+/**
+ * **Which of a character's lines is said for a label — read from the game's
+ * code.** A talk file is a script (ov017 `func_ov017_021ba810` runs it with
+ * the opcode table at `0x021d7c58`): each record's tag is its opcode, and
+ * every record is visited in turn. A line that holds is kept, **so the last
+ * that holds is said**.
+ *
+ * - **Tag 1** (`func_ov017_021b9d00`), a line: its first two numbers are a
+ *   range of sub-stages, which it holds within (`GameState` `+0x5cb4`, the
+ *   live minor). With four numbers the third is the time of day: not 0, it
+ *   holds only by night — and at night, once such a line is in range, no
+ *   three-number line after it holds. Its last number is its label.
+ * - **Tag 2** (`func_ov017_021b9e30`), a quest's line: the quest's number, a
+ *   test of its state — −1 untouched, 0 state 2, 2 state 3, 3 state 1 — and
+ *   then as tag 1. A quest's line that holds silences every tag-1 line, and
+ *   the first quest to have one silences the others' unless their states say
+ *   otherwise. The quests are not built — see {@link LineAt.quest}.
+ * - **Tags 3 and 4** hold only in a game played together, and **tags 5 and
+ *   6**, as 1 and 2, only while the Hero is down (see `OP_HERO_DOWN` in
+ *   `@minstrel/game-formats`) — neither read here, since the Hero is taken to
+ *   be up and alone.
+ *
+ * A label holds by the one asked for (`func_ov017_021b9bcc`): the two are in
+ * the same group of 80, and within it, by the label's place — 0 to 15 while
+ * that many are within the character's `area` count, 16 to 31 their `map`
+ * count, 32 to 63 only the label itself, and 64 to 79 while within the step,
+ * the highest such. Asked 0, a character's 0 and 16 always hold — their plain
+ * lines — and 17 once they have been talked to in this map.
+ */
+export function lineFor(
+  lines: readonly TalkLine[],
+  label: number,
+  at: LineAt,
+): TalkLine | undefined {
+  const quest = at.quest ?? QUESTS_OPEN
+  const state = (id: number) => (id >= 0 && id < QUEST_SLOTS ? quest(id) & 3 : 0)
+  const group = Math.trunc(label / 80)
+  let said: TalkLine | undefined
+  let nightInRange = false
+  let highestStep = 0
+  let questSaid = -1
+  const holdsFor = (line: TalkLine, rest: readonly number[]): boolean => {
+    // The time of day, and then the label — see above.
+    if (rest.length >= 2) {
+      if (rest[0] !== 0) {
+        if (!at.night) return false
+        nightInRange = true
+      }
+    } else if (nightInRange) return false
+    const own = rest[rest.length - 1] as number
+    if (line.text === undefined || Math.trunc(own / 80) !== group) return false
+    const place = own % 80
+    const count = place % 16
+    switch (Math.trunc(place / 16)) {
+      case 0:
+        return count <= at.talked.area
+      case 1:
+        return count <= at.talked.map
+      case 4:
+        if (count > at.step || count < highestStep) return false
+        highestStep = count
+        return true
+      default:
+        return own === label
+    }
+  }
+  for (const line of lines) {
+    const n = line.unknown_numbers.map((v) => v | 0)
+    if (line.tag === TAG_LINE) {
+      if (questSaid >= 0) continue
+      const from = n[0] as number
+      if (from >= 0 && (at.minor < from || at.minor > (n[1] as number))) continue
+      if (holdsFor(line, n.slice(2))) said = line
+    } else if (line.tag === TAG_QUEST) {
+      const id = n[0] as number
+      if (questSaid >= 0 && questSaid !== id) {
+        const s = state(id)
+        const moves = s === 1 || s === 2 || (state(questSaid) === 3 && s === 3 && questSaid <= id)
+        if (!moves) continue
+      }
+      if (!questStateHolds(quest, id, n[1] as number)) continue
+      if (holdsFor(line, n.slice(2))) {
+        said = line
+        questSaid = id
+      }
+    }
+  }
+  return said
+}
+
+/** How many quests the game keeps a state for (`func_0206e120`). */
+const QUEST_SLOTS = 0xcc
+
+/** A quest line's test of its quest's state — see {@link lineFor}. */
+function questStateHolds(quest: (id: number) => number, id: number, test: number): boolean {
+  const nibble = id >= 0 && id < QUEST_SLOTS ? quest(id) : 0
+  switch (test) {
+    case -1:
+      return (nibble & 3) === 0
+    case 0:
+      return (nibble & 3) === 2
+    case 1:
+      return (nibble & 4) !== 0
+    case 2:
+      return (nibble & 3) === 3
+    case 3:
+      return (nibble & 3) === 1
+    case 4:
+      return (nibble & 8) !== 0 && (nibble & 3) === 0
+    default:
+      return true
+  }
+}
+
+/** What a talk record does once a line is said, and the answer it waits for — see {@link Choice}. */
+export interface After {
+  readonly outcome: EventOutcome
+  /** The prompt's answer its `16` waits for, from 0; undefined, any. */
   readonly answer: number | undefined
 }
 
-/** What a character says now: one of their lines, or an event that runs instead. */
+/** What a character says now: a line, an event that plays instead, or a record that runs and says nothing. */
 export type Choice =
   | {
       readonly kind: 'line'
       readonly line: TalkLine
       readonly why: string
-      /** The marks the record that chose it sets — see `OP_SET_MARK`. */
-      readonly marks?: readonly number[]
-      /** Where the talk goes on once read, if its label's talk record says — see {@link labelOnward}. */
-      readonly onward?: Onward
-      /**
-       * The event its label leads to, played once the line is read — and if the
-       * line asks, only on the answer it waits for. See {@link labelEvent}.
-       */
-      readonly leadsTo?: { readonly event: number; readonly answer: number | undefined }
-      /** What the record that chose it does as it runs — see `record` on the other kind of choice. */
+      /** The label the talk was asked with, which the talk records after it test. */
+      readonly label: number
+      /** What the character's own record that asked for it does as it runs — see {@link pickLine}. */
       readonly record?: EventOutcome
       /**
-       * What the label's own talk record does once the line is read, on the
-       * answer it waits for — the event and the hand-on above among it, and any
-       * move of the story. See {@link labelRecord}.
+       * The talk records that may run once it is said, in the file's order: the
+       * game runs the first that holds, and they are tested then, so the answer
+       * a prompt in the line was given decides among them — see {@link afterFor}.
        */
-      readonly after?: { readonly outcome: EventOutcome; readonly answer: number | undefined }
+      readonly after: readonly After[]
     }
   | {
       readonly kind: 'event'
       readonly event: number
       readonly why: string
-      /** The marks the records that chose it set — see `OP_SET_MARK`. */
-      readonly marks?: readonly number[]
       /**
        * What the record that chose it does as it runs, the event among it: the
        * game runs every action of the record it takes (US ARM9
        * `func_02064530`), so its flags and any move of the story come too.
        */
-      readonly record?: EventOutcome
-      /** What the label's own talk record does, where a label led to the event — see {@link labelRecord}. */
-      readonly after?: { readonly outcome: EventOutcome; readonly answer: number | undefined }
+      readonly record: EventOutcome
     }
+  | {
+      readonly kind: 'record'
+      readonly why: string
+      /** What it does — where it has the Hero talk to someone else, `record.talk` says who. */
+      readonly record: EventOutcome
+    }
+
+/**
+ * The talk record that runs once a line is said, given the answer its prompt
+ * was given — the first in the file whose `16` holds. A talk's window sets
+ * the answer to 0 as it opens (see `OP_ANSWER_IS`), so with no prompt it is 0.
+ */
+export function afterFor(after: readonly After[], answer: number): EventOutcome | undefined {
+  return after.find((a) => a.answer === undefined || a.answer === answer)?.outcome
+}
 
 export interface Asking {
   readonly triggers: readonly Trigger[]
@@ -886,13 +1035,24 @@ export interface Asking {
   readonly night: boolean
   /** Who is being talked to, by their id in the area's cast. */
   readonly id: number
-  /** Their talk file for the stage's chapter. */
+  /** Their talk file for the stage's chapter — see {@link letterForStage}. */
   readonly lines: readonly TalkLine[]
+  /**
+   * The label to talk with, where a record asked for one — see `OP_TALK_TO`.
+   * Without one the character's own records are asked first.
+   */
+  readonly label?: number
+  /**
+   * The label of the talk box the Hero stands in round them, if one — see
+   * `TalkBox` in `@minstrel/game-formats`. Their own records are asked with
+   * it, and without one of theirs holding it is the label talked with.
+   */
+  readonly box?: number
   /** The story flags set — see `flagsHold`. None, when not given. */
   readonly flags?: ReadonlySet<number>
   /** The marks set, the second set of flags — see `OP_IF_MARK`. Not read when not given. */
   readonly marks?: ReadonlySet<number>
-  /** Whether the Hero has no companion with them — see `OP_ALONE`. Not read when not given. */
+  /** Whether nobody goes along with the Hero — see {@link OP_ALONE}. Not read when not given. */
   readonly alone?: boolean
   /** The step within the stage — see `OP_AT_STEP`. Not read when not given. */
   readonly step?: number | undefined
@@ -900,336 +1060,145 @@ export interface Asking {
   readonly globals?: ReadonlySet<number>
   /** Those surely set, where `globals` holds those that may be — see `Conditions.globalsSure`. */
   readonly globalsSure?: ReadonlySet<number>
+  /** How often they have been talked to — see {@link Talked}. Never, when not given. */
+  readonly talked?: Talked
 }
 
 /**
- * Which of a character's lines applies now, or which event runs instead.
+ * **Which of a character's lines applies now, or what runs instead — as the
+ * game decides it**, read from its code (ov017):
  *
- * **INFERRED throughout**, from the measures above. The first of the area's
- * triggers in this map, over a span that covers the stage, naming the
- * character and a talk operation, and whose flag conditions hold for the
- * story's flags, decides: a label, or failing that an event. A label may lead
- * on to an event of its own — see {@link labelEvent} — which then runs instead.
- * Without one, the plain line. The line is the tag-1 line with that label whose
- * range covers the sub-stage, in the time of day asked for if there is one and
- * the other if not; the other tags are errands and counters, not talk. Where no
- * line has the label, the first that covers the sub-stage is taken, and `why`
- * says it is a guess.
+ * 1. **Their own record first** (`func_ov017_021a4cf0`): the first record of
+ *    value 5 = 0 over the map and stage whose conditions hold, tested with
+ *    who is talked to (`6`) and the label of the talk box the Hero stands in
+ *    round them, or 0 (`11`, and `41` for whether there is one — see
+ *    {@link Asking.box}). It runs, every action: a `118` has the Hero talk to
+ *    someone with a label, and a `119` plays an event. With none, the talk
+ *    goes on with the box's label, or 0.
+ * 2. **The line** for that label — see {@link lineFor}. With none, nothing is
+ *    said, and nothing after.
+ * 3. **Their talk records after it** (`func_ov017_021b8e8c`, once the window
+ *    closes): the first record of value 5 = 1 whose conditions hold for who
+ *    and the label asked, and for the prompt's answer (`16`) — which is why
+ *    they are handed on as {@link Choice.after}. One may ask for another
+ *    label with `118`, and the talk goes round again.
+ *
+ * `Asking.label` starts at 2, as a `118` does. The quests are taken as
+ * {@link QUESTS_OPEN} has them, and the Hero as up (`36`), both ours.
  */
 export function pickLine(asking: Asking): Choice | undefined {
-  const { triggers, map, stage, night, id, marks, step } = asking
+  const { triggers, map, stage, night, id } = asking
   const flags = asking.flags ?? new Set<number>()
-  // The time of day and the game-wide flags, as the game's conditions read them.
   const more: Conditions = {
     night,
+    character: id,
+    down: false,
+    inBox: asking.box !== undefined,
     ...(asking.globals ? { globals: asking.globals } : {}),
     ...(asking.globalsSure ? { globalsSure: asking.globalsSure } : {}),
   }
-  let marked: number[] = []
-  let onward: Onward | undefined
-  let leadsTo: { event: number; answer: number | undefined } | undefined
-  let record: EventOutcome | undefined
-  let after: { outcome: EventOutcome; answer: number | undefined } | undefined
-  const lines = asking.lines.filter((line) => line.tag === 1)
-  const labels = new Set(lines.map(labelOf))
-  let label = PLAIN
-  let why = `label ${PLAIN}, the plain line — no trigger names them here`
-
   const applies = (candidate: Trigger) =>
     (map === undefined || candidate.map === map) &&
     stageOrder(candidate.from) <= stageOrder(stage) &&
     stageOrder(stage) <= stageOrder(candidate.to)
-
-  // Who a record is about, and the label it is for, by its conditions — which
-  // name them outright (`6`, `11`) or inside a composite, `52` to `61`.
-  const naming = (candidate: Trigger) =>
-    applies(candidate) && conditionsOf(candidate).some((w) => w.op === OP_CHARACTER && w.arg === id)
-  const chooses = (candidate: Trigger) => {
-    if (!naming(candidate)) return false
-    const words = [...conditionsOf(candidate), ...wordsOf(candidate)]
+  const holdsWith = (candidate: Trigger, label: number) => {
+    const conditions = conditionsOf(candidate)
     return (
-      words.some(
-        (w) =>
-          w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_LABEL_OF || w.op === OP_EVENT,
-      ) &&
-      flagsHold(conditionsOf(candidate), flags, marks, step, more) &&
-      (asking.alone === undefined || asking.alone || !words.some((w) => w.op === OP_ALONE))
+      flagsHold(conditions, flags, asking.marks, asking.step, { ...more, label }) &&
+      questsHold(candidate) &&
+      (asking.alone === undefined ||
+        conditions.every((w) => w.op !== OP_ALONE || (w.arg === 0) === asking.alone))
     )
   }
-  // The character's own records choose first; a talk record chooses only for
-  // one who has none here — otherwise it makes an event of a label they
-  // choose, see `labelEvent`. INFERRED: 116 talk records with no condition sit
-  // before a record of the same character, map and span, which the first
-  // match in the file would leave dead — 269 of them, Patty's among them.
-  const own = triggers.some((c) => c.unknown_5 !== KIND_TALK && naming(c))
-  const trigger =
-    triggers.find((c) => c.unknown_5 !== KIND_TALK && chooses(c)) ??
-    (own ? undefined : triggers.find((c) => c.unknown_5 === KIND_TALK && chooses(c)))
-  if (trigger) {
-    const words = wordsOf(trigger)
-    marked = marksSet(words)
-    record = outcomeOf(trigger)
-    const where = `the trigger at 0x${trigger.offset.toString(16)}`
-    const named = conditionsOf(trigger).find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
-    // The label the record chooses, by its own words — after the character's
-    // label word, the first that is a label with 0 — whether or not the talk
-    // file has a line with it; and the event a talk record makes of it.
-    const at = words.findIndex(
-      (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
+  const where = (candidate: Trigger) => `the record at 0x${candidate.offset.toString(16)}`
+
+  const first = asking.box ?? 0
+  let label = asking.label ?? first
+  let record: EventOutcome | undefined
+  let why = asking.label === undefined ? `label ${first}, as none of their own records holds` : ''
+  if (asking.label === undefined) {
+    const own = triggers.find(
+      (candidate) =>
+        candidate.unknown_5 === KIND_OWN && applies(candidate) && holdsWith(candidate, first),
     )
-    const chosenHere =
-      named ??
-      (at >= 0 ? words.slice(at + 1).find((w) => w.arg === 0 && w.op !== 0)?.op : undefined)
-    const leads =
-      chosenHere === undefined
-        ? undefined
-        : labelEvent(triggers, applies, id, chosenHere, flags, marks, step, more)
-    // The line is read first and the event played after it — as a let's play
-    // reads the Hexagon's inscription out before its figure appears, and asks
-    // "Press the button?" before the switch's scene. Where no line has the
-    // label, the one that would be said is: the inscription's record names
-    // label 80 and its one line is 96, and still it is read out (INFERRED,
-    // thin: the one such case seen). With no line at all, the event at once.
-    const read = lines.some((line) => covers(line, stage.minor))
-    if (leads && !read) {
-      const both = [...marked, ...leads.marks]
-      return {
-        kind: 'event',
-        event: leads.event,
-        why: `event ${leads.event}, which label ${chosenHere} leads to by the trigger at 0x${leads.offset.toString(16)}`,
-        ...(both.length > 0 ? { marks: both } : {}),
-        record,
-        after: { outcome: outcomeOf(leads.trigger), answer: leads.answer },
-      }
-    }
-    if (leads && chosenHere !== undefined) {
-      marked = [...marked, ...leads.marks]
-      label = chosenHere
-      why = `label ${chosenHere}, then event ${leads.event}, which it leads to by the trigger at 0x${leads.offset.toString(16)}`
-      leadsTo = { event: leads.event, answer: leads.answer }
-      after = { outcome: outcomeOf(leads.trigger), answer: leads.answer }
-    } else {
-      const going =
-        chosenHere === undefined
-          ? undefined
-          : labelOnward(triggers, applies, id, chosenHere, flags, marks, step, more)
-      onward = going?.onward
-      if (going) after = { outcome: outcomeOf(going.trigger), answer: going.onward.answer }
-      // A label's talk record that moves the story without an event or a
-      // hand-on — Alltrades Abbey at 6.1, `6:7 11:192 104:1 … 132:0 0:6 0:2 0:1`.
-      const story =
-        going || chosenHere === undefined
-          ? undefined
-          : labelRecord(triggers, applies, id, chosenHere, flags, marks, step, more)
-      if (story) after = story
-      const byWord = words.some(
-        (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
-      )
-        ? words.find((w) => w.arg === 0 && labels.has(w.op))?.op
-        : undefined
-      const event = words.find((w) => w.op === OP_EVENT)?.arg
-      if (named !== undefined) {
-        label = named
-        why = `label ${named}, from ${where}`
-      } else if (byWord !== undefined) {
-        label = byWord
-        why = `label ${byWord}, from ${where}`
-      } else if (event !== undefined) {
+    if (own) {
+      record = outcomeOf(own)
+      const talk = record.talk
+      if (talk === undefined || talk.character !== id) {
+        const event = record.event
+        if (event !== undefined && talk === undefined)
+          return { kind: 'event', event, why: `event ${event}, from ${where(own)}`, record }
         return {
-          kind: 'event',
-          event,
-          why: `event ${event}, from ${where}`,
-          ...(marked.length > 0 ? { marks: marked } : {}),
+          kind: 'record',
+          why:
+            talk === undefined
+              ? `${where(own)} runs and says nothing`
+              : `${where(own)} has the Hero talk to ${talk.character} with label ${talk.label}`,
           record,
         }
       }
+      label = talk.label
+      why = `label ${label}, from ${where(own)}`
     }
+  } else why = `label ${label}, as asked`
+
+  const line = lineFor(asking.lines, label, {
+    minor: stage.minor,
+    step: asking.step ?? 0,
+    night,
+    talked: asking.talked ?? NEVER_TALKED,
+  })
+  if (!line) {
+    return record
+      ? {
+          kind: 'record',
+          why: `${why}; no line of theirs holds for it, so nothing is said`,
+          record,
+        }
+      : undefined
   }
-
-  const covering = lines.filter((line) => covers(line, stage.minor))
-  const labelled = covering.filter((line) => labelOf(line) === label)
-  const chosen = labelled.find((line) => isNightLine(line) === night) ?? labelled[0]
-  if (chosen) {
-    const time =
-      isNightLine(chosen) === night
-        ? ''
-        : ` — the ${isNightLine(chosen) ? 'night' : 'day'} line, as there is none for the ${night ? 'night' : 'day'}`
-    return {
-      kind: 'line',
-      line: chosen,
-      why: why + time,
-      ...(marked.length > 0 ? { marks: marked } : {}),
-      ...(onward ? { onward } : {}),
-      ...(leadsTo ? { leadsTo } : {}),
-      ...(record ? { record } : {}),
-      ...(after ? { after } : {}),
-    }
-  }
-  const guess = covering.find((line) => isNightLine(line) === night) ?? covering[0]
-  if (guess) {
-    return {
-      kind: 'line',
-      line: guess,
-      why: `${why}; no such line covers ${stage.major}.${stage.minor}, so the first that does — a guess`,
-      // Read before the event its label leads to — see `read` above. The
-      // records run whichever line is said, as the game runs them.
-      ...(marked.length > 0 ? { marks: marked } : {}),
-      ...(onward ? { onward } : {}),
-      ...(leadsTo ? { leadsTo } : {}),
-      ...(record ? { record } : {}),
-      ...(after ? { after } : {}),
-    }
-  }
-  return undefined
-}
-
-/** Value 5 of a talk record: a character, a talk label, and what talking with it does. */
-const KIND_TALK = 1
-
-/**
- * The prompt's answer a talk record's event waits for, from 0 — Yes. INFERRED:
- * in Angel Falls, the pass and the Hexagon, 7 of the 9 talk records with a
- * label, an event and a `16` have a line that asks — one more is the inn's
- * welcome, and one has no line found — where 3 of the 17 without one do. The
- * switch's, `6:201 11:194 16:0 119:2530`, asks "Press the button?", and a
- * let's play answering No is told the Hero decides not to, and nothing moves.
- */
-const OP_EVENT_ANSWER = 16
-
-/**
- * The event a character's chosen label leads to: a talk record — see
- * {@link KIND_TALK} — over the map and stage, naming the character, that label
- * with {@link OP_LABEL}, and an event, its flag conditions holding; and the
- * answer it waits for, {@link OP_EVENT_ANSWER}.
- *
- * **INFERRED**: of the 179 talk records on the cartridge with a label and an
- * event, 97 have the same character's own record choosing that label in the
- * same map and span, first in the file on all 97 — Ivor's at the landslide,
- * `6:7 118:7 192:0` and then `6:7 11:192 119:2350`. The other 82 are not
- * established.
- */
-function labelEvent(
-  triggers: readonly Trigger[],
-  applies: (candidate: Trigger) => boolean,
-  id: number,
-  label: number,
-  flags: ReadonlySet<number>,
-  marks: ReadonlySet<number> | undefined,
-  step: number | undefined,
-  more?: Conditions,
-):
-  | {
-      event: number
-      offset: number
-      marks: number[]
-      answer: number | undefined
-      trigger: Trigger
-    }
-  | undefined {
+  const after: After[] = []
   for (const candidate of triggers) {
     if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
-    const words = wordsOf(candidate)
-    const conditions = conditionsOf(candidate)
-    if (!conditions.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
-    if (!conditions.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(conditions, flags, marks, step, more)) continue
-    const event = words.find((w) => w.op === OP_EVENT)?.arg
-    if (event !== undefined) {
-      return {
-        event,
-        offset: candidate.offset,
-        marks: marksSet(words),
-        answer: conditions.find((w) => w.op === OP_EVENT_ANSWER)?.arg,
-        trigger: candidate,
-      }
-    }
+    // Tested with the answer left open: it decides among them once given.
+    if (!holdsWith(candidate, label)) continue
+    const answer = conditionsOf(candidate).find((w) => w.op === OP_ANSWER_IS)?.arg
+    after.push({ outcome: outcomeOf(candidate), answer })
+    if (answer === undefined) break
   }
-  return undefined
+  return { kind: 'line', line, why, label, ...(record ? { record } : {}), after }
 }
 
 /**
- * What a character's chosen label's talk record does once the line is read,
- * where it plays no event and goes nowhere — see {@link labelEvent}, whose
- * search this is: the first talk record over the map and stage naming the
- * character and the label whose conditions hold, if it moves the story or sets
- * a flag, and the answer it waits for. The game runs every action of the record
- * it takes (US ARM9 `func_02064530`).
+ * The composites' test of a quest (US ARM9 `func_0206474c`): by its mode, −1
+ * holds for a quest at 0, 0 at 2, 1 while its first flag is set, 2 at 3, 3 at
+ * 1, 4 never and 5 at 0 — here with every quest as {@link QUESTS_OPEN} has
+ * it. 53 to 61 carry it in their first value, the quest in its high half and
+ * the mode in its low — see `conditionsOf` in `@minstrel/game-formats`.
  */
-function labelRecord(
-  triggers: readonly Trigger[],
-  applies: (candidate: Trigger) => boolean,
-  id: number,
-  label: number,
-  flags: ReadonlySet<number>,
-  marks: ReadonlySet<number> | undefined,
-  step: number | undefined,
-  more?: Conditions,
-): { outcome: EventOutcome; answer: number | undefined } | undefined {
-  for (const candidate of triggers) {
-    if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
-    const conditions = conditionsOf(candidate)
-    if (!conditions.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
-    if (!conditions.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(conditions, flags, marks, step, more)) continue
-    const outcome = outcomeOf(candidate)
-    const moves =
-      outcome.stage !== undefined ||
-      outcome.all !== undefined ||
-      outcome.threads.length > 0 ||
-      outcome.flags.length > 0 ||
-      outcome.unflags.length > 0 ||
-      outcome.globals.length > 0 ||
-      outcome.unglobals.length > 0
-    if (moves) return { outcome, answer: conditions.find((w) => w.op === OP_EVENT_ANSWER)?.arg }
+function questsHold(candidate: Trigger, quest: (id: number) => number = QUESTS_OPEN): boolean {
+  for (const entry of entriesOf(candidate)) {
+    if (entry.op < 53 || entry.op > 61) continue
+    const value = entry.params[0] ?? 0
+    const id = (value >>> 16) & 0xffff
+    const mode = ((value & 0xffff) << 16) >> 16
+    const nibble = id < QUEST_SLOTS ? quest(id) : 0
+    const state = nibble & 3
+    const holds =
+      mode === -1 || mode === 5
+        ? state === 0
+        : mode === 0
+          ? state === 2
+          : mode === 1
+            ? (nibble & 4) !== 0
+            : mode === 2
+              ? state === 3
+              : mode === 3
+                ? state === 1
+                : false
+    if (!holds) return false
   }
-  return undefined
-}
-
-/**
- * The prompt's answer a talk record's onward waits for, from 0. INFERRED, and
- * thin: two records on the cartridge carry it beside an onward. Erinn's at 2.1,
- * `6:98 11:193 16:0 177:0 1:0 133:1110 2130:0`, goes on to the morning upstairs
- * — and the line it goes on from asks the Hero in for the night, its first
- * answer, Yes, being dinner. A let's play answers Yes and wakes to the morning.
- */
-const OP_ANSWER = 177
-
-/**
- * Where talking to a character goes on once read, by the talk record for the
- * label they chose — see {@link KIND_TALK}: `133 : map` and then the event as
- * its operation, as an event's own record goes on (`OP_THEN_MAP`), and the
- * answer it waits for, {@link OP_ANSWER}.
- */
-function labelOnward(
-  triggers: readonly Trigger[],
-  applies: (candidate: Trigger) => boolean,
-  id: number,
-  label: number,
-  flags: ReadonlySet<number>,
-  marks: ReadonlySet<number> | undefined,
-  step: number | undefined,
-  more?: Conditions,
-): { onward: Onward; trigger: Trigger } | undefined {
-  for (const candidate of triggers) {
-    if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
-    const words = wordsOf(candidate)
-    const conditions = conditionsOf(candidate)
-    if (!conditions.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
-    if (!conditions.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(conditions, flags, marks, step, more)) continue
-    const go = words.findIndex((w) => w.op === OP_THEN_MAP)
-    const next = go < 0 ? undefined : words[go + 1]
-    if (go < 0 || !next || next.arg !== 0) continue
-    return {
-      onward: {
-        map: (words[go] as { arg: number }).arg,
-        event: next.op,
-        answer: words.find((w) => w.op === OP_ANSWER)?.arg,
-      },
-      trigger: candidate,
-    }
-  }
-  return undefined
+  return true
 }
 
 function speakerOf({ text: page, centred }: { text: string; centred: boolean }): TalkPage {
@@ -1253,7 +1222,8 @@ export function eventsTriggered(triggers: readonly Trigger[]): number[] {
   const events = new Set<number>()
   for (const trigger of triggers) {
     for (const word of wordsOf(trigger)) {
-      if (word.op === OP_EVENT && word.arg > 0) events.add(word.arg)
+      if ((word.op === OP_EVENT || word.op === OP_FLAG_AND_EVENT) && word.arg > 0)
+        events.add(word.arg)
     }
   }
   return [...events].sort((a, b) => a - b)

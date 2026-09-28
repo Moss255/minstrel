@@ -32,6 +32,13 @@ zero as a zero, because:
 - honouring it would misread a legitimately empty stream, whose size field is an
   ordinary zero.
 
+`decompressLz10` reads a zero as a zero. **`tryDecompressLz10`, which is asked
+whether bytes are a stream at all, answers no to a declared size of 0**: such a
+stream decodes to nothing whatever follows, so decoding it proves nothing, and it
+is exactly the shape of a file whose first `u32` is 16. On the reference
+cartridge 41 English talk files — tagged data tables whose header opens with 16
+— were taken for empty streams before this, the story's king among them.
+
 If a cartridge that needs the extension turns up, add it *with samples*.
 
 ## LZ77 variant 10 (`0x10`)

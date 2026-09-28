@@ -9,7 +9,17 @@ import {
 } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
-import { pickLine } from '../src/talk.ts'
+import { afterFor, pickLine } from '../src/talk.ts'
+
+/** The events and hand-ons a talk has follow its line, with the answers they wait for. */
+const afterOf = (choice: ReturnType<typeof pickLine>) =>
+  choice?.kind === 'line'
+    ? choice.after.map((a) => ({
+        event: a.outcome.event,
+        onward: a.outcome.onward,
+        answer: a.answer,
+      }))
+    : []
 
 const romPath = process.env.MINSTREL_TEST_ROM
 
@@ -63,7 +73,14 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
       lines: inn.linesOf(98, 'B0'),
       flags: new Set([1]),
     })
-    expect(erinn).toMatchObject({ kind: 'line', onward: { map: 1110, event: 2130, answer: 0 } })
+    // Her question, and on Yes — or no prompt, which leaves the answer 0 — on
+    // to the morning upstairs.
+    expect(erinn?.kind).toBe('line')
+    expect(erinn?.kind === 'line' && afterFor(erinn.after, 0)?.onward).toEqual({
+      map: 1110,
+      event: 2130,
+    })
+    expect(erinn?.kind === 'line' && afterFor(erinn.after, 1)).toBeUndefined()
     expect(inn.mapCodeOf(1110)).toBe('M01M10')
   })
 
@@ -131,15 +148,18 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
     expect(entryEvent(pass.triggers, 5101, stage, new Set())).toBe(2300)
     expect(entryEvent(pass.triggers, 5101, stage, new Set([2]))).toBeUndefined()
     expect(eventOutcome(pass.triggers, 2300, pass.mapId)?.flags).toEqual([2])
+    // Ivor's own record asks for label 192, his line at the landslide, and
+    // the talk record after it plays ev2350.
     const ivor = pickLine({
       triggers: pass.triggers,
       map: pass.mapId,
       stage,
       night: false,
       id: 7,
-      lines: [],
+      lines: pass.linesOf(7, 'B0'),
     })
-    expect(ivor).toMatchObject({ kind: 'event', event: 2350 })
+    expect(ivor?.kind === 'line' && ivor.label).toBe(192)
+    expect(afterOf(ivor).map((a) => a.event)).toEqual([2350])
     expect(eventOutcome(pass.triggers, 2350, pass.mapId)?.stage).toEqual({
       major: 2,
       minor: 3,
@@ -158,7 +178,8 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
       lines: village.linesOf(8, 'B0'),
     }
     const first = pickLine({ ...asking, marks: new Set(), alone: false })
-    expect(first).toMatchObject({ kind: 'event', event: 2430, marks: [7] })
+    expect(first).toMatchObject({ kind: 'event', event: 2430 })
+    expect(first?.kind === 'event' && first.record.marks).toEqual([7])
     expect(pickLine({ ...asking, marks: new Set([7]), alone: false })?.why).toContain('label 193')
     expect(pickLine({ ...asking, marks: new Set(), alone: true })?.why).toContain('label 194')
   })
@@ -166,10 +187,18 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
   it('has the Hexagon’s first floor go by its steps, and its statue step aside at 5', () => {
     const floor = load(rom, { map: 'D01M01' })
     const stage = { major: 2, minor: 4 }
-    const asking = { triggers: floor.triggers, map: floor.mapId, stage, night: false, lines: [] }
-    // The switch, 201: nothing until step 4, when it plays the noise of something moving.
-    expect(pickLine({ ...asking, id: 201, step: 4 })).toMatchObject({ kind: 'event', event: 2530 })
-    expect(pickLine({ ...asking, id: 201, step: 3 })?.kind).not.toBe('event')
+    const asking = {
+      triggers: floor.triggers,
+      map: floor.mapId,
+      stage,
+      night: false,
+      lines: floor.linesOf(201, 'B0'),
+    }
+    // The switch, 201: nothing until step 4, when its line asks and, on Yes,
+    // it plays the noise of something moving.
+    const four = pickLine({ ...asking, id: 201, step: 4 })
+    expect(afterOf(four)).toEqual([{ event: 2530, onward: undefined, answer: 0 }])
+    expect(afterOf(pickLine({ ...asking, id: 201, step: 3 }))).toEqual([])
     expect(eventOutcome(floor.triggers, 2530, floor.mapId)?.stage).toEqual({
       major: 2,
       minor: 4,
@@ -204,13 +233,13 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
       stage: { major: 2, minor: 4 },
       night: false,
       id: 203,
-      lines: [],
+      lines: room.linesOf(203, 'B0'),
     }
-    expect(pickLine(asking)).toMatchObject({ kind: 'event', event: 2535 })
-    expect(pickLine({ ...asking, flags: new Set([6]) })).toMatchObject({
-      kind: 'event',
-      event: 22510,
-    })
+    // Her first words, then ev2535; and once flag 6 is set, the fight on Yes.
+    expect(afterOf(pickLine(asking)).map((a) => [a.event, a.answer])).toEqual([[2535, undefined]])
+    expect(
+      afterOf(pickLine({ ...asking, flags: new Set([6]) })).map((a) => [a.event, a.answer]),
+    ).toEqual([[22510, 0]])
     expect(eventOutcome(room.triggers, 22510, room.mapId)?.battle).toBe(2)
     expect(room.eventBattles.get(2)?.foes).toEqual([{ monster: 300, count: 1 }])
     expect(room.monsterCodeOf.get(300)).toBe('b003a')

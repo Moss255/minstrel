@@ -99,8 +99,8 @@ the cabinets use them yet; characters' will matter when events drive the cast.
 (`readTreasure`):
 
 - `0x66` gives the file's first game-wide treasure number; across every file the
-  numbers run 0 to 847 without overlapping, gaps only where the two empty files
-  sit. INFERRED: an opened treasure is remembered by it.
+  numbers run 0 to 847 without overlapping or a gap. INFERRED: an opened treasure
+  is remembered by it.
 - `0x67` is a treasure: `unknown_0`, a kind, then either a position and on some
   kinds a facing (radians, INFERRED), or — kind `0x30` — no position, which is a
   cabinet's.

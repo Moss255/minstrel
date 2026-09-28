@@ -118,8 +118,10 @@ describe.skipIf(!romPath)('the mini-map, on a real cartridge', { timeout: 120_00
   // Read only when there is a cartridge: the body runs to collect the tests even when they skip.
   const minimaps = romPath ? readMinimaps(rom) : (undefined as unknown as Minimaps)
 
-  it('reads every layout but the four empty files', () => {
-    expect(minimaps.layouts.size).toBe(279)
+  it('reads every layout', () => {
+    // 279 until 28 September 2026: four whose first word is 16 were read as
+    // empty compressed streams — see `tryDecompressLz10`.
+    expect(minimaps.layouts.size).toBe(283)
   })
 
   it('draws the village on its own picture, and the Hero at the road out on its bottom edge', () => {

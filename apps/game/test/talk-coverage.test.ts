@@ -2,10 +2,7 @@ import { readFileSync } from 'node:fs'
 import { parseMarkup } from '@minstrel/game-formats'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
-import { pickLine, runLine } from '../src/talk.ts'
-
-/** `pickLine` says so itself when it fell back — see its `why`. */
-const GUESSED = /a guess/
+import { CHAPTER_LETTERS, letterForStage, pickLine, runLine } from '../src/talk.ts'
 
 const romPath = process.env.MINSTREL_TEST_ROM
 
@@ -49,10 +46,12 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     asked: number
     /** Those that chose a line with text. */
     spoke: number
-    /** Of those, how many `pickLine` fell back to — see `GUESSED`. */
-    guessed: number
     /** Those that chose an event to play instead. */
     events: number
+    /** Those whose own record ran and said nothing — see `Choice`. */
+    records: number
+    /** Those asked at a stage whose chapter the area has no talk for — see `letterForStage`. */
+    noChapter: number
     /** Those that chose a line whose text is empty or absent. */
     silent: number
     /** Those with nothing at all to say. */
@@ -73,8 +72,9 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     maps: 0,
     asked: 0,
     spoke: 0,
-    guessed: 0,
     events: 0,
+    records: 0,
+    noChapter: 0,
     silent: 0,
     nothing: 0,
     blank: 0,
@@ -106,7 +106,15 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
       t.maps++
       // Every stage this map's own cast records mention, so a character is
       // asked where and when they actually stand.
-      const stages = opened.stages.length > 0 ? opened.stages : [{ major: 1, minor: 1 }]
+      // Where the cast records mention none — the fields — the first stage of
+      // each chapter the area has talk for.
+      const stages =
+        opened.stages.length > 0
+          ? opened.stages
+          : opened.letters.map((letter) => ({
+              major: CHAPTER_LETTERS.indexOf(letter.charAt(0)) + 1,
+              minor: 1,
+            }))
       let spokeHere = 0
       let askedHere = 0
       let playsHere = 0
@@ -114,10 +122,14 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
         const cast = opened.castAt(stage)
         for (const who of [...cast.members, ...cast.sprites2d]) {
           const id = (who as { placement: { id: number } }).placement.id
-          // **Every chapter the area has**, not just the first: a character
-          // silent in one may speak in another, and asking only `letters[0]`
-          // made half the cartridge look mute.
-          const lines = opened.letters.flatMap((letter) => opened.linesOf(id, letter))
+          // The chapter the game opens for the stage — see `letterForStage`.
+          // Without one here, the game's talk has nothing to load.
+          const letter = letterForStage(opened.letters, stage)
+          if (letter === undefined) {
+            t.noChapter++
+            continue
+          }
+          const lines = opened.linesOf(id, letter)
           t.asked++
           askedHere++
           const choice = pickLine({
@@ -137,15 +149,16 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
             playsHere++
             continue
           }
+          if (choice.kind === 'record') {
+            t.records++
+            continue
+          }
           const text = choice.line.text
           if (text === undefined || text.trim() === '') {
             t.silent++
             continue
           }
           t.spoke++
-          // **What the line was chosen by**, which is the fidelity
-          // question behind all of this — see the note above.
-          if (GUESSED.test(choice.why)) t.guessed++
           spokeHere++
           t.speakers.add(`${area}#${id}`)
           const run = runLine(parseMarkup(text))
@@ -160,16 +173,14 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     }
 
     console.log(
-      `${t.areas} areas · ${t.asked} asked · ${t.spoke} spoke · ${t.events} play an event · ${t.silent} chose a line with no text · ${t.nothing} had nothing`,
+      `${t.areas} areas · ${t.asked} asked · ${t.spoke} spoke · ${t.events} play an event · ${t.records} run a record · ${t.silent} chose a line with no text · ${t.nothing} had nothing`,
     )
     console.log(`  ${t.areasWithSpeech.size} areas where somebody speaks`)
     console.log(`  ${empty.length} areas with nobody standing in them: ${empty.join(' ')}`)
     if (quiet.length > 0)
       console.log(`  ${quiet.length} with people who say nothing: ${quiet.join(' ')}`)
-    console.log(
-      `  ${t.guessed} of ${t.spoke} lines were guessed — ` +
-        `${Math.round((t.guessed / t.spoke) * 100)}% of what the engine says`,
-    )
+    console.log(`  ${t.records} ran a record of their own and said nothing`)
+    console.log(`  ${t.noChapter} asked at a stage whose chapter the area has no talk for`)
     console.log(`  ${t.blank} lines rendered blank`)
     console.log(
       `  the speaker would face: ${[...t.turns]
@@ -198,9 +209,15 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // takes the character away, so five areas gained someone. In two, the
     // Wormwood region's `D14` and `S13`, it is one story character, `s052`,
     // whose talk plays a scene — which is why a scene counts here.
+    //
+    // **28 empty from 28 September 2026**, when the chapter talked in came to
+    // be the game's (`letterForStage`): an area with no talk for the stage's
+    // chapter has nobody the game can talk to then. The fields' cast records
+    // mention no stage, so they are asked at each chapter they have talk for;
+    // at none of them does anyone stand in six of them, nor in `S01`.
     expect(t.areasWithSpeech.size + empty.length).toBe(AREA_CODES.length)
     expect(quiet).toEqual([])
-    expect(empty.length).toBe(22)
+    expect(empty.length).toBe(28)
   })
 
   it('gets an answer from nearly everyone it asks', () => {
@@ -219,23 +236,21 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // character away, so 470 more are asked — 1,605 — and 1,551 speak. Of the
     // rest, 43 play an event and 11 have nothing at all to say at the stage
     // they are asked at.
-    expect(t.spoke).toBe(1551)
-    // **Most of what the engine says is its own choice, not the game's.**
-    // No trigger names the character, so `pickLine` takes the plain
-    // line; no line with that label covers the sub-stage, so it takes
-    // the first that does. Pinned so the number moves only on purpose —
-    // down when the selection is read better, up if it regresses.
     //
-    // 662 until 28 September 2026. It rose by 39 when conditions came to be
-    // read (see above), and every one of the 39 is a character left with no
-    // record that holds, so taking the plain line: 31 whose plain line is only
-    // in tag 2, which this does not read, and 8 with none. Records that no
-    // longer hold are the game's rule, not a regression.
-    //
-    // Then 1,097, of the 1,551 — 71% — once who stands where was the game's.
-    expect(t.guessed).toBe(1097)
-    expect(t.events).toBe(43)
-    expect(t.nothing).toBe(11)
+    // **Then the game's own rule, 28 September 2026** (`pickLine`, read from
+    // its code): a character's own record first, the line for its label —
+    // the last of their file that holds — and their talk records after it. A
+    // character asked with a label none of their lines holds for says
+    // nothing, as in the game, so nothing is guessed any more: 1,178 of the
+    // 1,374 asked speak, 30 play an event, 42 run a record of their own that
+    // says nothing, and 124 have nothing. 245 more were asked at a stage whose
+    // chapter their area has no talk for, and are not counted. (29 and 43
+    // until `155` was read the same day: one of Gortress's plays its event.)
+    expect(t.spoke).toBe(1178)
+    expect(t.events).toBe(30)
+    expect(t.records).toBe(42)
+    expect(t.nothing).toBe(124)
+    expect(t.noChapter).toBe(245)
     expect(t.silent).toBe(0)
   })
 
@@ -262,8 +277,10 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     const worst = [...t.unread].sort((a, b) => b[1] - a[1]).map(([name]) => name)
     // The same five since who stands where became the game's own choice on
     // 28 September 2026; more speakers moved the window codes to the front.
-    expect(worst).toEqual(['WIN_OFF', 'WIN_ON', '-', '.|', 'val_2'])
-    expect(t.unread.size).toBe(5)
+    // Four once the lines were the game's choice: nobody asked says the
+    // innkeeper's `<val_2>`.
+    expect(worst).toEqual(['WIN_OFF', 'WIN_ON', '.|', '-'])
+    expect(t.unread.size).toBe(4)
   })
 
   it('knows which speakers should stay put', () => {
@@ -281,11 +298,11 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // moved with the conditions — see above.
     // 1,070, 246, 234 and one `<ANGLE>` of 1,551 once who stands where was the
     // game's.
+    // 839, 177 and 162 of 1,178 once the lines were the game's choice.
     expect([...t.turns].sort((a, b) => b[1] - a[1])).toEqual([
-      ['player', 1070],
-      ['keep', 246],
-      ['back', 234],
-      ['angle', 1],
+      ['player', 839],
+      ['back', 177],
+      ['keep', 162],
     ])
     expect([...t.turns.values()].reduce((a, b) => a + b, 0)).toBe(t.spoke)
   })

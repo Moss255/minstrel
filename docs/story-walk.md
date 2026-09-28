@@ -15,8 +15,9 @@ cartridge. It uses the engine's own rules and the engine's own functions:
 
 - entering a map (`entryPlay`);
 - walking into one of its areas (`areaEvent`);
-- talking to whoever the cast stands there (`storyView`, which makes
-  `castAt`'s choice, then `pickLine`);
+- talking to whoever the cast stands there, and from each of their talk
+  boxes (`storyView`, which makes `castAt`'s choice, then `pickLine`), taking
+  every answer a prompt could be given;
 - each event's script run to see what it chains into (`538`);
 - then what follows the event: its own record (`eventOutcome`, applied by
   `moveStory`, the same function `followEvent` uses), a set battle won
@@ -27,7 +28,7 @@ five threads (stage, step, flags and marks) plus who goes along. A move reads
 and writes the thread of the map it is made in, as the game's does (see
 section 3). Talk that only sets marks is folded into one state, "everyone
 talked to", so that every order of talking to a town is not a state of its
-own. It runs in about five seconds.
+own. It runs in about 75 seconds.
 
 ```sh
 MINSTREL_TEST_ROM=$PWD/rom/dq9-europe.nds npx vitest run apps/game/test/story-walk.test.ts
@@ -44,7 +45,7 @@ it by cause.
 
 - **Where the Hero can get to.** Every map is taken to be in reach. The world
   map, ships, sealed doors and the Starflight Express are not modelled.
-- **Time of day.** The walk plays by day throughout.
+- **Time of day** only as far as trying each map by day and by night.
 - **Events the game's code starts on its own.** If there are any, they show
   up here as events that nothing reaches.
 - **Whether a character can be built.** Presence is `castAt`'s choice before
@@ -54,23 +55,28 @@ it by cause.
 
 ## Where it stands, 28 September 2026
 
-- **From a new game:** 1.1 to 1.2 step 2. It stops before 1.3.
+- **From a new game:** 1.1 to 1.2 step 2 — Yggdrasil, talked to from its
+  talk box, asks "Offer the benevolessence up to Yggdrasil?". It stops before
+  1.3, where the church and stable's watch wants flags 4 and 5.
 - **From 1.3 one walk plays the prologue's end, the whole slice and chapter 3
   as far as Loch Storn** (3.2), and another plays Zere and its dungeon to
   3.7. The throne room's area 0 plays `ev3040`; the king, `45`, stands where
-  his block puts him, so talking to him plays `ev3050`. That is the
-  first time the story has been followed past the slice's end. The same was
-  checked in the game in a browser: talking to #203 in Stornway's lobby at
-  2.7 plays `ev2940`, and once it is read the story is at 3.1.
-- **From 5.2, one walk plays into all five threads**: chapters 6, 7, 8, 11
+  his block puts him, and talking to him plays `ev3050`. That is the first
+  time the story has been followed past the slice's end. The same was checked
+  in the game in a browser: talking to #203 in Stornway's lobby at 2.7 plays
+  `ev2940`, and once it is read the story is at 3.1.
+- **From 5.1, one walk plays into all five threads**: chapters 6, 7, 8, 11
   and 12, each to its own first break.
-- **62 breaks** between 1.1 and 19.7. There were 109 before the threads were
+- **Gortress plays** from 14.4 step 3 to 14.6, now that `155` is read.
+- **47 breaks** between 1.1 and 19.7. There were 109 before the threads were
   read, 101 with them, 87 once records ran as the game runs them, 83 with the
-  maps' own areas, and 62 once who stands where was the game's own choice.
-  The first after the slice is Loch Storn's set battle, before 3.2 step 3.
+  maps' own areas, 62 once who stands where was the game's own choice, 53
+  once talking was — and 372 files stopped reading as empty, see "Found on
+  the way" — and 47 with `155`. The first after the slice is Loch Storn's set
+  battle, before 3.2 step 3.
 
 A break usually has more than one cause, one for each record that could have
-moved the story on. So the counts below add up to more than 62.
+moved the story on. So the counts below add up to more than 47.
 
 ## The list, by cause
 
@@ -80,21 +86,39 @@ that unblock the most.
 | # | cause | breaks | first before | kind of work |
 |---|---|---|---|---|
 | 1 | ~~**A stage set on a record that is not an event's own**~~ | — | — | **done, 28 September**: records run as the game runs them |
-| 2 | **A character a record talks to that the cast does not stand there** | 8 | 4.1 step 3 | **mostly done, 28 September**: the game's placement script, tags 3, 5 and 17. The rest are placed by tag 14 or by scenes |
+| 2 | **A character a record talks to that the cast does not stand there** | 7 | 4.1 step 3 | **mostly done, 28 September**: the game's placement script, tags 3, 5 and 17. The rest are placed by tag 14 or by scenes |
 | 3 | ~~**`214`, a story's stage set by its number**~~ | — | — | **done, 28 September**: read from the game's code and built |
-| 4 | Chained from an event the walk never played | 11 | 4.5 | none directly: a cascade |
-| 5 | A set battle whose starting event the walk never played | 10 | 3.2 step 3 | reading: what starts a set battle from a scene. Loch Storn's first fight, after `ev23189`, is the first |
-| 6 | Nothing reaches the event | 6 | 14.4 step 4 | reading: `S07`, and VM opcode `0x1e` |
-| 7 | A flag, mark or step the walk never had | 5 | 1.3 | as 4, mostly |
+| 4 | Chained from an event the walk never played | 9 | 4.5 | none directly: a cascade |
+| 5 | A set battle whose starting event the walk never played | 9 | 3.2 step 3 | reading: what starts a set battle from a scene. Loch Storn's first fight, after `ev23189`, is the first |
+| 6 | Nothing reaches the event | 1 | 14.4 step 8 | **mostly done, 28 September**: `155`. `ev14903` is left, and `ev29300`'s opcode `0x1e` |
+| 7 | A flag, mark or step the walk never had | 4 | 1.3 | as 4, mostly. Quarantomb's 4.3 step 3 wants game-wide flags 901 and 902 (`88`), which nothing read sets |
 | 8 | ~~An area no record defines~~ | — | — | **done, 28 September**: a map's own areas, and areas turned |
-| 9 | **Another of the character's records chooses first** | 12 | 4.3 step 3 | reading: `pickLine`'s precedence, INFERRED — the game asks for kinds 0 and 1 separately (`func_ov017_021a4cf0`, `func_ov017_021b8e8c`) |
-| 10 | The event plays, but its own record is in another area's file | 2 | 5.1 | engine |
+| 9 | ~~**Another of the character's records chooses first**~~ | 6 | 11.3 | **done, 28 September**: talking is the game's own rule. What is left is a flag (11.3) and the quests (19.3 to 19.7) |
+| 10 | The event plays, but its own record is in another area's file | 3 | 5.1 | engine |
 | 11 | A closing step of 0 on a cast record | — | — | gone with the game's placement rule |
 | 12 | A record kind the engine does not read | 3 | 4.3 step 5 | reading: kind 20's actions besides areas |
 | 13 | An entry record that plays no event | 2 | 10.7 | reading: what runs kind 3 besides its `108` at load. Batsureg's areas 72 and 73 are one's |
 
-Five more breaks name a record whose span the walk was never at, and one
+Four more breaks name a record whose span the walk was never at, and one
 the walk cannot explain. Both kinds are listed in the test's printout.
+
+## Found on the way — 372 files read as empty, 28 September 2026
+
+The king's talk file for chapter C, `C01C0.gp2/045_en.bin`, read as empty, so
+talking to him at 3.1 could not have gone on to `ev3050`. It is not empty:
+**its first word is 16**, the table header's own size, and the cartridge
+walk tried every file as an LZ10 stream first — whose header is `0x10` and a
+24-bit size, here 0. A stream of 0 bytes decodes to nothing whatever follows,
+so the check that it decoded to its declared size passed. `tryDecompressLz10`
+(`@minstrel/nitro-comp`) now declines a declared size of 0.
+
+**372 files** begin that way, in every language: 225 talk files (41 English),
+54 map `.bmdj` and 25 `.bmbl` link tables — the Hexagon's `D01M0000` among
+them — 25 event files (`ev03050`'s messages, so "message 100 says nothing" is
+answered), 10 event scripts (Loch Storn's `ev23193`, `ev29410`), four
+mini-map layouts (`F07`, `H07`, `M05`, `M12`, which now have one) and two
+treasure files, `M09M05` and `D13M02` — the two 13-wide gaps in the treasure
+numbering, which now runs 0 to 847 without one.
 
 ### 1. Records run as the game runs them: done, 28 September 2026
 
@@ -133,7 +157,8 @@ functions logged in `docs/decomp-contributions.md`.
 - **An event's own record** is the first whose conditions hold, not merely
   the first. That settles the Observatory's two at 15.3.
 - **A label's talk record** that only moves the story, with no event and no
-  hand-on, now runs once its line is read (`labelRecord` in `talk.ts`).
+  hand-on, now runs once its line is read — since cause 9, as every talk
+  record does (`Choice.after` in `talk.ts`).
 
 ### 2. Who stands where: mostly done, 28 September 2026
 
@@ -199,15 +224,19 @@ was never played, and a flag set only by something never played mostly wait
 on cause 2. Several set battles are started from scenes by the script
 function `547`, which the engine reads and does not yet act on.
 
-### 6. Nothing reaches the event
+### 6. Nothing reaches the event: mostly done, 28 September 2026
 
-Seven events on Gortress (`S07`), over six breaks at 14.4 and 14.6
-(`ev28991`, `ev14620`, `ev14621`, `ev14640`, `ev14641`, `ev14903`,
-`ev14770`). Eight scripts will not run at all (`ev29300`–`ev29350`, VM
-opcode `0x1e`). They are the likeliest thing that chains into Gortress's
-events. **`ev29300` is also what winning the last set battle plays**, before
-`148` sets every thread to 19.2, so it is probably the ending and its
-credits. (`ev12101` was here too until `226` was read as a hand-on.)
+Seven events on Gortress (`S07`), over six breaks at 14.4 and 14.6, were
+reached by nothing the walk read. **`155` reaches them**: `155 : e` with a
+value `f : 0` sets flag f and plays e, the queue starting it as it starts a
+`119`'s (FORMAT.md, "How a record runs"). All 14 of its records are
+Gortress's, on its characters at 14.4 — `52:203 7:2 155:28991 7:0`.
+
+**Left**: `ev14903` at 14.4 step 8. And eight scripts will not run at all
+(`ev29300`–`ev29350`, VM opcode `0x1e`). **`ev29300` is also what winning the
+last set battle plays**, before `148` sets every thread to 19.2, so it is
+probably the ending and its credits. (`ev12101` was here too until `226` was
+read as a hand-on.)
 
 ### 8. Areas: done, 28 September 2026
 
@@ -230,13 +259,42 @@ in `docs/decomp-contributions.md`.
   game does. Batsureg's areas 72 and 73 are on an entry record with no
   event, which is cause 13.
 
-### 9. Another of the character's records chooses first
+### 9. Talking, as the game talks: done, 28 September 2026
 
-`pickLine` lets a character's own records choose before a talk record, and
-takes the first that holds. That is INFERRED from 116 talk records. At
-Alltrades Abbey at 6.6 it picks label 192 for `17` over the record that
-plays `ev6600`, which moves the story to 7.1. There are four such cases, at
-6.6, 9.4, 12.2 and 14.6.
+**Read from the game's code**: FORMAT.md, "How a talk runs" and "A talk file
+is a script", with the functions logged in `docs/decomp-contributions.md`.
+`pickLine`'s precedence had been INFERRED from 116 talk records. The game's:
+
+- **Whom**: whoever is near and most nearly faced, or whoever's **talk box**
+  the Hero stands in — tag 6 of the cast's `place.bin`, a box and a label.
+  A thing to examine is talked to only from its box. The label the talk asks
+  with is the box's, or 0.
+- **Their own records first** (kind 0): the first that holds, tested with who
+  and the label, runs — a `118` has the Hero talk with another label, a `119`
+  plays an event.
+- **The line**: the talk file runs as a script, and the last line that holds
+  for the label is said. Labels hold by groups of 80 — 0 and 16 are a
+  character's plain lines, 17 on need them to have been talked to already,
+  192 up only the label asked. With none, nothing is said and nothing runs
+  after.
+- **Their talk records after it** (kind 1), once the window closes: the
+  first that holds for who, the label asked, and the prompt's answer, which
+  is 0 with no prompt.
+
+Built: `pickLine`, `lineFor` and `afterFor` in `talk.ts`; talk boxes in
+`castAtPoint` and `talkBoxesAt` in `main.ts`; the counts in `main.ts`.
+Also read on the way: the chapter a talk opens is the major's in
+`ABCDEFGHIJSTKLMNOPQ`, not the alphabet's — 11 and 12 are `S` and `T` —
+and conditions 11, 16, 26, 27, 36, 41, 62, 63, 88 and 89.
+
+**Ours**: every quest is taken as open and not taken (`QUESTS_OPEN`), since
+the quests are not built — the story walks the same either way — and the
+Hero is taken to be up.
+
+**Left**: 11.3, where `106` in Gleeba's `205` asks 194 while flag 1 is
+clear and 195, which plays `ev11230`, only at step 3 with it set — a flag,
+as cause 7. And 19.3 to 19.7, the Quester's Rest's records after the credits,
+which test quests 174 to 193 (`55`, `57`, `61`) — the quests' own work.
 
 ### 10. The event plays, but its own record is in another area's file
 
@@ -282,10 +340,10 @@ for its areas, and kinds 3 and 20 at map load for their action `108` only
 - Operation `23` is read as a multiplayer session test. That it is
   multiplayer is INFERRED, from the flag actions using the same test to
   decide whether to send a change over the link.
-- What `func_0206474c` tests for the composites `53` to `61`: one of four
-  states of an id, through `func_0206e120`. Quest progress, perhaps. The
-  composite is kept beside what it expands to, and that part is left to
-  hold.
+- What the quests' states 0, 2 and 3 mean. `129 : q` sets 1; the rest are
+  read from the lines as untouched, taken and done (INFERRED). What opens a
+  quest besides `129`, which only two records carry, is the quest system's
+  own code, not read.
 - Which kind each of the other lookups asks for: 9, 10, 12, 17 to 19 and 22
   to 30 are asked for from overlays 1 to 4 and 17, not yet read.
 - What applies the queue of stage moves that `132` and `214` add to, and when.

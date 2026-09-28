@@ -2134,6 +2134,7 @@ the file's order** — `castAtPoint` in `npc.ts`:
 | 3, a block (`func_0206c010`) | map, character, then where (x, y, z, facing, and a byte on some) | for this map only: places them; with no place, takes them away |
 | 5, a span (`func_0206c2c0`) | from and to — stage, sub-stage, step each — then **the time of day**, map, character, then where | counts only while `from ≤ now ≤ to`, each weighed `major × 1000 + minor × 10 + step`, and only at its time. Then: **for another map, it takes the character away from this one**; with no place, it takes them away; otherwise places them |
 | 17, while flags (`func_0206d4e0`) | pairs of a condition and whether it must be set (1) or clear (0), then time, map, character, where | a condition's high half 1 is a game-wide flag by its bit, 2 by its number — displaced from `0x400` as the script function `603` displaces (`func_0206eb98`); any other and the record does not count. Otherwise as a span, and **before all others** |
+| 6, **a talk box** (`func_0206c4e8`) | character, four floats, a label | a box on the ground — x and z at most, then at least, in a placement's units — and the label a talk from it asks with. Kept on the character's first placement in this map at the time, so a box read before the character is placed, or after they are taken away, is none. **The Hero talks to whoever's box holds them**, and a thing to examine only so — see "How a talk runs" under "Triggers". 570 on the cartridge; Yggdrasil's is `199, 3.24, 1.27, −3.36, −2.52, 80`, and the village shopkeeper's three are over his counter |
 
 **Word 6 of a span is the time of day**: 0 by day (morning, day or
 evening), 1 by night, 2 either — `GameState::IsMorningDayOrEvening`. On the
@@ -2149,11 +2150,12 @@ that comes after all the others is dropped. Taking a character away
 (`func_0206dd68`) clears where they stand, and a later record can place them
 again.
 
-**Not read**: tag 14, which places by one of four states of an id
-(`func_0206e120` — the composite conditions' test, quest progress perhaps);
-and 4, 6, 8, 11, 15 and 18 to 22, which name a character and carry what
-looks like a path, a facing, flags and a model with its motion. A character
-placed only by those stands nowhere here.
+**Not read**: tag 14, which places by a quest's state (`func_0206e120` —
+see "A talk file is a script"); tag 7, which keeps four floats on the
+placement and sets a mode byte of 7 (`func_0206c614` — a wander box,
+perhaps); and 4, 8, 11, 15 and 18 to 22, which name a character and carry
+what looks like a path, a facing, flags and a model with its motion. A
+character placed only by those stands nowhere here.
 
 **Positions are in the units map placements use.** Taken as though they were
 already world units, only 23 of the village's 49 characters fall inside its
@@ -2655,20 +2657,59 @@ versions, and read in order they move from the prologue, through the village
 chapter and its aftermath, to the end of the game.
 
 A file is a tagged data table whose records carry three or four numbers and
-then a string offset. With three numbers, tag 2 on 17,241 records, tag 1 on
-14,273, tag 4 on 2,149 and tag 5 on 1,101; with four, 1,728, 393, 344 and 135.
-What the numbers mean is read, not established:
+then a string offset: 8,461 English files. With three numbers, tag 2 on 17,739
+records, tag 1 on 14,357, tag 4 on 2,167 and tag 5 on 1,113; with four, tag 1
+on 1,733, tag 4 on 395, tag 2 on 347 and tag 5 on 137.
 
-| | reading | evidence |
+41 English files — the king's for chapter C among them — begin with the word
+16 and were read as empty until 28 September 2026: the cartridge walk took them
+for empty compressed streams (see `tryDecompressLz10` in `@minstrel/nitro-comp`).
+
+## A talk file is a script — read from the game's code, 28 September 2026
+
+**The talk opens `data/scenario/<area><letter>0.gp2` and the character's
+`<id>_<lang>.bin` in it** (ov017 `func_ov017_021b8e8c`), the letter being the
+live major stage's in `ABCDEFGHIJSTKLMNOPQ` (`func_ov017_0218d2c4`) — so
+majors 11 and 12 are `S` and `T`, and 13 to 19 `K` to `Q`, where the
+alphabet was once read. **It then runs the file as a script**
+(`func_ov017_021ba810`, opcode table `0x021d7c58`): a record's tag is its
+opcode, and every record is visited in turn. A line that holds is kept, so
+**the last that holds is said**; with none, nothing is said and the talk ends.
+
+| tag | handler | holds when |
 |---|---|---|
-| numbers 0 and 1, on tags 1, 4 and 5 | a range of sub-stages within the letter's chapter, 99 for "to the end" | first at or before second, or second 99, on **all** 19,779 |
-| the extra third number of the four-number form | always 1 — the line for the night | 2,600 of 2,600 are 1; on tag 1, **42.5%** of these lines use night words (night, late, evening, sleep …) against **9.2%** of its three-number ones — weaker on the counters' tags, 29.8% against 12.2% on tag 4 and 9.6% against 4.9% on tag 5 |
-| the last number | a label: 16 the plain line, 192–202 alternatives, 80, 81 and 96 at counters | the triggers name these as labels — below |
-| tag 2's first number | a condition, not a range — an errand, an item | 174–198 and similar; 0 of 2,657 small-valued ones form a range |
+| 1 | `func_ov017_021b9d00` | numbers 0 and 1 are a range of sub-stages holding the live minor (`GameState` `+0x5cb4`; a first number below 0 holds always). With four numbers the third is the time: not 0, only by night — and by night, once such a line is in range, no three-number line after it holds. Then the label, below |
+| 2 | `func_ov017_021b9e30` | a quest's line: its number, then a test of its two bits of state (`func_0206e120`) — −1 for 0, 0 for 2, 2 for 3, 3 for 1, and 1 and 4 flags beside them — then as tag 1 from the time on. `129 : q` sets a quest's to 1; that 0 is untouched, 1 open, 2 taken and 3 done is **INFERRED** from the lines — Sister Cindy's at 0 reads "THIS IS A BUG!", at 1 she introduces herself, at 2 her lines carry `<QUEST=109>`. One that holds silences every tag-1 line, and the first quest with one the others' unless their own states say otherwise |
+| 3, 4 | `func_ov017_021ba124`, `…280` | in a game played together (`func_0202b7d8`), by whether `func_0202c1a4` holds — none of tag 3 on the cartridge |
+| 5, 6 | `func_ov017_021ba3dc`, `…524` | as 1 and 2, only while `func_0202c540` does not hold and a value of the Hero's is 0 or below — **INFERRED** to be their HP, see `OP_HERO_DOWN` in `story.ts`. One that holds silences tags 1 to 4 |
 
-Tags 4 and 5 sit at inn and shop counters. Chapter B's own ranges run 1 to 7,
-matching the village cast's stages 2.1 to 2.7, and its sub-stage-1 lines speak
-of the Hero's fall as just past.
+**A line's label holds by the one the talk asks with** (`func_ov017_021b9bcc`).
+Both are in the same group of 80, and within the group by the line's place:
+
+| place | holds while |
+|---|---|
+| 0–15 | its count is within the character's talks since the Hero came into this area |
+| 16–31 | its count is within their talks since the Hero came into this map |
+| 32–63 | it is the label asked, exactly |
+| 64–79 | its count is within the live step (`+0x5cb8`), the highest such |
+
+So asked 0, a character's 0 and 16 are their plain lines, and 17 holds once
+they have been talked to in this map; asked 192, only 192. **The two counts**
+are nibbles per character (`func_0206ec1c`), both going up to 15 each time a
+line is said (`func_0206ec64`). A new sub-stage clears them (`func_020703c8`),
+`106 : c` clears one character's, entering a map clears the second, and
+entering one the game counts as another area the first (ov017
+`func_ov017_0219d250`, by three bytes of each map's record in a table
+`GameState` keeps at `+0x468` — which file that is, is not read).
+
+**Which label the talk asks with** — see "How a record runs": the character's
+own records' `118`, or the label of the talk box the Hero stands in (tag 6 of
+the cast's `place.bin`), or 0.
+
+**Evidence**, besides the code: tag 1's numbers 0 and 1 are in order on all
+19,902 records of tags 1, 4 and 5; the four-number form's third number is 1 on
+all 2,612; a signpost's box asks 80 and its line is 96, the Hexagon's
+inscription's and Yggdrasil's both.
 
 ---
 
@@ -2684,18 +2725,20 @@ count on all 266.
 |---|---|---|---|
 | `0x65` | a string | 266 files | a date and time, 2009 — when the file was written, by the look of it |
 | `0x64` | a string | 266 files | the same date as `yymmdd` |
-| `0x66` | an integer | 263 files | **the game-wide number of the file's first treasure** — below |
-| `0x67` | 3, 5 or 6 | 821 records in 263 files | one treasure |
+| `0x66` | an integer | 265 files | **the game-wide number of the file's first treasure** — below |
+| `0x67` | 3, 5 or 6 | 847 records in 265 files | one treasure |
 | `0x6A` | an integer | the three `rand*` tables | their row count |
 | `0x69` | an integer | the three `rand*` tables | a row — see "Random treasure" |
 
 **`0x66` numbers every treasure in the game.** Taking each file's span as its
-`0x66` value up to that plus its count of `0x67` records, the 263 spans run from
-0 to 847 without overlapping, and the only two gaps, 13 wide each, fall where
-the two empty files sort (`M09M05` after `M09M04`, `D13M02` after `D13M01`). So
-a treasure's number is its file's first plus its place in the file. INFERRED:
-that number is what an opened treasure is remembered by — it is the one
-numbering that covers every treasure exactly once.
+`0x66` value up to that plus its count of `0x67` records, the 265 spans run from
+0 to 847 without overlapping and without a gap. So a treasure's number is its
+file's first plus its place in the file. INFERRED: that number is what an
+opened treasure is remembered by — it is the one numbering that covers every
+treasure exactly once. (Until 28 September 2026 two files, `M09M05` and
+`D13M02`, read as empty and left two gaps 13 wide where they sort: their first
+word is 16, which the cartridge walk took for an empty compressed stream — see
+`tryDecompressLz10` in `@minstrel/nitro-comp`.)
 
 **A number's type bits say how to read it.** A whole number is stored as an
 integer (type 1) and anything else as a float (type 2), so one position can mix
@@ -3641,11 +3684,19 @@ integer. The full table is `PARAMS` in `story.ts`. So the `0 : n` words after
 | 2, 3 | a mark of the live thread is set, clear |
 | 4, 5 | a flag of the live thread is set, clear |
 | 6, 7, 8, 9, 12 | the context's character, area, event, map, set battle is the argument (`+0`, `+4`, `+8`, `+0xc`, `+0x18`) |
+| 11 | the context's label (`+0x14`) is the argument — the label the talk was asked with; see "How a talk runs" |
+| 16 | the text system's last answer (`func_020457e0`, `+0x954`) is the argument, from 0 — Yes. A talk's window sets it to 0 as it opens (`func_0204500c`), so after a line with no prompt `16 : 0` holds. 432 records |
 | 17 | `17 : 1` by night; any other argument by morning, day or evening (`GameState::IsMorningDayOrEvening`) |
+| 18, 19 | the bag holds the item, holds none (`func_02086aec`). Not read by the engine |
+| 20 | a quest's state is 2 and it may be taken (`func_0206e120`, `func_0206e31c`) |
 | 23 | a test of a session object's first word and one more state: 0 with no session, 1 with one, 2 with none or one kind of player, 3 only the other. INFERRED multiplayer; alone, 0 and 2 hold |
+| 26, 27 | a game-wide flag named by its number is set, clear (`func_0206eb98`): below `0x400` the bit itself, from there displaced by 1,786 — the cast script's rule, `flagBit`. 427 records |
 | 35 | the step is the argument |
-| 36 | a value of game object 0 (`+0x130`, then `+4`) is above 0 for `36 : 0`, at or below 0 otherwise; what the value is is not established |
-| 52 to 61 | **composites**: each names a character (`6`, its argument) and tests more, taking each of its values as its high and low half in turn (the parser stores them so). 52 is `6`, `5` (a flag clear) and `23`: Stornway's lobby at 2.7, `52:205 3:2 119:2940 104:3`, is talking to 205 with flag 3 clear. 53 to 61 also call `func_0206474c(id, mode)`, which holds by one of four states of the id (`func_0206e120`) and is not established; 53 adds `11` and `16`, 54 an `18`, 56 a `36`, 57, 58 and 61 a `23`. 1,409 records carry one |
+| 36 | a value of game object 0 (`+0x130`, then `+4`) is above 0 for `36 : 0`, at or below 0 otherwise. **INFERRED, the Hero's HP**: the same block holds another beside it at `+6`, and the block at `+0x134` two more at `+0x30` and `+0x32`, and the field copies all four from a packet together (ov017 `0x021c9fac`) — HP, MP and their maximums. 545 records; the engine holds the Hero up |
+| 41 | the Hero stands in one of the context character's talk boxes (`41 : n`, n not 0) or in none (`41 : 0`) — see the cast's tag 6. 72 records, all characters' own, at the Quester's Rest and Stornway's counters |
+| 52 to 63 | **composites**: each names a character (`6`, its argument) and tests more, taking each of its values as its high and low half in turn (the parser stores them so). 52 is `6`, `5` (a flag clear) and `23`: Stornway's lobby at 2.7, `52:205 3:2 119:2940 104:3`, is talking to 205 with flag 3 clear. 62 and 63 are `6`, a game-wide flag set (`0`) or clear (`1`), and `23`. 53 to 61 also call `func_0206474c(quest, mode)` on their first value, which holds by the quest's state: modes −1 and 5 at 0, 0 at 2, 1 while its first flag is set, 2 at 3, 3 at 1, 4 never. 53 adds `11` and `16`, 54 an `18`, 56 a `36`, 57, 58 and 61 a `23`. 1,495 records carry one |
+| 88, 89 | a game-wide flag of the block from bit 830 is set, clear: `88 : n` tests bit `830 + n`, for n below 73 (from 73, 88 fails and 89 holds). The Quarantomb's records test 71 and 72; what sets them is not read |
+| 86 | partly read: someone of a kind the game marks (`func_02061bd8`) in the party is up, or failing one its object `0xce` is there, for `86 : 1`; `86 : 0` otherwise. INFERRED, whoever goes along — Ivor |
 
 **The queue** (`func_0206f81c`) applies:
 
@@ -3654,6 +3705,7 @@ integer. The full table is `PARAMS` in `story.ts`. So the `0 : n` words after
 | 132 | the live thread's stage and step |
 | 148 | **all five threads'**: `ev28800` at 13.1 brings the threads back together at 13.2; winning set battle 25 at 17.2 plays `ev29300` and sets all five to 19.2 |
 | 214 | thread *n*'s |
+| 118 | **a talk**: `118 : c` and a value whose high half is a label (`func_0206445c` queues it; the parser keeps `value >> 16`). The queue looks up character `c` and starts the talk with that label — see "How a talk runs". 3,340 records |
 | 119 | starts the event |
 | 133, 138, 226 | a map change and the event played there, one case. 138 and 226 each set one flag on it that 133 does not; what the flags do is not established |
 
@@ -3679,7 +3731,7 @@ the kind as a constant:
 
 | kind | asked for by |
 |---|---|
-| 0, 1 | the field's talk (`func_ov017_021a4cf0`, `func_ov017_021b8e8c`) |
+| 0, 1 | the field's talk (`func_ov017_021a4cf0`, `func_ov017_021b8e8c`) — see "How a talk runs" |
 | 2, 5 | the field (`func_ov017_0219814c`, `func_ov017_02198e30`) |
 | 3, 20 | map loading, only their action 108 (`func_02017a94`, `func_02018300`) |
 | 6 | the field's frame update, above |
@@ -3697,9 +3749,40 @@ his call on her doorstep, whose own record is
 villager's record then holds only with flag 0 set and flag 1 not:
 `6:8 4:0 5:1 119:2220`.
 
-Not established: whether a character record that names an event plays it when
-the Hero comes near, or only when they are talked to. The game plays it on
-being talked to. Operations 141 and 197 are not decoded; 205 brings Ivor into the party (see its row below).
+Operations 141 and 197 are not decoded; 205 brings Ivor into the party (see its row below).
+
+### How a talk runs — read from the game's code, 28 September 2026
+
+**Whom the Hero talks to** (ov017 `func_ov017_021a4e88`): of the cast, anyone
+whose talk box (the cast's tag 6) holds the Hero, strictly, on the ground; and
+anyone within 1.5 across and 1.75 away (`0x1800`, `0x1c00` in fx32) — but a
+thing to examine (the cast's kind 1) only from a box. Of those, the one most
+nearly faced (by `func_ov017_021a4700`, under `0x3244` — π, if it is fx32
+radians, not established). **The talk's label is the box's**, or 0. The
+engine keeps its own reach for the near (`talkTarget`), and takes the boxes
+as read.
+
+**Then three steps** (`func_ov017_021a4cf0`, then the talk's own machine,
+`func_ov017_021b8e8c`):
+
+1. **Kind 0, the character's own records**, with who is talked to at `+0` and
+   the label at `+0x14`. The first that holds runs — every action — and its
+   queue: a `118` starts the talk with its label, a `119` plays an event, and
+   one with neither runs and says nothing. With none holding, the talk starts
+   with the label asked.
+2. **The line** — see "A talk file is a script". With none, the talk ends and
+   nothing more runs.
+3. **Kind 1, the talk records**, once the line's window has closed, with who
+   and the label the talk was asked with. The first that holds runs, its
+   queue with it: a `119`, a hand-on, a stage move, or another `118` — and the
+   talk goes round again with the new label.
+
+Ivor at the landslide, `6:7 118:7 192:0` then `6:7 11:192 119:2350`: his own
+record asks 192, his line for it is said, and the talk record for 192 plays
+`ev2350`. Yggdrasil has no record of its own: talked to from its box, it asks
+80, its line 96 asks "Offer the benevolessence up to Yggdrasil?", and on Yes
+`6:199 11:80 16:0 119:21510` plays. Stornway's #11 asks 192 only once mark 4
+is set, which talking to #4 from its box sets.
 
 # The mini-map — `/data/pack_lv5/minimap.gp2`
 
@@ -3788,20 +3871,21 @@ the Hero blue, Ivor green — which is **ours**, for the reason above.
 
 ## `.bmmp` — which picture, and where on it
 
-A tagged table (see "The tagged data table"). 279 read; `F07`, `H07`, `M05` and
-`M12` are empty files. The tags, with the value kinds the table's type bits
-give:
+A tagged table (see "The tagged data table"). All 283 read. (`F07`, `H07`,
+`M05` and `M12` read as empty until 28 September 2026: their first word is 16,
+which the cartridge walk took for an empty compressed stream.) The tags, with
+the value kinds the table's type bits give:
 
 | tag | kinds | on | read as |
 |---|---|---|---|
-| `0x66` | integer, string | 279 of 279, once | `unknown` (0 on all), then the picture's name — an `.obg` in the archive on 279 of 279 |
-| `0x6a` | string | 219 | the backdrop: `minimapbg2` ×205, `minimapbg3` ×13, `minimapbg4` ×1. The fields have none |
-| `0x69` | float ×264, integer ×15 | 279, once | the scale — INFERRED, below. 3.2 in the village, 1 on the field, 2 in the pass; the integers are 4 on fourteen `C02`/`C04`/`D17` maps and 1 on `O00` |
-| `0x64` | two integers ×278, two floats ×1 | 279, once | the picture's corner, in tiles — INFERRED, below. −18, −12 in the village; `S07M01`'s are the floats −15, −12 |
-| `0x6b` | integer, one or more records | 278 | the maps the picture is drawn for: **the map index's id for the file's own map on 242 of 279** — `M01` 1100, `F01` 20001, `S01M01` 5101. Most of the 37 others are the `H` overviews, whose ids are fields' (`200xx`); `T00` has none |
-| `0x6c` | float, float, integers | 249 records | a mark: a position, then the maps it stands for |
-| `0x70` | (integer, string) pairs | 264 | map codes by id: **the id is the map index's for the code on 497 of 498 pairs** (`C02M07` has 206; the index 207) |
-| `0x65`, `0x67`, `0x68`, `0x6d` | | | `unknown`: `0x65` 1, `0x67` 1 and `0x68` 0, 0, 0, 0 on all 279; `0x6d` 3 ×60, 0 ×10, 4 ×6 |
+| `0x66` | integer, string | 283 of 283, once | `unknown` (0 on all), then the picture's name — an `.obg` in the archive on 283 of 283 |
+| `0x6a` | string | 221 | the backdrop: `minimapbg2` ×207, `minimapbg3` ×13, `minimapbg4` ×1. The fields have none |
+| `0x69` | float ×267, integer ×16 | 283, once | the scale — INFERRED, below. 3.2 in the village, 1 on the field, 2 in the pass; the integers are 4 on fourteen `C02`/`C04`/`D17` maps and `M05`, and 1 on `O00` |
+| `0x64` | two integers ×282, two floats ×1 | 283, once | the picture's corner, in tiles — INFERRED, below. −18, −12 in the village; `S07M01`'s are the floats −15, −12 |
+| `0x6b` | integer, one or more records | 282 | the maps the picture is drawn for: **the map index's id for the file's own map on 245 of 283** — `M01` 1100, `F01` 20001, `S01M01` 5101. Most of the 38 others are the `H` overviews, whose ids are fields' (`200xx`); `T00` has none |
+| `0x6c` | float, float, integers | 273 records | a mark: a position, then the maps it stands for |
+| `0x70` | (integer, string) pairs | 268 | map codes by id: **the id is the map index's for the code on 519 of 520 pairs** (`C02M07` has 206; the index 207) |
+| `0x65`, `0x67`, `0x68`, `0x6d` | | | `unknown`: `0x65` 1, `0x67` 1 and `0x68` 0, 0, 0, 0 on all 283; `0x6d` 3 ×62, 0 ×10, 4 ×6 |
 
 The village's marks, beside its doorways in `M01M0000.bmbl`:
 

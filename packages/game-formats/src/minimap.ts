@@ -155,7 +155,7 @@ export function minimapPixels(picture: MinimapPicture): Uint8Array {
  * | tag | values | meaning |
  * |---|---|---|
  * | `0x64` | 2 numbers | the picture's corner, in tiles from the map's origin |
- * | `0x66` | number, string | `unknown`, 0 on all 279; the picture's name |
+ * | `0x66` | number, string | `unknown`, 0 on all 283; the picture's name |
  * | `0x69` | number | pixels per unit of the map's own |
  * | `0x6a` | string | the picture behind it, `minimapbg2` … — absent on fields |
  * | `0x6b` | number, one or more records | the maps it is drawn for, by index id |
@@ -199,7 +199,7 @@ export interface MinimapMark {
 export interface MinimapLayout {
   /** The `.obg` it is drawn on, without the extension. */
   readonly picture: string
-  /** `0x66`'s first value: 0 on all 279. */
+  /** `0x66`'s first value: 0 on all 283. */
   readonly unknown_pictureFirst: number
   /** The picture behind it, where there is one. */
   readonly backdrop: string | undefined

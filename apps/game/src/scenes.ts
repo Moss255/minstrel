@@ -7,6 +7,7 @@ import {
   OP_AT_STEP,
   OP_EVENT,
   OP_EVENT_OF,
+  OP_FLAG_AND_EVENT,
   OP_IF_FLAG,
   OP_THEN_MAP,
   OP_UNLESS_FLAG,
@@ -126,7 +127,7 @@ export function sceneIndex(
         continue
       }
       for (const word of words) {
-        if (word.op !== OP_EVENT) continue
+        if (word.op !== OP_EVENT && word.op !== OP_FLAG_AND_EVENT) continue
         add(word.arg, {
           ...base,
           kind: kindOf(trigger.unknown_5),

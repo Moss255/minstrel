@@ -9,6 +9,7 @@ import {
   type EventOutcome,
   entryPlay,
   eventOutcome,
+  flagBit,
   flagsHold,
   isMapLinks,
   isMapList,
@@ -44,7 +45,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { EventPlayer } from '../src/event.ts'
 import { allTriggers, type Stage, type StoryView, storyView } from '../src/load.ts'
 import { copyStory, moveStory, type Story, THREADS, threadOf, unstarted } from '../src/story.ts'
-import { letterForStage, pickLine } from '../src/talk.ts'
+import { afterFor, letterForStage, pickLine } from '../src/talk.ts'
 
 const romPath = process.env.MINSTREL_TEST_ROM
 
@@ -97,8 +98,9 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   const FRAME_CAP = 20_000
   /** The operations `story.ts`, `talk.ts` and `services.ts` read. The rest are reported as not read. */
   const READ = new Set([
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 16, 17, 23, 35, 36, 52, 86, 100, 101, 102, 103, 104, 105,
-    118, 119, 120, 132, 133, 138, 143, 145, 148, 177, 204, 205, 214, 226,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 16, 17, 23, 26, 27, 35, 36, 41, 52, 53, 54, 55, 56, 57,
+    58, 59, 60, 61, 62, 63, 86, 88, 89, 100, 101, 102, 103, 104, 105, 118, 119, 120, 132, 133, 138,
+    143, 145, 148, 204, 205, 214, 226,
   ])
   /** Sets a stage of one of several stories at once — see "Threads" in `docs/story-walk.md`. Not read. */
   const OP_THREAD_STAGE_TO = 214
@@ -268,6 +270,27 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         named.has(id),
       )
       castKept.set(key, found)
+    }
+    return found
+  }
+
+  /** The labels of the talk boxes of those who stand in a map — see `TalkBox`. Kept, as above. */
+  const boxesKept = new Map<string, Map<number, number[]>>()
+  const boxesAt = (
+    area: string,
+    map: number,
+    stage: Stage,
+    step: number | undefined,
+    night: boolean,
+    globals: { readonly may: ReadonlySet<number>; readonly sure: ReadonlySet<number> },
+  ) => {
+    const key = `${map}|${order(stage)}|${step ?? 0}|${night}|${sorted(globals.may)}/${sorted(globals.sure)}`
+    let found = boxesKept.get(key)
+    if (!found) {
+      const isSet = (bit: number, wanted: boolean) =>
+        wanted ? globals.may.has(bit) : !globals.sure.has(bit)
+      found = views.get(area)?.boxLabels(map, stage, step, night, isSet) ?? new Map()
+      boxesKept.set(key, found)
     }
     return found
   }
@@ -445,14 +468,27 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
           runRecord(before, map, found.outcome)
           keep(play(before, map, found.event, true, played))
         }
-        // Talking to whoever stands there and is named here.
+        // Talking to whoever stands there, as the game does — see `pickLine`.
         const view = views.get(area)
         if (!view) continue
         const letter = letterForStage(view.letters, stage)
-        for (const id of castAt(area, map, stage, step, night, {
+        const cast = castAt(area, map, stage, step, night, {
           may: state.globals,
           sure: state.sure,
-        })) {
+        })
+        const boxes = boxesAt(area, map, stage, step, night, {
+          may: state.globals,
+          sure: state.sure,
+        })
+        const talkTo = (
+          from: State,
+          id: number,
+          label: number | undefined,
+          depth = 0,
+          box?: number,
+        ): State[] => {
+          if (depth > 4) return []
+          const now = storyIn(from, map)
           const choice = pickLine({
             triggers: here,
             map,
@@ -460,32 +496,56 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
             night,
             id,
             lines: letter === undefined ? [] : view.linesOf(id, letter),
-            flags: story.flags,
-            marks: story.marks,
-            alone: state.party.length === 0,
+            ...(label !== undefined ? { label } : {}),
+            ...(box !== undefined ? { box } : {}),
+            flags: now.flags,
+            marks: now.marks,
+            alone: from.party.length === 0,
             step,
-            globals: state.globals,
-            globalsSure: state.sure,
+            globals: from.globals,
+            globalsSure: from.sure,
           })
-          if (!choice) continue
-          // The record that chose runs as it is talked to, as the game runs every
-          // action of the record it takes; the label's own after the line is
-          // read, on the answer it waits for — which the walk takes as given.
-          const before = clone(state)
-          for (const mark of choice.marks ?? []) storyIn(before, map).marks.add(mark)
+          if (!choice) return []
+          // What a record has follow it: another talk, a hand-on, or an event.
+          const follow = (s: State, outcome: EventOutcome, needsScript: boolean): State[] => {
+            const talk = outcome.talk
+            if (talk && cast.includes(talk.character)) {
+              const next = talkTo(s, talk.character, talk.label, depth + 1)
+              return next.length > 0 ? next : [s]
+            }
+            if (outcome.onward) {
+              const next = play(s, outcome.onward.map, outcome.onward.event, true, played)
+              return next.length > 0 ? next : [s]
+            }
+            if (outcome.event !== undefined) return play(s, map, outcome.event, needsScript, played)
+            return [s]
+          }
+          const before = clone(from)
+          if (choice.kind !== 'line') {
+            runRecord(before, map, choice.record)
+            return follow(before, choice.record, false)
+          }
           if (choice.record) runRecord(before, map, choice.record)
-          if (choice.after) runRecord(before, map, choice.after.outcome)
-          if (choice.kind === 'event') {
-            keep(play(before, map, choice.event, false, played))
-            continue
+          // The talk records after the line, by each answer its prompt could be
+          // given — which the walk takes as given, every one.
+          const answers = new Set([0, ...choice.after.flatMap((a) => a.answer ?? [])])
+          const out: State[] = []
+          for (const answer of answers) {
+            const outcome = afterFor(choice.after, answer)
+            if (!outcome) {
+              out.push(clone(before))
+              continue
+            }
+            const after = clone(before)
+            runRecord(after, map, outcome)
+            out.push(...follow(after, outcome, false))
           }
-          if (choice.leadsTo) {
-            keep(play(before, map, choice.leadsTo.event, true, played))
-          } else if (choice.onward) {
-            keep(play(before, choice.onward.map, choice.onward.event, true, played))
-          } else {
-            keep([before])
-          }
+          return out
+        }
+        for (const id of cast) {
+          keep(talkTo(state, id, undefined))
+          // And from each of their talk boxes, with its label.
+          for (const box of boxes.get(id) ?? []) keep(talkTo(state, id, undefined, 0, box))
         }
       }
     }
@@ -583,9 +643,19 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         if (w.op === OP_IF_MARK && !state.marks.has(w.arg)) fails.add(`mark ${w.arg} set`)
         if (w.op === OP_UNLESS_MARK && state.marks.has(w.arg)) fails.add(`mark ${w.arg} clear`)
         if (w.op === OP_AT_STEP && step !== w.arg) fails.add(`step ${w.arg}`)
+        // The game-wide flags named another way — see `OP_IF_FLAG_NAMED` and
+        // `OP_IF_FLAG_FROM_830`.
+        if (w.op === 26 && !walked.globals.has(flagBit(w.arg)))
+          fails.add(`game-wide flag ${flagBit(w.arg)} set (by number, ${w.arg})`)
+        if (w.op === 27 && walked.sure.has(flagBit(w.arg)))
+          fails.add(`game-wide flag ${flagBit(w.arg)} clear (by number, ${w.arg})`)
+        if (w.op === 88 && !(w.arg < 73 && walked.globals.has(830 + w.arg)))
+          fails.add(`game-wide flag ${830 + w.arg} set (88 : ${w.arg})`)
+        if (w.op === 89 && w.arg < 73 && walked.sure.has(830 + w.arg))
+          fails.add(`game-wide flag ${830 + w.arg} clear (89 : ${w.arg})`)
       }
     }
-    return `it needs ${[...fails].join(', ')}, which the walk never had`
+    return `it needs ${[...fails].join(', ') || 'something not named here'}, which the walk never had`
   }
 
   /**
@@ -684,7 +754,18 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         globals: state.globals,
         globalsSure: state.sure,
       })
-      return `talking to ${who} in map ${trigger.map}, where another of their records chooses first — ${choice?.why ?? 'nothing'}`
+      // What the game's talk does instead, by `pickLine`: the record wanted
+      // is of the kind and label it names, and the talk took another way.
+      const wanted =
+        trigger.unknown_5 === 1
+          ? `a talk record for label ${conditionsOf(trigger).find((w) => w.op === 11)?.arg ?? 'any'}`
+          : 'their own record'
+      const went = !choice
+        ? 'nothing is said, so no talk record runs'
+        : choice.kind === 'line'
+          ? `the line said is label ${choice.label}'s (${choice.why})`
+          : choice.why
+      return `talking to ${who} in map ${trigger.map}, which wants ${wanted}: ${went}`
     }
     return `a record of ${what}, which the walk did not play for a reason this test does not tell`
   }
@@ -819,7 +900,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
           list.push({ area, trigger, handOn })
           reachedBy.set(event, list)
         }
-        for (const w of words) if (w.op === OP_EVENT) reach(w.arg, false)
+        for (const w of words) if (w.op === OP_EVENT || w.op === 155) reach(w.arg, false)
         const battle = words.find((w) => w.op === OP_BATTLE)?.arg
         if (battle !== undefined && own !== undefined) {
           const set = reachedByBattle.get(battle) ?? new Set<number>()
@@ -864,9 +945,14 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   }, 600_000)
 
   it('plays the slice through in one walk, and on into Stornway', () => {
+    // The prologue's opening: Yggdrasil, talked to from its box with label 80
+    // — see `TalkBox` — plays ev21510.
+    expect(walks[0]?.reached.has('1.2 step 1')).toBe(true)
     // The slice's own story, which the game already plays: the evening at
-    // 2.1, the pass, the Hexagon, Patty rescued, and the morning after.
+    // 2.1, the pass, the Hexagon, Patty rescued, and the morning after — in
+    // one walk from 1.3, through the prologue's end at Yggdrasil again.
     const slice = walks.find((walk) => walk.reached.has('2.1 step 1'))
+    expect(slice?.reached.has('1.3 step 1')).toBe(true)
     expect(slice?.reached.has('2.5 step 1')).toBe(true)
     expect(slice?.reached.has('2.7 step 1')).toBe(true)
     // And past it, by records read from the game's code: entering Stornway
@@ -879,8 +965,11 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // link table, not its triggers — which plays ev3040.
     expect(slice?.reached.has('3.1 step 3')).toBe(true)
     // And through the throne room to 3.2, now that the king — `45`, `s004` —
-    // stands where his block puts him, as the game's own placement has it.
+    // stands where his block puts him, as the game's own placement has it,
+    // and his talk file for chapter C reads: its first word, 16, was taken
+    // for an empty compressed stream (see `tryDecompressLz10`).
     expect(slice?.reached.has('3.2 step 1')).toBe(true)
+    expect(slice?.reached.has('3.2 step 2')).toBe(true)
     // Chapter 3's second half, Zere and its dungeon, in one walk to 3.7.
     const zere = walks.find((walk) => walk.reached.has('3.3 step 1'))
     expect(zere?.reached.has('3.7 step 1')).toBe(true)
@@ -907,8 +996,12 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // one shows up as a smaller number here; losing a rule the game had shows
     // up as a larger. Update it, and the table in `docs/story-walk.md`, when
     // either happens. 62 once who stands where became the game's own choice,
-    // by its placement script, by day or by night.
-    expect(breaks.length).toBe(62)
+    // by its placement script, by day or by night. 53 once talking was the
+    // game's own rule — a character's own record, the line, then their talk
+    // records, and talk boxes — and 372 files that begin with the word 16
+    // stopped being read as empty. 47 once `155`, a flag and an event, was
+    // read: Gortress's chain at 14.4 starts from it.
+    expect(breaks.length).toBe(47)
     // The first break after the slice: Loch Storn's set battle, whose first
     // fight nothing the walk plays starts.
     const first = breaks.find((b) => b.next.major >= 3)

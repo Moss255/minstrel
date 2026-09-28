@@ -164,6 +164,17 @@ describe('tryDecompressLz10', () => {
     expect(tryDecompressLz10(sprite)).toBeUndefined()
   })
 
+  it('returns undefined for data whose first word is 16', () => {
+    // A zero-length stream decodes to nothing whatever follows it, so it is no
+    // evidence of compression: a table whose header opens with its own size,
+    // 16, looks exactly like one.
+    const table = Uint8Array.from([0x10, 0x00, 0x00, 0x00, 0x50, 0x01, 0x00, 0x00, 0x91, 0x13])
+    expect(isLz10(table)).toBe(true)
+    expect(tryDecompressLz10(table)).toBeUndefined()
+    // Asked outright, a zero is still a zero.
+    expect(decompressLz10(table).length).toBe(0)
+  })
+
   it('returns undefined rather than throwing on a truncated stream', () => {
     expect(tryDecompressLz10(stream(64, [0x00, 1, 2, 3]))).toBeUndefined()
   })

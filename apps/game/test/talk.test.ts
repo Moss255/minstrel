@@ -3,6 +3,7 @@ import { parseMarkup, type TalkLine, type Trigger } from '@minstrel/game-formats
 import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import {
+  afterFor,
   branchOf,
   DEFAULT_CONTEXT,
   facingToward,
@@ -95,9 +96,19 @@ describe('letterForStage', () => {
     expect(letterForStage(letters, { major: 2, minor: 6 })).toBe('B0')
   })
 
-  it('takes the latest letter before a stage the area has none for', () => {
-    expect(letterForStage(letters, { major: 5, minor: 1 })).toBe('C0')
+  it('has nothing for a stage the area has no chapter for, as the game loads nothing', () => {
+    expect(letterForStage(letters, { major: 5, minor: 1 })).toBeUndefined()
     expect(letterForStage(letters, { major: 19, minor: 2 })).toBe('Q0')
+  })
+
+  it('reads the major as the game orders its letters: S and T at 11 and 12, then K', () => {
+    const later = ['J0', 'K0', 'L0', 'Q0', 'S0', 'T0']
+    expect(letterForStage(later, { major: 10, minor: 1 })).toBe('J0')
+    expect(letterForStage(later, { major: 11, minor: 1 })).toBe('S0')
+    expect(letterForStage(later, { major: 12, minor: 3 })).toBe('T0')
+    expect(letterForStage(later, { major: 13, minor: 1 })).toBe('K0')
+    expect(letterForStage(later, { major: 14, minor: 1 })).toBe('L0')
+    expect(letterForStage(later, { major: 20, minor: 1 })).toBeUndefined()
   })
 
   it('has nothing to say for an area with no talk at all', () => {
@@ -280,17 +291,18 @@ describe('pickLine', () => {
     unknown_numbers: numbers,
     text,
   })
-  /** A trigger record built in code: a map, a span, and its words as operation and argument. */
+  /** A trigger record built in code: a map, a span, its words as operation and argument, and its kind. */
   const trigger = (
     map: number,
     from: [number, number],
     to: [number, number],
     words: [number, number][],
+    kind = 0,
   ): Trigger => ({
     map,
     from: { major: from[0], minor: from[1] },
     to: { major: to[0], minor: to[1] },
-    unknown_5: 1,
+    unknown_5: kind,
     values: Uint32Array.from(words.map(([op, arg]) => ((op << 16) | arg) >>> 0)),
     floats: new Float32Array(words.length),
     kinds: new Uint8Array(words.length).fill(1),
@@ -303,7 +315,6 @@ describe('pickLine', () => {
     line([2, 3, 16], '*: Later on.'),
     line([5, 6, 1, 16], '*: Only after dark.'),
     line([1, 99, 196], '*: Long afterwards.'),
-    line([7, 0, 196], '*: About an errand.', 2),
   ]
   const asking = {
     triggers: [] as Trigger[],
@@ -316,58 +327,119 @@ describe('pickLine', () => {
   const said = (choice: ReturnType<typeof pickLine>) =>
     choice?.kind === 'line' ? choice.line.text : undefined
 
-  it('says the plain line for the sub-stage, by day or by night', () => {
+  it('says the last line that holds for label 0, by sub-stage and time of day', () => {
     expect(said(pickLine(asking))).toBe('*: Plain, by day.')
+    // By night the night line comes after the day one in the file, and so is said.
     expect(said(pickLine({ ...asking, night: true }))).toBe('*: Plain, by night.')
     expect(said(pickLine({ ...asking, stage: { major: 2, minor: 3 } }))).toBe('*: Later on.')
   })
 
-  it('takes the other time of day when there is no line for this one', () => {
-    const choice = pickLine({ ...asking, stage: { major: 2, minor: 5 } })
-    expect(said(choice)).toBe('*: Only after dark.')
-    expect(choice?.why).toContain('night line')
+  it('says nothing by day where only a night line covers the sub-stage', () => {
+    expect(pickLine({ ...asking, stage: { major: 2, minor: 5 } })).toBeUndefined()
+    expect(said(pickLine({ ...asking, stage: { major: 2, minor: 5 }, night: true }))).toBe(
+      '*: Only after dark.',
+    )
   })
 
-  it('says the line a trigger labels, and runs the event a trigger names instead', () => {
-    const labelled = trigger(
-      1100,
-      [2, 1],
-      [2, 1],
-      [
-        [6, 5],
-        [11, 192],
-      ],
+  it("asks the character's own record first, and talks with the label its 118 gives", () => {
+    const own = (label: number) =>
+      trigger(
+        1100,
+        [2, 1],
+        [5, 99],
+        [
+          [6, 5],
+          [118, 5],
+          [label, 0],
+        ],
+      )
+    expect(said(pickLine({ ...asking, triggers: [own(192)] }))).toBe('*: Labelled.')
+    expect(said(pickLine({ ...asking, triggers: [own(196)] }))).toBe('*: Long afterwards.')
+    // The first that holds is taken, and the rest are not asked.
+    expect(said(pickLine({ ...asking, triggers: [own(196), own(192)] }))).toBe(
+      '*: Long afterwards.',
     )
-    expect(said(pickLine({ ...asking, triggers: [labelled] }))).toBe('*: Labelled.')
-    const event = trigger(
+  })
+
+  it("plays the event a character's own record names, with every action it has", () => {
+    const own = trigger(
       1100,
       [2, 1],
       [2, 1],
       [
         [6, 5],
-        [11, 0],
         [119, 2110],
+        [104, 3],
       ],
     )
-    expect(pickLine({ ...asking, triggers: [event] })).toMatchObject({ kind: 'event', event: 2110 })
+    const choice = pickLine({ ...asking, triggers: [own] })
+    expect(choice).toMatchObject({ kind: 'event', event: 2110 })
+    expect(choice?.kind === 'event' && choice.record.flags).toEqual([3])
   })
 
-  it('reads a label given the other way, as a word whose low half is 0', () => {
-    const late = trigger(
+  it('says nothing, and runs nothing after, where no line holds for the label asked', () => {
+    const own = trigger(
       1100,
       [2, 1],
-      [5, 99],
+      [2, 1],
       [
         [6, 5],
-        [36, 1],
         [118, 5],
-        [196, 0],
+        [200, 0],
       ],
     )
-    expect(said(pickLine({ ...asking, triggers: [late] }))).toBe('*: Long afterwards.')
+    const choice = pickLine({ ...asking, triggers: [own] })
+    expect(choice?.kind).toBe('record')
   })
 
-  it('ignores a trigger in another map, for someone else, or outside its span', () => {
+  it('hands on the talk records for the label asked, the first by the answer given', () => {
+    const after = [
+      trigger(
+        1100,
+        [2, 1],
+        [2, 1],
+        [
+          [6, 5],
+          [11, 192],
+          [119, 9999],
+        ],
+        1,
+      ),
+      trigger(
+        1100,
+        [2, 1],
+        [2, 1],
+        [
+          [6, 5],
+          [11, 0],
+          [16, 1],
+          [119, 2111],
+        ],
+        1,
+      ),
+      trigger(
+        1100,
+        [2, 1],
+        [2, 1],
+        [
+          [6, 5],
+          [11, 0],
+          [16, 0],
+          [119, 2110],
+        ],
+        1,
+      ),
+    ]
+    const choice = pickLine({ ...asking, triggers: after })
+    expect(said(choice)).toBe('*: Plain, by day.')
+    const records = choice?.kind === 'line' ? choice.after : []
+    expect(records.map((a) => a.answer)).toEqual([1, 0])
+    // With no prompt, the answer is 0.
+    expect(afterFor(records, 0)?.event).toBe(2110)
+    expect(afterFor(records, 1)?.event).toBe(2111)
+  })
+
+  it('ignores a record in another map, for someone else, or outside its span', () => {
     const elsewhere = [
       trigger(
         1107,
@@ -375,7 +447,8 @@ describe('pickLine', () => {
         [2, 1],
         [
           [6, 5],
-          [11, 192],
+          [118, 5],
+          [192, 0],
         ],
       ),
       trigger(
@@ -384,7 +457,8 @@ describe('pickLine', () => {
         [2, 1],
         [
           [6, 9],
-          [11, 192],
+          [118, 9],
+          [192, 0],
         ],
       ),
       trigger(
@@ -393,18 +467,31 @@ describe('pickLine', () => {
         [2, 7],
         [
           [6, 5],
-          [11, 192],
+          [118, 5],
+          [192, 0],
         ],
       ),
     ]
     expect(said(pickLine({ ...asking, triggers: elsewhere }))).toBe('*: Plain, by day.')
   })
 
-  it('never says an errand line, and says when it has had to guess', () => {
-    const choice = pickLine({ ...asking, stage: { major: 2, minor: 4 } })
-    expect(said(choice)).toBe('*: Long afterwards.')
-    expect(choice?.why).toContain('a guess')
-    expect(pickLine({ ...asking, lines: [lines[6] as TalkLine] })).toBeUndefined()
+  it("counts a character talked to for labels 17 on, and asks with a talk box's label", () => {
+    const counted = [line([1, 99, 16], '*: First.'), line([1, 99, 17], '*: Again.')]
+    expect(said(pickLine({ ...asking, lines: counted }))).toBe('*: First.')
+    expect(said(pickLine({ ...asking, lines: counted, talked: { area: 0, map: 1 } }))).toBe(
+      '*: Again.',
+    )
+    // A box's 80 and a line's 96 are in the same group of 80, as a
+    // signpost's inscription has them.
+    const sign = [line([1, 99, 96], '*: The inscription.')]
+    expect(pickLine({ ...asking, lines: sign })).toBeUndefined()
+    expect(said(pickLine({ ...asking, lines: sign, box: 80 }))).toBe('*: The inscription.')
+  })
+
+  it("says a quest's line over the plain one, by the quest's state", () => {
+    const quest = [line([1, 99, 16], '*: Plain.'), line([83, 3, 16], '*: A favour to ask.', 2)]
+    // Open and not taken, as `QUESTS_OPEN` has every quest: test 3.
+    expect(said(pickLine({ ...asking, lines: quest }))).toBe('*: A favour to ask.')
   })
 })
 

@@ -119,7 +119,7 @@ export function readMinimaps(rom: Uint8Array): Minimaps {
     const stem = name.slice(0, dot).toUpperCase()
     const kind = name.slice(dot).toLowerCase()
     try {
-      // Four layouts on the cartridge are empty files.
+      // An empty file has no layout to read.
       if (kind === '.bmmp' && leaf.bytes.length > 0)
         layouts.set(stem, readMinimapLayout(leaf.bytes))
       else if (kind === '.obg' && isMinimapPicture(leaf.bytes)) pictures.set(stem, leaf.bytes)
@@ -262,7 +262,7 @@ export interface MinimapFor {
 
 /**
  * The layout a map is shown on. Its own first: the one whose `0x6b` names its
- * id — true of 242 of the 279 layouts — or failing that the one named for it.
+ * id — true of 245 of the 283 layouts — or failing that the one named for it.
  * Then, for a room, the layout that lists it among its places and has a mark
  * standing for it. Layouts are taken in name order, so the answer is the same
  * every time.
