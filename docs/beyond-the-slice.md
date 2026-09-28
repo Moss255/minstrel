@@ -17,7 +17,7 @@ Taken 19 September 2026, and each of them changes the shape of the work:
 | | |
 |---|---|
 | **Ends at** | the story to the ending, **plus the postgame** a single player can reach — the legacy bosses, the Realm, grottoes |
-| **Not included** | Tag Mode, local co-op, DLC quests. Left out deliberately: netcode and strict determinism would roughly double the sim's constraints, and the risk to *finishing* is not worth it |
+| **Not included** | Tag Mode, local co-op. Left out deliberately: netcode and strict determinism would roughly double the sim's constraints, and the risk to *finishing* is not worth it. **DLC quests came back in on 29 September 2026**: their data is on the cartridge and only a "delivered" bit locks them, which Sellma's DQVC connection now sets for all 64; each quest's own content is Phase 4's |
 | **Accuracy** | **conformance first.** The harness gets built before more content, and the slice's battle maths is rewritten behind it — as the slice plan always said it would be |
 | **Systems back in** | character creation and appearance · vocations and Alltrades · party recruitment · alchemy and mini medals |
 
@@ -390,8 +390,9 @@ walk and in the game. By the end of that day **the walk played from a new
 game to the credits in one go**, with 6 breaks left — five of them the
 quests after the credits — once a map's own areas, who stands where, how the
 game talks, a scene's hand-on, `807`, the event lists, every record kind,
-party tricks and the Starflight Express were read; see `docs/story-walk.md`. One
-walk now plays from the prologue's end into chapter 4.
+party tricks and the Starflight Express were read; see `docs/story-walk.md`.
+What the walk shows has not yet been played through in the engine, and the
+credits scene does not run (VM opcode `0x1e`).
 
 ### Phase 4 — The postgame
 

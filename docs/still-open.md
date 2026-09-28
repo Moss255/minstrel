@@ -132,6 +132,22 @@ confirm a find, and what to do if the binaries do not give it up.
   price is not established.
 - **The Hero's starting purse.** 180 gold — seen in a let's play, not read.
 
+### 1c. The story's last stretch, quests and the Express — to check in the emulator
+
+Added 29 September 2026. Each was read as far as the code goes and built on a
+reading that a few minutes of play would confirm or overturn. The walk
+(`docs/story-walk.md`) and the engine both rest on them.
+
+| question | what rides on it | how it would be settled |
+|---|---|---|
+| **What plays `ev29150`**, Celestria opening the way, listed at 16.1 in map 20034 (Gittingham's field). INFERRED: arriving there by the Express at 15.3 step 5. Nothing read names it — not the Express's task, the event lists' flags, nor the queued-scene slot | **whether 16.1 is reached at all**: no record moves the story there, and the scene's start raises it (`walk` and engine both) | ride to Gittingham Palace with Sterling after the Observatory at 15.3, and see whether Celestria's scene plays on landing — or where else it does |
+| **Whether 16.1 starts at step 5.** The scene's start raises major and minor and leaves the step (`func_ov017_021bbfc4` at `0x021bc424`; no step setter is called), so from 15.3 step 5 the story would be at 16.1 step 5 — and the story only moves forward, so 16.1 steps 2 to 4 could never be set | the records of 16.1 steps 2 to 4, set battle 17's at the palace gate among them: only losing it sets step 2, and none of them could apply from step 5 | a save after Celestria's scene: the story's step (`GameState` `+0x5cb8`), or whether losing and winning the gate fight change what the guards say |
+| **Whether the Express ever stops.** Its speed is set every frame and the mover (`func_0203348c`) takes `0x28` off it unless `+0xbe` is 1, so it flies on at `0x1c3` a tick with nothing held. What sets `+0xbe`, and whether anything slows it with no key held, is not read | how flight feels | fly, let go of the +Control Pad, see whether it glides to a halt or keeps going |
+| **Which of `114` and `115` gives an item.** Both are queued (`0x0206fcc0`, `0x0206fd74`); INFERRED from what they carry — `114` the fygg, the party popper and Sterling's whistle, `115` the Drunken Dragon and the Gittish seal | whether the whistle reaches the bag at 19.1, and every key item the story hands over | watch the bag at any `114` — winning set battle 27 at 19.1 should leave Sterling's whistle in it |
+| **The sky collision's region index.** The top seven bits of each triangle's attributes, INFERRED from the data: all even top bytes, halved 0 to 56, all 57 records used | where the Express can land, and which region it lands in | disembark over a few regions and compare with where the engine lands |
+| **Where a landing puts the Hero.** The game takes the nearest of the region's landing places (category-11 objects, `func_0201b78c`), not read; the engine puts the Hero on the ground at the converted spot | landing anywhere but on a road | land beside a town and note where the Hero stands |
+| **The whistle's lines.** INFERRED that the item code's messages `0x7530` on are `str_ark` 13 on | the words said, and nothing else | blow the whistle indoors, or in a town the game does not list |
+
 ---
 
 ## 2. Ours, and stand-ins
