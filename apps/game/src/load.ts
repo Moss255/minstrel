@@ -630,6 +630,22 @@ function castOf(
   step?: number,
 ): Cast {
   if (!area) return NOBODY
+  return cast(
+    placedIn(area, id, stage, step),
+    cat.members,
+    groundAt,
+    toFloat(PERSON.height),
+    sheets,
+  )
+}
+
+/** Who {@link castOf} stands in the map, before anyone is built — the choice alone. */
+function placedIn(
+  area: Area,
+  id: number | undefined,
+  stage?: Stage,
+  step?: number,
+): { entry: NpcEntry; placement: NpcPlacement }[] {
   const placed: { entry: NpcEntry; placement: NpcPlacement }[] = []
   if (stage === undefined) {
     for (const found of placeNpcs(area.entries, area.placements.map(placementInWorld))) {
@@ -667,7 +683,36 @@ function castOf(
       placed.push({ entry, placement: placementInWorld(header) })
     }
   }
-  return cast(placed, cat.members, groundAt, toFloat(PERSON.height), sheets)
+  return placed
+}
+
+/** What the story reads of an area, without a map built — see {@link storyView}. */
+export interface StoryView {
+  /** Who stands in the map, by the id `pickLine` asks for, at a stage and step — as `castAt` places them. */
+  castIds(map: number, stage: Stage, step?: number): number[]
+  /** The chapter letters the area has talk for, in order — as `Loaded.letters`. */
+  readonly letters: readonly string[]
+  /** A character's lines in a chapter — as `Loaded.linesOf`. */
+  linesOf(id: number, letter: string): readonly TalkLine[]
+}
+
+/**
+ * An area's cast and talk, read the way {@link load} reads them but with no map,
+ * model or sound — for following the story over the whole cartridge at once
+ * (`apps/game/test/story-walk.test.ts`). Who stands where is `castAt`'s own
+ * choice, before anyone is built, so a character the build would leave out as
+ * missing is still counted here.
+ */
+export function storyView(rom: Uint8Array, code: string): StoryView {
+  const { cat } = walkOnce(rom, [`/data/scenario/${code}.npc`])
+  const area = areaFrom(cat, code)
+  const talk = talkOf(rom, code)
+  return {
+    castIds: (map, stage, step) =>
+      area ? placedIn(area, map, stage, step).map(({ placement }) => placement.id) : [],
+    letters: [...talk.keys()].sort(),
+    linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
+  }
 }
 
 /** One named `.npc` archive's cast files, or undefined if there is none or it will not read. */

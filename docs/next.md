@@ -9,6 +9,27 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The story, walked — 28 September
+
+**Phase 3 now has a finish line**: the story plays from a new game to the
+credits in one save. **The worklist is `docs/story-walk.md`**, produced by
+`apps/game/test/story-walk.test.ts`, which follows the story over the whole
+cartridge by the engine's own rules and prints every break with why. It
+takes precedence over the list below, which was the sweep's.
+
+The slice plays through in one walk, and 101 breaks follow it. The story's
+five threads (`214`) are read and built. Take the rest by cause, in the
+file's order: first the stage words on records that are not an event's own,
+which wants *when* each kind of record runs read from the game's code; then
+how story characters are placed. Run the walk again after each, because most
+of the rest are cascades.
+
+Decomp and wiki contributions are deferred until minstrel is finished. A
+function read from the game's code along the way goes in
+`docs/decomp-contributions.md`, "Read since".
+
+---
+
 ## Phase 3's sweep is done — 26 September
 
 **All 75 areas are checkpointed** (`docs/areas.md`). Every exterior, every

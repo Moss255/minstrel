@@ -368,6 +368,23 @@ The 74 areas are the unit, not the 669 maps — a map archive is usually one
 building. Expect the first few to be slow and to send work back to Phase 1;
 expect that to stop.
 
+**Done when the story plays from a new game to the credits in one save, with
+no URL parameters.** Decided 28 September 2026, when minstrel was put ahead
+of the decomp contributions. The postgame stays in Phase 4. The sweep (all 75
+areas, 26 September) showed each area loads, walks, talks and plays its
+scenes, but each was opened with a stage given, never reached by playing.
+
+**What stands between the two is measured, not estimated**:
+`apps/game/test/story-walk.test.ts` follows the story over the whole
+cartridge by the engine's own rules, and `docs/story-walk.md` is the list it
+gives. On the day it was written, the slice played through in one walk and
+there were about a hundred breaks after it, most of them from three causes.
+One of the three, `214`, turned out to be the one thing on the list that
+restructures data: **the story is five threads, and the map decides which is
+live**. That was read from the game's code and built the same day, before any
+of chapter 6's content, which is the order this plan asks for. 101 breaks
+remain.
+
 ### Phase 4 — The postgame
 
 - Legacy bosses and the Realm: more of Phase 3.
