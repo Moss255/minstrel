@@ -763,10 +763,17 @@ export class EventStage {
   zoneBit = false
   /** Whether the zone's two extra render passes run — see `599` and `805`. */
   readonly zonePasses: [number, number] = [1, 1]
-  /** Which of the five progress records is in hand — see `601` and `602`. */
-  record = 0
-  /** The bits of those records that are set, as `record:field:bit` — see `602`. */
-  readonly recordBits = new Set<string>()
+  /**
+   * The live thread's marks and flags — what `601` and `602` read. **Ours**:
+   * nothing here sets them; whoever plays the event fills them from the
+   * story, as `flags` below.
+   */
+  readonly threadMarks = new Set<number>()
+  readonly threadFlags = new Set<number>()
+  /** Whether the scene has read either — so a run can be kept by what it read. */
+  readThread = false
+  /** Which it read, as `f<n>` for a flag and `m<n>` for a mark — so a run can be kept by those bits alone. */
+  readonly threadReads = new Set<string>()
   /** Whether the music is gated off — see `735`, whose number means the opposite. */
   musicGated = false
   /** Whether the scene has fog — see `804`. */
@@ -851,6 +858,18 @@ export class EventStage {
   readonly monsters = new Map<number, string>()
   /** The scripted battle a scene has asked for — see `547`. */
   battleFrom: { readonly placement: number; readonly battle: number } | undefined
+  /** Where the scene sends the Hero once it is over, and what plays there — see `807`. */
+  handOn:
+    | {
+        readonly map: number
+        /** In the file's own units, as a doorway's arrival is written. */
+        readonly x: number
+        readonly y: number
+        readonly z: number
+        readonly facing: number
+        readonly event: number | undefined
+      }
+    | undefined
   /** The balloon over a character's head, where a scene has put one — see `541`. */
   marker: Marker | undefined
   /** How many sound handles have been handed out — see `712`. */
@@ -1784,17 +1803,23 @@ export class EventStage {
       case 805:
         this.zonePasses[1] = num(args[0])
         return 1
-      // **Read a bit of the progress record in hand**, `602` — read from
-      // overlay 1, and the fourth of the `600` family. The bank opens with
-      // **five records of 28 bytes**, and one byte of the block says which is
-      // in hand; `601` reads that record's bitfield at `+0x03` and `602` its
-      // second at `+0x10`, **twelve bytes, 96 bits**. Which record is chosen
-      // depends on which of several ranges an id falls in.
+      // **Read a mark or a flag of the live thread**, `601` and `602` — read
+      // from overlay 1, and the fourth of the `600` family. The story bank
+      // opens with **five records of 28 bytes, one a thread**, and the byte at
+      // `+0x332` says which is live; a record's first three bytes are its
+      // stage — major, minor, step (`func_0206df14`) — `601` reads its
+      // bitfield at `+0x03` and `602` its second at `+0x10`, twelve bytes.
+      // Those two fields are what the trigger actions `102` and `104` set
+      // (US ARM9 `0x02061ee4`, `0x02061f9c`): **the thread's marks and its
+      // flags**. Gortress's ev14640 sums `602(11..14)` — the four flags its
+      // `155` records set — and chains into ev14903 at four.
       case 601:
       case 602: {
         const ref = args[1]
-        const which = `${this.record}:${id === 601 ? 'a' : 'b'}:${num(args[0])}`
-        if (isRef(ref)) thread.write(ref, this.recordBits.has(which) ? 1 : 0)
+        const bits = id === 601 ? this.threadMarks : this.threadFlags
+        this.readThread = true
+        this.threadReads.add(`${id === 601 ? 'm' : 'f'}${num(args[0])}`)
+        if (isRef(ref)) thread.write(ref, bits.has(num(args[0])) ? 1 : 0)
         return 1
       }
       // **The music**, `735`, `736` and `737` — read from overlay 1, the last
@@ -2956,6 +2981,24 @@ export class EventStage {
       //
       // **Ours**: no battle begins from a scene yet, so what it asked for is
       // kept for whoever plays the event to act on.
+      // **A hand-on with a place**, `807` — read from overlay 1
+      // (`func_ov001_02161f80`): a map, x, y and z, a facing, and — given a
+      // sixth value — an event. It fills the same map-change request the
+      // trigger queue's `133` does (`func_0200fd0c`, committed by
+      // `func_0200fcfc`): the map, the place (each value ×4096), the facing,
+      // and the event to play there or −1; so the scene ends and the Hero goes
+      // there. `ev23189` at Loch Storn ends `807(5200, 0, 0, 0, 0, 23190)`,
+      // which is how the lake's first fight begins. 16 scenes call it.
+      case 807:
+        this.handOn = {
+          map: num(args[0]),
+          x: num(args[1]),
+          y: num(args[2]),
+          z: num(args[3]),
+          facing: num(args[4]),
+          event: args.length > 5 ? num(args[5]) : undefined,
+        }
+        return 1
       case 547:
         this.battleFrom = {
           placement: num(args[0]),

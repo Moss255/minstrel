@@ -2134,6 +2134,7 @@ the file's order** — `castAtPoint` in `npc.ts`:
 | 3, a block (`func_0206c010`) | map, character, then where (x, y, z, facing, and a byte on some) | for this map only: places them; with no place, takes them away |
 | 5, a span (`func_0206c2c0`) | from and to — stage, sub-stage, step each — then **the time of day**, map, character, then where | counts only while `from ≤ now ≤ to`, each weighed `major × 1000 + minor × 10 + step`, and only at its time. Then: **for another map, it takes the character away from this one**; with no place, it takes them away; otherwise places them |
 | 17, while flags (`func_0206d4e0`) | pairs of a condition and whether it must be set (1) or clear (0), then time, map, character, where | a condition's high half 1 is a game-wide flag by its bit, 2 by its number — displaced from `0x400` as the script function `603` displaces (`func_0206eb98`); any other and the record does not count. Otherwise as a span, and **before all others** |
+| 4, at one point (`func_0206c0f8`) | stage, sub-stage and step, then time, map, character, where | counts only when all three are now's, and at its time; another map takes the character away, as a span's does; otherwise places them, ordered as a span that ends at a sub-stage 0 (their minor set, no "to"). Coffinwell's `26` is placed only so — in the scholar's house (1311) at 4.1 steps 1 and 2, outdoors at step 3 |
 | 6, **a talk box** (`func_0206c4e8`) | character, four floats, a label | a box on the ground — x and z at most, then at least, in a placement's units — and the label a talk from it asks with. Kept on the character's first placement in this map at the time, so a box read before the character is placed, or after they are taken away, is none. **The Hero talks to whoever's box holds them**, and a thing to examine only so — see "How a talk runs" under "Triggers". 570 on the cartridge; Yggdrasil's is `199, 3.24, 1.27, −3.36, −2.52, 80`, and the village shopkeeper's three are over his counter |
 
 **Word 6 of a span is the time of day**: 0 by day (morning, day or
@@ -2142,10 +2143,13 @@ cartridge: 1,227 either, 378 by night, 371 by day. Angel Falls' `15` is in
 the stable by day and the village by night; Erinn is upstairs at 2.6 only by
 night.
 
-**The order a character's placements keep** (`func_0206db48`): tag 17's
-first; then a span whose to-stage has a sub-stage of 0 but whose from-stage
-does not; then any other span; a block's last. Between spans, **the one that
-starts earliest**, and then the first in the file; otherwise the first. One
+**The order a character's placements keep** (`func_0206db48`), by six
+classes: tag 17's first (a bit of `+0xa`, `0x04`); then one with another bit,
+`0x40` (class 1 — tag 14's, perhaps, not read); then one whose `+0x46` is set
+(class 2, not read); then a span whose to-stage has a sub-stage of 0 but whose
+from-stage does not, and a point's (tag 4); then any other span; a block's
+last. Between spans of class 4 (and class 1), **the one that starts earliest**,
+and then the first in the file; otherwise the first. One
 that comes after all the others is dropped. Taking a character away
 (`func_0206dd68`) clears where they stand, and a later record can place them
 again.
@@ -2642,6 +2646,46 @@ Run that way against an engine that answers every function with 0, **504 of the
 frames, for answers that engine never gives.
 
 ---
+
+# The event lists — `data/event/eventlist6.bin`, `data/evspt_lv5/eventlist_lv5.bin`, `data/event/evl_quest.bin`
+
+**Every scene plays in a map of its own, and these say which.** Read from the
+game's code, 28 September 2026 (overlay 17). A scene's task opens a list by
+the scene's number (`func_ov017_021bbc10`) — below 21,000 `eventlist6`, below
+40,000 `eventlist_lv5`, from there `evl_quest` — and runs it as a script
+(`func_02071488`, one opcode, 102, handled by `func_02071208`), keeping the
+record whose event is the scene's. **If that record's map is not the Hero's,
+the scene does not play here** (`func_ov017_021bbfc4`): it fills the
+map-change request with the map and the scene's number (`func_0200fd0c`, as
+the trigger queue's `133` and the script function `807` do) and ends, so the
+map changes and the scene plays in its own. A script a scene chains into
+(`538`) goes back through the same start, so a chain can walk the Hero
+through several maps: talking to `106` on the Starflight Express at 4.7 plays
+`ev24598` (map 6401), which chains `ev24500` (5102), `ev25500` (4510) and
+`ev5110` (4507) — and `ev5110`'s record, which moves the story to 5.1, is the
+Observatory's, in 4507. A scene's own record (kind 11) is looked for in the
+map it ended in.
+
+A tagged table: `0x65` and `0x64` once each, then one `0x66` record (tag 102)
+per scene — 414, 165 and 137 on the reference cartridge, no scene listed
+twice. Its 23 values, as `func_02071208` stores them:
+
+| value | kind | kept at | read as |
+|---|---|---|---|
+| 0–3 | integers | `+0`–`+3`, bytes | **0 and 1 are the stage the scene belongs to**, and the scene's start raises the live thread's stage to it when the story is behind and the major is 19 at most (ov017 `func_ov017_021bbfc4`, at `0x021bc424`; see "How a record runs") — the Starflight Express's arrival scenes are listed at 20.1 for that reason, and `ev29300`, the credits, at 19.1 is the one scene a record plays before its listed stage. 2 and 3 are `unknown` — 5, 100 for `ev5110`, 11, 100 on most of `eventlist6`'s, the first pair again on `eventlist_lv5`'s |
+| 4 | integer | `+0xe` | **the map it plays in** — compared with the Hero's, and put in the request |
+| 5 | integer | `+0xa` | **the scene**, which the list is searched by |
+| 6 | integer | `+0xc` | `unknown` — the first scene of its chain on the ones looked at (`ev5110`'s is 24500) |
+| 7, 8 | strings | `+0x12`, `+0x32` | a name, and the script file, `ev05110.stb` |
+| 9–11 | integers | `+0x3e`–`+0x42` | `unknown` — 100, 200, 300 on all looked at |
+| 12–15 | floats | `+0x48`, `+0x54` | a place and a facing (×4096); where they are used was not followed |
+| 16–19 | integers | `+5`, `+0x46`, `+4`, `+6` | `unknown`. The second, where not negative, becomes the record's index in the list, and the scene's start tests game-wide flag `910 + it`, and does not play the scene when it is set — not read further |
+| 20 | string | `+0x56` | a font's name |
+| 21 | integer | `+0x44` | **flags**: `0x80`, the map is the Hero's own — the scene plays wherever they are (13 scenes); the rest not read |
+| 22 | integer | `+0x10` | `unknown` — 6401 on the Starflight Express chain's |
+
+`data/event/evl_quest_d.bin` is shaped otherwise and is not opened by the
+scene's start. Read by `readEventList` in `eventlist.ts`.
 
 # What characters say — `/data/scenario/<area><letter>0.gp2`
 
@@ -3697,6 +3741,9 @@ integer. The full table is `PARAMS` in `story.ts`. So the `0 : n` words after
 | 52 to 63 | **composites**: each names a character (`6`, its argument) and tests more, taking each of its values as its high and low half in turn (the parser stores them so). 52 is `6`, `5` (a flag clear) and `23`: Stornway's lobby at 2.7, `52:205 3:2 119:2940 104:3`, is talking to 205 with flag 3 clear. 62 and 63 are `6`, a game-wide flag set (`0`) or clear (`1`), and `23`. 53 to 61 also call `func_0206474c(quest, mode)` on their first value, which holds by the quest's state: modes −1 and 5 at 0, 0 at 2, 1 while its first flag is set, 2 at 3, 3 at 1, 4 never. 53 adds `11` and `16`, 54 an `18`, 56 a `36`, 57, 58 and 61 a `23`. 1,495 records carry one |
 | 88, 89 | a game-wide flag of the block from bit 830 is set, clear: `88 : n` tests bit `830 + n`, for n below 73 (from 73, 88 fails and 89 holds). The Quarantomb's records test 71 and 72; what sets them is not read |
 | 86 | partly read: someone of a kind the game marks (`func_02061bd8`) in the party is up, or failing one its object `0xce` is there, for `86 : 1`; `86 : 0` otherwise. INFERRED, whoever goes along — Ivor |
+| 13, 14, 15 | the party's size — the filled slots of four, the Hero among them (`func_02010890`) — is at least, at most, exactly the argument. Gortress's captain at 14.3 speaks one way to two or more (`13:2`) and another to the Hero alone (`15:1`) |
+| 32, 33 | the party tricks performed — see "Kind 19 is a party trick" below |
+| 81 | `81 : 0` holds with no session (`func_0202b7d8`), `81 : n` never — INFERRED multiplayer, as 23 |
 
 **The queue** (`func_0206f81c`) applies:
 
@@ -3729,15 +3776,129 @@ these conditions hold, do this". Angel Falls' church and stable at 1.2, `4:4
 **Who asks for which kind**, as far as read. Each is a call to the lookup with
 the kind as a constant:
 
+**The only way a record runs whole is `func_020649b0`**: the first record of
+the kind whose conditions hold (`func_02064490`), then every action
+(`func_02064530` → `func_02061c04`). Its callers, and so **every kind that is
+ever asked for**, read on 28 September 2026 from every call in the ARM9 and
+the overlays — three of them through a thunk that fixes the kind
+(`func_020649f4` is kind 3, `func_02064a08` kind 15, `func_02064a24` kind 16):
+
 | kind | asked for by |
 |---|---|
 | 0, 1 | the field's talk (`func_ov017_021a4cf0`, `func_ov017_021b8e8c`) — see "How a talk runs" |
-| 2, 5 | the field (`func_ov017_0219814c`, `func_ov017_02198e30`) |
-| 3, 20 | map loading, only their action 108 (`func_02017a94`, `func_02018300`) |
-| 6 | the field's frame update, above |
-| 11 | the end of an event (`func_ov017_021bc77c`) |
+| 2, 5 | the field (`func_ov017_0219814c`, `func_ov017_02198e30`, and at `0x02198f48`) |
+| 3 | **the field, whole, on arriving in a map** (ov017 `0x0219f3a0` and `0x0219fd80`, through `func_020649f4`). So an entry record runs every action — `119`, `124`, `143`: Batsureg's areas 72 and 73 at 10.6 are one's. Map loading and a doorway transition also run kinds 3 and 20, and 17, **for their `108` alone** (`func_02017a94`, `func_02018300`, through `func_02064b24`, which runs one operation of the first holding record) |
+| 6 | the field's frame update, above (`0x0219cd7c`) |
+| 9 | `func_02064a40`, from the protagonist's area byte — **no record on the cartridge is of kind 9** |
+| 10 | a script function (ov001 `0x021551dc`) |
+| 11 | the end of an event (`func_ov017_021bc77c`, at `0x021bcab8`) |
+| 12 | ov003 `0x02159f58` |
+| 15, 16 | the end of a set battle, won and lost (ov017 `0x021b7c54`, `0x021b7c3c`, through the thunks) |
+| 17 | the field's doorways (`func_ov017_02198f84`, at `0x02198fe4`) |
+| 18 | ov017 `0x02199280` |
+| 19 | **a party trick performed** — the trick's object, `func_02053634`, through `func_02064a9c`; see below |
 | 20 | loading the trigger file (`func_02064574`), which takes the areas |
-| 9, 10, 12, 17, 18, 19, 22–27, 29, 30 | elsewhere: overlays 1 to 4 and 17, not yet read |
+| 22 | ov002 `0x02155b30` |
+| 23, 24 | ov017 `0x02199190`, `0x021ac9bc` |
+| 25 | ARM9 `0x0208b1cc` |
+| 26 | ov017 `0x021b9b34`, `0x021b9ba0` |
+| 27 | ov004 `0x021648c4`, ov017 `0x021a9f04` |
+| 29, 30 | ov017 `0x02199608` and `0x02199660`, `0x0219e720` |
+
+**Kind 19 is a party trick.** The field object that plays one loads
+`data/chara/sg<nn><m|w>.chr` (`func_0205308c`; each holds a `sigusa.nsbca` —
+仕草, a gesture — for a man or a woman, `func_02052e2c`'s bit), and when its
+tricks are done and it is the leader's, its update (`func_02053634`, at
+`0x020539ac`) copies the up to four it performed to the context's `+0x2a` and
+asks for the first kind-19 record whose conditions hold; the context's `+4` is
+the Hero's area, which `7` reads. **Condition `33`** (`0x02060214`) takes the
+next word as four bytes and holds when each nonzero one is among the four
+performed, no two the same; `32` takes a word too and is not read (INFERRED,
+the same four in order — the quest "We Like to Party", `32:0 4866:2307`).
+**The tricks are numbered as the field menu's strings are**, `str_tm` 4509 +
+*n*: Bow 1, Clap 2, Air Punch 3, Bye Bye 4, Weep, Despair, Tantrum, Surprised,
+Jump 9, Sit, Recline, Hello! 12, Thanks!, Goodbye!, Eek!, Hmm... 16, Pray 17,
+Dive, Pirouette 19, Belly Dance, Royal Regards, Swinedimples Salute 22, Cap'n's
+Curtsy, Sultry Dance, Weird Dance, Wallop, Cheer, Provoke, Salute 29,
+Inspiration, Professor's Pose 31. **Action `142 : n` teaches one**
+(`0x02062a80` → `func_0206e348`): the game orders the tricks by a table at
+`0x020e87c0` — `0, 3, 2, 4, …, 11, 18, 12, …, 17, 19, 1, 20, …, 31` — and
+**the first seventeen places are known from the start** (the setter refuses
+them; `func_0206e384` reads the rest as a mask), the others learnt as a bit
+each of the game-wide bank from `0xbf1` + place. 11 records: Gleeba's Drak
+answers a Clap in area 10 at 11.2 (`7:10 33:0 512:0 1:322 5:1 23:2
+119:11200`), Porth Llaffan wants a Bow in area 34 at 6.4 — taught at 6.3 by
+`142:1` — and the Quester's Rest's two quests an Air Punch and the sequence.
+
+**The thread record, and `601`/`602`.** The story bank is **five records of
+28 bytes, one a thread**, and the byte at `+0x332` says which is live. A
+record's first three bytes are its stage — major, minor, step
+(`func_0206df14` reads them into `GameState`) — and it has two bitfields:
+**action `102` sets bit *n* of the one at `+0x03`** (`0x02061ee4`, the marks)
+and **`104` of the one at `+0x10`** (`0x02061f9c`, the flags), each through
+`func_0206df6c`. The scene functions `601` and `602` read those two fields of
+the live record: **`601 : n` is mark *n*, `602 : n` flag *n***. Gortress's
+`ev14640` sums `602(11..14)` — the four flags its `155` records set — and
+chains into `ev14903` at four.
+
+**Starting a scene raises the story to the scene's own stage.** The scene's
+start (`func_ov017_021bbfc4`, at `0x021bc424`) compares the live thread's
+major and minor, as 1000 × major + minor, with the list entry's (the context's
+`+0xc`, `+0xd`), and **sets the entry's when the story's is less**, the major
+19 at most and not 0.0; the step is left. This is why the Starflight Express's
+arrival scenes are listed at 20.1, and it is what opens 16.1: no record moves
+the story there — the ride's scene at 16.1 does.
+
+**The Starflight Express** is one task of the field's (overlay 17: started by
+`func_ov017_021a8614`, run by `func_ov017_021a86d0`), read whole on 28
+September 2026; the engine's `express.ts` follows it.
+
+- **Started** by action **`215 : mode`** (`0x02063e80`), whose two values'
+  halves, high first, are up to four **stops**; or by the talk service's
+  facility 11 with the stops 1, 2, 3, 4. Mode 0 is Stella (the Hero turns to
+  character 2), mode 1 Sterling (203). 16 records, all on the conductors.
+- **Its words** are `data/bin/menu/str_ark` (箱舟, the ark): the stops' names
+  at 1 to 5 — the Observatory, Alltrades Abbey, the Realm of the Almighty,
+  Gittingham Palace, the Realm of the Almighty — "Cancel" at 6, Stella's lines
+  from 100 and Sterling's the same lines 100 on (`func_ov017_021a933c`).
+- **The list**: line 100, then the non-empty stops in the record's order and
+  Cancel. Cancel or the B Button closes it.
+- **The stop it is at** is the field state's halfword at `+0x27b4`: action
+  **`216 : n`** sets it (`0x02063eac`) and every ride sets it to the stop
+  (`func_ov017_021d1c2c`). `ev5110` sets 1, `ev25524` 2.
+- **Choosing the stop it is at**: line 101, a yes or no. Yes — 102, then a
+  map change to the stop's own place, no scene (a table at `0x021a8d88`:
+  map 4504, 20007, 4301, 20034, 4400; at the two field stops it also calls
+  `func_ov017_021a65c4`, not read). No — 103 and the list again.
+- **Another stop is a ride**, two scenes: one **leaving** the stop it is at
+  (the Observatory 29506, the Realm 29509, the Realm beyond 29512; the Abbey
+  29500 bound for Gittingham, else 29515; Gittingham 29503 bound for the
+  Abbey, else 29516), and one **arriving** at the stop chosen (29507, 29501,
+  29510, 29504, 29513), parked behind the first (`func_ov017_021bbbf8`) — the
+  leaving scenes end `834`, `810`, carrying on into it. **Two of the story's
+  own replace the arrival**: Stella, to the Observatory, at 10.8 step 1 with
+  game-wide flags 4 to 10 set — one at each thread's end — **`ev28800`**
+  (`0x021a8fe0`), whose record brings the threads together at 13.2; and
+  Sterling, to the Realm, at 17.1 step 1 with flag 21, `ev29210`.
+- **A parked scene outlives a map change**: a scene that ends with its
+  second still parked stores it in `GameState` (`+0x63d8`, `0x021bca4c`), and
+  the field plays it once the next map is in (`0x0218c5fc`).
+
+**`225 : map`** is queued, and not read; it sits on records that end in a
+new map (`ev29004`'s `225:4301`). **`110 : n`** is `GameState::SetTimeOfDay(n)`. **`197 : n`** sets a
+number of the game's state (`func_02010810`), clearing a 40-byte block when
+the old and new fall in different ranges of a table of them (`0x020636b4`) —
+a progress counter, INFERRED; on nearly every event's own record.
+
+**`124 : c` takes character *c* out of the map** (queue case `0x0206fca0`):
+the object is found by its id (`func_0203df78`) and bit `0x8000` of its first
+word set, which every lookup of the map's objects skips from then on
+(`func_0203df78`, `func_0203dce4`) — gone until the map is next placed. Drak
+leaves so after his talk at 11.2, `124:200`; his placement is a tag-17 record
+"while game-wide flag 322", which `ev11200`'s record sets and `ev11210`'s
+clears. The placement script's tag 17 tests **the same bank** for both its
+kinds: kind 1 the raw bit (`func_0206dfb0` on `+0x8c`), kind 2 by number
+(`func_0206eb98`, `flagBit`).
 
 **The opening, as the records have it.** The morning's record, in map 1110:
 `8:2130 132:0 0:2 0:2 0:1 197:6` — after it the story is at 2.2, step 1. At
@@ -3749,7 +3910,21 @@ his call on her doorstep, whose own record is
 villager's record then holds only with flag 0 set and flag 1 not:
 `6:8 4:0 5:1 119:2220`.
 
-Operations 141 and 197 are not decoded; 205 brings Ivor into the party (see its row below).
+**`220`, the Quarantomb's switches** (`func_020aee04`): parsed as two bytes,
+which switch (1 or 0) in the high and whether it is on in the low
+(`func_0205ec70`). Nothing outside map 7402; there it turns the map's pieces
+`0x4e`–`0x58` (which 1) or `0x37`–`0x4b` (which 0) to on, and **sets
+game-wide flag 830 + 71 or 830 + 72 to it** (`func_020ae4ec`) — the block
+that conditions `88` and `89` test. `220:257` sets 901, `220:1` sets 902, and
+`ev24590`'s record clears both with `220:256 220:0`. Talking to `107` and
+`108`, in either order, is what sets both and plays `ev24590`. All 14 records
+with it are the Quarantomb's; the pieces are not modelled.
+
+**`149` and `150`** set a map piece on and off (`func_02019508`,
+`func_02013380`), or, for a piece not in the map, a bit of the thread's bank
+at `+0x08`/`+0x14`. Not built.
+
+Operation 141 is not decoded; 197 is read above as far as a counter; 205 brings Ivor into the party (see its row below).
 
 ### How a talk runs — read from the game's code, 28 September 2026
 

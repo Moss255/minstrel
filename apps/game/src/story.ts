@@ -1,4 +1,10 @@
-import type { EventOutcome } from '@minstrel/game-formats'
+import {
+  type EventOutcome,
+  OP_LEARN_TRICK,
+  OP_QUARANTOMB_SWITCH,
+  quarantombSwitch,
+  trickLearntBit,
+} from '@minstrel/game-formats'
 import type { Stage } from './load.ts'
 
 /**
@@ -185,7 +191,19 @@ export function moveStory(
     // `155 : e` sets the flag in its value's high half, as it runs — see `OP_FLAG_AND_EVENT`.
     else if (op === 155 && params.length === 1) story.flags.add((params[0] as number) >>> 16)
     else if (op === 105) story.flags.delete(arg)
-    else if (op === 132) {
+    // The Quarantomb's switches set a game-wide flag — see `quarantombSwitch`.
+    else if (op === OP_QUARANTOMB_SWITCH) {
+      const turned = quarantombSwitch(arg)
+      if (turned && globals) {
+        if (turned.on) globals.add(turned.flag)
+        else globals.delete(turned.flag)
+      }
+    }
+    // A party trick learnt is a bit of the game-wide bank — see `trickLearntBit`.
+    else if (op === OP_LEARN_TRICK) {
+      const bit = trickLearntBit(arg)
+      if (bit !== undefined) globals?.add(bit)
+    } else if (op === 132) {
       if (params.length === 3)
         clearFor(story, { major: params[0] as number, minor: params[1] as number })
       queueMove('live', params)

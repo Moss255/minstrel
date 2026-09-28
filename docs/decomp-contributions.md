@@ -309,11 +309,12 @@ the game's code". **Where minstrel translates it**: `castAtPoint` and
 | `0x0206c2c0` | `0x228` | tag 5, a span: the weighed span test, the time of day, another map takes away | `CastScript_Span` |
 | `0x0206d4e0` | `0x254` | tag 17: condition pairs on the game-wide bank, then as a span, marked first in order | `CastScript_WhileFlags` |
 | `0x0206cbcc` | `0x38c` | tag 14: by the four states of an id (`0x0206e120`), with its own bookkeeping in the context | `CastScript_ByState` |
-| `0x0206db48` | `0x220` | adds a placement to its character's ordered chain; the head stands | `CastList::Add` |
+| `0x0206db48` | `0x220` | adds a placement to its character's ordered chain; the head stands. Six classes: `+0xa` bit `0x04` (tag 17), bit `0x40`, `+0x46` set, a minor with no "to" minor (a span ending at sub-stage 0, or tag 4), another span, a block; class 4 and 1 by their start, the rest by file order | `CastList::Add` |
 | `0x0206dd68` | `0x3c` | takes a character's standing placement away | `CastList::Remove` |
 | `0x0206bf2c` | `0xe4` | a placement's initialiser (`0x78` bytes; `+0x46` = −1) | `CastPlacement::CastPlacement` |
 | `0x0206eb98` | `0x30` | a game-wide flag by number: from `0x400`, displaced by 1,786 bits — `603`'s rule | `TriggerTable::TestFlagById` |
 
+| `0x0206c0f8` | `0x1c8` | tag 4: a placement at one point — stage, sub-stage and step all the context's — then time, map, character, where, as tag 5's | `CastScript_AtPoint` |
 | `0x0206c4e8` | `0x12c` | tag 6: a talk box — character, four floats (x and z at most, then at least, ×4096), a label — appended to the character's first placement in this map (`+0x40`, nodes of `0x18`) | `CastScript_TalkBox` |
 | `0x0206c614` | `0xe0` | tag 7: four floats onto the placement (`+0x24`–`+0x30`), mode byte `+0x1f` = 7 — a wander box, perhaps | `CastScript_Area`? |
 | `0x0206db20` | `0x28` | a character's entry in the cast list by id (`+0x68` links) | `CastList::Find` |
@@ -350,7 +351,51 @@ the walk; the conditions in `flagsHold` (`packages/game-formats/src/story.ts`).
 | cases of `0x02061c04` | — | actions `106` (clear a character's counts), `118`/`119`/`128` (queued), `129` (a quest to state 1), `155` (runs `104` with its value, then queued) | — |
 | case `0x0206fa98` of `0x0206f81c` | — | queue `118`: the character by id, `+0x114`, the label at `+0x124`, start the talk | — |
 
+| `ov017 0x021bbc10` | `0x3b4` | a scene's start: picks the event list by the scene's number (`eventlist6` below 21,000, `eventlist_lv5` below 40,000, `evl_quest` above) and queues it | `EventTask::LoadList` |
+| `ov017 0x021bbfc4` | `0x71c` | the next state: the scene's entry (`0x02071488`) into the context at `+0xc`; its "played" flag (`910 +` its index); and **a map other than the Hero's** fills the map-change request with it and the scene and ends the task | `EventTask::Begin` |
+| `0x02071488`, `0x02071208` | `0xec`, `0x280` | runs an event list as a `Script` (table `0x020f0b80`, opcode 102) and copies the matching scene's record: map `+0xe`, event `+0xa`, flags `+0x44`, … | `EventList::Find`, `EventList_Scene` |
+| `ov001 0x02161f80` | `0x13c` | script function `807`: a map, a place ×4096, a facing, and an event or −1, into the map-change request (`0x0200fd0c`, `0x02070378`, committed by `0x0200fcfc`); two map ids set `+0x69` | `EventFn_ChangeMapAt` |
+| `ov001 0x02163ccc` | `0xfc` | script function `547`: the battle transition — its object, the `eventbattle.bin` record for the music at `+0xfe`, a task pushed; the fight itself is a record's `120` | `EventFn_BattleTransition` |
+| case `220` of `0x0205ec70`, `0x020aee04`, `0x020ae4ec` | —, `0xc4`, `0x50` | action `220`: parsed as two bytes (which, on); in map 7402 only, turns the map's pieces `0x4e`–`0x58` (which 1) or `0x37`–`0x4b` (which 0) to *on* through `0x020ae694`, and sets game-wide flag `830 + 71` or `830 + 72` to it — the block conditions `88`/`89` test. `0x020ae560` on reads the same block for the map's pieces | `Quarantomb_SetSwitch`, `TriggerTable::SetFlagFrom830` |
+| `0x02062d80`, `0x02062dfc` (cases `149`, `150` of `0x02061c04`) | — | a map piece's state: where the piece is in the map (`0x02019508`) set it (`0x02013380`); otherwise a bit of the thread bank at `+0x08`/`+0x14` (`0x0206ea8c`) — `149` on, `150` off. Not built | `TriggerAction_PieceOn/Off` |
+
 **Open**: what `func_ov017_021a4700` measures (the pick's angle) and whether
 `0x3244` is π; what `0x0202c540` is (tags 5 and 6); which file the maps'
 records at `GameState` `+0x468` come from; what the quest system does to
 states 2 and 3; the JPN addresses.
+
+### 7. Party tricks, the thread record and the scene's start — ARM9 and overlay 17, 28 September 2026
+
+Read for the story walk's last stretch, FORMAT.md "How a record runs".
+
+| address | size | what it does | a name |
+|---|---|---|---|
+| `0x020649b0`, its thunks `0x020649f4`, `0x02064a08`, `0x02064a24` | `0x44`, `0x14`, `0x1c`, `0x1c` | the only whole-record runner: the first holding record of a kind, every action; the thunks fix the kind to 3, 15, 16. Every caller listed in FORMAT.md, "Who asks for which kind" | `Triggers::RunFirst`, `::RunEntry`, `::RunWon`, `::RunLost` |
+| `0x02064b24` | `0x74` | the first holding record of a kind, **one operation of it** — map loading and doorways call it with `0x6c`, 108 | `Triggers::RunFirstOnly` |
+| `0x02064490` | `0xa0` | the first record of a kind (groups by the kind byte at `+6`) whose conditions all hold (`0x0205faf4`) | `Triggers::FirstHolding` |
+| `0x02053634` | `0x618` | a party member's field object: plays a list of up to four tricks (`+0x178`, count `+0x17c`, `0x0205308c` loads `data/chara/sg%02d%c.chr`), and when done, if the leader's, asks kind 19 with them at the context's `+0x2a` | `PartyMemberObject::Update` |
+| `0x0205308c` | `0x164` | loads trick *n*'s archive, and for 12 to 16 and 30 its sprite `sg%02d_<LG>.spr` | `PartyMemberObject::LoadTrick` |
+| `0x02052e2c` | `0x18` | the record whose bit says man or woman (`+0x14`) | — |
+| `0x02010890`, `0x0200ff94` | `0x48`, `0x2c` | the filled party slots of four, and whether one is | `GameState::PartySlots`, `::SlotFilled` |
+| cases of `0x0205faf4` | — | conditions 13, 14, 15 (party size), 32/33 (tricks, a word of four bytes each), 81 (no session) | — |
+| `0x0206e348`, `0x0206e384`, `0x0206e3e8` | `0x3c`, `0x50`, `0x3c` | teach trick *n* (a bit from `0xbf1` + its place, places below 17 refused), the learnt mask, trick to place by the table `0x020e87c0` | `Tricks::Learn`, `::LearntMask`, `::PlaceOf` |
+| cases of `0x02061c04` | — | actions `102` (mark, thread record `+3`), `104` (flag, `+0x10`), `110` (`SetTimeOfDay`), `142` (teach a trick), `143` (area, at `0x02062a94`), `197` (a counter, `0x02010810`, with a range table), `216` (`+0x27b4` of the field state, `0x02063eac`), `225` (`0x020961b0`) | — |
+| `0x0206df14` | `0x58` | the live thread's stage from its 28-byte record into `GameState` (`0x02010774`, `0x020107a8`, `0x020107dc`) | `Story::LoadStage` |
+| `0x0206df6c`, `0x0206dfb0` | `0x44`, `0x38` | set, test a raw bit of a bank — the game-wide bank at `+0x8c`, the thread records | `Bits::Set`, `::Test` |
+| `0x0206dfe8` | `0x98` | clear a range of bits: at `0x02071740`, 0–511 and 910–1909, a story reset | `Bits::ClearRange` |
+| case `0x0206fca0` of `0x0206f81c` | — | queue `124`: the object by id (`0x0203df78`), bit `0x8000` of its first word — skipped by every lookup (`0x0203df78`, `0x0203dce4`) | — |
+| `0x0203df78`, `0x0203dce4` | `0x64`, — | the map's objects by id, by index; both skip `0x8000` | `Objects::ById`, `::At` |
+| `ov017 0x021bbfc4`, at `0x021bc424` | — | the scene's start raises the live thread's stage to the entry's (`+0xc`, `+0xd`) when behind, major ≤ 19 | `EventTask::RaiseStage` |
+| `ov017 0x021a8614`, `0x021a86d0`, `0x021a8670`, `0x021a932c`, `0x021a933c` | `0x5c`, `0xb78`, `0x60`, `0x10`, `0xb4` | **the Starflight Express's task**: start (mode at `+0x14`, four stops at `+0x18`), its update (load `str_ark`, the list, the stop it is at `+0xc` from the field state `+0x27b4`, the stop chosen `+0x10`, a ride's two scenes — FORMAT.md), reset, set mode, say a conductor's line | `StarflightExpress::Start`, `::Update`, `::Reset`, `::SetMode`, `::Say` |
+| `ov017 0x021d1c2c` | `0x58` | the Express is at a stop: field state `+0x27b4`, and sent to the others in a session | `StarflightExpress::SetStop` |
+| case `0x02063e80` of `0x02061c04` | — | action `215`: starts the Express | — |
+| `0x0202c508`, `0x0202c540`, `0x0202b7d8` | small | in charge (alone, or the host), a guest, in a session | `Session::InCharge`, `::IsGuest`, `::Active` |
+| `0x020115f4`, `0x020115e8`, `0x02011600` | small | the pending scene at `GameState` `+0x63d8`: set, get, clear — a parked scene kept over a map change (`ov017 0x021bca4c`, played at `0x0218c5fc`) | `GameState::PendingEvent` |
+| `ov017 0x0219f3a0`, `0x0219fd80` | — | the field asks the map's entry record, kind 3, whole on arriving | — |
+| `ov017 0x021b7c3c`, `0x021b7c54` | — | the end of a set battle asks kind 16 (lost) or 15 (won) | — |
+| ov001 `0x02163308` region, `0x02155704`, `0x021551f4` | — | script functions that test and set raw bits; one asks kind 10 (`0x021551dc`); `538` chains (a scene's `+0x11c`) | — |
+| `0x02064574` | — | trigger-file load: runs the file as a `Script`, then the first holding kind-20 record whole (`0x020645f8`) | `Triggers::Load` |
+
+**Open**: what plays `ev29150` (16.1, map 20034) — the Express's task does
+not; what `225` does and what `func_ov017_021a65c4` does at a field stop; what `141` does; the trick defaults in the four places
+of the B Button; the kinds 9, 10, 12, 18, 22–27, 29, 30's contexts.

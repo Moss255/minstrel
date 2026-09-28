@@ -26,9 +26,12 @@ cartridge. It uses the engine's own rules and the engine's own functions:
 It visits every state the story can reach. A state is each of the story's
 five threads (stage, step, flags and marks) plus who goes along. A move reads
 and writes the thread of the map it is made in, as the game's does (see
-section 3). Talk that only sets marks is folded into one state, "everyone
-talked to", so that every order of talking to a town is not a state of its
-own. It runs in about 75 seconds.
+section 3), so **the threads are walked apart**: a new state is kept only if
+one of its threads stands somewhere no state has had it, and otherwise its
+game-wide flags are merged into the first state found there. Talk that only
+sets marks or flags is folded into one state, "everyone talked to", so that
+every order of talking to a town is not a state of its own. Scripts are also
+run to see where they hand the Hero on (`807`). It runs in about 35 seconds.
 
 ```sh
 MINSTREL_TEST_ROM=$PWD/rom/dq9-europe.nds npx vitest run apps/game/test/story-walk.test.ts
@@ -46,8 +49,10 @@ it by cause.
 - **Where the Hero can get to.** Every map is taken to be in reach. The world
   map, ships, sealed doors and the Starflight Express are not modelled.
 - **Time of day** only as far as trying each map by day and by night.
-- **Events the game's code starts on its own.** If there are any, they show
-  up here as events that nothing reaches.
+- **Events the game's code starts on its own**, beyond the two the story
+  needs (cause 15): `ev28800` when the five threads are done, and the Express
+  ride's `ev29150` at 15.3 step 5, which is INFERRED. Any other shows up here
+  as an event that nothing reaches.
 - **Whether a character can be built.** Presence is `castAt`'s choice before
   anyone is built.
 - **What a new game plays first**, which has not been read. The walk opens at
@@ -55,28 +60,35 @@ it by cause.
 
 ## Where it stands, 28 September 2026
 
-- **From a new game:** 1.1 to 1.2 step 2 — Yggdrasil, talked to from its
-  talk box, asks "Offer the benevolessence up to Yggdrasil?". It stops before
-  1.3, where the church and stable's watch wants flags 4 and 5.
-- **From 1.3 one walk plays the prologue's end, the whole slice and chapter 3
-  as far as Loch Storn** (3.2), and another plays Zere and its dungeon to
-  3.7. The throne room's area 0 plays `ev3040`; the king, `45`, stands where
-  his block puts him, and talking to him plays `ev3050`. That is the first
-  time the story has been followed past the slice's end. The same was checked
-  in the game in a browser: talking to #203 in Stornway's lobby at 2.7 plays
-  `ev2940`, and once it is read the story is at 3.1.
-- **From 5.1, one walk plays into all five threads**: chapters 6, 7, 8, 11
-  and 12, each to its own first break.
-- **Gortress plays** from 14.4 step 3 to 14.6, now that `155` is read.
-- **47 breaks** between 1.1 and 19.7. There were 109 before the threads were
-  read, 101 with them, 87 once records ran as the game runs them, 83 with the
-  maps' own areas, 62 once who stands where was the game's own choice, 53
-  once talking was — and 372 files stopped reading as empty, see "Found on
-  the way" — and 47 with `155`. The first after the slice is Loch Storn's set
-  battle, before 3.2 step 3.
+- **From a new game to the credits, in one walk**: walk 1 plays from 1.1
+  through the prologue, the slice, chapters 3 to 5, all five threads, the
+  Starflight Express's ride to the Observatory (`ev28800`, 10.8 step 1), 13
+  to 15, Gittingham at 16, and the tower at 17 to 19.2, where the last set
+  battle's `ev29300` sets every thread. It takes about 90 seconds.
+- **6 breaks** between 1.1 and 19.7. **Five are after the credits**: the
+  Quester's Rest's records at 19.3 to 19.7 test quests 174 to 193, the quest
+  system's own work and past Phase 3's line. **One is 16.1 step 2**, which
+  only losing set battle 17 sets — the story does not need it. (As read, the
+  scene's start that opens 16.1 leaves the step at 15.3's 5, so 16.1 steps 2
+  to 4 cannot be set at all on that way in; since the way in is the one
+  INFERRED piece, `ev29150`, that wants checking in the game.)
+- There were 109 breaks before the threads were read, 101 with them, 87 once
+  records ran as the game runs them, 83 with the maps' own areas, 62 once who
+  stands where was the game's own choice, 53 once talking was — and 372 files
+  stopped reading as empty, see "Found on the way" — 47 with `155`, 31 with
+  `807`, `place.bin`'s tag 4 and a fix to the walk itself (below), 26 once a
+  scene's record was taken in the scene's own map, 24 with `220`, 20 with the
+  doorway records, 13 with entry and settings records run whole, and **6**
+  with party tricks, `602`, the scene's start raising the story, and the
+  Starflight Express.
 
 A break usually has more than one cause, one for each record that could have
-moved the story on. So the counts below add up to more than 47.
+moved the story on. So the counts below add up to more than the breaks.
+
+**A fix to the walk, not the engine**: talk that only set game-wide flags
+was folded into "everyone talked to" without them. So the king's `ev23198`
+at 3.7 never set 147, which Stornway's entry at 4.1 wants, and the break
+before 4.1 was the walk's own.
 
 ## The list, by cause
 
@@ -86,21 +98,24 @@ that unblock the most.
 | # | cause | breaks | first before | kind of work |
 |---|---|---|---|---|
 | 1 | ~~**A stage set on a record that is not an event's own**~~ | — | — | **done, 28 September**: records run as the game runs them |
-| 2 | **A character a record talks to that the cast does not stand there** | 7 | 4.1 step 3 | **mostly done, 28 September**: the game's placement script, tags 3, 5 and 17. The rest are placed by tag 14 or by scenes |
+| 2 | ~~**A character a record talks to that the cast does not stand there**~~ | — | — | **done, 28 September**: the game's placement script, tags 3, 4, 5 and 17. Drak at 11.2 stands while game-wide flag 322 is set, which a Clap in area 10 sets (kind 19, cause 14) |
 | 3 | ~~**`214`, a story's stage set by its number**~~ | — | — | **done, 28 September**: read from the game's code and built |
-| 4 | Chained from an event the walk never played | 9 | 4.5 | none directly: a cascade |
-| 5 | A set battle whose starting event the walk never played | 9 | 3.2 step 3 | reading: what starts a set battle from a scene. Loch Storn's first fight, after `ev23189`, is the first |
-| 6 | Nothing reaches the event | 1 | 14.4 step 8 | **mostly done, 28 September**: `155`. `ev14903` is left, and `ev29300`'s opcode `0x1e` |
-| 7 | A flag, mark or step the walk never had | 4 | 1.3 | as 4, mostly. Quarantomb's 4.3 step 3 wants game-wide flags 901 and 902 (`88`), which nothing read sets |
+| 4 | Chained from an event the walk never played | 4 | 7.4 | none directly: a cascade |
+| 5 | A set battle whose starting event the walk never played | 4 | 14.4 step 3 | **Loch Storn done, 28 September**: its scene hands on with `807`. Left: Gortress's set battle 14, and the tower's 20 to 22 at 17.1, which nothing starts |
+| 6 | Nothing reaches the event | — | — | **done, 28 September**: `155`; `ev14903` is chained into by `ev14640` when the thread's flags 11 to 14 are set, which `602` reads (cause 15). Left over: `ev29300`'s opcode `0x1e`, the credits |
+| 7 | A flag, mark or step the walk never had | 2 | 1.3 | as 4, mostly. **The Quarantomb's done, 28 September**: `220`, its two switches, sets the flags 901 and 902 its records test with `88` |
 | 8 | ~~An area no record defines~~ | — | — | **done, 28 September**: a map's own areas, and areas turned |
 | 9 | ~~**Another of the character's records chooses first**~~ | 6 | 11.3 | **done, 28 September**: talking is the game's own rule. What is left is a flag (11.3) and the quests (19.3 to 19.7) |
-| 10 | The event plays, but its own record is in another area's file | 3 | 5.1 | engine |
+| 10 | ~~The event plays, but its own record is in another area's file~~ | — | — | **done, 28 September**: a scene plays in its own map, from the game's event lists |
 | 11 | A closing step of 0 on a cast record | — | — | gone with the game's placement rule |
-| 12 | A record kind the engine does not read | 3 | 4.3 step 5 | reading: kind 20's actions besides areas |
-| 13 | An entry record that plays no event | 2 | 10.7 | reading: what runs kind 3 besides its `108` at load. Batsureg's areas 72 and 73 are one's |
+| 12 | ~~A record kind the engine does not read~~ | — | — | **done, 28 September**: kind 17, the doorways; kind 20 run whole at load; kind 19, a party trick |
+| 13 | ~~An entry record that plays no event~~ | — | — | **done, 28 September**: the field asks kind 3 whole on arriving, so an entry record's `143` areas are real — Batsureg's 72 and 73 |
+| 14 | **A party trick** | — | — | **done, 28 September**: kind 19, read from the game's code — the walk performs any trick the Hero knows; the engine's B Button and +Control Pad |
+| 15 | **A scene the game's code starts** | — | — | **done, 28 September**, as far as the story goes: `ev28800` at 10.8 step 1 with the five threads' flags, and the Express's `ev29150` at 15.3 step 5 (INFERRED), whose start raises the story to 16.1. The Starflight Express itself is not built |
+| 16 | **The quests after the credits** | 5 | 19.3 | the Quester's Rest's records at 19.3 to 19.7 test quests 174 to 193 — the quest system's own work, after the credits, and past Phase 3's line |
 
-Four more breaks name a record whose span the walk was never at, and one
-the walk cannot explain. Both kinds are listed in the test's printout.
+Two more breaks name a record whose span the walk was never at, and one the
+walk cannot explain. Both kinds are listed in the test's printout.
 
 ## Found on the way — 372 files read as empty, 28 September 2026
 
@@ -183,9 +198,14 @@ wrong:
 Also read: **tag 17 places a character while game-wide flags hold**, before
 anything else. Its flags are the same bank the scripts' `603` reads.
 
-**Left**: 8 breaks. Coffinwell's `26` is placed only by scenes (tags 18 and
-19 name its model). Others may be placed by tag 14, by the four states of an
-id, which is not read.
+**Tag 4, read later the same day** (`func_0206c0f8`): a placement at one
+point of the story — stage, sub-stage and step all now's — then as a span's.
+Coffinwell's `26` is placed only so. With tag 4 read, 14 breaks went: two
+at 4.1, the Quarantomb's at 4.3 to 4.5, and others at 6.5, 6.6, 7.3, 10.3,
+10.4, 10.6, 10.8 and 15.1.
+
+**Left**: 1 break, `200` in Gleeba at 11.2. Others may be placed by tag 14, by
+a quest's state, which is not read.
 
 ### 3. `214`, and the story's five threads: done, 28 September 2026
 
@@ -221,8 +241,27 @@ cleared both on any move, and had marked that as ours.
 
 An event chained from another that was never played, a battle whose starter
 was never played, and a flag set only by something never played mostly wait
-on cause 2. Several set battles are started from scenes by the script
-function `547`, which the engine reads and does not yet act on.
+on another cause.
+
+**Loch Storn's first fight, 28 September 2026.** Entering the lake at 3.2
+plays `ev23189`, which has no record of its own; the fight is started by
+`ev23190`'s record (`104:0 120:0`), and losing it is what moves the story to
+3.2 step 3. Nothing the walk read reached `ev23190`. **The scene ends with
+`807(5200, 0, 0, 0, 0, 23190)`**, a script function read from overlay 1: a
+map, a place, a facing and an event, filling the same map-change request the
+queue's `133` does — see `docs/event-scripts.md` §5m. The engine now goes
+there once a scene is over, and the walk follows it. `547`, which scenes
+also call before a fight, turned out to be only the battle's transition —
+its swirl and music — the fight itself still coming from a record's `120`.
+
+**The Quarantomb's switches, 28 September 2026.** Its records at 4.3 test
+two game-wide flags, 901 and 902, with `88` and `89`, and nothing the walk
+read set them. **`220` does**: an action whose value is two bytes — which
+switch, and whether it is on — that, in the Quarantomb's map 7402 only,
+turns the map's walls and sets flag 830 + 71 or 830 + 72 (FORMAT.md, "How a
+record runs"). Talking to `107` and `108`, in either order, sets both and
+plays `ev24590`, which moves the story to 4.3 step 3 and clears them. Read
+into `outcomeOf` and `moveStory`; the walls are not modelled.
 
 ### 6. Nothing reaches the event: mostly done, 28 September 2026
 
@@ -296,16 +335,22 @@ clear and 195, which plays `ev11230`, only at step 3 with it set — a flag,
 as cause 7. And 19.3 to 19.7, the Quester's Rest's records after the credits,
 which test quests 174 to 193 (`55`, `57`, `61`) — the quests' own work.
 
-### 10. The event plays, but its own record is in another area's file
+### 10. A scene plays in its own map: done, 28 September 2026
 
-Talking to `106` on the Starflight Express at 4.7 plays `ev24598`, which
-chains `ev24500` → `ev25500` → `ev5110`. The record for `ev5110` is in the
-Observatory's file (`X05`), so the move to 5.1 is lost. The game only ever
-holds the current map's records, so the scene must take the Hero there
-before it ends. Where scenes change map is `event.ts`'s to read.
+**Read from the game's code**: FORMAT.md, "The event lists". Every scene has
+an entry in one of three lists, and the entry names the map it plays in. When
+a scene starts somewhere else, the game changes map and plays it there — and
+a script a scene chains into goes back through the same start, so a chain
+walks the Hero from map to map. Talking to `106` on the Starflight Express at
+4.7 plays `ev24598`, which chains through three more maps to `ev5110` in the
+Observatory's 4507, whose record moves the story to 5.1.
 
-(The other half of this cause, an event's own records chosen by flags, is
-done: the first whose conditions hold is taken, as in the game.)
+The walk takes a scene's record in its own map, the last script's; the game
+goes there before playing a scene (`startEvent`), and a chain into another
+map's scene ends the scene and carries on there. Arriving by the map's
+entrance is ours: the game keeps where the Hero stands on some, which is not
+read. Of the 620 scenes the records start, 47 play in a map other than the
+one whose record starts them.
 
 ### 11. A closing step of 0
 
@@ -316,12 +361,97 @@ as "at or before step 0" they are not there. There is one such case among
 the 431 talk records over a single stage, which is too thin to change the
 reading.
 
-### 12. A kind the engine does not read
+### 12 and 13. Every kind, and who asks for it: done, 28 September 2026
 
-Kind 20, the settings that define a map's areas, also carries stage moves,
-at 4.3 in Quarantomb and at 13.5 in `S13`. The game takes kind 20 at load
-for its areas, and kinds 3 and 20 at map load for their action `108` only
-(`func_02017a94`). What runs the rest of them is not read.
+**Read from the game's code**: FORMAT.md, "Who asks for which kind" — now
+the whole list. The only way a record runs whole is `func_020649b0`, and
+every call to it in the ARM9 and the overlays was found, three through thunks
+that fix the kind: **the field asks kind 3, the entry record, whole on
+arriving in a map** (ov017 `0x0219f3a0`), so an entry record's `143` areas
+exist — Batsureg's 72 and 73 at 10.6 — and its `124` and `119` run; map
+loading runs only `108` of kinds 3 and 20 besides. Kind 20 runs whole as the
+trigger file loads (the Bowhole's plays `ev13500` at 13.5), kind 17 at a
+doorway (Coffinwell's `27` at door 9), kinds 15 and 16 at a set battle's end,
+won and lost. **No record on the cartridge is of kind 9**, though the field
+asks for it.
+
+### 14. A party trick: done, 28 September 2026
+
+**Read from the game's code**: FORMAT.md, "Kind 19 is a party trick". Gleeba's
+Drak comes out for a **Clap in area 10** at 11.2 (`7:10 33:0 512:0 …
+119:11200`): the record kind 19 is asked for when the party member playing a
+trick is done, with the tricks performed; condition `33` takes the next word
+as four bytes, each a trick that must be among them. The tricks are numbered
+as the field menu's strings are (`str_tm` 4510 is Bow, 1), sixteen are known
+from the start and the rest taught by `142` — Bow at Porth Llaffan's 6.3,
+Pirouette and Pray by the Quester's Rest's first two quests, which are kind
+19 records too (an Air Punch; a sequence, `32`). **The walk** performs any
+trick the Hero knows, from the start or learnt, in every area of a map
+(`trickPlay`). **The engine** has the game's own way: the menu's Assign Party
+Tricks puts a trick in each of the four places, and the B Button held with a
+direction performs it — a line of status, not its motion, which is a
+`data/chara/sg<nn>.chr` not played yet. The game's defaults in the four
+places are not read; a new game starts with none.
+
+**`124 : c` takes a character out of the map**, read the same day: the
+object's bit `0x8000`, which every lookup skips. Drak leaves so after his
+talk; the engine drops the member from the cast until it is next placed.
+
+### 15. Scenes the game's code starts, and what a scene's start does: done for the story, 28 September 2026
+
+**Read from the game's code**: FORMAT.md, "The thread record, and
+`601`/`602`", "Starting a scene raises the story", "The field's arrival
+handler". Three things, each a break until then:
+
+- **`ev14903` at 14.4 step 8** is chained into by `ev14640` and `ev14641`
+  (`538(14903)`) when the sum of `602(11)` to `602(14)` is four. `602 : n`
+  reads **flag *n* of the live thread** — the thread record's bitfield at
+  `+0x10`, the one `104` sets; `601` its marks at `+0x03`. Gortress's four
+  `155` records set 11 to 14. The walk runs a scene's script with the state's
+  thread flags and marks, and keeps the chain by them where the script read
+  them; the engine seeds a scene's stage with the story's.
+- **`ev28800` at 13.1** is the Starflight Express's: Stella's ride to the
+  Observatory at 10.8 step 1 with game-wide flags 4 to 10 set — one at each
+  thread's end — plays it in place of the ride's own arrival (see "The
+  Starflight Express" below). **The walk's threads are walked apart**, so no
+  one state has all seven: the ride is taken again from the first state at
+  10.8 step 1 with every flag any state has set (`walkFrom`), and the walk
+  goes on from what it plays — through 13.2, to Gortress and the Observatory.
+- **16.1 is opened by no record.** The scene's start raises the live thread
+  to the list entry's stage when the story is behind (`func_ov017_021bbfc4`,
+  at `0x021bc424`; majors of 20 are left, which is why the Express's ride
+  scenes are listed at 20.1). **INFERRED**: arriving at Gittingham Palace's
+  field stop by the Express at 15.3 step 5 plays `ev29150`, Celestria
+  opening the way, listed at 16.1 in map 20034 — nothing read names 29150;
+  the field's own code must.
+
+### 16. The Starflight Express: built, 28 September 2026
+
+**Read from the game's code**: FORMAT.md, "The Starflight Express" — its
+whole task. Talking to Stella (#2) or Sterling (#203) aboard (S14, map 6401)
+runs their record's `215`, which opens a list of stops in `str_ark`'s words;
+the stop it is at asks "that's where we are already?"; another is a ride —
+a scene leaving where the Express is (`216` sets that, and every ride) and one
+arriving, or the story's own in its place (`ev28800`, `ev29210`).
+
+- **The engine** (`express.ts`, `main.ts`): the list as a menu panel opened by
+  the conductor's record; the yes-or-no as a conversation; a ride as the
+  leaving scene with the arriving one parked behind it (`834`, `810`), whose
+  `807` puts the Hero down at a field stop; the stop saved. The Hero is not
+  turned to the conductor; the field stops' `func_ov017_021a65c4` is not
+  read; the Express summoned by Sterling's whistle and flown over the field
+  (`str_ark` 13 to 38) is another part, not built.
+- **The walk** rides to each stop a conductor offers. It does not follow
+  which stop the Express is at: that chooses only the leaving scene, which
+  has no record.
+- **The walk's reach**: what I had called "the field's arrival handler" was
+  the Express. Once scenes raised the story, the walk's "every map is in
+  reach" let the prologue walk into the Realm of the Almighty, whose doorway
+  record over 1.1 to 19.99 plays `ev15310`, listed at 15.1, and ride the
+  raise to chapter 15 — which is what made the walk run past its ten minutes.
+  So a map is now taken to be in reach from the earliest stage any record of
+  its own begins at, those over the whole story — from 1.1 into chapter 19 —
+  aside (`reachFrom`, ours).
 
 ## Not measured yet
 
@@ -344,8 +474,12 @@ for its areas, and kinds 3 and 20 at map load for their action `108` only
   read from the lines as untouched, taken and done (INFERRED). What opens a
   quest besides `129`, which only two records carry, is the quest system's
   own code, not read.
-- Which kind each of the other lookups asks for: 9, 10, 12, 17 to 19 and 22
-  to 30 are asked for from overlays 1 to 4 and 17, not yet read.
+- What the contexts of kinds 10, 12, 18, 22 to 27, 29 and 30 hold — who asks
+  is read (FORMAT.md), what they are asked with is not.
+- Which scene the Starflight Express plays on a ride, and what `216` and
+  `225` do at boarding: `ev29150` at 15.3 step 5 is the walk's guess.
+- The party tricks the game puts in the four places of the B Button by
+  default.
 - What applies the queue of stage moves that `132` and `214` add to, and when.
 - Whether the game applies each chained script's record or only the last's.
   The engine follows the last, as the scene's own event id is overwritten on

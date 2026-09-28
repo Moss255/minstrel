@@ -943,7 +943,7 @@ frees itself on its next frame.
 | 557 | let go of whatever the Hero is on — **INFERRED**; the code says only which bit it clears |
 | 583 | one byte gating the path that enters a map. Fifteen places read it as a yes-or-no; **one tells 4, 8 and `0x0c` apart** |
 | 599, 805 | two render passes of the zone's, each written as **a whole word, not a bit**; a zero skips the pass whole |
-| 601, 602 | bits of the **progress record in hand** — the bank opens with five records of 28 bytes, one byte says which is current, and `601` reads that record's bitfield at `+0x03`, `602` its second at `+0x10` |
+| 601, 602 | **a mark, a flag of the live thread**: the story bank is five records of 28 bytes, one a thread, the byte at `+0x332` says which is live; `601 : n` reads bit *n* of the record's field at `+0x03`, which the trigger action `102` sets — the marks — and `602 : n` of the field at `+0x10`, which `104` sets — the flags (US ARM9 `0x02061ee4`, `0x02061f9c`, read 28 September 2026). Gortress's `ev14640` sums `602(11..14)` and chains into `ev14903` at four. Was read as bits of a "progress record in hand" — the bank opens with five records of 28 bytes, one byte says which is current, and `601` reads that record's bitfield at `+0x03`, `602` its second at `+0x10` |
 | 736 | play the zone's own tune: the zone's id through a table of 47, two substitutions that follow the time of day, and an override list whose entries each carry **a story flag to test** |
 | 737 | the same whole teardown as `738`, then a tune on the manager's **second** player — the one a jingle uses, leaving the first slot empty so a later tune still plays |
 
@@ -1057,6 +1057,30 @@ the day's stretch covers it.
 
 `806` writes one byte of a **grotto** object embedded in the zone. Grottoes are
 out of Slice 1, so it is answered and nothing is done.
+
+## 5m. `807`, a scene's hand-on — 28 September 2026
+
+Read from overlay 1 (`func_ov001_02161f80`) when the story walk
+(`docs/story-walk.md`) found Loch Storn's first fight unreachable. **807 takes
+a map, x, y and z, a facing, and — given a sixth value — an event**, and fills
+the map-change request the trigger queue's `133` fills (`func_0200fd0c`,
+`func_02070378` to clear it, `func_0200fcfc` to commit): the map at `+0`,
+the place ×4096 at `+0x10`, the facing at `+0x1c`, the event at `+0x20` or
+−1. Two maps' ids, 29,501 and 29,504, set one more byte (`+0x69`) whose use
+was not followed. So once the scene is over the Hero goes there, and the
+event plays there.
+
+Sixteen scenes call it. `ev23189`, entering Loch Storn at 3.2, ends
+`807(5200, 0, 0, 0, 0, 23190)`: back into the lake's own map and on to
+`ev23190`, whose record sets flag 0 and starts set battle 0 — which is how
+the lake's first fight begins. `ev24597` hands on to 6401 and `ev24599` the
+same way. The other fourteen move the Hero without an event: the Observatory
+after the late story's scenes, the fields, and the tower at 17.1.
+
+`event.ts` keeps it as `handOn`; `endEvent` in `main.ts` goes there once the
+scene's own record has run, and plays its event in place of the map's entry.
+Without an event the map is arrived in as through a doorway — ours, as the
+engine's entry is.
 
 ## 6a. The worklist — what to read next, and in what order
 
@@ -1544,9 +1568,9 @@ whole point.
 - What each engine function does, beyond the **226** the host now plays.
   `apps/game/src/event.ts` names the reading beside each, and
   `apps/game/test/event-coverage.test.ts` prints what is left in the order the
-  story wants it. **Five numbers** across the whole cartridge are still
-  answered with 0 and counted — `843`, `807`, `837`, `839`, `844` — and the
-  slice's own area wants none of them. The morning's own 21 are all answered;
+  story wants it. **Four numbers** across the whole cartridge are still
+  answered with 0 and counted — `843`, `837`, `839`, `844` — and the
+  slice's own area wants none of them. (`807` was read on 28 September — §5m.) The morning's own 21 are all answered;
   509, 589, 713, 714, 724 and 725 were the last of them and are done.
 
   This bullet said 90 and "the hundred the host now plays" until 25 September

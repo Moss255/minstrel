@@ -151,6 +151,14 @@ export interface SaveGame {
   /** The game-wide flags set — see `OP_SET_GLOBAL`. Absent from saves made before they were kept. */
   readonly globals?: readonly number[]
   /**
+   * The party trick in each of the four places the B Button and +Control Pad
+   * reach, by number, null for none — see `trickSlots` in `main.ts`. Absent
+   * from saves made before tricks were kept, which read as none assigned.
+   */
+  readonly tricks?: readonly (number | null)[]
+  /** The stop the Starflight Express is at — see `expressAt` in `main.ts`. Absent for none. */
+  readonly express?: number
+  /**
    * The party, the Hero first — see {@link SaveMember}. Never empty: a save
    * with no Hero is a save of nobody, and `decodeSave` refuses it.
    */
@@ -244,6 +252,15 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.globals !== undefined && (!Array.isArray(s.globals) || !s.globals.every(isCount))) {
     throw new SaveError('the save has game-wide flags that do not read')
+  }
+  if (
+    s.tricks !== undefined &&
+    (!Array.isArray(s.tricks) || !s.tricks.every((t) => t === null || isCount(t)))
+  ) {
+    throw new SaveError('the save has party tricks that do not read')
+  }
+  if (s.express !== undefined && !isCount(s.express)) {
+    throw new SaveError('the save has a Starflight Express stop that does not read')
   }
   if (s.thread !== undefined && !isCount(s.thread)) {
     throw new SaveError('the save has a story thread that does not read')

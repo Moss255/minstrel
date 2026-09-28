@@ -1,3 +1,4 @@
+import { TRICK_NAMES_FROM } from '@minstrel/game-formats'
 import { POT_CATEGORIES, POT_LABELS, type PotEntry, type PotSort } from './alchemy.ts'
 import {
   type Appearance,
@@ -9,6 +10,7 @@ import {
 } from './appearance.ts'
 import { type Bag, bagLines } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
+import { conductorLine, EXPRESS_WORDS } from './express.ts'
 import type { Standing } from './hero.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
@@ -38,9 +40,11 @@ export type MenuCommand =
   | 'equip'
   | 'spells'
   | 'skills'
+  | 'tricks'
   | 'pot'
   | 'make'
   | 'patty'
+  | 'express'
 
 /**
  * The field menu's messages, by their numbers in `str_tm` — about using an
@@ -83,7 +87,18 @@ export const MENU_WORDS = {
   skills: 4003,
   /** "Points Remaining:" */
   pointsLeft: 4101,
+  /** "Assign Party Tricks" — the game's own name for the trick screen, in its Misc. menu. */
+  tricks: 4004,
+  /** "Up", "Right", "Left", "Down": the four places a trick goes, this and the next three. */
+  trickSlots: 4501,
+  /** "Clear" */
+  trickClear: 4505,
+  /** "------": no trick in the place. */
+  noTrick: 4509,
 } as const
+
+/** The four places a party trick can be assigned to, in the game's order — `str_tm` 4501 to 4504. */
+export const TRICK_SLOTS = 4
 
 export interface MenuEntry<Id extends string> {
   readonly id: Id
@@ -100,6 +115,7 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'equip', label: 'Equipment', word: MENU_WORDS.equipment },
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
+  { id: 'tricks', label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
 ]
 
 /**
@@ -123,10 +139,19 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
  *   to her at the Quester's Rest. `<LUIDA>` is her tag, the same shape as the
  *   pot's `<RENKIN>`.
  *
+ * - `express` — **the Starflight Express's list of stops**, opened by its
+ *   conductor's record, `215` — see `express.ts`.
+ *
  * They keep their `MenuCommand` ids because the panels are real; what they
  * lost is a row in the list, which is the thing that was wrong.
  */
-export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make', 'patty']
+export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make', 'patty', 'express']
+
+/** The Starflight Express's list, while it is up: the conductor and the stops offered — see `express.ts`. */
+export interface ExpressWhere {
+  readonly mode: 0 | 1
+  readonly stops: readonly number[]
+}
 
 /** What can be done with the item chosen in the items panel. */
 export const ITEM_ACTIONS: readonly MenuEntry<'use' | 'discard' | 'cancel'>[] = [
@@ -172,11 +197,18 @@ export interface MenuState {
   readonly pot?: PotWhere | undefined
   /** Where Patty's flow is — see `recruit.ts`. Undefined until she is spoken to. */
   readonly patty?: PattyWhere | undefined
+  /** The Starflight Express's list — see {@link ExpressWhere}. Undefined unless a conductor opened it. */
+  readonly express?: ExpressWhere | undefined
   /**
    * In the skill panel, the tree being climbed — the rows are then its panels
    * rather than the five trees. Undefined at the list of trees.
    */
   readonly tree?: number | undefined
+  /**
+   * In the trick panel, the place being filled — the rows are then the tricks
+   * the Hero knows, and Clear. Undefined at the list of the four places.
+   */
+  readonly slot?: number | undefined
   /** The item chosen in the items panel and its row, while `row` chooses what to do with it. */
   readonly acting?: { readonly item: number; readonly row: number } | undefined
   /** What using an item or casting a spell came to, shown under the panel until the next choice. */
@@ -374,6 +406,8 @@ export interface MenuContext {
   readonly potCount?: ((at: number) => number) | undefined
   /** Patty's own words, `str_lui`, and her menu labels, `bm_lui`. */
   readonly pattyWords?: ReadonlyMap<number, string> | undefined
+  /** The Starflight Express's words, `str_ark`, by number, their markup already read. */
+  readonly expressWords?: ReadonlyMap<number, string> | undefined
   readonly pattyLabels?: ReadonlyMap<number, string> | undefined
   /** Those left with Patty, named and described as her lists show them. */
   readonly kept?: readonly { readonly name: string; readonly said: string }[] | undefined
@@ -386,6 +420,17 @@ export interface MenuContext {
     | undefined
   /** The spells the Hero has learnt; undefined when the spell table did not read. */
   readonly spells?: readonly MenuSpell[] | undefined
+  /**
+   * The party tricks: those the Hero can perform, by number, and the one in
+   * each of the four places, or undefined for none — see `trickKnown` and
+   * `TRICK_NAMES_FROM` in `@minstrel/game-formats`.
+   */
+  readonly tricks?:
+    | {
+        readonly known: readonly number[]
+        readonly assigned: readonly (number | undefined)[]
+      }
+    | undefined
   /** What the spells panel says when there is nothing to cast. */
   readonly noSpells?: string | undefined
   /** The field menu's words, `str_tm`, by number. */
@@ -514,6 +559,11 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = potRows(context, state.pot)
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
+  if (state.panel === 'express') {
+    // The stops, then Cancel.
+    const count = (state.express?.stops.length ?? 0) + 1
+    return { ...state, row: wrap(state.row, count) }
+  }
   if (state.panel === 'patty') {
     const count = pattyRows(context, state.patty)
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
@@ -521,6 +571,11 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
   if (state.panel === 'make') {
     const count = context?.look?.length ?? 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
+  }
+  if (state.panel === 'tricks') {
+    // The four places, or the tricks known and Clear.
+    const count = state.slot === undefined ? TRICK_SLOTS : (context?.tricks?.known.length ?? 0) + 1
+    return { ...state, row: wrap(state.row, count) }
   }
   if (state.panel) return state
   return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length) }
@@ -544,6 +599,8 @@ export interface Taken {
   readonly cook?: number
   /** Throw these ingredients in and see — see `tryYourLuck` in `alchemy.ts`. */
   readonly luck?: readonly number[]
+  /** The Starflight Express's stop chosen — see `express.ts`. The list is closed. */
+  readonly stop?: number
   /** What Patty was asked to do — see `recruit.ts`. */
   readonly patty?:
     | { readonly does: 'callUp' | 'dropOff' | 'partWith'; readonly at: number }
@@ -557,6 +614,8 @@ export interface Taken {
       }
   /** Turn one of the appearance's knobs — see `turned` in `appearance.ts`. */
   readonly turn?: { readonly knob: string; readonly by: number }
+  /** Put this trick in this place, of the four — undefined to clear it. */
+  readonly assign?: { readonly slot: number; readonly trick: number | undefined }
 }
 
 /**
@@ -604,6 +663,13 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     // and it wraps — which is how the game's own arrows behave at the end.
     const knob = context?.look?.[state.row]?.knob
     return knob ? { state, talk: false, turn: { knob, by: 1 } } : { state, talk: false }
+  }
+  if (state.panel === 'express') {
+    // A stop is ridden to; Cancel closes the list, as the B Button does.
+    const stop = state.express?.stops[state.row]
+    return stop === undefined
+      ? { state: undefined, talk: false }
+      : { state: undefined, talk: false, stop }
   }
   if (state.panel === 'patty') {
     const where = state.patty ?? openPatty()
@@ -705,6 +771,18 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     if (!step?.buyable || step.bought) return { state, talk: false }
     return { state, talk: false, buy: { tree: open.tree, panel: step.panel.id } }
   }
+  if (state.panel === 'tricks') {
+    // A place opens the tricks known; a trick, or Clear, goes into it.
+    if (state.slot === undefined)
+      return { state: { ...state, slot: state.row, row: 0 }, talk: false }
+    const known = context?.tricks?.known ?? []
+    const trick = known[state.row]
+    return {
+      state: { ...state, slot: undefined, row: state.slot },
+      talk: false,
+      assign: { slot: state.slot, trick },
+    }
+  }
   if (state.panel) return { state, talk: false }
   const command = MENU_COMMANDS[state.cursor]?.id
   if (command === undefined) return { state, talk: false }
@@ -730,6 +808,9 @@ export function back(state: MenuState): MenuState | undefined {
     const row = SLOTS.findIndex((s) => s.slot === state.picking)
     return { ...state, picking: undefined, row: Math.max(0, row) }
   }
+  if (state.slot !== undefined) return { ...state, slot: undefined, row: state.slot }
+  // The Express's list closes whole, as the B Button closes it (its state 4).
+  if (state.panel === 'express') return undefined
   return state.panel ? { ...state, panel: undefined, row: 0 } : undefined
 }
 
@@ -740,7 +821,12 @@ export function panelLines(
   panel: MenuCommand,
   context: MenuContext,
   state?: Pick<MenuState, 'row' | 'picking'> &
-    Partial<Pick<MenuState, 'panel' | 'said' | 'acting' | 'member' | 'tree' | 'pot' | 'patty'>>,
+    Partial<
+      Pick<
+        MenuState,
+        'panel' | 'said' | 'acting' | 'member' | 'tree' | 'pot' | 'patty' | 'slot' | 'express'
+      >
+    >,
 ): string[] {
   const where = `In ${context.map ?? 'no map'}, at story stage ${context.stage ?? 'none'}.`
   const nameOf = context.itemName ?? byId
@@ -907,6 +993,33 @@ export function panelLines(
         ...(state?.said ?? []),
       ]
     }
+    case 'tricks': {
+      // **Assign Party Tricks**, as the game's Misc. menu has it: the four
+      // places the B Button and +Control Pad reach, and for each the tricks
+      // the Hero knows, or Clear. The words are the cartridge's, `str_tm`
+      // 4500 to 4540; the tricks are numbered as those strings are.
+      const tricks = context.tricks
+      const row = state?.panel === 'tricks' ? (state.row ?? 0) : -1
+      const nameOfTrick = (trick: number | undefined) =>
+        trick === undefined
+          ? word(MENU_WORDS.noTrick, '------')
+          : word(TRICK_NAMES_FROM + trick, `trick ${trick}`)
+      if (!tricks) return [word(MENU_WORDS.tricks, 'Assign Party Tricks'), 'No tricks are read.']
+      if (state?.slot === undefined) {
+        return [
+          word(MENU_WORDS.tricks, 'Assign Party Tricks'),
+          ...Array.from({ length: TRICK_SLOTS }, (_, i) => {
+            const place = word(MENU_WORDS.trickSlots + i, ['Up', 'Right', 'Left', 'Down'][i] ?? '')
+            return `${mark(i === row)}${place}: ${nameOfTrick(tricks.assigned[i])}`
+          }),
+        ]
+      }
+      return [
+        `${word(MENU_WORDS.trickSlots + state.slot, '')}:`,
+        ...tricks.known.map((trick, i) => `${mark(i === row)}${nameOfTrick(trick)}`),
+        `${mark(tricks.known.length === row)}${word(MENU_WORDS.trickClear, 'Clear')}`,
+      ]
+    }
     case 'pot': {
       // **The Krak Pot**, as the pot has it: two modes, then the
       // Alchenomicon's own categories, then a list. Its words are the
@@ -987,6 +1100,20 @@ export function panelLines(
         `${who?.name ?? context.hero} — take a row to change it`,
         ...knobs.map((knob, i) => `${mark(i === row)}${knob.label}: ${knob.shown}`),
         ...(state?.said ?? []),
+      ]
+    }
+    case 'express': {
+      // **The Starflight Express's list**: the conductor's question, the
+      // stops by their `str_ark` names, and Cancel — `func_ov017_021a86d0`'s
+      // state 2 builds the same list.
+      const where = state?.express
+      const row = state?.panel === 'express' ? (state.row ?? 0) : -1
+      const ark = (number: number, ours: string) => context.expressWords?.get(number) ?? ours
+      const stops = where?.stops ?? []
+      return [
+        ark(conductorLine(EXPRESS_WORDS.whichStop, where?.mode ?? 0), 'Which stop?'),
+        ...stops.map((stop, i) => `${mark(i === row)}${ark(stop, `stop ${stop}`)}`),
+        `${mark(row === stops.length)}${ark(EXPRESS_WORDS.cancel, 'Cancel')}`,
       ]
     }
     case 'patty': {

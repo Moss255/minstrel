@@ -1054,6 +1054,8 @@ export interface Asking {
   readonly marks?: ReadonlySet<number>
   /** Whether nobody goes along with the Hero — see {@link OP_ALONE}. Not read when not given. */
   readonly alone?: boolean
+  /** How many are in the party, the Hero among them — see `OP_PARTY_AT_LEAST`. Not read when not given. */
+  readonly party?: number
   /** The step within the stage — see `OP_AT_STEP`. Not read when not given. */
   readonly step?: number | undefined
   /** The game-wide flags set — see `OP_SET_GLOBAL`. Not read when not given. */
@@ -1094,6 +1096,7 @@ export function pickLine(asking: Asking): Choice | undefined {
     character: id,
     down: false,
     inBox: asking.box !== undefined,
+    ...(asking.party !== undefined ? { party: asking.party } : {}),
     ...(asking.globals ? { globals: asking.globals } : {}),
     ...(asking.globalsSure ? { globalsSure: asking.globalsSure } : {}),
   }

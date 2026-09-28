@@ -297,10 +297,10 @@ describe('an event’s stage', () => {
   it('answers what it does not read with nothing, and counts it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    // 807 is not read; 731 was, and is the sound archives being given back.
-    expect(stage.host.call(807, [], t)).toBe(0)
-    stage.host.call(807, [], t)
-    expect(stage.unhandled.get(807)).toBe(2)
+    // 844 is not read; 731 was, and is the sound archives being given back.
+    expect(stage.host.call(844, [], t)).toBe(0)
+    stage.host.call(844, [], t)
+    expect(stage.unhandled.get(844)).toBe(2)
   })
 
   it('hides and shows a character, and hangs one on another', () => {
@@ -387,22 +387,22 @@ describe('an engine function the host has not got', () => {
   it('is answered with 0, counted, and kept with what it was handed', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    expect(stage.host.call(807, [7, 1.5, 'hello'], t)).toBe(0)
-    stage.host.call(807, [9], t)
-    const call = stage.unreadCalls.get(807)
+    expect(stage.host.call(844, [7, 1.5, 'hello'], t)).toBe(0)
+    stage.host.call(844, [9], t)
+    const call = stage.unreadCalls.get(844)
     expect(call?.calls).toBe(2)
     // The signatures are `docs/event-scripts.md`'s: integer, float, string.
     expect([...(call?.shapes ?? [])].sort()).toEqual(['i', 'ifs'])
     expect(call?.examples[0]).toEqual([7, 1.5, 'hello'])
     // The count it kept before stands beside it, for whatever reads that.
-    expect(stage.unhandled.get(807)).toBe(2)
+    expect(stage.unhandled.get(844)).toBe(2)
   })
 
   it('keeps a few argument lists and no more, however often it is called', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    for (let i = 0; i < 50; i++) stage.host.call(807, [i], t)
-    const call = stage.unreadCalls.get(807)
+    for (let i = 0; i < 50; i++) stage.host.call(844, [i], t)
+    const call = stage.unreadCalls.get(844)
     expect(call?.calls).toBe(50)
     expect(call?.examples.length).toBeLessThanOrEqual(4)
   })
@@ -412,17 +412,17 @@ describe('an engine function the host has not got', () => {
     const { thread: t } = thread()
     const said: number[] = []
     stage.onUnread = (call) => said.push(call.fn)
-    stage.host.call(807, [1], t)
-    stage.host.call(807, [2], t)
+    stage.host.call(844, [1], t)
+    stage.host.call(844, [2], t)
     stage.host.call(843, [], t)
-    expect(said).toEqual([807, 843])
+    expect(said).toEqual([844, 843])
   })
 
   it('stops the run instead, where the run is there to find them', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
     stage.strict = true
-    expect(() => stage.host.call(807, [7], t)).toThrow(/engine function 807 is not read/)
+    expect(() => stage.host.call(844, [7], t)).toThrow(/engine function 844 is not read/)
   })
 
   it('says nothing for a function the host answers', () => {
@@ -1075,6 +1075,16 @@ describe("the towns' shared set, read from the cartridge", () => {
     expect(stage.battleFrom).toEqual({ placement: 4, battle: -1 })
     stage.host.call(547, [4, 12], t)
     expect(stage.battleFrom).toEqual({ placement: 4, battle: 12 })
+  })
+
+  it('keeps where a scene hands the Hero on, and the event there — 807', () => {
+    const stage = new EventStage(8)
+    const { thread: t } = thread()
+    // In the file's own units, whatever the scene's scale: an arrival's.
+    expect(stage.host.call(807, [5200, 1.5, 0, -2, 3.14, 23190], t)).toBe(1)
+    expect(stage.handOn).toEqual({ map: 5200, x: 1.5, y: 0, z: -2, facing: 3.14, event: 23190 })
+    stage.host.call(807, [4504, 0, 0, 0, 0], t)
+    expect(stage.handOn?.event).toBeUndefined()
   })
 
   it('drops a placed sprite, ignoring its second number — 573', () => {
@@ -1781,18 +1791,19 @@ describe('the last of the 500s and 700s', () => {
     expect(stage.boneCamera).toBeUndefined()
   })
 
-  it('reads a bit of the record in hand — 601, 602', () => {
+  it('reads a flag or a mark of the live thread — 602, 601', () => {
     const stage = new EventStage(1)
     const { written, thread: t } = thread()
     stage.host.call(602, [7, ref(1)], t)
     expect(written.get(1)).toBe(0)
-    stage.recordBits.add('0:b:7')
+    expect(stage.readThread).toBe(true)
+    stage.threadFlags.add(7)
     stage.host.call(602, [7, ref(2)], t)
-    // The two fields of a record are kept apart, and so are the five records.
+    // Flags and marks are kept apart: `602` reads the flags, `601` the marks.
     stage.host.call(601, [7, ref(3)], t)
-    stage.record = 1
-    stage.host.call(602, [7, ref(4)], t)
-    expect([written.get(2), written.get(3), written.get(4)]).toEqual([1, 0, 0])
+    stage.threadMarks.add(7)
+    stage.host.call(601, [7, ref(4)], t)
+    expect([written.get(2), written.get(3), written.get(4)]).toEqual([1, 0, 1])
   })
 
   it('gates the zone’s two extra passes, and the rest — 599, 805, 557, 583', () => {

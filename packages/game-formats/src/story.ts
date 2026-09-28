@@ -162,8 +162,18 @@ export function entryPlay(
   step?: number,
   more?: Conditions,
 ):
-  | { readonly event: number; readonly flags: readonly number[]; readonly outcome: EventOutcome }
+  | {
+      readonly event: number | undefined
+      readonly flags: readonly number[]
+      readonly outcome: EventOutcome
+    }
   | undefined {
+  // The first that holds, whatever it does — as the game takes a record.
+  // Until 28 September 2026 one with no event was passed over; Batsureg's
+  // at 10.6 only adds two areas, and the Observatory's at 15.3 only moves the
+  // story to step 5. **INFERRED**, as the kind is: read from the game's code,
+  // kind 3 is run at map load for its `108` alone (`func_02017a94`), and
+  // what plays its events is not found there.
   for (const trigger of triggers) {
     if (trigger.unknown_5 !== KIND_ENTRY || trigger.map !== map) continue
     if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
@@ -171,7 +181,63 @@ export function entryPlay(
     if (!words.some((w) => w.op === OP_ENTERED && w.arg === map)) continue
     if (!flagsHold(conditionsOf(trigger), flags, undefined, step, more)) continue
     const outcome = outcomeOf(trigger)
-    if (outcome.event !== undefined) return { event: outcome.event, flags: outcome.flags, outcome }
+    return { event: outcome.event, flags: outcome.flags, outcome }
+  }
+  return undefined
+}
+
+/**
+ * What the map's settings record does as the map is entered: the first
+ * {@link KIND_SETTINGS} record over the stage whose conditions hold — read
+ * from the game's code, which runs it, every action, as the map's trigger
+ * file is loaded (US ARM9 `func_02064574`, at `0x020645f8`). Its areas are
+ * `areasOf`'s; two on the cartridge play an event as well, the Bowhole's
+ * `9:6302 35:1 23:2 119:13500` at 13.5, and the Quarantomb's at 4.3 move the
+ * story by the step.
+ */
+export function settingsPlay(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  state: StoryState,
+): EventOutcome | undefined {
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_SETTINGS || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    if (holds(trigger, state)) return outcomeOf(trigger)
+  }
+  return undefined
+}
+
+/**
+ * What performing a party trick in `area` of `map` does: the first
+ * {@link KIND_TRICK} record over the stage whose conditions hold, with the
+ * tricks it wants ({@link OP_TRICKS}) taken as performed when `canPerform`
+ * says the Hero can perform each — see {@link trickKnown}. Undefined when
+ * none does.
+ */
+export function trickPlay(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  area: number,
+  canPerform: (trick: number) => boolean,
+  state: StoryState,
+): { readonly tricks: readonly number[]; readonly outcome: EventOutcome } | undefined {
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_TRICK || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    const conditions = conditionsOf(trigger)
+    const where = conditions.find((w) => w.op === OP_IN_AREA)
+    if (!where || where.arg !== area) continue
+    const tricks = conditions
+      .filter((w) => w.op === OP_TRICKS || w.op === OP_TRICKS_IN_ORDER)
+      .flatMap(tricksWanted)
+    if (tricks.length === 0 || !tricks.every(canPerform)) continue
+    const more: Conditions = { ...state.more, tricks }
+    if (flagsHold(conditions, state.flags, state.marks, state.step, more)) {
+      return { tricks, outcome: outcomeOf(trigger) }
+    }
   }
   return undefined
 }
@@ -352,10 +418,12 @@ export function areaAt(
 }
 
 /**
- * The event walking into an area plays: the first {@link KIND_AREA_EVENT}
- * record for the map, over the stage, whose area `entered` says the Hero has
- * walked into and whose conditions hold, naming an event — and the flags it
- * sets itself, as an entry record's are.
+ * What walking into an area runs: the first {@link KIND_AREA_EVENT} record
+ * for the map, over the stage, whose area `entered` says the Hero has walked
+ * into and whose conditions hold — as the game takes the first that holds
+ * (`func_02064490`), whatever it does: an event, or a talk (`118`), as
+ * Dourbridge's area 22 at 7.3 has the Hero talk to 3. Until 28 September
+ * 2026 a record without an event was passed over, which the game does not do.
  */
 export function areaEvent(
   triggers: readonly Trigger[],
@@ -366,7 +434,11 @@ export function areaEvent(
   entered: (area: number) => boolean,
   more?: Conditions,
 ):
-  | { readonly event: number; readonly flags: readonly number[]; readonly outcome: EventOutcome }
+  | {
+      readonly event: number | undefined
+      readonly flags: readonly number[]
+      readonly outcome: EventOutcome
+    }
   | undefined {
   for (const trigger of triggers) {
     if (trigger.unknown_5 !== KIND_AREA_EVENT || trigger.map !== map) continue
@@ -376,7 +448,7 @@ export function areaEvent(
     if (!area || !entered(area.arg)) continue
     if (!flagsHold(conditionsOf(trigger), flags, undefined, step, more)) continue
     const outcome = outcomeOf(trigger)
-    if (outcome.event !== undefined) return { event: outcome.event, flags: outcome.flags, outcome }
+    return { event: outcome.event, flags: outcome.flags, outcome }
   }
   return undefined
 }
@@ -418,6 +490,14 @@ export interface EventOutcome {
   readonly event: number | undefined
   /** Who it has the Hero talk to, and with which label — see {@link OP_TALK_TO}. */
   readonly talk?: { readonly character: number; readonly label: number }
+  /** The characters it takes out of the map — see {@link OP_REMOVE}. Absent where an outcome is made by hand. */
+  readonly removes?: readonly number[]
+  /** The party tricks it teaches — see {@link OP_LEARN_TRICK}. Absent where an outcome is made by hand. */
+  readonly tricks?: readonly number[]
+  /** The Starflight Express it opens: the conductor and the two values of stops — see {@link OP_EXPRESS}. */
+  readonly express?: { readonly mode: number; readonly values: readonly number[] }
+  /** The stop it says the Starflight Express is at — see {@link OP_EXPRESS_AT}. */
+  readonly expressAt?: number
   /**
    * The areas it adds to the map as it runs — see {@link OP_AREA}. 143 is on
    * 80 settings records, and on 3 entry records, 3 talk records and one
@@ -468,6 +548,26 @@ export const OP_FLAG_AND_EVENT = 155
 export const OP_TALK_TO = 118
 
 /**
+ * **The Quarantomb's switches**: sets or clears a flag of the block from bit
+ * 830 (see {@link OP_IF_FLAG_FROM_830}) and turns the map's walls. Read from
+ * the game's code: the parser keeps `220`'s value as two bytes — *which*
+ * switch in the high, whether it is on in the low (`func_0205ec70`) — and
+ * its action (`func_020aee04`) does nothing outside map 7402; there, which 1
+ * turns the map's pieces `0x4e`–`0x58` and sets flag 830 + 71 to the byte,
+ * which 0 the pieces `0x37`–`0x4b` and flag 830 + 72 (`func_020ae4ec`). So
+ * `220:257` sets 901, `220:1` sets 902, and `ev24590`'s record clears both
+ * with `220:256 220:0`. All 14 records that carry it are the Quarantomb's;
+ * the pieces are not modelled here.
+ */
+export const OP_QUARANTOMB_SWITCH = 220
+/** The flag a `220` sets or clears, and to what — see {@link OP_QUARANTOMB_SWITCH}. */
+export function quarantombSwitch(arg: number): { flag: number; on: boolean } | undefined {
+  const which = (arg >> 8) & 0xff
+  if (which !== 0 && which !== 1) return undefined
+  return { flag: 830 + (which === 1 ? 71 : 72), on: (arg & 0xff) !== 0 }
+}
+
+/**
  * What a record does when it runs: every one of its actions, as the game runs
  * them all (US ARM9 `func_02064530`). Read from its entries — see
  * {@link entriesOf} — so an action's own values are taken as its own.
@@ -489,6 +589,12 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
     if (stage) threads.push({ thread: entry.arg, stage })
   }
   const both = entries.filter((e) => e.op === OP_FLAG_AND_EVENT && e.params.length === 1)
+  const express = entries.find((e) => e.op === OP_EXPRESS)
+  const expressAt = entries.find((e) => e.op === OP_EXPRESS_AT)
+  // The Quarantomb's switches, as game-wide flags — see `quarantombSwitch`.
+  const switches = entries
+    .filter((e) => e.op === OP_QUARANTOMB_SWITCH)
+    .flatMap((e) => quarantombSwitch(e.arg) ?? [])
   return {
     stage: point(entries.find((e) => e.op === OP_STAGE_TO)),
     flags: [...args(OP_SET_FLAG), ...both.map((e) => (e.params[0] as number) >>> 16)],
@@ -501,10 +607,14 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
     unflags: args(OP_CLEAR_FLAG),
     marks: args(OP_SET_MARK),
     unmarks: args(OP_CLEAR_MARK),
-    globals: args(OP_SET_GLOBAL),
-    unglobals: args(OP_CLEAR_GLOBAL),
+    globals: [...args(OP_SET_GLOBAL), ...switches.filter((s) => s.on).map((s) => s.flag)],
+    unglobals: [...args(OP_CLEAR_GLOBAL), ...switches.filter((s) => !s.on).map((s) => s.flag)],
     event: entries.find((e) => e.op === OP_EVENT || e.op === OP_FLAG_AND_EVENT)?.arg,
     ...(talk ? { talk: { character: talk.arg, label: (talk.params[0] as number) >>> 16 } } : {}),
+    removes: args(OP_REMOVE),
+    tricks: args(OP_LEARN_TRICK),
+    ...(express ? { express: { mode: express.arg, values: express.params } } : {}),
+    ...(expressAt ? { expressAt: expressAt.arg } : {}),
     areas: areasIn(trigger),
     actions: entries.filter((e) => !isCondition(e.op)),
   }
@@ -662,6 +772,180 @@ export interface Conditions {
   readonly down?: boolean
   /** Whether the Hero stands in a box of the one talked to — see {@link OP_IN_TALK_BOX}. Not read when not given. */
   readonly inBox?: boolean
+  /** The doorway the Hero is at, by its two numbers — see {@link OP_AT_DOORWAY}. Not read when not given. */
+  readonly doorway?: readonly [number, number]
+  /** How many are in the party, the Hero among them — see {@link OP_PARTY_AT_LEAST}. Not read when not given. */
+  readonly party?: number
+  /** The party tricks just performed, by number — see {@link OP_TRICKS}. Not read when not given. */
+  readonly tricks?: readonly number[]
+}
+
+/**
+ * Value 5 of a record that runs **when the Hero performs a party trick** —
+ * read from the game's code (US ARM9): the field object that plays a trick
+ * loads `data/chara/sg<nn><m|w>.chr` (`func_0205308c`, the archive of a
+ * `sigusa.nsbca` — 仕草, a gesture), and when its tricks are done, and it is
+ * the leader's, its update (`func_02053634`, at `0x020539ac`) asks for the
+ * first of these whose conditions hold (`func_02064a9c`) with the tricks
+ * performed at the context's `+0x2a`, up to four, and the Hero's area at `+4`
+ * as {@link OP_IN_AREA} reads it. 11 on the cartridge: Gleeba's Drak answers
+ * a Clap in area 10 at 11.2 (`7:10 33:0 512:0 1:322 5:1 23:2 119:11200`), the
+ * Quester's Rest's two quests an Air Punch and a sequence.
+ */
+export const KIND_TRICK = 19
+/**
+ * Holds when every trick the next word names, a byte each, was performed —
+ * read from the game's code (`func_0205faf4`, at `0x02060214`): each nonzero
+ * byte of the word after it must match one of the four at the context's
+ * `+0x2a`, no two the same one. `33:0 512:0` wants trick 2, `768:0` trick 3.
+ */
+export const OP_TRICKS = 33
+/** Takes a word of four tricks too, and is not read: the quest's `32:0 4866:2307` — INFERRED to be the same four in order. */
+export const OP_TRICKS_IN_ORDER = 32
+/**
+ * Teaches party trick *n* — read from the game's code (action case at
+ * `0x02062a80`, `func_0206e348`): tricks are numbered as the field menu's
+ * strings are, `str_tm` 4509 + *n*, Bow 1, Clap 2, Air Punch 3 … Pray 17,
+ * Pirouette 19, Professor's Pose 31; and the game orders them by a table
+ * (`0x020e87c0`) whose first seventeen places are the tricks known from the
+ * start — the setter refuses those — and whose others are learnt, a bit each
+ * in the game-wide bank from `0xbf1` + place. The quests teach Pirouette
+ * (`142:19`) and Pray (`142:17`); Porth Llaffan's 6.3 teaches Bow (`142:1`).
+ */
+export const OP_LEARN_TRICK = 142
+/** The field menu's string for trick *n* is this + *n* — `str_tm` 4510 is Bow. */
+export const TRICK_NAMES_FROM = 4509
+/** How many party tricks there are: `str_tm` 4510 to 4540. */
+export const TRICKS = 31
+/** The game's order of the tricks, `0x020e87c0`: the trick at each place. */
+const TRICK_ORDER: readonly number[] = [
+  0, 3, 2, 4, 5, 6, 7, 8, 9, 10, 11, 18, 12, 13, 14, 15, 16, 17, 19, 1, 20, 21, 22, 23, 24, 25, 26,
+  27, 28, 29, 30, 31,
+]
+/** The first place in {@link TRICK_ORDER} that is learnt rather than known from the start. */
+const TRICKS_LEARNT_FROM = 17
+/** Where trick *n*'s learnt bit is in the game-wide bank, or undefined for one known from the start or unknown. */
+export function trickLearntBit(trick: number): number | undefined {
+  const place = TRICK_ORDER.indexOf(trick)
+  if (place < TRICKS_LEARNT_FROM || trick <= 0) return undefined
+  return 0xbf1 + place
+}
+/** Whether the Hero can perform trick *n*: known from the start, or its learnt bit among the game-wide flags set. */
+export function trickKnown(trick: number, globals: ReadonlySet<number>): boolean {
+  if (trick <= 0 || trick > TRICKS) return false
+  const bit = trickLearntBit(trick)
+  return bit === undefined || globals.has(bit)
+}
+/** The tricks a {@link OP_TRICKS} or {@link OP_TRICKS_IN_ORDER} condition wants: the nonzero bytes of its word. */
+export function tricksWanted(entry: TriggerWord): number[] {
+  const word = (entry as Partial<TriggerEntry>).params?.[0]
+  if (typeof word !== 'number') return []
+  const out: number[] = []
+  for (let i = 0; i < 4; i++) {
+    const byte = (word >>> (8 * i)) & 0xff
+    if (byte !== 0) out.push(byte)
+  }
+  return out
+}
+/**
+ * Takes character *n*'s object out of the map — read from the game's code:
+ * the queue's case (`0x0206fca0`) finds the object by its id
+ * (`func_0203df78`) and sets bit `0x8000` in its first word, which every
+ * lookup of the map's objects skips from then on (`func_0203df78`,
+ * `func_0203dce4`), so the character is gone until the map is next placed.
+ * Gleeba's Drak leaves so after his talk at 11.2, `124:200`; the bells at
+ * 1.2 go quiet the same way.
+ */
+export const OP_REMOVE = 124
+/**
+ * Opens the Starflight Express's list of stops, `215 : mode` and two values
+ * whose halves, high first, are up to four stops — read from the game's code:
+ * the action's case (US ARM9 `0x02063e80`) hands them to the Express's task
+ * (overlay 17 `func_ov017_021a8614`). Mode 0 is Stella, 1 Sterling. 16
+ * records, on the conductors: Stella's at 6.1 to 10.8 is `215:0 1:2 0:0`, the
+ * Observatory and Alltrades Abbey. See `express.ts` in the game.
+ */
+export const OP_EXPRESS = 215
+/**
+ * Sets the stop the Starflight Express is at — read from the game's code
+ * (`0x02063eac`): the field state's halfword at `+0x27b4`, which the Express's
+ * task reads to choose the scene that leaves it. `ev5110` sets 1, the
+ * Observatory; `ev25524` 2, Alltrades Abbey.
+ */
+export const OP_EXPRESS_AT = 216
+
+/**
+ * Holds by the party's size (`func_0205faf4`, counting through
+ * `func_02010890`): `13 : n` while it is at least n, `14 : n` at most n,
+ * `15 : n` exactly n. Gortress's captain at 14.3 speaks one way to a party
+ * of two or more (`13:2`) and another to the Hero alone (`15:1`).
+ */
+export const OP_PARTY_AT_LEAST = 13
+export const OP_PARTY_AT_MOST = 14
+export const OP_PARTY_IS = 15
+/**
+ * Holds only alone: `81 : 0` while no session runs (`func_0202b7d8`, the test
+ * {@link OP_PLAYERS} makes), and `81 : n` never — INFERRED multiplayer, as 23.
+ */
+export const OP_NOT_TOGETHER = 81
+
+/**
+ * **A record for standing at a doorway**, value 5 = 17: read from the game's
+ * code (ov017 `func_ov017_02198f84`), which, for each doorway region the Hero
+ * is in, runs the first kind-17 record whose conditions hold with the
+ * doorway's two numbers in the context (`+0x1c`, `+0x1e`, from the region's
+ * `+0x2c` and `+0x2d` — the first two values of its `0x74`) and, unless the
+ * region is now blocked, goes through. `108` blocks a doorway and `109`
+ * unblocks one (a bit of the region, `func_02061c04`), and kinds 3 and 20's
+ * `108` do so at map load. So a kind-17 record is "on trying this door": 507
+ * on the cartridge, 395 of them `118` — someone stops the Hero and speaks —
+ * and 9 an event. Coffinwell's `29:0 0:9 0:0 5:4 108:0 0:9 0:0 118:27 192:0`
+ * at 4.5: at door 9 with flag 4 clear, block it and have 27 speak.
+ */
+export const KIND_DOORWAY = 17
+/**
+ * Holds at a doorway: `29 : n` with one value whose halves are the doorway's
+ * two numbers, against the context's (`func_0205faf4`); `n` is the region's
+ * word at `+0x20`, which is 0 on 505 of 507 records and is not read — taken
+ * as 0.
+ */
+export const OP_AT_DOORWAY = 29
+/** Blocks the doorway its value names — see {@link KIND_DOORWAY}. */
+export const OP_BLOCK_DOORWAY = 108
+/** Unblocks it. */
+export const OP_UNBLOCK_DOORWAY = 109
+
+/**
+ * What standing at `doorway` in `map` runs: the first {@link KIND_DOORWAY}
+ * record over the stage whose conditions hold for it — see {@link OP_AT_DOORWAY}.
+ */
+export function doorwayPlay(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  doorway: readonly [number, number],
+  state: StoryState,
+): EventOutcome | undefined {
+  const more: Conditions = { ...state.more, doorway }
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_DOORWAY || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    if (!flagsHold(conditionsOf(trigger), state.flags, state.marks, state.step, more)) continue
+    return outcomeOf(trigger)
+  }
+  return undefined
+}
+
+/** Whether a record blocks `doorway` as it runs — see {@link OP_BLOCK_DOORWAY}. */
+export function blocksDoorway(outcome: EventOutcome, doorway: readonly [number, number]): boolean {
+  let blocked = false
+  for (const { op, params } of outcome.actions ?? []) {
+    if ((op !== OP_BLOCK_DOORWAY && op !== OP_UNBLOCK_DOORWAY) || params.length !== 1) continue
+    const value = params[0] as number
+    if (((value >> 16) & 0xffff) !== doorway[0] || (value & 0xffff) !== doorway[1]) continue
+    blocked = op === OP_BLOCK_DOORWAY
+  }
+  return blocked
 }
 
 /**
@@ -770,8 +1054,25 @@ export function flagsHold(
       (more?.label === undefined || w.op !== OP_LABEL_IS || w.arg === more.label) &&
       (more?.answer === undefined || w.op !== OP_ANSWER_IS || w.arg === more.answer) &&
       (more?.down === undefined || w.op !== OP_HERO_DOWN || (w.arg !== 0) === more.down) &&
-      (more?.inBox === undefined || w.op !== OP_IN_TALK_BOX || (w.arg !== 0) === more.inBox),
+      (more?.inBox === undefined || w.op !== OP_IN_TALK_BOX || (w.arg !== 0) === more.inBox) &&
+      (more?.doorway === undefined || w.op !== OP_AT_DOORWAY || atDoorway(w, more.doorway)) &&
+      (w.op !== OP_NOT_TOGETHER || w.arg === 0) &&
+      (more?.party === undefined ||
+        ((w.op !== OP_PARTY_AT_LEAST || more.party >= w.arg) &&
+          (w.op !== OP_PARTY_AT_MOST || more.party <= w.arg) &&
+          (w.op !== OP_PARTY_IS || more.party === w.arg))) &&
+      (more?.tricks === undefined ||
+        w.op !== OP_TRICKS ||
+        tricksWanted(w).every((t) => (more.tricks as readonly number[]).includes(t))),
   )
+}
+
+/** Whether a `29` names `doorway` — see {@link OP_AT_DOORWAY}. The word's value is given by `entriesOf`. */
+function atDoorway(word: TriggerWord, doorway: readonly [number, number]): boolean {
+  const params = (word as Partial<TriggerEntry>).params
+  const value = params?.[0]
+  if (value === undefined) return false
+  return ((value >> 16) & 0xffff) === doorway[0] && (value & 0xffff) === doorway[1]
 }
 
 /**

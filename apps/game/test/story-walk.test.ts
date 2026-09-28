@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { scanCartridge } from '@minstrel/cartridge'
 import {
   afterBattle,
@@ -6,6 +6,8 @@ import {
   areasIn,
   areasOf,
   conditionsOf,
+  doorwayPlay,
+  type EventListEntry,
   type EventOutcome,
   entryPlay,
   eventOutcome,
@@ -15,8 +17,10 @@ import {
   isMapList,
   KIND_AREA_EVENT,
   KIND_ENTRY,
+  KIND_TRICK,
   KIND_WATCH,
   mapAreas,
+  mapDoorwayRegions,
   OP_AFTER_BATTLE,
   OP_AT_STEP,
   OP_BATTLE,
@@ -26,24 +30,32 @@ import {
   OP_IF_GLOBAL,
   OP_IF_MARK,
   OP_IN_AREA,
+  OP_LEARN_TRICK,
+  OP_QUARANTOMB_SWITCH,
   OP_STAGE_TO,
   OP_THEN_MAP,
+  OP_TRICKS,
   OP_UNLESS_FLAG,
   OP_UNLESS_GLOBAL,
   OP_UNLESS_MARK,
-  outcomeOf,
+  quarantombSwitch,
   readMapList,
   readScript,
   type Script,
   type StoryArea,
   type StoryState,
+  settingsPlay,
   type Trigger,
+  trickKnown,
+  trickLearntBit,
+  trickPlay,
   triggerWords,
   watchPlay,
 } from '@minstrel/game-formats'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { EventPlayer } from '../src/event.ts'
-import { allTriggers, type Stage, type StoryView, storyView } from '../src/load.ts'
+import { rideScenes, stopsOf } from '../src/express.ts'
+import { allTriggers, eventListOf, type Stage, type StoryView, storyView } from '../src/load.ts'
 import { copyStory, moveStory, type Story, THREADS, threadOf, unstarted } from '../src/story.ts'
 import { afterFor, letterForStage, pickLine } from '../src/talk.ts'
 
@@ -96,11 +108,74 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   const STATE_CAP = 50_000
   /** How many frames one script may run to find what it chains into. */
   const FRAME_CAP = 20_000
+  /** How many sets of game-wide flags a map's talks are followed through, from one state — see `movesFrom`. */
+  const TALK_SETS = 256
   /** The operations `story.ts`, `talk.ts` and `services.ts` read. The rest are reported as not read. */
   const READ = new Set([
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 16, 17, 23, 26, 27, 35, 36, 41, 52, 53, 54, 55, 56, 57,
-    58, 59, 60, 61, 62, 63, 86, 88, 89, 100, 101, 102, 103, 104, 105, 118, 119, 120, 132, 133, 138,
-    143, 145, 148, 204, 205, 214, 226,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    11,
+    12,
+    16,
+    17,
+    23,
+    26,
+    27,
+    29,
+    35,
+    36,
+    41,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    86,
+    88,
+    89,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    108,
+    109,
+    118,
+    119,
+    120,
+    124,
+    132,
+    133,
+    138,
+    142,
+    143,
+    145,
+    148,
+    155,
+    204,
+    205,
+    214,
+    215,
+    216,
+    220,
+    226,
+    OP_TRICKS,
   ])
   /** Sets a stage of one of several stories at once — see "Threads" in `docs/story-walk.md`. Not read. */
   const OP_THREAD_STAGE_TO = 214
@@ -158,13 +233,29 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   }
 
   let triggersOf: Map<string, Trigger[]>
+  /** Each scene's entry in the game's event lists: the map it plays in — see `readEventList`. */
+  let eventList: ReadonlyMap<number, EventListEntry> = new Map()
   /** A map's id to the area whose triggers it answers to. */
   const areaOfMap = new Map<number, string>()
   /** The records of a map, by area — so a stage's can be taken once. */
   const byMap = new Map<number, Trigger[]>()
+  /**
+   * **Where a map comes into reach — ours, a stand-in for geography.** The
+   * walk takes every map to be in reach, which was harmless until a scene's
+   * start raised the story to its listed stage (see `play`): the Realm of the
+   * Almighty's doorway record, 4301 over 1.1 to 19.99, plays ev15310, listed
+   * at 15.1, and from the prologue the walk rode it to chapter 15. So a map is
+   * taken to be in reach from the earliest stage at which any record of its
+   * own begins, those over the whole story — from 1.1 into chapter 19 —
+   * aside; a map with none is in reach from the start. The Realm's own
+   * records begin at 15.1.
+   */
+  const reachFrom = new Map<number, number>()
   const views = new Map<string, StoryView>()
   /** Each map's own areas, from its link table — see `mapAreas`. */
   const mapAreasOf = new Map<number, StoryArea[]>()
+  /** Each map's doorways' two numbers, from its link table — see `KIND_DOORWAY`. */
+  const mapDoorwaysOf = new Map<number, (readonly [number, number])[]>()
   /**
    * The areas the Hero can walk into in a map at a stage: the first settings
    * record's that holds, those any other record there that the engine runs
@@ -177,16 +268,16 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     return [
       ...new Set([
         ...areasOf(here, map, stage, state).map((a) => a.id),
-        ...here
-          .filter((t) => t.unknown_5 !== 20 && (t.unknown_5 !== KIND_ENTRY || outcomeOf(t).event))
-          .flatMap((t) => areasIn(t).map((a) => a.id)),
+        // An entry record's too: the field runs the map's whole on arriving
+        // (`func_020649f4`), so Batsureg's 72 and 73 at 10.6 are real.
+        ...here.filter((t) => t.unknown_5 !== 20).flatMap((t) => areasIn(t).map((a) => a.id)),
         ...(mapAreasOf.get(map) ?? []).map((a) => a.id),
       ]),
     ]
   }
   const scripts = new Map<number, Script>()
-  /** Each event's script run with chaining on: what it chains into, in order, or why it would not run. */
-  const chains = new Map<number, number[] | string>()
+  /** Each event's script run with chaining on: what it chains into, in order, or why it would not run — by event, or by event and the thread's flags and marks where it read them (see `chainOf`). */
+  const chains = new Map<number | string, number[] | string>()
   const setters: Setter[] = []
   /** Every event a record plays or hands on to: the record, its area, and whether it hands on. */
   const reachedBy = new Map<
@@ -202,8 +293,32 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     readonly why: string[]
   }[] = []
 
-  const chainOf = (event: number): number[] | string => {
-    const known = chains.get(event)
+  /**
+   * What a script chains into, run with the live thread's flags and marks,
+   * which its `601` and `602` read — Gortress's ev14640 chains into ev14903
+   * only with flags 11 to 14 all set. Kept by script, and by the flags and
+   * marks it was run with where the run read them.
+   */
+  /** The thread bits each script has been seen to read, `f<n>` and `m<n>` — see `chainOf`. */
+  const threadReadsOf = new Map<number, Set<string>>()
+  const chainOf = (
+    event: number,
+    flags?: ReadonlySet<number>,
+    marks?: ReadonlySet<number>,
+  ): number[] | string => {
+    // Kept by the bits the script read, and their values then — not the whole
+    // state, which would run it once for every set of flags the talks reach.
+    const bitsKey = (reads: ReadonlySet<string>) =>
+      [...reads]
+        .sort()
+        .map((bit) => {
+          const n = Number(bit.slice(1))
+          const set = bit.startsWith('f') ? flags?.has(n) : marks?.has(n)
+          return `${bit}=${set ? 1 : 0}`
+        })
+        .join(',')
+    const reads = threadReadsOf.get(event)
+    const known = chains.get(event) ?? (reads && chains.get(`${event}|${bitsKey(reads)}`))
     if (known !== undefined) return known
     const script = scripts.get(event)
     if (!script) {
@@ -211,6 +326,8 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       return []
     }
     const player = new EventPlayer(script, 1, undefined, (id) => scripts.get(id))
+    for (const flag of flags ?? []) player.stage.threadFlags.add(flag)
+    for (const mark of marks ?? []) player.stage.threadMarks.add(mark)
     let frames = 0
     let found: number[] | string
     try {
@@ -220,12 +337,21 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         frames++
       }
       found = [...player.chain]
+      const handOn = player.stage.handOn
+      if (handOn?.event !== undefined) handOns.set(event, { map: handOn.map, event: handOn.event })
     } catch (error) {
       found = (error as Error).message
     }
-    chains.set(event, found)
+    if (player.stage.readThread) {
+      const all = threadReadsOf.get(event) ?? new Set<string>()
+      for (const bit of player.stage.threadReads) all.add(bit)
+      threadReadsOf.set(event, all)
+      chains.set(`${event}|${bitsKey(all)}`, found)
+    } else chains.set(event, found)
     return found
   }
+  /** Where a scene sends the Hero once it is over, and the event there — see `807` in `event.ts`. */
+  const handOns = new Map<number, { readonly map: number; readonly event: number }>()
 
   /** The records of `map` whose span covers the stage, in the file's order. Kept, as they are asked for often. */
   const recordsKept = new Map<string, Trigger[]>()
@@ -336,6 +462,14 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     for (const { op, arg } of outcome.actions ?? []) {
       if (op === 100) s.sure.add(arg)
       else if (op === 101) s.sure.delete(arg)
+      else if (op === OP_QUARANTOMB_SWITCH) {
+        const turned = quarantombSwitch(arg)
+        if (turned?.on) s.sure.add(turned.flag)
+        else if (turned) s.sure.delete(turned.flag)
+      } else if (op === OP_LEARN_TRICK) {
+        const bit = trickLearntBit(arg)
+        if (bit !== undefined) s.sure.add(bit)
+      }
     }
     if (outcome.leaves) s.party = []
     for (const who of outcome.joins) if (!s.party.includes(who)) s.party.push(who)
@@ -348,6 +482,39 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
    * walking into an area, a hand-on and a battle's aftermath start it only if
    * it has a script; talking plays its record either way.
    */
+  /**
+   * A set battle started in `map` from `state` — by an event's record, or a
+   * talk record's `120`, as Gortress's captain and the tower's guards start
+   * theirs — won, and lost: losing can move the story too, the Tower of
+   * Trades at 6.4. Then what follows each, by the battle's own records.
+   */
+  const fought = (
+    state: State,
+    map: number,
+    battle: number,
+    played: Set<number>,
+    depth = 0,
+  ): State[] => {
+    const area = areaOfMap.get(map)
+    const triggers = area ? (triggersOf.get(area) ?? []) : []
+    const out: State[] = []
+    for (const won of [true, false]) {
+      const after = afterBattle(triggers, battle, won, map, stateIn(state, map))
+      if (!after) {
+        if (won) out.push(state)
+        continue
+      }
+      const next = clone(state)
+      runRecord(next, map, after.outcome)
+      const on =
+        won && after.event !== undefined
+          ? play(next, map, after.event, true, played, depth + 1)
+          : []
+      out.push(...(on.length > 0 ? on : [next]))
+    }
+    return out
+  }
+
   const play = (
     from: State,
     map: number,
@@ -358,44 +525,96 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   ): State[] => {
     if (depth > 16) return []
     if (needsScript && !scripts.has(event)) return []
-    const chain = scripts.has(event) ? chainOf(event) : []
+    // Its script runs with the live thread's flags and marks — see `chainOf`.
+    const live = storyIn(from, map)
+    const chain = scripts.has(event) ? chainOf(event, live.flags, live.marks) : []
     const last = typeof chain === 'string' || chain.length === 0 ? event : (chain.at(-1) as number)
     played.add(event)
     if (typeof chain !== 'string') for (const id of chain) played.add(id)
-    const area = areaOfMap.get(map)
+    // **A scene plays in its own map**, the event list's — the last script's,
+    // since a chain goes back through the scene's start — and the game changes
+    // map for it; so its record is the one there. `ev5110`, the end of what
+    // talking to 106 on the Starflight Express starts, is the Observatory's.
+    const entry = eventList.get(last)
+    const at = entry && !entry.here && areaOfMap.has(entry.map) ? entry.map : map
+    const area = areaOfMap.get(at)
     const triggers = area ? (triggersOf.get(area) ?? []) : []
-    const outcome = eventOutcome(triggers, last, map, stateIn(from, map))
     const state = clone(from)
-    if (!outcome) return [state]
-    runRecord(state, map, outcome)
-    if (outcome.battle !== undefined) {
-      // Won, and lost: losing can move the story too — the Tower of Trades at 6.4.
-      const out: State[] = []
-      for (const won of [true, false]) {
-        const after = afterBattle(triggers, outcome.battle, won, map, stateIn(state, map))
-        if (!after) {
-          if (won) out.push(state)
-          continue
-        }
-        const fought = clone(state)
-        runRecord(fought, map, after.outcome)
-        const next =
-          won && after.event !== undefined
-            ? play(fought, map, after.event, true, played, depth + 1)
-            : []
-        out.push(...(next.length > 0 ? next : [fought]))
+    // **Starting a scene raises the story to the scene's own stage** when it
+    // is behind — read from the game's code: the scene's start (ov017
+    // `func_ov017_021bbfc4`, at `0x021bc424`) compares the live thread's
+    // major and minor, as 1000 × major + minor, with the list entry's, and
+    // sets the entry's when the story's is less, the major 19 at most — which
+    // is why the Starflight Express's arrival scenes are listed at 20.1. The
+    // step is left as it was. This is what opens 16.1: no record moves the
+    // story there.
+    const raised = storyIn(state, at)
+    const ahead = entry && (entry.values[0] as number) <= 19
+    if (raised.stage && ahead) {
+      const [major, minor] = entry.values as [number, number]
+      const now = raised.stage.major * 1000 + raised.stage.minor
+      if ((major !== 0 || minor !== 0) && now < major * 1000 + minor) {
+        raised.stage = { major, minor }
+        if (process.env.WALK_TRACE)
+          appendFileSync(
+            process.env.WALK_TRACE,
+            `  raise by ev${event} (last ev${last}, map ${at}): ${show(from.threads[threadOf(at)]?.stage ?? { major: 0, minor: 0 })} to ${major}.${minor}\n`,
+          )
       }
-      return out
     }
+    const outcome = eventOutcome(triggers, last, at, stateIn(state, at))
+    // Where the scene sends the Hero, after its own record: `807`.
+    const handOn = handOns.get(event)
+    const handedOn = (s: State): State[] => {
+      if (!handOn) return [s]
+      const next = play(s, handOn.map, handOn.event, true, played, depth + 1)
+      return next.length > 0 ? next : [s]
+    }
+    if (!outcome) return handedOn(state)
+    runRecord(state, at, outcome)
+    if (outcome.battle !== undefined) return fought(state, at, outcome.battle, played, depth)
     if (outcome.onward) {
       const next = play(state, outcome.onward.map, outcome.onward.event, true, played, depth + 1)
       return next.length > 0 ? next : [state]
     }
-    return [state]
+    return handedOn(state)
+  }
+
+  /**
+   * The Starflight Express's list, opened by a conductor's record in `map`: a
+   * ride to each stop offered — see `express.ts`. **Ours**: the walk does not
+   * follow which stop the Express is at, which only chooses the scene
+   * leaving it, and those scenes have no records; so each stop is ridden to,
+   * and a stop the Express is at is never refused.
+   */
+  let ridePlayed = new Set<number>()
+  const rides = (s: State, map: number, express: { mode: number; values: readonly number[] }) => {
+    const out: State[] = []
+    const mode = express.mode === 1 ? 1 : 0
+    const story = storyIn(s, map)
+    for (const stop of stopsOf(express.values)) {
+      const point = story.stage && { ...story.stage, step: story.step, globals: s.sure }
+      const { arrive } = rideScenes(0, stop, mode, point)
+      if (arrive === undefined) continue
+      const next = play(clone(s), map, arrive, true, ridePlayed)
+      for (const after of next.length > 0 ? next : [clone(s)]) {
+        // **INFERRED**: arriving at Gittingham Palace at 15.3 step 5 plays
+        // ev29150, Celestria opening the way — a scene of map 20034, the
+        // field by the palace, listed at 16.1, whose start raises the story
+        // there (see `play`). Nothing read names it; the field's own code
+        // must.
+        const now = storyIn(after, 20034)
+        if (stop === 4 && now.stage?.major === 15 && now.stage.minor === 3 && now.step === 5) {
+          out.push(...play(after, 20034, 29150, true, ridePlayed))
+        } else out.push(after)
+      }
+    }
+    return out
   }
 
   /** Every state one move takes the story to. */
   const movesFrom = (state: State, played: Set<number>): State[] => {
+    ridePlayed = played
     const out: State[] = []
     // Talk that only sets marks, or only sets flags, moves nothing on its own
     // — a town's first-time talk, each villager setting their own flag, as
@@ -431,12 +650,30 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
             talkedMore = true
           }
         })
+        // And the game-wide flags it set: in the folded state every talk was
+        // had, so they surely are. Lost here until 28 September 2026, which
+        // kept the king's `ev23198` at 3.7 from setting 147 for Stornway's
+        // entry at 4.1.
+        for (const flag of after.globals) {
+          if (talked.globals.has(flag)) continue
+          talked.globals.add(flag)
+          talked.sure.add(flag)
+          talkedMore = true
+        }
       }
     }
+    // **Once the five threads are brought together** — `148` on ev28800's
+    // record sets every one to 13.2 — the walk moves in thread 0's maps
+    // alone. **Ours**: the story from there is thread 0's, and the other
+    // four's towns hold only talk at 13.2, whose flags and marks made a state
+    // of every combination and ran the walk past ten minutes.
+    const together = state.threads.every((t) => t.stage && order(t.stage) >= 1302)
     for (const map of byMap.keys()) {
+      if (together && threadOf(map) !== 0) continue
       const story = storyIn(state, map)
       const stage = story.stage
       if (!stage || stage.major === 0) continue
+      if (order(stage) < (reachFrom.get(map) ?? 0)) continue
       const step = story.step > 0 ? story.step : undefined
       const here = recordsAt(map, stage)
       if (here.length === 0) continue
@@ -445,41 +682,36 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       // waited for, and where people stand and what holds can differ —
       // Erinn is upstairs at 2.6 only by night. **Ours.**
       for (const night of [false, true]) {
-        // Entering it.
-        const more = { globals: state.globals, globalsSure: state.sure, night }
-        const entry = entryPlay(here, map, stage, story.flags, step, more)
-        if (entry && scripts.has(entry.event)) {
-          const before = clone(state)
-          runRecord(before, map, entry.outcome)
-          keep(play(before, map, entry.event, true, played))
-        }
-        // Being in it: its watch, every frame — see `KIND_WATCH`.
-        const watch = watchPlay(here, map, stage, stateIn(state, map, night))
-        if (watch) {
-          const before = clone(state)
-          runRecord(before, map, watch)
-          keep(watch.event !== undefined ? play(before, map, watch.event, true, played) : [before])
-        }
-        // Walking into each of its areas.
-        for (const area of areaIdsAt(map, stage, stateIn(state, map, night))) {
-          const found = areaEvent(here, map, stage, story.flags, step, (id) => id === area, more)
-          if (!found || !scripts.has(found.event)) continue
-          const before = clone(state)
-          runRecord(before, map, found.outcome)
-          keep(play(before, map, found.event, true, played))
-        }
-        // Talking to whoever stands there, as the game does — see `pickLine`.
+        // Whoever stands here — for the talks below, and for a record's `118`.
         const view = views.get(area)
-        if (!view) continue
-        const letter = letterForStage(view.letters, stage)
-        const cast = castAt(area, map, stage, step, night, {
-          may: state.globals,
-          sure: state.sure,
-        })
-        const boxes = boxesAt(area, map, stage, step, night, {
-          may: state.globals,
-          sure: state.sure,
-        })
+        const letter = view && letterForStage(view.letters, stage)
+        const cast = view
+          ? castAt(area, map, stage, step, night, { may: state.globals, sure: state.sure })
+          : []
+        const boxes = view
+          ? boxesAt(area, map, stage, step, night, { may: state.globals, sure: state.sure })
+          : new Map<number, number[]>()
+        /** What a record has follow it: a talk (`118`), a hand-on, or an event. */
+        const follow = (
+          s: State,
+          outcome: EventOutcome,
+          needsScript: boolean,
+          depth = 0,
+        ): State[] => {
+          const talk = outcome.talk
+          if (talk && cast.includes(talk.character)) {
+            const next = talkTo(s, talk.character, talk.label, depth + 1)
+            return next.length > 0 ? next : [s]
+          }
+          if (outcome.battle !== undefined) return fought(s, map, outcome.battle, played)
+          if (outcome.express) return rides(s, map, outcome.express)
+          if (outcome.onward) {
+            const next = play(s, outcome.onward.map, outcome.onward.event, true, played)
+            return next.length > 0 ? next : [s]
+          }
+          if (outcome.event !== undefined) return play(s, map, outcome.event, needsScript, played)
+          return [s]
+        }
         const talkTo = (
           from: State,
           id: number,
@@ -487,7 +719,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
           depth = 0,
           box?: number,
         ): State[] => {
-          if (depth > 4) return []
+          if (depth > 4 || !view) return []
           const now = storyIn(from, map)
           const choice = pickLine({
             triggers: here,
@@ -501,29 +733,16 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
             flags: now.flags,
             marks: now.marks,
             alone: from.party.length === 0,
+            party: from.party.length + 1,
             step,
             globals: from.globals,
             globalsSure: from.sure,
           })
           if (!choice) return []
-          // What a record has follow it: another talk, a hand-on, or an event.
-          const follow = (s: State, outcome: EventOutcome, needsScript: boolean): State[] => {
-            const talk = outcome.talk
-            if (talk && cast.includes(talk.character)) {
-              const next = talkTo(s, talk.character, talk.label, depth + 1)
-              return next.length > 0 ? next : [s]
-            }
-            if (outcome.onward) {
-              const next = play(s, outcome.onward.map, outcome.onward.event, true, played)
-              return next.length > 0 ? next : [s]
-            }
-            if (outcome.event !== undefined) return play(s, map, outcome.event, needsScript, played)
-            return [s]
-          }
           const before = clone(from)
           if (choice.kind !== 'line') {
             runRecord(before, map, choice.record)
-            return follow(before, choice.record, false)
+            return follow(before, choice.record, false, depth)
           }
           if (choice.record) runRecord(before, map, choice.record)
           // The talk records after the line, by each answer its prompt could be
@@ -538,14 +757,102 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
             }
             const after = clone(before)
             runRecord(after, map, outcome)
-            out.push(...follow(after, outcome, false))
+            out.push(...follow(after, outcome, false, depth))
           }
           return out
         }
-        for (const id of cast) {
-          keep(talkTo(state, id, undefined))
-          // And from each of their talk boxes, with its label.
-          for (const box of boxes.get(id) ?? []) keep(talkTo(state, id, undefined, 0, box))
+        // Entering it.
+        const more = { globals: state.globals, globalsSure: state.sure, night }
+        const entry = entryPlay(here, map, stage, story.flags, step, more)
+        if (entry) {
+          const before = clone(state)
+          runRecord(before, map, entry.outcome)
+          keep(follow(before, entry.outcome, true))
+        }
+        // And its settings record, run as the map's triggers are loaded —
+        // see `settingsPlay`: the Bowhole's plays ev13500 at 13.5.
+        const settings = settingsPlay(here, map, stage, stateIn(state, map, night))
+        if (settings) {
+          const before = clone(state)
+          runRecord(before, map, settings)
+          keep(follow(before, settings, true))
+        }
+        // Being in it: its watch, every frame — see `KIND_WATCH`.
+        const watch = watchPlay(here, map, stage, stateIn(state, map, night))
+        if (watch) {
+          const before = clone(state)
+          runRecord(before, map, watch)
+          keep(follow(before, watch, true))
+        }
+        // Walking into each of its areas: the first record for it that holds
+        // runs, whatever it does — Dourbridge's area 22 at 7.3 has the Hero
+        // talk to 3, which is what starts ev7300.
+        for (const area of areaIdsAt(map, stage, stateIn(state, map, night))) {
+          const found = areaEvent(here, map, stage, story.flags, step, (id) => id === area, more)
+          if (!found) continue
+          const before = clone(state)
+          runRecord(before, map, found.outcome)
+          keep(follow(before, found.outcome, true))
+        }
+        // Performing a party trick in each of them — see `KIND_TRICK`: a Clap
+        // in Gleeba's area 10 at 11.2 brings Drak out. The walk performs any
+        // trick the Hero knows, from the start or learnt by `142`.
+        for (const area of areaIdsAt(map, stage, stateIn(state, map, night))) {
+          const found = trickPlay(
+            here,
+            map,
+            stage,
+            area,
+            (trick) => trickKnown(trick, state.sure),
+            stateIn(state, map, night),
+          )
+          if (!found) continue
+          const before = clone(state)
+          runRecord(before, map, found.outcome)
+          keep(follow(before, found.outcome, true))
+        }
+        // Standing at each of its doorways — see `KIND_DOORWAY`: Coffinwell's
+        // 27 stops the Hero at door 9 at 4.5, which is what starts ev4080.
+        for (const doorway of mapDoorwaysOf.get(map) ?? []) {
+          const found = doorwayPlay(here, map, stage, doorway, stateIn(state, map, night))
+          if (!found) continue
+          const before = clone(state)
+          runRecord(before, map, found)
+          keep(follow(before, found, true))
+        }
+        if (!view) continue
+        // Talking to whoever stands there, as the game does — see `pickLine`.
+        // **Talks in every order, as far as game-wide flags go.** The folded
+        // state above is every talk had at once, and the game-wide flags it
+        // has are merged, may and sure (see `walkFrom`) — which cannot say
+        // that one is set and another not. Some of the game's puzzles are
+        // that: the Quarantomb's two switches each hold only while the other
+        // is off; the last of Angel Falls' five bells rings only with the
+        // other four rung; Gortress's captain wants four set. So a talk that
+        // changed nothing but the game-wide flags is talked on from, exactly
+        // — those flags surely set — once for each set of flags reached, up
+        // to `TALK_SETS`. **Ours.**
+        const frontier: State[] = [state]
+        const reachedSets = new Set([sorted(state.globals)])
+        while (frontier.length > 0) {
+          const from = frontier.pop() as State
+          for (const id of cast) {
+            const talks = [
+              talkTo(from, id, undefined),
+              // And from each of their talk boxes, with its label.
+              ...(boxes.get(id) ?? []).map((box) => talkTo(from, id, undefined, 0, box)),
+            ]
+            for (const results of talks) {
+              keep(results)
+              for (const after of results) {
+                if (keyOf(after) !== keyOf(from)) continue
+                const set = sorted(after.globals)
+                if (reachedSets.has(set) || reachedSets.size >= TALK_SETS) continue
+                reachedSets.add(set)
+                frontier.push(after)
+              }
+            }
+          }
         }
       }
     }
@@ -574,41 +881,123 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // intersection), and explored again whenever a merge adds to what may be.
     const best = new Map<string, State>()
     best.set(keyOf(start), start)
+    //
+    // **The threads are walked apart** — ours, 28 September 2026. A move in
+    // a map reads and writes that map's thread alone, with the game-wide flags
+    // and whoever goes along (`storyIn`); so once `ev25524` has started all
+    // five, every combination of where they stand is a state of its own, and
+    // the walk from 5.1 ran past ten minutes. A new state is kept only if one
+    // of its threads stands somewhere no state has had it, with that party;
+    // otherwise all it could add is its game-wide flags, merged into the first
+    // state found at each of its threads', as above.
+    const seen = new Map<string, State>()
+    const projections = (s: State) =>
+      s.threads.map(
+        (t, k) =>
+          `${k}|${t.stage ? show(t.stage) : '-'}.${t.step}/${sorted(t.flags)}/${sorted(t.marks)}|${sorted(s.party)}`,
+      )
+    const note = (s: State) => {
+      for (const p of projections(s)) if (!seen.has(p)) seen.set(p, s)
+    }
+    note(start)
+    const grows = (next: State, known: State) =>
+      [...next.globals].some((n) => !known.globals.has(n)) ||
+      [...known.sure].some((n) => !next.sure.has(n))
     const queue = [start]
+    /** Put `merged` where `known` was, and walk on from it. */
+    const supersede = (known: State, merged: State) => {
+      best.set(keyOf(known), merged)
+      for (const p of projections(known)) if (seen.get(p) === known) seen.set(p, merged)
+      queue.push(merged)
+    }
+    const mergedOf = (known: State, next: State) => {
+      const merged = clone(known)
+      for (const n of next.globals) merged.globals.add(n)
+      for (const n of known.sure) if (!next.sure.has(n)) merged.sure.delete(n)
+      return merged
+    }
     const reached = new Map<string, Point>()
     const played = new Set<number>()
     let capped = false
-    while (queue.length > 0) {
-      const state = queue.shift() as State
-      if (best.get(keyOf(state)) !== state) continue
-      for (const thread of state.threads) {
-        if (!thread.stage || thread.stage.major === 0) continue
-        const point = { ...thread.stage, step: thread.step }
-        reached.set(show(point), point)
-      }
-      for (const next of movesFrom(state, played)) {
-        const key = keyOf(next)
-        const known = best.get(key)
-        if (!known) {
-          if (best.size >= STATE_CAP) {
-            capped = true
-            break
-          }
-          best.set(key, next)
-          queue.push(next)
-          continue
+    /** Every game-wide flag some state has had set, and the first state with thread 0 at 10.8 step 1 — for the ride below. */
+    const everSet = new Set<number>()
+    let atTheEnd: State | undefined
+    const t0 = Date.now()
+    let processed = 0
+    const drain = () => {
+      while (queue.length > 0) {
+        const state = queue.shift() as State
+        if (best.get(keyOf(state)) !== state) continue
+        if (process.env.WALK_TRACE && ++processed % 200 === 0) {
+          appendFileSync(
+            process.env.WALK_TRACE,
+            `walk from ${show(from)}: ${processed} taken, ${best.size} states, queue ${queue.length}, ${Date.now() - t0}ms; at ${state.threads.map((t) => (t.stage ? `${show(t.stage)}.${t.step}` : '-')).join(' ')}\n`,
+          )
         }
-        const grows =
-          [...next.globals].some((n) => !known.globals.has(n)) ||
-          [...known.sure].some((n) => !next.sure.has(n))
-        if (!grows) continue
-        const merged = clone(known)
-        for (const n of next.globals) merged.globals.add(n)
-        for (const n of known.sure) if (!next.sure.has(n)) merged.sure.delete(n)
-        best.set(key, merged)
-        queue.push(merged)
+        const tState = Date.now()
+        for (const flag of state.globals) everSet.add(flag)
+        for (const thread of state.threads) {
+          if (!thread.stage || thread.stage.major === 0) continue
+          const point = { ...thread.stage, step: thread.step }
+          reached.set(show(point), point)
+        }
+        const first = storyIn(state, 6401)
+        if (!atTheEnd && first.stage?.major === 10 && first.stage.minor === 8 && first.step === 1)
+          atTheEnd = state
+        for (const next of movesFrom(state, played)) {
+          const key = keyOf(next)
+          const known = best.get(key)
+          if (!known) {
+            if (projections(next).every((p) => seen.has(p))) {
+              // Nowhere new for any thread: only its flags, into each one's first.
+              for (const p of projections(next)) {
+                const first = seen.get(p) as State
+                if (best.get(keyOf(first)) === first && grows(next, first))
+                  supersede(first, mergedOf(first, next))
+              }
+              continue
+            }
+            if (best.size >= STATE_CAP) {
+              capped = true
+              break
+            }
+            best.set(key, next)
+            note(next)
+            queue.push(next)
+            continue
+          }
+          if (grows(next, known)) supersede(known, mergedOf(known, next))
+        }
+        if (process.env.WALK_TRACE && Date.now() - tState > 1500) {
+          appendFileSync(
+            process.env.WALK_TRACE,
+            `  slow state (${Date.now() - tState}ms): ${state.threads.map((t) => (t.stage ? `${show(t.stage)}.${t.step}` : '-')).join(' ')} party ${sorted(state.party)} globals ${state.globals.size}\n`,
+          )
+        }
+        if (capped) break
       }
-      if (capped) break
+    }
+    drain()
+    // **The five threads done**: Stella's ride to the Observatory at 10.8
+    // step 1, with game-wide flags 4 to 10 set — one at each thread's end —
+    // plays ev28800 (see `rideScenes`), whose record brings the threads back
+    // together at 13.2. **Ours**: the threads are walked apart, so no one
+    // state has every thread's end flag; the ride is taken again from the
+    // first state at 10.8 step 1, with every flag some state has set, once
+    // all seven have been, and the walk goes on from what it plays.
+    const fyggs = [4, 5, 6, 7, 8, 9, 10]
+    if (!capped && atTheEnd && fyggs.every((flag) => everSet.has(flag))) {
+      const onBoard = clone(atTheEnd)
+      for (const flag of everSet) onBoard.globals.add(flag)
+      for (const flag of fyggs) onBoard.sure.add(flag)
+      for (const next of rides(onBoard, 6401, { mode: 0, values: [(1 << 16) | 2, 0] })) {
+        const key = keyOf(next)
+        if (best.has(key)) continue
+        best.set(key, next)
+        note(next)
+        queue.push(next)
+      }
+      drain()
     }
     return { from, reached, visited: [...best.values()], capped, played }
   }
@@ -727,7 +1116,11 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     }
     const fails = failing(trigger, inSpan)
     if (fails) return `a record of ${what}: ${fails}`
-    if (![0, 1, KIND_AREA_EVENT, KIND_ENTRY, KIND_WATCH, 11].includes(trigger.unknown_5))
+    if (
+      ![0, 1, KIND_AREA_EVENT, KIND_ENTRY, KIND_WATCH, KIND_TRICK, 11, 17].includes(
+        trigger.unknown_5,
+      )
+    )
       return `a record of ${what}, a kind the engine does not read`
     const started =
       reach.handOn || trigger.unknown_5 === KIND_AREA_EVENT || trigger.unknown_5 === KIND_ENTRY
@@ -750,6 +1143,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         flags: story.flags,
         marks: story.marks,
         alone: state.party.length === 0,
+        party: state.party.length + 1,
         step: story.step > 0 ? story.step : undefined,
         globals: state.globals,
         globalsSure: state.sure,
@@ -797,6 +1191,10 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         if (typeof run === 'string' || !run.includes(s.event)) continue
         reasons.push(`chained from ev${first}, which the walk never played`)
       }
+      for (const [first, to] of handOns) {
+        if (to.event !== s.event) continue
+        reasons.push(`handed on by ev${first}'s 807, which the walk never played`)
+      }
       why.push(
         reasons.length === 0
           ? `${where}: ev${s.event} — nothing in the triggers or the scripts' chains reaches it${also}`
@@ -828,6 +1226,14 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         byMap.set(trigger.map, list)
       }
     }
+    // Where each map comes into reach — see `reachFrom`.
+    for (const [map, triggers] of byMap) {
+      // Those over the whole story say nothing of when it is reached.
+      const own = triggers
+        .filter((t) => !(order(t.from) <= 101 && t.to.major >= 19))
+        .map((t) => order(t.from))
+      if (own.length > 0) reachFrom.set(map, Math.min(...own))
+    }
     // A hand-on can go to a map with no records of its own.
     for (const triggers of triggersOf.values()) {
       for (const trigger of triggers) {
@@ -839,6 +1245,13 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         if (!areaOfMap.has(map) && code && triggersOf.has(code.slice(0, 3)))
           areaOfMap.set(map, code.slice(0, 3))
       }
+    }
+    // A scene's own map, from the event lists, answers to its area too.
+    eventList = eventListOf(rom)
+    for (const { map } of eventList.values()) {
+      const code = index?.(map)
+      if (!areaOfMap.has(map) && code && triggersOf.has(code.slice(0, 3)))
+        areaOfMap.set(map, code.slice(0, 3))
     }
     for (const area of triggersOf.keys()) views.set(area, storyView(rom, area))
     // Each map's own areas, out of its link table, by the map's id.
@@ -856,6 +1269,10 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       if (map === undefined || !isMapLinks(leaf.bytes)) continue
       try {
         mapAreasOf.set(map, mapAreas(leaf.bytes))
+        mapDoorwaysOf.set(
+          map,
+          mapDoorwayRegions(leaf.bytes).map((region) => region.id),
+        )
       } catch {
         // A link table that will not read leaves the map without areas of its own.
       }
@@ -1000,12 +1417,28 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // game's own rule — a character's own record, the line, then their talk
     // records, and talk boxes — and 372 files that begin with the word 16
     // stopped being read as empty. 47 once `155`, a flag and an event, was
-    // read: Gortress's chain at 14.4 starts from it.
-    expect(breaks.length).toBe(47)
-    // The first break after the slice: Loch Storn's set battle, whose first
-    // fight nothing the walk plays starts.
+    // read: Gortress's chain at 14.4 starts from it. 31 once `807` was
+    // followed (Loch Storn's first fight), the walk kept the game-wide flags
+    // talk sets, and `place.bin`'s tag 4 was read. 26 once a scene's record
+    // was taken in the scene's own map, from the game's event lists. 24 with
+    // `220`, the Quarantomb's switches, and the walk following a map's talks
+    // in every order as far as game-wide flags go — the bells at 1.2 too. 23
+    // once an area record's `118` started its talk (Dourbridge at 7.3). 20
+    // with the doorway records, kind 17: Coffinwell's 27 at door 9. 16 once a
+    // talk record's battle was fought. 15 with every doorway region, not only
+    // those with a destination. 13 once an entry record was run whole, event
+    // or none, and the settings records, kind 20, ran with it. 6 with party
+    // tricks, the thread's flags that `602` reads, a scene's start raising the
+    // story, and the Starflight Express — and the walk's own reach, without
+    // which the raise sent the prologue to chapter 15.
+    expect(breaks.length).toBe(6)
+    // **The story plays from a new game to the credits in one walk**: walk 1
+    // reaches 19.2. Of the six breaks, five are the Quester's Rest's quests
+    // after the credits, 19.3 to 19.7, and one is 16.1 step 2 — losing set
+    // battle 17, which the story does not need.
+    expect(walks[0]?.reached.has('19.2 step 1')).toBe(true)
     const first = breaks.find((b) => b.next.major >= 3)
-    expect(first && show(first.next)).toBe('3.2 step 3')
+    expect(first && show(first.next)).toBe('16.1 step 2')
     expect(walks.every((walk) => !walk.capped)).toBe(true)
   })
 })

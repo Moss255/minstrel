@@ -65,6 +65,13 @@ export interface MapTransition {
   readonly arriveZ: number
   /** Which way you face on arriving, in radians. */
   readonly arriveFacing: number
+  /**
+   * The doorway's two numbers, on the `0x74` form: its first two values, which
+   * the game keeps on the region (`+0x2c`, `+0x2d`, `func_0201d638`) and tests
+   * a doorway record against — see `KIND_DOORWAY` in `story.ts`. The village's
+   * doors are `0, 0` to `9, 0`; a map with two doors to one place numbers them.
+   */
+  readonly id?: readonly [number, number]
 }
 
 /**
@@ -92,9 +99,14 @@ function transition(
   if (to === undefined) return undefined
   const at = trigger.from
   const arrival = slot + ARRIVAL_AHEAD
+  const id =
+    tag === TAG_ACTION && record.kinds[0] === 1 && record.kinds[1] === 1
+      ? ([record.values[0] as number, record.values[1] as number] as const)
+      : undefined
   return {
     tag,
     to,
+    ...(id ? { id } : {}),
     x: trigger.values[at] as number,
     y: trigger.values[at + 1] as number,
     z: trigger.values[at + 2] as number,
@@ -238,6 +250,56 @@ export function mapAreas(data: Uint8Array): StoryArea[] {
       min: { x: x - width / 2, y: y - height / 2, z: z - depth / 2 },
       angle: ((angle % turn) + turn) % turn,
       reach: (width / 2) ** 2 + (depth / 2) ** 2,
+    })
+  }
+  return out
+}
+
+/** The kind of a `0x73` region that is a doorway — see {@link mapDoorwayRegions}. */
+const REGION_DOORWAY = 2
+
+/** A doorway region of a map's link table, by the two numbers its records name it by. */
+export interface DoorwayRegion {
+  /** Its first two `0x74` values, which the game keeps at the region's `+0x2c` and `+0x2d`. */
+  readonly id: readonly [number, number]
+  /** Where it is, as an area: numbered by its place in the table. */
+  readonly area: StoryArea
+}
+
+/**
+ * A map's doorway regions: its link table's `0x73` regions of **type 2**, each
+ * with the two numbers of the `0x74` after it — **with or without a
+ * destination**. A doorway record (`KIND_DOORWAY` in `story.ts`) names one by
+ * those numbers, and the game runs it for each such region the Hero stands in
+ * (ov017 `func_ov017_02198f84`) before any transition; a region with no
+ * destination is a way out that some record blocks or answers — D12's
+ * `0, 13` at 8201, whose record has 51 speak. {@link mapDoorways} keeps only
+ * those with a destination, since it says where the Hero goes.
+ */
+export function mapDoorwayRegions(data: Uint8Array): DoorwayRegion[] {
+  const table = readDataTable(data)
+  const records = table.records
+  const out: DoorwayRegion[] = []
+  for (let i = 0; i < records.length; i++) {
+    const region = records[i] as TableRecord
+    if (region.tag !== TAG_TRIGGER || region.values[0] !== REGION_DOORWAY) continue
+    const action = records[i + 1]
+    if (action?.tag !== TAG_ACTION || action.values.length < 2) continue
+    if (action.kinds[0] !== 1 || action.kinds[1] !== 1) continue
+    const f = region.floats
+    const [x, y, z, width, height, depth, angle] = [1, 2, 3, 4, 5, 6, 7].map(
+      (slot) => (f[slot] as number) ?? 0,
+    ) as [number, number, number, number, number, number, number]
+    const turn = 2 * Math.PI
+    out.push({
+      id: [action.values[0] as number, action.values[1] as number],
+      area: {
+        id: out.length,
+        max: { x: x + width / 2, y: y + height / 2, z: z + depth / 2 },
+        min: { x: x - width / 2, y: y - height / 2, z: z - depth / 2 },
+        angle: ((angle % turn) + turn) % turn,
+        reach: (width / 2) ** 2 + (depth / 2) ** 2,
+      },
     })
   }
   return out

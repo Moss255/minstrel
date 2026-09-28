@@ -17,15 +17,17 @@ credits in one save. **The worklist is `docs/story-walk.md`**, produced by
 cartridge by the engine's own rules and prints every break with why. It
 takes precedence over the list below, which was the sweep's.
 
-One walk now plays from 1.3 through the slice and chapter 3 to Loch Storn,
-and 47 breaks remain. The story's five threads, how the game runs a record,
+One walk now plays from a new game to the credits, and 6 breaks remain —
+five of them the quests after the credits (see `docs/story-walk.md`). The story's five threads, how the game runs a record,
 the maps' own areas, who stands where and **how the game talks** are read and
 built — talking is no longer guessed: a character's own record, the last line
 that holds for the label, then their talk records, and talk boxes. On the way,
 **372 files that begin with the word 16 had been read as empty**, the king's
-talk among them (see `docs/story-walk.md`). What is left is mostly cascades
-and what starts set battles from scenes — see the list. Run the walk again
-after each change.
+talk among them (see `docs/story-walk.md`). A scene's hand-on to another map,
+`807`, is read, which is how Loch Storn's first fight begins. What is left is
+spread thin — an event's record in another area's file, cascades, the
+quests after the credits — see the list. Run the walk again after each
+change.
 
 Decomp and wiki contributions are deferred until minstrel is finished. A
 function read from the game's code along the way goes in

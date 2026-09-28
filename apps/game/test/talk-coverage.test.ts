@@ -246,10 +246,14 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // says nothing, and 124 have nothing. 245 more were asked at a stage whose
     // chapter their area has no talk for, and are not counted. (29 and 43
     // until `155` was read the same day: one of Gortress's plays its event.)
-    expect(t.spoke).toBe(1178)
-    expect(t.events).toBe(30)
+    //
+    // Then 1,185 of 1,369, with 26 events, 42 records and 116 with nothing,
+    // once `place.bin`'s tag 4 — a placement at one point of the story — was
+    // read the same day, which moves some of the cast asked.
+    expect(t.spoke).toBe(1185)
+    expect(t.events).toBe(26)
     expect(t.records).toBe(42)
-    expect(t.nothing).toBe(124)
+    expect(t.nothing).toBe(116)
     expect(t.noChapter).toBe(245)
     expect(t.silent).toBe(0)
   })
@@ -299,10 +303,11 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // 1,070, 246, 234 and one `<ANGLE>` of 1,551 once who stands where was the
     // game's.
     // 839, 177 and 162 of 1,178 once the lines were the game's choice.
+    // 840, 179 and 166 of 1,185 once tag 4 was read.
     expect([...t.turns].sort((a, b) => b[1] - a[1])).toEqual([
-      ['player', 839],
-      ['back', 177],
-      ['keep', 162],
+      ['player', 840],
+      ['back', 179],
+      ['keep', 166],
     ])
     expect([...t.turns.values()].reduce((a, b) => a + b, 0)).toBe(t.spoke)
   })

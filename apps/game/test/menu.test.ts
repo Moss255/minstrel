@@ -1,3 +1,4 @@
+import { TRICK_NAMES_FROM } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { EMPTY_BAG, take } from '../src/bag.ts'
 import { SLOTS } from '../src/equipment.ts'
@@ -10,6 +11,7 @@ import {
   MENU_COMMANDS,
   MENU_WORDS,
   type MenuContext,
+  type MenuState,
   moveCursor,
   openMenu,
   panelLines,
@@ -293,11 +295,59 @@ describe('the main menu', () => {
       // **The game's own name for the skill screen**, `str_tm` 4003 —
       // "Allocate Skill Points", which is what the field menu calls it.
       'Allocate Skill Points',
+      // **And the trick screen's**, `str_tm` 4004, next to it in the game's
+      // Misc. menu: where the B Button's four tricks are chosen.
+      'Assign Party Tricks',
       // **And that is the whole list.** The Krak Pot and character creation
       // were here and should not have been: the pot is spoken to and
       // creation is its own scene. See `UNLISTED_PANELS` in `menu.ts`.
     ])
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
+  })
+
+  it('assigns a party trick to one of the four places, and clears it', () => {
+    // The tricks the Hero knows, by number, and the places — see `MenuContext.tricks`.
+    const context = {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      tricks: { known: [2, 3], assigned: [undefined, 3, undefined, undefined] },
+      words: new Map([
+        [MENU_WORDS.tricks, 'Assign Party Tricks'],
+        [MENU_WORDS.trickSlots, 'Up'],
+        [MENU_WORDS.trickSlots + 1, 'Right'],
+        [MENU_WORDS.trickClear, 'Clear'],
+        [TRICK_NAMES_FROM + 2, 'Clap'],
+        [TRICK_NAMES_FROM + 3, 'Air Punch'],
+      ]),
+    }
+    const open = { ...openMenu(), panel: 'tricks' as const }
+    // The four places, the game's words where given, and what each holds.
+    expect(panelLines('tricks', context, open)).toEqual([
+      'Assign Party Tricks',
+      '▶ Up: ------',
+      '   Right: Air Punch',
+      '   Left: ------',
+      '   Down: ------',
+    ])
+    // A place opens the tricks known and Clear; a trick goes into the place.
+    const inSlot = choose(open, context).state as MenuState
+    expect(inSlot.slot).toBe(0)
+    expect(panelLines('tricks', context, inSlot)).toEqual([
+      'Up:',
+      '▶ Clap',
+      '   Air Punch',
+      '   Clear',
+    ])
+    const taken = choose(inSlot, context)
+    expect(taken.assign).toEqual({ slot: 0, trick: 2 })
+    expect(taken.state?.slot).toBeUndefined()
+    // Clear is the row after the last trick; the cursor wraps over it.
+    const atClear = moveCursor({ ...inSlot, row: 2 }, 0, context)
+    expect(choose(atClear, context).assign).toEqual({ slot: 0, trick: undefined })
+    expect(moveCursor({ ...inSlot, row: 2 }, 1, context).row).toBe(0)
+    // Going back from a place returns to it in the list.
+    expect(back({ ...inSlot, slot: 1 })?.row).toBe(1)
   })
 
   it('says the bag is empty when it holds no items', () => {

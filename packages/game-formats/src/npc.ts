@@ -447,6 +447,8 @@ const TAG_BLOCK = 3
 const TAG_SPAN = 5
 /** A record that holds while flags do — see {@link castAtPoint}. */
 const TAG_WHILE = 17
+/** A record at one point of the story — see {@link castAtPoint}. */
+const TAG_AT = 4
 
 /**
  * Which bit of the game-wide bank an id names where a record names it by
@@ -477,8 +479,9 @@ export function flagBit(id: number): number {
  * A placement joins its character's others in an order (`func_0206db48`), and
  * the first of them is where they stand: a span over a sub-stage comes before
  * a block's; between spans, **the one that starts earliest**, then the first in
- * the file; between blocks, the first. One that comes after all the others is
- * dropped. Taking a character away (`func_0206dd68`) clears where they stand,
+ * the file; between blocks, the first. A point's (tag 4) goes with the spans
+ * that end at a sub-stage 0, the first in the file first. One that comes
+ * after all the others is dropped. Taking a character away (`func_0206dd68`) clears where they stand,
  * and a later record can place them again.
  *
  * - **While flags hold, tag 17** (`func_0206d4e0`): pairs of a condition and
@@ -489,10 +492,14 @@ export function flagBit(id: number): number {
  *   others**. The Quarantomb's `29` stands in `7401` while flag 89 is set and
  *   in `7402` while 90 is, which its triggers set and clear.
  *
+ * - **At one point, tag 4** (`func_0206c0f8`): stage, sub-stage and step,
+ *   which must all be now's, then the time of day, map, character and where,
+ *   as a span's. Coffinwell's `26` is placed only so: in the scholar's house
+ *   (1311) at 4.1 steps 1 and 2, outdoors at step 3.
  * - **A talk box, tag 6** — see {@link TalkBox}: kept on the placement.
  *
  * The other tags — 14 places a character by one of four states of a quest
- * (`func_0206e120`; see `lineFor` in `apps/game`), and 4, 8, 11, 15 and 18 to
+ * (`func_0206e120`; see `lineFor` in `apps/game`), and 8, 11, 15 and 18 to
  * 22 — are not read. So a character placed only by them stands nowhere here.
  *
  * `isSet` answers for a game-wide flag by its bit; without it, every flag is
@@ -600,6 +607,19 @@ export function castAtPoint(
         return
       }
       place(record, id, at + 3, 0, 0, index)
+      return
+    }
+    if (record.tag === TAG_AT) {
+      if (v.length < 6) return
+      const [major, minor, step, time, where, id] = v as number[]
+      if (major !== point.major || minor !== point.minor || step !== point.step) return
+      if ((time === 1 && !night) || (time === 0 && night)) return
+      if (where !== map || v.length < 7) {
+        chains.delete(id as number)
+        return
+      }
+      // Ordered as a span that ends at a sub-stage 0, by its minor alone.
+      place(record, id as number, 6, minor !== 0 ? 3 : 5, now, index)
       return
     }
     if (record.tag === TAG_BLOCK) {

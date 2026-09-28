@@ -138,4 +138,43 @@ describe('who stands where', () => {
     const records = readPlaceRecords(build([block(5602, 22, [1, 1]), block(5602, 22)]))
     expect(castAtPoint(records, 5602, point(10, 2, 1), false).has(22)).toBe(false)
   })
+
+  it('places a character at one point of the story, and only there', () => {
+    // Coffinwell's `26`'s shape: tag 4, stage, sub-stage and step, then the
+    // time, map, character and where — and nothing else places them.
+    const at4 = (step: number, map: number, where: [number, number]) => ({
+      tag: 4,
+      fields: [4, 1, step, 2, map, 26].map(int).concat(at(...where)),
+    })
+    const records = readPlaceRecords(build([at4(1, 1311, [3, 3]), at4(3, 1300, [9, 9])]))
+    expect(castAtPoint(records, 1311, point(4, 1, 1), false).get(26)?.x).toBeCloseTo(3, 5)
+    expect(castAtPoint(records, 1311, point(4, 1, 2), false).has(26)).toBe(false)
+    expect(castAtPoint(records, 1300, point(4, 1, 3), false).get(26)?.x).toBeCloseTo(9, 5)
+    // Another map's point takes them away, as a span's does.
+    const both = readPlaceRecords(build([block(1311, 26, [1, 1]), at4(3, 1300, [9, 9])]))
+    expect(castAtPoint(both, 1311, point(4, 1, 2), false).has(26)).toBe(true)
+    expect(castAtPoint(both, 1311, point(4, 1, 3), false).has(26)).toBe(false)
+  })
+
+  it('keeps a talk box on the placement it follows', () => {
+    const box = {
+      tag: 6,
+      fields: [int(7), float(2), float(3), float(-2), float(-3), int(80)],
+    }
+    const placed = castAtPoint(
+      readPlaceRecords(build([block(1100, 7, [0, 0]), box])),
+      1100,
+      point(2, 1, 1),
+      false,
+    ).get(7)
+    expect(placed?.boxes).toEqual([{ label: 80, maxX: 2, maxZ: 3, minX: -2, minZ: -3 }])
+    // Read before the character is placed, a box is on nothing.
+    const early = castAtPoint(
+      readPlaceRecords(build([box, block(1100, 7, [0, 0])])),
+      1100,
+      point(2, 1, 1),
+      false,
+    ).get(7)
+    expect(early?.boxes).toBeUndefined()
+  })
 })

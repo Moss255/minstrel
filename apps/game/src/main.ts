@@ -16,6 +16,8 @@ import {
   areaAt,
   areaEvent,
   areasOf,
+  blocksDoorway,
+  doorwayPlay,
   type EventOutcome,
   entryPlay,
   eventOutcome,
@@ -32,8 +34,13 @@ import {
   partName,
   type StoryArea,
   type StoryState,
+  settingsPlay,
   spellsLearnt,
+  TRICK_NAMES_FROM,
+  TRICKS,
   type Treasure,
+  trickKnown,
+  trickPlay,
   triggerWords,
   vocationsWielding,
   watchPlay,
@@ -222,6 +229,14 @@ import {
   sceneMotion,
   TIME_OF_DAY,
 } from './event.ts'
+import {
+  conductorLine,
+  EXPRESS_PLACES,
+  EXPRESS_WORDS,
+  type ExpressMode,
+  rideScenes,
+  stopsOf,
+} from './express.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
@@ -671,6 +686,27 @@ function enterThread(map: number | undefined): void {
  * Kept in the save, though only the Hero's numbers are yet written there.
  */
 let members: Member[] = [heroAtStart()]
+/**
+ * The party trick in each of the four places the B Button and +Control Pad
+ * reach — Up, Right, Left, Down, as `str_tm` 4501 to 4504 order them — by
+ * number, or undefined for none; set in the menu's Assign Party Tricks. The
+ * game's defaults are not read: a new game starts with none assigned. Ours.
+ */
+let trickSlots: (number | undefined)[] = [undefined, undefined, undefined, undefined]
+/** The four places' directions, in the game's order. */
+const TRICK_SLOT_ACTIONS: readonly Action[] = ['up', 'right', 'left', 'down']
+/** Whether the cancel button — the game's B — is held, for a trick with a direction. */
+let cancelHeld = false
+/**
+ * The stop the Starflight Express is at, 0 for none — the field state's
+ * halfword the Express's task reads (see `express.ts`): set by a record's
+ * `216` and by every ride. Saved.
+ */
+let expressAt = 0
+/** Who opened the Express's list and which conductor they are, while it is up or being answered. */
+let expressBy:
+  | { readonly who: Talker; readonly mode: ExpressMode; readonly stops: readonly number[] }
+  | undefined
 
 /** The Hero as a new game finds them: the slice's kit, in the vocation they are. */
 function heroAtStart(): Member {
@@ -901,6 +937,8 @@ let playing:
       showing: number | undefined
       carry: number
       readonly framing: { pitch: number; distance: number; yaw: number }
+      /** A script `538` chained into that plays in another map, waiting for it — see `startEvent`. */
+      chainAway?: { readonly map: number; readonly event: number }
     }
   | undefined
 /**
@@ -1494,6 +1532,19 @@ function openWorld(map: string): void {
  */
 function playEntryEvent(): boolean {
   if (!loaded || !storyStage || playing || loaded.mapId === undefined) return false
+  // **INFERRED**: arriving at Gittingham Palace's field stop by the
+  // Starflight Express at 15.3 step 5 plays ev29150, Celestria opening the
+  // way — a scene of map 20034 listed at 16.1, whose start raises the story
+  // there (see `startEvent`). Nothing read names it; the field's own code must.
+  if (
+    loaded.mapId === 20034 &&
+    expressAt === 4 &&
+    storyStage.major === 15 &&
+    storyStage.minor === 3 &&
+    stepNow() === 5
+  ) {
+    return startEvent(29150)
+  }
   const found = entryPlay(
     loaded.triggers,
     loaded.mapId,
@@ -1502,10 +1553,26 @@ function playEntryEvent(): boolean {
     stepNow(),
     storyState().more,
   )
-  if (!found || !loaded.eventScript(found.event)) return false
+  // The map's settings record too, as the game runs it when the map's
+  // triggers are loaded — see `settingsPlay`. The entry record's after it,
+  // as the areas it adds are then in place.
+  const settings = settingsPlay(loaded.triggers, loaded.mapId, storyStage, storyState())
+  let began = false
+  if (settings) {
+    storyFromRecord(settings)
+    began =
+      followTalkOf(settings) ||
+      (settings.event !== undefined &&
+        !!loaded.eventScript(settings.event) &&
+        startEvent(settings.event))
+  }
+  if (!found) return began
   // Everything its record does — its own flags among it, so it plays once;
   // see `entryPlay`. The game runs every action of the record it takes.
   storyFromRecord(found.outcome)
+  if (began) return true
+  if (followTalkOf(found.outcome)) return true
+  if (found.event === undefined || !loaded.eventScript(found.event)) return false
   return startEvent(found.event)
 }
 
@@ -1528,6 +1595,8 @@ function restore(game: SaveGame): void {
   for (const mark of game.marks ?? []) storyMarks.add(mark)
   storyGlobals.clear()
   for (const flag of game.globals ?? []) storyGlobals.add(flag)
+  trickSlots = Array.from({ length: 4 }, (_, i) => game.tricks?.[i] ?? undefined)
+  expressAt = game.express ?? 0
   // The other threads — see `storyThreads`. A save from before they were kept
   // had only the one, and the map it was made in takes it.
   for (let thread = 0; thread < THREADS; thread++) {
@@ -1580,6 +1649,8 @@ function confess(): string {
     flags: [...storyFlags],
     marks: [...storyMarks],
     globals: [...storyGlobals],
+    tricks: trickSlots.map((trick) => trick ?? null),
+    ...(expressAt !== 0 ? { express: expressAt } : {}),
     ...(liveThread === undefined ? {} : { thread: liveThread }),
     threads: storyThreads.map((kept) => ({
       stage: kept.stage ? { major: kept.stage.major, minor: kept.stage.minor } : null,
@@ -1739,6 +1810,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   slides = startSlides(opened.slides, (id) => standingIn(opened.cast, id))
   areaIn.triggers = undefined
   areaIn.map = undefined
+  areaIn.doorway = undefined
   areasAdded.length = 0
   cabinets = cabinetsOf(opened.map, opened.treasures, (slot) => {
     const inside = opened.treasures[slot]
@@ -1812,6 +1884,23 @@ function maybeTravel(): void {
   if (!self || !loaded || travelling || playing) return
   const door = doorTaken(gate, loaded.doorways, toFloat(self.state.x), toFloat(self.state.z))
   if (!door) return
+  // **A record for standing at this door** runs first, as the game runs it
+  // for each doorway region the Hero is in — see `doorwayPlay`: someone
+  // stops the Hero and speaks, an event plays, or the door is blocked
+  // (`108`). Then the Hero must step clear and come back, as for any door
+  // they arrive in: ours, where the game runs it every frame they stand there.
+  if (door.id && storyStage && loaded.mapId !== undefined) {
+    const found = doorwayPlay(loaded.triggers, loaded.mapId, storyStage, door.id, storyState())
+    if (found) {
+      storyFromRecord(found)
+      const stopped = followTalkOf(found) || (found.event !== undefined && startEvent(found.event))
+      if (stopped || blocksDoorway(found, door.id)) {
+        gate.armed = false
+        if (!stopped) status(`the way through is blocked`)
+        return
+      }
+    }
+  }
   travelling = true
   status(`entering ${door.to}…`)
   // The screen fades to black first; `showDarkness` goes through when it is.
@@ -1836,9 +1925,46 @@ function goThrough(door: NonNullable<ReturnType<typeof doorTaken>>): void {
  * game tests on its own — a trigger's areas and the map's own — by id; none
  * when they stood in none. See `maybeAreaEvent`.
  */
-const areaIn: { triggers: number | undefined; map: number | undefined } = {
+const areaIn: {
+  triggers: number | undefined
+  map: number | undefined
+  /** The doorway region, by its place in the map's table — see `maybeDoorwayRecord`. */
+  doorway: number | undefined
+} = {
   triggers: undefined,
   map: undefined,
+  doorway: undefined,
+}
+
+/**
+ * **A record for standing at a doorway**, run as the Hero walks into one of
+ * the map's doorway regions — with or without somewhere it leads; see
+ * `KIND_DOORWAY` and `doorwayPlay`. The game runs it for each region the Hero
+ * is in, every frame, before the transition; here once on walking in, as an
+ * area's is. `maybeTravel` runs it for a doorway the Hero goes through.
+ */
+function maybeDoorwayRecord(): void {
+  if (!self || !loaded || !storyStage || playing || battle || talking || menu || visit) return
+  if (travelling || loaded.mapId === undefined || loaded.doorwayRegions.length === 0) return
+  const scale = WORLD_SCALE * worldScale
+  const x = toFloat(self.state.x) / scale
+  const y = toFloat(self.state.y) / scale
+  const z = toFloat(self.state.z) / scale
+  const now = areaAt(
+    loaded.doorwayRegions.map((region) => region.area),
+    x,
+    y,
+    z,
+  )?.id
+  const entered = now !== undefined && now !== areaIn.doorway
+  areaIn.doorway = now
+  if (!entered) return
+  const region = loaded.doorwayRegions[now]
+  if (!region) return
+  const found = doorwayPlay(loaded.triggers, loaded.mapId, storyStage, region.id, storyState())
+  if (!found) return
+  storyFromRecord(found)
+  followTalkOf(found) || (found.event !== undefined && startEvent(found.event))
 }
 /**
  * Areas records have added to this map as they ran, since it was entered —
@@ -1858,6 +1984,137 @@ const areasAdded: StoryArea[] = []
  * room at 3.1, the map's own area 0 plays `ev03040`. Not while anything else
  * is up — **ours**.
  */
+/**
+ * **The Starflight Express's list**, opened by its conductor's record — see
+ * `express.ts`. The game turns the Hero to face the conductor as it opens;
+ * this does not. Ours.
+ */
+function openExpress(opened: { mode: number; values: readonly number[] }, who: Talker): void {
+  const mode: ExpressMode = opened.mode === 1 ? 1 : 0
+  expressBy = { who, mode, stops: stopsOf(opened.values) }
+  menu = { ...openMenu(), panel: 'express', express: { mode, stops: expressBy.stops } }
+  self?.held.clear()
+  showMenu()
+}
+
+/** A conductor's line, said as a conversation — its prompt answered as any is. */
+function sayExpress(line: number): void {
+  if (!loaded || !expressBy) return
+  const number = conductorLine(line, expressBy.mode)
+  talkContext = textContext()
+  talking = startConversation(
+    expressBy.who,
+    'the Starflight Express',
+    [loaded.expressWords.get(number) ?? `(str_ark ${number})`],
+    [`str_ark ${number}`],
+    talkContext,
+  )
+  showTalk()
+}
+
+/**
+ * A stop chosen from the list, as the task takes it (its states 5 to 7): the
+ * stop it is at asks "that's where we are already" — yes puts the Hero down
+ * at the stop's place, no says so and gives the list again; another stop is
+ * a ride.
+ */
+function pickStop(stop: number): void {
+  const by = expressBy
+  if (!by) return
+  if (stop !== expressAt) {
+    ride(stop, by.mode)
+    return
+  }
+  sayExpress(EXPRESS_WORDS.alreadyThere)
+  afterTalk = (answer) => {
+    if (answer === 0) {
+      sayExpress(EXPRESS_WORDS.allChange)
+      afterTalk = () => stayAt(stop)
+      return
+    }
+    sayExpress(EXPRESS_WORDS.undecided)
+    afterTalk = () => {
+      menu = { ...openMenu(), panel: 'express', express: { mode: by.mode, stops: by.stops } }
+      showMenu()
+    }
+  }
+}
+
+/** Put the Hero down at a stop's own place, with no scene — see `EXPRESS_PLACES`. */
+function stayAt(stop: number): void {
+  expressBy = undefined
+  const place = EXPRESS_PLACES.get(stop)
+  const code = place && loaded?.mapCodeOf(place.map)
+  if (!place || !code) return
+  expressAt = stop
+  if (
+    enter(code, {
+      x: place.x * WORLD_SCALE,
+      y: place.y * WORLD_SCALE,
+      z: place.z * WORLD_SCALE,
+      facing: place.facing,
+    })
+  ) {
+    playEntryEvent()
+  }
+}
+
+/**
+ * A ride: the scene leaving the stop the Express is at, and the one arriving
+ * at `stop` parked behind it, which it carries on into (`834`, `810`) — or the
+ * story's own scene in its place; see `rideScenes`. The Express is then at the
+ * stop.
+ */
+function ride(stop: number, mode: ExpressMode): void {
+  expressBy = undefined
+  const story = storyStage
+    ? { ...storyStage, step: stepNow() ?? 0, globals: storyGlobals }
+    : undefined
+  const { leave, arrive } = rideScenes(expressAt, stop, mode, story)
+  expressAt = stop
+  const first = leave ?? arrive
+  if (first === undefined) return
+  status(
+    `the Starflight Express: ${leave === undefined ? '' : `ev${leave}, then `}ev${arrive ?? '?'}`,
+  )
+  if (!startEvent(first)) return
+  if (leave !== undefined && arrive !== undefined && playing) {
+    playing.player.stage.queuedScript = arrive
+  }
+}
+
+/**
+ * Perform the party trick in one of the four places — see `trickSlots` — and
+ * what the map makes of it: the game asks the first trick record for the area
+ * the Hero stands in whose conditions hold, with the trick performed (see
+ * `trickPlay`), and runs it whole — Gleeba's Drak answers a Clap in area 10.
+ * **Ours**: the trick is a line of status, not its motion, which is a
+ * `data/chara/sg<nn>.chr` this does not play yet.
+ */
+function performTrick(slot: number): void {
+  if (!loaded || !self || !storyStage || loaded.mapId === undefined) return
+  const trick = trickSlots[slot]
+  if (trick === undefined || !trickKnown(trick, storyGlobals)) return
+  const name = loaded.menuWords.get(TRICK_NAMES_FROM + trick) ?? `trick ${trick}`
+  status(`${heroName()}: ${name}`)
+  for (const area of [areaIn.triggers, areaIn.map]) {
+    if (area === undefined) continue
+    const found = trickPlay(
+      loaded.triggers,
+      loaded.mapId,
+      storyStage,
+      area,
+      (wanted) => wanted === trick,
+      storyState(),
+    )
+    if (!found) continue
+    storyFromRecord(found.outcome)
+    followTalkOf(found.outcome) ||
+      (found.outcome.event !== undefined && startEvent(found.outcome.event))
+    return
+  }
+}
+
 function maybeAreaEvent(): void {
   if (!self || !loaded || !storyStage || playing || battle || talking || menu || visit) return
   if (travelling || loaded.mapId === undefined) return
@@ -1890,11 +2147,28 @@ function maybeAreaEvent(): void {
       (area) => area === id,
       storyState().more,
     )
-    if (!found || !loaded.eventScript(found.event)) continue
+    if (!found) continue
+    // The first record for it that holds runs, whatever it does — see
+    // `areaEvent` — and what it has follow, follows: a talk (`118`), as
+    // Dourbridge's area 22 has the Hero talk to 3, or its event.
     storyFromRecord(found.outcome)
-    startEvent(found.event)
+    followTalkOf(found.outcome) || (found.event !== undefined && startEvent(found.event))
     return
   }
+}
+
+/**
+ * The talk a record's `118` starts, whoever ran the record — an area's, the
+ * map's watch, a set battle's — as the game's queue starts it. True when one
+ * began. A talk record's own `118` goes through `runTalkRecord`.
+ */
+function followTalkOf(outcome: EventOutcome): boolean {
+  const talk = outcome.talk
+  if (!talk) return false
+  const to = talkerFor(talk.character)
+  if (!to) return false
+  talkWith(to, talk.label)
+  return talking !== undefined || playing !== undefined
 }
 
 /** The overlay text: where the character is, and what it is standing in. */
@@ -2103,6 +2377,7 @@ function frame(now = 0): void {
     advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
     maybeTravel()
     maybeAreaEvent()
+    maybeDoorwayRecord()
     maybeWatch()
 
     // Indoors the camera comes in and tilts further down. What counts as
@@ -3234,6 +3509,7 @@ function talkWith(who: Talker, label: number | undefined, everyLine = false, box
       flags: storyFlags,
       marks: storyMarks,
       alone: companionsNow().every(standingHere),
+      party: members.length,
       step: stepNow(),
       globals: storyGlobals,
       talked: talkedTo(who.id),
@@ -3275,8 +3551,19 @@ function talkWith(who: Talker, label: number | undefined, everyLine = false, box
 function runTalkRecord(outcome: EventOutcome, who: Talker): boolean {
   if (!loaded) return false
   storyFromRecord(outcome)
+  // A set battle it starts — Gortress's captain, the tower's guards — as an
+  // event's record starts one; see `followRecord`.
+  if (outcome.battle !== undefined) {
+    startEventBattle(outcome.battle)
+    return true
+  }
   // `106 : c` starts that character's counts again — see `Talked`.
   for (const action of outcome.actions ?? []) if (action.op === 106) talkCounts.delete(action.arg)
+  // The Starflight Express's list — its conductor's record, `215`.
+  if (outcome.express) {
+    openExpress(outcome.express, who)
+    return true
+  }
   if (outcome.talk) {
     const to = outcome.talk.character === who.id ? who : talkerFor(outcome.talk.character)
     if (to) {
@@ -3768,6 +4055,14 @@ function potSay(number: number): string | undefined {
 }
 
 /** Patty's lines, readable — her `str_lui`, with the markup spelled out. */
+/** The Starflight Express's words, readable — see `express.ts`. */
+function expressLines(): ReadonlyMap<number, string> | undefined {
+  if (!loaded) return undefined
+  const out = new Map<number, string>()
+  for (const [number, text] of loaded.expressWords) out.set(number, plainMarkup(text, heroName()))
+  return out
+}
+
 function pattyLines(): ReadonlyMap<number, string> | undefined {
   if (!loaded) return undefined
   const out = new Map<number, string>()
@@ -3857,6 +4152,14 @@ function menuContext(): MenuContext {
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
     mayWear: (id, place) => wearableBy(members[place] ?? leader(), id),
+    // The tricks the Hero can perform — sixteen from the start, the rest
+    // learnt by `142` — and the four places; see `trickKnown`.
+    tricks: {
+      known: Array.from({ length: TRICKS }, (_, i) => i + 1).filter((trick) =>
+        trickKnown(trick, storyGlobals),
+      ),
+      assigned: trickSlots,
+    },
     // The list the pot is looking at: the Alchenomicon's chosen category, in
     // its chosen order — see `potList`.
     pot: loaded
@@ -3868,6 +4171,7 @@ function menuContext(): MenuContext {
       : undefined,
     potLabels: loaded?.potLabels,
     pattyWords: loaded ? pattyLines() : undefined,
+    expressWords: loaded ? expressLines() : undefined,
     pattyLabels: loaded?.pattyLabels,
     // Those left with Patty, as her lists name them.
     kept: withPatty.map((who) => ({
@@ -5424,11 +5728,15 @@ function endFight(): void {
 function goToEventsMap(number: number): void {
   if (!loaded || loaded.mapId === undefined) return
   const wants = new Set<number>()
-  for (const trigger of loaded.triggers) {
-    for (const word of triggerWords(trigger)) {
-      if (word.op === OP_EVENT && word.arg === number) wants.add(trigger.map)
+  // The game's own answer first: the scene's map in its event list.
+  const own = eventMapOf(number)
+  if (own !== undefined) wants.add(own)
+  else
+    for (const trigger of loaded.triggers) {
+      for (const word of triggerWords(trigger)) {
+        if (word.op === OP_EVENT && word.arg === number) wants.add(trigger.map)
+      }
     }
-  }
   if (wants.size === 0 || wants.has(loaded.mapId)) return
   // Several maps can name one scene. Taking the first in the triggers' own
   // order is a choice, and the status line says which, so a shot taken in the
@@ -5450,6 +5758,16 @@ function goToEventsMap(number: number): void {
   enter(code)
 }
 
+/**
+ * The map a scene plays in, from the game's event lists — see
+ * `readEventList` — or undefined for one that plays wherever the Hero is, or
+ * is not listed.
+ */
+function eventMapOf(event: number): number | undefined {
+  const entry = loaded?.eventList.get(event)
+  return entry && !entry.here && entry.map !== 0 ? entry.map : undefined
+}
+
 function startEvent(number: number, afterTalk = false): boolean {
   if (!loaded || !self) return false
   const name = `ev${String(number).padStart(5, '0')}`
@@ -5457,6 +5775,30 @@ function startEvent(number: number, afterTalk = false): boolean {
   if (!script) {
     status(`${name} will not read`)
     return false
+  }
+  // **A scene plays in its own map**, as its event list has it: where that
+  // is not here, the game changes map and plays it there (ov017
+  // `func_ov017_021bbfc4`). Arriving by the map's entrance is ours; the game
+  // keeps where the Hero stands on some, which is not read.
+  const own = eventMapOf(number)
+  if (own !== undefined && own !== loaded.mapId) {
+    const code = loaded.mapCodeOf(own)
+    if (code && !enter(code)) return false
+    if (!loaded || !self) return false
+  }
+  // **Starting a scene raises the story to the scene's own stage** when it is
+  // behind — read from the same start (at `0x021bc424`): the live thread's
+  // major and minor, as 1000 × major + minor, against the list entry's, set
+  // to the entry's when less and the major is 19 at most. The step is left.
+  // No record moves the story into 16.1; the scene that opens it does.
+  const listed = loaded.eventList.get(number)
+  if (listed && storyStage) {
+    const [major, minor] = listed.values as [number, number]
+    const now = storyStage.major * 1000 + storyStage.minor
+    if (major <= 19 && (major !== 0 || minor !== 0) && now < major * 1000 + minor) {
+      storyStage = { major, minor }
+      status(`${name} brings the story to ${major}.${minor}`)
+    }
   }
   const messages = new Map(
     loaded
@@ -5482,6 +5824,13 @@ function startEvent(number: number, afterTalk = false): boolean {
           status(`ev${String(id).padStart(5, '0')} will not read — the chain stops`)
           return undefined
         }
+        // One that plays in another map ends this scene and goes there, as
+        // the game's chain goes back through a scene's start — see `startEvent`.
+        const away = eventMapOf(id)
+        if (away !== undefined && away !== loaded?.mapId && playing) {
+          playing.chainAway = { map: away, event: id }
+          return undefined
+        }
         if (playing) {
           playing.event = id
           playing.messages = new Map(
@@ -5501,6 +5850,9 @@ function startEvent(number: number, afterTalk = false): boolean {
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
   playing.player.stage.afterTalk = afterTalk
+  // The live thread's flags and marks, which `601` and `602` read.
+  for (const flag of storyFlags) playing.player.stage.threadFlags.add(flag)
+  for (const mark of storyMarks) playing.player.stage.threadMarks.add(mark)
   // **A scene rolling a die**, the game's `7`, which draws from the battle's
   // own generator. This hands it the roamer's, so a scene's roll is of a piece
   // with the rest of the run and is the same on every machine.
@@ -5917,6 +6269,14 @@ function endEvent(): void {
   const moved = [...done.player.stage.actors.values()].filter(
     (actor) => actor.cast !== undefined && actor.placed,
   )
+  // A chain into a scene of another map: that scene's record is the one that
+  // runs, once it has played there — this one's does not.
+  if (done.chainAway) {
+    const { map: to, event } = done.chainAway
+    const code = loaded?.mapCodeOf(to)
+    if (code && enter(code)) startEvent(event)
+    return
+  }
   followEvent(done.event)
   if (loaded?.code === map) {
     for (const actor of moved) {
@@ -5926,6 +6286,24 @@ function endEvent(): void {
         z: actor.z,
         facing: actor.facing,
       })
+    }
+  }
+  // Where the scene sent the Hero, once its own record has run — see `807`.
+  // With an event, that plays in place of the map's own entry; without one,
+  // the map is arrived in as through a doorway — ours, as the engine's entry
+  // event is.
+  const handOn = done.player.stage.handOn
+  if (handOn && !playing && !battle) {
+    const code = loaded?.mapCodeOf(handOn.map)
+    const arrival = {
+      x: handOn.x * WORLD_SCALE,
+      y: handOn.y * WORLD_SCALE,
+      z: handOn.z * WORLD_SCALE,
+      facing: handOn.facing,
+    }
+    if (code && enter(code, arrival)) {
+      if (handOn.event !== undefined) startEvent(handOn.event)
+      else playEntryEvent()
     }
   }
 }
@@ -5965,6 +6343,22 @@ function storyFromRecord(outcome: EventOutcome): boolean {
   for (const area of outcome.areas) {
     if (!areasAdded.some((had) => JSON.stringify(had) === JSON.stringify(area)))
       areasAdded.push(area)
+  }
+  // The stop the Starflight Express is at, `216` — see `OP_EXPRESS_AT`.
+  if (outcome.expressAt !== undefined) expressAt = outcome.expressAt
+  // Whoever it takes out of the map, `124` — see `OP_REMOVE`: gone until the
+  // cast is next placed, as the game's object is skipped by every lookup
+  // from then on. Drak leaves Gleeba's hall so after his talk at 11.2.
+  const removed = outcome.removes ?? []
+  if (removed.length > 0) {
+    loaded = {
+      ...loaded,
+      cast: {
+        ...loaded.cast,
+        members: loaded.cast.members.filter((m) => !removed.includes(m.placement.id)),
+      },
+    }
+    poseMap(Math.max(mapFrame, 0))
   }
   // The cast stands where the stage and step have them: the Hexagon's
   // statue steps aside at 2.4, step 5 — see `castOf`.
@@ -6036,6 +6430,7 @@ function maybeWatch(): void {
   const after = `${storyLine()} ${[...storyMarks].join(' ')} ${[...storyGlobals].join(' ')}`
   // It runs every frame; say so only when it changed something.
   if (after !== before) status(`the map's watch ran · ${storyLine()}`)
+  if (followTalkOf(found)) return
   if (found.event !== undefined && loaded.eventScript(found.event)) startEvent(found.event)
 }
 
@@ -6990,6 +7385,7 @@ addEventListener('keydown', (event) => {
     event.preventDefault()
     return
   }
+  if (actionOfKey(controlsPanel.bindings, key) === 'cancel') cancelHeld = true
   if (onAction(actionOfKey(controlsPanel.bindings, key), key, event.shiftKey))
     event.preventDefault()
 })
@@ -7121,6 +7517,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       if (taken.luck) menu = tryLuck(taken.luck, menu)
       if (taken.patty) menu = askPatty(taken.patty, menu)
       if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)
+      if (taken.assign) trickSlots[taken.assign.slot] = taken.assign.trick
+      if (taken.stop !== undefined) pickStop(taken.stop)
+      // The Express's list closed without a stop: it is done with.
+      else if (!menu) expressBy = undefined
       if (taken.talk) {
         showMenu()
         talk()
@@ -7138,6 +7538,28 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     showMenu()
     event.preventDefault()
     return handled
+  }
+  // **A party trick**: the B Button held with a direction performs the trick
+  // assigned to it, which is how the game has it — "Allows you to set which
+  // party tricks can be performed with the B Button and +Control Pad", `str_tm`
+  // 4023. B is the cancel button here. See `performTrick`.
+  if (
+    cancelHeld &&
+    action &&
+    loaded &&
+    self &&
+    !talking &&
+    !playing &&
+    !battle &&
+    !menu &&
+    !visit
+  ) {
+    const slot = TRICK_SLOT_ACTIONS.indexOf(action)
+    if (slot >= 0) {
+      performTrick(slot)
+      event.preventDefault()
+      return handled
+    }
   }
   // While a prompt waits for an answer the arrows choose, before anything else
   // that uses them; f or Enter answers, as it goes on to the next page.
@@ -7261,12 +7683,14 @@ addEventListener('keyup', (event) => {
   const token = action === undefined ? undefined : MOVE_TOKENS[action]
   if (token) self?.held.delete(token)
   if (action) turning.delete(action)
+  if (action === 'cancel') cancelHeld = false
 })
 
 // A key held as the window loses focus never sends its `keyup`, and the camera
 // would spin on for ever. The walk has the same trouble and clears with it.
 addEventListener('blur', () => {
   turning.clear()
+  cancelHeld = false
   self?.held.clear()
 })
 

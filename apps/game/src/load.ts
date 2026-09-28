@@ -18,7 +18,9 @@ import {
   type CharaColours,
   type CharacterPreset,
   castAtPoint,
+  type DoorwayRegion,
   type EventBattle,
+  type EventListEntry,
   type EventMessage,
   type ExperienceBand,
   type FieldMonster,
@@ -39,6 +41,7 @@ import {
   type MedalRewards,
   type MonsterBattle,
   mapAreas,
+  mapDoorwayRegions,
   mapDoorways,
   NO_ACTION,
   type NpcEntry,
@@ -57,6 +60,7 @@ import {
   readCharacterPresets,
   readDataTable,
   readEventBattles,
+  readEventList,
   readEventMessages,
   readExperienceAdjust,
   readFieldEncounters,
@@ -261,6 +265,8 @@ export interface Loaded {
   readonly battleZones: ReadonlyMap<number, BattleZone>
   /** The set battles, by the index a trigger's battle word names — see `readEventBattles`. */
   readonly eventBattles: ReadonlyMap<number, EventBattle>
+  /** Each scene's entry in the game's event lists — the map it plays in, by number. See `readEventList`. */
+  readonly eventList: ReadonlyMap<number, EventListEntry>
   /** How each monster goes about the field, by number — see `readFieldMonsters`. */
   readonly fieldMonsters: ReadonlyMap<number, FieldMonster>
   /**
@@ -320,6 +326,8 @@ export interface Loaded {
   readonly medalRewards: MedalRewards | undefined
   /** The medal service's lines by number, `str_mdl` — see `medals.ts`. */
   readonly medalWords: ReadonlyMap<number, string>
+  /** The Starflight Express's words by number, `str_ark` — see `express.ts`. */
+  readonly expressWords: ReadonlyMap<number, string>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
@@ -336,6 +344,8 @@ export interface Loaded {
    * `@minstrel/game-formats`. In the file's own units, as a trigger's are.
    */
   readonly mapAreas: readonly StoryArea[]
+  /** The map's doorway regions, by the two numbers a doorway record names — see `mapDoorwayRegions`. */
+  readonly doorwayRegions: readonly DoorwayRegion[]
   /** Which archive the map came out of, for the status line. */
   readonly archive: string
   /** The map's own code, which is what a doorway names. */
@@ -963,6 +973,33 @@ function looseFile(rom: Uint8Array, path: string): Uint8Array | undefined {
   byPath.set(path, bytes)
   return bytes
 }
+
+/**
+ * Each scene's entry in the game's three event lists, by number — see
+ * `readEventList`. A list that will not read lists nothing. Read once per
+ * cartridge.
+ */
+export function eventListOf(rom: Uint8Array): ReadonlyMap<number, EventListEntry> {
+  const known = eventLists.get(rom)
+  if (known) return known
+  const out = new Map<number, EventListEntry>()
+  for (const path of [
+    '/data/event/eventlist6.bin',
+    '/data/evspt_lv5/eventlist_lv5.bin',
+    '/data/event/evl_quest.bin',
+  ]) {
+    const bytes = looseFile(rom, path)
+    if (!bytes) continue
+    try {
+      for (const entry of readEventList(bytes)) out.set(entry.event, entry)
+    } catch {
+      // A list that will not read gives its scenes no map of their own.
+    }
+  }
+  eventLists.set(rom, out)
+  return out
+}
+const eventLists = new WeakMap<Uint8Array, ReadonlyMap<number, EventListEntry>>()
 
 /** The set battles, by index — see `readEventBattles`. Empty when the file will not read. */
 function eventBattlesOf(rom: Uint8Array): ReadonlyMap<number, EventBattle> {
@@ -1918,12 +1955,22 @@ export function entranceOf(
 
 /** A map's own areas, out of its link table — see `mapAreas`. None when there is none or it will not read. */
 function mapAreasOf(cat: Catalogue, code: string): readonly StoryArea[] {
+  return fromLinkTable(cat, code, mapAreas)
+}
+
+/** A map's doorway regions, out of its link table — see `mapDoorwayRegions`. None when it will not read. */
+function doorwayRegionsOf(cat: Catalogue, code: string): readonly DoorwayRegion[] {
+  return fromLinkTable(cat, code, mapDoorwayRegions)
+}
+
+/** `read` of the map's link table, or nothing where there is none or it will not read. */
+function fromLinkTable<T>(cat: Catalogue, code: string, read: (bytes: Uint8Array) => T[]): T[] {
   for (const [archive, files] of cat.members) {
     if (stemOf(archive) !== code.toLowerCase() || !archive.toLowerCase().endsWith('.ambl')) continue
     for (const [name, bytes] of files) {
       if (!name.toLowerCase().endsWith('.bmbl') || !isMapLinks(bytes)) continue
       try {
-        return mapAreas(bytes)
+        return read(bytes)
       } catch {
         return []
       }
@@ -2174,6 +2221,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     monsterCodeOf: monsterCodeByNumberOf(rom),
     battleZones: battleEncountersOf(rom),
     eventBattles: eventBattlesOf(rom),
+    eventList: eventListOf(rom),
     fieldMonsters: fieldMonstersOf(rom),
     levels: levelsOf(rom),
     shops: shopsOf(rom),
@@ -2202,6 +2250,12 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     medalRewards: medalRewardsOf(rom),
     experienceBands: experienceBandsOf(rom),
     medalWords: medalWordsOf(rom),
+    expressWords: englishText(
+      rom,
+      '/data/bin/menu/str_ark.gp2',
+      'str_ark_en.nat',
+      readSystemStrings,
+    ),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),
@@ -2259,6 +2313,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     wardrobe: parts,
     doorways: doorwaysOf(cat, code),
     mapAreas: mapAreasOf(cat, code),
+    doorwayRegions: doorwayRegionsOf(cat, code),
     archive,
     code,
   }
