@@ -37,6 +37,7 @@ import {
   type MapTransition,
   type MedalRewards,
   type MonsterBattle,
+  mapAreas,
   mapDoorways,
   NO_ACTION,
   type NpcEntry,
@@ -90,6 +91,7 @@ import {
   type Shop,
   type SkillPanel,
   type SpellTable,
+  type StoryArea,
   type TalkLine,
   type Treasure,
   type Trigger,
@@ -317,6 +319,11 @@ export interface Loaded {
   readonly sheets: ReadonlyMap<string, Uint8Array>
   /** The way out: where this map's doorways are and what they lead to. */
   readonly doorways: readonly MapTransition[]
+  /**
+   * The map's own areas, from its link table — see `mapAreas` in
+   * `@minstrel/game-formats`. In the file's own units, as a trigger's are.
+   */
+  readonly mapAreas: readonly StoryArea[]
   /** Which archive the map came out of, for the status line. */
   readonly archive: string
   /** The map's own code, which is what a doorway names. */
@@ -1926,6 +1933,22 @@ export function entranceOf(
   return undefined
 }
 
+/** A map's own areas, out of its link table — see `mapAreas`. None when there is none or it will not read. */
+function mapAreasOf(cat: Catalogue, code: string): readonly StoryArea[] {
+  for (const [archive, files] of cat.members) {
+    if (stemOf(archive) !== code.toLowerCase() || !archive.toLowerCase().endsWith('.ambl')) continue
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('.bmbl') || !isMapLinks(bytes)) continue
+      try {
+        return mapAreas(bytes)
+      } catch {
+        return []
+      }
+    }
+  }
+  return []
+}
+
 /**
  * A doorway in world units: the file's own, times {@link WORLD_SCALE} — where
  * it stands, how big it is and where it puts you down alike. Angles have no
@@ -2238,6 +2261,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     pieces: figurePieces(figure),
     wardrobe: parts,
     doorways: doorwaysOf(cat, code),
+    mapAreas: mapAreasOf(cat, code),
     archive,
     code,
   }

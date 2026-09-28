@@ -56,18 +56,20 @@ it by cause.
 
 - **From a new game:** 1.1 to 1.2 step 2. It stops before 1.3.
 - **The slice plays through in one walk, and on into Stornway.** From 1.4
-  the walk plays all of chapter 2 and then 3.1 steps 1 and 2. That is the
+  the walk plays all of chapter 2 and then 3.1 steps 1 to 3, the last by the
+  throne room's own area 0. That is the
   first time the story has been followed past the slice's end. The same was
   checked in the game in a browser: talking to #203 in Stornway's lobby at
   2.7 plays `ev2940`, and once it is read the story is at 3.1.
 - **From 5.2, one walk plays into all five threads**: chapters 6, 7, 8, 11
   and 12, each to its own first break.
-- **87 breaks** between 1.1 and 19.7. There were 109 before the threads were
-  read, and 101 with them. The first after the slice is now in Stornway's
-  castle, before 3.1 step 3.
+- **83 breaks** between 1.1 and 19.7. There were 109 before the threads were
+  read, 101 with them, and 87 once records ran as the game runs them. The
+  first after the slice is in Stornway's throne room, before 3.2: talking to
+  `45`, whom the cast does not stand there.
 
 A break usually has more than one cause, one for each record that could have
-moved the story on. So the counts below add up to more than 87.
+moved the story on. So the counts below add up to more than 83.
 
 ## The list, by cause
 
@@ -83,12 +85,12 @@ that unblock the most.
 | 5 | A set battle whose starting event the walk never played | 13 | 3.2 step 3 | as 4, and what starts a battle from a script (`547`) |
 | 6 | Nothing reaches the event | 6 | 14.4 step 4 | reading: `S07`, and VM opcode `0x1e` |
 | 7 | A flag, mark or step the walk never had | 6 | 1.3 | as 4, mostly |
-| 8 | An area no record defines | 5 | 3.1 step 3 | reading: where areas 0, 1, 72 and 73 come from |
+| 8 | ~~An area no record defines~~ | — | — | **done, 28 September**: a map's own areas, and areas turned |
 | 9 | Another of the character's records chooses first | 3 | 4.3 step 3 | reading: `pickLine`'s precedence, INFERRED |
 | 10 | The event plays, but its own record is in another area's file | 3 | 5.1 | engine |
 | 11 | A closing step of 0 on a cast record | 2 | 4.3 | reading |
 | 12 | A record kind the engine does not read | 3 | 4.3 step 5 | reading: kind 20's actions besides areas |
-| 13 | An entry record that plays no event | 1 | 15.3 step 5 | reading: what runs kind 3 besides its `108` at load |
+| 13 | An entry record that plays no event | 2 | 10.7 | reading: what runs kind 3 besides its `108` at load. Batsureg's areas 72 and 73 are one's |
 
 Seven more breaks name a record whose span the walk was never at, and five
 the walk cannot explain. Both kinds are listed in the test's printout.
@@ -199,12 +201,26 @@ events. **`ev29300` is also what winning the last set battle plays**, before
 `148` sets every thread to 19.2, so it is probably the ending and its
 credits. (`ev12101` was here too until `226` was read as a hand-on.)
 
-### 8. An area no record defines
+### 8. Areas: done, 28 September 2026
 
-Area events name areas 0 and 1 in Stornway's throne room, Zere and
-Brigadoom's northern tower (`D03M06`), and 72 and 73 in Batsureg, where no settings record in
-the map defines them. 102 of the 110 area records name an area their map
-defines (FORMAT.md). These are the rest, and they fall exactly on the story.
+**Read from the game's code**: FORMAT.md, "Areas", with the functions logged
+in `docs/decomp-contributions.md`.
+
+- **A map has areas of its own**, in its link table (`.bmbl`): `0x73`
+  regions of type 3, numbered by the `0x74` after each. There are 22 in 15
+  maps. Stornway's throne room's areas 0 and 1 are two of them, and walking
+  into area 0 at 3.1 now plays `ev3040`.
+- **A trigger's `143` is turned** by the degrees after its box. 31 of 113
+  are, and they were being tested as if square to the map. The game refuses
+  a turned box early by a squared radius made from its width and height,
+  and so does `inArea` now.
+- **The field keeps one area for each source**, the first that holds the
+  Hero, and runs the records for a new one. `maybeAreaEvent` does the same.
+- **`143` adds its area when its record runs**, whatever the kind: 80 are on
+  settings records, 7 on others. The engine keeps those for the visit to the
+  map (`areasAdded`), and takes the first settings record that holds, as the
+  game does. Batsureg's areas 72 and 73 are on an entry record with no
+  event, which is cause 13.
 
 ### 9. Another of the character's records chooses first
 

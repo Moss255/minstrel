@@ -209,72 +209,145 @@ export function watchPlay(
 export const KIND_SETTINGS = 20
 /**
  * Defines area *n* of the map: six floats follow, a box — its greater corner,
- * then its lesser, x, y and z, in the units map placements use — and then a
- * word of operation 0 whose argument is not established. INFERRED: all 108
- * area words on the cartridge are followed by six floats, and on 108 of 108
- * the first three are at or above the last three on every axis; the boxes
- * sampled — the mayor's house's one, the pass's six — lie inside their map.
+ * then its lesser, x, y and z, in the units map placements use — and then its
+ * **angle in degrees** about the vertical. Read from the game's code: the
+ * parser takes the six floats and the integer as the operation's own
+ * (`func_0205ec70`), and the action (US ARM9 `0x02062a94`) turns the integer
+ * into radians (`× π ÷ 180`) and keeps the box, its centre and the angle in
+ * a list the field tests the Hero against (`func_ov017_02198e30`). On all 108
+ * area words the first corner is at or above the second on every axis. 31 of
+ * the cartridge's 113 are turned — 314° seven times, 45° five.
  */
 export const OP_AREA = 143
 /**
- * Value 5 of a record that acts when the Hero walks into an area, the one
- * {@link OP_IN_AREA} names. INFERRED: 102 of the 110 name an area their map
- * defines. The mayor's house at 2.1, `7:15 5:1 119:2120`, plays his scene
- * with Ivor, and its own record sets the flag after which Erinn asks the
- * Hero in for the night.
+ * Value 5 of a record that runs when the Hero walks into an area, the one
+ * {@link OP_IN_AREA} names. Read from the game's code: the field keeps which
+ * area the Hero is in, and on walking into another asks for the first of
+ * these whose area is the new one (`func_ov017_02198e30`, and
+ * `func_ov017_0219814c` for the map's own areas — see `mapAreas`). The mayor's
+ * house at 2.1, `7:15 5:1 119:2120`, plays his scene with Ivor.
  */
 export const KIND_AREA_EVENT = 2
 /** The area a {@link KIND_AREA_EVENT} record is about. */
 export const OP_IN_AREA = 7
 
-/** An area of a map — see {@link OP_AREA}. */
+/**
+ * An area of a map: a box turned about the vertical through its centre. Two
+ * things define them — a trigger's {@link OP_AREA} and a map's own link table
+ * (`mapAreas`) — and the field tests the Hero against each on its own.
+ */
 export interface StoryArea {
   readonly id: number
   readonly max: { readonly x: number; readonly y: number; readonly z: number }
   readonly min: { readonly x: number; readonly y: number; readonly z: number }
-  /** The argument of the operation-0 word after the floats: 0, 337, 325 … Not established. */
-  readonly unknown_after: number | undefined
+  /** How far the box is turned about the vertical through its centre, in radians. */
+  readonly angle: number
+  /**
+   * The square of the distance across the ground from the centre past which a
+   * turned box is not tested further — the game's own quick refusal. For a
+   * trigger's box the game makes it from the box's **width and height**, not
+   * its width and depth (`0x02062a94`), and that is kept, as the game has it.
+   */
+  readonly reach: number
 }
 
-/** The areas `map`'s settings records define over `stage` — see {@link OP_AREA}. */
-export function areasOf(triggers: readonly Trigger[], map: number, stage: Stage): StoryArea[] {
+/** An angle in `[0, 2π)`, as the game keeps one (`fix32ReduceAngle0To2Pi`). */
+const reduced = (radians: number) => {
+  const turn = 2 * Math.PI
+  return ((radians % turn) + turn) % turn
+}
+
+/** The areas a record's `143`s define — see {@link OP_AREA}. */
+export function areasIn(trigger: Trigger): StoryArea[] {
   const found: StoryArea[] = []
-  for (const trigger of triggers) {
-    if (trigger.unknown_5 !== KIND_SETTINGS || trigger.map !== map) continue
-    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
-    const { values, kinds, floats } = trigger
-    for (let i = 0; i < values.length; i++) {
-      if (kinds[i] !== 1 || (values[i] as number) >>> 16 !== OP_AREA) continue
-      const box: number[] = []
-      let j = i + 1
-      while (j < values.length && kinds[j] === 2 && box.length < 6) box.push(floats[j++] as number)
-      if (box.length < 6) continue
-      const [x1, y1, z1, x2, y2, z2] = box as [number, number, number, number, number, number]
-      found.push({
-        id: (values[i] as number) & 0xffff,
-        max: { x: x1, y: y1, z: z1 },
-        min: { x: x2, y: y2, z: z2 },
-        unknown_after: kinds[j] === 1 ? (values[j] as number) & 0xffff : undefined,
-      })
-    }
+  for (const entry of entriesOf(trigger)) {
+    if (entry.op !== OP_AREA || entry.params.length < 6) continue
+    const [x1, y1, z1, x2, y2, z2] = entry.params as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ]
+    const degrees = entry.params[6] ?? 0
+    found.push({
+      id: entry.arg,
+      max: { x: x1, y: y1, z: z1 },
+      min: { x: x2, y: y2, z: z2 },
+      angle: reduced((degrees * Math.PI) / 180),
+      reach: ((x1 - x2) / 2) ** 2 + ((y1 - y2) / 2) ** 2,
+    })
   }
   return found
 }
 
 /**
- * Whether someone standing at `x`, `y`, `z` — their feet — and `height` tall
- * is in the area: within its box across the ground, and overlapping it in
- * height. How the game tests it is not read; this is the box as it reads.
+ * The areas `map`'s settings define over `stage` — see {@link OP_AREA}: those
+ * of the first {@link KIND_SETTINGS} record for the map over the stage whose
+ * conditions hold in `state` (see {@link holds}), which is the one the game
+ * runs as it loads the map's triggers (US ARM9 `func_02064574`). 93 pairs of
+ * settings records overlap, most split by day and night. A record of another
+ * kind can add areas too, as it runs — see {@link EventOutcome.areas}.
  */
-export function inArea(area: StoryArea, x: number, y: number, z: number, height = 0): boolean {
+export function areasOf(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  state?: StoryState,
+): StoryArea[] {
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_SETTINGS || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    if (holds(trigger, state)) return areasIn(trigger)
+  }
+  return []
+}
+
+/**
+ * Whether a point is in the area, as the game tests it (US ARM9
+ * `func_020321e0`): for a turned box, refused if it lies further across the
+ * ground from the centre than {@link StoryArea.reach} allows; otherwise turned
+ * back about the vertical through the centre by the box's angle — the game's
+ * `RotationMatrixY(−angle)`, applied as a row vector — and then inside the box,
+ * edges included, on every axis. The point is the Hero's own position, their
+ * feet.
+ */
+export function inArea(area: StoryArea, x: number, y: number, z: number): boolean {
+  let px = x
+  let pz = z
+  if (area.angle !== 0) {
+    const cx = (area.max.x + area.min.x) / 2
+    const cz = (area.max.z + area.min.z) / 2
+    const dx = x - cx
+    const dz = z - cz
+    if (dx * dx + dz * dz > area.reach) return false
+    const cos = Math.cos(area.angle)
+    const sin = Math.sin(area.angle)
+    px = cx + dx * cos - dz * sin
+    pz = cz + dx * sin + dz * cos
+  }
   return (
-    x >= area.min.x &&
-    x <= area.max.x &&
-    z >= area.min.z &&
-    z <= area.max.z &&
-    y + height >= area.min.y &&
-    y <= area.max.y
+    px <= area.max.x &&
+    y <= area.max.y &&
+    pz <= area.max.z &&
+    px >= area.min.x &&
+    y >= area.min.y &&
+    pz >= area.min.z
   )
+}
+
+/**
+ * The first of `areas` the point is in, as the game takes one: the field keeps
+ * only that one as where the Hero stands, for each source of areas.
+ */
+export function areaAt(
+  areas: readonly StoryArea[],
+  x: number,
+  y: number,
+  z: number,
+): StoryArea | undefined {
+  return areas.find((area) => inArea(area, x, y, z))
 }
 
 /**
@@ -343,6 +416,12 @@ export interface EventOutcome {
   /** The event it plays, if it plays one — see {@link OP_EVENT}. */
   readonly event: number | undefined
   /**
+   * The areas it adds to the map as it runs — see {@link OP_AREA}. 143 is on
+   * 80 settings records, and on 3 entry records, 3 talk records and one
+   * event's own; Batsureg's areas 72 and 73 at 10.6 are an entry record's.
+   */
+  readonly areas: readonly StoryArea[]
+  /**
    * Its actions in the record's own order, which is the order the game runs
    * them in: a flag set before a `132` into a new sub-stage is cleared by it.
    * Absent where an outcome is made by hand, which applies the fields above.
@@ -401,6 +480,7 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
     globals: args(OP_SET_GLOBAL),
     unglobals: args(OP_CLEAR_GLOBAL),
     event: entries.find((e) => e.op === OP_EVENT)?.arg,
+    areas: areasIn(trigger),
     actions: entries.filter((e) => !isCondition(e.op)),
   }
 }

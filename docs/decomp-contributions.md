@@ -286,6 +286,13 @@ Read while measuring the story (`docs/story-walk.md`); the findings are in
 | `ov017 0x0219ca88` | `0x310` | the field's per-frame checks: doorways, fades, transitions, and then kind 6 for the current map | `Field::CheckWatch`? |
 | `ov017 0x0218cbd4` | `0x498` | the field's frame update, which reads the tick count and updates everything, `0x0219ca88` among it | `Field::Update` |
 
+| `0x02062a94` (a case of `0x02061c04`) | — | action `143`: a turned box, its angle from degrees, a squared radius from width and **height**, onto the trigger object's list at `+0x494` (`0x02064af8`) | — |
+| `0x020321e0` | `0xe0` | the turned-box test: refuse by squared radius, turn the point back by `RotationMatrixY(−angle)`, test against the corners (`0x02031118`, edges included) | `PointInTurnedBox` |
+| `ov017 0x02198e30` | `0x140` | the field's test of the trigger areas: the first holding the Hero, kind 5 on leaving one and kind 2 on entering one, the last kept at `+0x491` | `Field::CheckTriggerAreas` |
+| `ov017 0x0219814c` | `0x160` | the same for the map's own type-3 regions (the zone's list at `+0x6c`, by type through `0x0201e838`), the last kept on the Hero | `Field::CheckMapAreas` |
+| `0x0201d530`, `0x0201d638` | `0x108`, `0x994` | the link table's (`.bmbl`) handlers for `0x73` (a region: type, centre, size, two angles, squared radius; added by `0x0201e710`) and `0x74` (what the region does, by its type; a type-3 region's number). Their table is at `0x020ef3d8`, tags `0x64` to `0x7e` | `MapLinks_Region`, `MapLinks_RegionAction` |
+| `0x02094b9c` | `0x140` | a region's test: off if flag 8; the turned-box test when it has depth; the once-only flags | `MapRegion::Contains` |
+
 **Open**: which operations use the banks at `+0x08` and `+0x14`; what
 `0x0206e120`'s four states are; which kind each of the other lookups asks for
 (overlays 1 to 4 and 17); the JPN addresses.

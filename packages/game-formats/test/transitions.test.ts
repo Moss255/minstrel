@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { mapDoorways, readMapTransitions } from '../src/transitions.ts'
+import { inArea } from '../src/story.ts'
+import { mapAreas, mapDoorways, readMapTransitions } from '../src/transitions.ts'
 
 /**
  * Fixtures are built here, never taken from a cartridge.
@@ -299,5 +300,53 @@ describe('a file that is not a map link table', () => {
 
   it('says where the trouble is rather than returning nothing', () => {
     expect(() => readMapTransitions(new Uint8Array(4))).toThrow(/shorter than its header/)
+  })
+})
+
+describe("a map's own areas", () => {
+  /** A `0x73` region: its type, centre, size and angle, and one value past the angle. */
+  const region = (
+    type: number,
+    at: [number, number, number],
+    size: [number, number, number],
+    angle = 0,
+  ) => ({
+    tag: 0x73,
+    fields: [int(type), ...at.map(float), ...size.map(float), float(angle), float(0)],
+  })
+  // Stornway's throne room has this shape: two type-3 regions, areas 0 and 1,
+  // and a doorway, type 2, that is not an area.
+  const table = build(
+    [
+      region(3, [0, 0.8, -2.1], [3, 2, 1]),
+      { tag: 0x74, fields: [int(0)] },
+      region(3, [0, 0.8, -0.9], [3, 2, 1]),
+      { tag: 0x74, fields: [int(1)] },
+      region(2, [0, 0, 7.8], [2, 4, 1]),
+      { tag: 0x74, fields: [int(0), int(5), int(10), int(1)] },
+      region(3, [10, 0, 0], [4, 2, 1], Math.PI / 2),
+      { tag: 0x74, fields: [int(7)] },
+    ],
+    [],
+  )
+
+  it('reads the type-3 regions as areas, numbered by the 0x74 after each', () => {
+    const areas = mapAreas(table)
+    expect(areas.map((a) => a.id)).toEqual([0, 1, 7])
+    const [first] = areas
+    expect(first?.max.x).toBeCloseTo(1.5, 5)
+    expect(first?.min.z).toBeCloseTo(-2.6, 5)
+    expect(first?.angle).toBe(0)
+    // The quick refusal is across the ground: half the width and half the depth.
+    expect(first?.reach).toBeCloseTo(1.5 ** 2 + 0.5 ** 2, 5)
+  })
+
+  it('turns a region by its angle', () => {
+    const turned = mapAreas(table)[2]
+    if (!turned) throw new Error('no area')
+    // Four wide across x and one deep along z, turned a quarter: now one wide
+    // across x and four deep along z.
+    expect(inArea(turned, 10, 0, 1.8)).toBe(true)
+    expect(inArea(turned, 11.8, 0, 0)).toBe(false)
   })
 })

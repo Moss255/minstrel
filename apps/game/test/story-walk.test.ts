@@ -3,16 +3,19 @@ import { scanCartridge } from '@minstrel/cartridge'
 import {
   afterBattle,
   areaEvent,
+  areasIn,
   areasOf,
   conditionsOf,
   type EventOutcome,
   entryPlay,
   eventOutcome,
   flagsHold,
+  isMapLinks,
   isMapList,
   KIND_AREA_EVENT,
   KIND_ENTRY,
   KIND_WATCH,
+  mapAreas,
   OP_AFTER_BATTLE,
   OP_AT_STEP,
   OP_BATTLE,
@@ -27,9 +30,11 @@ import {
   OP_UNLESS_FLAG,
   OP_UNLESS_GLOBAL,
   OP_UNLESS_MARK,
+  outcomeOf,
   readMapList,
   readScript,
   type Script,
+  type StoryArea,
   type StoryState,
   type Trigger,
   triggerWords,
@@ -156,6 +161,27 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   /** The records of a map, by area — so a stage's can be taken once. */
   const byMap = new Map<number, Trigger[]>()
   const views = new Map<string, StoryView>()
+  /** Each map's own areas, from its link table — see `mapAreas`. */
+  const mapAreasOf = new Map<number, StoryArea[]>()
+  /**
+   * The areas the Hero can walk into in a map at a stage: the first settings
+   * record's that holds, those any other record there that the engine runs
+   * adds as it runs — taken as run, **ours**, as the walk takes every map to
+   * be in reach; an entry record runs only if it plays an event — and the
+   * map's own.
+   */
+  const areaIdsAt = (map: number, stage: Stage, state?: StoryState) => {
+    const here = recordsAt(map, stage)
+    return [
+      ...new Set([
+        ...areasOf(here, map, stage, state).map((a) => a.id),
+        ...here
+          .filter((t) => t.unknown_5 !== 20 && (t.unknown_5 !== KIND_ENTRY || outcomeOf(t).event))
+          .flatMap((t) => areasIn(t).map((a) => a.id)),
+        ...(mapAreasOf.get(map) ?? []).map((a) => a.id),
+      ]),
+    ]
+  }
   const scripts = new Map<number, Script>()
   /** Each event's script run with chaining on: what it chains into, in order, or why it would not run. */
   const chains = new Map<number, number[] | string>()
@@ -394,8 +420,8 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         keep(watch.event !== undefined ? play(before, map, watch.event, true, played) : [before])
       }
       // Walking into each of its areas.
-      for (const box of areasOf(here, map, stage)) {
-        const found = areaEvent(here, map, stage, story.flags, step, (id) => id === box.id, more)
+      for (const area of areaIdsAt(map, stage, stateIn(state, map))) {
+        const found = areaEvent(here, map, stage, story.flags, step, (id) => id === area, more)
         if (!found || !scripts.has(found.event)) continue
         const before = clone(state)
         runRecord(before, map, found.outcome)
@@ -593,14 +619,16 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     const inArea = words.find((w) => w.op === OP_IN_AREA)?.arg
     if (trigger.unknown_5 === KIND_AREA_EVENT && inArea !== undefined) {
       const defined = here.some((state) =>
-        areasOf(
-          recordsAt(trigger.map, state.stage as Stage),
-          trigger.map,
-          state.stage as Stage,
-        ).some((box) => box.id === inArea),
+        areaIdsAt(trigger.map, state.stage as Stage).includes(inArea),
       )
-      if (!defined)
-        return `walking into area ${inArea} of map ${trigger.map}, which no record defines there`
+      if (!defined) {
+        const byEntry = recordsAt(trigger.map, here[0]?.stage as Stage).some(
+          (t) => t.unknown_5 === KIND_ENTRY && areasIn(t).some((a) => a.id === inArea),
+        )
+        return byEntry
+          ? `walking into area ${inArea} of map ${trigger.map}, which only an entry record that plays no event defines, and the engine does not run one`
+          : `walking into area ${inArea} of map ${trigger.map}, which no record defines there`
+      }
     }
     const fails = failing(trigger, inSpan)
     if (fails) return `a record of ${what}: ${fails}`
@@ -707,6 +735,25 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       }
     }
     for (const area of triggersOf.keys()) views.set(area, storyView(rom, area))
+    // Each map's own areas, out of its link table, by the map's id.
+    const idOf = new Map<string, number>()
+    for (const map of byMap.keys()) {
+      const code = index?.(map)
+      if (code) idOf.set(code.toUpperCase(), map)
+    }
+    for (const leaf of scanCartridge(rom, { pathFilter: '/data/map/' })) {
+      // By the archive's name, as `load` finds it: an exterior's table is
+      // `M02.ambl/M02M0000.bmbl`, a room's `C01M18.ambl/C01M1800.bmbl`.
+      const archive = /\/([A-Z0-9]+)\.ambl$/i.exec(leaf.archive)
+      if (!leaf.path.toLowerCase().endsWith('.bmbl') || !archive) continue
+      const map = idOf.get((archive[1] as string).toUpperCase())
+      if (map === undefined || !isMapLinks(leaf.bytes)) continue
+      try {
+        mapAreasOf.set(map, mapAreas(leaf.bytes))
+      } catch {
+        // A link table that will not read leaves the map without areas of its own.
+      }
+    }
 
     for (const folder of ['/data/event', '/data/evspt_lv5']) {
       for (const leaf of scanCartridge(rom, { pathFilter: folder })) {
@@ -803,6 +850,9 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // kind 6, starts chapter 3.
     expect(slice?.reached.has('3.1 step 1')).toBe(true)
     expect(slice?.reached.has('3.1 step 2')).toBe(true)
+    // And in the castle, by the throne room's own area 0 — defined in its
+    // link table, not its triggers — which plays ev3040.
+    expect(slice?.reached.has('3.1 step 3')).toBe(true)
   })
 
   it('breaks where docs/story-walk.md says, and prints each break with why', () => {
@@ -821,13 +871,16 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // breaks between a new game and the last stage a record sets, before the
     // story's five threads were read from the game's code; 101 with them; 87
     // once records ran as the game runs them — every action, kind 6 each
-    // frame, conditions parsed and composites expanded. Fixing one shows up as
-    // a smaller number here; losing a rule the game had shows up as a larger.
-    // Update it, and the table in `docs/story-walk.md`, when either happens.
-    expect(breaks.length).toBe(87)
-    // The first break after the slice is now in Stornway's castle, at 3.1.
+    // frame, conditions parsed and composites expanded; 83 once areas came
+    // from maps' own link tables too, turned as the game turns them. Fixing
+    // one shows up as a smaller number here; losing a rule the game had shows
+    // up as a larger. Update it, and the table in `docs/story-walk.md`, when
+    // either happens.
+    expect(breaks.length).toBe(83)
+    // The first break after the slice: talking to 45 in Stornway's throne
+    // room, whom the cast does not stand there.
     const first = breaks.find((b) => b.next.major >= 3)
-    expect(first && show(first.next)).toBe('3.1 step 3')
+    expect(first && show(first.next)).toBe('3.2 step 1')
     expect(walks.every((walk) => !walk.capped)).toBe(true)
   })
 })

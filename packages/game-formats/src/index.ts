@@ -240,7 +240,9 @@ export {
 } from './sprite.ts'
 export {
   afterBattle,
+  areaAt,
   areaEvent,
+  areasIn,
   areasOf,
   type BattleOutcome,
   type Conditions,
@@ -310,7 +312,7 @@ export {
   type TableRecord,
 } from './table.ts'
 export { readTalk, type TalkLine } from './talk.ts'
-export { type MapTransition, mapDoorways, readMapTransitions } from './transitions.ts'
+export { type MapTransition, mapAreas, mapDoorways, readMapTransitions } from './transitions.ts'
 export {
   RANDOM_GOLD,
   RANDOM_ITEM,

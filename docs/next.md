@@ -17,7 +17,7 @@ credits in one save. **The worklist is `docs/story-walk.md`**, produced by
 cartridge by the engine's own rules and prints every break with why. It
 takes precedence over the list below, which was the sweep's.
 
-The slice plays through in one walk and on into Stornway's chapter 3, and 87
+The slice plays through in one walk and on into Stornway's chapter 3, and 83
 breaks remain. The story's five threads and how the game runs a record are
 read and built. **Next is how story characters are placed** (cause 2 in the
 list, 23 breaks): the `s0xx` cast entries a record talks to where the cast

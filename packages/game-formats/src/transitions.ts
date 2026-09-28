@@ -1,3 +1,4 @@
+import type { StoryArea } from './story.ts'
 import { type DataTable, readDataTable, type TableRecord } from './table.ts'
 
 /**
@@ -198,4 +199,46 @@ export function mapDoorways(data: Uint8Array): MapTransition[] {
     if (t.tag === TAG_ACTION && (kept[same] as MapTransition).tag === TAG_DOORWAY) kept[same] = t
   }
   return kept
+}
+
+/** The kind of a `0x73` region that is an area of the map — see {@link mapAreas}. */
+const REGION_AREA = 3
+
+/**
+ * A map's own areas: its link table's `0x73` regions of **type 3**, each with
+ * the area's number in the first value of the `0x74` after it. Read from the
+ * game's code (US ARM9): the table's handler for `0x73` (`func_0201d530`)
+ * reads a type, a centre, a size — width, height, depth — and an angle in
+ * radians, and adds a region the field keeps (`func_0201e710`); the one for
+ * `0x74` (`func_0201d638`) gives a type-3 region its number. The field tests
+ * the Hero against these (`func_ov017_0219814c`) as against a trigger's areas,
+ * the first that holds them, and walking into one runs the map's records for
+ * that area. 22 on the cartridge, in 15 maps; Stornway's throne room has areas
+ * 0 and 1, the only definitions of the areas its records at 3.1 and 3.3 name.
+ *
+ * In the file's own units, as a trigger's areas are.
+ */
+export function mapAreas(data: Uint8Array): StoryArea[] {
+  const table = readDataTable(data)
+  const records = table.records
+  const out: StoryArea[] = []
+  for (let i = 0; i < records.length; i++) {
+    const region = records[i] as TableRecord
+    if (region.tag !== TAG_TRIGGER || region.values[0] !== REGION_AREA) continue
+    const action = records[i + 1]
+    if (action?.tag !== TAG_ACTION || action.values.length === 0) continue
+    const f = region.floats
+    const [x, y, z, width, height, depth, angle] = [1, 2, 3, 4, 5, 6, 7].map(
+      (slot) => (f[slot] as number) ?? 0,
+    ) as [number, number, number, number, number, number, number]
+    const turn = 2 * Math.PI
+    out.push({
+      id: action.values[0] as number,
+      max: { x: x + width / 2, y: y + height / 2, z: z + depth / 2 },
+      min: { x: x - width / 2, y: y - height / 2, z: z - depth / 2 },
+      angle: ((angle % turn) + turn) % turn,
+      reach: (width / 2) ** 2 + (depth / 2) ** 2,
+    })
+  }
+  return out
 }

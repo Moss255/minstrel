@@ -13,6 +13,7 @@ import {
   ActionEffect,
   type AttendingCharacter,
   afterBattle,
+  areaAt,
   areaEvent,
   areasOf,
   type EventOutcome,
@@ -21,7 +22,6 @@ import {
   FACILITY_MEDALS,
   facilityFor,
   GRANTS_REGARDLESS,
-  inArea,
   type LevelRow,
   type LevelTable,
   MEDALS_MOST,
@@ -1726,7 +1726,9 @@ function enter(map: string, arrival?: Arrival): boolean {
   refreshTreasures()
   doors = doorsOf(opened.map)
   slides = startSlides(opened.slides, (id) => standingIn(opened.cast, id))
-  areasIn.clear()
+  areaIn.triggers = undefined
+  areaIn.map = undefined
+  areasAdded.length = 0
   cabinets = cabinetsOf(opened.map, opened.treasures, (slot) => {
     const inside = opened.treasures[slot]
     return inside !== undefined && openedTreasure.has(treasureKey(opened.code, slot, inside))
@@ -1818,48 +1820,70 @@ function goThrough(door: NonNullable<ReturnType<typeof doorTaken>>): void {
   if (arrived) playEntryEvent()
 }
 
-/** The areas the Hero stood in at the last look, by id — see `maybeAreaEvent`. */
-const areasIn = new Set<number>()
-const areasNow = new Set<number>()
-/** This map's areas at the story's stage, kept while neither changes. */
-let areaCache: { key: string; areas: readonly StoryArea[] } | undefined
+/**
+ * The area the Hero stood in at the last look, for each of the two sources the
+ * game tests on its own — a trigger's areas and the map's own — by id; none
+ * when they stood in none. See `maybeAreaEvent`.
+ */
+const areaIn: { triggers: number | undefined; map: number | undefined } = {
+  triggers: undefined,
+  map: undefined,
+}
+/**
+ * Areas records have added to this map as they ran, since it was entered —
+ * see `EventOutcome.areas`. The game keeps them in the same list as the
+ * settings' own, until the map's triggers are read again.
+ */
+const areasAdded: StoryArea[] = []
 
 /**
  * Play what walking into one of the map's areas plays — see `areaEvent` in
- * `@minstrel/game-formats`, INFERRED: in the mayor's house at 2.1, walking up
- * to him plays his scene with Ivor, `ev02120`. Only on walking in, not while
- * standing in one, and not while anything else is up — both **ours**.
+ * `@minstrel/game-formats` — as the game's field does it, read from its code
+ * (US ARM9 `func_ov017_02198e30` and `func_ov017_0219814c`): the Hero's
+ * position is tested against a trigger's areas and against the map's own, each
+ * on its own, and the first area of each that holds them is where they stand;
+ * walking into another runs the records for it. In the mayor's house at 2.1,
+ * walking up to him plays his scene with Ivor, `ev02120`; in Stornway's throne
+ * room at 3.1, the map's own area 0 plays `ev03040`. Not while anything else
+ * is up — **ours**.
  */
 function maybeAreaEvent(): void {
   if (!self || !loaded || !storyStage || playing || battle || talking || menu || visit) return
   if (travelling || loaded.mapId === undefined) return
-  const key = `${loaded.mapId} ${storyStage.major}.${storyStage.minor}`
-  if (areaCache?.key !== key) {
-    areaCache = { key, areas: areasOf(loaded.triggers, loaded.mapId, storyStage) }
-  }
-  if (areaCache.areas.length === 0) return
+  const triggerAreas = [
+    ...areasOf(loaded.triggers, loaded.mapId, storyStage, storyState()),
+    ...areasAdded,
+  ]
+  if (triggerAreas.length === 0 && loaded.mapAreas.length === 0) return
   // Areas are in the units placements use; the world is those times its scale.
   const scale = WORLD_SCALE * worldScale
   const x = toFloat(self.state.x) / scale
   const y = toFloat(self.state.y) / scale
   const z = toFloat(self.state.z) / scale
-  const height = toFloat(person().height) / scale
-  areasNow.clear()
-  for (const area of areaCache.areas) if (inArea(area, x, y, z, height)) areasNow.add(area.id)
-  const found = areaEvent(
-    loaded.triggers,
-    loaded.mapId,
-    storyStage,
-    storyFlags,
-    stepNow(),
-    (id) => areasNow.has(id) && !areasIn.has(id),
-    storyState().more,
-  )
-  areasIn.clear()
-  for (const id of areasNow) areasIn.add(id)
-  if (!found || !loaded.eventScript(found.event)) return
-  storyFromRecord(found.outcome)
-  startEvent(found.event)
+  const now = {
+    triggers: areaAt(triggerAreas, x, y, z)?.id,
+    map: areaAt(loaded.mapAreas, x, y, z)?.id,
+  }
+  const entered = (['triggers', 'map'] as const)
+    .filter((source) => now[source] !== undefined && now[source] !== areaIn[source])
+    .map((source) => now[source] as number)
+  areaIn.triggers = now.triggers
+  areaIn.map = now.map
+  for (const id of entered) {
+    const found = areaEvent(
+      loaded.triggers,
+      loaded.mapId,
+      storyStage,
+      storyFlags,
+      stepNow(),
+      (area) => area === id,
+      storyState().more,
+    )
+    if (!found || !loaded.eventScript(found.event)) continue
+    storyFromRecord(found.outcome)
+    startEvent(found.event)
+    return
+  }
 }
 
 /** The overlay text: where the character is, and what it is standing in. */
@@ -5812,6 +5836,12 @@ function storyFromRecord(outcome: EventOutcome): boolean {
   )
   storyStage = story.stage
   storyStep = story.step
+  // Any areas it adds to the map, as it runs — see `areasAdded`. Once each:
+  // the map's watch runs every frame.
+  for (const area of outcome.areas) {
+    if (!areasAdded.some((had) => JSON.stringify(had) === JSON.stringify(area)))
+      areasAdded.push(area)
+  }
   // The cast stands where the stage and step have them: the Hexagon's
   // statue steps aside at 2.4, step 5 — see `castOf`.
   if (stepped) {

@@ -1911,6 +1911,13 @@ a `0x73` before it. Most `0x74` do something other than change map; those are
 skipped rather than guessed at, which is why 415 of the 440 read here are the
 24-value shape and the rest are shorter.
 
+**A `0x73`'s first value is the region's type**, read from the game's code
+(`func_0201d530`, and `func_0201d638` for the `0x74`, which fills the region
+by its type). Type 2 is a doorway; **type 3 is an area of the map**, numbered
+by its `0x74`'s first value — see "Areas" under "Triggers". On the cartridge:
+283 of type 0, 184 of 1, 670 of 2, 22 of 3, 63 of 4, 113 of 5, 160 of 6, 163
+of 8, 56 of 9, 204 of 10, 360 of 11 and 23 of 12. The rest are not read.
+
 The destination is taken from a fixed slot rather than by searching, and checked
 against the header's type bits. It holds up: **1,418 records mark that slot a
 string and none marks a second slot one**, so there is nothing to choose between.
@@ -3437,8 +3444,8 @@ files (5,761 records read).
 | 16 : n on a talk record with a label and an event | the event plays once the label's line is read, and only on the prompt's answer *n*, from 0 — Yes | in Angel Falls, the pass and the Hexagon, 7 of the 9 such records carrying it have a line that asks (one more is the inn's welcome, one has no line found), against 3 of the 17 without. The Hexagon's switch, `6:201 11:194 16:0 119:2530`, asks "Press the button?"; a let's play answering No is told the Hero decides not to, and nothing moves. A talk record's event is read out after its label's line, not instead of it — the let's play reads the inscription, "Path ahead sealed…", before `ev02500` | yes |
 | value 5 = 15, opening with 12 : n | once set battle *n* is won: plays the event, sets the flags | 46 of the 47 open with 12. The Hexagon's `12:2 119:2550` plays Patty's thanks | yes |
 | value 5 = 16, opening with 12 : n | once it is lost | all 33 open with 12; INFERRED as the other outcome — the Hexagon's `12:2 104:4 197:10` sets the flag under which Patty offers the fight again | yes |
-| value 5 = 20, with 143 : n and six floats | defines area *n*: a box, its greater corner and then its lesser, x y z, in the units placements use; a word of operation 0 follows, its argument not established | all **108** area words have six floats, and the first three are at or above the last three on every axis on **108 of 108**; the boxes sampled lie inside their maps | yes |
-| value 5 = 2, with 7 : n | walking into area *n* plays the record's event | **102 of the 110** name an area defined in their map. The mayor's house at 2.1, `7:15 5:1 119:2120`, plays his scene with Ivor, whose record sets flag 1 | yes |
+| value 5 = 20, with 143 : n and six floats | defines area *n*: a box, its greater corner and then its lesser, x y z, in the units placements use, and then **its angle in degrees** about the vertical — read from the game's code, see "Areas" below | all **108** area words have six floats, and the first three are at or above the last three on every axis on **108 of 108**; the boxes sampled lie inside their maps | yes |
+| value 5 = 2, with 7 : n | walking into area *n* plays the record's event | **102 of the 110** name an area a trigger defines in their map; the rest are the map's own, in its link table — see "Areas" below. The mayor's house at 2.1, `7:15 5:1 119:2120`, plays his scene with Ivor, whose record sets flag 1 | yes |
 | 133 on a talk record, with 177 : n | once the line is read, goes on to that map and event — when the prompt's answer *n*, from 0, was given | thin: two records carry 177 beside a 133. Erinn's at 2.1, `6:98 11:193 16:0 177:0 1:0 133:1110 2130:0`, goes on to the morning; her line's first answer, Yes, is dinner, and a let's play answers it and wakes to the morning. `1 : 0` is not read | yes |
 | 17 : n | — | never paired with anything that sets or tests it | no |
 
@@ -3518,6 +3525,48 @@ elsewhere. Read so far:
 | 132 | queue a move of the live thread's stage | `0x02062644` |
 | 214 | queue a move of thread *n*'s stage | `0x02063e40` |
 | 216 | store its argument at `+0x27b4` of the object `func_02012fe4` returns; what reads it is not established | `0x02063eac` |
+
+### Areas — read from the game's code, 28 September 2026
+
+**An area is a box turned about the vertical through its centre, and two
+things define them**, which the field tests the Hero against each on its own.
+
+- **A trigger's `143`.** The parser takes six floats and an integer as
+  `143`'s own, and the integer is the **angle in degrees**: the action (US
+  ARM9 `0x02062a94`) multiplies it by π and divides by 180. It keeps the box,
+  its centre, the angle and a squared radius for a quick refusal in a list
+  on the trigger object (`+0x494`, through `func_02064af8`). **That radius is
+  made from the box's width and height, not its width and depth**, and the
+  test compares it with the distance across the ground, so a deep, low box
+  is refused short of its far end. The game does so, and so does `inArea`.
+  31 of the cartridge's 113 are turned. `143` is on 80 settings records and
+  also on 3 entry, 3 talk and one event's own record: it adds its area when
+  its record runs. Batsureg's areas 72 and 73 at 10.6 are an entry record's
+  with no event.
+- **A map's own link table**, the `.bmbl`: a `0x73` region of **type 3**, its
+  first value (see "The doorways" for the other types; 2 is a doorway). The
+  handler for `0x73` (`func_0201d530`) reads a type, a centre, a size (width,
+  height, depth), an angle in radians and one more angle, and makes its
+  squared radius from the width and depth. The handler for `0x74`
+  (`func_0201d638`) gives a type-3 region its number from its first value.
+  22 on the cartridge, in 15 maps. Stornway's throne room has areas 0 and 1,
+  the only definitions of the areas its records at 3.1 and 3.3 name. Zere's
+  one is turned 45°.
+
+**The test** (`func_020321e0`): for a turned box, refuse a point further
+across the ground from the centre than the squared radius allows; otherwise
+turn it back about the centre by the angle (`RotationMatrixY(−angle)` applied
+as a row vector: `x' = x cos a − z sin a`, `z' = x sin a + z cos a`) and test
+it against the corners, edges included, on all three axes. The point is the
+Hero's own position. An unturned box skips the radius.
+
+**Walking into one** (`func_ov017_02198e30` for a trigger's, and
+`func_ov017_0219814c` for the map's own): each source keeps the first area
+that holds the Hero. On a new one it runs kind 5 for the one left, then
+kind 2 for the one entered, with the area's number as the context. No record
+on the cartridge is of kind 5. A map region also carries flags that can make
+it hold once and then no more (`func_02094b9c`); what sets them for an area
+is not read.
 
 **Marks last the major stage, not the minor.** `minstrel` cleared them with
 the flags on any move. That was marked "ours" in `moveStory`, and the code

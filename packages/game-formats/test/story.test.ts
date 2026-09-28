@@ -104,7 +104,7 @@ describe('areas, and what walking into one plays', () => {
 
   it('reads an area as a box, its greater corner and then its lesser', () => {
     const [area] = areasOf([settings], 1105, at21)
-    expect(area).toMatchObject({ id: 15, unknown_after: 0 })
+    expect(area).toMatchObject({ id: 15, angle: 0 })
     expect(area?.max.x).toBeCloseTo(2.65, 5)
     expect(area?.min.z).toBeCloseTo(-5.93, 5)
     expect(areasOf([settings], 1105, { major: 2, minor: 2 })).toEqual([])
@@ -112,8 +112,42 @@ describe('areas, and what walking into one plays', () => {
     expect(inArea(area, 2, 0, 0)).toBe(true)
     expect(inArea(area, 3, 0, 0)).toBe(false)
     expect(inArea(area, 2, 2.5, 0)).toBe(false)
-    // Feet below it, head in it.
-    expect(inArea(area, 2, -2.5, 0, 1)).toBe(true)
+    // A point, the Hero's feet: below the box is outside it.
+    expect(inArea(area, 2, -2.5, 0)).toBe(false)
+  })
+
+  it('turns an area by the degrees after its box, and refuses by the game’s own reach', () => {
+    // A box four wide across x, one deep along z and two high, turned 90°.
+    const turned = trigger(
+      1105,
+      KIND_SETTINGS,
+      [
+        [143, 3],
+        [0, 90],
+      ],
+      6,
+      [at21, at21],
+    )
+    const floats = [2, 1, 0.5, -2, -1, -0.5]
+    turned.values.set(
+      floats.map((f) => new Uint32Array(new Float32Array([f]).buffer)[0] as number),
+      1,
+    )
+    turned.floats.set(floats, 1)
+    turned.kinds.set([1, 2, 2, 2, 2, 2, 2, 1])
+    turned.values[7] = 90
+    const [area] = areasOf([turned], 1105, at21)
+    if (!area) throw new Error('no area')
+    expect(area.id).toBe(3)
+    expect(area.angle).toBeCloseTo(Math.PI / 2, 5)
+    // Turned a quarter, it is one wide across x and four deep along z…
+    expect(inArea(area, 0, 0, 1.8)).toBe(true)
+    expect(inArea(area, 1.8, 0, 0)).toBe(false)
+    // …but the game refuses before it turns, by the box's width and height:
+    // 2² + 1² = 5, so a point √5 across the ground or more is out.
+    expect(area.reach).toBeCloseTo(5, 5)
+    expect(inArea(area, 0, 0, 1.9)).toBe(true)
+    expect(inArea(area, 0.3, 0, 1.99)).toBe(true)
   })
 
   it('plays the event of an area walked into, while its flags hold', () => {
