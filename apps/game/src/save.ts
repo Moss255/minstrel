@@ -32,6 +32,14 @@ const APPEARANCE_KNOBS: readonly (keyof Appearance)[] = [
  * save no longer has them where they were — see {@link membersOf}.
  */
 
+/** One thread of the story, as a save keeps it — see `Story` in `story.ts`. */
+export interface SaveThread {
+  readonly stage: { readonly major: number; readonly minor: number } | null
+  readonly step: number
+  readonly flags: readonly number[]
+  readonly marks: readonly number[]
+}
+
 export const SAVE_KEY = 'minstrel.save'
 export const SAVE_VERSION = 5
 
@@ -130,6 +138,16 @@ export interface SaveGame {
    */
   readonly step?: number
   readonly flags?: readonly number[]
+  /** The live thread's marks — see `OP_SET_MARK`. Absent from saves made before they were kept. */
+  readonly marks?: readonly number[]
+  /**
+   * Which of the story's five threads is live, and every thread's own — see
+   * `THREADS` in `story.ts`. The live one's entry is stale; `stage`, `step`,
+   * `flags` and `marks` above are its copy. **Absent from saves made before
+   * threads were kept**, whose one stage the map they were made in takes.
+   */
+  readonly thread?: number
+  readonly threads?: readonly SaveThread[]
   /**
    * The party, the Hero first — see {@link SaveMember}. Never empty: a save
    * with no Hero is a save of nobody, and `decodeSave` refuses it.
@@ -219,6 +237,15 @@ export function decodeSave(text: string): SaveGame {
   if (s.flags !== undefined && (!Array.isArray(s.flags) || !s.flags.every(isCount))) {
     throw new SaveError('the save has story flags that do not read')
   }
+  if (s.marks !== undefined && (!Array.isArray(s.marks) || !s.marks.every(isCount))) {
+    throw new SaveError('the save has story marks that do not read')
+  }
+  if (s.thread !== undefined && !isCount(s.thread)) {
+    throw new SaveError('the save has a story thread that does not read')
+  }
+  if (s.threads !== undefined && (!Array.isArray(s.threads) || !s.threads.every(isThread))) {
+    throw new SaveError('the save has story threads that do not read')
+  }
   if (s.kept !== undefined && !Array.isArray(s.kept)) {
     throw new SaveError('the save has a list of kept party members that does not read')
   }
@@ -248,6 +275,21 @@ export function decodeSave(text: string): SaveGame {
     members,
     ...(kept === undefined ? {} : { kept }),
   } as SaveGame
+}
+
+/** Whether a saved thread reads — see {@link SaveThread}. */
+function isThread(raw: unknown): boolean {
+  if (typeof raw !== 'object' || raw === null) return false
+  const t = raw as Record<string, unknown>
+  const stage = t.stage as Record<string, unknown> | null | undefined
+  return (
+    (stage === null || (!!stage && isCount(stage.major) && isCount(stage.minor))) &&
+    isCount(t.step) &&
+    Array.isArray(t.flags) &&
+    t.flags.every(isCount) &&
+    Array.isArray(t.marks) &&
+    t.marks.every(isCount)
+  )
 }
 
 /**

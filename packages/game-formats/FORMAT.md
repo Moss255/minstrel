@@ -3444,6 +3444,84 @@ files (5,761 records read).
 
 The flags are read as the stage's own: cleared when the story moves on to
 another stage. INFERRED — the tests find their setter in the same stage.
+**Confirmed from the game's code**, with a correction for marks — see below.
+
+## Triggers, read from the game's code — 28 September 2026
+
+Addresses are the US release's ARM9 (`YDQE`), from the decompilation's
+extract. Nothing below is copied into the repository. The functions are
+logged for the decomp in `docs/decomp-contributions.md`, "Read since".
+
+**The file is a script.** `func_0206461c` builds the name with
+`data/scenario/trigger%s.bin` (`0x020f05dc`) from the area's three letters,
+with the second blanked for an `F` area. It loads the file and runs it as a
+`Script`, through `func_02064574`, with the opcode table at `0x020f05bc`:
+tags `0x64` and `0x65` do nothing, and **tag 1 is the record**
+(`func_0205f9cc`).
+
+**A record is kept only for the current map and the current stage.**
+`func_0205f9cc` reads value 0 and drops the record unless it is the map
+being entered. It reads values 1–4 as a span and keeps the record only if
+`from ≤ now ≤ to`, each taken as `major × 1000 + minor`, where `now` is one
+stage read from `GameState` at `+0x5cb0` (major) and `+0x5cb4` (minor). That
+confirms the span reading above, and that a record is for its own map. The
+kept record is `u16` map, `u8` from-major, to-major, from-minor, to-minor,
+`u8` value 5, then its words.
+
+**The story is five threads, and the map decides which is live.** The
+trigger object (`0x02108844`, returned by `func_0205ec34`) opens with five
+records of `0x1c` bytes, one per thread, and holds the live thread's index
+at `+0x332`:
+
+| offset | size | what | written by | cleared when |
+|---|---|---|---|---|
+| `+0x00` | `u8` | stage, major | `132`, and `GameState`'s setters | — |
+| `+0x01` | `u8` | stage, minor | as above | — |
+| `+0x02` | `u8` | step | as above | — |
+| `+0x03` | 32 bits | **marks**: `102` sets, `103` clears | `func_0206df6c` | the major changes |
+| `+0x08` | 64 bits | not established | — | the major changes |
+| `+0x10` | 32 bits | **flags**: `104` sets, `105` clears | `func_0206df6c` | the major or minor changes |
+| `+0x14` | 64 bits | not established | — | the major or minor changes |
+
+`func_02064b98(object, map)` picks the live thread from the map's id, then
+copies that thread's stage, minor and step into `GameState` through the three
+setters (`func_02010774`, `func_020107a8`, `func_020107dc`). Each setter also
+writes its value back into the live thread's record.
+
+| thread | maps | the chapter `214` starts it at |
+|---|---|---|
+| 1 | 4200–4202, 9000–9008: Alltrades Abbey, the Tower of Trades | 6.1 |
+| 2 | 1700–1706, 1800–1808, 6000–6001, 7700–7709: Zere Rocks, Dourbridge, the Lonely Plains, the Heights of Loneliness | 8.1 |
+| 3 | 200–219, 7802–7809: Gleeba, the Plumbed Depths | 11.1 |
+| 4 | 2100–2109, 8301–8303: Swinedimples Academy and its Old School | 12.1 |
+| 0 | every other map | 7.1 |
+
+**`214 : n` sets thread n's stage**, followed by three words of operation 0
+as `132` is. `ev25524` on the Starflight Express at 5.2 starts all five, and
+the table above is the check: each thread's maps are where that chapter's
+records are. **`132` sets the live thread's stage.** Both queue their record
+(`func_0206445c`) instead of writing the stage on the spot. `func_02064b24`
+runs a record's actions with a fresh queue, and what applies the queue has
+not been read. `132` also clears the banks as the table says, when the major
+or minor it goes to differs from the live one (`func_0206e080`,
+`func_0206e0d0`).
+
+**The actions are one switch.** `func_02061c04` dispatches on `op − 100` for
+operations 100 to 233. Operations below 100 are the conditions, tested
+elsewhere. Read so far:
+
+| op | what | where |
+|---|---|---|
+| 100, 101 | set, clear a bit in a bank at `+0x8c` of the object, outside any thread, so no stage move clears it | `func_0206df6c` |
+| 102, 103 | set, clear a mark (`+0x03` of the live thread) | as above |
+| 104, 105 | set, clear a flag (`+0x10` of the live thread) | as above |
+| 132 | queue a move of the live thread's stage | `0x02062644` |
+| 214 | queue a move of thread *n*'s stage | `0x02063e40` |
+| 216 | store its argument at `+0x27b4` of the object `func_02012fe4` returns; what reads it is not established | `0x02063eac` |
+
+**Marks last the major stage, not the minor.** `minstrel` cleared them with
+the flags on any move. That was marked "ours" in `moveStory`, and the code
+corrects it.
 
 **The opening, as the records have it.** The morning's record, in map 1110:
 `8:2130 132:0 0:2 0:2 0:1 197:6` — after it the story is at 2.2, step 1. At

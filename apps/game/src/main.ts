@@ -305,6 +305,7 @@ import {
 } from './skills.ts'
 import { faceColours } from './skin.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
+import { moveStory, type Story, swapThread, THREADS, threadOf, unstarted } from './story.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   answerNow,
@@ -604,6 +605,39 @@ function stepNow(): number | undefined {
   return storyStep > 0 ? storyStep : undefined
 }
 const storyFlags = new Set<number>()
+/**
+ * **The story's five threads**, of which `storyStage`, `storyStep`,
+ * `storyFlags` and `storyMarks` are the live one's copy — as the game keeps
+ * them, a copy in `GameState` beside the trigger object's five records. Which
+ * is live is the map's to decide — see `THREADS` in `story.ts` and
+ * `enterThread`. This holds the others; the live one's entry is stale until it
+ * is left.
+ */
+const storyThreads: Story[] = Array.from({ length: THREADS }, unstarted)
+/**
+ * Which thread the live story is. **Undefined when the story was put where it
+ * is by hand** — a new game, a save carried on from, `?stage=`, the scene
+ * browser — and then the next map entered takes it as its own thread's rather
+ * than swapping it out. Ours: the game has no such state.
+ */
+let liveThread: number | undefined
+/**
+ * Take up the story thread a map is in, as the game does on entering one
+ * (`func_02064b98`): the live story is kept as its thread's, and the new
+ * thread's becomes the live one.
+ */
+function enterThread(map: number | undefined): void {
+  const to = threadOf(map)
+  if (liveThread === undefined || liveThread === to) {
+    liveThread = to
+    return
+  }
+  const live = { stage: storyStage, step: storyStep, flags: storyFlags, marks: storyMarks }
+  swapThread(live, storyThreads, liveThread, to)
+  storyStage = live.stage
+  storyStep = live.step
+  liveThread = to
+}
 /**
  * **The party, the Hero first.** Each place holds what used to be a loose
  * variable — experience, hit points, magic, seeds, what is worn — and whoever
@@ -1260,6 +1294,8 @@ function openWorld(map: string): void {
   // `?step=4` at that step of it, and `?flags=0,1` with those story flags set.
   const stage = /^(\d+)\.(\d+)$/.exec(params.get('stage') ?? '')
   if (stage) storyStage = { major: Number(stage[1]), minor: Number(stage[2]) }
+  // Whichever thread the first map is in takes the story as it is set here.
+  liveThread = undefined
   const step = Number(params.get('step'))
   if (Number.isInteger(step) && step > 0) storyStep = step
   for (const flag of (params.get('flags') ?? '').split(',')) {
@@ -1456,6 +1492,21 @@ function restore(game: SaveGame): void {
   storyFlags.clear()
   storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
+  for (const mark of game.marks ?? []) storyMarks.add(mark)
+  // The other threads — see `storyThreads`. A save from before they were kept
+  // had only the one, and the map it was made in takes it.
+  for (let thread = 0; thread < THREADS; thread++) {
+    const kept = game.threads?.[thread]
+    storyThreads[thread] = kept
+      ? {
+          stage: kept.stage ? { major: kept.stage.major, minor: kept.stage.minor } : undefined,
+          step: kept.step,
+          flags: new Set(kept.flags),
+          marks: new Set(kept.marks),
+        }
+      : unstarted()
+  }
+  liveThread = game.thread
   medalsGiven = game.medalsGiven ?? 0
   // The whole party, each with their own — see `SaveMember`. An older save's
   // companions come back with nothing, which is all they ever had.
@@ -1492,6 +1543,14 @@ function confess(): string {
     stage: storyStage ? { major: storyStage.major, minor: storyStage.minor } : null,
     step: storyStep,
     flags: [...storyFlags],
+    marks: [...storyMarks],
+    ...(liveThread === undefined ? {} : { thread: liveThread }),
+    threads: storyThreads.map((kept) => ({
+      stage: kept.stage ? { major: kept.stage.major, minor: kept.stage.minor } : null,
+      step: kept.step,
+      flags: [...kept.flags],
+      marks: [...kept.marks],
+    })),
     ...(medalsGiven > 0 ? { medalsGiven } : {}),
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
@@ -1619,7 +1678,8 @@ function enter(map: string, arrival?: Arrival): boolean {
     at = spawn
   }
 
-  // The cast where the story stage has them.
+  // The story thread this map is in, and then the cast where its stage has them.
+  enterThread(opened.mapId)
   if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
   loaded = opened
   playMapMusic()
@@ -2664,6 +2724,7 @@ function moveStage(by: number): void {
   storyFlags.clear()
   storyMarks.clear()
   storyStep = 0
+  liveThread = threadOf(loaded.mapId)
   castLeft.clear()
   closeTalk()
   loaded = { ...loaded, cast: loaded.castAt(storyStage) }
@@ -5319,6 +5380,8 @@ function playScene(wanted: SceneConditions): void {
   storyFlags.clear()
   for (const flag of wanted.flags) storyFlags.add(flag)
   storyMarks.clear()
+  // The scene's own map, which it enters next if it is elsewhere, takes the story as set.
+  liveThread = wanted.map === loaded.mapId ? threadOf(loaded.mapId) : undefined
   castLeft.clear()
   sceneTime = undefined
   const code = loaded.mapCodeOf(wanted.map)
@@ -5668,11 +5731,9 @@ function endEvent(): void {
 
 /**
  * What follows an event, by its own trigger record — see `eventOutcome` in
- * `@minstrel/game-formats`, INFERRED throughout. The story moves on to the
- * stage and step the record sets; the flags it sets are set — a stage's own,
- * cleared when the stage moves on, INFERRED from the records testing them
- * naming none set in another; and where it goes on to, it goes: the map, and
- * the event played there.
+ * `@minstrel/game-formats`, INFERRED throughout. The story moves on as
+ * `moveStory` has it; whoever it brings in or sends away comes or goes; and
+ * where it goes on to, it goes: the map, and the event played there.
  */
 function followEvent(event: number): void {
   if (!loaded) return
@@ -5680,17 +5741,12 @@ function followEvent(event: number): void {
   if (!outcome) return
   const { stage, onward } = outcome
   let closing = false
+  const story = { stage: storyStage, step: storyStep, flags: storyFlags, marks: storyMarks }
+  const { moved, stepped } = moveStory(story, outcome, { all: storyThreads, live: liveThread })
+  storyStage = story.stage
+  storyStep = story.step
   if (stage) {
-    const moved =
-      !storyStage || storyStage.major !== stage.major || storyStage.minor !== stage.minor
     closing = moved && closesTheSlice(stage)
-    const stepped = moved || storyStep !== stage.step
-    if (moved) {
-      storyFlags.clear()
-      storyMarks.clear()
-    }
-    storyStage = { major: stage.major, minor: stage.minor }
-    storyStep = stage.step
     // The cast stands where the stage and step have them: the Hexagon's
     // statue steps aside at 2.4, step 5 — see `castOf`.
     if (stepped) {
@@ -5703,7 +5759,6 @@ function followEvent(event: number): void {
       poseMap(Math.max(mapFrame, 0))
     }
   }
-  for (const flag of outcome.flags) storyFlags.add(flag)
   // Whoever its record brings in or sends away — Ivor, over 2.2 and 2.3.
   members = partyAfter(members, outcome, freshMember)
   status(

@@ -226,6 +226,7 @@ describe('the story in trigger records', () => {
       onward: undefined,
       joins: [],
       leaves: false,
+      threads: [],
     })
     const outside = trigger(1100, KIND_EVENT, [
       [8, 2210],
@@ -254,7 +255,34 @@ describe('the story in trigger records', () => {
       onward: { map: 1100, event: 2210 },
       joins: [],
       leaves: false,
+      threads: [],
     })
+  })
+
+  it('reads the threads an event sets by number, as the Starflight Express’s does at 5.2', () => {
+    // `ev25524`'s shape: five `214`s, each with its three values, and a word
+    // after that is not a stage.
+    const starts = trigger(6401, KIND_EVENT, [
+      [8, 25524],
+      [214, 0],
+      [0, 7],
+      [0, 1],
+      [0, 1],
+      [214, 3],
+      [0, 11],
+      [0, 1],
+      [0, 1],
+      [214, 4],
+      [0, 12],
+      [216, 2],
+    ])
+    const outcome = eventOutcome([starts], 25524)
+    expect(outcome?.stage).toBeUndefined()
+    // The last `214` has two values, not three, and moves nothing.
+    expect(outcome?.threads).toEqual([
+      { thread: 0, stage: { major: 7, minor: 1, step: 1 } },
+      { thread: 3, stage: { major: 11, minor: 1, step: 1 } },
+    ])
   })
 
   it('reads who an event brings into the party, and whether it sends them away', () => {

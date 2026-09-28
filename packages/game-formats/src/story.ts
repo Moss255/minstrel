@@ -35,8 +35,22 @@ export const OP_EVENT_OF = 8
  * operation-0 word: its major and minor stage and a step. On 166 of the 170
  * that are so, the stage is the record's own, the next minor stage or the next
  * major; and the steps under one stage run without a gap on 96 of 99.
+ *
+ * **The live thread's stage**, read from the game's code: the action
+ * interpreter's case for 132 (US ARM9 `0x02062644`) queues the move, and the
+ * story is five threads of which the map decides one — see
+ * {@link OP_THREAD_STAGE_TO} and FORMAT.md, "Triggers, read from the game's code".
  */
 export const OP_STAGE_TO = 132
+/**
+ * Sets thread *n*'s stage, *n* its argument, to the three values the next three
+ * words hold, as {@link OP_STAGE_TO} does the live thread's. Read from the
+ * game's code (US ARM9 `0x02063e40`, a queued move like 132's, without its
+ * clearing of flags). `ev25524` at 5.2 starts all five threads: 0 at 7.1, 1 at
+ * 6.1, 2 at 8.1, 3 at 11.1, 4 at 12.1 — and each thread's maps, which the
+ * game's code lists, are where that chapter's records are.
+ */
+export const OP_THREAD_STAGE_TO = 214
 /** Sets a story flag. What {@link OP_IF_FLAG} and {@link OP_UNLESS_FLAG} test: 518 of their 664 have a record setting that flag in the same area and stage. */
 export const OP_SET_FLAG = 104
 /** Holds only when the flag is set. */
@@ -284,10 +298,20 @@ export interface EventOutcome {
   readonly onward: { readonly map: number; readonly event: number } | undefined
   /** The set battle it starts, if it does — see {@link OP_BATTLE}. */
   readonly battle: number | undefined
+  /** The threads whose stage it sets by number — see {@link OP_THREAD_STAGE_TO}. */
+  readonly threads: readonly { readonly thread: number; readonly stage: StoryPoint }[]
   /** Who it brings into the party, by their place in `attnpc` from 0 — see {@link OP_JOIN}. */
   readonly joins: readonly number[]
   /** Whether it sends whoever goes along away — see {@link OP_LEAVE}. */
   readonly leaves: boolean
+}
+
+/** The stage and step the three operation-0 words after word `at` hold, if they are there. */
+function pointAfter(words: readonly TriggerWord[], at: number): StoryPoint | undefined {
+  const args = words.slice(at + 1, at + 4)
+  if (args.length !== 3 || !args.every((w) => w.op === 0)) return undefined
+  const [major, minor, step] = args.map((w) => w.arg) as [number, number, number]
+  return { major, minor, step }
 }
 
 /**
@@ -308,13 +332,14 @@ export function eventOutcome(
   if (!record) return undefined
   const words = triggerWords(record)
 
-  let stage: StoryPoint | undefined
   const at = words.findIndex((w) => w.op === OP_STAGE_TO)
-  const args = at < 0 ? [] : words.slice(at + 1, at + 4)
-  if (args.length === 3 && args.every((w) => w.op === 0)) {
-    const [major, minor, step] = args.map((w) => w.arg) as [number, number, number]
-    stage = { major, minor, step }
-  }
+  const stage = at < 0 ? undefined : pointAfter(words, at)
+  const threads: { thread: number; stage: StoryPoint }[] = []
+  words.forEach((w, i) => {
+    if (w.op !== OP_THREAD_STAGE_TO) return
+    const point = pointAfter(words, i)
+    if (point) threads.push({ thread: w.arg, stage: point })
+  })
 
   let onward: EventOutcome['onward']
   const go = words.findIndex((w) => w.op === OP_THEN_MAP)
@@ -327,6 +352,7 @@ export function eventOutcome(
     flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
     onward,
     battle: words.find((w) => w.op === OP_BATTLE)?.arg,
+    threads,
     joins: words.filter((w) => w.op === OP_JOIN).map((w) => w.arg),
     leaves: words.some((w) => w.op === OP_LEAVE),
   }

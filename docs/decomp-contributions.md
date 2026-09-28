@@ -9,6 +9,13 @@ here so the decomp work can be picked up without re-reading the disassembly.
 
 Written 27 September 2026. Addresses are the USA release's (`YDQE`).
 
+**Deferred, 28 September 2026: minstrel is finished first.** Parity with the
+game's own code and the pull requests to the decomp come after. Until then this
+file is where a function read while building minstrel is written down, so the
+contribution can be picked up later without reading the disassembly again. Add
+it to "Read since", at the end, as it is read. A finding about a *file* goes in
+`upstream-findings.md` and the package's `FORMAT.md` instead, as before.
+
 ## What the maintainers have asked for
 
 From their review of our pull requests #18 and #39:
@@ -223,3 +230,51 @@ contribution: the wiki page and the table symbols.
 For each: find the JPN addresses, write the source, match with `ninja`, get
 the mangled names from `tools/mangle.py`, rename in both `symbols.txt` files,
 and open one pull request per group from a branch off `upstream/main`.
+
+---
+
+## Read since — a backlog, kept while minstrel is built
+
+One entry for each function or group, added when it is read rather than at the end.
+Enough to write the C++ from later without going back to the disassembly:
+
+- **address, size, release**: USA unless it says otherwise, and the JPN address if it
+  is already known;
+- **what it does**, as far as the code shows it, and anything **INFERRED** kept
+  separate;
+- **where minstrel translates it**: file and function, and the test that holds
+  it;
+- **what it belongs to**: the object `r0` is, if it is known, and the callers;
+- **what is open**: the emulator checks and any name upstream is missing.
+
+The local symbol renames stay placeholders in `~/Projects/dqix-decomp`, as
+the three groups above are.
+
+### 4. The trigger interpreter and the story threads — ARM9, 28 September 2026
+
+Read while measuring the story (`docs/story-walk.md`); the findings are in
+`packages/game-formats/FORMAT.md`, "Triggers, read from the game's code".
+**Where minstrel translates it**: `apps/game/src/story.ts` (the threads and
+`threadOf`), `packages/game-formats/src/story.ts` (the words), held by
+`apps/game/test/story-walk.test.ts`.
+
+| address | size | what it does | proposed name |
+|---|---|---|---|
+| `0x0206461c` | `0xe8` | builds `data/scenario/trigger%s.bin` from the area's letters, loads it, hands it to `0x02064574` with the map id and the current stage | `TriggerTable::Load(const Zone*)`? |
+| `0x02064574` | `0xa8` | stores the allocator, map and stage at `+0x480`–`+0x48c`, runs the file as a `Script` (table `0x020f05bc`), then takes the kind-20 records (`0x020649b0(this, 0x14, …)`) to `0x0206f81c` | `TriggerTable::Parse` |
+| `0x0205f9cc` | `0x100` | tag 1: keeps a record for the current map whose span covers the current stage (`major × 1000 + minor`), allocates `0x18` bytes, parses its words (`0x0205ec70`), adds it (`0x020643fc`) | `TriggerScript_Record` |
+| `0x0205f9bc`, `0x0205f9c4` | `0x8` | tags `0x64`, `0x65`: return 1 | — |
+| `0x0205ec34` | `0xc` | returns the trigger object, `0x02108844` | `TriggerTable::GetInstance` |
+| `0x02064b98` | `0x184` | picks the live story thread from the map id (five ranges, above) and copies its stage into `GameState` | `StoryThreads::Enter(u16 map)` |
+| `0x0206df14` | `0x58` | copies the live thread's stage into `GameState` | `StoryThreads::Restore` |
+| `0x02010774`, `0x020107a8`, `0x020107dc` | `0x28` | `GameState` setters for stage major, minor and step (`+0x5cb0`, `+0x5cb4`, `+0x5cb8`), each writing the live thread's byte too | `GameState::SetStoryMajor`, `SetStoryMinor`, `SetStoryStep` |
+| `0x0201079c`, `0x020107d0`, `0x02010804` | `0xc` | their getters | `GameState::GetStoryMajor` … |
+| `0x02061c04` | `0x27dc` | the action interpreter: a switch on `op − 100`, 100 to 233 | `TriggerTable::RunAction` |
+| `0x02064b24`, `0x02064530` | `0x74`, `0x44` | run a record's actions, the first with a fresh stage queue at `+0x30` | `TriggerTable::RunActions` |
+| `0x0206445c` | `0x34` | append a record to the stage queue (list through `+0x18`) | `QueueStageMove` |
+| `0x0206df6c` | `0x44` | set or clear bit *n* of a byte array | `SetBit` |
+| `0x0206e080`, `0x0206e0d0` | `0x50`, `0x30` | clear a thread's banks on a new major (all four) or a new minor (`+0x10`, `+0x14`) | `StoryThreads::ClearMajor`, `ClearMinor` |
+| `0x020716a4` | `0x16c` | tag `0x66` of the event lists (`0x020f0ba0`): for the chosen event, sets the stage, step and flags in the three banks — a debug start, probably, since `evlist6_d.bin` and `evlist_lv5_d.bin` sit beside it | — |
+
+**Open**: what applies the stage queue, and when; which operations use the
+banks at `+0x08` and `+0x14`; the JPN addresses.

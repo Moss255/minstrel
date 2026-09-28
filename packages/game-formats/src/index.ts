@@ -273,6 +273,7 @@ export {
   OP_SET_MARK,
   OP_STAGE_TO,
   OP_THEN_MAP,
+  OP_THREAD_STAGE_TO,
   OP_UNLESS_FLAG,
   OP_UNLESS_MARK,
   type StoryArea,

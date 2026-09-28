@@ -33,4 +33,32 @@ describe('the story in a save', () => {
     expect(() => decodeSave(JSON.stringify({ ...game, step: -1 }))).toThrow(/step/)
     expect(() => decodeSave(JSON.stringify({ ...game, flags: ['x'] }))).toThrow(/flags/)
   })
+
+  it('keeps the marks, the live thread and every thread of the story', () => {
+    const threads = [
+      { stage: { major: 7, minor: 2 }, step: 1, flags: [3], marks: [0] },
+      { stage: { major: 6, minor: 4 }, step: 2, flags: [], marks: [5] },
+      { stage: null, step: 0, flags: [], marks: [] },
+      { stage: { major: 0, minor: 0 }, step: 0, flags: [], marks: [] },
+      { stage: { major: 12, minor: 1 }, step: 3, flags: [1, 2], marks: [] },
+    ]
+    const back = decodeSave(encodeSave({ ...game, marks: [7], thread: 1, threads }))
+    expect(back.marks).toEqual([7])
+    expect(back.thread).toBe(1)
+    expect(back.threads).toEqual(threads)
+  })
+
+  it('reads a save from before threads were kept as having none', () => {
+    const back = decodeSave(encodeSave(game))
+    expect(back.thread).toBeUndefined()
+    expect(back.threads).toBeUndefined()
+    expect(back.marks).toBeUndefined()
+  })
+
+  it('refuses marks, a thread or threads that do not read, saying which', () => {
+    expect(() => decodeSave(JSON.stringify({ ...game, marks: [-2] }))).toThrow(/marks/)
+    expect(() => decodeSave(JSON.stringify({ ...game, thread: 'one' }))).toThrow(/thread/)
+    const bad = [{ stage: { major: 1 }, step: 0, flags: [], marks: [] }]
+    expect(() => decodeSave(JSON.stringify({ ...game, threads: bad }))).toThrow(/threads/)
+  })
 })
