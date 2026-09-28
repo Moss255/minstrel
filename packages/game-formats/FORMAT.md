@@ -2075,7 +2075,7 @@ of the story. Two forms are read, found by their own marks:
 | offset | type | meaning |
 |---|---|---|
 | `+0x00` | `u32[2]` | `0x550D0005 0xFF02A955`, 60 bytes; `0x55090005 0xFFFF0155`, 44 bytes, without a position |
-| `+0x08` | `u32[7]` | a span of the story, INFERRED: words 0, 1 and 2 its first stage and step, 3, 4 and 5 its last; word 6 not established — see below |
+| `+0x08` | `u32[7]` | a span of the story: words 0, 1 and 2 its first stage and step, 3, 4 and 5 its last; **word 6 the time of day** — read from the game's code, see "Who stands where, read from the game's code" |
 | `+0x24` | `u32` | the map, by its own id |
 | `+0x28` | `u32` | the character's id |
 | `+0x2C` | `f32[4]` | x, y, z and facing — the 60-byte form only |
@@ -2101,16 +2101,59 @@ on. On the Hexagon's first floor, `202`'s first record ends at 2.4 step 4 and
 its next, 3.47 units along, begins at step 5 — the step the switch's event
 moves the story to. Word 6 is not established.
 
-**Who stands where, as the game takes it** — `castOf` in `apps/game/src/load.ts`,
-INFERRED from which characters the trigger records talk to:
+**Who stands where, as the game takes it** — superseded on 28 September
+2026 by the game's own rule, read from its code (below). It was INFERRED from
+which characters the trigger records talk to, and it was wrong in two ways
+the code shows: it read only records for this map, where **a record for
+another map is what takes a character away from this one**; and it took "has
+records, none covering" as "not here", where the game leaves them at their
+block's place. Kept for the record:
 
-| a character's records in the map, at the stage and step | stands | measure |
+| a character's records in the map, at the stage and step | stood | measure |
 |---|---|---|
 | one covers it and has a position | there | 1,245 character records talk to someone so |
-| one covers it without a position | not here | taken as the header's place instead, Angel Falls would have **27** more at every stage — Patty's model in the village at 2.1, a second Ivor at 2.3 while he follows |
-| none covers it | not here | as the village's stages had it before; a "none covers it, so the header" rule would put Ivor in the village at 2.1 |
-| none at all | at the header's place, at every stage | **596** records talk to such a character in the header's map; in Angel Falls it adds one thing to examine, in the Hexagon its switch, `201` |
-| a gap between two of them inside one sub-stage | at the header's place | thin: **19** such gaps on the cartridge. The Hexagon's figure, `204`, has one over steps 2 and 3 of 2.4, when it is talked to, and `ev02500`, which opens step 2, stands its figure on the header's spot to 0.01. `ev02510` then walks it to (−11.74, 11.23), which is now followed: `566(5, 204, 1)` says which of the cast its character 1 is (`docs/event-scripts.md`, 566), and the figure walks to the statue room, as a let's play shows. There it waits over step 3 — in ours because the event left it there, the gap's header notwithstanding; what the game does with a gap is not settled |
+| one covers it without a position | not here | taken as the header's place instead, Angel Falls would have **27** more at every stage |
+| none covers it | not here | a "none covers it, so the header" rule would put Ivor in the village at 2.1 — which the game's rule does not, because his record for the mayor's house at 2.1 takes him out of the village |
+| none at all | at the header's place | **596** records talk to such a character in the header's map |
+| a gap inside one sub-stage | at the header's place | thin: **19** gaps |
+
+### Who stands where, read from the game's code — 28 September 2026
+
+US ARM9. The field's cast loader (`func_ov017_021a2c14`) opens
+`data/scenario/<area>.npc` and **runs its `place.bin` as a script**
+(`func_0206da80`, opcode table `0x020f0994`, tags 3 to 22), with the story's
+stage, sub-stage and step and the map's id as its context. It is a tagged
+table like the others, and read as one (`readPlaceRecords`) rather than by
+the byte patterns above, which miss **89 of 1,378** blocks and **40 of 2,017**
+spans: 72 blocks with no place at all, and records whose coordinates are
+written as integers. Each record places a character or takes them away, **in
+the file's order** — `castAtPoint` in `npc.ts`:
+
+| tag | values | what it does |
+|---|---|---|
+| 3, a block (`func_0206c010`) | map, character, then where (x, y, z, facing, and a byte on some) | for this map only: places them; with no place, takes them away |
+| 5, a span (`func_0206c2c0`) | from and to — stage, sub-stage, step each — then **the time of day**, map, character, then where | counts only while `from ≤ now ≤ to`, each weighed `major × 1000 + minor × 10 + step`, and only at its time. Then: **for another map, it takes the character away from this one**; with no place, it takes them away; otherwise places them |
+| 17, while flags (`func_0206d4e0`) | pairs of a condition and whether it must be set (1) or clear (0), then time, map, character, where | a condition's high half 1 is a game-wide flag by its bit, 2 by its number — displaced from `0x400` as the script function `603` displaces (`func_0206eb98`); any other and the record does not count. Otherwise as a span, and **before all others** |
+
+**Word 6 of a span is the time of day**: 0 by day (morning, day or
+evening), 1 by night, 2 either — `GameState::IsMorningDayOrEvening`. On the
+cartridge: 1,227 either, 378 by night, 371 by day. Angel Falls' `15` is in
+the stable by day and the village by night; Erinn is upstairs at 2.6 only by
+night.
+
+**The order a character's placements keep** (`func_0206db48`): tag 17's
+first; then a span whose to-stage has a sub-stage of 0 but whose from-stage
+does not; then any other span; a block's last. Between spans, **the one that
+starts earliest**, and then the first in the file; otherwise the first. One
+that comes after all the others is dropped. Taking a character away
+(`func_0206dd68`) clears where they stand, and a later record can place them
+again.
+
+**Not read**: tag 14, which places by one of four states of an id
+(`func_0206e120` — the composite conditions' test, quest progress perhaps);
+and 4, 6, 8, 11, 15 and 18 to 22, which name a character and carry what
+looks like a path, a facing, flags and a model with its motion. A character
+placed only by those stands nowhere here.
 
 **Positions are in the units map placements use.** Taken as though they were
 already world units, only 23 of the village's 49 characters fall inside its

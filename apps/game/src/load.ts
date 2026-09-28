@@ -17,6 +17,7 @@ import {
   type BuildTable,
   type CharaColours,
   type CharacterPreset,
+  castAtPoint,
   type EventBattle,
   type EventMessage,
   type ExperienceBand,
@@ -43,6 +44,7 @@ import {
   type NpcEntry,
   type NpcPlacement,
   type NpcState,
+  type PlaceRecord,
   placeNpcs,
   type RandomTreasure,
   type Recipe,
@@ -74,6 +76,7 @@ import {
   readNpcList,
   readNpcPlacements,
   readNpcStates,
+  readPlaceRecords,
   readRandomTreasure,
   readRecipes,
   readScript,
@@ -143,7 +146,16 @@ export interface Loaded {
    * The cast at one of {@link stages} — and at a step of it, given one;
    * `undefined` is the file's first placement of each.
    */
-  castAt(stage: Stage | undefined, step?: number): Cast
+  /**
+   * Who stands in the map at a stage and step, by night if `night`, with the
+   * game-wide flags `globals` set — see `castOf`.
+   */
+  castAt(
+    stage: Stage | undefined,
+    step?: number,
+    night?: boolean,
+    globals?: ReadonlySet<number>,
+  ): Cast
   /** The map's pieces that slide as their character's place moves — see `slide.ts`. */
   readonly slides: readonly SlidingPiece[]
   /** The chapter letters this map's area has talk for, in order — `A0`, `B0` … */
@@ -489,6 +501,8 @@ interface Area {
   readonly entries: readonly NpcEntry[]
   readonly placements: readonly NpcPlacement[]
   readonly states: readonly NpcState[]
+  /** Every record of its `place.bin`, in order — see `castAtPoint`. */
+  readonly records: readonly PlaceRecord[]
 }
 
 /**
@@ -543,52 +557,6 @@ function spanOf(state: NpcState): { from: Stage; to: Stage } {
   }
 }
 
-/**
- * Whether the step falls in a gap a character's records leave inside one
- * sub-stage — one ending before it, the next beginning after — where they
- * stand at their header. INFERRED, and thin: 19 such gaps on the cartridge,
- * nearly all between records that say nowhere. The Hexagon's `204` has one
- * over steps 2 and 3 of 2.4, when it is talked to, and the event that opens
- * step 2, `ev02500`, stands its figure on the header's spot to 0.01. The next,
- * `ev02510`, walks it to (−11.74, 11.23) in the file's units, which is not
- * followed: which of an event's actors is which of the cast is not read.
- */
-function inStepGap(
-  states: readonly NpcState[],
-  header: NpcPlacement,
-  stage: Stage,
-  step: number | undefined,
-): boolean {
-  if (step === undefined) return false
-  const mine = states.filter((state) => state.id === header.id && state.map === header.map)
-  const endsBefore = mine.some(
-    (state) => compareStages(spanOf(state).to, stage) === 0 && (state.unknown_0x08[5] ?? 0) < step,
-  )
-  const beginsAfter = mine.some(
-    (state) =>
-      compareStages(spanOf(state).from, stage) === 0 && (state.unknown_0x08[2] ?? 0) > step,
-  )
-  return endsBefore && beginsAfter && !mine.some((state) => stateCovers(state, stage, step))
-}
-
-/**
- * Whether a state's span covers the stage — and, given a step, that step of
- * it: words 2 and 5 are the span's first and last step. INFERRED: within one
- * sub-stage the first is at or before the last on 362 of 362, and where a
- * character's next state begins in the sub-stage the last ends in, it begins
- * one step on 121 of 179, against 17 for two. The Hexagon's `202` stands
- * aside from step 5 of 2.4.
- */
-function stateCovers(state: NpcState, stage: Stage, step: number | undefined): boolean {
-  const words = state.unknown_0x08
-  const { from, to } = spanOf(state)
-  if (compareStages(from, stage) > 0 || compareStages(stage, to) > 0) return false
-  if (step === undefined) return true
-  if (compareStages(from, stage) === 0 && step < (words[2] ?? 0)) return false
-  if (compareStages(stage, to) === 0 && step > (words[5] ?? 0)) return false
-  return true
-}
-
 /** The stages this map's placed records start at, earliest first. */
 function stagesOf(area: Area, id: number | undefined): Stage[] {
   const found = new Map<string, Stage>()
@@ -610,22 +578,15 @@ function stagesOf(area: Area, id: number | undefined): Stage[] {
  * little map about their own origin, so having floor underneath is no evidence
  * at all of being in the right one. It let fifteen villagers into the stable.
  * The join is the map's own id out of `maplist9.bin`, which every one of the
- * cartridge's 1,289 placements names exactly. A map the index does not know is
- * not narrowed at all rather than narrowed by a guess.
+ * cartridge's 1,289 placements names exactly.
  *
- * With no stage, each character is where its block's header puts them. With
- * one, it is the first of their placed records in this map whose span covers
- * the stage — and the step, given one, see `stateCovers` — and a character
- * whose records none of them do is not here. **A character with no records at
- * all stands where the header puts them**, at every stage.
- *
- * INFERRED, that last: of the cartridge's character records that talk to
- * someone, 596 talk to a character with no records whose header is in that
- * map, against 1,245 over a record with a place. In Angel Falls it adds one
- * thing to examine; in the Hexagon, the switch on its first floor, `201`. A
- * record that says nowhere is not the header's place: taken so, Angel Falls
- * would have 27 more at every stage — Patty's model in the village at 2.1, a
- * second Ivor at 2.3 while he follows the Hero.
+ * With no stage, each character is where their block's header puts them. With
+ * one, it is **the game's own choice**, read from its code: `castAtPoint` in
+ * `@minstrel/game-formats` runs the file's records in order as the game does —
+ * a block places its character, a span over the story places or takes away,
+ * one for another map takes them away from this one — and the time of day
+ * counts. A map the index does not know is not narrowed at all rather than
+ * narrowed by a guess, and has the headers' places.
  */
 function castOf(
   cat: Catalogue,
@@ -635,10 +596,12 @@ function castOf(
   sheets: ReadonlyMap<string, Uint8Array>,
   stage?: Stage,
   step?: number,
+  night = false,
+  isSet?: (bit: number, wanted: boolean) => boolean,
 ): Cast {
   if (!area) return NOBODY
   return cast(
-    placedIn(area, id, stage, step),
+    placedIn(area, id, stage, step, night, isSet),
     cat.members,
     groundAt,
     toFloat(PERSON.height),
@@ -652,43 +615,36 @@ function placedIn(
   id: number | undefined,
   stage?: Stage,
   step?: number,
+  night = false,
+  isSet?: (bit: number, wanted: boolean) => boolean,
 ): { entry: NpcEntry; placement: NpcPlacement }[] {
   const placed: { entry: NpcEntry; placement: NpcPlacement }[] = []
-  if (stage === undefined) {
+  if (stage === undefined || id === undefined) {
     for (const found of placeNpcs(area.entries, area.placements.map(placementInWorld))) {
       if (id === undefined || found.placement.map === id) placed.push(found)
     }
-  } else {
-    const byId = new Map(area.entries.map((entry) => [entry.id, entry]))
-    const recorded = new Set(area.states.map((state) => state.id))
-    const seen = new Set<number>()
-    for (const state of area.states) {
-      if (seen.has(state.id)) continue
-      if (id !== undefined && state.map !== id) continue
-      if (!stateCovers(state, stage, step)) continue
-      const entry = byId.get(state.id)
-      if (!entry) continue
-      if (!state.position) continue
-      seen.add(state.id)
-      placed.push({
-        entry,
-        placement: placementInWorld({
-          id: state.id,
-          map: state.map,
-          offset: state.offset,
-          ...state.position,
-        }),
-      })
-    }
-    for (const header of area.placements) {
-      if (seen.has(header.id)) continue
-      if (id !== undefined && header.map !== id) continue
-      if (recorded.has(header.id) && !inStepGap(area.states, header, stage, step)) continue
-      const entry = byId.get(header.id)
-      if (!entry) continue
-      seen.add(header.id)
-      placed.push({ entry, placement: placementInWorld(header) })
-    }
+    return placed
+  }
+  const byId = new Map(area.entries.map((entry) => [entry.id, entry]))
+  // A stage opened by hand, with no step — a new game, `?stage=`, `t` — is
+  // taken at its first step, where the records start. Ours: the game always
+  // has one.
+  const point = { major: stage.major, minor: stage.minor, step: step ?? 1 }
+  for (const [who, at] of castAtPoint(area.records, id, point, night, isSet)) {
+    const entry = byId.get(who)
+    if (!entry) continue
+    placed.push({
+      entry,
+      placement: placementInWorld({
+        id: who,
+        map: at.map,
+        x: at.x,
+        y: at.y,
+        z: at.z,
+        facing: at.facing,
+        offset: at.record.offset,
+      }),
+    })
   }
   return placed
 }
@@ -696,7 +652,13 @@ function placedIn(
 /** What the story reads of an area, without a map built — see {@link storyView}. */
 export interface StoryView {
   /** Who stands in the map, by the id `pickLine` asks for, at a stage and step — as `castAt` places them. */
-  castIds(map: number, stage: Stage, step?: number): number[]
+  castIds(
+    map: number,
+    stage: Stage,
+    step?: number,
+    night?: boolean,
+    isSet?: (bit: number, wanted: boolean) => boolean,
+  ): number[]
   /** The chapter letters the area has talk for, in order — as `Loaded.letters`. */
   readonly letters: readonly string[]
   /** A character's lines in a chapter — as `Loaded.linesOf`. */
@@ -715,8 +677,10 @@ export function storyView(rom: Uint8Array, code: string): StoryView {
   const area = areaFrom(cat, code)
   const talk = talkOf(rom, code)
   return {
-    castIds: (map, stage, step) =>
-      area ? placedIn(area, map, stage, step).map(({ placement }) => placement.id) : [],
+    castIds: (map, stage, step, night, isSet) =>
+      area
+        ? placedIn(area, map, stage, step, night, isSet).map(({ placement }) => placement.id)
+        : [],
     letters: [...talk.keys()].sort(),
     linesOf: (who, letter) => talk.get(letter)?.get(who) ?? [],
   }
@@ -739,6 +703,7 @@ function areaFrom(cat: Catalogue, area: string): Area | undefined {
         entries: readNpcList(list),
         placements: readNpcPlacements(places),
         states: readNpcStates(places),
+        records: readPlaceRecords(places),
       }
     } catch {
       return undefined
@@ -2215,7 +2180,10 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       [...cat.members].find(([path]) => path.toLowerCase() === SHADOW_ARCHIVE)?.[1],
     ),
     stages: stagesWith(area ? stagesOf(area, id) : [], triggers, id),
-    castAt: (stage, step) => castOf(cat, area, id, groundAt, sheets, stage, step),
+    castAt: (stage, step, night, globals) =>
+      castOf(cat, area, id, groundAt, sheets, stage, step, night, (bit, wanted) =>
+        globals ? globals.has(bit) === wanted : !wanted,
+      ),
     slides: slidingPieces(
       map,
       (area?.states ?? []).flatMap((state) =>

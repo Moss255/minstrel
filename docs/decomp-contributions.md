@@ -293,6 +293,28 @@ Read while measuring the story (`docs/story-walk.md`); the findings are in
 | `0x0201d530`, `0x0201d638` | `0x108`, `0x994` | the link table's (`.bmbl`) handlers for `0x73` (a region: type, centre, size, two angles, squared radius; added by `0x0201e710`) and `0x74` (what the region does, by its type; a type-3 region's number). Their table is at `0x020ef3d8`, tags `0x64` to `0x7e` | `MapLinks_Region`, `MapLinks_RegionAction` |
 | `0x02094b9c` | `0x140` | a region's test: off if flag 8; the turned-box test when it has depth; the once-only flags | `MapRegion::Contains` |
 
+
+### 5. Who stands where — ARM9 and overlay 17, 28 September 2026
+
+Findings in `packages/game-formats/FORMAT.md`, "Who stands where, read from
+the game's code". **Where minstrel translates it**: `castAtPoint` and
+`readPlaceRecords` in `packages/game-formats/src/npc.ts`, held by
+`packages/game-formats/test/cast.test.ts` and the walk.
+
+| address | size | what it does | proposed name |
+|---|---|---|---|
+| `ov017 0x021a2c14` | `0x38c` | the field's cast loader: opens `data/scenario/%s.npc`, runs each `place.bin` through `0x0206da80` and each `npc.bin` through `0x02064e2c` | `Field::LoadCast` |
+| `0x0206da80` | `0xa0` | sets the context (`0x02108cec`: step, minor, major, map, output) and runs `place.bin` as a `Script` with the table at `0x020f0994` | `CastScript::Run` |
+| `0x0206c010` | `0xe8` | tag 3, a block: this map only; place, or take away with no place | `CastScript_Block` |
+| `0x0206c2c0` | `0x228` | tag 5, a span: the weighed span test, the time of day, another map takes away | `CastScript_Span` |
+| `0x0206d4e0` | `0x254` | tag 17: condition pairs on the game-wide bank, then as a span, marked first in order | `CastScript_WhileFlags` |
+| `0x0206cbcc` | `0x38c` | tag 14: by the four states of an id (`0x0206e120`), with its own bookkeeping in the context | `CastScript_ByState` |
+| `0x0206db48` | `0x220` | adds a placement to its character's ordered chain; the head stands | `CastList::Add` |
+| `0x0206dd68` | `0x3c` | takes a character's standing placement away | `CastList::Remove` |
+| `0x0206bf2c` | `0xe4` | a placement's initialiser (`0x78` bytes; `+0x46` = −1) | `CastPlacement::CastPlacement` |
+| `0x0206eb98` | `0x30` | a game-wide flag by number: from `0x400`, displaced by 1,786 bits — `603`'s rule | `TriggerTable::TestFlagById` |
+
 **Open**: which operations use the banks at `+0x08` and `+0x14`; what
 `0x0206e120`'s four states are; which kind each of the other lookups asks for
-(overlays 1 to 4 and 17); the JPN addresses.
+(overlays 1 to 4 and 17); tags 4, 6, 8, 11, 14, 15 and 18 to 22 of
+`place.bin`; the JPN addresses.

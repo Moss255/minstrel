@@ -55,21 +55,22 @@ it by cause.
 ## Where it stands, 28 September 2026
 
 - **From a new game:** 1.1 to 1.2 step 2. It stops before 1.3.
-- **The slice plays through in one walk, and on into Stornway.** From 1.4
-  the walk plays all of chapter 2 and then 3.1 steps 1 to 3, the last by the
-  throne room's own area 0. That is the
+- **From 1.3 one walk plays the prologue's end, the whole slice and chapter 3
+  as far as Loch Storn** (3.2), and another plays Zere and its dungeon to
+  3.7. The throne room's area 0 plays `ev3040`; the king, `45`, stands where
+  his block puts him, so talking to him plays `ev3050`. That is the
   first time the story has been followed past the slice's end. The same was
   checked in the game in a browser: talking to #203 in Stornway's lobby at
   2.7 plays `ev2940`, and once it is read the story is at 3.1.
 - **From 5.2, one walk plays into all five threads**: chapters 6, 7, 8, 11
   and 12, each to its own first break.
-- **83 breaks** between 1.1 and 19.7. There were 109 before the threads were
-  read, 101 with them, and 87 once records ran as the game runs them. The
-  first after the slice is in Stornway's throne room, before 3.2: talking to
-  `45`, whom the cast does not stand there.
+- **62 breaks** between 1.1 and 19.7. There were 109 before the threads were
+  read, 101 with them, 87 once records ran as the game runs them, 83 with the
+  maps' own areas, and 62 once who stands where was the game's own choice.
+  The first after the slice is Loch Storn's set battle, before 3.2 step 3.
 
 A break usually has more than one cause, one for each record that could have
-moved the story on. So the counts below add up to more than 83.
+moved the story on. So the counts below add up to more than 62.
 
 ## The list, by cause
 
@@ -79,20 +80,20 @@ that unblock the most.
 | # | cause | breaks | first before | kind of work |
 |---|---|---|---|---|
 | 1 | ~~**A stage set on a record that is not an event's own**~~ | — | — | **done, 28 September**: records run as the game runs them |
-| 2 | **A character a record talks to that the cast does not stand there** | 23 | 1.3 step 2 | reading: how the game places story characters |
+| 2 | **A character a record talks to that the cast does not stand there** | 8 | 4.1 step 3 | **mostly done, 28 September**: the game's placement script, tags 3, 5 and 17. The rest are placed by tag 14 or by scenes |
 | 3 | ~~**`214`, a story's stage set by its number**~~ | — | — | **done, 28 September**: read from the game's code and built |
-| 4 | Chained from an event the walk never played | 12 | 4.5 | none directly: a cascade |
-| 5 | A set battle whose starting event the walk never played | 13 | 3.2 step 3 | as 4, and what starts a battle from a script (`547`) |
+| 4 | Chained from an event the walk never played | 11 | 4.5 | none directly: a cascade |
+| 5 | A set battle whose starting event the walk never played | 10 | 3.2 step 3 | reading: what starts a set battle from a scene. Loch Storn's first fight, after `ev23189`, is the first |
 | 6 | Nothing reaches the event | 6 | 14.4 step 4 | reading: `S07`, and VM opcode `0x1e` |
-| 7 | A flag, mark or step the walk never had | 6 | 1.3 | as 4, mostly |
+| 7 | A flag, mark or step the walk never had | 5 | 1.3 | as 4, mostly |
 | 8 | ~~An area no record defines~~ | — | — | **done, 28 September**: a map's own areas, and areas turned |
-| 9 | Another of the character's records chooses first | 3 | 4.3 step 3 | reading: `pickLine`'s precedence, INFERRED |
-| 10 | The event plays, but its own record is in another area's file | 3 | 5.1 | engine |
-| 11 | A closing step of 0 on a cast record | 2 | 4.3 | reading |
+| 9 | **Another of the character's records chooses first** | 12 | 4.3 step 3 | reading: `pickLine`'s precedence, INFERRED — the game asks for kinds 0 and 1 separately (`func_ov017_021a4cf0`, `func_ov017_021b8e8c`) |
+| 10 | The event plays, but its own record is in another area's file | 2 | 5.1 | engine |
+| 11 | A closing step of 0 on a cast record | — | — | gone with the game's placement rule |
 | 12 | A record kind the engine does not read | 3 | 4.3 step 5 | reading: kind 20's actions besides areas |
 | 13 | An entry record that plays no event | 2 | 10.7 | reading: what runs kind 3 besides its `108` at load. Batsureg's areas 72 and 73 are one's |
 
-Seven more breaks name a record whose span the walk was never at, and five
+Five more breaks name a record whose span the walk was never at, and one
 the walk cannot explain. Both kinds are listed in the test's printout.
 
 ### 1. Records run as the game runs them: done, 28 September 2026
@@ -134,25 +135,32 @@ functions logged in `docs/decomp-contributions.md`.
 - **A label's talk record** that only moves the story, with no event and no
   hand-on, now runs once its line is read (`labelRecord` in `talk.ts`).
 
-### 2. A character a record talks to that the cast does not stand there
+### 2. Who stands where: mostly done, 28 September 2026
 
-A trigger names a character, and the area's `.npc` places nobody with that id
-in that map at that stage. There are three shapes:
+**Read from the game's code**: FORMAT.md, "Who stands where, read from the
+game's code", with the functions logged in `docs/decomp-contributions.md`.
 
-- **Story characters with no place at all at that stage.** Stornway's
-  throne room at 3.1 talks to `45`. `45` is `s004`, a cast entry of kind 2,
-  and has one record, at 19.6, which says nowhere. The kind-2 `s0xx` entries
-  look like the story's own actors. They are probably placed by scenes, which
-  `castLeft` would follow in play but a headless walk does not.
-- **A gap across stages.** Angel Falls' `94` has records to 1.2 step 2 and
-  from 1.3 step 2, and a record talks to them at 1.3. The gap rule in
-  `castOf` fills only a gap inside one sub-stage, and FORMAT.md records why a
-  wider one breaks Ivor.
-- **Placed in another map of the area.** Zere's `10` stands in `M02M04` over
-  2.7 to 18.1, while the record talks to them in `M02M01` at 3.5.
+The cast file's `place.bin` is **a script the game runs in order**, each
+record placing a character or taking them away. Three things the engine had
+wrong:
 
-What decides it is how the game places a kind-2 character. The decomp or the
-emulator should say.
+- **A record for another map takes a character away from this one.** The
+  engine only read this map's records, so it had to guess that "records,
+  none covering" meant "not here". The game leaves such a character at their
+  block's place. That is why the king, `45`, stands in the throne room at 3.1.
+- **Word 6 of a span is the time of day**: 0 by day, 1 by night, 2 either.
+  Erinn is upstairs at 2.6 only by night, and Angel Falls' `15` is in the
+  stable by day and the village by night. The walk now tries by day and by
+  night, since the day passes in the field (ours).
+- **The byte-pattern reader missed 89 blocks and 40 spans.** `place.bin` is
+  now read as the table it is.
+
+Also read: **tag 17 places a character while game-wide flags hold**, before
+anything else. Its flags are the same bank the scripts' `603` reads.
+
+**Left**: 8 breaks. Coffinwell's `26` is placed only by scenes (tags 18 and
+19 name its model). Others may be placed by tag 14, by the four states of an
+id, which is not read.
 
 ### 3. `214`, and the story's five threads: done, 28 September 2026
 

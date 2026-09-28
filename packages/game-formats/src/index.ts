@@ -154,16 +154,22 @@ export {
 export { type MonsterEntry, readMonsterList } from './monsters.ts'
 export { MOTION_TAG, type Motion, type MotionTable, readMotionTable } from './motion.ts'
 export {
+  type CastPlacement,
+  castAtPoint,
+  flagBit,
   isNpcList,
   isNpcPlacements,
   NPC_KIND,
   type NpcEntry,
   type NpcPlacement,
   type NpcState,
+  type PlacePoint,
+  type PlaceRecord,
   placeNpcs,
   readNpcList,
   readNpcPlacements,
   readNpcStates,
+  readPlaceRecords,
 } from './npc.ts'
 export { isPac, type Pac, type PacMember, readPac } from './pac.ts'
 export { armsFor, PART_LETTERS, partName } from './parts.ts'

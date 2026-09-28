@@ -1711,7 +1711,11 @@ function enter(map: string, arrival?: Arrival): boolean {
 
   // The story thread this map is in, and then the cast where its stage has them.
   enterThread(opened.mapId)
-  if (storyStage !== undefined) opened = { ...opened, cast: opened.castAt(storyStage, stepNow()) }
+  if (storyStage !== undefined)
+    opened = {
+      ...opened,
+      cast: opened.castAt(storyStage, stepNow(), timeNow() === 'night', storyGlobals),
+    }
   loaded = opened
   playMapMusic()
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
@@ -2784,7 +2788,10 @@ function moveStage(by: number): void {
   liveThread = threadOf(loaded.mapId)
   castLeft.clear()
   closeTalk()
-  loaded = { ...loaded, cast: loaded.castAt(storyStage) }
+  loaded = {
+    ...loaded,
+    cast: loaded.castAt(storyStage, undefined, timeNow() === 'night', storyGlobals),
+  }
   poseMap(Math.max(mapFrame, 0))
   const here = loaded.cast.members.length + loaded.cast.sprites2d.length
   const line =
@@ -5847,7 +5854,7 @@ function storyFromRecord(outcome: EventOutcome): boolean {
   if (stepped) {
     // Where an event left anyone is kept only until the step moves — see `castLeft`.
     castLeft.clear()
-    const cast = loaded.castAt(storyStage, stepNow())
+    const cast = loaded.castAt(storyStage, stepNow(), timeNow() === 'night', storyGlobals)
     loaded = { ...loaded, cast }
     // A sliding piece goes where its character now stands — see `slide.ts`.
     aimSlides(slides, (id) => standingIn(cast, id))

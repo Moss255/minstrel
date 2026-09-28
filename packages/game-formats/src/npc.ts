@@ -360,3 +360,226 @@ export function placeNpcs(
   }
   return out
 }
+
+/**
+ * One record of a `place.bin`, read as the table it is: its tag and its
+ * values, each an integer (signed) or a float as the table's type bits say.
+ * The game reads coordinates with the same call whichever they are, and some
+ * are written as integers — Stornway's `5`, over 3.7 to 19.9, stands at
+ * (−2, 0.15, −5).
+ */
+export interface PlaceRecord {
+  readonly tag: number
+  readonly values: readonly number[]
+  /** Byte offset of the record, for anything that wants the rest of it. */
+  readonly offset: number
+}
+
+/** Every record of a `place.bin`, in the file's order — see {@link castAtPoint}. */
+export function readPlaceRecords(data: Uint8Array): PlaceRecord[] {
+  return readDataTable(data).records.map((record) => ({
+    tag: record.tag,
+    values: [...record.values].map((value, i) =>
+      record.kinds[i] === 2 ? (record.floats[i] as number) : value | 0,
+    ),
+    offset: record.offset,
+  }))
+}
+
+/** A point of the story as `place.bin` compares them: stage, sub-stage and step. */
+export interface PlacePoint {
+  readonly major: number
+  readonly minor: number
+  readonly step: number
+}
+
+/** Where a character stands, as {@link castAtPoint} decides it. */
+export interface CastPlacement {
+  readonly id: number
+  readonly map: number
+  /** In the file's own units. */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  /** In radians about the vertical. */
+  readonly facing: number
+  /** The byte after the facing, where a record has one; not established. */
+  readonly unknown_after: number | undefined
+  /** The record that placed them, for anything that wants the rest of it. */
+  readonly record: PlaceRecord
+}
+
+/** A block's opening record: a map, a character, and where they stand. */
+const TAG_BLOCK = 3
+/** A record over a span of the story. */
+const TAG_SPAN = 5
+/** A record that holds while flags do — see {@link castAtPoint}. */
+const TAG_WHILE = 17
+
+/**
+ * Which bit of the game-wide bank an id names where a record names it by
+ * number, as the game's `func_0206eb98` has it: below `0x400` the bit itself,
+ * and from there displaced by 1,786 — the rule the script function `603`
+ * follows too, so this bank is the one scenes read their "story flags" from.
+ */
+export function flagBit(id: number): number {
+  return id < 0x400 ? id : id + 0x6fa
+}
+
+/**
+ * **Who stands in `map` at `point`, as the game decides it** — read from its
+ * code (US ARM9): the cast file's `place.bin` runs as a script (`func_0206da80`,
+ * opcode table `0x020f0994`) whose records each place a character or take
+ * them away, in the file's order.
+ *
+ * - **A block, tag 3** (`func_0206c010`): map, character, and then where they
+ *   stand. For this map only; with no place given it takes them away.
+ * - **A span, tag 5** (`func_0206c2c0`): from and to — stage, sub-stage and
+ *   step each — then **the time of day** (0 by day, 1 by night, 2 either),
+ *   then map and character, then where. It counts only while `from ≤ now ≤ to`,
+ *   each taken as `major × 1000 + minor × 10 + step`, and only at its time of
+ *   day. Then, **if it is for another map, it takes the character away from
+ *   this one**; with no place given, it takes them away; otherwise it places
+ *   them.
+ *
+ * A placement joins its character's others in an order (`func_0206db48`), and
+ * the first of them is where they stand: a span over a sub-stage comes before
+ * a block's; between spans, **the one that starts earliest**, then the first in
+ * the file; between blocks, the first. One that comes after all the others is
+ * dropped. Taking a character away (`func_0206dd68`) clears where they stand,
+ * and a later record can place them again.
+ *
+ * - **While flags hold, tag 17** (`func_0206d4e0`): pairs of a condition and
+ *   whether it must be set (1) or clear (0) — a game-wide flag by its bit when
+ *   the condition's high half is 1, by its number (see {@link flagBit}) when 2;
+ *   any other and the record does not count — then the time of day, map,
+ *   character and where, as a span's. A placement so **comes before all
+ *   others**. The Quarantomb's `29` stands in `7401` while flag 89 is set and
+ *   in `7402` while 90 is, which its triggers set and clear.
+ *
+ * The other tags — 14 places a character by one of four states of an id
+ * (quest progress, perhaps), and 4, 6, 8, 11, 15 and 18 to 22 — are not read.
+ * So a character placed only by them stands nowhere here.
+ *
+ * `isSet` answers for a game-wide flag by its bit; without it, every flag is
+ * clear, as in a new game.
+ */
+export function castAtPoint(
+  records: readonly PlaceRecord[],
+  map: number,
+  point: PlacePoint,
+  night: boolean,
+  isSet: (bit: number, wanted: boolean) => boolean = (_, wanted) => !wanted,
+): Map<number, CastPlacement> {
+  interface Candidate {
+    readonly placement: CastPlacement
+    /** The game's order of kinds: 3 a span into a sub-stage 0, 4 a span, 5 a block. */
+    readonly kind: number
+    readonly from: number
+    readonly index: number
+  }
+  const weigh = (major: number, minor: number, step: number) => major * 1000 + minor * 10 + step
+  const now = weigh(point.major, point.minor, point.step)
+  const chains = new Map<number, Candidate[]>()
+  const add = (candidate: Candidate) => {
+    const id = candidate.placement.id
+    const chain = chains.get(id)
+    if (!chain) {
+      chains.set(id, [candidate])
+      return
+    }
+    const beats = (other: Candidate) =>
+      candidate.kind < other.kind ||
+      (candidate.kind === other.kind &&
+        (candidate.kind === 4
+          ? candidate.from < other.from ||
+            (candidate.from === other.from && candidate.index < other.index)
+          : candidate.index < other.index))
+    const at = chain.findIndex(beats)
+    if (at >= 0) chain.splice(at, 0, candidate)
+  }
+  const place = (
+    record: PlaceRecord,
+    id: number,
+    at: number,
+    kind: number,
+    from: number,
+    index: number,
+  ) => {
+    const v = record.values
+    add({
+      placement: {
+        id,
+        map,
+        x: v[at] as number,
+        y: v[at + 1] as number,
+        z: v[at + 2] as number,
+        facing: v[at + 3] as number,
+        unknown_after: v[at + 4],
+        record,
+      },
+      kind,
+      from,
+      index,
+    })
+  }
+
+  records.forEach((record, index) => {
+    const v = record.values
+    if (record.tag === TAG_WHILE) {
+      // The pairs, as the game counts them: an odd count has no byte after the facing.
+      const count = v.length
+      if (count < 9) return
+      const pairs = Math.trunc((count - (count % 2 === 0 ? 8 : 7)) / 2)
+      for (let i = 0; i < pairs; i++) {
+        const condition = v[2 * i] as number
+        const wanted = (v[2 * i + 1] as number) !== 0
+        const kind = condition >>> 16
+        const arg = condition & 0xffff
+        if (kind === 1) {
+          if (!isSet(arg, wanted)) return
+        } else if (kind === 2) {
+          if (!isSet(flagBit(arg), wanted)) return
+        } else return
+      }
+      const at = 2 * Math.max(0, pairs)
+      const time = v[at] as number
+      if ((time === 1 && !night) || (time === 0 && night)) return
+      const where = v[at + 1] as number
+      const id = v[at + 2] as number
+      if (where !== map || count - at - 3 < 4) {
+        chains.delete(id)
+        return
+      }
+      place(record, id, at + 3, 0, 0, index)
+      return
+    }
+    if (record.tag === TAG_BLOCK) {
+      if (v[0] !== map) return
+      const id = v[1] as number
+      if (v.length < 3) chains.delete(id)
+      else place(record, id, 2, 5, 0, index)
+      return
+    }
+    if (record.tag !== TAG_SPAN || v.length < 9) return
+    const [fromMajor, fromMinor, fromStep, toMajor, toMinor, toStep, time, where, id] =
+      v as number[]
+    const from = weigh(fromMajor as number, fromMinor as number, fromStep as number)
+    const to = weigh(toMajor as number, toMinor as number, toStep as number)
+    if (now < from || to < now) return
+    if ((time === 1 && !night) || (time === 0 && night)) return
+    if (where !== map || v.length < 10) {
+      chains.delete(id as number)
+      return
+    }
+    const kind = fromMinor !== 0 && toMinor === 0 ? 3 : toMinor !== 0 ? 4 : 5
+    place(record, id as number, 9, kind, from, index)
+  })
+
+  const standing = new Map<number, CastPlacement>()
+  for (const [id, chain] of chains) {
+    const first = chain[0]
+    if (first) standing.set(id, first.placement)
+  }
+  return standing
+}

@@ -240,8 +240,15 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   }
   /** Who stands in a map at a stage and step, and who its records there name. Kept, as above. */
   const castKept = new Map<string, number[]>()
-  const castAt = (area: string, map: number, stage: Stage, step: number | undefined) => {
-    const key = `${map}|${order(stage)}|${step ?? 0}`
+  const castAt = (
+    area: string,
+    map: number,
+    stage: Stage,
+    step: number | undefined,
+    night = false,
+    globals?: { readonly may: ReadonlySet<number>; readonly sure: ReadonlySet<number> },
+  ) => {
+    const key = `${map}|${order(stage)}|${step ?? 0}|${night}|${globals ? `${sorted(globals.may)}/${sorted(globals.sure)}` : ''}`
     let found = castKept.get(key)
     if (!found) {
       const here = recordsAt(map, stage)
@@ -252,7 +259,14 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
             .map((w) => w.arg),
         ),
       )
-      found = (views.get(area)?.castIds(map, stage, step) ?? []).filter((id) => named.has(id))
+      // A record placing someone while a game-wide flag is set holds if some
+      // way set it, and one wanting it clear unless every way did — as the
+      // walk follows those flags.
+      const isSet = (bit: number, wanted: boolean) =>
+        wanted ? (globals?.may.has(bit) ?? false) : !(globals?.sure.has(bit) ?? false)
+      found = (views.get(area)?.castIds(map, stage, step, night, isSet) ?? []).filter((id) =>
+        named.has(id),
+      )
       castKept.set(key, found)
     }
     return found
@@ -281,13 +295,13 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   const storyIn = (s: State, map: number): Story => s.threads[threadOf(map)] as Story
 
   /** The story as a record in `map` would test it — see `holds`. */
-  const stateIn = (s: State, map: number): StoryState => {
+  const stateIn = (s: State, map: number, night = false): StoryState => {
     const story = storyIn(s, map)
     return {
       flags: story.flags,
       marks: story.marks,
       ...(story.step > 0 ? { step: story.step } : {}),
-      more: { globals: s.globals, globalsSure: s.sure, night: false },
+      more: { globals: s.globals, globalsSure: s.sure, night },
     }
   }
 
@@ -404,66 +418,74 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       const here = recordsAt(map, stage)
       if (here.length === 0) continue
       const area = areaOfMap.get(map) as string
-      // Entering it.
-      const more = { globals: state.globals, globalsSure: state.sure, night: false }
-      const entry = entryPlay(here, map, stage, story.flags, step, more)
-      if (entry && scripts.has(entry.event)) {
-        const before = clone(state)
-        runRecord(before, map, entry.outcome)
-        keep(play(before, map, entry.event, true, played))
-      }
-      // Being in it: its watch, every frame — see `KIND_WATCH`.
-      const watch = watchPlay(here, map, stage, stateIn(state, map))
-      if (watch) {
-        const before = clone(state)
-        runRecord(before, map, watch)
-        keep(watch.event !== undefined ? play(before, map, watch.event, true, played) : [before])
-      }
-      // Walking into each of its areas.
-      for (const area of areaIdsAt(map, stage, stateIn(state, map))) {
-        const found = areaEvent(here, map, stage, story.flags, step, (id) => id === area, more)
-        if (!found || !scripts.has(found.event)) continue
-        const before = clone(state)
-        runRecord(before, map, found.outcome)
-        keep(play(before, map, found.event, true, played))
-      }
-      // Talking to whoever stands there and is named here.
-      const view = views.get(area)
-      if (!view) continue
-      const letter = letterForStage(view.letters, stage)
-      for (const id of castAt(area, map, stage, step)) {
-        const choice = pickLine({
-          triggers: here,
-          map,
-          stage,
-          night: false,
-          id,
-          lines: letter === undefined ? [] : view.linesOf(id, letter),
-          flags: story.flags,
-          marks: story.marks,
-          alone: state.party.length === 0,
-          step,
-          globals: state.globals,
-          globalsSure: state.sure,
-        })
-        if (!choice) continue
-        // The record that chose runs as it is talked to, as the game runs every
-        // action of the record it takes; the label's own after the line is
-        // read, on the answer it waits for — which the walk takes as given.
-        const before = clone(state)
-        for (const mark of choice.marks ?? []) storyIn(before, map).marks.add(mark)
-        if (choice.record) runRecord(before, map, choice.record)
-        if (choice.after) runRecord(before, map, choice.after.outcome)
-        if (choice.kind === 'event') {
-          keep(play(before, map, choice.event, false, played))
-          continue
+      // By day and by night: the day passes in the field, so either can be
+      // waited for, and where people stand and what holds can differ —
+      // Erinn is upstairs at 2.6 only by night. **Ours.**
+      for (const night of [false, true]) {
+        // Entering it.
+        const more = { globals: state.globals, globalsSure: state.sure, night }
+        const entry = entryPlay(here, map, stage, story.flags, step, more)
+        if (entry && scripts.has(entry.event)) {
+          const before = clone(state)
+          runRecord(before, map, entry.outcome)
+          keep(play(before, map, entry.event, true, played))
         }
-        if (choice.leadsTo) {
-          keep(play(before, map, choice.leadsTo.event, true, played))
-        } else if (choice.onward) {
-          keep(play(before, choice.onward.map, choice.onward.event, true, played))
-        } else {
-          keep([before])
+        // Being in it: its watch, every frame — see `KIND_WATCH`.
+        const watch = watchPlay(here, map, stage, stateIn(state, map, night))
+        if (watch) {
+          const before = clone(state)
+          runRecord(before, map, watch)
+          keep(watch.event !== undefined ? play(before, map, watch.event, true, played) : [before])
+        }
+        // Walking into each of its areas.
+        for (const area of areaIdsAt(map, stage, stateIn(state, map, night))) {
+          const found = areaEvent(here, map, stage, story.flags, step, (id) => id === area, more)
+          if (!found || !scripts.has(found.event)) continue
+          const before = clone(state)
+          runRecord(before, map, found.outcome)
+          keep(play(before, map, found.event, true, played))
+        }
+        // Talking to whoever stands there and is named here.
+        const view = views.get(area)
+        if (!view) continue
+        const letter = letterForStage(view.letters, stage)
+        for (const id of castAt(area, map, stage, step, night, {
+          may: state.globals,
+          sure: state.sure,
+        })) {
+          const choice = pickLine({
+            triggers: here,
+            map,
+            stage,
+            night,
+            id,
+            lines: letter === undefined ? [] : view.linesOf(id, letter),
+            flags: story.flags,
+            marks: story.marks,
+            alone: state.party.length === 0,
+            step,
+            globals: state.globals,
+            globalsSure: state.sure,
+          })
+          if (!choice) continue
+          // The record that chose runs as it is talked to, as the game runs every
+          // action of the record it takes; the label's own after the line is
+          // read, on the answer it waits for — which the walk takes as given.
+          const before = clone(state)
+          for (const mark of choice.marks ?? []) storyIn(before, map).marks.add(mark)
+          if (choice.record) runRecord(before, map, choice.record)
+          if (choice.after) runRecord(before, map, choice.after.outcome)
+          if (choice.kind === 'event') {
+            keep(play(before, map, choice.event, false, played))
+            continue
+          }
+          if (choice.leadsTo) {
+            keep(play(before, map, choice.leadsTo.event, true, played))
+          } else if (choice.onward) {
+            keep(play(before, choice.onward.map, choice.onward.event, true, played))
+          } else {
+            keep([before])
+          }
         }
       }
     }
@@ -599,21 +621,24 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         ? `the record for set battle ${battle} ${trigger.unknown_5 === 15 ? 'won' : 'lost'}, which nothing starts`
         : `the record for set battle ${battle} ${trigger.unknown_5 === 15 ? 'won' : 'lost'}, which ${starters.map((e) => `ev${e}`).join(' or ')} starts and the walk never played`
     }
-    const who = words.find((w) => w.op === 6)?.arg
+    const who = conditionsOf(trigger).find((w) => w.op === 6)?.arg
     if (who !== undefined) {
       const view = views.get(area)
       const standing = here.some((state) =>
-        view
-          ?.castIds(trigger.map, state.stage as Stage, state.step > 0 ? state.step : undefined)
-          .includes(who),
+        [false, true].some((night) =>
+          view
+            ?.castIds(
+              trigger.map,
+              state.stage as Stage,
+              state.step > 0 ? state.step : undefined,
+              night,
+            )
+            .includes(who),
+        ),
       )
       if (!standing) {
-        const anyStep = here.some((state) =>
-          view?.castIds(trigger.map, state.stage as Stage).includes(who),
-        )
-        return anyStep
-          ? `talking to ${who} in map ${trigger.map}, who stands there at ${show(here[0]?.stage as Stage)} only when the step is not read`
-          : `talking to ${who} in map ${trigger.map}, whom the area's cast does not stand there at ${show(here[0]?.stage as Stage)}`
+        const at = here[0] as Story
+        return `talking to ${who} in map ${trigger.map}, whom the area's cast does not stand there at ${show({ ...(at.stage as Stage), step: at.step })}, by day or by night`
       }
     }
     const inArea = words.find((w) => w.op === OP_IN_AREA)?.arg
@@ -841,7 +866,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   it('plays the slice through in one walk, and on into Stornway', () => {
     // The slice's own story, which the game already plays: the evening at
     // 2.1, the pass, the Hexagon, Patty rescued, and the morning after.
-    const slice = walks.find((walk) => walk.from.major === 1 && walk.from.minor === 4)
+    const slice = walks.find((walk) => walk.reached.has('2.1 step 1'))
     expect(slice?.reached.has('2.5 step 1')).toBe(true)
     expect(slice?.reached.has('2.7 step 1')).toBe(true)
     // And past it, by records read from the game's code: entering Stornway
@@ -853,6 +878,12 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // And in the castle, by the throne room's own area 0 — defined in its
     // link table, not its triggers — which plays ev3040.
     expect(slice?.reached.has('3.1 step 3')).toBe(true)
+    // And through the throne room to 3.2, now that the king — `45`, `s004` —
+    // stands where his block puts him, as the game's own placement has it.
+    expect(slice?.reached.has('3.2 step 1')).toBe(true)
+    // Chapter 3's second half, Zere and its dungeon, in one walk to 3.7.
+    const zere = walks.find((walk) => walk.reached.has('3.3 step 1'))
+    expect(zere?.reached.has('3.7 step 1')).toBe(true)
   })
 
   it('breaks where docs/story-walk.md says, and prints each break with why', () => {
@@ -875,12 +906,13 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     // from maps' own link tables too, turned as the game turns them. Fixing
     // one shows up as a smaller number here; losing a rule the game had shows
     // up as a larger. Update it, and the table in `docs/story-walk.md`, when
-    // either happens.
-    expect(breaks.length).toBe(83)
-    // The first break after the slice: talking to 45 in Stornway's throne
-    // room, whom the cast does not stand there.
+    // either happens. 62 once who stands where became the game's own choice,
+    // by its placement script, by day or by night.
+    expect(breaks.length).toBe(62)
+    // The first break after the slice: Loch Storn's set battle, whose first
+    // fight nothing the walk plays starts.
     const first = breaks.find((b) => b.next.major >= 3)
-    expect(first && show(first.next)).toBe('3.2 step 1')
+    expect(first && show(first.next)).toBe('3.2 step 3')
     expect(walks.every((walk) => !walk.capped)).toBe(true)
   })
 })

@@ -17,12 +17,11 @@ credits in one save. **The worklist is `docs/story-walk.md`**, produced by
 cartridge by the engine's own rules and prints every break with why. It
 takes precedence over the list below, which was the sweep's.
 
-The slice plays through in one walk and on into Stornway's chapter 3, and 83
-breaks remain. The story's five threads and how the game runs a record are
-read and built. **Next is how story characters are placed** (cause 2 in the
-list, 23 breaks): the `s0xx` cast entries a record talks to where the cast
-file places nobody. Run the walk again after each, because most of the rest
-are cascades.
+One walk now plays from 1.3 through the slice and chapter 3 to Loch Storn,
+and 62 breaks remain. The story's five threads, how the game runs a record,
+the maps' own areas and who stands where are read and built. What is left is
+mostly cascades and what starts set battles from scenes — see the list. Run
+the walk again after each change.
 
 Decomp and wiki contributions are deferred until minstrel is finished. A
 function read from the game's code along the way goes in

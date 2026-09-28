@@ -109,6 +109,7 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
       const stages = opened.stages.length > 0 ? opened.stages : [{ major: 1, minor: 1 }]
       let spokeHere = 0
       let askedHere = 0
+      let playsHere = 0
       for (const stage of stages) {
         const cast = opened.castAt(stage)
         for (const who of [...cast.members, ...cast.sprites2d]) {
@@ -133,6 +134,7 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
           }
           if (choice.kind === 'event') {
             t.events++
+            playsHere++
             continue
           }
           const text = choice.line.text
@@ -152,7 +154,7 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
           t.turns.set(run.turn.kind, (t.turns.get(run.turn.kind) ?? 0) + 1)
         }
       }
-      if (spokeHere > 0) t.areasWithSpeech.add(area)
+      if (spokeHere > 0 || playsHere > 0) t.areasWithSpeech.add(area)
       else if (askedHere === 0) empty.push(area)
       else quiet.push(area)
     }
@@ -185,14 +187,20 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
   })
 
   it('finds somebody to talk to in every area that has anybody in it', () => {
-    // **The split that matters.** 27 of the 70 have nobody standing in the
+    // **The split that matters.** 22 of the 70 have nobody standing in the
     // area's own map — they are the dungeons, and a dungeon has monsters
-    // rather than villagers — and in **every one of the other 43 somebody
-    // speaks**. No area has people in it who say nothing, which is the shape a
-    // fault here would take.
+    // rather than villagers — and in **every one of the other 48 somebody
+    // speaks or plays a scene**. No area has people in it who do neither,
+    // which is the shape a fault here would take.
+    //
+    // 27 and 43 until 28 September 2026, when who stands where came to be the
+    // game's own choice (`castAtPoint`): a block's place holds until a record
+    // takes the character away, so five areas gained someone. In two, the
+    // Wormwood region's `D14` and `S13`, it is one story character, `s052`,
+    // whose talk plays a scene — which is why a scene counts here.
     expect(t.areasWithSpeech.size + empty.length).toBe(AREA_CODES.length)
     expect(quiet).toEqual([])
-    expect(empty.length).toBe(27)
+    expect(empty.length).toBe(22)
   })
 
   it('gets an answer from nearly everyone it asks', () => {
@@ -205,8 +213,13 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // to be read as the game's code reads them (FORMAT.md, "How a record
     // runs"): the composites `52` to `61` name 13 more characters whose record
     // plays an event, and records for playing together (`23:3`) or by night
-    // (`17:1`, asked here by day) no longer hold.
-    expect(t.spoke).toBe(1103)
+    // (`17:1`, asked here by day) no longer hold. **Then 1,103 of 1,135**, and
+    // the same day who stands where became the game's own choice
+    // (`castAtPoint`): a block's place holds until a record takes the
+    // character away, so 470 more are asked — 1,605 — and 1,551 speak. Of the
+    // rest, 43 play an event and 11 have nothing at all to say at the stage
+    // they are asked at.
+    expect(t.spoke).toBe(1551)
     // **Most of what the engine says is its own choice, not the game's.**
     // No trigger names the character, so `pickLine` takes the plain
     // line; no line with that label covers the sub-stage, so it takes
@@ -218,9 +231,11 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // record that holds, so taking the plain line: 31 whose plain line is only
     // in tag 2, which this does not read, and 8 with none. Records that no
     // longer hold are the game's rule, not a regression.
-    expect(t.guessed).toBe(701)
-    expect(t.events).toBe(30)
-    expect(t.nothing).toBe(2)
+    //
+    // Then 1,097, of the 1,551 — 71% — once who stands where was the game's.
+    expect(t.guessed).toBe(1097)
+    expect(t.events).toBe(43)
+    expect(t.nothing).toBe(11)
     expect(t.silent).toBe(0)
   })
 
@@ -245,7 +260,9 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // — `<WIN>` writes 0 to the frame byte and the pair plainly toggles it,
     // but plainly is not read — and `<val_2>` is a value the engine supplies.
     const worst = [...t.unread].sort((a, b) => b[1] - a[1]).map(([name]) => name)
-    expect(worst).toEqual(['-', 'WIN_OFF', 'WIN_ON', 'val_2', '.|'])
+    // The same five since who stands where became the game's own choice on
+    // 28 September 2026; more speakers moved the window codes to the front.
+    expect(worst).toEqual(['WIN_OFF', 'WIN_ON', '-', '.|', 'val_2'])
     expect(t.unread.size).toBe(5)
   })
 
@@ -262,10 +279,13 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // look like an improvement and be a town of swivelling villagers.
     // 780, 198 and 138 of 1,116 until 28 September 2026; the lines chosen
     // moved with the conditions — see above.
+    // 1,070, 246, 234 and one `<ANGLE>` of 1,551 once who stands where was the
+    // game's.
     expect([...t.turns].sort((a, b) => b[1] - a[1])).toEqual([
-      ['player', 783],
-      ['keep', 184],
-      ['back', 136],
+      ['player', 1070],
+      ['keep', 246],
+      ['back', 234],
+      ['angle', 1],
     ])
     expect([...t.turns.values()].reduce((a, b) => a + b, 0)).toBe(t.spoke)
   })
