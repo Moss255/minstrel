@@ -36,6 +36,7 @@ is one the menu will not know about.
 | `step=4` | the step within the stage |
 | `flags=0,1` | story flags set |
 | `door=F26` | arrive through the doorway that leads there, rather than at the default spot |
+| `fly=-99,-26` | on the sky map (`map=O01`), the Starflight Express in flight at that place in the sky's own units, as Sterling's whistle would put it there — see `apps/game/src/flight.ts` |
 | `at=x,z` | stand at a world position, on the highest floor under it |
 | `time=night` | force the hour |
 | `party=0:0,11:3,21:10` | a party of created characters, `preset:vocation` each — see `docs/party-and-vocations.md` |

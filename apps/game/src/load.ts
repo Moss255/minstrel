@@ -49,6 +49,8 @@ import {
   type NpcState,
   type PlaceRecord,
   placeNpcs,
+  type QuestGiver,
+  type QuestText,
   type RandomTreasure,
   type Recipe,
   readActionRanges,
@@ -71,6 +73,7 @@ import {
   readItemStats,
   readItemTable,
   readLevelTable,
+  readMapLinks,
   readMapList,
   readMapManifest,
   readMedalRewards,
@@ -81,6 +84,9 @@ import {
   readNpcPlacements,
   readNpcStates,
   readPlaceRecords,
+  readQuestGivers,
+  readQuestIds,
+  readQuestTexts,
   readRandomTreasure,
   readRecipes,
   readScript,
@@ -282,6 +288,8 @@ export interface Loaded {
   readonly attending: readonly AttendingCharacter[]
   /** A map's code by its own id — how a trigger names where the story goes on. */
   mapCodeOf(id: number): string | undefined
+  /** A map's entry in the map list by its own id — see `MapEntry`. */
+  mapEntryOf(id: number): MapEntry | undefined
   /**
    * What each worn thing adds to a resistance, by item id — see
    * `readItemBattleParams`. Whatever is not listed adds nothing.
@@ -328,6 +336,12 @@ export interface Loaded {
   readonly medalWords: ReadonlyMap<number, string>
   /** The Starflight Express's words by number, `str_ark` — see `express.ts`. */
   readonly expressWords: ReadonlyMap<number, string>
+  /** DQVC's lines, `str_da12`, by number — the connection's among them; see `connectDqvc` in `main.ts`. */
+  readonly dqvcWords: ReadonlyMap<number, string>
+  /** The quests: who offers each, where and when, `questorder3` — see `quests.ts`. Empty if it will not read. */
+  readonly questGivers: readonly QuestGiver[]
+  /** Each quest's texts, by the quest's own number (through `questidtbl`) — see `readQuestTexts`. */
+  readonly questTexts: ReadonlyMap<number, QuestText>
   /** An event's messages in English, read the first time they are asked for. */
   eventMessages(event: number): readonly EventMessage[]
   /** An event's script — see `readScript` and `event.ts`. Undefined when it will not read. */
@@ -1312,6 +1326,28 @@ function medalRewardsOf(rom: Uint8Array): MedalRewards | undefined {
  * `str_mdl`'s lines, by number: records of tag `0x67`, each its number and a
  * string — the medal service's own words, 10 to 200. See `medals.ts`.
  */
+/** A table of numbered lines — a tag-`0x67` record each, a number and a string — as `str_mdl` and `str_da12` are. */
+function numberedLines(rom: Uint8Array, archive: string, member: string): Map<number, string> {
+  const { cat } = walkOnce(rom, [archive])
+  const out = new Map<number, string>()
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith(member)) continue
+      try {
+        const table = readDataTable(bytes)
+        for (const record of table.withTag(0x67)) {
+          const number = record.values[0]
+          const text = record.values[1] === undefined ? undefined : table.stringAt(record.values[1])
+          if (number !== undefined && text) out.set(number, text)
+        }
+      } catch {
+        // Lines that will not read leave the service with nothing to say.
+      }
+    }
+  }
+  return out
+}
+
 function medalWordsOf(rom: Uint8Array): Map<number, string> {
   const { cat } = walkOnce(rom, ['/data/bin/menu/str_mdl.gp2'])
   const out = new Map<number, string>()
@@ -1379,6 +1415,56 @@ function englishText(
       if (!name.toLowerCase().endsWith(member)) continue
       try {
         return read(bytes)
+      } catch {
+        return new Map()
+      }
+    }
+  }
+  return new Map()
+}
+
+const questsKept = new WeakMap<
+  Uint8Array,
+  { questGivers: readonly QuestGiver[]; questTexts: ReadonlyMap<number, QuestText> }
+>()
+
+/** The quests' givers and texts — see `quests.ts`. None where the files will not read. */
+function questsOf(rom: Uint8Array): {
+  questGivers: readonly QuestGiver[]
+  questTexts: ReadonlyMap<number, QuestText>
+} {
+  const already = questsKept.get(rom)
+  if (already) return already
+  const read = <T>(path: string, reader: (bytes: Uint8Array) => T, none: T): T => {
+    const bytes = looseFile(rom, path)
+    if (!bytes) return none
+    try {
+      return reader(bytes)
+    } catch {
+      return none
+    }
+  }
+  const questGivers = read('/data/scenario/questorder3.bin', readQuestGivers, [])
+  const ids = read('/data/scenario/questidtbl.bin', readQuestIds, new Map<number, number>())
+  const byNumber = englishQuestTexts(rom)
+  const questTexts = new Map<number, QuestText>()
+  for (const [quest, number] of ids) {
+    const text = byNumber.get(number)
+    if (text) questTexts.set(quest, text)
+  }
+  const out = { questGivers, questTexts }
+  questsKept.set(rom, out)
+  return out
+}
+
+/** `questmsg_en.bin`'s texts, by their number there. */
+function englishQuestTexts(rom: Uint8Array): Map<number, QuestText> {
+  const { cat } = walkOnce(rom, ['/data/scenario/questmsg.gp2'])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('questmsg_en.bin')) continue
+      try {
+        return readQuestTexts(bytes)
       } catch {
         return new Map()
       }
@@ -1876,6 +1962,23 @@ function weightTablesOf(rom: Uint8Array): WeightTables | undefined {
 }
 
 /** The same index the other way round: a map's code by its own id, which is how a trigger names a map. */
+function entryOf(cat: Catalogue): (id: number) => MapEntry | undefined {
+  for (const leaf of cat.other) {
+    if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
+    try {
+      const byId = new Map(
+        readMapList(leaf.bytes)
+          .maps.filter((entry) => entry.id !== 0)
+          .map((entry) => [entry.id, entry]),
+      )
+      return (id) => byId.get(id)
+    } catch {
+      return () => undefined
+    }
+  }
+  return () => undefined
+}
+
 function codeOf(cat: Catalogue): (id: number) => string | undefined {
   for (const leaf of cat.other) {
     if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
@@ -1892,6 +1995,37 @@ function codeOf(cat: Catalogue): (id: number) => string | undefined {
     }
   }
   return () => undefined
+}
+
+/**
+ * The other model archives a map's link table names beside the one opened
+ * that are its own halves, its code and a letter — `O01.bmbl` names `O01a` and
+ * `O01b`. None for any other map on the cartridge.
+ */
+function siblingArchives(cat: Catalogue, code: string, opened: string): string[] {
+  const out: string[] = []
+  for (const [archive, files] of cat.members) {
+    if (stemOf(archive) !== code.toLowerCase() || !archive.toLowerCase().endsWith('.ambl')) continue
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith('.bmbl') || !isMapLinks(bytes)) continue
+      let names: readonly string[]
+      try {
+        names = readMapLinks(bytes).names
+      } catch {
+        continue
+      }
+      for (const named of names) {
+        // Its own halves only — the map's code and one letter — not the
+        // neighbours a link table also names.
+        if (!new RegExp(`^${code.toLowerCase()}[a-z]$`).test(named.toLowerCase())) continue
+        const path = [...cat.members.keys()].find(
+          (p) => stemOf(p) === named.toLowerCase() && p.toLowerCase().endsWith('.amdj'),
+        )
+        if (path && path !== opened && !out.includes(path)) out.push(path)
+      }
+    }
+  }
+  return out
 }
 
 /**
@@ -2180,8 +2314,32 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   if (archive === undefined || map === undefined) {
     throw new Error(`'${matching[0]}' names no model that reads`)
   }
+  // **A map in several archives**: the sky, O01, is `O01a` and `O01b`, both
+  // named by its link table (`O01.bmbl`) and both placed at the origin — the
+  // whole world in two halves, the collision in the second. Every archive the
+  // link table names is assembled, and the map is all of them.
+  for (const sibling of siblingArchives(cat, wanted, archive)) {
+    const manifest = manifests.get(sibling)
+    const members = cat.members.get(sibling)
+    if (!manifest || !members) continue
+    const more = assembleMap(manifest, members, {
+      ...(options.lighting === undefined ? {} : { lighting: options.lighting }),
+      once: isSliding,
+    })
+    map = {
+      pieces: [...map.pieces, ...more.pieces],
+      meshes: [...map.meshes, ...more.meshes],
+      water: [...map.water, ...more.water],
+      marsh: [...map.marsh, ...more.marsh],
+      missing: [...map.missing, ...more.missing],
+    }
+  }
 
-  const code = stemOf(archive).toUpperCase()
+  // The map's own code — `O01`, not the half `O01a` that was opened first.
+  const opened = stemOf(archive)
+  const code = (
+    opened.length === wanted.length + 1 && opened.startsWith(wanted) ? wanted : opened
+  ).toUpperCase()
   const entry = indexOf(cat)(code)
 
   // A map's collision is all of its meshes; the village has thirteen, and any
@@ -2228,6 +2386,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     attending: attendingOf(rom),
     presets: presetsOf(rom),
     mapCodeOf: codeOf(cat),
+    mapEntryOf: entryOf(cat),
     goods: goodsOf(rom),
     itemResistances: itemBattleOf(rom),
     itemStats: itemStatsOf(rom),
@@ -2256,6 +2415,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       'str_ark_en.nat',
       readSystemStrings,
     ),
+    ...questsOf(rom),
+    dqvcWords: numberedLines(rom, '/data/menu/str_da12.gp2', 'str_da12_en.bin'),
     chests: chestModelsOf(
       [...cat.members].find(([path]) => path.toLowerCase() === CHEST_ARCHIVE)?.[1],
     ),

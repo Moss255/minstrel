@@ -41,6 +41,7 @@ export type MenuCommand =
   | 'spells'
   | 'skills'
   | 'tricks'
+  | 'quests'
   | 'pot'
   | 'make'
   | 'patty'
@@ -89,6 +90,8 @@ export const MENU_WORDS = {
   pointsLeft: 4101,
   /** "Assign Party Tricks" — the game's own name for the trick screen, in its Misc. menu. */
   tricks: 4004,
+  /** "Quest List" — the Misc. menu's own. */
+  quests: 4007,
   /** "Up", "Right", "Left", "Down": the four places a trick goes, this and the next three. */
   trickSlots: 4501,
   /** "Clear" */
@@ -116,6 +119,7 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
   { id: 'tricks', label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
+  { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
 ]
 
 /**
@@ -425,6 +429,14 @@ export interface MenuContext {
    * each of the four places, or undefined for none — see `trickKnown` and
    * `TRICK_NAMES_FROM` in `@minstrel/game-formats`.
    */
+  /**
+   * The quests for the Quest List: those taken, then those cleared, each by
+   * its name and the text its state and progress have (see `QuestText`),
+   * their markup already read.
+   */
+  readonly quests?:
+    | readonly { readonly name: string; readonly text: string; readonly cleared: boolean }[]
+    | undefined
   readonly tricks?:
     | {
         readonly known: readonly number[]
@@ -570,6 +582,10 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
   }
   if (state.panel === 'make') {
     const count = context?.look?.length ?? 0
+    return count === 0 ? state : { ...state, row: wrap(state.row, count) }
+  }
+  if (state.panel === 'quests') {
+    const count = context?.quests?.length ?? 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'tricks') {
@@ -991,6 +1007,20 @@ export function panelLines(
           return `${mark(i === row)}${step.name} — ${state_}`
         }),
         ...(state?.said ?? []),
+      ]
+    }
+    case 'quests': {
+      // **The Quest List**: those taken, then those cleared, and the chosen
+      // one's text — the game's own words, `questmsg`. Ours: one list, where
+      // the game's screen has its own layout, not read.
+      const quests = context.quests ?? []
+      const row = state?.panel === 'quests' ? (state.row ?? 0) : -1
+      if (quests.length === 0) return [word(MENU_WORDS.quests, 'Quest List'), 'No quests yet.']
+      const chosen = quests[Math.max(0, row)]
+      return [
+        word(MENU_WORDS.quests, 'Quest List'),
+        ...quests.map((q, i) => `${mark(i === row)}${q.cleared ? '✓ ' : ''}${q.name}`),
+        ...(chosen ? ['', chosen.text] : []),
       ]
     }
     case 'tricks': {

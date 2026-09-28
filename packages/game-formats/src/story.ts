@@ -461,6 +461,11 @@ export interface StoryPoint {
 }
 
 /** What follows an event — see {@link eventOutcome}. */
+/** One of a record's actions on the quests — see {@link EventOutcome.quests}. */
+export type QuestAction =
+  | { readonly does: 'accept' | 'clear' | 'offer'; readonly quest: number }
+  | { readonly does: 'progress'; readonly quest: number; readonly value: number }
+
 export interface EventOutcome {
   /** Where the story now stands, if the event moves it. */
   readonly stage: StoryPoint | undefined
@@ -498,6 +503,11 @@ export interface EventOutcome {
   readonly express?: { readonly mode: number; readonly values: readonly number[] }
   /** The stop it says the Starflight Express is at — see {@link OP_EXPRESS_AT}. */
   readonly expressAt?: number
+  /**
+   * What it does to the quests — see {@link OP_QUEST_ACCEPT} and the rest, in
+   * the record's order. Absent where an outcome is made by hand.
+   */
+  readonly quests?: readonly QuestAction[]
   /**
    * The areas it adds to the map as it runs — see {@link OP_AREA}. 143 is on
    * 80 settings records, and on 3 entry records, 3 talk records and one
@@ -590,6 +600,11 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
   }
   const both = entries.filter((e) => e.op === OP_FLAG_AND_EVENT && e.params.length === 1)
   const express = entries.find((e) => e.op === OP_EXPRESS)
+  // `130`, `131`: the flag their value's high half names, by its number.
+  const named = (op: number) =>
+    entries
+      .filter((e) => e.op === op && e.params.length === 1)
+      .map((e) => flagBit(((e.params[0] as number) >>> 16) & 0xffff))
   const expressAt = entries.find((e) => e.op === OP_EXPRESS_AT)
   // The Quarantomb's switches, as game-wide flags — see `quarantombSwitch`.
   const switches = entries
@@ -607,13 +622,29 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
     unflags: args(OP_CLEAR_FLAG),
     marks: args(OP_SET_MARK),
     unmarks: args(OP_CLEAR_MARK),
-    globals: [...args(OP_SET_GLOBAL), ...switches.filter((s) => s.on).map((s) => s.flag)],
-    unglobals: [...args(OP_CLEAR_GLOBAL), ...switches.filter((s) => !s.on).map((s) => s.flag)],
+    globals: [
+      ...args(OP_SET_GLOBAL),
+      ...switches.filter((s) => s.on).map((s) => s.flag),
+      ...named(OP_QUEST_SET_FLAG),
+    ],
+    unglobals: [
+      ...args(OP_CLEAR_GLOBAL),
+      ...switches.filter((s) => !s.on).map((s) => s.flag),
+      ...named(OP_QUEST_CLEAR_FLAG),
+    ],
     event: entries.find((e) => e.op === OP_EVENT || e.op === OP_FLAG_AND_EVENT)?.arg,
     ...(talk ? { talk: { character: talk.arg, label: (talk.params[0] as number) >>> 16 } } : {}),
     removes: args(OP_REMOVE),
     tricks: args(OP_LEARN_TRICK),
     ...(express ? { express: { mode: express.arg, values: express.params } } : {}),
+    quests: entries.flatMap((e): QuestAction[] => {
+      const value = ((e.params[0] ?? 0) >>> 16) & 0xffff
+      if (e.op === OP_QUEST_ACCEPT) return [{ does: 'accept', quest: e.arg }]
+      if (e.op === OP_QUEST_CLEAR) return [{ does: 'clear', quest: e.arg }]
+      if (e.op === OP_QUEST_OFFER) return [{ does: 'offer', quest: e.arg }]
+      if (e.op === OP_QUEST_PROGRESS) return [{ does: 'progress', quest: e.arg, value }]
+      return []
+    }),
     ...(expressAt ? { expressAt: expressAt.arg } : {}),
     areas: areasIn(trigger),
     actions: entries.filter((e) => !isCondition(e.op)),
@@ -778,6 +809,75 @@ export interface Conditions {
   readonly party?: number
   /** The party tricks just performed, by number — see {@link OP_TRICKS}. Not read when not given. */
   readonly tricks?: readonly number[]
+  /**
+   * Each quest's nibble as the game keeps it — see {@link questHolds}. Not
+   * read when not given: the quest conditions then hold.
+   */
+  readonly quest?: (quest: number) => number
+}
+
+/**
+ * **A quest's state**, as the game keeps it (US ARM9 `func_0206e120`,
+ * `func_0206e164`): a nibble per quest, 204 of them, at the trigger object's
+ * `+0x2cc`. Its low two bits run **0** not on offer, **1** on offer — the
+ * talk sets 1 and 0 by its giver's record, `func_02095924` — **2** taken
+ * (`125`, through `func_020962f4`) and **3** cleared (`127`, `func_0206e100`).
+ * Bit 2 is a first flag, set with state 1 by `func_0206e218`; bit 3 is the
+ * quest's having been **delivered** by the online service (see
+ * `QuestGiver.downloaded`).
+ */
+export const QUEST_OFFERED = 1
+export const QUEST_TAKEN = 2
+export const QUEST_CLEARED = 3
+export const QUEST_FIRST_FLAG = 4
+export const QUEST_DELIVERED = 8
+
+/**
+ * A quest test by its mode, as the composites 53 to 61 carry it (US ARM9
+ * `func_0206474c`): −1 and 5 hold for a quest at 0, 0 at 2, 1 while its first
+ * flag is set, 2 at 3, 3 at 1, any other never.
+ */
+export function questHolds(nibble: number, mode: number): boolean {
+  const state = nibble & 3
+  switch (mode) {
+    case -1:
+    case 5:
+      return state === 0
+    case 0:
+      return state === QUEST_TAKEN
+    case 1:
+      return (nibble & QUEST_FIRST_FLAG) !== 0
+    case 2:
+      return state === QUEST_CLEARED
+    case 3:
+      return state === QUEST_OFFERED
+    default:
+      return false
+  }
+}
+
+/** Holds while quest *n* is taken (`20`), has its first flag (`21`), is cleared (`22`) — `func_0205faf4` at `0x0205ff84`. */
+export const OP_IF_QUEST_TAKEN = 20
+export const OP_IF_QUEST_FLAG = 21
+export const OP_IF_QUEST_CLEARED = 22
+/** Accepts quest *n*: into the quest log, eight at most, and taken — US ARM9 `0x02062358`, `func_020961b0`. */
+export const OP_QUEST_ACCEPT = 125
+/** Clears quest *n*: the day and time kept, cleared, out of the log — `0x02062444`, `func_02095cfc`. */
+export const OP_QUEST_CLEAR = 127
+/** Puts quest *n* on offer, state 1 — `0x020624dc`. */
+export const OP_QUEST_OFFER = 129
+/** Sets and clears the flag its value names, by its number (`func_0206eb64`); the quest is for a session's other players — `0x020624f0`, `0x0206257c`. */
+export const OP_QUEST_SET_FLAG = 130
+export const OP_QUEST_CLEAR_FLAG = 131
+/** Sets a taken quest's progress, 0 to 7, the entry's bits 11 to 13 — `0x02062c68`. */
+export const OP_QUEST_PROGRESS = 144
+
+/** The quest test a composite condition carries — see {@link questHolds}. Undefined for any other condition. */
+function compositeQuest(entry: TriggerWord): { quest: number; mode: number } | undefined {
+  if (entry.op < 53 || entry.op > 61) return undefined
+  const value = (entry as Partial<TriggerEntry>).params?.[0]
+  if (value === undefined) return undefined
+  return { quest: (value >>> 16) & 0xffff, mode: ((value & 0xffff) << 16) >> 16 }
 }
 
 /**
@@ -1063,8 +1163,19 @@ export function flagsHold(
           (w.op !== OP_PARTY_IS || more.party === w.arg))) &&
       (more?.tricks === undefined ||
         w.op !== OP_TRICKS ||
-        tricksWanted(w).every((t) => (more.tricks as readonly number[]).includes(t))),
+        tricksWanted(w).every((t) => (more.tricks as readonly number[]).includes(t))) &&
+      (more?.quest === undefined || questConditionHolds(w, more.quest)),
   )
+}
+
+/** A quest condition — `20`, `21`, `22`, or a composite's test — with quests as `quest` has them; any other holds. */
+function questConditionHolds(w: TriggerWord, quest: (quest: number) => number): boolean {
+  const nibbleOf = (q: number) => (q >= 0 && q < 0xcc ? quest(q) : 0)
+  if (w.op === OP_IF_QUEST_TAKEN) return (nibbleOf(w.arg) & 3) === QUEST_TAKEN
+  if (w.op === OP_IF_QUEST_FLAG) return (nibbleOf(w.arg) & QUEST_FIRST_FLAG) !== 0
+  if (w.op === OP_IF_QUEST_CLEARED) return (nibbleOf(w.arg) & 3) === QUEST_CLEARED
+  const test = compositeQuest(w)
+  return test === undefined || questHolds(nibbleOf(test.quest), test.mode)
 }
 
 /** Whether a `29` names `doorway` — see {@link OP_AT_DOORWAY}. The word's value is given by `entriesOf`. */
@@ -1196,6 +1307,23 @@ export const isCondition = (op: number) => op < 100 || op >= 500
  * integer where an operation is expected is skipped, as `triggerWords` skips
  * floats.
  */
+/**
+ * Conditions given as bare trigger words — a quest giver's (see
+ * `QuestGiver.conditions`), which the game parses with the trigger parser
+ * itself — as {@link conditionsOf} reads a record's.
+ */
+export function conditionsOfWords(values: readonly number[]): TriggerEntry[] {
+  const words = Uint32Array.from(values)
+  const as = {
+    values: words,
+    kinds: new Uint8Array(words.length).fill(1),
+    floats: new Float32Array(words.buffer.slice(0)),
+  } as unknown as Trigger
+  return entriesOf(as)
+    .filter((entry) => isCondition(entry.op))
+    .flatMap(expanded)
+}
+
 export function entriesOf(trigger: Trigger): TriggerEntry[] {
   const { values, kinds, floats } = trigger
   const out: TriggerEntry[] = []
@@ -1248,9 +1376,16 @@ function expanded(entry: TriggerEntry): TriggerEntry[] {
       return [entry, character, basic(18, half(2))]
     case 56:
       return [entry, character, basic(36, half(2))]
+    // 57 and 58 test the flag their third half names, set and clear, as 26
+    // and 27 do (`func_0206eb98`); 59 and 60 the same without the players.
     case 57:
+      return [entry, character, basic(26, half(2)), basic(OP_PLAYERS, half(3))]
     case 58:
-      return [entry, character, basic(OP_PLAYERS, half(3))]
+      return [entry, character, basic(27, half(2)), basic(OP_PLAYERS, half(3))]
+    case 59:
+      return [entry, character, basic(26, half(2))]
+    case 60:
+      return [entry, character, basic(27, half(2))]
     case 61:
       return [entry, character, basic(OP_PLAYERS, half(2))]
     case 62:
@@ -1258,8 +1393,6 @@ function expanded(entry: TriggerEntry): TriggerEntry[] {
     case 63:
       return [character, basic(OP_UNLESS_GLOBAL, half(0)), basic(OP_PLAYERS, half(1))]
     case 55:
-    case 59:
-    case 60:
       return [entry, character]
     default:
       return [entry]
@@ -1295,6 +1428,12 @@ export function marksSet(words: readonly TriggerWord[]): number[] {
 export const OP_FACILITY = 145
 /** The mini medal service, by {@link OP_FACILITY} — see there. */
 export const FACILITY_MEDALS = 7
+/**
+ * DQVC by Nintendo Wi-Fi Connection, by {@link OP_FACILITY}: the queue's case
+ * (US ARM9 `0x02070164`) sets a "connected" bit and runs `auction.stb`, as 6
+ * does without it. Sellma's "Connect to Nintendo Wi-Fi Connection? — Yes".
+ */
+export const FACILITY_DQVC_ONLINE = 5
 
 /**
  * The facility talking to `character` opens in `map` at `stage`: the first

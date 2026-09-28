@@ -118,6 +118,12 @@ export interface SaveMember {
   readonly revocations?: readonly (readonly [number, number])[]
 }
 
+export interface SaveQuests {
+  readonly nibbles: readonly number[]
+  readonly log: readonly { readonly quest: number; readonly progress: number }[]
+  readonly cleared: readonly (readonly [number, string])[]
+}
+
 export interface SaveGame {
   readonly version: typeof SAVE_VERSION
   /** When it was saved, for the start screen: an ISO date. */
@@ -158,6 +164,13 @@ export interface SaveGame {
   readonly tricks?: readonly (number | null)[]
   /** The stop the Starflight Express is at — see `expressAt` in `main.ts`. Absent for none. */
   readonly express?: number
+  /**
+   * The quests — see `QuestBook` in `quests.ts`: each quest's nibble, the log
+   * of those taken with their progress, and when each cleared one was.
+   * **Absent from saves made before quests were kept**, which read as none
+   * touched.
+   */
+  readonly quests?: SaveQuests
   /**
    * The party, the Hero first — see {@link SaveMember}. Never empty: a save
    * with no Hero is a save of nobody, and `decodeSave` refuses it.
@@ -218,6 +231,27 @@ const isNumber = (x: unknown): x is number => typeof x === 'number' && Number.is
 const isCount = (x: unknown): x is number => Number.isInteger(x) && (x as number) >= 0
 
 /** Read a save back, checking every field; throws `SaveError` saying which is wrong. */
+function isQuests(q: unknown): q is SaveQuests {
+  if (typeof q !== 'object' || q === null) return false
+  const { nibbles, log, cleared } = q as Record<string, unknown>
+  return (
+    Array.isArray(nibbles) &&
+    nibbles.every((n) => isCount(n) && n < 16) &&
+    Array.isArray(log) &&
+    log.every(
+      (e) =>
+        typeof e === 'object' &&
+        e !== null &&
+        isCount((e as Record<string, unknown>).quest) &&
+        isCount((e as Record<string, unknown>).progress),
+    ) &&
+    Array.isArray(cleared) &&
+    cleared.every(
+      (c) => Array.isArray(c) && c.length === 2 && isCount(c[0]) && typeof c[1] === 'string',
+    )
+  )
+}
+
 export function decodeSave(text: string): SaveGame {
   let raw: unknown
   try {
@@ -261,6 +295,9 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.express !== undefined && !isCount(s.express)) {
     throw new SaveError('the save has a Starflight Express stop that does not read')
+  }
+  if (s.quests !== undefined && !isQuests(s.quests)) {
+    throw new SaveError('the save has quests that do not read')
   }
   if (s.thread !== undefined && !isCount(s.thread)) {
     throw new SaveError('the save has a story thread that does not read')

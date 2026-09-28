@@ -7,6 +7,8 @@ interface EntrySpec {
   readonly music?: number
   readonly code: string
   readonly label?: string
+  /** A field region's place in the world, as integers in values 14 and 15. */
+  readonly world?: { readonly x: number; readonly z: number }
 }
 
 /**
@@ -37,14 +39,14 @@ function buildMapList(
   const u16 = (v: number) => records.push(v & 0xff, (v >>> 8) & 0xff)
   const u32 = (v: number) =>
     records.push(v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff)
-  const record = (tag: number, type: number, values: readonly number[]) => {
+  const record = (tag: number, type: number, values: readonly number[], typesOf12to15 = 0) => {
     u16(tag)
     // Tag, count, then two bits of type per value, padded to a word: a record
     // of five or more values has an eight-byte head, not four.
     const typeBytes = Math.max(1, Math.ceil(values.length / 4))
     const header = Math.ceil((3 + typeBytes) / 4) * 4
     records.push(values.length, type)
-    for (let i = 4; i < header; i++) records.push(0)
+    for (let i = 4; i < header; i++) records.push(i === 6 ? typesOf12to15 : 0)
     for (const v of values) u32(v)
   }
 
@@ -57,7 +59,12 @@ function buildMapList(
     values[4] = intern(entry.code)
     values[5] = entry.label === undefined ? 0 : intern(entry.label)
     values[6] = entry.music ?? 0
-    record(0x67, 69, values)
+    // Values 14 and 15 typed as integers (1): the type byte for 12 to 15.
+    if (entry.world) {
+      values[14] = entry.world.x >>> 0
+      values[15] = entry.world.z >>> 0
+    }
+    record(0x67, 69, values, entry.world ? 0b0101_0000 : 0)
   }
   record(0x6e, 0xff, [])
 
@@ -113,6 +120,14 @@ describe('readMapList', () => {
     expect(list.map('M01')?.music).toBe(5)
     expect(list.map('M01M06')?.music).toBe(10)
     expect(list.map('K01')?.music).toBe(0)
+  })
+
+  it('reads where a field region lies in the world, and nothing where the values are not integers', () => {
+    const list = readMapList(
+      buildMapList([{ code: 'F02', world: { x: -320, z: -112 } }, { code: 'M01' }]),
+    )
+    expect(list.map('F02')?.world).toEqual({ x: -320, z: -112 })
+    expect(list.map('M01')?.world).toBeUndefined()
   })
 
   it('finds a map by its code', () => {

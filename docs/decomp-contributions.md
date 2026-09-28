@@ -399,3 +399,52 @@ Read for the story walk's last stretch, FORMAT.md "How a record runs".
 **Open**: what plays `ev29150` (16.1, map 20034) — the Express's task does
 not; what `225` does and what `func_ov017_021a65c4` does at a field stop; what `141` does; the trick defaults in the four places
 of the B Button; the kinds 9, 10, 12, 18, 22–27, 29, 30's contexts.
+
+### 8. Quests — ARM9 and overlays 17 and 23, 28 September 2026
+
+Read for the quest system; FORMAT.md, "Quests".
+
+| address | size | what it does | a name |
+|---|---|---|---|
+| `0x0206e120`, `0x0206e164`, `0x0206e100` | `0x44`, `0xb4`, `0x20` | a quest's state (two bits of a nibble at `+0x2cc`, 204 quests), set it, clear it (3) | `Quests::State`, `::SetState`, `::Clear` |
+| `0x0206e218`, `0x0206e260` | `0x48`, `0x40` | on offer with the first flag; the first flag | `Quests::OfferFlagged`, `::FirstFlag` |
+| `0x0206e2a0`, `0x0206e2dc` | `0x3c`, `0x40` | set, test the second flag — delivered | `Quests::Deliver`, `::Delivered` |
+| `0x0206e31c` | `0x2c` | may use a quest: not a session's guest for quests from 174 | `Quests::MayUse` |
+| `0x0206474c` | `0xf0` | a quest's test by mode, the composites' | `Quests::Test` |
+| `0x02094d6c` | `0xc` | the quest log | `QuestLog::Get` |
+| `0x02095578`, `0x0209562c` | `0xb4`, `0x8c` | load `questorder3` for a map as a script (table `0x020f1444`) | `QuestGivers::Load` |
+| `0x02094d88` | `0x25c` | the tag-`0x66` opcode: a giver's node (quest, bits, character, stage, conditions by `0x0205ec70`) | `QuestGivers::Record` |
+| `0x02095924`, `0x02095ae0` | `0x1bc`, `0x50` | **the offer**, from the talk (ov017 `0x021a4d40`); at 0 or 1 | `QuestGivers::Offer`, `::Offerable` |
+| `0x020961b0`, `0x020962f4` | `0x144`, — | accept into the log, eight at most; taken | `QuestLog::Accept` |
+| `0x02096134` | `0x58` | a quest's log entry | `QuestLog::Find` |
+| `0x02095cfc` | `0x34` | clear: state 3, out of the log | `QuestLog::Clear` |
+| cases of `0x02061c04` | — | actions 125, 126, 127, 129, 130, 131, 144, 176, 190, 191 | — |
+| cases of `0x0205faf4` | — | conditions 20, 21, 22 and composites 53 to 61 | — |
+| `ov023 0x021f5a74`, `ov017 0x021c3bc8` | — | deliver quests: from a list (the online service), from another console | — |
+
+**Open**: `questcancel.bin`; the node bits 9, 11, 12 and 13; action 126's task and
+the first-quest task (`0x020d9ae8`); the Quest List screen's own code
+(`0x0208bfa0`) and which `questmsg` text it shows when.
+
+### 9. The Starflight Express in flight — ARM9, overlays 2 and 17, 29 September 2026
+
+Read for the flight; FORMAT.md, "The Starflight Express in flight".
+
+| address | size | what it does | a name |
+|---|---|---|---|
+| `0x020ad61c` | `0x490` | the vehicle each frame: only in 10100; wrap; A, B and taps; the leader rides | `StarflightVehicle::Update` |
+| `0x020adaac` | `0x2f8` | flying: height 10, the +Control Pad or touch, turn toward it | `StarflightVehicle::Fly` |
+| `0x020adda4`, `0x020adfa8` | `0x204`, `0xcc` | the carriages follow; laid out in a line | `StarflightVehicle::Carriages`, `::LineUp` |
+| `0x020ae398`, `0x020ae3f4` | `0x5c`, `0xd4` | descend, climb | `StarflightVehicle::Descend`, `::Climb` |
+| `0x020aca88`, `0x020acecc` | `0x444`, `0x324` | load the models and shadows; enter the sky at the take-off place | `StarflightVehicle::Load`, `::Enter` |
+| `0x020ae20c`, `0x020ae074` | `0x174`, `0x198` | draw the shadows; draw the train with its bob | `StarflightVehicle::Draw…` |
+| `0x0204bef4`, `0x0204bedc` | `0x3c`, — | a sky region's field map; whether it may be landed on | `SkyRegion::Map`, `::Landable` |
+| `0x02033fa0` | `0x8` | the vehicle's region record, `+0x114` | — |
+| `ov017 0x02193dc4` | — | the region under the vehicle, by its collision | `Field::RegionUnder` |
+| `ov017 0x021a72f4`, `0x021a7378` | —, `0x620` | the flight's menus: go inside, disembark, the Realm | `StarflightMenu::Start`, `::Update` |
+| `ov017 0x021a6b9c`, `0x021a6c2c` | —, `0x654` | the whistle's summoning | `StarflightSummon` |
+| `ov002 0x02157634` | — | the field item code's own cases by item: the whistle, `0x56f0` | `FieldItem::UseSpecial` |
+| queue `0x0206fcc0`, `0x0206fd74` | — | `114`, `115`: give and take an item | — |
+
+**Open**: the camera in flight; the landing places (category-11 objects);
+whether the Express can coast to a stop; the whistle's route from action 252.

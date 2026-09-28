@@ -850,15 +850,10 @@ export interface LineAt {
 }
 
 /**
- * **The quests are not built, so every one is taken as open and not taken —
- * state 1. Ours.** Read from the game's code, a quest's two bits run 0 before
- * it opens, 1 open, 2 taken and 3 done: `129 : q` opens one (US ARM9
- * `func_0206e164`), and the quest system's own code, not read, the rest. A
- * new game leaves every one at 0, and so would leave Stornway's Bill, whose
- * lines are all his quest's, with nothing to say; open, he offers it. Over the
- * cartridge that is 1,178 of 1,619 characters speaking against 1,138, and the
- * story walks the same either way. What accepting one does is the quest
- * system's, and nothing here.
+ * **Every quest on offer — the default where no quest states are given.**
+ * The quests are kept now (see `quests.ts`), and the engine and the story walk
+ * give their states; this stands for a caller that does not, as every talk did
+ * before them. Ours.
  */
 export const QUESTS_OPEN = (_id: number): number => 1
 
@@ -1064,6 +1059,11 @@ export interface Asking {
   readonly globalsSure?: ReadonlySet<number>
   /** How often they have been talked to — see {@link Talked}. Never, when not given. */
   readonly talked?: Talked
+  /**
+   * Each quest's nibble — see `quests.ts` — for their records' quest
+   * conditions and their quest lines. {@link QUESTS_OPEN} when not given.
+   */
+  readonly quest?: (quest: number) => number
 }
 
 /**
@@ -1085,8 +1085,8 @@ export interface Asking {
  *    they are handed on as {@link Choice.after}. One may ask for another
  *    label with `118`, and the talk goes round again.
  *
- * `Asking.label` starts at 2, as a `118` does. The quests are taken as
- * {@link QUESTS_OPEN} has them, and the Hero as up (`36`), both ours.
+ * `Asking.label` starts at 2, as a `118` does. The quests are as
+ * {@link Asking.quest} has them, or {@link QUESTS_OPEN}; the Hero as up (`36`), ours.
  */
 export function pickLine(asking: Asking): Choice | undefined {
   const { triggers, map, stage, night, id } = asking
@@ -1099,6 +1099,7 @@ export function pickLine(asking: Asking): Choice | undefined {
     ...(asking.party !== undefined ? { party: asking.party } : {}),
     ...(asking.globals ? { globals: asking.globals } : {}),
     ...(asking.globalsSure ? { globalsSure: asking.globalsSure } : {}),
+    ...(asking.quest ? { quest: asking.quest } : {}),
   }
   const applies = (candidate: Trigger) =>
     (map === undefined || candidate.map === map) &&
@@ -1108,7 +1109,7 @@ export function pickLine(asking: Asking): Choice | undefined {
     const conditions = conditionsOf(candidate)
     return (
       flagsHold(conditions, flags, asking.marks, asking.step, { ...more, label }) &&
-      questsHold(candidate) &&
+      (asking.quest !== undefined || questsHold(candidate)) &&
       (asking.alone === undefined ||
         conditions.every((w) => w.op !== OP_ALONE || (w.arg === 0) === asking.alone))
     )
@@ -1150,6 +1151,7 @@ export function pickLine(asking: Asking): Choice | undefined {
     step: asking.step ?? 0,
     night,
     talked: asking.talked ?? NEVER_TALKED,
+    ...(asking.quest ? { quest: asking.quest } : {}),
   })
   if (!line) {
     return record

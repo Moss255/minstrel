@@ -453,6 +453,34 @@ arriving, or the story's own in its place (`ev28800`, `ev29210`).
   its own begins at, those over the whole story — from 1.1 into chapter 19 —
   aside (`reachFrom`, ours).
 
+### 17. The quests: built, 28 September 2026
+
+**Read from the game's code**: FORMAT.md, "Quests". A quest is a nibble —
+0 not on offer, 1 on offer, 2 taken, 3 cleared, and two flags, the second
+"delivered". Who offers what is `questorder3.bin`, a giver a quest; talking to
+someone runs the offer over the map's givers first, and their records and
+lines then read the states it left. `125` accepts into a log of eight, `127`
+clears, `129` offers, `144` sets a taken quest's progress, `130`/`131` its
+flags; conditions 20 to 22 and the composites 53 to 61 test them — 57 to 60
+also a flag, which the walk had missed.
+
+**64 quests are delivered ones** — quest 2 and most of 122 to 202 — whose
+givers offer them only once the online service has delivered them; the
+Quester's Rest's 174 to 193 are among them. So **the five breaks after the
+credits are downloaded content**, and without a delivery they stay. Walked
+once with every quest delivered, 19.3 opens (four breaks, not five); the
+rest wait on flags the quests' own content sets — 194 for "Perk Up, Patty!",
+which no record sets — so each downloaded quest is content of its own, its
+scripted battles (`quest_btl_%d.stb`, overlay 23) among it, not read.
+
+- **The engine** keeps the quests and saves them, runs the offer on every
+  talk, the actions on every record, and has the Quest List in the field
+  menu, in `questmsg`'s words (which text it shows when is INFERRED).
+- **The walk** keeps them too, and — ours — makes an offer for the talk in
+  hand only, and merges quests as it merges game-wide flags, each at the
+  furthest any way took it; branching on them made a state of every side
+  quest taken or not.
+
 ## Not measured yet
 
 - **Geography**: whether the Hero can get from where one event leaves them to

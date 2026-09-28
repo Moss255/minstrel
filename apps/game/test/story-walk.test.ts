@@ -6,11 +6,13 @@ import {
   areasIn,
   areasOf,
   conditionsOf,
+  conditionsOfWords,
   doorwayPlay,
   type EventListEntry,
   type EventOutcome,
   entryPlay,
   eventOutcome,
+  FACILITY_DQVC_ONLINE,
   flagBit,
   flagsHold,
   isMapLinks,
@@ -26,6 +28,7 @@ import {
   OP_BATTLE,
   OP_EVENT,
   OP_EVENT_OF,
+  OP_FACILITY,
   OP_IF_FLAG,
   OP_IF_GLOBAL,
   OP_IF_MARK,
@@ -38,8 +41,10 @@ import {
   OP_UNLESS_FLAG,
   OP_UNLESS_GLOBAL,
   OP_UNLESS_MARK,
+  type QuestGiver,
   quarantombSwitch,
   readMapList,
+  readQuestGivers,
   readScript,
   type Script,
   type StoryArea,
@@ -56,6 +61,15 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { EventPlayer } from '../src/event.ts'
 import { rideScenes, stopsOf } from '../src/express.ts'
 import { allTriggers, eventListOf, type Stage, type StoryView, storyView } from '../src/load.ts'
+import {
+  deliverAll,
+  giversFor,
+  newQuestBook,
+  offerFor,
+  type QuestBook,
+  questNibble,
+  questsAfter,
+} from '../src/quests.ts'
 import { copyStory, moveStory, type Story, THREADS, threadOf, unstarted } from '../src/story.ts'
 import { afterFor, letterForStage, pickLine } from '../src/talk.ts'
 
@@ -215,6 +229,16 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
      */
     globals: Set<number>
     sure: Set<number>
+    /**
+     * The quests — see `quests.ts`. **Ours**: an offer, which puts a quest at
+     * 1 or back at 0, is made for the talk in hand and not kept — the game
+     * makes it again on every talk to the giver; and quests are **merged, not
+     * branched on**, as the game-wide flags are (see `walkFrom`): states that
+     * differ only in them are one, each quest at the furthest any way took it
+     * (`mergedBooks`). Side quests would otherwise make a state of every
+     * combination of those taken and cleared.
+     */
+    quests: QuestBook
   }
 
   /** A stage and step to start a walk from, and the thread it is in. */
@@ -235,6 +259,18 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   let triggersOf: Map<string, Trigger[]>
   /** Each scene's entry in the game's event lists: the map it plays in — see `readEventList`. */
   let eventList: ReadonlyMap<number, EventListEntry> = new Map()
+  /** Who offers each quest — see `readQuestGivers`. */
+  let questGivers: readonly QuestGiver[] = []
+  /** Each giver's conditions, parsed once. */
+  const parsedGivers = new WeakMap<QuestGiver, ReturnType<typeof conditionsOfWords>>()
+  const giverConditions = (giver: QuestGiver) => {
+    let parsed = parsedGivers.get(giver)
+    if (!parsed) {
+      parsed = conditionsOfWords(giver.conditions)
+      parsedGivers.set(giver, parsed)
+    }
+    return parsed
+  }
   /** A map's id to the area whose triggers it answers to. */
   const areaOfMap = new Map<number, string>()
   /** The records of a map, by area — so a stage's can be taken once. */
@@ -429,6 +465,32 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       )
       .join('|')}|${sorted(s.party)}`
 
+  /**
+   * Two quest books as one — each quest at the further of its two states, its
+   * flags from both; the log's quests from both, not cleared, at the further
+   * progress. **Ours**: for folding talk, see `movesFrom`.
+   */
+  const mergedBooks = (a: QuestBook, b: QuestBook): QuestBook => {
+    const nibbles = a.nibbles.map((n, q) => {
+      const m = b.nibbles[q] ?? 0
+      return ((n | m) & 0xc) | Math.max(n & 3, m & 3)
+    })
+    const progress = new Map<number, number>()
+    for (const entry of [...a.log, ...b.log]) {
+      if (((nibbles[entry.quest] ?? 0) & 3) === 3) continue
+      progress.set(entry.quest, Math.max(progress.get(entry.quest) ?? 0, entry.progress))
+    }
+    return {
+      nibbles,
+      log: [...progress].map(([quest, at]) => ({ quest, progress: at })),
+      cleared: new Map([...a.cleared, ...b.cleared]),
+    }
+  }
+
+  /** The quests as a key: those taken or cleared, and the log's progress. */
+  const questKey = (book: QuestBook) =>
+    `${[...book.nibbles].flatMap((n, q) => ((n & 3) >= 2 ? [`${q}:${n & 3}`] : [])).join(',')}/${book.log.map((e) => `${e.quest}.${e.progress}`).join(',')}`
+
   /** The state without its flags and marks — see `movesFrom`, which folds moves that only set those. */
   const keyWithoutFlags = (s: State) =>
     `${s.threads.map((t) => `${t.stage ? show(t.stage) : '-'}.${t.step}`).join('|')}|${sorted(s.party)}`
@@ -438,6 +500,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     party: [...s.party],
     globals: new Set(s.globals),
     sure: new Set(s.sure),
+    quests: s.quests,
   })
 
   /** The thread a move in `map` reads and writes — see `threadOf`. */
@@ -450,7 +513,12 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       flags: story.flags,
       marks: story.marks,
       ...(story.step > 0 ? { step: story.step } : {}),
-      more: { globals: s.globals, globalsSure: s.sure, night },
+      more: {
+        globals: s.globals,
+        globalsSure: s.sure,
+        night,
+        quest: (quest) => questNibble(s.quests, quest),
+      },
     }
   }
 
@@ -473,6 +541,12 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     }
     if (outcome.leaves) s.party = []
     for (const who of outcome.joins) if (!s.party.includes(who)) s.party.push(who)
+    if (outcome.quests && outcome.quests.length > 0)
+      s.quests = questsAfter(s.quests, outcome.quests, 'the walk')
+    // DQVC by Nintendo Wi-Fi Connection delivers every downloadable quest —
+    // see `connectDqvc` in `main.ts`, ours as there.
+    if ((outcome.actions ?? []).some((a) => a.op === OP_FACILITY && a.arg === FACILITY_DQVC_ONLINE))
+      s.quests = deliverAll(s.quests, questGivers)
   }
 
   /**
@@ -637,6 +711,13 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
           out.push(after)
           continue
         }
+        // And the quests it took, cleared or moved on — folded the same way:
+        // in the folded state every talk was had. **Ours**, as the rest.
+        const books = mergedBooks(talked.quests, after.quests)
+        if (questKey(books) !== questKey(talked.quests)) {
+          talked.quests = books
+          talkedMore = true
+        }
         after.threads.forEach((thread, i) => {
           const into = talked.threads[i] as Story
           for (const mark of thread.marks) {
@@ -721,6 +802,18 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         ): State[] => {
           if (depth > 4 || !view) return []
           const now = storyIn(from, map)
+          // The quests they offer, for this talk — see `State.quests`.
+          const talkState = stateIn(from, map, night)
+          const offered = offerFor(
+            from.quests,
+            giversFor(from.quests, questGivers, map, stage.major, stage.minor),
+            id,
+            (giver) =>
+              flagsHold(giverConditions(giver), talkState.flags, talkState.marks, talkState.step, {
+                ...talkState.more,
+                character: id,
+              }),
+          ).book
           const choice = pickLine({
             triggers: here,
             map,
@@ -737,9 +830,10 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
             step,
             globals: from.globals,
             globalsSure: from.sure,
+            quest: (quest) => questNibble(offered, quest),
           })
           if (!choice) return []
-          const before = clone(from)
+          const before = { ...clone(from), quests: offered }
           if (choice.kind !== 'line') {
             runRecord(before, map, choice.record)
             return follow(before, choice.record, false, depth)
@@ -865,6 +959,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     const start: State = {
       threads: Array.from({ length: THREADS }, unstarted),
       party: [],
+      quests: newQuestBook(),
       globals: new Set(),
       sure: new Set(),
     }
@@ -902,7 +997,8 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     note(start)
     const grows = (next: State, known: State) =>
       [...next.globals].some((n) => !known.globals.has(n)) ||
-      [...known.sure].some((n) => !next.sure.has(n))
+      [...known.sure].some((n) => !next.sure.has(n)) ||
+      questKey(mergedBooks(known.quests, next.quests)) !== questKey(known.quests)
     const queue = [start]
     /** Put `merged` where `known` was, and walk on from it. */
     const supersede = (known: State, merged: State) => {
@@ -914,6 +1010,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       const merged = clone(known)
       for (const n of next.globals) merged.globals.add(n)
       for (const n of known.sure) if (!next.sure.has(n)) merged.sure.delete(n)
+      merged.quests = mergedBooks(known.quests, next.quests)
       return merged
     }
     const reached = new Map<string, Point>()
@@ -1248,6 +1345,8 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     }
     // A scene's own map, from the event lists, answers to its area too.
     eventList = eventListOf(rom)
+    for (const leaf of scanCartridge(rom, { pathFilter: '/data/scenario/questorder3.bin' }))
+      questGivers = readQuestGivers(leaf.bytes)
     for (const { map } of eventList.values()) {
       const code = index?.(map)
       if (!areaOfMap.has(map) && code && triggersOf.has(code.slice(0, 3)))

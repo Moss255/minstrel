@@ -60,6 +60,9 @@ const SLOT_UNKNOWN_13 = 11
  * its houses share one value; its church has the other.
  */
 const SLOT_MUSIC = 6
+/** A field region's place in the world — see `MapEntry.world`. */
+const SLOT_WORLD_X = 14
+const SLOT_WORLD_Z = 15
 /**
  * Which space the map is built in. `1` indoors, `2` outdoors, `0` neither.
  *
@@ -124,6 +127,26 @@ export interface MapEntry {
    * `SLOT_MUSIC`.
    */
   readonly music: number
+  /**
+   * **Where a field region lies in the world**, in the maps' own units: values
+   * 14 and 15, integers on the 645 entries that hold them. Read against the
+   * doorways between regions, which put the Hero at the same place in the world
+   * on either side: Western Stornway (F02) to Eastern (F38) moves the Hero by
+   * (126.1, 15.6) in the regions' own units, and the two regions lie (128, 16)
+   * apart here; Slurry Coast to Bloomingdale (29.6, 174.2) against (32, 176).
+   * Undefined where the two values are floats (365 entries, towns and
+   * dungeons), which are not established.
+   */
+  readonly world: { readonly x: number; readonly z: number } | undefined
+  /**
+   * **Where a town or dungeon lies in the sky map**, values 14 and 15 where
+   * they are floats (365 entries): the Starflight Express summoned from such a
+   * map takes off from there as it stands (US ARM9 `func_020acecc`, and ov017
+   * `0x021a6ca0`, which read these into the field state and divide a field
+   * region's by 6 but not these). Angel Falls, (−100.19, −26.04). Undefined
+   * where they are integers — see {@link world}.
+   */
+  readonly sky: { readonly x: number; readonly z: number } | undefined
   /** The whole record, for anything the fields above do not cover. */
   readonly values: Uint32Array
 }
@@ -179,6 +202,17 @@ export function readMapList(data: Uint8Array): MapList {
       unknown_2: at(SLOT_UNKNOWN_2, record),
       indoors: record.values[SLOT_SPACE] === SPACE_INDOORS,
       music: record.values[SLOT_MUSIC] ?? 0,
+      world:
+        record.kinds[SLOT_WORLD_X] === 1 && record.kinds[SLOT_WORLD_Z] === 1
+          ? {
+              x: (record.values[SLOT_WORLD_X] ?? 0) | 0,
+              z: (record.values[SLOT_WORLD_Z] ?? 0) | 0,
+            }
+          : undefined,
+      sky:
+        record.kinds[SLOT_WORLD_X] === 2 && record.kinds[SLOT_WORLD_Z] === 2
+          ? { x: record.floats[SLOT_WORLD_X] ?? 0, z: record.floats[SLOT_WORLD_Z] ?? 0 }
+          : undefined,
       values: record.values,
     }
   })

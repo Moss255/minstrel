@@ -3583,6 +3583,128 @@ The flags are read as the stage's own: cleared when the story moves on to
 another stage. INFERRED — the tests find their setter in the same stage.
 **Confirmed from the game's code**, with a correction for marks — see below.
 
+## Quests — read from the game's code, 28 September 2026
+
+**A quest's state** is a nibble, 204 of them (`func_0206e120` refuses `0xcc`
+and on), at the trigger object's `+0x2cc`: two bits of state — **0** not on
+offer, **1** on offer, **2** taken, **3** cleared — then a first flag (bit 2,
+`func_0206e260`; set with state 1 by `func_0206e218`) and a second (bit 3,
+`func_0206e2a0`/`func_0206e2dc`), which only the online service sets: **the
+quest has been delivered**. Overlay 23, whose strings are the DQVC shop's
+auction, an encryption key and `quest_btl_%d.stb`, sets it for a list of
+quests (`0x021f5a74`); overlay 17 copies every quest's from another console
+(`0x021c3bc8`).
+
+**`questorder3.bin`**, a data table: a tag-`0x66` record a quest, **who
+offers it** — read from its loader (`func_02094d88`), run as a script's
+opcode over the file each time a map loads (`func_02095578`, with the map
+and the story's major and minor):
+
+| value | meaning |
+|---|---|
+| 0 | the quest |
+| 1 | the map. The loader keeps only the map's own, and on any of the Quester's Rest's floors, 50101 to 50405, those for 50101 |
+| 2 | the character who offers it, the node's `+4` byte |
+| 3, 4 | the major and minor stage it is offered from: kept only once 100 × major + minor has reached them |
+| 5 | bit 9 — not established: the offer passes a record without it to a guest in a session. 171 of 184 |
+| 6 | a quest that must be cleared first, or −1 |
+| 7, 8, 9, 10 | bits 11, 10, 12, 13. **Bit 10 is "offered only once delivered"**: 64 quests — quest 2 and most of 122 to 202, the game's downloaded ones, the Quester's Rest's 174 to 193 among them. 11, 12, 13 are not established |
+| 11 on | conditions, as trigger words, parsed by the trigger parser itself (`func_0205ec70`) |
+
+Its first record, quest 0, has six values and names map 1: a placeholder,
+INFERRED, and left out. 184 givers, one a quest.
+
+**The offer** (`func_02095924`) is the talk's: talking to someone runs it
+over the map's givers before their records and lines are asked (ov017
+`0x021a4d40`), and discards what it returns. For each giver of the one talked
+to, in order: one wanting delivery that is not is passed; one whose conditions
+hold (`func_02064704`, the one talked to in the context) and whose quest is at
+0 or 1 puts it at 1, and that ends it; one taken or cleared is passed; one
+whose conditions do not hold takes its quest back to 0 unless it is taken or
+cleared. Lines and records then read the states it left.
+
+**The quest log** (the object `func_02094d6c` returns): a count at `+0`, eight
+at most, and 16-byte entries from `+4`, each a quest in its low nine bits and
+a progress of 0 to 7 in bits 11 to 13.
+
+| action | what |
+|---|---|
+| `125 : q` | **accept**: into the log (`func_020961b0`, refused when it holds eight) and taken (`func_020962f4`). The first quest ever taken also sets bit `0x119d` and starts a task, not read |
+| `127 : q` | **clear**: the clock's date and time packed into the log's `+0x178` + 4q, then `func_02095cfc` — cleared (`func_0206e100`), and out of the log |
+| `129 : q` | on offer (`func_0206e164`, 1) |
+| `130 : q`, `131 : q` | set, clear the flag the value's high half names, by its number (`func_0206eb64`); q is for a session's other players |
+| `144 : q` | a taken quest's progress, the value's high half |
+| `176`, `190`, `191` | a taken quest's own numbers: a bit, a random value, one of a table of 14 — not built |
+
+| condition | holds when |
+|---|---|
+| `20 : q`, `21 : q`, `22 : q` | the quest is taken, has its first flag, is cleared (`0x0205ff84`; a guest in a session cannot use quests from 174) |
+| 53 to 61 | a character, and a quest by the first value's halves — the quest and a mode (`func_0206474c`): −1 and 5 at 0, 0 taken, 1 the first flag, 2 cleared, 3 on offer. Then: 53 a label and an answer, 54 an item held (`18`), 56 `36`, **57 and 58 the flag the third half names set and clear, and players**, **59 and 60 the flag set and clear**, 61 players |
+
+**`questidtbl.bin`**: tag-`0x68` records, a quest and its number in
+`questmsg` — internal 3 is `questmsg`'s 2, "Pleased as Punch", which
+`ev50030` clears with `127:3` and whose clear text says it teaches Pirouette.
+
+**`questmsg_<lang>.bin`** (`questmsg.gp2`): tag-`0x67` records, a quest's
+number and twelve string offsets: its name, then — INFERRED from reading
+them — as offered, eight by the quest's progress, once cleared, and a hint
+before it is found. "The Puff-Puff Performance"'s second by progress says
+the goods are got and to go for the reward. `questcancel.bin` is not read.
+
+## The Starflight Express in flight — read from the game's code, 29 September 2026
+
+**The sky is a map of its own**: O01, 10100, "Field - Sky" — the whole world,
+drawn small, in two archives, `O01a` and `O01b`, both named by its link table
+(`O01.bmbl`: `O01M00T1`, `O01a`, `O01b`) and every piece placed at the origin.
+Its collision, `O01A0000.col2` in `O01b`, is kind 3: **each triangle's top
+seven bits index a trailing record** (799 triangles, every top byte even,
+halved 0 to 56, all 57 records used — INFERRED from that, the vehicle's code
+taking the index from the query `func_02017d90`), and a record is a region:
+its field map packed as three five-bit digits, 20000 + 100a + 10b + c
+(`func_0204bef4`), and **whether the Express may land**, bits 5 to 9 of the
+second halfword (`func_0204bedc`). 56 regions, 20001 to 20063, and one all
+zero, the sea. The vehicle keeps the record under it at `+0x114`, cast down
+from its height each frame (ov017 `func_ov017_02193dc4`).
+
+**The map list's values 14 and 15** place maps in the world: integers on the
+field regions — the region's place, in the maps' own units (see
+`MapEntry.world`) — and floats on towns and dungeons — **the map's place in
+the sky** (`MapEntry.sky`). The sky holds the world at a sixth: taking off
+from a field region, the Express starts at (the Hero's place + the region's)
+÷ 6 (`func_020acecc`, `0x6000`); from a town, at the town's sky place; landing,
+the Hero is put at the sky's place × 6 − the region's (`0x020acf40`), at the
+nearest of the region's landing places (category-11 objects, not read).
+
+**The vehicle** (US ARM9 `0x020ac020`–`0x020ae4c8`; `func_020ad61c` each
+frame, only in 10100): a fixed height 10 (`0xa000`); the +Control Pad held
+turns it toward one of eight directions against the camera's turn (table
+`0x020e9118`: up π, down 0, left 3π/2, right π/2, the diagonals between) by at
+most `0xcc` radians × 4096 a frame; it moves `0x1eb` − `0x28` a tick
+(INFERRED that it never coasts to a stop); the sky wraps past x ±144 by 288
+and z ±112 by 224; two carriages follow 0.9 behind each (`func_020adda4`). Its
+models are `chara_sub/s203.chr` and `s204.chr`, and `s203s`/`s204s` their
+shadows, at a scale of 192 of 4096 (`func_020aca88`).
+
+**A** asks "Disembark here?" (`str_ark` 36): yes descends (0.1 a frame for
+16 frames) and lands in the region below; where it may not, "It's not
+possible to disembark here. Head for the Realm of the Almighty?" (38), and
+yes climbs and plays `ev29510`, the Realm's arrival. **B** asks "Switch to the
+view inside the Starflight Express?" (35): yes goes aboard, map 6401 at
+(3.5, 0.6, −3.5). Both from ov017 `func_ov017_021a7378`.
+
+**Sterling's whistle** (item 22256, `0x56f0`) is its own case in the field
+item code (ov002 `func_ov002_02157634`, by the item): in a field region or
+one of 19 towns (`0x020e6ea8`) it summons the Express — an effect, waits, a
+fade (ov017 `func_ov017_021a6c2c`) — and the sky map follows; elsewhere its
+lines say it cannot reach (`str_ark` 13, 14, INFERRED from the messages
+0x7530 on). It is given at 19.1 by `114:22256`, on the record for winning set
+battle 27.
+
+**`114 : i` and `115 : i`** give and take an item — both queued (queue cases
+`0x0206fcc0`, `0x0206fd74`); which is which is INFERRED from the items: `114`
+carries the fygg, the party popper, the whistle; `115` the Drunken Dragon and
+the Gittish seal handed back.
+
 ## Triggers, read from the game's code — 28 September 2026
 
 Addresses are the US release's ARM9 (`YDQE`), from the decompilation's

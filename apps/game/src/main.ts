@@ -17,12 +17,15 @@ import {
   areaEvent,
   areasOf,
   blocksDoorway,
+  conditionsOfWords,
   doorwayPlay,
   type EventOutcome,
   entryPlay,
   eventOutcome,
+  FACILITY_DQVC_ONLINE,
   FACILITY_MEDALS,
   facilityFor,
+  flagsHold,
   GRANTS_REGARDLESS,
   inTalkBox,
   type LevelRow,
@@ -31,7 +34,9 @@ import {
   MINI_MEDAL,
   type NpcPlacement,
   OP_EVENT,
+  OP_FACILITY,
   partName,
+  QUEST_SLOTS,
   type StoryArea,
   type StoryState,
   settingsPlay,
@@ -237,6 +242,18 @@ import {
   rideScenes,
   stopsOf,
 } from './express.ts'
+import {
+  type Direction,
+  type FlightState,
+  fieldOf,
+  flightFrame,
+  regionIndexOf,
+  SKY_MAP,
+  type SkyRegion,
+  skyOf,
+  skyRegionOf,
+  takeOff,
+} from './flight.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
@@ -294,6 +311,15 @@ import {
   WALK_SPEED,
 } from './player.ts'
 import { breakingFrame, isPotOrBarrel } from './pots.ts'
+import {
+  deliverAll,
+  giversFor,
+  newQuestBook,
+  offerFor,
+  type QuestBook,
+  questNibble,
+  questsAfter,
+} from './quests.ts'
 import { applyFor, callUp, dropOff, PATTY_SAYS, partWith, type Roster } from './recruit.ts'
 import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
 import { SceneBrowser } from './scene-browser.ts'
@@ -649,7 +675,11 @@ function storyState(): StoryState {
     flags: storyFlags,
     marks: storyMarks,
     ...(step === undefined ? {} : { step }),
-    more: { globals: storyGlobals, night: timeNow() === 'night' },
+    more: {
+      globals: storyGlobals,
+      night: timeNow() === 'night',
+      quest: (quest) => questNibble(questBook, quest),
+    },
   }
 }
 /**
@@ -703,6 +733,12 @@ let cancelHeld = false
  * `216` and by every ride. Saved.
  */
 let expressAt = 0
+/** The Starflight Express in flight over the sky map — see `flight.ts`. Undefined on foot. */
+let flying: FlightState | undefined
+/** Milliseconds of flight not yet a tick — the Express moves at 60 ticks a second. */
+let flightCarry = 0
+/** The quests — their states, the log and when each was cleared; see `quests.ts`. Saved. */
+let questBook: QuestBook = newQuestBook()
 /** Who opened the Express's list and which conductor they are, while it is up or being answered. */
 let expressBy:
   | { readonly who: Talker; readonly mode: ExpressMode; readonly stops: readonly number[] }
@@ -1203,7 +1239,15 @@ function begin(bytes: Uint8Array, map: string): Promise<void> {
   const saved = resumeEl.checked ? savedGame : undefined
   if (saved) {
     restore(saved)
-    if (enter(saved.map, saved.at)) return Promise.resolve()
+    if (enter(saved.map, saved.at)) {
+      // Saved in flight, the Express is where the Hero was — see `flight.ts`.
+      if (loaded?.mapId === SKY_MAP)
+        flying = takeOff(
+          Math.round((saved.at.x / WORLD_SCALE) * 4096),
+          Math.round((saved.at.z / WORLD_SCALE) * 4096),
+        )
+      return Promise.resolve()
+    }
   }
   // A new game may begin by making the Hero, which is where the game begins
   // too — but only when asked for. See `askCreation`.
@@ -1597,6 +1641,13 @@ function restore(game: SaveGame): void {
   for (const flag of game.globals ?? []) storyGlobals.add(flag)
   trickSlots = Array.from({ length: 4 }, (_, i) => game.tricks?.[i] ?? undefined)
   expressAt = game.express ?? 0
+  questBook = game.quests
+    ? {
+        nibbles: Uint8Array.from({ length: QUEST_SLOTS }, (_, i) => game.quests?.nibbles[i] ?? 0),
+        log: game.quests.log.map(({ quest, progress }) => ({ quest, progress })),
+        cleared: new Map(game.quests.cleared),
+      }
+    : newQuestBook()
   // The other threads — see `storyThreads`. A save from before they were kept
   // had only the one, and the map it was made in takes it.
   for (let thread = 0; thread < THREADS; thread++) {
@@ -1651,6 +1702,11 @@ function confess(): string {
     globals: [...storyGlobals],
     tricks: trickSlots.map((trick) => trick ?? null),
     ...(expressAt !== 0 ? { express: expressAt } : {}),
+    quests: {
+      nibbles: [...questBook.nibbles],
+      log: questBook.log.map(({ quest, progress }) => ({ quest, progress })),
+      cleared: [...questBook.cleared],
+    },
     ...(liveThread === undefined ? {} : { thread: liveThread }),
     threads: storyThreads.map((kept) => ({
       stage: kept.stage ? { major: kept.stage.major, minor: kept.stage.minor } : null,
@@ -1984,6 +2040,308 @@ const areasAdded: StoryArea[] = []
  * room at 3.1, the map's own area 0 plays `ev03040`. Not while anything else
  * is up — **ours**.
  */
+/**
+ * **DQVC by Nintendo Wi-Fi Connection**, as Sellma opens it — `145 : 5`, the
+ * queue's case (US ARM9 `0x02070164`) setting its "connected" bit and running
+ * DQVC's `auction.stb` as `145 : 6` does without it. The connection was how
+ * quests were delivered: "New quests are now available. Check the quest list
+ * for more details." (`str_da12` 28).
+ *
+ * **Ours**: the service is gone, so connecting delivers every downloadable
+ * quest at once — the service delivered them a few at a time — by the
+ * delivered flag the online code set (see `deliverAll`). The lines are the
+ * game's, `str_da12` 19, 46, 37 and 28; their order is ours, `auction.stb`
+ * not being read, and DQVC's shop itself is not built.
+ */
+function connectDqvc(who: Talker): void {
+  if (!loaded) return
+  const before = questBook
+  questBook = deliverAll(questBook, loaded.questGivers)
+  const fresh = questBook.nibbles.some((n, q) => n !== before.nibbles[q])
+  const lines = [19, 46, 37, ...(fresh ? [28] : [])]
+  talkContext = textContext()
+  talking = startConversation(
+    who,
+    'DQVC by Nintendo Wi-Fi Connection',
+    lines.map((n) => loaded?.dqvcWords.get(n) ?? `(str_da12 ${n})`),
+    lines.map((n) => `str_da12 ${n}`),
+    talkContext,
+  )
+  showTalk()
+  status(
+    fresh
+      ? 'every downloadable quest delivered — DQVC’s shop is not built'
+      : 'DQVC’s shop is not built',
+  )
+}
+
+/**
+ * The Quest List's rows: the quests taken, with the text for their progress,
+ * then those cleared, with theirs — see `QuestText` for which is which.
+ */
+function questList(): { name: string; text: string; cleared: boolean }[] {
+  if (!loaded) return []
+  const texts = loaded.questTexts
+  const plain = (text: string | undefined) => (text ? plainMarkup(text, heroName()) : '')
+  const taken = questBook.log.map(({ quest, progress }) => {
+    const found = texts.get(quest)
+    return {
+      name: plain(found?.name) || `quest ${quest}`,
+      text: plain(found?.texts[1 + progress] ?? found?.texts[1]),
+      cleared: false,
+    }
+  })
+  const cleared = [...questBook.cleared.keys()].map((quest) => {
+    const found = texts.get(quest)
+    return {
+      name: plain(found?.name) || `quest ${quest}`,
+      text: plain(found?.texts[9]),
+      cleared: true,
+    }
+  })
+  return [...taken, ...cleared]
+}
+
+/**
+ * The quests the one talked to offers, run as talking runs it before their
+ * records and lines are asked (`func_02095924`): over the map's givers, whose
+ * conditions are tested with them as the one talked to. See `offerFor`.
+ */
+function offerQuests(character: number): void {
+  if (!loaded || !storyStage || loaded.mapId === undefined) return
+  const givers = giversFor(
+    questBook,
+    loaded.questGivers,
+    loaded.mapId,
+    storyStage.major,
+    storyStage.minor,
+  )
+  if (givers.length === 0) return
+  const state = storyState()
+  const more = { ...state.more, character }
+  questBook = offerFor(questBook, givers, character, (giver) =>
+    flagsHold(conditionsOfWords(giver.conditions), state.flags, state.marks, state.step, more),
+  ).book
+}
+
+/**
+ * One frame of flight — see `flightFrame`: the +Control Pad held turns the
+ * Express, which flies on at 60 ticks a second, and the Hero rides it, hidden,
+ * so the camera follows. **Ours**: the camera is the field's own follow camera;
+ * the game's was not read.
+ */
+function flyOn(elapsedMs: number): { moving: boolean; travelled: number; marshTicks: number } {
+  if (!flying || !self) return { moving: false, travelled: 0, marshTicks: 0 }
+  // Off the sky, by whatever way, the flight is over.
+  if (loaded?.mapId !== SKY_MAP) {
+    flying = undefined
+    return { moving: false, travelled: 0, marshTicks: 0 }
+  }
+  if (!menu && !talking && !visit) {
+    flightCarry += elapsedMs
+    const held = heldDirection()
+    const turn = Math.round(camera.yaw * 4096)
+    while (flightCarry >= 1000 / 60) {
+      flightCarry -= 1000 / 60
+      flying = flightFrame(flying, held, turn)
+    }
+  }
+  const grow = WORLD_SCALE * worldScale
+  self.state = {
+    ...self.state,
+    x: fx32(Math.round(flying.x * grow)),
+    y: fx32(Math.round(flying.y * grow)),
+    z: fx32(Math.round(flying.z * grow)),
+  }
+  self.facing = flying.facing / 4096
+  return { moving: false, travelled: 0, marshTicks: 0 }
+}
+
+/** The +Control Pad's direction held, of the eight — see `DIRECTION_ANGLES`. */
+function heldDirection(): Direction | undefined {
+  const held = self?.held
+  if (!held) return undefined
+  const up = held.has('w') && !held.has('s')
+  const down = held.has('s') && !held.has('w')
+  const left = held.has('a') && !held.has('d')
+  const right = held.has('d') && !held.has('a')
+  if (up) return left ? 'upLeft' : right ? 'upRight' : 'up'
+  if (down) return left ? 'downLeft' : right ? 'downRight' : 'down'
+  if (left) return 'left'
+  if (right) return 'right'
+  return undefined
+}
+
+/** The Express and its two carriages, drawn where they fly — `chara_sub/s203.chr` and `s204.chr`. Shadows are not drawn. */
+function expressPieces(): ReturnType<typeof castPieces> {
+  if (!flying || !cartridge) return []
+  const grow = WORLD_SCALE * worldScale
+  const place = (at: { x: number; z: number; facing: number }, model: string, id: number) => {
+    const look = actorLookOf(cartridge as Uint8Array, model, [])
+    if (!look) return []
+    const placement = {
+      id,
+      map: SKY_MAP,
+      x: (at.x / 4096) * grow,
+      y: ((flying?.y ?? 0) / 4096) * grow,
+      z: (at.z / 4096) * grow,
+      facing: at.facing / 4096,
+      offset: 0,
+    }
+    return castPieces(
+      { name: model, model: look.model, motion: look.motions.get('stand'), floor: 0, placement },
+      look.catalogue,
+      EXPRESS_SCALE * WORLD_SCALE * worldScale,
+      0,
+    )
+  }
+  return [
+    ...place(flying, 'chara_sub/s203.chr', 0xca),
+    ...place(flying.carriages[0], 'chara_sub/s204.chr', 0xcb),
+    ...place(flying.carriages[1], 'chara_sub/s204.chr', 0xcb),
+  ]
+}
+
+/**
+ * Summon the Express with Sterling's whistle — the item's own case in the
+ * field's item code (US ov002 `func_ov002_02157634`, item `0x56f0`): in a
+ * field region, or one of the towns the game lists (`0x020e6ea8`), the
+ * whistle is blown and the Express comes (a summoning task, ov017
+ * `func_ov017_021a6c2c`, then the sky map); elsewhere it cannot reach it.
+ * The lines are `str_ark` 13 on, INFERRED from the item code's messages
+ * 0x7530 on. **Ours**: the summoning's effect and waits are not played.
+ */
+function blowWhistle(): string[] | undefined {
+  if (!loaded || loaded.mapId === undefined || !self) return undefined
+  const words = (n: number) =>
+    plainMarkup(loaded?.expressWords.get(n) ?? `(str_ark ${n})`, heroName())
+  const here = loaded.mapId
+  const field = here >= 20000 && here < 30000
+  if (!field && !WHISTLE_TOWNS.includes(here)) return [words(13), words(14)]
+  // Where the Express takes off: a region's own place plus the region's in
+  // the world, over 6; a town's place in the map list is already the sky's.
+  const entry = loaded.mapEntryOf(here)
+  const grow = WORLD_SCALE * worldScale
+  const local = {
+    x: Math.round((toFloat(self.state.x) / grow) * 4096),
+    z: Math.round((toFloat(self.state.z) / grow) * 4096),
+  }
+  const town = entry?.sky
+  const sky =
+    field && entry?.world
+      ? skyOf(entry.world, local)
+      : town
+        ? { x: Math.round(town.x * 4096), z: Math.round(town.z * 4096) }
+        : { x: 0, z: 0 }
+  flying = takeOff(sky.x, sky.z)
+  flightCarry = 0
+  expressAt = 0
+  const code = loaded.mapCodeOf(SKY_MAP)
+  if (code) enter(code)
+  return [words(13)]
+}
+
+/**
+ * The Express's size in the sky against a character's: the flight's objects
+ * are made at a scale of 192 (`0xc0`, of 4096) — US ARM9 `func_020aca88`.
+ */
+const EXPRESS_SCALE = 0xc0 / 4096
+
+/** Sterling's whistle, by its item id (`0x56f0`) — the field item code tests the item itself. */
+const STERLINGS_WHISTLE = 22256
+
+/** The towns from which the whistle reaches the Express besides the field — `0x020e6ea8`. */
+const WHISTLE_TOWNS: readonly number[] = [
+  100, 198, 200, 201, 400, 4200, 1100, 1200, 1300, 1500, 1700, 1800, 1900, 2000, 2100, 2200, 2300,
+  5700, 5800,
+]
+
+/** A line in flight, `str_ark`, said with no speaker, its answer handed on. */
+function sayInFlight(line: number, then: (answer: number | undefined) => void): void {
+  if (!loaded || !self) return
+  talkContext = textContext()
+  talking = startConversation(
+    { id: -1, name: '', x: toFloat(self.state.x), z: toFloat(self.state.z) },
+    'the Starflight Express',
+    [loaded.expressWords.get(line) ?? `(str_ark ${line})`],
+    [`str_ark ${line}`],
+    talkContext,
+  )
+  afterTalk = then
+  showTalk()
+}
+
+/**
+ * A: "Disembark here?" (`str_ark` 36) — over land the Express may land on, the
+ * Hero is put down in the region below; where it may not, "It's not possible
+ * to disembark here. Head for the Realm of the Almighty?" (38), and yes rides
+ * there, `ev29510`. The region is the sky collision's under the Express — see
+ * `SkyRegion`. **Ours**: the descent and the ascent are not played, and the
+ * Hero is put at the region's own place for the sky's, on the ground, where
+ * the game takes the nearest of the region's landing places (not read).
+ */
+function askToLand(): void {
+  const under = regionUnderExpress()
+  if (under?.land && under.map !== undefined) {
+    sayInFlight(36, (answer) => {
+      if (answer === 0) landIn(under.map as number)
+    })
+    return
+  }
+  sayInFlight(38, (answer) => {
+    if (answer !== 0) return
+    flying = undefined
+    expressAt = 3
+    startEvent(29510)
+  })
+}
+
+/** B: "Switch to the view inside the Starflight Express?" (`str_ark` 35) — yes goes aboard, map 6401. */
+function askToGoInside(): void {
+  sayInFlight(35, (answer) => {
+    if (answer !== 0 || !loaded) return
+    flying = undefined
+    const code = loaded.mapCodeOf(6401)
+    // The menu's own request (ov017 `0x021a7588`): (3.5, 0.6, −3.5), facing 0x25c2.
+    if (code)
+      enter(code, {
+        x: (0x3800 / 4096) * WORLD_SCALE,
+        y: (0x999 / 4096) * WORLD_SCALE,
+        z: (-0x3800 / 4096) * WORLD_SCALE,
+        facing: 0x25c2 / 4096,
+      })
+  })
+}
+
+/** The region of the sky under the Express, by its collision — see `regionIndexOf`. */
+function regionUnderExpress(): SkyRegion | undefined {
+  if (!flying || !loaded || !world) return undefined
+  const grow = WORLD_SCALE * worldScale
+  const hit = groundBelow(
+    world,
+    fx32(Math.round(flying.x * grow)),
+    fx32(Math.round(flying.z * grow)),
+    fx32(Math.round(world.bounds.maxY + FX32_ONE)),
+  )
+  if (!hit) return undefined
+  const triangle = world.triangles[hit.triangle]
+  const records = loaded.map.meshes.flatMap((placed) => placed.mesh.trailing)
+  const record = triangle ? records[regionIndexOf(triangle.attributes)] : undefined
+  return record ? skyRegionOf(record) : undefined
+}
+
+/** Put the Hero down in a field region, at its own place for the Express's in the sky. */
+function landIn(map: number): void {
+  if (!flying || !loaded) return
+  const entry = loaded.mapEntryOf(map)
+  const code = loaded.mapCodeOf(map)
+  if (!entry?.world || !code) return
+  const at = fieldOf(entry.world, flying)
+  flying = undefined
+  expressAt = 0
+  enter(code, { x: (at.x / 4096) * WORLD_SCALE, y: 0, z: (at.z / 4096) * WORLD_SCALE, facing: 0 })
+}
+
 /**
  * **The Starflight Express's list**, opened by its conductor's record — see
  * `express.ts`. The game turns the Hero to face the conductor as it opens;
@@ -2338,7 +2696,9 @@ function frame(now = 0): void {
     const { moving, travelled, marshTicks } =
       playing || opening
         ? { moving: false, travelled: 0, marshTicks: 0 }
-        : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
+        : flying
+          ? flyOn(elapsedMs)
+          : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
     marshCarry += marshTicks
     while (marshCarry >= MARSH_TICKS) {
@@ -2569,14 +2929,18 @@ function frame(now = 0): void {
       ...companionFieldPieces(now),
       // The mark over the Hero's head: someone to talk to, something to examine, a door.
       ...bubblePieces(now),
-      ...playerPieces(
-        heroPose ? { ...self, motionFrame: heroPose.frame } : self,
-        loaded.figure,
-        loaded.pieces,
-        loaded.catalogue,
-        measurements,
-        heroPose?.motion ?? loaded.figure.motions.get(self.motion ?? ''),
-      ),
+      // The Starflight Express and its carriages, in flight — see `flight.ts`.
+      ...expressPieces(),
+      ...(flying
+        ? []
+        : playerPieces(
+            heroPose ? { ...self, motionFrame: heroPose.frame } : self,
+            loaded.figure,
+            loaded.pieces,
+            loaded.catalogue,
+            measurements,
+            heroPose?.motion ?? loaded.figure.motions.get(self.motion ?? ''),
+          )),
     ]
     uploaded = renderer.upload(drawn)
   } else if (mapPieces.length > 0) {
@@ -2870,6 +3234,12 @@ Object.defineProperty(window, 'minstrelRoaming', {
  * screenshot of it is a screenshot of the real thing.
  */
 const wantedDoor = params.get('door')
+/**
+ * `?fly=x,z` on the sky map (`?map=O01`) — a debugging aid, **ours**: the
+ * Express in flight at that place in the sky's own units, as Sterling's
+ * whistle would put it there, so a headless screenshot can see the flight.
+ */
+const wantedFlight = params.get('fly')
 /**
  * `?bag=w,s:3` — a debugging aid, **ours**: one of every item the named item
  * tables list — or as many as follow a colon — put into the bag, once, when the
@@ -3497,6 +3867,8 @@ function talkWith(who: Talker, label: number | undefined, everyLine = false, box
       talkContext,
     )
   } else {
+    // The quests they offer, as talking asks first — see `offerFor`.
+    offerQuests(who.id)
     const choice = pickLine({
       triggers: loaded.triggers,
       map: loaded.mapId,
@@ -3513,6 +3885,7 @@ function talkWith(who: Talker, label: number | undefined, everyLine = false, box
       step: stepNow(),
       globals: storyGlobals,
       talked: talkedTo(who.id),
+      quest: (quest) => questNibble(questBook, quest),
     })
     // Everything the character's own record does, as the game runs every
     // action of the record it takes; its event, if it has one, is played below.
@@ -3559,6 +3932,11 @@ function runTalkRecord(outcome: EventOutcome, who: Talker): boolean {
   }
   // `106 : c` starts that character's counts again — see `Talked`.
   for (const action of outcome.actions ?? []) if (action.op === 106) talkCounts.delete(action.arg)
+  // DQVC by Nintendo Wi-Fi Connection, `145 : 5` — see `connectDqvc`.
+  if ((outcome.actions ?? []).some((a) => a.op === OP_FACILITY && a.arg === FACILITY_DQVC_ONLINE)) {
+    connectDqvc(who)
+    return true
+  }
   // The Starflight Express's list — its conductor's record, `215`.
   if (outcome.express) {
     openExpress(outcome.express, who)
@@ -4152,6 +4530,7 @@ function menuContext(): MenuContext {
     itemName: nameOf,
     tableOf: (id) => loaded?.goods.get(id)?.table,
     mayWear: (id, place) => wearableBy(members[place] ?? leader(), id),
+    quests: questList(),
     // The tricks the Hero can perform — sixteen from the start, the rest
     // learnt by `142` — and the four places; see `trickKnown`.
     tricks: {
@@ -4438,6 +4817,12 @@ function useInField(id: number): string[] {
     menuSay(MENU_SAYS.uses, { actor: hero, item: itemNamed(id) }) ??
     `${hero.name} uses ${nameOf(id)}.`
   if (use?.action === WING_ACTION) return flyHome(id)
+  // Sterling's whistle is the field item code's own case, by the item — see `blowWhistle`.
+  if (id === STERLINGS_WHISTLE) {
+    const said = blowWhistle()
+    if (flying) menu = undefined
+    return said ?? []
+  }
   if (use?.action === HOLY_WATER_ACTION) return sprinkle(id)
   if (!use) return [uses, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
   const outcome = useOn(use, heroVitals(row), fieldRng)
@@ -6344,6 +6729,30 @@ function storyFromRecord(outcome: EventOutcome): boolean {
     if (!areasAdded.some((had) => JSON.stringify(had) === JSON.stringify(area)))
       areasAdded.push(area)
   }
+  // What it does to the quests — see `questsAfter`. The clock's reading is
+  // the game's too: `127` keeps the day and time a quest was cleared.
+  if (outcome.quests && outcome.quests.length > 0) {
+    const was = questBook
+    questBook = questsAfter(questBook, outcome.quests, new Date().toISOString())
+    for (const action of outcome.quests) {
+      const name = loaded.questTexts.get(action.quest)?.name ?? `quest ${action.quest}`
+      if (action.does === 'accept' && questBook.log.length > was.log.length)
+        status(`Quest taken: ${name}`)
+      if (action.does === 'clear') status(`Quest cleared: ${name}`)
+    }
+  }
+  // Items a record gives and takes — `114 : i` and `115 : i`, both queued
+  // (US ARM9 queue cases `0x0206fcc0` and `0x0206fd74`). **INFERRED** which
+  // is which, from the items: `114` carries what the story hands over — the
+  // fygg, the party popper, Sterling's whistle after the last set battle at
+  // 19.1 — and `115` what is handed back, the Drunken Dragon, the Gittish seal.
+  for (const action of outcome.actions ?? []) {
+    if (action.arg === 0) continue
+    if (action.op === 114) {
+      bag = take(bag, { item: action.arg })
+      status(`${nameOf(action.arg)} obtained`)
+    } else if (action.op === 115) bag = drop(bag, action.arg) ?? bag
+  }
   // The stop the Starflight Express is at, `216` — see `OP_EXPRESS_AT`.
   if (outcome.expressAt !== undefined) expressAt = outcome.expressAt
   // Whoever it takes out of the map, `124` — see `OP_REMOVE`: gone until the
@@ -7575,6 +7984,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     self.held.add(token)
     event.preventDefault()
   }
+  // In flight, A asks to land and B to go inside — see `askToLand`.
+  if (flying && !talking && !playing && (action === 'confirm' || action === 'cancel')) {
+    if (action === 'confirm') askToLand()
+    else askToGoInside()
+    event.preventDefault()
+    return handled
+  }
   // Talk to whoever the Hero faces: `f` to start and to go on, Shift+F for every
   // line of their file, Esc to stop, `v` and `n` to read another chapter's words.
   if (action === 'confirm' && loaded) {
@@ -7730,6 +8146,10 @@ if (romUrl) {
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`)
       // `?keep=1` keeps it in the browser too, as a dropped file is, for checking that path.
       await checkAndBegin(new Uint8Array(await response.arrayBuffer()), params.get('keep') === '1')
+      if (wantedFlight && loaded?.mapId === SKY_MAP) {
+        const [x, z] = wantedFlight.split(',').map(Number)
+        flying = takeOff(Math.round((x ?? 0) * 4096), Math.round((z ?? 0) * 4096))
+      }
       if (wantedDoor && loaded) {
         const door = loaded.doorways.find((d) => d.to.toLowerCase() === wantedDoor.toLowerCase())
         if (!door) throw new Error(`${loaded.code} has no doorway to '${wantedDoor}'`)

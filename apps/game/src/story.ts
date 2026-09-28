@@ -1,7 +1,10 @@
 import {
   type EventOutcome,
+  flagBit,
   OP_LEARN_TRICK,
   OP_QUARANTOMB_SWITCH,
+  OP_QUEST_CLEAR_FLAG,
+  OP_QUEST_SET_FLAG,
   quarantombSwitch,
   trickLearntBit,
 } from '@minstrel/game-formats'
@@ -198,6 +201,13 @@ export function moveStory(
         if (turned.on) globals.add(turned.flag)
         else globals.delete(turned.flag)
       }
+    }
+    // `130`, `131`: the flag their value's high half names, by its number —
+    // see `OP_QUEST_SET_FLAG`.
+    else if ((op === OP_QUEST_SET_FLAG || op === OP_QUEST_CLEAR_FLAG) && params.length === 1) {
+      const bit = flagBit(((params[0] as number) >>> 16) & 0xffff)
+      if (op === OP_QUEST_SET_FLAG) globals?.add(bit)
+      else globals?.delete(bit)
     }
     // A party trick learnt is a bit of the game-wide bank — see `trickLearntBit`.
     else if (op === OP_LEARN_TRICK) {
