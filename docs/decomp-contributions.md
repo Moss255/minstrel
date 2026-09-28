@@ -275,6 +275,17 @@ Read while measuring the story (`docs/story-walk.md`); the findings are in
 | `0x0206df6c` | `0x44` | set or clear bit *n* of a byte array | `SetBit` |
 | `0x0206e080`, `0x0206e0d0` | `0x50`, `0x30` | clear a thread's banks on a new major (all four) or a new minor (`+0x10`, `+0x14`) | `StoryThreads::ClearMajor`, `ClearMinor` |
 | `0x020716a4` | `0x16c` | tag `0x66` of the event lists (`0x020f0ba0`): for the chosen event, sets the stage, step and flags in the three banks — a debug start, probably, since `evlist6_d.bin` and `evlist_lv5_d.bin` sit beside it | — |
+| `0x0205ec70` | `0xd4c` | the record parser: below 100 or from 500 a condition, otherwise an action; each operation takes a fixed number of values after it, stored as halfword pairs (the table is `PARAMS` in `story.ts`) | `TriggerRecord::Parse` |
+| `0x0205faf4` | `0x20e4` | the conditions: a switch on the operation, 0 to 99, and more from 500. The composites 52 to 61 call it again for each part | `TriggerTable::TestCondition` |
+| `0x02064490` | `0xa0` | the first record of a kind whose conditions all hold (records grouped by kind through `+0x14`, within a kind through `+0x10`) | `TriggerTable::Find(int kind, Context*)` |
+| `0x020649b0` | `0x44` | find, then run every action of the record found, with a fresh queue | `TriggerTable::Run(int kind, Context*)` |
+| `0x0206f81c` | `0xb5c` | applies the queue: `132`, `148`, `214` through `0x020703c8`; `119` starts the event; `133`, `138` and `226` change map, `138` and `226` each setting one flag of the move | `TriggerTable::ApplyQueue` |
+| `0x020703c8` | `0x134` | sets a thread's stage, **only forward** (`major × 10000 + minor × 100 + step`), clearing the banks on a new major or minor; then copies the live thread back into `GameState` | `StoryThreads::MoveTo(int thread, int major, int minor, int step)` |
+| `0x0206474c` | `0xf0` | the composites' test: an id valid (`0x0206e31c`) and in one of four states (`0x0206e120`) by a mode from −1 to 5 | — (quest progress?) |
+| `0x0202ae18`, `0x0202b7d8`, `0x0202c1a4` | small | a session object (`0x020fefec`), whether its first word is set, and a per-player byte: condition `23`, and the flag actions' sending over the link | — (multiplayer, INFERRED) |
+| `ov017 0x0219ca88` | `0x310` | the field's per-frame checks: doorways, fades, transitions, and then kind 6 for the current map | `Field::CheckWatch`? |
+| `ov017 0x0218cbd4` | `0x498` | the field's frame update, which reads the tick count and updates everything, `0x0219ca88` among it | `Field::Update` |
 
-**Open**: what applies the stage queue, and when; which operations use the
-banks at `+0x08` and `+0x14`; the JPN addresses.
+**Open**: which operations use the banks at `+0x08` and `+0x14`; what
+`0x0206e120`'s four states are; which kind each of the other lookups asks for
+(overlays 1 to 4 and 17); the JPN addresses.

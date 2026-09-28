@@ -1,8 +1,12 @@
 import {
+  type Conditions,
+  conditionsOf,
+  type EventOutcome,
   flagsHold,
   type MarkupToken,
   marksSet,
   OP_THEN_MAP,
+  outcomeOf,
   parseMarkup,
   type TalkLine,
   type Trigger,
@@ -849,6 +853,14 @@ export type Choice =
        * line asks, only on the answer it waits for. See {@link labelEvent}.
        */
       readonly leadsTo?: { readonly event: number; readonly answer: number | undefined }
+      /** What the record that chose it does as it runs — see `record` on the other kind of choice. */
+      readonly record?: EventOutcome
+      /**
+       * What the label's own talk record does once the line is read, on the
+       * answer it waits for — the event and the hand-on above among it, and any
+       * move of the story. See {@link labelRecord}.
+       */
+      readonly after?: { readonly outcome: EventOutcome; readonly answer: number | undefined }
     }
   | {
       readonly kind: 'event'
@@ -856,6 +868,14 @@ export type Choice =
       readonly why: string
       /** The marks the records that chose it set — see `OP_SET_MARK`. */
       readonly marks?: readonly number[]
+      /**
+       * What the record that chose it does as it runs, the event among it: the
+       * game runs every action of the record it takes (US ARM9
+       * `func_02064530`), so its flags and any move of the story come too.
+       */
+      readonly record?: EventOutcome
+      /** What the label's own talk record does, where a label led to the event — see {@link labelRecord}. */
+      readonly after?: { readonly outcome: EventOutcome; readonly answer: number | undefined }
     }
 
 export interface Asking {
@@ -876,6 +896,10 @@ export interface Asking {
   readonly alone?: boolean
   /** The step within the stage — see `OP_AT_STEP`. Not read when not given. */
   readonly step?: number | undefined
+  /** The game-wide flags set — see `OP_SET_GLOBAL`. Not read when not given. */
+  readonly globals?: ReadonlySet<number>
+  /** Those surely set, where `globals` holds those that may be — see `Conditions.globalsSure`. */
+  readonly globalsSure?: ReadonlySet<number>
 }
 
 /**
@@ -895,9 +919,17 @@ export interface Asking {
 export function pickLine(asking: Asking): Choice | undefined {
   const { triggers, map, stage, night, id, marks, step } = asking
   const flags = asking.flags ?? new Set<number>()
+  // The time of day and the game-wide flags, as the game's conditions read them.
+  const more: Conditions = {
+    night,
+    ...(asking.globals ? { globals: asking.globals } : {}),
+    ...(asking.globalsSure ? { globalsSure: asking.globalsSure } : {}),
+  }
   let marked: number[] = []
   let onward: Onward | undefined
   let leadsTo: { event: number; answer: number | undefined } | undefined
+  let record: EventOutcome | undefined
+  let after: { outcome: EventOutcome; answer: number | undefined } | undefined
   const lines = asking.lines.filter((line) => line.tag === 1)
   const labels = new Set(lines.map(labelOf))
   let label = PLAIN
@@ -908,17 +940,19 @@ export function pickLine(asking: Asking): Choice | undefined {
     stageOrder(candidate.from) <= stageOrder(stage) &&
     stageOrder(stage) <= stageOrder(candidate.to)
 
+  // Who a record is about, and the label it is for, by its conditions — which
+  // name them outright (`6`, `11`) or inside a composite, `52` to `61`.
   const naming = (candidate: Trigger) =>
-    applies(candidate) && wordsOf(candidate).some((w) => w.op === OP_CHARACTER && w.arg === id)
+    applies(candidate) && conditionsOf(candidate).some((w) => w.op === OP_CHARACTER && w.arg === id)
   const chooses = (candidate: Trigger) => {
     if (!naming(candidate)) return false
-    const words = wordsOf(candidate)
+    const words = [...conditionsOf(candidate), ...wordsOf(candidate)]
     return (
       words.some(
         (w) =>
           w.op === OP_LABEL || w.op === OP_LABEL_BY || w.op === OP_LABEL_OF || w.op === OP_EVENT,
       ) &&
-      flagsHold(words, flags, marks, step) &&
+      flagsHold(conditionsOf(candidate), flags, marks, step, more) &&
       (asking.alone === undefined || asking.alone || !words.some((w) => w.op === OP_ALONE))
     )
   }
@@ -934,8 +968,9 @@ export function pickLine(asking: Asking): Choice | undefined {
   if (trigger) {
     const words = wordsOf(trigger)
     marked = marksSet(words)
+    record = outcomeOf(trigger)
     const where = `the trigger at 0x${trigger.offset.toString(16)}`
-    const named = words.find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
+    const named = conditionsOf(trigger).find((w) => w.op === OP_LABEL && w.arg !== 0)?.arg
     // The label the record chooses, by its own words — after the character's
     // label word, the first that is a label with 0 — whether or not the talk
     // file has a line with it; and the event a talk record makes of it.
@@ -948,7 +983,7 @@ export function pickLine(asking: Asking): Choice | undefined {
     const leads =
       chosenHere === undefined
         ? undefined
-        : labelEvent(triggers, applies, id, chosenHere, flags, marks, step)
+        : labelEvent(triggers, applies, id, chosenHere, flags, marks, step, more)
     // The line is read first and the event played after it — as a let's play
     // reads the Hexagon's inscription out before its figure appears, and asks
     // "Press the button?" before the switch's scene. Where no line has the
@@ -963,6 +998,8 @@ export function pickLine(asking: Asking): Choice | undefined {
         event: leads.event,
         why: `event ${leads.event}, which label ${chosenHere} leads to by the trigger at 0x${leads.offset.toString(16)}`,
         ...(both.length > 0 ? { marks: both } : {}),
+        record,
+        after: { outcome: outcomeOf(leads.trigger), answer: leads.answer },
       }
     }
     if (leads && chosenHere !== undefined) {
@@ -970,11 +1007,21 @@ export function pickLine(asking: Asking): Choice | undefined {
       label = chosenHere
       why = `label ${chosenHere}, then event ${leads.event}, which it leads to by the trigger at 0x${leads.offset.toString(16)}`
       leadsTo = { event: leads.event, answer: leads.answer }
+      after = { outcome: outcomeOf(leads.trigger), answer: leads.answer }
     } else {
-      onward =
+      const going =
         chosenHere === undefined
           ? undefined
-          : labelOnward(triggers, applies, id, chosenHere, flags, marks, step)
+          : labelOnward(triggers, applies, id, chosenHere, flags, marks, step, more)
+      onward = going?.onward
+      if (going) after = { outcome: outcomeOf(going.trigger), answer: going.onward.answer }
+      // A label's talk record that moves the story without an event or a
+      // hand-on — Alltrades Abbey at 6.1, `6:7 11:192 104:1 … 132:0 0:6 0:2 0:1`.
+      const story =
+        going || chosenHere === undefined
+          ? undefined
+          : labelRecord(triggers, applies, id, chosenHere, flags, marks, step, more)
+      if (story) after = story
       const byWord = words.some(
         (w) => (w.op === OP_LABEL_BY && w.arg === 1) || (w.op === OP_LABEL_OF && w.arg === id),
       )
@@ -993,6 +1040,7 @@ export function pickLine(asking: Asking): Choice | undefined {
           event,
           why: `event ${event}, from ${where}`,
           ...(marked.length > 0 ? { marks: marked } : {}),
+          record,
         }
       }
     }
@@ -1013,6 +1061,8 @@ export function pickLine(asking: Asking): Choice | undefined {
       ...(marked.length > 0 ? { marks: marked } : {}),
       ...(onward ? { onward } : {}),
       ...(leadsTo ? { leadsTo } : {}),
+      ...(record ? { record } : {}),
+      ...(after ? { after } : {}),
     }
   }
   const guess = covering.find((line) => isNightLine(line) === night) ?? covering[0]
@@ -1021,8 +1071,13 @@ export function pickLine(asking: Asking): Choice | undefined {
       kind: 'line',
       line: guess,
       why: `${why}; no such line covers ${stage.major}.${stage.minor}, so the first that does — a guess`,
-      // Read before the event its label leads to — see `read` above.
-      ...(leadsTo ? { leadsTo, ...(marked.length > 0 ? { marks: marked } : {}) } : {}),
+      // Read before the event its label leads to — see `read` above. The
+      // records run whichever line is said, as the game runs them.
+      ...(marked.length > 0 ? { marks: marked } : {}),
+      ...(onward ? { onward } : {}),
+      ...(leadsTo ? { leadsTo } : {}),
+      ...(record ? { record } : {}),
+      ...(after ? { after } : {}),
     }
   }
   return undefined
@@ -1061,22 +1116,71 @@ function labelEvent(
   flags: ReadonlySet<number>,
   marks: ReadonlySet<number> | undefined,
   step: number | undefined,
-): { event: number; offset: number; marks: number[]; answer: number | undefined } | undefined {
+  more?: Conditions,
+):
+  | {
+      event: number
+      offset: number
+      marks: number[]
+      answer: number | undefined
+      trigger: Trigger
+    }
+  | undefined {
   for (const candidate of triggers) {
     if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
     const words = wordsOf(candidate)
-    if (!words.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
-    if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(words, flags, marks, step)) continue
+    const conditions = conditionsOf(candidate)
+    if (!conditions.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
+    if (!conditions.some((w) => w.op === OP_LABEL && w.arg === label)) continue
+    if (!flagsHold(conditions, flags, marks, step, more)) continue
     const event = words.find((w) => w.op === OP_EVENT)?.arg
     if (event !== undefined) {
       return {
         event,
         offset: candidate.offset,
         marks: marksSet(words),
-        answer: words.find((w) => w.op === OP_EVENT_ANSWER)?.arg,
+        answer: conditions.find((w) => w.op === OP_EVENT_ANSWER)?.arg,
+        trigger: candidate,
       }
     }
+  }
+  return undefined
+}
+
+/**
+ * What a character's chosen label's talk record does once the line is read,
+ * where it plays no event and goes nowhere — see {@link labelEvent}, whose
+ * search this is: the first talk record over the map and stage naming the
+ * character and the label whose conditions hold, if it moves the story or sets
+ * a flag, and the answer it waits for. The game runs every action of the record
+ * it takes (US ARM9 `func_02064530`).
+ */
+function labelRecord(
+  triggers: readonly Trigger[],
+  applies: (candidate: Trigger) => boolean,
+  id: number,
+  label: number,
+  flags: ReadonlySet<number>,
+  marks: ReadonlySet<number> | undefined,
+  step: number | undefined,
+  more?: Conditions,
+): { outcome: EventOutcome; answer: number | undefined } | undefined {
+  for (const candidate of triggers) {
+    if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
+    const conditions = conditionsOf(candidate)
+    if (!conditions.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
+    if (!conditions.some((w) => w.op === OP_LABEL && w.arg === label)) continue
+    if (!flagsHold(conditions, flags, marks, step, more)) continue
+    const outcome = outcomeOf(candidate)
+    const moves =
+      outcome.stage !== undefined ||
+      outcome.all !== undefined ||
+      outcome.threads.length > 0 ||
+      outcome.flags.length > 0 ||
+      outcome.unflags.length > 0 ||
+      outcome.globals.length > 0 ||
+      outcome.unglobals.length > 0
+    if (moves) return { outcome, answer: conditions.find((w) => w.op === OP_EVENT_ANSWER)?.arg }
   }
   return undefined
 }
@@ -1104,20 +1208,25 @@ function labelOnward(
   flags: ReadonlySet<number>,
   marks: ReadonlySet<number> | undefined,
   step: number | undefined,
-): Onward | undefined {
+  more?: Conditions,
+): { onward: Onward; trigger: Trigger } | undefined {
   for (const candidate of triggers) {
     if (candidate.unknown_5 !== KIND_TALK || !applies(candidate)) continue
     const words = wordsOf(candidate)
-    if (!words.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
-    if (!words.some((w) => w.op === OP_LABEL && w.arg === label)) continue
-    if (!flagsHold(words, flags, marks, step)) continue
+    const conditions = conditionsOf(candidate)
+    if (!conditions.some((w) => w.op === OP_CHARACTER && w.arg === id)) continue
+    if (!conditions.some((w) => w.op === OP_LABEL && w.arg === label)) continue
+    if (!flagsHold(conditions, flags, marks, step, more)) continue
     const go = words.findIndex((w) => w.op === OP_THEN_MAP)
     const next = go < 0 ? undefined : words[go + 1]
     if (go < 0 || !next || next.arg !== 0) continue
     return {
-      map: (words[go] as { arg: number }).arg,
-      event: next.op,
-      answer: words.find((w) => w.op === OP_ANSWER)?.arg,
+      onward: {
+        map: (words[go] as { arg: number }).arg,
+        event: next.op,
+        answer: words.find((w) => w.op === OP_ANSWER)?.arg,
+      },
+      trigger: candidate,
     }
   }
   return undefined

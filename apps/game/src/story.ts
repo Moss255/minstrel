@@ -91,53 +91,125 @@ export function swapThread(live: Story, threads: Story[], from: number, to: numb
   for (const mark of next.marks) live.marks.add(mark)
 }
 
+/** A point in the story as the game compares them: `major × 10000 + minor × 100 + step`. */
+const pointOf = (stage: Stage | undefined, step: number) =>
+  stage ? stage.major * 10000 + stage.minor * 100 + step : 0
+
+/** A move of one thread's stage, as the game queues it — see {@link moveStory}. */
+interface Move {
+  readonly thread: number | 'live'
+  readonly stage: { readonly major: number; readonly minor: number; readonly step: number }
+}
+
 /**
- * Move the story on as an event's own record says — see `eventOutcome` in
- * `@minstrel/game-formats`. The live thread goes to the stage and step the
- * record's `132` names, and the flags it sets are set.
+ * Run a record's actions on the story, as the game runs them — every one, in
+ * the record's order (see `outcomeOf` in `@minstrel/game-formats`). The live
+ * thread is `story`; `threads` holds the others, and `globals` the game-wide
+ * flags, where the caller keeps them. Read from the game's code, US ARM9:
  *
- * **What a move clears is the game's own**, read from the action for `132`
- * (US ARM9 `0x02062644`): a new major clears all four of the thread's banks,
- * the marks among them (`func_0206e080`); a new minor clears the flags and one
- * other bank, but **not the marks** (`func_0206e0d0`).
+ * - **as each action runs** (`func_02061c04`): `104`/`105` set and clear a
+ *   flag, `102`/`103` a mark, `100`/`101` a game-wide flag. `132` also clears
+ *   by the live stage there and then: all the thread's banks on a new major,
+ *   the flags on a new minor (`func_0206e080`, `func_0206e0d0`) — so a flag
+ *   set before it is lost with the others;
+ * - **then the stage moves**, queued by `132` (the live thread), `214 : n`
+ *   (thread n) and `148` (all five), and applied after (`func_0206f81c`)
+ *   through one setter, `func_020703c8`. **The story only moves forward**: a
+ *   move to a point at or before where the thread stands does nothing. A move
+ *   forward clears as `132`'s action does.
  *
- * `threads` takes the moves `214` makes to other threads by number; one to
- * the live thread moves it without clearing anything, as the action for `214`
- * clears nothing. What applies the game's queue of moves has not been read.
- *
- * Whether the stage moved and whether the step did, for whoever has to put the
- * cast where the new step has them. The game plays this through `followEvent`;
- * `story-walk.test.ts` plays it over the whole cartridge.
+ * **Marks last the major stage**: a new minor clears the flags but not the
+ * marks. Whether the stage moved and whether the step did, for whoever has to
+ * put the cast where the new step has them. The game plays this through
+ * `followEvent`; `story-walk.test.ts` plays it over the whole cartridge.
  */
 export function moveStory(
   story: Story,
-  outcome: Pick<EventOutcome, 'stage' | 'flags'> & Partial<Pick<EventOutcome, 'threads'>>,
+  outcome: Pick<EventOutcome, 'stage' | 'flags'> &
+    Partial<
+      Pick<
+        EventOutcome,
+        'threads' | 'all' | 'unflags' | 'marks' | 'unmarks' | 'globals' | 'unglobals' | 'actions'
+      >
+    >,
   threads?: { readonly all: Story[]; readonly live: number | undefined },
+  globals?: Set<number>,
 ): { readonly moved: boolean; readonly stepped: boolean } {
-  let moved = false
-  let stepped = false
-  const moveLive = (stage: { major: number; minor: number; step: number }, clears: boolean) => {
-    const major = !story.stage || story.stage.major !== stage.major
-    const minor = !story.stage || story.stage.minor !== stage.minor
-    moved ||= major || minor
-    stepped ||= major || minor || story.step !== stage.step
-    if (clears && (major || minor)) story.flags.clear()
-    if (clears && major) story.marks.clear()
-    story.stage = { major: stage.major, minor: stage.minor }
-    story.step = stage.step
+  const before = { stage: story.stage, step: story.step }
+  const moves: Move[] = []
+  const queueMove = (thread: Move['thread'], params: readonly number[]) => {
+    if (params.length !== 3) return
+    const [major, minor, step] = params.map((v) => v & 0xffff) as [number, number, number]
+    moves.push({ thread, stage: { major, minor, step } })
   }
-  for (const { thread, stage } of outcome.threads ?? []) {
-    if (threads && thread === threads.live) moveLive(stage, false)
-    else if (threads && thread >= 0 && thread < THREADS) {
-      const kept = threads.all[thread] ?? unstarted()
-      threads.all[thread] = {
-        ...copyStory(kept),
-        stage: { major: stage.major, minor: stage.minor },
-        step: stage.step,
-      }
+  const clearFor = (target: Story, stage: { major: number; minor: number }) => {
+    if (!target.stage || target.stage.major !== stage.major) {
+      target.flags.clear()
+      target.marks.clear()
+    } else if (target.stage.minor !== stage.minor) target.flags.clear()
+  }
+
+  const actions = outcome.actions ?? [
+    // An outcome made by hand: the fields, in a fixed order.
+    ...(outcome.stage
+      ? [
+          {
+            op: 132,
+            arg: 0,
+            params: [outcome.stage.major, outcome.stage.minor, outcome.stage.step],
+          },
+        ]
+      : []),
+    ...(outcome.threads ?? []).map(({ thread, stage }) => ({
+      op: 214,
+      arg: thread,
+      params: [stage.major, stage.minor, stage.step],
+    })),
+    ...(outcome.all
+      ? [{ op: 148, arg: 0, params: [outcome.all.major, outcome.all.minor, outcome.all.step] }]
+      : []),
+    ...outcome.flags.map((arg) => ({ op: 104, arg, params: [] })),
+    ...(outcome.unflags ?? []).map((arg) => ({ op: 105, arg, params: [] })),
+    ...(outcome.marks ?? []).map((arg) => ({ op: 102, arg, params: [] })),
+    ...(outcome.unmarks ?? []).map((arg) => ({ op: 103, arg, params: [] })),
+    ...(outcome.globals ?? []).map((arg) => ({ op: 100, arg, params: [] })),
+    ...(outcome.unglobals ?? []).map((arg) => ({ op: 101, arg, params: [] })),
+  ]
+
+  for (const { op, arg, params } of actions) {
+    if (op === 100) globals?.add(arg)
+    else if (op === 101) globals?.delete(arg)
+    else if (op === 102) story.marks.add(arg)
+    else if (op === 103) story.marks.delete(arg)
+    else if (op === 104) story.flags.add(arg)
+    else if (op === 105) story.flags.delete(arg)
+    else if (op === 132) {
+      if (params.length === 3)
+        clearFor(story, { major: params[0] as number, minor: params[1] as number })
+      queueMove('live', params)
+    } else if (op === 214) queueMove(arg, params)
+    else if (op === 148) {
+      queueMove('live', params)
+      for (let thread = 0; thread < THREADS; thread++)
+        if (threads && thread !== threads.live) queueMove(thread, params)
     }
   }
-  if (outcome.stage) moveLive(outcome.stage, true)
-  for (const flag of outcome.flags) story.flags.add(flag)
-  return { moved, stepped }
+
+  for (const { thread, stage } of moves) {
+    const live = thread === 'live' || (threads !== undefined && thread === threads.live)
+    let target: Story
+    if (live) target = story
+    else if (threads && typeof thread === 'number' && thread >= 0 && thread < THREADS) {
+      target = copyStory(threads.all[thread] ?? unstarted())
+      threads.all[thread] = target
+    } else continue
+    if (pointOf(target.stage, target.step) >= pointOf(stage, stage.step)) continue
+    clearFor(target, stage)
+    target.stage = { major: stage.major, minor: stage.minor }
+    target.step = stage.step
+  }
+
+  const moved =
+    before.stage?.major !== story.stage?.major || before.stage?.minor !== story.stage?.minor
+  return { moved, stepped: moved || before.step !== story.step }
 }

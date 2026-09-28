@@ -15,6 +15,7 @@ import {
   afterBattle,
   areaEvent,
   areasOf,
+  type EventOutcome,
   entryPlay,
   eventOutcome,
   FACILITY_MEDALS,
@@ -29,10 +30,12 @@ import {
   OP_EVENT,
   partName,
   type StoryArea,
+  type StoryState,
   spellsLearnt,
   type Treasure,
   triggerWords,
   vocationsWielding,
+  watchPlay,
   wornResistances,
 } from '@minstrel/game-formats'
 import { ModelRenderer, type Piece } from '@minstrel/gl'
@@ -615,6 +618,21 @@ const storyFlags = new Set<number>()
  */
 const storyThreads: Story[] = Array.from({ length: THREADS }, unstarted)
 /**
+ * The game-wide flags: a bank the game keeps outside the five threads, which
+ * no move of the story clears — see `OP_SET_GLOBAL` in `@minstrel/game-formats`.
+ */
+const storyGlobals = new Set<number>()
+/** The story as a record's conditions read it — see `holds` in `@minstrel/game-formats`. */
+function storyState(): StoryState {
+  const step = stepNow()
+  return {
+    flags: storyFlags,
+    marks: storyMarks,
+    ...(step === undefined ? {} : { step }),
+    more: { globals: storyGlobals, night: timeNow() === 'night' },
+  }
+}
+/**
  * Which thread the live story is. **Undefined when the story was put where it
  * is by hand** — a new game, a save carried on from, `?stage=`, the scene
  * browser — and then the next map entered takes it as its own thread's rather
@@ -965,9 +983,11 @@ function startEventBattle(index: number): void {
  */
 function followBattle(fought: { index: number; map: number | undefined; won?: boolean }): void {
   if (!loaded || fought.won === undefined) return
-  const after = afterBattle(loaded.triggers, fought.index, fought.won, fought.map)
+  const after = afterBattle(loaded.triggers, fought.index, fought.won, fought.map, storyState())
   if (!after) return
-  for (const flag of after.flags) storyFlags.add(flag)
+  // Everything its record does, won or lost: at the Tower of Trades at 6.4 the
+  // story moves on either way.
+  storyFromRecord(after.outcome)
   if (after.event !== undefined && fought.won) startEvent(after.event)
 }
 /**
@@ -1469,10 +1489,18 @@ function openWorld(map: string): void {
  */
 function playEntryEvent(): boolean {
   if (!loaded || !storyStage || playing || loaded.mapId === undefined) return false
-  const found = entryPlay(loaded.triggers, loaded.mapId, storyStage, storyFlags, stepNow())
+  const found = entryPlay(
+    loaded.triggers,
+    loaded.mapId,
+    storyStage,
+    storyFlags,
+    stepNow(),
+    storyState().more,
+  )
   if (!found || !loaded.eventScript(found.event)) return false
-  // Its record's own flags, so it plays once — see `entryPlay`.
-  for (const flag of found.flags) storyFlags.add(flag)
+  // Everything its record does — its own flags among it, so it plays once;
+  // see `entryPlay`. The game runs every action of the record it takes.
+  storyFromRecord(found.outcome)
   return startEvent(found.event)
 }
 
@@ -1493,6 +1521,8 @@ function restore(game: SaveGame): void {
   storyMarks.clear()
   for (const flag of game.flags ?? []) storyFlags.add(flag)
   for (const mark of game.marks ?? []) storyMarks.add(mark)
+  storyGlobals.clear()
+  for (const flag of game.globals ?? []) storyGlobals.add(flag)
   // The other threads — see `storyThreads`. A save from before they were kept
   // had only the one, and the map it was made in takes it.
   for (let thread = 0; thread < THREADS; thread++) {
@@ -1544,6 +1574,7 @@ function confess(): string {
     step: storyStep,
     flags: [...storyFlags],
     marks: [...storyMarks],
+    globals: [...storyGlobals],
     ...(liveThread === undefined ? {} : { thread: liveThread }),
     threads: storyThreads.map((kept) => ({
       stage: kept.stage ? { major: kept.stage.major, minor: kept.stage.minor } : null,
@@ -1822,11 +1853,12 @@ function maybeAreaEvent(): void {
     storyFlags,
     stepNow(),
     (id) => areasNow.has(id) && !areasIn.has(id),
+    storyState().more,
   )
   areasIn.clear()
   for (const id of areasNow) areasIn.add(id)
   if (!found || !loaded.eventScript(found.event)) return
-  for (const flag of found.flags) storyFlags.add(flag)
+  storyFromRecord(found.outcome)
   startEvent(found.event)
 }
 
@@ -2036,6 +2068,7 @@ function frame(now = 0): void {
     advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
     maybeTravel()
     maybeAreaEvent()
+    maybeWatch()
 
     // Indoors the camera comes in and tilts further down. What counts as
     // indoors is whether there is a roof over the character's head, checked as
@@ -2968,6 +3001,11 @@ let talkEvent: number | undefined
 let talkOnward: { map: number; event: number; answer: number | undefined } | undefined
 /** The event a line's label leads to, played once it is read — see `Choice.leadsTo`. */
 let talkThen: { event: number; answer: number | undefined } | undefined
+/**
+ * What the line's label's own talk record does once read, on the answer it
+ * waits for — a move of the story among it. See `Choice.after`.
+ */
+let talkRecord: { outcome: EventOutcome; answer: number | undefined } | undefined
 /** The last of a prompt's answers given in this talk, from 0. */
 let talkAnswer: number | undefined
 
@@ -2993,6 +3031,13 @@ function talk(everyLine = false): void {
       const read = talkEvent
       talkEvent = undefined
       followEvent(read)
+    }
+    // The label's own record runs once the line is read, on the answer it
+    // waits for — Alltrades Abbey at 6.1 moves on to 6.2 so.
+    if (!talking && talkRecord) {
+      const run = talkRecord
+      talkRecord = undefined
+      if (run.answer === undefined || run.answer === talkAnswer) storyFromRecord(run.outcome)
     }
     // A line whose talk record goes on — Erinn's evening question, on to the
     // morning upstairs — goes, once read, if the answer it waits for was given.
@@ -3025,6 +3070,7 @@ function talk(everyLine = false): void {
   if (playing) return
   talkOnward = undefined
   talkThen = undefined
+  talkRecord = undefined
   afterTalk = undefined
   talkAnswer = undefined
   const cast: Talker[] = [
@@ -3095,9 +3141,13 @@ function talk(everyLine = false): void {
       marks: storyMarks,
       alone: companionsNow().every(standingHere),
       step: stepNow(),
+      globals: storyGlobals,
     })
     // What the record that chose it sets — the first time they are talked to.
     for (const mark of choice?.marks ?? []) storyMarks.add(mark)
+    // Everything else that record does, as the game runs every action of the
+    // record it takes; its event, if it has one, is played below.
+    if (choice?.record) storyFromRecord(choice.record)
     if (choice?.kind === 'line') {
       talking = startConversation(
         who,
@@ -3108,7 +3158,10 @@ function talk(everyLine = false): void {
       )
       talkOnward = choice.onward
       talkThen = choice.leadsTo
+      talkRecord = choice.after
     } else if (choice?.kind === 'event') {
+      // The label's own record, where a label led to the event: it runs as the event does.
+      if (choice.after) storyFromRecord(choice.after.outcome)
       // Played, not read out, so that what follows it follows — see `followEvent`.
       // Begun by talking, it carries straight on from the conversation — see `afterTalk`.
       if (loaded.eventScript(choice.event) && startEvent(choice.event, true)) return
@@ -5737,51 +5790,99 @@ function endEvent(): void {
  */
 function followEvent(event: number): void {
   if (!loaded) return
-  const outcome = eventOutcome(loaded.triggers, event, loaded.mapId)
+  const outcome = eventOutcome(loaded.triggers, event, loaded.mapId, storyState())
   if (!outcome) return
-  const { stage, onward } = outcome
-  let closing = false
+  followRecord(outcome, `ev${event} is over`)
+}
+
+/**
+ * A record's actions on the story — see `moveStory` — and what follows for
+ * the map: the cast where the new step has them, whoever it brings in or
+ * sends away. Its event, battle and hand-on are left to whoever ran it.
+ * Whether the story moved into the stage that closes the slice.
+ */
+function storyFromRecord(outcome: EventOutcome): boolean {
+  if (!loaded) return false
   const story = { stage: storyStage, step: storyStep, flags: storyFlags, marks: storyMarks }
-  const { moved, stepped } = moveStory(story, outcome, { all: storyThreads, live: liveThread })
+  const { moved, stepped } = moveStory(
+    story,
+    outcome,
+    { all: storyThreads, live: liveThread },
+    storyGlobals,
+  )
   storyStage = story.stage
   storyStep = story.step
-  if (stage) {
-    closing = moved && closesTheSlice(stage)
-    // The cast stands where the stage and step have them: the Hexagon's
-    // statue steps aside at 2.4, step 5 — see `castOf`.
-    if (stepped) {
-      // Where an event left anyone is kept only until the step moves — see `castLeft`.
-      castLeft.clear()
-      const cast = loaded.castAt(storyStage, stepNow())
-      loaded = { ...loaded, cast }
-      // A sliding piece goes where its character now stands — see `slide.ts`.
-      aimSlides(slides, (id) => standingIn(cast, id))
-      poseMap(Math.max(mapFrame, 0))
-    }
+  // The cast stands where the stage and step have them: the Hexagon's
+  // statue steps aside at 2.4, step 5 — see `castOf`.
+  if (stepped) {
+    // Where an event left anyone is kept only until the step moves — see `castLeft`.
+    castLeft.clear()
+    const cast = loaded.castAt(storyStage, stepNow())
+    loaded = { ...loaded, cast }
+    // A sliding piece goes where its character now stands — see `slide.ts`.
+    aimSlides(slides, (id) => standingIn(cast, id))
+    poseMap(Math.max(mapFrame, 0))
   }
   // Whoever its record brings in or sends away — Ivor, over 2.2 and 2.3.
   members = partyAfter(members, outcome, freshMember)
-  status(
-    `ev${event} is over · the story is at ${storyStage?.major ?? '?'}.${storyStage?.minor ?? '?'}` +
-      `, step ${storyStep}` +
-      (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : '') +
-      (members.length > 1
-        ? ` · party ${members
-            .slice(1)
-            .map((m) => m.attnpc)
-            .join(' ')}`
-        : ''),
+  return moved && closesTheSlice(storyStage)
+}
+
+/** Where the story stands, for the status line. */
+function storyLine(): string {
+  return (
+    `the story is at ${storyStage?.major ?? '?'}.${storyStage?.minor ?? '?'}, step ${storyStep}` +
+    (storyFlags.size > 0 ? ` · flags ${[...storyFlags].sort((a, b) => a - b).join(' ')}` : '') +
+    (members.length > 1
+      ? ` · party ${members
+          .slice(1)
+          .map((m) => m.attnpc)
+          .join(' ')}`
+      : '')
   )
+}
+
+/**
+ * What follows a record that has run — an event's own, most often: its
+ * actions on the story, then the set battle it starts or the map and event
+ * it goes on to.
+ */
+function followRecord(outcome: EventOutcome, heading: string): void {
+  if (!loaded) return
+  const closing = storyFromRecord(outcome)
+  status(`${heading} · ${storyLine()}`)
   // Patty rescued and the story past the slice: its title card — see `card.ts`.
   if (closing) showCard()
   if (outcome.battle !== undefined) {
     startEventBattle(outcome.battle)
     return
   }
+  const { onward } = outcome
   if (onward) {
     const code = loaded.mapCodeOf(onward.map)
     if (code && (code === loaded.code || enter(code))) startEvent(onward.event)
   }
+}
+
+/**
+ * Run the map's watch, as the game does every frame in the field — see
+ * `KIND_WATCH` in `@minstrel/game-formats`: the first record for the map over
+ * the stage whose conditions hold, and all it does. Angel Falls' church at 1.2
+ * moves the story on the moment its two flags are set. Only while nothing else
+ * is up, as `maybeAreaEvent`: **ours**, standing in for the game's own order
+ * of doorways, fades and transitions first.
+ */
+function maybeWatch(): void {
+  if (!self || !loaded || !storyStage || playing || battle || talking || menu || visit) return
+  if (travelling || loaded.mapId === undefined) return
+  const found = watchPlay(loaded.triggers, loaded.mapId, storyStage, storyState())
+  if (!found) return
+  const before = `${storyLine()} ${[...storyMarks].join(' ')} ${[...storyGlobals].join(' ')}`
+  storyFromRecord(found)
+  const after = `${storyLine()} ${[...storyMarks].join(' ')} ${[...storyGlobals].join(' ')}`
+  // It runs every frame; say so only when it changed something.
+  if (after !== before) status(`the map's watch ran · ${storyLine()}`)
+  if (found.event !== undefined && loaded.eventScript(found.event)) startEvent(found.event)
 }
 
 /**

@@ -4,29 +4,36 @@ import {
   afterBattle,
   areaEvent,
   areasOf,
+  conditionsOf,
+  type EventOutcome,
   entryPlay,
   eventOutcome,
   flagsHold,
   isMapList,
   KIND_AREA_EVENT,
   KIND_ENTRY,
+  KIND_WATCH,
   OP_AFTER_BATTLE,
   OP_AT_STEP,
   OP_BATTLE,
   OP_EVENT,
   OP_EVENT_OF,
   OP_IF_FLAG,
+  OP_IF_GLOBAL,
   OP_IF_MARK,
   OP_IN_AREA,
   OP_STAGE_TO,
   OP_THEN_MAP,
   OP_UNLESS_FLAG,
+  OP_UNLESS_GLOBAL,
   OP_UNLESS_MARK,
   readMapList,
   readScript,
   type Script,
+  type StoryState,
   type Trigger,
   triggerWords,
+  watchPlay,
 } from '@minstrel/game-formats'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { EventPlayer } from '../src/event.ts'
@@ -85,8 +92,8 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   const FRAME_CAP = 20_000
   /** The operations `story.ts`, `talk.ts` and `services.ts` read. The rest are reported as not read. */
   const READ = new Set([
-    2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 16, 35, 36, 86, 102, 104, 118, 119, 120, 132, 133, 143, 145,
-    177, 204, 205,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 16, 17, 23, 35, 36, 52, 86, 100, 101, 102, 103, 104, 105,
+    118, 119, 120, 132, 133, 138, 143, 145, 148, 177, 204, 205, 214, 226,
   ])
   /** Sets a stage of one of several stories at once — see "Threads" in `docs/story-walk.md`. Not read. */
   const OP_THREAD_STAGE_TO = 214
@@ -119,6 +126,13 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     threads: Story[]
     /** Who goes along, by their place in `attnpc`. */
     party: number[]
+    /**
+     * The game-wide flags — see `OP_SET_GLOBAL` — followed as those that may be
+     * set and those that surely are, since every combination of them would be
+     * a state of its own. See `walkFrom`.
+     */
+    globals: Set<number>
+    sure: Set<number>
   }
 
   /** A stage and step to start a walk from, and the thread it is in. */
@@ -185,11 +199,38 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     return found
   }
 
-  /** The records of `map` whose span covers the stage, in the file's order. */
-  const recordsAt = (map: number, stage: Stage) =>
-    (byMap.get(map) ?? []).filter(
-      (t) => order(t.from) <= order(stage) && order(stage) <= order(t.to),
-    )
+  /** The records of `map` whose span covers the stage, in the file's order. Kept, as they are asked for often. */
+  const recordsKept = new Map<string, Trigger[]>()
+  const recordsAt = (map: number, stage: Stage) => {
+    const key = `${map}|${order(stage)}`
+    let found = recordsKept.get(key)
+    if (!found) {
+      found = (byMap.get(map) ?? []).filter(
+        (t) => order(t.from) <= order(stage) && order(stage) <= order(t.to),
+      )
+      recordsKept.set(key, found)
+    }
+    return found
+  }
+  /** Who stands in a map at a stage and step, and who its records there name. Kept, as above. */
+  const castKept = new Map<string, number[]>()
+  const castAt = (area: string, map: number, stage: Stage, step: number | undefined) => {
+    const key = `${map}|${order(stage)}|${step ?? 0}`
+    let found = castKept.get(key)
+    if (!found) {
+      const here = recordsAt(map, stage)
+      const named = new Set(
+        here.flatMap((t) =>
+          [...conditionsOf(t), ...triggerWords(t)]
+            .filter((w) => w.op === 6 || w.op === 118)
+            .map((w) => w.arg),
+        ),
+      )
+      found = (views.get(area)?.castIds(map, stage, step) ?? []).filter((id) => named.has(id))
+      castKept.set(key, found)
+    }
+    return found
+  }
 
   const sorted = (set: Iterable<number>) => [...set].sort((a, b) => a - b).join(',')
   const keyOf = (s: State) =>
@@ -199,14 +240,43 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       )
       .join('|')}|${sorted(s.party)}`
 
-  /** The state without its marks — see `movesFrom`, which folds moves that change only those. */
-  const keyWithoutMarks = (s: State) =>
-    `${s.threads.map((t) => `${t.stage ? show(t.stage) : '-'}.${t.step}/${sorted(t.flags)}`).join('|')}|${sorted(s.party)}`
+  /** The state without its flags and marks — see `movesFrom`, which folds moves that only set those. */
+  const keyWithoutFlags = (s: State) =>
+    `${s.threads.map((t) => `${t.stage ? show(t.stage) : '-'}.${t.step}`).join('|')}|${sorted(s.party)}`
 
-  const clone = (s: State): State => ({ threads: s.threads.map(copyStory), party: [...s.party] })
+  const clone = (s: State): State => ({
+    threads: s.threads.map(copyStory),
+    party: [...s.party],
+    globals: new Set(s.globals),
+    sure: new Set(s.sure),
+  })
 
   /** The thread a move in `map` reads and writes — see `threadOf`. */
   const storyIn = (s: State, map: number): Story => s.threads[threadOf(map)] as Story
+
+  /** The story as a record in `map` would test it — see `holds`. */
+  const stateIn = (s: State, map: number): StoryState => {
+    const story = storyIn(s, map)
+    return {
+      flags: story.flags,
+      marks: story.marks,
+      ...(story.step > 0 ? { step: story.step } : {}),
+      more: { globals: s.globals, globalsSure: s.sure, night: false },
+    }
+  }
+
+  /** Run a record's actions on the story, in `map`'s thread — see `moveStory`. */
+  const runRecord = (s: State, map: number, outcome: EventOutcome) => {
+    const live = threadOf(map)
+    moveStory(s.threads[live] as Story, outcome, { all: s.threads, live }, s.globals)
+    // The same for those surely set: a set is sure, a clear is sure too.
+    for (const { op, arg } of outcome.actions ?? []) {
+      if (op === 100) s.sure.add(arg)
+      else if (op === 101) s.sure.delete(arg)
+    }
+    if (outcome.leaves) s.party = []
+    for (const who of outcome.joins) if (!s.party.includes(who)) s.party.push(who)
+  }
 
   /**
    * Play `event` in `map` from `state`, as the game does: its script and what
@@ -222,60 +292,83 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     needsScript: boolean,
     played: Set<number>,
     depth = 0,
-  ): State | undefined => {
-    if (depth > 16) return undefined
-    if (needsScript && !scripts.has(event)) return undefined
+  ): State[] => {
+    if (depth > 16) return []
+    if (needsScript && !scripts.has(event)) return []
     const chain = scripts.has(event) ? chainOf(event) : []
     const last = typeof chain === 'string' || chain.length === 0 ? event : (chain.at(-1) as number)
     played.add(event)
     if (typeof chain !== 'string') for (const id of chain) played.add(id)
     const area = areaOfMap.get(map)
     const triggers = area ? (triggersOf.get(area) ?? []) : []
-    const outcome = eventOutcome(triggers, last, map)
+    const outcome = eventOutcome(triggers, last, map, stateIn(from, map))
     const state = clone(from)
-    if (!outcome) return state
-    const live = threadOf(map)
-    moveStory(state.threads[live] as Story, outcome, { all: state.threads, live })
-    if (outcome.leaves) state.party = []
-    for (const who of outcome.joins) if (!state.party.includes(who)) state.party.push(who)
+    if (!outcome) return [state]
+    runRecord(state, map, outcome)
     if (outcome.battle !== undefined) {
-      const after = afterBattle(triggers, outcome.battle, true, map)
-      if (!after) return state
-      for (const flag of after.flags) storyIn(state, map).flags.add(flag)
-      if (after.event === undefined) return state
-      return play(state, map, after.event, true, played, depth + 1) ?? state
+      // Won, and lost: losing can move the story too — the Tower of Trades at 6.4.
+      const out: State[] = []
+      for (const won of [true, false]) {
+        const after = afterBattle(triggers, outcome.battle, won, map, stateIn(state, map))
+        if (!after) {
+          if (won) out.push(state)
+          continue
+        }
+        const fought = clone(state)
+        runRecord(fought, map, after.outcome)
+        const next =
+          won && after.event !== undefined
+            ? play(fought, map, after.event, true, played, depth + 1)
+            : []
+        out.push(...(next.length > 0 ? next : [fought]))
+      }
+      return out
     }
     if (outcome.onward) {
-      return play(state, outcome.onward.map, outcome.onward.event, true, played, depth + 1) ?? state
+      const next = play(state, outcome.onward.map, outcome.onward.event, true, played, depth + 1)
+      return next.length > 0 ? next : [state]
     }
-    return state
+    return [state]
   }
 
   /** Every state one move takes the story to. */
   const movesFrom = (state: State, played: Set<number>): State[] => {
     const out: State[] = []
-    // Talk that only sets marks moves nothing on its own, and marks last the
-    // whole major stage — so every order of talking to a town would be a state
-    // of its own. It is taken as one: everyone talked to. Each event is still
-    // tried from the state before, where no mark is set yet.
+    // Talk that only sets marks, or only sets flags, moves nothing on its own
+    // — a town's first-time talk, each villager setting their own flag, as
+    // Coffinwell's at 4.6 does — so every order of talking to a town would be a
+    // state of its own: fourteen of them made 9,232. It is taken as one:
+    // everyone talked to. Each event is still tried from the state before,
+    // where none of it is set yet. **Ours.**
     const talked = clone(state)
     let talkedMore = false
-    const plain = keyWithoutMarks(state)
-    /** Keep a move, or fold it into `talked` if all it changed was marks. */
-    const keep = (after: State | undefined) => {
-      if (!after) return
-      if (keyWithoutMarks(after) !== plain) {
-        out.push(after)
-        return
-      }
-      after.threads.forEach((thread, i) => {
-        const all = (talked.threads[i] as Story).marks
-        for (const mark of thread.marks) {
-          if (all.has(mark)) continue
-          all.add(mark)
-          talkedMore = true
+    const plain = keyWithoutFlags(state)
+    /** Keep a move, or fold it into `talked` if all it did was set marks or flags. */
+    const keep = (states: readonly State[]) => {
+      for (const after of states) {
+        const onlySets =
+          keyWithoutFlags(after) === plain &&
+          after.threads.every((thread, i) =>
+            [...(state.threads[i] as Story).flags].every((f) => thread.flags.has(f)),
+          )
+        if (!onlySets) {
+          out.push(after)
+          continue
         }
-      })
+        after.threads.forEach((thread, i) => {
+          const into = talked.threads[i] as Story
+          for (const mark of thread.marks) {
+            if (into.marks.has(mark)) continue
+            into.marks.add(mark)
+            talkedMore = true
+          }
+          for (const flag of thread.flags) {
+            if (into.flags.has(flag)) continue
+            into.flags.add(flag)
+            talkedMore = true
+          }
+        })
+      }
     }
     for (const map of byMap.keys()) {
       const story = storyIn(state, map)
@@ -286,33 +379,33 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       if (here.length === 0) continue
       const area = areaOfMap.get(map) as string
       // Entering it.
-      const entry = entryPlay(here, map, stage, story.flags, step)
-      if (entry) {
+      const more = { globals: state.globals, globalsSure: state.sure, night: false }
+      const entry = entryPlay(here, map, stage, story.flags, step, more)
+      if (entry && scripts.has(entry.event)) {
         const before = clone(state)
-        for (const flag of entry.flags) storyIn(before, map).flags.add(flag)
+        runRecord(before, map, entry.outcome)
         keep(play(before, map, entry.event, true, played))
+      }
+      // Being in it: its watch, every frame — see `KIND_WATCH`.
+      const watch = watchPlay(here, map, stage, stateIn(state, map))
+      if (watch) {
+        const before = clone(state)
+        runRecord(before, map, watch)
+        keep(watch.event !== undefined ? play(before, map, watch.event, true, played) : [before])
       }
       // Walking into each of its areas.
       for (const box of areasOf(here, map, stage)) {
-        const found = areaEvent(here, map, stage, story.flags, step, (id) => id === box.id)
-        if (!found) continue
+        const found = areaEvent(here, map, stage, story.flags, step, (id) => id === box.id, more)
+        if (!found || !scripts.has(found.event)) continue
         const before = clone(state)
-        for (const flag of found.flags) storyIn(before, map).flags.add(flag)
+        runRecord(before, map, found.outcome)
         keep(play(before, map, found.event, true, played))
       }
       // Talking to whoever stands there and is named here.
-      const named = new Set(
-        here.flatMap((t) =>
-          triggerWords(t)
-            .filter((w) => w.op === 6 || w.op === 118)
-            .map((w) => w.arg),
-        ),
-      )
       const view = views.get(area)
       if (!view) continue
       const letter = letterForStage(view.letters, stage)
-      for (const id of view.castIds(map, stage, step)) {
-        if (!named.has(id)) continue
+      for (const id of castAt(area, map, stage, step)) {
         const choice = pickLine({
           triggers: here,
           map,
@@ -324,10 +417,17 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
           marks: story.marks,
           alone: state.party.length === 0,
           step,
+          globals: state.globals,
+          globalsSure: state.sure,
         })
         if (!choice) continue
+        // The record that chose runs as it is talked to, as the game runs every
+        // action of the record it takes; the label's own after the line is
+        // read, on the answer it waits for — which the walk takes as given.
         const before = clone(state)
         for (const mark of choice.marks ?? []) storyIn(before, map).marks.add(mark)
+        if (choice.record) runRecord(before, map, choice.record)
+        if (choice.after) runRecord(before, map, choice.after.outcome)
         if (choice.kind === 'event') {
           keep(play(before, map, choice.event, false, played))
           continue
@@ -337,12 +437,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         } else if (choice.onward) {
           keep(play(before, choice.onward.map, choice.onward.event, true, played))
         } else {
-          const all = storyIn(talked, map).marks
-          for (const mark of choice.marks ?? []) {
-            if (all.has(mark)) continue
-            all.add(mark)
-            talkedMore = true
-          }
+          keep([before])
         }
       }
     }
@@ -352,22 +447,32 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
 
   /** Every state the story reaches from `from`, and which stages and steps. */
   const walkFrom = (from: Seed): Walk => {
-    const start: State = { threads: Array.from({ length: THREADS }, unstarted), party: [] }
+    const start: State = {
+      threads: Array.from({ length: THREADS }, unstarted),
+      party: [],
+      globals: new Set(),
+      sure: new Set(),
+    }
     start.threads[from.thread] = {
       stage: { major: from.major, minor: from.minor },
       step: from.step,
       flags: new Set(),
       marks: new Set(),
     }
-    const seen = new Set([keyOf(start)])
+    // **Game-wide flags are merged, not branched on** — ours. Events toggle
+    // them for what a map shows, and every combination would be a state of its
+    // own: nine made 254. So states that differ only in them are one, holding
+    // those that may be set (the union) and those that surely are (the
+    // intersection), and explored again whenever a merge adds to what may be.
+    const best = new Map<string, State>()
+    best.set(keyOf(start), start)
     const queue = [start]
-    const visited: State[] = []
     const reached = new Map<string, Point>()
     const played = new Set<number>()
     let capped = false
     while (queue.length > 0) {
       const state = queue.shift() as State
-      visited.push(state)
+      if (best.get(keyOf(state)) !== state) continue
       for (const thread of state.threads) {
         if (!thread.stage || thread.stage.major === 0) continue
         const point = { ...thread.stage, step: thread.step }
@@ -375,17 +480,29 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       }
       for (const next of movesFrom(state, played)) {
         const key = keyOf(next)
-        if (seen.has(key)) continue
-        if (seen.size >= STATE_CAP) {
-          capped = true
-          break
+        const known = best.get(key)
+        if (!known) {
+          if (best.size >= STATE_CAP) {
+            capped = true
+            break
+          }
+          best.set(key, next)
+          queue.push(next)
+          continue
         }
-        seen.add(key)
-        queue.push(next)
+        const grows =
+          [...next.globals].some((n) => !known.globals.has(n)) ||
+          [...known.sure].some((n) => !next.sure.has(n))
+        if (!grows) continue
+        const merged = clone(known)
+        for (const n of next.globals) merged.globals.add(n)
+        for (const n of known.sure) if (!next.sure.has(n)) merged.sure.delete(n)
+        best.set(key, merged)
+        queue.push(merged)
       }
       if (capped) break
     }
-    return { from, reached, visited, capped, played }
+    return { from, reached, visited: [...best.values()], capped, played }
   }
 
   /** The operations on a record that nothing here reads — labels and hand-on events aside. */
@@ -398,13 +515,21 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   ]
 
   /** Which of a record's conditions fail in every one of `states`, or undefined if one holds somewhere. */
-  const failing = (trigger: Trigger, states: readonly Story[]): string | undefined => {
-    const words = triggerWords(trigger)
+  const failing = (
+    trigger: Trigger,
+    visits: readonly { readonly state: State; readonly story: Story }[],
+  ): string | undefined => {
+    const words = conditionsOf(trigger)
     const fails = new Set<string>()
-    for (const state of states) {
+    for (const { state: walked, story: state } of visits) {
       const step = state.step > 0 ? state.step : undefined
-      if (flagsHold(words, state.flags, state.marks, step)) return undefined
+      const more = { globals: walked.globals, globalsSure: walked.sure, night: false }
+      if (flagsHold(words, state.flags, state.marks, step, more)) return undefined
       for (const w of words) {
+        if (w.op === OP_IF_GLOBAL && !walked.globals.has(w.arg))
+          fails.add(`game-wide flag ${w.arg} set`)
+        if (w.op === OP_UNLESS_GLOBAL && walked.sure.has(w.arg))
+          fails.add(`game-wide flag ${w.arg} clear`)
         if (w.op === OP_IF_FLAG && !state.flags.has(w.arg)) fails.add(`flag ${w.arg} set`)
         if (w.op === OP_UNLESS_FLAG && state.flags.has(w.arg)) fails.add(`flag ${w.arg} clear`)
         if (w.op === OP_IF_MARK && !state.marks.has(w.arg)) fails.add(`mark ${w.arg} set`)
@@ -421,7 +546,7 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
    */
   const whyNotReached = (
     reach: { readonly area: string; readonly trigger: Trigger; readonly handOn: boolean },
-    event: number,
+    event: number | undefined,
     walk: Walk,
   ): string => {
     const { trigger, area } = reach
@@ -477,14 +602,16 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       if (!defined)
         return `walking into area ${inArea} of map ${trigger.map}, which no record defines there`
     }
-    const fails = failing(trigger, here)
+    const fails = failing(trigger, inSpan)
     if (fails) return `a record of ${what}: ${fails}`
-    if (![0, 1, KIND_AREA_EVENT, KIND_ENTRY, 11].includes(trigger.unknown_5))
+    if (![0, 1, KIND_AREA_EVENT, KIND_ENTRY, KIND_WATCH, 11].includes(trigger.unknown_5))
       return `a record of ${what}, a kind the engine does not read`
     const started =
       reach.handOn || trigger.unknown_5 === KIND_AREA_EVENT || trigger.unknown_5 === KIND_ENTRY
-    if (started && !scripts.has(event))
+    if (started && event !== undefined && !scripts.has(event))
       return `a record of ${what}; ev${event} has no script, and only a script is started that way`
+    if (trigger.unknown_5 === KIND_ENTRY && !words.some((w) => w.op === OP_EVENT))
+      return `an entry record of ${what} that plays no event, which the engine does not run`
     if (who !== undefined) {
       const view = views.get(area)
       const { state, story } = inSpan[0] as { state: State; story: Story }
@@ -501,6 +628,8 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
         marks: story.marks,
         alone: state.party.length === 0,
         step: story.step > 0 ? story.step : undefined,
+        globals: state.globals,
+        globalsSure: state.sure,
       })
       return `talking to ${who} in map ${trigger.map}, where another of their records chooses first — ${choice?.why ?? 'nothing'}`
     }
@@ -517,8 +646,9 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       const unread = unreadOn(s.trigger)
       const also = unread.length > 0 ? ` [not read on it: ${unread.join(' ')}]` : ''
       if (s.event === undefined) {
+        // The record moves the story itself when it runs: why it did not.
         why.push(
-          `${where}: the stage is set on a record of kind ${s.trigger.unknown_5}, and the engine applies only an event's own${also}`,
+          `${where}: set by a record of kind ${s.trigger.unknown_5}${also}, which did not run: ${whyNotReached({ area: s.area, trigger: s.trigger, handOn: false }, undefined, walk)}`,
         )
         continue
       }
@@ -661,12 +791,18 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     }
   }, 600_000)
 
-  it('plays the slice through in one walk, from 1.4 to 2.7', () => {
+  it('plays the slice through in one walk, and on into Stornway', () => {
     // The slice's own story, which the game already plays: the evening at
     // 2.1, the pass, the Hexagon, Patty rescued, and the morning after.
     const slice = walks.find((walk) => walk.from.major === 1 && walk.from.minor === 4)
-    expect(slice?.reached.has('2.7 step 1')).toBe(true)
     expect(slice?.reached.has('2.5 step 1')).toBe(true)
+    expect(slice?.reached.has('2.7 step 1')).toBe(true)
+    // And past it, by records read from the game's code: entering Stornway
+    // plays ev2900, whose chain hands on with 138 to the lobby; talking to
+    // 203 there, named by the composite 52, sets flag 3; and the lobby's watch,
+    // kind 6, starts chapter 3.
+    expect(slice?.reached.has('3.1 step 1')).toBe(true)
+    expect(slice?.reached.has('3.1 step 2')).toBe(true)
   })
 
   it('breaks where docs/story-walk.md says, and prints each break with why', () => {
@@ -681,17 +817,17 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       console.log(`  BREAK before ${show(broke.next)}:`)
       for (const line of broke.why) console.log(`    - ${line}`)
     }
-    // **The number this phase is sized by.** Measured 28 September 2026:
-    // 101 breaks between a new game and the last stage a record sets, once the
-    // story's five threads were read from the game's code — 109 without them,
-    // counted the same way. Fixing one shows up as a smaller number here;
-    // losing a rule the game had shows up as a larger. Update it, and the
-    // table in `docs/story-walk.md`, when either happens.
-    expect(breaks.length).toBe(101)
-    // The first break after the slice: arriving at Stornway's lobby at 2.7
-    // sets 3.1, on a record that is not an event's own.
-    const out = breaks.find((b) => b.next.major === 3 && b.next.minor === 1 && b.next.step === 1)
-    expect(out?.why.every((line) => line.includes('record of kind 6'))).toBe(true)
+    // **The number this phase is sized by.** Measured 28 September 2026: 109
+    // breaks between a new game and the last stage a record sets, before the
+    // story's five threads were read from the game's code; 101 with them; 87
+    // once records ran as the game runs them — every action, kind 6 each
+    // frame, conditions parsed and composites expanded. Fixing one shows up as
+    // a smaller number here; losing a rule the game had shows up as a larger.
+    // Update it, and the table in `docs/story-walk.md`, when either happens.
+    expect(breaks.length).toBe(87)
+    // The first break after the slice is now in Stornway's castle, at 3.1.
+    const first = breaks.find((b) => b.next.major >= 3)
+    expect(first && show(first.next)).toBe('3.1 step 3')
     expect(walks.every((walk) => !walk.capped)).toBe(true)
   })
 })

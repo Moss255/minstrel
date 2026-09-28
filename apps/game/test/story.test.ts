@@ -18,7 +18,7 @@ describe.skipIf(!romPath)('the opening’s story, on a real cartridge', { timeou
 
   it('plays the Guardian statue scene on entering the village at 2.1, from the second event folder', () => {
     const village = load(rom, { map: 'M01' })
-    expect(entryPlay(village.triggers, 1100, { major: 2, minor: 1 }, new Set())).toEqual({
+    expect(entryPlay(village.triggers, 1100, { major: 2, minor: 1 }, new Set())).toMatchObject({
       event: 22590,
       flags: [0],
     })

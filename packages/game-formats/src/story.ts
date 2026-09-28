@@ -159,20 +159,48 @@ export function entryPlay(
   stage: Stage,
   flags: ReadonlySet<number>,
   step?: number,
-): { readonly event: number; readonly flags: readonly number[] } | undefined {
+  more?: Conditions,
+):
+  | { readonly event: number; readonly flags: readonly number[]; readonly outcome: EventOutcome }
+  | undefined {
   for (const trigger of triggers) {
     if (trigger.unknown_5 !== KIND_ENTRY || trigger.map !== map) continue
     if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
     const words = triggerWords(trigger)
     if (!words.some((w) => w.op === OP_ENTERED && w.arg === map)) continue
-    if (!flagsHold(words, flags, undefined, step)) continue
-    const plays = words.find((w) => w.op === OP_EVENT)
-    if (plays) {
-      return {
-        event: plays.arg,
-        flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
-      }
-    }
+    if (!flagsHold(conditionsOf(trigger), flags, undefined, step, more)) continue
+    const outcome = outcomeOf(trigger)
+    if (outcome.event !== undefined) return { event: outcome.event, flags: outcome.flags, outcome }
+  }
+  return undefined
+}
+
+/**
+ * Value 5 of a record that runs **every frame the Hero is in its map** — read
+ * from the game's code: the field's frame update (US ARM9
+ * `func_ov017_0218cbd4`) asks for the first of them whose conditions hold, once
+ * the map's doorways, fades and transitions have had their turn
+ * (`func_ov017_0219ca88`). 34 on the cartridge. Angel Falls' church and stable
+ * at 1.2 move the story on the moment flags 4 and 5 are both set; Stornway's
+ * lobby at 2.7, with flag 3, starts chapter 3.
+ */
+export const KIND_WATCH = 6
+
+/**
+ * What runs now in `map` at `stage`: the first {@link KIND_WATCH} record for the
+ * map over the stage whose conditions hold — see {@link holds} — and what it
+ * does. `undefined` when none does.
+ */
+export function watchPlay(
+  triggers: readonly Trigger[],
+  map: number,
+  stage: Stage,
+  state: StoryState,
+): EventOutcome | undefined {
+  for (const trigger of triggers) {
+    if (trigger.unknown_5 !== KIND_WATCH || trigger.map !== map) continue
+    if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
+    if (holds(trigger, state)) return outcomeOf(trigger)
   }
   return undefined
 }
@@ -262,21 +290,19 @@ export function areaEvent(
   flags: ReadonlySet<number>,
   step: number | undefined,
   entered: (area: number) => boolean,
-): { readonly event: number; readonly flags: readonly number[] } | undefined {
+  more?: Conditions,
+):
+  | { readonly event: number; readonly flags: readonly number[]; readonly outcome: EventOutcome }
+  | undefined {
   for (const trigger of triggers) {
     if (trigger.unknown_5 !== KIND_AREA_EVENT || trigger.map !== map) continue
     if (order(trigger.from) > order(stage) || order(trigger.to) < order(stage)) continue
     const words = triggerWords(trigger)
     const area = words.find((w) => w.op === OP_IN_AREA)
     if (!area || !entered(area.arg)) continue
-    if (!flagsHold(words, flags, undefined, step)) continue
-    const plays = words.find((w) => w.op === OP_EVENT)
-    if (plays) {
-      return {
-        event: plays.arg,
-        flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
-      }
-    }
+    if (!flagsHold(conditionsOf(trigger), flags, undefined, step, more)) continue
+    const outcome = outcomeOf(trigger)
+    if (outcome.event !== undefined) return { event: outcome.event, flags: outcome.flags, outcome }
   }
   return undefined
 }
@@ -304,58 +330,123 @@ export interface EventOutcome {
   readonly joins: readonly number[]
   /** Whether it sends whoever goes along away — see {@link OP_LEAVE}. */
   readonly leaves: boolean
-}
-
-/** The stage and step the three operation-0 words after word `at` hold, if they are there. */
-function pointAfter(words: readonly TriggerWord[], at: number): StoryPoint | undefined {
-  const args = words.slice(at + 1, at + 4)
-  if (args.length !== 3 || !args.every((w) => w.op === 0)) return undefined
-  const [major, minor, step] = args.map((w) => w.arg) as [number, number, number]
-  return { major, minor, step }
+  /** Every thread's stage, if it sets them all — see {@link OP_ALL_STAGES_TO}. */
+  readonly all: StoryPoint | undefined
+  /** The flags it clears — see {@link OP_CLEAR_FLAG}. */
+  readonly unflags: readonly number[]
+  /** The marks it sets and clears — see {@link OP_SET_MARK}. */
+  readonly marks: readonly number[]
+  readonly unmarks: readonly number[]
+  /** The game-wide flags it sets and clears — see {@link OP_SET_GLOBAL}. */
+  readonly globals: readonly number[]
+  readonly unglobals: readonly number[]
+  /** The event it plays, if it plays one — see {@link OP_EVENT}. */
+  readonly event: number | undefined
+  /**
+   * Its actions in the record's own order, which is the order the game runs
+   * them in: a flag set before a `132` into a new sub-stage is cleared by it.
+   * Absent where an outcome is made by hand, which applies the fields above.
+   */
+  readonly actions?: readonly TriggerEntry[]
 }
 
 /**
- * What follows an event, from its own record: the one in `map`, if it has one
- * there, or else the first. `undefined` when no record is the event's.
+ * Sets every thread's stage at once, to the three values after it, as
+ * {@link OP_STAGE_TO} sets the live one's. Read from the game's code: the
+ * queue (US ARM9 `func_0206f81c`) moves threads 0 to 4 in turn. `ev28800` at
+ * 13.1 brings the threads back together at 13.2, and winning set battle 25 at
+ * 17.2 sets them all to 19.2.
+ */
+export const OP_ALL_STAGES_TO = 148
+/**
+ * Goes on to a map and an event there, as {@link OP_THEN_MAP} does: the game's
+ * queue takes 133, 138 and 226 in one case, and 138 and 226 each set one flag
+ * on the move that 133 does not, whose effect is not established. `ev2910` at
+ * 2.7 goes on with 138 to Stornway's lobby, map 50101, and `ev22500`.
+ */
+const HAND_ONS = new Set([OP_THEN_MAP, 138, 226])
+
+/**
+ * What a record does when it runs: every one of its actions, as the game runs
+ * them all (US ARM9 `func_02064530`). Read from its entries — see
+ * {@link entriesOf} — so an action's own values are taken as its own.
+ */
+export function outcomeOf(trigger: Trigger): EventOutcome {
+  const entries = entriesOf(trigger)
+  const args = (op: number) => entries.filter((e) => e.op === op).map((e) => e.arg)
+  const point = (entry: TriggerEntry | undefined): StoryPoint | undefined => {
+    if (entry?.params.length !== 3) return undefined
+    const [major, minor, step] = entry.params.map((v) => v & 0xffff) as [number, number, number]
+    return { major, minor, step }
+  }
+  const go = entries.find((e) => HAND_ONS.has(e.op) && e.params.length === 1)
+  const threads: { thread: number; stage: StoryPoint }[] = []
+  for (const entry of entries) {
+    if (entry.op !== OP_THREAD_STAGE_TO) continue
+    const stage = point(entry)
+    if (stage) threads.push({ thread: entry.arg, stage })
+  }
+  return {
+    stage: point(entries.find((e) => e.op === OP_STAGE_TO)),
+    flags: args(OP_SET_FLAG),
+    onward: go ? { map: go.arg, event: (go.params[0] as number) >>> 16 } : undefined,
+    battle: entries.find((e) => e.op === OP_BATTLE)?.arg,
+    threads,
+    joins: args(OP_JOIN),
+    leaves: entries.some((e) => e.op === OP_LEAVE),
+    all: point(entries.find((e) => e.op === OP_ALL_STAGES_TO)),
+    unflags: args(OP_CLEAR_FLAG),
+    marks: args(OP_SET_MARK),
+    unmarks: args(OP_CLEAR_MARK),
+    globals: args(OP_SET_GLOBAL),
+    unglobals: args(OP_CLEAR_GLOBAL),
+    event: entries.find((e) => e.op === OP_EVENT)?.arg,
+    actions: entries.filter((e) => !isCondition(e.op)),
+  }
+}
+
+/** Where the story stands, for testing a record's conditions — see {@link flagsHold}. */
+export interface StoryState {
+  readonly flags: ReadonlySet<number>
+  readonly marks?: ReadonlySet<number>
+  readonly step?: number
+  readonly more?: Conditions
+}
+
+/**
+ * Whether a record's conditions hold, as far as they are read — see
+ * {@link flagsHold}. Without a state, only {@link OP_PLAYERS}: as one playing
+ * alone.
+ */
+export function holds(trigger: Trigger, state?: StoryState): boolean {
+  const conditions = conditionsOf(trigger)
+  if (!state) return conditions.every((c) => c.op !== OP_PLAYERS || c.arg === 0 || c.arg === 2)
+  return flagsHold(conditions, state.flags, state.marks, state.step, state.more)
+}
+
+/**
+ * What follows an event, from its own record: the first whose conditions hold
+ * in `state` (see {@link holds}) — the one in `map`, if it has one there, or
+ * else the first anywhere. The game takes the first whose conditions hold
+ * (US ARM9 `func_02064490`), from the current map's records only; looking
+ * further is ours. `undefined` when no record is the event's.
  */
 export function eventOutcome(
   triggers: readonly Trigger[],
   event: number,
   map?: number,
+  state?: StoryState,
 ): EventOutcome | undefined {
+  // The first of the event's own records whose conditions hold, as the game
+  // takes one (`func_02064490`) — in the map asked for, where it has one.
   const own = triggers.filter(
     (t) =>
       t.unknown_5 === KIND_EVENT &&
-      triggerWords(t).some((w) => w.op === OP_EVENT_OF && w.arg === event),
+      triggerWords(t).some((w) => w.op === OP_EVENT_OF && w.arg === event) &&
+      holds(t, state),
   )
   const record = own.find((t) => t.map === map) ?? own[0]
-  if (!record) return undefined
-  const words = triggerWords(record)
-
-  const at = words.findIndex((w) => w.op === OP_STAGE_TO)
-  const stage = at < 0 ? undefined : pointAfter(words, at)
-  const threads: { thread: number; stage: StoryPoint }[] = []
-  words.forEach((w, i) => {
-    if (w.op !== OP_THREAD_STAGE_TO) return
-    const point = pointAfter(words, i)
-    if (point) threads.push({ thread: w.arg, stage: point })
-  })
-
-  let onward: EventOutcome['onward']
-  const go = words.findIndex((w) => w.op === OP_THEN_MAP)
-  const next = go < 0 ? undefined : words[go + 1]
-  if (go >= 0 && next && next.arg === 0)
-    onward = { map: (words[go] as TriggerWord).arg, event: next.op }
-
-  return {
-    stage,
-    flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
-    onward,
-    battle: words.find((w) => w.op === OP_BATTLE)?.arg,
-    threads,
-    joins: words.filter((w) => w.op === OP_JOIN).map((w) => w.arg),
-    leaves: words.some((w) => w.op === OP_LEAVE),
-  }
+  return record ? outcomeOf(record) : undefined
 }
 
 /** What follows a set battle — see {@link afterBattle}. */
@@ -364,6 +455,8 @@ export interface BattleOutcome {
   readonly event: number | undefined
   /** The flags it sets. */
   readonly flags: readonly number[]
+  /** Everything its record does — see {@link outcomeOf}. */
+  readonly outcome: EventOutcome
 }
 
 /**
@@ -376,6 +469,7 @@ export function afterBattle(
   battle: number,
   won: boolean,
   map: number | undefined,
+  state?: StoryState,
 ): BattleOutcome | undefined {
   const kind = won ? KIND_WON : KIND_LOST
   for (const trigger of triggers) {
@@ -383,10 +477,9 @@ export function afterBattle(
     const words = triggerWords(trigger)
     const first = words[0]
     if (first?.op !== OP_AFTER_BATTLE || first.arg !== battle) continue
-    return {
-      event: words.find((w) => w.op === OP_EVENT)?.arg,
-      flags: words.filter((w) => w.op === OP_SET_FLAG).map((w) => w.arg),
-    }
+    if (!holds(trigger, state)) continue
+    const outcome = outcomeOf(trigger)
+    return { event: outcome.event, flags: outcome.flags, outcome }
   }
   return undefined
 }
@@ -407,19 +500,77 @@ export const OP_UNLESS_MARK = 3
 /** Sets a mark — see {@link OP_IF_MARK}. */
 export const OP_SET_MARK = 102
 
+/** Holds only when a game-wide flag is set — see {@link OP_SET_GLOBAL}. */
+export const OP_IF_GLOBAL = 0
+/** Holds only when a game-wide flag is clear. */
+export const OP_UNLESS_GLOBAL = 1
+/**
+ * Sets a game-wide flag: a bank of bits the trigger object keeps outside its
+ * five threads (`+0x8c`), which no move of the story clears. Read from the
+ * game's code: the actions for 100 and 101 (US ARM9 `0x02061c2c` on) set and
+ * clear a bit there, and the conditions 0 and 1 (`func_0205faf4`) test it.
+ */
+export const OP_SET_GLOBAL = 100
+/** Clears a game-wide flag — see {@link OP_SET_GLOBAL}. */
+export const OP_CLEAR_GLOBAL = 101
+/** Clears a flag, as {@link OP_SET_FLAG} sets one — read from the game's code. */
+export const OP_CLEAR_FLAG = 105
+/** Clears a mark, as {@link OP_SET_MARK} sets one — read from the game's code. */
+export const OP_CLEAR_MARK = 103
+/**
+ * The time of day: `17 : 1` holds by night, and any other argument by
+ * morning, day or evening. Read from the game's code (`func_0205faf4`, which
+ * asks `GameState::IsMorningDayOrEvening`).
+ */
+export const OP_TIME = 17
+/**
+ * Who is playing, in a game played together: tested by the game's code
+ * (`func_0205faf4`) against a session object (`0x020fefec` in the US ARM9)
+ * whose first word is set only while a session runs — the same test the
+ * actions for 102 and 104 make before sending a change over the link.
+ * **INFERRED**, that it is a multiplayer session: argument 0 holds with none
+ * running, 1 with one, 2 with none or as one kind of player, 3 only as the
+ * other. **Played alone, 0 and 2 hold and 1 and 3 do not.** 1,541 records carry
+ * it, mostly as twins, `23:2` beside `23:3`.
+ */
+export const OP_PLAYERS = 23
+
+/** How the world stands for a record's conditions beyond the story's own flags — see {@link flagsHold}. */
+export interface Conditions {
+  /** The game-wide flags set — see {@link OP_SET_GLOBAL}. Not read when not given. */
+  readonly globals?: ReadonlySet<number>
+  /**
+   * Those surely set, where `globals` holds those that may be: for following
+   * many ways through the story at once, where `1 : n` holds unless every way
+   * set it. The game has one set, and then this is not given.
+   */
+  readonly globalsSure?: ReadonlySet<number>
+  /** Whether it is night — see {@link OP_TIME}. Not read when not given. */
+  readonly night?: boolean
+}
+
 /**
  * Whether a record's flag conditions hold: every {@link OP_IF_FLAG} flag set
  * and every {@link OP_UNLESS_FLAG} one not — and, given `marks`, the same for
  * the second set, {@link OP_IF_MARK} and {@link OP_UNLESS_MARK}; given `step`,
- * every {@link OP_AT_STEP} naming it. Without `marks` or `step` those are not
- * read. Its other conditions are not read.
+ * every {@link OP_AT_STEP} naming it; given `more`, the game-wide flags and
+ * the time of day; and always {@link OP_PLAYERS}, as one playing alone.
+ * Its other conditions are not read.
+ *
+ * `words` should be a record's conditions — see {@link conditionsOf} — since a
+ * word of operation 0 is also how an action's own values are written: the
+ * three after `132` are a stage, not three game-wide flags.
  */
 export function flagsHold(
   words: readonly TriggerWord[],
   flags: ReadonlySet<number>,
   marks?: ReadonlySet<number>,
   step?: number,
+  more?: Conditions,
 ): boolean {
+  const globals = more?.globals
+  const sure = more?.globalsSure ?? globals
+  const night = more?.night
   return words.every(
     (w) =>
       (w.op !== OP_IF_FLAG || flags.has(w.arg)) &&
@@ -427,8 +578,213 @@ export function flagsHold(
       (marks === undefined ||
         ((w.op !== OP_IF_MARK || marks.has(w.arg)) &&
           (w.op !== OP_UNLESS_MARK || !marks.has(w.arg)))) &&
-      (step === undefined || w.op !== OP_AT_STEP || w.arg === step),
+      (step === undefined || w.op !== OP_AT_STEP || w.arg === step) &&
+      (w.op !== OP_PLAYERS || w.arg === 0 || w.arg === 2) &&
+      (globals === undefined ||
+        ((w.op !== OP_IF_GLOBAL || globals.has(w.arg)) &&
+          (w.op !== OP_UNLESS_GLOBAL || !sure?.has(w.arg)))) &&
+      (night === undefined || w.op !== OP_TIME || (w.arg === 1) === night),
   )
+}
+
+/**
+ * How many of the values after it an operation takes as its own, read from the
+ * game's record parser (US ARM9 `func_0205ec70`): a word whose operation is
+ * below 100 or from 500 is a condition, and one from 100 to 499 an action; each
+ * then reads so many more values, integers or floats, before the next word.
+ * Unlisted, none. `143` takes six floats and then an integer — the word after
+ * an area's box that was not placed.
+ */
+const PARAMS: ReadonlyMap<number, number> = new Map([
+  // Conditions.
+  [29, 2],
+  [32, 1],
+  [33, 1],
+  [44, 1],
+  [46, 1],
+  [47, 1],
+  [48, 1],
+  [49, 1],
+  [50, 4],
+  [52, 1],
+  [53, 2],
+  [54, 2],
+  [55, 1],
+  [56, 2],
+  [57, 2],
+  [58, 2],
+  [59, 2],
+  [60, 2],
+  [61, 2],
+  [62, 1],
+  [63, 1],
+  [64, 2],
+  [65, 2],
+  [66, 1],
+  [69, 1],
+  [70, 1],
+  [73, 1],
+  [74, 1],
+  [75, 1],
+  [76, 1],
+  [78, 2],
+  [79, 1],
+  [82, 4],
+  [83, 1],
+  [85, 1],
+  [90, 1],
+  [91, 1],
+  // Actions.
+  [108, 2],
+  [109, 2],
+  [116, 1],
+  [117, 1],
+  [118, 1],
+  [122, 3],
+  [123, 1],
+  [130, 1],
+  [131, 1],
+  [132, 3],
+  [133, 1],
+  [134, 1],
+  [135, 1],
+  [136, 2],
+  [138, 1],
+  [139, 1],
+  [140, 1],
+  [143, 7],
+  [144, 1],
+  [148, 3],
+  [149, 1],
+  [150, 1],
+  [152, 2],
+  [153, 2],
+  [154, 2],
+  [155, 1],
+  [156, 1],
+  [157, 1],
+  [158, 1],
+  [159, 1],
+  [167, 1],
+  [168, 1],
+  [169, 1],
+  [171, 1],
+  [172, 1],
+  [174, 1],
+  [176, 1],
+  [177, 1],
+  [178, 3],
+  [179, 1],
+  [180, 1],
+  [188, 2],
+  [190, 2],
+  [195, 1],
+  [196, 1],
+  [200, 1],
+  [201, 1],
+  [207, 2],
+  [213, 2],
+  [214, 3],
+  [215, 2],
+  [226, 1],
+  [230, 1],
+  [232, 1],
+])
+
+/** One of a record's operations and the values it takes — see {@link PARAMS}. */
+export interface TriggerEntry {
+  readonly op: number
+  readonly arg: number
+  /** Its own values: integers as the table holds them, floats as floats. */
+  readonly params: readonly number[]
+}
+
+/** Whether an operation is a condition, as the game's parser sorts them — see {@link PARAMS}. */
+export const isCondition = (op: number) => op < 100 || op >= 500
+
+/**
+ * A record's operations, each with the values it takes as its own, as the
+ * game's parser splits them — see {@link PARAMS}. A value that is not an
+ * integer where an operation is expected is skipped, as `triggerWords` skips
+ * floats.
+ */
+export function entriesOf(trigger: Trigger): TriggerEntry[] {
+  const { values, kinds, floats } = trigger
+  const out: TriggerEntry[] = []
+  let i = 0
+  while (i < values.length) {
+    if (kinds[i] !== 1) {
+      i++
+      continue
+    }
+    const value = values[i] as number
+    const op = value >>> 16
+    const count = PARAMS.get(op) ?? 0
+    const params: number[] = []
+    for (let k = 1; k <= count && i + k < values.length; k++) {
+      params.push(kinds[i + k] === 2 ? (floats[i + k] as number) : (values[i + k] as number))
+    }
+    out.push({ op, arg: value & 0xffff, params })
+    i += 1 + count
+  }
+  return out
+}
+
+/**
+ * The basic conditions a composite one tests, read from the game's code
+ * (US ARM9 `func_0205faf4`): 52 to 61 each test a character (`6`) and then
+ * more, taking each of their values as its high and low half in turn. 52 is
+ * a character, a flag clear (`5`) and who is playing (`23`) — Stornway's
+ * lobby at 2.7, `52:205 3:2 119:2940 104:3`, talking to 205 while flag 3 is
+ * clear. 53 to 61 also call `func_0206474c` on the first value's halves, which
+ * tests one of four states of an id (`func_0206e120`) — quest progress,
+ * perhaps, and **not read**: the composite is kept beside what it expands to,
+ * so that part is left to hold, as other conditions not read are. 53 adds a
+ * label (`11`) and an answer (`16`), 54 a `18`, 56 a `36`, 57 and 58 a `23`,
+ * 61 a `23`. 1,409 records carry one, 537 of them `55`.
+ */
+function expanded(entry: TriggerEntry): TriggerEntry[] {
+  const halves = entry.params.flatMap((v) => [(v >> 16) & 0xffff, v & 0xffff])
+  const half = (i: number) => halves[i] ?? 0
+  const basic = (op: number, arg: number): TriggerEntry => ({ op, arg, params: [] })
+  const character = basic(OP_CHARACTER, entry.arg)
+  switch (entry.op) {
+    case 52:
+      return [character, basic(OP_UNLESS_FLAG, half(0)), basic(OP_PLAYERS, half(1))]
+    case 53:
+      return [entry, character, basic(OP_LABEL_IS, half(2)), basic(OP_ANSWER_IS, half(3))]
+    case 54:
+      return [entry, character, basic(18, half(2))]
+    case 56:
+      return [entry, character, basic(36, half(2))]
+    case 57:
+    case 58:
+      return [entry, character, basic(OP_PLAYERS, half(3))]
+    case 61:
+      return [entry, character, basic(OP_PLAYERS, half(2))]
+    case 55:
+    case 59:
+    case 60:
+      return [entry, character]
+    default:
+      return [entry]
+  }
+}
+
+/** The talk label a talk record is for — see `pickLine` in `apps/game`. */
+const OP_LABEL_IS = 11
+/** The prompt's answer a talk record waits for — see `pickLine` in `apps/game`. */
+const OP_ANSWER_IS = 16
+
+/**
+ * A record's conditions, without any action's own values — see
+ * {@link entriesOf} — and each composite one with the basic conditions it tests
+ * beside it — see {@link expanded}.
+ */
+export function conditionsOf(trigger: Trigger): TriggerEntry[] {
+  return entriesOf(trigger)
+    .filter((entry) => isCondition(entry.op))
+    .flatMap(expanded)
 }
 
 /** The marks a record sets — see {@link OP_SET_MARK}. */
@@ -466,9 +822,9 @@ export function facilityFor(
   const at = order(stage)
   for (const trigger of triggers) {
     if (trigger.map !== map || at < order(trigger.from) || at > order(trigger.to)) continue
-    const words = triggerWords(trigger)
-    if (!words.some((w) => w.op === OP_CHARACTER && w.arg === character)) continue
-    const facility = words.find((w) => w.op === OP_FACILITY)
+    const named = conditionsOf(trigger).some((w) => w.op === OP_CHARACTER && w.arg === character)
+    if (!named) continue
+    const facility = triggerWords(trigger).find((w) => w.op === OP_FACILITY)
     if (facility) return facility.arg
   }
   return undefined

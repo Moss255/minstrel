@@ -17,12 +17,12 @@ credits in one save. **The worklist is `docs/story-walk.md`**, produced by
 cartridge by the engine's own rules and prints every break with why. It
 takes precedence over the list below, which was the sweep's.
 
-The slice plays through in one walk, and 101 breaks follow it. The story's
-five threads (`214`) are read and built. Take the rest by cause, in the
-file's order: first the stage words on records that are not an event's own,
-which wants *when* each kind of record runs read from the game's code; then
-how story characters are placed. Run the walk again after each, because most
-of the rest are cascades.
+The slice plays through in one walk and on into Stornway's chapter 3, and 87
+breaks remain. The story's five threads and how the game runs a record are
+read and built. **Next is how story characters are placed** (cause 2 in the
+list, 23 breaks): the `s0xx` cast entries a record talks to where the cast
+file places nobody. Run the walk again after each, because most of the rest
+are cascades.
 
 Decomp and wiki contributions are deferred until minstrel is finished. A
 function read from the game's code along the way goes in

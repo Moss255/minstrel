@@ -3523,6 +3523,78 @@ elsewhere. Read so far:
 the flags on any move. That was marked "ours" in `moveStory`, and the code
 corrects it.
 
+### How a record runs — read later the same day
+
+**Which record runs.** Records are kept grouped by value 5, their **kind**.
+The game asks for a kind with a context (who is talked to, the map, the area,
+the event, the set battle) and takes **the first record of that kind, in the
+file's order, whose conditions all hold** (`func_02064490`). It then runs
+**every one of that record's actions** (`func_020649b0` → `func_02064530`), and
+applies what they queued (`func_0206f81c`). So a stage move on a talk, entry
+or battle record is part of running that record. It is not only an event's
+own record that can move the story.
+
+**The parser** (`func_0205ec70`) makes a word whose operation is below 100 or
+from 500 a **condition**, and one from 100 to 499 an **action**. Each then
+takes a fixed number of the values after it as its own: `132`, `148` and
+`214` take three, `133` one (an event, `value >> 16`), `143` six floats and an
+integer. The full table is `PARAMS` in `story.ts`. So the `0 : n` words after
+`132` are its stage, not conditions.
+
+**The conditions** (`func_0205faf4`, a switch on the operation):
+
+| op | holds when |
+|---|---|
+| 0, 1 | a game-wide flag (`+0x8c`) is set, clear |
+| 2, 3 | a mark of the live thread is set, clear |
+| 4, 5 | a flag of the live thread is set, clear |
+| 6, 7, 8, 9, 12 | the context's character, area, event, map, set battle is the argument (`+0`, `+4`, `+8`, `+0xc`, `+0x18`) |
+| 17 | `17 : 1` by night; any other argument by morning, day or evening (`GameState::IsMorningDayOrEvening`) |
+| 23 | a test of a session object's first word and one more state: 0 with no session, 1 with one, 2 with none or one kind of player, 3 only the other. INFERRED multiplayer; alone, 0 and 2 hold |
+| 35 | the step is the argument |
+| 36 | a value of game object 0 (`+0x130`, then `+4`) is above 0 for `36 : 0`, at or below 0 otherwise; what the value is is not established |
+| 52 to 61 | **composites**: each names a character (`6`, its argument) and tests more, taking each of its values as its high and low half in turn (the parser stores them so). 52 is `6`, `5` (a flag clear) and `23`: Stornway's lobby at 2.7, `52:205 3:2 119:2940 104:3`, is talking to 205 with flag 3 clear. 53 to 61 also call `func_0206474c(id, mode)`, which holds by one of four states of the id (`func_0206e120`) and is not established; 53 adds `11` and `16`, 54 an `18`, 56 a `36`, 57, 58 and 61 a `23`. 1,409 records carry one |
+
+**The queue** (`func_0206f81c`) applies:
+
+| op | what |
+|---|---|
+| 132 | the live thread's stage and step |
+| 148 | **all five threads'**: `ev28800` at 13.1 brings the threads back together at 13.2; winning set battle 25 at 17.2 plays `ev29300` and sets all five to 19.2 |
+| 214 | thread *n*'s |
+| 119 | starts the event |
+| 133, 138, 226 | a map change and the event played there, one case. 138 and 226 each set one flag on it that 133 does not; what the flags do is not established |
+
+Each stage move goes through `func_020703c8(thread, major, minor, step)`, and
+**the story only moves forward**. The thread's point and the new one compare
+as `major × 10000 + minor × 100 + step`, and a move to one at or before where
+it stands does nothing. A move forward clears the thread's banks as `132`'s
+action does: all four on a new major, the flags and `+0x14` on a new minor.
+`132`'s action also clears before queuing, by the live stage, whichever way
+the move goes.
+
+**Kind 6 runs every frame in the field.** The field's frame update
+(`func_ov017_0218cbd4`, which reads the tick count and updates everything)
+calls `func_ov017_0219ca88`. Once the map's doorways, fades and transitions
+have had their turn, that asks for the first kind-6 record whose conditions
+hold, with the map's id as the context, and runs it. The table only ever holds
+the current map's records, so kind 6 is "while the Hero is in this map and
+these conditions hold, do this". Angel Falls' church and stable at 1.2, `4:4
+4:5 … 132:0 0:1 0:3 0:1`, move the story on the moment both flags are set.
+
+**Who asks for which kind**, as far as read. Each is a call to the lookup with
+the kind as a constant:
+
+| kind | asked for by |
+|---|---|
+| 0, 1 | the field's talk (`func_ov017_021a4cf0`, `func_ov017_021b8e8c`) |
+| 2, 5 | the field (`func_ov017_0219814c`, `func_ov017_02198e30`) |
+| 3, 20 | map loading, only their action 108 (`func_02017a94`, `func_02018300`) |
+| 6 | the field's frame update, above |
+| 11 | the end of an event (`func_ov017_021bc77c`) |
+| 20 | loading the trigger file (`func_02064574`), which takes the areas |
+| 9, 10, 12, 17, 18, 19, 22–27, 29, 30 | elsewhere: overlays 1 to 4 and 17, not yet read |
+
 **The opening, as the records have it.** The morning's record, in map 1110:
 `8:2130 132:0 0:2 0:2 0:1 197:6` — after it the story is at 2.2, step 1. At
 2.2 a character record in 1107, Erinn's house, names Ivor and his event,

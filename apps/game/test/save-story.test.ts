@@ -42,8 +42,9 @@ describe('the story in a save', () => {
       { stage: { major: 0, minor: 0 }, step: 0, flags: [], marks: [] },
       { stage: { major: 12, minor: 1 }, step: 3, flags: [1, 2], marks: [] },
     ]
-    const back = decodeSave(encodeSave({ ...game, marks: [7], thread: 1, threads }))
+    const back = decodeSave(encodeSave({ ...game, marks: [7], globals: [92], thread: 1, threads }))
     expect(back.marks).toEqual([7])
+    expect(back.globals).toEqual([92])
     expect(back.thread).toBe(1)
     expect(back.threads).toEqual(threads)
   })
@@ -57,6 +58,7 @@ describe('the story in a save', () => {
 
   it('refuses marks, a thread or threads that do not read, saying which', () => {
     expect(() => decodeSave(JSON.stringify({ ...game, marks: [-2] }))).toThrow(/marks/)
+    expect(() => decodeSave(JSON.stringify({ ...game, globals: [0.5] }))).toThrow(/game-wide/)
     expect(() => decodeSave(JSON.stringify({ ...game, thread: 'one' }))).toThrow(/thread/)
     const bad = [{ stage: { major: 1 }, step: 0, flags: [], marks: [] }]
     expect(() => decodeSave(JSON.stringify({ ...game, threads: bad }))).toThrow(/threads/)

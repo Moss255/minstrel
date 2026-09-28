@@ -382,8 +382,11 @@ there were about a hundred breaks after it, most of them from three causes.
 One of the three, `214`, turned out to be the one thing on the list that
 restructures data: **the story is five threads, and the map decides which is
 live**. That was read from the game's code and built the same day, before any
-of chapter 6's content, which is the order this plan asks for. 101 breaks
-remain.
+of chapter 6's content, which is the order this plan asks for. So was how
+the game runs a record: every action, kind 6 every frame, conditions parsed
+as the game parses them. With that, **the story is followed past the slice's
+end for the first time**, from Angel Falls into Stornway's chapter 3, in the
+walk and in the game. 87 breaks remain.
 
 ### Phase 4 — The postgame
 

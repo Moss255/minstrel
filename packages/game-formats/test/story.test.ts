@@ -3,23 +3,28 @@ import {
   afterBattle,
   areaEvent,
   areasOf,
+  conditionsOf,
   entryEvent,
   entryPlay,
   eventOutcome,
   FACILITY_MEDALS,
   facilityFor,
   flagsHold,
+  holds,
   inArea,
   KIND_AREA_EVENT,
   KIND_ENTRY,
   KIND_EVENT,
   KIND_LOST,
   KIND_SETTINGS,
+  KIND_WATCH,
   KIND_WON,
   marksSet,
   OP_IF_FLAG,
   OP_UNLESS_FLAG,
+  outcomeOf,
   triggerWords,
+  watchPlay,
 } from '../src/story.ts'
 import type { Trigger, TriggerStage } from '../src/triggers.ts'
 
@@ -113,7 +118,7 @@ describe('areas, and what walking into one plays', () => {
 
   it('plays the event of an area walked into, while its flags hold', () => {
     const into15 = (area: number) => area === 15
-    expect(areaEvent([mayor], 1105, at21, new Set(), undefined, into15)).toEqual({
+    expect(areaEvent([mayor], 1105, at21, new Set(), undefined, into15)).toMatchObject({
       event: 2120,
       flags: [],
     })
@@ -161,9 +166,9 @@ describe('what entering a map plays', () => {
       0,
       [at21, at21],
     )
-    expect(entryPlay([village], 1100, at21, new Set())).toEqual({ event: 22590, flags: [0] })
+    expect(entryPlay([village], 1100, at21, new Set())).toMatchObject({ event: 22590, flags: [0] })
     expect(entryPlay([village], 1100, at21, new Set([0]))).toBeUndefined()
-    expect(entryPlay([pass], 5101, at22, new Set())).toEqual({ event: 2300, flags: [] })
+    expect(entryPlay([pass], 5101, at22, new Set())).toMatchObject({ event: 2300, flags: [] })
   })
 
   it('is not a character’s record, and plays nothing when its record names no event', () => {
@@ -220,7 +225,7 @@ describe('the story in trigger records', () => {
       [0, 1],
       [197, 6],
     ])
-    expect(eventOutcome([morning], 2130)).toEqual({
+    expect(eventOutcome([morning], 2130)).toMatchObject({
       stage: { major: 2, minor: 2, step: 1 },
       flags: [],
       onward: undefined,
@@ -249,7 +254,7 @@ describe('the story in trigger records', () => {
       [133, 1100],
       [2210, 0],
     ])
-    expect(eventOutcome([greeting], 2200)).toEqual({
+    expect(eventOutcome([greeting], 2200)).toMatchObject({
       stage: undefined,
       flags: [],
       onward: { map: 1100, event: 2210 },
@@ -378,8 +383,8 @@ describe('the story in trigger records', () => {
       [197, 10],
     ])
     const records = [talk, won, lost]
-    expect(afterBattle(records, 2, true, 7105)).toEqual({ event: 2550, flags: [] })
-    expect(afterBattle(records, 2, false, 7105)).toEqual({ event: undefined, flags: [4] })
+    expect(afterBattle(records, 2, true, 7105)).toMatchObject({ event: 2550, flags: [] })
+    expect(afterBattle(records, 2, false, 7105)).toMatchObject({ event: undefined, flags: [4] })
     expect(afterBattle(records, 3, true, 7105)).toBeUndefined()
     expect(afterBattle(records, 2, true, 7101)).toBeUndefined()
   })
@@ -435,5 +440,148 @@ describe('a facility a character opens — 145', () => {
     expect(facilityFor([max], 1807, 102, { major: 8, minor: 1 })).toBeUndefined()
     expect(facilityFor([max], 1800, 103, { major: 8, minor: 1 })).toBeUndefined()
     expect(facilityFor([max], 1807, 103, { major: 5, minor: 1 })).toBeUndefined()
+  })
+})
+
+/**
+ * A record as the game's code runs it — see FORMAT.md, "How a record runs":
+ * its words split into conditions and actions, each action taking its own
+ * values, and every action run.
+ */
+describe('a record, run as the game runs it', () => {
+  const at = (major: number, minor: number) => ({ major, minor })
+
+  it('keeps an action’s own values out of its conditions', () => {
+    // `132` takes three values; the `0 : 5` after them is a condition, a
+    // game-wide flag.
+    const record = trigger(1100, KIND_EVENT, [
+      [8, 2130],
+      [132, 0],
+      [0, 2],
+      [0, 2],
+      [0, 1],
+      [0, 5],
+    ])
+    expect(conditionsOf(record).map(({ op, arg }) => [op, arg])).toEqual([
+      [8, 2130],
+      [0, 5],
+    ])
+    expect(holds(record, { flags: new Set(), more: { globals: new Set([5]) } })).toBe(true)
+    expect(holds(record, { flags: new Set(), more: { globals: new Set([2]) } })).toBe(false)
+  })
+
+  it('reads the time of day and, played alone, who is playing', () => {
+    const night = [{ op: 17, arg: 1 }]
+    expect(flagsHold(night, new Set(), undefined, undefined, { night: true })).toBe(true)
+    expect(flagsHold(night, new Set(), undefined, undefined, { night: false })).toBe(false)
+    expect(flagsHold([{ op: 17, arg: 0 }], new Set(), undefined, undefined, { night: false })).toBe(
+      true,
+    )
+    const players = (arg: number) => flagsHold([{ op: 23, arg }], new Set())
+    expect([0, 1, 2, 3].map(players)).toEqual([true, false, true, false])
+  })
+
+  it('takes the first of an event’s own records whose conditions hold', () => {
+    // The Observatory at 15.3: the second of the two talked to moves on to step 4.
+    const first = trigger(4504, KIND_EVENT, [
+      [8, 15420],
+      [5, 1],
+      [5, 0],
+      [104, 1],
+      [132, 0],
+      [0, 15],
+      [0, 3],
+      [0, 3],
+    ])
+    const second = trigger(4504, KIND_EVENT, [
+      [8, 15420],
+      [5, 1],
+      [4, 0],
+      [104, 1],
+      [132, 0],
+      [0, 15],
+      [0, 3],
+      [0, 4],
+    ])
+    const state = (flags: number[]) => ({ flags: new Set(flags) })
+    expect(eventOutcome([first, second], 15420, 4504, state([]))?.stage?.step).toBe(3)
+    expect(eventOutcome([first, second], 15420, 4504, state([0]))?.stage?.step).toBe(4)
+    expect(eventOutcome([first, second], 15420, 4504, state([1]))).toBeUndefined()
+  })
+
+  it('goes on by 138 and 226 as by 133, and moves every thread by 148', () => {
+    // Angel Falls at 2.7, on to Stornway's lobby.
+    const onToStornway = trigger(100, KIND_EVENT, [
+      [8, 2910],
+      [138, 50101],
+      [22500, 0],
+      [104, 2],
+    ])
+    expect(outcomeOf(onToStornway).onward).toEqual({ map: 50101, event: 22500 })
+    expect(outcomeOf(onToStornway).flags).toEqual([2])
+    const academy = trigger(2100, KIND_EVENT, [
+      [8, 12100],
+      [226, 2103],
+      [12101, 0],
+    ])
+    expect(outcomeOf(academy).onward).toEqual({ map: 2103, event: 12101 })
+    const together = trigger(6401, KIND_EVENT, [
+      [8, 28800],
+      [148, 0],
+      [0, 13],
+      [0, 2],
+      [0, 1],
+    ])
+    expect(outcomeOf(together).all).toEqual({ major: 13, minor: 2, step: 1 })
+  })
+
+  it('keeps the actions in the record’s order, with what each clears and sets', () => {
+    const record = trigger(8612, KIND_EVENT, [
+      [8, 14140],
+      [104, 3],
+      [132, 0],
+      [0, 14],
+      [0, 2],
+      [0, 1],
+      [105, 4],
+      [102, 1],
+      [103, 2],
+      [100, 29],
+      [101, 30],
+    ])
+    const outcome = outcomeOf(record)
+    expect(outcome.actions?.map((a) => a.op)).toEqual([104, 132, 105, 102, 103, 100, 101])
+    expect(outcome).toMatchObject({
+      flags: [3],
+      unflags: [4],
+      marks: [1],
+      unmarks: [2],
+      globals: [29],
+      unglobals: [30],
+    })
+  })
+
+  it('runs a map’s watch: the first of its records whose conditions hold', () => {
+    // Stornway's lobby at 2.7: flag 3 set, the story goes on to 3.1.
+    const lobby = trigger(
+      50101,
+      KIND_WATCH,
+      [
+        [9, 50101],
+        [23, 2],
+        [4, 3],
+        [132, 0],
+        [0, 3],
+        [0, 1],
+        [0, 1],
+      ],
+      0,
+      [at(2, 7), at(2, 7)],
+    )
+    const withFlag = watchPlay([lobby], 50101, at(2, 7), { flags: new Set([3]) })
+    expect(withFlag?.stage).toEqual({ major: 3, minor: 1, step: 1 })
+    expect(watchPlay([lobby], 50101, at(2, 7), { flags: new Set() })).toBeUndefined()
+    expect(watchPlay([lobby], 50101, at(3, 1), { flags: new Set([3]) })).toBeUndefined()
+    expect(watchPlay([lobby], 50201, at(2, 7), { flags: new Set([3]) })).toBeUndefined()
   })
 })

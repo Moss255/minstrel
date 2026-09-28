@@ -196,18 +196,30 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
   })
 
   it('gets an answer from nearly everyone it asks', () => {
-    // 1,116 of 1,135. Of the rest, 17 play an event instead of speaking — the
+    // 1,103 of 1,135. Of the rest, 30 play an event instead of speaking — the
     // trigger chose a scene over a line, which is the system working — and
     // **two have nothing at all**. Two is small enough to be worth naming one
     // day and too small to chase now.
-    expect(t.spoke).toBe(1116)
+    //
+    // **1,116 and 17 until 28 September 2026**, when a record's conditions came
+    // to be read as the game's code reads them (FORMAT.md, "How a record
+    // runs"): the composites `52` to `61` name 13 more characters whose record
+    // plays an event, and records for playing together (`23:3`) or by night
+    // (`17:1`, asked here by day) no longer hold.
+    expect(t.spoke).toBe(1103)
     // **Most of what the engine says is its own choice, not the game's.**
     // No trigger names the character, so `pickLine` takes the plain
     // line; no line with that label covers the sub-stage, so it takes
     // the first that does. Pinned so the number moves only on purpose —
     // down when the selection is read better, up if it regresses.
-    expect(t.guessed).toBe(662)
-    expect(t.events).toBe(17)
+    //
+    // 662 until 28 September 2026. It rose by 39 when conditions came to be
+    // read (see above), and every one of the 39 is a character left with no
+    // record that holds, so taking the plain line: 31 whose plain line is only
+    // in tag 2, which this does not read, and 8 with none. Records that no
+    // longer hold are the game's rule, not a regression.
+    expect(t.guessed).toBe(701)
+    expect(t.events).toBe(30)
     expect(t.nothing).toBe(2)
     expect(t.silent).toBe(0)
   })
@@ -248,10 +260,12 @@ describe.skipIf(!romPath)('whether anyone can be talked to, anywhere', () => {
     // wrong in the same direction and the 336 were invisible. The numbers are
     // pinned because getting the default right and the exceptions wrong would
     // look like an improvement and be a town of swivelling villagers.
+    // 780, 198 and 138 of 1,116 until 28 September 2026; the lines chosen
+    // moved with the conditions — see above.
     expect([...t.turns].sort((a, b) => b[1] - a[1])).toEqual([
-      ['player', 780],
-      ['keep', 198],
-      ['back', 138],
+      ['player', 783],
+      ['keep', 184],
+      ['back', 136],
     ])
     expect([...t.turns.values()].reduce((a, b) => a + b, 0)).toBe(t.spoke)
   })

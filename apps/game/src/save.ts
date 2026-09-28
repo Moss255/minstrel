@@ -148,6 +148,8 @@ export interface SaveGame {
    */
   readonly thread?: number
   readonly threads?: readonly SaveThread[]
+  /** The game-wide flags set — see `OP_SET_GLOBAL`. Absent from saves made before they were kept. */
+  readonly globals?: readonly number[]
   /**
    * The party, the Hero first — see {@link SaveMember}. Never empty: a save
    * with no Hero is a save of nobody, and `decodeSave` refuses it.
@@ -239,6 +241,9 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.marks !== undefined && (!Array.isArray(s.marks) || !s.marks.every(isCount))) {
     throw new SaveError('the save has story marks that do not read')
+  }
+  if (s.globals !== undefined && (!Array.isArray(s.globals) || !s.globals.every(isCount))) {
+    throw new SaveError('the save has game-wide flags that do not read')
   }
   if (s.thread !== undefined && !isCount(s.thread)) {
     throw new SaveError('the save has a story thread that does not read')

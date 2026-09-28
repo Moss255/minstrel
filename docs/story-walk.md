@@ -54,20 +54,20 @@ it by cause.
 
 ## Where it stands, 28 September 2026
 
-- **From a new game:** 1.1, then 1.2 steps 1 and 2. It stops before 1.3.
-- **The slice plays through in one walk**, 1.4 to 2.7, and every step the
-  records set. This is the test's check that the walk is sound. The slice is
-  known to play, and the walk agrees.
-- **From 5.2, one walk now plays into all five threads**: chapters 6, 7, 8,
-  11 and 12, each to its own first break. Before the threads were read, the
-  walk stopped at 5.2.
-- **101 breaks** between 1.1 and 19.7, against 109 counted the same way
-  without the threads. The first break after the slice is the first thing a
-  player meets on leaving Angel Falls: arriving at Stornway's lobby, which
-  starts chapter 3.
+- **From a new game:** 1.1 to 1.2 step 2. It stops before 1.3.
+- **The slice plays through in one walk, and on into Stornway.** From 1.4
+  the walk plays all of chapter 2 and then 3.1 steps 1 and 2. That is the
+  first time the story has been followed past the slice's end. The same was
+  checked in the game in a browser: talking to #203 in Stornway's lobby at
+  2.7 plays `ev2940`, and once it is read the story is at 3.1.
+- **From 5.2, one walk plays into all five threads**: chapters 6, 7, 8, 11
+  and 12, each to its own first break.
+- **87 breaks** between 1.1 and 19.7. There were 109 before the threads were
+  read, and 101 with them. The first after the slice is now in Stornway's
+  castle, before 3.1 step 3.
 
 A break usually has more than one cause, one for each record that could have
-moved the story on. So the counts below add up to more than 101.
+moved the story on. So the counts below add up to more than 87.
 
 ## The list, by cause
 
@@ -76,44 +76,61 @@ that unblock the most.
 
 | # | cause | breaks | first before | kind of work |
 |---|---|---|---|---|
-| 1 | **A stage set on a record that is not an event's own** | 21 | 1.3; after the slice, 3.1 | engine, plus reading kinds 6 and 20 in the game's code |
-| 2 | **A character a record talks to that the cast does not stand there** | 21 | 1.3 step 2 | reading: how the game places story characters |
+| 1 | ~~**A stage set on a record that is not an event's own**~~ | — | — | **done, 28 September**: records run as the game runs them |
+| 2 | **A character a record talks to that the cast does not stand there** | 23 | 1.3 step 2 | reading: how the game places story characters |
 | 3 | ~~**`214`, a story's stage set by its number**~~ | — | — | **done, 28 September**: read from the game's code and built |
-| 4 | Chained from an event the walk never played | 17 | 4.5 | none directly: a cascade, run again after 1 and 2 |
-| 5 | A set battle whose starting event the walk never played | 7 | 3.3 | as 4 |
-| 6 | Nothing reaches the event | 7 | 12.1 step 2 | reading: `S07`, op `226`, and VM opcode `0x1e` |
-| 7 | A flag the walk never had | 5 | 1.1 step 2 | as 4, mostly |
+| 4 | Chained from an event the walk never played | 12 | 4.5 | none directly: a cascade |
+| 5 | A set battle whose starting event the walk never played | 13 | 3.2 step 3 | as 4, and what starts a battle from a script (`547`) |
+| 6 | Nothing reaches the event | 6 | 14.4 step 4 | reading: `S07`, and VM opcode `0x1e` |
+| 7 | A flag, mark or step the walk never had | 6 | 1.3 | as 4, mostly |
 | 8 | An area no record defines | 5 | 3.1 step 3 | reading: where areas 0, 1, 72 and 73 come from |
-| 9 | Another of the character's records chooses first | 6 | 4.3 step 3 | reading: `pickLine`'s precedence, INFERRED |
-| 10 | The event plays, but the wrong one of its own records is taken | 3 | 5.1 | engine |
+| 9 | Another of the character's records chooses first | 3 | 4.3 step 3 | reading: `pickLine`'s precedence, INFERRED |
+| 10 | The event plays, but its own record is in another area's file | 3 | 5.1 | engine |
 | 11 | A closing step of 0 on a cast record | 2 | 4.3 | reading |
-| 12 | A record kind the engine does not read | 2 | 13.5 step 2 | reading |
+| 12 | A record kind the engine does not read | 3 | 4.3 step 5 | reading: kind 20's actions besides areas |
+| 13 | An entry record that plays no event | 1 | 15.3 step 5 | reading: what runs kind 3 besides its `108` at load |
 
-Five more breaks name a record whose span the walk was never at, and three
+Seven more breaks name a record whose span the walk was never at, and five
 the walk cannot explain. Both kinds are listed in the test's printout.
 
-### 1. A stage set on a record that is not an event's own
+### 1. Records run as the game runs them: done, 28 September 2026
 
-`followEvent` moves the story only by an event's own record (kind 11). But
-**40 records of other kinds carry the same stage word, `132`**, and the engine
-ignores them:
+**Read from the game's code**: FORMAT.md, "How a record runs", with the
+functions logged in `docs/decomp-contributions.md`.
 
-| kind | what it is | records with `132` | example |
-|---|---|---|---|
-| 1 | talk: a character, a label, what talking does | 19 | Alltrades Abbey at 6.1: `6:7 11:192 104:1 197:43 132:0 0:6 0:2 0:1` |
-| 16 | a set battle lost | 6 | Tower of Trades at 6.4: `12:4 132:0 0:6 0:5 0:1 197:46` |
-| 6 | not established; opens with `9 : map`, as an entry record does | 6 | Stornway's lobby at 2.7: `9:50101 23:2 4:3 132:0 0:3 0:1 0:1` |
-| 15 | a set battle won | 4 | the Realm of the Mighty at 17.1: `12:20 132:0 0:17 0:1 0:2` |
-| 3 | entering a map | 3 | Batsureg at 10.1: `9:2000 23:2 4:0 132:0 0:10 0:2 0:1 119:28791 197:70` |
-| 20 | map settings, but this one opens with `9 : map` | 1 | Quarantomb at 4.3 |
-| 0 | a character's own record, choosing a label | 1 | Coffinwell at 4.1: `6:25 5:0 23:2 118:25 192:0 104:0 197:28 132:0 0:4 0:1 0:2` |
-
-Kinds 0, 1, 3, 15 and 16 are already read, and the engine plays them. What
-is missing is applying their `132` and `104` as `moveStory` applies an
-event's. Kind 6 has to be read first: 34 records on the cartridge, 33 of them
-opening with `9` and their own map. The Tower of Trades
-shows the lost-battle case matters: at 6.4 the story moves on whether the
-battle is won or lost.
+- **The game takes a record the same way for every kind**: the first of that
+  kind, in file order, whose conditions hold. It then runs **every one of its
+  actions** (`func_02064490`, `func_020649b0`). So a `132` on a talk, entry
+  or battle record moves the story when that record runs.
+- **The parser** splits a record into conditions (operations below 100, or
+  from 500) and actions (100 to 499). Each operation takes a fixed number of
+  the words after it as its own. `conditionsOf` now reads conditions that
+  way, and **the `0 : n` words after `132` are no longer mistaken for
+  conditions**.
+- **Conditions now read**:
+  - `0`/`1`, game-wide flags;
+  - `17`, day or night;
+  - `23`, who is playing (as one playing alone: `23:2` holds and `23:3` does
+    not, across 1,541 records);
+  - **the composites `52` to `61`**, which name their character inside
+    themselves. That is 1,409 records `pickLine` could not see before. 52 is
+    the key one here: Stornway's lobby, talking to 203.
+- **Actions now applied**:
+  - `100`/`101`, game-wide flags;
+  - `103` and `105`, clearing a mark and a flag;
+  - `148`, every thread's stage;
+  - `138` and `226`, hand-ons like `133`. `ev2910`'s `138` is how Angel
+    Falls hands on to Stornway.
+- **Kind 6 runs every frame in the field**: `maybeWatch` in `main.ts`,
+  `watchPlay` in `story.ts`.
+- **Moves follow the game's order.** Flags, marks and game-wide flags change
+  as each action runs. Stage moves are queued and applied after, and **only
+  forward**. A flag its own record sets on the way into a new sub-stage is
+  lost, as it is in the game.
+- **An event's own record** is the first whose conditions hold, not merely
+  the first. That settles the Observatory's two at 15.3.
+- **A label's talk record** that only moves the story, with no event and no
+  hand-on, now runs once its line is read (`labelRecord` in `talk.ts`).
 
 ### 2. A character a record talks to that the cast does not stand there
 
@@ -168,17 +185,19 @@ cleared both on any move, and had marked that as ours.
 ### 4, 5 and 7. Cascades
 
 An event chained from another that was never played, a battle whose starter
-was never played, and a flag set only by something never played all wait on
-causes 1 to 3. Run the walk again once those land.
+was never played, and a flag set only by something never played mostly wait
+on cause 2. Several set battles are started from scenes by the script
+function `547`, which the engine reads and does not yet act on.
 
 ### 6. Nothing reaches the event
 
 Seven events on Gortress (`S07`), over six breaks at 14.4 and 14.6
 (`ev28991`, `ev14620`, `ev14621`, `ev14640`, `ev14641`, `ev14903`,
-`ev14770`), and `ev12101` at 12.1. `ev12101` is reached by `ev12100`'s `226:2103 12101:0`, a hand-on shaped
-like `133` that is not read. Eight scripts will not run at all
-(`ev29300`–`ev29350`, VM opcode `0x1e`). They are the likeliest thing that
-chains into Gortress's events.
+`ev14770`). Eight scripts will not run at all (`ev29300`–`ev29350`, VM
+opcode `0x1e`). They are the likeliest thing that chains into Gortress's
+events. **`ev29300` is also what winning the last set battle plays**, before
+`148` sets every thread to 19.2, so it is probably the ending and its
+credits. (`ev12101` was here too until `226` was read as a hand-on.)
 
 ### 8. An area no record defines
 
@@ -195,22 +214,16 @@ Alltrades Abbey at 6.6 it picks label 192 for `17` over the record that
 plays `ev6600`, which moves the story to 7.1. There are four such cases, at
 6.6, 9.4, 12.2 and 14.6.
 
-### 10. The event plays, but the wrong one of its own records is taken
+### 10. The event plays, but its own record is in another area's file
 
-`eventOutcome` takes the event's record in the loaded map, or else the first
-anywhere in the loaded area's file. It does not test the record's
-conditions, and it does not look in other files. Both matter:
+Talking to `106` on the Starflight Express at 4.7 plays `ev24598`, which
+chains `ev24500` → `ev25500` → `ev5110`. The record for `ev5110` is in the
+Observatory's file (`X05`), so the move to 5.1 is lost. The game only ever
+holds the current map's records, so the scene must take the Hero there
+before it ends. Where scenes change map is `event.ts`'s to read.
 
-- **In another area's file.** Talking to `106` on the Starflight Express at
-  4.7 plays `ev24598`, which chains `ev24500` → `ev25500` → `ev5110`. The
-  record for `ev5110` is in the Observatory's file (`X05`), so the move to
-  5.1 is lost. The same happens in the game today.
-- **Chosen by flags.** At 15.3 in the Observatory, `ev15410` and `ev15420`
-  each have two records of their own, `5:1 5:0` and `5:1 4:0`. Whichever of
-  the two is talked to second takes the story to step 4. The first record is
-  always taken, so step 4 is never reached. The 1,541 records carrying `23`
-  come in pairs of the same shape, so this is probably wider than two
-  breaks.
+(The other half of this cause, an event's own records chosen by flags, is
+done: the first whose conditions hold is taken, as in the game.)
 
 ### 11. A closing step of 0
 
@@ -223,26 +236,34 @@ reading.
 
 ### 12. A kind the engine does not read
 
-Kind 20 at 13.5, in `S13`.
+Kind 20, the settings that define a map's areas, also carries stage moves,
+at 4.3 in Quarantomb and at 13.5 in `S13`. The game takes kind 20 at load
+for its areas, and kinds 3 and 20 at map load for their action `108` only
+(`func_02017a94`). What runs the rest of them is not read.
 
 ## Not measured yet
 
 - **Geography**: whether the Hero can get from where one event leaves them to
   where the next is. This is the walk's second pass, once the list above is
   short.
-- **The credits.** No record sets anything between 17.2 and 19.x, and what
-  rolls the staff roll is not read (`838` is its stopwatch).
+- **The credits.** Winning set battle 25 at 17.2 plays `ev29300` and moves
+  every thread to 19.2 (`148`). `ev29300` needs VM opcode `0x1e`, which is
+  not read, and `838` is the staff roll's stopwatch.
 - **The prologue's start**: which event a new game plays at 1.1, before the
   Observatory. This goes with character creation's eight screens, which
   already run.
 
 ## Not established, raised by this
 
-- What operation `23` is: `23:2` and `23:3` twin records, **1,541** of them.
-  It is the most common operation nothing reads.
-- What kind 6 is, beyond opening with `9 : map`. The game's action
-  interpreter is read (`func_02061c04`). What decides *when* each kind of
-  record runs is not, and that is where kinds 6 and 20 will be answered.
+- Operation `23` is read as a multiplayer session test. That it is
+  multiplayer is INFERRED, from the flag actions using the same test to
+  decide whether to send a change over the link.
+- What `func_0206474c` tests for the composites `53` to `61`: one of four
+  states of an id, through `func_0206e120`. Quest progress, perhaps. The
+  composite is kept beside what it expands to, and that part is left to
+  hold.
+- Which kind each of the other lookups asks for: 9, 10, 12, 17 to 19 and 22
+  to 30 are asked for from overlays 1 to 4 and 17, not yet read.
 - What applies the queue of stage moves that `132` and `214` add to, and when.
 - Whether the game applies each chained script's record or only the last's.
   The engine follows the last, as the scene's own event id is overwritten on
