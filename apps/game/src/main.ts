@@ -16,6 +16,7 @@ import {
   areaAt,
   areaEvent,
   areasOf,
+  BONE_SLOTS,
   blocksDoorway,
   conditionsOfWords,
   doorwayPlay,
@@ -30,6 +31,7 @@ import {
   inTalkBox,
   type LevelRow,
   type LevelTable,
+  type Lighting,
   MEDALS_MOST,
   MINI_MEDAL,
   type NpcPlacement,
@@ -51,7 +53,7 @@ import {
   watchPlay,
   wornResistances,
 } from '@minstrel/game-formats'
-import { ModelRenderer, type Piece } from '@minstrel/gl'
+import { type Backdrop, ModelRenderer, type Piece } from '@minstrel/gl'
 import {
   type Animation,
   type Geometry,
@@ -71,6 +73,7 @@ import {
   clearDistance,
   covered,
   followCamera,
+  fovOfHalfDegrees,
   INDOORS,
   keepTriangles,
   moveRelativeToCamera,
@@ -99,6 +102,7 @@ import {
   type OpenGround,
   type Opening,
   PERSON,
+  type PlacedMesh,
   type Roamer,
   type RoamerKind,
   type Roaming,
@@ -136,6 +140,7 @@ import {
   startMaking,
   turned as turnKnob,
 } from './appearance.ts'
+import { gradientOf, horizonRow, LIGHTING_SLOT } from './backdrop.ts'
 import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
   type BattleItem,
@@ -269,12 +274,23 @@ import {
   STARTING_GOLD,
   standing,
   VOCATION_WORDS,
+  weaponTurn,
 } from './hero.ts'
-import { allTriggers, entranceOf, givenNamesFrom, type Loaded, load, type Stage } from './load.ts'
+import {
+  allTriggers,
+  entranceOf,
+  givenNamesFrom,
+  type Loaded,
+  load,
+  mapLighting,
+  type Stage,
+  stageMap,
+} from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
 import { exchangeLine, type MedalLine, medalText, visitMax } from './medals.ts'
 import {
   back,
+  changeCharacter,
   choose,
   labelOf,
   MENU_COMMANDS,
@@ -350,6 +366,28 @@ import {
 } from './skills.ts'
 import { faceColours } from './skin.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
+import {
+  actorCloseUp,
+  type BattleView,
+  commandView,
+  EYE_CEILING,
+  easeOrbit,
+  FIGHTER_HEIGHT,
+  MONSTER_FACING,
+  MONSTER_SLOTS,
+  monsterExtent,
+  type Orbit,
+  openingStart,
+  orbitOf,
+  PARTY_FACING,
+  PARTY_SLOTS,
+  placesOf,
+  pulled,
+  recordOfTriangle,
+  sideShot,
+  stageOfRecord,
+  stageToFight,
+} from './stage.ts'
 import { moveStory, type Story, swapThread, THREADS, threadOf, unstarted } from './story.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
@@ -540,6 +578,8 @@ const turning = new Set<Action>()
 
 /** Which way the camera is being turned this frame: −1, 0 or 1. Keys and shoulders together. */
 function turningNow(): number {
+  // On the equipment screen the shoulders change character, not the camera.
+  if (menu?.panel === 'equip') return 0
   const held = (action: Action) =>
     turning.has(action) ||
     controlsPanel.bindings[action].buttons.some((b) => (padButtons[b] ?? 0) > 0.5)
@@ -577,11 +617,19 @@ function playMapMusic(again = false): void {
   })
 }
 
-/** A battle's track: the boss stage's for a set battle in a dungeon with one, else the ordinary stages'. */
+/**
+ * A battle's track: a set battle's own, `eventbattle.bin`'s `+0x24` (INFERRED,
+ * see `EventBattle.music`); else the ordinary stages'.
+ */
 function playBattleMusic(): void {
   if (!cartridge || !loaded || params.get('bgm')) return
+  const own = eventFight ? loaded.eventBattles.get(eventFight.index)?.music : undefined
   const wanted =
-    eventFight && loaded.bossMusic !== undefined ? loaded.bossMusic : loaded.battleMusic
+    own !== undefined && own !== 0
+      ? own
+      : eventFight && loaded.bossMusic !== undefined
+        ? loaded.bossMusic
+        : loaded.battleMusic
   if (wanted === undefined) return
   track = wanted
   void playTrack(cartridge, wanted)
@@ -956,6 +1004,46 @@ let battle: BattleScene | undefined
 /** Each fighter's look and where it stands, by its place in the battle; the Hero's are undefined. */
 let battleLooks: (MonsterLook | undefined)[] = []
 let battleSpots: ({ x: number; y: number; z: number } | undefined)[] = []
+/**
+ * **The stage the battle is fought on**, while it lasts — see `stage.ts`. The
+ * field is not drawn meanwhile, and the Hero's field place is left as it was,
+ * so nothing needs putting back: the game keeps the party's field places and
+ * restores them after (`func_ov000_021643d4`, `0x02168d08`), and this never
+ * moves them.
+ */
+let battleStage: BattleStage | undefined
+
+interface BattleStage {
+  /** Its id in the map list, and its code. */
+  readonly id: number
+  readonly code: string
+  /** The stage's origin in the world as drawn: where the Hero stood when it began. */
+  readonly origin: { readonly x: number; readonly y: number; readonly z: number }
+  /** Its models, placed about the origin. */
+  readonly pieces: readonly Piece[]
+  /** Its lighting — the sky's gradient behind it, see `backdrop.ts`. */
+  readonly lighting: Lighting | undefined
+  /** Everyone's place on it as drawn, the party then the monsters, and their facings in radians. */
+  readonly spots: readonly {
+    readonly x: number
+    readonly y: number
+    readonly z: number
+    readonly facing: number
+  }[]
+  /** Everyone's place in the stage's own space, map units, and facing in radians — the close-ups' frames. */
+  readonly places: readonly { readonly x: number; readonly z: number; readonly facing: number }[]
+  /** Everyone's height, map units: a monster's body, a party member's ours — see `openStage`. */
+  readonly heights: readonly number[]
+  /** The camera: what it holds now, the view's half-angle, and the opening's end while it eases. */
+  view: BattleView
+  halfFov: number
+  easing: Orbit | undefined
+  /** Whether the opening has come in; the fight's own shots wait for it. */
+  opened: boolean
+  /** Which shot the view is, so a change is a cut. */
+  showing: string
+  carry: number
+}
 /** When the battle's page on show began, which its monsters' motions play from. */
 let cueStarted = 0
 /**
@@ -2694,7 +2782,7 @@ function frame(now = 0): void {
     // Opening a chest holds the Hero where they knelt — see `openChest`.
     if (opening) followChestOpening(now)
     const { moving, travelled, marshTicks } =
-      playing || opening
+      playing || opening || battleStage
         ? { moving: false, travelled: 0, marshTicks: 0 }
         : flying
           ? flyOn(elapsedMs)
@@ -2795,6 +2883,7 @@ function frame(now = 0): void {
         : null
     }
     if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
+    else if (battleStage) aimAtBattle(battleStage, elapsedMs)
     else
       updateFollowCamera(
         camera,
@@ -2812,7 +2901,7 @@ function frame(now = 0): void {
     // and what nothing did. Hiding chunks answers a building the camera looks
     // over; it cannot answer a wall belonging to a shape the focus is inside,
     // which is what a close shot against one gives. See `clearDistance`.
-    if (chunkBoxes.length > 0) {
+    if (chunkBoxes.length > 0 && !battleStage) {
       camera.actualDistance = clearDistance(
         chunkBoxes,
         camera.focus,
@@ -2881,67 +2970,69 @@ function frame(now = 0): void {
       else hiddenIn.set(shape, [chunkLocal[chunk] as number])
     }
     const heroPose = heroEventPose() ?? chestOpeningPose(now)
-    const drawn = [
-      ...mapPieces.map((piece, shape) => {
-        const gone = hiddenIn.get(shape)
-        if (!gone) return piece
-        const indices = keepTriangles(piece.geometry.indices, shapeCells[shape] ?? [], gone)
-        return { ...piece, geometry: { ...piece.geometry, indices } }
-      }),
-      ...(showCollision ? collisionDrawn : []),
-      ...castPiecesNow,
-      ...treasureDrawn,
-      // A round shadow under everyone, the Hero included — see `shadows.ts`.
-      ...(loaded.shadow
-        ? shadowPieces(
-            loaded.shadow,
-            [
-              ...loaded.cast.members.map((member) => castPlaced(member.placement)),
-              ...loaded.cast.sprites2d.map((sprite) => castPlaced(sprite.placement)),
-              { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
-              ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
-            ],
-            (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
-          )
-        : []),
-      // Where an event has them, or left them — the Hexagon's figure — see `castPlaced`.
-      ...loaded.cast.sprites2d.flatMap((sprite) => {
-        const s = { ...sprite, placement: castPlaced(sprite.placement) }
-        return spritePieces(
-          s,
-          toFloat(PERSON.height) * worldScale,
-          camera.yaw,
-          standingFrame(s, camera.yaw),
-          // Fading, when an event's character is them: the figure on `ev02520`.
-          castOpacity(sprite.placement.id),
-        )
-      }),
-      // A battle's monsters, facing the Hero — see `monsters.ts`.
-      ...(battle ? foePieces(now) : []),
-      ...(battle ? companionPieces(now) : []),
-      // An event's characters, bar the Hero — see `eventPieces`.
-      ...eventPieces(),
-      // The field's roaming monsters, in their field models.
-      ...(roaming && !battle ? roamerPieces(now) : []),
-      // Pots and barrels face the camera too — see `propPiecesNow`.
-      ...propPiecesNow(loaded, now),
-      // Whoever goes along, behind the Hero — see `companionsInField`.
-      ...companionFieldPieces(now),
-      // The mark over the Hero's head: someone to talk to, something to examine, a door.
-      ...bubblePieces(now),
-      // The Starflight Express and its carriages, in flight — see `flight.ts`.
-      ...expressPieces(),
-      ...(flying
-        ? []
-        : playerPieces(
-            heroPose ? { ...self, motionFrame: heroPose.frame } : self,
-            loaded.figure,
-            loaded.pieces,
-            loaded.catalogue,
-            measurements,
-            heroPose?.motion ?? loaded.figure.motions.get(self.motion ?? ''),
-          )),
-    ]
+    const drawn = battleStage
+      ? stageDrawn(battleStage, now)
+      : [
+          ...mapPieces.map((piece, shape) => {
+            const gone = hiddenIn.get(shape)
+            if (!gone) return piece
+            const indices = keepTriangles(piece.geometry.indices, shapeCells[shape] ?? [], gone)
+            return { ...piece, geometry: { ...piece.geometry, indices } }
+          }),
+          ...(showCollision ? collisionDrawn : []),
+          ...castPiecesNow,
+          ...treasureDrawn,
+          // A round shadow under everyone, the Hero included — see `shadows.ts`.
+          ...(loaded.shadow
+            ? shadowPieces(
+                loaded.shadow,
+                [
+                  ...loaded.cast.members.map((member) => castPlaced(member.placement)),
+                  ...loaded.cast.sprites2d.map((sprite) => castPlaced(sprite.placement)),
+                  { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
+                  ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
+                ],
+                (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
+              )
+            : []),
+          // Where an event has them, or left them — the Hexagon's figure — see `castPlaced`.
+          ...loaded.cast.sprites2d.flatMap((sprite) => {
+            const s = { ...sprite, placement: castPlaced(sprite.placement) }
+            return spritePieces(
+              s,
+              toFloat(PERSON.height) * worldScale,
+              camera.yaw,
+              standingFrame(s, camera.yaw),
+              // Fading, when an event's character is them: the figure on `ev02520`.
+              castOpacity(sprite.placement.id),
+            )
+          }),
+          // A battle's monsters, facing the Hero — see `monsters.ts`.
+          ...(battle ? foePieces(now) : []),
+          ...(battle ? companionPieces(now) : []),
+          // An event's characters, bar the Hero — see `eventPieces`.
+          ...eventPieces(),
+          // The field's roaming monsters, in their field models.
+          ...(roaming && !battle ? roamerPieces(now) : []),
+          // Pots and barrels face the camera too — see `propPiecesNow`.
+          ...propPiecesNow(loaded, now),
+          // Whoever goes along, behind the Hero — see `companionsInField`.
+          ...companionFieldPieces(now),
+          // The mark over the Hero's head: someone to talk to, something to examine, a door.
+          ...bubblePieces(now),
+          // The Starflight Express and its carriages, in flight — see `flight.ts`.
+          ...expressPieces(),
+          ...(flying
+            ? []
+            : playerPieces(
+                heroPose ? { ...self, motionFrame: heroPose.frame } : self,
+                loaded.figure,
+                loaded.pieces,
+                loaded.catalogue,
+                measurements,
+                heroPose?.motion ?? loaded.figure.motions.get(self.motion ?? ''),
+              )),
+        ]
     uploaded = renderer.upload(drawn)
   } else if (mapPieces.length > 0) {
     uploaded = renderer.upload([
@@ -2962,7 +3053,15 @@ function frame(now = 0): void {
   }
   // A scene frames itself: `532` gives the event's camera its own field of
   // view, and the field's stands until one asks — see `fovOfHalfDegrees`.
-  renderer.draw(camera, false, undefined, playing?.player.stage.fov)
+  const fov =
+    playing?.player.stage.fov ?? (battleStage ? fovOfHalfDegrees(battleStage.halfFov) : undefined)
+  renderer.draw(
+    camera,
+    false,
+    undefined,
+    fov,
+    battleStage ? stageBackdrop(battleStage, fov) : undefined,
+  )
   sceneBrowser?.tick()
   requestAnimationFrame(frame)
 }
@@ -3004,6 +3103,8 @@ let fit: CollisionFit = fitFrom(params.get('fit'))
 const NO_FIT_LINE = fitLine('', NO_FIT).trim()
 /** The world as the fit leaves it: what the character actually walks on. */
 let world: CollisionWorld | undefined
+/** The meshes `world` was built of, in its order — a triangle's record is its own mesh's (see `recordOfTriangle`). */
+let worldMeshes: readonly PlacedMesh[] = []
 /**
  * A scale on the room the map *draws*, as against the collision it carries.
  *
@@ -3158,7 +3259,7 @@ function keepTime(elapsedMs: number): void {
 // For a headless check: the portrait drawn, and how much of it is not clear.
 Object.defineProperty(window, 'minstrelPortrait', {
   get: () => {
-    const drawn = heroPortrait()
+    const drawn = memberPortrait(0)
     if (!drawn) return { drawn: false, motions: loaded ? [...loaded.figure.motions.keys()] : [] }
     const probe = document.createElement('canvas')
     probe.width = drawn.width
@@ -3247,11 +3348,26 @@ const wantedFlight = params.get('fly')
  * tables' own: `w` weapons, `s` shields and so on (see `readItemTable`).
  */
 const wantedBag = params.get('bag')
+/**
+ * `?armoury=1` — **ours, for testing**: one of every weapon, shield and piece
+ * of armour on the cartridge in the bag, and anyone may wear anything — so
+ * every kind of weapon and every outfit can be put on the Hero and looked at,
+ * whatever their vocation. The tables are the equipment slots' own
+ * (`EQUIPMENT_SLOTS`), accessories left out as nothing draws them.
+ */
+const armoury = params.get('armoury') === '1'
+const ARMOURY_TABLES: ReadonlySet<string> = new Set(['w', 's', 'h', 'b', 'a', 'u', 'l'])
 let bagFilled = false
 function fillBag(opened: Loaded): void {
-  if (bagFilled || !wantedBag) return
+  if (bagFilled || (!wantedBag && !armoury)) return
   bagFilled = true
-  for (const part of wantedBag.split(',')) {
+  if (armoury) {
+    for (const [id, goods] of opened.goods) {
+      if (ARMOURY_TABLES.has(goods.table) && !bag.items.has(id)) bag = take(bag, { item: id })
+    }
+    status(`the armoury: ${bag.items.size} kinds of thing in the bag, and anyone may wear anything`)
+  }
+  for (const part of (wantedBag ?? '').split(',').filter((p) => p !== '')) {
     const [table, times] = part.split(':')
     const count = Math.max(1, Number(times) || 1)
     for (const [id, goods] of opened.goods) {
@@ -3416,6 +3532,7 @@ function refit(): void {
     z: fit.z * worldScale,
   })
   world = meshes.length > 0 ? createCollisionWorld(meshes) : undefined
+  worldMeshes = meshes
   collisionDrawn = world ? collisionPieces(world) : []
 }
 
@@ -4088,6 +4205,8 @@ function menuMember(member: Member): MenuMember {
  * into what somebody may hold.
  */
 function wearableBy(member: Member, item: number): boolean {
+  // `?armoury=1`: anyone may wear anything — ours, for testing.
+  if (armoury) return true
   const trees = loaded?.vocationTrees
   return mayWear(
     loaded?.itemStats.get(item),
@@ -5384,8 +5503,12 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     hp.set(i + 1, member.hp ?? max)
   }
   battlesFought++
-  // The monsters' places first: they turn the Hero to face them.
-  const foeSpots = spotsFor(foes.length)
+  // **The stage the fight is on**, and everyone's place on it — see `stage.ts`.
+  // Without one, the monsters line up on the field ahead of the Hero, as they
+  // did before the stages were read: ours.
+  battleStage = openStage(codes, party.length)
+  // The monsters' places first: on the field, they turn the Hero to face them.
+  const foeSpots = battleStage ? battleStage.spots.slice(party.length) : spotsFor(foes.length)
   playBattleMusic()
   battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
@@ -5426,7 +5549,9 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
     }
   })
   battleLooks = [...party.map(() => undefined), ...looks]
-  battleSpots = [undefined, ...party.slice(1).map((_, i) => besideHero(i)), ...foeSpots]
+  battleSpots = battleStage
+    ? [undefined, ...battleStage.spots.slice(1, party.length), ...foeSpots]
+    : [undefined, ...party.slice(1).map((_, i) => besideHero(i)), ...foeSpots]
   cueStarted = performance.now()
   self.held.clear()
   closeTalk()
@@ -5670,6 +5795,296 @@ function besideHero(place: number): { x: number; y: number; z: number } | undefi
 }
 
 /**
+ * **The stage a battle starting here is fought on**, loaded and placed with
+ * its origin where the Hero stands — see `stage.ts`: a set battle's own, or
+ * the one the ground under the Hero names, or 30116. Its camera opens on the
+ * monsters, as the game's opening does (`func_ov000_0216118c`). Undefined
+ * when there is nowhere to stand or the stage's models will not read.
+ */
+function openStage(codes: readonly string[], partyCount: number): BattleStage | undefined {
+  if (!loaded || !self || !cartridge) return undefined
+  const here = loaded
+  const hit = world
+    ? groundBelow(world, self.state.x, self.state.z, fx32(self.state.y + FX32_ONE))
+    : undefined
+  const record = hit ? recordOfTriangle(worldMeshes, hit.triangle) : undefined
+  const set = eventFight ? loaded.eventBattles.get(eventFight.index)?.stage : undefined
+  const id = stageToFight(
+    record ? stageOfRecord(record) : undefined,
+    set,
+    (stage) => here.mapCodeOf(stage) !== undefined,
+  )
+  const code = loaded.mapCodeOf(id)
+  const map = code ? stageMap(cartridge, code, wantedLighting) : undefined
+  if (!code || !map) return undefined
+  const origin = { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) }
+  // **Ours**: the stage is drawn in the field's own space, with its axes the
+  // field's, so that the Hero's place in the field is left alone.
+  const pieces: Piece[] = []
+  for (const piece of map.pieces) {
+    const { model } = piece
+    const place = {
+      x: origin.x + piece.place.x * worldScale,
+      y: origin.y + piece.place.y * worldScale,
+      z: origin.z + piece.place.z * worldScale,
+    }
+    model.shapes.forEach((shape, index) => {
+      const geometry = placeGeometry(
+        poseGeometry(model.geometry(shape), model.shapeMatrices[index] ?? model.matrices),
+        place,
+        piece.scale * worldScale,
+      )
+      const materialIndex = model.shapeMaterials[index]
+      const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
+      const texture = material ? textureFor(here.catalogue, material) : undefined
+      // **A polygon's own alpha**, the material's `POLYGON_ATTR` — the stage's
+      // fog is 11 and 14 of 31, its sky 28, the gradient behind showing
+      // through (see `stageBackdrop`). **Ours**: 0, a wireframe on the
+      // hardware, is drawn solid.
+      const alpha = material?.alpha ?? 31
+      const opacity = alpha > 0 && alpha < 31 ? { opacity: alpha / 31 } : {}
+      pieces.push(texture ? { geometry, ...texture, ...opacity } : { geometry, ...opacity })
+    })
+  }
+  const bodies = codes.map((c) => {
+    const who = here.monsterCodes.get(c)
+    return { kind: who?.number ?? 0, radius: who?.radius ?? 0, height: who?.height ?? 0 }
+  })
+  const shot = sideShot(1, monsterExtent(bodies), true)
+  const end = orbitOf(shot)
+  // **On the grid**, where the set-up leaves everyone (`0x02167dd8`); an
+  // action's script moves them to their rows and back (overlay 25,
+  // `func_ov025_021e6cf4`), not read when. The shot is fitted to the rows.
+  const grow = (WORLD_SCALE * worldScale) / FX32_ONE
+  const places = [
+    ...placesOf(PARTY_SLOTS, partyCount).map((p) => ({ ...p, facing: PARTY_FACING })),
+    ...placesOf(MONSTER_SLOTS, codes.length).map((p) => ({ ...p, facing: MONSTER_FACING })),
+  ]
+  const spots = places.map((place) => ({
+    x: origin.x + place.x * grow,
+    y: origin.y + FIGHTER_HEIGHT * grow,
+    z: origin.z + place.z * grow,
+    facing: place.facing / 4096,
+  }))
+  return {
+    id,
+    code,
+    origin,
+    pieces,
+    lighting: mapLighting(cartridge, code),
+    spots,
+    places: places.map((p) => ({ x: p.x / FX32_ONE, z: p.z / FX32_ONE, facing: p.facing / 4096 })),
+    heights: [
+      // **Ours**: a party member's height in battle is not read; the figure's own is taken.
+      ...places.slice(0, partyCount).map(() => toFloat(PERSON.height) / WORLD_SCALE),
+      ...bodies.map((b) => b.height / FX32_ONE),
+    ],
+    view: { target: shot.target, orbit: openingStart(end), pull: 0 },
+    halfFov: shot.halfFov,
+    easing: end,
+    opened: false,
+    showing: 'opening',
+    carry: 0,
+  }
+}
+
+/**
+ * **The sky behind a stage**: its lighting's gradient for the time of day,
+ * the horizon on the row the camera puts it — see `backdrop.ts`. None for a
+ * stage without lighting, or with none for the slot.
+ */
+function stageBackdrop(stage: BattleStage, fov: number | undefined): Backdrop | undefined {
+  const slot = stage.lighting?.slots.get(LIGHTING_SLOT[timeNow()])
+  if (!slot || fov === undefined) return undefined
+  const row = horizonRow(camera.pitch, fov / 2, stage.lighting?.gradientCentreOffset ?? 0)
+  return gradientOf(slot, row)
+}
+
+/**
+ * What a frame draws while a battle is on a stage: the stage, and on it the
+ * party and the monsters, each with its round shadow. Nothing of the field.
+ */
+function stageDrawn(stage: BattleStage, now: number): Piece[] {
+  if (!loaded || !self) return []
+  const here = loaded
+  const at = stage.spots[0]
+  if (!at) return [...stage.pieces]
+  const hero = {
+    ...self,
+    state: {
+      ...self.state,
+      x: fx32(Math.round(at.x * FX32_ONE)),
+      y: fx32(Math.round(at.y * FX32_ONE)),
+      z: fx32(Math.round(at.z * FX32_ONE)),
+    },
+    facing: at.facing,
+  }
+  const standing = battle
+    ? battleSpots.flatMap((spot, i) => {
+        const fighter = battle?.state.fighters[i]
+        return spot && fighter && fighter.hp > 0 && !fighter.fled ? [spot] : []
+      })
+    : []
+  return [
+    ...stage.pieces,
+    ...(here.shadow
+      ? shadowPieces(here.shadow, [at, ...standing], (material) =>
+          textureFor(here.catalogue, material),
+        )
+      : []),
+    ...foePieces(now),
+    ...companionPieces(now),
+    ...heroInBattle(hero, now),
+  ]
+}
+
+/**
+ * **The Hero in a fight**, playing what the page on show has them do — as
+ * the companions do (`COMPANION_MOTIONS`), from the Hero's own figure. A blow
+ * is the Hero's action script's (`mp0200.bact`): `attack1b`, and from its
+ * half-way `attack1a` — INFERRED, that its `26 7 0.5` waits for the first
+ * motion to be half through. Otherwise `damage`, `death` once fallen and told
+ * of, and `stand`. Each played once through and held on its last frame.
+ */
+function heroInBattle(hero: Player, now: number): Piece[] {
+  if (!loaded) return []
+  const scene = battle
+  const fighter = scene?.state.fighters[0]
+  const onShow = scene?.phase === 'telling' ? (scene.cues[0] ?? []) : []
+  const cue = onShow.find((c) => c.fighter === 0)
+  const toldOf = !scene?.cues.some((cues) =>
+    cues.some((c) => c.fighter === 0 && c.motion === 'death'),
+  )
+  const lying = fighter !== undefined && fighter.hp <= 0 && toldOf
+  const since = Math.max(0, ((now - cueStarted) / 1000) * MAP_FPS)
+  const motions = loaded.figure.motions
+  const forced = params.get('heromotion')
+  let name = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
+  let frame = since
+  if (cue?.motion === 'attack') {
+    const windUp = motions.get('attack1b')?.frameCount ?? 0
+    if (since < windUp / 2) name = 'attack1b'
+    else {
+      name = 'attack1a'
+      frame = since - windUp / 2
+    }
+  }
+  if (forced) {
+    name = forced
+    frame = ((now / 1000) * MAP_FPS) % (motions.get(forced)?.frameCount ?? 1)
+  }
+  const motion = motions.get(name) ?? motions.get('stand')
+  const length = motion?.frameCount ?? 1
+  const at = cue || lying ? Math.min(Math.floor(lying && !cue ? length : frame), length - 1) : frame
+  return playerPieces(
+    { ...hero, motionFrame: cue || lying || forced ? at : Math.floor(now / (1000 / MAP_FPS)) },
+    loaded.figure,
+    loaded.pieces,
+    loaded.catalogue,
+    measurements,
+    motion,
+  )
+}
+
+/** How long a blow's page holds on the one who strikes before it cuts to the one struck, ms. Ours. */
+const STRIKE_MS = 500
+
+/**
+ * **The shot the fight wants now**, once the opening has come in, or
+ * undefined to hold the one it has. The shots are the game's: while a command
+ * is chosen, the command camera (`commandView`); an action's close-up on who
+ * acts (`default.bact`'s sections open on it, camera mode 5 with 0.21 and
+ * 1.1), and on each one struck as it is struck (`ov025 0x021dcf14`, 0 and
+ * 1.8); and between them the camera stays where the last left it
+ * (`0x021dcbf4`). **When each close-up is taken is ours**: the page of a blow
+ * opens on the one striking and cuts to the one struck after
+ * {@link STRIKE_MS}, as an action's script is not played.
+ */
+function wantedView(
+  stage: BattleStage,
+  now: number,
+): { key: string; view: BattleView } | undefined {
+  const scene = battle
+  if (!scene) return undefined
+  const partyCount = scene.state.fighters.filter((f) => f.side === 'party').length
+  if (scene.phase !== 'telling' && scene.phase !== 'over') {
+    const standing = stage.places
+      .slice(0, partyCount)
+      .filter((_, i) => (scene.state.fighters[i]?.hp ?? 0) > 0)
+    return { key: 'command', view: commandView(standing) }
+  }
+  const cues = scene.cues[0] ?? []
+  const actor = cues.find((c) => c.motion === 'attack')?.fighter
+  const struck = cues.find((c) => c.motion === 'damage')?.fighter
+  const closeUp = (who: number, a: number, b: number) => {
+    const at = stage.places[who]
+    return at
+      ? actorCloseUp(at, stage.heights[who] ?? 1, who < partyCount, a, b, CLOSE_UP_HALF_FOV)
+      : undefined
+  }
+  if (struck !== undefined && (actor === undefined || now - cueStarted >= STRIKE_MS)) {
+    const view = closeUp(struck, 0, 1.8)
+    if (view) return { key: `struck ${struck}`, view }
+  }
+  if (actor !== undefined) {
+    const view = closeUp(actor, 0.21, 1.1)
+    if (view) return { key: `acts ${actor}`, view }
+  }
+  return undefined
+}
+
+/** The half-angle a reset leaves, which the close-ups frame to (`0x0216d370`): 15, a view of 30°. */
+const CLOSE_UP_HALF_FOV = 15
+
+/**
+ * **Aim the camera as the battle's does**: the opening's shot, eased in from
+ * half a unit higher and 3 farther, 5% of what is left a tick — see
+ * `easeOrbit`; then the fight's own shots, each a cut — the command camera
+ * turning slowly, the close-ups pulling in by 20/4096 a tick — see
+ * {@link wantedView}. The eye is never higher than 5 over the stage
+ * (`func_ov000_0216f2b8`).
+ */
+function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
+  if (stage.opened) {
+    const wanted = wantedView(stage, performance.now())
+    if (wanted && wanted.key !== stage.showing) {
+      stage.showing = wanted.key
+      stage.view = wanted.view
+      stage.easing = undefined
+      // Every shot after the opening follows a reset, which leaves 15.
+      stage.halfFov = CLOSE_UP_HALF_FOV
+    }
+  }
+  stage.carry = Math.min(stage.carry + elapsedMs, TICK_MS * 8)
+  while (stage.carry >= TICK_MS) {
+    stage.carry -= TICK_MS
+    if (stage.easing) {
+      const next = easeOrbit(stage.view.orbit, stage.easing)
+      stage.view = { ...stage.view, orbit: next.orbit }
+      if (next.done) {
+        stage.easing = undefined
+        stage.opened = true
+      }
+    } else stage.view = pulled(stage.view)
+  }
+  const grow = WORLD_SCALE * worldScale
+  const { target, orbit } = stage.view
+  const height = Math.min(orbit.height, EYE_CEILING - (target[1] as number))
+  camera.focus = [
+    stage.origin.x + (target[0] as number) * grow,
+    stage.origin.y + (target[1] as number) * grow,
+    stage.origin.z + (target[2] as number) * grow,
+  ]
+  camera.roll = 0
+  camera.yaw = orbit.yaw
+  camera.pitch =
+    orbit.distance > 0 ? Math.asin(Math.max(-1, Math.min(1, height / orbit.distance))) : 0
+  camera.distance = orbit.distance * grow
+  camera.actualDistance = camera.distance
+  camera.lift = 0
+}
+
+/**
  * Whoever stands beside the Hero, in their own model and motions — see
  * `COMPANION_MOTIONS`: playing what the page on show has them do, once
  * through, or their stand; lying where they fell once the page that tells it
@@ -5718,7 +6133,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
           y: fx32(Math.round(spot.y * FX32_ONE)),
           z: fx32(Math.round(spot.z * FX32_ONE)),
         },
-        facing: self.facing,
+        facing: battleStage?.spots[at.index]?.facing ?? self.facing,
         motionFrame: at3,
       },
       built.figure,
@@ -5746,7 +6161,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     x: spot.x,
     y: spot.y,
     z: spot.z,
-    facing: self.facing,
+    facing: battleStage?.spots[at.index]?.facing ?? self.facing,
     offset: 0,
   } as NpcPlacement
   const member = { name: at.model ?? '', model: look.model, motion, floor: look.floor, placement }
@@ -5763,22 +6178,30 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
 /**
  * What an attending character holds in battle: their weapon and shield in
  * `attnpc` — Ivor's copper sword and pot lid — as parts of the Hero's
- * wardrobe, hung from the forearms as the Hero's are (`CARRY_BONES`). A let's
- * play shows Ivor fighting so.
+ * wardrobe, hung from the forearms as the Hero's are (`CARRY_BONES`); the
+ * weapon where `wpnpos.bin` puts its kind in the hands, as `placeWeapon`
+ * does for the party. A let's play shows Ivor fighting so.
  */
-function heldOf(id: number): { model: Model; bone: string }[] {
+function heldOf(id: number): { model: Model; bone: string; turn?: Float32Array }[] {
   const who = loaded?.attending.find((w) => w.id === id)
   const wardrobe = loaded?.wardrobe
   if (!who || !wardrobe) return []
-  const held: { model: Model; bone: string }[] = []
+  const held: { model: Model; bone: string; turn?: Float32Array }[] = []
+  const kind = who.weapon === undefined ? undefined : loaded?.itemKinds.get(who.weapon)?.subtype
+  const place = kind === undefined ? undefined : loaded?.weaponPlaces.get(kind)?.hands
+  const placedBone = place ? BONE_SLOTS[place.slot] : undefined
   const carried = [
-    [who.weapon, CARRY_BONES.hands.weapon],
-    [who.shield, CARRY_BONES.hands.shield],
+    [
+      who.weapon,
+      placedBone ?? CARRY_BONES.hands.weapon,
+      place && placedBone ? weaponTurn(place) : undefined,
+    ],
+    [who.shield, CARRY_BONES.hands.shield, undefined],
   ] as const
-  for (const [item, bone] of carried) {
+  for (const [item, bone, turn] of carried) {
     const name = item === undefined ? undefined : partName(item)
     const model = name === undefined ? undefined : wardrobe.parts.get(name)
-    if (model) held.push({ model, bone })
+    if (model) held.push(turn ? { model, bone, turn } : { model, bone })
   }
   return held
 }
@@ -5803,6 +6226,7 @@ function foePieces(now: number): Piece[] {
   const scene = battle
   const looping = Math.floor((now / 1000) * MAP_FPS)
   const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
+  // On a stage each faces as its place has it — see `stage.ts`.
   const facing = self.facing + Math.PI
   const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
   return scene.state.fighters.flatMap((fighter, i) => {
@@ -5818,7 +6242,14 @@ function foePieces(now: number): Piece[] {
     const motion = cue ? CUE_MOTIONS[cue.motion] : 'stand'
     const length = look.motions.get(motion)?.frameCount ?? 1
     const frame = cue ? Math.min(since, length - 1) : looping
-    return monsterPieces(look, at, facing, characterScale, motion, frame)
+    return monsterPieces(
+      look,
+      at,
+      battleStage?.spots[i]?.facing ?? facing,
+      characterScale,
+      motion,
+      frame,
+    )
   })
 }
 
@@ -6063,6 +6494,7 @@ function sharesOf(
 /** Put the battle away. */
 function endFight(): void {
   battle = undefined
+  battleStage = undefined
   playMapMusic(true)
   // The weapon and shield go back on the Hero's back — see `dressHero`.
   dressHero()
@@ -6930,21 +7362,60 @@ function dressParty(): void {
   const carry: Carry = battle ? 'hands' : 'back'
   dressed = members.map((member, place) => {
     if (!levelsUp(member)) return undefined
-    // `?preset=` dresses the Hero as a ready-made character — see `showPreset`.
-    const shown = place === 0 ? presetOutfit : undefined
-    const made =
-      member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
-    const outfit =
-      shown ??
-      (made && outfitOfPreset(made, carry, has, wornBy(member))) ??
-      outfitOf(wornBy(member), carry, has)
-    // **What they were made to look like beats what the clothes decide.** The
-    // face and the hair are the character's, not the kit's — see `lookOver`.
-    const figure = dressFigure(wardrobe, lookOver(outfit, member.look, has))
+    const outfit = outfitFor(member, place, carry, has)
+    const figure = dressFigure(wardrobe, outfit)
     return { figure, pieces: figurePieces(figure) }
   })
   const hero = dressed[0]
   if (hero) loaded = { ...loaded, figure: hero.figure, pieces: hero.pieces }
+}
+
+/**
+ * What a member built of parts is dressed in, carrying as `carry` says: the
+ * preset they were made from, or what they actually wear — the weapon hung
+ * where the game hangs its kind (`placeWeapon`), and **what they were made to
+ * look like over what the clothes decide**: the face and the hair are the
+ * character's, not the kit's — see `lookOver`. `?preset=` dresses the Hero as
+ * a ready-made character — see `showPreset`.
+ */
+function outfitFor(
+  member: Member,
+  place: number,
+  carry: Carry,
+  has: (name: string) => boolean,
+): Outfit {
+  const shown = place === 0 ? presetOutfit : undefined
+  const made =
+    member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
+  const outfit = placeWeapon(
+    shown ??
+      (made && outfitOfPreset(made, carry, has, wornBy(member))) ??
+      outfitOf(wornBy(member), carry, has),
+    wornBy(member).get('weapon') ?? made?.weapon,
+    carry,
+  )
+  return lookOver(outfit, member.look, has)
+}
+
+/**
+ * **Hang the weapon where the game does**: the bone, offset and turn
+ * `wpnpos.bin` gives its kind — the item's subtype, INFERRED — for the hands
+ * or the back (see `readWeaponPlaces`, `weaponTurn`). An outfit whose weapon
+ * has no kind, or a kind the file does not have, keeps its own.
+ */
+function placeWeapon(outfit: Outfit, weapon: number | undefined, carry: Carry): Outfit {
+  const part = weapon === undefined ? undefined : partName(weapon)
+  const kind = weapon === undefined ? undefined : loaded?.itemKinds.get(weapon)?.subtype
+  const places = kind === undefined ? undefined : loaded?.weaponPlaces.get(kind)
+  const place = places?.[carry]
+  const bone = place ? BONE_SLOTS[place.slot] : undefined
+  if (!place || !bone || part === undefined) return outfit
+  return {
+    ...outfit,
+    attached: (outfit.attached ?? []).map((hung) =>
+      hung.part === part ? { part: hung.part, bone, turn: weaponTurn(place) } : hung,
+    ),
+  }
 }
 
 /**
@@ -7392,23 +7863,27 @@ function showMenu(): void {
 }
 
 /** Draw the equipment screen for the menu as it stands; false when it cannot be drawn. */
-/** The figure the portrait draws, dressed for the hand — see `heroPortrait`. */
+/** The figure the portrait draws, dressed for the hand — see `memberPortrait`. */
 let portraitFigure: { key: string; figure: Loaded['figure']; pieces: Loaded['pieces'] } | undefined
-/** The portrait's own renderer, drawing to nothing behind — see `heroPortrait`. */
+/** The portrait's own renderer, drawing to nothing behind — see `memberPortrait`. */
 const portraitEl = document.createElement('canvas')
 let portrait: ModelRenderer | null | undefined
 /** How many times the screen's pixels the portrait is drawn at, for crispness when the screen is scaled up. */
 const PORTRAIT_SCALE = 3
 
 /**
- * The Hero as they stand dressed, for the equipment screen: the figure at
+ * **Whoever the equipment screen is on**, as they stand dressed: the figure at
  * rest, facing the camera, drawn alone by a second renderer onto a clear
- * ground. The framing — the camera at the waist, a figure and a quarter
- * away, so the figure fills the frame as the screenshots' does — is ours.
+ * ground — built of parts as the party is (`outfitFor`), weapon and shield in
+ * hand as the screenshots' figure holds them, or a story companion's own
+ * model with what they hold. The framing — the camera at the waist, a figure
+ * and a quarter away, so the figure fills the frame as the screenshots'
+ * does — is ours.
  */
-function heroPortrait(): HTMLCanvasElement | undefined {
+function memberPortrait(place: number): HTMLCanvasElement | undefined {
   const here = loaded
-  if (!here || !self || portrait === null) return undefined
+  const rom = cartridge
+  if (!here || !self || !rom || portrait === null) return undefined
   if (portrait === undefined) {
     portraitEl.width = PORTRAIT.width * PORTRAIT_SCALE
     portraitEl.height = PORTRAIT.height * PORTRAIT_SCALE
@@ -7419,32 +7894,53 @@ function heroPortrait(): HTMLCanvasElement | undefined {
       return undefined
     }
   }
-  const standing: Player = {
-    ...self,
-    state: { ...self.state, x: fx32(0), y: fx32(0), z: fx32(0) },
-    facing: 0,
-    motionFrame: 0,
+  const member = members[place] ?? leader()
+  let pieces: Piece[]
+  const along =
+    member.attnpc === undefined ? undefined : here.attending.find((w) => w.id === member.attnpc)
+  if (along) {
+    // A story companion is their whole `.chr` — see `companionLook`.
+    const wanted = companionLook(along)
+    const look = actorLookOf(rom, wanted.model, wanted.packs)
+    if (!look) return undefined
+    const placement = { id: 0, map: 0, x: 0, y: 0, z: 0, facing: 0, offset: 0 } as NpcPlacement
+    const cast = {
+      name: wanted.model,
+      model: look.model,
+      motion: look.motions.get('stand'),
+      floor: look.floor,
+      placement,
+    }
+    pieces = [
+      ...castPieces(cast, look.catalogue, characterScale, 0),
+      ...heldPieces(cast, heldOf(along.id), here.catalogue, characterScale, 0),
+    ]
+  } else {
+    const standing: Player = {
+      ...self,
+      state: { ...self.state, x: fx32(0), y: fx32(0), z: fx32(0) },
+      facing: 0,
+      motionFrame: 0,
+    }
+    // Kept until who it is or what they wear changes.
+    const key = `${place}|${[...wornBy(member).entries()].map(([slot, item]) => `${slot}=${item}`).join(',')}`
+    if (portraitFigure?.key !== key) {
+      const wardrobe = here.wardrobe
+      const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
+      const figure = dressFigure(wardrobe, outfitFor(member, place, 'hands', has))
+      portraitFigure = { key, figure, pieces: figurePieces(figure) }
+    }
+    const { figure, pieces: dressedPieces } = portraitFigure
+    pieces = playerPieces(
+      standing,
+      figure,
+      dressedPieces,
+      here.catalogue,
+      measurements,
+      figure.motions.get('stand'),
+      buildScale(member),
+    )
   }
-  // Dressed with the weapon and shield in hand, as the screenshots' figure
-  // holds them; kept until what is worn changes.
-  const key = [...wornBy(leader()).entries()].map(([slot, item]) => `${slot}=${item}`).join(',')
-  if (portraitFigure?.key !== key) {
-    const wardrobe = here.wardrobe
-    const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-    const figure = dressFigure(wardrobe, outfitOf(wornBy(leader()), 'hands', has))
-    portraitFigure = { key, figure, pieces: figurePieces(figure) }
-  }
-  const { figure, pieces: dressed } = portraitFigure
-  const motion = figure.motions.get('stand')
-  const pieces = playerPieces(
-    standing,
-    figure,
-    dressed,
-    here.catalogue,
-    measurements,
-    motion,
-    buildScale(leader()),
-  )
   if (pieces.length === 0) return undefined
   // The figure's own height as posed, in world units, frames it.
   let height = 0
@@ -7486,10 +7982,12 @@ function showEquipScreens(): boolean {
   const context = menuContext()
   const tableOf = context.tableOf ?? (() => undefined)
   const dressing = members[menu.member] ?? leader()
+  // **Whoever the screen is on** — L and R change it, see `changeCharacter`.
+  const chosen = context.party?.[menu.member]
   equipScreens.draw(top, bottom, {
-    hero: context.hero,
-    level: context.standing?.level.level,
-    equipped: context.equipped ?? NOTHING_EQUIPPED,
+    hero: chosen?.name ?? context.hero,
+    level: (chosen?.standing ?? context.standing)?.level.level,
+    equipped: chosen?.equipped ?? context.equipped ?? NOTHING_EQUIPPED,
     bag,
     itemName: nameOf,
     row: menu.row,
@@ -7514,7 +8012,7 @@ function showEquipScreens(): boolean {
       if (numbers.usedBy !== 0 || !loaded?.vocationTrees) return numbers.usedBy
       return vocationsWielding(loaded.vocationTrees, numbers.kind)
     },
-    portrait: heroPortrait(),
+    portrait: memberPortrait(menu.member),
   })
   return true
 }
@@ -7789,6 +8287,11 @@ addEventListener('keydown', (event) => {
   // in `onAction` — which returns early for the title card, a battle, the menu
   // and a conversation, and would swallow it in all four.
   const turn = actionOfKey(controlsPanel.bindings, key)
+  // On the equipment screen the same keys change character instead.
+  if ((turn === 'turnLeft' || turn === 'turnRight') && menu?.panel === 'equip') {
+    if (onAction(turn, key, event.shiftKey)) event.preventDefault()
+    return
+  }
   if (turn === 'turnLeft' || turn === 'turnRight') {
     turning.add(turn)
     event.preventDefault()
@@ -7895,6 +8398,9 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   if (menu) {
     if (action === 'up') menu = moveCursor(menu, -1, menuContext())
     else if (action === 'down') menu = moveCursor(menu, 1, menuContext())
+    // L and R change character on the equipment screen — see `changeCharacter`.
+    else if (action === 'turnLeft' || action === 'turnRight')
+      menu = changeCharacter(menu, action === 'turnLeft' ? -1 : 1, menuContext())
     else if (action === 'confirm') {
       const taken = choose(menu, menuContext())
       menu = taken.state

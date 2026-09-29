@@ -43,3 +43,22 @@ describe.skipIf(!romPath)(
     })
   },
 )
+
+describe('a weapon’s place on its bone', () => {
+  it('is its offset, unturned, for the hand’s placement', async () => {
+    const { weaponTurn } = await import('../src/hero.ts')
+    const m = weaponTurn({ offset: [-2.4, -0.4, 0], turn: [0, 0, 0] })
+    expect([...m.slice(12, 15)].map((v) => Math.round(v * 10) / 10)).toEqual([-2.4, -0.4, 0])
+    expect([m[0], m[5], m[10]]).toEqual([1, 1, 1])
+  })
+
+  it('turns about z, then y, then x, before the offset', async () => {
+    const { weaponTurn } = await import('../src/hero.ts')
+    // A quarter turn about y alone takes x to −z.
+    const y = weaponTurn({ offset: [0, 0, 0], turn: [0, Math.PI / 2, 0] })
+    expect([...y.slice(0, 3)].map((v) => Math.round(v) + 0)).toEqual([0, 0, -1])
+    // x, then z: the x turn is applied to the vector first. y → z by x, then z stays.
+    const xz = weaponTurn({ offset: [0, 0, 0], turn: [Math.PI / 2, 0, Math.PI / 2] })
+    expect([...xz.slice(4, 7)].map((v) => Math.round(v) + 0)).toEqual([0, 0, 1])
+  })
+})

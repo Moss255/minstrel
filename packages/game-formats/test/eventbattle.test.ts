@@ -48,10 +48,10 @@ describe('event battles', () => {
           { monster: 292, count: 1 },
           { monster: 290, count: 1 },
         ],
-        unknown_0x24: 23,
-        unknown_0x28: 30116,
+        music: 23,
+        stage: 30116,
       },
-      { index: 2, foes: [{ monster: 300, count: 1 }], unknown_0x24: 24, unknown_0x28: 30215 },
+      { index: 2, foes: [{ monster: 300, count: 1 }], music: 24, stage: 30215 },
     ])
   })
 

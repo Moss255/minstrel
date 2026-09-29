@@ -538,6 +538,21 @@ const treeOpen = (
 const castable = (context: MenuContext | undefined, state?: { readonly member?: number }) =>
   (whose(context, state)?.spells ?? context?.spells ?? []).filter((spell) => spell.field)
 
+/**
+ * **Change character**, on the equipment screen: the L and R Buttons step
+ * through the party, round and round, as the screen's own arrows beside the
+ * portrait say. Not while a slot's choices are open — the list is the
+ * member's bag and what they may wear, which the change would pull out from
+ * under the cursor. The row stays, so the same slot is looked at on the next.
+ * Any other panel, or a party of one, is left as it is.
+ */
+export function changeCharacter(state: MenuState, by: number, context?: MenuContext): MenuState {
+  const count = context?.party?.length ?? 0
+  if (state.panel !== 'equip' || state.picking || count <= 1) return state
+  const member = ((((state.member ?? 0) + by) % count) + count) % count
+  return { ...state, member, said: undefined }
+}
+
 /** Choose another command, round and round — or, in a panel with rows, another row. */
 export function moveCursor(state: MenuState, by: number, context?: MenuContext): MenuState {
   const wrap = (at: number, count: number) => (((at + by) % count) + count) % count

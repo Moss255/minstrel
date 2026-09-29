@@ -51,6 +51,7 @@ is one the menu will not know about.
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `armoury=1` | one of every weapon, shield and piece of armour in the bag, and anyone may wear anything — for trying every weapon and outfit on the Hero. With `heromotion=` and a fight, every weapon through every motion |
 | `medals=80` | the mini medals already handed to Cap'n Max, so his milestones or his exchange can be reached without collecting them — ours. Talking to him (`M08M07`, cast 103) opens his service; see `apps/game/src/medals.ts` |
 | `patty=1` | open Patty's Party Planning Place. Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest |
 | `pot=1` | open the Krak Pot. Its real way in is `<RENKIN>` on the pot's own talk line in the Quester's Rest, which needs the story far enough along for it to be placed |
@@ -59,6 +60,7 @@ is one the menu will not know about.
 | `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
 | `fight=z000a,z000a` | the monsters `p` fights |
+| `heromotion=attack1b` | in a battle, hold the Hero in one motion, looping — to look at a motion and what the Hero holds through it |
 | `bgm=BG_001`, `se=113` | play a track or an effect |
 | `probe=1` | put the scene camera, the real camera and the Hero's height over the floor on `window` as `__shot`, `__cam` and `__floor`. Off by default because it allocates every frame |
 | `talk=12` | stand behind that cast member and talk to them |

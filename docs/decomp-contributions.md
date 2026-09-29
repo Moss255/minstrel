@@ -448,3 +448,54 @@ Read for the flight; FORMAT.md, "The Starflight Express in flight".
 
 **Open**: the camera in flight; the landing places (category-11 objects);
 whether the Express can coast to a stop; the whistle's route from action 252.
+
+### 10. Where a battle is fought, who stands where, and the battle camera — ARM9, overlays 0, 17 and 25, 29 September 2026
+
+Read for the battle stages; FORMAT.md, "Where a battle is fought".
+
+| address | size | what it does | a name |
+|---|---|---|---|
+| `0x0204bd7c` | `0x44` | a collision record's battle stage, 30000 + 100a + 10b + c | `GroundRecord::BattleStage` |
+| `0x02099950` | `0x3c` | a map-list entry by its id, or none | `MapList::FindById` |
+| `0x02099a68` | `0x5c` | a map's kind of ground as a bit, 8 giving none | `MapList::GroundKindBit` |
+| `0x020a3578` | `0x54` | a battle request made, stage 30116 | `BattleRequest::Init` |
+| `ov017 0x021b848c` | `0x254` | the encounter hands the request its stage (`+0x02`) | `Field::BeginEncounter` |
+| `ov017 0x021a26e8` | `0x50` | the ground kind under a field object | — |
+| `ov000 0x02166880` | `0xf8` | switch to the stage: the set one's `+0x20`, 30116 for one not listed | `BattleScene::LoadStage` |
+| `ov000 0x02164d74` | — | battle set-up: rows, then grids, then all to the grid | `BattleScene::Setup` |
+| `ov000 0x021675a0`, `0x021676a8` | — | the party's row places, grid places | `Formation::PartyRow`, `::PartyGrid` |
+| `ov000 0x021677fc`, `0x02167cd4` | — | the monsters' row places, grid places | `Formation::MonsterRow`, `::MonsterGrid` |
+| `ov000 0x02167b5c` | — | the gap between monsters in a row | `Formation::MonsterGap` |
+| `ov000 0x021681f8` | — | a monster's width factor, 0.7 for five kinds in company | — |
+| `ov000 0x02167dd8`, `0x02167e6c`, `0x02167f10` | — | everyone to the grid; to the row; to the current slot | `Formation::ToGrid`, `::ToRow`, `::ToSlot` |
+| `ov000 0x0216f74c` | — | a grid slot's place: 9 by 9, staggered | `Formation::SlotPlace` |
+| `0x02049b20`–`0x02049c60` | — | a fighter's row and grid place and facing, `+0x13c` on | `Fighter::SetRowPlace`… |
+| `0x02049e00`, `0x02049d6c`, `0x02048cf0` | — | put a fighter at its grid place, its row place, its slot | `Fighter::ToGrid`, `::ToRow`, `::ToSlot` |
+| `ov000 0x021643d4`, `0x02168d08` | — | keep the party's field places, gather the fight's other roamers in; restore after | `BattleScene::KeepField`, `::RestoreField` |
+| `0x0202e5c0`–`0x0202ecfc` | — | the camera: eye, look-at, orbit, yaw, distance, roll, frame | `Camera::Set…` |
+| `0x0202e9a4` | — | `Camera_SetFov`, half-angle in degrees | — |
+| `0x0202e0a4` | — | the camera each frame, through its frame when set | `Camera::Update` |
+| `ov000 0x0216d234` | — | a camera frame on a fighter | `BattleCamera::FrameOn` |
+| `ov000 0x0216d370`, `0x0216d464` | — | reset (field of view 15); each frame (yaw and distance drift) | `BattleCamera::Reset`, `::Update` |
+| `ov000 0x0216d600` | — | frame a side: on the stage's z axis, fitted to the side's extent | `BattleCamera::FrameSide` |
+| `ov000 0x0216d90c`, `0x0216da34`, `0x0216dbf0`, `0x0216de00`, `0x0216df00` | — | close-up, two-shot, group orbit, over the shoulder, actor | `BattleCamera::…` |
+| `ov000 0x0216118c` | — | the opening: the wide side shot, eased in | `BattleCamera::Opening` |
+| `ov025 0x021e3c80` | — | an action's camera command, kind 12, modes 0 to 15 | `ActionPlayer::Camera` |
+| `ov025 0x021e6cf4` | `0x204` | an action's formation command, kind 79 | `ActionPlayer::Formation` |
+| `ov000 0x02183b5c`, `ov025 0x021ef538` | — | the action script's opcodes: builders, and handlers by kind | `ActionOpcodes`, `ActionHandlers` |
+| `ov000 0x0216f2b8` | — | the battle eye kept within 17 and under 5 | `BattleCamera::Limit` |
+| `ov025 0x021dcf14`, `0x021dcc70` | — | a close-up on each one struck in turn; the list of them | `ActionPlayer::StruckCamera` |
+| `ov000 0x021607d4` | — | the battle's states: load, set up, the loop, leave | `BattleScene::Update` |
+| `LightingInfo::LoadFromScript`, `DrawBackgroundGradient` | — | already named: the `.bats` script and the gradient | — |
+| `ov000 0x0216e3c4` | `0x2b4` | the camera while a command is chosen; its yaw always −0x999 | `BattleCamera::Command` |
+| `ov023 0x021f03a0` | — | the menu phase begins: grid, command camera, menu | `BattleMenu::Begin` |
+| `ov025 0x021db8d8` | — | an action begins: grid, chase shot | `ActionPlayer::Begin` |
+| `0x02099f6c`, `0x02099ef4` | —, `0x68` | `wpnpos.bin`: load; tag 100 | `WeaponPlaces::Load`, `::Entry` |
+| `0x02053e10` | — | a character's seven bone slots, by name | `Character::FindBoneSlots` |
+| `ov017 0x021917f0` | `0x1d8` | hang a character's weapon by `wpnpos` | `Field::HangWeapon` |
+| `0x020407b4`, `0x0203db34` | `0x10`, `0x10` | an object's position; its rotation | `Object3D::SetPosition`, `::SetRotation` |
+
+**Open**: the chase shot's aim (`0x0216e678`); which block of a fighter's `.bact` an attack
+plays, and the move command's arguments (kind 9); the tables
+at `ov000 0x02183280` and `0x0218328c`; four more shots (`0x0216e250`,
+`0x0216e3c4`, `0x0216e678`, `0x0216ea38`); what fills the request's `+0x20`.

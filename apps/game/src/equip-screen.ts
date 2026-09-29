@@ -436,7 +436,7 @@ export interface EquipView {
   readonly describe?: ((id: number) => string | undefined) | undefined
   /** An item's subtype — see `readItemKinds` — which gives a weapon its own kind's icon. */
   readonly subtypeOf?: ((id: number) => number | undefined) | undefined
-  /** The Hero as they stand dressed, drawn over the bottom screen's left half — see `heroPortrait` in `main.ts`. */
+  /** Whoever the screen is on, as they stand dressed, drawn over the bottom screen's left half — see `memberPortrait` in `main.ts`. */
   readonly portrait?: CanvasImageSource | undefined
   /** An item's rarity, 0 to 5 stars — see `ItemRecord.rarity`. */
   readonly rarityOf?: ((id: number) => number | undefined) | undefined

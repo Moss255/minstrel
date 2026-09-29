@@ -91,6 +91,14 @@ export interface ModelMaterial {
    * about the format.
    */
   readonly setVertexColour: boolean
+  /**
+   * The polygon's alpha, 0 to 31, from bits 16–20 of the `polygonAttr` word
+   * at `+0x10` of the material record — the hardware's `POLYGON_ATTR`
+   * (GBATEK, "DS 3D Polygon Attributes"): 31 is solid, 1 to 30 see-through,
+   * and **0 draws the polygon as a wireframe**, not as nothing. 31 when the
+   * record will not fit.
+   */
+  readonly alpha: number
 }
 
 /** One drawable piece of a model: a named display list. */
@@ -359,15 +367,22 @@ function readModel(mdl: Uint8Array, at: number, name: string): Model {
   const WHITE: readonly [number, number, number] = [1, 1, 1]
   const colourOf = (entry: {
     data: Uint8Array
-  }): { diffuse: readonly [number, number, number]; setVertexColour: boolean } => {
-    if (entry.data.length < 4) return { diffuse: WHITE, setVertexColour: false }
+  }): {
+    diffuse: readonly [number, number, number]
+    setVertexColour: boolean
+    alpha: number
+  } => {
+    const none = { diffuse: WHITE, setVertexColour: false, alpha: 31 }
+    if (entry.data.length < 4) return none
     const at = materialOffset + u32(entry.data, 0, 'material record offset') - 4 + 8
-    if (at < 0 || at + 4 > model.length) return { diffuse: WHITE, setVertexColour: false }
+    if (at < 0 || at + 4 > model.length) return none
     const word = u32(model, at, 'material diffAmb')
     const bgr = word & 0x7fff
+    const polygon = at + 12 <= model.length ? u32(model, at + 8, 'material polygonAttr') : undefined
     return {
       diffuse: [(bgr & 31) / 31, ((bgr >> 5) & 31) / 31, ((bgr >> 10) & 31) / 31],
       setVertexColour: ((word >>> 15) & 1) === 1,
+      alpha: polygon === undefined ? 31 : (polygon >>> 16) & 31,
     }
   }
 

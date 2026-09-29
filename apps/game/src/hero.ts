@@ -125,7 +125,13 @@ export function heroOutfit(): Outfit {
  */
 export type Carry = 'hands' | 'back'
 
-/** The bones a weapon and a shield hang from, carried each way — see {@link Carry}. */
+/**
+ * The bones a weapon and a shield hang from, carried each way — see
+ * {@link Carry}. **A weapon whose kind `wpnpos.bin` places hangs where it
+ * says instead** (`placeWeapon` in the engine, `weaponTurn` here): the right
+ * forearm with a grip offset in the hands, the chest turned its kind's way on
+ * the back. What is left here is the shield's, and a weapon of no kind.
+ */
 export const CARRY_BONES: Readonly<
   Record<Carry, { readonly weapon: string; readonly shield: string }>
 > = {
@@ -445,4 +451,45 @@ export function outfitOfPreset(
       ...(shield ? [{ part: shield, bone: bones.shield }] : []),
     ],
   }
+}
+
+/**
+ * **A weapon's place on its bone as the game composes it**: the offset, then
+ * the turn about z, then y, then x (`Object3D::SendTransformToFifo` onto the
+ * bone's matrix) — `T · Rz · Ry · Rx`, column by column as the rig's matrices
+ * are kept. See `readWeaponPlaces`.
+ */
+export function weaponTurn(place: {
+  readonly offset: readonly [number, number, number]
+  readonly turn: readonly [number, number, number]
+}): Float32Array {
+  const [ax, ay, az] = place.turn
+  const [cx, sx] = [Math.cos(ax), Math.sin(ax)]
+  const [cy, sy] = [Math.cos(ay), Math.sin(ay)]
+  const [cz, sz] = [Math.cos(az), Math.sin(az)]
+  // Rz · Ry · Rx, row by row.
+  const m = [
+    [cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+    [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+    [-sy, cy * sx, cy * cx],
+  ] as const
+  const [tx, ty, tz] = place.offset
+  return Float32Array.of(
+    m[0][0],
+    m[1][0],
+    m[2][0],
+    0,
+    m[0][1],
+    m[1][1],
+    m[2][1],
+    0,
+    m[0][2],
+    m[1][2],
+    m[2][2],
+    0,
+    tx,
+    ty,
+    tz,
+    1,
+  )
 }

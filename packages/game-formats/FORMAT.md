@@ -1659,9 +1659,33 @@ around `1.0` and `0.2` and 16-bit values that read as `fx16` — `32767` for one
 like. A map ships its lit pieces twice, once per lighting, so a per-slot table
 of colours is the shape this ought to have.
 
-**What the slots are is not established**, and neither is which value is which.
-`docs/findings.md` records that these are float-valued fog and lighting settings
-and that they carry no music selection.
+**Read from the decomp, 29 September 2026**: `LightingInfo::LoadFromScript`
+(`src/Graphics/LightingInfo.cpp`) runs the file as a script, one handler a
+tag, and names every value. `readLighting` reads it in that order.
+
+| tag | handler | values |
+|---|---|---|
+| `100` | `DeclareAdvancedLighting` | the gradient centre's offset, a float |
+| `102` | `CreateAdvancedLightingEntry_Alternate` | not on the cartridge |
+| `103` | `DeclareBasicLighting` | the same offset |
+| `104` | `CreateBasicLightingEntry` | index; a vector; background, horizon and pots-and-barrels colours; two floats; sprite, model and edge colours |
+| `105` | `CreateFogEntry` | index; on; colour; type; depth shift; offset; eight packed density words; alpha |
+| `106` | `CreateAdvancedLightingEntry` | index; light 1 (on, direction x, y, z, colour); light 0 (the same); background, horizon, ambient, one more, sprite, model and edge colours |
+
+**A slot's index is the time of day**, 0 night, 1 morning, 2 day, 3 evening;
+the script refuses one past 6. Colours are `BGR555`. The **background** and
+**horizon** colours are the gradient drawn behind everything —
+`LightingManager::DrawBackgroundGradient`: the horizon colour on the screen
+row a point far ahead of the eye falls on, blending toward the background a
+whole change per half screen. Where a map's `.bats` lives: `ats_<letter>.ambl`
+by the code's first letter, named `<code>00.bats` — every battle stage has its
+own in `ats_B.ambl`. `B01M1600`'s day is `#0073ff` over `#00ffff` at the
+horizon; its night `#000052` over `#29527b`. A battle takes its slot from the
+battle request's `+5` rather than the clock (`DrawBackgroundGradient`, under
+flag `1 << 9`); `func_020a3578` makes it 2, day, and what sets it on an
+ordinary encounter is not read.
+
+`docs/findings.md` records that these carry no music selection.
 
 ## `.bcfg` — a piece's named states
 
@@ -3177,7 +3201,10 @@ great dragons, and not one of the 438 negative. A wrong offset does not order
 a bestiary by size. `tools/harness/test/monster-body.test.ts` pins it.
 
 Two of the ten bytes this section used to carry as not established are these;
-`+0x0A`, `+0x10`, `+0x12` and one more remain.
+`+0x0A`, `+0x10`, `+0x12` and one more remain. `readMonsterNames` gives them
+as `radius` (already shifted into `fx32`) and `height` since 29 September
+2026; overlay 0 lines monsters up in battle by the radius — see "Who stands
+where on the stage".
 
 ## Monster models — `/data/pack_lv5/enemy.gp2`
 
@@ -3214,8 +3241,8 @@ bosses, and a few others. `readEventBattles` reads it.
 | `+0x00` | `u32[2]` | `0x55090064 0xFFFF0155`, on every record |
 | `+0x08` | `u32` | its index: what a trigger's battle word, 120, names |
 | `+0x0C` | `(u32, u32)` ×3 | a monster, by its number in the monster data, and how many; `0xFFFFFFFF` for an empty slot |
-| `+0x24` | `u32` | not established: 23 to 38, 24 on 46 of them |
-| `+0x28` | `u32` | not established: 0 to 30,903 |
+| `+0x24` | `u32` | **the track**, INFERRED: 23 to 38 — 23 the ordinary battles', 24 the bosses' on 46 — and the stage's own track on 75 of the 82 with a stage |
+| `+0x28` | `u32` | **the stage**, a map id, or 0 for the one the ground names — INFERRED; see "Where a battle is fought" |
 
 | check | result |
 |---|---|
@@ -3230,6 +3257,255 @@ room, 7105, has the trigger `8:22510 120:2`, which Patty's talk plays once she
 has asked to be freed. Index 0 is the Wight Knight, 1 Morag, 3 the Ragin'
 Contagion. That a slot's second word is a count is INFERRED: it sits beside
 every monster, and is 1 on all but six.
+
+## Where a battle is fought — the stages
+
+Read from the game's code (US ARM9, overlays 0 and 17) on 29 September 2026.
+**A battle is not fought where it starts.** It is fought on a map of its own,
+a *stage*: one of the `B` archives — 80 `B01` stages for the fields, by region
+and ground ("F01 - Field", "F01 - Forest", "F03 - Poison Swamp (Flat)"), and
+`B02` on for the dungeons, the bosses and the rest. Each is a small patch of
+ground: `B01M16`, "F01 - Field", is one model of 457 triangles and no
+collision.
+
+**The ground names the stage.** A collision's trailing records, which a
+triangle's top seven bits index (see "The Starflight Express in flight"),
+hold in their first halfword three five-bit digits, and `func_0204bd7c` reads
+them as **30000 + 100a + 10b + c** — the sky's own decoder, `func_0204bef4`,
+reads the same digits from 20000. The field's encounter code in overlay 17
+(its calls at `0x021b76ac`, `0x021b7750`, `0x021b7840`) takes the record
+under the encounter and hands it to the battle request, whose `+0x02` it is
+(`func_ov017_021b848c`, `strh` at `0x021b865c`; the request is made with
+30116 there, `func_020a3578`).
+
+| collision | its records, as stages (triangles) |
+|---|---|
+| `F01A0000`, Angel Falls Region | 30116 "F01 - Field" (714), 30117 "F01 - Forest" (112) |
+| `F03A0000`, Zere Region | 30105 Field (301), 30106 Forest (24), 30107 Barley Field (1), 30108 Poison Swamp (21) |
+| `F02A0000`, Western Stornway | 30103 (698), 30112 Forest (37), 30113 Field (115) |
+| `D01A0100`–`0400`, the Hexagon | 30214 "D01 - Inside" |
+| `D01A05E2`, Hexagoon's piece | 30215 "D01 - Hexagoon" |
+
+**A stage the map list does not have is 30116.** Overlay 0, switching to the
+stage (`0x021668e4` on), looks the id up in the map list (`func_02099950`)
+and puts 30116 in its place when it is not there or is 30000, the record of
+nothing — so Western Stornway's 30103, which the list has no entry for, is
+fought on Angel Falls' field.
+
+**A set battle names its own**, INFERRED: `eventbattle.bin`'s `+0x28` (see
+"Event battles"). Overlay 0 takes the request's `+0x20` over `+0x02` when
+`+0x20` is not 0 and the request's `+0x0c` is not negative
+(`0x021668c8`–`0x021668dc`); that the set battle's stage is what fills
+`+0x20` is not read.
+
+**A stage's kind of ground** is the map list's value 18 (0 field, 1 forest, 2
+coast, 3 wilderness, 4 flowers, 5 barley, 6 pampas, 7 swamp, 8 the `B02` on),
+which the game keeps in its entry's byte `+0x0e` and turns into a bit
+(`func_02099a68`, 8 giving none). Overlay 17 asks it of the ground under a
+field object (`func_ov017_021a26e8`); what for is not read. The kinds are
+INFERRED from the stages' labels.
+
+The stage's pieces: `B01M1600` the ground and its backdrop, `B01M1601`, and
+`L1`–`L4` and `N1`–`N4`, the day's and the night's — the sky, two layers of
+fog and a backdrop — told apart by their names' last letter and digit as a
+field's lighting sets are (`lightingOf` in `@minstrel/world`). The fog's
+polygons are see-through, alpha 11 and 14 of 31 (see nitro-gfx's FORMAT.md,
+"A material's polygon alpha").
+
+### Who stands where on the stage
+
+Read from overlay 0, 29 September 2026. **The fight is centred on the stage's
+own origin**: the stage's `.bmbl` places its ground model at (0, 0, 0)
+(`B01M16`, `B02M14`, `B02M15` looked at), and every place below is built
+about x 0, z 0. Every fighter's height is `0xcc`, 0.05, from the templates;
+nothing is read that puts them on the ground, and the stage has no
+collision to put them on. **The party is on +z facing π, the monsters on −z
+facing 0** — toward each other.
+
+The set-up (`func_ov000_02164d74`, from `0x02164f08`) fills two formations
+for everyone and then puts them all on the second:
+
+- **The grid** (`func_ov000_0216f74c`): slot s is column s mod 9, row s div
+  9, at x = 2.598 × column − 10.392, plus 1.299 on an odd row, and z = 2.25 ×
+  row − 9 — a staggered 9 by 9, computed in floats (`0x462646e1`,
+  `0xc72646e1`, `0x45a646e1`). By how many there are, the slots are the
+  tables at `0x02183108` (the party) and `0x02183118` (the monsters):
+
+  | how many | party slots | places (x, z) | monster slots | places (x, z) |
+  |---|---|---|---|---|
+  | 1 | 58 | (0, 4.5) | 22 | (0, −4.5) |
+  | 2 | 57, 59 | (±2.598, 4.5) | 21, 23 | (±2.598, −4.5) |
+  | 3 | 48, 58, 50 | (−1.299, 2.25), (0, 4.5), (3.897, 2.25) | 29, 22, 32 | (−3.897, −2.25), (0, −4.5), (3.897, −2.25) |
+  | 4 | 56, 66, 67, 60 | (−5.196, 4.5), (−1.299, 6.75), (1.299, 6.75), (5.196, 4.5) | 20, 12, 13, 24 | (−5.196, −4.5), (−1.299, −6.75), (1.299, −6.75), (5.196, −4.5) |
+  | 5 to 8 | — | — | 28 11 22 14 33; 20 11 12 13 14 24; 20 11 12 22 13 14 24; 19 10 11 12 13 14 15 25 | by the same sum |
+
+  The party's three is lopsided as read — 48 and 50 are not mirror images.
+  A fighter's own slot, once it has one, is taken over the table's.
+- **The row**: the party at z +2.5, 1.5 apart and centred, x = (n − 1) × 0.75
+  − 1.5i, turned in by the table at `0x02183158` (π ± 0.2 at the ends); the
+  monsters at z −2.5, facing 0, side by side by their widths — each its
+  radius (monster data `+0x0C`) × 4, × 0.7 for monsters `0xbd`–`0xbf`,
+  `0x110` and `0x155` in company — with a gap of 0.7, or less to keep the row
+  within 4 + 0.1(n − 1), down to 0.1 (`func_ov000_02167b5c`).
+
+Everyone starts on the grid (`0x02167dd8`); `0x02167e6c`, called from
+overlays 4, 25 and 26, moves them to the row — from an action's script, and
+the scripts ask for it only in calling for help and some special attacks
+(see "The action scripts"), so an ordinary battle stays on the grid. Fighters change slot during a fight (`func_02048cf0`, from overlays
+23 and 25). A fighter's two places are kept in its battle record at object
+`+0x13c` (`+0x04`/`+0x0c` the row's x and z, `+0x10`/`+0x18` the grid's,
+`+0x1c` the slot); its drawn place is the object's `+0x44`.
+
+Around the fight: the party's field places are kept (`func_ov000_021643d4`)
+and put back after (`0x02168d08`); the other roamers in the fight — the
+list the encounter keeps — are each moved toward the one touched until they
+stand the mean of their radii plus 1 from it, and turned to face it
+(`0x02164600`–`0x02164710`).
+
+### The battle camera
+
+Read from overlay 0, 29 September 2026. **The camera is the code's, not a
+file's.** The camera object keeps an eye (`+0x04`), a look-at (`+0x10`), a
+field of view (`+0x58`), an orbit — yaw `+0x70`, height `+0x74`, distance
+`+0x78`, the eye being the look-at plus (0, h, √(d² − h²)) turned by the yaw
+— a roll, and a frame (`+0xf0`) that eye and look-at pass through when its
+flag is set (`0x0202e0a4`). A battle resets it to a field of view of 15, a
+half-angle: 30° (`func_ov000_0216d370`).
+
+- **Framing a side** (`func_ov000_0216d600`): no frame; the eye at (0, h,
+  ±d) looking at (0, h, 0), on the stage's z axis — the sign by which side.
+  d is the larger of width × cos 15° ÷ (sin 15° × 2.2) and depth × cos 15° ÷
+  (sin 15° × 1.5), less 2.5, and at least 6.5; h is half the depth, at least
+  1.2, the eye at most 2. A wide variant sets a half-angle of 22 (44°) and
+  the same sums by 22°, at least 3. The extents are the formation's: the
+  party row's width (n − 1) × 1.5 + 1 and depth 1.5; the monster row's width
+  and its tallest monster's height + 0.5.
+- **The opening** (`func_ov000_0216118c`): the wide side shot, with side 1,
+  eased in by 0.95 a frame (INFERRED: what reads the 0.95 is not). Which side
+  1 is, is not read.
+- **Shots on the fighters**, each in a frame on a fighter (`0x0216d234`): a
+  close-up on one (look-at 1 up, height 3, distance 8, the yaw one of eight
+  at 22.5° + 45°k drawn at random, closing by 20/4096 a frame); a two-shot
+  from the midpoint of two (height 1, distance 8, the yaw 0 or π ± 17.2°); a
+  group orbit fitted to the farthest member; over the shoulder; an actor's
+  close-up fitted to its height.
+- **An action chooses its shots**, from its script (below): the camera
+  command, `func_ov025_021e3c80`, by the mode at `+8`:
+
+  | mode | shot |
+  |---|---|
+  | 0 | the side shot on the monsters, 30° |
+  | 1 | a close-up on the actor (`0x0216d90c`) |
+  | 2 | a two-shot |
+  | 3, 11 | the group orbit |
+  | 4 | over the shoulder |
+  | 5, 13 | the actor close-up (`0x0216df00`) on the actor |
+  | 6, 14 | the same on the target |
+  | 7 | `0x0216e250`, on up to `+9` targets |
+  | 8, 9 | the side shot on the actor's side, or the target's |
+  | 10 | the reset: no frame, 15 |
+  | 12 | the target made visible, then its actor close-up |
+  | 15 | the opening's: side 1, wide |
+
+- **The actor close-up** (`func_ov000_0216df00`), a cut: a frame on the
+  fighter along its own facing, so the eye is in front of it. L = max(h/2, 1);
+  the distance 1.8h + 4 for a monster and `b`·h + 4 for a party member, at
+  least (L + 0.5)·cot of the half-angle; the look-at (0, L − `a`, 0), `a` only
+  for a party member; the orbit's height max(L − 1.5, 0), its yaw 0; pulling
+  in 20/4096 a tick, never nearer than 3 (`0x0216d464`). A monster adds a
+  value from its object's `+0x18e`, not read. `a` and `b` are the command's
+  floats — `default.bact`'s sections give 0.21 and 1.1 — and each one struck
+  in turn gets a close-up with 0 and 1.8 (`ov025 0x021dcf14`, from a list the
+  action player fills).
+- **The close-up on one object** (`func_ov000_0216d90c`), a cut: look-at
+  (0, 1, 1), height 3, distance 8, the yaw one of eight at 22.5° + 45°k,
+  drawn; kept to the four in front when the other fighter is shorter.
+- **After every command and every frame** (`func_ov000_0216f2b8`): the eye
+  no further than 17 out and no higher than 5.
+- **The camera while a command is chosen** (`func_ov000_0216e3c4`, called
+  once as overlay 23 — the battle menu's overlay — opens its menu,
+  `0x021f04b8`), a cut: the party's places averaged, height and all; the
+  distance 12 less how far that is from the stage's middle, and when that is
+  under 8 the middle drawn in by it over 8 and the distance 12; the look-at
+  that middle 0.5 up, the orbit 1 up; turning `0xe`/4096 a frame for as long
+  as the menu is up. Nothing moves it while a target is chosen. **Its yaw is
+  −0x999, −0.6 rad, always**: the code takes the angle to the monsters'
+  middle (`FX_Atan2Idx`, ±0x8000), divides it by 0xffff as a whole number,
+  which leaves 0, shifts that up 12 and adds −0x999 — meant to face them, it
+  seems, and fixed as it runs.
+- **An action begins** (`ov025 func_021db8d8`) by putting everyone on the grid
+  and cutting to a chase shot along the actor to its target
+  (`0x0216e678`, re-aimed each frame by `0x0216ea38`): not read further, and
+  not built. **An action ends** with the camera left where it is
+  (`0x021dcbf4`).
+- The battle's states, corrected (the jump table at `0x021607d4` counts from
+  0): 0 load, 1 set-up, 4 leave, 6 the field back, 8 overlay 25's action
+  loop, 9 and 10 overlay 23's, 7 and 11 overlay 26's, 16 the end. Overlays 22
+  to 30 share one address, so one of 23, 25 and 26 is in at a time.
+
+### The action scripts — `.bact`
+
+Read from overlays 0 and 25, 29 September 2026. A `.bact` is a data table
+whose tags are opcodes: overlay 0's table at `0x02183b5c` builds a command of
+the same kind for each, and overlay 25 plays kind k by the word at
+`0x021ef538 + 4k` (**the camera is kind 12**, not 9 as first read — the table
+begins three words earlier). Among them: `1` and `2` open and close a
+section keyed by action numbers; `3` a motion; `8` a wait in milliseconds;
+`12` the camera; `22` a scene flag; `79` the **formation** — 0 everyone to
+their row, 1 to the grid, 2 two fighters squared up, 3 to their slot.
+
+- `/data/bin/actdef.nsarc/default.bact` holds the actions without a script of
+  their own — Defend, Flee, Psyche Up, an item, calling for help — nearly all
+  opening on the camera's mode 5 with (0, 0.21, 1.1). **Only calling for help
+  changes formation**, to the rows.
+- A fighter's attack is in its own archive: `enemy.gp2/<code>.mon/<code>.bact`,
+  `chara_mp.gp2/mp02xx*.chr/mp02xx.bact`. Neither the slime's nor the Hero's
+  changes formation; which of its numbered blocks an attack plays is not read.
+- **Across all 930 scripts, `79` is used 462 times with mode 0, 234 with 2,
+  about 60 with 3, and never with 1**: only code puts fighters on the grid,
+  and a battle stays on it unless a special action moves it.
+
+## Where a weapon is carried — `wpnpos.bin`
+
+`/data/bin/wpnpos.bin`, read 29 September 2026: a data table the game runs as
+a script (`func_02099f6c`), its one handler for tag `100` (`0x02099ef4`)
+filling a table of `0x1c`-byte entries at `0x02109a54`. `readWeaponPlaces`
+reads it. A record:
+
+| value | what |
+|---|---|
+| 0 | the kind of weapon, 0 to 11 — the entry's index |
+| 1 | the first placement's bone slot |
+| 2–4 | its offset, `fx16` |
+| 5–7 | its turn about x, y and z, radians |
+| 8 | the second placement's bone slot |
+| 9–11, 12–14 | its offset and turn |
+
+**A bone slot** names one of seven bones a character looks up by name when it
+is made (`func_02053e10`, into its `+0x1a0` on): 0 `head`, 1 `waist`, 2
+`chest`, 3 `arm1L`, 4 `arm1R`, 5 `leg1L`, 6 `leg1R`.
+
+**How it is hung** (`func_ov017_021917f0`): the weapon's object is attached
+to the slot's bone, its position set to the offset (`func_020407b4`) and its
+rotation to the turn (`func_0203db34`); drawn attached, its transform is
+composed onto the bone's — translate, then turn about z, y and x
+(`Object3D::Draw` with `COMPOSE_TRANSFORM`, `SendTransformToFifo`).
+
+| kind | first | second |
+|---|---|---|
+| 0, 1, 3, 5, 8, 9 | `chest`, a turn of its own | `arm1R` at (−2.4, −0.4, 0) |
+| 2, 7, 10 | `chest` at (2.3, 1, 2.3), turned (6.23, 2.62, 4.88) | `arm1R` at (−2.4, −0.4, 0) |
+| 4 | `chest`, nothing | `chest`, nothing |
+| 6 | `arm1R`, nothing | `arm1R`, nothing |
+| 11 | `chest` at (0, 0, −3) | `arm1L` at (2.4, 0, 0) |
+
+**INFERRED**: that the first is the back and the second the hands — the
+second names a forearm on eleven, the first the chest on eleven; and that the
+kind is the item's subtype, `itemsort`'s 0 to 11 — the weapon kinds the
+equipment screen's icons count, and 11, the one held in the left hand, the
+bow, 6 the claws, worn on the hand. What the game reads the kind from is its
+character's `+0x29c`, bits 4 to 8, not traced to the item. The shield is not
+in the file.
 
 ## Encounters — `encfld.bin` and `encbtl.bin`
 

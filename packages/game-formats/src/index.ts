@@ -102,6 +102,14 @@ export {
   levelAt,
   readLevelTable,
 } from './levels.ts'
+export {
+  bgr555,
+  type FogSlot,
+  type Light,
+  type Lighting,
+  type LightingSlot,
+  readLighting,
+} from './lighting.ts'
 export { isMapLinks, type MapLinks, readMapLinks } from './maplinks.ts'
 export {
   isMapList,
@@ -416,3 +424,9 @@ export {
   vocationsWielding,
   WEAPON_TREES,
 } from './vocations.ts'
+export {
+  BONE_SLOTS,
+  readWeaponPlaces,
+  type WeaponPlace,
+  type WeaponPlaces,
+} from './weaponplaces.ts'

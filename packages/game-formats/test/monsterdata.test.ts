@@ -34,7 +34,14 @@ function battle(monsters: { number: number; hp: number; exp: number; gold: numbe
 
 /** Names built in code: the head word, 28-byte records, then the strings — name, plural, code. */
 function names(
-  monsters: { number: number; name: string; code: string; grammar?: number }[],
+  monsters: {
+    number: number
+    name: string
+    code: string
+    grammar?: number
+    radius?: number
+    height?: number
+  }[],
 ): Uint8Array {
   const strings: number[] = []
   const put = (s: string) => {
@@ -55,6 +62,8 @@ function names(
     view.setUint16(at + 8, m.number, true)
     view.setUint32(at + 0x14, plural, true)
     view.setUint32(at + 0x18, m.grammar ?? 0, true)
+    view.setInt16(at + 0x0c, m.radius ?? 0, true)
+    view.setInt16(at + 0x0e, m.height ?? 0, true)
   }
   out.set(strings, 4 + monsters.length * 28)
   return out
@@ -124,7 +133,16 @@ describe('monster data', () => {
     )
     expect(blob?.plural).toBe('blobs')
     expect(blob?.grammar).toMatchObject({ indefinite: 101, definite: 1, gender: 2 })
-    expect(blob?.unknown_0x0a).toHaveLength(10)
+    expect(blob?.unknown_0x0a).toHaveLength(2)
+    expect(blob?.unknown_0x10).toHaveLength(4)
+  })
+
+  it('reads each monster’s body: the radius in 1024ths made fx32, the height as it is', () => {
+    const [blob] = readMonsterNames(
+      names([{ number: 1, name: 'blob', code: 'z000a', radius: 800, height: 3276 }]),
+    )
+    expect(blob?.radius).toBe(3200)
+    expect(blob?.height).toBe(3276)
   })
 
   it('refuses a head that disagrees with the file', () => {

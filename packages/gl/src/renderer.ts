@@ -141,8 +141,61 @@ function multiply(a: Float32Array, b: Float32Array, out: Float32Array): Float32A
   return out
 }
 
+/**
+ * A background of three colours, top to bottom, the middle one on the row
+ * `centre` of the way down, each blended into the next — the shape of the
+ * gradient the game draws behind a field or a battle stage.
+ */
+export interface Backdrop {
+  readonly top: readonly [number, number, number]
+  readonly middle: readonly [number, number, number]
+  readonly bottom: readonly [number, number, number]
+  /** Where the middle colour's row is, 0 the top and 1 the bottom. */
+  readonly centre: number
+}
+
+/** How many bands a backdrop is painted in: enough that the DS's 5-bit steps are the coarser. */
+const BACKDROP_BANDS = 96
+
+/** Paint a backdrop in horizontal bands, clearing each to its colour. */
+function paintBackdrop(
+  gl: WebGL2RenderingContext,
+  width: number,
+  height: number,
+  backdrop: Backdrop,
+  transparent: boolean,
+): void {
+  const { top, middle, bottom } = backdrop
+  const centre = Math.max(0, Math.min(1, backdrop.centre))
+  gl.enable(gl.SCISSOR_TEST)
+  for (let band = 0; band < BACKDROP_BANDS; band++) {
+    const from = Math.floor((band * height) / BACKDROP_BANDS)
+    const to = Math.floor(((band + 1) * height) / BACKDROP_BANDS)
+    if (to <= from) continue
+    const t = (band + 0.5) / BACKDROP_BANDS
+    const [a, b, k] =
+      t < centre || centre >= 1
+        ? [top, middle, centre > 0 ? t / centre : 1]
+        : [middle, bottom, centre < 1 ? (t - centre) / (1 - centre) : 0]
+    gl.clearColor(
+      (a[0] as number) + ((b[0] as number) - (a[0] as number)) * k,
+      (a[1] as number) + ((b[1] as number) - (a[1] as number)) * k,
+      (a[2] as number) + ((b[2] as number) - (a[2] as number)) * k,
+      1,
+    )
+    // Scissor rows count up from the bottom.
+    gl.scissor(0, height - to, width, to - from)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+  }
+  gl.disable(gl.SCISSOR_TEST)
+  if (transparent) gl.clearColor(0, 0, 0, 0)
+  else gl.clearColor(0.078, 0.086, 0.102, 1)
+}
+
 export class ModelRenderer {
   private readonly gl: WebGL2RenderingContext
+  /** Whether it clears to nothing — see the constructor. */
+  private readonly transparent: boolean
   private readonly program: WebGLProgram
   private readonly vao: WebGLVertexArrayObject
   private readonly positionBuffer: WebGLBuffer
@@ -174,6 +227,7 @@ export class ModelRenderer {
     })
     if (!gl) throw new Error('WebGL2 is not available in this browser')
     this.gl = gl
+    this.transparent = options.transparent === true
 
     const program = gl.createProgram()
     if (!program) throw new Error('could not create program')
@@ -366,6 +420,8 @@ export class ModelRenderer {
     viewport?: { width: number; height: number },
     /** The whole vertical field of view, in radians — a scene's own, where it has one. */
     fov?: number,
+    /** A background to clear to instead of the dark ground — see {@link Backdrop}. */
+    backdrop?: Backdrop,
   ): void {
     const gl = this.gl
     const canvas = gl.canvas as HTMLCanvasElement
@@ -382,6 +438,7 @@ export class ModelRenderer {
     const height = viewport?.height ?? canvas.height
     if (viewport) gl.viewport(0, 0, width, height)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    if (backdrop) paintBackdrop(gl, width, height, backdrop, this.transparent)
     if (this.batches.length === 0) return
 
     // Framing and the view come from `@minstrel/render`, so what the viewer

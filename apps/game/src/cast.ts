@@ -337,7 +337,7 @@ export function castPieces(
  */
 export function heldPieces(
   member: CastMember,
-  held: readonly { readonly model: Model; readonly bone: string }[],
+  held: readonly { readonly model: Model; readonly bone: string; readonly turn?: Float32Array }[],
   cat: Catalogue,
   scale: number,
   frame: number,
@@ -350,7 +350,7 @@ export function heldPieces(
     const at = modelBoneWorld(model, member.motion, frame, part.bone)
     if (!at) continue
     for (let shape = 0; shape < part.model.numShapes; shape++) {
-      const posed = attachedGeometry(part.model, shape, at)
+      const posed = attachedGeometry(part.model, shape, at, part.turn)
       const vertices = posed.vertices.map((v) => {
         const x = v.x * scale
         const y = (v.y - member.floor) * scale

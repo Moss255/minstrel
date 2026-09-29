@@ -13,18 +13,30 @@ import { GameFormatError } from './errors.ts'
  *
  * A record opens with the two words {@link RECORD_TAG} and
  * {@link RECORD_TAG_2}, then its index as a `u32`, then three slots of a `u32`
- * monster and a `u32` count — `0xffffffff` for an empty slot — then two `u32`s
- * not established.
+ * monster and a `u32` count — `0xffffffff` for an empty slot — then the
+ * battle's track and its stage, both INFERRED from the values (see each).
  */
 export interface EventBattle {
   /** What a trigger record's battle word names: not the record's place in the file. */
   readonly index: number
   /** The monsters, by their number in the monster data, and how many of each. */
   readonly foes: readonly { readonly monster: number; readonly count: number }[]
-  /** `+0x24`. Not established. */
-  readonly unknown_0x24: number
-  /** `+0x28`. Not established. */
-  readonly unknown_0x28: number
+  /**
+   * `+0x24`, the track the battle plays — an index into `bgm.sdat`'s sequence
+   * list, as `MapEntry.music` is. INFERRED, 29 September 2026: 23 to 38, 23 the
+   * ordinary battles' and 24 the bosses', and on 75 of the 82 battles with a
+   * stage the stage's own track; the Flying Corvus's is 26, as its stage's is.
+   */
+  readonly music: number
+  /**
+   * `+0x28`, the map the battle is fought on, by its id in the map list, or 0
+   * for none — the stage the ground names, as an ordinary battle's is. INFERRED,
+   * 29 September 2026: 82 of the 98 name a `B` map, and each one's label names
+   * the battle's own foe — index 2, Hexagoon, names `B02M15`, "D01 - Hexagoon";
+   * 19, King Godwyn, `B06M03`, "C04 - King Godwyn". The code that reads it is
+   * not read. FORMAT.md, "Where a battle is fought".
+   */
+  readonly stage: number
 }
 
 const HEAD_SIZE = 0x10
@@ -65,8 +77,8 @@ export function readEventBattles(bytes: Uint8Array): EventBattle[] {
     battles.push({
       index: view.getUint32(at + 8, true),
       foes,
-      unknown_0x24: view.getUint32(at + 36, true),
-      unknown_0x28: view.getUint32(at + 40, true),
+      music: view.getUint32(at + 36, true),
+      stage: view.getUint32(at + 40, true),
     })
   }
   return battles

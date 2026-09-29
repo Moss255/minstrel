@@ -5,6 +5,7 @@ import { SLOTS } from '../src/equipment.ts'
 import { HERO_VOCATION, standing } from '../src/hero.ts'
 import {
   back,
+  changeCharacter,
   choose,
   ITEM_ACTIONS,
   labelOf,
@@ -436,5 +437,30 @@ describe('the equip panel', () => {
     expect(taken.state).toMatchObject({ panel: 'equip', picking: undefined, row: 0 })
     expect(choose(picking, context).equip).toEqual({ slot: 'weapon', item: undefined })
     expect(back(picking)).toMatchObject({ panel: 'equip', picking: undefined })
+  })
+
+  it('changes character with L and R, round the party, keeping the slot', () => {
+    const party = {
+      ...context,
+      party: [
+        { name: 'Hero', equipped: new Map([['weapon', sword]]) },
+        { name: 'Ivor', equipped: new Map() },
+        { name: 'Aggie', equipped: new Map() },
+      ],
+    } as MenuContext
+    const onShield = moveCursor(equipPanel(), 1, party)
+    const next = changeCharacter(onShield, 1, party)
+    expect(next.member).toBe(1)
+    expect(next.row).toBe(1)
+    expect(panelLines('equip', party, next)[0]).toBe('Ivor:')
+    // Round from the first to the last.
+    expect(changeCharacter(onShield, -1, party).member).toBe(2)
+    // Not while a slot's choices are open, nor with one in the party.
+    const picking = choose(onShield, party).state
+    if (!picking) throw new Error('no choices')
+    expect(changeCharacter(picking, 1, party)).toBe(picking)
+    expect(changeCharacter(onShield, 1, context)).toBe(onShield)
+    // Nor on another panel.
+    expect(changeCharacter(openMenu(), 1, party).member).toBe(0)
   })
 })

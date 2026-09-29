@@ -143,8 +143,19 @@ export interface MonsterName {
   readonly code: string
   /** Its articles and gender — see `readGrammar`. */
   readonly grammar: Grammar
-  /** The record from `+0x0A` to the plural, not established. */
+  /** `+0x0A`, two bytes not established. */
   readonly unknown_0x0a: Uint8Array
+  /**
+   * `+0x0C`, its body's radius, in `fx32`: the record's `s16` in 1024ths,
+   * shifted up by two — read from overlay 17's `func_ov017_021a2128`, which
+   * hands it to `Object3D::SetRadius` so (docs/binaries.md, "A monster's
+   * body"). Overlay 0 lines monsters up in battle by it.
+   */
+  readonly radius: number
+  /** `+0x0E`, its body's height, an `s16` in `fx32` — handed to `Object3D::SetHeight`, as above. */
+  readonly height: number
+  /** `+0x10`, four bytes not established. */
+  readonly unknown_0x10: Uint8Array
 }
 
 function head(bytes: Uint8Array, record: number, what: string) {
@@ -234,7 +245,10 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       number: view.getUint16(at + 8, true),
       plural: text(view.getUint32(at + 0x14, true), at + 0x14),
       grammar: readGrammar(view.getUint32(at + 0x18, true)),
-      unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x14),
+      unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x0c),
+      radius: view.getInt16(at + 0x0c, true) * 4,
+      height: view.getInt16(at + 0x0e, true),
+      unknown_0x10: bytes.subarray(at + 0x10, at + 0x14),
     })
   }
   return out

@@ -35,6 +35,7 @@ import {
   isNpcPlacements,
   itemPrice,
   type LevelTable,
+  type Lighting,
   type MapEntry,
   type MapManifest,
   type MapTransition,
@@ -73,6 +74,7 @@ import {
   readItemStats,
   readItemTable,
   readLevelTable,
+  readLighting,
   readMapLinks,
   readMapList,
   readMapManifest,
@@ -99,6 +101,7 @@ import {
   readTreasure,
   readTriggers,
   readVocationTrees,
+  readWeaponPlaces,
   readWeightTables,
   type Script,
   type Shop,
@@ -109,6 +112,7 @@ import {
   type Treasure,
   type Trigger,
   type VocationTrees,
+  type WeaponPlaces,
   type WeightTables,
 } from '@minstrel/game-formats'
 import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
@@ -318,6 +322,8 @@ export interface Loaded {
   readonly itemDescriptions: ReadonlyMap<number, string>
   /** Each item's category and subtype, by id — see `readItemKinds`. Empty when it will not read. */
   readonly itemKinds: ReadonlyMap<number, ItemKind>
+  /** Where each kind of weapon is carried, by kind — see `readWeaponPlaces`. Empty when it will not read. */
+  readonly weaponPlaces: ReadonlyMap<number, WeaponPlaces>
   /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
   readonly standardWords: ReadonlyMap<number, string>
   /** The given names creation's last screen rolls from, out of `str_cm` — see `naming.ts`. */
@@ -383,6 +389,9 @@ export interface MonsterWords {
   readonly name: string
   readonly plural: string
   readonly grammar: Grammar
+  /** Its body's radius and height, `fx32` — see `MonsterName.radius`. */
+  readonly radius: number
+  readonly height: number
 }
 
 /**
@@ -960,6 +969,8 @@ function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
               name: monster.name,
               plural: monster.plural,
               grammar: monster.grammar,
+              radius: monster.radius,
+              height: monster.height,
             })
         }
       } catch {
@@ -1047,6 +1058,20 @@ function battleEncountersOf(rom: Uint8Array): Map<number, BattleZone> {
 
 /** How each monster goes about the field — see `readFieldMonsters`. Empty when it will not read. */
 /** Each item's category and subtype, from `itemsort_en.bin` — empty when it will not read. */
+/** `/data/bin/wpnpos.bin`, by kind — see `readWeaponPlaces`. */
+function weaponPlacesOf(rom: Uint8Array): ReadonlyMap<number, WeaponPlaces> {
+  const { cat } = walkOnce(rom, ['/data/bin/wpnpos.bin'])
+  for (const leaf of cat.other) {
+    if (!leaf.path.toLowerCase().endsWith('/wpnpos.bin')) continue
+    try {
+      return new Map(readWeaponPlaces(leaf.bytes).map((places) => [places.kind, places]))
+    } catch {
+      return new Map()
+    }
+  }
+  return new Map()
+}
+
 function itemKindsOf(rom: Uint8Array): ReadonlyMap<number, ItemKind> {
   const { cat } = walkOnce(rom, ['/data/prm/itemsort.gp2'])
   for (const [, files] of cat.members) {
@@ -2265,6 +2290,54 @@ function withCast(base: Catalogue, extra: Catalogue): Catalogue {
   }
 }
 
+/**
+ * **A battle stage's models**, by its code — `B01M16` — placed as its own
+ * descriptor places them, about the stage's origin (see `stage.ts`). The
+ * cartridge's maps are walked once already for the map in play, so this reads
+ * nothing new. Its lighting's pieces only: a stage has day (`L`) and night
+ * (`N`) sets beside its ground, as a field has. Undefined for a code with no
+ * model that reads.
+ */
+export function stageMap(
+  rom: Uint8Array,
+  code: string,
+  lighting: MapLighting,
+): AssembledMap | undefined {
+  const { cat, manifests } = walkOnce(rom, SLICE_PATHS)
+  const wanted = code.toLowerCase()
+  for (const [path, manifest] of manifests) {
+    if (stemOf(path) !== wanted) continue
+    const members = cat.members.get(path)
+    if (!members) continue
+    const built = assembleMap(manifest, members, { lighting })
+    if (built.pieces.length > 0) return built
+  }
+  return undefined
+}
+
+/**
+ * **A map's lighting**, by its code: `<code>00.bats` in `ats_<letter>.ambl`,
+ * by the code's first letter — `B01M1600.bats` in `ats_B.ambl` (see
+ * `readLighting`). Undefined when there is none or it will not read.
+ */
+export function mapLighting(rom: Uint8Array, code: string): Lighting | undefined {
+  const { cat } = walkOnce(rom, SLICE_PATHS)
+  const archive = `ats_${code.slice(0, 1).toUpperCase()}.ambl`
+  const wanted = `${code.toLowerCase()}00.bats`
+  for (const [path, members] of cat.members) {
+    if (!path.endsWith(`/${archive}`)) continue
+    for (const [name, bytes] of members) {
+      if (name.toLowerCase() !== wanted) continue
+      try {
+        return readLighting(bytes)
+      } catch {
+        return undefined
+      }
+    }
+  }
+  return undefined
+}
+
 export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   forgetSheets()
   const wanted = options.map.toLowerCase()
@@ -2403,6 +2476,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       readSystemStrings,
     ),
     itemKinds: itemKindsOf(rom),
+    weaponPlaces: weaponPlacesOf(rom),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     givenNames: givenNamesFrom(rom),
     charaColours: charaColoursOf(rom),

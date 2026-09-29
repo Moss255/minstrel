@@ -414,6 +414,29 @@ the run instead takes the shapes that can be drawn with their own texture from
 41% to **99.3%**. `textureNameForMaterial` is kept only as a fallback for the
 few materials that bind nothing.
 
+### A material's polygon alpha
+
+The material record's `polygonAttr` word, eight bytes after `diffAmb`
+(`+0x10` of the record, as `ModelMaterial.diffuse` places it), is the
+hardware's `POLYGON_ATTR` register, which a material's display list loads.
+GBATEK, "DS 3D Polygon Attributes", documents it: bits 16–20 are the
+polygon's **alpha**, 31 solid, 1 to 30 see-through, and **0 a wireframe**.
+`ModelMaterial.alpha` carries it; the rest of the word is not read.
+
+Across the cartridge's 8,804 models, measured 29 September 2026:
+
+| alpha | materials |
+|---|---|
+| 31 | 34,161 |
+| 1–30 | 5,320, 2,967 of them at 28–30 |
+| 0 | 13,031, most in the battle effects (`eb*.chr`) |
+
+The witness is that what reads see-through is what is: a battle stage's
+fog, `B01M16L2` and `L3`, is 11 and 14; its sky 28, over the gradient its
+lighting draws behind it; the paths and grass
+laid over a field's ground 28 to 30. That the effects' zeros are drawn as
+wireframes is what GBATEK says, and not looked at.
+
 ## NSBCA — joint animation
 
 Stamp `BCA0`, holding a `JNT0` block: a resource dictionary of animations.
