@@ -442,8 +442,12 @@ export interface Blow {
   readonly lunge: { readonly x: number; readonly z: number }
   /** Toward the one struck, radians. */
   readonly facing: number
+  /** When the lunge runs, as fractions of the blow's motion. */
+  readonly from: number
+  readonly to: number
 }
 
+/** The Hero's, `mp0200.bact`'s — each fighter's own script says its own (`blow-effect.ts`). */
 export const STEP_IN = 0xc00 / 4096
 const STEP_MOST = 0x333 / 4096
 const STEP_DONE = 0x28 / 4096
@@ -452,13 +456,24 @@ export const LUNGE_TO = 0.33
 const LUNGE_GAP = 0.25
 export const BLOW_LANDS = 0.61
 
+/** What a blow's script asks of its step in and lunge — the Hero's by default. */
+export interface BlowShape {
+  readonly stepIn: number
+  readonly lunge: { readonly from: number; readonly to: number; readonly gap: number }
+}
+const HERO_SHAPE: BlowShape = {
+  stepIn: STEP_IN,
+  lunge: { from: LUNGE_FROM, to: LUNGE_TO, gap: LUNGE_GAP },
+}
+
 export function blowOf(
   actor: { readonly x: number; readonly z: number },
   target: { readonly x: number; readonly z: number },
   actorRadius: number,
   targetRadius: number,
+  shape: BlowShape = HERO_SHAPE,
 ): Blow {
-  const stop = STEP_IN + (actorRadius + targetRadius) / 2
+  const stop = shape.stepIn + (actorRadius + targetRadius) / 2
   const path: { x: number; z: number }[] = []
   let at = { x: actor.x, z: actor.z }
   for (let tick = 0; tick < 600; tick++) {
@@ -476,11 +491,13 @@ export function blowOf(
   const dz = target.z - at.z
   const d = Math.hypot(dx, dz) || 1
   const gap = d - (actorRadius + targetRadius) / 2
-  const on = Math.max(0, gap - LUNGE_GAP)
+  const on = Math.max(0, gap - shape.lunge.gap)
   return {
     path,
     lunge: { x: at.x + (dx / d) * on, z: at.z + (dz / d) * on },
     facing: Math.atan2(target.x - actor.x, target.z - actor.z),
+    from: shape.lunge.from,
+    to: shape.lunge.to,
   }
 }
 
@@ -500,7 +517,8 @@ export function blowAt(
   }
   const from = blow.path[stepping - 1] ?? blow.lunge
   const into = motionTicks > 0 ? (ticks - stepping) / motionTicks : 1
-  const k = Math.max(0, Math.min(1, (into - LUNGE_FROM) / (LUNGE_TO - LUNGE_FROM)))
+  const k =
+    blow.to > blow.from ? Math.max(0, Math.min(1, (into - blow.from) / (blow.to - blow.from))) : 1
   return {
     x: from.x + (blow.lunge.x - from.x) * k,
     z: from.z + (blow.lunge.z - from.z) * k,

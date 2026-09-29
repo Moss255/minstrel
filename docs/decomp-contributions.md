@@ -501,6 +501,13 @@ Read for the battle stages; FORMAT.md, "Where a battle is fought".
 | `ov025 0x021e4868` | — | wait for a motion to be so far through | `ActionPlayer::WaitMotion` |
 | `ov000 0x0216e678`, `0x0216ea38` | — | the chase shot; its per-frame aim | `BattleCamera::Chase`, `::ChaseUpdate` |
 | `Object3D::AdvanceAnimations_v1`, `GameState::CalculateDeltaTime`, `BCFGScript_Opcode_66` | — | already named: a motion's pace, its `.bcfg` speed every 17 ms | — |
+| `0x02039f04`, `0x0203a48c` | — | the battle's numbers: load their sheets; raise one | `BattleNumbers::Load`, `::Raise` |
+| `0x02039fec`, `0x0203a0b4`, `0x0203a5e8` | — | a number's frame, its drawing, its nudge clear of others | `BattleNumbers::Update`, `::Draw`, `::Separate` |
+| `ov025 0x021e278c` | — | an effect's file by its number | `Effect::FileName` |
+| `ov025 0x021e4a08`, `0x021e4a58`, `0x021e41a0` | — | action-script tags 29, 30, 21: load, name, play an effect | `ActionPlayer::LoadEffect`, `::NameEffect`, `::PlayEffect` |
+| `ov000 0x02163440` | — | tag 116, the hit-stop | `BattleScene::HitStop` |
+| `ov025 0x021e4168`, `0x021e40e4`, `0x021e6304` | — | tags 20, 18, 68: name an effect by path; preload a file; the reaction's flags | `ActionPlayer::NameEffectByPath`, `::Preload`, `::ReactionFlags` |
+| `MAT.cpp`, `MAM.cpp`, `CreateTextureMatrix_v0_*` | — | already named: texture and material animation, and the texture matrix | — |
 
 **Open**: what the chase shot's yaw is measured from; the reaction record's parts; the tables
 at `ov000 0x02183280` and `0x0218328c`; four more shots (`0x0216e250`,

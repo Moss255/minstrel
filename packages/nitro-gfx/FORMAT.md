@@ -650,9 +650,9 @@ exactly one block, with no exceptions worth the name:
 | `.nsbmd` | `BMD0` | `MDL0` | 4,358 | yes |
 | `.nsbtx` | `BTX0` | `TEX0` | 737 | yes |
 | `.nsbca` | `BCA0` | `JNT0` | 317 | yes |
-| `.nsbta` | `BTA0` | `SRT0` | 873 | **no** |
+| `.nsbta` | `BTA0` | `SRT0` | 873 | yes — `texanim.ts` |
 | `.nsbtp` | `BTP0` | `PAT0` | 525 | **no** |
-| `.nsbma` | `BMA0` | `MAT0` | 512 | **no** |
+| `.nsbma` | `BMA0` | `MAT0` | 512 | yes — `matanim.ts` |
 
 The 12 `.nsbmd` that carry a second block carry `TEX0`, a model with its
 textures packed in beside it.
@@ -687,8 +687,60 @@ models. A map that looks static in this repository's viewer is a map whose
 - **Interpolation between animation samples.** A frame takes the sample that
   covers it. For step 1, which is all but about 1% of curves, that is every
   frame and there is nothing to interpolate.
-- **NSBTA, NSBTP and NSBMA.** Texture, pattern and material animation are not
-  read — 1,910 files in the map archives. See the container table above.
+- **NSBTP.** Pattern animation is not read. NSBTA and NSBMA are — see below —
+  but only the battle's effects play them yet; a map's water and fire do not.
+
+# NSBTA and NSBMA — texture and material animation
+
+Read 29 September 2026 by `texanim.ts` and `matanim.ts`. **All 1,680 NSBTA and
+2,312 NSBMA on the reference cartridge read.**
+
+## Sources
+
+- scurest, [nsbmd_docs](https://github.com/scurest/nsbmd_docs), "Material
+  Animations", and apicula's `src/nitro/material_animation.rs`: NSBTA's
+  block, its `M\0AT` animations and the track list — both marked incomplete.
+  **They read the translation samples as 1.10.5; the game reads them as
+  `fx16`**, 4096 to one (the `ldrsh` into a `fix32` used as the translation).
+  NSBMA they list as undocumented.
+- **The game's own code**, as the dqix decompilation gives it — `MAT.cpp`
+  and `MAM.cpp` in `src/Graphics/NSBXX/`, the evaluators the animation table
+  at US ARM9 `0x020f1c90` names by stamp: every channel, bit and sampler
+  below. The texture matrix built from them is `RenderCommandProcs.cpp`'s
+  `CreateTextureMatrix_v0_*`.
+
+## The layout
+
+Both are a Nitro container of one block — `SRT0` or `MAT0` — holding a name
+list (see "Materials and their textures") of animations, each an offset from
+the block. An animation opens `M\0AT` or `M\0AM`, a `u16` frame count and a
+`u16` not read (`0x0303` on the SRTs, `0x0003` on the MAMs), then a name list
+of tracks, each named for the material it moves. Sample offsets are from the
+animation's stamp.
+
+**NSBTA's track**, 40 bytes: five channels of a metadata word and a value
+word — scale S, scale T, rotation, translate S, translate T. Metadata bits
+0–15 the last frame (the frame count, on the cartridge), bit 28 `s16` samples
+rather than `s32`, bit 29 the value word is the value held, bits 30–31 the
+frames a sample (bit 30 tested first: 2, then bit 31: 4). A rotation's value
+is a sine in its low half and a cosine in its high, `fx16` each.
+
+**NSBMA's track**, 20 bytes: five words — diffuse, ambient, specular,
+emission, alpha — each bits 0–15 its samples' offset or the value held, 16–28
+a frame count, 29 held, 30–31 the frames a sample. Colours `BGR555` in a
+`u16`; alpha a `u8`, 0 to 31, into `POLYGON_ATTR`'s bits 16–20.
+
+**Sampling** (`SampleScalarFromMATTrack`, `GetColorFromMaterialAnimation`,
+`GetAlphaFromMaterialAnimation`): the frame is whole. A sample a frame reads
+directly; every second frame, the odd frames the mean of their two; every
+fourth, the half-way frames the mean and the others three to one toward the
+nearer, colours mixed by their red-and-blue and green masks. Past the last
+frame an in-between frame reads a sample near the end.
+
+**The sword's trail, `eb0500`**: 16 frames; its two materials white, alpha 0
+to frame 11 and then 31, 20, 10, 0; its texture at scale (1, ½) sliding 0 to
+frame 11 and then −0.011, −0.068, −0.252, −0.5 of its height. The trail is
+there only for its last four frames, fading as it slides.
 
 # 2D graphics — NCLR, NCGR, NCER
 

@@ -20,6 +20,15 @@ export {
   rgbOfColour,
   stampAt,
 } from './g2d.ts'
+export {
+  isNsbma,
+  type MatChannel,
+  type MaterialAnimation,
+  type MatTrack,
+  readNsbma,
+  sampleMatChannel,
+  sampleMatTrack,
+} from './matanim.ts'
 export { blend, identity, invertAffine, type Mat4, multiply, transformPoint } from './matrix.ts'
 export {
   type Cell,
@@ -95,3 +104,13 @@ export {
   type ShapeState,
 } from './render.ts'
 export { basisRotation, pivotRotation } from './rotation.ts'
+export {
+  isNsbta,
+  readNsbta,
+  sampleTexChannel,
+  sampleTexRotation,
+  sampleTexTrack,
+  type TexChannel,
+  type TexTrack,
+  type TextureAnimation,
+} from './texanim.ts'

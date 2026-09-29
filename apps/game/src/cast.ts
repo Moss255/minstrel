@@ -300,6 +300,12 @@ export function castPieces(
   cat: Catalogue,
   scale: number,
   frame: number,
+  /**
+   * What an animated material does to its shape's piece — an effect's colour,
+   * alpha and texture movement (`nsbma`, `nsbta`) — or undefined to leave the
+   * shape out. By default each shape is drawn as it stands.
+   */
+  shade?: (material: string | undefined, piece: Piece) => Piece | undefined,
 ): Piece[] {
   const { model, placement } = member
   const sin = Math.sin(placement.facing)
@@ -324,7 +330,9 @@ export function castPieces(
     const materialIndex = model.shapeMaterials[index]
     const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
     const texture: DecodedTexture | undefined = material ? textureFor(cat, material) : undefined
-    out.push(texture ? { geometry, ...texture } : { geometry })
+    const piece: Piece = texture ? { geometry, ...texture } : { geometry }
+    const shaded = shade ? shade(material?.name, piece) : piece
+    if (shaded) out.push(shaded)
   })
   return out
 }

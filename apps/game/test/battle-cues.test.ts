@@ -46,7 +46,9 @@ describe('what the monsters do while the battle is told', () => {
     const played = battleChoose({ ...targeting, cursor: 1 })
     expect(played.cues).toHaveLength(played.pages.length)
     const all = played.cues.flat()
-    expect(all).toContainEqual({ fighter: 2, motion: 'damage' })
+    expect(all).toContainEqual(expect.objectContaining({ fighter: 2, motion: 'damage' }))
+    // What it took rides on the cue, for the number over it.
+    expect(all.find((c) => c.motion === 'damage')?.amount).toBeGreaterThan(0)
     expect(all).toContainEqual({ fighter: 2, motion: 'death' })
     // The blob that struck back, if it lived to, strikes in its own page.
     for (const cue of all) expect(['attack', 'damage', 'death']).toContain(cue.motion)

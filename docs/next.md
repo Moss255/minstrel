@@ -1,11 +1,75 @@
 # Where to pick up
 
+Newest first: the battle scene, 29 September, heads the list.
+
 Written 10 September 2026 against `2c8fd7f`, and revised the same day: items 1
 and 2 are done, item 3 has been measured further and the question has moved, and
 the doorway cost is gone. The evidence behind each is in
 `packages/game-formats/FORMAT.md`; this is the short version and what to do next.
 
 Ordered by what is blocking the milestone, not by how interesting it is.
+
+---
+
+## The battle scene — 29 September
+
+**Built this week, from the game's code**: a battle fought on the stage the
+ground names (or a set battle's own), lit by the stage's own sky gradient,
+everyone on the set-up's grid; the opening's eased shot, the command camera's
+slow orbit, the chase shot and the close-ups; every motion at its own `.bcfg`
+speed; each fighter's blow — step in, lunge, landing — from its own action
+script, with its swing trail, the effect on the one struck where there is
+one, the hit-stop and the rising numbers; weapons hung and animated by their
+kind's motion set; texture and material animation (NSBTA, NSBMA) read. The
+evidence is in `packages/game-formats/FORMAT.md` ("Where a battle is fought",
+"The battle camera", "The action scripts", "The battle's numbers", "A blow's
+swing trail and hit-stop", "How fast a motion plays", "Where a weapon is
+carried") and `packages/nitro-gfx/FORMAT.md` ("NSBTA and NSBMA"); what is ours
+is gathered in `docs/still-open.md` §2, "the battle stage".
+
+**What is left**, in the order it would be taken:
+
+1. **Actions other than a blow.** Only the plain attack plays its script.
+   Spells, skills, items, Defend, Flee and calling for help have their own —
+   `actdef.nsarc/default.bact`, `actspl.nsarc`, `actskl.nsarc`, `sp%03d.bact`
+   — with their motions (`magic`, `item`, `guard`, `escape`), effects,
+   cameras (mode 5 close-ups, the group orbit) and formation changes (calling
+   for help moves everyone to their rows). Today they show only their text,
+   a monster's blow motion, and numbers as the page opens. A general script
+   player — running `.bact` records in order, with tag 9's skips, 26's waits
+   and 8's delays — would replace `blowNow`'s special case.
+2. **The end of a battle.** The victory orbit (overlay 25's sub-phase 5, the
+   group orbit held 60 frames — INFERRED to be the victory's), a fallen
+   monster's fade (`TransitionInheritedAlpha` to 0 over 300 ms, `ov025
+   0x021ddbc0`, INFERRED to be the death's) and the collapse effect at its
+   shadow (`eb0100`, `arm9 0x02048808`, INFERRED), and the fade to black and
+   back to the field (state 4, `SetBrightness(−16, 15)`). The way in: the
+   load's black and where it fades up (not read).
+3. **Sound.** Tag 70's sound on the swing and the hit (40 and 80 for the
+   swords), the reaction record's (tag 71), an effect's own; none is played.
+4. **Maps that move.** The same NSBTA and NSBMA — 1,910 files in the map
+   archives — drive water, fire and anything that scrolls or pulses on the
+   field; nothing plays them there yet. NSBTP, pattern animation, is not read.
+5. **Motion speeds in the field.** The rule the battle now plays by — a
+   motion's `.bcfg` speed every 17 ms — holds everywhere; the field still
+   plays motions at 30 frames a second.
+6. **The rest of what is read and not yet played**: the numbers' MP kinds
+   (nothing yet takes or gives MP by a number) and tension (no Psyche Up);
+   the combo display (`bt_combo*.spr`); the chase shot's measured yaw;
+   `Object3D +0x18e`'s bump to a monster's close-up; the lighting slot a
+   battle's request carries (`+5`, 2 unless set) — the engine takes its
+   clock's.
+
+**To read from the game**, when the list above reaches them: what fills the
+battle request's `+0x20` (a set battle's stage — the data says `eventbattle
+.bin`'s `+0x28`), and its `+5`; the fade up into a battle; what the chase
+shot's yaw is measured from; the battle loop's frame rate, which every
+per-frame step here takes as 60 — the camera's turns and pulls, the numbers,
+the step in.
+
+**To settle against the let's play** (`docs/still-open.md` §1c): whether every
+monster is in view as "draw near" is said; the command camera's rate, about
+12° a second at 60 frames; a party of three's lopsided grid.
 
 ---
 

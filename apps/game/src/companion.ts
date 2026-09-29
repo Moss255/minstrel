@@ -616,4 +616,6 @@ export const COMPANION_MOTIONS: Readonly<Record<Cue['motion'], string>> = {
   damage: 'damage',
   death: 'death',
   flee: 'stand',
+  // Recovering has no motion of its own: the number rises over them standing.
+  heal: 'stand',
 }

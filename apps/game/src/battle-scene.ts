@@ -468,7 +468,10 @@ export function foeWaysOf(
  */
 export interface Cue {
   readonly fighter: number
-  readonly motion: 'appear' | 'attack' | 'damage' | 'death' | 'flee'
+  /** `heal` is recovering: no motion of its own, only the number over them. */
+  readonly motion: 'appear' | 'attack' | 'damage' | 'death' | 'flee' | 'heal'
+  /** What a `damage` takes or a `heal` gives — the number that rises over them. */
+  readonly amount?: number
 }
 
 export interface BattleScene {
@@ -831,16 +834,17 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
     case 'attack': {
       const cues: Cue[] = [{ fighter: event.actor, motion: 'attack' }]
       if (event.damage > 0 && !event.dodged && !event.blocked)
-        cues.push({ fighter: event.target, motion: 'damage' })
+        cues.push({ fighter: event.target, motion: 'damage', amount: event.damage })
       return cues
     }
     case 'spell': {
       // A monster casting strikes its attack; one hurt by the other side's spell flinches.
       const cues: Cue[] = foe(event.actor) ? [{ fighter: event.actor, motion: 'attack' }] : []
       for (const hit of event.hits) {
-        if (foe(event.actor) !== foe(hit.target) && hit.amount > 0) {
-          cues.push({ fighter: hit.target, motion: 'damage' })
-        }
+        if (hit.amount <= 0) continue
+        if (foe(event.actor) !== foe(hit.target)) {
+          cues.push({ fighter: hit.target, motion: 'damage', amount: hit.amount })
+        } else cues.push({ fighter: hit.target, motion: 'heal', amount: hit.amount })
       }
       return cues
     }
@@ -848,7 +852,9 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
       // A monster changing state strikes its attack.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'attack' }] : []
     case 'poison':
-      return event.damage > 0 ? [{ fighter: event.actor, motion: 'damage' }] : []
+      return event.damage > 0
+        ? [{ fighter: event.actor, motion: 'damage', amount: event.damage }]
+        : []
     case 'flee':
       // A monster running away stays until its page is told, then is gone.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'flee' }] : []

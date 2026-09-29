@@ -40,6 +40,7 @@ import {
   OP_FACILITY,
   partName,
   QUEST_SLOTS,
+  readSprite,
   type StoryArea,
   type StoryState,
   settingsPlay,
@@ -64,6 +65,8 @@ import {
   type NodeTransform,
   poseGeometry,
   sampleAnimation,
+  sampleMatTrack,
+  sampleTexTrack,
 } from '@minstrel/nitro-gfx'
 import {
   applyStyle,
@@ -80,7 +83,9 @@ import {
   moveRelativeToCamera,
   OUTDOORS,
   occludedChunks,
+  perspective,
   updateFollowCamera,
+  viewMatrix,
 } from '@minstrel/render'
 import {
   BattleRng,
@@ -123,7 +128,7 @@ import {
   WORLD_SCALE,
   waysOut,
 } from '@minstrel/world'
-import { actorLookOf, packMotions } from './actors.ts'
+import { type ActorLook, actorLookOf, packMotions } from './actors.ts'
 import { cook, POT_SAYS, potList, tryYourLuck } from './alchemy.ts'
 import {
   type Appearance,
@@ -144,6 +149,15 @@ import {
 import { gradientOf, horizonRow, LIGHTING_SLOT } from './backdrop.ts'
 import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
+  NUDGE_AT,
+  type NumberKind,
+  nudged,
+  numberFrame,
+  numberSprites,
+  type RisingNumber,
+  risingNumber,
+} from './battle-numbers.ts'
+import {
   type BattleItem,
   type BattleScene,
   type BattleSpell,
@@ -161,6 +175,7 @@ import {
   withPages,
 } from './battle-scene.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
+import { type BlowScript, HERO_BLOW, type ScriptEffect } from './blow-effect.ts'
 import { BUBBLE_SHEETS, type BubbleKind, bubbleFrame, doorAhead } from './bubbles.ts'
 import {
   CABINET_OPENING,
@@ -279,6 +294,7 @@ import {
 } from './hero.ts'
 import {
   allTriggers,
+  battleSheets,
   entranceOf,
   givenNamesFrom,
   type Loaded,
@@ -287,6 +303,7 @@ import {
   motionSet,
   motionSpeeds,
   type Stage,
+  setBlowScript,
   stageMap,
 } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
@@ -373,7 +390,6 @@ import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './sl
 import {
   actorCloseUp,
   type BattleView,
-  BLOW_LANDS,
   type Blow,
   blowAt,
   blowOf,
@@ -1068,6 +1084,8 @@ interface StagedBlow {
   readonly actor: number
   readonly target: number
   readonly blow: Blow
+  /** The one striking's own script — see `blow-effect.ts`. */
+  readonly script: BlowScript
   /** How long the blow's motion is, in ticks, and the tick the blow lands. */
   readonly motionTicks: number
   readonly lands: number
@@ -2746,6 +2764,11 @@ let lastFrame = 0
 function frame(now = 0): void {
   const elapsedMs = lastFrame === 0 ? 0 : now - lastFrame
   lastFrame = now
+  // The battle's own clock, slowed by a blow's hit-stop — see `battleSpeed`.
+  if (battle) {
+    stopOnBlow(now)
+    battleClock += elapsedMs * battleSpeed(now)
+  }
 
   if (loaded) {
     keepTime(elapsedMs)
@@ -2913,7 +2936,7 @@ function frame(now = 0): void {
         : null
     }
     if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
-    else if (battleStage) aimAtBattle(battleStage, elapsedMs)
+    else if (battleStage) aimAtBattle(battleStage, elapsedMs * battleSpeed(now))
     else
       updateFollowCamera(
         camera,
@@ -3001,7 +3024,7 @@ function frame(now = 0): void {
     }
     const heroPose = heroEventPose() ?? chestOpeningPose(now)
     const drawn = battleStage
-      ? stageDrawn(battleStage, now)
+      ? stageDrawn(battleStage, battleClock)
       : [
           ...mapPieces.map((piece, shape) => {
             const gone = hiddenIn.get(shape)
@@ -3038,8 +3061,8 @@ function frame(now = 0): void {
             )
           }),
           // A battle's monsters, facing the Hero — see `monsters.ts`.
-          ...(battle ? foePieces(now) : []),
-          ...(battle ? companionPieces(now) : []),
+          ...(battle ? foePieces(battleClock) : []),
+          ...(battle ? companionPieces(battleClock) : []),
           // An event's characters, bar the Hero — see `eventPieces`.
           ...eventPieces(),
           // The field's roaming monsters, in their field models.
@@ -3092,6 +3115,7 @@ function frame(now = 0): void {
     fov,
     battleStage ? stageBackdrop(battleStage, fov) : undefined,
   )
+  drawNumbers(battleClock, elapsedMs, fov)
   sceneBrowser?.tick()
   requestAnimationFrame(frame)
 }
@@ -5582,7 +5606,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
   battleSpots = battleStage
     ? [undefined, ...battleStage.spots.slice(1, party.length), ...foeSpots]
     : [undefined, ...party.slice(1).map((_, i) => besideHero(i)), ...foeSpots]
-  cueStarted = performance.now()
+  cueStarted = battleClock
   self.held.clear()
   closeTalk()
   menu = undefined
@@ -5975,7 +5999,121 @@ function stageDrawn(stage: BattleStage, now: number): Piece[] {
     ...foePieces(now),
     ...companionPieces(now),
     ...heroInBattle(hero, now),
+    ...blowEffectPieces(now),
   ]
+}
+
+/**
+ * **The effects a blow plays** — its script's (`blow-effect.ts`): the swing
+ * trail on the one striking as the blow's motion begins, tied to them
+ * (INFERRED: the script hands the effect their object), and, for the few
+ * monsters whose reaction names one, an effect on the one struck as it lands,
+ * raised by half their height when the record says so. Each once through, at
+ * its own speed. **Not drawn as the game does**: an effect's texture and
+ * material animations are not read here yet, so it neither scrolls nor fades.
+ */
+function blowEffectPieces(now: number): Piece[] {
+  const blow = blowNow()
+  if (!blow) return []
+  const pieces: Piece[] = []
+  const striking = fighterNow(blow.actor, now)
+  if (striking?.doing === 'striking' && blow.script.swing) {
+    pieces.push(...effectPieces(blow.script.swing, striking, striking.ms, 0))
+  }
+  const struck = fighterNow(blow.target, now)
+  const effect = blow.script.struck
+  if (struck?.doing === 'struck' && effect) {
+    const stage = battleStage
+    const raise =
+      effect.raised && stage
+        ? ((stage.heights[blow.target] ?? 0) / 2) * WORLD_SCALE * worldScale
+        : 0
+    pieces.push(...effectPieces(effect, struck, struck.ms, raise))
+  }
+  return pieces
+}
+
+/** An effect played `ms` in at a fighter's place and facing, raised by `raise`; nothing once it is through. */
+function effectPieces(
+  effect: ScriptEffect,
+  at: { readonly x: number; readonly y: number; readonly z: number; readonly facing: number },
+  ms: number,
+  raise: number,
+): Piece[] {
+  const rom = cartridge
+  const look = rom ? actorLookOf(rom, effect.file, []) : undefined
+  if (!look) return []
+  const motion =
+    (effect.motion !== undefined ? look.motions.get(effect.motion) : undefined) ??
+    [...look.motions.values()][0]
+  const speed =
+    (effect.motion !== undefined ? look.speeds.get(effect.motion) : undefined) ??
+    [...look.speeds.values()][0]
+  const frames = motion?.frameCount ?? 1
+  if (ms > motionMs(speed, frames)) return []
+  const placement = {
+    id: -1,
+    map: 0,
+    x: at.x,
+    y: at.y + raise,
+    z: at.z,
+    facing: at.facing,
+    offset: 0,
+  } as NpcPlacement
+  const frame = frameAt(ms, speed, frames, false)
+  return castPieces(
+    { name: effect.file, model: look.model, motion, floor: 0, placement },
+    look.catalogue,
+    characterScale,
+    frame,
+    effectShade(look, Math.floor(frame)),
+  )
+}
+
+/**
+ * **An effect's materials at a frame**, from its own animations (`@minstrel/
+ * nitro-gfx`'s `readNsbma`, `readNsbta`): the material's alpha and diffuse,
+ * and its texture scaled and slid as the game's texture matrix does it
+ * (`CreateTextureMatrix_v0_TranslateScale`, `RenderCommandProcs.cpp`) —
+ * s′ = sₛ·s − w·sₛ·tₛ and t′ = sₜ·t + h·(1 − sₜ) + h·sₜ·tₜ, in texels.
+ * INFERRED: that an alpha of 0 shows nothing — GBATEK makes it a wireframe,
+ * and the effects hold it for most of their length. **Ours**: a texture's
+ * rotation is not applied; the effects read have none.
+ */
+function effectShade(
+  look: ActorLook,
+  frame: number,
+): ((material: string | undefined, piece: Piece) => Piece | undefined) | undefined {
+  const { texAnim, matAnim } = look
+  if (!texAnim && !matAnim) return undefined
+  return (material, piece) => {
+    let out = piece
+    const colours = matAnim?.tracks.find((t) => t.material === material)
+    if (colours) {
+      const now = sampleMatTrack(colours, frame)
+      if (now.alpha === 0) return undefined
+      const channel = (shift: number) => ((now.diffuse >> shift) & 31) / 31
+      out = {
+        ...out,
+        tint: [channel(0), channel(5), channel(10)],
+        ...(now.alpha < 31 ? { opacity: now.alpha / 31 } : {}),
+      }
+    }
+    const moves = texAnim?.tracks.find((t) => t.material === material)
+    if (moves && out.width && out.height) {
+      const t = sampleTexTrack(moves, frame)
+      const [sS, sT, tS, tT] = [t.scaleS, t.scaleT, t.translateS, t.translateT].map((v) => v / 4096)
+      const w = out.width
+      const h = out.height
+      const vertices = out.geometry.vertices.map((v) => ({
+        ...v,
+        s: (sS as number) * v.s - w * (sS as number) * (tS as number),
+        t: (sT as number) * v.t + h * (1 - (sT as number)) + h * (sT as number) * (tT as number),
+      }))
+      out = { ...out, geometry: { ...out.geometry, vertices } }
+    }
+    return out
+  }
 }
 
 /**
@@ -6056,6 +6194,223 @@ function heroInBattle(hero: Player, now: number): Piece[] {
   )
 }
 
+/**
+ * **The battle's clock**, ms: what every motion, blow and shot in a fight is
+ * timed by. It runs with the frame's time, as the game's own does — a motion
+ * advances by the time the game's clock hands it (`motion-speed.ts`) — and
+ * slower while the game's speed is turned down.
+ */
+let battleClock = 0
+
+/**
+ * **The hit-stop** (action-script tag `116`, `func_ov000_02163440`): as a blow
+ * lands, its script asks, say, `116 0.1 200 100` — 100 ms on, the game's
+ * speed goes to 0.1 (`GameState::SetGameSpeed`) for 200 ms, then back to 1
+ * (`ov000 0x021609bc`–`0x02160a60`). 1,303 scripts ask exactly that; a boss's
+ * and a skill's ask longer. Each blow takes its own script's.
+ */
+let hitStop: { readonly from: number; readonly until: number; readonly speed: number } | undefined
+let stoppedFor = -1
+
+/** How fast the battle's clock runs now: slowed through a hit-stop, else 1. */
+function battleSpeed(now: number): number {
+  return hitStop && now >= hitStop.from && now < hitStop.until ? hitStop.speed : 1
+}
+
+/** Start a hit-stop as the page's blow lands, once a page. */
+function stopOnBlow(now: number): void {
+  const blow = blowNow()
+  if (!blow || stoppedFor === cueStarted) return
+  if ((battleClock - cueStarted) / TICK_MS < blow.lands) return
+  stoppedFor = cueStarted
+  const asked = blow.script.hitStop
+  if (!asked) return
+  hitStop = {
+    from: now + asked.after,
+    until: now + asked.after + asked.lasts,
+    speed: asked.speed,
+  }
+}
+
+/** The numbers rising over the fighters — see `battle-numbers.ts`. */
+let risingNumbers: RisingNumber[] = []
+/** The page whose numbers have been put up, before and after its blow lands. */
+let numberedPage = -1
+let numberedBlow = -1
+let numbersCarry = 0
+const numbersEl = must<HTMLCanvasElement>('#numbers')
+/** Each sheet's frames, drawn once to a canvas each. */
+const numberFrames = new Map<string, HTMLCanvasElement[]>()
+/** Scratch for projecting a point, kept rather than made a frame. */
+const numberView = new Float32Array(16)
+const numberProjection = new Float32Array(16)
+
+/** A sheet's frame as a picture, read from `btarc.nsarc` once. */
+function numberFrameOf(sheet: string, frame: number): HTMLCanvasElement | undefined {
+  let frames = numberFrames.get(sheet)
+  if (!frames) {
+    frames = []
+    const bytes = cartridge ? battleSheets(cartridge).get(sheet) : undefined
+    if (bytes) {
+      try {
+        const sprite = readSprite(bytes)
+        for (let i = 0; i < sprite.frames; i++) {
+          const decoded = sprite.decode(i)
+          const picture = document.createElement('canvas')
+          picture.width = decoded.width
+          picture.height = decoded.height
+          picture
+            .getContext('2d')
+            ?.putImageData(
+              new ImageData(new Uint8ClampedArray(decoded.pixels), decoded.width, decoded.height),
+              0,
+              0,
+            )
+          frames.push(picture)
+        }
+      } catch {
+        // A sheet that will not read shows no numbers.
+      }
+    }
+    numberFrames.set(sheet, frames)
+  }
+  return frames[frame]
+}
+
+/** The top of a fighter as drawn: its place, raised by its height. */
+function topOf(i: number, now: number): readonly [number, number, number] | undefined {
+  const stage = battleStage
+  const at = fighterNow(i, now)
+  if (stage && at) {
+    const grow = WORLD_SCALE * worldScale
+    return [at.x, at.y + (stage.heights[i] ?? 1) * grow, at.z]
+  }
+  const spot =
+    i === 0 && self
+      ? { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) }
+      : battleSpots[i]
+  return spot ? [spot.x, spot.y + toFloat(PERSON.height) * worldScale, spot.z] : undefined
+}
+
+/**
+ * **Put the page's numbers up**: each amount a cue carries, over whom it is
+ * about — damage in orange, recovery in green. A blow's over the one struck
+ * as it lands (the reaction record, at 61% of the blow); the rest as their
+ * page opens, **ours**, their scripts not played. A second number over the
+ * same fighter in a page takes the next offset.
+ */
+function raiseNumbers(now: number): void {
+  const scene = battle
+  if (scene?.phase !== 'telling') return
+  const cues = scene.cues[0] ?? []
+  const blow = blowNow()
+  const landed = blow && (now - cueStarted) / TICK_MS >= blow.lands
+  const hits = new Map<number, number>()
+  const raise = (fighter: number, amount: number, kind: NumberKind) => {
+    const at = topOf(fighter, now)
+    const hit = hits.get(fighter) ?? 0
+    hits.set(fighter, hit + 1)
+    const number = at ? risingNumber(amount, kind, at, hit) : undefined
+    if (number) risingNumbers = [...risingNumbers, number].slice(-16)
+  }
+  for (const cue of cues) {
+    if (cue.amount === undefined) continue
+    const byBlow = blow && cue.fighter === blow.target && cue.motion === 'damage'
+    if (byBlow) {
+      if (landed && numberedBlow !== cueStarted) raise(cue.fighter, cue.amount, 0)
+    } else if (numberedPage !== cueStarted) {
+      raise(cue.fighter, cue.amount, cue.motion === 'heal' ? 2 : 0)
+    }
+  }
+  numberedPage = cueStarted
+  if (landed) numberedBlow = cueStarted
+}
+
+/**
+ * **Draw the rising numbers** over the 3D view, each at its fighter's top as
+ * the camera sees it, in the DS's own pixels — the view always holds the DS's
+ * frame, so a DS pixel is the view's height over 192 (its width over 256 in a
+ * view taller than 4:3). Their frames go at 60 a second: ours, the battle
+ * loop's own rate not read.
+ */
+function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): void {
+  const width = Math.max(1, Math.floor(numbersEl.clientWidth * devicePixelRatio))
+  const height = Math.max(1, Math.floor(numbersEl.clientHeight * devicePixelRatio))
+  if (numbersEl.width !== width || numbersEl.height !== height) {
+    numbersEl.width = width
+    numbersEl.height = height
+  }
+  const context = numbersEl.getContext('2d')
+  if (!context) return
+  context.clearRect(0, 0, width, height)
+  if (!battle) {
+    risingNumbers = []
+    return
+  }
+  raiseNumbers(now)
+  const aspect = width / height
+  perspective(aspect, 0.01, 1000, numberProjection, fov)
+  viewMatrix(camera, numberView)
+  const unit = aspect >= 256 / 192 ? height / 192 : width / 256
+  numbersCarry = Math.min(numbersCarry + elapsedMs, TICK_MS * 8)
+  while (numbersCarry >= TICK_MS) {
+    numbersCarry -= TICK_MS
+    risingNumbers = risingNumbers.flatMap((n) => numberFrame(n) ?? [])
+    // Each, on its first showing frame, nudged clear of the rest — see `nudged`.
+    if (risingNumbers.some((n) => n.timer === NUDGE_AT)) {
+      const screen = risingNumbers.map((n) => onScreen(n.at, width, height, unit))
+      risingNumbers = risingNumbers.map((n, i) =>
+        n.timer === NUDGE_AT ? (nudged(risingNumbers, i, screen) ?? n) : n,
+      )
+    }
+  }
+  if (risingNumbers.length === 0) return
+  context.imageSmoothingEnabled = false
+  for (const number of risingNumbers) {
+    const point = onScreen(number.at, width, height, unit)
+    if (!point) continue
+    for (const sprite of numberSprites(number, point.x, point.y)) {
+      const picture = numberFrameOf(sprite.sheet, sprite.frame)
+      if (!picture) continue
+      context.globalAlpha = sprite.alpha / 31
+      context.drawImage(
+        picture,
+        width / 2 + (sprite.x - 128) * unit,
+        height / 2 + (sprite.y - 96) * unit,
+        picture.width * sprite.scale * unit,
+        picture.height * sprite.scale * unit,
+      )
+    }
+  }
+  context.globalAlpha = 1
+}
+
+/**
+ * Where a point falls on the DS's screen, in its pixels, through the view as
+ * last set up (`numberView`, `numberProjection`); undefined behind the eye.
+ */
+function onScreen(
+  at: readonly [number, number, number],
+  width: number,
+  height: number,
+  unit: number,
+): { readonly x: number; readonly y: number } | undefined {
+  const [x, y, z] = at
+  const v = numberView
+  const p = numberProjection
+  const ex = (v[0] as number) * x + (v[4] as number) * y + (v[8] as number) * z + (v[12] as number)
+  const ey = (v[1] as number) * x + (v[5] as number) * y + (v[9] as number) * z + (v[13] as number)
+  const ez = (v[2] as number) * x + (v[6] as number) * y + (v[10] as number) * z + (v[14] as number)
+  const cw =
+    (p[3] as number) * ex + (p[7] as number) * ey + (p[11] as number) * ez + (p[15] as number)
+  if (cw <= 0) return undefined
+  const cx =
+    ((p[0] as number) * ex + (p[4] as number) * ey + (p[8] as number) * ez + (p[12] as number)) / cw
+  const cy =
+    ((p[1] as number) * ex + (p[5] as number) * ey + (p[9] as number) * ez + (p[13] as number)) / cw
+  return { x: 128 + (cx * width) / 2 / unit, y: 96 - (cy * height) / 2 / unit }
+}
+
 /** A party member's radius on a stage, map units — ours: what the game gives a party member's body is not read. */
 const PARTY_RADIUS = 0.5
 
@@ -6065,11 +6420,11 @@ function cameraDraw(stage: BattleStage): number {
   return (stage.draws >>> 8) / 0x1000000
 }
 
-/** How long a fighter's blow motion is, in ticks: its `attack1a`, or a monster's `attack0a`, at its own speed. */
+/** How long a fighter's blow motion is, in ticks, at its own speed — see `blowMotionOf`. */
 function blowTicksOf(i: number): number {
+  const name = blowMotionOf(i)
   const place = battleCompanions.find((c) => c.index === i)?.place ?? (i === 0 ? 0 : undefined)
   const monster = battleLooks[i]
-  const name = monster ? CUE_MOTIONS.attack : COMPANION_MOTIONS.attack
   const frames = monster
     ? monster.motions.get(name)?.frameCount
     : i === 0
@@ -6077,6 +6432,37 @@ function blowTicksOf(i: number): number {
       : dressed[place ?? -1]?.figure.motions.get(name)?.frameCount
   const speed = speedsOfFighter(i).get(name)
   return motionMs(speed, frames ?? 2) / TICK_MS
+}
+
+/**
+ * **A fighter's own blow** — its action script's (`blow-effect.ts`): a
+ * monster's `<code>.bact`, a story companion's in their model (Ivor's
+ * `s017b.bact`), a member's set's (`mp0201.bact`); the Hero's for one with
+ * none.
+ */
+function scriptOfFighter(i: number): BlowScript {
+  const monster = battleLooks[i]
+  if (monster) return monster.blow ?? HERO_BLOW
+  const companion = battleCompanions.find((c) => c.index === i)
+  const rom = cartridge
+  if (!rom) return HERO_BLOW
+  if (companion?.model !== undefined) {
+    return actorLookOf(rom, companion.model, companion.packs)?.blow ?? HERO_BLOW
+  }
+  const member = members[companion?.place ?? 0] ?? leader()
+  return setBlowScript(rom, motionFamilyOf(member)) ?? HERO_BLOW
+}
+
+/**
+ * The motion a fighter strikes with: its script's — `attack1a` for nearly
+ * every monster and party member alike — or, for a monster without it, its
+ * `attack0a`.
+ */
+function blowMotionOf(i: number): string {
+  const wanted = scriptOfFighter(i).motion
+  const monster = battleLooks[i]
+  if (monster && !monster.motions.has(wanted)) return CUE_MOTIONS.attack
+  return wanted
 }
 
 /** The motion speeds a fighter plays by: a monster's own, a companion's, a member's set's — see `motion-speed.ts`. */
@@ -6122,14 +6508,16 @@ function blowNow(): StagedBlow | undefined {
   const from = stage.places[actor]
   const to = stage.places[target]
   if (!from || !to) return undefined
-  const blow = blowOf(from, to, stage.radii[actor] ?? 0.5, stage.radii[target] ?? 0.5)
+  const script = scriptOfFighter(actor)
+  const blow = blowOf(from, to, stage.radii[actor] ?? 0.5, stage.radii[target] ?? 0.5, script)
   const motionTicks = blowTicksOf(actor)
   stage.blow = {
     actor,
     target,
     blow,
+    script,
     motionTicks,
-    lands: blow.path.length + BLOW_LANDS * motionTicks,
+    lands: blow.path.length + script.lands * motionTicks,
     chase: chaseTaken(stage)
       ? { orbit: Math.floor(cameraDraw(stage) * 4), draw: cameraDraw(stage) }
       : undefined,
@@ -6291,7 +6679,7 @@ const CLOSE_UP_HALF_FOV = 15
  */
 function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
   if (stage.opened) {
-    const wanted = wantedView(stage, performance.now())
+    const wanted = wantedView(stage, battleClock)
     if (wanted && wanted.key !== stage.showing) {
       stage.showing = wanted.key
       stage.view = wanted.view
@@ -6476,6 +6864,7 @@ const CUE_MOTIONS = {
   death: 'death',
   // Ours: a monster running away stands until its page is told, then is gone.
   flee: 'stand',
+  heal: 'stand',
 } as const
 
 /**
@@ -6501,7 +6890,7 @@ function foePieces(now: number): Piece[] {
     const cue = onShow.find((c) => c.fighter === i)
     const staged = fighterNow(i, now)
     const played = staged?.doing
-      ? stagedMotion(staged.doing, CUE_MOTIONS.attack, look.motions)
+      ? stagedMotion(staged.doing, blowMotionOf(i), look.motions)
       : undefined
     const motion = played ?? (cue ? CUE_MOTIONS[cue.motion] : 'stand')
     const length = look.motions.get(motion)?.frameCount ?? 1
@@ -8630,7 +9019,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     else if (action === 'confirm') {
       const round = battle.state.round
       battle = battleChoose(battle, battleItems(), battleSpells())
-      cueStarted = performance.now()
+      cueStarted = battleClock
       // An item used this round is gone from the bag.
       if (battle.state.round !== round) {
         for (const event of battle.events)

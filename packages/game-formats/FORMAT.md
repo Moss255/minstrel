@@ -3492,6 +3492,75 @@ their row, 1 to the grid, 2 two fighters squared up, 3 to their slot.
   about 60 with 3, and never with 1**: only code puts fighters on the grid,
   and a battle stays on it unless a special action moves it.
 
+## The battle's numbers — `btarc.nsarc`
+
+Read from the game's code, 29 September 2026 (ARM9 `0x02039f04` on;
+`battle-numbers.ts`). **Five kinds**, each ten 8×16 digits and a 32×32 frame
+behind them (the table at `0x020e7844`, loaded by `func_02039f04`):
+
+| kind | digits | frame | colours |
+|---|---|---|---|
+| 0 damage | `damage_num.spr` | `damage_waku.spr` | orange on a yellow burst |
+| 1 MP damage, INFERRED | `damage_m_num.spr` | `damage_m_waku.spr` | blue on an orange burst |
+| 2 recovery | `recovery_num.spr` | `recovery_waku.spr` | green on a green cloud |
+| 3 MP recovery, INFERRED | `recovery_m_num.spr` | `recovery_m_waku.spr` | blue on a pale cloud |
+| 4 tension | `tension_num.spr` | `tension_waku.spr` | pink on a violet star |
+
+- **Spawned** (`func_0203a48c`, into a ring of 16) by the hit's presentation
+  (overlay 25, `0x021da790` for damage, `0x021da880` for recovery) at the
+  fighter's place raised by its height — the reaction record, at 61% of a
+  blow. A later hit on the same fighter takes the offsets (0, −16, 16, 0, −16,
+  16) and (0, 8, 16, 24, 32, 40) px (`0x021eeea4`, `0x021eeebc`). 0 shows
+  none; there is no "miss" sheet.
+- **Each frame** (`func_02039fec`): the frame's spring — scale += speed;
+  speed += (1 − scale)/2; speed ×0.8, truncated; from 1.2 and 0.2 — and the
+  timer, from 37, freed at 0. At 34 it is nudged clear of the others (below).
+- **The nudge** (`func_0203a5e8`), in screen pixels against every number
+  already showing, tension never against tension: tried in order (0, 0),
+  (24, −4), (0, 0), (24, −24), (0, 20), (24, 16), (0, −20), (24, −44) … until
+  none is nearer than 8 across and 14 up or down (heights kept to 36–196);
+  after sixteen, 80 down untried.
+- **Drawn** (`func_0203a0b4`) at the point projected to the screen, moved by
+  its offset and 20 up, kept 16 px in from the edges: hidden while the timer
+  is 35 or more; alpha 31, then 7 × (timer − 5) over its last four; the
+  digits 8 px apart and centred, each popping in 3 frames after the one to its
+  left, swelling by (0.5, 1, 1, 1, 0.5) (`0x020e7830`); the frame behind,
+  centred, at its spring's scale.
+
+## A blow's swing trail and hit-stop
+
+Read from overlays 0 and 25, 29 September 2026. **A plain hit puts nothing
+on the one struck** — the hit's reaction record names an effect (tag `66`,
+`0x021e62a8`) only for some monsters' blows. **Each weapon's set plays its own
+trail on the one striking** as the blow's motion begins: tag `29` loads an
+effect by number, `30` gives it an id, `21` plays it (`0x021e4a08`,
+`0x021e4a58`, `0x021e41a0`) — the swords' `eb0500`, the spears' `eb0600`. An
+effect's number is its file: the millions pick `em`, `et`, `eb`, `b` or `z`,
+the rest the number (`ov025 0x021e278c`, `0x021ef520`); `eb0500.chr` holds a
+model, its joint, material and texture animations and a `.bcfg` (`"0"`,
+frames 1 to 15 at 0.25). Tag `21` hands it the actor's object (INFERRED: tied
+to them).
+
+**Each fighter's own script says its blow** — the lunge, its gap and when it
+lands differ: the Hero's lunges from 6% to 33% to 0.25 apart and lands at
+61%; the slime's `z000a.bact` from 12% to 40.7%, to 0.3, landing at 58%; Ivor's
+`s017b.bact` from 0 to 55%, to 0.75, at 60%. And **a monster's ordinary blow is
+`attack1a`**, as a party member's is (537 of the scripts); `attack0a` is the
+one it swings when it could not close in. Tag `18` only preloads a file; tag
+`20 id "path"` names an effect by path as `30` does by number (`0x021e4168`).
+A reaction's effect on the one struck is `66 id`, raised by half their height
+when `68 1` (`0x021e6304`, `0x021de380`–`0x021de3e0`): three monster scripts'
+plain blows have one, `z069000.chr`. 564 of the 602 monster scripts play
+their own trail with `21`; of the story companions only Ivor
+(`chara_sub/s017b.chr/s017b.bact`, his own `effect/s017000.chr`) and Aquila
+(`s019f.bact`, the swords' `eb0500`) have a script.
+
+**The hit-stop**, tag `116` (`func_ov000_02163440`): `116 0.1 200 100`, just
+before the reaction, is 100 ms on, then the game's speed at 0.1 for 200 ms
+(`ov000 0x021609bc`–`0x02160a60`, `GameState::SetGameSpeed`). Tag `70` is a
+sound (`0x021e6340`): 40 on the swing, 80 on the hit. The one struck does not
+flash: nothing in overlay 25 changes its colour.
+
 ## How fast a motion plays — the `.bcfg` speed
 
 Read from the decomp, 29 September 2026. **A motion's speed is its own**,

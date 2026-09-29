@@ -1,6 +1,18 @@
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
-import { type Animation, type Model, readNsbmd } from '@minstrel/nitro-gfx'
+import {
+  type Animation,
+  isNsbma,
+  isNsbta,
+  type MaterialAnimation,
+  type Model,
+  readNsbma,
+  readNsbmd,
+  readNsbta,
+  type TextureAnimation,
+} from '@minstrel/nitro-gfx'
+import type { BlowScript } from './blow-effect.ts'
 import { floorOf } from './cast.ts'
+import { blowScriptAmong } from './load.ts'
 import { speedsOf } from './motion-speed.ts'
 
 /**
@@ -28,6 +40,11 @@ export interface ActorLook {
   readonly floor: number
   /** Each motion's speed, from the `.bcfg` files of its model and packs — see `motion-speed.ts`. */
   readonly speeds: ReadonlyMap<string, number>
+  /** Its blow, from an action script among its model and packs — Ivor's `s017b.bact`. */
+  readonly blow: BlowScript | undefined
+  /** Its texture and material animations, where its file carries them — an effect's (`.nsbta`, `.nsbma`). */
+  readonly texAnim: TextureAnimation | undefined
+  readonly matAnim: MaterialAnimation | undefined
 }
 
 const looksRead = new WeakMap<Uint8Array, Map<string, ActorLook | undefined>>()
@@ -69,6 +86,24 @@ export function packMotions(rom: Uint8Array, file: string): ReadonlyMap<string, 
   return motions
 }
 
+/** A file's first texture and material animations, where it carries them; one that will not read is left out. */
+function materialAnimationsOf(leaves: readonly { readonly bytes: Uint8Array }[]): {
+  texAnim: TextureAnimation | undefined
+  matAnim: MaterialAnimation | undefined
+} {
+  let texAnim: TextureAnimation | undefined
+  let matAnim: MaterialAnimation | undefined
+  for (const { bytes } of leaves) {
+    try {
+      if (!texAnim && isNsbta(bytes)) texAnim = readNsbta(bytes)[0]
+      if (!matAnim && isNsbma(bytes)) matAnim = readNsbma(bytes)[0]
+    } catch {
+      // An animation that will not read leaves its effect as it stands.
+    }
+  }
+  return { texAnim, matAnim }
+}
+
 /** An event character's look; undefined when its model will not read. Kept once read. */
 export function actorLookOf(
   rom: Uint8Array,
@@ -97,6 +132,8 @@ export function actorLookOf(
         catalogue: cat,
         floor: floorOf(read, motions.get('stand')),
         speeds: speedsOf([model, ...packs].flatMap((file) => leavesOf(rom, file))),
+        blow: blowScriptAmong([model, ...packs].flatMap((file) => leavesOf(rom, file))),
+        ...materialAnimationsOf(leavesOf(rom, model)),
       }
     }
   } catch {

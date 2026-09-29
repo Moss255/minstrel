@@ -121,6 +121,7 @@ import { parseRomHeader, readNitroFs } from '@minstrel/nitrofs'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import type { BattleWords } from './battle-scene.ts'
+import { type BlowScript, readBlowScript } from './blow-effect.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
@@ -2320,6 +2321,24 @@ export function stageMap(
 }
 
 /**
+ * **The battle's own sheets**, by name without `.spr`: the ones `btarc.nsarc`
+ * holds — the numbers that rise over a fighter among them (`damage_num`,
+ * `damage_waku` …; see `battle-numbers.ts`). Read once.
+ */
+export function battleSheets(rom: Uint8Array): ReadonlyMap<string, Uint8Array> {
+  const already = battleSheetsRead.get(rom)
+  if (already) return already
+  const sheets = new Map<string, Uint8Array>()
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/bin/btarc.nsarc' })) {
+    const found = /\/([^/]+)\.spr$/i.exec(leaf.path)
+    if (found) sheets.set((found[1] as string).toLowerCase(), leaf.bytes)
+  }
+  battleSheetsRead.set(rom, sheets)
+  return sheets
+}
+const battleSheetsRead = new WeakMap<Uint8Array, Map<string, Uint8Array>>()
+
+/**
  * **A map's lighting**, by its code: `<code>00.bats` in `ats_<letter>.ambl`,
  * by the code's first letter — `B01M1600.bats` in `ats_B.ambl` (see
  * `readLighting`). Undefined when there is none or it will not read.
@@ -2398,6 +2417,45 @@ export function motionSpeeds(rom: Uint8Array, family: string): ReadonlyMap<strin
   return speeds
 }
 const speedsRead = new WeakMap<Uint8Array, Map<string, ReadonlyMap<string, number>>>()
+
+/** A motion set's blow, from its action script — see `blow-effect.ts`. */
+export function setBlowScript(rom: Uint8Array, family: string): BlowScript | undefined {
+  let bySet = blowsRead.get(rom)
+  if (!bySet) {
+    bySet = new Map()
+    blowsRead.set(rom, bySet)
+  }
+  if (bySet.has(family)) return bySet.get(family)
+  let found: BlowScript | undefined
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/pack_lv5/chara_mp.gp2' })) {
+    if (!leaf.path.toLowerCase().endsWith(`/${family}.bact`)) continue
+    found = blowScriptOf(leaf.bytes)
+    break
+  }
+  bySet.set(family, found)
+  return found
+}
+const blowsRead = new WeakMap<Uint8Array, Map<string, BlowScript | undefined>>()
+
+/** A fighter's blow from any action script among some files — see `blow-effect.ts`. */
+export function blowScriptAmong(
+  files: Iterable<{ readonly path: string; readonly bytes: Uint8Array }>,
+): BlowScript | undefined {
+  for (const { path, bytes } of files) {
+    if (!path.toLowerCase().endsWith('.bact')) continue
+    const found = blowScriptOf(bytes)
+    if (found) return found
+  }
+  return undefined
+}
+
+function blowScriptOf(bytes: Uint8Array): BlowScript | undefined {
+  try {
+    return readBlowScript(readDataTable(bytes))
+  } catch {
+    return undefined
+  }
+}
 
 export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   forgetSheets()
