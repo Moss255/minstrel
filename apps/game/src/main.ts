@@ -285,6 +285,7 @@ import {
   load,
   mapLighting,
   motionSet,
+  motionSpeeds,
   type Stage,
   stageMap,
 } from './load.ts'
@@ -316,6 +317,7 @@ import {
   showMinimap,
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
+import { frameAt, motionMs } from './motion-speed.ts'
 import { music, playBgm, playEffect, playJingle, playTrack } from './music.ts'
 import { NAME_MOST, rollName, tidyName } from './naming.ts'
 import {
@@ -6012,39 +6014,40 @@ function heroInBattle(hero: Player, now: number): Piece[] {
     cues.some((c) => c.fighter === 0 && c.motion === 'death'),
   )
   const lying = fighter !== undefined && fighter.hp <= 0 && toldOf
-  const since = Math.max(0, ((now - cueStarted) / 1000) * MAP_FPS)
   const motions = loaded.figure.motions
+  const speeds = speedsOfFighter(0)
   const forced = params.get('heromotion')
-  let name = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
-  let frame = since
-  // On a stage a blow is stepped into, struck with `attack1a`, and waited for.
-  const staged = fighterNow(0, now)?.doing
-  const played = staged ? stagedMotion(staged, 'attack1a', motions) : undefined
-  if (played) {
+  const staged = fighterNow(0, now)
+  const played = staged?.doing ? stagedMotion(staged.doing, 'attack1a', motions) : undefined
+  let name = 'stand'
+  let ms = now
+  if (forced) name = forced
+  else if (played && staged) {
+    // On a stage a blow is stepped into, struck with `attack1a`, and waited for.
     name = played
-    frame = fighterNow(0, now)?.frame ?? frame
+    ms = LOOPS.has(played) ? now : staged.ms
   } else if (cue?.motion === 'attack') {
     // Off a stage: `attack1b`, then `attack1a` from its half-way.
-    const windUp = motions.get('attack1b')?.frameCount ?? 0
-    if (since < windUp / 2) name = 'attack1b'
-    else {
-      name = 'attack1a'
-      frame = since - windUp / 2
-    }
-  }
-  if (forced) {
-    name = forced
-    frame = ((now / 1000) * MAP_FPS) % (motions.get(forced)?.frameCount ?? 1)
+    const windUp = motionMs(speeds.get('attack1b'), motions.get('attack1b')?.frameCount ?? 2) / 2
+    const since = now - cueStarted
+    name = since < windUp ? 'attack1b' : 'attack1a'
+    ms = since < windUp ? since : since - windUp
+  } else if (cue) {
+    name = COMPANION_MOTIONS[cue.motion]
+    ms = LOOPS.has(name) ? now : now - cueStarted
+  } else if (lying) {
+    name = COMPANION_MOTIONS.death
+    ms = Number.POSITIVE_INFINITY
   }
   const motion = motions.get(name) ?? motions.get('stand')
-  const length = motion?.frameCount ?? 1
-  const looping = name === 'run' || name === 'stand'
-  const at = cue || lying ? Math.min(Math.floor(lying && !cue ? length : frame), length - 1) : frame
+  const frame = frameAt(
+    ms,
+    speeds.get(name),
+    motion?.frameCount ?? 1,
+    forced !== null || LOOPS.has(name),
+  )
   return playerPieces(
-    {
-      ...hero,
-      motionFrame: (cue || lying || forced) && !looping ? at : Math.floor(now / (1000 / MAP_FPS)),
-    },
+    { ...hero, motionFrame: frame },
     loaded.figure,
     loaded.pieces,
     loaded.catalogue,
@@ -6062,17 +6065,34 @@ function cameraDraw(stage: BattleStage): number {
   return (stage.draws >>> 8) / 0x1000000
 }
 
-/** How long a fighter's blow motion is, in ticks: its own `attack1a`, or a monster's `attack0a`. */
+/** How long a fighter's blow motion is, in ticks: its `attack1a`, or a monster's `attack0a`, at its own speed. */
 function blowTicksOf(i: number): number {
-  const frames =
-    i === 0
-      ? loaded?.figure.motions.get('attack1a')?.frameCount
-      : (battleLooks[i]?.motions.get(CUE_MOTIONS.attack)?.frameCount ??
-        dressed[battleCompanions.find((c) => c.index === i)?.place ?? -1]?.figure.motions.get(
-          COMPANION_MOTIONS.attack,
-        )?.frameCount)
-  return ((frames ?? MAP_FPS) / MAP_FPS) * (1000 / TICK_MS)
+  const place = battleCompanions.find((c) => c.index === i)?.place ?? (i === 0 ? 0 : undefined)
+  const monster = battleLooks[i]
+  const name = monster ? CUE_MOTIONS.attack : COMPANION_MOTIONS.attack
+  const frames = monster
+    ? monster.motions.get(name)?.frameCount
+    : i === 0
+      ? loaded?.figure.motions.get(name)?.frameCount
+      : dressed[place ?? -1]?.figure.motions.get(name)?.frameCount
+  const speed = speedsOfFighter(i).get(name)
+  return motionMs(speed, frames ?? 2) / TICK_MS
 }
+
+/** The motion speeds a fighter plays by: a monster's own, a companion's, a member's set's — see `motion-speed.ts`. */
+function speedsOfFighter(i: number): ReadonlyMap<string, number> {
+  const monster = battleLooks[i]
+  if (monster) return monster.speeds
+  const companion = battleCompanions.find((c) => c.index === i)
+  if (companion?.model !== undefined && cartridge) {
+    return actorLookOf(cartridge, companion.model, companion.packs)?.speeds ?? new Map()
+  }
+  const member = members[companion?.place ?? 0] ?? leader()
+  return cartridge ? motionSpeeds(cartridge, motionFamilyOf(member)) : new Map()
+}
+
+/** Motions that go round rather than play once. */
+const LOOPS: ReadonlySet<string> = new Set(['stand', 'run', 'walk'])
 
 /**
  * **The chase shot, taken or not** (`func_ov000_0216e678`): not on the first
@@ -6132,7 +6152,8 @@ function fighterNow(
       readonly z: number
       readonly facing: number
       readonly doing: 'stepping' | 'striking' | 'waiting' | 'struck' | undefined
-      readonly frame: number
+      /** How long it has been doing it, ms. */
+      readonly ms: number
     }
   | undefined {
   const stage = battleStage
@@ -6146,14 +6167,14 @@ function fighterNow(
   })
   const blow = blowNow()
   const ticks = Math.max(0, (now - cueStarted) / TICK_MS)
-  const frames = (t: number) => (Math.max(0, t) * TICK_MS * MAP_FPS) / 1000
+  const ms = (t: number) => Math.max(0, t) * TICK_MS
   if (blow && i === blow.actor) {
     const at = blowAt(blow.blow, ticks, blow.motionTicks)
     return {
       ...world(at),
       facing: blow.blow.facing,
       doing: at.into === undefined ? 'stepping' : 'striking',
-      frame: at.into === undefined ? frames(ticks) : frames(ticks - blow.blow.path.length),
+      ms: at.into === undefined ? ms(ticks) : ms(ticks - blow.blow.path.length),
     }
   }
   if (blow && i === blow.target) {
@@ -6162,10 +6183,10 @@ function fighterNow(
       ...world(place),
       facing: blow.blow.facing + Math.PI,
       doing: ticks < blow.lands ? 'waiting' : 'struck',
-      frame: frames(ticks - blow.lands),
+      ms: ms(ticks - blow.lands),
     }
   }
-  return { ...world(place), facing: place.facing, doing: undefined, frame: frames(ticks) }
+  return { ...world(place), facing: place.facing, doing: undefined, ms: ms(ticks) }
 }
 
 /** How long a blow's page holds on the one who strikes before it cuts to the one struck, ms. Ours. */
@@ -6347,11 +6368,16 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   const blowName = (motions: ReadonlyMap<string, unknown>) =>
     staged?.doing ? stagedMotion(staged.doing, COMPANION_MOTIONS.attack, motions) : undefined
   const cued = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
-  // A frame for a staged motion: looping for running and standing, else from its start, held.
-  const stagedFrame = (name: string, length: number) =>
-    name === 'run' || name === 'walk' || name === 'stand'
-      ? Math.floor((now / 1000) * MAP_FPS) % Math.max(1, length)
-      : Math.min(Math.floor(staged?.frame ?? 0), length - 1)
+  // Every motion at its own speed — see `motion-speed.ts`.
+  const speeds = speedsOfFighter(at.index)
+  const frameOf = (name: string, length: number, played: boolean): number =>
+    LOOPS.has(name)
+      ? frameAt(now, speeds.get(name), length, true)
+      : played
+        ? frameAt(staged?.ms ?? 0, speeds.get(name), length, false)
+        : cue
+          ? frameAt(now - cueStarted, speeds.get(name), length, false)
+          : frameAt(Number.POSITIVE_INFINITY, speeds.get(name), length, false)
 
   // **A created character is posed from the parts they are built of.** Their
   // figure carries the same motion names a companion's model does, so the cue
@@ -6362,14 +6388,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     const name = played ?? cued
     const own = built.figure.motions.get(name) ?? built.figure.motions.get('stand')
     const length = own?.frameCount ?? 1
-    const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
-    const at3 = played
-      ? stagedFrame(name, length)
-      : cue
-        ? Math.min(since, length - 1)
-        : lying
-          ? length - 1
-          : Math.floor((now / 1000) * MAP_FPS) % Math.max(1, length)
+    const at3 = frameOf(name, length, played !== undefined)
     return playerPieces(
       {
         ...self,
@@ -6397,14 +6416,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   const name = played ?? cued
   const motion = look.motions.get(name) ?? look.motions.get('stand')
   const length = motion?.frameCount ?? 1
-  const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
-  const frame = played
-    ? stagedFrame(name, length)
-    : cue
-      ? Math.min(since, length - 1)
-      : lying
-        ? length - 1
-        : Math.floor((now / 1000) * MAP_FPS)
+  const frame = frameOf(name, length, played !== undefined)
   const placement = {
     id: at.index,
     map: 0,
@@ -6474,8 +6486,6 @@ const CUE_MOTIONS = {
 function foePieces(now: number): Piece[] {
   if (!battle || !self) return []
   const scene = battle
-  const looping = Math.floor((now / 1000) * MAP_FPS)
-  const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
   // On a stage each faces as its place has it — see `stage.ts`.
   const facing = self.facing + Math.PI
   const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
@@ -6495,14 +6505,13 @@ function foePieces(now: number): Piece[] {
       : undefined
     const motion = played ?? (cue ? CUE_MOTIONS[cue.motion] : 'stand')
     const length = look.motions.get(motion)?.frameCount ?? 1
-    const loops = motion === 'stand' || motion === 'run' || motion === 'walk'
-    const frame = played
-      ? loops
-        ? looping
-        : Math.min(Math.floor(staged?.frame ?? 0), length - 1)
-      : cue
-        ? Math.min(since, length - 1)
-        : looping
+    // At its own speed — see `motion-speed.ts`.
+    const speed = look.speeds.get(motion)
+    const frame = LOOPS.has(motion)
+      ? frameAt(now, speed, length, true)
+      : played
+        ? frameAt(staged?.ms ?? 0, speed, length, false)
+        : frameAt(now - cueStarted, speed, length, false)
     return monsterPieces(
       look,
       staged ?? at,

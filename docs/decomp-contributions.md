@@ -500,6 +500,7 @@ Read for the battle stages; FORMAT.md, "Where a battle is fought".
 | `ov025 0x021e2ca4` | — | the lunge within a motion | `ActionPlayer::Lunge` |
 | `ov025 0x021e4868` | — | wait for a motion to be so far through | `ActionPlayer::WaitMotion` |
 | `ov000 0x0216e678`, `0x0216ea38` | — | the chase shot; its per-frame aim | `BattleCamera::Chase`, `::ChaseUpdate` |
+| `Object3D::AdvanceAnimations_v1`, `GameState::CalculateDeltaTime`, `BCFGScript_Opcode_66` | — | already named: a motion's pace, its `.bcfg` speed every 17 ms | — |
 
 **Open**: what the chase shot's yaw is measured from; the reaction record's parts; the tables
 at `ov000 0x02183280` and `0x0218328c`; four more shots (`0x0216e250`,

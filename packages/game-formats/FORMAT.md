@@ -3492,6 +3492,29 @@ their row, 1 to the grid, 2 two fighters squared up, 3 to their slot.
   about 60 with 3, and never with 1**: only code puts fighters on the grid,
   and a battle stays on it unless a special action moves it.
 
+## How fast a motion plays — the `.bcfg` speed
+
+Read from the decomp, 29 September 2026. **A motion's speed is its own**,
+the fourth value of its `.bcfg` record (`readMotionTable`, `Motion.speed`;
+`BCFGScript_Opcode_66`, `src/Resource/BCFG.cpp`, stores it ×4096). Each frame
+the game's clock gives animation a delta of 1 for every 17 ms that passed
+(`GameState::CalculateDeltaTime`: `4096 × ms / 17`), and an object's motion
+advances by speed × delta × its own playback speed — 1 unless something sets
+it — through its frames less one, looping or held at its end
+(`Object3D::AdvanceAnimations_v1`). So time, not frames drawn, sets the pace.
+
+| the swords' set, `mp0201` | frames | speed | once through |
+|---|---|---|---|
+| `attack1a` (`be`) | 19 | 0.25 | 72 × 17 ms, 1.22 s |
+| `stand` (`f`, `n`) | 9 | 0.1 | 80 × 17 ms, 1.36 s |
+| `run` (`f`, `n`) | 13 | 0.4 | 30 × 17 ms, 0.51 s |
+| `damage` (`b`) | 9 | 0.2 | 40 × 17 ms, 0.68 s |
+
+A set's packs disagree about a name — `stand` is 0.1 in `f` and `n`, 0.3 in
+`n2` — so the packs a battle loads are taken first (`f`, `b`, then the blow's,
+the item's, the spell's). A monster's and a story companion's own `.bcfg`
+name theirs.
+
 ## Where a weapon is carried — `wpnpos.bin`
 
 `/data/bin/wpnpos.bin`, read 29 September 2026: a data table the game runs as

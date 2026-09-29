@@ -124,6 +124,7 @@ import type { BattleWords } from './battle-scene.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
+import { speedsOf } from './motion-speed.ts'
 import { type GivenNames, givenNamesOf } from './naming.ts'
 import { type Prop, propSprites } from './pots.ts'
 import { SHADOW_ARCHIVE, shadowModelOf } from './shadows.ts'
@@ -2362,6 +2363,41 @@ export function motionSet(rom: Uint8Array, family: string): Library['motions'] {
   return built.motions
 }
 const setsRead = new WeakMap<Uint8Array, Map<string, Library['motions']>>()
+
+/** A motion set's speeds, by motion name: its packs' `.bcfg` records — see `motion-speed.ts`. */
+export function motionSpeeds(rom: Uint8Array, family: string): ReadonlyMap<string, number> {
+  let bySet = speedsRead.get(rom)
+  if (!bySet) {
+    bySet = new Map()
+    speedsRead.set(rom, bySet)
+  }
+  const already = bySet.get(family)
+  if (already) return already
+  const packOf = (path: string) => {
+    const archive = path.slice(0, path.lastIndexOf('/'))
+    return archive.slice(archive.lastIndexOf('/') + 1).toLowerCase()
+  }
+  const suffix = (path: string) =>
+    packOf(path)
+      .slice(family.length)
+      .replace(/\.chr$/, '')
+  // **The packs a battle loads come first** — `<set>f` and `<set>b`, then the
+  // blow's, the item's, the spell's and the start's (`func_ov000_02164fac`,
+  // overlays 25 and 26) — then the field's. The packs disagree: `stand` is
+  // 0.1 in `f` and `n`, 0.3 in `n2`.
+  const order = ['f', 'b', 'be', 'bi', 'bm', 's', 'n', 'ne']
+  const rank = (path: string) => {
+    const at = order.indexOf(suffix(path))
+    return at < 0 ? order.length : at
+  }
+  const own = [...scanCartridge(rom, { pathFilter: '/data/pack_lv5/chara_mp.gp2' })]
+    .filter((leaf) => packOf(leaf.path).startsWith(family))
+    .sort((a, b) => rank(a.path) - rank(b.path))
+  const speeds = speedsOf(own)
+  bySet.set(family, speeds)
+  return speeds
+}
+const speedsRead = new WeakMap<Uint8Array, Map<string, ReadonlyMap<string, number>>>()
 
 export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   forgetSheets()

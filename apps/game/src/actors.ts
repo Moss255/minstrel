@@ -1,6 +1,7 @@
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import { type Animation, type Model, readNsbmd } from '@minstrel/nitro-gfx'
 import { floorOf } from './cast.ts'
+import { speedsOf } from './motion-speed.ts'
 
 /**
  * How an event's characters look: a model out of `/data/chara_sub`, and the
@@ -25,6 +26,8 @@ export interface ActorLook {
    * a character who crouches or lies down goes down rather than being lifted.
    */
   readonly floor: number
+  /** Each motion's speed, from the `.bcfg` files of its model and packs — see `motion-speed.ts`. */
+  readonly speeds: ReadonlyMap<string, number>
 }
 
 const looksRead = new WeakMap<Uint8Array, Map<string, ActorLook | undefined>>()
@@ -88,7 +91,13 @@ export function actorLookOf(
       const motions = animationsOf(cat)
       for (const pack of packs)
         for (const [name, motion] of packMotions(rom, pack)) motions.set(name, motion)
-      look = { model: read, motions, catalogue: cat, floor: floorOf(read, motions.get('stand')) }
+      look = {
+        model: read,
+        motions,
+        catalogue: cat,
+        floor: floorOf(read, motions.get('stand')),
+        speeds: speedsOf([model, ...packs].flatMap((file) => leavesOf(rom, file))),
+      }
     }
   } catch {
     look = undefined

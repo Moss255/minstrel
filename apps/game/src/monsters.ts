@@ -3,6 +3,7 @@ import type { NpcPlacement } from '@minstrel/game-formats'
 import type { Piece } from '@minstrel/gl'
 import { type Animation, type Model, readNsbmd } from '@minstrel/nitro-gfx'
 import { castPieces } from './cast.ts'
+import { speedsOf } from './motion-speed.ts'
 
 /**
  * How a monster looks: its model and its motions, out of
@@ -30,6 +31,8 @@ export interface MonsterLook {
   readonly motions: ReadonlyMap<string, Animation>
   /** Its own textures, which the map's catalogue does not hold. */
   readonly catalogue: Catalogue
+  /** Each motion's speed, from its `.bcfg` — see `motion-speed.ts`. */
+  readonly speeds: ReadonlyMap<string, number>
 }
 
 const looksRead = new WeakMap<Uint8Array, Map<string, MonsterLook | undefined>>()
@@ -63,7 +66,7 @@ export function monsterLookOf(rom: Uint8Array, code: string): MonsterLook | unde
       for (const list of cat.animations.values()) {
         for (const animation of list) motions.set(animation.name, animation)
       }
-      look = { code, model, motions, catalogue: cat }
+      look = { code, model, motions, catalogue: cat, speeds: speedsOf(leaves) }
     }
   } catch {
     look = undefined
