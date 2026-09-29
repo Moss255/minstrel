@@ -419,3 +419,135 @@ export function commandView(
 
 /** The eye's height is capped at 5 (`func_ov000_0216f2b8`), map units. */
 export const EYE_CEILING = 5
+
+/**
+ * **A blow, as a fighter's action script plays it** (`mp0200.bact`,
+ * `z000a.bact`; overlay 25's handlers — FORMAT.md, "The action scripts"):
+ *
+ * - **the step in** (tag 77, `0x021e6a08`): each tick a quarter of the way
+ *   toward the point 0.75 plus the two radii's mean short of the target, at
+ *   most 0.2; done nearer than that, or within 0x28/4096 of it;
+ * - **the lunge** (tag 5, `0x021e2ca4`): from 6% to 33% of the blow's motion,
+ *   on to where the two stand 0.25 apart, edge to edge — INFERRED to go at an
+ *   even pace;
+ * - **the blow lands** at 61% of it (`26 7 0.61`, then the reaction the
+ *   struck show);
+ * - **no step back**: the next action's start puts everyone on the grid
+ *   again (`ov025 0x021db8d8`).
+ */
+export interface Blow {
+  /** Where the one striking stands after each tick of the step in, map units. */
+  readonly path: readonly { readonly x: number; readonly z: number }[]
+  /** Where the lunge ends. */
+  readonly lunge: { readonly x: number; readonly z: number }
+  /** Toward the one struck, radians. */
+  readonly facing: number
+}
+
+export const STEP_IN = 0xc00 / 4096
+const STEP_MOST = 0x333 / 4096
+const STEP_DONE = 0x28 / 4096
+export const LUNGE_FROM = 0.06
+export const LUNGE_TO = 0.33
+const LUNGE_GAP = 0.25
+export const BLOW_LANDS = 0.61
+
+export function blowOf(
+  actor: { readonly x: number; readonly z: number },
+  target: { readonly x: number; readonly z: number },
+  actorRadius: number,
+  targetRadius: number,
+): Blow {
+  const stop = STEP_IN + (actorRadius + targetRadius) / 2
+  const path: { x: number; z: number }[] = []
+  let at = { x: actor.x, z: actor.z }
+  for (let tick = 0; tick < 600; tick++) {
+    const dx = target.x - at.x
+    const dz = target.z - at.z
+    const d = Math.hypot(dx, dz)
+    if (d < stop) break
+    const remaining = d - stop
+    if (remaining < STEP_DONE) break
+    const step = Math.min(remaining / 4, STEP_MOST)
+    at = { x: at.x + (dx / d) * step, z: at.z + (dz / d) * step }
+    path.push(at)
+  }
+  const dx = target.x - at.x
+  const dz = target.z - at.z
+  const d = Math.hypot(dx, dz) || 1
+  const gap = d - (actorRadius + targetRadius) / 2
+  const on = Math.max(0, gap - LUNGE_GAP)
+  return {
+    path,
+    lunge: { x: at.x + (dx / d) * on, z: at.z + (dz / d) * on },
+    facing: Math.atan2(target.x - actor.x, target.z - actor.z),
+  }
+}
+
+/**
+ * Where the one striking is, `ticks` into its blow, and how far into its
+ * motion — undefined while it is still stepping in.
+ */
+export function blowAt(
+  blow: Blow,
+  ticks: number,
+  motionTicks: number,
+): { readonly x: number; readonly z: number; readonly into: number | undefined } {
+  const stepping = blow.path.length
+  if (ticks < stepping) {
+    const at = blow.path[Math.max(0, Math.floor(ticks))] ?? blow.path[0] ?? blow.lunge
+    return { ...at, into: undefined }
+  }
+  const from = blow.path[stepping - 1] ?? blow.lunge
+  const into = motionTicks > 0 ? (ticks - stepping) / motionTicks : 1
+  const k = Math.max(0, Math.min(1, (into - LUNGE_FROM) / (LUNGE_TO - LUNGE_FROM)))
+  return {
+    x: from.x + (blow.lunge.x - from.x) * k,
+    z: from.z + (blow.lunge.z - from.z) * k,
+    into,
+  }
+}
+
+/**
+ * **The chase shot an action opens on** (`func_ov000_0216e678`, re-aimed each
+ * frame by `0x0216ea38`), a cut: looking at the one acting, carried toward
+ * the one acted on by half the way between them — 2 when half is more than
+ * 3 — at three quarters of the actor's height; the orbit one of four
+ * (`0x021832c4`): 162° or 198° round at 5, 18° or 342° at 10, each 0.5 up.
+ * The one acted on taller than 2.5 puts the eye below: −1.2 less up to 0.8,
+ * at least 8 away. **INFERRED**: the yaw is turned from the line from the one
+ * acting to the one acted on — what it is measured from is not read.
+ */
+const CHASE_ORBITS: readonly { readonly yaw: number; readonly distance: number }[] = [
+  { yaw: 0x2d3c / 4096, distance: 5 },
+  { yaw: -0x2d3c / 4096, distance: 5 },
+  { yaw: 0x505 / 4096, distance: 10 },
+  { yaw: -0x505 / 4096, distance: 10 },
+]
+
+export function chaseView(
+  actor: { readonly x: number; readonly z: number },
+  target: { readonly x: number; readonly z: number },
+  actorHeight: number,
+  targetHeight: number,
+  orbit: number,
+  draw: number,
+): BattleView {
+  const dx = target.x - actor.x
+  const dz = target.z - actor.z
+  const d = Math.hypot(dx, dz) || 1
+  const half = d / 2
+  const along = half > 3 ? 2 : half
+  const chosen = CHASE_ORBITS[orbit & 3] ?? CHASE_ORBITS[0]
+  const tall = targetHeight > 2.5
+  const height = tall ? -1.2 - draw * 0.8 : 0.5
+  return {
+    target: [actor.x + (dx / d) * along, actorHeight * 0.75, actor.z + (dz / d) * along],
+    orbit: {
+      yaw: Math.atan2(dx, dz) + (chosen?.yaw ?? 0),
+      height,
+      distance: tall ? Math.max(chosen?.distance ?? 5, 8) : (chosen?.distance ?? 5),
+    },
+    pull: 0,
+  }
+}

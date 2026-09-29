@@ -5,6 +5,7 @@ import {
   figurePieces,
   figureScale,
   Measurements,
+  MOTION_FAMILY,
   type Outfit,
 } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
@@ -283,6 +284,7 @@ import {
   type Loaded,
   load,
   mapLighting,
+  motionSet,
   type Stage,
   stageMap,
 } from './load.ts'
@@ -369,6 +371,11 @@ import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './sl
 import {
   actorCloseUp,
   type BattleView,
+  BLOW_LANDS,
+  type Blow,
+  blowAt,
+  blowOf,
+  chaseView,
   commandView,
   EYE_CEILING,
   easeOrbit,
@@ -1043,6 +1050,27 @@ interface BattleStage {
   /** Which shot the view is, so a change is a cut. */
   showing: string
   carry: number
+  /** Everyone's radius, map units: a monster's body, a party member's ours — see `openStage`. */
+  readonly radii: readonly number[]
+  /** The blow the page on show plays, and the page it was made for — see `blowNow`. */
+  blow: StagedBlow | undefined
+  blowFor: number
+  /** How many actions have passed without the chase shot — see `chaseTaken`. */
+  unchased: number
+  /** The draws the camera's choices take, ours: a number each. */
+  draws: number
+}
+
+/** A blow being played — see `blowOf` in `stage.ts`. */
+interface StagedBlow {
+  readonly actor: number
+  readonly target: number
+  readonly blow: Blow
+  /** How long the blow's motion is, in ticks, and the tick the blow lands. */
+  readonly motionTicks: number
+  readonly lands: number
+  /** The chase shot's orbit and draw, when the action opened on it. */
+  readonly chase: { readonly orbit: number; readonly draw: number } | undefined
 }
 /** When the battle's page on show began, which its monsters' motions play from. */
 let cueStarted = 0
@@ -5879,6 +5907,15 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
       ...places.slice(0, partyCount).map(() => toFloat(PERSON.height) / WORLD_SCALE),
       ...bodies.map((b) => b.height / FX32_ONE),
     ],
+    radii: [
+      // **Ours**: a party member's radius in battle is not read.
+      ...places.slice(0, partyCount).map(() => PARTY_RADIUS),
+      ...bodies.map((b) => b.radius / FX32_ONE),
+    ],
+    blow: undefined,
+    blowFor: -1,
+    unchased: 0,
+    draws: 0,
     view: { target: shot.target, orbit: openingStart(end), pull: 0 },
     halfFov: shot.halfFov,
     easing: end,
@@ -5907,7 +5944,7 @@ function stageBackdrop(stage: BattleStage, fov: number | undefined): Backdrop | 
 function stageDrawn(stage: BattleStage, now: number): Piece[] {
   if (!loaded || !self) return []
   const here = loaded
-  const at = stage.spots[0]
+  const at = fighterNow(0, now) ?? stage.spots[0]
   if (!at) return [...stage.pieces]
   const hero = {
     ...self,
@@ -5922,7 +5959,8 @@ function stageDrawn(stage: BattleStage, now: number): Piece[] {
   const standing = battle
     ? battleSpots.flatMap((spot, i) => {
         const fighter = battle?.state.fighters[i]
-        return spot && fighter && fighter.hp > 0 && !fighter.fled ? [spot] : []
+        const here = fighterNow(i, now) ?? spot
+        return here && spot && fighter && fighter.hp > 0 && !fighter.fled ? [here] : []
       })
     : []
   return [
@@ -5936,6 +5974,24 @@ function stageDrawn(stage: BattleStage, now: number): Piece[] {
     ...companionPieces(now),
     ...heroInBattle(hero, now),
   ]
+}
+
+/**
+ * The motion a fighter plays for what it is doing in a blow — see
+ * `fighterNow`: running as it steps in (INFERRED: the step in turns the
+ * running motion on and off, `func_02033b88`), its blow, standing while it
+ * waits to be struck, its `damage` once it is. Undefined when it is in none.
+ */
+function stagedMotion(
+  doing: 'stepping' | 'striking' | 'waiting' | 'struck',
+  blow: string,
+  motions: ReadonlyMap<string, unknown>,
+): string | undefined {
+  if (doing === 'stepping')
+    return motions.has('run') ? 'run' : motions.has('walk') ? 'walk' : 'stand'
+  if (doing === 'striking') return blow
+  if (doing === 'waiting') return 'stand'
+  return 'damage'
 }
 
 /**
@@ -5961,7 +6017,14 @@ function heroInBattle(hero: Player, now: number): Piece[] {
   const forced = params.get('heromotion')
   let name = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
   let frame = since
-  if (cue?.motion === 'attack') {
+  // On a stage a blow is stepped into, struck with `attack1a`, and waited for.
+  const staged = fighterNow(0, now)?.doing
+  const played = staged ? stagedMotion(staged, 'attack1a', motions) : undefined
+  if (played) {
+    name = played
+    frame = fighterNow(0, now)?.frame ?? frame
+  } else if (cue?.motion === 'attack') {
+    // Off a stage: `attack1b`, then `attack1a` from its half-way.
     const windUp = motions.get('attack1b')?.frameCount ?? 0
     if (since < windUp / 2) name = 'attack1b'
     else {
@@ -5975,15 +6038,134 @@ function heroInBattle(hero: Player, now: number): Piece[] {
   }
   const motion = motions.get(name) ?? motions.get('stand')
   const length = motion?.frameCount ?? 1
+  const looping = name === 'run' || name === 'stand'
   const at = cue || lying ? Math.min(Math.floor(lying && !cue ? length : frame), length - 1) : frame
   return playerPieces(
-    { ...hero, motionFrame: cue || lying || forced ? at : Math.floor(now / (1000 / MAP_FPS)) },
+    {
+      ...hero,
+      motionFrame: (cue || lying || forced) && !looping ? at : Math.floor(now / (1000 / MAP_FPS)),
+    },
     loaded.figure,
     loaded.pieces,
     loaded.catalogue,
     measurements,
     motion,
   )
+}
+
+/** A party member's radius on a stage, map units — ours: what the game gives a party member's body is not read. */
+const PARTY_RADIUS = 0.5
+
+/** The next of the camera's draws, 0 to 1 — ours: a fixed sequence a battle, not the game's generator. */
+function cameraDraw(stage: BattleStage): number {
+  stage.draws = (Math.imul(stage.draws, 1103515245) + 12345) >>> 0
+  return (stage.draws >>> 8) / 0x1000000
+}
+
+/** How long a fighter's blow motion is, in ticks: its own `attack1a`, or a monster's `attack0a`. */
+function blowTicksOf(i: number): number {
+  const frames =
+    i === 0
+      ? loaded?.figure.motions.get('attack1a')?.frameCount
+      : (battleLooks[i]?.motions.get(CUE_MOTIONS.attack)?.frameCount ??
+        dressed[battleCompanions.find((c) => c.index === i)?.place ?? -1]?.figure.motions.get(
+          COMPANION_MOTIONS.attack,
+        )?.frameCount)
+  return ((frames ?? MAP_FPS) / MAP_FPS) * (1000 / TICK_MS)
+}
+
+/**
+ * **The chase shot, taken or not** (`func_ov000_0216e678`): not on the first
+ * action; from then on on a draw of one in 5 less the actions passed without
+ * it, and always on the fifth. **Ours**: that taking it starts the count
+ * again, and the draw — the game's own generator here is not traced.
+ */
+function chaseTaken(stage: BattleStage): boolean {
+  const passed = stage.unchased
+  const taken = passed >= 5 || (passed >= 1 && cameraDraw(stage) < 1 / (5 - passed))
+  stage.unchased = taken ? 0 : passed + 1
+  return taken
+}
+
+/** The blow the page on show plays — one who strikes and one struck — made once a page. */
+function blowNow(): StagedBlow | undefined {
+  const stage = battleStage
+  const scene = battle
+  if (!stage || scene?.phase !== 'telling') return undefined
+  if (stage.blowFor === cueStarted) return stage.blow
+  stage.blowFor = cueStarted
+  stage.blow = undefined
+  const cues = scene.cues[0] ?? []
+  const actor = cues.find((c) => c.motion === 'attack')?.fighter
+  const target = cues.find((c) => c.motion === 'damage')?.fighter
+  if (actor === undefined || target === undefined) return undefined
+  const from = stage.places[actor]
+  const to = stage.places[target]
+  if (!from || !to) return undefined
+  const blow = blowOf(from, to, stage.radii[actor] ?? 0.5, stage.radii[target] ?? 0.5)
+  const motionTicks = blowTicksOf(actor)
+  stage.blow = {
+    actor,
+    target,
+    blow,
+    motionTicks,
+    lands: blow.path.length + BLOW_LANDS * motionTicks,
+    chase: chaseTaken(stage)
+      ? { orbit: Math.floor(cameraDraw(stage) * 4), draw: cameraDraw(stage) }
+      : undefined,
+  }
+  return stage.blow
+}
+
+/**
+ * **Where a fighter is on the stage now, and what it is doing**: its place,
+ * or — in a blow — stepping in, striking, or waiting to be struck and then
+ * struck, with how many motion frames into it. Undefined off a stage.
+ */
+function fighterNow(
+  i: number,
+  now: number,
+):
+  | {
+      readonly x: number
+      readonly y: number
+      readonly z: number
+      readonly facing: number
+      readonly doing: 'stepping' | 'striking' | 'waiting' | 'struck' | undefined
+      readonly frame: number
+    }
+  | undefined {
+  const stage = battleStage
+  const place = stage?.places[i]
+  if (!stage || !place) return undefined
+  const grow = WORLD_SCALE * worldScale
+  const world = (at: { x: number; z: number }) => ({
+    x: stage.origin.x + at.x * grow,
+    y: stage.origin.y + (FIGHTER_HEIGHT / FX32_ONE) * grow,
+    z: stage.origin.z + at.z * grow,
+  })
+  const blow = blowNow()
+  const ticks = Math.max(0, (now - cueStarted) / TICK_MS)
+  const frames = (t: number) => (Math.max(0, t) * TICK_MS * MAP_FPS) / 1000
+  if (blow && i === blow.actor) {
+    const at = blowAt(blow.blow, ticks, blow.motionTicks)
+    return {
+      ...world(at),
+      facing: blow.blow.facing,
+      doing: at.into === undefined ? 'stepping' : 'striking',
+      frame: at.into === undefined ? frames(ticks) : frames(ticks - blow.blow.path.length),
+    }
+  }
+  if (blow && i === blow.target) {
+    // Turned to face the one striking as it steps in (`0x021e6a08`).
+    return {
+      ...world(place),
+      facing: blow.blow.facing + Math.PI,
+      doing: ticks < blow.lands ? 'waiting' : 'struck',
+      frame: frames(ticks - blow.lands),
+    }
+  }
+  return { ...world(place), facing: place.facing, doing: undefined, frame: frames(ticks) }
 }
 
 /** How long a blow's page holds on the one who strikes before it cuts to the one struck, ms. Ours. */
@@ -6003,10 +6185,16 @@ const STRIKE_MS = 500
 function wantedView(
   stage: BattleStage,
   now: number,
-): { key: string; view: BattleView } | undefined {
+): { key: string; view: BattleView; follow?: boolean } | undefined {
   const scene = battle
   if (!scene) return undefined
   const partyCount = scene.state.fighters.filter((f) => f.side === 'party').length
+  // `?heromotion=`, for looking at a motion: the camera held on the Hero's close-up. Ours.
+  const hero = stage.places[0]
+  if (params.get('heromotion') && hero) {
+    const view = actorCloseUp(hero, stage.heights[0] ?? 1, true, 0.21, 1.1, CLOSE_UP_HALF_FOV)
+    return { key: 'looking at the Hero', view: { ...view, pull: 0 } }
+  }
   if (scene.phase !== 'telling' && scene.phase !== 'over') {
     const standing = stage.places
       .slice(0, partyCount)
@@ -6016,6 +6204,42 @@ function wantedView(
   const cues = scene.cues[0] ?? []
   const actor = cues.find((c) => c.motion === 'attack')?.fighter
   const struck = cues.find((c) => c.motion === 'damage')?.fighter
+  // **A blow**: the chase shot while it comes in, if the action opened on it,
+  // else the camera held where it was; the one struck the moment it lands.
+  const blow = blowNow()
+  if (blow) {
+    const ticks = (now - cueStarted) / TICK_MS
+    const target = stage.places[blow.target]
+    if (ticks >= blow.lands && target) {
+      const view = actorCloseUp(
+        target,
+        stage.heights[blow.target] ?? 1,
+        blow.target < partyCount,
+        0,
+        1.8,
+        CLOSE_UP_HALF_FOV,
+      )
+      return { key: `struck ${blow.target} ${cueStarted}`, view }
+    }
+    const striking = fighterNow(blow.actor, now)
+    if (blow.chase && striking && target) {
+      const grow = WORLD_SCALE * worldScale
+      const place = {
+        x: (striking.x - stage.origin.x) / grow,
+        z: (striking.z - stage.origin.z) / grow,
+      }
+      const view = chaseView(
+        place,
+        target,
+        stage.heights[blow.actor] ?? 1,
+        stage.heights[blow.target] ?? 1,
+        blow.chase.orbit,
+        blow.chase.draw,
+      )
+      return { key: `chase ${cueStarted}`, view, follow: true }
+    }
+    return undefined
+  }
   const closeUp = (who: number, a: number, b: number) => {
     const at = stage.places[who]
     return at
@@ -6053,6 +6277,15 @@ function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
       stage.easing = undefined
       // Every shot after the opening follows a reset, which leaves 15.
       stage.halfFov = CLOSE_UP_HALF_FOV
+    } else if (wanted?.follow) {
+      // The chase shot's look-at follows, 5% of the way a frame (`0x0216ea38`).
+      const [x, y, z] = stage.view.target
+      const [tx, ty, tz] = wanted.view.target
+      const k = Math.min(1, (0xcc / 4096) * (elapsedMs / TICK_MS))
+      stage.view = {
+        ...stage.view,
+        target: [x + (tx - x) * k, y + (ty - y) * k, z + (tz - z) * k],
+      }
     }
   }
   stage.carry = Math.min(stage.carry + elapsedMs, TICK_MS * 8)
@@ -6100,7 +6333,9 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   const rom = cartridge
   if (!scene || !rom || !self) return []
   const fighter = scene.state.fighters[at.index]
-  const spot = battleSpots[at.index]
+  // On a stage, where the blow has them — see `fighterNow`.
+  const staged = fighterNow(at.index, now)
+  const spot = staged ?? battleSpots[at.index]
   if (!fighter || !spot) return []
   const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
   const cue = onShow.find((c) => c.fighter === at.index)
@@ -6109,21 +6344,32 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     cues.some((c) => c.fighter === at.index && c.motion === 'death'),
   )
   const lying = fighter.hp <= 0 && toldOf
-  const name = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
+  const blowName = (motions: ReadonlyMap<string, unknown>) =>
+    staged?.doing ? stagedMotion(staged.doing, COMPANION_MOTIONS.attack, motions) : undefined
+  const cued = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
+  // A frame for a staged motion: looping for running and standing, else from its start, held.
+  const stagedFrame = (name: string, length: number) =>
+    name === 'run' || name === 'walk' || name === 'stand'
+      ? Math.floor((now / 1000) * MAP_FPS) % Math.max(1, length)
+      : Math.min(Math.floor(staged?.frame ?? 0), length - 1)
 
   // **A created character is posed from the parts they are built of.** Their
   // figure carries the same motion names a companion's model does, so the cue
   // above needs no translating — see `dressParty`.
   const built = at.model === undefined ? dressed[at.place] : undefined
   if (built && loaded) {
+    const played = blowName(built.figure.motions)
+    const name = played ?? cued
     const own = built.figure.motions.get(name) ?? built.figure.motions.get('stand')
     const length = own?.frameCount ?? 1
     const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
-    const at3 = cue
-      ? Math.min(since, length - 1)
-      : lying
-        ? length - 1
-        : Math.floor((now / 1000) * MAP_FPS) % Math.max(1, length)
+    const at3 = played
+      ? stagedFrame(name, length)
+      : cue
+        ? Math.min(since, length - 1)
+        : lying
+          ? length - 1
+          : Math.floor((now / 1000) * MAP_FPS) % Math.max(1, length)
     return playerPieces(
       {
         ...self,
@@ -6133,7 +6379,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
           y: fx32(Math.round(spot.y * FX32_ONE)),
           z: fx32(Math.round(spot.z * FX32_ONE)),
         },
-        facing: battleStage?.spots[at.index]?.facing ?? self.facing,
+        facing: staged?.facing ?? self.facing,
         motionFrame: at3,
       },
       built.figure,
@@ -6147,21 +6393,25 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
 
   const look = at.model === undefined ? undefined : actorLookOf(rom, at.model, at.packs)
   if (!look) return []
+  const played = blowName(look.motions)
+  const name = played ?? cued
   const motion = look.motions.get(name) ?? look.motions.get('stand')
   const length = motion?.frameCount ?? 1
   const since = Math.max(0, Math.floor(((now - cueStarted) / 1000) * MAP_FPS))
-  const frame = cue
-    ? Math.min(since, length - 1)
-    : lying
-      ? length - 1
-      : Math.floor((now / 1000) * MAP_FPS)
+  const frame = played
+    ? stagedFrame(name, length)
+    : cue
+      ? Math.min(since, length - 1)
+      : lying
+        ? length - 1
+        : Math.floor((now / 1000) * MAP_FPS)
   const placement = {
     id: at.index,
     map: 0,
     x: spot.x,
     y: spot.y,
     z: spot.z,
-    facing: battleStage?.spots[at.index]?.facing ?? self.facing,
+    facing: staged?.facing ?? self.facing,
     offset: 0,
   } as NpcPlacement
   const member = { name: at.model ?? '', model: look.model, motion, floor: look.floor, placement }
@@ -6239,13 +6489,24 @@ function foePieces(now: number): Piece[] {
     )
     if ((fighter.hp <= 0 || fighter.fled) && !going) return []
     const cue = onShow.find((c) => c.fighter === i)
-    const motion = cue ? CUE_MOTIONS[cue.motion] : 'stand'
+    const staged = fighterNow(i, now)
+    const played = staged?.doing
+      ? stagedMotion(staged.doing, CUE_MOTIONS.attack, look.motions)
+      : undefined
+    const motion = played ?? (cue ? CUE_MOTIONS[cue.motion] : 'stand')
     const length = look.motions.get(motion)?.frameCount ?? 1
-    const frame = cue ? Math.min(since, length - 1) : looping
+    const loops = motion === 'stand' || motion === 'run' || motion === 'walk'
+    const frame = played
+      ? loops
+        ? looping
+        : Math.min(Math.floor(staged?.frame ?? 0), length - 1)
+      : cue
+        ? Math.min(since, length - 1)
+        : looping
     return monsterPieces(
       look,
-      at,
-      battleStage?.spots[i]?.facing ?? facing,
+      staged ?? at,
+      staged?.facing ?? facing,
       characterScale,
       motion,
       frame,
@@ -7363,7 +7624,7 @@ function dressParty(): void {
   dressed = members.map((member, place) => {
     if (!levelsUp(member)) return undefined
     const outfit = outfitFor(member, place, carry, has)
-    const figure = dressFigure(wardrobe, outfit)
+    const figure = dressFigure(wardrobeFor(member), outfit)
     return { figure, pieces: figurePieces(figure) }
   })
   const hero = dressed[0]
@@ -7395,6 +7656,35 @@ function outfitFor(
     carry,
   )
   return lookOver(outfit, member.look, has)
+}
+
+/**
+ * **The motion set a member moves by**: `mp` and two numbers, the body's and
+ * the weapon's — each the `motionSet` of what they wear in that slot, the
+ * weapon's 0 with none in hand (`func_02072c9c`). The copper sword's is 1, so
+ * the Hero moves by `mp0201`; bare-handed, `mp0200`. **Ours**: a body with no
+ * number — the underclothes, which are no item — takes 2, which every body
+ * piece on the cartridge has.
+ */
+function motionFamilyOf(member: Member): string {
+  const made =
+    member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
+  const setOf = (id: number | undefined) =>
+    id === undefined ? undefined : loaded?.itemStats.get(id)?.motionSet
+  const body = setOf(wornBy(member).get('body') ?? made?.armour) || 2
+  const weapon = setOf(wornBy(member).get('weapon') ?? made?.weapon) ?? 0
+  const two = (n: number) => String(n).padStart(2, '0')
+  return `mp${two(body)}${two(weapon)}`
+}
+
+/** The wardrobe with the motions of the set a member moves by — see {@link motionFamilyOf}. */
+function wardrobeFor(member: Member): Loaded['wardrobe'] {
+  const here = loaded
+  if (!here) throw new Error('nothing loaded to dress anyone from')
+  const family = motionFamilyOf(member)
+  if (family === MOTION_FAMILY || !cartridge) return here.wardrobe
+  const motions = motionSet(cartridge, family)
+  return motions.size > 0 ? { ...here.wardrobe, motions } : here.wardrobe
 }
 
 /**
@@ -7927,7 +8217,7 @@ function memberPortrait(place: number): HTMLCanvasElement | undefined {
     if (portraitFigure?.key !== key) {
       const wardrobe = here.wardrobe
       const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-      const figure = dressFigure(wardrobe, outfitFor(member, place, 'hands', has))
+      const figure = dressFigure(wardrobeFor(member), outfitFor(member, place, 'hands', has))
       portraitFigure = { key, figure, pieces: figurePieces(figure) }
     }
     const { figure, pieces: dressedPieces } = portraitFigure

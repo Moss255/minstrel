@@ -3434,9 +3434,15 @@ half-angle: 30° (`func_ov000_0216d370`).
   which leaves 0, shifts that up 12 and adds −0x999 — meant to face them, it
   seems, and fixed as it runs.
 - **An action begins** (`ov025 func_021db8d8`) by putting everyone on the grid
-  and cutting to a chase shot along the actor to its target
-  (`0x0216e678`, re-aimed each frame by `0x0216ea38`): not read further, and
-  not built. **An action ends** with the camera left where it is
+  and **perhaps** cutting to the chase shot (`0x0216e678`, re-aimed each frame
+  by `0x0216ea38`): never on the first action; after that on a draw of one
+  in 5 less the actions passed without it, and always on the fifth. Its
+  look-at is the one acting, carried toward the one acted on by half the
+  distance — 2 when half is past 3 — at three quarters of the actor's height,
+  following at 5% a frame; its orbit one of four at `0x021832c4`: 162° or
+  198° round at 5, 18° or 342° at 10, all 0.5 up; a target taller than 2.5
+  puts the eye 1.2 to 2 below, at least 8 away. What the yaw is measured from
+  is not read. **An action ends** with the camera left where it is
   (`0x021dcbf4`).
 - The battle's states, corrected (the jump table at `0x021607d4` counts from
   0): 0 load, 1 set-up, 4 leave, 6 the field back, 8 overlay 25's action
@@ -3460,7 +3466,28 @@ their row, 1 to the grid, 2 two fighters squared up, 3 to their slot.
   changes formation**, to the rows.
 - A fighter's attack is in its own archive: `enemy.gp2/<code>.mon/<code>.bact`,
   `chara_mp.gp2/mp02xx*.chr/mp02xx.bact`. Neither the slime's nor the Hero's
-  changes formation; which of its numbered blocks an attack plays is not read.
+  changes formation.
+- **`9` and `10` are a skip, not a block** (`0x021e3178`, `0x021e3c3c`): `9 id
+  type …` skips to `10 id` when its condition holds — 0 always; 1 to 4 the
+  gap between the two sides, edge to edge, against its float; 7, 10, 11 by
+  the targets' results — and the dispatcher (`0x021e9830`) runs nothing else
+  while skipping. A script is one sequence; `11` ends it.
+- **A blow**, the Hero's (`mp0200.bact`), in order: `9 3 2 2.0 / 77 0.75 /
+  10 3` — **step in** while 2 or more apart (`0x021e6a08`: a quarter of the way
+  a frame to 0.75 plus the two radii's mean short, at most 0.2, the target
+  turned to face); `attack1b` played to half only if still 2 or more apart;
+  else `3 7 attack1a`, **the lunge** `5 60 330 0.25` (`0x021e2ca4`: from 6% to
+  33% of the motion, on to 0.25 apart edge to edge), `26 7 60` and `26 7 0.61`
+  (tag 26 waits for a motion to be so far through), `70 40` and `70 85` (a
+  number handed to `func_0205ebfc`, INFERRED a sound); **the blow lands** at
+  61%, with the reaction record `61 … 93 17 … 62 67` (tags 61 to 67, 93, 55,
+  80: a record the presentation manager plays, INFERRED the damage shown and
+  the flinch). **Nothing steps back**: the next action's start snaps everyone
+  to the grid.
+- **The motion set.** A party member moves by the packs `mp<body><weapon>` —
+  see "Where a weapon is carried" and `ItemStats.motionSet`. Each set holds
+  its own `b` (battle), `be` (the blow), `bi`, `bm`, `f`, `n`, `ne` and `s`
+  packs; `func_02072c9c` names them.
 - **Across all 930 scripts, `79` is used 462 times with mode 0, 234 with 2,
   about 60 with 3, and never with 1**: only code puts fighters on the grid,
   and a battle stays on it unless a special action moves it.
@@ -3498,6 +3525,15 @@ composed onto the bone's — translate, then turn about z, y and x
 | 4 | `chest`, nothing | `chest`, nothing |
 | 6 | `arm1R`, nothing | `arm1R`, nothing |
 | 11 | `chest` at (0, 0, −3) | `arm1L` at (2.4, 0, 0) |
+
+**The motion set a weapon gives** is word 4, bits 12 to 19, of its stats
+entry in `itemdt_w` (`ItemStats.motionSet`): the second number of the packs
+`mp%02d%02d` its wielder moves by (`func_02072c9c`, `sprintf` at
+`0x02072d48`; 0 with no weapon), the body's the first. It is one value a kind
+— 1 the swords, 6 the spears, 4 the knives, 5 the wands, 10 the whips, 11
+the staves, 12 the claws, 13 the fans, 7 the axes, 3 the hammers, 8 the
+boomerangs, 9 the bows — 2 on every body piece and 0 on the rest: `mp0200`
+is bare-handed, and the Hero with the copper sword moves by `mp0201`.
 
 **INFERRED**: that the first is the back and the second the hands — the
 second names a forearm on eleven, the first the chest on eleven; and that the

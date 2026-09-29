@@ -494,8 +494,13 @@ Read for the battle stages; FORMAT.md, "Where a battle is fought".
 | `0x02053e10` | — | a character's seven bone slots, by name | `Character::FindBoneSlots` |
 | `ov017 0x021917f0` | `0x1d8` | hang a character's weapon by `wpnpos` | `Field::HangWeapon` |
 | `0x020407b4`, `0x0203db34` | `0x10`, `0x10` | an object's position; its rotation | `Object3D::SetPosition`, `::SetRotation` |
+| `0x02072c9c` | — | a character's motion set's name, `mp%02d%02d`, from body and weapon | `Character::MotionSetName` |
+| `ov025 0x021e3178`, `0x021e3c3c` | — | an action script's skip, and its end | `ActionPlayer::SkipIf`, `::SkipEnd` |
+| `ov025 0x021e6a08` | — | the step in | `ActionPlayer::StepIn` |
+| `ov025 0x021e2ca4` | — | the lunge within a motion | `ActionPlayer::Lunge` |
+| `ov025 0x021e4868` | — | wait for a motion to be so far through | `ActionPlayer::WaitMotion` |
+| `ov000 0x0216e678`, `0x0216ea38` | — | the chase shot; its per-frame aim | `BattleCamera::Chase`, `::ChaseUpdate` |
 
-**Open**: the chase shot's aim (`0x0216e678`); which block of a fighter's `.bact` an attack
-plays, and the move command's arguments (kind 9); the tables
+**Open**: what the chase shot's yaw is measured from; the reaction record's parts; the tables
 at `ov000 0x02183280` and `0x0218328c`; four more shots (`0x0216e250`,
 `0x0216e3c4`, `0x0216e678`, `0x0216ea38`); what fills the request's `+0x20`.

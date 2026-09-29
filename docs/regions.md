@@ -60,7 +60,7 @@ is one the menu will not know about.
 | `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
 | `fight=z000a,z000a` | the monsters `p` fights |
-| `heromotion=attack1b` | in a battle, hold the Hero in one motion, looping — to look at a motion and what the Hero holds through it |
+| `heromotion=attack1b` | in a battle, hold the Hero in one motion, looping, and the camera on their close-up — to look at a motion and what the Hero holds through it |
 | `bgm=BG_001`, `se=113` | play a track or an effect |
 | `probe=1` | put the scene camera, the real camera and the Hero's height over the floor on `window` as `__shot`, `__cam` and `__floor`. Off by default because it allocates every frame |
 | `talk=12` | stand behind that cast member and talk to them |

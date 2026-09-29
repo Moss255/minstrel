@@ -79,6 +79,18 @@ export interface ItemStats {
    */
   readonly kind: number
   /**
+   * Word 4, bits 12–19: **the motion set it gives its wearer** — a character
+   * moves by the packs `mp<body's><weapon's>`, each number this field of what
+   * they wear in that slot (US ARM9 `func_02072c9c`, `sprintf("mp%02d%02d")`
+   * at `0x02072d48`; a weapon's only while one is held, 0 otherwise). On the
+   * cartridge it is one value a kind of weapon — 1 the swords, 6 the spears,
+   * 4 the knives, 5 the wands, 10 the whips, 11 the staves, 12 the claws, 13
+   * the fans, 7 the axes, 3 the hammers, 8 the boomerangs, 9 the bows — 2 on
+   * all 183 body pieces and 0 on everything else: exactly the sets
+   * `chara_mp.gp2` holds, `mp0200` to `mp0213` bar `mp0202`.
+   */
+  readonly motionSet: number
+  /**
    * Word 4, bits 0–11 — INFERRED: who may wear it, a bit a vocation of the
    * twelve, **bit v − 1 for vocation v in the level tables' order** — warrior
    * 0, priest 1, mage 2, martial artist 3, thief 4, minstrel 5, gladiator 6,
@@ -179,6 +191,7 @@ export function readItemStats(bytes: Uint8Array): ItemStats[] {
       critical: (word6 >>> 20) & 0x3ff,
       kind: (word3 >>> 7) & 0xf,
       usedBy: word4 & 0xfff,
+      motionSet: (word4 >>> 12) & 0xff,
       wornBySex: ((word4 >>> 27) & 1) | (((word4 >>> 28) & 1) << 1),
       sexLock: ((word4 >>> 29) & 1) === 1,
       unknown_entry: bytes.subarray(entry, entry + ENTRY),

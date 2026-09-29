@@ -5,11 +5,16 @@ import { describe, expect, it } from 'vitest'
 import { stageMap } from '../src/load.ts'
 import {
   actorCloseUp,
+  BLOW_LANDS,
+  blowAt,
+  blowOf,
   CLOSE_UP_PULL,
+  chaseView,
   commandView,
   EASE_KEEP,
   easeOrbit,
   gridPlace,
+  LUNGE_TO,
   MONSTER_SLOTS,
   monsterExtent,
   monsterRow,
@@ -22,6 +27,7 @@ import {
   pulled,
   recordOfTriangle,
   STAGE_FALLBACK,
+  STEP_IN,
   sideShot,
   stageOfRecord,
   stageToFight,
@@ -197,6 +203,46 @@ describe('the camera while a command is chosen', () => {
     const view = commandView([{ x: 0, z: 2 }])
     expect(view.orbit.distance).toBeCloseTo(12 - Math.hypot(0xcc / 4096, 2))
     expect(view.target[2]).toBe(2)
+  })
+})
+
+describe('a blow', () => {
+  const hero = { x: 0, z: 4.5 }
+  const slime = { x: 0, z: -4.5 }
+
+  it('steps in a quarter of the way a tick, at most 0.2, to 0.75 and the radii apart', () => {
+    const blow = blowOf(hero, slime, 0.5, 0.8)
+    const first = blow.path[0]
+    // Nine to go, less the stop: a quarter is more than 0.2, so 0.2.
+    expect(first?.z).toBeCloseTo(4.3)
+    const last = blow.path[blow.path.length - 1]
+    const stop = STEP_IN + (0.5 + 0.8) / 2
+    expect((last?.z ?? 0) - slime.z).toBeGreaterThanOrEqual(stop - 1e-9)
+    expect((last?.z ?? 0) - slime.z).toBeLessThan(stop + 0.05)
+    expect(blow.facing).toBeCloseTo(Math.PI)
+  })
+
+  it('lunges from 6% to 33% of its motion, to 0.25 apart edge to edge, and lands at 61%', () => {
+    const blow = blowOf(hero, slime, 0.5, 0.8)
+    const stepping = blow.path.length
+    expect(blowAt(blow, 0, 60).into).toBeUndefined()
+    const ended = blowAt(blow, stepping + LUNGE_TO * 60, 60)
+    expect(ended.z - slime.z).toBeCloseTo(0.25 + (0.5 + 0.8) / 2)
+    expect(blowAt(blow, stepping + BLOW_LANDS * 60, 60).into).toBeCloseTo(BLOW_LANDS)
+  })
+
+  it('opens the chase shot on the one acting, carried half the way — 2 when half is past 3', () => {
+    const near = chaseView({ x: 0, z: 2 }, { x: 0, z: -2 }, 1.2, 0.8, 0, 0)
+    expect(near.target[2]).toBeCloseTo(0)
+    expect(near.target[1]).toBeCloseTo(0.9)
+    expect(near.orbit).toMatchObject({ height: 0.5, distance: 5 })
+    const far = chaseView({ x: 0, z: 4.5 }, { x: 0, z: -4.5 }, 1.2, 0.8, 2, 0)
+    expect(far.target[2]).toBeCloseTo(2.5)
+    expect(far.orbit.distance).toBe(10)
+    // A tall one struck: the eye below, at least 8 away.
+    const tall = chaseView({ x: 0, z: 4.5 }, { x: 0, z: -4.5 }, 1.2, 5, 0, 0.5)
+    expect(tall.orbit.height).toBeCloseTo(-1.6)
+    expect(tall.orbit.distance).toBe(8)
   })
 })
 

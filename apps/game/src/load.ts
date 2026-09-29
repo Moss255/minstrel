@@ -1260,6 +1260,8 @@ export interface ItemNumbers {
   readonly usedBy: number
   /** Its kind: a weapon's subtype plus one, 13 a shield, 0 the rest — the skill tree's number. See `ItemStats.kind`. */
   readonly kind: number
+  /** The motion set it gives its wearer — see `ItemStats.motionSet`. */
+  readonly motionSet: number
   /** Which sexes may wear it: bit 0 sex 0, bit 1 sex 1 — see `ItemStats.wornBySex`. */
   readonly wornBySex: number
   /** Whether accessory 18048 cannot lift its sex restriction — see `ItemStats.sexLock`. */
@@ -1306,6 +1308,7 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
             block: entry.block,
             usedBy: entry.usedBy,
             kind: entry.kind,
+            motionSet: entry.motionSet,
             wornBySex: entry.wornBySex,
             sexLock: entry.sexLock,
           })
@@ -2337,6 +2340,28 @@ export function mapLighting(rom: Uint8Array, code: string): Lighting | undefined
   }
   return undefined
 }
+
+/**
+ * **A motion set's motions**, by the set's name — `mp0201`, the swords' — out
+ * of `chara_mp.gp2`: every pack of the family, as the Hero's own are read (see
+ * `library`). Read once a set, and only when somebody moves by it.
+ */
+export function motionSet(rom: Uint8Array, family: string): Library['motions'] {
+  let bySet = setsRead.get(rom)
+  if (!bySet) {
+    bySet = new Map()
+    setsRead.set(rom, bySet)
+  }
+  const already = bySet.get(family)
+  if (already) return already
+  const built = library(family)
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/pack_lv5/chara_mp.gp2' })) {
+    built.offer(leaf.path, leaf.bytes)
+  }
+  bySet.set(family, built.motions)
+  return built.motions
+}
+const setsRead = new WeakMap<Uint8Array, Map<string, Library['motions']>>()
 
 export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   forgetSheets()
