@@ -259,6 +259,7 @@ export interface Castable {
     readonly chanceIsAccuracy: boolean
     readonly evadable: boolean
     readonly defendable?: boolean
+    readonly combos?: boolean
     readonly haywire: boolean
     /** Its record's own multiplier on a caster's chance of going haywire. */
     readonly criticalPercent?: number
@@ -310,6 +311,7 @@ export function battleSpellOf(
         ? {}
         : { criticalPercent: action.rolls.criticalPercent }),
       ...(action.rolls?.defendable === undefined ? {} : { defendable: action.rolls.defendable }),
+      ...(action.rolls?.combos ? { combos: true } : {}),
     },
     name: { name: action.name },
     message: action.message,

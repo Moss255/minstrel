@@ -530,8 +530,16 @@ In the game's order:
 8. **The combo table** at `0x021fe778` — `1.0 1.2 1.5 2.0` — for an action
    with `+0x2C` bit 27 and damage of at least one: a counter byte at
    `[battle + 0x8e83]`, held to 3, indexes it, and anything else resets that
-   counter (`func_ov000_0215cd80`). Read 22 September. What increments the
-   counter is not in this function; nothing of the slice's carries the bit.
+   counter (`func_ov000_0215cd80`). Read 22 September. **Modelled 1 October
+   2026**, when what increments it was read (`func_ov024_021ea584`, once for
+   each target an action reaches, before its accuracy): the same side from
+   another turn adds one, the same turn leaves it, another side, action or
+   target starts again, an action without the bit resets it, and so do a miss,
+   a dodge, a block (`0x021ec828`) and a blow under one. **The plain Attack
+   carries the bit** — the earlier "nothing of the slice's carries it" was
+   wrong — and so do Frizz and Crack; Heal does not. So two of the party
+   striking one monster in a round make a combo of 1, the second blow ×1.2.
+   `combo.ts`; nothing read resets the chain at a round's end.
 9. **`_ffix`** — the float becomes the whole number, truncated — and **the
    cap**: the action's `+0x1C` low 14 bits, when not nothing and lower.
 10. Action `0xAF` — **Double-Edged Slash** — has a quarter of the number kept

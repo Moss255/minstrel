@@ -430,6 +430,8 @@ export interface ItemEffect {
     readonly evadable: boolean
     /** Whether a target's guard halves it — see `Action.defendable`. */
     readonly defendable: boolean
+    /** Whether its blows chain into a combo — see `Action.combos`. */
+    readonly combos: boolean
     readonly haywire: boolean
     /** Its record's `criticalPercent`: what multiplies a caster's chance of going haywire. */
     readonly criticalPercent: number
@@ -1579,6 +1581,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           chanceIsAccuracy: action.accuracyMode === 1,
           evadable: action.evadable,
           defendable: action.defendable,
+          combos: action.combos,
           haywire: action.criticalPercent > 0,
           criticalPercent: action.criticalPercent,
           levels: action.levels,

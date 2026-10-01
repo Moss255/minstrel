@@ -258,6 +258,15 @@ export function resistanceTo(bytes: readonly number[] | undefined, element: numb
  * The order matters where a resistance is not whole: an amount of 1 against a
  * half is 0.5, which is *above* nothing and so gets no coin, and deals 0.
  */
+/**
+ * **The combo table** (`data_ov024_021fe778`): 1.0, 1.2, 1.5, 2.0 by the
+ * chain's count, held to 3 — one multiply, in the game's float.
+ */
+export const COMBO_TABLE = [1, Math.fround(1.2), 1.5, 2] as const
+export function comboMultiplier(count: number): number {
+  return COMBO_TABLE[Math.max(0, Math.min(3, count))] as number
+}
+
 export function dealt(
   rng: BattleRng,
   amount: number,
@@ -274,6 +283,11 @@ export function dealt(
      * level, 0.5 for one defending. Whole when not given.
      */
     readonly guard?: number
+    /**
+     * The combo chain's count, for an action whose blows chain (`+0x2C` bit
+     * 27) — see `combo.ts`. Undefined for one that does not.
+     */
+    readonly combo?: number
   },
 ): number {
   const f = Math.fround
@@ -293,6 +307,9 @@ export function dealt(
   if (to.guard !== undefined && to.guard !== 1) d = f(d * f(to.guard))
   if (to.blocked || to.dodged) d = 0
   else if (d <= 0 && to.resistance > 0) d = f(rng.below(2))
+  // **The combo** (`0x021e7a8c`–`0x021e7b28`), after the coin and before the
+  // whole number: a blow of at least one, times the table by the chain's count.
+  if (to.combo !== undefined && d >= 1) d = f(d * comboMultiplier(to.combo))
   let whole = Math.trunc(d)
   if (to.cap && to.cap < whole) whole = to.cap
   return whole

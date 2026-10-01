@@ -1,3 +1,4 @@
+import { brokenChain, type Chain, chainStep, NO_CHAIN } from './combo.ts'
 import {
   criticalChance,
   criticalDamage,
@@ -233,6 +234,8 @@ export interface Spell {
   readonly criticalPercent?: number
   /** Whether a guard halves it — its record's `defendable`; 243 actions carry it. */
   readonly defendable?: boolean
+  /** Whether its blows chain into a combo — its record's `+0x2C` bit 27; Frizz has it. */
+  readonly combos?: boolean
 }
 
 /** What a change of state does, and its chance in 100 of landing — see `states.ts`. */
@@ -310,6 +313,8 @@ export type BattleEvent =
       readonly blocked: boolean
       /** A poison attack's poison landed. */
       readonly poisoned?: boolean
+      /** The combo it was multiplied by, 1 to 3 and on — see `combo.ts`; absent for none. */
+      readonly combo?: number
     }
   | { readonly kind: 'defend'; readonly actor: number }
   | { readonly kind: 'wait'; readonly actor: number; readonly action: number }
@@ -365,6 +370,8 @@ export interface BattleState {
   readonly opening?: Opening
   /** How many times the party has tried to flee this battle — see {@link fleeChance}. */
   readonly fleeAttempts?: number
+  /** The combo chain, from blow to blow — see `combo.ts`; none before the first. */
+  readonly chain?: Chain
 }
 
 export interface Rules {
@@ -661,6 +668,7 @@ export function playRound(
 
   let outcome: Outcome = 'ongoing'
   let attempts = state.fleeAttempts ?? 0
+  let chain: Chain = state.chain ?? NO_CHAIN
   const setStates = (target: number, patch: Partial<States>) => {
     fighters = fighters.map((f, i) =>
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
@@ -697,6 +705,18 @@ export function playRound(
       me.side === 'foes'
         ? foeCommand(me, fighters, rng, rules)
         : (commands.get(actor) ?? { kind: 'attack', target: -1 })
+    // This fighter's turn, as the chain tells turns apart (`ctx + 4`). Ours: by round and fighter.
+    const turn = state.round * 64 + actor
+    // An action whose blows do not chain resets it as it reaches its target
+    // (`func_ov024_021ea584`) — Defend, an item, a change of state, a wait.
+    if (
+      command.kind === 'defend' ||
+      command.kind === 'item' ||
+      command.kind === 'change' ||
+      command.kind === 'wait'
+    ) {
+      chain = brokenChain(chain)
+    }
 
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
@@ -799,6 +819,14 @@ export function playRound(
       let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
         const them = fighters[target] as FighterState
+        // The chain, for each one reached, before the accuracy (`0x021ec178`).
+        chain = chainStep(chain, {
+          combos: spell.combos === true && spell.does === 'harm',
+          side: me.side,
+          action: spell.action,
+          target,
+          turn,
+        })
         // Each one reached: a die of a hundred the game keeps for them
         // (`0x021ebf28`), the critical roll where it is theirs, the accuracy's
         // draw — a spell cannot be dodged or blocked, so neither is rolled —
@@ -817,7 +845,10 @@ export function playRound(
             // A guard halves what defending works on — Frizz and Crack are
             // among them, a heal and a herb are not.
             ...(them.defending && spell.defendable ? { guard: GUARD_LEVELS[1] } : {}),
+            ...(spell.combos ? { combo: chain.count } : {}),
           })
+          // A blow of less than one breaks the chain (`0x021e7b20`).
+          if (amount < 1) chain = brokenChain(chain)
         } else if (critical && spell.amount) amount = criticalDamage(rng, amount)
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         return { target, amount }
@@ -947,6 +978,9 @@ export function playRound(
           ? (others[rng.below(others.length)] as number)
           : (others[0] as number)
     const them = fighters[target] as FighterState
+    // The chain, before the accuracy (`0x021ec178`): the plain Attack's blows
+    // chain (`+0x2C` bit 27). **Ours**: a monster's blow taken as the Attack, 1.
+    chain = chainStep(chain, { combos: true, side: me.side, action: 1, target, turn })
 
     // **The game's order of a blow's draws** — `func_ov024_021eb5d0`, read from
     // the decomp; `docs/conformance.md`, "The resolver of a blow". Each is made
@@ -995,7 +1029,12 @@ export function playRound(
       dodged,
       blocked,
       ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),
+      combo: chain.count,
     })
+    // The count the blow was multiplied by, for its showing — 0 for none.
+    const combo = !dodged && !blocked && damage >= 1 ? chain.count : 0
+    // A dodge, a block (`0x021ec828`) or a blow of less than one (`0x021e7b20`) breaks it.
+    if (dodged || blocked || damage < 1) chain = brokenChain(chain)
     // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
     // Rolled only for a blow that has dealt something, and not for one already
     // poisoned — both the game's, from the rider's handler (`func_ov024_021e303c`),
@@ -1019,6 +1058,7 @@ export function playRound(
       dodged,
       blocked,
       ...(poisoned ? { poisoned: true } : {}),
+      ...(combo > 0 ? { combo } : {}),
     })
     hurt(target, damage)
     outcome = outcomeOf(fighters)
@@ -1049,7 +1089,7 @@ export function playRound(
 
   fighters = fighters.map((f) => ({ ...f, defending: false }))
   return {
-    state: { ...state, fighters, round: state.round + 1, outcome, fleeAttempts: attempts },
+    state: { ...state, fighters, round: state.round + 1, outcome, fleeAttempts: attempts, chain },
     events,
   }
 }

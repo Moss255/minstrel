@@ -195,6 +195,14 @@ export interface Action {
    */
   readonly worksOnMetal: boolean
   /**
+   * Whether its blows chain into a combo — `+0x2C`, bit 27 (read 1 October
+   * 2026). The chain counter (`func_ov024_021ea584`) counts only such an
+   * action's blows, and the resolver multiplies their damage by the combo
+   * table (`0x021e7a8c`); any other action resets the chain. The plain Attack
+   * has it, and Frizz; Heal does not. 112 of 681.
+   */
+  readonly combos: boolean
+  /**
    * Whether its *amount* scales by a number of the user's — the same two bits
    * as {@link accuracyMode}, at 2. `GetAttackBaseDamage` (overlay 24,
    * `0x021e7c0c`) tests them for one of the party: at 2, and with a number
@@ -327,6 +335,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,
       damageCap: view.getUint32(at + 0x1c, true) & 0x3fff,
       worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
+      combos: (view.getUint32(at + 0x2c, true) & 0x8000000) !== 0,
       element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
       landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,
