@@ -58,8 +58,15 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    swirl's own model, `ME_004` on a level, the opening's `appear` (not
    read), and **the camera while a command is chosen**, which turned out to
    be unread — overlay 26's, being read.
-3. **Sound.** Tag 70's sound on the swing and the hit (40 and 80 for the
-   swords), the reaction record's (tag 71), an effect's own; none is played.
+3. ~~**Sound.**~~ **Done, 1 October 2026**: every sound an action asks for
+   plays from `se_btl.sdat` — the battle's own archive 101 for the
+   presenter's and the start sounds, the archive a `69` names for `70` and
+   `71` — each a sequence of a sequence archive, as the game starts them
+   (FORMAT.md, "The action scripts", "Sound"); the battle's track and the
+   jingles came with item 2. **Not played**: a monster's own sounds (its
+   archive is set from its object's `+0x7a`, not read), an effect's own sound
+   at its time, 102 for 100 on a magic motion (its bit not read), and the
+   menus' sounds.
 4. **Maps that move.** The same NSBTA and NSBMA — 1,910 files in the map
    archives — drive water, fire and anything that scrolls or pulses on the
    field; nothing plays them there yet. NSBTP, pattern animation, is read (1

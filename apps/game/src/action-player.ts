@@ -729,6 +729,11 @@ export function startAction(
         if (!setMotion(i, 'magic1', c.flags)) setMotion(i, 'magic_in', c.flags)
       }
     }
+    // A magic motion sounds 100 — or 102 when the action's `+0x0a` bit 0 is
+    // set, which is not read: 100 — unless fx bit 0 (`0x021e2b80`).
+    if ((c.name === 'magic' || c.name === 'magic1' || c.name === 'magic_in') && (c.fx & 1) === 0) {
+      emit({ kind: 'sound', from: 'battle', sound: 100 })
+    }
     motionStarted = true
     return 1
   }

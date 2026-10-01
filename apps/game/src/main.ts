@@ -358,7 +358,15 @@ import {
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
 import { frameAt, motionMs } from './motion-speed.ts'
-import { music, playBgm, playEffect, playJingle, playTrack } from './music.ts'
+import {
+  BATTLE_SOUNDS,
+  music,
+  playBattleSound,
+  playBgm,
+  playEffect,
+  playJingle,
+  playTrack,
+} from './music.ts'
 import { NAME_MOST, rollName, tidyName } from './naming.ts'
 import {
   advance,
@@ -2965,6 +2973,8 @@ function frame(now = 0): void {
       startShown()
       const told = battle.told[0]
       const party = told?.kind === 'flee' && battle.state.fighters[told.actor]?.side === 'party'
+      // A flight's line comes with sound 9 (state 11).
+      if (party) battleSound('battle', 9)
       pageLeft = shown
         ? 0
         : party
@@ -6961,6 +6971,8 @@ function startShown(): void {
     second,
   )
   lastShown = { actor, action: context.action, target }
+  // A monster's action starts on its own sounds (`0x021e8de4`), which are not read.
+  if (!isPartyObject(actor)) ownSounds = undefined
   const fighters: StageFighter[] = scene.state.fighters.flatMap((f, i) => {
     const object = objectOf(scene.state, i)
     const grid = stage.places[i]
@@ -7076,8 +7088,30 @@ function onReaction(event: ReactionEvent): void {
   s.camera.shake = { amplitude: event.amplitude, left: event.ms }
 }
 
-/** What the run asks of the frame: its camera's commands now; sounds, the lights and the screen's brightness are not yet played. */
+/**
+ * **The sequence archive an action's own sounds are from** (`+0xc4`): what its
+ * `69` names — the party's sets say 101 — or a monster's own, set as its
+ * action starts from its object's `+0x7a`, which is not read: none, so a
+ * monster's own sounds are not played. Ours.
+ */
+let ownSounds: number | undefined
+
+/** Sound one of the battle's: its own archive's, or the action's. */
+function battleSound(from: 'battle' | 'own', sound: number): void {
+  const rom = cartridge
+  const archive = from === 'battle' ? BATTLE_SOUNDS : ownSounds
+  if (!rom || archive === undefined || sound < 0) return
+  void playBattleSound(rom, archive, sound)
+}
+
+/** What the run asks of the frame: its camera's commands and its sounds; the lights and the screen's brightness are not yet played. */
 function onShow(event: ShowEvent): void {
+  if (event.kind === 'sound') return battleSound(event.from, event.sound)
+  if (event.kind === 'start-sound') return battleSound('battle', event.sound)
+  if (event.kind === 'sound-set') {
+    ownSounds = event.archive
+    return
+  }
   const s = shown
   if (!s || event.kind !== 'camera') return
   playCamera(s.camera, event.command, cameraStage, () =>
@@ -7657,6 +7691,7 @@ function endFight(): void {
   shown = undefined
   inOpening = false
   ending = undefined
+  ownSounds = undefined
   fallenShown = new Set()
   lastShown = undefined
   pagesSeen = undefined
@@ -9539,6 +9574,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         return handled
       }
       const round = battle.state.round
+      // A result line closed by a key sounds 1 (overlay 23).
+      if (ending) battleSound('battle', 1)
       battle = battleChoose(battle, battleItems(), battleSpells())
       cueStarted = battleClock
       // An item used this round is gone from the bag.
