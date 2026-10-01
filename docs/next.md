@@ -11,6 +11,32 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ---
 
+## The battle's command phase — 2 October
+
+**The flow is the game's** (`battle-commands.ts`; FORMAT.md, "The command
+phase"): the party menu each round — Fight, Examine, Flee, Misc. — then
+**every member following orders asked in turn**, their own six commands, the
+Spells and Abilities lists as the game builds them (skill panels, then the
+vocation's spells, sorted into the two by their records), the targets by the
+action's side and reach, B back to the member before, tactics from Misc., and
+a flight that is the party's and settled before the round.
+
+**Next, in order**:
+
+1. **The bottom screen**, from the game's art (`bg_btl3.pac`,
+   `obj_bt3_<LG>.pac`) — the read is in hand: the party's panels down the
+   bottom screen, the large one with the menu, the hand cursor, the target
+   markers over the monsters on the top screen. Until it is built the menu
+   is drawn in the browser's boxes.
+2. **Each member's own items** (char `+0x454`). The game lists a member's
+   carried items in battle, not the bag. **This is a system that restructures
+   data** — the save, the field menu's Items, the shops, the chests — so it
+   is flagged here rather than slipped in; the battle uses the bag until it is
+   built.
+3. **The abilities' own handlers.** Most abilities are blows with a damage
+   handler of their own (`+0x18` bits 18–26, 67 handlers); until they are
+   read they strike as the Attack.
+
 ## The battle scene — 29 September
 
 **Built this week, from the game's code**: every action played by its own

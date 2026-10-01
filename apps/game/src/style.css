@@ -236,6 +236,13 @@ main {
   visibility: visible;
 }
 
+/* A member's commands and the tactics: two columns, row by row, as the game draws them. */
+#menu .commands.grid {
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 1.6em;
+}
+
 #menu .panel {
   max-width: 32em;
   white-space: pre-wrap;

@@ -59,7 +59,7 @@ describe('readSkillTable', () => {
       grants: 3,
       amount: 3,
       fieldAction: 0,
-      unknown_7: 9,
+      battleOrder: 9,
       message: 3,
     })
   })

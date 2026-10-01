@@ -312,8 +312,12 @@ export type Command =
   | { readonly kind: 'flee' }
   /** Do nothing this turn, as the action says — a monster's idle way. */
   | { readonly kind: 'wait'; readonly action: number }
-  /** Use an item, by id: its heal when it has one, and nothing when it has not. */
-  | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal }
+  /**
+   * Use an item, by id: its heal when it has one, and nothing when it has not
+   * — on the ally named, or on oneself when none is or they have fallen
+   * (`func_ov000_02153cc0`'s fallback to the actor).
+   */
+  | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal; readonly target?: number }
   /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
   | { readonly kind: 'spell'; readonly spell: Spell; readonly target: number }
   /**
@@ -674,6 +678,34 @@ export function playRound(
 ): { state: BattleState; events: BattleEvent[] } {
   if (state.outcome !== 'ongoing') return { state, events: [] }
   const events: BattleEvent[] = []
+  // **A flight is the party's, and settled before the round** — overlay 26's
+  // `func_ov026_021dd3dc` at the command phase's end, once for the party, by
+  // `func_ov000_0215f7a8` (see `fleeChance`), before anyone is ordered. Away,
+  // and the round is not fought; caught, and **every one of the party loses
+  // its round** — its action 0 with the skip bit (`func_ov000_02169850`,
+  // `0x02169978`), which `ProcessCombatTurn` passes over (`0x0215dabc`).
+  // **Ours**: whose numbers the chance is taken from — the first of the party
+  // able to act; the game hands its whole list in, and how it reads them is
+  // not established.
+  let attempts = state.fleeAttempts ?? 0
+  let caught = false
+  const fleer = state.fighters.findIndex(
+    (f, i) => f.side === 'party' && commands.get(i)?.kind === 'flee' && f.hp > 0,
+  )
+  if (fleer >= 0) {
+    const ableFirst = state.fighters.findIndex(
+      (f) => f.side === 'party' && f.hp > 0 && f.states.sleep === undefined,
+    )
+    const by = ableFirst >= 0 ? ableFirst : fleer
+    const { certain, chance } = fleeChance(state, state.fighters, by)
+    const escaped = certain || (chance > 0 && (world ?? rng).below(100) < chance)
+    if (!certain && chance > 0) attempts++
+    events.push({ kind: 'flee', actor: by, escaped })
+    if (escaped) {
+      return { state: { ...state, outcome: 'fled', fleeAttempts: attempts }, events }
+    }
+    caught = true
+  }
   // Defending holds from the round's start, whoever acts first.
   // A sleeper cannot defend.
   let fighters: FighterState[] = state.fighters.map((f, i) => ({
@@ -708,7 +740,6 @@ export function playRound(
     .map(({ i }) => i)
 
   let outcome: Outcome = 'ongoing'
-  let attempts = state.fleeAttempts ?? 0
   let chain: Chain = state.chain ?? NO_CHAIN
   const setStates = (target: number, patch: Partial<States>) => {
     fighters = fighters.map((f, i) =>
@@ -750,6 +781,8 @@ export function playRound(
   for (const actor of order) {
     const me = fighters[actor]
     if (!me || !alive(me)) continue
+    // A flight that failed: the party's round is lost (above).
+    if (caught && me.side === 'party') continue
     acted.push(actor)
     // A sleeper's turn goes on sleeping, or on waking.
     if (me.states.sleep !== undefined) {
@@ -791,20 +824,8 @@ export function playRound(
       if (outcome !== 'ongoing') break
       continue
     }
-    if (command.kind === 'flee') {
-      // **The game's**: a flight that is certain spends no draw, and the rest
-      // is a draw below a hundred under the chance — from the world's
-      // generator, so a battle's own numbers are untouched by it.
-      const { certain, chance } = fleeChance({ ...state, fleeAttempts: attempts }, fighters, actor)
-      const escaped = certain || (chance > 0 && (world ?? rng).below(100) < chance)
-      if (!certain && chance > 0) attempts++
-      events.push({ kind: 'flee', actor, escaped })
-      if (escaped) {
-        outcome = 'fled'
-        break
-      }
-      continue
-    }
+    // The party's flight was settled before the round.
+    if (command.kind === 'flee') continue
     if (command.kind === 'psyche') {
       // **Psyche Up** (`func_ov024_021dc93c`) goes through the resolver as
       // anything does: the die it keeps, the critical roll, and the accuracy —
@@ -845,6 +866,11 @@ export function playRound(
       continue
     }
     if (command.kind === 'item') {
+      const named = command.target === undefined ? undefined : fighters[command.target]
+      const on =
+        command.target !== undefined && named && alive(named) && named.side === me.side
+          ? command.target
+          : actor
       let healed: number | undefined
       if (command.heal) {
         // The game's order for anything used on someone — see the spell below:
@@ -854,11 +880,12 @@ export function playRound(
         rng.below(10_000)
         rng.below(100)
         const amount = amountFor(rng, me, command.heal)
-        healed = Math.max(0, Math.min(amount, me.maxHp - me.hp))
+        const them = fighters[on] as FighterState
+        healed = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         const gained = healed
-        fighters = fighters.map((f, i) => (i === actor ? { ...f, hp: f.hp + gained } : f))
+        fighters = fighters.map((f, i) => (i === on ? { ...f, hp: f.hp + gained } : f))
       }
-      events.push({ kind: 'item', actor, target: actor, item: command.item, healed })
+      events.push({ kind: 'item', actor, target: on, item: command.item, healed })
       continue
     }
 

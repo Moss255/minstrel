@@ -626,3 +626,28 @@ effect), `action-reactions.ts` (117), `shadows.ts`, `main.ts` (`startFight`).
 record (`021c530c`, INFERRED multiplayer); whether the day's timer runs during
 a battle.
 
+### 15. The battle's command phase — overlays 0 and 26, 2 October 2026
+
+Findings in `packages/game-formats/FORMAT.md`, "The command phase".
+**Where minstrel translates it**: `apps/game/src/battle-commands.ts`, and
+`packages/sim/src/battle/battle.ts` (the flight before the round).
+
+- **The menu**: `func_ov000_021735d0` (every frame), the party menu
+  `func_ov000_02174c14` / `0217c908` / `0217cb5c`, a member's
+  `func_ov000_0217f00c` / `0217636c` / `02176500` / `0217ae90`; who is asked
+  `func_ov000_0217f6bc`, `021719f8`; the next and the one before
+  `func_ov000_0218099c`, `0217f62c`, `0217f78c`; the flight
+  `func_ov000_02180394`, `func_ov026_021dd3dc`.
+- **The lists**: `func_ov026_021dc8fc` (panels by value 7, then the spell
+  table), the costs `func_ov000_02171458`, `021716d0`; the targets
+  `func_ov000_02171210`, the monster window `021787b8`, the allies
+  `0217edd4`; items `func_ov000_02171c04`.
+- **Tactics**: `func_ov000_021777e4`, `02177ac8`, `0217d438`; the default
+  `func_02082828`; the AI's entries `func_ov024_021f9030`, `021f8f20`.
+- **The hand-off**: `func_ov000_02169850`; targets at the action's turn
+  `func_ov000_021540fc`, `02153aa4`, `02153cc0`.
+
+**What is open**: the AI's scoring; what confusion does to the menu;
+`func_020dd290`'s cost adjustment; Equipment, Line-Up and Examine; the
+multiplayer paths.
+

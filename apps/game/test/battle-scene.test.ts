@@ -3,13 +3,13 @@ import type { Fighter } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import {
   ACTION_SAYS,
-  BATTLE_COMMANDS,
   BATTLE_SAYS,
+  type BattleItem,
   type BattleSpell,
   battleBack,
   battleChoose,
+  battleMenu,
   battleMove,
-  battleRows,
   beginBattle,
   foeWaysOf,
   labelsOf,
@@ -42,12 +42,25 @@ const blob = (hp = 8): Fighter => ({
   gold: 3,
 })
 
-/** Go on through every message until there is something to choose, or it is over. */
-function untilChoice(scene: ReturnType<typeof beginBattle>) {
+/**
+ * Go on through every message until there is something to choose, or it is
+ * over — the round's lists offered as its command phase opens.
+ */
+function untilChoice(
+  scene: ReturnType<typeof beginBattle>,
+  items: readonly BattleItem[] = [],
+  spells: readonly BattleSpell[] = [],
+) {
   let now = scene
-  while (now.phase === 'telling') now = battleChoose(now)
+  while (now.phase === 'telling') now = battleChoose(now, { items, spells })
   return now
 }
+const rows = (scene: ReturnType<typeof beginBattle>) => battleMenu(scene)?.rows
+/** Fight, from the party menu: the first member's commands. */
+const fight = (scene: ReturnType<typeof beginBattle>) => battleChoose(scene)
+/** A member's command by its place in the grid, row by row: Attack, Abilities / Spells, Items / Defend, Coup. */
+const at = (scene: ReturnType<typeof beginBattle>, dx: number, dy: number) =>
+  battleMove(scene, dx, dy)
 
 describe('a battle scene', () => {
   it('opens on the monsters appearing, then the commands', () => {
@@ -57,17 +70,26 @@ describe('a battle scene', () => {
     expect(labelsOf(scene.state)).toEqual(['Hero', 'blob A', 'blob B'])
     const choosing = untilChoice(scene)
     expect(choosing.phase).toBe('command')
-    expect(battleRows(choosing)).toEqual([...BATTLE_COMMANDS])
-    expect(battleMove(choosing, -1).cursor).toBe(BATTLE_COMMANDS.length - 1)
+    // The party menu first, then the member's six commands, two to a row.
+    expect(rows(choosing)).toEqual(['fight', 'examine', 'flee', 'misc'])
+    expect(battleMenu(battleMove(choosing, 0, -1))?.cursor).toBe(3)
+    expect(rows(fight(choosing))).toEqual([
+      'attack',
+      'abilities',
+      'spells',
+      'items',
+      'defend',
+      'coup',
+    ])
   })
 
   it('asks whom to fight when more than one monster stands, and goes back a step', () => {
-    const choosing = untilChoice(beginBattle([hero, blob(), blob()], 1n, { canFlee: true }))
+    const choosing = fight(untilChoice(beginBattle([hero, blob(), blob()], 1n, { canFlee: true })))
     const targeting = battleChoose(choosing)
-    expect(targeting.phase).toBe('target')
-    expect(battleRows(targeting)).toEqual(['blob A', 'blob B'])
-    expect(battleBack(targeting).phase).toBe('command')
-    const played = battleChoose(battleMove(targeting, 1))
+    expect(targeting.commanding?.step.at).toBe('monster')
+    expect(rows(targeting)).toEqual(['blob A', 'blob B'])
+    expect(battleBack(targeting).commanding?.step.at).toBe('member')
+    const played = battleChoose(battleMove(targeting, 0, 1))
     expect(played.phase).toBe('telling')
     expect(played.state.round).toBe(1)
     expect(played.pages.some((page) => page.startsWith('Hero attacks!'))).toBe(true)
@@ -76,7 +98,7 @@ describe('a battle scene', () => {
   it('fights a lone monster straight away, and ends when it is beaten', () => {
     let scene = untilChoice(beginBattle([hero, blob(1)], 3n, { canFlee: true }))
     for (let round = 0; round < 20 && scene.phase === 'command'; round++) {
-      scene = untilChoice(battleChoose(scene))
+      scene = untilChoice(battleChoose(fight(scene)))
     }
     expect(scene.phase).toBe('over')
     expect(scene.state.outcome).toBe('won')
@@ -85,7 +107,7 @@ describe('a battle scene', () => {
   it('tells what it is given to tell after the battle, then is over', () => {
     let scene = untilChoice(beginBattle([hero, blob(1)], 3n, { canFlee: true }))
     for (let round = 0; round < 20 && scene.phase === 'command'; round++) {
-      const next = battleChoose(scene)
+      const next = battleChoose(fight(scene))
       scene = next.state.outcome === 'won' ? withPages(next, ['Hero gains 2 experience.']) : next
       scene = untilChoice(scene)
     }
@@ -95,22 +117,19 @@ describe('a battle scene', () => {
   it('carries the party’s wounds in, and says when there is no running', () => {
     const scene = beginBattle([hero, blob()], 1n, { canFlee: false, hp: new Map([[0, 7]]) })
     expect(scene.state.fighters[0]?.hp).toBe(7)
-    const fled = battleChoose(battleMove(untilChoice(scene), BATTLE_COMMANDS.indexOf('Flee')))
+    const fled = battleChoose(battleMove(untilChoice(scene), 0, 2))
     expect(fled.pages[0]).toBe('Hero tries to run, but there is no escape!')
   })
 
   it('offers the bag’s items, and uses the one chosen on the Hero', () => {
     const herb = { id: 0x55f0, name: { name: 'herb' }, count: 2, heal: { base: 35, spread: 5 } }
-    const scene = untilChoice(
-      beginBattle([hero, blob()], 1n, { canFlee: true, hp: new Map([[0, 5]]) }),
-    )
-    const items = BATTLE_COMMANDS.indexOf('Items')
-    const empty = battleChoose(battleMove(scene, items))
-    expect(empty.pages).toEqual(['Hero has nothing to use.'])
-    const offered = battleChoose(battleMove(scene, items), [herb])
-    expect(offered.phase).toBe('item')
-    expect(battleRows(offered)).toEqual(['herb ×2'])
-    expect(battleBack(offered).phase).toBe('command')
+    const opened = beginBattle([hero, blob()], 1n, { canFlee: true, hp: new Map([[0, 5]]) })
+    const empty = battleChoose(at(fight(untilChoice(opened)), 1, 1))
+    expect(empty.commanding?.step).toMatchObject({ at: 'say', say: { number: 30024 } })
+    const offered = battleChoose(at(fight(untilChoice(opened, [herb])), 1, 1))
+    expect(offered.commanding?.step).toMatchObject({ at: 'list', list: 'items' })
+    expect(rows(offered)).toEqual(['herb'])
+    expect(battleBack(offered).commanding?.step.at).toBe('member')
     const used = battleChoose(offered)
     const event = used.events.find((e) => e.kind === 'item')
     expect(event).toMatchObject({ kind: 'item', item: 0x55f0 })
@@ -129,7 +148,8 @@ describe('a battle scene', () => {
     name: { name: 'Heal' },
     message: 22,
   }
-  const spells = BATTLE_COMMANDS.indexOf('Spells')
+  /** The Spells command: the grid's second row, on the left. */
+  const spellsOf = (scene: ReturnType<typeof beginBattle>) => battleChoose(at(fight(scene), 0, 1))
 
   it('turns a monster’s six words into its ways, an attack where the battle cannot yet', () => {
     const herb: BattleSpell = { ...heal, opening: 70, name: { name: 'herb' } }
@@ -243,7 +263,7 @@ describe('a battle scene', () => {
       canFlee: true,
       known: new Map([[44, { name: { name: 'Kasap' }, message: 0, opening: 46 }]]),
     })
-    const played = battleChoose(untilChoice(scene))
+    const played = battleChoose(fight(untilChoice(scene)))
     expect(played.pages).toContain("Blob casts Kasap!\nHero's defence falls.")
   })
 
@@ -252,7 +272,9 @@ describe('a battle scene', () => {
       ...blob(40),
       acts: Array.from({ length: 6 }, () => ({ kind: 'flee' as const })),
     }
-    const played = battleChoose(untilChoice(beginBattle([hero, runner], 1n, { canFlee: true })))
+    const played = battleChoose(
+      fight(untilChoice(beginBattle([hero, runner], 1n, { canFlee: true }))),
+    )
     expect(played.pages).toContain('Blob runs away!')
     expect(played.state.outcome).toBe('won')
     expect(played.cues.flat()).toContainEqual({ fighter: 1, motion: 'flee' })
@@ -283,22 +305,28 @@ describe('a battle scene', () => {
   })
 
   it('offers the spells the Hero knows, or says there are none', () => {
-    const scene = untilChoice(beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true }))
-    expect(battleChoose(battleMove(scene, spells)).pages).toEqual([
-      'Hero doesn’t know any battle spells yet.',
-    ])
-    const offered = battleChoose(battleMove(scene, spells), [], [crack, heal])
-    expect(offered.phase).toBe('spell')
-    expect(battleRows(offered)).toEqual(['Crack — 3 MP', 'Heal — 2 MP'])
-    expect(battleBack(offered).phase).toBe('command')
+    const opened = beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true })
+    expect(spellsOf(untilChoice(opened)).commanding?.step).toMatchObject({
+      at: 'say',
+      say: { number: 30023, str2: 30021 },
+    })
+    const offered = spellsOf(untilChoice(opened, [], [crack, heal]))
+    expect(offered.commanding?.step).toMatchObject({ at: 'list', list: 'spells' })
+    // Names only: the cost is in the box beside the list (`func_ov000_02178d28`).
+    expect(rows(offered)).toEqual(['Crack', 'Heal'])
+    expect(battleBack(offered).commanding?.step.at).toBe('member')
   })
 
   it('casts a spell at the monster chosen, and spends its MP', () => {
-    const scene = untilChoice(beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true }))
-    const targeting = battleChoose(battleChoose(battleMove(scene, spells), [], [crack, heal]))
-    expect(targeting.phase).toBe('target')
-    expect(battleRows(targeting)).toEqual(['blob A', 'blob B'])
-    const cast = battleChoose(battleMove(targeting, 1))
+    const scene = untilChoice(
+      beginBattle([hero, blob(40), blob(40)], 1n, { canFlee: true }),
+      [],
+      [crack, heal],
+    )
+    const targeting = battleChoose(spellsOf(scene))
+    expect(targeting.commanding?.step.at).toBe('monster')
+    expect(rows(targeting)).toEqual(['blob A', 'blob B'])
+    const cast = battleChoose(battleMove(targeting, 0, 1))
     const event = cast.events.find((e) => e.kind === 'spell')
     expect(event).toMatchObject({ kind: 'spell', action: 12, short: false, hits: [{ target: 2 }] })
     expect(cast.state.fighters[0]?.mp).toBe(3)
@@ -308,17 +336,21 @@ describe('a battle scene', () => {
   it('heals the Hero with a spell straight away, and says when the MP are not there', () => {
     const scene = untilChoice(
       beginBattle([hero, blob(40)], 1n, { canFlee: true, hp: new Map([[0, 5]]) }),
+      [],
+      [crack, heal],
     )
-    const offered = battleChoose(battleMove(scene, spells), [], [crack, heal])
-    const healed = battleChoose(battleMove(offered, 1))
+    const healed = battleChoose(battleMove(spellsOf(scene), 0, 1))
     const event = healed.events.find((e) => e.kind === 'spell')
     expect(event).toMatchObject({ kind: 'spell', action: 30, hits: [{ target: 0 }] })
     expect(healed.state.fighters[0]?.mp).toBe(4)
+    // Too little MP is said as it is chosen (`str_btl` 30020), and nothing is cast.
     const poor = untilChoice(
       beginBattle([hero, blob(40)], 1n, { canFlee: true, mp: new Map([[0, 1]]) }),
+      [],
+      [crack],
     )
-    const short = battleChoose(battleChoose(battleMove(poor, spells), [], [crack]))
-    expect(short.pages[0]).toBe('Hero casts Crack!\nNot enough MP!')
+    const short = battleChoose(spellsOf(poor))
+    expect(short.commanding?.step).toMatchObject({ at: 'say', say: { number: 30020 } })
     expect(short.state.fighters[0]?.mp).toBe(1)
   })
 
@@ -327,7 +359,7 @@ describe('a battle scene', () => {
   it('fights beside a companion who acts by themselves', () => {
     const scene = untilChoice(beginBattle([hero, companion, blob(999)], 3n, { canFlee: true }))
     // Attack, at the one monster, straight away; the companion is handed nothing.
-    const played = battleChoose(scene)
+    const played = battleChoose(fight(scene))
     expect(played.events.some((e) => e.kind === 'attack' && e.actor === 1)).toBe(true)
     expect(played.pages.some((page) => page.startsWith('Ivor attacks!'))).toBe(true)
   })
@@ -335,12 +367,12 @@ describe('a battle scene', () => {
   it('goes on while either stands, and is lost when both have fallen', () => {
     const deadly: Fighter = { ...blob(999), attack: 999 }
     let now = battleChoose(
-      untilChoice(beginBattle([hero, companion, deadly], 3n, { canFlee: true })),
+      fight(untilChoice(beginBattle([hero, companion, deadly], 3n, { canFlee: true }))),
     )
     // One blow a round fells one of them at most.
     expect(now.state.outcome).toBe('ongoing')
     for (let round = 0; round < 10 && now.state.outcome === 'ongoing'; round++) {
-      now = battleChoose(untilChoice(now))
+      now = battleChoose(fight(untilChoice(now)))
     }
     expect(now.state.outcome).toBe('lost')
     expect(now.state.fighters.slice(0, 2).map((f) => f.hp)).toEqual([0, 0])
@@ -349,12 +381,13 @@ describe('a battle scene', () => {
   it('asks whom to heal when someone stands beside the Hero, and heals the one chosen', () => {
     const scene = untilChoice(
       beginBattle([hero, companion, blob(40)], 1n, { canFlee: true, hp: new Map([[1, 5]]) }),
+      [],
+      [crack, heal],
     )
-    const offered = battleChoose(battleMove(scene, spells), [], [crack, heal])
-    const asking = battleChoose(battleMove(offered, 1))
-    expect(asking.phase).toBe('target')
-    expect(battleRows(asking)).toEqual(['Hero', 'Ivor'])
-    const healed = battleChoose(battleMove(asking, 1))
+    const asking = battleChoose(battleMove(spellsOf(scene), 0, 1))
+    expect(asking.commanding?.step.at).toBe('ally')
+    expect(rows(asking)).toEqual(['Hero', 'Ivor'])
+    const healed = battleChoose(battleMove(asking, 0, 1))
     expect(healed.events.find((e) => e.kind === 'spell')).toMatchObject({
       action: 30,
       hits: [{ target: 1 }],
@@ -401,9 +434,9 @@ describe('a battle in the game’s words', () => {
       names: [...names, names[1] as Named],
     })
     expect(two.pages).toEqual(['Some blobs show up!'])
-    expect(battleRows(untilChoice(one))[0]).toBe('Hit')
+    expect(rows(fight(untilChoice(one)))?.[0]).toBe('Hit')
     // A command with no word of its own keeps ours.
-    expect(battleRows(untilChoice(one))[1]).toBe('Spells')
+    expect(rows(fight(untilChoice(one)))?.[2]).toBe('spells')
   })
 
   it('tells a round in them, the monster by its article and letter', () => {
@@ -414,7 +447,7 @@ describe('a battle in the game’s words', () => {
         names: [...names, names[1] as Named],
       }),
     )
-    const played = battleChoose(battleChoose(scene))
+    const played = battleChoose(battleChoose(fight(scene)))
     expect(
       played.pages.some((page) => /^Hero swings\.\nThe blob A (loses \d+|is out)\./.test(page)),
     ).toBe(true)

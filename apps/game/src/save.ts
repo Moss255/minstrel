@@ -108,6 +108,8 @@ export interface SaveMember {
    * levels when it is loaded, because nothing had taken any of it.
    */
   readonly skillPool?: number
+  /** Their tactic in battle — see `Member.tactic`; absent is Follow Orders. */
+  readonly tactic?: number
   /** Points put into each tree: pairs of `[tree, points]` — see `Member.treePoints`. */
   readonly treePoints?: readonly (readonly [number, number])[]
   /**
@@ -506,6 +508,9 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.revocations !== undefined && !pairs(m.revocations)) {
     throw new SaveError(`${where} has revocations that do not read`)
   }
+  if (m.tactic !== undefined && !(isCount(m.tactic) && (m.tactic as number) <= 5)) {
+    throw new SaveError(`${where} has a tactic that does not read`)
+  }
   const outfits = outfitsOf(m, where)
   return {
     attnpc: m.attnpc as number | null,
@@ -527,6 +532,7 @@ function member(raw: unknown, place: number): SaveMember {
     ...(m.revocations === undefined
       ? {}
       : { revocations: m.revocations as (readonly [number, number])[] }),
+    ...(m.tactic === undefined ? {} : { tactic: m.tactic as number }),
   }
 }
 

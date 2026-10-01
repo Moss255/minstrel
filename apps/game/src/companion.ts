@@ -155,6 +155,15 @@ export interface Member {
    */
   revocations: Map<number, number>
   /**
+   * **Their tactic in battle**, 0 to 5 — the character record's `+0x94c`,
+   * `str_btl` 30014 + it: Show No Mercy, Fight Wisely, Mix It Up, Focus On
+   * Healing, Don't Use MP, Follow Orders. Undefined is 5, **Follow Orders**,
+   * which the character's initialiser sets (`func_02082828`, `0x02082880`);
+   * only one following orders is asked for a command (`0x0217f748`). See
+   * `battle-commands.ts`.
+   */
+  tactic?: number | undefined
+  /**
    * Points put into each skill tree, by tree number, each 0 to 100 — the
    * record's 27 bytes at `+0xF6`. **Per tree, not per vocation**, so what was
    * learnt as a Warrior is still learnt as a Mage.
@@ -385,6 +394,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
     ...(member.revocations.size === 0
       ? {}
       : { revocations: [...member.revocations].sort((a, b) => a[0] - b[0]) }),
+    ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
   }))
 }
 
@@ -410,6 +420,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     skillPool: member.skillPool ?? 0,
     treePoints: new Map(member.treePoints ?? []),
     revocations: new Map(member.revocations ?? []),
+    ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
   }))
 }
 

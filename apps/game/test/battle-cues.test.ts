@@ -1,6 +1,6 @@
 import type { Fighter } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
-import { battleChoose, beginBattle, withPages } from '../src/battle-scene.ts'
+import { battleChoose, battleMove, beginBattle, withPages } from '../src/battle-scene.ts'
 
 const hero: Fighter = {
   name: 'Hero',
@@ -40,10 +40,10 @@ describe('what the monsters do while the battle is told', () => {
   it('has a monster that is hit take it, and one that falls, fall — page for page', () => {
     let scene = beginBattle([hero, blob(999), blob(1)], 5n, { canFlee: true })
     while (scene.phase === 'telling') scene = battleChoose(scene)
-    // Attack, which asks whom; then the second blob, which falls to anything.
-    const targeting = battleChoose(scene)
-    expect(targeting.phase).toBe('target')
-    const played = battleChoose({ ...targeting, cursor: 1 })
+    // Fight, then Attack, which asks whom; then the second blob, which falls to anything.
+    const targeting = battleChoose(battleChoose(scene))
+    expect(targeting.commanding?.step.at).toBe('monster')
+    const played = battleChoose(battleMove(targeting, 0, 1))
     expect(played.cues).toHaveLength(played.pages.length)
     const all = played.cues.flat()
     expect(all).toContainEqual(expect.objectContaining({ fighter: 2, motion: 'damage' }))

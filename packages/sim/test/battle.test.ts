@@ -459,6 +459,18 @@ describe('a battle', () => {
     ).toBe(true)
   })
 
+  it('settles a flight before the round, and a party caught loses its round', () => {
+    const flee = new Map<number, Command>([[0, { kind: 'flee' }]])
+    const boss = startBattle([hero, blob('boss', 999, 1)], false)
+    const { state, events } = playRound(boss, flee, new BattleRng(3n))
+    // Told first, before anyone is ordered.
+    expect(events[0]).toEqual({ kind: 'flee', actor: 0, escaped: false })
+    // The Hero does nothing more; the monster has its round.
+    expect(events.some((e) => e.kind === 'attack' && e.actor === 0)).toBe(false)
+    expect(events.some((e) => e.kind === 'attack' && e.actor === 1)).toBe(true)
+    expect(state.outcome).toBe('ongoing')
+  })
+
   it('turns an attack on a fallen foe to the next one standing', () => {
     const start = withHp(startBattle([hero, blob('slime', 8), blob('slime', 8)]), new Map([[1, 0]]))
     const { events } = playRound(start, attackFirstFoe, new BattleRng(2n))

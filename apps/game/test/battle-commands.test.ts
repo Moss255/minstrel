@@ -1,0 +1,140 @@
+import { type Fighter, startBattle } from '@minstrel/sim'
+import { describe, expect, it } from 'vitest'
+import {
+  type Asked,
+  backCommand,
+  chooseCommand,
+  commandsOf,
+  type Entry,
+  FOLLOW_ORDERS,
+  monsterGroups,
+  moveCommand,
+  openCommands,
+  PARTY_ROWS,
+} from '../src/battle-commands.ts'
+
+const fighter = (name: string, side: 'party' | 'foes'): Fighter => ({
+  name,
+  side,
+  maxHp: 30,
+  maxMp: 10,
+  attack: 10,
+  defence: 5,
+  agility: 5,
+  shield: false,
+  exp: 1,
+  gold: 1,
+})
+const state = startBattle(
+  [
+    fighter('Hero', 'party'),
+    fighter('Mage', 'party'),
+    fighter('slime', 'foes'),
+    fighter('slime', 'foes'),
+    fighter('dracky', 'foes'),
+  ],
+  true,
+)
+const heal: Entry = {
+  action: 30,
+  name: 'Heal',
+  cost: 2,
+  side: 2,
+  reach: 2,
+  command: (target) => ({ kind: 'item', item: 0, target }),
+}
+const frizz: Entry = {
+  action: 9,
+  name: 'Frizz',
+  cost: 2,
+  side: 1,
+  reach: 2,
+  command: (target) => ({ kind: 'attack', target }),
+}
+const member = (fighter: number, over: Partial<Asked> = {}): Asked => ({
+  fighter,
+  name: fighter === 0 ? 'Hero' : 'Mage',
+  tactic: FOLLOW_ORDERS,
+  own: fighter === 0,
+  guest: false,
+  spells: [],
+  abilities: [],
+  items: [],
+  ...over,
+})
+const two = [member(0), member(1, { spells: [frizz, heal] })]
+const fight = (c = openCommands(two)) => chooseCommand(state, c)
+
+describe('the command phase, as overlay 0 runs it', () => {
+  it('opens on the party menu and asks each member in turn after Fight', () => {
+    const open = openCommands(two)
+    expect(open.step).toEqual({ at: 'party', cursor: 0 })
+    expect(PARTY_ROWS).toEqual(['fight', 'examine', 'flee', 'misc'])
+    const first = fight()
+    expect(first.step).toEqual({ at: 'member', member: 0, cursor: 0 })
+    // Defend is done at once, and the next member is asked.
+    const defended = chooseCommand(state, moveCommand(state, first, 0, 2))
+    expect(defended.step).toEqual({ at: 'member', member: 1, cursor: 0 })
+    expect(commandsOf(defended).get(0)).toEqual({ kind: 'defend' })
+  })
+
+  it('walks the two-column grid row by row: Attack, Abilities / Spells, Items / Defend, Coup', () => {
+    const c = fight()
+    expect(moveCommand(state, c, 1, 0).step).toMatchObject({ cursor: 3 })
+    expect(moveCommand(state, c, 0, 1).step).toMatchObject({ cursor: 1 })
+    expect(moveCommand(state, c, 1, 2).step).toMatchObject({ cursor: 5 })
+    expect(moveCommand(state, c, 0, -1).step).toMatchObject({ cursor: 2 })
+  })
+
+  it('chooses a monster one by one, group by group, and an ally for a heal', () => {
+    const attack = chooseCommand(state, fight())
+    expect(attack.step).toMatchObject({ at: 'monster', cursor: 0 })
+    expect(monsterGroups(state)).toEqual([
+      { first: 2, count: 2 },
+      { first: 4, count: 1 },
+    ])
+    const onDracky = chooseCommand(state, moveCommand(state, attack, 2, 0))
+    expect(commandsOf(onDracky).get(0)).toEqual({ kind: 'attack', target: 4 })
+    // The Mage's Spells, then Heal, then whom.
+    const spells = chooseCommand(state, moveCommand(state, onDracky, 0, 1))
+    expect(spells.step).toMatchObject({ at: 'list', list: 'spells' })
+    const ally = chooseCommand(state, moveCommand(state, spells, 0, 1))
+    expect(ally.step).toMatchObject({ at: 'ally' })
+    const healed = chooseCommand(state, ally)
+    expect(healed.step).toEqual({ at: 'done' })
+    expect(commandsOf(healed).get(1)).toEqual({ kind: 'item', item: 0, target: 0 })
+  })
+
+  it('says a member knows no spells, and goes back to the one before with B, their choice dropped', () => {
+    const c = fight()
+    const none = chooseCommand(state, moveCommand(state, c, 0, 1))
+    expect(none.step).toMatchObject({ at: 'say', say: { number: 30023, str2: 30021 } })
+    expect(chooseCommand(state, none).step).toMatchObject({ at: 'member', member: 0 })
+    const second = chooseCommand(state, moveCommand(state, c, 0, 2))
+    const back = backCommand(state, second)
+    expect(back.step).toEqual({ at: 'member', member: 0, cursor: 0 })
+    expect(back.chosen.size).toBe(0)
+    expect(backCommand(state, back).step).toEqual({ at: 'party', cursor: 0 })
+  })
+
+  it('flees as a party, and leaves one not following orders unasked', () => {
+    const fled = chooseCommand(state, moveCommand(state, openCommands(two), 0, 2))
+    expect(fled.step).toEqual({ at: 'done' })
+    expect([...commandsOf(fled).values()]).toEqual([{ kind: 'flee' }, { kind: 'flee' }])
+    const mercy = openCommands([member(0), member(1, { tactic: 0 })])
+    const one = chooseCommand(state, moveCommand(state, chooseCommand(state, mercy), 0, 2))
+    expect(one.step).toEqual({ at: 'done' })
+    expect(commandsOf(one).has(1)).toBe(false)
+  })
+
+  it('sets a tactic from Misc., for anyone but the player’s own, and opens the party menu again', () => {
+    const misc = chooseCommand(state, moveCommand(state, openCommands(two), 0, 3))
+    const tactics = chooseCommand(state, misc)
+    expect(tactics.step).toEqual({ at: 'tactics', cursor: 0 })
+    const grid = chooseCommand(state, tactics)
+    expect(grid.step).toEqual({ at: 'tactic', who: 1, cursor: FOLLOW_ORDERS })
+    const set = chooseCommand(state, moveCommand(state, grid, -1, -2))
+    expect(set.tactics.get(1)).toBe(0)
+    expect(set.step).toEqual({ at: 'party', cursor: 0 })
+  })
+})

@@ -32,7 +32,7 @@ const panel = (over: Partial<SkillPanel>): SkillPanel => ({
   grants: 2,
   amount: 0,
   fieldAction: 0,
-  unknown_7: 0,
+  battleOrder: 0,
   message: 2,
   ...over,
 })

@@ -94,7 +94,7 @@ export interface SkillPanel {
    * eleventh panel reads 0, and it is not free.**
    *
    * Read 24 September 2026: in all twenty-six trees that panel is **last** in
-   * the file and last by {@link unknown_7}, after the hundred-point one, and
+   * the file and last by {@link battleOrder}, after the hundred-point one, and
    * it holds the tree's marquee ability — Sword's Gigagash, Shield's Critical
    * Hit Guard, Courage's Auto Counter. So the zero is a threshold this field
    * does not carry, not an absence of one. What unlocks it is **not
@@ -114,10 +114,13 @@ export interface SkillPanel {
    */
   readonly fieldAction: number
   /**
-   * A second 0-to-286 index, eleven to a tree like {@link id} but ordering
-   * the trees differently. **Not established**; the game keeps both.
+   * **Its place in the battle's Spells and Abilities lists**: a second 0-to-286
+   * index, eleven to a tree like {@link id} but ordering the trees
+   * differently. Read 2 October 2026 (USA): the record's handler
+   * `func_0209a104` keeps it at `+0x0a`, and `func_ov026_021dc8fc` puts each
+   * learnt panel's action at that place, then closes the gaps.
    */
-  readonly unknown_7: number
+  readonly battleOrder: number
   /** The `str_gskl` message shown when it is bought, 1 to 23. */
   readonly message: number
 }
@@ -152,7 +155,7 @@ export function readSkillTable(data: Uint8Array): SkillPanel[] {
       grants: integer(record, 4, 'what it grants'),
       amount: integer(record, 5, 'an amount'),
       fieldAction: integer(record, 6, 'a second action'),
-      unknown_7: integer(record, 7, 'value 7'),
+      battleOrder: integer(record, 7, 'value 7'),
       message: integer(record, 8, 'a message'),
     }
   })

@@ -1181,7 +1181,7 @@ belonging to no tree. The trees are the ones the vocation table numbers, 1 to
 | 4 | what it gives — the list below, **INFERRED** | each value goes with exactly one `str_gskl` message, and the message says what it does |
 | 5 | how much: the message's `<val_1>` | |
 | 6 | a second action, on ten panels — **INFERRED** to be the out-of-battle form | all ten are field-usable abilities, and it equals value 3 on eight of them |
-| 7 | `unknown_7`: a second 0–286 index, also eleven to a tree, ordering the trees differently | the game keeps both, so both matter to something |
+| 7 | `battleOrder`: a second 0–286 index, also eleven to a tree, ordering the trees differently — **the panel's place in the battle's Spells and Abilities lists** (read 2 October 2026: `func_0209a104` keeps it at `+0x0a`; `func_ov026_021dc8fc` places each learnt panel's action by it and closes the gaps) | the game keeps both, so both matter to something |
 | 8 | the `str_gskl` message shown when it is bought, 1–23 | |
 
 **What value 4 means — INFERRED**, read off the messages: `0` the message says
@@ -1230,7 +1230,6 @@ established** — no code was found that reads it.
 ## Not established
 
 - What, if anything, grants the eleventh panel.
-- What value 7 orders by.
 - The record with tree 0: `[286, 0, 0, 168, 1, 0, 0, 286, 0]`, named "Egg On".
 
 # Builds — in the ARM9 binary
@@ -3518,6 +3517,68 @@ half-angle: 30° (`func_ov000_0216d370`).
   11 a flight (overlay 26's), 17–19 the round's working-out; 16 is the
   table's default and runs nothing (corrected 1 October 2026). Overlays 22 to
   30 share one address, so one of 23, 25 and 26 is in at a time.
+
+### The command phase — overlay 0's menu, overlay 26's round
+
+Read 2 October 2026 (USA), and played by `apps/game/src/battle-commands.ts`.
+Overlay 0's `func_ov000_021735d0` runs the menu every frame of state 7 from
+two stacks of menu states, the party's and each member's (`0x448`-byte
+records at ui `+0x958`, ui = battle `+0x3760`); a member's state `100` is
+done.
+
+- **Each round** (state 7, sub-state 3): the monster targets rebuilt —
+  the living, group by group, slot by slot — each member's record reset, and
+  **the party menu opened** (`func_ov000_02174c14`): one column, **Fight,
+  Examine, Flee, Misc.**, the words `strstd` 23, 24, 25, 22 (not `str_btl`
+  30000–30003). Each member's lists are built then (`func_ov026_021dc8fc`).
+- **Fight** asks the members in the party's order. A member is asked when
+  present, standing, not paralysed, asleep or "Inactive" (status `0x8`,
+  `0x10`, `0x80000`; `func_ov000_021719f8`), and **following orders**: the
+  character's tactic, `+0x94c`, at 5 (`0x0217f748`). None to ask: the phase
+  ends at once. **Flee** is the party's: every asked member's record becomes
+  done with command 6 (`func_ov000_02180394`).
+- **A member's commands**: six, **two columns by three rows**, drawn row by
+  row from `data_ov000_021834f8` = {0, 3, 1, 4, 2, 5} — Attack and
+  Abilities, Spells and Items, Defend and Coup de Grâce — each `str_btl`
+  30004 + its number. Defend is done at once; Attack asks a monster unless
+  one is left; the Coup de Grâce is greyed and does nothing until its
+  combatant's `+0x138 → +0x3b` bit 3 is set; a member with no spells,
+  abilities or items is told so (30023 with 30021 or 30022; 30024).
+- **The Spells and Abilities lists**, built each round: the actions of the
+  **skill panels held** (char `+0x8ec`), placed by the panel's value 7
+  (`battleOrder`), then **the vocation's spells** in `spelltable`'s order up
+  to the member's level in it; each kept only where its action's `+0x08`
+  bits 10–11 have bit 1 set, and put by `+0x18` bits 12–15 into Spells (2)
+  or Abilities (1). Four rows a page, names only; the cost is in a box beside
+  (`strstd` 1004). Short of MP: 30020 "Not enough MP!", as it is chosen; an
+  ability of `+0x2c` kind 6 costs gold (34).
+- **Items** are the member's own carried items (char `+0x454`), then what
+  they wear — not the bag.
+- **Whom** (`func_ov000_02171210`), by the action's side (`+0x08` bits 8–9:
+  1 the monsters, 2 the party) and reach: all — done; a group — done with one
+  group, else a monster; one monster — done with one, else the choice, which
+  walks the living monsters one by one, the group's line ("<name> × n",
+  30031) highlighted; oneself, or all the party — done; one ally — the party
+  in order, the member themselves left out for reach 8. A fallen ally is
+  refused, but for a revival (kind 18), and Zing, Kazing and the Zing stick
+  take either.
+- **B**: in a member's commands, the member before is asked again, their
+  choice discarded; on the first, the party menu (`func_ov000_0217f78c`).
+  **No confirming**: the last choice ends the phase; the flight is then tried
+  (`func_ov026_021dd3dc` → `func_ov000_0215f7a8`), and one that fails costs
+  the party its round (`func_ov000_02169850` `0x02169978`; `0x0215dabc`).
+- **Tactics** (Misc. → Tactics, Misc. being 30010 Tactics, 30011 Equipment,
+  30012 Line-Up): any member but the player's own, or "Whole Party" (`strstd`
+  26), to one of `str_btl` 30014 + 0–5 — Show No Mercy, Fight Wisely, Mix It
+  Up, Focus On Healing, Don't Use MP, **Follow Orders**, the default
+  (`func_02082828`). A member not following orders hands in the Attack, which
+  the AI replaces when their turn comes (`func_ov024_021f9030`,
+  `021f8f20`); the AI is not read.
+- **The hand-off** (`func_ov000_02169850`, before `ProcessCombatTurn`):
+  each member's action, target and group into their object's `+0x19c`.
+  **Targets are resolved when the action runs** (`func_ov000_021540fc`): a
+  fallen monster gives way to a living one of its group, or of another; a
+  fallen ally to the actor.
 
 ### The way into a battle, and out
 

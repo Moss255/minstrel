@@ -211,6 +211,24 @@ export interface Action {
    */
   readonly tensed: boolean
   /**
+   * Whom it is aimed at — `+0x08`, bits 8–9: 1 the monsters, 2 the party
+   * (`func_ov000_02171210`, which picks the target choice by it and by
+   * {@link reach}; read 2 October 2026).
+   */
+  readonly side: number
+  /**
+   * Which battle list it is in — `+0x18`, bits 12–15: 2 Spells, 1 Abilities,
+   * anything else neither (`func_ov026_021dc8fc`, `0x021dcba4`). The same
+   * bits pick its script's archive.
+   */
+  readonly list: number
+  /**
+   * `+0x08`, bits 10–11. An action is listed in battle only with bit 1 set
+   * (`func_ov026_021dc8fc`), so a field-only spell never appears there —
+   * INFERRED: usable in battle. Bit 0 is not established.
+   */
+  readonly usableIn: number
+  /**
    * Whether its *amount* scales by a number of the user's — the same two bits
    * as {@link accuracyMode}, at 2. `GetAttackBaseDamage` (overlay 24,
    * `0x021e7c0c`) tests them for one of the party: at 2, and with a number
@@ -345,6 +363,9 @@ export function readActions(bytes: Uint8Array): Action[] {
       worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
       combos: (view.getUint32(at + 0x2c, true) & 0x8000000) !== 0,
       tensed: (view.getUint32(at + 0x10, true) & 0x2000) !== 0,
+      side: (view.getUint32(at + 8, true) >>> 8) & 3,
+      list: (view.getUint32(at + 0x18, true) >>> 12) & 0xf,
+      usableIn: (view.getUint32(at + 8, true) >>> 10) & 3,
       element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
       landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,

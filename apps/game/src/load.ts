@@ -419,6 +419,12 @@ export interface ItemEffect {
   readonly cost: number
   /** Whom it reaches — see `ActionReach`. INFERRED. */
   readonly reach: number
+  /** Whom it is aimed at, 1 the monsters, 2 the party — see `Action.side`. */
+  readonly side: number
+  /** Which battle list it is in, 2 Spells, 1 Abilities — see `Action.list`. */
+  readonly list: number
+  /** Bit 1 set: listed in battle — see `Action.usableIn`. */
+  readonly usableIn: number
   /**
    * What the battle's rolls read of it — each from the game's code; see
    * game-formats' `Action`: a monster's chance with it, whether that chance is
@@ -1526,6 +1532,7 @@ function battleWordsOf(rom: Uint8Array): BattleWords {
       messagesBy(readTableMessages(bytes, RESULT_TAG)),
     ),
     menu: englishText(rom, '/data/bin/menu/str_btl.gp2', 'str_btl_en.nat', readSystemStrings),
+    standard: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     articles: englishText(rom, '/data/prm/article.gp2', 'article_en.nat', readSystemStrings),
   }
 }
@@ -1583,6 +1590,9 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         opening: action.opening,
         cost: action.cost,
         reach: action.reach,
+        side: action.side,
+        list: action.list,
+        usableIn: action.usableIn,
         rolls: {
           foeChance: action.foeChance,
           chanceIsAccuracy: action.accuracyMode === 1,

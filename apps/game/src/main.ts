@@ -13,6 +13,7 @@ import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
 import type { ActionScript } from '@minstrel/game-formats'
 import {
   ActionEffect,
+  ActionReach,
   type AttendingCharacter,
   afterBattle,
   areaAt,
@@ -186,6 +187,7 @@ import {
   startCombo,
   tickCombo,
 } from './battle-combo.ts'
+import { type Asked, type Entry, FOLLOW_ORDERS } from './battle-commands.ts'
 import {
   NUDGE_AT,
   type NumberKind,
@@ -201,13 +203,15 @@ import {
   type BattleSpell,
   battleBack,
   battleChoose,
+  battleMenu,
   battleMove,
-  battleRows,
   battleSpellOf,
   beginBattle,
   foeSpellOf,
   foeWaysOf,
+  itemEntry,
   labelsOf,
+  type Offered,
   RESULT_SAYS,
   type Told,
   withPages,
@@ -1329,6 +1333,8 @@ interface BattleCompanion {
   readonly packs: readonly string[]
 }
 let battleCompanions: readonly BattleCompanion[] = []
+/** The member behind each of the party's fighters, by fighter — see `openFight`. */
+let battleMembers: readonly Member[] = []
 /** Battles fought this session, which seeds the next one's numbers. */
 let battlesFought = 0
 /**
@@ -5043,17 +5049,103 @@ function battleItems(): BattleItem[] {
   return items
 }
 
-/** What the Spells command offers: what the Hero has learnt that a battle can cast — see `battleSpellOf`. */
-function battleSpells(): BattleSpell[] {
-  const here = loaded
-  const table = here?.spellTable
-  const row = heroRow()
-  if (!here || !table || !row) return []
-  return spellsLearnt(table, leader().vocation, row.level).flatMap((learnt) => {
-    const action = here.actions.get(learnt.action)
-    const spell = action && battleSpellOf(action)
-    return spell ? [spell] : []
+/**
+ * **What the command phase offers** each of the party — see `battle-commands.ts`.
+ * Their Spells and Abilities lists are the game's (`func_ov026_021dc8fc`): the
+ * actions of the skill panels they hold, by the panel's `battleOrder`, then
+ * their vocation's spells in the table's order up to their level; each kept
+ * only where its record says it is listed in battle, and put in Spells or
+ * Abilities as its record says.
+ *
+ * **Ours**: the Items list is the bag's, where the game's is each member's own
+ * carried items (char `+0x454`), which this engine does not keep; and an
+ * action the battle cannot yet play — a blow with a handler of its own, most
+ * abilities — is struck as the Attack.
+ */
+function battleOffered(): Offered {
+  const items = battleItems()
+  const spells: BattleSpell[] = []
+  const asked: Asked[] = battleMembers.map((member, fighter) => {
+    const lists = battleListsOf(member, spells)
+    return {
+      fighter,
+      name: battle?.names[fighter]?.name ?? nameFor(member),
+      tactic: member.tactic ?? FOLLOW_ORDERS,
+      own: fighter === 0,
+      // A story companion acts by themselves. **Ours**: how the game takes a guest is not read.
+      guest: member.attnpc !== undefined,
+      spells: lists.spells,
+      abilities: lists.abilities,
+      items: items.map(itemEntry),
+    }
   })
+  return { asked, items, spells }
+}
+
+/** Revival's kind, `+0x18` bits 5–11; and Zing, Kazing and the Zing stick, which take either. */
+const REVIVAL_KIND = 18
+const RAISES_EITHER = new Set([38, 39, 84])
+/** Psyche Up's kind of action, and the two that go straight to their level. */
+const PSYCHE_KIND = 15
+
+/** A member's Spells and Abilities, in the game's order — see `battleOffered`. */
+function battleListsOf(
+  member: Member,
+  told: BattleSpell[],
+): { spells: Entry[]; abilities: Entry[] } {
+  const here = loaded
+  const out = { spells: [] as Entry[], abilities: [] as Entry[] }
+  if (!here) return out
+  const fromPanels = panelsHeld(member, here.skillPanels)
+    .filter((panel) => panel.action !== 0)
+    .sort((a, b) => a.battleOrder - b.battleOrder)
+    .map((panel) => panel.action)
+  const row = levelOf(member)
+  const fromTable =
+    here.spellTable && row
+      ? here.spellTable.learnt
+          .filter((spell) => spell.vocation === member.vocation && spell.level <= row.level)
+          .map((spell) => spell.action)
+      : []
+  for (const id of [...fromPanels, ...fromTable]) {
+    const action = here.actions.get(id)
+    if (!action || (action.usableIn & 2) === 0) continue
+    const list = action.list === 2 ? out.spells : action.list === 1 ? out.abilities : undefined
+    if (!list) continue
+    const spell = battleSpellOf(action)
+    if (spell) told.push(spell)
+    const kind = action.rolls?.kind
+    const command: Entry['command'] = spell
+      ? (target) => ({ kind: 'spell', spell: spell.spell, target })
+      : kind === PSYCHE_KIND && action.reach === ActionReach.Actor
+        ? () => ({
+            kind: 'psyche',
+            action: id,
+            steps: Math.max(1, action.rolls?.levels ?? 1),
+            ...(id === 0x151 || id === 0x152 ? { outright: true } : {}),
+          })
+        : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
+    list.push({
+      action: id,
+      name: renderName(action.name),
+      cost: action.cost,
+      side: action.side,
+      reach: action.reach,
+      ...(kind === REVIVAL_KIND ? { fallen: 'only' as const } : {}),
+      ...(RAISES_EITHER.has(id) ? { fallen: 'either' as const } : {}),
+      command,
+    })
+  }
+  return out
+}
+
+/** Tactics set from Misc. in battle, kept with their members — see `Member.tactic`. */
+function keepTactics(): void {
+  if (!battle) return
+  for (const [fighter, tactic] of battle.tactics) {
+    const member = battleMembers[fighter]
+    if (member) member.tactic = tactic === FOLLOW_ORDERS ? undefined : tactic
+  }
 }
 
 /** The numbers using an item or casting a spell outside battle draws from: seeded, as a battle's are. */
@@ -5831,6 +5923,10 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       const made = createdFighter(member)
       return made ? [made] : []
     }),
+  ]
+  battleMembers = [
+    leader(),
+    ...behind.flatMap(({ who, member }) => (who || createdFighter(member) ? [member] : [])),
   ]
   const hp = new Map([[0, leader().hp ?? row.maxHp]])
   for (const [i, { who, member }] of behind.entries()) {
@@ -7326,7 +7422,7 @@ function finishShown(): void {
 /** Go on past `n` pages, as confirming them did, and on to what follows. */
 function turnPages(n: number): void {
   for (let k = 0; k < n && battle?.phase === 'telling'; k++) {
-    battle = battleChoose(battle, battleItems(), battleSpells())
+    battle = battleChoose(battle, battleOffered())
   }
   cueStarted = battleClock
   settleBattle()
@@ -7643,14 +7739,14 @@ function showBattle(): void {
     talkEl.hidden = true
   }
   menuEl.replaceChildren()
-  const rows = battleRows(battle)
-  if (rows.length > 0) {
+  const shownMenu = battleMenu(battle)
+  if (shownMenu && shownMenu.rows.length > 0) {
     const commands = document.createElement('div')
-    commands.className = 'commands'
-    for (const [index, row] of rows.entries()) {
+    commands.className = shownMenu.columns === 2 ? 'commands grid' : 'commands'
+    for (const [index, row] of shownMenu.rows.entries()) {
       const item = document.createElement('div')
       item.textContent = row
-      if (index === battle.cursor) item.className = 'chosen'
+      if (index === shownMenu.cursor) item.className = 'chosen'
       commands.append(item)
     }
     menuEl.append(commands)
@@ -9730,8 +9826,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   }
   // A battle takes every key while it lasts: the same keys as the menu.
   if (battle) {
-    if (action === 'up') battle = battleMove(battle, -1)
-    else if (action === 'down') battle = battleMove(battle, 1)
+    if (action === 'up') battle = battleMove(battle, 0, -1)
+    else if (action === 'down') battle = battleMove(battle, 0, 1)
+    else if (action === 'left') battle = battleMove(battle, -1, 0)
+    else if (action === 'right') battle = battleMove(battle, 1, 0)
     else if (action === 'confirm') {
       // A page that tells an event, or the opening's, goes on by itself; the
       // game reads no key meanwhile, nor while a wipe-out holds its last frame.
@@ -9745,7 +9843,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       const round = battle.state.round
       // A result line closed by a key sounds 1 (overlay 23).
       if (ending) battleSound('battle', 1)
-      battle = battleChoose(battle, battleItems(), battleSpells())
+      battle = battleChoose(battle, battleOffered())
+      keepTactics()
       cueStarted = battleClock
       // An item used this round is gone from the bag.
       if (battle.state.round !== round) {
