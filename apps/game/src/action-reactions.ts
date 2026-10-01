@@ -1,5 +1,5 @@
 import type { ActionCommand } from '@minstrel/game-formats'
-import { isParty, type Reactions, type RunHooks } from './action-player.ts'
+import { isParty, LOOSE_SCALE, type Reactions, type RunHooks } from './action-player.ts'
 
 /**
  * **The reactions an action's results are shown with** — the record a script
@@ -421,7 +421,8 @@ export function makeReactions(
       host: undefined,
       offset: [t.x + (dx * t.radius) / 2, y, t.z + (dz * t.radius) / 2],
       turn: t.facing,
-      scale: 1,
+      // The striker's own scale (`Object3D::GetScale`, `0x021dad50`): a fighter's, `0x10a`.
+      scale: LOOSE_SCALE,
       flags: 1,
     })
   }

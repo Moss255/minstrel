@@ -651,7 +651,7 @@ exactly one block, with no exceptions worth the name:
 | `.nsbtx` | `BTX0` | `TEX0` | 737 | yes |
 | `.nsbca` | `BCA0` | `JNT0` | 317 | yes |
 | `.nsbta` | `BTA0` | `SRT0` | 873 | yes — `texanim.ts` |
-| `.nsbtp` | `BTP0` | `PAT0` | 525 | **no** |
+| `.nsbtp` | `BTP0` | `PAT0` | 525 | yes — `patanim.ts` |
 | `.nsbma` | `BMA0` | `MAT0` | 512 | yes — `matanim.ts` |
 
 The 12 `.nsbmd` that carry a second block carry `TEX0`, a model with its
@@ -687,7 +687,7 @@ models. A map that looks static in this repository's viewer is a map whose
 - **Interpolation between animation samples.** A frame takes the sample that
   covers it. For step 1, which is all but about 1% of curves, that is every
   frame and there is nothing to interpolate.
-- **NSBTP.** Pattern animation is not read. NSBTA and NSBMA are — see below —
+- **The maps' animations.** NSBTA, NSBMA and NSBTP are read — see below —
   but only the battle's effects play them yet; a map's water and fire do not.
 
 # NSBTA and NSBMA — texture and material animation
@@ -741,6 +741,43 @@ frame an in-between frame reads a sample near the end.
 to frame 11 and then 31, 20, 10, 0; its texture at scale (1, ½) sliding 0 to
 frame 11 and then −0.011, −0.068, −0.252, −0.5 of its height. The trail is
 there only for its last four frames, fading as it slides.
+
+# NSBTP — texture pattern animation
+
+Read 1 October 2026 from the game's own code, as the dqix decompilation gives
+it: the animation's layout (`NSBXXAnimationMPT`,
+`include/Graphics/NSBXX/NSBXX.h`) and its use (`src/Graphics/NSBXX/MPT.cpp`,
+`InitializeModelAnimationFromMPT` and `MPTAnimationProcessingCallback`;
+`src/Graphics/NSBXX/PatternAnimation.cpp`, `NSBXX_PatternAnimation_GetKeyframe`,
+`_GetTextureName`, `_GetPaletteName`, `_GetTrack`). `readNsbtp` reads it; all
+572 on the reference cartridge read, 895 tracks.
+
+The container is NSBTA's shape — `BTP0`, one `PAT0` block, a name list of
+animations — and an animation, stamped `M\0PT`:
+
+| offset | | |
+|---|---|---|
+| `+0x00` | 4 | `M\0PT` |
+| `+0x04` | u16 | its frame count |
+| `+0x06` | u8 | how many texture names |
+| `+0x07` | u8 | how many palette names |
+| `+0x08` | u16 | the texture names, 16 bytes each, from the animation |
+| `+0x0a` | u16 | the palette names, likewise |
+| `+0x0c` | | the tracks: a name list by material, an item 8 bytes |
+
+A track: u16 how many keyframes, u16 `unknown_0x02` (loaded, not used), s16
+the search's starting guess (`fx16`, keyframes a frame), u16 where its
+keyframes are. A keyframe: u16 the frame it takes effect from, u8 the
+texture's index, u8 the palette's — `0xff` leaves the palette as it is.
+
+**At a frame the material takes the last keyframe not past it**
+(`_GetKeyframe` starts at the guess, walks back while the keyframe is not
+before the frame, then on while the next is not past it). Its texture and
+palette are looked up by name in the model's own textures
+(`SetMaterialTextureForRender`, `SetMaterialPaletteForRender`): the material's
+size is set to the new texture's, so its texture coordinates scale with it. A
+track binds by its name to the material of the same name; one naming no
+material does nothing.
 
 # 2D graphics — NCLR, NCGR, NCER
 

@@ -64,6 +64,7 @@ import {
   type Model,
   measureBounds,
   type NodeTransform,
+  patternAt,
   poseGeometry,
   sampleAnimation,
   sampleMatTrack,
@@ -6178,14 +6179,52 @@ function effectPieces(
  * and the effects hold it for most of their length. **Ours**: a texture's
  * rotation is not applied; the effects read have none.
  */
+/** A texture a pattern animation swaps in, decoded once — see {@link effectShade}. */
+function patternTexture(
+  look: ActorLook,
+  material: string | undefined,
+  texture: string,
+  palette: string | undefined,
+): { readonly pixels: Uint8Array; readonly width: number; readonly height: number } | undefined {
+  let byKey = patternsDecoded.get(look)
+  if (!byKey) {
+    byKey = new Map()
+    patternsDecoded.set(look, byKey)
+  }
+  const key = `${material}|${texture}|${palette}`
+  if (byKey.has(key)) return byKey.get(key)
+  const own = look.model.materials.find((m) => m.name === material)
+  const decoded = own
+    ? textureFor(look.catalogue, { ...own, texture, palette: palette ?? own.palette })
+    : undefined
+  byKey.set(key, decoded)
+  return decoded
+}
+const patternsDecoded = new WeakMap<
+  ActorLook,
+  Map<
+    string,
+    { readonly pixels: Uint8Array; readonly width: number; readonly height: number } | undefined
+  >
+>()
+
 function effectShade(
   look: ActorLook,
   frame: number,
 ): ((material: string | undefined, piece: Piece) => Piece | undefined) | undefined {
-  const { texAnim, matAnim } = look
-  if (!texAnim && !matAnim) return undefined
+  const { texAnim, matAnim, patAnim } = look
+  if (!texAnim && !matAnim && !patAnim) return undefined
   return (material, piece) => {
     let out = piece
+    // The texture its pattern animation names now (NSBTP, `MPTAnimationProcessingCallback`).
+    const swaps = patAnim?.tracks.find((t) => t.material === material)
+    const key = swaps ? patternAt(swaps, frame) : undefined
+    if (key) {
+      const swapped = patternTexture(look, material, key.texture, key.palette)
+      if (swapped) {
+        out = { ...out, pixels: swapped.pixels, width: swapped.width, height: swapped.height }
+      }
+    }
     const colours = matAnim?.tracks.find((t) => t.material === material)
     if (colours) {
       const now = sampleMatTrack(colours, frame)

@@ -43,8 +43,8 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    blow from apart does not step in (`9 … 2 2.0` skips when *more* than 2
    apart); a plain hit does flash its target and put effect 1 on it. **Not
    yet shown** is listed in `docs/still-open.md` §2: sounds, the lights, the
-   animated cameras, particles and texture-pattern animation (NSBTP) — the
-   last of which is why a spell's impact draws as a square.
+   animated cameras, particles. Texture-pattern animation (NSBTP) is read and
+   played on the effects too, from the game's own reader (`MPT.cpp`).
 2. **The end of a battle.** The victory orbit (overlay 25's sub-phase 5, the
    group orbit held 60 frames — INFERRED to be the victory's), a fallen
    monster's fade (`TransitionInheritedAlpha` to 0 over 300 ms, `ov025
@@ -56,7 +56,8 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    swords), the reaction record's (tag 71), an effect's own; none is played.
 4. **Maps that move.** The same NSBTA and NSBMA — 1,910 files in the map
    archives — drive water, fire and anything that scrolls or pulses on the
-   field; nothing plays them there yet. NSBTP, pattern animation, is not read.
+   field; nothing plays them there yet. NSBTP, pattern animation, is read (1
+   October) and played on the battle's effects only.
 5. **Motion speeds in the field.** The rule the battle now plays by — a
    motion's `.bcfg` speed every 17 ms — holds everywhere; the field still
    plays motions at 30 frames a second.

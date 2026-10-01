@@ -91,6 +91,14 @@ export {
   withPalettes,
 } from './nsbtx.ts'
 export {
+  isNsbtp,
+  type PatternAnimation,
+  type PatternKeyframe,
+  type PatternTrack,
+  patternAt,
+  readNsbtp,
+} from './patanim.ts'
+export {
   inverseBindMatrices,
   MATRIX_STACK_SIZE,
   type RenderCommand,

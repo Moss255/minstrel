@@ -4,11 +4,14 @@ import {
   type Animation,
   isNsbma,
   isNsbta,
+  isNsbtp,
   type MaterialAnimation,
   type Model,
+  type PatternAnimation,
   readNsbma,
   readNsbmd,
   readNsbta,
+  readNsbtp,
   type TextureAnimation,
 } from '@minstrel/nitro-gfx'
 import { floorOf } from './cast.ts'
@@ -45,6 +48,8 @@ export interface ActorLook {
   /** Its texture and material animations, where its file carries them — an effect's (`.nsbta`, `.nsbma`). */
   readonly texAnim: TextureAnimation | undefined
   readonly matAnim: MaterialAnimation | undefined
+  /** Its texture pattern animation (`.nsbtp`): a material's texture swapped as frames pass. */
+  readonly patAnim: PatternAnimation | undefined
 }
 
 const looksRead = new WeakMap<Uint8Array, Map<string, ActorLook | undefined>>()
@@ -90,18 +95,21 @@ export function packMotions(rom: Uint8Array, file: string): ReadonlyMap<string, 
 function materialAnimationsOf(leaves: readonly { readonly bytes: Uint8Array }[]): {
   texAnim: TextureAnimation | undefined
   matAnim: MaterialAnimation | undefined
+  patAnim: PatternAnimation | undefined
 } {
   let texAnim: TextureAnimation | undefined
   let matAnim: MaterialAnimation | undefined
+  let patAnim: PatternAnimation | undefined
   for (const { bytes } of leaves) {
     try {
       if (!texAnim && isNsbta(bytes)) texAnim = readNsbta(bytes)[0]
       if (!matAnim && isNsbma(bytes)) matAnim = readNsbma(bytes)[0]
+      if (!patAnim && isNsbtp(bytes)) patAnim = readNsbtp(bytes)[0]
     } catch {
       // An animation that will not read leaves its effect as it stands.
     }
   }
-  return { texAnim, matAnim }
+  return { texAnim, matAnim, patAnim }
 }
 
 /** An event character's look; undefined when its model will not read. Kept once read. */

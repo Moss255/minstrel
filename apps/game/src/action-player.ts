@@ -128,6 +128,11 @@ export interface EffectShow {
   /** Its place: an offset from its host, or the stage's own coordinates when it has none. */
   offset: Vec3
   turn: number
+  /**
+   * Its own scale, as `Object3D` keeps it: on a host, times the host's
+   * (`func_02057ab8`); free on the stage, as it is — where a fighter's is
+   * `0x10a` ({@link LOOSE_SCALE}).
+   */
   scale: number
   /** Drawn in the later, screen-fixed pass (`21 …` with its 5th value set). */
   readonly overlay: boolean
@@ -1012,7 +1017,8 @@ export function startAction(
       const handle = spawn(c.effect, {
         offset: [a.x, a.height / 2, a.z],
         turn: a.facing,
-        scale: 1,
+        // The launch takes the actor's own scale (`GetScale`): a fighter's, `0x10a`.
+        scale: LOOSE_SCALE,
         flags: 0,
       })
       if (handle === undefined) return 1
@@ -1115,7 +1121,7 @@ export function startAction(
           // shadow and sound 50 (`func_02048690`).
           if (isMonster(f.index)) {
             f.fade = { to: 0, perMs: -f.alpha / 500 }
-            spawn(2, { offset: [f.x, 0, f.z], scale: 1, flags: 1 })
+            spawn(2, { offset: [f.x, 0, f.z], scale: LOOSE_SCALE, flags: 1 })
             emit({ kind: 'sound', from: 'battle', sound: 50 })
           }
         }
