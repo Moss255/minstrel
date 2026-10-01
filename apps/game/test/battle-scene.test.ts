@@ -87,7 +87,8 @@ describe('a battle scene', () => {
     const choosing = fight(untilChoice(beginBattle([hero, blob(), blob()], 1n, { canFlee: true })))
     const targeting = battleChoose(choosing)
     expect(targeting.commanding?.step.at).toBe('monster')
-    expect(rows(targeting)).toEqual(['blob A', 'blob B'])
+    // One line for the two of a kind, the cursor on the first of them.
+    expect(rows(targeting)).toEqual([{ text: 'Blob', right: '× 2', at: 118 }])
     expect(battleBack(targeting).commanding?.step.at).toBe('member')
     const played = battleChoose(battleMove(targeting, 0, 1))
     expect(played.phase).toBe('telling')
@@ -325,7 +326,8 @@ describe('a battle scene', () => {
     )
     const targeting = battleChoose(spellsOf(scene))
     expect(targeting.commanding?.step.at).toBe('monster')
-    expect(rows(targeting)).toEqual(['blob A', 'blob B'])
+    // One line for the two of a kind, the cursor on the first of them.
+    expect(rows(targeting)).toEqual([{ text: 'Blob', right: '× 2', at: 118 }])
     const cast = battleChoose(battleMove(targeting, 0, 1))
     const event = cast.events.find((e) => e.kind === 'spell')
     expect(event).toMatchObject({ kind: 'spell', action: 12, short: false, hits: [{ target: 2 }] })

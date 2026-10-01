@@ -152,7 +152,7 @@ export function readMinimaps(rom: Uint8Array): Minimaps {
 }
 
 /** The names' face, from its strip and index; undefined when either is missing or will not read. */
-function readNameFont(rom: Uint8Array): LatinFont | undefined {
+export function readNameFont(rom: Uint8Array): LatinFont | undefined {
   const files = new Map<string, Uint8Array>()
   for (const leaf of scanCartridge(rom, { pathFilter: '/data/pack_lv5/f' })) {
     files.set(leaf.path.slice(leaf.path.lastIndexOf('/') + 1).toLowerCase(), leaf.bytes)

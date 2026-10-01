@@ -32,6 +32,7 @@ import {
   MEMBER_COMMANDS,
   MISC_ROWS,
   MISC_WORD_BASE,
+  monsterGroups,
   monsterTargets,
   moveCommand,
   openCommands,
@@ -1043,9 +1044,14 @@ export function itemEntry(i: BattleItem): ItemEntry {
 }
 
 /** The rows the command phase shows now, which is chosen, and in how many columns. */
+/** A menu's line: its words, and, for a group's, its count at a tab (`<X=118>`). */
+export type MenuRow =
+  | string
+  | { readonly text: string; readonly right: string; readonly at: number }
+
 export function battleMenu(
   scene: BattleScene,
-): { readonly rows: string[]; readonly cursor: number; readonly columns: 1 | 2 } | undefined {
+): { readonly rows: MenuRow[]; readonly cursor: number; readonly columns: 1 | 2 } | undefined {
   const c = scene.commanding
   if (scene.phase !== 'command' || !c) return undefined
   const word = (file: 'menu' | 'standard', n: number) => {
@@ -1075,12 +1081,26 @@ export function battleMenu(
       const entries = s.list === 'items' ? (m?.items ?? []) : (m?.[s.list] ?? [])
       return { rows: entries.map((e) => e.name), cursor: s.cursor, columns: 1 }
     }
-    case 'monster':
+    case 'monster': {
+      // One line a group — "<name> × n", `str_btl` 30031, the count at x 118 —
+      // the cursor walking the monsters, their group's line shown as chosen
+      // (`func_ov000_02178938`, `021753d8`).
+      const groups = monsterGroups(scene.state)
+      const on = monsterTargets(scene.state)[s.cursor]
+      const kindOf = (i: number | undefined) =>
+        i === undefined ? undefined : scene.state.fighters[i]?.name
+      const named = (i: number) => {
+        const { letter: _, ...name } = scene.names[i] ?? { name: '?' }
+        return sentence(
+          tellBattle('<SGL_M_NAME>', { monsters: [name] }, scene.words?.articles ?? new Map()).text,
+        )
+      }
       return {
-        rows: monsterTargets(scene.state).map((i) => labels[i] ?? '?'),
-        cursor: s.cursor,
+        rows: groups.map((g) => ({ text: named(g.first), right: `× ${g.count}`, at: 118 })),
+        cursor: groups.findIndex((g) => kindOf(g.first) === kindOf(on)),
         columns: 1,
       }
+    }
     case 'ally':
       return {
         rows: allyTargets(scene.state, c, s).map((i) => labels[i] ?? '?'),

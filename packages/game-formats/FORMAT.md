@@ -3580,6 +3580,50 @@ done.
   fallen monster gives way to a living one of its group, or of another; a
   fallen ally to the actor.
 
+### The command phase's screens
+
+Read 2 October 2026 (USA), and drawn by `apps/game/src/battle-screen.ts`. The
+battle swaps the screens (POWCNT1 bit 15, set at `0x02164dec`), so the 3D
+view and **the target markers** are on the top screen and **everything of the
+command phase on the bottom**, the sub engine (`func_ov000_021729ac` builds
+it, `func_ov000_02173954` draws it every frame).
+
+- **The art**: `data/ani/bg_btl3.pac` — the parchment backdrop `bg_bt.bnsc`,
+  the panels `bg_bt_large` (32×9 tiles) and `bg_bt_small` (30×5), the target
+  line, the "Lv" by language, the window's three tiles; the panels in BG
+  palette **2 + the member's party place** (blue, green, red, orange).
+  `data/ani/obj_bt3.gp2/obj_bt3_<LG>.pac`, 40 cells: the hand (0–5), "OK!"
+  (6), the digits (7–16), the HP and MP bars (17, 18), the status icons
+  (21–31). The markers are `bt_cursor.spr` and `bt_cursor_oth.spr` in
+  `btarc.nsarc`.
+- **The panels** stand down the bottom screen in party order from y 0 when
+  one is large, else 32: **the member choosing has the large one, 72 px, and
+  their menu in it**; everyone else 40 (`func_ov000_02174b14`,
+  `02175258`). The places on each (`func_ov000_02170538`, `0x02173b9c`…,
+  `data_ov000_021833c8`…): the name at (37, 11) or (40, 8); HP and MP ending
+  at (55, 28) and (55, 44), or (106, 1) and (106, 15); the bars at (13, 40)
+  and (13, 56), or (72, 13) and (72, 27), the value over the most times 1.52,
+  or 1.28, of the 32-px sprite (`func_ov000_021741e0`). A small panel's art
+  is laid a tile in, its places still from x 0.
+- **"HP"/"MP" by what is left** (`func_ov000_02170c7c`, `021750e4`): the
+  panel palette's entry 10 white, yellow at a quarter, orange at 8 %, red at
+  none (`data_ov000_021833a0`).
+- **A small panel's box** says, first found: a status (`str_btl` 4 Dead, 2
+  Paralysed, 3 Asleep, 38 Inactive), a tactic other than Follow Orders,
+  what was chosen, or 30030 "Waiting...". "OK!" stands at x 224 once a
+  command is chosen.
+- **The menus** stand in the large panel's coloured part, at tile (9, 1) of
+  it (`func_ov000_02176634`); the monster window one line a group, "<name> ×
+  n" (30031, the count at `<X=118>`). The hand stands 8 px left of the line it
+  points at and 2 above (`0x021755ac`). Choosing sounds 1; no sound was found
+  for moving or going back.
+- **The markers** (`func_ov026_021dddcc`): over each monster a member has
+  aimed at, at its place raised by its height — the chooser's `bt_cursor`,
+  bobbing, the rest `bt_cursor_oth`, spread 10 px apart.
+- **During the actions** the panels stay; the acting member's border pulses
+  yellow and grey, and one hit flashes orange and shakes 2 px (setters not
+  found).
+
 ### The way into a battle, and out
 
 Read 1 October 2026 (USA release). Times are in the game's ticks and frames,

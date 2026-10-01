@@ -205,7 +205,7 @@ const HINT_CELLS = { change: 0, back: 1, l: 2, r: 3, sort: 8, hand: 9 } as const
  * A pack's members by name, lower-cased: read from the pack, or — where the
  * cartridge walk opens the pack itself — taken from its leaves.
  */
-function membersOf(rom: Uint8Array, filter: string, pack: string): Map<string, Uint8Array> {
+export function membersOf(rom: Uint8Array, filter: string, pack: string): Map<string, Uint8Array> {
   const members = new Map<string, Uint8Array>()
   const marker = `/${pack.toLowerCase()}`
   for (const leaf of scanCartridge(rom, { pathFilter: filter })) {

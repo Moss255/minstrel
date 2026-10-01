@@ -98,6 +98,7 @@ import {
   type BattleState,
   blockChance,
   type CollisionWorld,
+  type Command,
   calmFor,
   createCollisionWorld,
   createFollower,
@@ -187,7 +188,7 @@ import {
   startCombo,
   tickCombo,
 } from './battle-combo.ts'
-import { type Asked, type Entry, FOLLOW_ORDERS } from './battle-commands.ts'
+import { type Asked, type Entry, FOLLOW_ORDERS, monsterTargets } from './battle-commands.ts'
 import {
   NUDGE_AT,
   type NumberKind,
@@ -216,6 +217,13 @@ import {
   type Told,
   withPages,
 } from './battle-scene.ts'
+import {
+  type BattleScreenArt,
+  type BottomView,
+  drawBottom,
+  type PanelView,
+  readBattleScreenArt,
+} from './battle-screen.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
 import { BUBBLE_SHEETS, type BubbleKind, bubbleFrame, doorAhead } from './bubbles.ts'
 import { type Cabinet, cabinetsOf, cabinetTargets, searchedFrame } from './cabinets.ts'
@@ -367,6 +375,7 @@ import {
   type MinimapShown,
   type Minimaps,
   readMinimaps,
+  readNameFont,
   showMinimap,
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
@@ -538,6 +547,7 @@ let revealing:
   | { readonly body: HTMLElement; readonly text: string; readonly from: number }
   | undefined
 const menuEl = must<HTMLDivElement>('#menu')
+const battleBottomEl = must<HTMLCanvasElement>('#battle-bottom')
 const cardEl = must<HTMLDivElement>('#card')
 const resumeRow = must<HTMLLabelElement>('#resume-row')
 const resumeEl = must<HTMLInputElement>('#resume')
@@ -6814,6 +6824,8 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
     numbersCarry -= TICK_MS
     risingNumbers = risingNumbers.flatMap((n) => numberFrame(n) ?? [])
     tickCombo(combo)
+    // The chooser's marker bobs: a phase of 0.1 a frame, round at 6.28 (`0x021de17c`).
+    markerPhase = (markerPhase + 0.1) % 6.28
     // Each, on its first showing frame, nudged clear of the rest — see `nudged`.
     if (risingNumbers.some((n) => n.timer === NUDGE_AT)) {
       const screen = risingNumbers.map((n) => onScreen(n.at, width, height, unit))
@@ -6837,6 +6849,7 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
     )
   }
   context.globalAlpha = 1
+  drawTargetMarkers(context, width, height, unit, now)
   if (risingNumbers.length === 0) return
   for (const number of risingNumbers) {
     const point = onScreen(number.at, width, height, unit)
@@ -6855,6 +6868,91 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
     }
   }
   context.globalAlpha = 1
+}
+
+/** The chooser's marker's phase — see `drawTargetMarkers`. */
+let markerPhase = 0
+
+/** The monsters a command is aimed at: one, its group, or all, by its reach. */
+function markedBy(command: Command, state: BattleState): number[] {
+  const target = 'target' in command ? command.target : -1
+  const foes = monsterTargets(state)
+  if (command.kind === 'spell') {
+    if (command.spell.does !== 'harm') return []
+    if (command.spell.reach === 'all') return foes
+    const kind = state.fighters[target]?.name
+    if (command.spell.reach === 'group') return foes.filter((i) => state.fighters[i]?.name === kind)
+  }
+  if (command.kind !== 'attack' && command.kind !== 'spell') return []
+  return foes.includes(target) ? [target] : []
+}
+
+/**
+ * **The markers over the monsters aimed at** while commands are chosen —
+ * overlay 26's `func_ov026_021dddcc`, drawn on the top screen at each
+ * target's place raised by its height (`ConvertWorldToScreen`): the member
+ * choosing has `bt_cursor.spr`, 21 px above it, bobbing along (1, 1, 0) by
+ * 0.2 × sin of its phase; every other member who has chosen
+ * `bt_cursor_oth.spr`, 24 px above. Several on one monster are spread 10 px
+ * apart from −5 × the others (`0x021de150`). **Ours**: each marker centred on
+ * its point, its picture's own origin not read.
+ */
+function drawTargetMarkers(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  unit: number,
+  now: number,
+): void {
+  const scene = battle
+  const c = scene?.commanding
+  if (!scene || !c || scene.phase !== 'command') return
+  const marks: { target: number; current: boolean }[] = []
+  for (const { command } of c.chosen.values()) {
+    for (const target of markedBy(command, scene.state)) marks.push({ target, current: false })
+  }
+  const step = c.step
+  if (step.at === 'monster') {
+    const on = monsterTargets(scene.state)[step.cursor]
+    if (on !== undefined) {
+      const reach = step.pending.aim.reach
+      const kind = scene.state.fighters[on]?.name
+      const foes = monsterTargets(scene.state)
+      const aimed =
+        reach === 3
+          ? foes
+          : reach === 4
+            ? foes.filter((i) => scene.state.fighters[i]?.name === kind)
+            : [on]
+      for (const target of aimed) marks.push({ target, current: true })
+    }
+  }
+  const counts = new Map<number, number>()
+  for (const m of marks) counts.set(m.target, (counts.get(m.target) ?? 0) + 1)
+  const placed = new Map<number, number>()
+  const grow = WORLD_SCALE * worldScale
+  for (const m of marks) {
+    const top = topOf(m.target, now)
+    if (!top) continue
+    const bob = m.current ? 0.2 * Math.sin(markerPhase) * Math.SQRT1_2 * grow : 0
+    const point = onScreen([top[0] + bob, top[1] + bob, top[2]], width, height, unit)
+    if (!point) continue
+    const others = (counts.get(m.target) ?? 1) - 1
+    const k = placed.get(m.target) ?? 0
+    placed.set(m.target, k + 1)
+    const dx = -5 * others + 10 * k
+    const picture = numberFrameOf(m.current ? 'bt_cursor' : 'bt_cursor_oth', 0)
+    if (!picture) continue
+    const x = point.x + dx
+    const y = point.y - (m.current ? 21 : 24)
+    context.drawImage(
+      picture,
+      width / 2 + (x - 128 - picture.width / 2) * unit,
+      height / 2 + (y - 96 - picture.height / 2) * unit,
+      picture.width * unit,
+      picture.height * unit,
+    )
+  }
 }
 
 /**
@@ -7738,6 +7836,13 @@ function showBattle(): void {
   } else {
     talkEl.hidden = true
   }
+  // **The bottom screen**, from the game's art — see `battle-screen.ts`; the
+  // browser's boxes only where it will not read.
+  if (drawBattleBottom()) {
+    menuEl.hidden = true
+    status(`battle, round ${battle.state.round} · ←↑↓→ choose, f take or go on, Esc back`)
+    return
+  }
   menuEl.replaceChildren()
   const shownMenu = battleMenu(battle)
   if (shownMenu && shownMenu.rows.length > 0) {
@@ -7745,7 +7850,7 @@ function showBattle(): void {
     commands.className = shownMenu.columns === 2 ? 'commands grid' : 'commands'
     for (const [index, row] of shownMenu.rows.entries()) {
       const item = document.createElement('div')
-      item.textContent = row
+      item.textContent = typeof row === 'string' ? row : `${row.text} ${row.right}`
       if (index === shownMenu.cursor) item.className = 'chosen'
       commands.append(item)
     }
@@ -7762,6 +7867,89 @@ function showBattle(): void {
   menuEl.append(panel)
   menuEl.hidden = false
   status(`battle, round ${battle.state.round} · ↑/↓ choose, f take or go on, Esc back`)
+}
+
+/** The bottom screen's art, read once a cartridge; null when it will not read. */
+let battleScreenArt: BattleScreenArt | null | undefined
+
+/** `str_btl`'s words for the small panel's box: "Waiting...", the statuses, a tactic. */
+const PANEL_WORDS = { waiting: 30030, dead: 4, asleep: 3, tactics: 30014 } as const
+
+/** Draw the battle's bottom screen; false where its art will not read. */
+function drawBattleBottom(): boolean {
+  if (!battle || !cartridge) return false
+  if (battleScreenArt === undefined) {
+    try {
+      battleScreenArt = readBattleScreenArt(cartridge, readNameFont(cartridge))
+    } catch {
+      battleScreenArt = null
+    }
+  }
+  const context = battleBottomEl.getContext('2d')
+  if (!battleScreenArt || !context) return false
+  drawBottom(context, battleScreenArt, bottomView(battle))
+  battleBottomEl.hidden = false
+  document.body.classList.add('battle-bottom')
+  return true
+}
+
+/** What the bottom screen shows of the battle now. */
+function bottomView(scene: BattleScene): BottomView {
+  const words = loaded?.battleWords
+  const word = (n: number) => {
+    const w = words?.menu.get(n)
+    return w === undefined ? '' : tellBattle(w, {}, new Map()).text
+  }
+  const c = scene.commanding
+  // A help line stands where the step it goes back to stood.
+  const step = c?.step.at === 'say' ? c.step.back : c?.step
+  // The member whose panel is large: the one being asked — on the party
+  // menu, the first to be (`U+0x17c`, set as the round opens).
+  const current =
+    step && 'member' in step
+      ? c?.members[step.member]?.fighter
+      : step?.at === 'party' ||
+          step?.at === 'misc' ||
+          step?.at === 'tactics' ||
+          step?.at === 'tactic'
+        ? (c?.members.find((m) => !m.guest && (m.tactic ?? FOLLOW_ORDERS) === FOLLOW_ORDERS)
+            ?.fighter ?? 0)
+        : undefined
+  const labels = labelsOf(scene.state)
+  const panels: PanelView[] = scene.state.fighters.flatMap((f, i) => {
+    if (f.side !== 'party') return []
+    const asked = c?.members.find((m) => m.fighter === i)
+    const chosen = c?.chosen.get(i)
+    const tactic = c?.tactics.get(i) ?? asked?.tactic ?? FOLLOW_ORDERS
+    const status = f.hp <= 0 ? 'dead' : f.states.sleep !== undefined ? 'asleep' : undefined
+    const box = status
+      ? word(status === 'dead' ? PANEL_WORDS.dead : PANEL_WORDS.asleep)
+      : tactic !== FOLLOW_ORDERS
+        ? word(PANEL_WORDS.tactics + tactic)
+        : chosen
+          ? 'word' in chosen.caption
+            ? word(chosen.caption.word)
+            : chosen.caption.name
+          : scene.phase === 'command'
+            ? word(PANEL_WORDS.waiting)
+            : ''
+    return [
+      {
+        place: i,
+        name: labels[i] ?? '',
+        hp: f.hp,
+        maxHp: f.maxHp,
+        mp: f.mp,
+        maxMp: f.maxMp,
+        large: current === i,
+        box,
+        chosen: chosen !== undefined,
+        status,
+      },
+    ]
+  })
+  const menu = battleMenu(scene)
+  return { panels, menu: menu && current !== undefined ? menu : undefined }
 }
 
 /**
@@ -7970,6 +8158,8 @@ function endFight(): void {
   battleCompanions = []
   talkEl.hidden = true
   menuEl.hidden = true
+  battleBottomEl.hidden = true
+  document.body.classList.remove('battle-bottom')
   const fought = eventFight
   eventFight = undefined
   if (wakeInChurch) {

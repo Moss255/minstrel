@@ -23,11 +23,13 @@ a flight that is the party's and settled before the round.
 
 **Next, in order**:
 
-1. **The bottom screen**, from the game's art (`bg_btl3.pac`,
-   `obj_bt3_<LG>.pac`) — the read is in hand: the party's panels down the
-   bottom screen, the large one with the menu, the hand cursor, the target
-   markers over the monsters on the top screen. Until it is built the menu
-   is drawn in the browser's boxes.
+1. ~~**The bottom screen**~~ **Done, 2 October**, from the game's art
+   (`battle-screen.ts`; FORMAT.md, "The command phase's screens"): the
+   party's panels down the bottom screen in their colours, the chooser's
+   large with the menu in it, the hand, the digits and bars, "Waiting..." and
+   "OK!", the monster groups' lines, and the target markers over the monsters
+   on the top screen. **Not yet**: the acting member's pulse and a hit's
+   flash, whose setters are not found; the level number.
 2. **Each member's own items** (char `+0x454`). The game lists a member's
    carried items in battle, not the bag. **This is a system that restructures
    data** — the save, the field menu's Items, the shops, the chests — so it
