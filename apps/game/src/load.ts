@@ -12,6 +12,7 @@ import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
   type Action,
   type ActionRange,
+  type ActionScript,
   type AttendingCharacter,
   type BattleZone,
   type BuildTable,
@@ -55,6 +56,7 @@ import {
   type RandomTreasure,
   type Recipe,
   readActionRanges,
+  readActionScript,
   readActions,
   readAttendingCharacters,
   readBattleEncounters,
@@ -121,7 +123,6 @@ import { parseRomHeader, readNitroFs } from '@minstrel/nitrofs'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import type { BattleWords } from './battle-scene.ts'
-import { type BlowScript, readBlowScript } from './blow-effect.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
 import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
@@ -2418,44 +2419,131 @@ export function motionSpeeds(rom: Uint8Array, family: string): ReadonlyMap<strin
 }
 const speedsRead = new WeakMap<Uint8Array, Map<string, ReadonlyMap<string, number>>>()
 
-/** A motion set's blow, from its action script — see `blow-effect.ts`. */
-export function setBlowScript(rom: Uint8Array, family: string): BlowScript | undefined {
-  let bySet = blowsRead.get(rom)
+/**
+ * **A motion set's own action script** — `chara_mp.gp2/<set>b.chr/<set>.bact`,
+ * which the battle parses for a party member as it loads
+ * (`func_ov000_02164fac`, `"%sb.chr"`): its sections are what the member's
+ * actions play first (FORMAT.md, "The action scripts").
+ */
+export function setActionScript(rom: Uint8Array, family: string): ActionScript | undefined {
+  let bySet = setScriptsRead.get(rom)
   if (!bySet) {
     bySet = new Map()
-    blowsRead.set(rom, bySet)
+    setScriptsRead.set(rom, bySet)
   }
   if (bySet.has(family)) return bySet.get(family)
-  let found: BlowScript | undefined
+  let found: ActionScript | undefined
   for (const leaf of scanCartridge(rom, { pathFilter: '/data/pack_lv5/chara_mp.gp2' })) {
     if (!leaf.path.toLowerCase().endsWith(`/${family}.bact`)) continue
-    found = blowScriptOf(leaf.bytes)
+    found = actionScriptOf(leaf.bytes)
     break
   }
   bySet.set(family, found)
   return found
 }
-const blowsRead = new WeakMap<Uint8Array, Map<string, BlowScript | undefined>>()
+const setScriptsRead = new WeakMap<Uint8Array, Map<string, ActionScript | undefined>>()
 
-/** A fighter's blow from any action script among some files — see `blow-effect.ts`. */
-export function blowScriptAmong(
+/** A fighter's own action script among its files — a monster's `.mon`, a companion's `.chr`. */
+export function actionScriptAmong(
   files: Iterable<{ readonly path: string; readonly bytes: Uint8Array }>,
-): BlowScript | undefined {
+): ActionScript | undefined {
   for (const { path, bytes } of files) {
     if (!path.toLowerCase().endsWith('.bact')) continue
-    const found = blowScriptOf(bytes)
+    const found = actionScriptOf(bytes)
     if (found) return found
   }
   return undefined
 }
 
-function blowScriptOf(bytes: Uint8Array): BlowScript | undefined {
+function actionScriptOf(bytes: Uint8Array): ActionScript | undefined {
   try {
-    return readBlowScript(readDataTable(bytes))
+    return readActionScript(bytes)
   } catch {
     return undefined
   }
 }
+
+/** The archives a spell's or a skill's own script is in, by its record's `+0x18` bits 12–15 (`func_ov025_021dbe10`). */
+const SKILL_ARCHIVES = {
+  spell: '/data/skill/actspl.nsarc',
+  skill: '/data/skill/actskl.nsarc',
+  other: '/data/skill/actetc.nsarc',
+} as const
+
+/**
+ * **The scripts an action may play besides its fighter's** —
+ * `data/bin/actdef.nsarc/default.bact`, read once a battle
+ * (`func_ov000_02164fac`), and the `sp%03d.bact` of each skill archive, by the
+ * action's own number (`func_ov025_021dc694`). Read once a cartridge.
+ */
+export interface ActionScripts {
+  readonly fallback: ActionScript | undefined
+  /** An action's own file in an archive, or undefined when the archive has none. */
+  own(archive: keyof typeof SKILL_ARCHIVES, action: number): ActionScript | undefined
+}
+
+export function actionScripts(rom: Uint8Array): ActionScripts {
+  const already = scriptsRead.get(rom)
+  if (already) return already
+  let fallback: ActionScript | undefined
+  const byArchive = new Map<string, Map<number, ActionScript | undefined>>()
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/' })) {
+    const path = leaf.path.toLowerCase()
+    if (path === '/data/bin/actdef.nsarc/default.bact') fallback = actionScriptOf(leaf.bytes)
+    for (const [name, archive] of Object.entries(SKILL_ARCHIVES)) {
+      if (!path.startsWith(`${archive}/`)) continue
+      const n = /\/sp(\d{3})\.bact$/.exec(path)
+      if (!n) continue
+      const files = byArchive.get(name) ?? new Map()
+      byArchive.set(name, files)
+      files.set(Number(n[1]), actionScriptOf(leaf.bytes))
+    }
+  }
+  const scripts: ActionScripts = {
+    fallback,
+    own: (archive, action) => byArchive.get(archive)?.get(action),
+  }
+  scriptsRead.set(rom, scripts)
+  return scripts
+}
+const scriptsRead = new WeakMap<Uint8Array, ActionScripts>()
+
+/**
+ * **What an action's record says of how it is shown** — `+0x18` bits 12–15,
+ * the archive its own script is in (2 `actspl`, 1 and 4 `actskl` for one of
+ * the party, the rest `actetc`), and bits 5–11, its kind (`func_ov025_
+ * 021dbe10`). Read once a cartridge, from both halves of the action table.
+ */
+export function actionRecordOf(
+  rom: Uint8Array,
+  action: number,
+): { readonly archive: number; readonly kind: number } | undefined {
+  let byAction = recordsRead.get(rom)
+  if (!byAction) {
+    byAction = new Map()
+    recordsRead.set(rom, byAction)
+    for (const leaf of scanCartridge(rom, { pathFilter: '/data/prm/actdt_' })) {
+      if (!/actdt_[ab]_en\.nat$/i.test(leaf.path)) continue
+      try {
+        for (const a of readActions(leaf.bytes)) {
+          if (byAction.has(a.id)) continue
+          const word = new DataView(a.raw.buffer, a.raw.byteOffset, a.raw.byteLength).getUint32(
+            0x18,
+            true,
+          )
+          byAction.set(a.id, { archive: (word >>> 12) & 0xf, kind: (word >>> 5) & 0x7f })
+        }
+      } catch {
+        // A half that will not read shows its actions by `default.bact`.
+      }
+    }
+  }
+  return byAction.get(action)
+}
+const recordsRead = new WeakMap<
+  Uint8Array,
+  Map<number, { readonly archive: number; readonly kind: number }>
+>()
 
 export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   forgetSheets()

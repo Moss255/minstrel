@@ -490,8 +490,12 @@ the damage is a float in `r6` until the last.
 In the game's order:
 
 1. **Blocked, then dodged, each zero the damage** (`0x021e777c`, `0x021e77a0`)
-   — bits 2 and 1 of the result's byte `+0x1C`. This late: the base damage and
-   the critical have already spent their draws.
+   — bits 2 and 1 of **the target entry's** byte `+0x1C` (`[ctx+0xc]+0x1c`),
+   not the result's: corrected 1 October 2026. That byte's bits are 1 dodged,
+   2 blocked, 3 a doppelganger, 4 mist, 5 Soul Asylum, 6 Knight Watch, 7 a
+   critical; once the handler has run the resolver turns them into result
+   flags 5, 6, 9, 10, 38 and 12 and a line (`0x021ec93c`–`0x021ec9f0`). This
+   late: the base damage and the critical have already spent their draws.
 2. **A metal body** (`func_ov000_02156068(ctx, target, 0, 1)`, which is bit 12
    of the halfword at `+0x0A` of the monster's record, and **never one of the
    party**) zeroes a non-critical blow whose action **carries** `+0x10` bit 24
@@ -614,6 +618,22 @@ any number at all, and every piece the slice's Hero can wear carries none — so
 the party's resistances really are all whole here, which is what they were
 before. The difference is that it is now read rather than assumed, and the day
 something with a number on it is worn, it will count.
+
+## A draw not yet in the ledger — 1 October 2026
+
+Found while reading where the result flags are written (overlay 0,
+`func_ov000_02157288`): after any blow that deals damage, **if its action
+carries `+0x10` bit `0x800`, the battle draws `NextRandomMax(100)`**
+(`0x02157340`) — even when the target is neither asleep nor confused, which
+is what the draw goes on to test — INFERRED from the flags it leads to (16
+woken, 25 come to its senses), the chance of a blow waking its target. Its
+gate is `ctx+0x70`, 1 a target, cleared when the blow's own rider put the
+target to sleep or confused it (`0x021dad74`). **The plain Attack carries the
+bit** (checked on the cartridge: 154 actions do, 1 and 2 among them; the
+spells do not), **so a replay from a seed is a draw short for every blow that
+lands** until this is modelled. The simulation still wakes a sleeper on any
+blow that hurts, without a draw: the chance itself is not read, and adding
+the draw without it would move every replay without making it right.
 
 ## Still to read, in the order it is wanted
 

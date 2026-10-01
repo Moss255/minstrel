@@ -1,4 +1,5 @@
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
+import type { ActionScript } from '@minstrel/game-formats'
 import {
   type Animation,
   isNsbma,
@@ -10,9 +11,8 @@ import {
   readNsbta,
   type TextureAnimation,
 } from '@minstrel/nitro-gfx'
-import type { BlowScript } from './blow-effect.ts'
 import { floorOf } from './cast.ts'
-import { blowScriptAmong } from './load.ts'
+import { actionScriptAmong } from './load.ts'
 import { speedsOf } from './motion-speed.ts'
 
 /**
@@ -40,8 +40,8 @@ export interface ActorLook {
   readonly floor: number
   /** Each motion's speed, from the `.bcfg` files of its model and packs — see `motion-speed.ts`. */
   readonly speeds: ReadonlyMap<string, number>
-  /** Its blow, from an action script among its model and packs — Ivor's `s017b.bact`. */
-  readonly blow: BlowScript | undefined
+  /** Its own action script among its model and packs — Ivor's `s017b.bact` (FORMAT.md, "The action scripts"). */
+  readonly script: ActionScript | undefined
   /** Its texture and material animations, where its file carries them — an effect's (`.nsbta`, `.nsbma`). */
   readonly texAnim: TextureAnimation | undefined
   readonly matAnim: MaterialAnimation | undefined
@@ -132,7 +132,7 @@ export function actorLookOf(
         catalogue: cat,
         floor: floorOf(read, motions.get('stand')),
         speeds: speedsOf([model, ...packs].flatMap((file) => leavesOf(rom, file))),
-        blow: blowScriptAmong([model, ...packs].flatMap((file) => leavesOf(rom, file))),
+        script: actionScriptAmong([model, ...packs].flatMap((file) => leavesOf(rom, file))),
         ...materialAnimationsOf(leavesOf(rom, model)),
       }
     }

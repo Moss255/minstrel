@@ -10,6 +10,7 @@ import {
 } from '@minstrel/actor'
 import { textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
+import type { ActionScript } from '@minstrel/game-formats'
 import {
   ActionEffect,
   type AttendingCharacter,
@@ -128,6 +129,18 @@ import {
   WORLD_SCALE,
   waysOut,
 } from '@minstrel/world'
+import {
+  type ActionRun,
+  isParty as isPartyObject,
+  LOOSE_SCALE,
+  MONSTER_BASE,
+  PASS_MS,
+  type ShowEvent,
+  type StageFighter,
+  startAction,
+} from './action-player.ts'
+import { BUILT_IN_EFFECTS, LINE_MS, makeReactions, type ReactionEvent } from './action-reactions.ts'
+import { actionOf, objectOf, scriptFor } from './action-show.ts'
 import { type ActorLook, actorLookOf, packMotions } from './actors.ts'
 import { cook, POT_SAYS, potList, tryYourLuck } from './alchemy.ts'
 import {
@@ -148,6 +161,14 @@ import {
 } from './appearance.ts'
 import { gradientOf, horizonRow, LIGHTING_SLOT } from './backdrop.ts'
 import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
+import {
+  type BattleCamera,
+  type CameraStage,
+  cameraFrom,
+  viewOf as cameraView,
+  playCamera,
+  tickCamera,
+} from './battle-camera.ts'
 import {
   NUDGE_AT,
   type NumberKind,
@@ -175,7 +196,6 @@ import {
   withPages,
 } from './battle-scene.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
-import { type BlowScript, HERO_BLOW, type ScriptEffect } from './blow-effect.ts'
 import { BUBBLE_SHEETS, type BubbleKind, bubbleFrame, doorAhead } from './bubbles.ts'
 import {
   CABINET_OPENING,
@@ -293,6 +313,8 @@ import {
   weaponTurn,
 } from './hero.ts'
 import {
+  actionRecordOf,
+  actionScripts,
   allTriggers,
   battleSheets,
   entranceOf,
@@ -303,7 +325,7 @@ import {
   motionSet,
   motionSpeeds,
   type Stage,
-  setBlowScript,
+  setActionScript,
   stageMap,
 } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
@@ -390,9 +412,6 @@ import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './sl
 import {
   actorCloseUp,
   type BattleView,
-  type Blow,
-  blowAt,
-  blowOf,
   chaseView,
   commandView,
   EYE_CEILING,
@@ -401,11 +420,14 @@ import {
   MONSTER_FACING,
   MONSTER_SLOTS,
   monsterExtent,
+  monsterRow,
   type Orbit,
   openingStart,
   orbitOf,
   PARTY_FACING,
   PARTY_SLOTS,
+  partyExtent,
+  partyRow,
   placesOf,
   pulled,
   recordOfTriangle,
@@ -1070,28 +1092,45 @@ interface BattleStage {
   carry: number
   /** Everyone's radius, map units: a monster's body, a party member's ours — see `openStage`. */
   readonly radii: readonly number[]
-  /** The blow the page on show plays, and the page it was made for — see `blowNow`. */
-  blow: StagedBlow | undefined
-  blowFor: number
+  /** Everyone's row, map units — where formation 0 puts them (`func_ov000_02167e6c`). */
+  readonly rows: readonly { readonly x: number; readonly z: number; readonly facing: number }[]
+  /** The monsters' bodies, which their row and its extent are fitted to — see `stage.ts`. */
+  readonly bodies: readonly {
+    readonly kind: number
+    readonly radius: number
+    readonly height: number
+  }[]
   /** How many actions have passed without the chase shot — see `chaseTaken`. */
   unchased: number
   /** The draws the camera's choices take, ours: a number each. */
   draws: number
 }
 
-/** A blow being played — see `blowOf` in `stage.ts`. */
-interface StagedBlow {
-  readonly actor: number
-  readonly target: number
-  readonly blow: Blow
-  /** The one striking's own script — see `blow-effect.ts`. */
-  readonly script: BlowScript
-  /** How long the blow's motion is, in ticks, and the tick the blow lands. */
-  readonly motionTicks: number
-  readonly lands: number
-  /** The chase shot's orbit and draw, when the action opened on it. */
-  readonly chase: { readonly orbit: number; readonly draw: number } | undefined
+/**
+ * **The action on show**, while its page is — its script played by
+ * `action-player.ts`, its results shown by `action-reactions.ts`, the camera
+ * it moves by `battle-camera.ts`. FORMAT.md, "The action scripts".
+ */
+interface ActionShown {
+  /** The page it was made for: the battle's clock as the page began. */
+  readonly page: number
+  readonly run: ActionRun
+  readonly reactions: ReturnType<typeof makeReactions>
+  readonly camera: BattleCamera
+  /** Pages after its own that it tells too — a death it dealt — and passes over when it ends. */
+  readonly absorbs: number
+  /** The chase shot, while the script has moved no camera, when the action opened on it (`0x021db8d8`). */
+  chase: { readonly orbit: number; readonly draw: number } | undefined
+  /** Real time not yet played, ms. */
+  carry: number
 }
+let shown: ActionShown | undefined
+/** Those whose death a battle has shown, by object index: a monster gone, one of the party lying. */
+let fallenShown = new Set<number>()
+/** The last action shown — a second blow on the same target plays the second section keyed 1. */
+let lastShown:
+  | { readonly actor: number; readonly action: number; readonly target: number | undefined }
+  | undefined
 /** When the battle's page on show began, which its monsters' motions play from. */
 let cueStarted = 0
 /**
@@ -2760,14 +2799,35 @@ function peopleAtDoors(): readonly { readonly x: number; readonly z: number }[] 
   return atDoors
 }
 
+/** The pages last looked at for an action to show — see `frame`. */
+let pagesSeen: readonly string[] | undefined
+/** How long a page telling an event with no action has left, ms — ours. */
+let pageLeft = 0
+
 let lastFrame = 0
 function frame(now = 0): void {
   const elapsedMs = lastFrame === 0 ? 0 : now - lastFrame
   lastFrame = now
-  // The battle's own clock, slowed by a blow's hit-stop — see `battleSpeed`.
+  // **A page that tells an action shows it** — see `startShown` — and goes on
+  // when it ends, as the game's does; a page that tells an event with no
+  // action goes on when its lines have been up their time. **Ours**: the
+  // latter's timing, a line's 750 ms each. The battle's own clock runs slower
+  // through a hit-stop — see `battleSpeed`.
   if (battle) {
-    stopOnBlow(now)
-    battleClock += elapsedMs * battleSpeed(now)
+    if (battle.phase === 'telling' && battle.pages !== pagesSeen) {
+      pagesSeen = battle.pages
+      startShown()
+      pageLeft =
+        shown || battle.told[0] === undefined
+          ? 0
+          : (battle.pages[0] ?? '').split('\n').length * LINE_MS
+    }
+    if (shown) stepShown(elapsedMs)
+    else if (pageLeft > 0) {
+      pageLeft -= elapsedMs
+      if (pageLeft <= 0) turnPages(1)
+    }
+    battleClock += elapsedMs * battleSpeed()
   }
 
   if (loaded) {
@@ -2936,7 +2996,7 @@ function frame(now = 0): void {
         : null
     }
     if (shot?.target) aimAtShot(shot, eventStage?.cameraAngled ?? false)
-    else if (battleStage) aimAtBattle(battleStage, elapsedMs * battleSpeed(now))
+    else if (battleStage) aimAtBattle(battleStage, elapsedMs * battleSpeed())
     else
       updateFollowCamera(
         camera,
@@ -5938,8 +5998,19 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
       ...places.slice(0, partyCount).map(() => PARTY_RADIUS),
       ...bodies.map((b) => b.radius / FX32_ONE),
     ],
-    blow: undefined,
-    blowFor: -1,
+    rows: [
+      ...partyRow(partyCount).map((p) => ({
+        x: p.x / FX32_ONE,
+        z: p.z / FX32_ONE,
+        facing: p.facing / 4096,
+      })),
+      ...monsterRow(bodies).map((p) => ({
+        x: p.x / FX32_ONE,
+        z: p.z / FX32_ONE,
+        facing: p.facing / 4096,
+      })),
+    ],
+    bodies,
     unchased: 0,
     draws: 0,
     view: { target: shot.target, orbit: openingStart(end), pull: 0 },
@@ -5999,46 +6070,73 @@ function stageDrawn(stage: BattleStage, now: number): Piece[] {
     ...foePieces(now),
     ...companionPieces(now),
     ...heroInBattle(hero, now),
-    ...blowEffectPieces(now),
+    ...shownEffectPieces(),
   ]
 }
 
 /**
- * **The effects a blow plays** — its script's (`blow-effect.ts`): the swing
- * trail on the one striking as the blow's motion begins, tied to them
- * (INFERRED: the script hands the effect their object), and, for the few
- * monsters whose reaction names one, an effect on the one struck as it lands,
- * raised by half their height when the record says so. Each once through, at
- * its own speed. **Not drawn as the game does**: an effect's texture and
- * material animations are not read here yet, so it neither scrolls nor fades.
+ * **The effects the action on show plays** — see `action-player.ts`: each
+ * drawn on its host, at the host's place turned by its facing and at its
+ * scale times its own (`func_02057ab8`), or free on the stage at its own
+ * scale, where `0x10a` is a fighter's. **Not drawn**: the screen-fixed ones
+ * of the later pass, whose projection is not read; a particle effect's
+ * (`.beff`), whose format is not read.
  */
-function blowEffectPieces(now: number): Piece[] {
-  const blow = blowNow()
-  if (!blow) return []
-  const pieces: Piece[] = []
-  const striking = fighterNow(blow.actor, now)
-  if (striking?.doing === 'striking' && blow.script.swing) {
-    pieces.push(...effectPieces(blow.script.swing, striking, striking.ms, 0))
+function shownEffectPieces(): Piece[] {
+  const s = shown
+  const stage = battleStage
+  if (!s || !stage) return []
+  const grow = WORLD_SCALE * worldScale
+  const out: Piece[] = []
+  for (const e of s.run.effects) {
+    if (!e || e.overlay) continue
+    const host = e.host === undefined ? undefined : s.run.fighters.get(e.host)
+    let x: number
+    let y: number
+    let z: number
+    let facing: number
+    let scale: number
+    if (host) {
+      const [ox, oy, oz] = e.offset
+      const c = Math.cos(host.facing)
+      const n = Math.sin(host.facing)
+      x = host.x + ox * c + oz * n
+      z = host.z - ox * n + oz * c
+      y = oy
+      facing = host.facing + e.turn
+      scale = e.scale
+    } else {
+      ;[x, y, z] = e.offset
+      facing = e.turn
+      scale = e.scale / LOOSE_SCALE
+    }
+    out.push(
+      ...effectPieces(
+        { file: e.file, motion: e.motion },
+        {
+          x: stage.origin.x + x * grow,
+          y: stage.origin.y + (FIGHTER_HEIGHT / FX32_ONE + y) * grow,
+          z: stage.origin.z + z * grow,
+          facing,
+        },
+        e.at,
+        0,
+        scale,
+        (e.flags & 1) === 0,
+      ),
+    )
   }
-  const struck = fighterNow(blow.target, now)
-  const effect = blow.script.struck
-  if (struck?.doing === 'struck' && effect) {
-    const stage = battleStage
-    const raise =
-      effect.raised && stage
-        ? ((stage.heights[blow.target] ?? 0) / 2) * WORLD_SCALE * worldScale
-        : 0
-    pieces.push(...effectPieces(effect, struck, struck.ms, raise))
-  }
-  return pieces
+  return out
 }
 
 /** An effect played `ms` in at a fighter's place and facing, raised by `raise`; nothing once it is through. */
 function effectPieces(
-  effect: ScriptEffect,
+  effect: { readonly file: string; readonly motion: string | undefined },
   at: { readonly x: number; readonly y: number; readonly z: number; readonly facing: number },
   ms: number,
   raise: number,
+  scale = 1,
+  loops = false,
 ): Piece[] {
   const rom = cartridge
   const look = rom ? actorLookOf(rom, effect.file, []) : undefined
@@ -6050,7 +6148,7 @@ function effectPieces(
     (effect.motion !== undefined ? look.speeds.get(effect.motion) : undefined) ??
     [...look.speeds.values()][0]
   const frames = motion?.frameCount ?? 1
-  if (ms > motionMs(speed, frames)) return []
+  if (!loops && ms > motionMs(speed, frames)) return []
   const placement = {
     id: -1,
     map: 0,
@@ -6060,11 +6158,11 @@ function effectPieces(
     facing: at.facing,
     offset: 0,
   } as NpcPlacement
-  const frame = frameAt(ms, speed, frames, false)
+  const frame = frameAt(ms, speed, frames, loops)
   return castPieces(
     { name: effect.file, model: look.model, motion, floor: 0, placement },
     look.catalogue,
-    characterScale,
+    characterScale * scale,
     frame,
     effectShade(look, Math.floor(frame)),
   )
@@ -6117,24 +6215,6 @@ function effectShade(
 }
 
 /**
- * The motion a fighter plays for what it is doing in a blow — see
- * `fighterNow`: running as it steps in (INFERRED: the step in turns the
- * running motion on and off, `func_02033b88`), its blow, standing while it
- * waits to be struck, its `damage` once it is. Undefined when it is in none.
- */
-function stagedMotion(
-  doing: 'stepping' | 'striking' | 'waiting' | 'struck',
-  blow: string,
-  motions: ReadonlyMap<string, unknown>,
-): string | undefined {
-  if (doing === 'stepping')
-    return motions.has('run') ? 'run' : motions.has('walk') ? 'walk' : 'stand'
-  if (doing === 'striking') return blow
-  if (doing === 'waiting') return 'stand'
-  return 'damage'
-}
-
-/**
  * **The Hero in a fight**, playing what the page on show has them do — as
  * the companions do (`COMPANION_MOTIONS`), from the Hero's own figure. A blow
  * is the Hero's action script's (`mp0200.bact`): `attack1b`, and from its
@@ -6151,19 +6231,21 @@ function heroInBattle(hero: Player, now: number): Piece[] {
   const toldOf = !scene?.cues.some((cues) =>
     cues.some((c) => c.fighter === 0 && c.motion === 'death'),
   )
-  const lying = fighter !== undefined && fighter.hp <= 0 && toldOf
+  const lying = (fighter !== undefined && fighter.hp <= 0 && toldOf) || fallenShown.has(0)
   const motions = loaded.figure.motions
   const speeds = speedsOfFighter(0)
   const forced = params.get('heromotion')
   const staged = fighterNow(0, now)
-  const played = staged?.doing ? stagedMotion(staged.doing, 'attack1a', motions) : undefined
+  if (staged && !staged.visible) return []
   let name = 'stand'
   let ms = now
+  let loops = LOOPS.has(name)
   if (forced) name = forced
-  else if (played && staged) {
-    // On a stage a blow is stepped into, struck with `attack1a`, and waited for.
-    name = played
-    ms = LOOPS.has(played) ? now : staged.ms
+  else if (staged?.motion) {
+    // On a stage, what the action on show has the Hero play — see `action-player.ts`.
+    name = staged.motion
+    ms = staged.ms
+    loops = staged.loops
   } else if (cue?.motion === 'attack') {
     // Off a stage: `attack1b`, then `attack1a` from its half-way.
     const windUp = motionMs(speeds.get('attack1b'), motions.get('attack1b')?.frameCount ?? 2) / 2
@@ -6177,20 +6259,19 @@ function heroInBattle(hero: Player, now: number): Piece[] {
     name = COMPANION_MOTIONS.death
     ms = Number.POSITIVE_INFINITY
   }
+  if (!staged?.motion) loops = LOOPS.has(name)
   const motion = motions.get(name) ?? motions.get('stand')
-  const frame = frameAt(
-    ms,
-    speeds.get(name),
-    motion?.frameCount ?? 1,
-    forced !== null || LOOPS.has(name),
-  )
-  return playerPieces(
-    { ...hero, motionFrame: frame },
-    loaded.figure,
-    loaded.pieces,
-    loaded.catalogue,
-    measurements,
-    motion,
+  const frame = frameAt(ms, speeds.get(name), motion?.frameCount ?? 1, forced !== null || loops)
+  return asShown(
+    playerPieces(
+      { ...hero, motionFrame: frame },
+      loaded.figure,
+      loaded.pieces,
+      loaded.catalogue,
+      measurements,
+      motion,
+    ),
+    staged,
   )
 }
 
@@ -6202,41 +6283,15 @@ function heroInBattle(hero: Player, now: number): Piece[] {
  */
 let battleClock = 0
 
-/**
- * **The hit-stop** (action-script tag `116`, `func_ov000_02163440`): as a blow
- * lands, its script asks, say, `116 0.1 200 100` — 100 ms on, the game's
- * speed goes to 0.1 (`GameState::SetGameSpeed`) for 200 ms, then back to 1
- * (`ov000 0x021609bc`–`0x02160a60`). 1,303 scripts ask exactly that; a boss's
- * and a skill's ask longer. Each blow takes its own script's.
- */
-let hitStop: { readonly from: number; readonly until: number; readonly speed: number } | undefined
-let stoppedFor = -1
-
-/** How fast the battle's clock runs now: slowed through a hit-stop, else 1. */
-function battleSpeed(now: number): number {
-  return hitStop && now >= hitStop.from && now < hitStop.until ? hitStop.speed : 1
-}
-
-/** Start a hit-stop as the page's blow lands, once a page. */
-function stopOnBlow(now: number): void {
-  const blow = blowNow()
-  if (!blow || stoppedFor === cueStarted) return
-  if ((battleClock - cueStarted) / TICK_MS < blow.lands) return
-  stoppedFor = cueStarted
-  const asked = blow.script.hitStop
-  if (!asked) return
-  hitStop = {
-    from: now + asked.after,
-    until: now + asked.after + asked.lasts,
-    speed: asked.speed,
-  }
+/** How fast the battle's clock runs now: the action on show's game speed, slowed through a hit-stop (`116`), else 1. */
+function battleSpeed(): number {
+  return shown?.run.speed ?? 1
 }
 
 /** The numbers rising over the fighters — see `battle-numbers.ts`. */
 let risingNumbers: RisingNumber[] = []
 /** The page whose numbers have been put up, before and after its blow lands. */
 let numberedPage = -1
-let numberedBlow = -1
 let numbersCarry = 0
 const numbersEl = must<HTMLCanvasElement>('#numbers')
 /** Each sheet's frames, drawn once to a canvas each. */
@@ -6301,10 +6356,9 @@ function topOf(i: number, now: number): readonly [number, number, number] | unde
  */
 function raiseNumbers(now: number): void {
   const scene = battle
-  if (scene?.phase !== 'telling') return
+  // An action on show puts its own numbers up as each result is shown — see `action-reactions.ts`.
+  if (scene?.phase !== 'telling' || shown) return
   const cues = scene.cues[0] ?? []
-  const blow = blowNow()
-  const landed = blow && (now - cueStarted) / TICK_MS >= blow.lands
   const hits = new Map<number, number>()
   const raise = (fighter: number, amount: number, kind: NumberKind) => {
     const at = topOf(fighter, now)
@@ -6315,15 +6369,9 @@ function raiseNumbers(now: number): void {
   }
   for (const cue of cues) {
     if (cue.amount === undefined) continue
-    const byBlow = blow && cue.fighter === blow.target && cue.motion === 'damage'
-    if (byBlow) {
-      if (landed && numberedBlow !== cueStarted) raise(cue.fighter, cue.amount, 0)
-    } else if (numberedPage !== cueStarted) {
-      raise(cue.fighter, cue.amount, cue.motion === 'heal' ? 2 : 0)
-    }
+    if (numberedPage !== cueStarted) raise(cue.fighter, cue.amount, cue.motion === 'heal' ? 2 : 0)
   }
   numberedPage = cueStarted
-  if (landed) numberedBlow = cueStarted
 }
 
 /**
@@ -6420,49 +6468,41 @@ function cameraDraw(stage: BattleStage): number {
   return (stage.draws >>> 8) / 0x1000000
 }
 
-/** How long a fighter's blow motion is, in ticks, at its own speed — see `blowMotionOf`. */
-function blowTicksOf(i: number): number {
-  const name = blowMotionOf(i)
-  const place = battleCompanions.find((c) => c.index === i)?.place ?? (i === 0 ? 0 : undefined)
+/** How many frames a fighter's motion has: a monster's own, the Hero's figure's, a companion's or a member's. */
+function motionFramesOf(i: number, name: string): number | undefined {
   const monster = battleLooks[i]
-  const frames = monster
-    ? monster.motions.get(name)?.frameCount
-    : i === 0
-      ? loaded?.figure.motions.get(name)?.frameCount
-      : dressed[place ?? -1]?.figure.motions.get(name)?.frameCount
-  const speed = speedsOfFighter(i).get(name)
-  return motionMs(speed, frames ?? 2) / TICK_MS
+  if (monster) return monster.motions.get(name)?.frameCount
+  if (i === 0) return loaded?.figure.motions.get(name)?.frameCount
+  const companion = battleCompanions.find((c) => c.index === i)
+  if (companion?.model !== undefined && cartridge) {
+    return actorLookOf(cartridge, companion.model, companion.packs)?.motions.get(name)?.frameCount
+  }
+  return dressed[companion?.place ?? -1]?.figure.motions.get(name)?.frameCount
+}
+
+/** How long a fighter's motion takes once through, ms, at its own speed; undefined when it has none of that name. */
+function motionLengthOf(i: number, name: string): number | undefined {
+  const frames = motionFramesOf(i, name)
+  return frames === undefined ? undefined : motionMs(speedsOfFighter(i).get(name), frames)
 }
 
 /**
- * **A fighter's own blow** — its action script's (`blow-effect.ts`): a
- * monster's `<code>.bact`, a story companion's in their model (Ivor's
- * `s017b.bact`), a member's set's (`mp0201.bact`); the Hero's for one with
- * none.
+ * **A fighter's own action script** — what the battle parses for each as it
+ * loads (FORMAT.md, "The action scripts"): a monster's `<code>.bact`, a story
+ * companion's in their model (Ivor's `s017b.bact`), a member's motion set's
+ * (`mp0201.bact`).
  */
-function scriptOfFighter(i: number): BlowScript {
+function ownScriptOf(i: number): ActionScript | undefined {
   const monster = battleLooks[i]
-  if (monster) return monster.blow ?? HERO_BLOW
-  const companion = battleCompanions.find((c) => c.index === i)
+  if (monster) return monster.script
   const rom = cartridge
-  if (!rom) return HERO_BLOW
+  if (!rom) return undefined
+  const companion = battleCompanions.find((c) => c.index === i)
   if (companion?.model !== undefined) {
-    return actorLookOf(rom, companion.model, companion.packs)?.blow ?? HERO_BLOW
+    return actorLookOf(rom, companion.model, companion.packs)?.script
   }
   const member = members[companion?.place ?? 0] ?? leader()
-  return setBlowScript(rom, motionFamilyOf(member)) ?? HERO_BLOW
-}
-
-/**
- * The motion a fighter strikes with: its script's — `attack1a` for nearly
- * every monster and party member alike — or, for a monster without it, its
- * `attack0a`.
- */
-function blowMotionOf(i: number): string {
-  const wanted = scriptOfFighter(i).motion
-  const monster = battleLooks[i]
-  if (monster && !monster.motions.has(wanted)) return CUE_MOTIONS.attack
-  return wanted
+  return setActionScript(rom, motionFamilyOf(member))
 }
 
 /** The motion speeds a fighter plays by: a monster's own, a companion's, a member's set's — see `motion-speed.ts`. */
@@ -6493,107 +6533,91 @@ function chaseTaken(stage: BattleStage): boolean {
   return taken
 }
 
-/** The blow the page on show plays — one who strikes and one struck — made once a page. */
-function blowNow(): StagedBlow | undefined {
-  const stage = battleStage
-  const scene = battle
-  if (!stage || scene?.phase !== 'telling') return undefined
-  if (stage.blowFor === cueStarted) return stage.blow
-  stage.blowFor = cueStarted
-  stage.blow = undefined
-  const cues = scene.cues[0] ?? []
-  const actor = cues.find((c) => c.motion === 'attack')?.fighter
-  const target = cues.find((c) => c.motion === 'damage')?.fighter
-  if (actor === undefined || target === undefined) return undefined
-  const from = stage.places[actor]
-  const to = stage.places[target]
-  if (!from || !to) return undefined
-  const script = scriptOfFighter(actor)
-  const blow = blowOf(from, to, stage.radii[actor] ?? 0.5, stage.radii[target] ?? 0.5, script)
-  const motionTicks = blowTicksOf(actor)
-  stage.blow = {
-    actor,
-    target,
-    blow,
-    script,
-    motionTicks,
-    lands: blow.path.length + script.lands * motionTicks,
-    chase: chaseTaken(stage)
-      ? { orbit: Math.floor(cameraDraw(stage) * 4), draw: cameraDraw(stage) }
-      : undefined,
-  }
-  return stage.blow
+/** The fighter a battle object index is, back from `objectOf`. */
+function fighterOf(object: number): number {
+  const party = battle?.state.fighters.filter((f) => f.side === 'party').length ?? 1
+  return object < MONSTER_BASE ? object : party + (object - MONSTER_BASE)
 }
 
 /**
  * **Where a fighter is on the stage now, and what it is doing**: its place,
- * or — in a blow — stepping in, striking, or waiting to be struck and then
- * struck, with how many motion frames into it. Undefined off a stage.
+ * facing, motion and how far into it, as the action on show leaves it; on the
+ * grid, standing, when none is. Undefined off a stage.
  */
 function fighterNow(
   i: number,
-  now: number,
+  _now: number,
 ):
   | {
       readonly x: number
       readonly y: number
       readonly z: number
       readonly facing: number
-      readonly doing: 'stepping' | 'striking' | 'waiting' | 'struck' | undefined
-      /** How long it has been doing it, ms. */
+      /** The motion the action has it play, and how far in, ms; undefined when none does. */
+      readonly motion: string | undefined
       readonly ms: number
+      readonly loops: boolean
+      /** 0 to 1, and whether it is seen and drawn untextured. */
+      readonly alpha: number
+      readonly visible: boolean
+      readonly flash: boolean
     }
   | undefined {
   const stage = battleStage
   const place = stage?.places[i]
-  if (!stage || !place) return undefined
+  const scene = battle
+  if (!stage || !place || !scene) return undefined
   const grow = WORLD_SCALE * worldScale
   const world = (at: { x: number; z: number }) => ({
     x: stage.origin.x + at.x * grow,
     y: stage.origin.y + (FIGHTER_HEIGHT / FX32_ONE) * grow,
     z: stage.origin.z + at.z * grow,
   })
-  const blow = blowNow()
-  const ticks = Math.max(0, (now - cueStarted) / TICK_MS)
-  const ms = (t: number) => Math.max(0, t) * TICK_MS
-  if (blow && i === blow.actor) {
-    const at = blowAt(blow.blow, ticks, blow.motionTicks)
+  const f = shown?.run.fighters.get(objectOf(scene.state, i))
+  if (f) {
     return {
-      ...world(at),
-      facing: blow.blow.facing,
-      doing: at.into === undefined ? 'stepping' : 'striking',
-      ms: at.into === undefined ? ms(ticks) : ms(ticks - blow.blow.path.length),
+      ...world(f),
+      facing: f.facing,
+      motion: f.motion,
+      ms: f.motionAt,
+      loops: (f.motionFlags & 1) === 0,
+      alpha: Math.max(0, Math.min(1, f.alpha / 31)),
+      visible: f.visible,
+      flash: f.flash > 0,
     }
   }
-  if (blow && i === blow.target) {
-    // Turned to face the one striking as it steps in (`0x021e6a08`).
-    return {
-      ...world(place),
-      facing: blow.blow.facing + Math.PI,
-      doing: ticks < blow.lands ? 'waiting' : 'struck',
-      ms: ms(ticks - blow.lands),
-    }
+  return {
+    ...world(place),
+    facing: place.facing,
+    motion: undefined,
+    ms: 0,
+    loops: true,
+    alpha: 1,
+    visible: true,
+    flash: false,
   }
-  return { ...world(place), facing: place.facing, doing: undefined, ms: ms(ticks) }
 }
 
-/** How long a blow's page holds on the one who strikes before it cuts to the one struck, ms. Ours. */
-const STRIKE_MS = 500
+/** Pieces as the action leaves a fighter: faded, or untextured for the moment it is struck. */
+function asShown(pieces: Piece[], at: ReturnType<typeof fighterNow>): Piece[] {
+  if (!at || (!at.flash && at.alpha >= 1)) return pieces
+  return pieces.map((piece) => {
+    const { pixels: _pixels, ...plain } = piece
+    const out = at.flash ? plain : piece
+    return at.alpha < 1 ? { ...out, opacity: (piece.opacity ?? 1) * at.alpha } : out
+  })
+}
 
 /**
  * **The shot the fight wants now**, once the opening has come in, or
- * undefined to hold the one it has. The shots are the game's: while a command
- * is chosen, the command camera (`commandView`); an action's close-up on who
- * acts (`default.bact`'s sections open on it, camera mode 5 with 0.21 and
- * 1.1), and on each one struck as it is struck (`ov025 0x021dcf14`, 0 and
- * 1.8); and between them the camera stays where the last left it
- * (`0x021dcbf4`). **When each close-up is taken is ours**: the page of a blow
- * opens on the one striking and cuts to the one struck after
- * {@link STRIKE_MS}, as an action's script is not played.
+ * undefined to hold the one it has: while a command is chosen, the command
+ * camera (`commandView`); while an action is shown, the camera its script
+ * moves — see {@link shownView}; between them, where the last left it
+ * (`0x021dcbf4`).
  */
 function wantedView(
   stage: BattleStage,
-  now: number,
+  _now: number,
 ): { key: string; view: BattleView; follow?: boolean } | undefined {
   const scene = battle
   if (!scene) return undefined
@@ -6610,60 +6634,292 @@ function wantedView(
       .filter((_, i) => (scene.state.fighters[i]?.hp ?? 0) > 0)
     return { key: 'command', view: commandView(standing) }
   }
-  const cues = scene.cues[0] ?? []
-  const actor = cues.find((c) => c.motion === 'attack')?.fighter
-  const struck = cues.find((c) => c.motion === 'damage')?.fighter
-  // **A blow**: the chase shot while it comes in, if the action opened on it,
-  // else the camera held where it was; the one struck the moment it lands.
-  const blow = blowNow()
-  if (blow) {
-    const ticks = (now - cueStarted) / TICK_MS
-    const target = stage.places[blow.target]
-    if (ticks >= blow.lands && target) {
-      const view = actorCloseUp(
-        target,
-        stage.heights[blow.target] ?? 1,
-        blow.target < partyCount,
-        0,
-        1.8,
-        CLOSE_UP_HALF_FOV,
-      )
-      return { key: `struck ${blow.target} ${cueStarted}`, view }
-    }
-    const striking = fighterNow(blow.actor, now)
-    if (blow.chase && striking && target) {
-      const grow = WORLD_SCALE * worldScale
-      const place = {
-        x: (striking.x - stage.origin.x) / grow,
-        z: (striking.z - stage.origin.z) / grow,
-      }
-      const view = chaseView(
-        place,
-        target,
-        stage.heights[blow.actor] ?? 1,
-        stage.heights[blow.target] ?? 1,
-        blow.chase.orbit,
-        blow.chase.draw,
-      )
-      return { key: `chase ${cueStarted}`, view, follow: true }
-    }
-    return undefined
-  }
-  const closeUp = (who: number, a: number, b: number) => {
-    const at = stage.places[who]
-    return at
-      ? actorCloseUp(at, stage.heights[who] ?? 1, who < partyCount, a, b, CLOSE_UP_HALF_FOV)
-      : undefined
-  }
-  if (struck !== undefined && (actor === undefined || now - cueStarted >= STRIKE_MS)) {
-    const view = closeUp(struck, 0, 1.8)
-    if (view) return { key: `struck ${struck}`, view }
-  }
-  if (actor !== undefined) {
-    const view = closeUp(actor, 0.21, 1.1)
-    if (view) return { key: `acts ${actor}`, view }
-  }
   return undefined
+}
+
+/** The camera's view of the stage while an action is shown — see `battle-camera.ts`. */
+const cameraStage: CameraStage = {
+  fighter(object) {
+    const f = shown?.run.fighters.get(object)
+    return f
+      ? {
+          x: f.x,
+          z: f.z,
+          facing: f.facing,
+          height: f.height,
+          radius: f.radius,
+          party: isPartyObject(object),
+        }
+      : undefined
+  },
+  side(party) {
+    return [...(shown?.run.fighters.values() ?? [])]
+      .filter((f) => isPartyObject(f.index) === party && f.visible && f.state !== 6)
+      .map((f) => ({
+        x: f.x,
+        z: f.z,
+        facing: f.facing,
+        height: f.height,
+        radius: f.radius,
+        party,
+      }))
+  },
+  extent(party) {
+    const stage = battleStage
+    const count = battle?.state.fighters.filter((f) => f.side === 'party').length ?? 1
+    return party ? partyExtent(count) : monsterExtent(stage?.bodies ?? [])
+  },
+}
+
+/**
+ * **The view while an action is shown**: the chase shot, while the action
+ * opened on it and its script has moved no camera; else the camera the script
+ * moves, resolved from where its fighter stands now.
+ */
+function shownView(stage: BattleStage): BattleView | undefined {
+  const s = shown
+  if (!s) return undefined
+  const actor = s.run.hooks.context.actors[0]
+  const target = s.run.hooks.context.targets[0]?.receivers[0]
+  if (s.chase && actor !== undefined && target !== undefined) {
+    const a = s.run.fighters.get(actor)
+    const t = s.run.fighters.get(target)
+    if (a && t) return chaseView(a, t, a.height, t.height, s.chase.orbit, s.chase.draw)
+  }
+  void stage
+  return cameraView(s.camera, cameraStage)
+}
+
+/**
+ * **Show the action the page on show tells**, if it tells one and the fight
+ * is on a stage: choose its script as the game does (`func_ov025_021dbe10`),
+ * stand everyone where the set-up's grid has them, and start it. A death it
+ * deals, told on the pages that follow, is shown in it, as the game shows it.
+ */
+function startShown(): void {
+  const scene = battle
+  const stage = battleStage
+  const rom = cartridge
+  shown = undefined
+  if (!scene || !stage || !rom || scene.phase !== 'telling') return
+  const event = scene.told[0]
+  const page = scene.pages[0]
+  if (!event || page === undefined) return
+  let absorbs = 0
+  const defeated = new Map<number, readonly string[]>()
+  if (event.kind === 'attack' || event.kind === 'spell') {
+    for (;;) {
+      const next = scene.told[1 + absorbs]
+      if (next?.kind !== 'defeated') break
+      defeated.set(next.actor, (scene.pages[1 + absorbs] ?? '').split('\n'))
+      absorbs++
+    }
+  }
+  const action = actionOf(event, scene.state, page.split('\n'), {
+    itemAction: (item) => loaded?.itemUses.get(item)?.battle?.action,
+    defeated,
+  })
+  if (!action) return
+  const { context, results } = action
+  const actor = context.actors[0]
+  if (actor === undefined) return
+  const record = actionRecordOf(rom, context.action)
+  const scripts = actionScripts(rom)
+  const archive =
+    record?.archive === 2
+      ? 'spell'
+      : (record?.archive === 1 || record?.archive === 4) && isPartyObject(actor)
+        ? 'skill'
+        : 'other'
+  const target = context.targets[0]?.receivers[0]
+  const second = lastShown?.actor === actor && lastShown.action === 1 && lastShown.target === target
+  const section = scriptFor(
+    context.action,
+    {
+      own: ownScriptOf(fighterOf(actor)),
+      skill: scripts.own(archive, context.action),
+      fallback: scripts.fallback,
+      kind: record?.kind ?? 0,
+    },
+    second,
+  )
+  lastShown = { actor, action: context.action, target }
+  const fighters: StageFighter[] = scene.state.fighters.flatMap((f, i) => {
+    const object = objectOf(scene.state, i)
+    const grid = stage.places[i]
+    const row = stage.rows[i] ?? grid
+    if (!grid || !row || f.fled) return []
+    const fallen = fallenShown.has(object)
+    if (fallen && !isPartyObject(object)) return []
+    return [
+      {
+        index: object,
+        x: grid.x,
+        z: grid.z,
+        facing: grid.facing,
+        radius: stage.radii[i] ?? 0.5,
+        height: stage.heights[i] ?? 1,
+        grid,
+        row,
+        alive: !fallen,
+        visible: true,
+        motion: fallen ? 'death' : 'stand',
+        motionAt: fallen ? Number.POSITIVE_INFINITY : 0,
+        // `+0xb0`: 0x324 a tick, slower for a big monster (`0x021666e8`).
+        turnRate: turnRateOf(stage.radii[i] ?? 0) / 4096,
+      },
+    ]
+  })
+  let reactions: ReturnType<typeof makeReactions> | undefined
+  const run = startAction(
+    section?.commands ?? [],
+    context,
+    fighters,
+    {
+      motionMs: (object, name) => motionLengthOf(fighterOf(object), name),
+      effectMs: (file, motion) => effectLengthOf(file, motion),
+    },
+    {
+      resources: BUILT_IN_EFFECTS,
+      makeReactions: (hooks) => {
+        reactions = makeReactions(hooks, results, onReaction)
+        return reactions
+      },
+    },
+  )
+  if (!reactions) return
+  // The chase shot, unless the script opens on a camera of its own (`func_ov025_021db8d8`).
+  const commands = section?.commands ?? []
+  const firstShow = commands.findIndex((c) => c.tag === 61 || c.tag === 7)
+  const ownCamera =
+    commands.some((c) => c.tag === 34) ||
+    commands
+      .slice(0, firstShow < 0 ? undefined : firstShow)
+      .some((c) => c.tag === 12 && 'mode' in c && c.mode !== 10)
+  const chase =
+    !ownCamera && target !== undefined && chaseTaken(stage)
+      ? { orbit: Math.floor(cameraDraw(stage) * 4), draw: cameraDraw(stage) }
+      : undefined
+  shown = {
+    page: cueStarted,
+    run,
+    reactions,
+    camera: cameraFrom(stage.view, stage.halfFov),
+    absorbs,
+    chase,
+    carry: 0,
+  }
+}
+
+/** A monster's turn rate by its radius (`func_ov000_02166540`, `0x021666e8`), 4096ths a tick. */
+function turnRateOf(radius: number): number {
+  const r = radius * 4
+  return r >= 4 ? 0xc9 : r >= 3 ? 0x10c : r >= 2 ? 0x192 : 0x324
+}
+
+/** How long an effect's motion takes once through, ms — its `.bcfg` speed over its frames. */
+function effectLengthOf(file: string, motion: string | undefined): number | undefined {
+  const rom = cartridge
+  const look = rom ? actorLookOf(rom, file, []) : undefined
+  if (!look) return undefined
+  const animation =
+    (motion !== undefined ? look.motions.get(motion) : undefined) ?? [...look.motions.values()][0]
+  const speed =
+    (motion !== undefined ? look.speeds.get(motion) : undefined) ?? [...look.speeds.values()][0]
+  return motionMs(speed, animation?.frameCount ?? 1)
+}
+
+/** What the reactions put up: the rising numbers, a close-up before a reaction, the camera's shake. */
+function onReaction(event: ReactionEvent): void {
+  const s = shown
+  if (event.kind === 'number') {
+    const at = topOf(fighterOf(event.fighter), battleClock)
+    const number = at ? risingNumber(event.value, event.numberKind, at, event.index) : undefined
+    if (number) risingNumbers = [...risingNumbers, number].slice(-16)
+    return
+  }
+  if (!s) return
+  if (event.kind === 'close-up') {
+    playCamera(
+      s.camera,
+      {
+        tag: 12,
+        mode: 13,
+        variant: 0,
+        floats: [0, 0, 1.8],
+        actor: event.fighter,
+        target: undefined,
+      },
+      cameraStage,
+      () => (battleStage ? cameraDraw(battleStage) : 0),
+    )
+    s.chase = undefined
+    return
+  }
+  s.camera.shake = { amplitude: event.amplitude, left: event.ms }
+}
+
+/** What the run asks of the frame: its camera's commands now; sounds, the lights and the screen's brightness are not yet played. */
+function onShow(event: ShowEvent): void {
+  const s = shown
+  if (!s || event.kind !== 'camera') return
+  playCamera(s.camera, event.command, cameraStage, () =>
+    battleStage ? cameraDraw(battleStage) : 0,
+  )
+  s.chase = undefined
+}
+
+/**
+ * **Play the action on show** for the frame's time, a pass every
+ * {@link PASS_MS} — then, once it has ended, the page it tells and those it
+ * took in are done, and the battle goes on.
+ */
+function stepShown(elapsedMs: number): void {
+  const s = shown
+  if (!s) return
+  s.carry = Math.min(s.carry + elapsedMs, PASS_MS * 8)
+  while (s.carry >= PASS_MS && shown === s) {
+    s.carry -= PASS_MS
+    for (const event of s.run.pass(PASS_MS)) onShow(event)
+    tickCamera(s.camera, PASS_MS * s.run.speed)
+    if (s.run.ended) {
+      finishShown()
+      return
+    }
+  }
+  const line = s.reactions.line
+  if ((line ? line.text.slice(0, line.typed) : '') !== shownText) showBattle()
+}
+
+/** An action over: its deaths kept, its pages done. */
+function finishShown(): void {
+  const s = shown
+  if (!s) return
+  for (const f of s.run.fighters.values())
+    if (f.state === 4 || f.state === 6) fallenShown.add(f.index)
+  const stage = battleStage
+  if (stage) {
+    // The camera stays where the action left it (`0x021dcbf4`).
+    stage.view = cameraView(s.camera, cameraStage)
+    stage.halfFov = s.camera.halfFov
+    stage.showing = `after ${s.page}`
+  }
+  shown = undefined
+  turnPages(1 + s.absorbs)
+}
+
+/** Go on past `n` pages, as confirming them did, and on to what follows. */
+function turnPages(n: number): void {
+  for (let k = 0; k < n && battle?.phase === 'telling'; k++) {
+    battle = battleChoose(battle, battleItems(), battleSpells())
+  }
+  cueStarted = battleClock
+  settleBattle()
+  if (battle?.phase === 'over') {
+    endFight()
+    return
+  }
+  showBattle()
 }
 
 /** The half-angle a reset leaves, which the close-ups frame to (`0x0216d370`): 15, a view of 30°. */
@@ -6678,7 +6934,14 @@ const CLOSE_UP_HALF_FOV = 15
  * (`func_ov000_0216f2b8`).
  */
 function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
-  if (stage.opened) {
+  // While an action is shown, its script moves the camera — see `battle-camera.ts`.
+  const acting = shown ? shownView(stage) : undefined
+  if (acting && shown) {
+    stage.view = acting
+    stage.halfFov = shown.camera.halfFov
+    stage.easing = undefined
+    stage.opened = true
+  } else if (stage.opened) {
     const wanted = wantedView(stage, battleClock)
     if (wanted && wanted.key !== stage.showing) {
       stage.showing = wanted.key
@@ -6707,7 +6970,7 @@ function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
         stage.easing = undefined
         stage.opened = true
       }
-    } else stage.view = pulled(stage.view)
+    } else if (!acting) stage.view = pulled(stage.view)
   }
   const grow = WORLD_SCALE * worldScale
   const { target, orbit } = stage.view
@@ -6742,27 +7005,26 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
   const rom = cartridge
   if (!scene || !rom || !self) return []
   const fighter = scene.state.fighters[at.index]
-  // On a stage, where the blow has them — see `fighterNow`.
+  // On a stage, where the action on show has them — see `fighterNow`.
   const staged = fighterNow(at.index, now)
   const spot = staged ?? battleSpots[at.index]
-  if (!fighter || !spot) return []
+  if (!fighter || !spot || (staged && !staged.visible)) return []
   const onShow = scene.phase === 'telling' ? (scene.cues[0] ?? []) : []
   const cue = onShow.find((c) => c.fighter === at.index)
   // Fallen, but not yet told of: still standing.
   const toldOf = !scene.cues.some((cues) =>
     cues.some((c) => c.fighter === at.index && c.motion === 'death'),
   )
-  const lying = fighter.hp <= 0 && toldOf
-  const blowName = (motions: ReadonlyMap<string, unknown>) =>
-    staged?.doing ? stagedMotion(staged.doing, COMPANION_MOTIONS.attack, motions) : undefined
+  const lying = (fighter.hp <= 0 && toldOf) || fallenShown.has(objectOf(scene.state, at.index))
+  const blowName = (_motions: ReadonlyMap<string, unknown>) => staged?.motion
   const cued = cue ? COMPANION_MOTIONS[cue.motion] : lying ? COMPANION_MOTIONS.death : 'stand'
   // Every motion at its own speed — see `motion-speed.ts`.
   const speeds = speedsOfFighter(at.index)
   const frameOf = (name: string, length: number, played: boolean): number =>
-    LOOPS.has(name)
-      ? frameAt(now, speeds.get(name), length, true)
-      : played
-        ? frameAt(staged?.ms ?? 0, speeds.get(name), length, false)
+    played
+      ? frameAt(staged?.ms ?? 0, speeds.get(name), length, staged?.loops ?? false)
+      : LOOPS.has(name)
+        ? frameAt(now, speeds.get(name), length, true)
         : cue
           ? frameAt(now - cueStarted, speeds.get(name), length, false)
           : frameAt(Number.POSITIVE_INFINITY, speeds.get(name), length, false)
@@ -6777,24 +7039,27 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     const own = built.figure.motions.get(name) ?? built.figure.motions.get('stand')
     const length = own?.frameCount ?? 1
     const at3 = frameOf(name, length, played !== undefined)
-    return playerPieces(
-      {
-        ...self,
-        state: {
-          ...self.state,
-          x: fx32(Math.round(spot.x * FX32_ONE)),
-          y: fx32(Math.round(spot.y * FX32_ONE)),
-          z: fx32(Math.round(spot.z * FX32_ONE)),
+    return asShown(
+      playerPieces(
+        {
+          ...self,
+          state: {
+            ...self.state,
+            x: fx32(Math.round(spot.x * FX32_ONE)),
+            y: fx32(Math.round(spot.y * FX32_ONE)),
+            z: fx32(Math.round(spot.z * FX32_ONE)),
+          },
+          facing: staged?.facing ?? self.facing,
+          motionFrame: at3,
         },
-        facing: staged?.facing ?? self.facing,
-        motionFrame: at3,
-      },
-      built.figure,
-      built.pieces,
-      loaded.catalogue,
-      measurements,
-      own,
-      buildScale(members[at.place]),
+        built.figure,
+        built.pieces,
+        loaded.catalogue,
+        measurements,
+        own,
+        buildScale(members[at.place]),
+      ),
+      staged,
     )
   }
 
@@ -6815,14 +7080,17 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     offset: 0,
   } as NpcPlacement
   const member = { name: at.model ?? '', model: look.model, motion, floor: look.floor, placement }
-  return [
-    ...castPieces(member, look.catalogue, characterScale, frame),
-    // What they hold, by their `attnpc` number; a created character reaches
-    // here only when they have no figure to pose, which cannot happen.
-    ...(loaded && at.id !== undefined
-      ? heldPieces(member, heldOf(at.id), loaded.catalogue, characterScale, frame)
-      : []),
-  ]
+  return asShown(
+    [
+      ...castPieces(member, look.catalogue, characterScale, frame),
+      // What they hold, by their `attnpc` number; a created character reaches
+      // here only when they have no figure to pose, which cannot happen.
+      ...(loaded && at.id !== undefined
+        ? heldPieces(member, heldOf(at.id), loaded.catalogue, characterScale, frame)
+        : []),
+    ],
+    staged,
+  )
 }
 
 /**
@@ -6882,32 +7150,34 @@ function foePieces(now: number): Piece[] {
     const look = battleLooks[i]
     const at = battleSpots[i]
     if (fighter.side !== 'foes' || !look || !at) return []
-    // A monster fallen or fled stays until its page is told.
-    const going = scene.cues.some((cues) =>
-      cues.some((c) => c.fighter === i && (c.motion === 'death' || c.motion === 'flee')),
-    )
-    if ((fighter.hp <= 0 || fighter.fled) && !going) return []
+    const object = objectOf(scene.state, i)
+    const run = shown?.run.fighters.get(object)
+    if (shown) {
+      // While an action is shown, what it has on the stage: a monster dead and faded is gone.
+      if (!run?.visible || run.alpha <= 0) return []
+    } else {
+      // A monster fallen or fled stays until its page is told, or its death has been shown.
+      const going = scene.cues.some((cues) =>
+        cues.some((c) => c.fighter === i && (c.motion === 'death' || c.motion === 'flee')),
+      )
+      if (fallenShown.has(object)) return []
+      if ((fighter.hp <= 0 || fighter.fled) && !going) return []
+    }
     const cue = onShow.find((c) => c.fighter === i)
     const staged = fighterNow(i, now)
-    const played = staged?.doing
-      ? stagedMotion(staged.doing, blowMotionOf(i), look.motions)
-      : undefined
+    const played = staged?.motion
     const motion = played ?? (cue ? CUE_MOTIONS[cue.motion] : 'stand')
     const length = look.motions.get(motion)?.frameCount ?? 1
     // At its own speed — see `motion-speed.ts`.
     const speed = look.speeds.get(motion)
-    const frame = LOOPS.has(motion)
-      ? frameAt(now, speed, length, true)
-      : played
-        ? frameAt(staged?.ms ?? 0, speed, length, false)
+    const frame = played
+      ? frameAt(staged?.ms ?? 0, speed, length, staged?.loops ?? false)
+      : LOOPS.has(motion)
+        ? frameAt(now, speed, length, true)
         : frameAt(now - cueStarted, speed, length, false)
-    return monsterPieces(
-      look,
-      staged ?? at,
-      staged?.facing ?? facing,
-      characterScale,
-      motion,
-      frame,
+    return asShown(
+      monsterPieces(look, staged ?? at, staged?.facing ?? facing, characterScale, motion, frame),
+      staged,
     )
   })
 }
@@ -6927,14 +7197,21 @@ function battleCentre(): Player['state'] | undefined {
   return { ...self.state, x: fx32(Math.round(x * FX32_ONE)), z: fx32(Math.round(z * FX32_ONE)) }
 }
 
+/** The text the message box shows now, so a frame redraws it only when it changes. */
+let shownText: string | undefined
+
 /** Draw the battle: the message on show, or the rows to choose from, and the Hero's numbers. */
 function showBattle(): void {
   if (!battle) return
   const labels = labelsOf(battle.state)
-  if (battle.phase === 'telling' && battle.pages[0] !== undefined) {
+  // While an action is shown, its line as far as it has been typed — see `action-reactions.ts`.
+  const line = shown?.reactions.line
+  const text = shown ? (line ? line.text.slice(0, line.typed) : '') : battle.pages[0]
+  shownText = text
+  if (battle.phase === 'telling' && text) {
     talkEl.replaceChildren()
     const body = document.createElement('div')
-    body.textContent = battle.pages[0]
+    body.textContent = text
     talkEl.append(body)
     talkEl.hidden = false
   } else {
@@ -7154,6 +7431,11 @@ function sharesOf(
 function endFight(): void {
   battle = undefined
   battleStage = undefined
+  shown = undefined
+  fallenShown = new Set()
+  lastShown = undefined
+  pagesSeen = undefined
+  pageLeft = 0
   playMapMusic(true)
   // The weapon and shield go back on the Hero's back — see `dressHero`.
   dressHero()
@@ -9017,6 +9299,11 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     if (action === 'up') battle = battleMove(battle, -1)
     else if (action === 'down') battle = battleMove(battle, 1)
     else if (action === 'confirm') {
+      // A page that tells an event goes on by itself; the game reads no key meanwhile.
+      if (battle.phase === 'telling' && battle.told[0] !== undefined) {
+        event.preventDefault()
+        return handled
+      }
       const round = battle.state.round
       battle = battleChoose(battle, battleItems(), battleSpells())
       cueStarted = battleClock

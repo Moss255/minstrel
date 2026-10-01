@@ -489,6 +489,8 @@ export interface BattleScene {
   readonly pages: readonly string[]
   /** What the monsters do while each page is on show, page for page. */
   readonly cues: readonly (readonly Cue[])[]
+  /** The event each page tells, page for page; none for a page that tells no event. */
+  readonly told: readonly (BattleEvent | undefined)[]
   /** Whether what the battle came to has been handed out; the caller sets it. */
   readonly settled: boolean
   /** Each fighter's name as the words use it, in the fighters' order, lettered where kinds repeat. */
@@ -535,6 +537,7 @@ export function beginBattle(
     cursor: 0,
     pages: [],
     cues: [],
+    told: [],
     settled: false,
     names: lettered(fighters.map((f, i) => options.names?.[i] ?? { name: f.name })),
     words: options.words,
@@ -548,7 +551,12 @@ export function beginBattle(
   const appear = state.fighters.flatMap((f, i) =>
     f.side === 'foes' ? [{ fighter: i, motion: 'appear' as const }] : [],
   )
-  return { ...scene, pages, cues: pages.map((_, p) => (p === 0 ? appear : [])) }
+  return {
+    ...scene,
+    pages,
+    cues: pages.map((_, p) => (p === 0 ? appear : [])),
+    told: pages.map(() => undefined),
+  }
 }
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
@@ -932,6 +940,7 @@ export function withPages(scene: BattleScene, pages: readonly string[]): BattleS
     phase: 'telling',
     pages: [...scene.pages, ...pages],
     cues: [...scene.cues, ...pages.map(() => [])],
+    told: [...scene.told, ...pages.map(() => undefined)],
   }
 }
 
@@ -955,7 +964,18 @@ function play(scene: BattleScene, command: Command): BattleScene {
     )
   }
   while (cues.length < pages.length) cues.push([])
-  return { ...scene, state, phase: 'telling', cursor: 0, pages, cues, events, pending: undefined }
+  const told = pages.map((_, p) => events[p])
+  return {
+    ...scene,
+    state,
+    phase: 'telling',
+    cursor: 0,
+    pages,
+    cues,
+    told,
+    events,
+    pending: undefined,
+  }
 }
 
 /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
@@ -980,11 +1000,13 @@ export function battleChoose(
     case 'telling': {
       const pages = scene.pages.slice(1)
       const cues = scene.cues.slice(1)
-      if (pages.length > 0) return { ...scene, pages, cues }
+      const told = scene.told.slice(1)
+      if (pages.length > 0) return { ...scene, pages, cues, told }
       return {
         ...scene,
         pages,
         cues,
+        told,
         cursor: 0,
         phase: scene.state.outcome === 'ongoing' ? 'command' : 'over',
       }
@@ -1000,7 +1022,7 @@ export function battleChoose(
         const none =
           say(scene, 'menu', NO_SPELLS, { actor: scene.names[party], values: { str_2: kind } }) ??
           `${labelsOf(scene.state)[party] ?? '?'} doesn’t know any battle spells yet.`
-        return { ...scene, phase: 'telling', pages: [none], cues: [[]] }
+        return { ...scene, phase: 'telling', pages: [none], cues: [[]], told: [undefined] }
       }
       if (command === 'Items') {
         if (items.length > 0) return { ...scene, phase: 'item', cursor: 0, items }
@@ -1008,7 +1030,7 @@ export function battleChoose(
         const none =
           say(scene, 'menu', NO_ITEMS, { actor: scene.names[party] }) ??
           `${labelsOf(scene.state)[party] ?? '?'} has nothing to use.`
-        return { ...scene, phase: 'telling', pages: [none], cues: [[]] }
+        return { ...scene, phase: 'telling', pages: [none], cues: [[]], told: [undefined] }
       }
       const foes = livingFoes(scene.state)
       if (foes.length === 1) return play(scene, { kind: 'attack', target: foes[0] as number })

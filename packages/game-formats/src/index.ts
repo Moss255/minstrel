@@ -7,6 +7,19 @@ export {
   readActions,
 } from './actions.ts'
 export {
+  type ActionCommand,
+  type ActionScript,
+  type ActionSection,
+  isUnread,
+  readActionScript,
+  type ScriptValue,
+  sectionFor,
+  sectionsFor,
+  type UnreadCommand,
+  type Vec3,
+  type Who,
+} from './actionscript.ts'
+export {
   ATTENDING_TAG,
   type AttendingCharacter,
   type AttendingNumbers,

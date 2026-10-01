@@ -512,3 +512,48 @@ Read for the battle stages; FORMAT.md, "Where a battle is fought".
 **Open**: what the chase shot's yaw is measured from; the reaction record's parts; the tables
 at `ov000 0x02183280` and `0x0218328c`; four more shots (`0x0216e250`,
 `0x0216e3c4`, `0x0216e678`, `0x0216ea38`); what fills the request's `+0x20`.
+
+### 11. The action scripts, their reactions and the battle's message box — overlays 0, 24 and 25, 1 October 2026
+
+Read to play every action's own `.bact`; the findings are in
+`packages/game-formats/FORMAT.md`, "The action scripts". **Where minstrel
+translates it**: `packages/game-formats/src/actionscript.ts` (the builders),
+`apps/game/src/action-player.ts` (the run and the players),
+`action-reactions.ts` (the record, the queue, the presenter, the message
+box), `battle-camera.ts` (the camera command), held by
+`packages/game-formats/test/actionscript.test.ts`,
+`apps/game/test/action-player.test.ts` and, on a cartridge,
+`apps/game/test/action-scripts.test.ts`.
+
+- **The builders**, overlay 0 `data_ov000_02183b5c`: 139 `{tag, builder}`
+  pairs handed to `Script::SetOpcodeLookup` by `func_ov000_0216d1c4`, each a
+  `int f(Script::Parameter*, int)` that allocates a command `{kind, next, …}`
+  and appends it with `func_ov000_02169b78`; sections by `0x02169bf0` (`1`)
+  and `0x0216a438` (`16`). Every builder from `0x02169d08` to `0x0216d1b0` is
+  named by tag in FORMAT.md's table.
+- **The players**, overlay 25 `data_ov025_021ef538 + 4·kind`, run by
+  `func_ov025_021e9778` (the loop at `0x021e9830`: 0 again next frame, −1 done
+  and stop, else on), the run's end `021e9528`, its tidy-up `021e9558`.
+- **Choosing the script**: `func_ov025_021dbe10`, `021dc694` (`sp%03d.bact`
+  at `data_ov025_021ef454`), `021dfa9c` (the second blow).
+- **Who**: `func_ov000_021820bc` and its table `data_ov000_0218409c`, 58
+  entries, each resolver named in FORMAT.md.
+- **The reaction**: the record at the player's `+0x540`, `func_ov025_021ecc54`
+  (submit), `021ebb90` (the queue, each frame), `func_ov025_021d8c30` (one
+  result shown), the death `func_02048690` (ARM9).
+- **The result flags' writers** (overlays 0 and 24): `func_ov000_02159eac`
+  (set, the partner of `func_ov000_0215fd90`), `func_ov000_0215a004` (HP taken:
+  1, or 2 at nothing left), the slot codes by `func_ov024_021e9b74` and
+  `021e9f68`. A draw the ledger lacked, `func_ov000_02157288` at `0x02157340`
+  — `docs/conformance.md`.
+- **The message box**, the player's `+0x5e8`: `func_ov025_021ea474` (the
+  action's line), `021ea604`/`021eaf48` (a result's lines), `021ed634` (each
+  frame), `021ee438` (whether a result's lines are down).
+- **The built-in effects**: `func_ov000_02166a94` from the set-up
+  `func_ov000_02163db4` — ids 1, 2, 3, 14, 28 from `data/bin/btarc.nsarc` —
+  and the per-action requests of `func_ov025_021e8d20`, made by `021eb204`.
+
+**What is open**: the names of the result flags are read from what each
+leads to, not from a symbol; the battle's state 6 and what brings it (which
+puts a blow's line up); the animated camera's tracks; the particle format
+(`.beff`, `func_02055180`). Upstream names none of the addresses above.

@@ -1,10 +1,9 @@
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
-import type { NpcPlacement } from '@minstrel/game-formats'
+import type { ActionScript, NpcPlacement } from '@minstrel/game-formats'
 import type { Piece } from '@minstrel/gl'
 import { type Animation, type Model, readNsbmd } from '@minstrel/nitro-gfx'
-import type { BlowScript } from './blow-effect.ts'
 import { castPieces } from './cast.ts'
-import { blowScriptAmong } from './load.ts'
+import { actionScriptAmong } from './load.ts'
 import { speedsOf } from './motion-speed.ts'
 
 /**
@@ -35,8 +34,8 @@ export interface MonsterLook {
   readonly catalogue: Catalogue
   /** Each motion's speed, from its `.bcfg` — see `motion-speed.ts`. */
   readonly speeds: ReadonlyMap<string, number>
-  /** Its blow, from its own action script (`<code>.bact`) — see `blow-effect.ts`. */
-  readonly blow: BlowScript | undefined
+  /** Its own action script, `<code>.bact` (FORMAT.md, "The action scripts"). */
+  readonly script: ActionScript | undefined
 }
 
 const looksRead = new WeakMap<Uint8Array, Map<string, MonsterLook | undefined>>()
@@ -76,7 +75,7 @@ export function monsterLookOf(rom: Uint8Array, code: string): MonsterLook | unde
         motions,
         catalogue: cat,
         speeds: speedsOf(leaves),
-        blow: blowScriptAmong(leaves),
+        script: actionScriptAmong(leaves),
       }
     }
   } catch {

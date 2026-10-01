@@ -13,7 +13,8 @@ Ordered by what is blocking the milestone, not by how interesting it is.
 
 ## The battle scene — 29 September
 
-**Built this week, from the game's code**: a battle fought on the stage the
+**Built this week, from the game's code**: every action played by its own
+action script (1 October); a battle fought on the stage the
 ground names (or a set battle's own), lit by the stage's own sky gradient,
 everyone on the set-up's grid; the opening's eased shot, the command camera's
 slow orbit, the chase shot and the close-ups; every motion at its own `.bcfg`
@@ -29,15 +30,21 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
 
 **What is left**, in the order it would be taken:
 
-1. **Actions other than a blow.** Only the plain attack plays its script.
-   Spells, skills, items, Defend, Flee and calling for help have their own —
-   `actdef.nsarc/default.bact`, `actspl.nsarc`, `actskl.nsarc`, `sp%03d.bact`
-   — with their motions (`magic`, `item`, `guard`, `escape`), effects,
-   cameras (mode 5 close-ups, the group orbit) and formation changes (calling
-   for help moves everyone to their rows). Today they show only their text,
-   a monster's blow motion, and numbers as the page opens. A general script
-   player — running `.bact` records in order, with tag 9's skips, 26's waits
-   and 8's delays — would replace `blowNow`'s special case.
+1. ~~**Actions other than a blow.**~~ **Done, 1 October 2026**: every action
+   plays its own script, as the game chooses it — the fighter's own file, the
+   action's `sp%03d.bact`, or `default.bact` — through a general player of
+   the `.bact` opcodes (`readActionScript`, `action-player.ts`), its results
+   shown by the reaction queue and its presenter (`action-reactions.ts`), its
+   camera by the script's own commands (`battle-camera.ts`), its line by the
+   message box's rules, and the page going on by itself when the action ends.
+   Every opcode was read from overlays 0 and 25, the result flags from where
+   overlay 24 writes them, the built-in effects from the battle's set-up —
+   FORMAT.md, "The action scripts". **Two things corrected on the way**: a
+   blow from apart does not step in (`9 … 2 2.0` skips when *more* than 2
+   apart); a plain hit does flash its target and put effect 1 on it. **Not
+   yet shown** is listed in `docs/still-open.md` §2: sounds, the lights, the
+   animated cameras, particles and texture-pattern animation (NSBTP) — the
+   last of which is why a spell's impact draws as a square.
 2. **The end of a battle.** The victory orbit (overlay 25's sub-phase 5, the
    group orbit held 60 frames — INFERRED to be the victory's), a fallen
    monster's fade (`TransitionInheritedAlpha` to 0 over 300 ms, `ov025
