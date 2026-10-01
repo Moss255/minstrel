@@ -432,6 +432,10 @@ export interface ItemEffect {
     readonly defendable: boolean
     /** Whether its blows chain into a combo — see `Action.combos`. */
     readonly combos: boolean
+    /** Whether tension works on it and is spent by it — see `Action.tensed`. */
+    readonly tensed: boolean
+    /** Its kind (`+0x18` bits 5–11): 1 a blow's, 15 Psyche Up's. */
+    readonly kind: number
     readonly haywire: boolean
     /** Its record's `criticalPercent`: what multiplies a caster's chance of going haywire. */
     readonly criticalPercent: number
@@ -1582,6 +1586,8 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           evadable: action.evadable,
           defendable: action.defendable,
           combos: action.combos,
+          tensed: action.tensed,
+          kind: action.kind,
           haywire: action.criticalPercent > 0,
           criticalPercent: action.criticalPercent,
           levels: action.levels,

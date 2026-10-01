@@ -38,6 +38,8 @@ export interface ShownResult {
   readonly critical: boolean
   /** The lines it says, in order. */
   readonly lines: readonly string[]
+  /** The combo chain's count it was multiplied by — see the simulation's `combo.ts`; none for 0. */
+  readonly combo?: number
 }
 
 /** The action's results, as the reactions show them. */
@@ -147,6 +149,8 @@ export type ReactionEvent =
       readonly index: number
     }
   | { readonly kind: 'close-up'; readonly fighter: number }
+  /** The combo display, at the action's first damage number (`0x021da794`): its level, 0 to send it away. */
+  | { readonly kind: 'combo'; readonly level: number }
   | { readonly kind: 'shake-camera'; readonly amplitude: number; readonly ms: number }
 
 /**
@@ -169,6 +173,8 @@ export function makeReactions(
   let hitSound = 30
   let ownSound = -1
   let openingSaid = false
+  /** Whether the action's first damage number has been put up — the combo display's one start. */
+  let comboStarted = false
   const actor = hooks.context.actors[0]
 
   const say = (text: string, key: ShownResult | undefined, ms?: number) => {
@@ -356,6 +362,10 @@ export function makeReactions(
         numberKind: flags.has(42) ? 1 : 0,
         index,
       })
+      if (!comboStarted) {
+        comboStarted = true
+        out({ kind: 'combo', level: Math.min(r.combo ?? 0, 3) })
+      }
       if (r.critical && (hooks.context.action === 1 || hooks.context.action === 2)) {
         hooks.emit({ kind: 'lights', level: 0.5, ms: 300 })
         out({ kind: 'shake-camera', amplitude: 0.05, ms: 1000 })

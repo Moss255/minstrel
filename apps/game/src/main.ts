@@ -178,6 +178,15 @@ import {
   tickCamera,
 } from './battle-camera.ts'
 import {
+  COMBO_SOUNDS,
+  type Combo,
+  comboPieces,
+  leaveCombo,
+  NO_COMBO,
+  startCombo,
+  tickCombo,
+} from './battle-combo.ts'
+import {
   NUDGE_AT,
   type NumberKind,
   nudged,
@@ -6565,6 +6574,9 @@ function battleSpeed(): number {
   return shown?.run.speed ?? 1
 }
 
+/** The combo display's state — see `battle-combo.ts`. */
+let combo: Combo = { ...NO_COMBO }
+
 /** The numbers rising over the fighters — see `battle-numbers.ts`. */
 let risingNumbers: RisingNumber[] = []
 /** The page whose numbers have been put up, before and after its blow lands. */
@@ -6681,6 +6693,7 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
   while (numbersCarry >= TICK_MS) {
     numbersCarry -= TICK_MS
     risingNumbers = risingNumbers.flatMap((n) => numberFrame(n) ?? [])
+    tickCombo(combo)
     // Each, on its first showing frame, nudged clear of the rest — see `nudged`.
     if (risingNumbers.some((n) => n.timer === NUDGE_AT)) {
       const screen = risingNumbers.map((n) => onScreen(n.at, width, height, unit))
@@ -6689,8 +6702,22 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
       )
     }
   }
-  if (risingNumbers.length === 0) return
   context.imageSmoothingEnabled = false
+  // The combo display, in the corner, over the numbers — see `battle-combo.ts`.
+  for (const piece of comboPieces(combo)) {
+    const picture = numberFrameOf(piece.sheet, 0)
+    if (!picture) continue
+    context.globalAlpha = piece.alpha / 31
+    context.drawImage(
+      picture,
+      width / 2 + (piece.x - 128) * unit,
+      height / 2 + (piece.y - 96) * unit,
+      picture.width * unit,
+      picture.height * unit,
+    )
+  }
+  context.globalAlpha = 1
+  if (risingNumbers.length === 0) return
   for (const number of risingNumbers) {
     const point = onScreen(number.at, width, height, unit)
     if (!point) continue
@@ -7138,6 +7165,10 @@ function onReaction(event: ReactionEvent): void {
     if (number) risingNumbers = [...risingNumbers, number].slice(-16)
     return
   }
+  if (event.kind === 'combo') {
+    if (startCombo(combo, event.level)) battleSound('battle', COMBO_SOUNDS[event.level] ?? 0)
+    return
+  }
   if (!s) return
   if (event.kind === 'close-up') {
     playCamera(
@@ -7249,6 +7280,8 @@ function followShownChase(s: ActionShown): void {
 function finishShown(): void {
   const s = shown
   if (!s) return
+  // Its showing over, the combo display goes (`0x021db8ac`).
+  leaveCombo(combo)
   for (const f of s.run.fighters.values())
     if (f.state === 4 || f.state === 6) fallenShown.add(f.index)
   const stage = battleStage
@@ -7796,6 +7829,7 @@ function endFight(): void {
   battle = undefined
   battleStage = undefined
   shown = undefined
+  combo = { ...NO_COMBO }
   inOpening = false
   ending = undefined
   ownSounds = undefined

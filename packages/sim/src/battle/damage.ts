@@ -1,4 +1,5 @@
 import type { BattleRng } from './rng.ts'
+import { tensed } from './tension.ts'
 
 /**
  * A battle's arithmetic, in whole numbers.
@@ -288,17 +289,31 @@ export function dealt(
      * 27) — see `combo.ts`. Undefined for one that does not.
      */
     readonly combo?: number
+    /**
+     * The dealer's tension, for an action it works on (`+0x10` bit `0x2000`):
+     * its level, its side and its level of experience — see `tension.ts`.
+     */
+    readonly tension?: {
+      readonly level: number
+      readonly side: 'party' | 'foes'
+      readonly dealer: number
+    }
+    /** The target at the maximum of tension, for a blow of kind 1: half (`0x021e7a58`). */
+    readonly halved?: boolean
   },
 ): number {
   const f = Math.fround
-  let d = f(amount)
+  const base = f(amount)
+  // **Tension**, at the head (`0x021e6b9c`): times its multiplier, plus its bonus.
+  let d = to.tension ? tensed(base, to.tension.level, to.tension.side, to.tension.dealer) : base
   if (to.critical) {
     const boosted = f(f(1.2) * d)
     const drawn =
       to.attack !== undefined
         ? f(f(to.attack) * rng.floatBetween(0.95, 1.05))
         : f(d * rng.floatBetween(1.5, 2))
-    const floor = to.attack !== undefined ? d : 0
+    // The Attack's floor is the damage as it came, before tension (`0x021e6e74`).
+    const floor = to.attack !== undefined ? base : 0
     d = boosted < drawn ? drawn : boosted
     if (d < floor) d = floor
   }
@@ -307,6 +322,8 @@ export function dealt(
   if (to.guard !== undefined && to.guard !== 1) d = f(d * f(to.guard))
   if (to.blocked || to.dodged) d = 0
   else if (d <= 0 && to.resistance > 0) d = f(rng.below(2))
+  // A target at the maximum of tension takes half a blow (`0x021e7a58`–`0x021e7a88`).
+  if (to.halved) d = f(f(0.5) * d)
   // **The combo** (`0x021e7a8c`–`0x021e7b28`), after the coin and before the
   // whole number: a blow of at least one, times the table by the chain's count.
   if (to.combo !== undefined && d >= 1) d = f(d * comboMultiplier(to.combo))

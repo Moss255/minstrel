@@ -596,6 +596,54 @@ word carries a multi-turn duration byte, which a one-turn defence would not.
 The witness experiment is no longer needed to settle the bit; what it would now
 measure is our own stand-in.
 
+### Tension, modelled — 1 October 2026
+
+Read from the decomp (USA) and held to the oracle; `packages/sim/src/battle/tension.ts`.
+**Two corrections to the section above**: `func_02087704` is no decay with the
+rounds — it has three callers in the whole binary, Soothe Sayer, Morale Masher
+and the party's equipment on a blow, and no pointer to it exists, so tension
+**stays until it is spent or knocked down**; and the multiply is **at the head
+of `func_ov024_021e6a90`** (`0x021e6b9c`–`0x021e6d18`), before the critical,
+not at step 6.
+
+- **Psyche Up** (161, kind 15, `func_ov024_021dc93c`) costs nothing and goes
+  one step, held so the level never passes 4. From 0, 1 or 2 there is no draw;
+  **from 3 a coin of the battle's own** (`NextRandomMax(battle, 2)`,
+  `0x020876b4`) — 0 reaches the maximum and clears poison (`func_02088150`),
+  1 fails with message `0x36`. At the maximum already: "But nothing happens."
+  It goes through the resolver first — the target's die, the critical roll,
+  the accuracy draw — and cannot be dodged or blocked. **0x151 and 0x152** go
+  straight to their level, each level told, no draw, after `0x152`'s line.
+- **The damage**: `fround(fround(d × m[level][dealer's side]) + b)`, where `b`
+  is `CalculateTensionBonus` handed **the level byte, 1 to 4** — not a 0–100
+  number — and the dealer's level (the party's at their vocation). The Attack's
+  critical floor is the damage as it came, so it carries no tension
+  (`0x021e6e74`). A target at the maximum takes half a blow of kind 1
+  (`0x021e7a58`), after the coin and before the combo.
+- **Who carries it**: the action's `+0x10` bit `0x2000` — 223 of 681, the
+  Attack, the attack spells, the weapon skills and **six heals** (Heal among
+  them, which tension multiplies too); not Defend, nor Psyche Up, nor the herbs.
+- **Spent** once, after the action (`0x021ed48c`), by any action carrying the
+  bit — a hit, a miss, a dodge, a block, a blow of nothing — with "…'s tension
+  returns to normal." (`0x1f1`) for one still standing. **Sleep** takes it away
+  (`func_02088338`).
+- **Shown** as the presenter's tension number for flags 35 and 7: 5, 20, 50,
+  100 (`0x021d9eb4`).
+
+**Not modelled, and why**: the party has no Abilities command yet, so only
+monsters psyche up — though Psyche Up is a skill panel (tree 18, 16 points);
+Egg On and the others that reach someone else; the rise when hit under Feel the
+Burn (`func_ov000_0215b5a0`); a reflected or countered blow, which neither
+multiplies nor spends (`ctx + 0x76`); the metal body's second multiply with no
+bonus; a monster's own level for the bonus (INFERRED to be `mon_data`'s
+`+0x0a` low 7 bits, and not taken: it counts as nothing, a tenth of which is
+nothing for every monster under level 10); sleep and status `0x8` zeroing the
+byte while leaving `0x1000000`, which our single level cannot hold; what
+`func_ov000_0215af54` queues at the maximum.
+
+**What could not be found.** The tension aura a psyched-up fighter wears is not
+read; nothing is drawn.
+
 ## The party's own resistances — where they live, and why they are still whole
 
 Read 22 September. A fighter's 22 resistance bytes sit at `status + 0x3E`, and
@@ -718,10 +766,9 @@ none of the battle's own numbers.
 is still to read is four items long. What is left is of three kinds, and none
 of it is a blow being worked out wrongly:
 
-1. **Read, and not modelled, because the slice cannot reach it**: tension and
-   its table, the four buff multipliers no spell of the slice's casts, the coin
+1. **Read, and not modelled, because the slice cannot reach it**: the four buff multipliers no spell of the slice's casts, the coin
    that stands in for the critical roll on Thunder Thrust and Hatchet Man, the
-   critical-rate doubling, the metal body, the combo table, the wards, the
+   critical-rate doubling, the metal body, the wards, the
    slayer multipliers, the drop roll's four further passes, a metamorphosis.
    Each is in this file with its addresses; each would be a small piece of work
    the day a later slice needs it.

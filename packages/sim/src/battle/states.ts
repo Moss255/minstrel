@@ -33,6 +33,8 @@ export interface States {
   readonly poisoned: boolean
   readonly defence: Level
   readonly agility: Level
+  /** Its tension's level, 0 to 4 — see `tension.ts`; none when not given. */
+  readonly tension?: number
 }
 
 export const NO_STATES: States = {

@@ -578,3 +578,29 @@ out". **Where minstrel translates it**: `apps/game/src/main.ts`
 
 **What is open**: when the monsters play `appear` at the opening; the swirl
 model's placement; the sub screen's fade up after a battle; the tick source.
+
+### 13. Tension and the combo — overlays 0, 24, 25 and ARM9, 1 October 2026
+
+Findings in `docs/conformance.md`, "Tension, modelled" and the combo table's
+entry. **Where minstrel translates it**: `packages/sim/src/battle/tension.ts`,
+`combo.ts`, `damage.ts` (`dealt`); `apps/game/src/battle-combo.ts`.
+
+- **Tension**: Psyche Up's handler `func_ov024_021dc93c`; its step
+  `func_02088208` → `func_0208767c` (the coin at `0x020876b4`); the maximum's
+  setter `func_02088150`, the level's `func_02088220`; the gate
+  `func_020881c4`; the multiplier `func_02074738` and its table at
+  `0x020e88f8`; the head of `func_ov024_021e6a90` (`0x021e6b9c`–`0x021e6d18`)
+  and its second multiply against a metal body (`0x021e79d0`); spending in
+  `func_ov024_021eb5d0` (`0x021ed48c`–`0x021ed564`) through `func_020881ac` and
+  `func_02088234`; the rise when hit `func_ov000_0215b5a0` (its chances at
+  `0x02182bf4`); the three callers of the one-step fall `func_02087704`.
+- **The combo**: the chain counter `func_ov024_021ea584` (battle `+0x8e50`,
+  `+0x8e52`, `+0x8e58`, `+0x8e82`, `+0x8e83`) and its reset
+  `func_ov000_0215cd80`; the table at `data_ov024_021fe778`; the display —
+  `func_ov000_021823dc` start, `02182498` leave, `021824d8` timers, `0218251c`
+  draw, `0218214c` load, its places at `data_ov000_021836d5`.
+
+**What is open**: what `func_ov000_0215af54` queues at the maximum; what reads
+`ctx + 0x71`; the tension aura; whether the accuracy roll can fail for
+accuracy mode 3.
+

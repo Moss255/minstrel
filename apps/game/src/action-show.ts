@@ -47,6 +47,10 @@ export const FLAG = {
   dodged: 5,
   blocked: 6,
   recovered: 37,
+  /** Tension raised, shown as its number (`func_ov024_021dc93c`, `0x021dccf0`). */
+  tension: 35,
+  /** The maximum reached (`0x021dcd08`). */
+  most: 7,
 } as const
 
 /** What a blow, or a spell that harms, came to — see {@link FLAG}. */
@@ -105,7 +109,10 @@ export function actionOf(
             {
               receiver: obj(event.target),
               results: [
-                result(flags, event.damage, event.critical, [...rest, ...tail(event.target)]),
+                {
+                  ...result(flags, event.damage, event.critical, [...rest, ...tail(event.target)]),
+                  ...(event.combo ? { combo: event.combo } : {}),
+                },
               ],
             },
           ],
@@ -182,6 +189,38 @@ export function actionOf(
         context: { action: ACTIONS.monsterFlee, actors: [obj(event.actor)], targets: [] },
         results: { opening: lines.join('\n') || undefined, targets: [], own: [] },
       }
+    case 'psyche': {
+      // One result a step, on the one psyching up: the level reached, or
+      // nothing for the coin lost; one empty result when nothing happens.
+      const n = Math.max(1, event.steps.length)
+      const opens = lines.slice(0, lines.length - n)
+      const per = lines.slice(lines.length - n)
+      const steps = event.steps.length === 0 ? [0] : event.steps
+      return {
+        context: {
+          action: event.action,
+          actors: [obj(event.actor)],
+          targets: [{ receivers: [obj(event.actor)] }],
+        },
+        results: {
+          opening: opens.join('\n') || undefined,
+          targets: [
+            {
+              receiver: obj(event.actor),
+              results: steps.map((step, k) =>
+                result(
+                  step === 4 ? [FLAG.tension, FLAG.most] : step > 0 ? [FLAG.tension] : [],
+                  Math.max(0, step),
+                  false,
+                  per[k] !== undefined ? [per[k] as string] : [],
+                ),
+              ),
+            },
+          ],
+          own: [],
+        },
+      }
+    }
     case 'defend':
     case 'wait': {
       const action = event.kind === 'defend' ? ACTIONS.defend : event.action

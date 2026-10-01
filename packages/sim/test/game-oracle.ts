@@ -139,9 +139,9 @@ export function calculateTensionBonus(tension: number, attackerLevel: number): n
  * `[status + 0x24]`, 0 to 4, the party's column and a monster's.
  *
  * The level is the psyche-up ladder's: bit `0x800000` of the status word says
- * 1 to 3 and `0x1000000` says 4, and both are cleared once its carrier acts.
- * Nothing in the slice psyches up, so this is read and not modelled — see
- * `docs/conformance.md`, "It was not defending".
+ * 1 to 3 and `0x1000000` says 4, and both are cleared by the next action that
+ * carries tension. Modelled in `src/battle/tension.ts` and held to this — see
+ * `docs/conformance.md`, "Tension, modelled".
  */
 export const TENSION_MULTIPLIER = {
   party: [1.0, 1.5, 2.5, 4.0, 6.0],

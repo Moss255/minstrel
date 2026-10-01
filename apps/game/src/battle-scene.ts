@@ -13,6 +13,7 @@ import {
   playRound,
   type Spell,
   startBattle,
+  TENSION_SHOWN,
   withHp,
   withMp,
 } from '@minstrel/sim'
@@ -117,7 +118,16 @@ export const ACTION_SAYS = {
   agilityNormal: 80,
   alreadyPoisoned: 82,
   wakes: 116,
+  /** "But …'s tension doesn't increase to the maximum." — the coin lost, 0x36. */
+  tensionFails: 0x36,
+  /** "…'s tension gets a huge boost all of a sudden!" — 0x151 and 0x152's, `0x021dca8c`. */
+  tensionBoost: 0x152,
+  /** "…'s tension returns to normal." — spent, `0x021ed4d0`. */
+  tensionSpent: 0x1f1,
 } as const
+
+/** Tension rising to 5, 20, 50 and 100, by the level reached — `func_ov024_021e8c48`'s 0x31 to 0x34. */
+const TENSION_RISES = [0, 0x31, 0x32, 0x33, 0x34] as const
 
 type ChangeKind = Extract<BattleEvent, { kind: 'change' }>['change']
 
@@ -260,6 +270,8 @@ export interface Castable {
     readonly evadable: boolean
     readonly defendable?: boolean
     readonly combos?: boolean
+    readonly tensed?: boolean
+    readonly kind?: number
     readonly haywire: boolean
     /** Its record's own multiplier on a caster's chance of going haywire. */
     readonly criticalPercent?: number
@@ -295,6 +307,10 @@ export function battleSpellOf(
         : undefined
   const reach = REACHES.get(action.reach)
   if (!does || !reach) return undefined
+  // A blow with no range — the bodkin fletcher's 231 — deals what its own
+  // handler works out, which is not read; without this it would be taken for
+  // a spell of no amount, which the battle reads as everything the target has.
+  if (does === 'harm' && !action.range) return undefined
   return {
     spell: {
       action: action.action,
@@ -312,6 +328,8 @@ export function battleSpellOf(
         : { criticalPercent: action.rolls.criticalPercent }),
       ...(action.rolls?.defendable === undefined ? {} : { defendable: action.rolls.defendable }),
       ...(action.rolls?.combos ? { combos: true } : {}),
+      ...(action.rolls?.tensed ? { tensed: true } : {}),
+      ...(action.rolls?.kind === undefined ? {} : { kind: action.rolls.kind }),
     },
     name: { name: action.name },
     message: action.message,
@@ -344,6 +362,8 @@ export const FOE_FLEE = 225
  * reference's, and what the cartridge says too.
  */
 export const POISON_ATTACK = 275
+/** Psyche Up's kind of action (`+0x18` bits 5–11), whose handler is `func_ov024_021dc93c`. */
+const PSYCHE_KIND = 15
 export const POISON_CHANCE = 12
 /** The rider that poisons — INFERRED from who carries it: Toxic Dagger, Venomissile. */
 export const POISON_RIDER = 4
@@ -443,6 +463,23 @@ export function foeWaysOf(
       return {
         kind: 'change',
         changing: { action: word, cost: action.cost, reach, ...recordsOwn(changes, action.rolls) },
+      }
+    }
+    // **Psyche Up** and its kind (15, `func_ov024_021dc93c`) on oneself, by the
+    // record's steps; 0x151 and 0x152 go straight to theirs. Egg On and the
+    // others that reach someone else are not modelled yet.
+    if (action?.rolls?.kind === PSYCHE_KIND && action.reach === ActionReach.Actor) {
+      known.set(word, {
+        name: { name: action.name },
+        message: action.message,
+        opening: action.opening,
+      })
+      const outright = word === 0x151 || word === 0x152
+      return {
+        kind: 'psyche',
+        action: word,
+        steps: Math.max(1, action.rolls.levels),
+        ...(outright ? { outright } : {}),
       }
     }
     // A way that does nothing — effect 0, as fleeing's — is a turn spent
@@ -821,6 +858,45 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           target: actor,
           values: { val_1: event.damage },
         }) ?? sentence(`The poison hurts ${who}: ${event.damage} damage.`)
+      )
+    case 'psyche': {
+      const told = scene.known.get(event.action)
+      const action = told?.name ?? { name: `move ${event.action}` }
+      const opens = [
+        ...(told?.opening
+          ? [say(scene, 'actions', told.opening, { actor, action, item: action })]
+          : []),
+        ...(event.outright ? [say(scene, 'actions', ACTION_SAYS.tensionBoost, { actor })] : []),
+      ]
+      const steps =
+        event.steps.length === 0
+          ? [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]
+          : event.steps.map((step) =>
+              say(
+                scene,
+                'actions',
+                step > 0 ? (TENSION_RISES[step] ?? 0) : ACTION_SAYS.tensionFails,
+                { target: actor },
+              ),
+            )
+      const game = lines(...opens, ...steps)
+      if (game !== undefined) return game
+      const ours = [
+        ...ourOpeningOf(told?.opening ?? 0, who, action),
+        ...(event.steps.length === 0
+          ? ['But nothing happens.']
+          : event.steps.map((step) =>
+              step > 0
+                ? `${who}'s tension increases to ${TENSION_SHOWN[step] ?? 0}.`
+                : `But ${who}'s tension doesn't increase to the maximum.`,
+            )),
+      ]
+      return ours.map(sentence).join('\n')
+    }
+    case 'calmed':
+      return (
+        say(scene, 'actions', ACTION_SAYS.tensionSpent, { actor }) ??
+        sentence(`${who}'s tension returns to normal.`)
       )
     case 'defeated': {
       const foe = state.fighters[event.actor]?.side === 'foes'

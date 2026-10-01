@@ -23,6 +23,7 @@ export {
   withHp,
   withMp,
 } from './battle/battle.ts'
+export { brokenChain, type Chain, chainStep, NO_CHAIN } from './battle/combo.ts'
 export {
   blockChance,
   criticalBlow,
@@ -50,6 +51,13 @@ export {
   SLEEP_TURNS,
   type States,
 } from './battle/states.ts'
+export {
+  psychedUp,
+  TENSION_MOST,
+  TENSION_MULTIPLIERS,
+  TENSION_SHOWN,
+  tensed,
+} from './battle/tension.ts'
 export {
   type CharacterShape,
   type CharacterState,

@@ -203,6 +203,14 @@ export interface Action {
    */
   readonly combos: boolean
   /**
+   * Whether tension works on it, and is spent by it — `+0x10`, bit `0x2000`
+   * (read 1 October 2026: `func_ov024_021e6a90` multiplies by it, the
+   * resolver spends it after an action carrying it, `0x021ed48c`). The plain
+   * Attack, the attack spells and six heals; not Defend, nor Psyche Up. 223
+   * of 681.
+   */
+  readonly tensed: boolean
+  /**
    * Whether its *amount* scales by a number of the user's — the same two bits
    * as {@link accuracyMode}, at 2. `GetAttackBaseDamage` (overlay 24,
    * `0x021e7c0c`) tests them for one of the party: at 2, and with a number
@@ -336,6 +344,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       damageCap: view.getUint32(at + 0x1c, true) & 0x3fff,
       worksOnMetal: (view.getUint32(at + 0x10, true) & 0x1000000) !== 0,
       combos: (view.getUint32(at + 0x2c, true) & 0x8000000) !== 0,
+      tensed: (view.getUint32(at + 0x10, true) & 0x2000) !== 0,
       element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
       landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,

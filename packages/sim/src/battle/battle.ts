@@ -21,6 +21,7 @@ import {
   sleptThrough,
   wornAfterTurn,
 } from './states.ts'
+import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
 
 /**
  * A battle, round by round: who acts in what order, what an attack does, and
@@ -163,7 +164,11 @@ export interface Fighter {
   readonly acts?: readonly FoeAction[]
   /** The weights its ways are drawn by, in 256, where they are not the rules' — a boss's falling table. */
   readonly choice?: readonly number[]
-  /** A party member's level, which a monster weighs before it runs. */
+  /**
+   * A party member's level, which a monster weighs before it runs, and which
+   * tension's bonus is made from (`CalculateTensionBonus`) — at their
+   * vocation. A monster's own is not given, and counts as nothing.
+   */
   readonly level?: number
   /**
    * The party level a monster runs from: a drawn Flee is taken only when the
@@ -236,6 +241,10 @@ export interface Spell {
   readonly defendable?: boolean
   /** Whether its blows chain into a combo — its record's `+0x2C` bit 27; Frizz has it. */
   readonly combos?: boolean
+  /** Whether tension works on it and is spent by it — its record's `+0x10` bit `0x2000`. */
+  readonly tensed?: boolean
+  /** Its record's kind: 1, a blow's, is halved on a target at the maximum of tension. */
+  readonly kind?: number
 }
 
 /** What a change of state does, and its chance in 100 of landing — see `states.ts`. */
@@ -287,6 +296,12 @@ export type FoeAction =
   | { readonly kind: 'wait'; readonly action: number }
   | { readonly kind: 'spell'; readonly spell: Spell }
   | { readonly kind: 'change'; readonly changing: Changing }
+  | {
+      readonly kind: 'psyche'
+      readonly action: number
+      readonly steps: number
+      readonly outright?: boolean
+    }
 
 export type Command =
   /** An attack; one that poisons, by its chance in 100, gives it. */
@@ -301,6 +316,17 @@ export type Command =
   | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal }
   /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
   | { readonly kind: 'spell'; readonly spell: Spell; readonly target: number }
+  /**
+   * Psyche Up, its record's number of steps (`+0x30`), on oneself — see
+   * `tension.ts`; `outright`, the two (0x151, 0x152) that go straight to that
+   * level, step by step and with no coin.
+   */
+  | {
+      readonly kind: 'psyche'
+      readonly action: number
+      readonly steps: number
+      readonly outright?: boolean
+    }
 
 export type BattleEvent =
   | {
@@ -357,6 +383,20 @@ export type BattleEvent =
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
   | { readonly kind: 'defeated'; readonly actor: number }
+  /**
+   * Psyche Up: each step's new level, 1 to 4, or −1 for the coin lost at 3;
+   * none for one that could not (at the maximum already) — "But nothing happens."
+   */
+  | {
+      readonly kind: 'psyche'
+      readonly actor: number
+      readonly action: number
+      readonly steps: readonly number[]
+      /** One that went straight up — "…'s tension gets a huge boost all of a sudden!" first. */
+      readonly outright?: boolean
+    }
+  /** Tension spent, after the action that spent it — from the maximum, or below it. */
+  | { readonly kind: 'calmed'; readonly actor: number; readonly most: boolean }
 
 export type Outcome = 'ongoing' | 'won' | 'lost' | 'fled'
 
@@ -586,6 +626,7 @@ function foeCommand(
   if (act.kind === 'flee') return outclassed(me, fighters) ? { kind: 'flee' } : attack
   if (act.kind === 'wait') return { kind: 'wait', action: act.action }
   if (act.kind === 'change') return { kind: 'change', changing: act.changing, target: -1 }
+  if (act.kind === 'psyche') return act
   if (act.spell.does === 'harm') return { kind: 'spell', spell: act.spell, target: -1 }
   // The most wounded: the lowest share of its hit points, compared in whole numbers.
   let best = -1
@@ -674,6 +715,22 @@ export function playRound(
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
     )
   }
+  /** A fighter's tension as the damage takes it — none when it has none. */
+  const tensionOf = (f: FighterState) =>
+    f.states.tension
+      ? { level: f.states.tension, side: f.side, dealer: f.side === 'party' ? (f.level ?? 0) : 0 }
+      : undefined
+  /**
+   * Tension spent, once, after an action it works on (`0x021ed48c`): whatever
+   * the action came to. Told only for one still standing.
+   */
+  const calm = (actor: number) => {
+    const f = fighters[actor]
+    const level = f?.states.tension
+    if (!f || !level) return
+    setStates(actor, { tension: 0 })
+    if (alive(f)) events.push({ kind: 'calmed', actor, most: level === TENSION_MOST })
+  }
   const hurt = (target: number, damage: number) => {
     fighters = fighters.map((f, i) => (i === target ? { ...f, hp: Math.max(0, f.hp - damage) } : f))
     if (damage > 0 && fighters[target]?.hp === 0) events.push({ kind: 'defeated', actor: target })
@@ -748,6 +805,45 @@ export function playRound(
       }
       continue
     }
+    if (command.kind === 'psyche') {
+      // **Psyche Up** (`func_ov024_021dc93c`) goes through the resolver as
+      // anything does: the die it keeps, the critical roll, and the accuracy —
+      // it cannot be dodged or blocked, and its accuracy stands at a hundred.
+      // Then its own steps, held so that the level never passes 4, each from
+      // 3 a coin of the battle's. At the maximum already, nothing happens.
+      rng.below(100)
+      rng.below(10_000)
+      rng.below(100)
+      const was = me.states.tension ?? 0
+      const steps: number[] = []
+      let level = was
+      if (command.outright) {
+        // Straight to the record's level, each level on the way told, no draw
+        // (`0x021dc9f4`–`0x021dcc60`); nothing for one already there.
+        for (let next = was + 1; next <= Math.min(command.steps, TENSION_MOST); next++) {
+          steps.push(next)
+          level = next
+        }
+      } else {
+        for (let n = Math.min(command.steps, TENSION_MOST - was); n > 0; n--) {
+          const next = psychedUp(level, rng)
+          steps.push(next)
+          if (next > 0) level = next
+        }
+      }
+      // Reaching the maximum clears poison (`func_02088150`).
+      if (level !== was) {
+        setStates(actor, { tension: level, ...(level === TENSION_MOST ? { poisoned: false } : {}) })
+      }
+      events.push({
+        kind: 'psyche',
+        actor,
+        action: command.action,
+        steps,
+        ...(command.outright ? { outright: true } : {}),
+      })
+      continue
+    }
     if (command.kind === 'item') {
       let healed: number | undefined
       if (command.heal) {
@@ -816,6 +912,7 @@ export function playRound(
       // literal nothing (`func_020748f8`) and its draw is spent all the same.
       const rate = criticalRate(me, spell.criticalPercent ?? 100, rules.magicCritical)
       const once = spell.reach !== 'one'
+      const tension = spell.tensed ? tensionOf(me) : undefined
       let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
         const them = fighters[target] as FighterState
@@ -836,6 +933,7 @@ export function playRound(
         rng.below(100)
         let amount = spell.amount ? amountFor(rng, me, spell.amount) : them.maxHp
         if (spell.does === 'harm' && spell.amount) {
+          const halved = spell.kind === 1 && them.states.tension === TENSION_MOST
           // Its critical, then the target's resistance to its element, then
           // the whole number — the game's, in the game's floats: `dealt`.
           amount = dealt(rng, amount, {
@@ -846,10 +944,18 @@ export function playRound(
             // among them, a heal and a herb are not.
             ...(them.defending && spell.defendable ? { guard: GUARD_LEVELS[1] } : {}),
             ...(spell.combos ? { combo: chain.count } : {}),
+            ...(tension ? { tension } : {}),
+            ...(halved ? { halved } : {}),
           })
           // A blow of less than one breaks the chain (`0x021e7b20`).
           if (amount < 1) chain = brokenChain(chain)
-        } else if (critical && spell.amount) amount = criticalDamage(rng, amount)
+        } else if (spell.amount) {
+          // A heal goes through the same function (`0x021ec7a8`): tension at its head.
+          if (tension) {
+            amount = Math.trunc(tensed(amount, tension.level, tension.side, tension.dealer))
+          }
+          if (critical) amount = criticalDamage(rng, amount)
+        }
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         return { target, amount }
       })
@@ -859,6 +965,7 @@ export function playRound(
         if (spell.does === 'harm') hurt(target, amount)
         else fighters = fighters.map((f, i) => (i === target ? { ...f, hp: f.hp + amount } : f))
       }
+      if (spell.tensed) calm(actor)
       outcome = outcomeOf(fighters)
       if (outcome !== 'ongoing') break
       continue
@@ -944,7 +1051,8 @@ export function playRound(
         if (!(critical && resistance > 0) && draw >= accuracy)
           return { target, result: 'resisted' as const }
         if (change.kind === 'sleep') {
-          setStates(target, { sleep: SLEEP_TURNS })
+          // Sleep takes the tension away (`func_02088338`).
+          setStates(target, { sleep: SLEEP_TURNS, ...(them.states.tension ? { tension: 0 } : {}) })
           return { target, result: 'asleep' as const }
         }
         if (change.kind === 'poison') {
@@ -1022,6 +1130,7 @@ export function playRound(
     // applied before the 0-or-1 coin, so a defended blow that comes to
     // nothing still deals 0 or 1; and the code never asks whose blow it is,
     // so a monster's guard halves the party's blow as well.
+    const tension = tensionOf(me)
     damage = dealt(rng, damage, {
       critical,
       attack: me.attack,
@@ -1030,6 +1139,9 @@ export function playRound(
       blocked,
       ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),
       combo: chain.count,
+      // The plain Attack carries tension (`+0x10` bit `0x2000`), and is of kind 1.
+      ...(tension ? { tension } : {}),
+      ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
     })
     // The count the blow was multiplied by, for its showing — 0 for none.
     const combo = !dodged && !blocked && damage >= 1 ? chain.count : 0
@@ -1061,6 +1173,7 @@ export function playRound(
       ...(combo > 0 ? { combo } : {}),
     })
     hurt(target, damage)
+    calm(actor)
     outcome = outcomeOf(fighters)
     if (outcome !== 'ongoing') break
   }

@@ -85,12 +85,17 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    (`0x12`, `0x13`), whose archive's setting is not read; a character with no
    record for its motion, which the game does not advance, still plays at 30
    a second here.
-6. **The rest of what is read and not yet played**: the numbers' MP kinds
-   (nothing yet takes or gives MP by a number) and tension (no Psyche Up);
-   the combo display (`bt_combo*.spr`); the chase shot's measured yaw;
-   `Object3D +0x18e`'s bump to a monster's close-up; the lighting slot a
-   battle's request carries (`+5`, 2 unless set) — the engine takes its
-   clock's.
+6. **The rest of what is read and not yet played**. **Done 1 October**: the
+   combo — the chain, its multiplier and its display, top left
+   (`battle-combo.ts`); tension — Psyche Up for the monsters that have it, the
+   multiplier and bonus, its spending, its number (`tension.ts`); the chase
+   shot's yaw. **Not yet**: the numbers' MP kinds — the presenter shows them,
+   and nothing the party can reach takes or gives MP by a number until it
+   holds a wand or magic water (the Attack's drain, `func_ov000_021573a8`);
+   the party's Psyche Up, which waits on an Abilities command; the chase's
+   offset for a tall target; `Object3D +0x18e`'s bump to a monster's
+   close-up; the lighting slot a battle's request carries (`+5`, 2 unless
+   set) — the engine takes its clock's.
 
 **To read from the game**, when the list above reaches them: what fills the
 battle request's `+0x20` (a set battle's stage — the data says `eventbattle
