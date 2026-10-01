@@ -6,7 +6,6 @@ import { stageMap } from '../src/load.ts'
 import {
   actorCloseUp,
   CLOSE_UP_PULL,
-  chaseView,
   EASE_KEEP,
   easeOrbit,
   gridPlace,
@@ -198,22 +197,6 @@ describe('the camera while a command is chosen', () => {
     const view = victoryView([{ x: 0, z: 2 }])
     expect(view.orbit.distance).toBeCloseTo(12 - Math.hypot(0xcc / 4096, 2))
     expect(view.target[2]).toBe(2)
-  })
-})
-
-describe('the chase shot', () => {
-  it('opens the chase shot on the one acting, carried half the way — 2 when half is past 3', () => {
-    const near = chaseView({ x: 0, z: 2 }, { x: 0, z: -2 }, 1.2, 0.8, 0, 0)
-    expect(near.target[2]).toBeCloseTo(0)
-    expect(near.target[1]).toBeCloseTo(0.9)
-    expect(near.orbit).toMatchObject({ height: 0.5, distance: 5 })
-    const far = chaseView({ x: 0, z: 4.5 }, { x: 0, z: -4.5 }, 1.2, 0.8, 2, 0)
-    expect(far.target[2]).toBeCloseTo(2.5)
-    expect(far.orbit.distance).toBe(10)
-    // A tall one struck: the eye below, at least 8 away.
-    const tall = chaseView({ x: 0, z: 4.5 }, { x: 0, z: -4.5 }, 1.2, 5, 0, 0.5)
-    expect(tall.orbit.height).toBeCloseTo(-1.6)
-    expect(tall.orbit.distance).toBe(8)
   })
 })
 

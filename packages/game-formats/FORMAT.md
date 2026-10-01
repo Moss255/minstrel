@@ -3434,17 +3434,37 @@ half-angle: 30° (`func_ov000_0216d370`).
   ±0x8000), divides it by 0xffff as a whole number, which leaves 0, shifts
   that up 12 and adds −0x999. The camera while a command is chosen is
   overlay 26's — see "The way into a battle, and out".
-- **An action begins** (`ov025 func_021db8d8`) by putting everyone on the grid
-  and **perhaps** cutting to the chase shot (`0x0216e678`, re-aimed each frame
-  by `0x0216ea38`): never on the first action; after that on a draw of one
-  in 5 less the actions passed without it, and always on the fifth. Its
-  look-at is the one acting, carried toward the one acted on by half the
-  distance — 2 when half is past 3 — at three quarters of the actor's height,
-  following at 5% a frame; its orbit one of four at `0x021832c4`: 162° or
-  198° round at 5, 18° or 342° at 10, all 0.5 up; a target taller than 2.5
-  puts the eye 1.2 to 2 below, at least 8 away. What the yaw is measured from
-  is not read. **An action ends** with the camera left where it is
-  (`0x021dcbf4`).
+- **While commands are chosen** (overlay 26, state 7; read 1 October 2026):
+  each round, sub-state 3 (`0x021d8fd0`) cuts to the opening's wide shot
+  (`func_ov000_0216118c(battle, 1)` → `0216d600(cam, 1, wide, …)`, half-angle
+  22) — eased in on round 0 only — and nothing moves the camera after: no shot
+  on the one choosing, none on a target, no orbit. **The party is hidden and
+  the monsters shown** (who 38 and 39, `0x021d9018`–`0x021d9034`), each
+  monster turned at once to face (0, 0, the eye's z) (`func_ov026_021daec8`),
+  their idles staggered from round 1. For 47 kinds of monster a table in
+  overlay 26 (`0x021de87c`, `func_ov026_021d8aac`) replaces the eye and
+  look-at with fixed ones — not read here.
+- **An action begins** (`ov025 func_021db8d8`): unless its script opens on a
+  camera of its own — a `12` other than mode 10 before any `61` or `7`, or a
+  `34` — everyone is made visible, put on the grid, and **the chase shot is
+  always taken** (`0x0216e678`), cut to at once and followed (`0x0216ea38`).
+  **Corrected 1 October 2026**: it is not "perhaps", nor "never on the first
+  action". The draw decides only its start pose — forced on a round's first
+  action (`0x021dbb2c`), else on the fifth without one or a draw of one in 5
+  less those passed. Its pose: the look-at on the actor's side or the
+  target's — the one at least 2.0 tall against one that is not, else the
+  draw's parity — carried toward the other by half the gap, at most 2, at
+  three quarters of that one's height **capped at 1.0**; the yaw along the
+  line ±162° (+180° on the target's side), whichever is nearer the yaw it had;
+  on a draw under 30 height 1 and distance the larger of 1.6 times the gap and
+  7, else by the pair's indices mod 3 — distance 10, 12, 14, height 1, 1.75,
+  2.25 (`0x02183268`, `0x02183298`); a target taller than 2.5 looked at half
+  its height, at least 2.5, at least 8 away, its orbit height the start
+  pose's −1.2 to −2.0; the roll by the indices mod 5 (`0x0218325c`). It
+  follows each update: the look-at 5% of the way, the yaw 5%, height and
+  distance 2%, the roll 10%, each within a cap that grows a tick. The
+  half-angle goes back to 15. **An action ends** with the camera left where
+  it is (`0x021dcbf4`).
 - The battle's states (the jump table at `0x021607d4` counts from 0): 0
   load, 1 set-up, 4 leave, 6 the field back, 7 overlay 26's command phase, 8
   overlay 25's action loop, 9 the victory and 10 the wipe-out (overlay 23's),

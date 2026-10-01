@@ -687,8 +687,9 @@ models. A map that looks static in this repository's viewer is a map whose
 - **Interpolation between animation samples.** A frame takes the sample that
   covers it. For step 1, which is all but about 1% of curves, that is every
   frame and there is nothing to interpolate.
-- **The maps' animations.** NSBTA, NSBMA and NSBTP are read — see below —
-  but only the battle's effects play them yet; a map's water and fire do not.
+- **The maps' animations' pace.** NSBTA, NSBMA and NSBTP are read — see
+  below — and played on the battle's effects and on a map's own pieces (1
+  October 2026), a map's looping at the rate its joint animations do.
 
 # NSBTA and NSBMA — texture and material animation
 

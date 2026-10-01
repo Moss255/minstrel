@@ -8,7 +8,7 @@ import {
   MOTION_FAMILY,
   type Outfit,
 } from '@minstrel/actor'
-import { textureFor } from '@minstrel/cartridge'
+import { type Catalogue, textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
 import type { ActionScript } from '@minstrel/game-formats'
 import {
@@ -61,14 +61,17 @@ import {
   type Animation,
   type Geometry,
   loopFrames,
+  type MaterialAnimation,
   type Model,
   measureBounds,
   type NodeTransform,
+  type PatternAnimation,
   patternAt,
   poseGeometry,
   sampleAnimation,
   sampleMatTrack,
   sampleTexTrack,
+  type TextureAnimation,
 } from '@minstrel/nitro-gfx'
 import {
   applyStyle,
@@ -165,9 +168,13 @@ import { type Bag, bagLines, drop, EMPTY_BAG, pay, take } from './bag.ts'
 import {
   type BattleCamera,
   type CameraStage,
+  type Chase,
   cameraFrom,
   viewOf as cameraView,
+  chasePose,
+  followChase,
   playCamera,
+  startChase,
   tickCamera,
 } from './battle-camera.ts'
 import {
@@ -421,7 +428,6 @@ import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './sl
 import {
   actorCloseUp,
   type BattleView,
-  chaseView,
   EYE_CEILING,
   easeOrbit,
   FIGHTER_HEIGHT,
@@ -1218,7 +1224,12 @@ interface BattleStage {
     readonly radius: number
     readonly height: number
   }[]
-  /** How many actions have passed without the chase shot — see `chaseTaken`. */
+  /** The opening's wide shot, which the command phase cuts to each round, and its half-angle. */
+  readonly commandShot: BattleView
+  readonly commandHalfFov: number
+  /** Its eye's z on the stage, which the monsters face while commands are chosen (`func_ov026_021daec8`). */
+  readonly commandEyeZ: number
+  /** How many actions have passed without the chase's start pose — see `chaseFor`. */
   unchased: number
   /** The draws the camera's choices take, ours: a number each. */
   draws: number
@@ -1237,8 +1248,8 @@ interface ActionShown {
   readonly camera: BattleCamera
   /** Pages after its own that it tells too — a death it dealt — and passes over when it ends. */
   readonly absorbs: number
-  /** The chase shot, while the script has moved no camera, when the action opened on it (`0x021db8d8`). */
-  chase: { readonly orbit: number; readonly draw: number } | undefined
+  /** The chase shot, while the script has moved no camera — see `chaseFor`. */
+  chase: Chase | undefined
   /** Real time not yet played, ms. */
   carry: number
 }
@@ -1448,6 +1459,9 @@ function poseMap(frame: number): void {
           )
         : model.shapeMatrices
 
+    const shade = piece.materialAnimations
+      ? materialShade(piece.materialAnimations, model, cat, frame, true)
+      : undefined
     model.shapes.forEach((shape, index) => {
       const geometry: Geometry = placeGeometry(
         swingGeometry(poseGeometry(model.geometry(shape), stacks[index] ?? model.matrices), swung),
@@ -1460,7 +1474,12 @@ function poseMap(frame: number): void {
       const materialIndex = model.shapeMaterials[index]
       const material = materialIndex === undefined ? undefined : model.materials[materialIndex]
       const texture = material ? textureFor(cat, material) : undefined
-      drawn.push(texture ? { geometry, ...texture } : { geometry })
+      const plain: Piece = texture ? { geometry, ...texture } : { geometry }
+      // Its own texture, material and pattern animations — water, fire, a
+      // sign's glow — looping as the map's joint animations do. A shape whose
+      // alpha is 0 now is kept, unseen, so the shapes keep their places.
+      const shaded = shade ? shade(material?.name, plain) : plain
+      drawn.push(shaded ?? { ...plain, opacity: 0 })
     })
   }
   // Each shape's own box decides what counts as a roof and what is backdrop;
@@ -6197,6 +6216,9 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
       })),
     ],
     bodies,
+    commandShot: { target: shot.target, orbit: end, pull: 0 },
+    commandHalfFov: shot.halfFov,
+    commandEyeZ: shot.eye[2],
     unchased: 0,
     draws: 0,
     view: { target: shot.target, orbit: openingStart(end), pull: 0 },
@@ -6239,23 +6261,28 @@ function stageDrawn(stage: BattleStage, now: number): Piece[] {
     },
     facing: at.facing,
   }
+  // While commands are chosen the party is hidden and the monsters shown
+  // (overlay 26, `0x021d9018`–`0x021d9034`).
+  const hideParty = commanding()
   const standing = battle
     ? battleSpots.flatMap((spot, i) => {
         const fighter = battle?.state.fighters[i]
+        if (hideParty && fighter?.side === 'party') return []
         const here = fighterNow(i, now) ?? spot
         return here && spot && fighter && fighter.hp > 0 && !fighter.fled ? [here] : []
       })
     : []
   return [
-    ...stage.pieces,
+    // The stage, unless an action's `106 0` hides it.
+    ...(shown?.run.stageShown === false ? [] : stage.pieces),
     ...(here.shadow
-      ? shadowPieces(here.shadow, [at, ...standing], (material) =>
+      ? shadowPieces(here.shadow, hideParty ? standing : [at, ...standing], (material) =>
           textureFor(here.catalogue, material),
         )
       : []),
     ...foePieces(now),
-    ...companionPieces(now),
-    ...heroInBattle(hero, now),
+    ...(hideParty ? [] : companionPieces(now)),
+    ...(hideParty ? [] : heroInBattle(hero, now)),
     ...shownEffectPieces(),
   ]
 }
@@ -6354,65 +6381,83 @@ function effectPieces(
   )
 }
 
-/**
- * **An effect's materials at a frame**, from its own animations (`@minstrel/
- * nitro-gfx`'s `readNsbma`, `readNsbta`): the material's alpha and diffuse,
- * and its texture scaled and slid as the game's texture matrix does it
- * (`CreateTextureMatrix_v0_TranslateScale`, `RenderCommandProcs.cpp`) —
- * s′ = sₛ·s − w·sₛ·tₛ and t′ = sₜ·t + h·(1 − sₜ) + h·sₜ·tₜ, in texels.
- * INFERRED: that an alpha of 0 shows nothing — GBATEK makes it a wireframe,
- * and the effects hold it for most of their length. **Ours**: a texture's
- * rotation is not applied; the effects read have none.
- */
-/** A texture a pattern animation swaps in, decoded once — see {@link effectShade}. */
+/** A texture a pattern animation swaps in, decoded once — see {@link materialShade}. */
 function patternTexture(
-  look: ActorLook,
+  model: Model,
+  catalogue: Pick<Catalogue, 'textures'>,
   material: string | undefined,
   texture: string,
   palette: string | undefined,
 ): { readonly pixels: Uint8Array; readonly width: number; readonly height: number } | undefined {
-  let byKey = patternsDecoded.get(look)
+  let byKey = patternsDecoded.get(model)
   if (!byKey) {
     byKey = new Map()
-    patternsDecoded.set(look, byKey)
+    patternsDecoded.set(model, byKey)
   }
   const key = `${material}|${texture}|${palette}`
   if (byKey.has(key)) return byKey.get(key)
-  const own = look.model.materials.find((m) => m.name === material)
+  const own = model.materials.find((m) => m.name === material)
   const decoded = own
-    ? textureFor(look.catalogue, { ...own, texture, palette: palette ?? own.palette })
+    ? textureFor(catalogue, { ...own, texture, palette: palette ?? own.palette })
     : undefined
   byKey.set(key, decoded)
   return decoded
 }
 const patternsDecoded = new WeakMap<
-  ActorLook,
+  Model,
   Map<
     string,
     { readonly pixels: Uint8Array; readonly width: number; readonly height: number } | undefined
   >
 >()
 
+/** An effect's materials at a frame of its motion, played once — see {@link materialShade}. */
 function effectShade(
   look: ActorLook,
   frame: number,
 ): ((material: string | undefined, piece: Piece) => Piece | undefined) | undefined {
-  const { texAnim, matAnim, patAnim } = look
+  return materialShade(look, look.model, look.catalogue, frame, false)
+}
+
+/**
+ * **A model's materials at a frame**, from its own animations: the texture
+ * its pattern animation names (NSBTP, `MPTAnimationProcessingCallback`); the
+ * material's alpha and diffuse (NSBMA); its texture scaled and slid as the
+ * game's texture matrix does it (NSBTA, `CreateTextureMatrix_v0_TranslateScale`,
+ * `RenderCommandProcs.cpp`) — s′ = sₛ·s − w·sₛ·tₛ and
+ * t′ = sₜ·t + h·(1 − sₜ) + h·sₜ·tₜ, in texels. Looping, each by its own frame
+ * count — a map's; or once — an effect's. INFERRED: that an alpha of 0 shows
+ * nothing — GBATEK makes it a wireframe. **Ours**: a texture's rotation is not
+ * applied; the effects read have none.
+ */
+function materialShade(
+  anims: {
+    readonly texAnim: TextureAnimation | undefined
+    readonly matAnim: MaterialAnimation | undefined
+    readonly patAnim: PatternAnimation | undefined
+  },
+  model: Model,
+  catalogue: Pick<Catalogue, 'textures'>,
+  frame: number,
+  loop: boolean,
+): ((material: string | undefined, piece: Piece) => Piece | undefined) | undefined {
+  const { texAnim, matAnim, patAnim } = anims
   if (!texAnim && !matAnim && !patAnim) return undefined
+  const at = (count: number | undefined) =>
+    loop && count !== undefined && count > 0 ? frame % count : frame
   return (material, piece) => {
     let out = piece
-    // The texture its pattern animation names now (NSBTP, `MPTAnimationProcessingCallback`).
     const swaps = patAnim?.tracks.find((t) => t.material === material)
-    const key = swaps ? patternAt(swaps, frame) : undefined
+    const key = swaps ? patternAt(swaps, at(patAnim?.frameCount)) : undefined
     if (key) {
-      const swapped = patternTexture(look, material, key.texture, key.palette)
+      const swapped = patternTexture(model, catalogue, material, key.texture, key.palette)
       if (swapped) {
         out = { ...out, pixels: swapped.pixels, width: swapped.width, height: swapped.height }
       }
     }
     const colours = matAnim?.tracks.find((t) => t.material === material)
     if (colours) {
-      const now = sampleMatTrack(colours, frame)
+      const now = sampleMatTrack(colours, at(matAnim?.frameCount))
       if (now.alpha === 0) return undefined
       const channel = (shift: number) => ((now.diffuse >> shift) & 31) / 31
       out = {
@@ -6423,7 +6468,7 @@ function effectShade(
     }
     const moves = texAnim?.tracks.find((t) => t.material === material)
     if (moves && out.width && out.height) {
-      const t = sampleTexTrack(moves, frame)
+      const t = sampleTexTrack(moves, at(texAnim?.frameCount))
       const [sS, sT, tS, tT] = [t.scaleS, t.scaleT, t.translateS, t.translateT].map((v) => v / 4096)
       const w = out.width
       const h = out.height
@@ -6745,16 +6790,20 @@ function speedsOfFighter(i: number): ReadonlyMap<string, number> {
 const LOOPS: ReadonlySet<string> = new Set(['stand', 'run', 'walk'])
 
 /**
- * **The chase shot, taken or not** (`func_ov000_0216e678`): not on the first
- * action; from then on on a draw of one in 5 less the actions passed without
- * it, and always on the fifth. **Ours**: that taking it starts the count
- * again, and the draw — the game's own generator here is not traced.
+ * **The chase shot, as an action without a camera of its own begins**
+ * (`ov025 func_021db8d8`, `func_ov000_0216e678`): always taken; its start
+ * pose forced on a round's first action, else on the fifth without one, or a
+ * draw of one in 5 less those passed. **Ours**: the draws — the camera's own
+ * generator here is not traced.
  */
-function chaseTaken(stage: BattleStage): boolean {
+function chaseFor(stage: BattleStage, actor: number, target: number, firstOfRound: boolean): Chase {
   const passed = stage.unchased
-  const taken = passed >= 5 || (passed >= 1 && cameraDraw(stage) < 1 / (5 - passed))
-  stage.unchased = taken ? 0 : passed + 1
-  return taken
+  const forced =
+    firstOfRound ||
+    passed >= 5 ||
+    (passed >= 1 && Math.floor(cameraDraw(stage) * (5 - passed)) === 0)
+  stage.unchased = forced ? 0 : passed + 1
+  return startChase(actor, target, Math.floor(cameraDraw(stage) * 100), forced, cameraDraw(stage))
 }
 
 /** The fighter a battle object index is, back from `objectOf`. */
@@ -6842,7 +6891,7 @@ function asShown(pieces: Piece[], at: ReturnType<typeof fighterNow>): Piece[] {
 function wantedView(
   stage: BattleStage,
   _now: number,
-): { key: string; view: BattleView; follow?: boolean } | undefined {
+): { key: string; view: BattleView; follow?: boolean; halfFov?: number } | undefined {
   const scene = battle
   if (!scene) return undefined
   const partyCount = scene.state.fighters.filter((f) => f.side === 'party').length
@@ -6858,11 +6907,23 @@ function wantedView(
   // **The victory's shot** (`func_ov000_0216e3c4`, from overlay 23's
   // experience step only, `0x021f04b8`), from its lines on.
   if (ending?.kind === 'won') return { key: 'victory', view: victoryView(standing) }
+  // **While commands are chosen** (overlay 26, sub-state 3, `0x021d8fd0`):
+  // the opening's wide shot, cut to again each round and held still — eased
+  // in on round 0 only, which the opening already is. **Ours**: the fixed
+  // shots overlay 26 keeps for 47 kinds of monster (`0x021de87c`), not read.
   if (scene.phase !== 'telling' && scene.phase !== 'over') {
-    return { key: 'command', view: victoryView(standing) }
+    return {
+      key: `command ${scene.state.round}`,
+      view: stage.commandShot,
+      halfFov: stage.commandHalfFov,
+    }
   }
   return undefined
 }
+
+/** Whether the party's commands are being chosen — the party hidden, the monsters facing the camera. */
+const commanding = () =>
+  battle !== undefined && battle.phase !== 'telling' && battle.phase !== 'over'
 
 /** The camera's view of the stage while an action is shown — see `battle-camera.ts`. */
 const cameraStage: CameraStage = {
@@ -6908,12 +6969,11 @@ function shownView(stage: BattleStage): BattleView | undefined {
   if (!s) return undefined
   const actor = s.run.hooks.context.actors[0]
   const target = s.run.hooks.context.targets[0]?.receivers[0]
-  if (s.chase && actor !== undefined && target !== undefined) {
-    const a = s.run.fighters.get(actor)
-    const t = s.run.fighters.get(target)
-    if (a && t) return chaseView(a, t, a.height, t.height, s.chase.orbit, s.chase.draw)
-  }
   void stage
+  void actor
+  void target
+  const now = s.chase?.now
+  if (now) return { target: now.look, orbit: now.orbit, pull: 0 }
   return cameraView(s.camera, cameraStage)
 }
 
@@ -7025,10 +7085,10 @@ function startShown(): void {
     commands
       .slice(0, firstShow < 0 ? undefined : firstShow)
       .some((c) => c.tag === 12 && 'mode' in c && c.mode !== 10)
+  const firstOfRound = chasedRound !== scene.state.round
+  chasedRound = scene.state.round
   const chase =
-    !ownCamera && target !== undefined && chaseTaken(stage)
-      ? { orbit: Math.floor(cameraDraw(stage) * 4), draw: cameraDraw(stage) }
-      : undefined
+    !ownCamera && target !== undefined ? chaseFor(stage, actor, target, firstOfRound) : undefined
   shown = {
     page: cueStarted,
     run,
@@ -7039,6 +7099,9 @@ function startShown(): void {
     carry: 0,
   }
 }
+
+/** The round whose first action has been shown — the chase is forced on a round's first. */
+let chasedRound = -1
 
 /** A monster's turn rate by its radius (`func_ov000_02166540`, `0x021666e8`), 4096ths a tick. */
 function turnRateOf(radius: number): number {
@@ -7106,8 +7169,14 @@ function battleSound(from: 'battle' | 'own', sound: number): void {
 
 /** What the run asks of the frame: its camera's commands and its sounds; the lights and the screen's brightness are not yet played. */
 function onShow(event: ShowEvent): void {
-  if (event.kind === 'sound') return battleSound(event.from, event.sound)
-  if (event.kind === 'start-sound') return battleSound('battle', event.sound)
+  if (event.kind === 'sound') {
+    battleSound(event.from, event.sound)
+    return
+  }
+  if (event.kind === 'start-sound') {
+    battleSound('battle', event.sound)
+    return
+  }
   if (event.kind === 'sound-set') {
     ownSounds = event.archive
     return
@@ -7133,6 +7202,7 @@ function stepShown(elapsedMs: number): void {
     s.carry -= PASS_MS
     for (const event of s.run.pass(PASS_MS)) onShow(event)
     tickCamera(s.camera, PASS_MS * s.run.speed)
+    followShownChase(s)
     if (s.run.ended) {
       finishShown()
       return
@@ -7140,6 +7210,31 @@ function stepShown(elapsedMs: number): void {
   }
   const line = s.reactions.line
   if ((line ? line.text.slice(0, line.typed) : '') !== shownText) showBattle()
+}
+
+/** One tick of the chase following the pair as they move — see `battle-camera.ts`. */
+function followShownChase(s: ActionShown): void {
+  const chase = s.chase
+  if (!chase) return
+  const fighter = (i: number) => {
+    const f = s.run.fighters.get(i)
+    return f
+      ? {
+          index: i,
+          x: f.x,
+          z: f.z,
+          facing: f.facing,
+          height: f.height,
+          radius: f.radius,
+          party: isPartyObject(i),
+        }
+      : undefined
+  }
+  const a = fighter(chase.actor)
+  const t = fighter(chase.target)
+  // Without both the camera is left on the shot before (`0x0216eaa4`).
+  if (!a || !t) return
+  followChase(chase, chasePose(a, t, chase, chase.now?.orbit.yaw ?? s.camera.orbit.yaw))
 }
 
 /** An action over: its deaths kept, its pages done. */
@@ -7187,6 +7282,7 @@ const CLOSE_UP_HALF_FOV = 15
 function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
   // While an action is shown, its script moves the camera — see `battle-camera.ts`.
   const acting = shown ? shownView(stage) : undefined
+  const roll = shown?.chase?.now?.roll ?? 0
   if (acting && shown) {
     stage.view = acting
     stage.halfFov = shown.camera.halfFov
@@ -7198,8 +7294,8 @@ function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
       stage.showing = wanted.key
       stage.view = wanted.view
       stage.easing = undefined
-      // Every shot after the opening follows a reset, which leaves 15.
-      stage.halfFov = CLOSE_UP_HALF_FOV
+      // Every shot after the opening follows a reset, which leaves 15 — the wide shot 22.
+      stage.halfFov = wanted.halfFov ?? CLOSE_UP_HALF_FOV
     } else if (wanted?.follow) {
       // The chase shot's look-at follows, 5% of the way a frame (`0x0216ea38`).
       const [x, y, z] = stage.view.target
@@ -7231,7 +7327,7 @@ function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
     stage.origin.y + (target[1] as number) * grow,
     stage.origin.z + (target[2] as number) * grow,
   ]
-  camera.roll = 0
+  camera.roll = roll
   camera.yaw = orbit.yaw
   camera.pitch =
     orbit.distance > 0 ? Math.asin(Math.max(-1, Math.min(1, height / orbit.distance))) : 0
@@ -7426,10 +7522,13 @@ function foePieces(now: number): Piece[] {
       : LOOPS.has(motion)
         ? frameAt(now, speed, length, true)
         : frameAt(now - cueStarted, speed, length, false)
-    return asShown(
-      monsterPieces(look, staged ?? at, staged?.facing ?? facing, characterScale, motion, frame),
-      staged,
-    )
+    // While commands are chosen, each turned to face the shot's eye (`func_ov026_021daec8`).
+    const place = battleStage?.places[i]
+    const faced =
+      commanding() && place && battleStage
+        ? Math.atan2(-place.x, battleStage.commandEyeZ - place.z)
+        : (staged?.facing ?? facing)
+    return asShown(monsterPieces(look, staged ?? at, faced, characterScale, motion, frame), staged)
   })
 }
 

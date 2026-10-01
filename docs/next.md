@@ -56,8 +56,10 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    frames and the field's own screen up over 30; 150 ticks before another
    encounter. A monster's death and fade came with item 1. **Not yet**: the
    swirl's own model, `ME_004` on a level, the opening's `appear` (not
-   read), and **the camera while a command is chosen**, which turned out to
-   be unread — overlay 26's, being read.
+   read). **The camera while a command is chosen** turned out to be unread,
+   and is now overlay 26's: the opening's wide shot cut to each round, the
+   party hidden and the monsters facing it; the chase shot, taken on every
+   action without a camera of its own, corrected with it.
 3. ~~**Sound.**~~ **Done, 1 October 2026**: every sound an action asks for
    plays from `se_btl.sdat` — the battle's own archive 101 for the
    presenter's and the start sounds, the archive a `69` names for `70` and
@@ -67,10 +69,12 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    archive is set from its object's `+0x7a`, not read), an effect's own sound
    at its time, 102 for 100 on a magic motion (its bit not read), and the
    menus' sounds.
-4. **Maps that move.** The same NSBTA and NSBMA — 1,910 files in the map
-   archives — drive water, fire and anything that scrolls or pulses on the
-   field; nothing plays them there yet. NSBTP, pattern animation, is read (1
-   October) and played on the battle's effects only.
+4. ~~**Maps that move.**~~ **Done, 1 October 2026**: a map's pieces play the
+   texture, material and pattern animations compiled from their own
+   resource — water, fire, anything that scrolls or pulses — through the
+   same shading the battle's effects take; NSBTP read from the game's own
+   reader. They loop at the field's 30 frames a second, as its joint
+   animations do, until item 5.
 5. **Motion speeds in the field.** The rule the battle now plays by — a
    motion's `.bcfg` speed every 17 ms — holds everywhere; the field still
    plays motions at 30 frames a second.

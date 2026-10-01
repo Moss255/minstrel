@@ -497,3 +497,142 @@ function eyeOf(cam: BattleCamera): [number, number, number] {
     cam.look[2] + Math.cos(yaw) * flat,
   ]
 }
+
+/** A fighter as the chase shot takes it: its object index as well. */
+export interface Chased extends Framed {
+  readonly index: number
+}
+
+/**
+ * **The chase shot** (`func_ov000_0216e678`, followed by `0216ea38`) — read 1
+ * October 2026. Taken whenever an action's script does not open on a camera
+ * of its own (`ov025 func_021db8d8`); the draw decides only its start.
+ */
+export interface Chase {
+  readonly actor: number
+  readonly target: number
+  /** The draw, 0–99, it was started with (`+0x00`). */
+  readonly draw: number
+  /** For a target taller than 2.5, the orbit height a forced start set (`+0x08`), −1.2 to −2.0. */
+  readonly tallHeight: number | undefined
+  /** Where it is now, and how fast each part may move a tick (`data_ov000_02184270`). */
+  now: { look: [number, number, number]; orbit: Orbit; roll: number } | undefined
+  caps: { look: number; yaw: number; roll: number }
+}
+
+/** Distances and heights by the pair's indices mod 3 (`data_ov000_02183268`, `02183298`). */
+const CHASE_DISTANCE = [10, 12, 14] as const
+const CHASE_HEIGHT = [1, 1.75, 2.25] as const
+/** Its roll by the pair's indices mod 5 (`data_ov000_0218325c`), in 4096ths — INFERRED radians. */
+const CHASE_ROLL = [-238, -178, 0, 178, 238] as const
+
+/** Start the chase on an action (`0216e678`): its draw, and the start pose a forced start sets. */
+export function startChase(
+  actor: number,
+  target: number,
+  draw: number,
+  forced: boolean,
+  tallDraw: number,
+): Chase {
+  return {
+    actor,
+    target,
+    draw,
+    tallHeight: forced ? -1.2 - tallDraw * 0.8 : undefined,
+    now: undefined,
+    caps: { look: 0, yaw: 0, roll: 0 },
+  }
+}
+
+/**
+ * **Where the chase wants the camera** (`0216ea38`, `0x0216eaa4` on): the
+ * look-at on the actor's side or the target's — the one at least 2.0 tall
+ * against one that is not, else the draw's parity — carried toward the other
+ * by half the gap, at most 2, and raised by three quarters of that one's
+ * height, no higher than 1.0; the yaw along the line, ±162° (+180° on the
+ * target's side), whichever is nearer `yawNow`; height and distance 1 and the
+ * larger of 1.6 times the gap and 7 when the draw is under 30, else by the
+ * pair's indices mod 3; a target taller than 2.5 looked at half its height,
+ * at least 2.5, at least 8 away. **Not read**: the yaw offset a forced start
+ * draws for a tall target.
+ */
+export function chasePose(
+  a: Chased,
+  t: Chased,
+  chase: Chase,
+  yawNow: number,
+): { look: [number, number, number]; orbit: Orbit; roll: number } {
+  const dx = t.x - a.x
+  const dz = t.z - a.z
+  const gap = Math.hypot(dx, dz)
+  const ux = gap === 0 ? 0 : dx / gap
+  const uz = gap === 0 ? 1 : dz / gap
+  const k = gap / 2 > 3 ? 2 : gap / 2
+  const side = a.height >= 2 && t.height < 2 ? 1 : t.height >= 2 ? 0 : chase.draw & 1
+  const tall = t.height > 2.5
+  let look: [number, number, number] =
+    side === 0
+      ? [a.x + ux * k, Math.min(0.75 * a.height, 1), a.z + uz * k]
+      : [t.x - ux * k, Math.min(0.75 * t.height, 1), t.z - uz * k]
+  if (tall) look = [look[0], Math.max(t.height / 2, 2.5), look[2]]
+  const along = Math.atan2(ux, uz) + (side === 1 ? Math.PI : 0)
+  const turn = (162 * Math.PI) / 180
+  const nearer = (p: number, q: number) =>
+    Math.abs(wrap(p - yawNow)) <= Math.abs(wrap(q - yawNow)) ? p : q
+  const yaw = nearer(along + turn, along - turn)
+  const pair = chase.actor + chase.target
+  let height: number = chase.draw < 30 ? 1 : (CHASE_HEIGHT[pair % 3] ?? 1)
+  let distance: number = chase.draw < 30 ? Math.max(1.6 * gap, 7) : (CHASE_DISTANCE[pair % 3] ?? 10)
+  if (tall) {
+    if (chase.tallHeight !== undefined) height = chase.tallHeight
+    distance = Math.max(distance, 8)
+  }
+  return {
+    look,
+    orbit: { yaw, height, distance },
+    roll: (CHASE_ROLL[pair % 5] ?? 0) / 4096,
+  }
+}
+
+/**
+ * **One tick of the chase following** (`0216ea38`): the look-at 5% of the way,
+ * no more than its cap, the yaw 5% within its cap, height and distance 2%, the
+ * roll 10% within its cap; each cap growing a tick (`+0xcc`, `+0x14`, `+4`, in
+ * 4096ths). The first tick cuts.
+ */
+export function followChase(
+  chase: Chase,
+  want: { look: [number, number, number]; orbit: Orbit; roll: number },
+): void {
+  const now = chase.now
+  if (!now) {
+    chase.now = { look: [...want.look], orbit: { ...want.orbit }, roll: want.roll }
+    return
+  }
+  chase.caps.look += 0xcc / 4096
+  chase.caps.yaw += 0x14 / 4096
+  chase.caps.roll += 4 / 4096
+  const d = [0, 1, 2].map((i) => ((want.look[i] as number) - (now.look[i] as number)) * 0.05)
+  const len = Math.hypot(...d)
+  const s = len > chase.caps.look && len > 0 ? chase.caps.look / len : 1
+  now.look = [
+    now.look[0] + (d[0] as number) * s,
+    now.look[1] + (d[1] as number) * s,
+    now.look[2] + (d[2] as number) * s,
+  ]
+  const dyaw = wrap(want.orbit.yaw - now.orbit.yaw) * 0.05
+  now.orbit = {
+    yaw: now.orbit.yaw + Math.max(-chase.caps.yaw, Math.min(chase.caps.yaw, dyaw)),
+    height: now.orbit.height + (want.orbit.height - now.orbit.height) * 0.02,
+    distance: now.orbit.distance + (want.orbit.distance - now.orbit.distance) * 0.02,
+  }
+  const droll = (want.roll - now.roll) * 0.1
+  now.roll += Math.max(-chase.caps.roll, Math.min(chase.caps.roll, droll))
+}
+
+function wrap(a: number): number {
+  let x = a
+  while (x > Math.PI) x -= 2 * Math.PI
+  while (x < -Math.PI) x += 2 * Math.PI
+  return x
+}

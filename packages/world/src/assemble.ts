@@ -18,11 +18,20 @@ import {
   type Animation,
   type Geometry,
   isNsbca,
+  isNsbma,
   isNsbmd,
+  isNsbta,
+  isNsbtp,
+  type MaterialAnimation,
   type Model,
   measureBounds,
+  type PatternAnimation,
   readNsbca,
+  readNsbma,
   readNsbmd,
+  readNsbta,
+  readNsbtp,
+  type TextureAnimation,
 } from '@minstrel/nitro-gfx'
 import type { PlacedMesh } from '@minstrel/sim'
 
@@ -73,6 +82,20 @@ export interface MapPiece {
    * them apart across the sky. Same for the waterfall.
    */
   readonly animation: Animation | undefined
+  /**
+   * Its material animations, compiled from the same resource as its joint
+   * animation is: a texture slid or scaled (`.nsbta`), a material's colour and
+   * alpha (`.nsbma`), a texture swapped (`.nsbtp`) — water, fire and anything
+   * that scrolls or pulses. 1,910 of them sit in the map archives.
+   */
+  readonly materialAnimations?: MaterialAnimations
+}
+
+/** A model's material animations, those it has. */
+export interface MaterialAnimations {
+  readonly texAnim: TextureAnimation | undefined
+  readonly matAnim: MaterialAnimation | undefined
+  readonly patAnim: PatternAnimation | undefined
 }
 
 /**
@@ -285,6 +308,7 @@ export function assembleMap(
           place: { x: place.x, y: place.y, z: place.z },
           scale: WORLD_SCALE,
           animation: ownAnimation(model, file, files, members),
+          ...materialAnimationsOf(file, files, members),
           source: resource.stem,
           ...own,
           ...(motions ? { motions } : {}),
@@ -317,6 +341,30 @@ function ownAnimation(
     }
   }
   return undefined
+}
+
+/** The material animations beside a model, compiled from the same resource; none when it has none. */
+function materialAnimationsOf(
+  self: string,
+  siblings: readonly string[],
+  members: ReadonlyMap<string, Uint8Array>,
+): { materialAnimations?: MaterialAnimations } {
+  let texAnim: TextureAnimation | undefined
+  let matAnim: MaterialAnimation | undefined
+  let patAnim: PatternAnimation | undefined
+  for (const sibling of siblings) {
+    if (sibling === self) continue
+    const beside = members.get(sibling)
+    if (!beside) continue
+    try {
+      if (!texAnim && isNsbta(beside)) texAnim = readNsbta(beside)[0]
+      else if (!matAnim && isNsbma(beside)) matAnim = readNsbma(beside)[0]
+      else if (!patAnim && isNsbtp(beside)) patAnim = readNsbtp(beside)[0]
+    } catch {
+      // An animation that will not read simply is not played.
+    }
+  }
+  return texAnim || matAnim || patAnim ? { materialAnimations: { texAnim, matAnim, patAnim } } : {}
 }
 
 /** The motions a resource's `.bcfg` names, if it has one that reads and names any. */
