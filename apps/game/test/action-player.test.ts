@@ -20,6 +20,7 @@ function stage(gapZ: number): StageFighter[] {
     facing: Math.PI,
     radius: 0.5,
     height: 1.8,
+    size: 1,
     grid: { x: 0, z: 3, facing: Math.PI },
     row: { x: 0, z: 2.5, facing: Math.PI },
     alive: true,

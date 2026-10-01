@@ -604,3 +604,25 @@ entry. **Where minstrel translates it**: `packages/sim/src/battle/tension.ts`,
 `ctx + 0x71`; the tension aura; whether the accuracy roll can fail for
 accuracy mode 3.
 
+### 14. A monster's size and a battle's lighting slot — overlays 0, 17 and ARM9, 1 October 2026
+
+Findings in `packages/game-formats/FORMAT.md`, "The size in battle" and the
+lighting's slot. **Where minstrel translates it**: `apps/game/src/stage.ts`
+(`actorCloseUp`), `action-player.ts` (`sizeScale`, tag 115, the death
+effect), `action-reactions.ts` (117), `shadows.ts`, `main.ts` (`startFight`).
+
+- **Size**: `func_02048588` and `func_02048614` (the two writes of
+  `+0x18e`); `func_ov000_02165490`, `02166070`, `02166540` and
+  `func_020484f8` (the record's way to the object); its readers
+  `func_ov000_0216352c`, `0216df00`, `func_02048690`, `func_ov000_02161020` →
+  `func_0208f87c`.
+- **The slot**: `func_ov017_021b7104`'s block `+0x12`; the roamer's
+  `func_ov017_02196430` (`0x02196bbc`); trigger 120 in `func_0206f81c`
+  (`0x0206fc5c`); the fixed 2 of `func_ov017_021b8bb0`; the flag at battle
+  `+0x55f4` (`0x02164fa0`, cleared at `0x02168790`);
+  `GetCurrentAdvancedLightingValues` (`0x02050c20`).
+
+**What is open**: what `func_ov000_021bc77c`'s set battle is; the received
+record (`021c530c`, INFERRED multiplayer); whether the day's timer runs during
+a battle.
+

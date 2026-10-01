@@ -56,6 +56,8 @@ export interface StageFighter {
   readonly facing: number
   readonly radius: number
   readonly height: number
+  /** Its size in battle, `Object3D +0x18e` — a monster's record's, 1 for anyone else. */
+  readonly size: number
   /** Where the set-up's grid puts them (`0x02167dd8`), and their row (`0x02167e6c`). */
   readonly grid: { readonly x: number; readonly z: number; readonly facing: number }
   readonly row: { readonly x: number; readonly z: number; readonly facing: number }
@@ -95,6 +97,7 @@ export interface FighterShow {
   readonly turnRate: number
   readonly radius: number
   readonly height: number
+  readonly size: number
   readonly grid: StageFighter['grid']
   readonly row: StageFighter['row']
   motion: string
@@ -203,6 +206,15 @@ const STEP_DONE = 0x28 / 4096
 const SIDE_Z = 0x2800 / 4096
 /** A free-standing object's scale, `0x10a`. */
 export const LOOSE_SCALE = 0x10a / 4096
+
+/**
+ * **A monster's size as a scale** (`func_ov000_0216352c(id, a, b)`): its
+ * `+0x18e` as it is up to `a`, and past it `a` plus the rest times `b`. Tags
+ * 115 and 117 and the close-up take it so.
+ */
+export function sizeScale(size: number, a: number, b: number): number {
+  return size <= a ? size : a + (size - a) * b
+}
 /** Formation 2: the two squared up, 6 plus their mean radius apart. */
 const SQUARED = 6
 /** Formation 3: a group squeezed to fit this wide. */
@@ -309,6 +321,7 @@ export function startAction(
       turnRate: f.turnRate,
       radius: f.radius,
       height: f.height,
+      size: f.size,
       grid: f.grid,
       row: f.row,
       motion: f.motion,
@@ -626,7 +639,10 @@ export function startAction(
         const f = resolve(c.who)
         const e = effectOf(slots[c.slot])
         if (f.length !== 1 || !e) return 0
-        e.scale = LOOSE_SCALE
+        // A monster's size, beyond 1 halved; anyone else's the loose scale.
+        e.scale = isMonster(f[0] as number)
+          ? sizeScale(shows.get(f[0] as number)?.size ?? 1, 1, 0.5)
+          : LOOSE_SCALE
         return 1
       }
       case 12:
@@ -1126,7 +1142,12 @@ export function startAction(
           // shadow and sound 50 (`func_02048690`).
           if (isMonster(f.index)) {
             f.fade = { to: 0, perMs: -f.alpha / 500 }
-            spawn(2, { offset: [f.x, 0, f.z], scale: LOOSE_SCALE, flags: 1 })
+            // Its scale the loose one by the monster's size, beyond 1 halved.
+            spawn(2, {
+              offset: [f.x, 0, f.z],
+              scale: LOOSE_SCALE * (1 + (f.size - 1) / 2),
+              flags: 1,
+            })
             emit({ kind: 'sound', from: 'battle', sound: 50 })
           }
         }

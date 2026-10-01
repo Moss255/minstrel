@@ -35,10 +35,19 @@ export function shadowModelOf(
   return undefined
 }
 
-/** A shadow lying on the ground at each of these feet, in world units. */
+/**
+ * A shadow lying on the ground at each of these feet, in world units, each at
+ * its own scale where it has one — a battle monster's size, which the battle's
+ * shadow is drawn at (`func_ov000_02161020` → `func_0208f87c`, `0x02161134`).
+ */
 export function shadowPieces(
   model: Model,
-  feet: readonly { readonly x: number; readonly y: number; readonly z: number }[],
+  feet: readonly {
+    readonly x: number
+    readonly y: number
+    readonly z: number
+    readonly scale?: number
+  }[],
   textureOf: (material: ModelMaterial) => Omit<Piece, 'geometry'> | undefined,
 ): Piece[] {
   const pieces: Piece[] = []
@@ -52,7 +61,11 @@ export function shadowPieces(
   })
   for (const at of feet) {
     for (const { posed, texture } of shapes) {
-      const geometry = placeGeometry(posed, { x: at.x, y: at.y + LIFT, z: at.z }, WORLD_SCALE)
+      const geometry = placeGeometry(
+        posed,
+        { x: at.x, y: at.y + LIFT, z: at.z },
+        WORLD_SCALE * (at.scale ?? 1),
+      )
       pieces.push(texture ? { geometry, ...texture } : { geometry })
     }
   }

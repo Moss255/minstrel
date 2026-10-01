@@ -1,5 +1,12 @@
 import type { ActionCommand } from '@minstrel/game-formats'
-import { isParty, LOOSE_SCALE, type Reactions, type RunHooks } from './action-player.ts'
+import {
+  isMonster,
+  isParty,
+  LOOSE_SCALE,
+  type Reactions,
+  type RunHooks,
+  sizeScale,
+} from './action-player.ts'
 
 /**
  * **The reactions an action's results are shown with** — the record a script
@@ -277,8 +284,16 @@ export function makeReactions(
     let z = 0
     let scale = 1
     if (e.record.scale) {
-      // Mode 0 by the monster's size (`func_ov000_0216352c`), which is not read here: 1. **Ours.**
-      scale = e.record.scale.mode === 0 ? 1 : Math.min(f.radius, e.record.scale.b)
+      // Mode 0 by a monster's size (`func_ov000_0216352c`). For anyone else the
+      // game takes the loose scale, and how that meets a host's is not settled:
+      // 1 here, **ours**.
+      const { a, b } = e.record.scale
+      scale =
+        e.record.scale.mode === 0
+          ? isMonster(e.receiver)
+            ? sizeScale(f.size, a, b)
+            : 1
+          : Math.min(f.radius, b)
     }
     const o = e.record.offset
     if (o) {

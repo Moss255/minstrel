@@ -353,11 +353,14 @@ export function actorCloseUp(
   a: number,
   b: number,
   halfFov: number,
+  /** A monster's size, `+0x18e`, 1 when not given: its term is 1.5 and past it half the rest. */
+  size = 1,
 ): BattleView {
   const look = Math.max(height / 2, 1)
   const radians = (halfFov * Math.PI) / 180
   const fitted = ((look + 0.5) * Math.cos(radians)) / Math.sin(radians)
-  const distance = Math.max((party ? b : 1.8) * height + 4, fitted)
+  const term = size <= 1.5 ? size : 1.5 + (size - 1.5) / 2
+  const distance = Math.max(party ? b * height + 4 : 1.8 * height + 4 + term, fitted)
   return {
     target: [at.x, party ? look - a : look, at.z],
     orbit: { yaw: at.facing, height: Math.max(look - 1.5, 0), distance },

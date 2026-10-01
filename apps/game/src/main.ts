@@ -1196,6 +1196,8 @@ interface BattleStage {
   readonly pieces: readonly Piece[]
   /** Its lighting — the sky's gradient behind it, see `backdrop.ts`. */
   readonly lighting: Lighting | undefined
+  /** The lighting slot it is drawn by, the clock's as the battle was asked for — see `startFight`. */
+  readonly slot: number
   /** Everyone's place on it as drawn, the party then the monsters, and their facings in radians. */
   readonly spots: readonly {
     readonly x: number
@@ -1207,6 +1209,8 @@ interface BattleStage {
   readonly places: readonly { readonly x: number; readonly z: number; readonly facing: number }[]
   /** Everyone's height, map units: a monster's body, a party member's ours — see `openStage`. */
   readonly heights: readonly number[]
+  /** Everyone's size in battle, `Object3D +0x18e`: a monster's record's, 1 for the party. */
+  readonly sizes: readonly number[]
   /** The camera: what it holds now, the view's half-angle, and the opening's end while it eases. */
   view: BattleView
   halfFov: number
@@ -5695,10 +5699,19 @@ function runsFromOf(number: number): { runsFrom?: number } {
  * `effect/ev999991500.chr`, is not drawn — how it is placed in front of the
  * camera is not read.
  */
+/** The lighting slot the battle being entered was asked for at — see {@link startFight}. */
+let askedSlot: number = LIGHTING_SLOT.day
+
 function startFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
   if (entering || battle || leaving || !loaded) return
   self?.held.clear()
   playBattleMusic()
+  // **The battle's lighting slot is the clock's as it is asked for** — the
+  // request's `+5`, which touching a roamer (`0x02196bbc`) and a set battle's
+  // trigger (`0x0206fc5c`) both take from `LightingManager +0x98` — and every
+  // battle draws by it with no blend (`DrawBackgroundGradient`,
+  // `GetCurrentAdvancedLightingValues`), whatever the clock does after.
+  askedSlot = LIGHTING_SLOT[timeNow()]
   entering = { since: performance.now(), begin: () => openFight(codes, canFlee, opening) }
 }
 
@@ -6184,7 +6197,12 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
   }
   const bodies = codes.map((c) => {
     const who = here.monsterCodes.get(c)
-    return { kind: who?.number ?? 0, radius: who?.radius ?? 0, height: who?.height ?? 0 }
+    return {
+      kind: who?.number ?? 0,
+      radius: who?.radius ?? 0,
+      height: who?.height ?? 0,
+      size: who?.size ?? 4096,
+    }
   })
   const shot = sideShot(1, monsterExtent(bodies), true)
   const end = orbitOf(shot)
@@ -6208,6 +6226,7 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
     origin,
     pieces,
     lighting: mapLighting(cartridge, code),
+    slot: askedSlot,
     spots,
     places: places.map((p) => ({ x: p.x / FX32_ONE, z: p.z / FX32_ONE, facing: p.facing / 4096 })),
     heights: [
@@ -6215,6 +6234,9 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
       ...places.slice(0, partyCount).map(() => toFloat(PERSON.height) / WORLD_SCALE),
       ...bodies.map((b) => b.height / FX32_ONE),
     ],
+    // A monster's size, its record's (`func_02048588`); 1.0 for anyone else,
+    // which `func_02048614` sets and nothing changes.
+    sizes: [...places.slice(0, partyCount).map(() => 1), ...bodies.map((b) => b.size / 4096)],
     radii: [
       // **Ours**: a party member's radius in battle is not read.
       ...places.slice(0, partyCount).map(() => PARTY_RADIUS),
@@ -6253,7 +6275,7 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
  * stage without lighting, or with none for the slot.
  */
 function stageBackdrop(stage: BattleStage, fov: number | undefined): Backdrop | undefined {
-  const slot = stage.lighting?.slots.get(LIGHTING_SLOT[timeNow()])
+  const slot = stage.lighting?.slots.get(stage.slot)
   if (!slot || fov === undefined) return undefined
   const row = horizonRow(camera.pitch, fov / 2, stage.lighting?.gradientCentreOffset ?? 0)
   return gradientOf(slot, row)
@@ -6286,7 +6308,9 @@ function stageDrawn(stage: BattleStage, now: number): Piece[] {
         const fighter = battle?.state.fighters[i]
         if (hideParty && fighter?.side === 'party') return []
         const here = fighterNow(i, now) ?? spot
-        return here && spot && fighter && fighter.hp > 0 && !fighter.fled ? [here] : []
+        return here && spot && fighter && fighter.hp > 0 && !fighter.fled
+          ? [{ ...here, scale: stage.sizes[i] ?? 1 }]
+          : []
       })
     : []
   return [
@@ -6971,6 +6995,7 @@ const cameraStage: CameraStage = {
           facing: f.facing,
           height: f.height,
           radius: f.radius,
+          size: f.size,
           party: isPartyObject(object),
         }
       : undefined
@@ -6984,6 +7009,7 @@ const cameraStage: CameraStage = {
         facing: f.facing,
         height: f.height,
         radius: f.radius,
+        size: f.size,
         party,
       }))
   },
@@ -7083,6 +7109,7 @@ function startShown(): void {
         facing: grid.facing,
         radius: stage.radii[i] ?? 0.5,
         height: stage.heights[i] ?? 1,
+        size: stage.sizes[i] ?? 1,
         grid,
         row,
         alive: !fallen,
@@ -7265,6 +7292,7 @@ function followShownChase(s: ActionShown): void {
           facing: f.facing,
           height: f.height,
           radius: f.radius,
+          size: f.size,
           party: isPartyObject(i),
         }
       : undefined

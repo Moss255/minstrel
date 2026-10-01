@@ -142,17 +142,26 @@ describe('the battle camera', () => {
 
 describe('the close-ups', () => {
   it('frames a fighter from in front, along its facing, fitted to the view', () => {
-    // A monster 2 tall, at the origin facing +z: L is 1, the distance 1.8 × 2 + 4.
+    // A monster 2 tall and of size 1, at the origin facing +z: L is 1, the
+    // distance 1.8 × 2 + 4 + 1.
     const monster = actorCloseUp({ x: 0, z: 0, facing: 0 }, 2, false, 0, 1.8, 15)
     expect(monster.target).toEqual([0, 1, 0])
     expect(monster.orbit.yaw).toBe(0)
     expect(monster.orbit.height).toBe(0)
-    expect(monster.orbit.distance).toBeCloseTo(7.6)
+    expect(monster.orbit.distance).toBeCloseTo(8.6)
+    // A size past 1.5 counts half the rest: the hexagoon's 3.12 adds 2.31.
+    expect(
+      actorCloseUp({ x: 0, z: 0, facing: 0 }, 2, false, 0, 1.8, 15, 12779 / 4096).orbit.distance,
+    ).toBeCloseTo(7.6 + 1.5 + (12779 / 4096 - 1.5) / 2)
     expect(monster.pull).toBe(CLOSE_UP_PULL)
-    // A slime, 0.8 tall, is nearer than the view allows: (1 + 0.5) · cot 15°.
+    // A slime, 0.8 tall and of size 1: 1.8 × 0.8 + 4 + 1.
     expect(
       actorCloseUp({ x: 0, z: 0, facing: 0 }, 0.8, false, 0, 1.8, 15).orbit.distance,
-    ).toBeCloseTo(5.598, 3)
+    ).toBeCloseTo(6.44, 3)
+    // In a narrower view that is nearer than it allows: (1 + 0.5) · cot 10°.
+    expect(
+      actorCloseUp({ x: 0, z: 0, facing: 0 }, 0.8, false, 0, 1.8, 10).orbit.distance,
+    ).toBeCloseTo(1.5 / Math.tan((10 * Math.PI) / 180), 3)
     // A party member takes `b` for the monsters' 1.8, and `a` off the look-at.
     const hero = actorCloseUp({ x: 1, z: 4.5, facing: Math.PI }, 3, true, 0.21, 1.1, 15)
     expect(hero.target).toEqual([1, expect.closeTo(1.29, 5), 4.5])

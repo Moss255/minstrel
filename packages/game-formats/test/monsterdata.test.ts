@@ -41,6 +41,7 @@ function names(
     grammar?: number
     radius?: number
     height?: number
+    size?: number
   }[],
 ): Uint8Array {
   const strings: number[] = []
@@ -64,6 +65,7 @@ function names(
     view.setUint32(at + 0x18, m.grammar ?? 0, true)
     view.setInt16(at + 0x0c, m.radius ?? 0, true)
     view.setInt16(at + 0x0e, m.height ?? 0, true)
+    view.setInt16(at + 0x12, m.size ?? 0x1000, true)
   }
   out.set(strings, 4 + monsters.length * 28)
   return out
@@ -134,7 +136,18 @@ describe('monster data', () => {
     expect(blob?.plural).toBe('blobs')
     expect(blob?.grammar).toMatchObject({ indefinite: 101, definite: 1, gender: 2 })
     expect(blob?.unknown_0x0a).toHaveLength(2)
-    expect(blob?.unknown_0x10).toHaveLength(4)
+    expect(blob?.unknown_0x10).toHaveLength(2)
+  })
+
+  it('reads each monster’s size in battle, in 4096ths', () => {
+    const [blob, big] = readMonsterNames(
+      names([
+        { number: 1, name: 'blob', code: 'z000a' },
+        { number: 2, name: 'hulk', code: 'b003a', size: 12779 },
+      ]),
+    )
+    expect(blob?.size).toBe(0x1000)
+    expect(big?.size).toBe(12779)
   })
 
   it('reads each monster’s body: the radius in 1024ths made fx32, the height as it is', () => {

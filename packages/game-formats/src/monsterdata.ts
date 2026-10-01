@@ -154,8 +154,15 @@ export interface MonsterName {
   readonly radius: number
   /** `+0x0E`, its body's height, an `s16` in `fx32` — handed to `Object3D::SetHeight`, as above. */
   readonly height: number
-  /** `+0x10`, four bytes not established. */
+  /** `+0x10`, two bytes not established. */
   readonly unknown_0x10: Uint8Array
+  /**
+   * `+0x12`, its size in battle, an `s16` in 4096ths — 1.0 for the slime,
+   * 3.12 for the hexagoon. Read 1 October 2026 (USA): `func_02048588` copies
+   * it onto the battle object's `+0x18e` (`0x02048608`), which the close-up's
+   * distance, the effects' scale and the shadow are made from.
+   */
+  readonly size: number
 }
 
 function head(bytes: Uint8Array, record: number, what: string) {
@@ -248,7 +255,8 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x0c),
       radius: view.getInt16(at + 0x0c, true) * 4,
       height: view.getInt16(at + 0x0e, true),
-      unknown_0x10: bytes.subarray(at + 0x10, at + 0x14),
+      unknown_0x10: bytes.subarray(at + 0x10, at + 0x12),
+      size: view.getInt16(at + 0x12, true),
     })
   }
   return out

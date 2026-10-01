@@ -23,8 +23,7 @@ import {
  * faces now (`func_ov000_0216d560`), so the camera rides along as it lunges.
  *
  * **Ours**, each marked: the draws a shot takes (the camera's own generator,
- * `+0x21c`, is not traced); a monster's size term in its close-up (`+0x18e`,
- * not read: 0); the animated cameras of `34` and `3 25`, which are not played
+ * `+0x21c`, is not traced); the animated cameras of `34` and `3 25`, which are not played
  * — the camera holds where it was.
  */
 
@@ -35,6 +34,8 @@ export interface Framed {
   readonly facing: number
   readonly height: number
   readonly radius: number
+  /** Its size in battle, `Object3D +0x18e` — 1 when not given. */
+  readonly size?: number
   readonly party: boolean
 }
 
@@ -339,7 +340,15 @@ function shot(
       if (!on || who === undefined) return
       const [, a, b] = mode === 12 ? [0, 0, 1.8] : c.floats
       const keep = mode === 13 || mode === 14
-      const view = actorCloseUp({ x: 0, z: 0, facing: 0 }, on.height, on.party, a, b, cam.halfFov)
+      const view = actorCloseUp(
+        { x: 0, z: 0, facing: 0 },
+        on.height,
+        on.party,
+        a,
+        b,
+        cam.halfFov,
+        on.size ?? 1,
+      )
       // The same shot again carries on (`keep` 0): same fighter, yaw 0, distance within a quarter, look within 1.
       if (
         !keep &&

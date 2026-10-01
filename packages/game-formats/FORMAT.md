@@ -1708,8 +1708,15 @@ by the code's first letter, named `<code>00.bats` — every battle stage has its
 own in `ats_B.ambl`. `B01M1600`'s day is `#0073ff` over `#00ffff` at the
 horizon; its night `#000052` over `#29527b`. A battle takes its slot from the
 battle request's `+5` rather than the clock (`DrawBackgroundGradient`, under
-flag `1 << 9`); `func_020a3578` makes it 2, day, and what sets it on an
-ordinary encounter is not read.
+flag `1 << 9`, which every battle's load sets at `0x02164fa0`). **The slot is
+the clock's as the battle is asked for** (read 1 October 2026): touching a
+roamer stores `LightingManager +0x98` there (`func_ov017_02196430`,
+`0x02196bbc`), and so does a set battle's trigger `120` (`func_0206f81c`,
+`0x0206fc5c`); `func_020a3578` and the encounter's defaults make it 2, and one
+set battle, started by `func_ov000_021bc77c`'s task, stores a fixed 2
+(`0x021b8bf0`). `eventbattle.bin`'s record has no slot. The models' lighting
+takes the same slot, with no blend between slots
+(`GetCurrentAdvancedLightingValues`, `0x02050c20`); the fog keeps to the clock.
 
 `docs/findings.md` records that these carry no music selection.
 
@@ -3218,6 +3225,20 @@ fills that collection from this file. `Object3D::SetRadius` and `SetHeight` are
 the decomp's names; `radius_` and `height_` are `fix32_t` and default to
 `1 << 12` in its constructor, so a monster that named neither would be a
 one-unit ball. Units are the files' own, which `WORLD_SCALE` divides by 8.
+
+**The size in battle — `+0x12`**, an `s16` in 4096ths, read 1 October 2026
+(USA). Overlay 0 loads this file into the battle request's `+0x678`
+(`func_ov000_02165490`, `0x02165bd0`), finds each monster's record by number
+(`func_ov000_02166070`, `0x0216629c`) and keeps it with the model
+(`func_020484f8`); `func_02048588` copies `+0x12` onto the battle object's
+`+0x18e` (`ldrsh [rec, #0x12]` at `0x02048608`, `strh` at `0x0204860c`). The
+only other write sets 1.0 on every battle object (`func_02048614`). The value
+is read by the actor close-up's distance, tags 115 and 117's scale
+(`func_ov000_0216352c`), the death effect's scale (`func_02048690`) and the
+battle shadow's (`0x02161134`). It is 1.0 for the slime, 1.40 for the bodkin
+fletcher, 1.44 for the brownie and 3.12 for the hexagoon; 1.0 to 6.8 over all
+438. Not a model's scale: every monster model is drawn at `0x10a`. `+0x10`,
+the two bytes before it, are still not established.
 
 **The witness is that the numbers sort the bestiary.** The slime is 0.80 wide
 and 0.80 tall, a ball; the metal slime as wide and 0.60 tall; the bag o' laughs

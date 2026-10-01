@@ -93,13 +93,15 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    and nothing the party can reach takes or gives MP by a number until it
    holds a wand or magic water (the Attack's drain, `func_ov000_021573a8`);
    the party's Psyche Up, which waits on an Abilities command; the chase's
-   offset for a tall target; `Object3D +0x18e`'s bump to a monster's
-   close-up; the lighting slot a battle's request carries (`+5`, 2 unless
-   set) — the engine takes its clock's.
+   offset for a tall target; the models' lighting by the battle's slot, which
+   the engine does not draw from `.bats`. Also done: a monster's size
+   (`mon_data` `+0x12`, `Object3D +0x18e`) in its close-up, its effects, its
+   death and its shadow; the battle's lighting slot taken as the battle is
+   asked for.
 
 **To read from the game**, when the list above reaches them: what fills the
-battle request's `+0x20` (a set battle's stage — the data says `eventbattle
-.bin`'s `+0x28`), and its `+5`; the fade up into a battle; what the chase
+battle request's `+0x20` on an ordinary encounter (a set battle's is
+`eventbattle.bin`'s `+0x28`, confirmed 1 October); the fade up into a battle; what the chase
 shot's yaw is measured from; the battle loop's frame rate, which every
 per-frame step here takes as 60 — the camera's turns and pulls, the numbers,
 the step in.

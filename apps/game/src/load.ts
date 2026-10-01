@@ -392,6 +392,8 @@ export interface MonsterWords {
   /** Its body's radius and height, `fx32` — see `MonsterName.radius`. */
   readonly radius: number
   readonly height: number
+  /** Its size in battle, 4096ths — see `MonsterName.size`. */
+  readonly size: number
 }
 
 /**
@@ -977,6 +979,7 @@ function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
               grammar: monster.grammar,
               radius: monster.radius,
               height: monster.height,
+              size: monster.size,
             })
         }
       } catch {
