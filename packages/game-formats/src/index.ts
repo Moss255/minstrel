@@ -137,6 +137,7 @@ export {
   type MapPlacement,
   type MapResource,
   placementOf,
+  RESOURCE_FLAGS,
   readMapManifest,
   resolveMapResources,
 } from './mapmanifest.ts'

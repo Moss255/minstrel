@@ -697,7 +697,7 @@ resource records are what this reads.
 | tag | meaning |
 |---|---|
 | `0x6A` | number of resources |
-| `0x6C` | one per resource: position, **byte offset into the string table**, two unknowns |
+| `0x6C` | one per resource: position, **byte offset into the string table**, its **flags** (the third value, low six bits — below), and a mask of texture sources (INFERRED) |
 | `0x6F` | one per resource, in the same order: where the map puts it |
 
 The offset is the detail that matters. Records address a string by where it
@@ -714,6 +714,29 @@ needs, and they all keep its stem: `C01M0300.imd` is `C01M0300.nsbmd` *and*
 Choosing looks harmless and is not: taking the first match on the reference
 cartridge loses a map's **main geometry** to the manifest file sitting beside it
 under the same stem, and the map still assembles — just without most of itself.
+
+## What a resource is — the `0x6C` flags
+
+Read 1 October 2026 from the manifest's loader (`func_02014a24`, its opcode
+table `data_020ef418`, USA): the third value's low six bits say what is
+loaded for the resource — `0x01` its joint animation (NSBCA), `0x02` its
+material animation (NSBMA), `0x04` its texture animation (NSBTA), `0x08` its
+pattern animation (NSBTP), `0x10` a `.bcfg` of motions, `0x20` not tinted.
+**An animation is loaded only when its bit is set**, whatever lies beside
+the model — 167 of 5,342 resources on the reference cartridge differ from
+their files. A name whose fourth letter is `A` is collision; a resource with
+`0x10` becomes an `Object3D` with its motions (`func_020151cc`), one for each
+placement (`func_020177d4`); the rest are plain models the map draws itself
+(`func_02014d80`), their animations attached for good.
+
+**How they are paced** (`func_02015554`, each update): a plain model's
+animations, all four kinds, advance by the game's delta — **a frame every
+17 ms**, at speed 1 (`Animation3D::AdvanceTimer`, `0x0207e168`;
+`GameState::CalculateDeltaTime`) — each round on its **full** frame count, and
+on even when it is hidden. A piece with motions moves only when one is asked
+for, by its record's rate (`AdvanceAnimations_v0`), all four kinds at the one
+time; until then it stands in its rest pose with no animation on it. All 112
+such pieces on the cartridge have flags `0x11`: cabinets and gates.
 
 ## Placement — `0x6F`
 
@@ -1541,9 +1564,12 @@ A cabinet's, `M01M03G1.bcfg`, reads `open` 0 to 25, `closed` 0 to 0, `opend`
 (sic) 25 to 25 and `close` 0 to 25, each at speed 1. The model beside it has
 three nodes — the cabinet and its two doors, `a` and `b` — and a 25-frame
 animation that turns `a` to +135° and `b` to −135° about the vertical, from
-shut at frame 0 to open at frame 24. So `closed` and `opend` hold the two ends,
-`open` plays between them, and `close` — the same frames — presumably plays
-them backwards (INFERRED; nothing here uses it).
+shut at frame 0 to open at frame 24. **Searched, it opens and shuts again**
+(`func_02015554`, set going by the placement's flag `0x100`,
+`func_0201ba1c`; read 1 October 2026): playback speed 1.5, `open` forward
+and once with sound `0x12` (`open2`, `0x62`, on a gate), held 500 ms, then
+**`close` played in reverse** (`0x13`; `close2`), held at its end. `closed`
+and `opend` are named by no code.
 
 **A piece with a motion table plays a motion when asked, not its animation on a
 loop.** Before this was read, every piece's own animation was played round and

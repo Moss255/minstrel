@@ -18,6 +18,7 @@ import {
   recordLeader,
   step,
 } from '@minstrel/sim'
+import { MOTION_MS } from './motion-speed.ts'
 
 /** Simulation ticks a second, and how long one is. */
 export const TICK_MS = 1000 / 60
@@ -224,6 +225,10 @@ export function standClear(state: CharacterState, solid: readonly Solid[]): Char
  *
  * The frame resets when the motion changes, because a count left over from a
  * nine-frame walk means something else in a seventeen-frame idle.
+ *
+ * **At the motion's own speed**, when `speedOf` names one: its `.bcfg`
+ * record's frames every 17 ms (`Object3D::AdvanceAnimations_v1` — see
+ * `motion-speed.ts`). Without one, the 30 frames a second it was before — ours.
  */
 export function advanceMotion(
   self: Player,
@@ -232,6 +237,7 @@ export function advanceMotion(
   moving: boolean,
   elapsedMs: number,
   travelled: number,
+  speedOf?: (motion: string) => number | undefined,
 ): void {
   // The Hero runs: the gait a let's play shows in the field and the village alike.
   const wanted = moving ? 'run' : 'stand'
@@ -244,6 +250,12 @@ export function advanceMotion(
 
   // The frames that make up the loop, which is not always all of them.
   const frameCount = measurements.loopLength(motion)
+  const speed = speedOf?.(wanted)
+  if (speed !== undefined) {
+    if (!(moving && travelled <= 0)) self.motionFrame += (elapsedMs / MOTION_MS) * speed
+    self.motionFrame %= frameCount
+    return
+  }
   self.motionFrame += motionAdvance({
     moving,
     // Real time rather than whole ticks, so a motion does not run in steps of

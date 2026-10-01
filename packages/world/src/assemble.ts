@@ -10,6 +10,7 @@ import {
   type MapResource,
   type Motion,
   placementOf,
+  RESOURCE_FLAGS,
   readCollisionMesh,
   readMotionTable,
   resolveMapResources,
@@ -307,8 +308,12 @@ export function assembleMap(
           model,
           place: { x: place.x, y: place.y, z: place.z },
           scale: WORLD_SCALE,
-          animation: ownAnimation(model, file, files, members),
-          ...materialAnimationsOf(file, files, members),
+          // Only what the manifest's flags say it has (`func_02014a24`).
+          animation:
+            resource.flags & RESOURCE_FLAGS.jointAnimation
+              ? ownAnimation(model, file, files, members)
+              : undefined,
+          ...materialAnimationsOf(file, files, members, resource.flags),
           source: resource.stem,
           ...own,
           ...(motions ? { motions } : {}),
@@ -348,6 +353,7 @@ function materialAnimationsOf(
   self: string,
   siblings: readonly string[],
   members: ReadonlyMap<string, Uint8Array>,
+  flags: number,
 ): { materialAnimations?: MaterialAnimations } {
   let texAnim: TextureAnimation | undefined
   let matAnim: MaterialAnimation | undefined
@@ -357,9 +363,12 @@ function materialAnimationsOf(
     const beside = members.get(sibling)
     if (!beside) continue
     try {
-      if (!texAnim && isNsbta(beside)) texAnim = readNsbta(beside)[0]
-      else if (!matAnim && isNsbma(beside)) matAnim = readNsbma(beside)[0]
-      else if (!patAnim && isNsbtp(beside)) patAnim = readNsbtp(beside)[0]
+      if (!texAnim && flags & RESOURCE_FLAGS.textureAnimation && isNsbta(beside))
+        texAnim = readNsbta(beside)[0]
+      else if (!matAnim && flags & RESOURCE_FLAGS.materialAnimation && isNsbma(beside))
+        matAnim = readNsbma(beside)[0]
+      else if (!patAnim && flags & RESOURCE_FLAGS.patternAnimation && isNsbtp(beside))
+        patAnim = readNsbtp(beside)[0]
     } catch {
       // An animation that will not read simply is not played.
     }

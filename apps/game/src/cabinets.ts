@@ -16,17 +16,24 @@ import type { Talker } from './talk.ts'
  * less one, but elsewhere that value runs on across an area, and it is only the
  * count that agrees. See `FORMAT.md`, "Treasure".
  *
- * A cabinet stands `closed` until it is opened, plays `open` once, and then
- * holds its last frame. Played the way every other piece's animation is, on a
- * loop, its doors swung open and shut for ever.
+ * **Searched, it opens and shuts again**, as the map's own driver plays it
+ * (`func_02015554`, USA; read 1 October 2026): `open` forward and once, at
+ * 1.5 times its record's rate, held 500 ms, then `close` in reverse, held at
+ * its end. Until it is searched it stands in its rest pose, with no
+ * animation on it. `closed` and `opend` are named in the files and by no code.
+ * Played the way every other piece's animation is, on a loop, its doors would
+ * swing open and shut for ever.
  */
 
 /** The treasure kind that has no position: what a cabinet holds. */
 export const CABINET_KIND = 0x30
-/** The motions a cabinet's table names — the last as the file spells it. */
-export const CABINET_SHUT = 'closed'
+/** The motions a cabinet's table names that the game plays — or a gate's, `open2` and `close2`. */
 export const CABINET_OPENING = 'open'
-export const CABINET_OPEN = 'opend'
+export const CABINET_CLOSING = 'close'
+/** The rate the driver plays them at (`SetAnimationPlaybackSpeed`, 1.5). */
+export const CABINET_RATE = 1.5
+/** How long it holds open, in the game's 17 ms frames: 500 ms. */
+export const CABINET_HOLD = 500 / 17
 
 export interface Cabinet {
   /** The piece's resource, `M01M03G1`. */
@@ -39,9 +46,8 @@ export interface Cabinet {
   readonly x: number
   readonly z: number
   readonly motions: readonly Motion[]
-  /** The motion it is playing, and the map frame that motion began on. */
-  motion: string
-  since: number
+  /** When it was searched, in the map's 17 ms frames; undefined for never. */
+  searched: number | undefined
 }
 
 /** The number in a cabinet's name — `M01M03G2` is 2 — or undefined for a piece that is not one. */
@@ -71,12 +77,8 @@ export function pairCabinets(
   return paired
 }
 
-/** The map's cabinets, each standing shut or, if its treasure has been taken, open. */
-export function cabinetsOf(
-  map: AssembledMap,
-  treasures: readonly Treasure[],
-  isOpen: (slot: number) => boolean,
-): Cabinet[] {
+/** The map's cabinets, each standing in its rest pose. */
+export function cabinetsOf(map: AssembledMap, treasures: readonly Treasure[]): Cabinet[] {
   const found: { index: number; stem: string; number: number }[] = []
   for (const [index, piece] of map.pieces.entries()) {
     const stem = piece.source ?? piece.model.name
@@ -105,27 +107,28 @@ export function cabinetsOf(
       x: piece.place.x + ((bounds.minX + bounds.maxX) / 2) * piece.scale,
       z: piece.place.z + ((bounds.minZ + bounds.maxZ) / 2) * piece.scale,
       motions: piece.motions ?? [],
-      motion: slot !== undefined && isOpen(slot) ? CABINET_OPEN : CABINET_SHUT,
-      since: 0,
+      searched: undefined,
     }
   })
 }
 
 /**
- * The frame of a model's own animation a motion stands at, `elapsed` map
- * frames after it began: from its first frame at its speed, holding its last.
- * A motion the table does not name stands at the first frame.
+ * **The frame a searched cabinet stands at**, `elapsed` 17 ms frames after it
+ * was searched — see the module: its opening, the hold, its closing played
+ * backwards, then held. Undefined for one whose table names neither.
  */
-export function motionFrame(
-  motions: readonly Motion[],
-  name: string,
-  elapsed: number,
-  frameCount: number,
-): number {
-  const motion = motions.find((m) => m.name === name)
-  if (!motion) return 0
-  const run = Math.max(0, Math.min(elapsed * motion.speed, motion.end - motion.start))
-  return Math.max(0, Math.min(Math.floor(motion.start + run), frameCount - 1))
+export function searchedFrame(motions: readonly Motion[], elapsed: number): number | undefined {
+  const named = (name: string) =>
+    motions.find((m) => m.name === name) ?? motions.find((m) => m.name === `${name}2`)
+  const opening = named(CABINET_OPENING)
+  const closing = named(CABINET_CLOSING) ?? opening
+  if (!opening || !closing) return undefined
+  const rateOf = (m: Motion) => Math.max(1e-6, m.speed * CABINET_RATE)
+  const opens = (opening.end - opening.start) / rateOf(opening)
+  if (elapsed < opens) return opening.start + elapsed * rateOf(opening)
+  const shutting = elapsed - opens - CABINET_HOLD
+  if (shutting < 0) return opening.end
+  return Math.max(closing.start, closing.end - shutting * rateOf(closing))
 }
 
 /** The cabinets as things the Hero can walk up to: reach and facing are talk's. Each `id` is its place in the list. */

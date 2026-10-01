@@ -25,6 +25,7 @@ import {
   readNsbmd,
   sampleAnimation,
 } from '@minstrel/nitro-gfx'
+import { speedsOf } from './motion-speed.ts'
 
 /**
  * The characters standing in a map, and how they are drawn.
@@ -59,6 +60,8 @@ export interface CastMember {
   /** How far its motion holds it off its own origin, over the whole cycle. */
   readonly floor: number
   readonly placement: NpcPlacement
+  /** Its idle's speed, frames every 17 ms, from its archive's `.bcfg` — see `motion-speed.ts`. */
+  readonly speed?: number
 }
 
 /** What a map's cast came to, including what could not be drawn. */
@@ -128,7 +131,10 @@ export function cast(
   let elsewhere = 0
 
   // Read each archive once: `s097a` stands in the village five times.
-  const loaded = new Map<string, { model: Model; motion: Animation | undefined } | undefined>()
+  const loaded = new Map<
+    string,
+    { model: Model; motion: Animation | undefined; speed: number | undefined } | undefined
+  >()
 
   /**
    * Whether the map's collision reaches where this character stands.
@@ -188,6 +194,7 @@ export function cast(
       motion: found.motion,
       floor: floorOf(found.model, found.motion),
       placement,
+      ...(found.speed !== undefined ? { speed: found.speed } : {}),
     })
   }
   return { members: out, sprites2d: drawn2d, sprites, unclassified, spots, missing, elsewhere }
@@ -197,7 +204,7 @@ export function cast(
 function read(
   name: string,
   members: ReadonlyMap<string, ReadonlyMap<string, Uint8Array>>,
-): { model: Model; motion: Animation | undefined } | undefined {
+): { model: Model; motion: Animation | undefined; speed: number | undefined } | undefined {
   const wanted = `/${name.toLowerCase()}.chr`
   for (const [archive, files] of members) {
     if (!archive.toLowerCase().endsWith(wanted)) continue
@@ -232,7 +239,13 @@ function read(
     const drives = (a: Animation | undefined) =>
       a !== undefined && a.boneCount === model.nodes.length
     const motion = drives(idle) ? idle : others.find(drives)
-    return { model, motion }
+    // Its idle's own speed, by the name its `.bcfg` gives it.
+    const speeds = speedsOf([...files].map(([path, bytes]) => ({ path, bytes })))
+    const speed =
+      motion === undefined
+        ? undefined
+        : ((motion === idle ? speeds.get('stand') : undefined) ?? speeds.get(motion.name))
+    return { model, motion, speed }
   }
   return undefined
 }

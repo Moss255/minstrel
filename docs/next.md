@@ -75,9 +75,16 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    same shading the battle's effects take; NSBTP read from the game's own
    reader. They loop at the field's 30 frames a second, as its joint
    animations do, until item 5.
-5. **Motion speeds in the field.** The rule the battle now plays by — a
-   motion's `.bcfg` speed every 17 ms — holds everywhere; the field still
-   plays motions at 30 frames a second.
+5. ~~**Motion speeds in the field.**~~ **Done, 1 October 2026**: the Hero,
+   those following and the cast play each motion at its own `.bcfg` speed
+   every 17 ms; a map's plain pieces advance their animations a frame every
+   17 ms, all four kinds, each round on its full count, and load only the
+   animations the manifest's `0x6C` flags name; a cabinet searched opens at
+   1.5 times its rate, holds 500 ms and shuts with its closing backwards
+   (FORMAT.md, "What a resource is"). **Not yet**: the cabinets' sounds
+   (`0x12`, `0x13`), whose archive's setting is not read; a character with no
+   record for its motion, which the game does not advance, still plays at 30
+   a second here.
 6. **The rest of what is read and not yet played**: the numbers' MP kinds
    (nothing yet takes or gives MP by a number) and tension (no Psyche Up);
    the combo display (`bt_combo*.spr`); the chase shot's measured yaw;

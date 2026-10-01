@@ -81,6 +81,18 @@ export interface MapInstance {
 }
 
 /** One entry in a map's resource list. */
+/** A resource's flags (`MapResource.flags`): which animations it has, a `.bcfg`, and tinting. */
+export const RESOURCE_FLAGS = {
+  jointAnimation: 0x01,
+  materialAnimation: 0x02,
+  textureAnimation: 0x04,
+  patternAnimation: 0x08,
+  /** It is an `Object3D` with named motions (`func_020151cc`); without, a plain model the map draws itself (`func_02014d80`). */
+  motions: 0x10,
+  /** Not tinted. */
+  untinted: 0x20,
+} as const
+
 export interface MapResource {
   /** Position in the list. */
   readonly index: number
@@ -88,8 +100,15 @@ export interface MapResource {
   readonly name: string
   /** The name without its extension, which is how the built file is found. */
   readonly stem: string
-  /** Third and fourth values of the record. Their meaning is not established. */
-  readonly unknown_2: number
+  /**
+   * What the game loads for it — the third value's low six bits, read from
+   * the manifest's loader (`func_02014a24`, opcode table `data_020ef418`, USA;
+   * 1 October 2026): {@link RESOURCE_FLAGS}. **An animation is loaded only
+   * when its bit is set**, whatever files lie beside the model — 167 of 5,342
+   * resources on the reference cartridge differ from their files.
+   */
+  readonly flags: number
+  /** The fourth value: a mask of texture sources, INFERRED from where the loader passes it. */
   readonly unknown_3: number
   /**
    * Which slot the resource occupies, as other resources refer to it.
@@ -216,7 +235,7 @@ export function readMapManifest(data: Uint8Array): MapManifest {
       index,
       name,
       stem: dot > 0 ? name.slice(0, dot) : name,
-      unknown_2: entry.values[2] ?? 0,
+      flags: (entry.values[2] ?? 0) & 0x3f,
       unknown_3: entry.values[3] ?? 0,
       slot: record?.values[0] ?? position,
       placement: instances.at(-1)?.placement,

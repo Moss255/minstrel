@@ -205,14 +205,7 @@ import {
 } from './battle-scene.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
 import { BUBBLE_SHEETS, type BubbleKind, bubbleFrame, doorAhead } from './bubbles.ts'
-import {
-  CABINET_OPENING,
-  CABINET_SHUT,
-  type Cabinet,
-  cabinetsOf,
-  cabinetTargets,
-  motionFrame,
-} from './cabinets.ts'
+import { type Cabinet, cabinetsOf, cabinetTargets, searchedFrame } from './cabinets.ts'
 import { CARD, closesTheSlice } from './card.ts'
 import { type CartridgeIdentity, describeIdentity, identifyCartridge } from './cartridge-id.ts'
 import { forgetCartridge, keepCartridge, keptCartridge } from './cartridge-store.ts'
@@ -364,7 +357,7 @@ import {
   showMinimap,
 } from './minimap.ts'
 import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
-import { frameAt, motionMs } from './motion-speed.ts'
+import { frameAt, MOTION_MS, motionMs } from './motion-speed.ts'
 import {
   BATTLE_SOUNDS,
   music,
@@ -1424,6 +1417,10 @@ const CABINET_TARGET = 10_000
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
   if (!loaded) return
+  // **The map's own clock**: a plain piece's animations advance a frame every
+  // 17 ms, all four kinds alike, each round on its full count
+  // (`func_02015554`, `Animation3D::AdvanceTimer`); `frame` counts redraws.
+  const time = mapTime(frame)
   const cat = loaded.catalogue
   const drawn: Piece[] = []
   for (const [pieceIndex, piece] of loaded.map.pieces.entries()) {
@@ -1441,26 +1438,19 @@ function poseMap(frame: number): void {
     // shapes. A map's models each drive themselves.
     // A cabinet stands where its motion has it; everything else loops its own.
     const cabinet = cabinets.find((c) => c.piece === pieceIndex)
+    // A cabinet rests with no animation on it until it is searched — see `searchedFrame`.
+    const at = cabinet
+      ? cabinet.searched === undefined
+        ? undefined
+        : searchedFrame(cabinet.motions, time - cabinet.searched)
+      : time
     const stacks =
-      animation && animation.boneCount === model.nodes.length
-        ? model.pose(
-            posedNodes(
-              model,
-              animation,
-              cabinet
-                ? motionFrame(
-                    cabinet.motions,
-                    cabinet.motion,
-                    frame - cabinet.since,
-                    animation.frameCount,
-                  )
-                : frame,
-            ),
-          )
+      animation && animation.boneCount === model.nodes.length && at !== undefined
+        ? model.pose(posedNodes(model, animation, at))
         : model.shapeMatrices
 
     const shade = piece.materialAnimations
-      ? materialShade(piece.materialAnimations, model, cat, frame, true)
+      ? materialShade(piece.materialAnimations, model, cat, time, true)
       : undefined
     model.shapes.forEach((shape, index) => {
       const geometry: Geometry = placeGeometry(
@@ -1512,7 +1502,8 @@ function poseMap(frame: number): void {
             { ...member, placement: castPlaced(member.placement) },
             cat,
             characterScale,
-            frame,
+            // At its idle's own speed, every 17 ms (`motion-speed.ts`); without one, the map's frame.
+            member.speed !== undefined ? time * member.speed : frame,
           ),
     ),
     // The 2D cast faces the camera, so it is rebuilt in the frame loop rather
@@ -2187,10 +2178,7 @@ function enter(map: string, arrival?: Arrival): boolean {
   areaIn.map = undefined
   areaIn.doorway = undefined
   areasAdded.length = 0
-  cabinets = cabinetsOf(opened.map, opened.treasures, (slot) => {
-    const inside = opened.treasures[slot]
-    return inside !== undefined && openedTreasure.has(treasureKey(opened.code, slot, inside))
-  })
+  cabinets = cabinetsOf(opened.map, opened.treasures)
   measurements.clear()
   mapFrame = -1
   shapeCells = []
@@ -2926,6 +2914,9 @@ function drawCorner(): void {
   drawMinimap(context, minimapShown, [hero, ...companions], loaded?.region)
 }
 
+/** The map's animation time for a redraw: the game's 17 ms frames since the page began. */
+const mapTime = (redraw: number) => (redraw * (1000 / MAP_FPS)) / MOTION_MS
+
 /** Where the Hero stands, for the doors — kept, not made anew each frame. */
 const heroAtDoors = { x: 0, z: 0 }
 const atDoors: { readonly x: number; readonly z: number }[] = []
@@ -3118,7 +3109,11 @@ function frame(now = 0): void {
         }
       }
     }
-    advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled)
+    // At the Hero's set's own speeds — see `motion-speed.ts`.
+    const heroSpeeds = cartridge ? motionSpeeds(cartridge, motionFamilyOf(leader())) : undefined
+    advanceMotion(self, loaded.figure, measurements, moving, elapsedMs, travelled, (name) =>
+      heroSpeeds?.get(name),
+    )
     maybeTravel()
     maybeAreaEvent()
     maybeDoorwayRecord()
@@ -3961,11 +3956,10 @@ function openTreasureAhead(): boolean {
     ],
   )
   if (!target) return false
-  // A cabinet opens whatever is inside: it plays its opening once, then holds.
+  // A cabinet opens and shuts again as it is searched — see `searchedFrame`.
   const cabinet = target.id >= CABINET_TARGET ? cabinets[target.id - CABINET_TARGET] : undefined
-  if (cabinet && cabinet.motion === CABINET_SHUT) {
-    cabinet.motion = CABINET_OPENING
-    cabinet.since = Math.max(mapFrame, 0)
+  if (cabinet) {
+    cabinet.searched = mapTime(Math.max(mapFrame, 0))
     poseMap(Math.max(mapFrame, 0))
   }
   const slot = cabinet ? cabinet.slot : target.id
@@ -6030,7 +6024,11 @@ function companionFieldPieces(now: number): Piece[] {
     // what a party of four is made of; a story companion keeps their model.
     const built = dressed[place + 1]
     if (built && !who) {
-      const motion = built.figure.motions.get(walkingNow ? 'run' : 'stand')
+      const name = walkingNow ? 'run' : 'stand'
+      const motion = built.figure.motions.get(name)
+      // At their own set's speed (`motion-speed.ts`), as the Hero's.
+      const member = members[place + 1]
+      const speed = member ? motionSpeeds(rom, motionFamilyOf(member)).get(name) : undefined
       return playerPieces(
         {
           ...hero,
@@ -6041,7 +6039,12 @@ function companionFieldPieces(now: number): Piece[] {
             z: fx32(Math.round(z * FX32_ONE)),
           },
           facing: trailFacing[place] ?? 0,
-          motionFrame: walkingNow ? hero.motionFrame : 0,
+          motionFrame:
+            speed !== undefined
+              ? frameAt(now, speed, motion?.frameCount ?? 1, true)
+              : walkingNow
+                ? hero.motionFrame
+                : 0,
         },
         built.figure,
         built.pieces,
@@ -6059,9 +6062,14 @@ function companionFieldPieces(now: number): Piece[] {
     // Whoever follows runs as the Hero does — see `advanceMotion`.
     const motion = look.motions.get(walking ? 'run' : 'stand') ?? look.motions.get('stand')
     const length = Math.max(1, motion ? loopFrames(motion) : 1)
-    const frame = walking
-      ? Math.floor(hero.motionFrame) % length
-      : Math.floor((now / 1000) * MAP_FPS) % length
+    // At their own speed, every 17 ms (`motion-speed.ts`); without one, as before.
+    const speed = look.speeds.get(walking ? 'run' : 'stand')
+    const frame =
+      speed !== undefined
+        ? frameAt(now, speed, motion?.frameCount ?? 1, true)
+        : walking
+          ? Math.floor(hero.motionFrame) % length
+          : Math.floor((now / 1000) * MAP_FPS) % length
     const placement = {
       id: -1 - place,
       map: 0,

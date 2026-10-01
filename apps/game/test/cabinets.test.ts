@@ -4,15 +4,15 @@ import type { Motion, Treasure } from '@minstrel/game-formats'
 import { groundBelow } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import {
+  CABINET_CLOSING,
+  CABINET_HOLD,
   CABINET_KIND,
-  CABINET_OPEN,
   CABINET_OPENING,
-  CABINET_SHUT,
   cabinetNumber,
   cabinetsOf,
   cabinetTargets,
-  motionFrame,
   pairCabinets,
+  searchedFrame,
 } from '../src/cabinets.ts'
 import { load } from '../src/load.ts'
 import { talkTarget } from '../src/talk.ts'
@@ -38,8 +38,9 @@ function treasure(kind: number, placed: boolean): Treasure {
 
 const MOTIONS: Motion[] = [
   { name: CABINET_OPENING, start: 0, end: 25, speed: 1 },
-  { name: CABINET_SHUT, start: 0, end: 0, speed: 1 },
-  { name: CABINET_OPEN, start: 25, end: 25, speed: 1 },
+  { name: 'closed', start: 0, end: 0, speed: 1 },
+  { name: 'opend', start: 25, end: 25, speed: 1 },
+  { name: CABINET_CLOSING, start: 0, end: 25, speed: 1 },
 ]
 
 describe('a cabinet', () => {
@@ -58,14 +59,15 @@ describe('a cabinet', () => {
     expect(pairCabinets([1, 2, 3], treasures)).toEqual([1, 2, undefined])
   })
 
-  it('stands shut, plays its opening once and holds the last frame it can', () => {
-    expect(motionFrame(MOTIONS, CABINET_SHUT, 40, 25)).toBe(0)
-    expect(motionFrame(MOTIONS, CABINET_OPENING, 0, 25)).toBe(0)
-    expect(motionFrame(MOTIONS, CABINET_OPENING, 10, 25)).toBe(10)
-    expect(motionFrame(MOTIONS, CABINET_OPENING, 100, 25)).toBe(24)
-    expect(motionFrame(MOTIONS, CABINET_OPEN, 0, 25)).toBe(24)
-    expect(motionFrame(MOTIONS, 'wave', 5, 25)).toBe(0)
-    expect(motionFrame([{ name: 'fast', start: 0, end: 20, speed: 2 }], 'fast', 5, 25)).toBe(10)
+  it('searched, opens at 1.5 times its rate, holds 500 ms, then shuts with its closing backwards', () => {
+    // 25 frames at 1.5 a frame: open by 16⅔.
+    expect(searchedFrame(MOTIONS, 0)).toBe(0)
+    expect(searchedFrame(MOTIONS, 10)).toBe(15)
+    expect(searchedFrame(MOTIONS, 25 / 1.5)).toBe(25)
+    expect(searchedFrame(MOTIONS, 25 / 1.5 + CABINET_HOLD / 2)).toBe(25)
+    expect(searchedFrame(MOTIONS, 25 / 1.5 + CABINET_HOLD + 10)).toBeCloseTo(10)
+    expect(searchedFrame(MOTIONS, 1000)).toBe(0)
+    expect(searchedFrame([{ name: 'wave', start: 0, end: 9, speed: 1 }], 5)).toBeUndefined()
   })
 })
 
@@ -76,9 +78,9 @@ describe.skipIf(!romPath)('cabinets on a real cartridge', { timeout: 60_000 }, (
 
   it("finds the shop's two cabinets, shut, each holding one of its treasures and in reach", () => {
     const shop = load(rom, { map: 'M01M03' })
-    const cabinets = cabinetsOf(shop.map, shop.treasures, () => false)
+    const cabinets = cabinetsOf(shop.map, shop.treasures)
     expect(cabinets.map((c) => c.stem)).toEqual(['M01M03G1', 'M01M03G2'])
-    expect(cabinets.map((c) => c.motion)).toEqual([CABINET_SHUT, CABINET_SHUT])
+    expect(cabinets.map((c) => c.searched)).toEqual([undefined, undefined])
     const held = cabinets.map((c) => (c.slot === undefined ? undefined : shop.treasures[c.slot]))
     expect(held.map((t) => t?.kind)).toEqual([CABINET_KIND, CABINET_KIND])
     expect(new Set(held.map((t) => t?.index)).size).toBe(2)
@@ -103,7 +105,5 @@ describe.skipIf(!romPath)('cabinets on a real cartridge', { timeout: 60_000 }, (
       })
       expect(reachable, cabinet.stem).toBe(true)
     }
-    const opened = cabinetsOf(shop.map, shop.treasures, () => true)
-    expect(opened.map((c) => c.motion)).toEqual([CABINET_OPEN, CABINET_OPEN])
   })
 })
