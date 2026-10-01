@@ -19,8 +19,6 @@ import type { ActionResults, ShownResult } from './action-reactions.ts'
 export const ACTIONS = {
   attack: 1,
   defend: 3,
-  /** "Flee", the party's: `default.bact`'s section 225. */
-  flee: 225,
   /** "Flee" again — **ours** for a monster running away; which the game's monsters use is not read. */
   monsterFlee: 917,
 } as const
@@ -176,17 +174,17 @@ export function actionOf(
         },
       }
     }
-    case 'defend':
     case 'flee':
+      // The party's flight is no action: overlay 26 settles it as the commands
+      // are taken, and state 11 only puts its line up (overlay 23). A monster's is.
+      if (!foe(event.actor)) return undefined
+      return {
+        context: { action: ACTIONS.monsterFlee, actors: [obj(event.actor)], targets: [] },
+        results: { opening: lines.join('\n') || undefined, targets: [], own: [] },
+      }
+    case 'defend':
     case 'wait': {
-      const action =
-        event.kind === 'defend'
-          ? ACTIONS.defend
-          : event.kind === 'flee'
-            ? foe(event.actor)
-              ? ACTIONS.monsterFlee
-              : ACTIONS.flee
-            : event.action
+      const action = event.kind === 'defend' ? ACTIONS.defend : event.action
       return {
         context: { action, actors: [obj(event.actor)], targets: [] },
         results: { opening: lines.join('\n') || undefined, targets: [], own: [] },

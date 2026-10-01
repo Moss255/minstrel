@@ -245,9 +245,6 @@ export interface Loaded {
    */
   readonly pattyWords: ReadonlyMap<number, string>
   readonly pattyLabels: ReadonlyMap<number, string>
-  /** The ordinary battle stages' track, and this dungeon's boss stage's — see `musicOf`. */
-  readonly battleMusic: number | undefined
-  readonly bossMusic: number | undefined
   /** The area's triggers — see `readTriggers`. */
   readonly triggers: readonly Trigger[]
   /** The map's treasure, in world units — see `readTreasure`. Empty when it has none. */
@@ -1768,38 +1765,20 @@ function indexOf(cat: Catalogue): (code: string) => MapEntry | undefined {
 }
 
 /**
- * The tracks a map calls for, out of the index: its own (`MapEntry.music`,
- * INFERRED there); the ordinary battle stages' — every `B01` stage names the
- * one track, 23, and which stage a field's battle is fought on is not read;
- * and its dungeon's boss stage's — the `B` map whose label opens with the
- * map's code's first three letters, "D01 - Hexagoon" for the Hexagon's.
+ * The track a map calls for, out of the index (`MapEntry.music`, INFERRED
+ * there). A battle's is the code's, not the index's — see `playBattleMusic`.
  */
-function musicOf(
-  cat: Catalogue,
-  code: string,
-): Pick<Loaded, 'music' | 'battleMusic' | 'bossMusic'> {
-  const none = { music: undefined, battleMusic: undefined, bossMusic: undefined }
+function musicOf(cat: Catalogue, code: string): Pick<Loaded, 'music'> {
   for (const leaf of cat.other) {
     if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
     try {
-      const list = readMapList(leaf.bytes)
-      const own = list.map(code.toUpperCase())?.music
-      const stages = list.maps.filter((e) => e.id !== 0 && e.code.startsWith('B01'))
-      const shared = new Set(stages.map((e) => e.music))
-      const dungeon = `${code.toUpperCase().slice(0, 3)} - `
-      const boss = list.maps.find(
-        (e) => e.id !== 0 && e.code.startsWith('B') && e.label?.startsWith(dungeon),
-      )
-      return {
-        music: own === undefined || own === 0 ? undefined : own,
-        battleMusic: shared.size === 1 ? stages[0]?.music : undefined,
-        bossMusic: boss?.music,
-      }
+      const own = readMapList(leaf.bytes).map(code.toUpperCase())?.music
+      return { music: own === undefined || own === 0 ? undefined : own }
     } catch {
-      return none
+      return { music: undefined }
     }
   }
-  return none
+  return { music: undefined }
 }
 
 /**

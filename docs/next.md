@@ -45,13 +45,19 @@ is gathered in `docs/still-open.md` §2, "the battle stage".
    yet shown** is listed in `docs/still-open.md` §2: sounds, the lights, the
    animated cameras, particles. Texture-pattern animation (NSBTP) is read and
    played on the effects too, from the game's own reader (`MPT.cpp`).
-2. **The end of a battle.** The victory orbit (overlay 25's sub-phase 5, the
-   group orbit held 60 frames — INFERRED to be the victory's), a fallen
-   monster's fade (`TransitionInheritedAlpha` to 0 over 300 ms, `ov025
-   0x021ddbc0`, INFERRED to be the death's) and the collapse effect at its
-   shadow (`eb0100`, `arm9 0x02048808`, INFERRED), and the fade to black and
-   back to the field (state 4, `SetBrightness(−16, 15)`). The way in: the
-   load's black and where it fades up (not read).
+2. ~~**The end of a battle.**~~ **Done, 1 October 2026**, and the way in
+   with it, both read from the game's code (FORMAT.md, "The way into a
+   battle, and out"): the swirl on the field's camera and the fade to black;
+   the battle set up in the black and coming up over 15 frames; the opening's
+   line closing itself; the victory — the tune cut, `ME_005`, the victory's
+   shot (the function first taken for the command camera), everyone on the
+   grid with no pose, every line waiting for a key; the wipe-out's fade, hold
+   and `ME_009`; a flight as a line, not an action; leaving to black over 15
+   frames and the field's own screen up over 30; 150 ticks before another
+   encounter. A monster's death and fade came with item 1. **Not yet**: the
+   swirl's own model, `ME_004` on a level, the opening's `appear` (not
+   read), and **the camera while a command is chosen**, which turned out to
+   be unread — overlay 26's, being read.
 3. **Sound.** Tag 70's sound on the swing and the hit (40 and 80 for the
    swords), the reaction record's (tag 71), an effect's own; none is played.
 4. **Maps that move.** The same NSBTA and NSBMA — 1,910 files in the map

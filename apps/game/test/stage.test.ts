@@ -7,7 +7,6 @@ import {
   actorCloseUp,
   CLOSE_UP_PULL,
   chaseView,
-  commandView,
   EASE_KEEP,
   easeOrbit,
   gridPlace,
@@ -26,6 +25,7 @@ import {
   sideShot,
   stageOfRecord,
   stageToFight,
+  victoryView,
 } from '../src/stage.ts'
 
 /** A record naming the stage 30000 + 100a + 10b + c. */
@@ -179,7 +179,7 @@ describe('the camera while a command is chosen', () => {
   it('looks at the party’s middle from 1 up, 12 less its distance out, turning slowly', () => {
     // Two on the grid, (±2.598, 4.5): the middle is 4.5 out, so the distance
     // would be 7.5 — under 8, so the middle comes in by 7.5/8 and it is 12.
-    const view = commandView([
+    const view = victoryView([
       { x: -2.598, z: 4.5 },
       { x: 2.598, z: 4.5 },
     ])
@@ -189,13 +189,13 @@ describe('the camera while a command is chosen', () => {
     expect(view.target[2]).toBeCloseTo((4.5 * (12 - out)) / 8)
     expect(view.orbit.distance).toBe(12)
     expect(view.orbit.height).toBe(1)
-    // −0x999 whatever the monsters — see `commandView`.
+    // −0x999 whatever the monsters — see `victoryView`.
     expect(view.orbit.yaw).toBeCloseTo(2 * Math.PI - 0x999 / 4096)
     expect(pulled(view).orbit.yaw).toBeCloseTo(view.orbit.yaw + 0xe / 4096)
   })
 
   it('keeps 12 less the distance when that is 8 or more', () => {
-    const view = commandView([{ x: 0, z: 2 }])
+    const view = victoryView([{ x: 0, z: 2 }])
     expect(view.orbit.distance).toBeCloseTo(12 - Math.hypot(0xcc / 4096, 2))
     expect(view.target[2]).toBe(2)
   })

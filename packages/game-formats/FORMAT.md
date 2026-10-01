@@ -3422,17 +3422,18 @@ half-angle: 30° (`func_ov000_0216d370`).
   drawn; kept to the four in front when the other fighter is shorter.
 - **After every command and every frame** (`func_ov000_0216f2b8`): the eye
   no further than 17 out and no higher than 5.
-- **The camera while a command is chosen** (`func_ov000_0216e3c4`, called
-  once as overlay 23 — the battle menu's overlay — opens its menu,
-  `0x021f04b8`), a cut: the party's places averaged, height and all; the
-  distance 12 less how far that is from the stage's middle, and when that is
-  under 8 the middle drawn in by it over 8 and the distance 12; the look-at
-  that middle 0.5 up, the orbit 1 up; turning `0xe`/4096 a frame for as long
-  as the menu is up. Nothing moves it while a target is chosen. **Its yaw is
-  −0x999, −0.6 rad, always**: the code takes the angle to the monsters'
-  middle (`FX_Atan2Idx`, ±0x8000), divides it by 0xffff as a whole number,
-  which leaves 0, shifts that up 12 and adds −0x999 — meant to face them, it
-  seems, and fixed as it runs.
+- **The victory's shot** (`func_ov000_0216e3c4`, called only from overlay 23's
+  experience step, `0x021f04b8` — **corrected 1 October 2026**: it was taken
+  for the camera while a command is chosen, overlay 23 for the battle menu's;
+  overlay 23 is the results, states 9 and 10), a cut: the party's places
+  averaged, height and all; the distance 12 less how far that is from the
+  stage's middle, and when that is under 8 the middle drawn in by it over 8
+  and the distance 12; the look-at that middle 0.5 up, the orbit 1 up; turning
+  `0xe`/4096 a frame for as long as it is up. **Its yaw is −0x999, −0.6 rad,
+  always**: the code takes the angle to the monsters' middle (`FX_Atan2Idx`,
+  ±0x8000), divides it by 0xffff as a whole number, which leaves 0, shifts
+  that up 12 and adds −0x999. The camera while a command is chosen is
+  overlay 26's — see "The way into a battle, and out".
 - **An action begins** (`ov025 func_021db8d8`) by putting everyone on the grid
   and **perhaps** cutting to the chase shot (`0x0216e678`, re-aimed each frame
   by `0x0216ea38`): never on the first action; after that on a draw of one
@@ -3444,10 +3445,73 @@ half-angle: 30° (`func_ov000_0216d370`).
   puts the eye 1.2 to 2 below, at least 8 away. What the yaw is measured from
   is not read. **An action ends** with the camera left where it is
   (`0x021dcbf4`).
-- The battle's states, corrected (the jump table at `0x021607d4` counts from
-  0): 0 load, 1 set-up, 4 leave, 6 the field back, 8 overlay 25's action
-  loop, 9 and 10 overlay 23's, 7 and 11 overlay 26's, 16 the end. Overlays 22
-  to 30 share one address, so one of 23, 25 and 26 is in at a time.
+- The battle's states (the jump table at `0x021607d4` counts from 0): 0
+  load, 1 set-up, 4 leave, 6 the field back, 7 overlay 26's command phase, 8
+  overlay 25's action loop, 9 the victory and 10 the wipe-out (overlay 23's),
+  11 a flight (overlay 26's), 17–19 the round's working-out; 16 is the
+  table's default and runs nothing (corrected 1 October 2026). Overlays 22 to
+  30 share one address, so one of 23, 25 and 26 is in at a time.
+
+### The way into a battle, and out
+
+Read 1 October 2026 (USA release). Times are in the game's ticks and frames,
+taken at 60 a second — the tick source is not read.
+
+**In.** A roamer touched makes the encounter's task (overlay 17
+`func_ov017_02196430` → `021b6f18`), which makes the battle request and puts
+the transition's task ahead of itself; the field runs only its first task, so
+the encounter waits for it. **The battle's track cuts in at once**:
+`func_0209c480`, track 23 (`0x17`) — or a set battle's record's `+0x24`,
+which settles that field — the field's music cut for a roamer, faded over 10
+for a set battle. A set battle's stage, its record's `+0x28`, is the request's
+`+0x20`. Then **the swirl** (`func_0204700c`, once a frame): the field's
+camera's roll −8° a tick and its field of view, set to a 15° half-angle as it
+begins, narrowed by 0.4333° a tick; the model `data/effect/ev999991500.chr`
+played in front of it (polygon ID `0x3d`, at (0, −10, 1) — how that is placed
+is not read); past the 15th tick both screens to black over 20 frames
+(`SetMainBrightness`/`SetSubBrightness(−16, 20)`); done past the 35th. A set
+battle from a trigger record's `120` waits 15 frames first; event function
+547 brings its own model. **The load** is black — state 0 sets
+`SetBrightness(−16, 0)` each frame. **Up**: the opening's camera starts
+(`func_ov000_0216118c`, the eased wide shot), and the next frame both screens
+come up over 15 frames (`SetBrightness(0, 15)`, overlay 26 `0x021d9d18`)
+while the opening's line goes up (`func_ov026_021dd8a8`, `strbtl` 6, 7, 8 or
+9 by the monsters' kinds). **The line closes itself**: it ends
+`<TIME=45><CLOSE>` (`<TIME=30>` after a surprise's second sentence), and no
+key is read. When the monsters play `appear` is **not read** — no code in
+overlay 0 or 26 names it.
+
+**Out.** As the last action ends (overlay 25, `0x021db3c4`–`0x021db430`), the
+battle's `+0x8e14` says which: 2 no one of the party standing → **state 10, the
+wipe-out**; 1 → **state 9, the victory**; else the next round's commands. No
+hold.
+
+- **The victory** (overlay 23, 17 steps from `data_ov023_021fe148`): the
+  camera frozen where the last action left it (`0216d370(cam, 0, 0, 1)`), the
+  battle's tune stopped at once, the field monster hidden; the first line
+  ("… defeated", `str_bres` 1 or 50) with the fanfare **`ME_005`** (sequence
+  54, `func_0209c6d8` at `0x021ef464`). Then the experience step: the
+  victory's shot, everyone back on the grid, the living idle — **no victory
+  pose** — and "receives some experience!" (25, or 26 for several). Each level
+  gained: its line, **`ME_004`** (53), "attributes improve!", spells, skill
+  points. Then gold, treasure. **Every line waits for a key** — A, B, X, L, R,
+  the pad or a touch — and nothing times out; the last step waits for the
+  jingle to end.
+- **A wipe-out** (state 10): the tune fading (`func_0209c678(snd, 30)`), the
+  last frame held 1000 ms, the camera frozen; "… wiped out!" (20) with
+  **`ME_009`** (58); a key, the jingle cut, and out.
+- **A flight** is no action: overlay 26 settles it as the commands are taken
+  (`func_ov000_0215f7a8`), and state 11 puts up a `strbtl` line with sound 9,
+  **closing itself 30 frames after**; the field monster is hidden. No
+  `escape`, no music change.
+- **Leaving** (state 4): both screens to black over 15 frames
+  (`SetBrightness(−16, 15)`, `0x02168768`), the battle freed. State 6 puts the
+  party back where it stood, the light to 1 at once, and the sounds back to
+  `se_norm.sdat`. **The field brings its own screen up** over 30 frames
+  (`SetMainBrightness(0, 30)`, overlay 17 `0x021b7f3c`), starts its tune again
+  (`func_0209c530`), and sets the party's `+0xc3` to 150 (`0x021b7bd4`;
+  INFERRED a count before another encounter).
+
 
 ### The action scripts — `.bact`
 

@@ -414,7 +414,6 @@ import {
   actorCloseUp,
   type BattleView,
   chaseView,
-  commandView,
   EYE_CEILING,
   easeOrbit,
   FIGHTER_HEIGHT,
@@ -435,6 +434,7 @@ import {
   sideShot,
   stageOfRecord,
   stageToFight,
+  victoryView,
 } from './stage.ts'
 import { moveStory, type Story, swapThread, THREADS, threadOf, unstarted } from './story.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
@@ -666,19 +666,16 @@ function playMapMusic(again = false): void {
 }
 
 /**
- * A battle's track: a set battle's own, `eventbattle.bin`'s `+0x24` (INFERRED,
- * see `EventBattle.music`); else the ordinary stages'.
+ * **A battle's track** (`func_0209c480`, from the transition): 23 (`0x17`),
+ * unless the battle has an `eventbattle.bin` record — then that record's
+ * `+0x24`. The field's music is cut, not faded, for a roamer; a set battle's
+ * fades over 10 (`func_0209c678`) — ours, cut here too.
  */
+const BATTLE_TRACK = 0x17
 function playBattleMusic(): void {
   if (!cartridge || !loaded || params.get('bgm')) return
   const own = eventFight ? loaded.eventBattles.get(eventFight.index)?.music : undefined
-  const wanted =
-    own !== undefined && own !== 0
-      ? own
-      : eventFight && loaded.bossMusic !== undefined
-        ? loaded.bossMusic
-        : loaded.battleMusic
-  if (wanted === undefined) return
+  const wanted = own !== undefined && own !== 0 ? own : BATTLE_TRACK
   track = wanted
   void playTrack(cartridge, wanted)
 }
@@ -957,6 +954,117 @@ let doorFade:
   | undefined
 let returning: { readonly from: number; readonly since: number } | undefined
 
+/** A frame of the game's, ms: its ticks are taken at 60 a second — the tick source is not read. */
+const FRAME_MS = 1000 / 60
+/** The swirl (`func_0204700c`): done past 35 ticks; from past 15 both screens to black over 20 frames. */
+const SWIRL_TICKS = 35
+const SWIRL_DARK_AFTER = 15
+const SWIRL_DARK_FRAMES = 20
+/** It turns the field's camera by −8° a tick and narrows its half-angle from 15° by 0.4333° a tick. */
+const SWIRL_ROLL = 8
+const SWIRL_FOV_FROM = 15
+const SWIRL_FOV_STEP = 0.4333
+/** Both screens up from black over 15 frames as the opening's camera begins (`SetBrightness(0, 15)`, ov026 `0x021d9d18`). */
+const BATTLE_UP_MS = 15 * FRAME_MS
+/** The opening's line closes itself 45 ticks after it is up (`<TIME=45><CLOSE>`, `func_ov026_021dd8a8`); no key is read. */
+const OPENING_LINE_MS = 45 * FRAME_MS
+/** A flight's line closes itself 30 frames after it is up (state 11); no key is read. */
+const FLIGHT_LINE_MS = 30 * FRAME_MS
+/** Leaving: both screens to black over 15 frames (`SetBrightness(−16, 15)`, ov000 `0x02168768`). */
+const BATTLE_OUT_MS = 15 * FRAME_MS
+/** Then the field's own screen up over 30 (`SetMainBrightness(0, 30)`, ov017 `0x021b7f3c`). */
+const FIELD_UP_MS = 30 * FRAME_MS
+/** A wipe-out holds the last frame 1000 ms before its line (state 10). */
+const WIPE_HOLD_MS = 1000
+/** The jingles, `bgm.sdat`'s sequences: the victory's `ME_005`, the wipe-out's `ME_009`. */
+const VICTORY_JINGLE = 0x36
+const WIPED_OUT_JINGLE = 0x3a
+
+/** The swirl into a battle, while it runs — see {@link startFight}. */
+let entering: { readonly since: number; readonly begin: () => void } | undefined
+/** A fade of both screens, 0 lit to 1 black, and what follows it — see {@link battleDarkness}. */
+let screenFade:
+  | {
+      readonly from: number
+      readonly to: number
+      readonly since: number
+      readonly ms: number
+      readonly done?: () => void
+    }
+  | undefined
+/** Whether the battle is on its opening's lines, which close themselves. */
+let inOpening = false
+/** Whether the battle is going, the screens fading to black. */
+let leaving = false
+/** What the battle's end has started: the victory's or the wipe-out's music and shot, once. */
+let ending: { readonly kind: 'won' | 'lost'; readonly since: number } | undefined
+
+/** The swirl's tick now, and the camera's turn and half-angle at it. */
+function swirlAt(
+  now: number,
+): { readonly tick: number; readonly roll: number; readonly halfFov: number } | undefined {
+  if (!entering) return undefined
+  const tick = Math.floor(Math.max(0, now - entering.since) / FRAME_MS) + 1
+  const degrees = ((((-SWIRL_ROLL * tick) % 360) + 540) % 360) - 180
+  return {
+    tick,
+    roll: (degrees * Math.PI) / 180,
+    halfFov: Math.max(0.5, SWIRL_FOV_FROM - SWIRL_FOV_STEP * tick),
+  }
+}
+
+/**
+ * **How dark the battle has the screens**: the swirl's fade to black, the set-up
+ * in the black and the fade up, and leaving — see {@link startFight} and
+ * {@link leaveFight}. 0 lit, 1 black.
+ */
+function battleDarkness(now: number): number {
+  const swirl = swirlAt(now)
+  if (swirl && entering) {
+    if (swirl.tick > SWIRL_TICKS) {
+      const { begin } = entering
+      entering = undefined
+      camera.roll = 0
+      begin()
+      screenFade = battle ? { from: 1, to: 0, since: now, ms: BATTLE_UP_MS } : undefined
+      return 1
+    }
+    return swirl.tick > SWIRL_DARK_AFTER
+      ? Math.min(1, (swirl.tick - SWIRL_DARK_AFTER) / SWIRL_DARK_FRAMES)
+      : 0
+  }
+  if (!screenFade) return 0
+  const t = Math.min(1, Math.max(0, (now - screenFade.since) / screenFade.ms))
+  const dark = screenFade.from + (screenFade.to - screenFade.from) * t
+  if (t >= 1) {
+    const { done } = screenFade
+    screenFade = undefined
+    done?.()
+  }
+  return dark
+}
+
+/**
+ * **Leave the battle as the game does**: both screens to black over 15
+ * frames (state 4), the battle freed and the field back (state 6), and the
+ * field's own screen up over 30 (`func_ov017_021b790c`).
+ */
+function leaveFight(): void {
+  if (leaving) return
+  leaving = true
+  screenFade = {
+    from: 0,
+    to: 1,
+    since: performance.now(),
+    ms: BATTLE_OUT_MS,
+    done: () => {
+      leaving = false
+      endFight()
+      screenFade = { from: 1, to: 0, since: performance.now(), ms: FIELD_UP_MS }
+    },
+  }
+}
+
 /** Darken the 3D view as the scene playing says, or bring the field back after one. */
 function showDarkness(stage: { readonly darkness: number } | undefined, now: number): void {
   let dark = 0
@@ -977,6 +1085,7 @@ function showDarkness(stage: { readonly darkness: number } | undefined, now: num
     dark = returning.from * Math.min(1, Math.max(0, 1 - t))
     if (t >= 1) returning = undefined
   }
+  dark = Math.max(dark, battleDarkness(now))
   if (fadeEl) fadeEl.style.opacity = String(dark)
 }
 
@@ -1259,8 +1368,15 @@ const ROAM_RULES: RoamRules = {
   turnEvery: 60,
   shape: PERSON,
 }
-/** Ticks after arriving or after a battle during which walking into a monster starts nothing. */
+/** Ticks after arriving during which walking into a monster starts nothing. Ours. */
 const ROAM_CALM = 120
+/**
+ * Ticks after a battle during which walking into a monster starts nothing:
+ * the party's `+0xc3` set to 150 as the field comes back (`func_ov017_021b790c`,
+ * `0x021b7bd4`). INFERRED: what the count holds off is an encounter. The game
+ * keeps it on the party; here it is the field's calm.
+ */
+const AFTER_BATTLE_CALM = 150
 /** The field's monsters, where the map has a zone — see `beginRoaming`. */
 let roaming: Roaming | undefined
 let roamKinds: RoamerKind[] = []
@@ -2800,6 +2916,33 @@ function peopleAtDoors(): readonly { readonly x: number; readonly z: number }[] 
   return atDoors
 }
 
+/**
+ * **What the battle's end starts, once** (overlay 23's states 9 and 10): a
+ * victory cuts the battle's tune and sounds `ME_005`, and from its lines on
+ * the camera takes the victory's shot; a wipe-out lets the tune fade, holds
+ * the last frame 1000 ms, and puts its line up with `ME_009`. **Not yet
+ * played**: a level's `ME_004`. A flight has neither.
+ */
+function beginEnding(now: number): void {
+  const outcome = battle?.state.outcome
+  if (ending || (outcome !== 'won' && outcome !== 'lost') || !cartridge) return
+  ending = { kind: outcome, since: now }
+  if (params.get('bgm')) return
+  const rom = cartridge
+  if (outcome === 'won') {
+    music.stop(true)
+    void playJingle(rom, VICTORY_JINGLE)
+    return
+  }
+  music.stop(false)
+  setTimeout(() => {
+    if (ending?.kind === 'lost') void playJingle(rom, WIPED_OUT_JINGLE)
+  }, WIPE_HOLD_MS)
+}
+
+/** Whether a wipe-out's line is still being held back — see {@link beginEnding}. */
+const wipeHeld = (now: number) => ending?.kind === 'lost' && now - ending.since < WIPE_HOLD_MS
+
 /** The pages last looked at for an action to show — see `frame`. */
 let pagesSeen: readonly string[] | undefined
 /** How long a page telling an event with no action has left, ms — ours. */
@@ -2815,13 +2958,23 @@ function frame(now = 0): void {
   // latter's timing, a line's 750 ms each. The battle's own clock runs slower
   // through a hit-stop — see `battleSpeed`.
   if (battle) {
+    if (battle.phase !== 'telling') inOpening = false
     if (battle.phase === 'telling' && battle.pages !== pagesSeen) {
+      const first = pagesSeen === undefined
       pagesSeen = battle.pages
       startShown()
-      pageLeft =
-        shown || battle.told[0] === undefined
-          ? 0
-          : (battle.pages[0] ?? '').split('\n').length * LINE_MS
+      const told = battle.told[0]
+      const party = told?.kind === 'flee' && battle.state.fighters[told.actor]?.side === 'party'
+      pageLeft = shown
+        ? 0
+        : party
+          ? FLIGHT_LINE_MS
+          : told !== undefined
+            ? (battle.pages[0] ?? '').split('\n').length * LINE_MS
+            : inOpening
+              ? OPENING_LINE_MS + (first ? BATTLE_UP_MS : 0)
+              : 0
+      if (told === undefined && !inOpening) beginEnding(now)
     }
     if (shown) stepShown(elapsedMs)
     else if (pageLeft > 0) {
@@ -3167,8 +3320,13 @@ function frame(now = 0): void {
   }
   // A scene frames itself: `532` gives the event's camera its own field of
   // view, and the field's stands until one asks — see `fovOfHalfDegrees`.
-  const fov =
-    playing?.player.stage.fov ?? (battleStage ? fovOfHalfDegrees(battleStage.halfFov) : undefined)
+  // The swirl turns and narrows the field's camera — see `startFight`.
+  const swirl = swirlAt(now)
+  if (swirl) camera.roll = swirl.roll
+  const fov = swirl
+    ? fovOfHalfDegrees(swirl.halfFov)
+    : (playing?.player.stage.fov ??
+      (battleStage ? fovOfHalfDegrees(battleStage.halfFov) : undefined))
   renderer.draw(
     camera,
     false,
@@ -5496,7 +5654,24 @@ function runsFromOf(number: number): { runsFrom?: number } {
  * defence as given (its setups name them, `atk123_def86`), and how the game
  * makes them up is not cited. Agility decides the order of a round.
  */
+/**
+ * **Go into a battle as the game does** (overlay 17 `func_ov017_021b6f18`, the
+ * swirl `func_0204700c`): the battle's track cuts in at once, the field's
+ * camera turns and narrows for 36 ticks, both screens going to black over 20
+ * frames from the 16th; then the battle is set up in the black, and comes up
+ * — see {@link battleDarkness}. **Ours**: the swirl's own model,
+ * `effect/ev999991500.chr`, is not drawn — how it is placed in front of the
+ * camera is not read.
+ */
 function startFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
+  if (entering || battle || leaving || !loaded) return
+  self?.held.clear()
+  playBattleMusic()
+  entering = { since: performance.now(), begin: () => openFight(codes, canFlee, opening) }
+}
+
+/** Set a battle up, in the black the swirl leaves — see {@link startFight}. */
+function openFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
   if (!loaded || !self || !cartridge) return
   const levels = levelsFor(leader())
   if (!levels) {
@@ -5624,7 +5799,7 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
   battleStage = openStage(codes, party.length)
   // The monsters' places first: on the field, they turn the Hero to face them.
   const foeSpots = battleStage ? battleStage.spots.slice(party.length) : spotsFor(foes.length)
-  playBattleMusic()
+  inOpening = true
   battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
     opening,
@@ -6667,11 +6842,14 @@ function wantedView(
     const view = actorCloseUp(hero, stage.heights[0] ?? 1, true, 0.21, 1.1, CLOSE_UP_HALF_FOV)
     return { key: 'looking at the Hero', view: { ...view, pull: 0 } }
   }
+  const standing = stage.places
+    .slice(0, partyCount)
+    .filter((_, i) => (scene.state.fighters[i]?.hp ?? 0) > 0)
+  // **The victory's shot** (`func_ov000_0216e3c4`, from overlay 23's
+  // experience step only, `0x021f04b8`), from its lines on.
+  if (ending?.kind === 'won') return { key: 'victory', view: victoryView(standing) }
   if (scene.phase !== 'telling' && scene.phase !== 'over') {
-    const standing = stage.places
-      .slice(0, partyCount)
-      .filter((_, i) => (scene.state.fighters[i]?.hp ?? 0) > 0)
-    return { key: 'command', view: commandView(standing) }
+    return { key: 'command', view: victoryView(standing) }
   }
   return undefined
 }
@@ -6955,7 +7133,7 @@ function turnPages(n: number): void {
   cueStarted = battleClock
   settleBattle()
   if (battle?.phase === 'over') {
-    endFight()
+    leaveFight()
     return
   }
   showBattle()
@@ -7245,7 +7423,13 @@ function showBattle(): void {
   const labels = labelsOf(battle.state)
   // While an action is shown, its line as far as it has been typed — see `action-reactions.ts`.
   const line = shown?.reactions.line
-  const text = shown ? (line ? line.text.slice(0, line.typed) : '') : battle.pages[0]
+  const text = shown
+    ? line
+      ? line.text.slice(0, line.typed)
+      : ''
+    : wipeHeld(performance.now())
+      ? ''
+      : battle.pages[0]
   shownText = text
   if (battle.phase === 'telling' && text) {
     talkEl.replaceChildren()
@@ -7471,6 +7655,8 @@ function endFight(): void {
   battle = undefined
   battleStage = undefined
   shown = undefined
+  inOpening = false
+  ending = undefined
   fallenShown = new Set()
   lastShown = undefined
   pagesSeen = undefined
@@ -7478,7 +7664,7 @@ function endFight(): void {
   playMapMusic(true)
   // The weapon and shield go back on the Hero's back — see `dressHero`.
   dressHero()
-  if (roaming) roaming = calmFor(roaming, ROAM_CALM)
+  if (roaming) roaming = calmFor(roaming, AFTER_BATTLE_CALM)
   battleLooks = []
   battleSpots = []
   battleCompanions = []
@@ -9333,13 +9519,22 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     event.preventDefault()
     return handled
   }
+  // Going into a battle, or out of one, the game reads no key.
+  if (entering || leaving) {
+    event.preventDefault()
+    return handled
+  }
   // A battle takes every key while it lasts: the same keys as the menu.
   if (battle) {
     if (action === 'up') battle = battleMove(battle, -1)
     else if (action === 'down') battle = battleMove(battle, 1)
     else if (action === 'confirm') {
-      // A page that tells an event goes on by itself; the game reads no key meanwhile.
-      if (battle.phase === 'telling' && battle.told[0] !== undefined) {
+      // A page that tells an event, or the opening's, goes on by itself; the
+      // game reads no key meanwhile, nor while a wipe-out holds its last frame.
+      if (
+        battle.phase === 'telling' &&
+        (battle.told[0] !== undefined || inOpening || wipeHeld(performance.now()))
+      ) {
         event.preventDefault()
         return handled
       }
@@ -9353,7 +9548,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       }
       settleBattle()
       if (battle.phase === 'over') {
-        endFight()
+        leaveFight()
         event.preventDefault()
         return handled
       }

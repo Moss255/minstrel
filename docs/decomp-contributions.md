@@ -487,8 +487,8 @@ Read for the battle stages; FORMAT.md, "Where a battle is fought".
 | `ov025 0x021dcf14`, `0x021dcc70` | — | a close-up on each one struck in turn; the list of them | `ActionPlayer::StruckCamera` |
 | `ov000 0x021607d4` | — | the battle's states: load, set up, the loop, leave | `BattleScene::Update` |
 | `LightingInfo::LoadFromScript`, `DrawBackgroundGradient` | — | already named: the `.bats` script and the gradient | — |
-| `ov000 0x0216e3c4` | `0x2b4` | the camera while a command is chosen; its yaw always −0x999 | `BattleCamera::Command` |
-| `ov023 0x021f03a0` | — | the menu phase begins: grid, command camera, menu | `BattleMenu::Begin` |
+| `ov000 0x0216e3c4` | `0x2b4` | the victory's shot, from overlay 23's experience step only; its yaw always −0x999 (corrected 1 October: not the command camera) | `BattleCamera::Victory` |
+| `ov023 0x021f03a0` | — | the victory's experience step: grid, the victory's shot, the experience line (corrected 1 October: overlay 23 is the results, not the menu) | `BattleResults::Experience` |
 | `ov025 0x021db8d8` | — | an action begins: grid, chase shot | `ActionPlayer::Begin` |
 | `0x02099f6c`, `0x02099ef4` | —, `0x68` | `wpnpos.bin`: load; tag 100 | `WeaponPlaces::Load`, `::Entry` |
 | `0x02053e10` | — | a character's seven bone slots, by name | `Character::FindBoneSlots` |
@@ -557,3 +557,24 @@ box), `battle-camera.ts` (the camera command), held by
 leads to, not from a symbol; the battle's state 6 and what brings it (which
 puts a blow's line up); the animated camera's tracks; the particle format
 (`.beff`, `func_02055180`). Upstream names none of the addresses above.
+
+### 12. The way into a battle and out — overlays 17, 23, 26 and ARM9, 1 October 2026
+
+Findings in `packages/game-formats/FORMAT.md`, "The way into a battle, and
+out". **Where minstrel translates it**: `apps/game/src/main.ts`
+(`startFight`, `battleDarkness`, `beginEnding`, `leaveFight`).
+
+- **In**: the encounter task `func_ov017_021b6f18`, the transition task, the
+  swirl `func_0204700c` and its effect object `func_02046e70`; the battle's
+  track `func_0209c480`; the load's black (state 0) and the fade up at overlay
+  26 `0x021d9d18`; the opening's line `func_ov026_021dd8a8`.
+- **Out**: the outcome at overlay 25 `0x021db3c4`; the victory's 17 steps
+  (`data_ov023_021fe148`), the fanfare at `0x021ef464`, the level jingle at
+  `0x021f1010`; the wipe-out at `0x021f4f1c`; leaving at overlay 0
+  `0x02168768`; the field's return `func_ov017_021b790c` (the fade up at
+  `0x021b7f3c`, the tune at `0x021b7cd4`, the party's count at `0x021b7bd4`).
+- **Sound calls** (ARM9): `func_0209c678` stop with a fade, `func_0209c6d8` a
+  jingle, `func_0209c530` the field's tune back.
+
+**What is open**: when the monsters play `appear` at the opening; the swirl
+model's placement; the sub screen's fade up after a battle; the tick source.

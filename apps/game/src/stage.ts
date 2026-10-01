@@ -384,19 +384,19 @@ export function pulled(view: BattleView): BattleView {
 }
 
 /**
- * **The camera while a command is chosen** (`func_ov000_0216e3c4`, from
- * overlay 23 as its menu opens, `0x021f04b8`), a cut: the middle of the
- * party — their places averaged, height and all — looked at from 1 up; the
- * distance 12 less how far that middle is from the stage's, and if that is
- * under 8, the middle drawn in by it over 8 and the distance 12; looking at
+ * **The victory's shot** (`func_ov000_0216e3c4`, called only from overlay 23's
+ * experience step, `0x021f04b8` — read 1 October 2026; it was first taken for
+ * the camera while a command is chosen, which it is not), a cut: the middle
+ * of the party — their places averaged, height and all — looked at from 1 up;
+ * the distance 12 less how far that middle is from the stage's, and if that
+ * is under 8, the middle drawn in by it over 8 and the distance 12; looking at
  * it 0.5 up; turning 14/4096 a tick for as long as it is up.
  *
  * **The yaw is −0.6 rad whatever the monsters' places.** The code takes the
  * angle to their middle (`FX_Atan2Idx`, −0x8000 to 0x8000), divides it by
  * 0xffff as a whole number — 0, always — shifts it up 12, and adds −0x999.
- * Meant, it seems, to face the monsters; as it runs, a fixed turn.
  */
-export function commandView(
+export function victoryView(
   party: readonly { readonly x: number; readonly z: number }[],
 ): BattleView {
   const y = FIGHTER_HEIGHT / 4096
