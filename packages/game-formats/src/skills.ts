@@ -97,8 +97,10 @@ export interface SkillPanel {
    * the file and last by {@link battleOrder}, after the hundred-point one, and
    * it holds the tree's marquee ability — Sword's Gigagash, Shield's Critical
    * Hit Guard, Courage's Auto Counter. So the zero is a threshold this field
-   * does not carry, not an absence of one. What unlocks it is **not
-   * established**; see {@link panelsBought}.
+   * does not carry, not an absence of one. **A skill book unlocks it**: each
+   * of the 26 books grants its tree's eleventh panel while it is carried
+   * (read 2 October 2026 — `func_ov026_021dc8fc`, the item record's `+0x14`;
+   * see `readItemDefs`).
    */
   readonly cost: number
   /** The action it teaches, or 0 where it teaches none. */

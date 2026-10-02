@@ -201,51 +201,65 @@ describe('the main menu', () => {
 
   it('lists the bag on the items panel, naming each item', () => {
     const bag = take(take(EMPTY_BAG, { gold: 20 }), { item: 0x55f0 })
-    const context = { hero: 'Hero', map: undefined, stage: undefined, bag }
-    expect(panelLines('items', { ...context, itemName: () => 'herb' })).toEqual([
-      '20 gold coins',
-      'herb',
+    const itemsView = { members: [], bag, kindOf: () => 8 }
+    const context = { hero: 'Hero', map: undefined, stage: undefined, bag, itemsView }
+    const onBag = {
+      ...openMenu(),
+      panel: 'items' as const,
+      items: { at: 'list' as const, owner: 'bag' as const },
+    }
+    expect(panelLines('items', { ...context, itemName: () => 'herb' }, onBag)).toEqual([
+      'Bag',
+      '▶ herb',
     ])
-    expect(panelLines('items', context)[1]).toBe('item 0x55f0')
+    expect(panelLines('items', context, onBag)[1]).toBe('▶ item 0x55f0')
+    // The first level is the purse and the two kinds of item.
+    expect(panelLines('items', context)).toEqual(['20 G', '▶ Everyday Items', '   Important Items'])
   })
 
-  it('chooses an item on the items panel to use, and says what came of it', () => {
-    const bag = take(take(EMPTY_BAG, { item: 0x55f0 }), { item: 0x55f4 })
+  it('walks the items as the game lays them out, and uses one from where it is', () => {
+    const bag = take(EMPTY_BAG, { item: 0x55f4 })
     const context: MenuContext = {
       hero: 'Hero',
       map: undefined,
       stage: undefined,
       bag,
+      itemsView: {
+        members: [{ name: 'Hero', carried: [0x55f0, 0x55f4] }],
+        bag,
+        kindOf: () => 8,
+      },
       itemName: (id) => (id === 0x55f0 ? 'herb' : 'antidote'),
     }
     const panel = choose(moveCursor(openMenu(), 2)).state
     if (panel?.panel !== 'items') throw new Error('no items panel')
-    const next = moveCursor(panel, 1, context)
-    expect(next.row).toBe(1)
-    // An item chosen offers what can be done with it.
-    const acting = choose(next, context).state
-    if (!acting?.acting) throw new Error('no uses offered')
-    expect(acting.acting).toEqual({ item: 0x55f4, row: 1 })
-    expect(panelLines('items', context, acting).slice(-4)).toEqual([
-      'What would you like to do?',
-      '▶ Use',
-      '   Discard',
-      '   Cancel',
-    ])
-    const used = choose(acting, context)
-    expect(used.use).toBe(0x55f4)
-    expect(used.state).toMatchObject({ panel: 'items', row: 1, acting: undefined })
-    expect(choose(moveCursor(acting, 1, context), context).discard).toBe(0x55f4)
-    const cancelled = choose(moveCursor(acting, -1, context), context)
-    expect(cancelled).toMatchObject({ state: { acting: undefined, row: 1 } })
-    expect(cancelled.use ?? cancelled.discard).toBeUndefined()
-    expect(back(acting)).toMatchObject({ panel: 'items', acting: undefined, row: 1 })
-    expect(panelLines('items', context, { ...next, said: ['Hero uses an antidote.'] })).toEqual([
-      '0 gold coins',
-      '   herb',
-      '▶ antidote',
-      'Hero uses an antidote.',
-    ])
+    // Everyday Items, then whose — the Hero, then the Bag.
+    expect(panel.items).toEqual({ at: 'kinds' })
+    const whose = choose(panel, context).state
+    expect(whose?.items).toEqual({ at: 'whose' })
+    const heros = choose(whose as NonNullable<typeof whose>, context).state
+    expect(heros?.items).toEqual({ at: 'list', owner: 0 })
+    expect(panelLines('items', context, heros).slice(1)).toEqual(['▶ herb', '   antidote'])
+    // An item chosen offers Use, Transfer, Discard and Cancel.
+    const acting = choose(moveCursor(heros as NonNullable<typeof heros>, 1, context), context).state
+    expect(acting?.items).toEqual({ at: 'act', held: { owner: 0, slot: 1, item: 0x55f4 } })
+    const used = choose(acting as NonNullable<typeof acting>, context)
+    expect(used.use).toEqual({ owner: 0, slot: 1, item: 0x55f4 })
+    expect(used.state?.items).toEqual({ at: 'list', owner: 0 })
+    const discarded = choose(moveCursor(acting as NonNullable<typeof acting>, 2, context), context)
+    expect(discarded.discard).toEqual({ owner: 0, slot: 1, item: 0x55f4 })
+    // Transfer to the Bag.
+    const toWho = choose(
+      moveCursor(acting as NonNullable<typeof acting>, 1, context),
+      context,
+    ).state
+    expect(toWho?.items?.at).toBe('toWho')
+    const moved = choose(moveCursor(toWho as NonNullable<typeof toWho>, 1, context), context)
+    expect(moved.transfer).toEqual({
+      held: { owner: 0, slot: 1, item: 0x55f4 },
+      to: { owner: 'bag', slot: -1 },
+    })
+    expect(back(acting as NonNullable<typeof acting>)?.items).toEqual({ at: 'list', owner: 0 })
   })
 
   it('shows the Hero’s wounds on the status panel', () => {
@@ -354,13 +368,18 @@ describe('the main menu', () => {
   })
 
   it('says the bag is empty when it holds no items', () => {
-    const lines = panelLines('items', {
-      hero: 'Hero',
-      map: undefined,
-      stage: undefined,
-      bag: EMPTY_BAG,
-    })
-    expect(lines).toEqual(['0 gold coins', 'The bag is currently empty.'])
+    const itemsView = { members: [], bag: EMPTY_BAG, kindOf: () => 8 }
+    const onBag = {
+      ...openMenu(),
+      panel: 'items' as const,
+      items: { at: 'list' as const, owner: 'bag' as const },
+    }
+    const lines = panelLines(
+      'items',
+      { hero: 'Hero', map: undefined, stage: undefined, bag: EMPTY_BAG, itemsView },
+      onBag,
+    )
+    expect(lines).toEqual(['Bag', 'The bag is currently empty.'])
   })
 })
 

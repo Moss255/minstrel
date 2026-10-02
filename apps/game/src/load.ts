@@ -27,6 +27,7 @@ import {
   type FieldMonster,
   type FieldZone,
   type Grammar,
+  type ItemDef,
   type ItemKind,
   type ItemName,
   isMapLinks,
@@ -71,6 +72,7 @@ import {
   readFieldEncounters,
   readFieldMonsters,
   readItemBattleParams,
+  readItemDefs,
   readItemKinds,
   readItemNames,
   readItemStats,
@@ -322,6 +324,8 @@ export interface Loaded {
   readonly itemDescriptions: ReadonlyMap<number, string>
   /** Each item's category and subtype, by id — see `readItemKinds`. Empty when it will not read. */
   readonly itemKinds: ReadonlyMap<number, ItemKind>
+  /** Every item as the code holds it — its kind and its bits; see `readItemDefs`. */
+  readonly itemDefs: ReadonlyMap<number, ItemDef>
   /** Where each kind of weapon is carried, by kind — see `readWeaponPlaces`. Empty when it will not read. */
   readonly weaponPlaces: ReadonlyMap<number, WeaponPlaces>
   /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
@@ -1097,6 +1101,19 @@ function itemKindsOf(rom: Uint8Array): ReadonlyMap<number, ItemKind> {
       } catch {
         return new Map()
       }
+    }
+  }
+  return new Map()
+}
+
+/** The items as the code holds them, `itemdt_en.nat` — see `readItemDefs`. Empty when it will not read. */
+function itemDefsOf(rom: Uint8Array): ReadonlyMap<number, ItemDef> {
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/prm/itemdt.gp2' })) {
+    if (!/itemdt_en\.nat$/i.test(leaf.path)) continue
+    try {
+      return readItemDefs(leaf.bytes)
+    } catch {
+      return new Map()
     }
   }
   return new Map()
@@ -2684,6 +2701,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       readSystemStrings,
     ),
     itemKinds: itemKindsOf(rom),
+    itemDefs: itemDefsOf(rom),
     weaponPlaces: weaponPlacesOf(rom),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     givenNames: givenNamesFrom(rom),

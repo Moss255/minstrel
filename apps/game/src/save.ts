@@ -110,6 +110,8 @@ export interface SaveMember {
   readonly skillPool?: number
   /** Their tactic in battle — see `Member.tactic`; absent is Follow Orders. */
   readonly tactic?: number
+  /** What they carry, up to eight item ids — see `Member.carried`; absent is nothing. */
+  readonly carried?: readonly number[]
   /** Points put into each tree: pairs of `[tree, points]` — see `Member.treePoints`. */
   readonly treePoints?: readonly (readonly [number, number])[]
   /**
@@ -511,6 +513,12 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.tactic !== undefined && !(isCount(m.tactic) && (m.tactic as number) <= 5)) {
     throw new SaveError(`${where} has a tactic that does not read`)
   }
+  if (
+    m.carried !== undefined &&
+    !(Array.isArray(m.carried) && m.carried.length <= 8 && m.carried.every(isCount))
+  ) {
+    throw new SaveError(`${where} carries items that do not read`)
+  }
   const outfits = outfitsOf(m, where)
   return {
     attnpc: m.attnpc as number | null,
@@ -533,6 +541,7 @@ function member(raw: unknown, place: number): SaveMember {
       ? {}
       : { revocations: m.revocations as (readonly [number, number])[] }),
     ...(m.tactic === undefined ? {} : { tactic: m.tactic as number }),
+    ...(m.carried === undefined ? {} : { carried: m.carried as number[] }),
   }
 }
 

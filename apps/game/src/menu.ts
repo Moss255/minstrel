@@ -8,10 +8,21 @@ import {
   makingRows,
   makingTitle,
 } from './appearance.ts'
-import { type Bag, bagLines } from './bag.ts'
+import type { Bag } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import { conductorLine, EXPRESS_WORDS } from './express.ts'
 import type { Standing } from './hero.ts'
+import {
+  backItems,
+  chooseItems,
+  type Held,
+  ITEMS_LABELS,
+  ITEMS_WORDS,
+  type ItemsTaken,
+  type ItemsView,
+  type ItemsWhere,
+  itemsRows,
+} from './items-menu.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
 
@@ -213,8 +224,8 @@ export interface MenuState {
    * the Hero knows, and Clear. Undefined at the list of the four places.
    */
   readonly slot?: number | undefined
-  /** The item chosen in the items panel and its row, while `row` chooses what to do with it. */
-  readonly acting?: { readonly item: number; readonly row: number } | undefined
+  /** Where the Items panel is — see `items-menu.ts`. Undefined until it is opened. */
+  readonly items?: ItemsWhere | undefined
   /** What using an item or casting a spell came to, shown under the panel until the next choice. */
   readonly said?: readonly string[] | undefined
 }
@@ -378,6 +389,8 @@ export interface MenuContext {
   /** The Hero's MP now, when spent; full when undefined. */
   readonly mp?: number | undefined
   readonly bag?: Bag | undefined
+  /** The Items panel's view of the party — see `items-menu.ts`. */
+  readonly itemsView?: ItemsView | undefined
   readonly equipped?: Equipped | undefined
   /** A piece of equipment's own attack and defence, by id — see `itemStatsOf` in `load.ts`. */
   readonly numbersOf?:
@@ -561,8 +574,9 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     return { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'items') {
-    if (state.acting) return { ...state, row: wrap(state.row, ITEM_ACTIONS.length) }
-    const count = context?.bag?.items.size ?? 0
+    const view = context?.itemsView
+    if (!view) return state
+    const count = itemsRows(state.items ?? { at: 'kinds' }, view).length
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
   if (state.panel === 'status') {
@@ -618,10 +632,12 @@ export interface Taken {
   readonly talk: boolean
   /** Put this in the slot — undefined to take off what is there. */
   readonly equip?: { readonly slot: Slot; readonly item: number | undefined }
-  /** Use this item, by id. */
-  readonly use?: number
-  /** Throw one of this item away, by id. */
-  readonly discard?: number
+  /** Use this item, from where it is. */
+  readonly use?: Held
+  /** Throw this item away, from where it is. */
+  readonly discard?: Held
+  /** Move this item — see `transfer` in `inventory.ts`. */
+  readonly transfer?: ItemsTaken['transfer']
   /** Cast this spell, by its action. */
   readonly cast?: number
   /** Put points into this tree until they reach this panel, by its id — see `buy` in `skills.ts`. */
@@ -669,19 +685,16 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     return { state: back, talk: false, equip: { slot: state.picking, item: choices[state.row] } }
   }
   if (state.panel === 'items') {
-    if (state.acting) {
-      const { item, row } = state.acting
-      const back = { ...state, acting: undefined, row }
-      const action = ITEM_ACTIONS[state.row]?.id
-      if (action === 'use') return { state: back, talk: false, use: item }
-      if (action === 'discard') return { state: back, talk: false, discard: item }
-      return { state: back, talk: false }
-    }
-    const item = [...(context?.bag?.items.keys() ?? [])][state.row]
-    if (item === undefined) return { state, talk: false }
+    const view = context?.itemsView
+    if (!view) return { state, talk: false }
+    const taken = chooseItems(state.items ?? { at: 'kinds' }, state.row, view)
+    const next = { ...state, items: taken.where, row: taken.row, said: undefined }
     return {
-      state: { ...state, acting: { item, row: state.row }, row: 0, said: undefined },
+      state: taken.where ? next : { ...next, panel: undefined, items: undefined },
       talk: false,
+      ...(taken.use ? { use: taken.use } : {}),
+      ...(taken.discard ? { discard: taken.discard } : {}),
+      ...(taken.transfer ? { transfer: taken.transfer } : {}),
     }
   }
   if (state.panel === 'spells') {
@@ -819,14 +832,24 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
   if (command === undefined) return { state, talk: false }
   if (command === 'talk') return { state: undefined, talk: true }
   return {
-    state: { ...state, panel: command, row: 0, picking: undefined, tree: undefined },
+    state: {
+      ...state,
+      panel: command,
+      row: 0,
+      picking: undefined,
+      tree: undefined,
+      ...(command === 'items' ? { items: { at: 'kinds' as const } } : {}),
+    },
     talk: false,
   }
 }
 
 /** Go back a step: out of an item's uses, out of a slot's choices, out of a panel, or out of the menu. */
 export function back(state: MenuState): MenuState | undefined {
-  if (state.acting) return { ...state, acting: undefined, row: state.acting.row }
+  if (state.panel === 'items' && state.items && state.items.at !== 'kinds') {
+    const went = backItems(state.items)
+    return { ...state, items: went.where, row: Math.max(0, went.row), said: undefined }
+  }
   if (state.tree !== undefined) return { ...state, tree: undefined, row: 0, said: undefined }
   if (state.patty && state.patty.at !== 'top') {
     return { ...state, patty: { at: 'top' }, row: 0, said: undefined }
@@ -842,7 +865,7 @@ export function back(state: MenuState): MenuState | undefined {
   if (state.slot !== undefined) return { ...state, slot: undefined, row: state.slot }
   // The Express's list closes whole, as the B Button closes it (its state 4).
   if (state.panel === 'express') return undefined
-  return state.panel ? { ...state, panel: undefined, row: 0 } : undefined
+  return state.panel ? { ...state, panel: undefined, row: 0, items: undefined } : undefined
 }
 
 const mark = (chosen: boolean) => (chosen ? '▶ ' : '   ')
@@ -855,7 +878,7 @@ export function panelLines(
     Partial<
       Pick<
         MenuState,
-        'panel' | 'said' | 'acting' | 'member' | 'tree' | 'pot' | 'patty' | 'slot' | 'express'
+        'panel' | 'said' | 'items' | 'member' | 'tree' | 'pot' | 'patty' | 'slot' | 'express'
       >
     >,
 ): string[] {
@@ -911,25 +934,50 @@ export function panelLines(
     }
 
     case 'items': {
-      if (!context.bag) return ['There is no bag yet.']
-      const chosen = state?.panel === 'items' ? (state.acting?.row ?? state.row) : undefined
-      // An empty bag says so in the game's words, after its gold.
-      const lines =
-        context.bag.items.size === 0
-          ? [
-              ...bagLines(context.bag, nameOf).slice(0, 1),
-              word(MENU_SAYS.emptyBag, 'The bag is currently empty.'),
-            ]
-          : bagLines(context.bag, nameOf, chosen)
-      if (state?.panel === 'items' && state.acting) {
+      const view = context.itemsView
+      if (!view) return ['There is no bag yet.']
+      const where = (state?.panel === 'items' ? state.items : undefined) ?? { at: 'kinds' as const }
+      const row = state?.row ?? 0
+      const said = (n: number, fallback: string) => word(n, fallback)
+      const rows = itemsRows(where, view)
+      const head: string[] =
+        where.at === 'act'
+          ? [nameOf(where.held.item), said(ITEMS_WORDS.whatToDo, 'What would you like to do?')]
+          : where.at === 'toWho'
+            ? [said(ITEMS_WORDS.toWho, 'To who?')]
+            : where.at === 'toWhere'
+              ? [said(ITEMS_WORDS.toWhere, 'To where?')]
+              : where.at === 'list'
+                ? [
+                    where.owner === 'bag'
+                      ? said(ITEMS_WORDS.bag, 'Bag')
+                      : where.owner === 'important'
+                        ? said(ITEMS_WORDS.important, 'Important Items')
+                        : (view.members[where.owner]?.name ?? ''),
+                  ]
+                : [`${context.bag?.gold ?? 0} G`]
+      const lines = rows.map((r, i) => {
+        const text =
+          'word' in r
+            ? said(r.word, ITEMS_LABELS[r.word] ?? '')
+            : 'name' in r
+              ? r.name
+              : 'item' in r
+                ? `${nameOf(r.item)}${r.count !== undefined && r.count > 1 ? ` ×${r.count}` : ''}`
+                : '-----'
+        return `${mark(i === row)}${text}`
+      })
+      // An empty page says so in the game's words.
+      if (rows.length === 0 && where.at === 'list') {
         lines.push(
-          word(MENU_WORDS.whatToDo, 'What would you like to do?'),
-          ...ITEM_ACTIONS.map(
-            (action, i) => `${mark(i === state.row)}${labelOf(action, context.words)}`,
-          ),
+          where.owner === 'bag'
+            ? said(ITEMS_WORDS.bagEmpty, 'The bag is currently empty.')
+            : where.owner === 'important'
+              ? said(ITEMS_WORDS.noImportant, 'No important items held.')
+              : said(ITEMS_WORDS.carriesNone, 'They don’t have any items.'),
         )
       }
-      return [...lines, ...(state?.said ?? [])]
+      return [...head, ...lines, ...(state?.said ?? [])]
     }
     case 'equip': {
       const row = state?.row ?? 0

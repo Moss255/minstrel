@@ -1,5 +1,7 @@
 import type { Shop } from '@minstrel/game-formats'
+import { ITEM_KIND_EVERYDAY } from '@minstrel/game-formats'
 import { type Bag, drop, pay, take } from './bag.ts'
+import { CARRIED_MOST, type Carriers, type Owner } from './inventory.ts'
 
 /**
  * The shop, the inn and the church: what a line's `<SHOP=n>`, `<INN=n>` and
@@ -28,9 +30,11 @@ export type Visit =
   | {
       readonly kind: 'shop'
       readonly shop: Shop
-      readonly mode: 'top' | 'buy' | 'sell'
+      readonly mode: 'top' | 'buy' | 'sell' | 'carrier'
       readonly cursor: number
       readonly said: string
+      /** An everyday item bought, waiting for who carries it (overlay 3, state `0xc`). */
+      readonly bought?: { readonly item: number; readonly cost: number } | undefined
     }
   | { readonly kind: 'inn'; readonly id: number; readonly cursor: number; readonly said: string }
   | { readonly kind: 'church'; readonly id: number; readonly cursor: number; readonly said: string }
@@ -57,6 +61,11 @@ export interface Counter {
   readonly sells: (id: number) => number | undefined
   /** What divination tells: how far the Hero is from the next level. */
   readonly divination: () => string
+  /** The party as carriers, and their names — see `inventory.ts`. Without them, the bag alone. */
+  readonly carriers?: Carriers
+  readonly names?: readonly string[]
+  /** An item's kind — 8 everyday — see `ItemDef.kind`. */
+  readonly kindOf?: (id: number) => number | undefined
 }
 
 /** What choosing did: the visit after it, the bag, and whether to rest or to record progress. */
@@ -98,9 +107,31 @@ export function buyPrice(shop: Shop, price: number): number {
   return Math.floor((price * shop.rate) / 100)
 }
 
-/** The items a shop would buy back: what is in the bag, in the bag's order. */
-function forSale(bag: Bag): number[] {
-  return [...bag.items.keys()]
+/** One thing a shop would buy back: whose it is, its slot, the item. */
+interface Sellable {
+  readonly owner: Owner
+  readonly slot: number
+  readonly item: number
+}
+
+/**
+ * The items a shop would buy back: what each member carries, then what is in
+ * the bag. **Ours**: the game asks first whose page to sell from — the
+ * equipment, a member, the bag (`func_ov003_02175df4`).
+ */
+function forSale(bag: Bag, counter?: Counter): Sellable[] {
+  const carried = (counter?.carriers?.carried ?? []).flatMap((list, owner) =>
+    list.map((item, slot) => ({ owner, slot, item })),
+  )
+  return [
+    ...carried,
+    ...[...bag.items.keys()].map((item) => ({ owner: 'bag' as const, slot: -1, item })),
+  ]
+}
+
+/** Who may carry what is bought: the party, then the Bag. */
+function carrierRows(counter: Counter): string[] {
+  return [...(counter.names ?? []), 'Bag']
 }
 
 function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
@@ -116,18 +147,20 @@ function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
   if (visit.kind === 'inn') return INN_ROWS
   if (visit.kind === 'church') return CHURCH_ROWS
   if (visit.mode === 'top') return SHOP_TOP
+  if (visit.mode === 'carrier') return carrierRows(counter)
   if (visit.mode === 'buy') {
     return visit.shop.items.map(
       (id) => `${counter.name(id)} — ${buyPrice(visit.shop, counter.price(id) ?? 0)} G`,
     )
   }
-  const selling = forSale(bag)
+  const selling = forSale(bag, counter)
   if (selling.length === 0) return ['Nothing to sell']
-  return selling.map((id) => {
-    const count = bag.items.get(id) ?? 0
-    const gives = counter.sells(id)
+  return selling.map(({ owner, item }) => {
+    const count = owner === 'bag' ? (bag.items.get(item) ?? 0) : 1
+    const gives = counter.sells(item)
     const offer = gives === undefined || gives === 0 ? 'not bought' : `${gives} G`
-    return `${counter.name(id)}${count > 1 ? ` ×${count}` : ''} — ${offer}`
+    const whose = owner === 'bag' ? '' : ` (${counter.names?.[owner] ?? '?'})`
+    return `${counter.name(item)}${count > 1 ? ` ×${count}` : ''}${whose} — ${offer}`
   })
 }
 
@@ -162,6 +195,9 @@ export function moveVisit(visit: Visit, by: number, bag: Bag, counter: Counter):
 
 /** Go back a step: out of buying or selling, or out of the visit. */
 export function leaveVisit(visit: Visit): Visit | undefined {
+  // Who carries what is already paid for must be answered — **ours**: what
+  // the game's B does there is not read.
+  if (visit.kind === 'shop' && visit.mode === 'carrier') return visit
   if (visit.kind === 'shop' && visit.mode !== 'top') {
     return { ...visit, mode: 'top', cursor: visit.mode === 'buy' ? 0 : 1, said: 'Anything else?' }
   }
@@ -201,21 +237,61 @@ export function chooseInVisit(visit: Visit, bag: Bag, counter: Counter): Outcome
     const paid = pay(bag, cost)
     if (!paid)
       return { visit: { ...visit, said: `You cannot afford the ${counter.name(id)}.` }, bag }
+    // An everyday item: who carries it — a member or the bag (overlay 3,
+    // state `0xc`). Equipment goes to the bag (the equipment bag).
+    if (counter.carriers && counter.kindOf?.(id) === ITEM_KIND_EVERYDAY) {
+      return {
+        visit: {
+          ...visit,
+          mode: 'carrier',
+          cursor: 0,
+          bought: { item: id, cost },
+          said: `Who will carry the ${counter.name(id)}?`,
+        },
+        bag: paid,
+      }
+    }
     return {
       visit: { ...visit, said: `You buy the ${counter.name(id)} for ${cost} G.` },
       bag: take(paid, { item: id }),
     }
   }
-  const selling = forSale(bag)
-  const id = selling[visit.cursor]
-  if (id === undefined) return { visit, bag }
+  if (visit.mode === 'carrier') {
+    const bought = visit.bought
+    if (!bought) return { visit: { ...visit, mode: 'buy' }, bag }
+    const list = counter.carriers?.carried[visit.cursor]
+    const back = { ...visit, mode: 'buy' as const, cursor: 0, bought: undefined }
+    // A member with room carries it; one without, the bag takes it
+    // (`func_0207ccf0` with the overflow, messages 33 and 22).
+    if (list && list.length < CARRIED_MOST) {
+      list.push(bought.item)
+      return {
+        visit: {
+          ...back,
+          said: `${counter.names?.[visit.cursor] ?? '?'} takes the ${counter.name(bought.item)}.`,
+        },
+        bag,
+      }
+    }
+    return {
+      visit: { ...back, said: `The ${counter.name(bought.item)} goes in the bag.` },
+      bag: take(bag, { item: bought.item }),
+    }
+  }
+  const selling = forSale(bag, counter)
+  const held = selling[visit.cursor]
+  if (held === undefined) return { visit, bag }
+  const id = held.item
   const gives = counter.sells(id)
   if (gives === undefined || gives === 0) {
     return { visit: { ...visit, said: `The shop will not buy the ${counter.name(id)}.` }, bag }
   }
-  const dropped = drop(bag, id) as Bag
+  // From a member, that slot, the list closing up; from the bag, one.
+  let dropped = bag
+  if (held.owner === 'bag') dropped = drop(bag, id) as Bag
+  else counter.carriers?.carried[held.owner]?.splice(held.slot, 1)
   const after = take(dropped, { gold: gives })
-  const left = forSale(after).length
+  const left = forSale(after, counter).length
   return {
     visit: {
       ...visit,

@@ -164,6 +164,11 @@ export interface Member {
    */
   tactic?: number | undefined
   /**
+   * **What they carry**: up to eight everyday items, one to a slot, packed —
+   * the character record's `+0x454` (see `inventory.ts`). Undefined is none.
+   */
+  carried?: number[] | undefined
+  /**
    * Points put into each skill tree, by tree number, each 0 to 100 — the
    * record's 27 bytes at `+0xF6`. **Per tree, not per vocation**, so what was
    * learnt as a Warrior is still learnt as a Mage.
@@ -395,6 +400,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
       ? {}
       : { revocations: [...member.revocations].sort((a, b) => a[0] - b[0]) }),
     ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
+    ...(member.carried?.length ? { carried: [...member.carried] } : {}),
   }))
 }
 
@@ -421,6 +427,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     treePoints: new Map(member.treePoints ?? []),
     revocations: new Map(member.revocations ?? []),
     ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
+    ...(member.carried?.length ? { carried: [...member.carried] } : {}),
   }))
 }
 

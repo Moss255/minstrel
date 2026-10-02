@@ -91,6 +91,12 @@ export {
   readItemBattleParams,
   wornResistances,
 } from './itembattle.ts'
+export {
+  ITEM_KIND_EVERYDAY,
+  ITEM_KIND_IMPORTANT,
+  type ItemDef,
+  readItemDefs,
+} from './itemdefs.ts'
 export { type ItemName, readItemNames } from './items.ts'
 export { ITEM_KIND_TAG, type ItemKind, readItemKinds } from './itemsort.ts'
 export { type ItemStats, readItemStats, STATS_GAP } from './itemstats.ts'

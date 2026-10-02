@@ -126,10 +126,11 @@ export interface SkillTreeView {
  * walk always stops there. The skill menu agrees from the other side: it
  * draws **ten** entries a tree, `ov013 0x02187b64: cmp r7, #0xa`.
  *
- * So the eleventh is unreachable by design. **What, if anything, grants it is
- * still not established** — no code found reads it — but it is certainly not
- * points, and treating its zero as a price would hand every character
- * Gigagash for nothing.
+ * So the eleventh is unreachable by points. **A skill book grants it** while its
+ * holder carries the book (read 2 October 2026: each round of a battle,
+ * `func_ov026_021dc8fc` sets the panel's bit for every book among the carried
+ * items — see `battleListsOf` in `main.ts`); treating its zero as a price
+ * would hand every character Gigagash for nothing.
  */
 export function climbable(panels: readonly SkillPanel[], tree: number): SkillPanel[] {
   return panelsOfTree(panels, tree).filter((panel) => panel.cost > 0)

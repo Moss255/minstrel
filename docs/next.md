@@ -30,11 +30,12 @@ a flight that is the party's and settled before the round.
    "OK!", the monster groups' lines, and the target markers over the monsters
    on the top screen. **Not yet**: the acting member's pulse and a hit's
    flash, whose setters are not found; the level number.
-2. **Each member's own items** (char `+0x454`). The game lists a member's
-   carried items in battle, not the bag. **This is a system that restructures
-   data** — the save, the field menu's Items, the shops, the chests — so it
-   is flagged here rather than slipped in; the battle uses the bag until it is
-   built.
+2. ~~**Each member's own items**~~ **Done, 2 October** (`inventory.ts`,
+   `items-menu.ts`; FORMAT.md, "Who carries an item"): eight a member, the
+   game's rule for who gets what is found, bought, given or dropped, the
+   field's Items as the game lays them out with Transfer, battle items from
+   the user's own, and the skill books — which turn out to grant each tree's
+   eleventh panel while carried.
 3. **The abilities' own handlers.** Most abilities are blows with a damage
    handler of their own (`+0x18` bits 18–26, 67 handlers); until they are
    read they strike as the Attack.

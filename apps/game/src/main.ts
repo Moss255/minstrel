@@ -334,6 +334,8 @@ import {
   VOCATION_WORDS,
   weaponTurn,
 } from './hero.ts'
+import { type Carriers, obtain, removeSlot, takeOne, transfer } from './inventory.ts'
+import { type Held, itemsRows } from './items-menu.ts'
 import {
   actionRecordOf,
   actionScripts,
@@ -839,6 +841,36 @@ function enterThread(map: number | undefined): void {
  * Kept in the save, though only the Hero's numbers are yet written there.
  */
 let members: Member[] = [heroAtStart()]
+
+/**
+ * **The party as carriers**, in party order — see `inventory.ts`. Each
+ * member's list is their own, changed in place. A story companion is passed
+ * over: **ours**, how the game takes a guest is not read.
+ */
+function carriers(): Carriers {
+  const party = members
+  return {
+    carried: party.map((m) => {
+      m.carried ??= []
+      return m.carried
+    }),
+    fallen: (k) => party[k]?.hp === 0,
+    passed: (k) => party[k]?.attnpc !== undefined,
+  }
+}
+
+/** An item obtained, the game's way — see `obtain`. */
+function give(id: number, count = 1, skipFallen = false): void {
+  bag = obtain(bag, carriers(), loaded?.itemDefs.get(id), id, count, skipFallen).bag
+}
+
+/** One of an item taken from the party, the game's way — see `takeOne`; false when nobody has one. */
+function takeAway(id: number): boolean {
+  const after = takeOne(bag, carriers(), id)
+  if (!after) return false
+  bag = after
+  return true
+}
 /**
  * The party trick in each of the four places the B Button and +Control Pad
  * reach — Up, Right, Left, Down, as `str_tm` 4501 to 4504 order them — by
@@ -4014,7 +4046,11 @@ function openTreasureAhead(): boolean {
     loaded.monsterNames,
     loaded.systemStrings,
   )
-  if (!already) bag = take(bag, found.takings)
+  // Gold to the purse; an item the game's way — a member first, see `obtain`.
+  if (!already) {
+    if (found.takings.gold) bag = take(bag, { gold: found.takings.gold })
+    if (found.takings.item !== undefined) give(found.takings.item)
+  }
   // A pot or a barrel breaks as it is opened, and then is gone.
   if (!already && isPotOrBarrel(treasure)) smashedAt.set(key, performance.now())
   const code = loaded.code
@@ -4623,11 +4659,23 @@ function buyPanel(tree: number, id: number, state: MenuState | undefined): MenuS
 function cookRecipe(id: number, state: MenuState | undefined): MenuState | undefined {
   const recipe = loaded?.recipes.find((one) => one.id === id)
   if (!state || !recipe || !loaded) return state
-  const made = cook(recipe, bag, loaded.recipes)
+  // The pot takes from the bag, then from whoever carries it (`func_02086d88`):
+  // cooked out of all of it, then what it used taken the game's way, and what
+  // it made given the game's way.
+  let pooled = bag
+  for (const list of carriers().carried) for (const id of list) pooled = take(pooled, { item: id })
+  const made = cook(recipe, pooled, loaded.recipes)
   if (!made) {
     return { ...state, said: [potSay(POT_SAYS.lacking) ?? 'You have not got what that wants.'] }
   }
-  bag = made.bag
+  const used = new Map<number, number>()
+  for (const [id, n] of pooled.items) {
+    const after = (made.bag.items.get(id) ?? 0) - (id === made.item ? 1 : 0)
+    if (n > after) used.set(id, n - after)
+  }
+  for (const [id, n] of used) for (let k = 0; k < n; k++) takeAway(id)
+  bag = { ...bag, gold: made.bag.gold }
+  give(made.item)
   const item = itemNamed(made.item)
   return {
     ...state,
@@ -4660,8 +4708,8 @@ function visitMedals(who: Talker): void {
   }
   const held = bag.items.get(MINI_MEDAL) ?? 0
   const visit = visitMax(rewards, medalsGiven, held)
-  for (let n = 0; n < visit.handed; n++) bag = drop(bag, MINI_MEDAL) ?? bag
-  for (const gift of visit.gifts) bag = take(bag, { item: gift })
+  for (let n = 0; n < visit.handed; n++) takeAway(MINI_MEDAL)
+  for (const gift of visit.gifts) give(gift)
   medalsGiven = visit.given
   medalTalker = who
   sayMedals(visit.lines)
@@ -4738,9 +4786,9 @@ function pickMedal(at: number): void {
       afterTalk = () => openMedalList()
       return
     }
-    for (let n = 0; n < offer.medals; n++) bag = drop(bag, MINI_MEDAL) ?? bag
+    for (let n = 0; n < offer.medals; n++) takeAway(MINI_MEDAL)
     medalsGiven = Math.min(medalsGiven + offer.medals, MEDALS_MOST)
-    bag = take(bag, { item: offer.item })
+    give(offer.item)
     const left = bag.items.get(MINI_MEDAL) ?? 0
     status(`Cap’n Max: ${nameOf(offer.item)} for ${offer.medals} mini medals, ${left} left`)
     sayMedals([exchangeLine(140, medalsGiven, left, offer)])
@@ -4969,6 +5017,14 @@ function menuContext(): MenuContext {
     hp: leader().hp,
     mp: leader().mp,
     bag,
+    itemsView: {
+      members: members.map((m, k) => ({
+        name: k === 0 ? heroName() : nameFor(m),
+        carried: carriers().carried[k] ?? [],
+      })),
+      bag,
+      kindOf: (id) => loaded?.itemDefs.get(id)?.kind,
+    },
     equipped: wornBy(leader()),
     numbersOf: (id) => loaded?.itemStats.get(id),
     itemName: nameOf,
@@ -5046,17 +5102,19 @@ function itemNamed(id: number): Named {
  * What the Items command offers: what the bag holds that does something in
  * battle, with a heal where its action restores HP — see `ItemUse`.
  */
-function battleItems(): BattleItem[] {
+function battleItems(carried: readonly number[]): BattleItem[] {
   const uses = loaded?.itemUses
   if (!uses) return []
-  const items: BattleItem[] = []
-  for (const [id, count] of bag.items) {
+  // **A member's own carried items**, slot by slot, not the bag's
+  // (`func_ov026_021dc8fc` `0x021dcc2c`). What they wear, which the game lists
+  // after, is not offered here — **ours**.
+  return carried.map((id) => {
     const use = uses.get(id)?.battle
-    if (!use) continue
-    const heal = use.effect === ActionEffect.RestoresHp ? use.range : undefined
-    items.push(heal ? { id, name: itemNamed(id), count, heal } : { id, name: itemNamed(id), count })
-  }
-  return items
+    const heal = use?.effect === ActionEffect.RestoresHp ? use.range : undefined
+    return heal
+      ? { id, name: itemNamed(id), count: 1, heal }
+      : { id, name: itemNamed(id), count: 1 }
+  })
 }
 
 /**
@@ -5073,10 +5131,12 @@ function battleItems(): BattleItem[] {
  * abilities — is struck as the Attack.
  */
 function battleOffered(): Offered {
-  const items = battleItems()
+  const items: BattleItem[] = []
   const spells: BattleSpell[] = []
   const asked: Asked[] = battleMembers.map((member, fighter) => {
     const lists = battleListsOf(member, spells)
+    const own = battleItems(member.carried ?? [])
+    items.push(...own)
     return {
       fighter,
       name: battle?.names[fighter]?.name ?? nameFor(member),
@@ -5086,7 +5146,7 @@ function battleOffered(): Offered {
       guest: member.attnpc !== undefined,
       spells: lists.spells,
       abilities: lists.abilities,
-      items: items.map(itemEntry),
+      items: own.map(itemEntry),
     }
   })
   return { asked, items, spells }
@@ -5106,7 +5166,18 @@ function battleListsOf(
   const here = loaded
   const out = { spells: [] as Entry[], abilities: [] as Entry[] }
   if (!here) return out
-  const fromPanels = panelsHeld(member, here.skillPanels)
+  // The panels held, and those a skill book they carry grants
+  // (`func_ov026_021dc8fc` `0x021dc980`–`0x021dca0c`).
+  const books = new Set(
+    (member.carried ?? []).flatMap((id) => {
+      const def = here.itemDefs.get(id)
+      return def?.book ? [def.panel] : []
+    }),
+  )
+  const held = panelsHeld(member, here.skillPanels)
+  for (const panel of here.skillPanels)
+    if (books.has(panel.id) && !held.includes(panel)) held.push(panel)
+  const fromPanels = held
     .filter((panel) => panel.action !== 0)
     .sort((a, b) => a.battleOrder - b.battleOrder)
     .map((panel) => panel.action)
@@ -5337,7 +5408,9 @@ function settle(outcome: Outcome, row: LevelRow): string {
  * nothing, and is kept; what does something is used up. The chimaera wing is
  * {@link WING_ACTION}'s.
  */
-function useInField(id: number): string[] {
+function useInField(held: Held): string[] {
+  const id = held.item
+  spending = held
   const here = loaded
   const row = heroRow()
   if (!here || !row) return ['The level table did not load, so nothing can be used.']
@@ -5357,8 +5430,30 @@ function useInField(id: number): string[] {
   if (!use) return [uses, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
   const outcome = useOn(use, heroVitals(row), fieldRng)
   if (outcome.kind === 'unknown') return [`What ${nameOf(id)} does is not read yet; it is kept.`]
-  if (outcome.kind !== 'noUse') bag = drop(bag, id) ?? bag
+  if (outcome.kind !== 'noUse') spend(id)
   return [uses, settle(outcome, row)]
+}
+
+/** The item being used, where it is — see `spend`. */
+let spending: Held | undefined
+
+/**
+ * An item used up, from where it was used (`func_ov002_0215a7b4`): from a
+ * member, that slot, the list closing up; from the bag, one. Only an item
+ * that is used up when used goes (`+0x08` bit 19).
+ */
+function spend(id: number): void {
+  const def = loaded?.itemDefs.get(id)
+  if (def && !def.usedUp) return
+  const held = spending
+  if (held && held.item === id && held.owner !== 'bag') {
+    const list = carriers().carried[held.owner]
+    if (list?.[held.slot] === id) {
+      removeSlot(list, held.slot)
+      return
+    }
+  }
+  bag = drop(bag, id) ?? bag
 }
 
 /** A chimaera wing, thrown — see {@link WING_ACTION}. Outdoors it closes the menu and flies. */
@@ -5373,7 +5468,7 @@ function flyHome(id: number): string[] {
   const thrown =
     actionSay(WING_THROWN, { actor: hero, item: itemNamed(id) }) ??
     `${hero.name} throws the chimaera wing high into the air!`
-  bag = drop(bag, id) ?? bag
+  spend(id)
   menu = undefined
   showMenu()
   if (enter(WING_TOWN)) status(thrown)
@@ -5386,7 +5481,7 @@ function sprinkle(id: number): string[] {
   const sprinkled =
     actionSay(362, { actor: hero, item: itemNamed(id) }) ??
     `${hero.name} sprinkles some holy water about the place.`
-  bag = drop(bag, id) ?? bag
+  spend(id)
   if (roaming) roaming = calmFor(roaming, HOLY_WATER_CALM)
   return [sprinkled]
 }
@@ -5414,10 +5509,28 @@ function evacuate(spell: { readonly name: string; readonly cost: number }): stri
   return [casts]
 }
 
-/** Throw one of an item away, and say so. */
-function discardInField(id: number): string[] {
-  bag = drop(bag, id) ?? bag
+/** Throw an item away, from where it is — a member's slot, or one from the bag — and say so. */
+function discardInField(held: Held): string[] {
+  const id = held.item
+  if (held.owner === 'bag') bag = drop(bag, id) ?? bag
+  else {
+    const list = carriers().carried[held.owner]
+    if (list?.[held.slot] === id) removeSlot(list, held.slot)
+  }
   return [menuSay(MENU_SAYS.discarded, { item: itemNamed(id) }) ?? `${nameOf(id)} discarded.`]
+}
+
+/**
+ * An item moved, from the Items panel's Transfer — see `transfer` in
+ * `inventory.ts`. **Ours**: the words said; the game's are `str_tm` 9051 to
+ * 9070, by who gives and who takes, and are not yet taken.
+ */
+function transferInField(move: NonNullable<Taken['transfer']>): string[] {
+  const after = transfer(bag, carriers(), move.held, move.to)
+  if (!after) return ['That will not go there.']
+  bag = after
+  const to = move.to.owner === 'bag' ? 'the bag' : nameFor(members[move.to.owner] ?? leader())
+  return [`${nameOf(move.held.item)} goes to ${to}.`]
 }
 
 /** Cast a spell on the Hero from the spells panel, and say what came of it — see `castOn`. */
@@ -5455,10 +5568,12 @@ function heroSpells(member: Member = leader()): MenuSpell[] | undefined {
   })
 }
 
-/** The items panel's row, kept inside a bag that has lost an item. */
+/** The items panel's row, kept inside a list that has lost an item. */
 function keptInBag(state: MenuState): MenuState {
-  if (state.panel !== 'items' || state.acting) return state
-  return { ...state, row: Math.max(0, Math.min(state.row, bag.items.size - 1)) }
+  if (state.panel !== 'items' || !state.items) return state
+  const view = menuContext().itemsView
+  const count = view ? itemsRows(state.items, view).length : 0
+  return { ...state, row: Math.max(0, Math.min(state.row, count - 1)) }
 }
 
 /** What a shop, the inn or the church is told about the items and the Hero. */
@@ -5467,6 +5582,9 @@ function counter(): Counter {
     name: nameOf,
     price: (id) => loaded?.goods.get(id)?.price,
     sells: (id) => loaded?.goods.get(id)?.sells,
+    carriers: carriers(),
+    names: members.map((m, k) => (k === 0 ? heroName() : nameFor(m))),
+    kindOf: (id) => loaded?.itemDefs.get(id)?.kind,
     divination: () => {
       const levels = levelsFor(leader())
       if (!levels) return 'The level table did not load.'
@@ -8049,7 +8167,8 @@ function settleBattle(): void {
     // What the monsters dropped — rolled the game's way, from its own
     // generator, after the experience and the gold are settled; see `dropsWon`.
     for (const won of dropsWon(battle.state, dropRng)) {
-      bag = take(bag, { item: won.item })
+      // To the first living member with room, else the bag (`func_ov023_021eeaac`).
+      give(won.item, 1, true)
       const monster = monsterNamed(won.kind) ?? { name: won.from }
       const item = itemNamed(won.item)
       const chest = said(RESULT_SAYS.dropsChest, { monsters: [monster], target: heroNamed() })
@@ -8830,16 +8949,16 @@ function storyFromRecord(outcome: EventOutcome): boolean {
     }
   }
   // Items a record gives and takes — `114 : i` and `115 : i`, both queued
-  // (US ARM9 queue cases `0x0206fcc0` and `0x0206fd74`). **INFERRED** which
-  // is which, from the items: `114` carries what the story hands over — the
-  // fygg, the party popper, Sterling's whistle after the last set battle at
-  // 19.1 — and `115` what is handed back, the Drunken Dragon, the Gittish seal.
+  // (US ARM9 queue cases `0x0206fcc0` and `0x0206fd74`): **114 gives**, the
+  // game's `func_0207d300` — a member first, see `obtain` — and **115
+  // takes**, one from the bag or whoever carries it (`func_02086d88`; read 2
+  // October 2026). What 115 then takes from what is worn is not modelled.
   for (const action of outcome.actions ?? []) {
     if (action.arg === 0) continue
     if (action.op === 114) {
-      bag = take(bag, { item: action.arg })
+      give(action.arg)
       status(`${nameOf(action.arg)} obtained`)
-    } else if (action.op === 115) bag = drop(bag, action.arg) ?? bag
+    } else if (action.op === 115) takeAway(action.arg)
   }
   // The stop the Starflight Express is at, `216` — see `OP_EXPRESS_AT`.
   if (outcome.expressAt !== undefined) expressAt = outcome.expressAt
@@ -10036,10 +10155,15 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       battle = battleChoose(battle, battleOffered())
       keepTactics()
       cueStarted = battleClock
-      // An item used this round is gone from the bag.
+      // An item used this round is gone from its user's own — when it is one
+      // that is used up (`func_020ddb38`: `+0x08` bit 19).
       if (battle.state.round !== round) {
-        for (const event of battle.events)
-          if (event.kind === 'item') bag = drop(bag, event.item) ?? bag
+        for (const event of battle.events) {
+          if (event.kind !== 'item' || !loaded?.itemDefs.get(event.item)?.usedUp) continue
+          const list = battleMembers[event.actor]?.carried
+          const at = list?.indexOf(event.item) ?? -1
+          if (list && at >= 0) removeSlot(list, at)
+        }
       }
       settleBattle()
       if (battle.phase === 'over') {
@@ -10115,9 +10239,11 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
           ? useInField(taken.use)
           : taken.discard !== undefined
             ? discardInField(taken.discard)
-            : taken.cast !== undefined
-              ? castInField(taken.cast)
-              : undefined
+            : taken.transfer !== undefined
+              ? transferInField(taken.transfer)
+              : taken.cast !== undefined
+                ? castInField(taken.cast)
+                : undefined
       if (said && menu) menu = { ...keptInBag(menu), said }
       if (taken.equip) {
         // **Whoever the attributes panel chose**, not always the Hero — the

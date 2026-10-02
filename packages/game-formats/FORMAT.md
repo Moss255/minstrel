@@ -1159,6 +1159,43 @@ same rows either way.
 **Not read:** whether the Omnivocational passives, which let one character
 wield a kind "regardless of vocation", show on the screen's grid.
 
+# Who carries an item — the character's items and the party's stores
+
+Read 2 October 2026 (USA), and kept by `apps/game/src/inventory.ts`,
+`items-menu.ts`; the items' kinds and bits from `itemdt.gp2/itemdt_<lang>.nat`
+(`readItemDefs`: 1,423 records of 32 bytes from `0x0C`, the count the first
+`u16`; `+0x08` bits 0–3 the kind, 8 everyday and 9 important; bit 19 used up
+when used, bit 20 kept when all is put in the bag, bit 25 straight to the bag;
+`+0x18` the id). **The European file agrees**: 146 everyday, 88 important, 47
+used up, 30 kept, 89 to the bag.
+
+- **A character carries eight everyday items**, one to a slot, packed — the
+  character record's `+0x454`, eight `int16` ids, −1 empty. A new one takes
+  the first empty slot (`func_02083834`); one taken out closes the list up
+  (`func_0208386c`). What is worn is apart (`+0x488`, `+0x194`).
+- **The party's stores** (`GameState + 0x2a04`): the Bag (`+0x000`, 152
+  items), the equipment bag (`+0x1d4`, eight lists by kind) and the important
+  items (`+0xe04`, 94), each an id with a count to 99.
+- **An item obtained** (`func_0207d300` — chests, pots and barrels, an event's
+  `114`, alchemy, a monster's drop): equipment to the equipment bag, important
+  items to theirs, one marked for the bag to the bag; any other everyday item
+  **to the first member in party order with room, as many as fit, then the
+  next**, the rest to the bag. A drop passes over the fallen. A shop asks who
+  carries an everyday item bought — a member or the bag (overlay 3, state
+  `0xc`).
+- **An item taken** (`func_02086d88` — alchemy's ingredients, an event's
+  `115`, the mini medals): one from the bag, then the equipment bag, the
+  important items, then each member's carried in party order. **`114` gives
+  and `115` takes.**
+- **The field's Items** (overlay 2, `str_tm`): Everyday Items, Important
+  Items (1002, 1003); for everyday, each member then the Bag (1101); on an
+  item Use, Transfer, Discard, Cancel (1201–1204); Transfer to whom (1300 —
+  the members and the Bag) and, for a member, to which row (1400): an empty
+  row takes it, an occupied one changes places, the bag's old item going into
+  the bag.
+- **In battle a member uses only what they carry** (`func_020ddb38`): a
+  used-up item leaves its slot, the list closing up.
+
 # Skill panels — `/data/prm/skilltable.bin`
 
 **Found 24 September 2026.** The ARM9 carries a per-tag handler table for this
@@ -1207,7 +1244,15 @@ everywhere is better evidence than reading either alone.
 | ability description | `/data/prm/actexp.gp2`, which `readSystemStrings` already parses |
 | the sentence on unlock | `/data/prm/str_gskl.gp2` — 1–22 the messages, 101–114 weapon nouns, 202–216 stat nouns |
 
-## The eleventh panel is unreachable, not free
+## The eleventh panel is unreachable by points — a skill book grants it
+
+**Read 2 October 2026**: each of the 26 skill books (22265 to 22290, kind 8,
+`+0x08` bits 4–8 at 31) names a panel at its record's `+0x14` — 10, 21, 32 …,
+**every tree's eleventh** — and each round of a battle `func_ov026_021dc8fc`
+(`0x021dc980`–`0x021dca0c`) sets that panel's bit (char `+0x8ec`) for a book
+among the member's carried items, and clears it for one that is not. So the
+marquee ability is had by carrying its book. Whether the field's menus read the
+bit the same way is not read.
 
 **Settled 24 September 2026.** Every tree has a record reading cost 0, and in
 all twenty-six it is **eleventh**: last in the file and last by value 7, after
