@@ -83,7 +83,7 @@ describe('a spell', () => {
     )
     const event = played.events.find((e) => e.kind === 'spell')
     if (event?.kind !== 'spell') throw new Error('no spell cast')
-    return { state: played.state, event }
+    return { state: played.state, event, events: played.events }
   }
 
   it('spends its MP, and harms the one chosen by its range', () => {
@@ -113,7 +113,9 @@ describe('a spell', () => {
     const start = withHp(startBattle([hero, blob('slime', 5, 0)]), new Map([[0, 5]]))
     const healed = cast(start, heal, 1)
     expect(healed.event.hits).toEqual([{ target: 0, amount: 15 }])
-    expect(healed.state.fighters[0]?.hp).toBe(20)
+    // Whole, less what the slime's 0-or-1 coin took after.
+    const nicked = healed.events.some((e) => e.kind === 'attack' && e.actor === 1 && e.damage > 0)
+    expect(healed.state.fighters[0]?.hp).toBe(nicked ? 19 : 20)
     const whole = cast(start, { ...heal, amount: undefined }, 0)
     expect(whole.event.hits).toEqual([{ target: 0, amount: 15 }])
   })

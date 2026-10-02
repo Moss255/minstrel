@@ -42,8 +42,8 @@ describe('the round a surprise opens', () => {
     const state = startBattle([hero, monster('a', 7), monster('b', 7)], true, 'monstersSitOut')
     const { events } = playRound(state, defending, rng)
     // One initiative draw, the Hero's alone — a monster passed over is not
-    // rolled for — and no monster acts.
-    expect(rng.drawn).toBe(1)
+    // rolled for — then the two every action makes, Defend's; no monster acts.
+    expect(rng.drawn).toBe(3)
     expect(events.some((event) => 'actor' in event && event.actor !== 0)).toBe(false)
   })
 

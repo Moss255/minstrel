@@ -842,6 +842,98 @@ export function playRound(
   const acted: number[] = []
   const livingOn = (side: Side) =>
     fighters.flatMap((f, i) => (f.side === side && alive(f) ? [i] : []))
+  /**
+   * **The two draws every action makes** as its targets are built —
+   * `func_ov000_0215fbe0`, from the party's builder and the monsters' alike,
+   * whatever the action: 3 or 4, then 6 to 8, the counts hit codes 3 and 11
+   * take. After any re-pick, before the first target's die. Read 3 October
+   * 2026; only a confused member's, two scripted battles' and a monster's
+   * Kerplunk skip them, none of which is modelled.
+   */
+  const builtDraws = () => ({ threeOrFour: rng.below(2) + 3, sixToEight: rng.below(3) + 6 })
+  /** The monster groups standing, by kind, in the order they stand. */
+  const groupsOf = (standing: readonly number[]) => {
+    const kinds: string[] = []
+    for (const i of standing) {
+      const name = fighters[i]?.name ?? ''
+      if (!kinds.includes(name)) kinds.push(name)
+    }
+    return kinds
+  }
+  /**
+   * **One of the party's aim at a fallen monster**, picked again
+   * (`func_ov000_02153aa4`): one draw among the standing of its group; with
+   * none standing there, a draw among the groups still standing and one
+   * within the group drawn. Undefined with no monster standing.
+   */
+  const repickFoe = (named: number): number | undefined => {
+    const others = livingOn('foes')
+    const kind = fighters[named]?.name
+    const group = others.filter((i) => fighters[i]?.name === kind)
+    if (group.length > 0) return group[rng.below(group.length)]
+    const groups = groupsOf(others)
+    if (groups.length === 0) return undefined
+    const drawn = groups[rng.below(groups.length)]
+    const within = others.filter((i) => fighters[i]?.name === drawn)
+    return within[rng.below(within.length)]
+  }
+  /**
+   * **Whom an action reaches** on a side: the party's at the monsters by the
+   * game's re-picks (`partyAim`); anyone's at their own side, the one named or
+   * — fallen — themselves (`func_ov000_02153cc0`); a monster's at the party,
+   * the one named or one drawn among the standing for one — **ours**, the
+   * game's weighted pick (`func_ov000_02154f30`) not modelled — and the
+   * standing for a group or all, with no draw.
+   */
+  const aimOf = (
+    me: FighterState,
+    actor: number,
+    side: Side,
+    named: number,
+    reach: 'one' | 'group' | 'all',
+  ): number[] => {
+    const standing = livingOn(side)
+    if (standing.length === 0) return []
+    if (me.side === 'party' && side === 'foes') return partyAim(named, reach)
+    const there = fighters[named]
+    const up = !!there && alive(there) && there.side === side
+    let first: number
+    if (side === me.side) first = up ? named : actor
+    else {
+      if (reach !== 'one') return standing
+      first = up ? named : (standing[rng.below(standing.length)] as number)
+    }
+    if (reach === 'one') return [first]
+    if (reach === 'all') return standing
+    const kind = fighters[first]?.name
+    return standing.filter((i) => fighters[i]?.name === kind)
+  }
+  /**
+   * **Whom an action of the party's reaches** when it is aimed at the
+   * monsters: one — its named target, or a re-pick; a group — the named
+   * one's, or, that group gone, one drawn among the groups standing; all —
+   * the standing, no draw (`func_ov000_021540fc`).
+   */
+  const partyAim = (named: number, reach: 'one' | 'group' | 'all'): number[] => {
+    const others = livingOn('foes')
+    if (others.length === 0) return []
+    if (reach === 'all') return others
+    const there = fighters[named]
+    const standing = !!there && alive(there) && there.side === 'foes'
+    if (reach === 'one') {
+      if (standing) return [named]
+      // Ours: an action aimed at nobody — a companion's default — takes the first standing.
+      if (!there) return [others[0] as number]
+      const picked = repickFoe(named)
+      return picked === undefined ? [] : [picked]
+    }
+    const kind = there?.name
+    const group = others.filter((i) => fighters[i]?.name === kind)
+    if (group.length > 0) return group
+    const groups = groupsOf(others)
+    const drawn = groups[rng.below(groups.length)]
+    return others.filter((i) => fighters[i]?.name === drawn)
+  }
 
   for (const actor of order) {
     const me = fighters[actor]
@@ -873,6 +965,16 @@ export function playRound(
       chain = brokenChain(chain)
     }
 
+    // Defend, a wait and a monster's flight go through the resolver too, and
+    // make its two draws. What they draw after their target's die is not
+    // read, and is not made here — ours.
+    if (
+      command.kind === 'defend' ||
+      command.kind === 'wait' ||
+      (command.kind === 'flee' && me.side === 'foes')
+    ) {
+      builtDraws()
+    }
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
       continue
@@ -897,6 +999,7 @@ export function playRound(
       // it cannot be dodged or blocked, and its accuracy stands at a hundred.
       // Then its own steps, held so that the level never passes 4, each from
       // 3 a coin of the battle's. At the maximum already, nothing happens.
+      builtDraws()
       rng.below(100)
       rng.below(10_000)
       rng.below(100)
@@ -931,6 +1034,7 @@ export function playRound(
       continue
     }
     if (command.kind === 'item') {
+      builtDraws()
       const named = command.target === undefined ? undefined : fighters[command.target]
       const on =
         command.target !== undefined && named && alive(named) && named.side === me.side
@@ -969,15 +1073,8 @@ export function playRound(
       }
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spell.cost } : f))
       const side: Side = spell.does === 'heal' ? me.side : me.side === 'party' ? 'foes' : 'party'
-      const standing = livingOn(side)
-      const named = fighters[command.target]
-      // A foe's aim is drawn among the standing, as its attack's is.
-      const first =
-        named && alive(named) && named.side === side
-          ? command.target
-          : me.side === 'foes'
-            ? standing[rng.below(standing.length)]
-            : standing[0]
+      const reached = aimOf(me, actor, side, command.target, spell.reach)
+      const first = reached[0]
       if (first === undefined) {
         events.push({
           kind: 'spell',
@@ -989,20 +1086,20 @@ export function playRound(
         })
         continue
       }
-      const kind = fighters[first]?.name
-      const reached =
-        spell.reach === 'one'
-          ? [first]
-          : spell.reach === 'group'
-            ? standing.filter((i) => fighters[i]?.name === kind)
-            : standing
+      builtDraws()
       // **The game's order** — `func_ov024_021eb5d0`, `docs/conformance.md`,
       // "What is not a plain blow". Whether it goes haywire is rolled **once
       // for the cast when it reaches a group or all** (`func_ov024_021ea4d0`:
       // the record's reach at 3 or 4) and before anyone is looked at; for one
       // it is rolled for that one, after their die. A monster's rate is a
       // literal nothing (`func_020748f8`) and its draw is spent all the same.
-      const rate = criticalRate(me, spell.criticalPercent ?? 100, rules.magicCritical)
+      // Its chance over the targets reached (`CalculateCritRate`'s `hitCount`).
+      const rate = criticalRate(
+        me,
+        spell.criticalPercent ?? 100,
+        rules.magicCritical,
+        reached.length,
+      )
       const once = spell.reach !== 'one'
       const tension = spell.tensed ? tensionOf(me) : undefined
       let critical = once && rng.below(10_000) < rate
@@ -1078,12 +1175,8 @@ export function playRound(
       }
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - changing.cost } : f))
       const side: Side = changing.side === 'own' ? me.side : me.side === 'party' ? 'foes' : 'party'
-      const standing = livingOn(side)
-      const named = fighters[command.target]
-      const first =
-        named && alive(named) && named.side === side
-          ? command.target
-          : standing[rng.below(standing.length)]
+      const reached = aimOf(me, actor, side, command.target, changing.reach)
+      const first = reached[0]
       if (first === undefined) {
         events.push({
           kind: 'change',
@@ -1095,13 +1188,7 @@ export function playRound(
         })
         continue
       }
-      const kind = fighters[first]?.name
-      const reached =
-        changing.reach === 'one'
-          ? [first]
-          : changing.reach === 'group'
-            ? standing.filter((i) => fighters[i]?.name === kind)
-            : standing
+      builtDraws()
       const { change } = changing
       // **The game's order, and the game's roll.** A change of state goes
       // through the same resolver as a blow (`docs/conformance.md`, "A change
@@ -1112,7 +1199,7 @@ export function playRound(
       // accuracy's draw — made before it is known whether there is anything
       // left to change, since the handler finds that out afterwards.
       const rate = changing.haywire
-        ? criticalRate(me, changing.criticalPercent ?? 100, rules.magicCritical)
+        ? criticalRate(me, changing.criticalPercent ?? 100, rules.magicCritical, reached.length)
         : 0
       const once = changing.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
@@ -1172,20 +1259,9 @@ export function playRound(
       const other: Side = me.side === 'party' ? 'foes' : 'party'
       const standing = livingOn(other)
       if (standing.length === 0) break
-      const named = fighters[command.target]
-      const first =
-        named && alive(named) && named.side === other
-          ? command.target
-          : me.side === 'foes'
-            ? (standing[rng.below(standing.length)] as number)
-            : (standing[0] as number)
-      const kind = fighters[first]?.name
-      const reached =
-        blow.reach === 'one'
-          ? [first]
-          : blow.reach === 'group'
-            ? standing.filter((i) => fighters[i]?.name === kind)
-            : standing
+      const reached = aimOf(me, actor, other, command.target, blow.reach)
+      if (reached.length === 0) break
+      const kind = fighters[reached[0] as number]?.name
       // **The two draws every action makes** as its targets are built
       // (`func_ov000_0215fbe0`): 3 or 4, then 6 to 8 — the counts of hit
       // codes 3 and 11. Then the passes (`blows.ts`).
@@ -1345,13 +1421,12 @@ export function playRound(
     // An attack: at the target named, or at someone living on the other side.
     const others = livingOn(me.side === 'party' ? 'foes' : 'party')
     if (others.length === 0) break
-    const named = fighters[command.target]
     const target =
-      named && alive(named) && named.side !== me.side
-        ? command.target
-        : me.side === 'foes'
-          ? (others[rng.below(others.length)] as number)
-          : (others[0] as number)
+      me.side === 'party'
+        ? partyAim(command.target, 'one')[0]
+        : (aimOf(me, actor, 'party', command.target, 'one')[0] as number)
+    if (target === undefined) break
+    builtDraws()
     const them = fighters[target] as FighterState
     // The chain, before the accuracy (`0x021ec178`): the plain Attack's blows
     // chain (`+0x2C` bit 27). **Ours**: a monster's blow taken as the Attack, 1.

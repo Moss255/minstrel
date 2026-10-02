@@ -103,7 +103,7 @@ describe('Psyche Up in a battle', () => {
     const rng = new BattleRng(9n)
     const levels: number[] = []
     const said: BattleEvent[] = []
-    for (let r = 0; r < 8; r++) {
+    for (let r = 0; r < 40 && tensionOf(state, 1) < 4; r++) {
       const played = playRound(state, new Map([[0, { kind: 'defend' }]]), rng)
       state = played.state
       said.push(...played.events.filter((e) => e.kind === 'psyche'))
@@ -111,6 +111,9 @@ describe('Psyche Up in a battle', () => {
     }
     expect(levels.slice(0, 3)).toEqual([1, 2, 3])
     expect(levels.at(-1)).toBe(4)
+    // At the maximum, one more: nothing happens.
+    const more = playRound(state, new Map([[0, { kind: 'defend' }]]), rng)
+    said.push(...more.events.filter((e) => e.kind === 'psyche'))
     const last = said.at(-1)
     expect(last?.kind === 'psyche' && last.steps).toEqual([])
   })

@@ -39,9 +39,12 @@ a flight that is the party's and settled before the round.
 3. ~~**The abilities' own handlers**~~ **Done, 2 October** (`blows.ts`;
    `docs/conformance.md`, "The abilities' handlers"): every handler a skill
    panel's ability uses, the hit codes as passes, the critical over the
-   passes, the steps after. **Next**: the two draws every action makes and the
-   spells' critical over their targets, applied to every action; the
-   monsters' handlers; the slot-0 blows with code of their own.
+   passes, the steps after. The two draws every action makes, the
+   critical over the targets and the game's re-picks were applied to every
+   action on 3 October. **Next**: what the ledger lists as partly read — a
+   monster choosing before the resolver, a sleeper's turn, range-0 actions'
+   base damage; the monsters' handlers; the slot-0 blows with code of their
+   own.
 
 ## The battle scene — 29 September
 

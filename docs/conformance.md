@@ -632,19 +632,38 @@ resistance, and the rest.
   of the last blow); HP back, a quarter of the last pass's (Miracle Moon's
   first).
 
-**Two findings that reach past the abilities, read and not yet applied to
-every action** — they would move every replay, and each has a path not
-followed: **every action whose targets are built draws `NextRandomMax(2)` and
-then `NextRandomMax(3)`** (`func_ov000_0215fbe0`), the plain Attack too — the
-blow makes them, the Attack and the spells do not yet; and **a spell reaching
-a group or all rolls its critical at 1/(targets)** — the blow divides,
-`criticalChance` takes the passes, the spells still roll at the whole. Not
-modelled: the Attack's own extra hit and a weapon's hit doubling
-(`func_ov000_021564cc`, `func_020850d0`), the metal body's zeroing and 1-or-2
-(the handler's +1 is), the riders of Pressure Pointer and Parallax, Body
-Slam's accuracy draw, the slot-0 blows with code of their own (Propeller
-Blade, Crosscutter Throw, Gold Rush and the six that scale), the handlers
-monsters use.
+**Applied to every action, 3 October 2026**, once the paths left unread were
+followed (`func_ov000_021540fc`, `0215440c`, `02154a04`, `021543f4`):
+
+- **every action makes the two draws** — `NextRandomMax(2)` then
+  `NextRandomMax(3)`, `func_ov000_0215fbe0` — the Attack, every spell, heal
+  and change of state, Psyche Up, an item, Defend, a monster's flight and its
+  wait: after any re-pick of its target, before the critical rolled once and
+  the first target's die. Only a confused member (`021543f4`: status `0x20`),
+  two scripted battles (`+0x81fe` 0x320/0x321) and a monster's Kerplunk skip
+  them, none of which is modelled;
+- **a critical's chance is divided by the targets it is rolled over** — a
+  spell or a change reaching a group or all rolls once at rate/n; one target
+  at the whole (`CalculateCritRate`'s `hitCount`, `0x021ebe08`);
+- **a fallen target is re-picked the game's way**: one of the party's aim at
+  a fallen monster, a draw among the standing of its group, or — none there —
+  a draw among the groups and one within (`func_ov000_02153aa4`); at a fallen
+  ally, the user themselves (`02153cc0`); a monster's spell or change at a
+  group or all makes no draw.
+
+**Read and not applied — partly read**: a monster's way and target are
+chosen before the resolver (`ProcessCombatTurn` `0x0215dbbc`), for its AI
+modes 0 and 1 through `02154a04`, so the two draws would be spent twice; a
+fighter that cannot act is turned into action `0x1F7` and goes through the
+resolver (INFERRED, a sleeper spending the draws); an action with range 0 —
+Defend, Psyche Up, Buff, Kasap, Sweet Breath, a flight, a wait — calls
+`GetAttackBaseDamage` after its accuracy (`0x021ec4e4`), its physical
+formula's draws spent, per the decomp's C and not the assembly. And a
+monster's pick when its target is gone is weighted (`func_ov000_02154f30`),
+ours uniform. Not modelled either: the Attack's own extra hit and a weapon's
+hit doubling, the metal body's zeroing and 1-or-2, the riders of Pressure
+Pointer and Parallax, Body Slam's accuracy draw, the slot-0 blows with code
+of their own, the handlers monsters use
 
 ### Tension, modelled — 1 October 2026
 
