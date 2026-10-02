@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { type Fighter, fleeChance, playRound, startBattle } from '../src/battle/battle.ts'
+import { physicalDamage } from '../src/battle/damage.ts'
 import { BattleRng } from '../src/battle/rng.ts'
 
 /**
@@ -42,8 +43,12 @@ describe('the round a surprise opens', () => {
     const state = startBattle([hero, monster('a', 7), monster('b', 7)], true, 'monstersSitOut')
     const { events } = playRound(state, defending, rng)
     // One initiative draw, the Hero's alone — a monster passed over is not
-    // rolled for — then the two every action makes, Defend's; no monster acts.
-    expect(rng.drawn).toBe(3)
+    // rolled for — then the Hero's turn-start draw, Defend's pass (the
+    // builder's two, the die, the critical, the accuracy, the physical
+    // formula's own on itself), and the draw after an action; no monster acts.
+    const physical = new BattleRng(0n)
+    const base = physicalDamage(physical, hero.attack, hero.defence)
+    expect(rng.drawn).toBe(1 + 1 + 2 + 3 + physical.drawn + (base <= 0 ? 1 : 0) + 1)
     expect(events.some((event) => 'actor' in event && event.actor !== 0)).toBe(false)
   })
 

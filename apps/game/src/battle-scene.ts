@@ -294,6 +294,7 @@ export interface Castable {
     readonly hitCode?: number
     readonly afterStep?: number
     readonly fallsOff?: boolean
+    readonly aiTargets?: readonly [number, number]
     readonly alwaysCritical?: boolean
     readonly haywire: boolean
     /** Its record's own multiplier on a caster's chance of going haywire. */
@@ -466,7 +467,15 @@ export function foeWaysOf(
   actionOf: (action: number) => Castable | undefined = () => undefined,
 ): { readonly acts: FoeAction[]; readonly known: Map<number, Told> } {
   const known = new Map<number, Told>()
+  // Each way with the targeting handlers its record names for AI modes 1 and 2.
   const acts = words.map((word): FoeAction => {
+    const way = wayOf(word)
+    const targeting = actionOf(word)?.rolls?.aiTargets
+    return targeting ? { ...way, targeting } : way
+  })
+  return { acts, known }
+
+  function wayOf(word: number): FoeAction {
     if (word === FOE_FLEE) return { kind: 'flee' }
     if (word === FOE_ATTACK) return { kind: 'attack' }
     const action = actionOf(word)
@@ -529,8 +538,7 @@ export function foeWaysOf(
     if (!spell) return { kind: 'attack' }
     known.set(word, spell)
     return { kind: 'spell', spell: spell.spell }
-  })
-  return { acts, known }
+  }
 }
 
 /**

@@ -5911,16 +5911,6 @@ function createdFighter(member: Member): Fighter | undefined {
 }
 
 /**
- * The party level a monster runs from: its level and margin from `fld_mondata`
- * added — see `FieldMonster.level`. A monster with no record there runs as
- * before, whenever it draws its Flee.
- */
-function runsFromOf(number: number): { runsFrom?: number } {
-  const field = loaded?.fieldMonsters.get(number)
-  return field ? { runsFrom: field.level + field.runsFromMargin } : {}
-}
-
-/**
  * Start a battle with these monsters, by code, where the Hero stands.
  *
  * The Hero fights with their level's numbers. **Their attack, defence and
@@ -6028,8 +6018,12 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
         { item: numbers.drops[0], step: numbers.dropSteps[0] },
         { item: numbers.drops[1], step: numbers.dropSteps[1] },
       ],
-      // It runs only from a party past its level by its margin — `fld_mondata`, INFERRED.
-      ...runsFromOf(who.number),
+      // Its AI — `mon_btldata +0x10`: when it chooses, its actions more a
+      // round, its ways once a group, and whether it weighs who struck it.
+      aiMode: numbers.aiMode,
+      extraRule: numbers.extraRule,
+      oncePerGroup: numbers.oncePerGroup,
+      remembers: numbers.remembers,
     })
     looks.push(monsterLookOf(cartridge, code))
   }
@@ -6061,7 +6055,7 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     block: blockChance(wornBy(leader()).has('shield'), worn.block),
     exp: 0,
     gold: 0,
-    // What a monster weighs before it runs — see `Fighter.runsFrom`.
+    // What tension's bonus is made from — see `Fighter.level`.
     level: row.level,
   }
   // **Everyone after the Hero fights, whatever they are.** A story companion

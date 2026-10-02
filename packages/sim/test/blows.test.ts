@@ -144,6 +144,11 @@ describe('a blow in a battle', () => {
     const slam = play(blow({ action: 148, handler: 35, after: 3, tensed: false }))
     const told = slam.events.find((e) => e.kind === 'blow')
     expect(told?.kind === 'blow' && told.recoil).toBe(Math.trunc(f(f(0.8) * 100)) + 2)
-    expect(slam.state.fighters[0]?.hp).toBe(100 - (Math.trunc(f(f(0.8) * 100)) + 2))
+    // Less the recoil, and whatever the dragon's own blow took after.
+    const struck = slam.events.reduce(
+      (n, e) => n + (e.kind === 'attack' && e.target === 0 ? e.damage : 0),
+      0,
+    )
+    expect(slam.state.fighters[0]?.hp).toBe(100 - (Math.trunc(f(f(0.8) * 100)) + 2) - struck)
   })
 })

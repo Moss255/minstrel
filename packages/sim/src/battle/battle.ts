@@ -17,9 +17,8 @@ import {
   moved,
   NO_STATES,
   poisonDamage,
-  SLEEP_TURNS,
   type States,
-  sleptThrough,
+  wakes,
   wornAfterTurn,
 } from './states.ts'
 import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
@@ -69,17 +68,26 @@ import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
  * spent whether or not it can come to anything — a monster's critical draw, the
  * damage of a blow that was dodged. `docs/conformance.md` has the reading.
  *
+ * **A round's own draws are the game's** (read 3 October 2026): the command
+ * phase after the initiative, where monsters of AI modes 0 and 1 choose their
+ * way and target and every monster draws for its actions more; then, each
+ * turn, the charm's draws, a mode-2 monster's choosing, the turn-start draw
+ * (a sleeper's waking), the action, and a draw after it. A monster chooses by
+ * the targeting handler its way's record names for its mode, and whom by the
+ * weighted pick that remembers who struck it — `chooseFoe`. Defend, a wait, a
+ * flight, Psyche Up and a sleeper's turn go through the resolver on oneself.
+ *
  * **Ours, and said so:**
  * - the order of every draw that is *not* a plain blow's — a spell's, an
  *   item's, a change of state's — which is still not the game's;
  * - a round of more than two fighters, which the reference, one against one,
  *   does not have: everyone is ordered by the same draw;
- * - a monster's target, a draw among the living party;
- * - which of its six ways a monster takes is the reference's draw, but the
- *   weights are its even table for every monster (see {@link Rules.choice});
- *   a monster that flees gets away, and pays nothing; one that would heal
- *   with no one hurt attacks instead; one that would flee from a party not
- *   yet strong enough — see {@link Fighter.runsFrom} — attacks instead;
+ * - where a monster's actions more fall in the order: straight after its first;
+ * - the targeting handlers not read — Sap's, and those past the ones
+ *   `byHandler` names — which take the first; the weighted pick's halving
+ *   under a status, not identified;
+ * - which of its six ways a monster takes is the game's weights for its AI
+ *   type; a monster that flees gets away, and pays nothing;
  * - the critical chance, the reference's 200 in 10,000 for its level-13 case —
  *   how the game derives it is not read;
  * - fleeing, which the reference does not model: {@link Rules.flee} in 100;
@@ -173,19 +181,21 @@ export interface Fighter {
   /** The weights its ways are drawn by, in 256, where they are not the rules' — a boss's falling table. */
   readonly choice?: readonly number[]
   /**
+   * A monster's AI — `mon_btldata +0x10` (read 3 October 2026): its mode (0
+   * and 1 choose as the round begins, 2 at its turn), its rule for actions
+   * more a round, which ways it may use once a group, and whether it weighs
+   * who last struck it. Mode 1, no more actions, when not given.
+   */
+  readonly aiMode?: number
+  readonly extraRule?: number
+  readonly oncePerGroup?: number
+  readonly remembers?: boolean
+  /**
    * A party member's level, which a monster weighs before it runs, and which
    * tension's bonus is made from (`CalculateTensionBonus`) — at their
    * vocation. A monster's own is not given, and counts as nothing.
    */
   readonly level?: number
-  /**
-   * The party level a monster runs from: a drawn Flee is taken only when the
-   * highest level among the standing party has reached it, and is an attack
-   * otherwise. Without it, or with no party level known, a drawn Flee is
-   * taken. The game's level and margin from `fld_mondata` — INFERRED; that a
-   * Flee below it becomes an attack is ours.
-   */
-  readonly runsFrom?: number
 }
 
 export interface FighterState extends Fighter {
@@ -204,6 +214,8 @@ export interface FighterState extends Fighter {
    * INFERRED. Nothing before the first round.
    */
   readonly rounds?: number
+  /** The last two of the party to aim a pass at this monster, the latest first (`+0x32`, `+0x34`). */
+  readonly aimedBy?: readonly number[]
 }
 
 /** What an item does when used: the HP it restores, as a base give or take a spread. */
@@ -328,7 +340,10 @@ export type ChangeResult =
  * (poisoning, by its chance in 100, where it is a poison attack), flee, a
  * spell, or a change of state.
  */
-export type FoeAction =
+/** A monster's way, with the targeting handlers its record names for AI modes 1 and 2 (`+0x0C`, `+0x0E`). */
+export type FoeAction = FoeWay & { readonly targeting?: readonly [number, number] }
+
+export type FoeWay =
   | { readonly kind: 'attack'; readonly poison?: number }
   | { readonly kind: 'flee' }
   /** A turn spent doing nothing — a monster fluffing around — with the action that says so. */
@@ -481,6 +496,8 @@ export interface BattleState {
   readonly fleeAttempts?: number
   /** The combo chain, from blow to blow — see `combo.ts`; none before the first. */
   readonly chain?: Chain
+  /** The ways each group of monsters has used that it may use once, by kind, a bit a way. */
+  readonly onceUsed?: ReadonlyMap<string, number>
 }
 
 export interface Rules {
@@ -682,53 +699,6 @@ function chosenWay(rng: BattleRng, weights: readonly number[]): number {
   return weights.length - 1
 }
 
-/**
- * A foe's command: one of its ways, drawn by {@link Rules.choice}. A heal goes
- * to its most wounded ally, itself among them; with no one hurt, and with no
- * ways at all, it attacks.
- */
-function foeCommand(
-  me: FighterState,
-  fighters: readonly FighterState[],
-  rng: BattleRng,
-  rules: Rules,
-): Command {
-  const attack: Command = { kind: 'attack', target: -1 }
-  const acts = me.acts
-  if (!acts || acts.length === 0) return attack
-  const act = acts[chosenWay(rng, me.choice ?? rules.choice)]
-  if (!act) return attack
-  if (act.kind === 'attack') {
-    return act.poison === undefined ? attack : { kind: 'attack', target: -1, poison: act.poison }
-  }
-  if (act.kind === 'flee') return outclassed(me, fighters) ? { kind: 'flee' } : attack
-  if (act.kind === 'wait') return { kind: 'wait', action: act.action }
-  if (act.kind === 'change') return { kind: 'change', changing: act.changing, target: -1 }
-  if (act.kind === 'psyche') return act
-  if (act.kind === 'blow') return { kind: 'blow', blow: act.blow, target: -1 }
-  if (act.spell.does === 'harm') return { kind: 'spell', spell: act.spell, target: -1 }
-  // The most wounded: the lowest share of its hit points, compared in whole numbers.
-  let best = -1
-  for (let i = 0; i < fighters.length; i++) {
-    const f = fighters[i] as FighterState
-    if (f.side !== me.side || !alive(f) || f.hp >= f.maxHp) continue
-    const was = fighters[best]
-    if (!was || f.hp * was.maxHp < was.hp * f.maxHp) best = i
-  }
-  return best < 0 ? attack : { kind: 'spell', spell: act.spell, target: best }
-}
-
-/** Whether a monster may run: the standing party's highest level has reached its {@link Fighter.runsFrom}. */
-function outclassed(me: FighterState, fighters: readonly FighterState[]): boolean {
-  if (me.runsFrom === undefined) return true
-  let highest: number | undefined
-  for (const f of fighters) {
-    if (f.side === me.side || !alive(f) || f.level === undefined) continue
-    highest = highest === undefined ? f.level : Math.max(highest, f.level)
-  }
-  return highest === undefined || highest >= me.runsFrom
-}
-
 function outcomeOf(fighters: readonly FighterState[]): Outcome {
   if (!fighters.some((f) => f.side === 'foes' && alive(f))) return 'won'
   if (!fighters.some((f) => f.side === 'party' && alive(f))) return 'lost'
@@ -816,6 +786,7 @@ export function playRound(
 
   let outcome: Outcome = 'ongoing'
   let chain: Chain = state.chain ?? NO_CHAIN
+  const onceUsed = new Map(state.onceUsed ?? [])
   const setStates = (target: number, patch: Partial<States>) => {
     fighters = fighters.map((f, i) =>
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
@@ -906,7 +877,19 @@ export function playRound(
     const there = fighters[named]
     const up = !!there && alive(there) && there.side === side
     let first: number
-    if (side === me.side) first = up ? named : actor
+    if (me.side === 'foes') {
+      // A monster's: its target fallen, the first handler picks again, its
+      // own two draws with it (`0215440c` → `02154a04`).
+      if (reach !== 'one') return standing
+      if (up) first = named
+      else {
+        first =
+          side === 'party'
+            ? (weighted(actor, standing) ?? (standing[0] as number))
+            : (standing[rng.below(standing.length)] as number)
+        builtDraws()
+      }
+    } else if (side === me.side) first = up ? named : actor
     else {
       if (reach !== 'one') return standing
       first = up ? named : (standing[rng.below(standing.length)] as number)
@@ -943,23 +926,307 @@ export function playRound(
     return others.filter((i) => fighters[i]?.name === drawn)
   }
 
+  /**
+   * **A monster's weighted pick** among the party (`func_ov000_02154f30`):
+   * each weighs 2, and — where its record says it remembers — the last to
+   * strike it 2 more and the one before 1 more; a draw below the total, and
+   * the first whose weight is not below what is left. **Ours**: the weight's
+   * halving under a status and its 1 under a bit, neither identified.
+   */
+  const weighted = (actor: number, list: readonly number[]): number | undefined => {
+    if (list.length === 0) return undefined
+    const me = fighters[actor] as FighterState
+    const by = me.remembers ? (me.aimedBy ?? []) : []
+    const weights = list.map((i) => 2 + (by[0] === i ? 2 : 0) + (by[1] === i ? 1 : 0))
+    let left = rng.below(weights.reduce((a, b) => a + b, 0)) + 1
+    for (const [k, w] of weights.entries()) {
+      if (w >= left) return list[k]
+      left -= w
+    }
+    return list[rng.below(list.length)]
+  }
+  /** One of the party aimed a pass at a monster: its memory of who (`0x021ed0d4`). */
+  const noteAim = (actor: number, target: number) => {
+    const me = fighters[actor]
+    const them = fighters[target]
+    if (me?.side !== 'party' || them?.side !== 'foes') return
+    const by = [actor, them.aimedBy?.[0] ?? -1]
+    fighters = fighters.map((f, i) => (i === target ? { ...f, aimedBy: by } : f))
+  }
+  /** Whom a way reaches and from which side, for the first handler — its reach, its side. */
+  const wayAim = (
+    way: FoeAction,
+  ): { side: 'own' | 'other' | 'self'; reach: 'one' | 'group' | 'all' } => {
+    switch (way.kind) {
+      case 'attack':
+        return { side: 'other', reach: 'one' }
+      case 'blow':
+        return { side: 'other', reach: way.blow.reach }
+      case 'spell':
+        return { side: way.spell.does === 'heal' ? 'own' : 'other', reach: way.spell.reach }
+      case 'change':
+        return { side: way.changing.side, reach: way.changing.reach }
+      default:
+        return { side: 'self', reach: 'one' }
+    }
+  }
+  /** The command a way makes at a target. */
+  const commandOf = (way: FoeAction, target: number): Command => {
+    switch (way.kind) {
+      case 'attack':
+        return way.poison === undefined
+          ? { kind: 'attack', target }
+          : { kind: 'attack', target, poison: way.poison }
+      case 'blow':
+        return { kind: 'blow', blow: way.blow, target }
+      case 'spell':
+        return { kind: 'spell', spell: way.spell, target }
+      case 'change':
+        return { kind: 'change', changing: way.changing, target }
+      case 'psyche':
+        return way
+      case 'flee':
+        return { kind: 'flee' }
+      case 'wait':
+        return { kind: 'wait', action: way.action }
+    }
+  }
+  /**
+   * **The first handler** (`func_ov024_021edf6c` → `func_ov000_02154a04`), mode
+   * 0's for everything and any mode's for a wait: the target by the way's side
+   * and reach — one of the party by the weighted pick, one of its own side by a
+   * draw among the standing, oneself, a group or all with no draw — then the
+   * builder's two draws. Always usable.
+   */
+  const firstHandler = (actor: number, way: FoeAction): Command => {
+    const aim = wayAim(way)
+    let target = actor
+    if (aim.side === 'other') {
+      const party = livingOn('party')
+      target = aim.reach === 'one' ? (weighted(actor, party) ?? -1) : (party[0] ?? -1)
+    } else if (aim.side === 'own' && aim.reach === 'one') {
+      const own = livingOn('foes')
+      target = own[rng.below(own.length)] ?? actor
+    }
+    builtDraws()
+    return commandOf(way, target)
+  }
+  /** Whether a fighter is below half its HP (`021db358` < 0.5). */
+  const belowHalf = (f: FighterState) => Math.fround(Math.fround(f.hp) / Math.fround(f.maxHp)) < 0.5
+  /**
+   * **A targeting handler by its number** — mode 1's `+0x0C`, mode 2's
+   * `+0x0E` (the table at `0x021ff790`): its draws, or undefined where it
+   * refuses the way (read 3 October 2026). A number not read takes the first.
+   */
+  const byHandler = (actor: number, way: FoeAction, slot: number): Command | undefined => {
+    const me = fighters[actor] as FighterState
+    const party = livingOn('party')
+    const own = livingOn('foes')
+    switch (slot) {
+      case 1: {
+        // Mode 2's Attack: those whose defence is under twice their attack, by weight.
+        const open = party.filter((i) => {
+          const f = fighters[i] as FighterState
+          return defenceOf(f) < 2 * f.attack
+        })
+        const t = weighted(actor, open)
+        return t === undefined ? undefined : commandOf(way, t)
+      }
+      case 2:
+      case 7: {
+        const t = weighted(actor, party)
+        return t === undefined ? undefined : commandOf(way, t)
+      }
+      case 3:
+      case 4:
+      case 8:
+        return party.length > 0 ? commandOf(way, party[0] as number) : undefined
+      case 11: {
+        const hurt = own.filter((i) => belowHalf(fighters[i] as FighterState))
+        if (hurt.length === 0) return undefined
+        return commandOf(way, hurt[rng.below(hurt.length)] as number)
+      }
+      case 12: {
+        const hurt = own.filter((i) => belowHalf(fighters[i] as FighterState))
+        return 3 * hurt.length >= 2 * own.length && hurt.length > 0
+          ? commandOf(way, actor)
+          : undefined
+      }
+      case 18:
+      case 19: {
+        const open = own.filter((i) => (fighters[i] as FighterState).states.defence.level < 2)
+        if (open.length === 0) return undefined
+        return commandOf(way, open[rng.below(open.length)] as number)
+      }
+      case 22:
+      case 23:
+      case 24:
+      case 25: {
+        // Sap (22, 23) is not read: ours, as Kasap — a pick for one, none for more.
+        const open = party.filter((i) => (fighters[i] as FighterState).states.defence.level > -2)
+        if (open.length === 0) return undefined
+        if (wayAim(way).reach === 'one') {
+          const t = weighted(actor, open)
+          return t === undefined ? undefined : commandOf(way, t)
+        }
+        return commandOf(way, open[0] as number)
+      }
+      case 42:
+      case 43:
+      case 44:
+      case 45:
+      case 113:
+      case 158: {
+        const awake = party.filter((i) => (fighters[i] as FighterState).states.sleep === undefined)
+        if (awake.length === 0) return undefined
+        if (wayAim(way).reach === 'one') {
+          const t = weighted(actor, awake)
+          return t === undefined ? undefined : commandOf(way, t)
+        }
+        return commandOf(way, awake[0] as number)
+      }
+      case 96:
+        return me.states.tension === TENSION_MOST ? undefined : commandOf(way, actor)
+      case 112: {
+        // Flee: only when the party's mean attack and defence is three times its own.
+        const whole = fighters.filter((f) => f.side === 'party')
+        const mean = whole.reduce((n, f) => n + f.attack + f.defence, 0) / Math.max(1, whole.length)
+        return mean >= 3 * (me.attack + me.defence) ? commandOf(way, actor) : undefined
+      }
+      default:
+        return firstHandler(actor, way)
+    }
+  }
+  /**
+   * **A monster's choosing** (`func_0208a91c`): the way by the weights, then —
+   * that way unusable — the one before, down to the first, then those after;
+   * none usable, the Attack. Usable: a way it may use once a group not yet
+   * used by its group; MP enough, for mode 2; and its handler not refusing.
+   */
+  const chooseFoe = (actor: number): Command => {
+    const me = fighters[actor] as FighterState
+    const mode = me.aiMode ?? 1
+    const ways = me.acts ?? []
+    const attack: FoeAction = { kind: 'attack' }
+    if (ways.length === 0) return firstHandler(actor, attack)
+    const first = chosenWay(rng, me.choice ?? rules.choice)
+    const tries = [first]
+    for (let w = first - 1; w >= 0; w--) tries.push(w)
+    for (let w = first + 1; w < ways.length; w++) tries.push(w)
+    const used = onceUsed.get(me.name) ?? 0
+    for (const w of tries) {
+      const way = ways[w]
+      if (!way) continue
+      const once = ((me.oncePerGroup ?? 0) >> w) & 1
+      if (once && (used >> w) & 1) continue
+      const cost =
+        way.kind === 'spell' ? way.spell.cost : way.kind === 'change' ? way.changing.cost : 0
+      if (mode === 2 && cost > me.mp) continue
+      const slot =
+        mode === 0
+          ? 0
+          : (way.targeting?.[mode === 1 ? 0 : 1] ?? (way.kind === 'attack' && mode === 2 ? 1 : 0))
+      const command =
+        slot === 0 || slot >= 0xa1 ? firstHandler(actor, way) : byHandler(actor, way, slot)
+      if (!command) continue
+      if (once) onceUsed.set(me.name, used | (1 << w))
+      return command
+    }
+    return firstHandler(actor, attack)
+  }
+  /** Actions more this round, by the rule and the draw (`func_ov000_0215f57c`). **Ours**: 4–7's status bit taken as clear. */
+  const extraActions = (rule: number, draw: number) =>
+    rule === 1
+      ? draw === 1
+        ? 1
+        : 0
+      : rule === 2
+        ? 1
+        : rule === 3
+          ? 2
+          : rule === 6
+            ? 1
+            : rule === 7
+              ? 2
+              : 0
+
+  /**
+   * **A turn that is no action of the fighter's own** — `0x1F7`, the turn of
+   * one who cannot act, and `0x385`, a sleeper's waking — goes through the
+   * resolver all the same (read 3 October 2026): the builder's two draws, the
+   * die, the critical, the accuracy (none for a metal monster, which misses),
+   * the physical formula of its own attack on its own defence, and the 0-or-1
+   * coin when that comes to nothing.
+   */
+  const selfPass = (me: FighterState, metalMisses = true) => {
+    builtDraws()
+    rng.below(100)
+    rng.below(10_000)
+    if (metalMisses && me.side === 'foes' && me.metal) return
+    rng.below(100)
+    if (physicalDamage(rng, me.attack, defenceOf(me)) <= 0) rng.below(2)
+  }
+  /** Whether a fighter can act — and so dodge or block: standing and not asleep (`func_ov000_02155f9c`). */
+  const canAct = (f: FighterState) => alive(f) && f.states.sleep === undefined
+  /** The draw after every action while the battle goes on (`func_ov000_0215858c`, `0x021585bc`). */
+  let afterDue = false
+
+  // **The command phase** (`ProcessCombatTurn`, `0x0215d9fc`–`0x0215e0a8`):
+  // after every fighter's initiative and before anyone acts, in that order,
+  // each monster of modes 0 and 1 able to act chooses its way and target; then
+  // every monster, whatever its mode, makes the draw for its actions more this
+  // round (`func_ov000_0215f57c`), each more chosen at once. Mode 2 chooses at
+  // its turn. Each choice is its own turn in the order — **ours**, INFERRED:
+  // that a monster's more actions follow its first at once.
+  const queue: { actor: number; command: Command | undefined }[] = []
   for (const actor of order) {
+    const f = fighters[actor] as FighterState
+    if (f.side !== 'foes') {
+      queue.push({ actor, command: undefined })
+      continue
+    }
+    if (!alive(f)) continue
+    const early = canAct(f) && (f.aiMode ?? 1) !== 2
+    queue.push({ actor, command: early ? chooseFoe(actor) : undefined })
+    const more = extraActions(f.extraRule ?? 0, rng.below(2))
+    for (let k = 0; k < more; k++)
+      queue.push({ actor, command: early ? chooseFoe(actor) : undefined })
+  }
+
+  for (const { actor, command: planned } of queue) {
+    if (afterDue && outcome === 'ongoing') rng.below(100)
+    afterDue = false
     const me = fighters[actor]
     if (!me || !alive(me)) continue
     // A flight that failed: the party's round is lost (above).
     if (caught && me.side === 'party') continue
-    acted.push(actor)
-    // A sleeper's turn goes on sleeping, or on waking.
+    if (!acted.includes(actor)) acted.push(actor)
+    afterDue = true
+    // **The charm draws** (`func_ov000_0215704c`): a monster able to act whose
+    // status byte `+0x53` — its record's 22nd resistance — is not 0 makes one
+    // draw for each of the party standing. **Ours**: none of the party's
+    // charm is above a hundred, so none charms it; the draws are spent.
+    if (me.side === 'foes' && canAct(me) && (me.resist?.[21] ?? 0) !== 0) {
+      for (const _ of livingOn('party')) rng.below(100)
+    }
+    // The way, for a monster of mode 2 — or one that could not act as the
+    // round began and can now — chosen here at its turn (`0x02157980`).
+    const command: Command | undefined =
+      me.side === 'party'
+        ? (commands.get(actor) ?? { kind: 'attack', target: -1 })
+        : (planned ?? (canAct(me) ? chooseFoe(actor) : undefined))
+    // **The turn-start draw**, every fighter's, every turn (`0x0215838c`) —
+    // and a sleeper's waking.
+    const startDraw = rng.below(100)
+    // A sleeper's turn goes on sleeping, or on waking — through the resolver either way.
     if (me.states.sleep !== undefined) {
-      const slept = sleptThrough(me.states.sleep, rng)
-      setStates(actor, { sleep: slept.sleep })
-      events.push({ kind: slept.woke ? 'woke' : 'asleep', actor })
+      const woke = wakes(me.states.sleep, startDraw)
+      setStates(actor, { sleep: woke ? undefined : me.states.sleep + 1 })
+      events.push({ kind: woke ? 'woke' : 'asleep', actor })
+      selfPass(me)
       continue
     }
-    const command: Command =
-      me.side === 'foes'
-        ? foeCommand(me, fighters, rng, rules)
-        : (commands.get(actor) ?? { kind: 'attack', target: -1 })
+    if (!command) continue
     // This fighter's turn, as the chain tells turns apart (`ctx + 4`). Ours: by round and fighter.
     const turn = state.round * 64 + actor
     // An action whose blows do not chain resets it as it reaches its target
@@ -973,16 +1240,12 @@ export function playRound(
       chain = brokenChain(chain)
     }
 
-    // Defend, a wait and a monster's flight go through the resolver too, and
-    // make its two draws. What they draw after their target's die is not
-    // read, and is not made here — ours.
-    if (
-      command.kind === 'defend' ||
-      command.kind === 'wait' ||
-      (command.kind === 'flee' && me.side === 'foes')
-    ) {
-      builtDraws()
-    }
+    // Defend, a wait and a monster's flight go through the resolver's pass on
+    // themselves: range 0, so the physical formula's draws after the accuracy
+    // (`0x021ec4e4`). A metal monster's wait misses its accuracy; its flight
+    // carries `+0x10` bit 24 and does not.
+    if (command.kind === 'defend' || command.kind === 'wait') selfPass(me)
+    else if (command.kind === 'flee' && me.side === 'foes') selfPass(me, false)
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
       continue
@@ -1007,10 +1270,8 @@ export function playRound(
       // it cannot be dodged or blocked, and its accuracy stands at a hundred.
       // Then its own steps, held so that the level never passes 4, each from
       // 3 a coin of the battle's. At the maximum already, nothing happens.
-      builtDraws()
-      rng.below(100)
-      rng.below(10_000)
-      rng.below(100)
+      // Range 0: the physical formula's draws, and its coin, come before its own.
+      selfPass(me, false)
       const was = me.states.tension ?? 0
       const steps: number[] = []
       let level = was
@@ -1112,6 +1373,7 @@ export function playRound(
       const tension = spell.tensed ? tensionOf(me) : undefined
       let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
+        noteAim(actor, target)
         const them = fighters[target] as FighterState
         // The chain, for each one reached, before the accuracy (`0x021ec178`).
         chain = chainStep(chain, {
@@ -1212,13 +1474,25 @@ export function playRound(
       const once = changing.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
       const hits = reached.map((target) => {
+        noteAim(actor, target)
         const them = fighters[target] as FighterState
         rng.below(100)
         if (!once) critical = rng.below(10_000) < rate
         const dodged =
-          changing.evadable === true && rng.below(100) < Math.trunc(evadeOf(them, rules))
+          changing.evadable === true &&
+          canAct(them) &&
+          rng.below(100) < Math.trunc(evadeOf(them, rules))
         const draw = rng.below(100)
         if (dodged) return { target, result: 'dodged' as const }
+        // **Landed, the physical formula's draws** — its record's range is 0
+        // (`0x021ec4e4`) — and the coin when it comes to nothing.
+        const resistanceNow = resistanceTo(them.resist, changing.element ?? 0)
+        const accuracyNow = Math.trunc(
+          Math.fround(Math.fround(Math.fround(change.chance) * resistanceNow) + Math.fround(0.5)),
+        )
+        if ((critical && resistanceNow > 0) || draw < accuracyNow) {
+          if (physicalDamage(rng, me.attack, defenceOf(them)) <= 0) rng.below(2)
+        }
         const was = them.states
         const already =
           change.kind === 'sleep'
@@ -1239,7 +1513,7 @@ export function playRound(
           return { target, result: 'resisted' as const }
         if (change.kind === 'sleep') {
           // Sleep takes the tension away (`func_02088338`).
-          setStates(target, { sleep: SLEEP_TURNS, ...(them.states.tension ? { tension: 0 } : {}) })
+          setStates(target, { sleep: 0, ...(them.states.tension ? { tension: 0 } : {}) })
           return { target, result: 'asleep' as const }
         }
         if (change.kind === 'poison') {
@@ -1305,11 +1579,16 @@ export function playRound(
           if (left.length === 0) continue
           target = left[rng.below(left.length)] as number
         }
+        noteAim(actor, target)
         const them = fighters[target] as FighterState
         if (!once && !blow.sure) critical = rng.below(10_000) < rate
-        const dodged = blow.evadable && rng.below(100) < Math.trunc(evadeOf(them, rules))
+        const dodged =
+          blow.evadable && canAct(them) && rng.below(100) < Math.trunc(evadeOf(them, rules))
         const blocked =
-          blow.blockable && !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
+          blow.blockable &&
+          canAct(them) &&
+          !dodged &&
+          Math.fround(rng.below(100)) < Math.fround(blockOf(them))
         // The accuracy, at a hundred, its draw spent.
         rng.below(100)
         chain = chainStep(chain, {
@@ -1439,6 +1718,7 @@ export function playRound(
         : (aimOf(me, actor, 'party', command.target, 'one')[0] as number)
     if (target === undefined) break
     builtDraws()
+    noteAim(actor, target)
     const them = fighters[target] as FighterState
     // The chain, before the accuracy (`0x021ec178`): the plain Attack's blows
     // chain (`+0x2C` bit 27). **Ours**: a monster's blow taken as the Attack, 1.
@@ -1458,10 +1738,12 @@ export function playRound(
     //    spent all the same.
     const critical = rng.below(10_000) < criticalRate(me, 100, rules.critical)
     // 2. The dodge, its rate truncated. The plain attack can be dodged.
-    const dodged = rng.below(100) < Math.trunc(evadeOf(them, rules))
+    // Neither is drawn against one who cannot act (`func_ov000_02155f9c`).
+    const dodged = canAct(them) && rng.below(100) < Math.trunc(evadeOf(them, rules))
     // 3. The block — not rolled for a blow already dodged — the draw as a float
     //    under the rate, untruncated. The plain attack can be blocked.
-    const blocked = !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
+    const blocked =
+      canAct(them) && !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
     // 4. The accuracy: a draw below 100 made before anything is compared. The
     //    plain attack's accuracy stands at a hundred, so it lands every time —
     //    and spends this. (Sight spoilt, which would miss it five times in
@@ -1532,6 +1814,7 @@ export function playRound(
     if (outcome !== 'ongoing') break
   }
 
+  if (afterDue && outcome === 'ongoing') rng.below(100)
   if (outcome === 'ongoing') {
     // Each who took a turn has a turn off its levels, and they may wear off.
     for (const i of acted) {
@@ -1556,7 +1839,15 @@ export function playRound(
 
   fighters = fighters.map((f) => ({ ...f, defending: false }))
   return {
-    state: { ...state, fighters, round: state.round + 1, outcome, fleeAttempts: attempts, chain },
+    state: {
+      ...state,
+      fighters,
+      round: state.round + 1,
+      outcome,
+      fleeAttempts: attempts,
+      chain,
+      onceUsed,
+    },
     events,
   }
 }

@@ -244,6 +244,13 @@ export interface Action {
   /** Whether it weakens over its passes, `+0x10` bit 17: 1.0, 0.8, 0.6, 0.4, 0.2. */
   readonly fallsOff: boolean
   /**
+   * The targeting handler a monster's AI takes for it, by its mode — `+0x0C`
+   * in mode 1, `+0x0E` in mode 2; mode 0 always the first (read 3 October
+   * 2026; `func_ov024_021f66cc`, the table at `0x021ff790`). Heal 11 and 11,
+   * Frizz 7 and 2, Buff 18 and 19, the Attack 0 and 1.
+   */
+  readonly aiTargets: readonly [mode1: number, mode2: number]
+  /**
    * Whether its *amount* scales by a number of the user's — the same two bits
    * as {@link accuracyMode}, at 2. `GetAttackBaseDamage` (overlay 24,
    * `0x021e7c0c`) tests them for one of the party: at 2, and with a number
@@ -384,6 +391,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       hitCode: (view.getUint32(at + 0x1c, true) >>> 14) & 31,
       afterStep: (view.getUint32(at + 0x2c, true) >>> 10) & 15,
       fallsOff: (view.getUint32(at + 0x10, true) & 0x20000) !== 0,
+      aiTargets: [view.getUint16(at + 0x0c, true), view.getUint16(at + 0x0e, true)],
       element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
       landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,

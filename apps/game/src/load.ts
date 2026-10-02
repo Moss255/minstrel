@@ -459,6 +459,8 @@ export interface ItemEffect {
     readonly hitCode: number
     readonly afterStep: number
     readonly fallsOff: boolean
+    /** The targeting handlers a monster's AI takes for it in modes 1 and 2 — see `Action.aiTargets`. */
+    readonly aiTargets: readonly [number, number]
     /** Always a critical — see `Action.alwaysCritical`. */
     readonly alwaysCritical: boolean
     readonly haywire: boolean
@@ -1639,6 +1641,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           hitCode: action.hitCode,
           afterStep: action.afterStep,
           fallsOff: action.fallsOff,
+          aiTargets: action.aiTargets,
           alwaysCritical: action.alwaysCritical,
           haywire: action.criticalPercent > 0,
           criticalPercent: action.criticalPercent,

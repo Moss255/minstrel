@@ -78,6 +78,23 @@ export interface MonsterBattle {
    * types fall on both sides of that bit, and Hexagoon — a boss — is type 0.
    */
   readonly aiType: number
+  /**
+   * Its **AI mode**, `+0x10` bits 3–4 (read 3 October 2026,
+   * `func_ov000_02159d94`): 0 and 1 choose their way and its target as the
+   * round begins, 2 at its own turn; each mode takes its own targeting
+   * handler. 102, 253 and 83 of the 438; none is 3.
+   */
+  readonly aiMode: number
+  /**
+   * How many more actions it takes a round, `+0x10` bits 8–10, by the rule of
+   * `func_ov000_0215f57c` (table `0x02182a6c`): 0 none; 1 one on a coin; 2
+   * one; 3 two; 4 and 5, 6 and 7 one or two by a status bit.
+   */
+  readonly extraRule: number
+  /** Which of its six ways it may use only once a group, `+0x10` bits 20–25. */
+  readonly oncePerGroup: number
+  /** Whether it weighs who last struck it in choosing whom (`+0x10` bit 26, `func_ov000_02154f30`). */
+  readonly remembers: boolean
   readonly maxHp: number
   readonly maxMp: number
   readonly attack: number
@@ -213,6 +230,10 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
       gold: u16(12),
       actions: [0, 1, 2, 3, 4, 5].map((i) => u16(0x18 + i * 2)),
       aiType: (view.getUint32(at + 0x10, true) >>> 5) & 7,
+      aiMode: (view.getUint32(at + 0x10, true) >>> 3) & 3,
+      extraRule: (view.getUint32(at + 0x10, true) >>> 8) & 7,
+      oncePerGroup: (view.getUint32(at + 0x10, true) >>> 20) & 63,
+      remembers: ((view.getUint32(at + 0x10, true) >>> 26) & 1) === 1,
       maxHp: u16(0x5c),
       maxMp: u16(0x5e),
       attack: u16(0x60),

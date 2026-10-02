@@ -102,8 +102,11 @@ obvious place:
   bytes.** Nobody need look at them again;
 - **action 225**, which is a *monster's* flee and has no draw (above);
 - **`ProcessCombatTurn`'s one percent roll**, which is the surprise round;
-- **the bare coin flips** in `func_ov000_0215f57c` and `0215f67c`, which pick
-  among a monster's action slots from an eight-entry table.
+- **the bare coin flips** in `func_ov000_0215f57c` and `0215f67c`. The first
+  is **a monster's actions more this round**, drawn for every monster every
+  round by its record's rule (`+0x10` bits 8–10, the table at `0x02182a6c`) —
+  see "A round's draws". This line said, until 3 October 2026, that it picks
+  among a monster's action slots; it does not.
 
 What is left is the 60-odd percent rolls in overlays 0 and 24 whose threshold
 is a variable. The command the player picks is not action 225, so the anchor
@@ -775,6 +778,99 @@ lands** until this is modelled. The simulation still wakes a sleeper on any
 blow that hurts, without a draw: the chance itself is not read, and adding
 the draw without it would move every replay without making it right.
 
+## A round's draws, outside the resolver — 3 October 2026
+
+Read from `ProcessCombatTurn` (`0x0215d63c`) and the turn
+(`func_ov000_0215767c`). **Modelled** in `playRound`, `chooseFoe`,
+`byHandler`, `weighted` and `selfPass` (`packages/sim/src/battle/battle.ts`),
+and `wakes` (`states.ts`).
+
+**The order.** Every fighter's initiative, then **the command phase, in
+initiative order and before anyone acts** (`0x0215d9fc`–`0x0215e0a8`), then
+each turn: the turn (`0215767c`), the resolver, and the step after
+(`02157d3c`).
+
+**In the command phase**, for each monster:
+
+- a monster of **AI mode** 0 or 1 (`mon_btldata +0x10` bits 3–4 — not
+  `aiType`, which is bits 5–7; 102, 253 and 83 of the 438 are modes 0, 1
+  and 2) chooses its way and target **now**; mode 2 at its turn
+  (`0x02157980`). A monster that could not act now chooses at its turn if it
+  can act by then;
+- then **every monster, whatever its mode, draws `R(2)`** for its actions more
+  this round (`func_ov000_0215f57c`, `0x0215f5e0`). Its rule, `+0x10`
+  bits 8–10, is 0 none; 1 one on the draw's 1; 2 one; 3 two; 4–7 one or two
+  by a status bit (**ours**: the bit taken as clear). Each action more is
+  chosen at once. **Ours, INFERRED**: that they follow its first in the order.
+
+**At each turn:**
+
+1. **the charm draws** (`func_ov000_0215704c`): a monster able to act whose
+   status byte `+0x53` is not 0 — its record's 22nd resistance byte — draws
+   `R(100)` for each of the party standing. None of the party's charm passes a
+   hundred, so none charms; **the draws are spent**;
+2. a mode-2 monster's choosing;
+3. **the turn-start `R(100)`**, every fighter's, every turn
+   (`func_ov000_0215833c`, `0x0215838c`). It is the wake test (below);
+4. the action;
+5. **an `R(100)` after it**, while the battle goes on (`func_ov000_0215858c`,
+   `0x021585bc`). That function's draws by status are not followed.
+
+**A monster's choosing** (`func_0208a91c`): the way by its weights; that way
+unusable, the one before, down to the first, then those after; none usable,
+the Attack. A way is unusable when:
+
+- it is one its group may use once (`+0x10` bits 20–25) and has;
+- in mode 2, it costs more MP than the monster has;
+- its **targeting handler** refuses it.
+
+The handler is the action record's `+0x0C` in mode 1 and `+0x0E` in mode 2
+(the table at `0x021ff790`); mode 0's is always the first. The handlers, as
+modelled:
+
+| Handler | What it does |
+|---|---|
+| the first (`021edf6c` → `02154a04`) | the target by side and reach — one of the party by the weighted pick, one of its own by `R(n)`, itself, a group or all with no draw — then the builder's two draws. Never refuses |
+| 1 | mode 2's Attack: the weighted pick among those whose defence is under twice their attack |
+| 2, 7 | the weighted pick among the party |
+| 11 | Heal: `R(n)` among its own below half their HP; none, refused |
+| 12 | Fullheal: two thirds of its own below half |
+| 18, 19 | Buff: `R(n)` among its own below two steps |
+| 24, 25 | Kasap: those above two steps down; refused with none |
+| 42–45, 113, 158 | sleep: those awake |
+| 96 | Psyche Up: refused at the most tension |
+| 112 | Flee: refused unless the party's mean attack and defence is three times its own |
+
+**Ours**: Sap's (22, 23) taken as Kasap's; the handlers past these take the
+first. A heal of mode 1 or 2 is a draw among those below half, not the most
+wounded, as the simulation had it.
+
+**The weighted pick** (`func_ov000_02154f30`): each of the party weighs 2,
+and where the record's `+0x10` bit 26 is set (263 of 438), the last of them
+to aim a pass at this monster 2 more, and the one before 1 more (the
+resolver keeps them at `+0x32`, `+0x34`, `0x021ed0d4`). `R(total) + 1`, then
+the first whose weight is not below what is left. **Ours**: its halving under
+a status, not identified.
+
+**A fighter that cannot act** goes through the whole resolver on itself, as
+action `0x1F7`: the builder's two draws, the die, the critical's `R(10000)`,
+the accuracy's `R(100)`, and the physical formula of its own attack on its own
+defence, with the 0-or-1 coin when that comes to nothing. **So do Defend, a
+wait, a monster's flight and Psyche Up**, whose range is 0: every action of
+range 0 that lands reaches the physical formula (`0x021ec4e4`), and so does
+a change of state that lands. A metal monster's accuracy misses unless the
+action carries `+0x10` bit 24, as flight and Psyche Up do.
+
+**Waking** (`func_ov000_0215833c`, `021599f4`; the table at `0x02182bd4`).
+A sleeper's turns are counted from 0 as it falls asleep. Its first sleeping
+turn has no chance. From the second, the turn-start draw `R(100) / 100`
+wakes it when under 0.375, then 0.625, then 0.875, and at last always: 38,
+63, 88 and 100 in 100, the reference's odds. A sleeper that wakes spends its
+turn as action `0x385`, which also goes through the resolver.
+
+**Neither the dodge nor the block is drawn** against a fighter who cannot act
+(`func_ov000_02155f9c`, from `02156f98` and `02156e30`).
+
 ## Still to read, in the order it is wanted
 
 - what the drop roll's four further passes scale their chance by —
@@ -782,8 +878,10 @@ the draw without it would move every replay without making it right.
   above half its HP: the series' item-finding abilities, which the slice has
   not;
 - what the four ways of choosing that do not draw by weights do, exactly — a
-  round robin (3 and 7), a pair and a coin (5), two passes (6) — and what
-  makes a slot unusable, which the game scans past rather than re-drawing;
+  round robin (3 and 7), a pair and a coin (5), two passes (6). What makes a
+  slot unusable is read (above);
+- the targeting handlers not yet read, Sap's among them, and the party's own
+  command-phase processing, `021f9030` and `021f8f20`;
 - what the trait `0x11d` is, and what `func_ov000_02155a04`'s quarter is a
   quarter of, which together double a critical rate.
 

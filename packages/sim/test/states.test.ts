@@ -6,6 +6,7 @@ import {
   moved,
   poisonDamage,
   sleptThrough,
+  wakes,
   wornAfterTurn,
 } from '../src/battle/states.ts'
 
@@ -51,5 +52,14 @@ describe('changes of state, as the reference keeps them', () => {
 
   it('takes a sixteenth of maximum HP for poison', () => {
     expect([15, 16, 20, 33].map(poisonDamage)).toEqual([0, 1, 1, 2])
+  })
+})
+
+describe('waking, the game’s way', () => {
+  it('has no chance on the first sleeping turn, then 38, 63, 88 and 100 in 100', () => {
+    expect(wakes(0, 0)).toBe(false)
+    const odds = (turns: number) =>
+      Array.from({ length: 100 }, (_, d) => d).filter((d) => wakes(turns, d)).length
+    expect([1, 2, 3, 4, 9].map(odds)).toEqual([38, 63, 88, 100, 100])
   })
 })

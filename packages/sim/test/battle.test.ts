@@ -200,39 +200,32 @@ describe('a foe', () => {
     expect(spoils(state)).toEqual({ exp: 0, gold: 0 })
   })
 
-  it('runs only from a party whose highest standing level has reached its own mark', () => {
-    const slime: Fighter = {
-      ...blob('slime', 8),
-      acts: [{ kind: 'attack' }, { kind: 'flee' }],
-      runsFrom: 6,
-    }
-    const fledAt = (levels: readonly (number | undefined)[], down: readonly boolean[] = []) => {
-      const party = levels.map((level, i) => ({
-        ...tough,
-        ...(level === undefined ? {} : { level }),
-        maxHp: down[i] ? 1 : tough.maxHp,
-      }))
-      const start = startBattle([...party, slime])
-      const hurt = down.some(Boolean)
-        ? withHp(start, new Map(down.flatMap((d, i) => (d ? [[i, 0]] : []))))
-        : start
-      const commands = new Map<number, Command>(party.map((_, i) => [i, { kind: 'defend' }]))
-      const { events } = playRound(hurt, commands, new BattleRng(1n), only(1))
-      const at = party.length
+  it('flees as its AI mode says: mode 0 whenever, modes 1 and 2 only when outclassed', () => {
+    // Its record names handler 112 for Flee, which refuses unless the party's
+    // mean attack and defence is three times its own (`func_ov024_021f418c`).
+    const runner = (aiMode: number, attack: number): Fighter => ({
+      ...blob('slime', 8, attack),
+      aiMode,
+      acts: [{ kind: 'attack' }, { kind: 'flee', targeting: [112, 112] }],
+    })
+    const fled = (f: Fighter) => {
+      const { events } = playRound(
+        startBattle([{ ...tough, attack: 60, defence: 40 }, f]),
+        new Map([[0, { kind: 'defend' }]]),
+        new BattleRng(1n),
+        only(1),
+      )
       return {
-        fled: events.some((e) => e.kind === 'flee' && e.actor === at),
-        attacked: events.some((e) => e.kind === 'attack' && e.actor === at),
+        fled: events.some((e) => e.kind === 'flee' && e.actor === 1),
+        attacked: events.some((e) => e.kind === 'attack' && e.actor === 1),
       }
     }
-    // Level 5 is short of 6: the drawn Flee is an attack.
-    expect(fledAt([5])).toEqual({ fled: false, attacked: true })
-    // Level 6 reaches it.
-    expect(fledAt([6]).fled).toBe(true)
-    // The highest of the party counts, but only while standing.
-    expect(fledAt([3, 9]).fled).toBe(true)
-    expect(fledAt([3, 9], [false, true]).fled).toBe(false)
-    // With no level known, it runs as before.
-    expect(fledAt([undefined]).fled).toBe(true)
+    // Outclassed — 60 and 40 against three times 1 and 7: away.
+    expect(fled(runner(1, 1)).fled).toBe(true)
+    // Not outclassed — against 200 and 7: the Flee refused, and the way before it, the Attack.
+    expect(fled(runner(1, 200))).toEqual({ fled: false, attacked: true })
+    // Mode 0 takes the first handler, which never refuses.
+    expect(fled(runner(0, 200)).fled).toBe(true)
   })
 
   it('draws each of its six ways, over enough turns, by the even table', () => {
@@ -245,8 +238,12 @@ describe('a foe', () => {
     expect([...ways].sort()).toEqual([100, 101, 102, 103, 104, 105])
   })
 
-  it('heals its most wounded ally, and attacks when no one is hurt', () => {
-    const healer = { ...blob('archer', 20), acts: [{ kind: 'spell', spell: herb }] as const }
+  it('heals an ally below half its HP, and attacks when no one is', () => {
+    // Handler 11: one of its own side below half its HP, by a draw; with none, refused.
+    const healer = {
+      ...blob('archer', 20),
+      acts: [{ kind: 'spell', spell: herb, targeting: [11, 11] }] as const,
+    }
     const start = startBattle([tough, healer, blob('slime', 30), blob('slime', 30)])
     const hurt = withHp(
       start,
@@ -339,7 +336,7 @@ describe('a change of state', () => {
   })
 
   it('poisons with a poison attack, and the poison takes a sixteenth at each round’s end', () => {
-    const toad = { ...blob('toad', 99, 1), acts: [{ kind: 'attack', poison: 100 }] as const }
+    const toad = { ...blob('toad', 99, 40), acts: [{ kind: 'attack', poison: 100 }] as const }
     const { state, events } = playRound(
       startBattle([tough, toad]),
       wait,
@@ -647,7 +644,13 @@ describe('the draws of what is not a plain blow — the game’s', () => {
     playRound(state, new Map([[0, command]]), rng, rules)
     return rng.drawn
   }
-  const nothing = drawn({ kind: 'defend' })
+  // A round with the Hero defending, less Defend's own pass on itself — the
+  // builder's two, the die, the critical, the accuracy and the physical
+  // formula's two (12 against 8: past a sixteenth) — leaves what the rest of
+  // the round draws; each action below then counts its own, the builder's two
+  // among them.
+  const DEFEND = 2 + 3 + 2
+  const nothing = drawn({ kind: 'defend' }) - DEFEND
   const bolt = (reach: Spell['reach'], amount: Spell['amount']): Command => ({
     kind: 'spell',
     target: 1,
@@ -656,14 +659,16 @@ describe('the draws of what is not a plain blow — the game’s', () => {
   const legacy = { base: 14, spread: 2 }
 
   it('spends four on a spell at one: their die, the critical, the accuracy, the amount', () => {
-    expect(drawn(bolt('one', legacy)) - nothing).toBe(4)
+    expect(drawn(bolt('one', legacy)) - nothing).toBe(2 + 4)
   })
 
   it('rolls the critical once for a spell at a group, and the rest for each one reached', () => {
     // One for the cast, then a die, an accuracy and an amount apiece.
-    expect(drawn(bolt('group', legacy)) - nothing).toBe(1 + 2 * 3)
+    expect(drawn(bolt('group', legacy)) - nothing).toBe(2 + 1 + 2 * 3)
     const three = [idle('slime'), idle('bat'), idle('bat')]
-    expect(drawn(bolt('all', legacy), three) - drawn({ kind: 'defend' }, three)).toBe(1 + 3 * 3)
+    expect(drawn(bolt('all', legacy), three) - (drawn({ kind: 'defend' }, three) - DEFEND)).toBe(
+      2 + 1 + 3 * 3,
+    )
   })
 
   it('draws one of the party’s amount once when it scales and twice when it does not', () => {
@@ -672,8 +677,8 @@ describe('the draws of what is not a plain blow — the game’s', () => {
       party: { min: 14, max: 99, scales: { by: 'might', lo: 50, hi: 999 } },
     } as const
     const flat = { ...legacy, party: { min: 14, max: 14 } }
-    expect(drawn(bolt('one', scaling)) - nothing).toBe(4)
-    expect(drawn(bolt('one', flat)) - nothing).toBe(5)
+    expect(drawn(bolt('one', scaling)) - nothing).toBe(2 + 4)
+    expect(drawn(bolt('one', flat)) - nothing).toBe(2 + 5)
   })
 
   it('spends the same on an item as on a spell at one — and the herb’s amount is two', () => {
@@ -682,8 +687,8 @@ describe('the draws of what is not a plain blow — the game’s', () => {
       item: 1,
       ...(heal ? { heal } : {}),
     })
-    expect(drawn(herb({ base: 35, spread: 5 })) - nothing).toBe(4)
-    expect(drawn(herb({ base: 35, spread: 5, party: { min: 35, max: 35 } })) - nothing).toBe(5)
+    expect(drawn(herb({ base: 35, spread: 5 })) - nothing).toBe(2 + 4)
+    expect(drawn(herb({ base: 35, spread: 5, party: { min: 35, max: 35 } })) - nothing).toBe(2 + 5)
   })
 
   it('scales a spell by the caster’s own might', () => {
@@ -712,16 +717,17 @@ describe('the draws of what is not a plain blow — the game’s', () => {
         cost: 0,
         reach: 'one',
         side: 'other',
-        change: { kind: 'defence', by: -1, chance: 75 },
+        change: { kind: 'defence', by: -1, chance: 100 },
         ...extra,
       },
     })
-    // At one: their die, the critical, the accuracy — and that is the roll.
-    expect(drawn(sap({})) - nothing).toBe(3)
-    // At a group of two: the critical once, then a die and an accuracy apiece.
-    expect(drawn(sap({ reach: 'group' })) - nothing).toBe(1 + 2 * 2)
+    // At one: the builder's two, their die, the critical, the accuracy — the
+    // roll — and, landed, the physical formula's two (range 0).
+    expect(drawn(sap({})) - nothing).toBe(2 + 3 + 2)
+    // At a group of two: the critical once, then a die, an accuracy and the formula's two apiece.
+    expect(drawn(sap({ reach: 'group' })) - nothing).toBe(2 + 1 + 2 * 4)
     // One that can be dodged rolls the dodge too.
-    expect(drawn(sap({ evadable: true })) - nothing).toBe(4)
+    expect(drawn(sap({ evadable: true })) - nothing).toBe(2 + 4 + 2)
   })
 
   it('spends a change’s draws on one with nothing left to change', () => {
@@ -754,7 +760,7 @@ describe('the draws of what is not a plain blow — the game’s', () => {
       playRound(state, new Map([[0, { kind: 'defend' }]]), r, rules)
       return r.drawn
     })()
-    expect(rng.drawn - before - idleRound).toBe(3)
+    expect(rng.drawn - before - (idleRound - DEFEND)).toBe(2 + 3 + 2)
   })
 
   it('lands a cast gone haywire outright, and lets a dodge come first', () => {
@@ -830,5 +836,71 @@ describe('the rounds a member stood at the start of', () => {
     expect(state.fighters[0]?.rounds).toBe(3)
     expect(state.fighters[1]?.rounds).toBeUndefined()
     expect(state.fighters[2]?.rounds).toBeUndefined()
+  })
+})
+
+describe('a monster’s command phase — the game’s', () => {
+  const tough = { ...hero, maxHp: 999 }
+  const defend = new Map<number, Command>([[0, { kind: 'defend' }]])
+  const attacks = (f: Fighter, seed = 1n) =>
+    playRound(startBattle([tough, f]), defend, new BattleRng(seed)).events.filter(
+      (e) => e.kind === 'attack' && e.actor === 1,
+    ).length
+
+  it('takes one action more, or two, by its record’s rule', () => {
+    expect(attacks(blob('slime', 99))).toBe(1)
+    expect(attacks({ ...blob('slime', 99), extraRule: 2 })).toBe(2)
+    expect(attacks({ ...blob('slime', 99), extraRule: 3 })).toBe(3)
+    // Rule 1: one more on the coin it draws every round.
+    const coin = new Set(
+      [1n, 2n, 3n, 4n, 5n, 6n].map((s) => attacks({ ...blob('slime', 99), extraRule: 1 }, s)),
+    )
+    expect([...coin].sort()).toEqual([1, 2])
+  })
+
+  it('aims at whoever last struck it, by its weights, where it remembers', () => {
+    const party = [tough, { ...tough, name: 'Ally' }]
+    const struckBy = (remembers: boolean) => {
+      let hits = 0
+      for (let seed = 1n; seed <= 60n; seed++) {
+        const start = startBattle([...party, { ...blob('slime', 9999), remembers }])
+        const struck = {
+          ...start,
+          fighters: start.fighters.map((f, i) => (i === 2 ? { ...f, aimedBy: [1, -1] } : f)),
+        }
+        const { events } = playRound(
+          struck,
+          new Map<number, Command>([
+            [0, { kind: 'defend' }],
+            [1, { kind: 'defend' }],
+          ]),
+          new BattleRng(seed),
+        )
+        if (events.some((e) => e.kind === 'attack' && e.actor === 2 && e.target === 1)) hits++
+      }
+      return hits
+    }
+    // Two in six for the Ally against two in four — over sixty rounds, clearly more.
+    expect(struckBy(true)).toBeGreaterThan(struckBy(false))
+  })
+
+  it('uses a way it may use once a group only once', () => {
+    const shout: Spell = {
+      action: 300,
+      cost: 0,
+      does: 'harm',
+      reach: 'one',
+      amount: { base: 9, spread: 2 },
+    }
+    const once: Fighter = {
+      ...blob('slime', 999),
+      oncePerGroup: 1,
+      acts: [{ kind: 'spell', spell: shout }],
+    }
+    const { state, events } = playRound(startBattle([tough, once]), defend, new BattleRng(1n))
+    expect(events.some((e) => e.kind === 'spell' && e.actor === 1)).toBe(true)
+    const again = playRound(state, defend, new BattleRng(2n)).events
+    expect(again.some((e) => e.kind === 'spell' && e.actor === 1)).toBe(false)
+    expect(again.some((e) => e.kind === 'attack' && e.actor === 1)).toBe(true)
   })
 })

@@ -93,6 +93,21 @@ export function wornAfterTurn(level: Level, rng: BattleRng): { level: Level; wor
   return { level: { level: wore ? 0 : level.level, turns }, wore }
 }
 
+/**
+ * **Waking, the game's way** (read 3 October 2026; `func_ov000_0215833c`,
+ * `021599f4`): a sleeper's turns are counted from 0 as it falls asleep. Its
+ * first sleeping turn has no chance; from the second, the turn-start draw
+ * `R(100) / 100` wakes it when under 0.375, then 0.625, 0.875, and at last
+ * always (the table at `0x02182bd4`, walked back from 4). `turns` is how many of
+ * its sleeping turns have passed.
+ */
+export const WAKE_TABLE = [1, 0.875, 0.625, 0.375].map(Math.fround)
+export function wakes(turns: number, draw: number): boolean {
+  if (turns <= 0) return false
+  const counter = Math.max(0, 4 - turns)
+  return (WAKE_TABLE[counter] as number) > Math.fround(Math.fround(draw) / 100)
+}
+
 /** A sleeper's turn: a turn less of sleep, and awake by the reference's odds once it is out. */
 export function sleptThrough(
   sleep: number,

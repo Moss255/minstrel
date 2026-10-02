@@ -651,3 +651,34 @@ Findings in `packages/game-formats/FORMAT.md`, "The command phase".
 `func_020dd290`'s cost adjustment; Equipment, Line-Up and Examine; the
 multiplayer paths.
 
+### 16. A round's draws and a monster's choosing — overlays 0 and 24 and ARM9, 3 October 2026
+
+Findings in `docs/conformance.md`, "A round's draws, outside the resolver".
+**Where minstrel translates it**: `packages/sim/src/battle/battle.ts`
+(`chooseFoe`, `byHandler`, `weighted`, `selfPass`, the command phase) and
+`states.ts` (`wakes`).
+
+- **The round**: `ProcessCombatTurn` `0x0215d63c` — the initiative
+  (`0x0215d828`), the command phase (`0x0215d9fc`–`0x0215e0a8`), the turns
+  (`0x0215e0c4` on); the turn `func_ov000_0215767c`; the step after
+  `func_ov000_02157d3c`.
+- **The draws of a turn**: the charm `func_ov000_0215704c` (its chance
+  `0215641c`, INFERRED charm); the turn-start `func_ov000_0215833c`, the
+  waking table `0x02182bd4` and `021599f4`; the after-action draw
+  `func_ov000_0215858c`; who can act `func_ov000_02155f9c`.
+- **A monster's choosing**: the AI mode `func_ov000_02159d94`; actions more
+  `func_ov000_0215f57c` (table `0x02182a6c`) — **correcting the ledger line
+  that read it as a slot pick**; the way `func_0208a91c` and its usable test
+  `func_0208a03c`; the targeting dispatcher `func_ov024_021f66cc` (table
+  `0x021ff790`) and the first handler `func_ov024_021edf6c` →
+  `func_ov000_02154a04`; Flee's `func_ov024_021f418c`.
+- **The weighted pick** `func_ov000_02154f30`, and the striker kept by
+  `0x021ed0d4` → `func_0208978c`.
+- **The monster record's word `+0x10`**: bits 3–4 the AI mode, 5–7 the way
+  rule, 8–10 the extra-action rule, 20–25 the once-a-group mask, 26 the
+  memory of who struck. `+0x81`, the 22nd resistance byte, the charm's.
+
+**What is open**: the party's own command-phase processing (`021f9030`,
+`021f8f20`); `0215858c` past its first draw; the targeting handlers past those
+named; the status bits that rules 4–7 and the weighted pick's halving read.
+
