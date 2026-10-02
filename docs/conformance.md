@@ -632,6 +632,21 @@ resistance, and the rest.
   of the last blow); HP back, a quarter of the last pass's (Miracle Moon's
   first).
 
+**The monsters' handlers, 3 October 2026** — every slot they use read to the
+bit (`blows.ts`): the breath form `S·(S/k) + c` in floats, give or take its
+spread, against a floor (Hellfire 49, C-C-Cold Breath 50, Dark Breath 52,
+Kaboomle 59, Kacrackle 60); the spell form `(a·S + c)` times a draw, against
+a floor (55 Break Down, Blinder, Thin Air; 56 Starfall; 58 Kafrizzle; 62
+Kazammle; 63 Magic Burst); the HP-fraction moves (39, 40), 2.5 and 3 times the
+level (41, 42), 244's unbuffed attack, 545, Wrath of the Gods' half and 37,
+Kaswooshle. **A monster's level is `mon_data +0x0A`'s low seven bits**
+(`func_ov000_02159dbc`, confirmed in the assembly), 1 where it has none — and
+tension's bonus takes it too. **Always-critical actions** (`+0x08` bit 29,
+244 and 245) make no critical draw and are never multiplied but for Critical
+Claim. Not modelled: a legacy boss's level, its map's; Kamikazee, Drain Magic
+and Spelly Breath, which are other kinds; the metal zeroing 233, 550 and 294
+carry; Blinder's rider.
+
 **Applied to every action, 3 October 2026**, once the paths left unread were
 followed (`func_ov000_021540fc`, `0215440c`, `02154a04`, `021543f4`):
 

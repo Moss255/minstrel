@@ -286,6 +286,11 @@ export interface Blow {
   readonly combos: boolean
   /** What runs once after it, `+0x2c` bits 10–13 — see the post-steps. */
   readonly after: number
+  /**
+   * Always a critical (`+0x08` bit 29): no draw for it, shown as one, and —
+   * but for Critical Claim — never multiplied (`func_ov024_021ea7fc`).
+   */
+  readonly sure?: boolean
 }
 
 export interface Changing {
@@ -336,6 +341,8 @@ export type FoeAction =
       readonly steps: number
       readonly outright?: boolean
     }
+  /** One of its own blows — see `Blow`. */
+  | { readonly kind: 'blow'; readonly blow: Blow }
 
 export type Command =
   /** An attack; one that poisons, by its chance in 100, gives it. */
@@ -654,6 +661,8 @@ export function fleeChance(
 
 /** Double-Edged Slash and Miracle Moon, which the steps after a blow name by number. */
 const DOUBLE_EDGED_SLASH = 0xaf
+/** Critical Claim, the one always-critical action whose critical multiplies. */
+const CRITICAL_CLAIM = 0x1f9
 const MIRACLE_MOON = 0x91
 
 /** Standing and still in the battle: not fallen, and not fled. */
@@ -696,6 +705,7 @@ function foeCommand(
   if (act.kind === 'wait') return { kind: 'wait', action: act.action }
   if (act.kind === 'change') return { kind: 'change', changing: act.changing, target: -1 }
   if (act.kind === 'psyche') return act
+  if (act.kind === 'blow') return { kind: 'blow', blow: act.blow, target: -1 }
   if (act.spell.does === 'harm') return { kind: 'spell', spell: act.spell, target: -1 }
   // The most wounded: the lowest share of its hit points, compared in whole numbers.
   let best = -1
@@ -813,9 +823,7 @@ export function playRound(
   }
   /** A fighter's tension as the damage takes it — none when it has none. */
   const tensionOf = (f: FighterState) =>
-    f.states.tension
-      ? { level: f.states.tension, side: f.side, dealer: f.side === 'party' ? (f.level ?? 0) : 0 }
-      : undefined
+    f.states.tension ? { level: f.states.tension, side: f.side, dealer: f.level ?? 0 } : undefined
   /**
    * Tension spent, once, after an action it works on (`0x021ed48c`): whatever
    * the action came to. Told only for one still standing.
@@ -1273,7 +1281,7 @@ export function playRound(
       // Rolled once for the action when it reaches a group or all with no
       // hit code (`func_ov024_021ea4d0`), else each pass after its die.
       const once = blow.reach !== 'one' && blow.hits === 0
-      let critical = once && rng.below(10_000) < rate
+      let critical = blow.sure ? true : once && rng.below(10_000) < rate
       const tension = blow.tensed ? tensionOf(me) : undefined
       const hits: {
         target: number
@@ -1298,7 +1306,7 @@ export function playRound(
           target = left[rng.below(left.length)] as number
         }
         const them = fighters[target] as FighterState
-        if (!once) critical = rng.below(10_000) < rate
+        if (!once && !blow.sure) critical = rng.below(10_000) < rate
         const dodged = blow.evadable && rng.below(100) < Math.trunc(evadeOf(them, rules))
         const blocked =
           blow.blockable && !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
@@ -1317,7 +1325,11 @@ export function playRound(
           blow.handler,
           base,
           {
-            level: me.side === 'party' ? (me.level ?? 0) : 0,
+            // The level: one of the party's at their vocation, a monster's its
+            // record's (`func_ov000_02159dbc`; 1 where it has none).
+            level: me.level ?? (me.side === 'party' ? 0 : 1),
+            maxHp: me.maxHp,
+            maxMp: me.maxMp,
             deftness: me.deftness ?? 0,
             attack: me.attack,
             hp: me.hp,
@@ -1344,7 +1356,7 @@ export function playRound(
         // by one, no tension on nothing, and no coin.
         const thrust = blow.handler === THRUST_HANDLER
         const damage = dealt(rng, d & 0xffff, {
-          critical: critical && !thrust,
+          critical: critical && !thrust && !(blow.sure && blow.action !== CRITICAL_CLAIM),
           resistance: resistanceTo(them.resist, blow.element),
           dodged,
           blocked,

@@ -3,12 +3,14 @@ import {
   type BattleEvent,
   BattleRng,
   type BattleState,
+  type Blow,
   type ChangeResult,
   type Changing,
   type Command,
   type Fighter,
   type FoeAction,
   type Heal,
+  handlerKnown,
   type Opening,
   playRound,
   type Spell,
@@ -274,6 +276,8 @@ export interface Castable {
   readonly cost: number
   /** Whom it reaches — `ActionReach`. */
   readonly reach: number
+  /** Whom it is aimed at: 1 the other side, 2 one's own — `Action.side`. */
+  readonly side?: number
   /** The party's amount, a base give or take a spread. */
   readonly range: Heal | undefined
   /** What the battle's rolls read of its record — the loader's `ItemEffect.rolls`. */
@@ -285,6 +289,12 @@ export interface Castable {
     readonly combos?: boolean
     readonly tensed?: boolean
     readonly kind?: number
+    readonly blockable?: boolean
+    readonly handler?: number
+    readonly hitCode?: number
+    readonly afterStep?: number
+    readonly fallsOff?: boolean
+    readonly alwaysCritical?: boolean
     readonly haywire: boolean
     /** Its record's own multiplier on a caster's chance of going haywire. */
     readonly criticalPercent?: number
@@ -504,6 +514,16 @@ export function foeWaysOf(
         opening: action.opening,
       })
       return { kind: 'wait', action: word }
+    }
+    // A blow of its own, by its handler — see `blowOf`.
+    const blow = action && word !== FOE_ATTACK ? blowOf(action) : undefined
+    if (blow && action) {
+      known.set(word, {
+        name: { name: action.name },
+        message: action.message,
+        opening: action.opening,
+      })
+      return { kind: 'blow', blow }
     }
     const spell = spellOf(word)
     if (!spell) return { kind: 'attack' }
@@ -1321,5 +1341,43 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
     }
     case 'over':
       return scene
+  }
+}
+
+/**
+ * **An ability that is a blow**, as the battle plays it — see `blows.ts`: one
+ * of kind 1, aimed at the monsters, with no range of its own, whose handler is
+ * read. Undefined for anything else, which stays as it was.
+ *
+ * **Ours**: the slot-0 blows with code of their own elsewhere — Propeller
+ * Blade, Crosscutter Throw, Gold Rush, and the six that scale, Gigaslash among
+ * them — play as the plain blow their slot gives.
+ */
+export function blowOf(action: Castable): Blow | undefined {
+  const r = action.rolls
+  if (r?.kind !== 1 || action.side !== 1 || action.range || !handlerKnown(r.handler ?? 0)) {
+    return undefined
+  }
+  return {
+    action: action.action,
+    handler: r.handler ?? 0,
+    reach:
+      action.reach === ActionReach.All
+        ? 'all'
+        : action.reach === ActionReach.Group
+          ? 'group'
+          : 'one',
+    hits: r.hitCode ?? 0,
+    criticalPercent: r.criticalPercent ?? 0,
+    element: r.element ?? 8,
+    ...(r.cap ? { cap: r.cap } : {}),
+    falloff: r.fallsOff ?? false,
+    evadable: r.evadable,
+    blockable: r.blockable ?? false,
+    defendable: r.defendable ?? false,
+    tensed: r.tensed ?? false,
+    combos: r.combos ?? false,
+    after: r.afterStep ?? 0,
+    ...(r.alwaysCritical ? { sure: true } : {}),
   }
 }

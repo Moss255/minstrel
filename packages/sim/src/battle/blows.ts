@@ -28,6 +28,9 @@ export interface HandlerScene {
   readonly deftness: number
   readonly attack: number
   readonly hp: number
+  /** The striker's most HP and MP — the HP-fraction and MP handlers'. */
+  readonly maxHp?: number
+  readonly maxMp?: number
   /** One of the party: the family handlers never fire against them, Wolf Whistle only from them. */
   readonly party: boolean
   /** The one struck: its body (monsters only), its HP, whether poisoned, asleep. */
@@ -82,6 +85,40 @@ const FLAT = new Map<number, number>([
   [38, f(0.7)],
 ])
 
+/**
+ * **The breath form** (slots 49, 50, 52, 59, 60; read 3 October 2026): `S·(S/k)
+ * + c`, all in floats, give or take its spread — the spread's draw first —
+ * and the greater of that and a floor, `F` times a draw.
+ */
+const BREATHS = new Map<
+  number,
+  { k: number; c: number; e: number; F: number; lo: number; hi: number }
+>([
+  [49, { k: 22, c: 70, e: 0.1, F: 180, lo: 0.9, hi: 1.1 }], // Hellfire
+  [50, { k: 22, c: 90, e: 0.1, F: 200, lo: 0.9, hi: 1.1 }], // C-C-Cold Breath
+  [52, { k: 23, c: 100, e: 0.1, F: 170, lo: 0.9, hi: 1.1 }], // Dark Breath
+  [59, { k: 23, c: 100, e: 0.05, F: 217, lo: 0.9, hi: 1.1 }], // Kaboomle
+  [60, { k: 26, c: 150, e: 0.1, F: 200, lo: 0.95, hi: 1.05 }], // Kacrackle
+])
+
+/**
+ * **The spell form** (slots 55, 56, 58, 62, 63): `a·S` and `c`, times a draw —
+ * the multiplier's draw first — and the greater of that and a floor's.
+ */
+const SPELLS = new Map<
+  number,
+  { a: number; c?: number; lo1: number; hi1: number; F: number; lo2: number; hi2: number }
+>([
+  [55, { a: 3, c: 53, lo1: 0.9, hi1: 1.1, F: 140, lo2: 0.9, hi2: 1.1 }], // Break Down, Blinder, Thin Air
+  [56, { a: 5, c: 50, lo1: 0.9, hi1: 1.1, F: 200, lo2: 0.9, hi2: 1.1 }], // Starfall
+  [58, { a: 7, lo1: 0.95, hi1: 1.05, F: 280, lo2: 0.95, hi2: 1.05 }], // Kafrizzle
+  [62, { a: 7, lo1: 0.9, hi1: 1.1, F: 260, lo2: 0.9, hi2: 1.1 }], // Kazammle
+  [63, { a: 6, lo1: 0.9, hi1: 1, F: 160, lo2: 0.9, hi2: 1.1 }], // Magic Burst, a monster's
+])
+
+/** The greater, as the game takes it: `_fls` then `movlo` — the second when the first is lower. */
+const greater = (a: number, b: number) => (a < b ? b : a)
+
 /** The handlers that only pass the number on — what makes them theirs is a step after. */
 const PLAIN = new Set([0, 14, 31, 37])
 
@@ -94,7 +131,10 @@ export function handlerKnown(slot: number): boolean {
     PLAIN.has(slot) ||
     FAMILY.has(slot) ||
     FLAT.has(slot) ||
-    [2, 13, 15, 17, 21, 29, 34, 35, 43, THRUST_HANDLER, 65].includes(slot)
+    [2, 13, 15, 17, 21, 29, 34, 35, 43, THRUST_HANDLER, 65].includes(slot) ||
+    BREATHS.has(slot) ||
+    SPELLS.has(slot) ||
+    [5, 39, 40, 41, 42, 54, 57, 61, 64].includes(slot)
   )
 }
 
@@ -166,12 +206,70 @@ export function handled(
       const r = rng.floatBetween(0.95, 1.05)
       return { damage: Math.trunc(f(f(scene.attack) * r)) }
     }
+    case 5: {
+      // 244: the unbuffed attack times 0.85 to 0.95, whatever the base.
+      const r = rng.floatBetween(0.85, 0.95)
+      return { damage: Math.trunc(f(f(scene.attack) * r)) }
+    }
+    case 39:
+    case 40: {
+      // 287, 288: a fifth to three tenths, or two fifths to three fifths, of the striker's most HP.
+      const r = slot === 39 ? rng.floatBetween(0.2, 0.3) : rng.floatBetween(0.4, 0.6)
+      return { damage: Math.trunc(f(f(scene.maxHp ?? scene.hp) * r)) }
+    }
+    case 41:
+    case 42: {
+      // 290, 550 and 294: 2.5 or 3 times the level, give or take a tenth.
+      const r = rng.floatBetween(0.9, 1.1)
+      return { damage: Math.trunc(f(f(f(slot === 41 ? 2.5 : 3) * f(scene.level)) * r)) }
+    }
+    case 54: {
+      // 545: 2 × level + 10, give or take a tenth.
+      const v = f(f(10) + f(f(2) * f(scene.level)))
+      const r = rng.floatBetween(-0.1, 0.1)
+      return { damage: Math.trunc(f(v + f(v * r))) }
+    }
+    case 57:
+      // 555, Wrath of the Gods: half the base and 37, in whole numbers.
+      return { damage: Math.trunc(d / 2) + 37 }
+    case 61: {
+      // Kaswooshle: the level times 6 × 0.6–1.1, or 180 × 0.7–1.3, the greater.
+      const a = f(f(6) * rng.floatBetween(0.6, 1.1))
+      const w = f(f(scene.level) * a)
+      const m = f(f(180) * rng.floatBetween(0.7, 1.3))
+      return { damage: Math.trunc(greater(w, m)) }
+    }
+    case 64: {
+      // No action carries it: 35 × 0.85–1.15 against 2 × level × 0.85–1.15, the floor first.
+      const m = f(f(35) * rng.floatBetween(0.85, 1.15))
+      const w = f(f(f(2) * f(scene.level)) * rng.floatBetween(0.85, 1.15))
+      return { damage: Math.trunc(greater(m, w)) }
+    }
     case 65:
       // Wolf Whistle: half the base and a quarter of deftness — the party's only.
       if (!scene.party) return { damage: d }
       return { damage: Math.trunc(f(f(0.25) * f(scene.deftness))) + Math.trunc(d / 2) }
-    default:
+    default: {
+      const breath = BREATHS.get(slot)
+      if (breath) {
+        const s = f(scene.level)
+        const v = f(f(breath.c) + f(s * f(s / f(breath.k))))
+        const r1 = rng.floatBetween(-breath.e, breath.e)
+        const w = f(v + f(v * r1))
+        const m = f(f(breath.F) * rng.floatBetween(breath.lo, breath.hi))
+        return { damage: Math.trunc(greater(w, m)) }
+      }
+      const spell = SPELLS.get(slot)
+      if (spell) {
+        const r1 = rng.floatBetween(spell.lo1, spell.hi1)
+        let a = f(f(spell.a) * f(scene.level))
+        if (spell.c !== undefined) a = f(f(spell.c) + a)
+        const w = f(a * r1)
+        const m = f(f(spell.F) * rng.floatBetween(spell.lo2, spell.hi2))
+        return { damage: Math.trunc(greater(w, m)) }
+      }
       return undefined
+    }
   }
 }
 

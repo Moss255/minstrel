@@ -401,6 +401,8 @@ export interface MonsterWords {
   /** Its family and whether its body is metal — see `MonsterName.family`. */
   readonly family: number
   readonly metal: boolean
+  /** Its level — see `MonsterName.level`. */
+  readonly level: number
 }
 
 /**
@@ -457,6 +459,8 @@ export interface ItemEffect {
     readonly hitCode: number
     readonly afterStep: number
     readonly fallsOff: boolean
+    /** Always a critical — see `Action.alwaysCritical`. */
+    readonly alwaysCritical: boolean
     readonly haywire: boolean
     /** Its record's `criticalPercent`: what multiplies a caster's chance of going haywire. */
     readonly criticalPercent: number
@@ -1001,6 +1005,7 @@ function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
               size: monster.size,
               family: monster.family,
               metal: monster.metal,
+              level: monster.level,
             })
         }
       } catch {
@@ -1634,6 +1639,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           hitCode: action.hitCode,
           afterStep: action.afterStep,
           fallsOff: action.fallsOff,
+          alwaysCritical: action.alwaysCritical,
           haywire: action.criticalPercent > 0,
           criticalPercent: action.criticalPercent,
           levels: action.levels,

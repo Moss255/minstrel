@@ -156,6 +156,12 @@ export interface MonsterName {
   readonly family: number
   readonly metal: boolean
   /**
+   * Its **level**, `+0x0A`'s low seven bits — what the handlers and tension's
+   * bonus take as a monster's level (`func_ov000_02159dbc`, `0x02159e50`; read
+   * 3 October 2026). A legacy boss's is its map's, not this.
+   */
+  readonly level: number
+  /**
    * `+0x0C`, its body's radius, in `fx32`: the record's `s16` in 1024ths,
    * shifted up by two — read from overlay 17's `func_ov017_021a2128`, which
    * hands it to `Object3D::SetRadius` so (docs/binaries.md, "A monster's
@@ -265,6 +271,7 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x0c),
       family: (view.getUint16(at + 0x0a, true) >> 7) & 15,
       metal: ((view.getUint16(at + 0x0a, true) >> 12) & 1) === 1,
+      level: view.getUint16(at + 0x0a, true) & 0x7f,
       radius: view.getInt16(at + 0x0c, true) * 4,
       height: view.getInt16(at + 0x0e, true),
       unknown_0x10: bytes.subarray(at + 0x10, at + 0x12),

@@ -96,7 +96,6 @@ import {
 import {
   BattleRng,
   type BattleState,
-  type Blow,
   blockChance,
   type CollisionWorld,
   type Command,
@@ -110,7 +109,6 @@ import {
   type Follower,
   facingOff,
   groundBelow,
-  handlerKnown,
   headingAngle,
   howItOpens,
   monsterHp,
@@ -210,6 +208,7 @@ import {
   battleMove,
   battleSpellOf,
   beginBattle,
+  blowOf,
   foeSpellOf,
   foeWaysOf,
   itemEntry,
@@ -345,7 +344,6 @@ import {
   battleSheets,
   entranceOf,
   givenNamesFrom,
-  type ItemEffect,
   type Loaded,
   load,
   mapLighting,
@@ -5242,43 +5240,6 @@ function battleListsOf(
   return out
 }
 
-/**
- * **An ability that is a blow**, as the battle plays it — see `blows.ts`: one
- * of kind 1, aimed at the monsters, with no range of its own, whose handler is
- * read. Undefined for anything else, which stays as it was.
- *
- * **Ours**: the slot-0 blows with code of their own elsewhere — Propeller
- * Blade, Crosscutter Throw, Gold Rush, and the six that scale, Gigaslash among
- * them — play as the plain blow their slot gives.
- */
-function blowOf(action: ItemEffect): Blow | undefined {
-  const r = action.rolls
-  if (r?.kind !== 1 || action.side !== 1 || action.range || !handlerKnown(r.handler)) {
-    return undefined
-  }
-  return {
-    action: action.action,
-    handler: r.handler,
-    reach:
-      action.reach === ActionReach.All
-        ? 'all'
-        : action.reach === ActionReach.Group
-          ? 'group'
-          : 'one',
-    hits: r.hitCode,
-    criticalPercent: r.criticalPercent ?? 0,
-    element: r.element ?? 8,
-    ...(r.cap ? { cap: r.cap } : {}),
-    falloff: r.fallsOff,
-    evadable: r.evadable,
-    blockable: r.blockable,
-    defendable: r.defendable,
-    tensed: r.tensed,
-    combos: r.combos,
-    after: r.afterStep,
-  }
-}
-
 /** Tactics set from Misc. in battle, kept with their members — see `Member.tactic`. */
 function keepTactics(): void {
   if (!battle) return
@@ -6055,6 +6016,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       // Its family and body, which the abilities' handlers ask — `mon_data` `+0x0A`.
       family: who.family,
       metal: who.metal,
+      // Its level, which its handlers and tension's bonus take — `mon_data` `+0x0A`.
+      level: who.level,
       exp: numbers.exp,
       gold: numbers.gold,
       // Which monster it is: what a battle drops goes by the kind — `dropsWon`.

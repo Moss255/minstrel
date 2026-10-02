@@ -88,6 +88,29 @@ describe('the abilities’ handlers, as read', () => {
   })
 })
 
+describe('the monsters’ handlers, as read', () => {
+  const at = (level: number) => ({ ...scene(), level, party: false })
+  it('works a breath as S·(S/k) + c with its spread, against its floor', () => {
+    // Hellfire at level 52: the spread's draw first, then the floor's.
+    const twin = new BattleRng(9n)
+    const s = f(52)
+    const v = f(f(70) + f(s * f(s / f(22))))
+    const w = f(v + f(v * twin.floatBetween(-0.1, 0.1)))
+    const m = f(f(180) * twin.floatBetween(0.9, 1.1))
+    expect(handled(49, 0, at(52), new BattleRng(9n))?.damage).toBe(Math.trunc(w < m ? m : w))
+  })
+
+  it('works a spell as (a·S + c) times a draw, against its floor', () => {
+    // Starfall at level 10: the multiplier's draw first.
+    const twin = new BattleRng(4n)
+    const w = f(f(f(50) + f(f(5) * f(10))) * twin.floatBetween(0.9, 1.1))
+    const m = f(f(200) * twin.floatBetween(0.9, 1.1))
+    expect(handled(56, 0, at(10), new BattleRng(4n))?.damage).toBe(Math.trunc(w < m ? m : w))
+    // Wrath of the Gods: half the base and 37.
+    expect(handled(57, 41, at(10), new BattleRng(1n))?.damage).toBe(57)
+  })
+})
+
 describe('a blow in a battle', () => {
   const play = (b: Blow, seed = 5n, foes = [foe('dragon', 2)]) =>
     playRound(
