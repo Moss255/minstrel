@@ -146,6 +146,16 @@ export interface MonsterName {
   /** `+0x0A`, two bytes not established. */
   readonly unknown_0x0a: Uint8Array
   /**
+   * Its **family**, 0–15 — `+0x0A`'s halfword, bits 7–10 — and whether its
+   * body is **metal**, bit 12. Read 2 October 2026 (USA): the abilities' damage
+   * handlers ask them (`func_ov000_02156068`); bit 12 is set on the metal
+   * slimes' family alone, and each family-slaying ability's name matches its
+   * family's monsters. The low seven bits are the monster's level (INFERRED,
+   * `docs/conformance.md`, "Tension, modelled").
+   */
+  readonly family: number
+  readonly metal: boolean
+  /**
    * `+0x0C`, its body's radius, in `fx32`: the record's `s16` in 1024ths,
    * shifted up by two — read from overlay 17's `func_ov017_021a2128`, which
    * hands it to `Object3D::SetRadius` so (docs/binaries.md, "A monster's
@@ -253,6 +263,8 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       plural: text(view.getUint32(at + 0x14, true), at + 0x14),
       grammar: readGrammar(view.getUint32(at + 0x18, true)),
       unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x0c),
+      family: (view.getUint16(at + 0x0a, true) >> 7) & 15,
+      metal: ((view.getUint16(at + 0x0a, true) >> 12) & 1) === 1,
       radius: view.getInt16(at + 0x0c, true) * 4,
       height: view.getInt16(at + 0x0e, true),
       unknown_0x10: bytes.subarray(at + 0x10, at + 0x12),

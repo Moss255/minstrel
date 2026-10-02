@@ -36,9 +36,12 @@ a flight that is the party's and settled before the round.
    field's Items as the game lays them out with Transfer, battle items from
    the user's own, and the skill books — which turn out to grant each tree's
    eleventh panel while carried.
-3. **The abilities' own handlers.** Most abilities are blows with a damage
-   handler of their own (`+0x18` bits 18–26, 67 handlers); until they are
-   read they strike as the Attack.
+3. ~~**The abilities' own handlers**~~ **Done, 2 October** (`blows.ts`;
+   `docs/conformance.md`, "The abilities' handlers"): every handler a skill
+   panel's ability uses, the hit codes as passes, the critical over the
+   passes, the steps after. **Next**: the two draws every action makes and the
+   spells' critical over their targets, applied to every action; the
+   monsters' handlers; the slot-0 blows with code of their own.
 
 ## The battle scene — 29 September
 

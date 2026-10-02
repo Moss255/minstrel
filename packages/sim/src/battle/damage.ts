@@ -193,7 +193,7 @@ export function criticalDamage(rng: BattleRng, damage: number): number {
  * function and not here: nothing the slice plays has one.
  * `packages/sim/test/game-oracle.ts` has the whole of it.
  */
-export function criticalChance(deftness: number, skillPercent = 100): number {
+export function criticalChance(deftness: number, skillPercent = 100, passes = 1): number {
   const f = Math.fround
   // The `short` the game narrows to before it looks at the sign.
   const past = Math.max(0, ((deftness - 150) << 16) >> 16)
@@ -201,7 +201,11 @@ export function criticalChance(deftness: number, skillPercent = 100): number {
   // The action's own `criticalPercent` over a hundred multiplies it: 100 on
   // the plain attack, which leaves it standing; 50 on the spells, which halves
   // it; 0 on an item, which can never go haywire.
-  return Math.trunc(f(f(100) * f(f(f(skillPercent) / f(100)) * rate)))
+  const chance = f(f(f(skillPercent) / f(100)) * rate)
+  // **Divided by the passes the action makes** — `CalculateCritRate`'s
+  // `hitCount`, the resolver's whole target list (read 2 October 2026).
+  const per = passes === 1 ? chance : f(f(f(1) / f(passes)) * chance)
+  return Math.trunc(f(f(100) * per))
 }
 
 /**
@@ -300,6 +304,8 @@ export function dealt(
     }
     /** The target at the maximum of tension, for a blow of kind 1: half (`0x021e7a58`). */
     readonly halved?: boolean
+    /** No 0-or-1 coin — Thunder Thrust and Hatchet Man (`0x021e7870`). */
+    readonly noCoin?: boolean
   },
 ): number {
   const f = Math.fround
@@ -321,7 +327,7 @@ export function dealt(
   // The target's guard, before the coin below — `0x021e7614`.
   if (to.guard !== undefined && to.guard !== 1) d = f(d * f(to.guard))
   if (to.blocked || to.dodged) d = 0
-  else if (d <= 0 && to.resistance > 0) d = f(rng.below(2))
+  else if (d <= 0 && to.resistance > 0 && !to.noCoin) d = f(rng.below(2))
   // A target at the maximum of tension takes half a blow (`0x021e7a58`–`0x021e7a88`).
   if (to.halved) d = f(f(0.5) * d)
   // **The combo** (`0x021e7a8c`–`0x021e7b28`), after the coin and before the

@@ -120,6 +120,54 @@ export function actionOf(
         },
       }
     }
+    case 'blow': {
+      // The opening, if the action says one, then each pass's lines — a
+      // critical's and the hit's — then what came back to the striker, as its
+      // own results (list A): HP (37) or MP (34) back, the recoil a blow (1).
+      const perHit = event.hits.map((h) => (h.critical && !h.dodged && !h.blocked ? 2 : 1))
+      const afterLines =
+        (event.regained?.mp ? 1 : 0) + (event.regained?.hp ? 1 : 0) + (event.recoil ? 1 : 0)
+      const opens = Math.max(0, lines.length - perHit.reduce((a, b) => a + b, 0) - afterLines)
+      let at = opens
+      const shown = event.hits.map((hit, k) => {
+        const own = lines.slice(at, at + (perHit[k] ?? 1))
+        at += perHit[k] ?? 1
+        const flags = blowFlags(hit.damage, dead(hit.target), hit.dodged, hit.blocked)
+        return {
+          receiver: obj(hit.target),
+          results: [result(flags, hit.damage, hit.critical, [...own, ...tail(hit.target)])],
+        }
+      })
+      const rest = lines.slice(at)
+      const own = [
+        ...(event.regained?.mp ? [result([34], -event.regained.mp, false, rest.splice(0, 1))] : []),
+        ...(event.regained?.hp
+          ? [result([FLAG.recovered], -event.regained.hp, false, rest.splice(0, 1))]
+          : []),
+        ...(event.recoil
+          ? [
+              result(
+                blowFlags(event.recoil, dead(event.actor)),
+                event.recoil,
+                false,
+                rest.splice(0, 1),
+              ),
+            ]
+          : []),
+      ]
+      return {
+        context: {
+          action: event.action,
+          actors: [obj(event.actor)],
+          targets: shown.map((t) => ({ receivers: [t.receiver] })),
+        },
+        results: {
+          opening: lines.slice(0, opens).join('\n') || undefined,
+          targets: shown,
+          own,
+        },
+      }
+    }
     case 'spell':
     case 'change': {
       const n = event.short ? 0 : event.hits.length

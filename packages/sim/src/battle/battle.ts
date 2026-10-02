@@ -1,3 +1,4 @@
+import { FALLOFF, handled, passesOf, RETARGETED, THRUST_HANDLER } from './blows.ts'
 import { brokenChain, type Chain, chainStep, NO_CHAIN } from './combo.ts'
 import {
   criticalChance,
@@ -127,6 +128,13 @@ export interface Fighter {
    * the game's comes to at any deftness up to 150.
    */
   readonly deftness?: number
+  /**
+   * A monster's family, 0–15, and whether its body is metal — `mon_data`
+   * `+0x0A` bits 7–10 and bit 12, which the abilities' handlers ask
+   * (`func_ov000_02156068`). None for the party.
+   */
+  readonly family?: number
+  readonly metal?: boolean
   /** Magical might and magical mending, which a spell's amount may scale by. Nothing when not given. */
   readonly might?: number
   readonly mending?: number
@@ -254,6 +262,32 @@ export type Change =
   | { readonly kind: 'defence' | 'agility'; readonly by: number; readonly chance: number }
 
 /** A way of changing state, as the battle casts it: on one, a group or all, of its caster's side or the other. */
+/**
+ * **An ability's blow**, as the resolver plays it — see `blows.ts`. The
+ * action's record, as far as the passes read it.
+ */
+export interface Blow {
+  readonly action: number
+  /** Its damage handler, `+0x18` bits 18–26. */
+  readonly handler: number
+  readonly reach: 'one' | 'group' | 'all'
+  /** Its hit code, `+0x1C` bits 14–18 — see `passesOf`. */
+  readonly hits: number
+  /** Its critical chance's multiplier, in hundredths. */
+  readonly criticalPercent: number
+  readonly element: number
+  readonly cap?: number
+  /** Whether it falls off over its passes, `+0x10` bit 17. */
+  readonly falloff: boolean
+  readonly evadable: boolean
+  readonly blockable: boolean
+  readonly defendable: boolean
+  readonly tensed: boolean
+  readonly combos: boolean
+  /** What runs once after it, `+0x2c` bits 10–13 — see the post-steps. */
+  readonly after: number
+}
+
 export interface Changing {
   readonly action: number
   readonly cost: number
@@ -320,6 +354,8 @@ export type Command =
   | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal; readonly target?: number }
   /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
   | { readonly kind: 'spell'; readonly spell: Spell; readonly target: number }
+  /** An ability's blow at a monster — for one that reaches further, at its group or all. */
+  | { readonly kind: 'blow'; readonly blow: Blow; readonly target: number }
   /**
    * Psyche Up, its record's number of steps (`+0x30`), on oneself — see
    * `tension.ts`; `outright`, the two (0x151, 0x152) that go straight to that
@@ -399,6 +435,28 @@ export type BattleEvent =
       /** One that went straight up — "…'s tension gets a huge boost all of a sudden!" first. */
       readonly outright?: boolean
     }
+  /**
+   * An ability's blow: each pass's target and what it came to — a hit, its
+   * critical, dodged or blocked — and what came back to the one striking.
+   */
+  | {
+      readonly kind: 'blow'
+      readonly actor: number
+      readonly action: number
+      readonly hits: readonly {
+        readonly target: number
+        readonly damage: number
+        readonly critical: boolean
+        readonly dodged: boolean
+        readonly blocked: boolean
+      }[]
+      /** HP lost to the blow's own recoil (post-step 3). */
+      readonly recoil?: number
+      /** HP or MP regained by it (post-steps 4 and 1). */
+      readonly regained?: { readonly hp?: number; readonly mp?: number }
+      /** It set its striker to guarding (post-step 2). */
+      readonly guards?: boolean
+    }
   /** Tension spent, after the action that spent it — from the maximum, or below it. */
   | { readonly kind: 'calmed'; readonly actor: number; readonly most: boolean }
 
@@ -447,9 +505,12 @@ export const DEFAULT_RULES: Rules = {
  * **A monster's is a literal nothing** (`func_020748f8`), and its draw is
  * spent all the same.
  */
-function criticalRate(me: FighterState, percent: number, flat: number): number {
+function criticalRate(me: FighterState, percent: number, flat: number, passes = 1): number {
   if (me.side !== 'party') return 0
-  return me.deftness === undefined ? flat : criticalChance(me.deftness, percent)
+  // Without deftness, the rules' flat chance over the passes — ours.
+  return me.deftness === undefined
+    ? Math.trunc(flat / passes)
+    : criticalChance(me.deftness, percent, passes)
 }
 
 /** A target's chance of dodging, in a hundred — the game's `func_ov000_02156270`, without its bonuses and statuses. */
@@ -590,6 +651,10 @@ export function fleeChance(
   const floor = FLEE_FLOOR[Math.min(state.fleeAttempts ?? 0, FLEE_FLOOR.length - 1)] as number
   return { certain: false, chance: Math.max(own, floor) }
 }
+
+/** Double-Edged Slash and Miracle Moon, which the steps after a blow name by number. */
+const DOUBLE_EDGED_SLASH = 0xaf
+const MIRACLE_MOON = 0x91
 
 /** Standing and still in the battle: not fallen, and not fled. */
 const alive = (f: FighterState) => f.hp > 0 && !f.fled
@@ -1099,6 +1164,181 @@ export function playRound(
         short: false,
         hits,
       })
+      continue
+    }
+
+    if (command.kind === 'blow') {
+      const { blow } = command
+      const other: Side = me.side === 'party' ? 'foes' : 'party'
+      const standing = livingOn(other)
+      if (standing.length === 0) break
+      const named = fighters[command.target]
+      const first =
+        named && alive(named) && named.side === other
+          ? command.target
+          : me.side === 'foes'
+            ? (standing[rng.below(standing.length)] as number)
+            : (standing[0] as number)
+      const kind = fighters[first]?.name
+      const reached =
+        blow.reach === 'one'
+          ? [first]
+          : blow.reach === 'group'
+            ? standing.filter((i) => fighters[i]?.name === kind)
+            : standing
+      // **The two draws every action makes** as its targets are built
+      // (`func_ov000_0215fbe0`): 3 or 4, then 6 to 8 — the counts of hit
+      // codes 3 and 11. Then the passes (`blows.ts`).
+      const threeOrFour = rng.below(2) + 3
+      const sixToEight = rng.below(3) + 6
+      const { passes } = passesOf(reached, blow.hits, { threeOrFour, sixToEight }, rng)
+      const n = passes.length
+      const rate = criticalRate(me, blow.criticalPercent, rules.critical, n)
+      // Rolled once for the action when it reaches a group or all with no
+      // hit code (`func_ov024_021ea4d0`), else each pass after its die.
+      const once = blow.reach !== 'one' && blow.hits === 0
+      let critical = once && rng.below(10_000) < rate
+      const tension = blow.tensed ? tensionOf(me) : undefined
+      const hits: {
+        target: number
+        damage: number
+        critical: boolean
+        dodged: boolean
+        blocked: boolean
+      }[] = []
+      let recoil = 0
+      for (const [index, aimed] of passes.entries()) {
+        // The die each pass keeps (`0x021ebf28`).
+        rng.below(100)
+        let target = aimed
+        if (!alive(fighters[target] as FighterState)) {
+          // A random pick fallen is picked again among the living of its
+          // group, or of all (`func_ov000_02154c68`); a repeat is passed over.
+          if (!RETARGETED.has(blow.hits)) continue
+          const left = livingOn(other).filter(
+            (i) => blow.reach !== 'group' || fighters[i]?.name === kind,
+          )
+          if (left.length === 0) continue
+          target = left[rng.below(left.length)] as number
+        }
+        const them = fighters[target] as FighterState
+        if (!once) critical = rng.below(10_000) < rate
+        const dodged = blow.evadable && rng.below(100) < Math.trunc(evadeOf(them, rules))
+        const blocked =
+          blow.blockable && !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
+        // The accuracy, at a hundred, its draw spent.
+        rng.below(100)
+        chain = chainStep(chain, {
+          combos: blow.combos,
+          side: me.side,
+          action: blow.action,
+          target,
+          turn,
+        })
+        // The base, its draws spent whatever the handler does with it, then the handler.
+        const base = physicalDamage(rng, me.attack, defenceOf(them))
+        const out = handled(
+          blow.handler,
+          base,
+          {
+            level: me.side === 'party' ? (me.level ?? 0) : 0,
+            deftness: me.deftness ?? 0,
+            attack: me.attack,
+            hp: me.hp,
+            party: me.side === 'party',
+            target: {
+              party: them.side === 'party',
+              family: them.family,
+              metal: them.metal,
+              hp: them.hp,
+              poisoned: them.states.poisoned,
+              asleep: them.states.sleep !== undefined,
+            },
+            passes: n,
+          },
+          rng,
+        ) ?? { damage: base }
+        if (out.recoil !== undefined) recoil = out.recoil
+        let d = out.damage
+        // The falloff over the passes, by the pass's place (`func_02074948`).
+        if (blow.falloff) {
+          d = Math.trunc(Math.fround(Math.fround(d) * (FALLOFF[Math.min(index, 4)] as number)))
+        }
+        // Thunder Thrust and Hatchet Man: shown as a critical, never multiplied
+        // by one, no tension on nothing, and no coin.
+        const thrust = blow.handler === THRUST_HANDLER
+        const damage = dealt(rng, d & 0xffff, {
+          critical: critical && !thrust,
+          resistance: resistanceTo(them.resist, blow.element),
+          dodged,
+          blocked,
+          ...(blow.cap ? { cap: blow.cap } : {}),
+          ...(them.defending && blow.defendable ? { guard: GUARD_LEVELS[1] } : {}),
+          ...(blow.combos ? { combo: chain.count } : {}),
+          ...(tension && !(thrust && d === 0) ? { tension } : {}),
+          ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
+          ...(thrust ? { noCoin: true } : {}),
+        })
+        if (dodged || blocked || damage < 1) chain = brokenChain(chain)
+        // Double-Edged Slash keeps a quarter of what it dealt (`0x021e7b54`).
+        if (blow.action === DOUBLE_EDGED_SLASH) {
+          recoil = Math.trunc(Math.fround(Math.fround(0.25) * Math.fround(damage)))
+        }
+        hits.push({
+          target,
+          damage,
+          critical: thrust ? damage > 0 : critical && !dodged && !blocked,
+          dodged,
+          blocked,
+        })
+      }
+      const told: {
+        kind: 'blow'
+        actor: number
+        action: number
+        hits: typeof hits
+        recoil?: number
+        regained?: { hp?: number; mp?: number }
+        guards?: boolean
+      } = { kind: 'blow', actor, action: blow.action, hits }
+      // Told before anyone it fells falls.
+      events.push(told)
+      for (const hit of hits) hurt(hit.target, hit.damage)
+      // **After the action, once** (the table at `0x021ff3f8`, by `+0x2c`
+      // bits 10–13), when the striker stands (`func_ov000_02155f9c`).
+      const mine = fighters[actor] as FighterState
+      if (alive(mine)) {
+        if (blow.after === 1) {
+          // Hallowed Arrow: MP back, an eighth of all it dealt (`func_ov024_021e56c0`).
+          const total = hits.reduce((sum, h) => sum + h.damage, 0)
+          const mp = Math.min(total >> 3, mine.maxMp - mine.mp)
+          if (mp > 0) {
+            fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp + mp } : f))
+            told.regained = { mp }
+          }
+        } else if (blow.after === 2) {
+          // Blockenspiel: its striker guards for the rest of the round (`021e57c0`).
+          fighters = fighters.map((f, i) => (i === actor ? { ...f, defending: true } : f))
+          told.guards = true
+        } else if (blow.after === 3 && recoil > 0) {
+          // Body Slam and Double-Edged Slash: the recoil (`021e57e0`). Whether
+          // Double-Edged Slash's is skipped on a slot code of 3 is not read.
+          told.recoil = recoil
+          hurt(actor, recoil)
+        } else if (blow.after === 4) {
+          // Miracle Slash, HP Hoover, Schadenfreude, Miracle Moon: a quarter of
+          // the last pass's damage back — Miracle Moon's first (`021e5988`).
+          const from = blow.action === MIRACLE_MOON ? hits[0] : hits.at(-1)
+          const hp = Math.min((from?.damage ?? 0) >> 2, mine.maxHp - mine.hp)
+          if (hp > 0) {
+            fighters = fighters.map((f, i) => (i === actor ? { ...f, hp: f.hp + hp } : f))
+            told.regained = { hp }
+          }
+        }
+      }
+      if (blow.tensed) calm(actor)
+      outcome = outcomeOf(fighters)
+      if (outcome !== 'ongoing') break
       continue
     }
 

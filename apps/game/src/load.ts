@@ -398,6 +398,9 @@ export interface MonsterWords {
   readonly height: number
   /** Its size in battle, 4096ths — see `MonsterName.size`. */
   readonly size: number
+  /** Its family and whether its body is metal — see `MonsterName.family`. */
+  readonly family: number
+  readonly metal: boolean
 }
 
 /**
@@ -448,6 +451,12 @@ export interface ItemEffect {
     readonly tensed: boolean
     /** Its kind (`+0x18` bits 5–11): 1 a blow's, 15 Psyche Up's. */
     readonly kind: number
+    readonly blockable: boolean
+    /** Its damage handler, hit code, step after, and falloff — see `Action.damageHandler`, `hitCode`, `afterStep`, `fallsOff`. */
+    readonly handler: number
+    readonly hitCode: number
+    readonly afterStep: number
+    readonly fallsOff: boolean
     readonly haywire: boolean
     /** Its record's `criticalPercent`: what multiplies a caster's chance of going haywire. */
     readonly criticalPercent: number
@@ -990,6 +999,8 @@ function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
               radius: monster.radius,
               height: monster.height,
               size: monster.size,
+              family: monster.family,
+              metal: monster.metal,
             })
         }
       } catch {
@@ -1618,6 +1629,11 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           combos: action.combos,
           tensed: action.tensed,
           kind: action.kind,
+          blockable: action.blockable,
+          handler: action.damageHandler,
+          hitCode: action.hitCode,
+          afterStep: action.afterStep,
+          fallsOff: action.fallsOff,
           haywire: action.criticalPercent > 0,
           criticalPercent: action.criticalPercent,
           levels: action.levels,

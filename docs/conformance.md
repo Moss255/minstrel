@@ -596,6 +596,56 @@ word carries a multi-turn duration byte, which a one-turn defence would not.
 The witness experiment is no longer needed to settle the bit; what it would now
 measure is our own stand-in.
 
+### The abilities' handlers — 2 October 2026
+
+Read from the decomp (USA) and modelled in `packages/sim/src/battle/blows.ts`
+and the battle's `blow` command. **Where a handler sits**: in each pass,
+straight after `GetAttackBaseDamage` (whose draws are spent whatever the
+handler does) — `d = handler(base)` (`func_ov024_021da55c`, the table at
+`0x021ff1e0`, `+0x18` bits 18–26), then Thunder Thrust's critical mark, the
+falloff over the passes (`+0x10` bit 17, `0x020e88d0`, by the pass's place in
+the whole list), then `CalculateFinalDamage` on the result as a `u16`: tension,
+the critical (whose value is the handler's output, times 1.5 to 2.0), the
+resistance, and the rest.
+
+- **The handlers** every skill-panel ability uses: twelve by the target's
+  family, ×1.5 or ×1.25 (`mon_data` `+0x0A` bits 7–10; the names match the
+  families); flat multipliers ×0.3 to ×1.5; Serpent's Bite an integer
+  doubling; Victimiser ×1.5 on the poisoned, Persecutter ×2 on the asleep;
+  Metal Slash +1 on metal; Gigathrow (2·level + 125) × 0.85–1.15; Autograph
+  min(2·level + 30, 150) ± a tenth; Miracle Moon 4d ÷ (passes + 1); Body Slam
+  0.8 of the target's HP; Flailing Nails d × 0.1–0.5; Thunder Thrust and
+  Hatchet Man a coin, then the unbuffed attack × 0.95–1.05, shown as a
+  critical, never multiplied, no tension on nothing, no 0-or-1 coin; Wolf
+  Whistle ⌊d/2⌋ + ⌊deftness/4⌋.
+- **Hits are passes** (`+0x1C` bits 14–18): codes 1, 6, 9 repeat the targets
+  2, 4, 5 times, all of them for the first hit first (`func_ov024_021e8dc0`);
+  codes 3, 4, 5, 7, 8, 10, 11 pick 3–4, 2, 4, 7, 3, 1, 6–8 at random with
+  replacement (`func_ov000_0215fbe0`), a fallen pick picked again among the
+  living. A repeat on a fallen target is passed over after its die.
+- **The critical is rolled once** for a blow reaching a group or all with no
+  hit code, **else each pass**, and **its chance is divided by the passes**
+  (`CalculateCritRate`'s `hitCount`).
+- **After the action, once** (`+0x2c` bits 10–13, the table at `0x021ff3f8`):
+  Hallowed Arrow's MP, an eighth of all it dealt; Blockenspiel's guard; Body
+  Slam's recoil (0.8 of one's HP, and 2) and Double-Edged Slash's (a quarter
+  of the last blow); HP back, a quarter of the last pass's (Miracle Moon's
+  first).
+
+**Two findings that reach past the abilities, read and not yet applied to
+every action** — they would move every replay, and each has a path not
+followed: **every action whose targets are built draws `NextRandomMax(2)` and
+then `NextRandomMax(3)`** (`func_ov000_0215fbe0`), the plain Attack too — the
+blow makes them, the Attack and the spells do not yet; and **a spell reaching
+a group or all rolls its critical at 1/(targets)** — the blow divides,
+`criticalChance` takes the passes, the spells still roll at the whole. Not
+modelled: the Attack's own extra hit and a weapon's hit doubling
+(`func_ov000_021564cc`, `func_020850d0`), the metal body's zeroing and 1-or-2
+(the handler's +1 is), the riders of Pressure Pointer and Parallax, Body
+Slam's accuracy draw, the slot-0 blows with code of their own (Propeller
+Blade, Crosscutter Throw, Gold Rush and the six that scale), the handlers
+monsters use.
+
 ### Tension, modelled — 1 October 2026
 
 Read from the decomp (USA) and held to the oracle; `packages/sim/src/battle/tension.ts`.

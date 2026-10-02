@@ -136,6 +136,9 @@ export const ACTION_SAYS = {
   tensionSpent: 0x1f1,
 } as const
 
+/** What comes back to a blow's striker, in `actmsg` — the steps after the action's own words. */
+const BLOW_SAYS = { mpBack: 0x214, hpBack: 0x215, recoil: 0x1b4 } as const
+
 /** Tension rising to 5, 20, 50 and 100, by the level reached — `func_ov024_021e8c48`'s 0x31 to 0x34. */
 const TENSION_RISES = [0, 0x31, 0x32, 0x33, 0x34] as const
 
@@ -730,6 +733,79 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       }
       return ours.map(sentence).join('\n')
     }
+    case 'blow': {
+      // **An ability's blow**: its own opening, then each pass as the plain
+      // attack's lines tell a hit, then what came back to its striker —
+      // `actmsg` 0x214 MP, 0x215 HP, 0x1b4 recoil (`func_ov024_021e56c0`,
+      // `021e5988`, `021e57e0`).
+      const told = scene.known.get(event.action)
+      const action = told?.name ?? { name: `move ${event.action}` }
+      const opens = told?.opening
+        ? [say(scene, 'actions', told.opening, { actor, action, item: action })]
+        : []
+      const passes = event.hits.flatMap((hit) => {
+        const target = scene.names[hit.target]
+        if (hit.dodged) return [say(scene, 'actions', ACTION_SAYS.dodges, { actor, target })]
+        if (hit.blocked) return [say(scene, 'actions', ACTION_SAYS.shield, { actor, target })]
+        return [
+          ...(hit.critical ? [say(scene, 'actions', ACTION_SAYS.critical, {})] : []),
+          hit.damage > 0
+            ? say(scene, 'actions', ACTION_SAYS.takes, {
+                actor,
+                target,
+                values: { val_1: hit.damage },
+              })
+            : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
+        ]
+      })
+      const after = [
+        ...(event.regained?.mp
+          ? [
+              say(scene, 'actions', BLOW_SAYS.mpBack, {
+                actor,
+                target: actor,
+                values: { val_1: event.regained.mp },
+              }),
+            ]
+          : []),
+        ...(event.regained?.hp
+          ? [
+              say(scene, 'actions', BLOW_SAYS.hpBack, {
+                actor,
+                target: actor,
+                values: { val_1: event.regained.hp },
+              }),
+            ]
+          : []),
+        ...(event.recoil
+          ? [
+              say(scene, 'actions', BLOW_SAYS.recoil, {
+                actor,
+                target: actor,
+                values: { val_1: event.recoil },
+              }),
+            ]
+          : []),
+      ]
+      const game = lines(...opens, ...passes, ...after)
+      if (game !== undefined) return game
+      const ours = [`${who} uses ${shown(action)}!`]
+      for (const hit of event.hits) {
+        const whom = labels[hit.target] ?? '?'
+        if (hit.dodged) ours.push(`${whom} dodges out of the way!`)
+        else if (hit.blocked) ours.push(`${whom} blocks the blow with a shield!`)
+        else {
+          if (hit.critical) ours.push('A critical hit!')
+          ours.push(
+            hit.damage > 0 ? `${whom} takes ${hit.damage} damage.` : `${whom} takes no damage.`,
+          )
+        }
+      }
+      if (event.regained?.mp) ours.push(`${who} recovers ${event.regained.mp} MP.`)
+      if (event.regained?.hp) ours.push(`${who} recovers ${event.regained.hp} HP.`)
+      if (event.recoil) ours.push(`${who} takes ${event.recoil} damage in the recoil.`)
+      return ours.map(sentence).join('\n')
+    }
     case 'wait': {
       const chosen = scene.known.get(event.action)
       const action = chosen?.name ?? { name: '' }
@@ -991,6 +1067,8 @@ export interface Offered {
   readonly asked?: readonly Asked[]
   readonly items?: readonly BattleItem[]
   readonly spells?: readonly BattleSpell[]
+  /** How the party's abilities are told — their names and openings, by action. */
+  readonly known?: ReadonlyMap<number, Told>
 }
 
 /** The Hero alone, asked with these items and spells — see `Offered`. */
@@ -1228,6 +1306,7 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
         phase: 'command',
         items,
         spells,
+        known: offered.known ? new Map([...scene.known, ...offered.known]) : scene.known,
         commanding: openCommands(asked),
       }
     }

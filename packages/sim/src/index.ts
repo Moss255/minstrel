@@ -1,6 +1,7 @@
 export {
   type BattleEvent,
   type BattleState,
+  type Blow,
   type Change,
   type ChangeResult,
   type Changing,
@@ -23,6 +24,7 @@ export {
   withHp,
   withMp,
 } from './battle/battle.ts'
+export { handled, handlerKnown, passesOf } from './battle/blows.ts'
 export { brokenChain, type Chain, chainStep, NO_CHAIN } from './battle/combo.ts'
 export {
   blockChance,

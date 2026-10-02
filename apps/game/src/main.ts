@@ -96,6 +96,7 @@ import {
 import {
   BattleRng,
   type BattleState,
+  type Blow,
   blockChance,
   type CollisionWorld,
   type Command,
@@ -109,6 +110,7 @@ import {
   type Follower,
   facingOff,
   groundBelow,
+  handlerKnown,
   headingAngle,
   howItOpens,
   monsterHp,
@@ -343,6 +345,7 @@ import {
   battleSheets,
   entranceOf,
   givenNamesFrom,
+  type ItemEffect,
   type Loaded,
   load,
   mapLighting,
@@ -1810,6 +1813,14 @@ function openWorld(map: string): void {
   if (Number.isInteger(handedIn) && handedIn > 0) medalsGiven = Math.min(handedIn, MEDALS_MOST)
   const level = Number(params.get('level'))
   if (Number.isInteger(level) && level > 0) levelTo(level)
+  // `?skills=1:3,11:58` puts that many points into each skill tree of the
+  // Hero's — a way to try an ability in a fight without the skill screen.
+  for (const pair of (params.get('skills') ?? '').split(',')) {
+    const [tree, points] = pair.split(':').map(Number)
+    if (Number.isInteger(tree) && Number.isInteger(points) && (points as number) > 0) {
+      leader().treePoints.set(tree as number, Math.min(points as number, 100))
+    }
+  }
   // `?preset=3` dresses the Hero as a ready-made character — see `showPreset`.
   const asPreset = params.get('preset')
   if (asPreset !== null && /^\d+$/.test(asPreset)) showPreset(Number(asPreset))
@@ -5133,8 +5144,9 @@ function battleItems(carried: readonly number[]): BattleItem[] {
 function battleOffered(): Offered {
   const items: BattleItem[] = []
   const spells: BattleSpell[] = []
+  const known = new Map<number, Told>()
   const asked: Asked[] = battleMembers.map((member, fighter) => {
-    const lists = battleListsOf(member, spells)
+    const lists = battleListsOf(member, spells, known)
     const own = battleItems(member.carried ?? [])
     items.push(...own)
     return {
@@ -5149,7 +5161,7 @@ function battleOffered(): Offered {
       items: own.map(itemEntry),
     }
   })
-  return { asked, items, spells }
+  return { asked, items, spells, known }
 }
 
 /** Revival's kind, `+0x18` bits 5–11; and Zing, Kazing and the Zing stick, which take either. */
@@ -5162,6 +5174,7 @@ const PSYCHE_KIND = 15
 function battleListsOf(
   member: Member,
   told: BattleSpell[],
+  known: Map<number, Told>,
 ): { spells: Entry[]; abilities: Entry[] } {
   const here = loaded
   const out = { spells: [] as Entry[], abilities: [] as Entry[] }
@@ -5196,16 +5209,25 @@ function battleListsOf(
     const spell = battleSpellOf(action)
     if (spell) told.push(spell)
     const kind = action.rolls?.kind
+    const blow = blowOf(action)
+    if (blow)
+      known.set(id, {
+        name: { name: action.name },
+        message: action.message,
+        opening: action.opening,
+      })
     const command: Entry['command'] = spell
       ? (target) => ({ kind: 'spell', spell: spell.spell, target })
-      : kind === PSYCHE_KIND && action.reach === ActionReach.Actor
-        ? () => ({
-            kind: 'psyche',
-            action: id,
-            steps: Math.max(1, action.rolls?.levels ?? 1),
-            ...(id === 0x151 || id === 0x152 ? { outright: true } : {}),
-          })
-        : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
+      : blow
+        ? (target) => ({ kind: 'blow', blow, target })
+        : kind === PSYCHE_KIND && action.reach === ActionReach.Actor
+          ? () => ({
+              kind: 'psyche',
+              action: id,
+              steps: Math.max(1, action.rolls?.levels ?? 1),
+              ...(id === 0x151 || id === 0x152 ? { outright: true } : {}),
+            })
+          : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
     list.push({
       action: id,
       name: renderName(action.name),
@@ -5218,6 +5240,43 @@ function battleListsOf(
     })
   }
   return out
+}
+
+/**
+ * **An ability that is a blow**, as the battle plays it — see `blows.ts`: one
+ * of kind 1, aimed at the monsters, with no range of its own, whose handler is
+ * read. Undefined for anything else, which stays as it was.
+ *
+ * **Ours**: the slot-0 blows with code of their own elsewhere — Propeller
+ * Blade, Crosscutter Throw, Gold Rush, and the six that scale, Gigaslash among
+ * them — play as the plain blow their slot gives.
+ */
+function blowOf(action: ItemEffect): Blow | undefined {
+  const r = action.rolls
+  if (r?.kind !== 1 || action.side !== 1 || action.range || !handlerKnown(r.handler)) {
+    return undefined
+  }
+  return {
+    action: action.action,
+    handler: r.handler,
+    reach:
+      action.reach === ActionReach.All
+        ? 'all'
+        : action.reach === ActionReach.Group
+          ? 'group'
+          : 'one',
+    hits: r.hitCode,
+    criticalPercent: r.criticalPercent ?? 0,
+    element: r.element ?? 8,
+    ...(r.cap ? { cap: r.cap } : {}),
+    falloff: r.fallsOff,
+    evadable: r.evadable,
+    blockable: r.blockable,
+    defendable: r.defendable,
+    tensed: r.tensed,
+    combos: r.combos,
+    after: r.afterStep,
+  }
 }
 
 /** Tactics set from Misc. in battle, kept with their members — see `Member.tactic`. */
@@ -5993,6 +6052,9 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       shield: false,
       // What it takes of each element — its record's own, read as the game reads it.
       resist: numbers.resistances,
+      // Its family and body, which the abilities' handlers ask — `mon_data` `+0x0A`.
+      family: who.family,
+      metal: who.metal,
       exp: numbers.exp,
       gold: numbers.gold,
       // Which monster it is: what a battle drops goes by the kind — `dropsWon`.

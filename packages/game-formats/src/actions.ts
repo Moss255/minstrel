@@ -229,6 +229,21 @@ export interface Action {
    */
   readonly usableIn: number
   /**
+   * Its **hit code**, `+0x1C` bits 14–18: 1, 6 and 9 strike the targets two,
+   * four and five times over; 3, 4, 5, 7, 8, 10 and 11 strike a number of
+   * random picks among them (`func_ov024_021e8dc0`, `func_ov000_0215fbe0`;
+   * read 2 October 2026).
+   */
+  readonly hitCode: number
+  /**
+   * What runs once after it, `+0x2C` bits 10–13 (the table at `0x021ff3f8`):
+   * 1 MP back, 2 the guard, 3 recoil, 4 HP back, 5 the actor's fall, 6 gold
+   * spent.
+   */
+  readonly afterStep: number
+  /** Whether it weakens over its passes, `+0x10` bit 17: 1.0, 0.8, 0.6, 0.4, 0.2. */
+  readonly fallsOff: boolean
+  /**
    * Whether its *amount* scales by a number of the user's — the same two bits
    * as {@link accuracyMode}, at 2. `GetAttackBaseDamage` (overlay 24,
    * `0x021e7c0c`) tests them for one of the party: at 2, and with a number
@@ -366,6 +381,9 @@ export function readActions(bytes: Uint8Array): Action[] {
       side: (view.getUint32(at + 8, true) >>> 8) & 3,
       list: (view.getUint32(at + 0x18, true) >>> 12) & 0xf,
       usableIn: (view.getUint32(at + 8, true) >>> 10) & 3,
+      hitCode: (view.getUint32(at + 0x1c, true) >>> 14) & 31,
+      afterStep: (view.getUint32(at + 0x2c, true) >>> 10) & 15,
+      fallsOff: (view.getUint32(at + 0x10, true) & 0x20000) !== 0,
       element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
       landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,
