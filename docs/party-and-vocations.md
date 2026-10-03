@@ -1052,7 +1052,9 @@ Two things fell out of it:
   vocation 0 and mode 0 (`0x0218b95c`): no weapon, and the **celestial suit
   (13007), celestial stockings (16215) and celestial shoes (17120)**. The
   Hero here still starts in `STARTING_EQUIPMENT`, the tester's copper sword —
-  not changed with this reading, and now known not to be the game's.
+  now known not to be the game's, and **kept by choice** (3 October 2026).
+  `?party=` likewise keeps its presets' own gear rather than the recruit's
+  kit, by choice: it is a shortcut for testing, not the game's way in.
 - **A ready-made character comes in wearing it** (3 October 2026, `dressFromPreset`
   in `main.ts`) — **ours**, as `?party=` is. Each piece their preset names
   (`charapreset.bin` values 79–85) that is an item goes in the slot its own
