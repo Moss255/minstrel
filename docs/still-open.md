@@ -175,7 +175,7 @@ lives; this is the gathered list.
 | chests | how far a lid goes back (110°), that it goes at the rate of the hands, and the text waiting for the motion. INFERRED: that the lid rises with the hands at all — no file animates one |
 | the character | the person's scale against the buildings, set by eye — the buildings are measured, the ratio to them is not (`sim/src/character.ts`, `PERSON`); the step and snap heights, set by the movement |
 | the look | the doorway fade's quarter-second; the text speeds; the sword and shield on the back; the dusk and night colours |
-| the slice | the title card that closes it |
+| the slice | ~~the title card that closes it~~ — retired 3 October 2026: the story plays on past the slice, and the card sent players out of Angel Falls before 2.6 and 2.7, so Stornway was reached at a stage its people have no lines for |
 
 ---
 

@@ -232,7 +232,6 @@ import {
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
 import { BUBBLE_SHEETS, type BubbleKind, bubbleFrame, doorAhead } from './bubbles.ts'
 import { type Cabinet, cabinetsOf, cabinetTargets, searchedFrame } from './cabinets.ts'
-import { CARD, closesTheSlice } from './card.ts'
 import { type CartridgeIdentity, describeIdentity, identifyCartridge } from './cartridge-id.ts'
 import { forgetCartridge, keepCartridge, keptCartridge } from './cartridge-store.ts'
 import {
@@ -564,7 +563,6 @@ let revealing:
   | undefined
 const menuEl = must<HTMLDivElement>('#menu')
 const battleBottomEl = must<HTMLCanvasElement>('#battle-bottom')
-const cardEl = must<HTMLDivElement>('#card')
 const resumeRow = must<HTMLLabelElement>('#resume-row')
 const resumeEl = must<HTMLInputElement>('#resume')
 const keptRow = must<HTMLDivElement>('#kept-row')
@@ -2929,6 +2927,10 @@ function describe(uploaded: { vertices: number; triangles: number; textured: num
     `${loaded.code} · ${toFloat(self.state.x).toFixed(2)}, ${toFloat(self.state.y).toFixed(2)}, ${toFloat(self.state.z).toFixed(2)}` +
       (self.state.grounded ? '' : ' (falling)') +
       (self.inside ? ' · indoors' : ''),
+    // Where the story stands on this map's thread, and the chapter its people
+    // talk from — what decides whether anyone has a line for now.
+    `story ${storyStage ? `${storyStage.major}.${storyStage.minor}` : 'not begun'}, step ${storyStep}` +
+      ` · thread ${threadOf(loaded.mapId)} · talk from chapter ${chapter() ?? 'none'}`,
     `${uploaded.vertices} vertices · ${uploaded.triangles} triangles` +
       (hiddenPieces > 0 ? ` · ${hiddenPieces} chunks out of the way` : ''),
     loaded.pieces.length === 0 ? 'no character parts loaded' : undefined,
@@ -9140,10 +9142,10 @@ function followEvent(event: number): void {
  * sends away. Its event, battle and hand-on are left to whoever ran it.
  * Whether the story moved into the stage that closes the slice.
  */
-function storyFromRecord(outcome: EventOutcome): boolean {
-  if (!loaded) return false
+function storyFromRecord(outcome: EventOutcome): void {
+  if (!loaded) return
   const story = { stage: storyStage, step: storyStep, flags: storyFlags, marks: storyMarks }
-  const { moved, stepped } = moveStory(
+  const { stepped } = moveStory(
     story,
     outcome,
     { all: storyThreads, live: liveThread },
@@ -9210,7 +9212,6 @@ function storyFromRecord(outcome: EventOutcome): boolean {
   }
   // Whoever its record brings in or sends away — Ivor, over 2.2 and 2.3.
   members = partyAfter(members, outcome, freshMember)
-  return moved && closesTheSlice(storyStage)
 }
 
 /** Where the story stands, for the status line. */
@@ -9234,10 +9235,8 @@ function storyLine(): string {
  */
 function followRecord(outcome: EventOutcome, heading: string): void {
   if (!loaded) return
-  const closing = storyFromRecord(outcome)
+  storyFromRecord(outcome)
   status(`${heading} · ${storyLine()}`)
-  // Patty rescued and the story past the slice: its title card — see `card.ts`.
-  if (closing) showCard()
   if (outcome.battle !== undefined) {
     startEventBattle(outcome.battle)
     return
@@ -10189,24 +10188,6 @@ function showTalk(): void {
   )
 }
 
-/** Put the slice's title card up — see `card.ts`. */
-function showCard(): void {
-  const line = (tag: string, className: string, text: string) => {
-    const element = document.createElement(tag)
-    element.className = className
-    element.textContent = text
-    return element
-  }
-  cardEl.replaceChildren(
-    line('div', 'card-end', CARD.end),
-    line('h1', 'card-title', CARD.title),
-    line('p', 'card-line', CARD.line),
-    line('div', 'card-prompt', CARD.prompt),
-  )
-  self?.held.clear()
-  cardEl.hidden = false
-}
-
 /** Show more of the page being revealed, as its time comes; true while some is still to come. */
 function revealTalk(now: number): boolean {
   if (!revealing) return false
@@ -10378,15 +10359,6 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     preventDefault: () => {
       handled = true
     },
-  }
-  // The title card takes every key while it is up; confirm or cancel puts it away.
-  if (!cardEl.hidden) {
-    if (action === 'confirm' || action === 'cancel') {
-      cardEl.hidden = true
-      status('the slice is over · the Hexagon and Angel Falls are still there to walk')
-    }
-    event.preventDefault()
-    return handled
   }
   // Going into a battle, or out of one, the game reads no key.
   if (entering || leaving) {
