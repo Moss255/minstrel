@@ -1,4 +1,4 @@
-import { attachedGeometry, modelBoneWorld } from '@minstrel/actor'
+import { attachedGeometry, modelBoneWorld, type PriorMotion, posedNodes } from '@minstrel/actor'
 import type { Catalogue, DecodedTexture } from '@minstrel/cartridge'
 import { textureFor } from '@minstrel/cartridge'
 import {
@@ -19,11 +19,9 @@ import {
   type Mat4,
   type Model,
   measureBounds,
-  type NodeTransform,
   poseGeometry,
   readNsbca,
   readNsbmd,
-  sampleAnimation,
 } from '@minstrel/nitro-gfx'
 import { speedsOf } from './motion-speed.ts'
 
@@ -62,6 +60,8 @@ export interface CastMember {
   readonly placement: NpcPlacement
   /** Its idle's speed, frames every 17 ms, from its archive's `.bcfg` — see `motion-speed.ts`. */
   readonly speed?: number
+  /** The motion it is changing from, and how much it still counts — see `PriorMotion`. */
+  readonly prior?: PriorMotion
 }
 
 /** What a map's cast came to, including what could not be drawn. */
@@ -292,14 +292,10 @@ function stacksOf(
   model: Model,
   motion: Animation | undefined,
   frame: number,
+  prior?: PriorMotion,
 ): readonly (readonly Mat4[])[] {
   if (!motion) return model.shapeMatrices
-  const local = sampleAnimation(motion, frame % Math.max(1, motion.frameCount))
-  const nodes: NodeTransform[] = model.nodes.map((node, i) => {
-    const posed = local[i]
-    return posed ? { ...node, local: posed } : node
-  })
-  return model.pose(nodes)
+  return model.pose(posedNodes(model, motion, frame % Math.max(1, motion.frameCount), prior))
 }
 
 /**
@@ -323,7 +319,7 @@ export function castPieces(
   const { model, placement } = member
   const sin = Math.sin(placement.facing)
   const cos = Math.cos(placement.facing)
-  const stacks = stacksOf(model, member.motion, frame)
+  const stacks = stacksOf(model, member.motion, frame, member.prior)
 
   const out: Piece[] = []
   model.shapes.forEach((shape, index) => {
@@ -368,7 +364,7 @@ export function heldPieces(
   const cos = Math.cos(placement.facing)
   const out: Piece[] = []
   for (const part of held) {
-    const at = modelBoneWorld(model, member.motion, frame, part.bone)
+    const at = modelBoneWorld(model, member.motion, frame, part.bone, member.prior)
     if (!at) continue
     for (let shape = 0; shape < part.model.numShapes; shape++) {
       const posed = attachedGeometry(part.model, shape, at, part.turn)

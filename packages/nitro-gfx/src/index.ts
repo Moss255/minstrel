@@ -47,6 +47,7 @@ export {
   type Animation,
   type Axes,
   BASIS_ENTRY_SIZE,
+  type BlendLayer,
   type BoneTrack,
   boneTrackSize,
   type Channel,
@@ -60,6 +61,7 @@ export {
   readNsbca,
   rotationFromRef,
   sampleAnimation,
+  sampleBlended,
   sampleTrack,
 } from './nsbca.ts'
 export {

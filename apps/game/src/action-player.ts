@@ -68,7 +68,34 @@ export interface StageFighter {
   readonly motionAt: number
   /** How fast it turns, radians a tick — `+0xb0`: 0x324 unless a big monster's slower. */
   readonly turnRate: number
+  /** A motion it is changing from as the action begins — see {@link Blend}. */
+  readonly blend?: Blend
 }
+
+/**
+ * **A change of motion, blended** — `Object3D::priorAnimationBlend_`, read 3
+ * October 2026 (the decomp's `src/World/Object3D.cpp`). A motion set with flag
+ * `0x10` keeps the one before at the time it was left, counting for all of the
+ * pose at first and nothing after {@link BLEND_MS} of effective time, by a
+ * share of what is left each pass (`AdvanceAnimations_v1`); and **the new
+ * motion's clock stands still until the blend is over**. A second `0x10`
+ * change while one is under way cuts it short instead; changing back to the
+ * motion being left ends it.
+ */
+export interface Blend {
+  /** The motion being left, and how far into it, ms, as it was left. */
+  readonly from: string
+  readonly at: number
+  /** Whether it goes round (its flag 1 clear), for the frame it was left on. */
+  readonly loops: boolean
+  /** How much it still counts, 1 to 0. */
+  weight: number
+  /** Effective ms left. */
+  left: number
+}
+
+/** `defaultAnimBlendDuration_`, ms (`Object3D::Initialize`). */
+export const BLEND_MS = 200
 
 /** What the caller knows of motions and effects: how long each takes once through, ms, or undefined for none. */
 export interface Timings {
@@ -105,6 +132,8 @@ export interface FighterShow {
   motionFlags: number
   /** How far into its motion, effective ms. */
   motionAt: number
+  /** The motion it is changing from, while the change is blended. */
+  blend: Blend | undefined
   alpha: number
   fade: { readonly to: number; readonly perMs: number } | undefined
   visible: boolean
@@ -327,6 +356,7 @@ export function startAction(
       motion: f.motion,
       motionFlags: 0,
       motionAt: f.motionAt,
+      blend: f.blend ? { ...f.blend } : undefined,
       alpha: 31,
       fade: undefined,
       visible: f.visible,
@@ -407,13 +437,32 @@ export function startAction(
     return []
   }
 
+  /**
+   * `Object3D::MaybeSetRegularAnimation`: none of that name, and nothing
+   * changes; the same one again, playing the same way round, and nothing
+   * changes unless flag 8 asks for a restart; else it starts — blended from
+   * the one before under flag `0x10` (see {@link Blend}).
+   */
   function setMotion(index: number, name: string, flags: number): boolean {
     const f = shows.get(index)
     if (!f) return false
     if (timings.motionMs(index, name) === undefined) return false
+    if ((flags & 8) === 0 && f.motion === name && (flags & 4) === (f.motionFlags & 4)) return true
+    if (flags & 0x10) {
+      f.blend = f.blend
+        ? undefined
+        : {
+            from: f.motion,
+            at: f.motionAt,
+            loops: (f.motionFlags & 1) === 0,
+            weight: 1,
+            left: BLEND_MS,
+          }
+    }
     f.motion = name
     f.motionFlags = flags
     f.motionAt = 0
+    if (f.blend?.from === name) f.blend = undefined
     return true
   }
 
@@ -741,6 +790,8 @@ export function startAction(
       if (!f) continue
       // Any movement of the battle record's is cancelled, and a fighter not idle, dying or dead is idle again.
       if (f.state !== 0 && f.state !== 4 && f.state !== 6) f.state = 0
+      // `SkipAnimationTransition`: a scripted motion never blends in.
+      f.blend = undefined
       if (!setMotion(i, c.name, c.flags) && c.name === 'magic') {
         if (!setMotion(i, 'magic1', c.flags)) setMotion(i, 'magic_in', c.flags)
       }
@@ -1114,7 +1165,16 @@ export function startAction(
 
   function advance(ms: number) {
     for (const f of shows.values()) {
-      f.motionAt += ms
+      // Through a blend the new motion stands still, and the one left weighs
+      // less by its share of the time left (`AdvanceAnimations_v1`).
+      if (f.blend) {
+        if (f.blend.left < ms) f.blend = undefined
+        else {
+          f.blend.weight -= f.blend.weight * (ms / f.blend.left)
+          f.blend.left -= ms
+          if (f.blend.left <= 0) f.blend = undefined
+        }
+      } else f.motionAt += ms
       if (f.fade) {
         const next = f.alpha + f.fade.perMs * ms
         const reached = f.fade.perMs >= 0 ? next >= f.fade.to : next <= f.fade.to

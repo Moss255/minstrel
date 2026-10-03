@@ -8,6 +8,8 @@ export {
   figureStacks,
   modelBoneWorld,
   type Outfit,
+  type PriorMotion,
+  posedNodes,
   poseFigure,
   usefulParts,
 } from './figure.ts'

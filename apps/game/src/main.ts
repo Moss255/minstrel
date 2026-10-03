@@ -7,6 +7,7 @@ import {
   Measurements,
   MOTION_FAMILY,
   type Outfit,
+  type PriorMotion,
 } from '@minstrel/actor'
 import { type Catalogue, textureFor } from '@minstrel/cartridge'
 import { FX32_ONE, type Fx32, fx32, toFloat } from '@minstrel/fixed'
@@ -137,6 +138,8 @@ import {
 } from '@minstrel/world'
 import {
   type ActionRun,
+  BLEND_MS,
+  type Blend,
   isParty as isPartyObject,
   LOOSE_SCALE,
   MONSTER_BASE,
@@ -6830,6 +6833,8 @@ function heroInBattle(hero: Player, now: number): Piece[] {
       loaded.catalogue,
       measurements,
       motion,
+      undefined,
+      staged?.motion ? priorPose(staged.blend, motions, speeds) : undefined,
     ),
     staged,
   )
@@ -7183,6 +7188,23 @@ function speedsOfFighter(i: number): ReadonlyMap<string, number> {
   return cartridge ? motionSpeeds(cartridge, motionFamilyOf(member)) : new Map()
 }
 
+/**
+ * **The motion a fighter is changing from**, posed as it was left and counting
+ * for its weight — see `Blend`, from the action on show: by name among its
+ * own motions, at its own speed.
+ */
+function priorPose(
+  blend: Blend | undefined,
+  motions: ReadonlyMap<string, Animation>,
+  speeds: ReadonlyMap<string, number>,
+): PriorMotion | undefined {
+  if (!blend || blend.weight <= 0) return undefined
+  const motion = motions.get(blend.from)
+  if (!motion) return undefined
+  const frame = frameAt(blend.at, speeds.get(blend.from), motion.frameCount, blend.loops)
+  return { motion, frame: Math.floor(frame), weight: blend.weight }
+}
+
 /** Motions that go round rather than play once. */
 const LOOPS: ReadonlySet<string> = new Set(['stand', 'run', 'walk'])
 
@@ -7227,6 +7249,8 @@ function fighterNow(
       readonly motion: string | undefined
       readonly ms: number
       readonly loops: boolean
+      /** The motion it is changing from, while it counts for some of the pose — see `Blend`. */
+      readonly blend: Blend | undefined
       /** 0 to 1, and whether it is seen and drawn untextured. */
       readonly alpha: number
       readonly visible: boolean
@@ -7251,6 +7275,7 @@ function fighterNow(
       motion: f.motion,
       ms: f.motionAt,
       loops: (f.motionFlags & 1) === 0,
+      blend: f.blend,
       alpha: Math.max(0, Math.min(1, f.alpha / 31)),
       visible: f.visible,
       flash: f.flash > 0,
@@ -7262,6 +7287,7 @@ function fighterNow(
     motion: undefined,
     ms: 0,
     loops: true,
+    blend: undefined,
     alpha: 1,
     visible: true,
     flash: false,
@@ -7454,6 +7480,7 @@ function startShown(): void {
         visible: true,
         motion: fallen ? 'death' : 'stand',
         motionAt: fallen ? Number.POSITIVE_INFINITY : 0,
+        ...blendIntoIdle(object, fallen),
         // `+0xb0`: 0x324 a tick, slower for a big monster (`0x021666e8`).
         turnRate: turnRateOf(stage.radii[i] ?? 0) / 4096,
       },
@@ -7500,6 +7527,21 @@ function startShown(): void {
   }
   // The chase is cut to as the action begins, before its first frame is drawn.
   followShownChase(shown)
+}
+
+/** Where each fighter was left by the last action shown — its motion, how far in, and whether it loops. */
+const leftIn = new Map<number, { motion: string; at: number; loops: boolean }>()
+
+/**
+ * **Back to idle between actions, blended** from the motion the last action
+ * left them in. INFERRED: what puts a fighter back to idle as an action begins
+ * is not read; the game's idle — mode 0, `func_02033ba0` — is set with flag
+ * `0x10`, which blends (see `Blend`), so a fighter's own return to it would.
+ */
+function blendIntoIdle(object: number, fallen: boolean): { blend?: Blend } {
+  const left = fallen ? undefined : leftIn.get(object)
+  if (!left || left.motion === 'stand') return {}
+  return { blend: { from: left.motion, at: left.at, loops: left.loops, weight: 1, left: BLEND_MS } }
 }
 
 /** The round whose first action has been shown — the chase is forced on a round's first. */
@@ -7650,8 +7692,10 @@ function finishShown(): void {
   if (!s) return
   // Its showing over, the combo display goes (`0x021db8ac`).
   leaveCombo(combo)
-  for (const f of s.run.fighters.values())
+  for (const f of s.run.fighters.values()) {
     if (f.state === 4 || f.state === 6) fallenShown.add(f.index)
+    leftIn.set(f.index, { motion: f.motion, at: f.motionAt, loops: (f.motionFlags & 1) === 0 })
+  }
   const stage = battleStage
   if (stage) {
     // The camera stays where the action left it (`0x021dcbf4`) — where the
@@ -7842,6 +7886,7 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
         measurements,
         own,
         buildScale(members[at.place]),
+        played ? priorPose(staged?.blend, built.figure.motions, speeds) : undefined,
       ),
       staged,
     )
@@ -7863,7 +7908,15 @@ function companionPiecesOf(at: BattleCompanion, now: number): Piece[] {
     facing: staged?.facing ?? self.facing,
     offset: 0,
   } as NpcPlacement
-  const member = { name: at.model ?? '', model: look.model, motion, floor: look.floor, placement }
+  const prior = played ? priorPose(staged?.blend, look.motions, speeds) : undefined
+  const member = {
+    name: at.model ?? '',
+    model: look.model,
+    motion,
+    floor: look.floor,
+    placement,
+    ...(prior ? { prior } : {}),
+  }
   return asShown(
     [
       ...castPieces(member, look.catalogue, characterScale, frame),
@@ -7965,7 +8018,11 @@ function foePieces(now: number): Piece[] {
       commanding() && place && battleStage
         ? Math.atan2(-place.x, battleStage.commandEyeZ - place.z)
         : (staged?.facing ?? facing)
-    return asShown(monsterPieces(look, staged ?? at, faced, characterScale, motion, frame), staged)
+    const prior = played ? priorPose(staged?.blend, look.motions, look.speeds) : undefined
+    return asShown(
+      monsterPieces(look, staged ?? at, faced, characterScale, motion, frame, prior),
+      staged,
+    )
   })
 }
 
@@ -8321,6 +8378,7 @@ function endFight(): void {
   ending = undefined
   ownSounds = undefined
   fallenShown = new Set()
+  leftIn.clear()
   lastShown = undefined
   pagesSeen = undefined
   pageLeft = 0

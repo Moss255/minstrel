@@ -1,3 +1,4 @@
+import type { PriorMotion } from '@minstrel/actor'
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import type { ActionScript, NpcPlacement } from '@minstrel/game-formats'
 import type { Piece } from '@minstrel/gl'
@@ -96,6 +97,8 @@ export function monsterPieces(
   scale: number,
   motion: string,
   frame: number,
+  /** The motion it is changing from, still counting for some of the pose — see `PriorMotion`. */
+  prior?: PriorMotion,
 ): Piece[] {
   const placement = { id: 0, map: 0, x: at.x, y: at.y, z: at.z, facing, offset: 0 } as NpcPlacement
   return castPieces(
@@ -105,6 +108,7 @@ export function monsterPieces(
       motion: look.motions.get(motion) ?? look.motions.get('stand'),
       floor: 0,
       placement,
+      ...(prior ? { prior } : {}),
     },
     look.catalogue,
     scale,

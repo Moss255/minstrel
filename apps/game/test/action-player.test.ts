@@ -2,6 +2,7 @@ import type { ActionCommand } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import {
   type ActionContext,
+  BLEND_MS,
   EFFECT_BASE,
   effectFileOf,
   MONSTER_BASE,
@@ -164,5 +165,62 @@ describe('an action script, played', () => {
     expect(effectFileOf(1000012)).toBe('effect/em0012.chr')
     expect(effectFileOf(5007000)).toBe('effect/z007000.chr')
     expect(effectFileOf(0)).toBeUndefined()
+  })
+})
+
+describe('a change of motion, blended as the game blends it', () => {
+  const still: ActionCommand[] = [{ tag: 8, ms: 2000 }] as ActionCommand[]
+
+  it('holds the new motion still while the one left fades over 200 ms', () => {
+    const run = startAction(still, CONTEXT, stage(6), TIMINGS)
+    const hero = run.fighters.get(0)
+    run.hooks.setMotion(0, 'run', 0x10)
+    expect(hero?.blend).toMatchObject({ from: 'stand', weight: 1, left: BLEND_MS })
+    passes(run, 6)
+    expect(hero?.motionAt).toBe(0)
+    expect(hero?.blend?.weight).toBeLessThan(1)
+    expect(hero?.blend?.weight).toBeGreaterThan(0)
+    passes(run, 12)
+    expect(hero?.blend).toBeUndefined()
+    expect(hero?.motionAt).toBeGreaterThan(0)
+  })
+
+  it('blends nothing without flag 0x10, and cuts one short on a second', () => {
+    const run = startAction(still, CONTEXT, stage(6), TIMINGS)
+    const hero = run.fighters.get(0)
+    run.hooks.setMotion(0, 'run', 1)
+    expect(hero?.blend).toBeUndefined()
+    run.hooks.setMotion(0, 'guard', 0x10)
+    run.hooks.setMotion(0, 'stand', 0x10)
+    expect(hero?.blend).toBeUndefined()
+  })
+
+  it('leaves the motion playing alone unless flag 8 restarts it', () => {
+    const run = startAction(still, CONTEXT, stage(6), TIMINGS)
+    const hero = run.fighters.get(0)
+    run.hooks.setMotion(0, 'magic', 1)
+    passes(run, 6)
+    const at = hero?.motionAt ?? 0
+    run.hooks.setMotion(0, 'magic', 1)
+    expect(hero?.motionAt).toBe(at)
+    run.hooks.setMotion(0, 'magic', 9)
+    expect(hero?.motionAt).toBe(0)
+  })
+
+  it('never blends a scripted motion in: tag 3 cuts any blend', () => {
+    const run = startAction(
+      [{ tag: 3, who: 7, name: 'attack1a', flags: 1, fx: 0 }] as ActionCommand[],
+      CONTEXT,
+      [
+        {
+          ...(stage(6)[0] as StageFighter),
+          blend: { from: 'run', at: 0, loops: true, weight: 1, left: 200 },
+        },
+        stage(6)[1] as StageFighter,
+      ],
+      TIMINGS,
+    )
+    run.pass(PASS_MS)
+    expect(run.fighters.get(0)).toMatchObject({ motion: 'attack1a', blend: undefined })
   })
 })

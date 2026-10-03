@@ -11,6 +11,7 @@ import {
   poseGeometry,
   resolvePose,
   sampleAnimation,
+  sampleBlended,
   type TextureSet,
   withPalettes,
 } from '@minstrel/nitro-gfx'
@@ -224,7 +225,19 @@ export function figurePieces(figure: Figure): FigurePiece[] {
 }
 
 /**
- * Every part's matrix stacks for one frame of a motion, or its bind pose.
+ * **The motion a character is changing from**, still counting for `weight` of
+ * its pose (1 to 0), held at its `frame` — the game's blend from one motion
+ * into the next (`Object3D::priorAnimationBlend_`); see `sampleBlended`.
+ */
+export interface PriorMotion {
+  readonly motion: Animation
+  readonly frame: number
+  readonly weight: number
+}
+
+/**
+ * Every part's matrix stacks for one frame of a motion, or its bind pose —
+ * blended from a prior motion when one is given.
  *
  * Each shape has its own stack, because a model reuses slots between shapes.
  */
@@ -232,11 +245,12 @@ export function figureStacks(
   figure: Figure,
   motion: Animation | undefined,
   frame: number,
+  prior?: PriorMotion,
 ): Map<Model, Mat4[][]> {
   const stacks = new Map<Model, Mat4[][]>()
   for (const part of usefulParts(figure)) {
     if (motion && motion.boneCount === part.nodes.length) {
-      stacks.set(part, part.pose(posedNodes(part, motion, frame)))
+      stacks.set(part, part.pose(posedNodes(part, motion, frame, prior)))
     } else {
       stacks.set(part, part.shapeMatrices as Mat4[][])
     }
@@ -244,8 +258,24 @@ export function figureStacks(
   return stacks
 }
 
-function posedNodes(part: Model, motion: Animation, frame: number): NodeTransform[] {
-  const local = sampleAnimation(motion, frame)
+/**
+ * A model's nodes posed for a frame of a motion — and, with a prior motion of
+ * as many bones, blended from it, the prior counting for its weight. Bones go
+ * to nodes by index; a node past the last bone keeps its rest.
+ */
+export function posedNodes(
+  part: { readonly nodes: readonly NodeTransform[] },
+  motion: Animation,
+  frame: number,
+  prior?: PriorMotion,
+): NodeTransform[] {
+  const blending = prior && prior.weight > 0 && prior.motion.boneCount === motion.boneCount
+  const local: readonly (Mat4 | undefined)[] = blending
+    ? sampleBlended([
+        { animation: prior.motion, frame: prior.frame, weight: prior.weight },
+        { animation: motion, frame, weight: 1 - prior.weight },
+      ])
+    : sampleAnimation(motion, frame)
   return part.nodes.map((node, i) => {
     const posed = local[i]
     return posed ? { ...node, local: posed } : node
@@ -263,10 +293,11 @@ export function boneWorld(
   motion: Animation | undefined,
   frame: number,
   bone: string,
+  prior?: PriorMotion,
 ): Mat4 | undefined {
   const part = figure.rigged[0]
   if (!part) return undefined
-  return modelBoneWorld(part, motion, frame, bone)
+  return modelBoneWorld(part, motion, frame, bone, prior)
 }
 
 /**
@@ -278,12 +309,13 @@ export function modelBoneWorld(
   motion: Animation | undefined,
   frame: number,
   bone: string,
+  prior?: PriorMotion,
 ): Mat4 | undefined {
   const index = model.nodes.findIndex((node) => node.name === bone)
   if (index < 0) return undefined
   const nodes: readonly NodeTransform[] =
     motion && motion.boneCount === model.nodes.length
-      ? posedNodes(model, motion, frame)
+      ? posedNodes(model, motion, frame, prior)
       : model.nodes
   return resolvePose(model.renderCommands, nodes).world[index]
 }
@@ -324,8 +356,9 @@ export function poseFigure(
   pieces: readonly FigurePiece[],
   motion: Animation | undefined,
   frame: number,
+  prior?: PriorMotion,
 ): { piece: FigurePiece; posed: Geometry }[] {
-  const stacks = figureStacks(figure, motion, frame)
+  const stacks = figureStacks(figure, motion, frame, prior)
   const posed = pieces.map((piece) => ({
     piece,
     posed: poseGeometry(
@@ -337,7 +370,7 @@ export function poseFigure(
   }))
   // A head is not part of the rig; it hangs from it. So do a weapon and a shield.
   for (const { model, bone, turn } of figure.attachments) {
-    const at = boneWorld(figure, motion, frame, bone)
+    const at = boneWorld(figure, motion, frame, bone, prior)
     if (!at) continue
     for (let shape = 0; shape < model.numShapes; shape++) {
       posed.push({

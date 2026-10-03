@@ -639,6 +639,33 @@ none of it was fitted against the models.
 - **`unknown_0x08`.** A `u32` that is 1 on most animations.
 - **The byte at `+0x02` of a track entry.** Always zero.
 
+### Several animations at once: the joint blend
+
+Not in the file but in how NitroSystem plays it, and so the same on any DS
+cartridge that uses it: a model may carry more than one joint animation, each
+with a weight (`AnimationData::weight_`, 1.0 = `0x1000`), and each joint is
+then the animations' blend — read from the decomp's
+`src/Graphics/NSBXX/AnimationProcessing.cpp`,
+`ProcessJointAnimationsOnBoneMatrix`, 3 October 2026. `sampleBlended` is it.
+
+- An animation **drives** a joint when it has data for it; only those count.
+- **One alone** gives its own pose, whatever its weight.
+- **More**: the total is each weight held to at most 1, leaving out any of 0
+  or less; each counts by its weight over the total (its own weight when the
+  total is exactly 1). Scale and translation are summed by those shares — a
+  part an animation lacks counting as unit scale or no translation.
+- **Rotation** sums only the first two rows of each 3×3 (an animation without
+  a rotation adding the identity's). The third row is set to the first crossed
+  with the second; the first and third are normalised — either summing to
+  nothing takes the first animation's own — and the second is set to the third
+  crossed with the first, so the result is a rotation again.
+- **A total of 0** leaves the joint to the model's own transform.
+
+What uses it on the reference cartridge: a character changing motion with
+flag `0x10` keeps the motion it left, held where it was, at a weight falling
+from 1 to 0 over 200 ms (`Object3D::priorAnimationBlend_`,
+`src/World/Object3D.cpp`) — see `apps/game/src/action-player.ts`, `Blend`.
+
 ## The six containers, and which are read
 
 Every Nitro container on the reference cartridge is the same shape — a four-byte

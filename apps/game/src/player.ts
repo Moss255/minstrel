@@ -3,6 +3,7 @@ import {
   type FigurePiece,
   type Measurements,
   motionAdvance,
+  type PriorMotion,
   poseFigure,
 } from '@minstrel/actor'
 import { type Catalogue, type DecodedTexture, textureFor } from '@minstrel/cartridge'
@@ -309,6 +310,8 @@ export function playerPieces(
    * them per character and picks them by sex.
    */
   build: Build = OWN_SIZE,
+  /** The motion they are changing from, still counting for some of the pose — see `PriorMotion`. */
+  prior?: PriorMotion,
 ): Piece[] {
   if (pieces.length === 0) return []
   const sin = Math.sin(self.facing)
@@ -321,7 +324,7 @@ export function playerPieces(
   const atZ = toFloat(self.state.z)
   const floor = measurements.floor(figure, pieces, motion)
 
-  return poseFigure(figure, pieces, motion, Math.floor(self.motionFrame)).map(
+  return poseFigure(figure, pieces, motion, Math.floor(self.motionFrame), prior).map(
     ({ piece, posed }) => {
       const vertices = posed.vertices.map((v) => {
         const x = v.x * wide

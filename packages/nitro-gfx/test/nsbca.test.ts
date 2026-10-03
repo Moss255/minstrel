@@ -10,6 +10,7 @@ import {
   loopFrames,
   readNsbca,
   sampleAnimation,
+  sampleBlended,
 } from '../src/nsbca.ts'
 import { basisRotation } from '../src/rotation.ts'
 
@@ -393,6 +394,53 @@ function apply(m: ArrayLike<number>, v: readonly [number, number, number]): numb
   const at = (r: number, c: number) => m[c * 4 + r] as number
   return [0, 1, 2].map((r) => at(r, 0) * v[0] + at(r, 1) * v[1] + at(r, 2) * v[2])
 }
+
+describe('sampleBlended, the NitroSystem joint blend', () => {
+  const animation = () => readNsbca(buildAnimated()).animations[0] as Animation
+  const at = (m: Float32Array | undefined, v: [number, number, number]) =>
+    apply(m as Float32Array, v).map((x) => Math.round(x * 1000) / 1000)
+
+  it('gives a layer of weight 1 against one of 0 that layer’s pose', () => {
+    const anim = animation()
+    const blended = sampleBlended([
+      { animation: anim, frame: 3, weight: 1 },
+      { animation: anim, frame: 0, weight: 0 },
+    ])
+    const own = sampleAnimation(anim, 3)
+    expect((blended[1] as Float32Array)[12]).toBe(40)
+    expect(at(blended[1], [1, 0, 0])).toEqual(at(own[1] as Float32Array, [1, 0, 0]))
+  })
+
+  it('sums translation by weight, and keeps a constant pose as it is', () => {
+    const anim = animation()
+    const blended = sampleBlended([
+      { animation: anim, frame: 0, weight: 0.5 },
+      { animation: anim, frame: 2, weight: 0.5 },
+    ])
+    expect((blended[1] as Float32Array)[12]).toBe(20)
+    // Bone 0 is the same in both: its turn and its scale of 2 survive the blend.
+    expect(at(blended[0], [1, 0, 0])).toEqual([0, 0, 2])
+    expect(at(blended[0], [0, 0, 1])).toEqual([-2, 0, 0])
+  })
+
+  it('leaves a blended rotation a rotation: unit, square axes', () => {
+    const anim = animation()
+    const m = sampleBlended([
+      { animation: anim, frame: 0, weight: 0.3 },
+      { animation: anim, frame: 3, weight: 0.7 },
+    ])[1] as Float32Array
+    const axes = [0, 4, 8].map((k) => [m[k], m[k + 1], m[k + 2]] as number[])
+    for (const a of axes) expect(Math.hypot(...a)).toBeCloseTo(1, 5)
+    const dot = (a: number[], b: number[]) => a.reduce((n, x, i) => n + x * (b[i] as number), 0)
+    expect(dot(axes[0] as number[], axes[1] as number[])).toBeCloseTo(0, 5)
+    expect(dot(axes[1] as number[], axes[2] as number[])).toBeCloseTo(0, 5)
+  })
+
+  it('leaves a bone to the model when every weight is 0', () => {
+    const anim = animation()
+    expect(sampleBlended([{ animation: anim, frame: 0, weight: 0 }])[0]).toBeUndefined()
+  })
+})
 
 describe('sampleAnimation', () => {
   const animation = () => readNsbca(buildAnimated()).animations[0] as Animation

@@ -439,6 +439,137 @@ export function sampleAnimation(animation: Animation, frame: number, out: Mat4[]
   return out
 }
 
+/** One animation's part in a blend: where in it, and how much it counts — 1 is all. */
+export interface BlendLayer {
+  readonly animation: Animation
+  readonly frame: number
+  readonly weight: number
+}
+
+/** A track's pose on a frame with its parts apart: what a blend sums. */
+function trackParts(
+  animation: Animation,
+  track: BoneTrack,
+  frame: number,
+): { rotation: Mat4; scale: [number, number, number]; translation: [number, number, number] } {
+  const rotation = identity()
+  if (track.rotation) {
+    const ref =
+      track.rotation.kind === 'constant'
+        ? track.rotation.ref
+        : u16(
+            animation.data,
+            track.rotation.curve.offset + sampleIndex(track.rotation.curve, frame) * 2,
+            'rotation.sample',
+          )
+    rotationFromRef(animation, ref, rotation)
+  }
+  const axis = (channels: Axes | undefined, stride: number, absent: number) =>
+    [0, 1, 2].map((k) =>
+      channels ? channelAt(animation.data, channels[k] as Channel, frame, stride) : absent,
+    ) as [number, number, number]
+  return {
+    rotation,
+    scale: axis(track.scale, 2, 1),
+    translation: axis(track.translation, 1, 0),
+  }
+}
+
+/**
+ * **Several animations at once, by weight** — the NitroSystem joint blend, as
+ * the game runs it (`ProcessJointAnimationsOnBoneMatrix`, the decomp's
+ * `src/Graphics/NSBXX/AnimationProcessing.cpp`). For each bone, of the
+ * animations that drive it:
+ *
+ * - one alone gives its own pose, whatever its weight;
+ * - more are summed, each by its weight over the weights' total (each weight
+ *   held to at most 1 in the total, and one of 0 or less left out): scale and
+ *   translation as they are, and of the rotation only the first two basis
+ *   vectors; the third is then their cross product, the first and third are
+ *   normalised (one that sums to nothing takes the first animation's), and
+ *   the second is the third crossed with the first — so it stays a rotation;
+ * - none, or a total of 0, leaves the bone to the model's own transform —
+ *   undefined here.
+ *
+ * A part an animation does not carry counts as the identity: unit scale, no
+ * rotation, no translation. What a character's motion does as it changes from
+ * one to the next — see `Object3D::SetCurrentAnimationTime`.
+ */
+export function sampleBlended(layers: readonly BlendLayer[]): (Mat4 | undefined)[] {
+  const bones = layers.reduce((n, l) => Math.max(n, l.animation.boneCount), 0)
+  const out: (Mat4 | undefined)[] = []
+  for (let bone = 0; bone < bones; bone++) {
+    const driving = layers.flatMap((layer) => {
+      const track = layer.animation.tracks.find((t) => t.index === bone)
+      return track ? [{ layer, track }] : []
+    })
+    let total = 0
+    for (const { layer } of driving) {
+      if (layer.weight > 1) total += 1
+      else if (layer.weight > 0) total += layer.weight
+    }
+    if (total === 0) {
+      out.push(undefined)
+      continue
+    }
+    if (driving.length === 1) {
+      const only = driving[0] as (typeof driving)[number]
+      out.push(sampleTrack(only.layer.animation, only.track, only.layer.frame))
+      continue
+    }
+    const scale = [0, 0, 0]
+    const translation = [0, 0, 0]
+    const c0 = [0, 0, 0]
+    const c1 = [0, 0, 0]
+    let first: { c0: number[]; c2: number[] } | undefined
+    for (const [k, { layer, track }] of driving.entries()) {
+      if (layer.weight <= 0) continue
+      const parts = trackParts(layer.animation, track, layer.frame)
+      const r = parts.rotation
+      if (k === 0) {
+        first = {
+          c0: [r[0] as number, r[1] as number, r[2] as number],
+          c2: [r[8] as number, r[9] as number, r[10] as number],
+        }
+      }
+      const w = total === 1 ? layer.weight : layer.weight / total
+      for (let i = 0; i < 3; i++) {
+        scale[i] = (scale[i] as number) + w * (parts.scale[i] as number)
+        translation[i] = (translation[i] as number) + w * (parts.translation[i] as number)
+        c0[i] = (c0[i] as number) + w * (r[i] as number)
+        c1[i] = (c1[i] as number) + w * (r[4 + i] as number)
+      }
+    }
+    let c2 = cross(c0, c1)
+    let n0 = normalised(c0)
+    if (!n0) n0 = first?.c0 ?? [1, 0, 0]
+    let n2 = normalised(c2)
+    if (!n2) n2 = first?.c2 ?? [0, 0, 1]
+    c2 = n2
+    const n1 = cross(c2, n0)
+    const m = identity()
+    for (let i = 0; i < 3; i++) {
+      m[i] = (n0[i] as number) * (scale[0] as number)
+      m[4 + i] = (n1[i] as number) * (scale[1] as number)
+      m[8 + i] = (c2[i] as number) * (scale[2] as number)
+      m[12 + i] = translation[i] as number
+    }
+    out.push(m)
+  }
+  return out
+}
+
+function cross(a: readonly number[], b: readonly number[]): number[] {
+  const [ax, ay, az] = a as [number, number, number]
+  const [bx, by, bz] = b as [number, number, number]
+  return [ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx]
+}
+
+function normalised(v: readonly number[]): number[] | undefined {
+  const length = Math.hypot(...v)
+  return length === 0 ? undefined : v.map((x) => x / length)
+}
+
 /**
  * How many frames of an animation to play before looping.
  *
