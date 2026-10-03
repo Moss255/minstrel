@@ -3477,7 +3477,7 @@ let debugOn = params.get('debug') === '1' || params.get('fps') === '1' || params
 /** The developer keys, as the debug screen lists them. */
 const DEBUG_KEYS = [
   '` debug screen · shift+` scene browser',
-  'p a fight · shift+p the boss · l a level · shift+l one back',
+  'p a fight · shift+p the boss · l a level · shift+l one back (to whoever the menu is on)',
   'n / v chapter · t / y story stage · c collision',
 ].join('\n')
 /** The frame-rate meter — see `fps-meter.ts` — at the top, the keys under it. */
@@ -3493,8 +3493,10 @@ document.querySelector('main')?.append(logEl)
 /** The three, one under the other down the left — see `#debug` in the styles. */
 const debugEl = document.createElement('div')
 debugEl.id = 'debug'
+// Where the overlay stood, under everything that comes after it — the map,
+// the battle's screens, the menus — so the game's own windows stay on top.
+overlayEl.before(debugEl)
 debugEl.append(overlayEl, fpsShown, logEl)
-document.querySelector('main')?.append(debugEl)
 debugEl.hidden = !debugOn
 
 /** Show or hide the debug screen. Before a map is up the status line stays, for the loading's word. */
@@ -5399,27 +5401,37 @@ function heroVitals(row: LevelRow): Vitals {
  * plus what they wear, which is what `startFight` hands the battle. Returns
  * the level's own numbers, for a headless check to read.
  */
-function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
-  const levels = levelsFor(leader())
-  if (!levels) {
-    status('the level table did not load, so the Hero has no level to move')
+function levelTo(
+  level: number | undefined,
+  by = 0,
+  moved: Member = leader(),
+): LevelRow | undefined {
+  const place = members.indexOf(moved)
+  const who = place <= 0 ? heroName() : nameFor(moved)
+  // A story companion keeps the numbers `attnpc` gives them, and has no level to move.
+  if (!levelsUp(moved)) {
+    status(`${who} keeps their own numbers and has no level to move`)
     return undefined
   }
-  const before = standing(levels, expOf(leader()), leader().gains).level
+  const levels = levelsFor(moved)
+  if (!levels) {
+    status(`the level table did not load, so ${who} has no level to move`)
+    return undefined
+  }
+  const before = standing(levels, expOf(moved), moved.gains).level
   // Into the vocation they are, which is the only one this moves.
-  leader().exp.set(
-    leader().vocation,
-    level === undefined ? expLevelledBy(levels, expOf(leader()), by) : expAtLevel(levels, level),
+  moved.exp.set(
+    moved.vocation,
+    level === undefined ? expLevelledBy(levels, expOf(moved), by) : expAtLevel(levels, level),
   )
-  const after = standing(levels, expOf(leader()), leader().gains).level
-  earnSkillPoints(leader(), before, after)
+  const after = standing(levels, expOf(moved), moved.gains).level
+  earnSkillPoints(moved, before, after)
   // Undefined is whole, and stays whole at the new maximum.
-  const moved = leader()
   if (moved.hp !== undefined)
     moved.hp = Math.min(after.maxHp, moved.hp + (after.maxHp - before.maxHp))
   if (moved.mp !== undefined)
     moved.mp = Math.min(after.maxMp, moved.mp + (after.maxMp - before.maxMp))
-  const worn = wornNumbers()
+  const worn = wornNumbers(wornBy(moved))
   const numbers = `attack ${after.strength + worn.attack} · defence ${after.resilience + worn.defence}`
   // At an end of the table a key press moves nothing, which is worth saying.
   const end =
@@ -5430,8 +5442,8 @@ function levelTo(level: number | undefined, by = 0): LevelRow | undefined {
         : ''
   status(
     after.level === before.level
-      ? `level ${after.level}${end} · ${numbers}`
-      : `level ${after.level}, ${after.exp} experience · ${levelGainsText(before, after)} · ${numbers}`,
+      ? `${who}: level ${after.level}${end} · ${numbers}`
+      : `${who}: level ${after.level}, ${after.exp} experience · ${levelGainsText(before, after)} · ${numbers}`,
   )
   // The status panel is where the numbers are read, so it is redrawn under the key.
   if (menu) showMenu()
@@ -10385,12 +10397,15 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     event.preventDefault()
     return handled
   }
-  // `l` gives the Hero a level and Shift+L takes one back — see `levelTo`.
+  // `l` gives a level and Shift+L takes one back — see `levelTo` — to
+  // whoever the menu is about, or the Hero with the menu shut.
   // It works with the menu up, so the status panel can be watched as the
   // levels go by; not in a battle, whose fighters took their numbers when it
   // began, nor while the collision fit has `l` for its own.
   if (key === 'l' && debugOn && loaded && !battle && !showCollision) {
-    levelTo(undefined, event.shiftKey ? -1 : 1)
+    // Whoever the menu is about — the one picked on its attributes or
+    // equipment screen — and the Hero with the menu shut.
+    levelTo(undefined, event.shiftKey ? -1 : 1, (menu && members[menu.member]) || leader())
     event.preventDefault()
     return handled
   }

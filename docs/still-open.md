@@ -30,7 +30,8 @@ that would confirm a find, are in `docs/binaries.md`, "Still to look for".
 
 ### 1a. Cheap to settle in play, now that levels are free
 
-`l` gives the Hero a level and Shift+L takes one back; `minstrelLevel(30)` goes
+`l` (with the debug screen up) gives a level and Shift+L takes one back — the
+Hero's, or the member the menu is on; `minstrelLevel(30)` goes
 straight to one; `?level=20` opens a new game at one (`levelTo` in
 `apps/game/src/main.ts`). That turns each of these from a grind into two
 keypresses. **None of it settles anything by itself** — every one still wants

@@ -154,8 +154,10 @@ puts an item on the Hero, `?level=20` starts the Hero at a level, `?map=`,
 `?event=` and `?at=x,z` open a map, a scene or a spot.
 
 For trying the numbers out, with the debug screen up (the key left of 1,
-like Minecraft's F3), `p` picks a fight and `l` gives the Hero a level —
-Shift+L takes one back. Each says the level reached, what it brought, and the
+like Minecraft's F3), `p` picks a fight and `l` gives a level — Shift+L takes
+one back — to whoever the menu is on: the member picked on Attributes or
+Equipment (Q and E step through the party there), or the Hero with the menu
+shut. Each says the level reached, what it brought, and the
 attack and defence a fight would use; with the menu up, the status panel
 follows along, so what a level does to the numbers can be watched a level at a
 time. `minstrelLevel(30)` in the console goes straight to one.
