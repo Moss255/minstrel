@@ -1,13 +1,20 @@
 /**
- * What the player can do, and which keys and pad buttons do it.
+ * **The DS's buttons**, and which keys and pad buttons stand for each.
  *
- * The game asks for actions, not keys: `confirm`, `cancel`, `up` … Each has
- * the keys and the standard-layout pad buttons bound to it, which the player
- * may change and which the browser keeps. The development keys — a fight, a
- * level, the chapters, the stages, the collision — are not here and stay
+ * Each action is one of the DS's buttons — the +Control Pad, A, B, X, Y, L,
+ * R, START and SELECT — with the keys and the standard-layout pad buttons
+ * bound to it, which the player may change and which the browser keeps. Two
+ * more are ours: the mini-map and the music. The development keys — a fight,
+ * a level, the chapters, the stages, the collision — are not here and stay
  * fixed.
  *
- * All of it ours: the DS had one layout.
+ * **What each button does is the game's own word**, in its English text (EU):
+ * A to examine and confirm (`tms_sta`, Collapsus's lines); B held with the
+ * +Control Pad for a party trick (`str_tm` 4023, Ricki's lines); X for the
+ * menu and SELECT for the Battle Records (Stella, `ev22593`); Y for "the
+ * world map, or … the story so far", L and R to move the view, and L to
+ * confirm as well as A (the tips in `Header`). **Ours**: the keys and pad
+ * buttons chosen for each, and that L only turns the view here.
  */
 
 export const ACTIONS = [
@@ -17,27 +24,36 @@ export const ACTIONS = [
   'right',
   'confirm',
   'cancel',
+  'menu',
+  'y',
   'turnLeft',
   'turnRight',
-  'menu',
+  'start',
+  'select',
   'map',
   'music',
 ] as const
 export type Action = (typeof ACTIONS)[number]
 
-/** What each action reads as in the controls panel. */
+/** The buttons that do nothing yet, which a layout may leave without a key. */
+const NOT_YET: ReadonlySet<Action> = new Set(['y', 'start', 'select'])
+
+/** What each button reads as in the controls panel: the DS's name, then what it does. */
 export const ACTION_LABELS: Readonly<Record<Action, string>> = {
-  up: 'Walk forward / up',
-  down: 'Walk back / down',
-  left: 'Walk left',
-  right: 'Walk right',
-  confirm: 'Talk, examine, confirm',
-  cancel: 'Back, close',
-  turnLeft: 'Turn the camera left',
-  turnRight: 'Turn the camera right',
-  menu: 'Menu',
-  map: 'Map on and off',
-  music: 'Music on and off',
+  up: '+Control Pad up — walk forward',
+  down: '+Control Pad down — walk back',
+  left: '+Control Pad left — walk left',
+  right: '+Control Pad right — walk right',
+  confirm: 'A Button — talk, examine, confirm',
+  cancel: 'B Button — back; held with the +Control Pad, a trick',
+  menu: 'X Button — the menu',
+  y: 'Y Button — the world map, the story so far (not built yet)',
+  turnLeft: 'L Button — turn the view left',
+  turnRight: 'R Button — turn the view right',
+  start: 'START — nothing in the field',
+  select: 'SELECT — the Battle Records (not built yet)',
+  map: 'Ours — the mini-map on and off',
+  music: 'Ours — the music on and off',
 }
 
 export interface Binding {
@@ -49,9 +65,9 @@ export interface Binding {
 export type Bindings = Readonly<Record<Action, Binding>>
 
 /**
- * The defaults: the keys the game has always read, and the standard pad —
- * 12–15 the d-pad, 0 the bottom face button, 1 the right one, 9 start, 8
- * select, 3 the top face button.
+ * The defaults: the keys the game has always read, and the standard pad by
+ * its buttons' names — 12–15 the d-pad, 0 A, 1 B, 2 X, 3 Y, 4 and 5 the
+ * shoulders, 8 select, 9 start; the mini-map and the music on the triggers.
  *
  * `q` and `e` turn the camera, on 4 and 5, the shoulders. **Ours**, and not
  * read from the cartridge: the DS had one stick, so whatever turns the camera
@@ -69,9 +85,12 @@ export const DEFAULT_BINDINGS: Bindings = {
   cancel: { keys: ['escape'], buttons: [1] },
   turnLeft: { keys: ['q'], buttons: [4] },
   turnRight: { keys: ['e'], buttons: [5] },
-  menu: { keys: ['x'], buttons: [9] },
-  map: { keys: ['m'], buttons: [8] },
-  music: { keys: ['b'], buttons: [3] },
+  menu: { keys: ['x'], buttons: [2] },
+  y: { keys: ['z'], buttons: [3] },
+  start: { keys: [], buttons: [9] },
+  select: { keys: [], buttons: [8] },
+  map: { keys: ['m'], buttons: [6] },
+  music: { keys: ['b'], buttons: [7] },
 }
 
 export const CONTROLS_KEY = 'minstrel.controls'
@@ -114,9 +133,9 @@ export function clearAction(bindings: Bindings, action: Action): Bindings {
   return { ...bindings, [action]: { keys: [], buttons: [] } }
 }
 
-/** Whether every action has at least one key — a layout that can be played on a keyboard. */
+/** Whether every button that does something has at least one key — a layout that can be played on a keyboard. */
 export function playable(bindings: Bindings): boolean {
-  return ACTIONS.every((action) => bindings[action].keys.length > 0)
+  return ACTIONS.every((action) => NOT_YET.has(action) || bindings[action].keys.length > 0)
 }
 
 /** The bindings as saved, or the defaults; anything that does not read falls back whole. */
@@ -133,6 +152,19 @@ export function bindingsFrom(saved: string | null | undefined): Bindings {
         ? entry.buttons.filter((b) => Number.isInteger(b))
         : []
       out[action] = entry ? { keys, buttons } : DEFAULT_BINDINGS[action]
+    }
+    // A button new since the layout was saved takes its defaults, less any
+    // key or pad button the saved layout already gives another.
+    const taken = (pick: (b: Binding) => readonly (string | number)[]) =>
+      new Set(ACTIONS.filter((a) => parsed[a]).flatMap((a) => pick(out[a])))
+    const keysTaken = taken((b) => b.keys)
+    const buttonsTaken = taken((b) => b.buttons)
+    for (const action of ACTIONS) {
+      if (parsed[action]) continue
+      out[action] = {
+        keys: out[action].keys.filter((k) => !keysTaken.has(k)),
+        buttons: out[action].buttons.filter((b) => !buttonsTaken.has(b)),
+      }
     }
     return out
   } catch {

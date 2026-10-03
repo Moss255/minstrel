@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ACTION_LABELS,
   actionOfButton,
   actionOfKey,
   bindButton,
@@ -24,10 +25,31 @@ describe('the controls', () => {
     expect(actionOfKey(DEFAULT_BINDINGS, 'enter')).toBe('confirm')
     expect(actionOfKey(DEFAULT_BINDINGS, 'escape')).toBe('cancel')
     expect(actionOfKey(DEFAULT_BINDINGS, 'x')).toBe('menu')
-    expect(actionOfKey(DEFAULT_BINDINGS, 'z')).toBeUndefined()
+    expect(actionOfKey(DEFAULT_BINDINGS, 'g')).toBeUndefined()
     expect(actionOfButton(DEFAULT_BINDINGS, 0)).toBe('confirm')
     expect(actionOfButton(DEFAULT_BINDINGS, 12)).toBe('up')
     expect(playable(DEFAULT_BINDINGS)).toBe(true)
+  })
+
+  it('is the DS’s buttons, each on the pad button of its name', () => {
+    expect(actionOfButton(DEFAULT_BINDINGS, 1)).toBe('cancel')
+    expect(actionOfButton(DEFAULT_BINDINGS, 2)).toBe('menu')
+    expect(actionOfButton(DEFAULT_BINDINGS, 3)).toBe('y')
+    expect(actionOfButton(DEFAULT_BINDINGS, 8)).toBe('select')
+    expect(actionOfButton(DEFAULT_BINDINGS, 9)).toBe('start')
+    expect(actionOfKey(DEFAULT_BINDINGS, 'z')).toBe('y')
+    expect(ACTION_LABELS.confirm.startsWith('A Button')).toBe(true)
+    expect(ACTION_LABELS.menu.startsWith('X Button')).toBe(true)
+    // Y, START and SELECT do nothing yet, so a layout may leave them keyless.
+    expect(playable(clearAction(DEFAULT_BINDINGS, 'start'))).toBe(true)
+    expect(playable(clearAction(DEFAULT_BINDINGS, 'menu'))).toBe(false)
+  })
+
+  it('gives a button new since a layout was saved its defaults, less what the layout already uses', () => {
+    // Saved when music had the pad's Y: the new Y Button takes its key but not that button.
+    const read = bindingsFrom(JSON.stringify({ music: { keys: ['b'], buttons: [3] } }))
+    expect(read.music.buttons).toEqual([3])
+    expect(read.y).toEqual({ keys: ['z'], buttons: [] })
   })
 
   it('turns the camera on q and e, and on the shoulders', () => {
@@ -40,9 +62,9 @@ describe('the controls', () => {
     expect(MOVE_TOKENS.turnLeft).toBeUndefined()
     expect(MOVE_TOKENS.turnRight).toBeUndefined()
     // And both are rebindable like anything else.
-    const moved = bindKey(DEFAULT_BINDINGS, 'turnLeft', 'z')
-    expect(actionOfKey(moved, 'z')).toBe('turnLeft')
-    expect(moved.turnLeft.keys).toEqual(['q', 'z'])
+    const moved = bindKey(DEFAULT_BINDINGS, 'turnLeft', 'g')
+    expect(actionOfKey(moved, 'g')).toBe('turnLeft')
+    expect(moved.turnLeft.keys).toEqual(['q', 'g'])
   })
 
   it('gives the turns their defaults to a layout saved before they existed', () => {
@@ -71,7 +93,7 @@ describe('the controls', () => {
     expect(playable(cleared)).toBe(false)
     const button = bindButton(DEFAULT_BINDINGS, 'map', 0)
     expect(button.confirm.buttons).toEqual([])
-    expect(button.map.buttons).toEqual([8, 0])
+    expect(button.map.buttons).toEqual([6, 0])
   })
 
   it('survives a round trip through JSON, and falls back from anything else', () => {
@@ -90,7 +112,7 @@ describe('the controls', () => {
     const none = [0, 0, 0, 0]
     expect(pressedActions(DEFAULT_BINDINGS, [1, 0, 0, 0], none)).toEqual(['confirm'])
     expect(pressedActions(DEFAULT_BINDINGS, [1, 0, 0, 0], [1, 0, 0, 0])).toEqual([])
-    expect(pressedActions(DEFAULT_BINDINGS, [0, 1, 0, 1], none)).toEqual(['cancel', 'music'])
+    expect(pressedActions(DEFAULT_BINDINGS, [0, 1, 0, 1], none)).toEqual(['cancel', 'y'])
   })
 
   it('names keys and buttons for the panel', () => {
