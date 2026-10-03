@@ -2530,7 +2530,16 @@ export function actionScripts(rom: Uint8Array): ActionScripts {
   if (already) return already
   let fallback: ActionScript | undefined
   const byArchive = new Map<string, Map<number, ActionScript | undefined>>()
-  for (const leaf of scanCartridge(rom, { pathFilter: '/data/' })) {
+  // Only the four archives the scripts are in: the scan's filter is by file,
+  // and all of `/data/` is every archive on the cartridge unpacked — over a
+  // second, which a battle's first action stood still for.
+  const leaves = [
+    ...scanCartridge(rom, { pathFilter: '/data/bin/actdef.nsarc' }),
+    ...Object.values(SKILL_ARCHIVES).flatMap((archive) => [
+      ...scanCartridge(rom, { pathFilter: archive }),
+    ]),
+  ]
+  for (const leaf of leaves) {
     const path = leaf.path.toLowerCase()
     if (path === '/data/bin/actdef.nsarc/default.bact') fallback = actionScriptOf(leaf.bytes)
     for (const [name, archive] of Object.entries(SKILL_ARCHIVES)) {

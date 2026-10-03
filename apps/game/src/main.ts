@@ -3055,30 +3055,16 @@ function frame(now = 0): void {
   // through a hit-stop — see `battleSpeed`.
   if (battle) {
     if (battle.phase !== 'telling') inOpening = false
-    if (battle.phase === 'telling' && battle.pages !== pagesSeen) {
-      const first = pagesSeen === undefined
-      pagesSeen = battle.pages
-      startShown()
-      const told = battle.told[0]
-      const party = told?.kind === 'flee' && battle.state.fighters[told.actor]?.side === 'party'
-      // A flight's line comes with sound 9 (state 11).
-      if (party) battleSound('battle', 9)
-      pageLeft = shown
-        ? 0
-        : party
-          ? FLIGHT_LINE_MS
-          : told !== undefined
-            ? (battle.pages[0] ?? '').split('\n').length * LINE_MS
-            : inOpening
-              ? OPENING_LINE_MS + (first ? BATTLE_UP_MS : 0)
-              : 0
-      if (told === undefined && !inOpening) beginEnding(now)
-    }
+    openPage(now)
     if (shown) stepShown(elapsedMs)
     else if (pageLeft > 0) {
       pageLeft -= elapsedMs
       if (pageLeft <= 0) turnPages(1)
     }
+    // A page turned just now opens before this frame is drawn: drawn first,
+    // it would be told without its action — its numbers up at once and its
+    // blow played from the page's cue — and then again by the action.
+    openPage(now)
     battleClock += elapsedMs * battleSpeed()
   }
 
@@ -7512,6 +7498,8 @@ function startShown(): void {
     chase,
     carry: 0,
   }
+  // The chase is cut to as the action begins, before its first frame is drawn.
+  followShownChase(shown)
 }
 
 /** The round whose first action has been shown — the chase is forced on a round's first. */
@@ -7666,13 +7654,41 @@ function finishShown(): void {
     if (f.state === 4 || f.state === 6) fallenShown.add(f.index)
   const stage = battleStage
   if (stage) {
-    // The camera stays where the action left it (`0x021dcbf4`).
-    stage.view = cameraView(s.camera, cameraStage)
+    // The camera stays where the action left it (`0x021dcbf4`) — where the
+    // chase had got to, when it was the chase's.
+    stage.view = shownView(stage) ?? cameraView(s.camera, cameraStage)
     stage.halfFov = s.camera.halfFov
     stage.showing = `after ${s.page}`
   }
   shown = undefined
   turnPages(1 + s.absorbs)
+}
+
+/**
+ * **A page opens**: an action's, shown — see `startShown`; any other, up for
+ * its lines' time. Once a page, as it first comes up.
+ */
+function openPage(now: number): void {
+  if (battle?.phase !== 'telling' || battle.pages === pagesSeen) return
+  const first = pagesSeen === undefined
+  pagesSeen = battle.pages
+  startShown()
+  // The box says what the action has said so far — nothing yet — not the page.
+  if (shown) showBattle()
+  const told = battle.told[0]
+  const party = told?.kind === 'flee' && battle.state.fighters[told.actor]?.side === 'party'
+  // A flight's line comes with sound 9 (state 11).
+  if (party) battleSound('battle', 9)
+  pageLeft = shown
+    ? 0
+    : party
+      ? FLIGHT_LINE_MS
+      : told !== undefined
+        ? (battle.pages[0] ?? '').split('\n').length * LINE_MS
+        : inOpening
+          ? OPENING_LINE_MS + (first ? BATTLE_UP_MS : 0)
+          : 0
+  if (told === undefined && !inOpening) beginEnding(now)
 }
 
 /** Go on past `n` pages, as confirming them did, and on to what follows. */
