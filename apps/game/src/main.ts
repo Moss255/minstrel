@@ -9572,14 +9572,16 @@ function recruit(asked: string): void {
     const [preset, vocation] = one.split(':')
     if (!/^\d+$/.test(preset ?? '')) continue
     const member = freshMember(undefined)
-    made.push({
+    const recruited: Member = {
       ...member,
       appearance: Number(preset),
       // The ready-made character's own sex, which decides what they may wear
       // — see `SEX` in `equipment.ts`. Character creation is what will ask.
       sex: loaded?.presets[Number(preset)]?.sex,
       vocation: /^\d+$/.test(vocation ?? '') ? Number(vocation) : HERO_VOCATION_NUMBER,
-    })
+    }
+    dressFromPreset(recruited)
+    made.push(recruited)
   }
   members = [leader(), ...made].slice(0, PARTY_MOST)
   // Everyone comes in on the Hero, with no footsteps behind them yet.
@@ -9596,6 +9598,39 @@ function recruit(asked: string): void {
         .map((m, i) => `${i}:${nameFor(m)}${m.appearance === undefined ? '' : `/p${m.appearance}`}`)
         .join(' '),
   )
+}
+
+/**
+ * **A ready-made character comes in wearing what their preset shows them in**
+ * — ours, as `?party=` is: what the game gives a recruit made at the Quester's
+ * Rest is not read. Each piece the preset names (`charapreset.bin` values 79
+ * to 85) that is an item goes in the slot its own table says; what their
+ * vocation may not wear goes into the bag instead. The bare arms the gloves
+ * field names when there are none, and the ids that name nothing, are no
+ * item and are left. So what they are drawn in is what they have on.
+ */
+function dressFromPreset(member: Member): void {
+  const outfit =
+    member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
+  if (!outfit) return
+  const worn = new Map(wornBy(member))
+  const pieces = [
+    outfit.weapon,
+    outfit.shield,
+    outfit.headgear,
+    outfit.armour,
+    outfit.gloves,
+    outfit.legwear,
+    outfit.footwear,
+  ]
+  for (const id of pieces) {
+    const slot = slotOf(loaded?.goods.get(id)?.table)
+    if (!slot || worn.has(slot)) continue
+    if (wearableBy({ ...member, outfits: new Map([[member.vocation, worn]]) }, id))
+      worn.set(slot, id)
+    else bag = take(bag, { item: id })
+  }
+  wear(member, worn)
 }
 
 /** The preset the Hero is being shown as, if `?preset=` asked for one. */

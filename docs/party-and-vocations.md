@@ -1036,6 +1036,14 @@ Two things fell out of it:
 
 - **The bag is the party's; the equipment is not.** Anybody can be dressed
   out of the one bag, which is why `taken.equip` acts on the chosen member.
+- **A ready-made character comes in wearing it** (3 October 2026, `dressFromPreset`
+  in `main.ts`) — **ours**, as `?party=` is. Each piece their preset names
+  (`charapreset.bin` values 79–85) that is an item goes in the slot its own
+  table gives it, so what they are drawn in is what the Equipment screen
+  shows them wearing; what their vocation may not wear goes into the bag.
+  The bare arms and the ids that name nothing are no item and are left. What
+  the game gives a recruit made at the Quester's Rest is still not read, so
+  a character made through creation is not given these.
 - **What they wear now beats what they were made in.** A created character was
   dressed from their preset and nothing else, so equipping them changed
   nothing at all — a costume they could not take off. The preset is where
