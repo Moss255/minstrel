@@ -192,6 +192,7 @@ import {
   tickCombo,
 } from './battle-combo.ts'
 import { type Asked, type Entry, FOLLOW_ORDERS, monsterTargets } from './battle-commands.ts'
+import { battleLog, logLine, logLongFrame, logText, motionChanges } from './battle-log.ts'
 import {
   NUDGE_AT,
   type NumberKind,
@@ -321,7 +322,7 @@ import {
   skyRegionOf,
   takeOff,
 } from './flight.ts'
-import { fpsLine, fpsMeter, resetFps, tickFps } from './fps-meter.ts'
+import { fpsLine, fpsMeter, LONG_FRAME_MS, resetFps, tickFps } from './fps-meter.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
@@ -3044,6 +3045,13 @@ let lastFrame = 0
 function frame(now = 0): void {
   const elapsedMs = lastFrame === 0 ? 0 : now - lastFrame
   lastFrame = now
+  if (battle && elapsedMs > LONG_FRAME_MS) logLongFrame(blog, now, elapsedMs)
+  if (battle && battle.phase !== logPhase) {
+    logPhase = battle.phase
+    if (battle.phase === 'command') log(`— commands, round ${battle.state.round + 1}`)
+    if (battle.phase === 'over') log(`— over: ${battle.state.outcome}`)
+  }
+  drawLog()
   if (fps && fpsShown) {
     if (battle && !fpsInBattle) resetFps(fps)
     fpsInBattle = battle !== undefined
@@ -3461,6 +3469,33 @@ const fpsShown = fps ? document.createElement('div') : undefined
 if (fpsShown) {
   fpsShown.id = 'fps'
   document.querySelector('main')?.append(fpsShown)
+}
+/** The fight's timeline — see `battle-log.ts`; `o` or `?log=1` shows it. */
+let blog = battleLog(0)
+let logShown = params.get('log') === '1'
+const logEl = document.createElement('pre')
+logEl.id = 'battle-log'
+logEl.hidden = !logShown
+document.querySelector('main')?.append(logEl)
+/** The log's version last drawn, and each fighter's motion as the log last saw it. */
+let logDrawn = -1
+/** The battle's phase as the log last saw it. */
+let logPhase: string | undefined
+const logMotions = new Map<number, { motion: string; at: number }>()
+/** A line in the fight's timeline, now. */
+function log(text: string): void {
+  logLine(blog, performance.now(), text)
+}
+/** A fighter in the log, by its battle object. */
+function logName(object: number): string {
+  return (battle ? labelsOf(battle.state)[fighterOf(object)] : undefined) ?? `#${object}`
+}
+/** Draw the log, when it is shown and something was added. */
+function drawLog(): void {
+  if (!logShown || blog.version === logDrawn) return
+  logDrawn = blog.version
+  logEl.textContent =
+    blog.entries.length > 0 ? logText(blog) : 'battle log · o hides it · nothing yet: pick a fight'
 }
 /** Whether a fight was on last frame — the meter's drops count again from each one's start. */
 let fpsInBattle = false
@@ -5943,6 +5978,9 @@ function createdFighter(member: Member): Fighter | undefined {
 let askedSlot: number = LIGHTING_SLOT.day
 
 function startFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
+  blog = battleLog(performance.now())
+  logMotions.clear()
+  log(`fight: ${codes.join(', ')}${canFlee ? '' : ' (no running)'}, opening ${opening}`)
   if (entering || battle || leaving || !loaded) return
   self?.held.clear()
   playBattleMusic()
@@ -7516,6 +7554,13 @@ function startShown(): void {
   chasedRound = scene.state.round
   const chase =
     !ownCamera && target !== undefined ? chaseFor(stage, actor, target, firstOfRound) : undefined
+  const actionName = loaded?.actions.get(context.action)?.name
+  const aimed = context.targets.flatMap((t) => t.receivers.slice(0, 1).map(logName))
+  log(
+    `▶ ${logName(actor)}: ${actionName ? `${actionName} ` : ''}(action ${context.action})` +
+      `${aimed.length ? ` at ${aimed.join(', ')}` : ''} · ${chase ? 'chase shot' : 'its own camera'}`,
+  )
+  logMotions.clear()
   shown = {
     page: cueStarted,
     run,
@@ -7569,6 +7614,7 @@ function effectLengthOf(file: string, motion: string | undefined): number | unde
 function onReaction(event: ReactionEvent): void {
   const s = shown
   if (event.kind === 'number') {
+    log(`  number ${event.value} over ${logName(event.fighter)}`)
     const at = topOf(fighterOf(event.fighter), battleClock)
     const number = at ? risingNumber(event.value, event.numberKind, at, event.index) : undefined
     if (number) risingNumbers = [...risingNumbers, number].slice(-16)
@@ -7631,6 +7677,8 @@ function onShow(event: ShowEvent): void {
   }
   const s = shown
   if (!s || event.kind !== 'camera') return
+  const shot = event.command
+  log(`  camera: tag ${shot.tag}${'mode' in shot ? ` mode ${shot.mode}` : ''}`)
   playCamera(s.camera, event.command, cameraStage, () =>
     battleStage ? cameraDraw(battleStage) : 0,
   )
@@ -7649,6 +7697,7 @@ function stepShown(elapsedMs: number): void {
   while (s.carry >= PASS_MS && shown === s) {
     s.carry -= PASS_MS
     for (const event of s.run.pass(PASS_MS)) onShow(event)
+    for (const line of motionChanges(s.run.fighters.values(), logMotions, logName)) log(`  ${line}`)
     tickCamera(s.camera, PASS_MS * s.run.speed)
     followShownChase(s)
     if (s.run.ended) {
@@ -7690,6 +7739,7 @@ function followShownChase(s: ActionShown): void {
 function finishShown(): void {
   const s = shown
   if (!s) return
+  log('■ action over')
   // Its showing over, the combo display goes (`0x021db8ac`).
   leaveCombo(combo)
   for (const f of s.run.fighters.values()) {
@@ -7716,6 +7766,7 @@ function openPage(now: number): void {
   if (battle?.phase !== 'telling' || battle.pages === pagesSeen) return
   const first = pagesSeen === undefined
   pagesSeen = battle.pages
+  log(`page: ${(battle.pages[0] ?? '').split('\n').join(' / ') || battle.phase}`)
   startShown()
   // The box says what the action has said so far — nothing yet — not the page.
   if (shown) showBattle()
@@ -7733,6 +7784,7 @@ function openPage(now: number): void {
           ? OPENING_LINE_MS + (first ? BATTLE_UP_MS : 0)
           : 0
   if (told === undefined && !inOpening) beginEnding(now)
+  if (!shown && pageLeft > 0) log(`  told for ${Math.round(pageLeft)} ms, no action shown`)
 }
 
 /** Go on past `n` pages, as confirming them did, and on to what follows. */
@@ -10186,6 +10238,15 @@ addEventListener('keydown', (event) => {
   // The backquote opens and closes the scene browser — see `scene-browser.ts`.
   if (event.key === '`') {
     openSceneBrowser()
+    event.preventDefault()
+    return
+  }
+  // `o` shows or hides the fight's timeline — see `battle-log.ts` — in a fight or out.
+  if (key === 'o' && !controlsPanel.open) {
+    logShown = !logShown
+    logEl.hidden = !logShown
+    logDrawn = -1
+    drawLog()
     event.preventDefault()
     return
   }
