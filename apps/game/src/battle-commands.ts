@@ -1,4 +1,4 @@
-import type { BattleState, Command } from '@minstrel/sim'
+import type { BattleState, Command, FighterState } from '@minstrel/sim'
 
 /**
  * **The battle's command phase**, as the game runs it — overlay 0's menu
@@ -20,10 +20,16 @@ import type { BattleState, Command } from '@minstrel/sim'
  * - **Misc. → Tactics** sets a member's tactic, or every member's but the
  *   player's own (`func_ov000_0217d438`).
  *
- * **Ours**, each marked where it lives: Examine, Equipment and Line-Up, whose
- * screens are not read, do nothing; the AI of a member not following orders is
- * not read, and they hand in no command (the battle's own default, an attack);
- * a Coup de Grâce is never ready, its readiness not being modelled.
+ * - **Examine** (`func_ov000_0217df08`) says a page for each monster in a
+ *   state worth telling, from `str_ex2`, and costs nothing — see
+ *   {@link examinePages}.
+ * - **Misc. → Line-Up** (`func_ov000_0217dcf0`) puts a member in the Front
+ *   Line or the Back Line, free — see `Fighter.backLine`.
+ *
+ * **Ours**, each marked where it lives: Equipment, whose screens are not built,
+ * does nothing; the AI of a member not following orders is not read, and they
+ * hand in no command (the battle's own default, an attack); a Coup de Grâce is
+ * never ready, its readiness not being modelled.
  */
 
 /** The party menu's rows, top to bottom (`data_ov000_021833e8`), and each one's word in `strstd`. */
@@ -72,7 +78,70 @@ export const COMMAND_SAYS = {
   noTactics: 30036,
   /** A monster group's line: "<SGL_M_NAME> × <val_1>". */
   group: 30031,
+  /** Line-Up's two words, by the row: 30033 + 1 for the Back Line. */
+  frontLine: 30033,
 } as const
+
+/**
+ * **Examine's line for one monster** — `str_ex2` (`func_ov000_0217ff34`),
+ * the first test that holds, by what the battle keeps of it: its tension
+ * (56 super-high … 59 slightly raised), a defence level (35 up two … 38 down
+ * two), an agility level (39 … 42), sleep (7), poison (23). None for a
+ * monster in none of them.
+ *
+ * **Ours**: the game's other tests come first or between — an enraged
+ * monster's fixed target (4, 5), its attack (31–34), a barrier (21), the
+ * Burn (24), a mist (25), its spell resistance (48–51), dodging (55), might
+ * (44, 45), mending (46, 47), paralysis (6), confusion (8), the falls and the
+ * fits (9–15), the hallucination and the dazzle (16–19), a seal (20),
+ * charm (43) and breath (52, 53) — none of which the battle keeps yet.
+ * INFERRED: a level's status bit (`0x800`, `0x1000`) is set while it is
+ * not 0.
+ */
+export function examineLine(f: FighterState): number | undefined {
+  const tension = f.states.tension ?? 0
+  if (tension > 0) return 60 - Math.min(tension, 4)
+  const byLevel = (level: number, base: number) =>
+    level === 2 ? base : level === 1 ? base + 1 : level === -1 ? base + 2 : base + 3
+  if (f.states.defence.level !== 0) return byLevel(f.states.defence.level, 35)
+  if (f.states.agility.level !== 0) return byLevel(f.states.agility.level, 39)
+  if (f.states.sleep !== undefined) return 7
+  if (f.states.poisoned) return 23
+  return undefined
+}
+
+/** One of Examine's pages: its `str_ex2` line, and the monster it names. */
+export interface Examined {
+  readonly line: number
+  readonly monster: number
+}
+
+/**
+ * **What Examine says** (`func_ov000_0217df08`, sub-step 1): a page for each
+ * monster with a line, in the order a choice walks them; where none has one,
+ * one general line naming the highest-level monster — the first of the
+ * highest — by the world's coin, `W(100) & 1`: 0 "…is sizing up the party",
+ * 1 "…is preparing to attack", and 2 or 3 the same of several. `coin` is that
+ * draw.
+ *
+ * **Ours**: lines 60–63, "…hasn't noticed the party's presence yet" and
+ * "…frozen stock-still with surprise", which stand in its place in the round
+ * the party has the jump (`ui+0x954`, `0x955`, whose writer is not read).
+ */
+export function examinePages(state: BattleState, coin: () => number): Examined[] {
+  const targets = monsterTargets(state)
+  const pages = targets.flatMap((i) => {
+    const f = state.fighters[i]
+    const line = f && examineLine(f)
+    return line === undefined ? [] : [{ line, monster: i }]
+  })
+  if (pages.length > 0) return pages
+  let highest = targets[0] ?? -1
+  for (const i of targets) {
+    if ((state.fighters[i]?.level ?? 0) > (state.fighters[highest]?.level ?? 0)) highest = i
+  }
+  return [{ line: (coin() & 1) + (targets.length > 1 ? 2 : 0), monster: highest }]
+}
 
 /** Whom an action is aimed at, and how far — an action record's `side` and `reach`. */
 export interface Aim {
@@ -114,6 +183,8 @@ export interface Asked {
   readonly spells: readonly Entry[]
   readonly abilities: readonly Entry[]
   readonly items: readonly ItemEntry[]
+  /** In the Back Line — see `Fighter.backLine`. */
+  readonly backLine?: boolean
 }
 
 /** Where the menu is. */
@@ -143,6 +214,8 @@ export type Step =
       readonly exceptSelf: boolean
     }
   | { readonly at: 'say'; readonly say: Said; readonly back: Step }
+  | { readonly at: 'examine'; readonly pages: readonly Examined[]; readonly page: number }
+  | { readonly at: 'lineUp'; readonly cursor: number }
   | { readonly at: 'misc'; readonly cursor: number }
   | { readonly at: 'tactics'; readonly cursor: number }
   | { readonly at: 'tactic'; readonly who: number | 'all'; readonly cursor: number }
@@ -179,6 +252,13 @@ export interface Commanding {
   readonly chosen: ReadonlyMap<number, { readonly command: Command; readonly caption: Caption }>
   /** Tactics set in this phase, by fighter — for the caller to keep. */
   readonly tactics: ReadonlyMap<number, number>
+  /** Rows set in this phase, by fighter — true the Back Line — for the caller to keep. */
+  readonly lines: ReadonlyMap<number, boolean>
+}
+
+/** Whether a member stands in the Back Line now, Line-Up's change and all. */
+export function inBackLine(c: Commanding, m: Asked): boolean {
+  return c.lines.get(m.fighter) ?? m.backLine ?? false
 }
 
 const alive = (state: BattleState, i: number) => {
@@ -231,7 +311,13 @@ export function monsterGroups(
 
 /** The round's command phase opened: the party menu, nobody's choice made. */
 export function openCommands(members: readonly Asked[]): Commanding {
-  return { members, step: { at: 'party', cursor: 0 }, chosen: new Map(), tactics: new Map() }
+  return {
+    members,
+    step: { at: 'party', cursor: 0 },
+    chosen: new Map(),
+    tactics: new Map(),
+    lines: new Map(),
+  }
 }
 
 function askedOrder(state: BattleState, c: Commanding): number[] {
@@ -329,6 +415,8 @@ export function rowsOf(state: BattleState, c: Commanding): number {
       return tacticsRows(c).length
     case 'tactic':
       return TACTIC_GRID.length
+    case 'lineUp':
+      return c.members.length
     default:
       return 0
   }
@@ -366,8 +454,15 @@ export function moveCommand(state: BattleState, c: Commanding, dx: number, dy: n
   return { ...c, step: { ...s, cursor: (s.cursor + dy + n) % n } }
 }
 
-/** Choose what the cursor is on. */
-export function chooseCommand(state: BattleState, c: Commanding): Commanding {
+/**
+ * Choose what the cursor is on. `coin` is the world's generator's draw below
+ * 100, which Examine's general line is chosen by — see {@link examinePages}.
+ */
+export function chooseCommand(
+  state: BattleState,
+  c: Commanding,
+  coin: () => number = () => 0,
+): Commanding {
   const s = c.step
   switch (s.at) {
     case 'party': {
@@ -384,8 +479,8 @@ export function chooseCommand(state: BattleState, c: Commanding): Commanding {
         return { ...c, chosen, step: { at: 'done' } }
       }
       if (row === 'misc') return { ...c, step: { at: 'misc', cursor: 0 } }
-      // Examine: `str_ex2`'s line is not read. **Ours**: nothing.
-      return c
+      // Examine: its pages, and the party menu again — free.
+      return { ...c, step: { at: 'examine', pages: examinePages(state, coin), page: 0 } }
     }
     case 'member': {
       const m = c.members[s.member] as Asked
@@ -480,6 +575,17 @@ export function chooseCommand(state: BattleState, c: Commanding): Commanding {
     }
     case 'say':
       return { ...c, step: s.back }
+    case 'examine':
+      if (s.page + 1 < s.pages.length) return { ...c, step: { ...s, page: s.page + 1 } }
+      return { ...c, step: { at: 'party', cursor: PARTY_ROWS.indexOf('examine') } }
+    case 'lineUp': {
+      // A toggles the member's row and stays in the list (`0x0217dd94`).
+      const m = c.members[s.cursor]
+      if (!m) return c
+      const lines = new Map(c.lines)
+      lines.set(m.fighter, !inBackLine(c, m))
+      return { ...c, lines }
+    }
     case 'misc': {
       const row = MISC_ROWS[s.cursor]
       if (row === 'tactics') {
@@ -489,7 +595,8 @@ export function chooseCommand(state: BattleState, c: Commanding): Commanding {
         }
         return { ...c, step: { at: 'tactics', cursor: 0 } }
       }
-      // Equipment and Line-Up are not read. **Ours**: nothing.
+      if (row === 'lineUp') return { ...c, step: { at: 'lineUp', cursor: 0 } }
+      // Equipment is not built. **Ours**: nothing.
       return c
     }
     case 'tactics': {
@@ -542,6 +649,10 @@ export function backCommand(state: BattleState, c: Commanding): Commanding {
       return { ...c, step: s.pending.back }
     case 'say':
       return { ...c, step: s.back }
+    case 'examine':
+      return { ...c, step: { at: 'party', cursor: PARTY_ROWS.indexOf('examine') } }
+    case 'lineUp':
+      return { ...c, step: { at: 'misc', cursor: MISC_ROWS.indexOf('lineUp') } }
     case 'misc':
       return { ...c, step: { at: 'party', cursor: PARTY_ROWS.indexOf('misc') } }
     case 'tactics':

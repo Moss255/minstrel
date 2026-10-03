@@ -196,6 +196,13 @@ export interface Fighter {
    * vocation. A monster's own is not given, and counts as nothing.
    */
   readonly level?: number
+  /**
+   * **In the Back Line** — `base+0x3c` bit 30, set from Misc.'s Line-Up: a
+   * monster's weighted pick weighs them 1 rather than 2
+   * (`func_ov000_02154f30`, `0x02155024`–`0x02155040`). Nothing else in the
+   * battle reads it. The Front Line when not given.
+   */
+  readonly backLine?: boolean
 }
 
 export interface FighterState extends Fighter {
@@ -928,16 +935,20 @@ export function playRound(
 
   /**
    * **A monster's weighted pick** among the party (`func_ov000_02154f30`):
-   * each weighs 2, and — where its record says it remembers — the last to
-   * strike it 2 more and the one before 1 more; a draw below the total, and
-   * the first whose weight is not below what is left. **Ours**: the weight's
-   * halving under a status and its 1 under a bit, neither identified.
+   * each weighs 2 in the Front Line and 1 in the Back Line (see
+   * `Fighter.backLine`), and — where its record says it remembers — the last
+   * to strike it 2 more and the one before 1 more; a draw below the total,
+   * and the first whose weight is not below what is left. **Ours**: the
+   * weight's halving under a status not identified (`0x8000000`), and the
+   * fixed target of an enraged monster (`+0x18` bit `0x1000`), not modelled.
    */
   const weighted = (actor: number, list: readonly number[]): number | undefined => {
     if (list.length === 0) return undefined
     const me = fighters[actor] as FighterState
     const by = me.remembers ? (me.aimedBy ?? []) : []
-    const weights = list.map((i) => 2 + (by[0] === i ? 2 : 0) + (by[1] === i ? 1 : 0))
+    const weights = list.map(
+      (i) => (fighters[i]?.backLine ? 1 : 2) + (by[0] === i ? 2 : 0) + (by[1] === i ? 1 : 0),
+    )
     let left = rng.below(weights.reduce((a, b) => a + b, 0)) + 1
     for (const [k, w] of weights.entries()) {
       if (w >= left) return list[k]

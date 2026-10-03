@@ -6,7 +6,10 @@ import {
   chooseCommand,
   commandsOf,
   type Entry,
+  examinePages,
   FOLLOW_ORDERS,
+  inBackLine,
+  MISC_ROWS,
   monsterGroups,
   moveCommand,
   openCommands,
@@ -136,5 +139,60 @@ describe('the command phase, as overlay 0 runs it', () => {
     const set = chooseCommand(state, moveCommand(state, grid, -1, -2))
     expect(set.tactics.get(1)).toBe(0)
     expect(set.step).toEqual({ at: 'party', cursor: 0 })
+  })
+})
+
+describe('Examine and Line-Up', () => {
+  const party = () => openCommands([member(0), member(1)])
+  const to = (c: ReturnType<typeof party>, row: number) => ({
+    ...c,
+    step: { at: 'party' as const, cursor: row },
+  })
+
+  it('says a page for each monster in a state worth telling, and comes back free', () => {
+    const tense = {
+      ...state,
+      fighters: state.fighters.map((f, i) =>
+        i === 2
+          ? { ...f, states: { ...f.states, tension: 2 } }
+          : i === 4
+            ? { ...f, states: { ...f.states, sleep: 1 } }
+            : f,
+      ),
+    }
+    // Line 58 "considerably raised", the sleeping dracky's 7; the slime in between says nothing.
+    expect(examinePages(tense, () => 0)).toEqual([
+      { line: 58, monster: 2 },
+      { line: 7, monster: 4 },
+    ])
+    let c = chooseCommand(tense, to(party(), PARTY_ROWS.indexOf('examine')))
+    expect(c.step.at).toBe('examine')
+    c = chooseCommand(tense, chooseCommand(tense, c))
+    expect(c.step).toEqual({ at: 'party', cursor: PARTY_ROWS.indexOf('examine') })
+    expect(c.chosen.size).toBe(0)
+  })
+
+  it('says one general line of the highest-level monster when none is in a state', () => {
+    const levelled = {
+      ...state,
+      fighters: state.fighters.map((f, i) => (i === 4 ? { ...f, level: 9 } : f)),
+    }
+    // Several monsters: 2 "sizing up", 3 "preparing to attack", by the world's coin.
+    expect(examinePages(levelled, () => 40)).toEqual([{ line: 2, monster: 4 }])
+    expect(examinePages(levelled, () => 41)).toEqual([{ line: 3, monster: 4 }])
+  })
+
+  it('puts a member in the Back Line and back, and stays in the list', () => {
+    let c = chooseCommand(state, to(party(), PARTY_ROWS.indexOf('misc')))
+    c = { ...c, step: { at: 'misc', cursor: MISC_ROWS.indexOf('lineUp') } }
+    c = chooseCommand(state, c)
+    expect(c.step).toEqual({ at: 'lineUp', cursor: 0 })
+    c = moveCommand(state, c, 0, 1)
+    c = chooseCommand(state, c)
+    expect(inBackLine(c, member(1))).toBe(true)
+    expect(c.step.at).toBe('lineUp')
+    c = chooseCommand(state, c)
+    expect(inBackLine(c, member(1))).toBe(false)
+    expect(backCommand(state, c).step).toEqual({ at: 'misc', cursor: MISC_ROWS.indexOf('lineUp') })
   })
 })

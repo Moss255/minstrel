@@ -24,6 +24,7 @@ import {
   allyTargets,
   backCommand,
   COMMAND_GRID,
+  COMMAND_SAYS,
   COMMAND_WORD_BASE,
   type Commanding,
   chooseCommand,
@@ -31,6 +32,7 @@ import {
   type Entry,
   FOLLOW_ORDERS,
   type ItemEntry,
+  inBackLine,
   MEMBER_COMMANDS,
   MISC_ROWS,
   MISC_WORD_BASE,
@@ -78,6 +80,8 @@ export interface BattleWords {
   readonly standard?: ReadonlyMap<number, string>
   /** The article table, by number. */
   readonly articles: ReadonlyMap<number, string>
+  /** `str_ex2`: what Examine says of a monster — see `examinePages`. */
+  readonly examine?: ReadonlyMap<number, string>
 }
 
 /** `strbtl`'s messages, by what they say. */
@@ -590,6 +594,8 @@ export interface BattleScene {
   readonly commanding?: Commanding | undefined
   /** Tactics set from Misc., by fighter, for the caller to keep with its members. */
   readonly tactics: ReadonlyMap<number, number>
+  /** Rows set from Misc.'s Line-Up, by fighter — true the Back Line — for the caller to keep. */
+  readonly lines: ReadonlyMap<number, boolean>
   /** The monsters' own spells and changes of state, by action, to tell them by. */
   readonly known: ReadonlyMap<number, Told>
   /** What the last round came to — an item used, for the caller to take from the bag. */
@@ -632,6 +638,7 @@ export function beginBattle(
     items: [],
     spells: [],
     tactics: new Map(),
+    lines: new Map(),
     known: options.known ?? new Map(),
     events: [],
   }
@@ -677,7 +684,7 @@ export function labelsOf(state: BattleState): string[] {
   })
 }
 
-type WordFile = Exclude<keyof BattleWords, 'articles' | 'standard'>
+type WordFile = Exclude<keyof BattleWords, 'articles' | 'standard' | 'examine'>
 
 /** A message from the game's words, rendered — or undefined when there are none, or not that one. */
 function say(
@@ -1241,6 +1248,37 @@ export function battleMenu(
         cursor: TACTIC_GRID.indexOf(s.cursor as never),
         columns: 2,
       }
+    case 'examine': {
+      // One page of what Examine says, naming its monster by kind.
+      const page = s.pages[s.page]
+      const template = page && scene.words?.examine?.get(page.line)
+      const { letter: _, ...name } = (page && scene.names[page.monster]) ?? { name: '?' }
+      const text =
+        template === undefined
+          ? `(str_ex2 ${page?.line})`
+          : tellBattle(
+              template,
+              {
+                monsters: [name],
+                solo: scene.state.fighters.filter((f) => f.side === 'party').length === 1,
+              },
+              scene.words?.articles ?? new Map(),
+            ).text
+      return { rows: [text], cursor: -1, columns: 1 }
+    }
+    case 'lineUp':
+      // Each member's name, then their row's word at x 70 (`func_ov000_02178648`).
+      return {
+        rows: c.members.map((m) => ({
+          text: m.name,
+          right:
+            word('menu', COMMAND_SAYS.frontLine + (inBackLine(c, m) ? 1 : 0)) ??
+            (inBackLine(c, m) ? 'Back Line' : 'Front Line'),
+          at: 70,
+        })),
+        cursor: s.cursor,
+        columns: 1,
+      }
     case 'say': {
       const named = s.say.actor === undefined ? {} : { actor: { name: s.say.actor } }
       const str2 = s.say.str2 === undefined ? undefined : word('menu', s.say.str2)
@@ -1347,11 +1385,24 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
     case 'command': {
       const c = scene.commanding
       if (!c) return scene
-      const next = chooseCommand(scene.state, c)
+      // Examine's coin is the world's draw, so that looking moves nothing in a
+      // battle's replay (`W(100)`, `0x0217e264`).
+      const next = chooseCommand(scene.state, c, () => scene.world?.below(100) ?? 0)
       const tactics =
         next.tactics.size > 0 ? new Map([...scene.tactics, ...next.tactics]) : scene.tactics
-      if (next.step.at !== 'done') return { ...scene, commanding: next, tactics }
-      return play({ ...scene, tactics }, commandsOf(next))
+      // A row set is the member's at once: the monsters' pick this round reads it.
+      const lines = next.lines.size > 0 ? new Map([...scene.lines, ...next.lines]) : scene.lines
+      const state =
+        next.lines.size > 0
+          ? {
+              ...scene.state,
+              fighters: scene.state.fighters.map((f, i) =>
+                next.lines.has(i) ? { ...f, backLine: next.lines.get(i) as boolean } : f,
+              ),
+            }
+          : scene.state
+      if (next.step.at !== 'done') return { ...scene, state, commanding: next, tactics, lines }
+      return play({ ...scene, state, tactics, lines }, commandsOf(next))
     }
     case 'over':
       return scene

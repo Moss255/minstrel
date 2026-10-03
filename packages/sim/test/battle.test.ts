@@ -884,6 +884,27 @@ describe('a monster’s command phase — the game’s', () => {
     expect(struckBy(true)).toBeGreaterThan(struckBy(false))
   })
 
+  it('aims at one in the Back Line half as often as one in the Front', () => {
+    const struck = (back: boolean) => {
+      let hits = 0
+      for (let seed = 1n; seed <= 90n; seed++) {
+        const party = [tough, { ...tough, name: 'Ally', backLine: back }]
+        const { events } = playRound(
+          startBattle([...party, blob('slime', 9999)]),
+          new Map<number, Command>([
+            [0, { kind: 'defend' }],
+            [1, { kind: 'defend' }],
+          ]),
+          new BattleRng(seed),
+        )
+        if (events.some((e) => e.kind === 'attack' && e.actor === 2 && e.target === 1)) hits++
+      }
+      return hits
+    }
+    // One in three against one in two: over ninety rounds, clearly fewer.
+    expect(struck(true)).toBeLessThan(struck(false))
+  })
+
   it('uses a way it may use once a group only once', () => {
     const shout: Spell = {
       action: 300,

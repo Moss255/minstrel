@@ -110,6 +110,8 @@ export interface SaveMember {
   readonly skillPool?: number
   /** Their tactic in battle — see `Member.tactic`; absent is Follow Orders. */
   readonly tactic?: number
+  /** In the Back Line — see `Member.backLine`; absent is the Front Line. */
+  readonly backLine?: boolean
   /** What they carry, up to eight item ids — see `Member.carried`; absent is nothing. */
   readonly carried?: readonly number[]
   /** Points put into each tree: pairs of `[tree, points]` — see `Member.treePoints`. */
@@ -541,6 +543,9 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.revocations !== undefined && !pairs(m.revocations)) {
     throw new SaveError(`${where} has revocations that do not read`)
   }
+  if (m.backLine !== undefined && typeof m.backLine !== 'boolean') {
+    throw new SaveError(`${where} has a row that does not read`)
+  }
   if (m.tactic !== undefined && !(isCount(m.tactic) && (m.tactic as number) <= 5)) {
     throw new SaveError(`${where} has a tactic that does not read`)
   }
@@ -572,6 +577,7 @@ function member(raw: unknown, place: number): SaveMember {
       ? {}
       : { revocations: m.revocations as (readonly [number, number])[] }),
     ...(m.tactic === undefined ? {} : { tactic: m.tactic as number }),
+    ...(m.backLine === true ? { backLine: true } : {}),
     ...(m.carried === undefined ? {} : { carried: m.carried as number[] }),
   }
 }

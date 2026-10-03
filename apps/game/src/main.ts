@@ -6381,6 +6381,7 @@ function battleOffered(): Offered {
       fighter,
       name: battle?.names[fighter]?.name ?? nameFor(member),
       tactic: member.tactic ?? FOLLOW_ORDERS,
+      ...(member.backLine ? { backLine: true } : {}),
       own: fighter === 0,
       // A story companion acts by themselves. **Ours**: how the game takes a guest is not read.
       guest: member.attnpc !== undefined,
@@ -6470,12 +6471,19 @@ function battleListsOf(
   return out
 }
 
-/** Tactics set from Misc. in battle, kept with their members — see `Member.tactic`. */
+/**
+ * Tactics and rows set from Misc. in battle, kept with their members — see
+ * `Member.tactic` and `Member.backLine`.
+ */
 function keepTactics(): void {
   if (!battle) return
   for (const [fighter, tactic] of battle.tactics) {
     const member = battleMembers[fighter]
     if (member) member.tactic = tactic === FOLLOW_ORDERS ? undefined : tactic
+  }
+  for (const [fighter, back] of battle.lines) {
+    const member = battleMembers[fighter]
+    if (member) member.backLine = back || undefined
   }
 }
 
@@ -7414,6 +7422,11 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     leader(),
     ...behind.flatMap(({ who, member }) => (who || createdFighter(member) ? [member] : [])),
   ]
+  // Each in the row Line-Up last left them in — see `Member.backLine`.
+  for (const [i, member] of battleMembers.entries()) {
+    const fighter = party[i]
+    if (fighter && member.backLine) party[i] = { ...fighter, backLine: true }
+  }
   const hp = new Map([[0, leader().hp ?? row.maxHp]])
   for (const [i, { who, member }] of behind.entries()) {
     const max = who ? who.numbers.maxHp : (levelOf(member)?.maxHp ?? 0)
@@ -9506,7 +9519,9 @@ function bottomView(scene: BattleScene): BottomView {
       : step?.at === 'party' ||
           step?.at === 'misc' ||
           step?.at === 'tactics' ||
-          step?.at === 'tactic'
+          step?.at === 'tactic' ||
+          step?.at === 'examine' ||
+          step?.at === 'lineUp'
         ? (c?.members.find((m) => !m.guest && (m.tactic ?? FOLLOW_ORDERS) === FOLLOW_ORDERS)
             ?.fighter ?? 0)
         : undefined

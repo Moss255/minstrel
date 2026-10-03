@@ -1609,6 +1609,7 @@ function battleWordsOf(rom: Uint8Array): BattleWords {
     menu: englishText(rom, '/data/bin/menu/str_btl.gp2', 'str_btl_en.nat', readSystemStrings),
     standard: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
     articles: englishText(rom, '/data/prm/article.gp2', 'article_en.nat', readSystemStrings),
+    examine: englishText(rom, '/data/bin/menu/str_ex2.gp2', 'str_ex2_en.nat', readSystemStrings),
   }
 }
 

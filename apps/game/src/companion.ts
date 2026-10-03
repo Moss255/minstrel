@@ -164,6 +164,12 @@ export interface Member {
    */
   tactic?: number | undefined
   /**
+   * **In the Back Line** — `base+0x3c` bit 30, which Misc.'s Line-Up in battle
+   * sets (`func_ov000_0217dcf0`), and which lasts from battle to battle. See
+   * `Fighter.backLine`. The Front Line when undefined.
+   */
+  backLine?: boolean | undefined
+  /**
    * **What they carry**: up to eight everyday items, one to a slot, packed —
    * the character record's `+0x454` (see `inventory.ts`). Undefined is none.
    */
@@ -402,6 +408,7 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
       ? {}
       : { revocations: [...member.revocations].sort((a, b) => a[0] - b[0]) }),
     ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
+    ...(member.backLine ? { backLine: true } : {}),
     ...(member.carried?.length ? { carried: [...member.carried] } : {}),
   }))
 }
@@ -429,6 +436,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     treePoints: new Map(member.treePoints ?? []),
     revocations: new Map(member.revocations ?? []),
     ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
+    ...(member.backLine ? { backLine: true } : {}),
     ...(member.carried?.length ? { carried: [...member.carried] } : {}),
   }))
 }
