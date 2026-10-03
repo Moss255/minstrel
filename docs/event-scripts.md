@@ -824,6 +824,13 @@ was **my error** — both go through the same accessor.
 | 226, 227 | set and ease how far a character reaches (`Object3D::radius_`), the exact shape of `219` and `220` over another field. A count of 0 writes nothing at all |
 | 598 | who leads the party: the first entry of the array of party object indices |
 | 838 | how long the staff roll has run, in milliseconds, from overlay 28's stopwatch |
+| 843 | shut a door **at once** — `563` without the swing (`func_ov001_02160bc0`, ending in `func_02018918` where 563 calls `func_0201874c`); `ev24590` in `D04` shuts doors 28 and 30 so `540` can open them on camera. Read 4 October 2026 |
+| 837 | whether the Hero was fallen when the map was loaded, 1 or 0 through its reference — a byte of the map-load state (`[field+0x3734]+0x107`), cleared at each load (`func_ov017_021baedc`) and set in its state 2 (`0x02155604`) from game object 0's status bit 0, INFERRED fallen; `ev24593` in `M03` |
+| 839 | let the bone camera turn the object it drags, or not: `(n == 0)` into the camera's `+0x265`, which `552`'s update (`func_0204a170`) reads; `ev28920` in `D16` |
+| 844 | keep the map's placements as the scene left them across its battle: a snapshot of every placement (`func_02017c58`) and the transition's `+8`, which `547` clears; restored at the map's next setup (`func_02017a94`); `ev29220`, `ev29230` in `X04` |
+
+**With these four, every engine function an event on the cartridge calls is
+answered** (4 October 2026; `apps/game/test/event-coverage.test.ts`).
 
 ### `559` writes a byte nothing reads
 

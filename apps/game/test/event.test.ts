@@ -297,10 +297,12 @@ describe('an event’s stage', () => {
   it('answers what it does not read with nothing, and counts it', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    // 844 is not read; 731 was, and is the sound archives being given back.
-    expect(stage.host.call(844, [], t)).toBe(0)
-    stage.host.call(844, [], t)
-    expect(stage.unhandled.get(844)).toBe(2)
+    // 899 is no engine function the cartridge calls, so nothing answers it — every
+    // one an event calls is answered since 4 October 2026; 731 was read, and is
+    // the sound archives being given back.
+    expect(stage.host.call(899, [], t)).toBe(0)
+    stage.host.call(899, [], t)
+    expect(stage.unhandled.get(899)).toBe(2)
   })
 
   it('hides and shows a character, and hangs one on another', () => {
@@ -387,22 +389,22 @@ describe('an engine function the host has not got', () => {
   it('is answered with 0, counted, and kept with what it was handed', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    expect(stage.host.call(844, [7, 1.5, 'hello'], t)).toBe(0)
-    stage.host.call(844, [9], t)
-    const call = stage.unreadCalls.get(844)
+    expect(stage.host.call(899, [7, 1.5, 'hello'], t)).toBe(0)
+    stage.host.call(899, [9], t)
+    const call = stage.unreadCalls.get(899)
     expect(call?.calls).toBe(2)
     // The signatures are `docs/event-scripts.md`'s: integer, float, string.
     expect([...(call?.shapes ?? [])].sort()).toEqual(['i', 'ifs'])
     expect(call?.examples[0]).toEqual([7, 1.5, 'hello'])
     // The count it kept before stands beside it, for whatever reads that.
-    expect(stage.unhandled.get(844)).toBe(2)
+    expect(stage.unhandled.get(899)).toBe(2)
   })
 
   it('keeps a few argument lists and no more, however often it is called', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
-    for (let i = 0; i < 50; i++) stage.host.call(844, [i], t)
-    const call = stage.unreadCalls.get(844)
+    for (let i = 0; i < 50; i++) stage.host.call(899, [i], t)
+    const call = stage.unreadCalls.get(899)
     expect(call?.calls).toBe(50)
     expect(call?.examples.length).toBeLessThanOrEqual(4)
   })
@@ -412,17 +414,17 @@ describe('an engine function the host has not got', () => {
     const { thread: t } = thread()
     const said: number[] = []
     stage.onUnread = (call) => said.push(call.fn)
-    stage.host.call(844, [1], t)
-    stage.host.call(844, [2], t)
-    stage.host.call(843, [], t)
-    expect(said).toEqual([844, 843])
+    stage.host.call(899, [1], t)
+    stage.host.call(899, [2], t)
+    stage.host.call(898, [], t)
+    expect(said).toEqual([899, 898])
   })
 
   it('stops the run instead, where the run is there to find them', () => {
     const stage = new EventStage(1)
     const { thread: t } = thread()
     stage.strict = true
-    expect(() => stage.host.call(844, [7], t)).toThrow(/engine function 844 is not read/)
+    expect(() => stage.host.call(899, [7], t)).toThrow(/engine function 899 is not read/)
   })
 
   it('says nothing for a function the host answers', () => {

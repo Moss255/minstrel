@@ -2167,6 +2167,9 @@ interface Arrival {
  * already loaded is left alone: a doorway onto a map that will not read should
  * not throw the player out of the one they are in.
  */
+/** Whether the Hero was fallen as this map was entered — what `837` answers; the game takes it at the map's load. */
+let heroFallenOnArrival = false
+
 function enter(map: string, arrival?: Arrival): boolean {
   if (!cartridge) return false
   const previous = loaded
@@ -2174,6 +2177,9 @@ function enter(map: string, arrival?: Arrival): boolean {
   const started = performance.now()
   // Where an event left anyone belongs to the map it happened in — see `castLeft`.
   castLeft.clear()
+  // Whether the Hero arrives fallen, kept for the map's stay — `837`, see
+  // `EventStage.heroFallen`.
+  heroFallenOnArrival = leader().hp === 0
   let opened: Loaded
   try {
     opened = load(cartridge, { map, lighting: wantedLighting, onProgress: status })
@@ -9132,6 +9138,7 @@ function startEvent(number: number, afterTalk = false): boolean {
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
   playing.player.stage.afterTalk = afterTalk
+  playing.player.stage.heroFallen = heroFallenOnArrival
   // The live thread's flags and marks, which `601` and `602` read.
   for (const flag of storyFlags) playing.player.stage.threadFlags.add(flag)
   for (const mark of storyMarks) playing.player.stage.threadMarks.add(mark)

@@ -392,6 +392,11 @@ export interface BoneCamera {
   readonly third?: string
   /** The object that third bone drags about, `552`'s only. */
   readonly drags?: number
+  /**
+   * Whether that object is turned to face the way it moved — `839`. A new
+   * camera turns it, so undefined is yes.
+   */
+  readonly turns?: boolean
 }
 
 /** A sprite a scene has put on the map — see `521`. */
@@ -808,6 +813,23 @@ export class EventStage {
    * not fade in.
    */
   afterTalk = false
+  /**
+   * Whether the Hero was fallen when this map was loaded — what `837`
+   * answers. The game keeps a byte in its map-load state
+   * (`[field+0x3734]+0x107`): cleared at every load's start
+   * (`func_ov017_021baedc`), set in the load's state 2
+   * (`func_ov001_021552a8`, `0x02155604`) when game object 0's status word has
+   * bit 0, INFERRED fallen. Set by whoever plays the event, as it was on
+   * arriving in the map; **ours**, the engine's own fallen test stands for
+   * the game's bit.
+   */
+  heroFallen = false
+  /**
+   * Whether the map's placements are kept as the scene left them across its
+   * battle — `844` turns it on, `547` off. **Ours**: nothing plays a scene's
+   * battle or draws placements yet, so it is kept.
+   */
+  placementsKept = false
   /** The message on show, by its number in the event's text. */
   message: number | undefined
   /** Every message shown, in order. */
@@ -1765,6 +1787,37 @@ export class EventStage {
           third: text(args[3]),
           drags: monsterSlot(num(args[4])),
         }
+        return 1
+      // **Let the bone camera turn what it drags, or not**, `839` — read from
+      // overlay 1 (`func_ov001_02163248`). It writes `(n == 0)` into byte
+      // `+0x265` of the current camera, and `552`'s per-frame update
+      // (`func_0204a170`) skips the turn when that is set and still drags;
+      // every third frame the turn takes the object halfway to the way it
+      // moved. A new camera starts turning. With no camera, nothing. **Ours**:
+      // nothing draws the bone camera yet, so the switch is kept. Its one
+      // caller is `ev28920` in `D16` at 14.4, after `552`.
+      case 839:
+        if (this.boneCamera) this.boneCamera = { ...this.boneCamera, turns: num(args[0]) !== 0 }
+        return 1
+      // **Whether the Hero was fallen when the map was loaded**, `837` — read
+      // from overlay 1 (`func_ov001_02163200`): 1 or 0 through the reference,
+      // from the map-load state's byte — see `heroFallen`. Its one caller,
+      // `ev24593` in `M03` at 4.4, puts the Hero on the scene's mark when it
+      // says 1, as it would not for a scene begun by talking.
+      case 837: {
+        const ref = args[0]
+        if (isRef(ref)) thread.write(ref, this.heroFallen ? 1 : 0)
+        return 1
+      }
+      // **Keep the map's placements as the scene left them, across its
+      // battle**, `844` — read from overlay 1 (`func_ov001_02163dc8`). It
+      // records every placement's shown-or-hidden bit (`func_02017c58`) and
+      // sets byte `+8` of the battle's transition, which the battle's teardown
+      // (`func_ov017_021b6f9c`) sees and the map's next setup
+      // (`func_02017a94`) acts on; `547` clears it (`0x02163da8`), so this
+      // comes after. Its callers are `ev29220` and `ev29230` in `X04` at 17.2.
+      case 844:
+        this.placementsKept = true
         return 1
       // **Let go of whatever the Hero is on**, `557` — read from overlay 1,
       // and it takes nothing. It clears a bit of the Hero's own flag word,
@@ -3004,6 +3057,8 @@ export class EventStage {
           placement: num(args[0]),
           battle: args.length >= 2 ? num(args[1]) : -1,
         }
+        // The game clears the transition's `+8` here (`0x02163da8`) — see `844`.
+        this.placementsKept = false
         return 0
       // **Stop what a character is playing**, `222` — queued behind whatever
       // else it has been told to do, so it stops when its turn comes.
@@ -3189,7 +3244,15 @@ export class EventStage {
       case 586:
         this.doorsOpened.add(`${num(args[0])},${num(args[1])}`)
         return 0
+      // **`843` is `563` without the swing** — read from overlay 1
+      // (`func_ov001_02160bc0`), instruction for instruction 563's handler but
+      // ending in `func_02018918` where 563 calls `func_0201874c`: a sliding
+      // door is put back at once, a swinging one only has its flags cleared,
+      // and like 563 it acts only on a door that is open. Its one caller,
+      // `ev24590` in `D04`, shuts doors 28 and 30 so that `540` can open them
+      // on camera.
       case 563:
+      case 843:
         this.doorsOpened.delete(`${num(args[0])},${num(args[1])}`)
         return 0
       // **Show or hide a thing the map has placed**, `574` — read from overlay
