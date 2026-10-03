@@ -106,7 +106,7 @@ struct CharaColourTables {          // 0x02109928, size 0x12c
 | `0x02099c90` | `0x1c` | tag `0x69`: one `ToInt()` stored at `+0x128`. The compiler addresses it from `0x02109a28` + `0x28`, which the matching will have to reproduce | `static int CharaColourScript_SetUnknown69(Script::Parameter*, int)` |
 | `0x020f1574` (`.data`) | 7 entries | `{tag, handler}` × 6, then `{0, 0}` | `static Script::OpcodeLookupEntry s_charaColourOpcodes[]` |
 | `0x02099cb8` | `0x7c` | the loader, called once, from `main` at `0x02000eac` | `void CharaColourTables::Load()` — see below |
-| `0x02099d34` | `0xe4` | writes a skin ramp of 2, 4 or 8 shades at a byte offset of every 32-byte palette in a model's TEX0 | `CharaColourTables::ApplySkin(model, int kind, int tone, int offset)` |
+| `0x02099d34` | `0xe4` | writes a skin ramp of 2, 4 or 8 shades **once**, at byte `(S > 32 ? S mod 32 : 0) + offset` of a model's TEX0 palette data — not into every palette, as this line said until 3 October 2026: the copy loop never advances its destination | `CharaColourTables::ApplySkin(model, int kind, int tone, int offset)` |
 | `0x02099e18` | `0xdc` | writes brows, eyes and skin into the start of the face's palette, through two little tables of offsets `{4, 8, 16}` (`0x020e8e20`) and lengths `{4, 4, 16}` (`0x020e8e14`) | `CharaColourTables::ApplyFace(model, int skin, int hairColour, int eyeColour)` |
 
 **The loader, as the disassembly has it:**
@@ -694,8 +694,10 @@ held by `apps/game/test/recruit.test.ts`.
   `0x0218b95c`, vocation 0, mode 0).
 - **The look, and the equipment with it**: `func_ov009_02185634` — the ten
   equipment slots at character `+0x488` from `data_ov009_0218aa40` (all
-  empty but slot 2, the hair, `0x233c` + a choice, and slot 3, the face,
-  `0x2328` + a choice); with a vocation, slot 7 by the jump table at
+  empty but slot 2, the face, `0x233c` + a choice, and slot 3, the hair,
+  `0x2328` + a choice — *corrected 3 October 2026*: ids 9020–9033 carry part
+  letter `f` and 9000–9013 `h`, and `func_020730e0` gives part 2 the face's
+  recolour); with a vocation, slot 7 by the jump table at
   `0x02185b00` and slots 0, 1, 5 and the arms at `+0x49e` from `0x02185b84`;
   in mode 0, slots 0, 1, 5 and the arms again from `0x02185ba4`.
 - **Filing**: `func_ov009_0218742c` — vocation (`func_02083ca0`), level 1,

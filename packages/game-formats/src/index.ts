@@ -95,6 +95,7 @@ export {
 export {
   ITEM_KIND_EVERYDAY,
   ITEM_KIND_IMPORTANT,
+  ITEM_KIND_PART,
   type ItemDef,
   readItemDefs,
 } from './itemdefs.ts'

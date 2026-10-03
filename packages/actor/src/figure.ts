@@ -64,8 +64,9 @@ export interface Outfit {
     readonly turn?: Mat4
   }[]
   /**
-   * Parts drawn with their own palettes edited, by part: `p_f006` with a
-   * character's skin and eyes written over its colours. The game recolours a
+   * Parts drawn with their own palettes edited, by part or texture file:
+   * `p_f006` with a character's skin and eyes written over its colours, a
+   * body, its arms and its feet with their skin. The game recolours a
    * character this way — new colours over the palette, the texels untouched —
    * and which colours go where is the game's, so the caller says; see
    * `withPalettes` in `@minstrel/nitro-gfx`.
@@ -122,8 +123,11 @@ export function dressFigure(lib: Library, outfit: Outfit): Figure {
     for (const texture of set.textures) textures.set(texture.name, { set, name: texture.name })
   }
   for (const file of outfit.textures ?? []) {
-    const set = lib.textures.get(file)
-    if (!set) throw new Error(`no character texture file '${file}' on the cartridge`)
+    const found = lib.textures.get(file)
+    if (!found) throw new Error(`no character texture file '${file}' on the cartridge`)
+    // A texture file recoloured as a part is: the arms, the feet, the hair's colour.
+    const edit = outfit.recolour?.get(file)
+    const set = edit ? withPalettes(found, edit) : found
     for (const texture of set.textures) textures.set(texture.name, { set, name: texture.name })
   }
 

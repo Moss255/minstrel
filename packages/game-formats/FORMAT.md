@@ -5601,13 +5601,27 @@ by a part index 0–7:
   painted in.
 - **Indices 0, 1, 5, 6, 7** — `func_02099d34(model, kind, tone, 4)`: `kind` 1,
   2 or 4 picks the two-, four- or eight-shade table, and the tone's ramp is
-  copied to byte offset 4 — slot 2 — of **every** 32-byte palette in the
-  model's TEX0. Index 4 the same at byte 16, slot 8. Index 3 is skipped.
+  copied **once** into the model's TEX0 palette data at byte
+  `D = (S > 32 ? S mod 32 : 0) + 4`, `S` the palette data's whole size
+  (`TEX0+0x30 << 3`). *Corrected 3 October 2026*: this file said "every
+  32-byte palette", but the copy loop at `0x02099dd4`–`0x02099df0` never
+  advances its destination — only the count drops. Index 4 — the hair's
+  colour texture — the same at `+ 16`. Index 3 is skipped. On the cartridge
+  `S` is 16, 32, 64, 80 or 96, so the write lands at colour 2 (8 for the
+  hair), or 10 for 80, always in the palette at offset 0; the parts' own
+  colours agree (`p_p213` two skin shades there, `p_a042` four, `p_b617`,
+  `S` 80, two at colour 10).
 - **`kind` comes from the item worn, not the part.** `func_020de2a4` reads a
   four-bit field from a record found by item id among eleven at `+0x194`
   (`func_02083554`): bits 15–18 of its first word for a man, 23–26 for a woman;
-  1, 2 or 4, or none. **Which file fills those records is not established**,
-  nor which of our parts each index 0–7 is (`func_02072afc` fills them).
+  1, 2 or 4, or none. **The records are `itemdt_<lang>.nat`'s** (read 3
+  October 2026): the field is the first word of the record's block —
+  `ItemDef.skinShades`, see `itemdefs.ts`. A slot with no item counts from a
+  part that is no item, kind 11 in the same table: the bare body 1000, legs
+  8001, arms 8010, feet 994 (`func_02072afc`'s fallbacks). The indices: 0 the
+  armour, 1 the legwear, 2 the face, 3 the hair's shape, 4 the hair's colour
+  texture, 5 the gloves or else the arms, 6 the footwear, 7 the headgear;
+  weapon, shield and accessory are never recoloured.
 
 **The appearance fields**, from the same caller: the skin tone is bits 1–3 of
 the appearance record's `+0x14` byte, the eye colour bits 4–7, and the hair

@@ -22,6 +22,7 @@ import {
   areasOf,
   BONE_SLOTS,
   blocksDoorway,
+  type CharaColours,
   conditionsOfWords,
   doorwayPlay,
   type EventOutcome,
@@ -69,6 +70,7 @@ import {
   type Model,
   measureBounds,
   type NodeTransform,
+  type PaletteInfo,
   type PatternAnimation,
   patternAt,
   poseGeometry,
@@ -457,7 +459,7 @@ import {
   treesOf,
   treeView,
 } from './skills.ts'
-import { faceColours } from './skin.ts'
+import { bodyColours, faceColours, skinRamp, skinSlot } from './skin.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
 import {
   actorCloseUp,
@@ -9657,10 +9659,20 @@ function lookOver(
   // The hair colour replaces whichever `p_h` texture the outfit carried.
   const textures = [...(outfit.textures ?? []).filter((name) => !name.startsWith('p_h'))]
   if (has(colour)) textures.push(colour)
-  // Their skin, eyes and brows written over the face's palette — see `skin.ts`.
+  // Their skin, eyes and brows written over the face's palette, and their
+  // skin over every worn part's — see `skin.ts`.
   const colours = loaded?.charaColours
-  const recolour =
-    colours && has(face) ? new Map([[face, faceColours(colours, look)]]) : outfit.recolour
+  const recolour = colours
+    ? new Map([
+        ...(has(face) ? [[face, faceColours(colours, look)] as const] : []),
+        ...[outfit.body, outfit.legs, outfit.headgear, ...textures]
+          .filter((name): name is string => name !== undefined)
+          .flatMap((name) => {
+            const edit = bodySkinOf(name, look, colours)
+            return edit ? [[name, edit] as const] : []
+          }),
+      ])
+    : outfit.recolour
   return {
     ...outfit,
     ...(has(face) ? { face } : {}),
@@ -9668,6 +9680,51 @@ function lookOver(
     textures,
     ...(recolour ? { recolour } : {}),
   }
+}
+
+/** The part letters by the thousands of the items they are worn as — see `PART_LETTERS`. */
+const PART_THOUSANDS: Readonly<Record<string, number>> = {
+  m: 12,
+  b: 13,
+  a: 14,
+  g: 15,
+  p: 16,
+  r: 17,
+}
+/**
+ * The parts that are no item, for a slot drawn with no item's part — the bare
+ * body, legs, arms and feet (`func_02072afc`'s fallbacks: 1000, 8001, 8010,
+ * 994); our underclothes, `BARE_OUTFIT`, stand where those would.
+ */
+const BARE_PARTS: Readonly<Record<string, number>> = { b: 1000, p: 8001, a: 8010, g: 8010, r: 994 }
+
+/**
+ * **A worn part's skin** — see `skin.ts`: the ramp its record's count gives
+ * the character's sex, at the place `S` puts it, over its first palette.
+ * Undefined for a part that takes none, and for the hair, whose records'
+ * pairing with our hair styles is not read.
+ */
+function bodySkinOf(
+  name: string,
+  look: Appearance,
+  colours: CharaColours,
+): ((palette: PaletteInfo, bytes: Uint8Array) => Uint8Array) | undefined {
+  const parsed = /^p_([a-z])(\d{3})/.exec(name)
+  const letter = parsed?.[1]
+  const thousands = letter === undefined ? undefined : PART_THOUSANDS[letter]
+  if (!parsed || letter === undefined || thousands === undefined) return undefined
+  const defs = loaded?.itemDefs
+  const own = defs?.get(thousands * 1000 + Number(parsed[2]))
+  const bare = BARE_PARTS[letter]
+  const def = own ?? (bare === undefined ? undefined : defs?.get(bare))
+  const count = def ? (look.sex === 1 ? def.skinShades.woman : def.skinShades.man) : 0
+  const ramp = skinRamp(colours, look.skin, count)
+  if (!ramp) return undefined
+  // The part's own palette data: inside its model, or its texture file.
+  const set = loaded?.wardrobe.partTextures.get(name) ?? loaded?.wardrobe.textures.get(name)
+  if (!set) return undefined
+  const size = set.palettes.reduce((most, p) => Math.max(most, p.dataOffset + p.dataSize), 0)
+  return bodyColours(ramp, skinSlot(size, 4))
 }
 
 /**

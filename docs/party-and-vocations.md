@@ -1221,10 +1221,14 @@ actually left.
   takes its brows from the hair colour at slots 2–3, its eyes at 4–5 and an
   eight-shade skin ramp at 8–15, exactly as `func_02099e18` copies them. Which
   appearance field is which is settled from the same code. **The rest of the
-  body keeps its own skin**: the game writes a two-, four- or eight-shade ramp
-  into every palette of each worn part, and *how many* comes from a record of
-  the item worn, per sex — a record whose file is not yet found, along with
-  which of our parts is which of the game's eight indices.
+  body, 3 October 2026**: each worn part — body, legs, arms or gloves, feet,
+  headgear — takes the tone's two-, four- or eight-shade ramp once, at the
+  place its palette data's size puts it; how many is the part's record's in
+  `itemdt_<lang>.nat`, per sex, and a slot with no item counts from the bare
+  part's (`skin.ts`, `bodySkinOf`). **Ours**: the hair's own ramp (the
+  man's hairs 9008–9010 take eight shades) is not written, as our hair styles
+  are not yet paired with their records; and our underclothes stand for the
+  bare parts, counted as the bare parts are.
 - **Where a preset's hair comes from**, if anywhere. The record names none, so
   a character made from a preset wears the Hero's. Still on the wiki's "not
   established" list — this one *is* an unknown rather than work not done.

@@ -1,7 +1,7 @@
 import type { CharaColours } from '@minstrel/game-formats'
 import type { PaletteInfo } from '@minstrel/nitro-gfx'
 import { describe, expect, it } from 'vitest'
-import { FACE_SLOTS, faceColours } from '../src/skin.ts'
+import { bodyColours, FACE_SLOTS, faceColours, skinRamp, skinSlot } from '../src/skin.ts'
 
 /** Colours numbered by table, row and place, so each copy can be seen to land. */
 const table = (base: number, rows: number, each: number) =>
@@ -60,5 +60,32 @@ describe('a face recoloured as the game does it', () => {
       faceColours(colours, { skin: 3, eyes: 12, hairColour: 5 })(palette(0), new Uint8Array(32)),
     )
     expect(past.slice(4, 6)).toEqual([0, 0])
+  })
+})
+
+describe('a worn part’s skin, as func_02099d34 writes it', () => {
+  it('takes the ramp of two, four or eight shades by the part’s count, and none for 0', () => {
+    expect(skinRamp(colours, 3, 1)).toEqual([0x2030, 0x2031])
+    expect(skinRamp(colours, 3, 2)).toHaveLength(4)
+    expect(skinRamp(colours, 3, 4)).toHaveLength(8)
+    expect(skinRamp(colours, 3, 0)).toBeUndefined()
+    expect(skinRamp(colours, 3, 3)).toBeUndefined()
+  })
+
+  it('puts it at byte (S > 32 ? S mod 32 : 0) + 4, or + 16 for the hair', () => {
+    // The cartridge's sizes: p_p213 (16), p_b005 (64), p_b617 (80), p_h080a (32).
+    expect(skinSlot(16, 4)).toBe(2)
+    expect(skinSlot(32, 4)).toBe(2)
+    expect(skinSlot(64, 4)).toBe(2)
+    expect(skinSlot(80, 4)).toBe(10)
+    expect(skinSlot(32, 16)).toBe(8)
+  })
+
+  it('writes once, into the palette at the start of the data, and leaves the rest', () => {
+    const edit = bodyColours([0x2030, 0x2031, 0x2032, 0x2033], 2)
+    const out = read(edit(palette(0), new Uint8Array(32)))
+    expect(out.slice(0, 7)).toEqual([0, 0, 0x2030, 0x2031, 0x2032, 0x2033, 0])
+    const other = new Uint8Array(32)
+    expect(edit(palette(32), other)).toBe(other)
   })
 })

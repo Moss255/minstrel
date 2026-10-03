@@ -22,10 +22,15 @@ import type { PaletteInfo } from '@minstrel/nitro-gfx'
  * the low four bits of `+0x15` — which settles which of the three colour
  * fields is which, where only the skin's had been established.
  *
- * The rest of the body is recoloured too, by `func_02099d34`, with a skin ramp
- * of two, four or eight shades written at a fixed slot of every palette — but
- * how many shades each part takes is read from a record of the item worn, and
- * that record is not yet found. So the body keeps its own skin for now.
+ * **The rest of the body** (read 3 October 2026): `func_020730e0` gives each
+ * worn part — body, legs, arms or gloves, feet, headgear — and the hair's
+ * colour texture to `func_02099d34`, which writes the tone's ramp of two,
+ * four or eight shades **once**, into the part's palette data at byte
+ * `(S > 32 ? S mod 32 : 0) + 4` — `+ 16` for the hair — where `S` is the
+ * whole palette data's size (`0x02099dac`–`0x02099dc8`). How many shades is
+ * the part's own record's (`ItemDef.skinShades`, by sex); a slot with no item
+ * takes the bare part's: body 1000, legs 8001, arms 8010, feet 994. Weapons,
+ * shields and accessories are never recoloured.
  */
 
 /** Where each copy lands in the face's palette, in colours — the game's byte offsets over two. */
@@ -63,6 +68,51 @@ export function faceColours(
     put(FACE_SLOTS.brows, colours.brows[look.hairColour])
     put(FACE_SLOTS.eyes, colours.eyes[look.eyes])
     put(FACE_SLOTS.skin, colours.skin8[look.skin])
+    return out
+  }
+}
+
+/** The tone's ramp for a part that takes `count` (1, 2 or 4 — two, four or eight shades), or none. */
+export function skinRamp(
+  colours: CharaColours,
+  skin: number,
+  count: number,
+): readonly number[] | undefined {
+  const table =
+    count === 1
+      ? colours.skin2
+      : count === 2
+        ? colours.skin4
+        : count === 4
+          ? colours.skin8
+          : undefined
+  return table?.[skin]
+}
+
+/**
+ * Where a part's ramp is written, as a colour of the palette at the start of
+ * its palette data: byte `(S > 32 ? S mod 32 : 0) + offset`, halved — `offset`
+ * 4 for a body part, 16 for the hair (`func_02099d34`). `paletteData` is `S`.
+ */
+export function skinSlot(paletteData: number, offset: 4 | 16): number {
+  const byte = (paletteData > 32 ? paletteData % 32 : 0) + offset
+  return byte >> 1
+}
+
+/** A part's palette with its skin ramp written at `slot`: only the palette at the start of the data, as the game's one write lands there. */
+export function bodyColours(
+  ramp: readonly number[],
+  slot: number,
+): (palette: PaletteInfo, bytes: Uint8Array) => Uint8Array {
+  return (palette, bytes) => {
+    if (palette.dataOffset !== 0) return bytes
+    const out = bytes.slice()
+    ramp.forEach((colour, i) => {
+      const at = (slot + i) * 2
+      if (at + 1 >= out.length) return
+      out[at] = colour & 0xff
+      out[at + 1] = (colour >> 8) & 0xff
+    })
     return out
   }
 }

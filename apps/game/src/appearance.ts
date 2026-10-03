@@ -62,9 +62,8 @@ export interface Appearance {
   readonly build: number
   /**
    * The skin colour, 0 to 7 — the appearance block's `+0x174` bits 1–3, which
-   * the game applies to **every** body part. **Drawn on the face** — see
-   * `skin.ts`; the rest of the body keeps its own skin until how many shades
-   * each worn part takes is read.
+   * the game applies to **every** body part. **Drawn** on the face and on
+   * every worn part that takes it — see `skin.ts`.
    */
   readonly skin: number
   /**
