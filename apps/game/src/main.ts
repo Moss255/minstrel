@@ -318,6 +318,7 @@ import {
   skyRegionOf,
   takeOff,
 } from './flight.ts'
+import { fpsLine, fpsMeter, resetFps, tickFps } from './fps-meter.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
 import {
   CARRY_BONES,
@@ -3040,6 +3041,13 @@ let lastFrame = 0
 function frame(now = 0): void {
   const elapsedMs = lastFrame === 0 ? 0 : now - lastFrame
   lastFrame = now
+  if (fps && fpsShown) {
+    if (battle && !fpsInBattle) resetFps(fps)
+    fpsInBattle = battle !== undefined
+    tickFps(fps, elapsedMs)
+    const line = fpsLine(fps)
+    if (fpsShown.textContent !== line) fpsShown.textContent = line
+  }
   // **A page that tells an action shows it** — see `startShown` — and goes on
   // when it ends, as the game's does; a page that tells an event with no
   // action goes on when its lines have been up their time. **Ours**: the
@@ -3454,6 +3462,18 @@ const padAxes = axesFrom(params.get('axes'), params.get('lookbuttons'))
 /** A layout given on the URL wins over anything known about the pad. */
 const padOverridden = params.get('axes') !== null || params.get('lookbuttons') !== null
 const showPad = params.get('pad') === '1'
+/**
+ * `?fps=1`: a frame-rate meter at the top — the last second's rate
+ * and worst frame, and the drops since the fight began. See `fps-meter.ts`.
+ */
+const fps = params.get('fps') === '1' ? fpsMeter() : undefined
+const fpsShown = fps ? document.createElement('div') : undefined
+if (fpsShown) {
+  fpsShown.id = 'fps'
+  document.querySelector('main')?.append(fpsShown)
+}
+/** Whether a fight was on last frame — the meter's drops count again from each one's start. */
+let fpsInBattle = false
 /** `?probe=1`: put the scene camera and the real one on `window` each frame. */
 const probing = params.get('probe') === '1'
 /** `?collision=1`, or `c` at any time: draw the collision mesh over the map. */

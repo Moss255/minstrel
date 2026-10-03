@@ -76,6 +76,7 @@ is one the menu will not know about.
 | `fit=scale,x,y,z` | move and scale the collision, walked as well as drawn, to fit it over the room |
 | `room=`, `world=`, `person=` | the three scales, each also movable by keys — see `n`/`m`, `g`/`h`, `j`/`i` |
 | `pad=1` | show what a gamepad reports |
+| `fps=1` | a frame-rate meter at the top: the last second's rate and worst frame, and how many frames took over 33 ms (two of a 60 Hz display's) since the fight began — see `apps/game/src/fps-meter.ts` |
 | `axes=0,1,2,3` | move the sticks to other axes |
 | `lookbuttons=6,7` | read the look stick from two analog buttons |
 

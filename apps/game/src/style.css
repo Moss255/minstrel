@@ -615,3 +615,21 @@ body.scenes-open #minimap:not([hidden]) {
   right: calc(min(26rem, 40vw) + 12px);
   width: min(20vw, 256px);
 }
+
+/* `?fps=1`'s frame-rate meter — see `fps-meter.ts`. */
+#fps {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 60%);
+  color: #e8e6e1;
+  font:
+    12px / 1.4 ui-monospace,
+    monospace;
+  white-space: pre;
+  pointer-events: none;
+}
