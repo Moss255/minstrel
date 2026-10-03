@@ -653,3 +653,38 @@ body.scenes-open #minimap:not([hidden]) {
   overflow: hidden;
   pointer-events: none;
 }
+
+/*
+ * The debug screen (the key left of 1): the overlay, the meter with the keys
+ * and the battle log, one under the other down the left.
+ */
+#debug {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  bottom: 40px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#debug[hidden] {
+  display: none;
+}
+
+#debug > #overlay,
+#debug > #fps,
+#debug > #battle-log {
+  position: static;
+  transform: none;
+  flex: none;
+}
+
+#debug > #battle-log {
+  flex: 0 1 auto;
+  min-height: 0;
+}

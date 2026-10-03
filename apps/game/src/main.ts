@@ -3052,13 +3052,15 @@ function frame(now = 0): void {
     if (battle.phase === 'over') log(`— over: ${battle.state.outcome}`)
   }
   drawLog()
-  if (fps && fpsShown) {
-    if (battle && !fpsInBattle) resetFps(fps)
-    fpsInBattle = battle !== undefined
-    tickFps(fps, elapsedMs)
-    const line = fpsLine(fps)
+  if (battle && !fpsInBattle) resetFps(fps)
+  fpsInBattle = battle !== undefined
+  tickFps(fps, elapsedMs)
+  if (debugOn) {
+    const line = `${fpsLine(fps)}\n${DEBUG_KEYS}`
     if (fpsShown.textContent !== line) fpsShown.textContent = line
   }
+  // The status line goes with the debug screen once a map is up.
+  if (!debugOn && loaded && !statusEl.hidden) statusEl.hidden = true
   // **A page that tells an action shows it** — see `startShown` — and goes on
   // when it ends, as the game's does; a page that tells an event with no
   // action goes on when its lines have been up their time. **Ours**: the
@@ -3461,22 +3463,48 @@ const padAxes = axesFrom(params.get('axes'), params.get('lookbuttons'))
 const padOverridden = params.get('axes') !== null || params.get('lookbuttons') !== null
 const showPad = params.get('pad') === '1'
 /**
- * `?fps=1`: a frame-rate meter at the top — the last second's rate
- * and worst frame, and the drops since the fight began. See `fps-meter.ts`.
+ * **The debug screen** — ours, like Minecraft's F3: the key left of 1 (`` ` ``
+ * or `~`) shows or hides everything that is for looking at the game rather
+ * than playing it, and **the developer keys work only while it is up** —
+ * {@link DEBUG_KEYS}. Shift and the same key opens the scene browser.
+ * `?debug=1` opens with it up, as `?fps=1` and `?log=1` still do.
+ *
+ * Up, it shows: the overlay (where the Hero stands, what is drawn, the pad),
+ * the status line, the frame-rate meter with the keys under it, and the
+ * fight's timeline. The meter and the timeline keep counting while it is down.
  */
-const fps = params.get('fps') === '1' ? fpsMeter() : undefined
-const fpsShown = fps ? document.createElement('div') : undefined
-if (fpsShown) {
-  fpsShown.id = 'fps'
-  document.querySelector('main')?.append(fpsShown)
-}
-/** The fight's timeline — see `battle-log.ts`; `o` or `?log=1` shows it. */
+let debugOn = params.get('debug') === '1' || params.get('fps') === '1' || params.get('log') === '1'
+/** The developer keys, as the debug screen lists them. */
+const DEBUG_KEYS = [
+  '` debug screen · shift+` scene browser',
+  'p a fight · shift+p the boss · l a level · shift+l one back',
+  'n / v chapter · t / y story stage · c collision',
+].join('\n')
+/** The frame-rate meter — see `fps-meter.ts` — at the top, the keys under it. */
+const fps = fpsMeter()
+const fpsShown = document.createElement('div')
+fpsShown.id = 'fps'
+document.querySelector('main')?.append(fpsShown)
+/** The fight's timeline — see `battle-log.ts`. */
 let blog = battleLog(0)
-let logShown = params.get('log') === '1'
 const logEl = document.createElement('pre')
 logEl.id = 'battle-log'
-logEl.hidden = !logShown
 document.querySelector('main')?.append(logEl)
+/** The three, one under the other down the left — see `#debug` in the styles. */
+const debugEl = document.createElement('div')
+debugEl.id = 'debug'
+debugEl.append(overlayEl, fpsShown, logEl)
+document.querySelector('main')?.append(debugEl)
+debugEl.hidden = !debugOn
+
+/** Show or hide the debug screen. Before a map is up the status line stays, for the loading's word. */
+function showDebug(on: boolean): void {
+  debugOn = on
+  debugEl.hidden = !on
+  statusEl.hidden = !on && loaded !== undefined
+  logDrawn = -1
+  drawLog()
+}
 /** The log's version last drawn, and each fighter's motion as the log last saw it. */
 let logDrawn = -1
 /** The battle's phase as the log last saw it. */
@@ -3492,10 +3520,12 @@ function logName(object: number): string {
 }
 /** Draw the log, when it is shown and something was added. */
 function drawLog(): void {
-  if (!logShown || blog.version === logDrawn) return
+  if (!debugOn || blog.version === logDrawn) return
   logDrawn = blog.version
   logEl.textContent =
-    blog.entries.length > 0 ? logText(blog) : 'battle log · o hides it · nothing yet: pick a fight'
+    blog.entries.length > 0 ? logText(blog) : 'battle log · nothing yet: p picks a fight'
+  // Short of room, it is the oldest lines that go.
+  logEl.scrollTop = logEl.scrollHeight
 }
 /** Whether a fight was on last frame — the meter's drops count again from each one's start. */
 let fpsInBattle = false
@@ -10235,18 +10265,13 @@ function moveFit(by: Partial<CollisionFit>, factor?: number): void {
 
 addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase()
-  // The backquote opens and closes the scene browser — see `scene-browser.ts`.
-  if (event.key === '`') {
-    openSceneBrowser()
-    event.preventDefault()
-    return
-  }
-  // `o` shows or hides the fight's timeline — see `battle-log.ts` — in a fight or out.
-  if (key === 'o' && !controlsPanel.open) {
-    logShown = !logShown
-    logEl.hidden = !logShown
-    logDrawn = -1
-    drawLog()
+  // The key left of 1 shows or hides the debug screen, and with Shift opens
+  // and closes the scene browser — see `scene-browser.ts`. Not while typing.
+  const typing =
+    event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement
+  if (!typing && (event.code === 'Backquote' || event.key === '`' || event.key === '~')) {
+    if (event.shiftKey || event.key === '~') openSceneBrowser()
+    else showDebug(!debugOn)
     event.preventDefault()
     return
   }
@@ -10352,7 +10377,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     return handled
   }
   // `p` picks a fight — see `FIGHT` — and Shift+P the boss.
-  if (key === 'p' && loaded && !talking && !menu && !visit && !playing) {
+  if (key === 'p' && debugOn && loaded && !talking && !menu && !visit && !playing) {
     startFight(event.shiftKey ? BOSS_FIGHT : fightCodes(), !event.shiftKey)
     event.preventDefault()
     return handled
@@ -10361,7 +10386,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   // It works with the menu up, so the status panel can be watched as the
   // levels go by; not in a battle, whose fighters took their numbers when it
   // began, nor while the collision fit has `l` for its own.
-  if (key === 'l' && loaded && !battle && !showCollision) {
+  if (key === 'l' && debugOn && loaded && !battle && !showCollision) {
     levelTo(undefined, event.shiftKey ? -1 : 1)
     event.preventDefault()
     return handled
@@ -10519,12 +10544,12 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     if (!playing && read !== undefined) followEvent(read)
     event.preventDefault()
   }
-  if ((key === 'v' || key === 'n') && loaded && !showCollision) {
+  if ((key === 'v' || key === 'n') && debugOn && loaded && !showCollision) {
     moveChapter(key === 'n' ? 1 : -1)
     event.preventDefault()
   }
   // Flick through the story stages the cast's records name: `t` back, `y` on.
-  if ((key === 't' || key === 'y') && loaded) {
+  if ((key === 't' || key === 'y') && debugOn && loaded) {
     moveStage(key === 'y' ? 1 : -1)
     event.preventDefault()
   }
@@ -10544,7 +10569,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     else playMapMusic(true)
     event.preventDefault()
   }
-  if (key === 'c') {
+  if (key === 'c' && debugOn) {
     showCollision = !showCollision
     status(
       showCollision

@@ -43,7 +43,7 @@ is one the menu will not know about.
 | `ivor=1` | open with Ivor along, as his call leaves him |
 | `level=25` | put the Hero at a level, with the experience for it |
 | `skills=1:3,11:58` | put that many points into each of the Hero's skill trees, by tree number — to try an ability in a fight |
-| `scenes=1` | open the **scene browser**, or press the backquote key at any time: every scene on the cartridge by area and story stage, found by number, area or a line it speaks, played with the stage, step and flags its trigger record wants — without playing up to it — with pause, one frame on, replay and speed. What the record does not carry, who is in the party, is not set; the conditions can be changed before playing. See `apps/game/src/scenes.ts` |
+| `scenes=1` | open the **scene browser**, or press Shift and the backquote key (the one left of 1) at any time: every scene on the cartridge by area and story stage, found by number, area or a line it speaks, played with the stage, step and flags its trigger record wants — without playing up to it — with pause, one frame on, replay and speed. What the record does not carry, who is in the party, is not set; the conditions can be changed before playing. See `apps/game/src/scenes.ts` |
 | `scene=22510` | play a scene as the scene browser would: the stage, step and flags its trigger record wants. |
 | `way=1` | with `scene=`, play it by another of its ways, counted from 0 in the order the browser lists them |
 | `until=m101` | read a scene's lines on its own until message 101 is up, and hold it there; `until=f250` holds it at its frame 250. With `scene=`, the same moment every time — what `tools/compare` shoots |
@@ -72,12 +72,13 @@ is one the menu will not know about.
 | `rom=/rom.nds` | fetch a cartridge from a URL instead of using the file picker |
 | `lighting=night` | build the map's night lighting whatever the hour |
 | `tempo=0.9` | multiply the music's tempo — a knob for judging by ear |
-| `collision=1` | draw the collision mesh over the map; `c` toggles it |
+| `collision=1` | draw the collision mesh over the map; `c` toggles it, with the debug screen up |
 | `fit=scale,x,y,z` | move and scale the collision, walked as well as drawn, to fit it over the room |
 | `room=`, `world=`, `person=` | the three scales, each also movable by keys — see `n`/`m`, `g`/`h`, `j`/`i` |
 | `pad=1` | show what a gamepad reports |
-| `log=1` | open with the **battle log** shown; `o` shows or hides it at any time. Each fight's timeline, stamped from its start: the pages, each action as it begins (who, what, at whom, which camera), every motion a fighter starts and what it blends from, the camera's commands, the numbers as they go up, and runs of frames over 33 ms. Kept while hidden — see `apps/game/src/battle-log.ts` |
-| `fps=1` | a frame-rate meter at the top: the last second's rate and worst frame, and how many frames took over 33 ms (two of a 60 Hz display's) since the fight began — see `apps/game/src/fps-meter.ts` |
+| `debug=1` | open with the **debug screen** up. The key left of 1 (`` ` `` or `~`) shows or hides it at any time, like Minecraft's F3: the overlay, the status line, the frame-rate meter with the developer keys under it, and the battle log. **The developer keys — `p` a fight, Shift+P the boss, `l` a level, `n`/`v` chapter, `t`/`y` story stage, `c` collision — work only while it is up**; Shift and the same key opens the scene browser. See `debugOn` in `apps/game/src/main.ts` |
+| `log=1` | open with the debug screen up, for the **battle log** in it. Each fight's timeline, stamped from its start: the pages, each action as it begins (who, what, at whom, which camera), every motion a fighter starts and what it blends from, the camera's commands, the numbers as they go up, and runs of frames over 33 ms. Kept while the debug screen is down — see `apps/game/src/battle-log.ts` |
+| `fps=1` | open with the debug screen up, for its frame-rate meter at the top: the last second's rate and worst frame, and how many frames took over 33 ms (two of a 60 Hz display's) since the fight began — see `apps/game/src/fps-meter.ts` |
 | `axes=0,1,2,3` | move the sticks to other axes |
 | `lookbuttons=6,7` | read the look stick from two analog buttons |
 

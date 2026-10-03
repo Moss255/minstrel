@@ -2,7 +2,7 @@
 
 Written 26 September 2026. What to go through, in what order, and how, to
 correct the slice's scenes where they are staged or animated differently from
-the game. The tool is the scene browser (`?scenes=1`, or the backquote key —
+the game. The tool is the scene browser (`?scenes=1`, or Shift and the backquote key —
 see `docs/regions.md`); the reference is the two let's play videos in
 `evidence/`.
 
