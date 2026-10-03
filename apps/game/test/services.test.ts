@@ -5,12 +5,9 @@ import {
   buyPrice,
   type Counter,
   chooseInVisit,
-  INN_PRICE,
   leaveVisit,
   moveVisit,
   viewOf,
-  visitChurch,
-  visitInn,
   visitShop,
 } from '../src/services.ts'
 
@@ -30,7 +27,6 @@ const counter: Counter = {
   name: (id) => `thing ${id}`,
   price: (id) => prices.get(id),
   sells: (id) => gives.get(id),
-  divination: () => 'Soon.',
 }
 
 describe('the shop', () => {
@@ -77,23 +73,22 @@ describe('the shop', () => {
   })
 })
 
-describe('the inn and the church', () => {
-  it('takes the price for a night, and rests', () => {
-    const rich = take(EMPTY_BAG, { gold: INN_PRICE + 5 })
-    const stayed = chooseInVisit(visitInn(2), rich, counter)
-    expect(stayed.rested).toBe(true)
-    expect(stayed.bag.gold).toBe(5)
-    const poor = chooseInVisit(visitInn(2), EMPTY_BAG, counter)
-    expect(poor.rested).toBeUndefined()
-    expect(poor.bag).toBe(EMPTY_BAG)
-  })
-
-  it('records progress on confession, and tells how far the next level is', () => {
-    const church = visitChurch(1)
-    expect(chooseInVisit(church, EMPTY_BAG, counter).confessed).toBe(true)
-    const told = chooseInVisit(moveVisit(church, 1, EMPTY_BAG, counter), EMPTY_BAG, counter)
-    expect(told.visit?.said).toBe('Soon.')
-    const left = chooseInVisit(moveVisit(church, 2, EMPTY_BAG, counter), EMPTY_BAG, counter)
-    expect(left.visit).toBeUndefined()
+describe('a keeper’s window', () => {
+  it('hands back the value of the row chosen, the flow taking it on', () => {
+    const menu = {
+      kind: 'keeper' as const,
+      service: 'inn' as const,
+      window: 'menu',
+      title: '',
+      rows: ['Stay Overnight', 'Cancel'],
+      values: [0, 2],
+      lines: ['100 G'],
+      cursor: 0,
+      said: '',
+    }
+    expect(chooseInVisit(menu, EMPTY_BAG, counter).keeperPick).toBe(0)
+    const down = moveVisit(menu, 1, EMPTY_BAG, counter)
+    expect(chooseInVisit(down, EMPTY_BAG, counter).keeperPick).toBe(2)
+    expect(viewOf(menu, EMPTY_BAG, counter).lines).toEqual(['100 G'])
   })
 })

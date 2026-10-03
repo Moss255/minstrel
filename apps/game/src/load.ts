@@ -2201,6 +2201,26 @@ export function entranceOf(
 }
 
 /**
+ * **A keeper's own words** — the inn's `str_in<k>` or the church's `str_ch<k>`,
+ * `/data/scenario/str_<kind><k>.gp2` › `str_<kind><k>_en.nat`, the file a
+ * line's `<INN=n>` or `<CHURCH=n>` chooses (`k` = `n − 1`; see `keepers.ts`).
+ * Empty when there is none or it will not read.
+ */
+export function keeperWords(
+  rom: Uint8Array,
+  kind: 'in' | 'ch',
+  k: number,
+): ReadonlyMap<number, string> {
+  if (!Number.isInteger(k) || k < 0) return new Map()
+  return englishText(
+    rom,
+    `/data/scenario/str_${kind}${k}.gp2`,
+    `str_${kind}${k}_en.nat`,
+    readSystemStrings,
+  )
+}
+
+/**
  * The bookshelves of the maps whose code begins as this one's does —
  * `data/scenario/htana<L>.gp2` › `htana<L>_en.bin`, INFERRED `<L>` the code's
  * first letter (it holds on all 162 records). None when it will not read.

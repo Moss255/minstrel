@@ -4,27 +4,20 @@ import { type Bag, drop, pay, take } from './bag.ts'
 import { CARRIED_MOST, type Carriers, type Owner } from './inventory.ts'
 
 /**
- * The shop, the inn and the church: what a line's `<SHOP=n>`, `<INN=n>` and
- * `<CHURCH=n>` hand over to when the talk is done (see `Service` in `talk.ts`).
- * Each is a list to choose from, drawn in the menu's box.
+ * The services a line hands over to when the talk is done (see `Service` in
+ * `talk.ts`) — the shop's lists here, and the windows of the services whose
+ * flows run in `main.ts`: the inn, the church, the Abbey, the Quester's
+ * Rest's counter and the bank (`keeper`, `abbey`). Each is a list to choose
+ * from, drawn in the menu's box.
  *
  * **What is read:** which shop sells what, and at what rate (`readShops`), and
  * each item's prices, what a shop asks and what it gives (`readItemTable`).
  * Whether a shop's rate touches what it gives is not established; here it
- * does not.
+ * does not. The inn's and the church's flows are the game's — see
+ * `keepers.ts`.
  *
- * **What is ours:**
- * - the words on every list, since the cartridge's own menu text is not read;
- * - the inn's price, {@link INN_PRICE}: the innkeeper's line leaves it to the
- *   engine (`<val_2>`), and no table of inn prices has been found;
- * - what the inn and the church's numbers select, which is not established.
+ * **What is ours:** the shop's words, since its own menu text is not read.
  */
-
-/**
- * A stand-in for the inn's price. The line says "that'll be <val_2> gold
- * coins"; the number is the engine's, and not found.
- */
-export const INN_PRICE = 10
 
 export type Visit =
   | {
@@ -36,8 +29,25 @@ export type Visit =
       /** An everyday item bought, waiting for who carries it (overlay 3, state `0xc`). */
       readonly bought?: { readonly item: number; readonly cost: number } | undefined
     }
-  | { readonly kind: 'inn'; readonly id: number; readonly cursor: number; readonly said: string }
-  | { readonly kind: 'church'; readonly id: number; readonly cursor: number; readonly said: string }
+  | {
+      /**
+       * One window of a keeper's service — the inn's menu, the church's menu
+       * or who-list, the counter's, the bank's — its rows in the service's own
+       * words, made by its flow in `main.ts`; choosing one hands its value
+       * back for the flow to take on. `lines` stand beside it: the gold, the
+       * party's state.
+       */
+      readonly kind: 'keeper'
+      readonly service: 'inn' | 'church' | 'counter' | 'bank'
+      readonly window: string
+      readonly title: string
+      readonly rows: readonly string[]
+      /** What each row stands for, handed back when it is chosen. */
+      readonly values: readonly number[]
+      readonly lines: readonly string[]
+      readonly cursor: number
+      readonly said: string
+    }
   | {
       /**
        * Cap'n Max's exchange, once every milestone is passed: the six he
@@ -72,8 +82,6 @@ export interface Counter {
   readonly price: (id: number) => number | undefined
   /** What a shop gives for an item, from its table; 0 or undefined for one it will not buy. */
   readonly sells: (id: number) => number | undefined
-  /** What divination tells: how far the Hero is from the next level. */
-  readonly divination: () => string
   /** The party as carriers, and their names — see `inventory.ts`. Without them, the bag alone. */
   readonly carriers?: Carriers
   readonly names?: readonly string[]
@@ -81,16 +89,16 @@ export interface Counter {
   readonly kindOf?: (id: number) => number | undefined
 }
 
-/** What choosing did: the visit after it, the bag, and whether to rest or to record progress. */
+/** What choosing did: the visit after it, and the bag. */
 export interface Outcome {
   readonly visit: Visit | undefined
   readonly bag: Bag
-  readonly rested?: boolean
-  readonly confessed?: boolean
   /** Cap'n Max's exchange: the one chosen, by place in his list, or -1 to leave. */
   readonly medalPick?: number
   /** An Abbey window's row chosen, by place — see `abbey.ts`. */
   readonly abbeyPick?: number
+  /** A keeper's window's row chosen: the value it stands for — see `keepers.ts`. */
+  readonly keeperPick?: number | undefined
 }
 
 /** How a visit looks: its rows, which is chosen, and the lines beside them. */
@@ -102,19 +110,9 @@ export interface VisitView {
 }
 
 const SHOP_TOP = ['Buy', 'Sell', 'Leave']
-const INN_ROWS = [`Stay the night — ${INN_PRICE} G`, 'Leave']
-const CHURCH_ROWS = ['Confess — record your progress', 'Divination', 'Leave']
 
 export function visitShop(shop: Shop): Visit {
   return { kind: 'shop', shop, mode: 'top', cursor: 0, said: 'What can I do for you?' }
-}
-
-export function visitInn(id: number): Visit {
-  return { kind: 'inn', id, cursor: 0, said: 'Will you stay the night?' }
-}
-
-export function visitChurch(id: number): Visit {
-  return { kind: 'church', id, cursor: 0, said: 'What brings you here?' }
 }
 
 /** What the shop asks for an item: its price at the shop's rate — INFERRED, see `readShops`. */
@@ -150,7 +148,7 @@ function carrierRows(counter: Counter): string[] {
 }
 
 function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
-  if (visit.kind === 'abbey') return [...visit.rows]
+  if (visit.kind === 'abbey' || visit.kind === 'keeper') return [...visit.rows]
   if (visit.kind === 'medals') {
     return [
       ...visit.exchanges.map(
@@ -160,8 +158,6 @@ function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
       'Leave',
     ]
   }
-  if (visit.kind === 'inn') return INN_ROWS
-  if (visit.kind === 'church') return CHURCH_ROWS
   if (visit.mode === 'top') return SHOP_TOP
   if (visit.mode === 'carrier') return carrierRows(counter)
   if (visit.mode === 'buy') {
@@ -184,6 +180,14 @@ export function viewOf(visit: Visit, bag: Bag, counter: Counter): VisitView {
   if (visit.kind === 'abbey') {
     return { title: visit.title, rows: [...visit.rows], cursor: visit.cursor, lines: [visit.said] }
   }
+  if (visit.kind === 'keeper') {
+    return {
+      title: visit.title,
+      rows: [...visit.rows],
+      cursor: visit.cursor,
+      lines: [...visit.lines, visit.said].filter((l) => l !== ''),
+    }
+  }
   if (visit.kind === 'medals') {
     return {
       title: visit.title,
@@ -192,12 +196,7 @@ export function viewOf(visit: Visit, bag: Bag, counter: Counter): VisitView {
       lines: [visit.said, `${visit.held} mini medal${visit.held === 1 ? '' : 's'}`],
     }
   }
-  const title =
-    visit.kind === 'shop'
-      ? `Shop ${visit.shop.id}${visit.mode === 'buy' ? ' — buying' : visit.mode === 'sell' ? ' — selling' : ''}`
-      : visit.kind === 'inn'
-        ? `Inn ${visit.id}`
-        : `Church ${visit.id}`
+  const title = `Shop ${visit.shop.id}${visit.mode === 'buy' ? ' — buying' : visit.mode === 'sell' ? ' — selling' : ''}`
   return {
     title,
     rows: rowsOf(visit, bag, counter),
@@ -226,24 +225,11 @@ export function leaveVisit(visit: Visit): Visit | undefined {
 /** Take the chosen row. */
 export function chooseInVisit(visit: Visit, bag: Bag, counter: Counter): Outcome {
   if (visit.kind === 'abbey') return { visit: undefined, bag, abbeyPick: visit.cursor }
+  if (visit.kind === 'keeper')
+    return { visit: undefined, bag, keeperPick: visit.values[visit.cursor] }
   if (visit.kind === 'medals') {
     const picked = visit.cursor < visit.exchanges.length ? visit.cursor : -1
     return { visit: undefined, bag, medalPick: picked }
-  }
-  if (visit.kind === 'inn') {
-    if (visit.cursor !== 0) return { visit: undefined, bag }
-    const paid = pay(bag, INN_PRICE)
-    if (!paid) return { visit: { ...visit, said: 'You cannot afford a room.' }, bag }
-    return {
-      visit: { ...visit, cursor: 1, said: 'You rest the night, and wake refreshed.' },
-      bag: paid,
-      rested: true,
-    }
-  }
-  if (visit.kind === 'church') {
-    if (visit.cursor === 0) return { visit: { ...visit, said: 'Confessed.' }, bag, confessed: true }
-    if (visit.cursor === 1) return { visit: { ...visit, said: counter.divination() }, bag }
-    return { visit: undefined, bag }
   }
   if (visit.mode === 'top') {
     if (visit.cursor === 0) return { visit: { ...visit, mode: 'buy', cursor: 0 }, bag }

@@ -122,6 +122,7 @@ import {
   groundBelow,
   headingAngle,
   howItOpens,
+  isNight,
   monsterHp,
   newClock,
   type OpenGround,
@@ -129,6 +130,7 @@ import {
   PERSON,
   type PlacedMesh,
   phaseOf,
+  REST_TICKS,
   type Roamer,
   type RoamerKind,
   type Roaming,
@@ -383,12 +385,28 @@ import {
 import { type Carriers, obtain, removeSlot, takeOne, transfer } from './inventory.ts'
 import { type Held, itemsRows } from './items-menu.ts'
 import {
+  CHURCH_JINGLE,
+  CHURCH_SAYS,
+  CHURCH_SERVICES,
+  CURE_BASE,
+  churchChoices,
+  curePrice,
+  INN_CANCEL,
+  INN_HOLD_MS,
+  INN_JINGLE,
+  INN_REST,
+  INN_SAYS,
+  innChoices,
+  innPrice,
+} from './keepers.ts'
+import {
   actionRecordOf,
   actionScripts,
   allTriggers,
   battleSheets,
   entranceOf,
   givenNamesFrom,
+  keeperWords,
   type Loaded,
   load,
   mapLighting,
@@ -474,13 +492,10 @@ import { conditionsFor, firstWay, type SceneConditions, sceneIndex } from './sce
 import {
   type Counter,
   chooseInVisit,
-  INN_PRICE,
   leaveVisit,
   moveVisit,
   type Visit,
   viewOf,
-  visitChurch,
-  visitInn,
   visitShop,
 } from './services.ts'
 import { revealedCharacters } from './settings.ts'
@@ -3148,10 +3163,10 @@ function frame(now = 0): void {
   // The status line goes with the debug screen once a map is up.
   if (!debugOn && loaded && !statusEl.hidden) statusEl.hidden = true
   // Alltrades Abbey's ceremony, run its time — see `ceremony`.
-  if (abbeyWait && performance.now() >= abbeyWait.until) {
-    const then = abbeyWait.then
-    abbeyWait = undefined
-    then()
+  if (serviceWait && performance.now() >= serviceWait.until) {
+    const done = serviceWait.done
+    serviceWait = undefined
+    done()
   }
   // **A page that tells an action shows it** — see `startShown` — and goes on
   // when it ends, as the game's does; a page that tells an event with no
@@ -4428,7 +4443,7 @@ function countTalk(id: number): void {
 function talk(everyLine = false): void {
   if (!loaded || !self || opening) return
   // The Abbey's ceremony runs its time before anything more is said.
-  if (abbeyWait) return
+  if (serviceWait) return
   if (talking) {
     const ending = talking
     // The answer given at a prompt, kept even where its branch ends the talk:
@@ -4716,9 +4731,14 @@ function talkerFor(id: number): Talker | undefined {
  * and a party of one.
  */
 function contextFor(texts: readonly string[]): TextContext {
-  return texts.some((text) => text.includes('<INN='))
-    ? { ...textContext(), values: { val_1: '1', val_2: String(INN_PRICE) } }
-    : textContext()
+  const inn = texts.map((text) => /<INN=(\d+)>/.exec(text)).find((m) => m)
+  if (!inn || !cartridge) return textContext()
+  // The innkeeper's line is filled as the inn's service fills its own: the
+  // beds wanted and the price — see `innPrice`.
+  const words = keeperWords(cartridge, 'in', Number(inn[1]) - 1)
+  const living = members.filter((m) => m.hp !== 0).length
+  const { total } = innPrice(words.get(INN_SAYS.perHead), living)
+  return { ...textContext(), values: { val_1: String(living), val_2: String(total) } }
 }
 
 /**
@@ -5057,6 +5077,340 @@ function medalFarewell(): void {
   sayMedals([exchangeLine(150, medalsGiven, held), exchangeLine(151, medalsGiven, held)])
 }
 
+/**
+ * **A keeper's service while it is open** — the inn's or the church's, see
+ * `keepers.ts`: who said the line, the keeper's own words (`str_in<k>`,
+ * `str_ch<k>`), the inn's price, and the church's cure under way.
+ */
+let keeper:
+  | {
+      readonly who: Talker
+      readonly service: 'inn' | 'church'
+      readonly n: number
+      readonly words: ReadonlyMap<number, string>
+      price: { readonly perHead: number; readonly total: number }
+      cure?: 'resurrection' | 'purification' | 'benediction'
+    }
+  | undefined
+
+/** One of the keeper's lines, its tags filled — the member it names, its values, its singulars and plurals. */
+function keeperText(
+  raw: string,
+  fill: { target?: string; values?: Readonly<Record<string, number>>; str2?: string },
+): string {
+  const values = fill.values ?? {}
+  return raw
+    .replaceAll('\\n', '\n')
+    .replace(
+      /<IF_SING (val_\d)>(.*?)<ELSE_NOT_SING>(.*?)<ENDIF_SING>/gs,
+      (_, which: string, one: string, many: string) => (values[which] === 1 ? one : many),
+    )
+    .replace(/<(val_\d)>/g, (_, which: string) => String(values[which] ?? ''))
+    .replaceAll('<TARGET>', fill.target ?? heroName())
+    .replaceAll('<str_2>', fill.str2 ?? '')
+}
+
+/** Say some of the keeper's lines as one conversation, the last asking Yes or No when `ask`. */
+function sayKeeper(
+  lines: readonly (
+    | number
+    | { readonly line: number; readonly fill: Parameters<typeof keeperText>[1] }
+  )[],
+  fill: Parameters<typeof keeperText>[1] = {},
+  ask = false,
+): void {
+  if (!keeper) return
+  const words = keeper.words
+  talkContext = textContext()
+  const texts = lines.map((one, i) => {
+    const line = typeof one === 'number' ? one : one.line
+    const text = keeperText(
+      words.get(line) ?? `(${keeper?.service} line ${line})`,
+      typeof one === 'number' ? fill : one.fill,
+    )
+    return ask && i === lines.length - 1 ? `${text.replace(/<ADD>$/, '')}<YESNO>` : text
+  })
+  talking = startConversation(
+    keeper.who,
+    keeper.service === 'inn' ? 'the inn' : 'the church',
+    texts,
+    lines.map((one) => `${keeper?.service} ${typeof one === 'number' ? one : one.line}`),
+    talkContext,
+  )
+  showTalk()
+}
+
+/** The keeper's line, and the service over. */
+function keeperEnd(lines: readonly number[], fill: Parameters<typeof keeperText>[1] = {}): void {
+  sayKeeper(lines, fill)
+  afterTalk = () => {
+    keeper = undefined
+  }
+}
+
+/** The gold, as the keepers' gold window shows it — `strstd` 1009, `<val_1><G>`. */
+const goldLine = (): string => `${bag.gold} G`
+
+/**
+ * **The inn** — see `keepers.ts`. The innkeeper's own line has said the
+ * greeting and the price (INFERRED: the talk line is the hand-over, and its
+ * words are the service's 1000 or 1001, so it is not said twice); then the
+ * menu, Stay Overnight, Rest by day, Cancel.
+ */
+function openInn(n: number, who: Talker | undefined): void {
+  if (!loaded || !cartridge || !who) return
+  const words = keeperWords(cartridge, 'in', n - 1)
+  const living = members.filter((m) => m.hp !== 0).length
+  keeper = { who, service: 'inn', n, words, price: innPrice(words.get(INN_SAYS.perHead), living) }
+  openKeeperWindow('menu')
+}
+
+/**
+ * **The church** — see `keepers.ts`. The priest's own line has greeted
+ * (INFERRED, as the inn's); then the menu, beside the gold and the party's
+ * state.
+ */
+function openChurch(n: number, who: Talker | undefined): void {
+  if (!loaded || !cartridge || !who) return
+  keeper = {
+    who,
+    service: 'church',
+    n,
+    words: keeperWords(cartridge, 'ch', n - 1),
+    price: { perHead: 0, total: 0 },
+  }
+  openKeeperWindow('menu')
+}
+
+/** A member's level in their vocation — what the church prices by. */
+const vocationLevel = (member: Member): number => levelOf(member)?.level ?? 1
+
+/** One of the keeper's windows: its menu, or the church's who-list, with the gold and the party's state beside it. */
+function openKeeperWindow(window: 'menu' | 'who'): void {
+  if (!keeper) return
+  const words = keeper.words
+  const label = (line: number, ours: string) => {
+    const said = words.get(line)
+    return said && said.trim() !== '' ? plainMarkup(said, heroName()) : ours
+  }
+  let rows: string[]
+  let values: number[]
+  if (keeper.service === 'inn') {
+    values = [...innChoices(isNight(clock))]
+    rows = values.map((v) => label(v, ['Stay Overnight', 'Rest', 'Cancel'][v] ?? ''))
+  } else if (window === 'menu') {
+    values = [...churchChoices((line) => words.get(line))]
+    rows = values.map((v) => label(v, CHURCH_SERVICES[v] ?? ''))
+  } else {
+    values = members.map((_, i) => i)
+    rows = members.map((m) => nameFor(m))
+  }
+  // The church's status window: each member, "Dead" or "Lv. n" (str_ch 13,
+  // strstd 1011). Poison and a curse are not kept outside a battle here.
+  const state =
+    keeper.service === 'church'
+      ? members.map(
+          (m) =>
+            `${nameFor(m)} — ${
+              m.hp === 0
+                ? label(13, 'Dead')
+                : `${plainMarkup(loaded?.standardWords.get(1011) ?? 'Lv. ', heroName())}${vocationLevel(m)}`
+            }`,
+        )
+      : []
+  const free = keeper.service === 'inn' && keeper.price.perHead === 0
+  visit = {
+    kind: 'keeper',
+    service: keeper.service,
+    window,
+    title: window === 'who' ? label(11, 'On whom?') : '',
+    rows,
+    values,
+    lines: [...(free ? [] : [goldLine()]), ...state],
+    cursor: 0,
+    said: '',
+  }
+  self?.held.clear()
+  showMenu()
+}
+
+/** B in a keeper's window. */
+function keeperCancelled(window: string): void {
+  if (!keeper) return
+  if (keeper.service === 'inn') {
+    keeperPicked(window, INN_CANCEL)
+    return
+  }
+  if (window === 'who') {
+    sayKeeper([CHURCH_SAYS.cancelled, CHURCH_SAYS.anythingElse])
+    afterTalk = () => openKeeperWindow('menu')
+    return
+  }
+  keeperEnd([CHURCH_SAYS.farewell])
+}
+
+/** A row of a keeper's window chosen: the value it stands for. */
+function keeperPicked(window: string, value: number): void {
+  if (!keeper) return
+  if (keeper.service === 'inn') {
+    innPicked(value)
+    return
+  }
+  if (window === 'who') {
+    curePicked(value)
+    return
+  }
+  churchPicked(value)
+}
+
+/**
+ * The inn's choice: Cancel says 1090; Stay or Rest, too poor, 1020; else
+ * 1010, the night — jingle 55 and its hold of 180 ticks — the price paid, the
+ * living's HP and MP full, the clock at the day's start or the night's, and
+ * 1011. The bed (`<INN=15>`) says neither 1010 nor 1011, and charges nothing.
+ * **Ours**: the screen does not fade to black over the night.
+ */
+function innPicked(choice: number): void {
+  if (!keeper) return
+  const bed = keeper.n === 15
+  if (choice === INN_CANCEL) {
+    if (bed) keeper = undefined
+    else keeperEnd([INN_SAYS.cancel])
+    return
+  }
+  const { total } = keeper.price
+  if (bag.gold < total) {
+    keeperEnd([INN_SAYS.tooPoor])
+    return
+  }
+  const night = () => {
+    if (cartridge && !params.get('bgm')) void playJingle(cartridge, INN_JINGLE)
+    serviceWait = {
+      until: performance.now() + INN_HOLD_MS,
+      done: () => {
+        bag = { ...bag, gold: bag.gold - total }
+        for (const member of members) {
+          if (member.hp === 0) continue
+          member.hp = undefined
+          member.mp = undefined
+        }
+        clock.ticks = choice === INN_REST ? REST_TICKS : STAY_TICKS
+        status(
+          `the inn: ${choice === INN_REST ? 'rested until the night' : 'stayed the night'}, ${total} G`,
+        )
+        if (bed) keeper = undefined
+        else keeperEnd([INN_SAYS.after])
+      },
+    }
+  }
+  if (bed) night()
+  else {
+    sayKeeper([INN_SAYS.paid])
+    afterTalk = night
+  }
+}
+
+/** The church's menu chosen — see `keepers.ts`. */
+function churchPicked(choice: number): void {
+  if (!keeper) return
+  const service = CHURCH_SERVICES[choice]
+  if (service === 'confession') {
+    sayKeeper([CHURCH_SAYS.confess], {}, true)
+    afterTalk = (answer) => {
+      const goOn = (lines: number[]) => {
+        sayKeeper(lines, {}, true)
+        // **Ours**: "No" — not to go on — ends the game in the original
+        // ("Please turn the power OFF", 110); here it ends the visit with 1014.
+        afterTalk = (on) =>
+          keeperEnd(on === 0 ? [CHURCH_SAYS.farewell] : [CHURCH_SAYS.farewellToRest])
+      }
+      if (answer !== 0) {
+        goOn([CHURCH_SAYS.declined, CHURCH_SAYS.goOn])
+        return
+      }
+      status(confess())
+      if (cartridge && !params.get('bgm')) void playJingle(cartridge, 0x3c)
+      goOn([CHURCH_SAYS.saved, CHURCH_SAYS.goOn])
+    }
+    return
+  }
+  if (service === 'divination') {
+    const lines = members.map((member) => {
+      const levels = levelsFor(member)
+      const now = levels ? standing(levels, expOf(member), member.gains) : undefined
+      const target = nameFor(member)
+      if (!now?.next) {
+        return {
+          line: CHURCH_SAYS.mastered,
+          fill: { target, str2: keeper?.words.get(CHURCH_SAYS.vocation + member.vocation) ?? '' },
+        }
+      }
+      const need = now.next.exp - now.exp
+      return need <= 0
+        ? { line: CHURCH_SAYS.nextBattle, fill: { target } }
+        : { line: CHURCH_SAYS.needs, fill: { target, values: { val_1: need } } }
+    })
+    sayKeeper([CHURCH_SAYS.divine, ...lines, CHURCH_SAYS.anythingElse])
+    afterTalk = () => openKeeperWindow('menu')
+    return
+  }
+  if (service === 'resurrection' || service === 'purification' || service === 'benediction') {
+    keeper.cure = service
+    sayKeeper([CURE_BASE[service]])
+    afterTalk = () => openKeeperWindow('who')
+    return
+  }
+  keeperEnd([CHURCH_SAYS.farewell])
+}
+
+/**
+ * A member chosen for a cure: wanted or not — the dead to be raised; poison
+ * and a curse not kept outside a battle here, so never wanted — then the
+ * price (1061) and a Yes or No, the prayer (the base + 1) to jingle 59, and
+ * the cure: **raised to full HP**, MP as it was (`func_02048150`).
+ */
+function curePicked(index: number): void {
+  if (!keeper?.cure) return
+  const cure = keeper.cure
+  const member = members[index]
+  if (!member) return
+  const target = nameFor(member)
+  const base = CURE_BASE[cure]
+  const wanted = cure === 'resurrection' && member.hp === 0
+  if (!wanted) {
+    sayKeeper([base + 2, CHURCH_SAYS.anythingElse], { target })
+    afterTalk = () => openKeeperWindow('menu')
+    return
+  }
+  const price = curePrice(cure, vocationLevel(member))
+  sayKeeper([CHURCH_SAYS.price], { target, values: { val_1: price } }, true)
+  afterTalk = (answer) => {
+    if (answer !== 0) {
+      sayKeeper([CHURCH_SAYS.refused, CHURCH_SAYS.anythingElse])
+      afterTalk = () => openKeeperWindow('menu')
+      return
+    }
+    if (bag.gold < price) {
+      sayKeeper([CHURCH_SAYS.tooPoor, CHURCH_SAYS.anythingElse])
+      afterTalk = () => openKeeperWindow('menu')
+      return
+    }
+    bag = { ...bag, gold: bag.gold - price }
+    sayKeeper([base + 1], { target })
+    afterTalk = () => {
+      if (cartridge && !params.get('bgm')) void playJingle(cartridge, CHURCH_JINGLE)
+      serviceWait = {
+        until: performance.now() + CEREMONY_MS,
+        done: () => {
+          member.hp = undefined
+          sayKeeper([CHURCH_SAYS.anythingElse])
+          afterTalk = () => openKeeperWindow('menu')
+        },
+      }
+    }
+  }
+}
+
 /** The Story So Far's number — see `story-so-far.ts`. Saved. */
 let storySoFar = STORY_START
 /** Whether its page is up, on the bottom screen. */
@@ -5118,7 +5472,7 @@ let abbey:
   | undefined
 
 /** The ceremony under way: when it has run its time, and what then — see `ceremony`. */
-let abbeyWait: { readonly until: number; readonly then: () => void } | undefined
+let serviceWait: { readonly until: number; readonly done: () => void } | undefined
 
 /** A vocation as his lines name it, `str_dam 35 + v`. */
 function abbeyVocation(vocation: number): string {
@@ -5314,9 +5668,9 @@ function abbeyCancelled(window: 'menu' | 'who' | 'vocation'): void {
  * **Not yet shown**: its effect, `data/effect/ev999991800.chr`, over the
  * member.
  */
-function ceremony(then: () => void): void {
+function ceremony(done: () => void): void {
   if (cartridge && !params.get('bgm')) void playJingle(cartridge, ABBEY_JINGLE)
-  abbeyWait = { until: performance.now() + CEREMONY_MS, then }
+  serviceWait = { until: performance.now() + CEREMONY_MS, done }
 }
 
 /**
@@ -6311,14 +6665,6 @@ function counter(): Counter {
     carriers: carriers(),
     names: members.map((m, k) => (k === 0 ? heroName() : nameFor(m))),
     kindOf: (id) => loaded?.itemDefs.get(id)?.kind,
-    divination: () => {
-      const levels = levelsFor(leader())
-      if (!levels) return 'The level table did not load.'
-      const s = standing(levels, expOf(leader()))
-      return s.next
-        ? `${s.next.exp - s.exp} more experience to reach level ${s.next.level}.`
-        : 'There are no more levels to reach.'
-    },
   }
 }
 
@@ -6353,7 +6699,10 @@ function openService(service: Service, who?: Talker): void {
     showMenu()
     return
   } else {
-    visit = service.kind === 'INN' ? visitInn(service.id) : visitChurch(service.id)
+    // The inn and the church: their own flows — see `keepers.ts`.
+    if (service.kind === 'INN') openInn(service.id, who)
+    else openChurch(service.id, who)
+    return
   }
   self?.held.clear()
   showMenu()
@@ -11229,20 +11578,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     else if (action === 'down') visit = moveVisit(visit, 1, bag, told)
     else if (action === 'confirm') {
       const abbeyWindow = visit.kind === 'abbey' ? visit.window : undefined
+      const keeperWindow = visit.kind === 'keeper' ? visit.window : undefined
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
-      // A night at the inn restores the Hero whole, and the morning comes.
-      if (outcome.rested) {
-        // The night's stay wakes at the day's start — see `Clock`.
-        clock.ticks = STAY_TICKS
-        // The whole party rests, not only the Hero.
-        for (const member of members) {
-          member.hp = undefined
-          member.mp = undefined
-        }
-      }
-      if (outcome.confessed && visit) visit = { ...visit, said: confess() }
+      // A keeper's window hands its choice back to the keeper's flow — see `keeperPicked`.
+      if (outcome.keeperPick !== undefined && keeperWindow)
+        keeperPicked(keeperWindow, outcome.keeperPick)
       // Cap'n Max's list hands its choice back to his lines — see `pickMedal`.
       if (outcome.medalPick !== undefined) pickMedal(outcome.medalPick)
       // The Abbey's windows hand their choice back to Jack's lines — see `abbeyPicked`.
@@ -11251,7 +11593,9 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     } else if (action === 'cancel' || action === 'menu') {
       const leaving = visit.kind === 'medals'
       const abbeyWindow = visit.kind === 'abbey' ? visit.window : undefined
+      const keeperWindow = visit.kind === 'keeper' ? visit.window : undefined
       visit = leaveVisit(visit)
+      if (keeperWindow) keeperCancelled(keeperWindow)
       if (leaving) medalFarewell()
       if (abbeyWindow) abbeyCancelled(abbeyWindow)
     }
@@ -11336,7 +11680,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   }
   // **The Story So Far**: the Y Button, in the field with the player free —
   // see `story-so-far.ts`.
-  if (action === 'y' && loaded && !talking && !playing && !battle && !opening && !abbeyWait) {
+  if (action === 'y' && loaded && !talking && !playing && !battle && !opening && !serviceWait) {
     openStorySoFar()
     event.preventDefault()
     return handled
