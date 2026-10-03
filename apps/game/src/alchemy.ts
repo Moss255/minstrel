@@ -139,21 +139,29 @@ export interface PotEntry {
   readonly short: readonly { readonly item: number; readonly short: number }[]
   /** Whether the bag holds everything it wants. */
   readonly ready: boolean
+  /** Whether the recipe is known: an unknown one is listed as "???" and cannot be chosen. */
+  readonly known: boolean
 }
 
 /** How many of an item a bag holds. */
 export const heldIn = (bag: Bag, item: number): number => bag.items.get(item) ?? 0
 
+/** The Alchenomicon's page: 16 lines (`func_020722a4`). */
+export const POT_PAGE = 16
+
 /**
- * The recipes, as the pot's list shows them: **what can be cooked first**, and
- * then the rest, each in the Alchenomicon's own order.
+ * The recipes, as the Alchenomicon lists them — read 4 October 2026
+ * (`func_02071ffc`, `func_020722a4`, ov006 `func_ov006_0215f7e8`):
  *
- * The ordering within each half is `Recipe.order`, which is the book's; that
- * the ready ones come first is **ours**, and is what makes a list of 470
- * usable at all before the recipe-book system exists. The game shows only the
- * recipes whose book you have found, and **where a book is found is not read**
- * — a published guide says bookcases, rooms and quest rewards, which are
- * event-script work. See `docs/party-and-vocations.md`.
+ * - **in the book's own order** — `Recipe.order` By Type, `alphabetical` By
+ *   Name — narrowed to a category and type;
+ * - **never the 22 better recipes an alchemiracle makes** (`fallback` set,
+ *   value 17 — `0x020721cc`), which get no line of their own;
+ * - **cut into pages of 16, and a page with no known recipe dropped**; on a
+ *   kept page an unknown recipe is a line of its own, `str_ren` 37 "???".
+ *
+ * `known` says which recipes are known — see `recipes.ts` in the game; with
+ * none given, every recipe is.
  */
 export function potList(
   recipes: readonly Recipe[],
@@ -170,27 +178,43 @@ export function potList(
     readonly kindOf?:
       | ((item: number) => { category: number; subtype: number } | undefined)
       | undefined
+    /** Whether a recipe is known, by its number. */
+    readonly known?: ((recipe: number) => boolean) | undefined
   } = {},
 ): PotEntry[] {
   const wanted = within.category === undefined ? undefined : POT_CATEGORIES[within.category]
   const subtypes = within.type === undefined ? undefined : POT_TYPES[within.type]?.subtypes
-  const entries = recipes.flatMap((recipe) => {
-    if (wanted && within.kindOf) {
-      const kind = within.kindOf(recipe.makes)
-      // An empty category list is "All Recipes"; anything else must match.
-      if (wanted.categories.length > 0 && !wanted.categories.includes(kind?.category ?? -1))
-        return []
-      if (subtypes && !subtypes.includes(kind?.subtype ?? -1)) return []
+  const known = within.known ?? (() => true)
+  const rank = (recipe: Recipe) => (within.sort === 'name' ? recipe.alphabetical : recipe.order)
+  const listed = recipes
+    .filter((recipe) => {
+      if (recipe.fallback !== undefined) return false
+      if (wanted && within.kindOf) {
+        const kind = within.kindOf(recipe.makes)
+        // An empty category list is "All Recipes"; anything else must match.
+        if (wanted.categories.length > 0 && !wanted.categories.includes(kind?.category ?? -1))
+          return false
+        if (subtypes && !subtypes.includes(kind?.subtype ?? -1)) return false
+      }
+      return true
+    })
+    .sort((a, b) => rank(a) - rank(b))
+  const out: PotEntry[] = []
+  for (let at = 0; at < listed.length; at += POT_PAGE) {
+    const page = listed.slice(at, at + POT_PAGE)
+    if (!page.some((recipe) => known(recipe.id))) continue
+    for (const recipe of page) {
+      const short = shortFor(recipe, (item) => heldIn(bag, item))
+      out.push({
+        recipe,
+        name: nameOf(recipe.makes),
+        short,
+        ready: short.length === 0,
+        known: known(recipe.id),
+      })
     }
-    const short = shortFor(recipe, (item) => heldIn(bag, item))
-    return [{ recipe, name: nameOf(recipe.makes), short, ready: short.length === 0 }]
-  })
-  const rank = (entry: PotEntry) =>
-    within.sort === 'name' ? entry.recipe.alphabetical : entry.recipe.order
-  return entries.sort((a, b) => {
-    if (a.ready !== b.ready) return a.ready ? -1 : 1
-    return rank(a) - rank(b)
-  })
+  }
+  return out
 }
 
 /**
@@ -313,3 +337,36 @@ export function cookMany(
   }
   return { bag: after, made }
 }
+
+/**
+ * **The recipes known**, as the game keeps them — read 4 October 2026: 471
+ * slots at `GameState+0x7AC4`, each `recipe << 2 | made << 1 | known`, filled
+ * from the front, zeroed on a new game and saved whole (`func_020ac104`,
+ * `func_020ac234`). Here by recipe: {@link RECIPE_KNOWN} and {@link RECIPE_MADE}.
+ *
+ * - **A recipe book** read for the first time sets known on its recipes —
+ *   see `readBookshelves`;
+ * - **trigger action `161 : r`** sets known on *r* (`func_02061c04` case 61,
+ *   `0x0206301c`): the Krak Pot's first talk teaches six, quest rewards 43;
+ * - **successful alchemy** sets known and made on what was made, and known on
+ *   what was attempted when an alchemiracle made something better
+ *   (`func_ov006_02153cbc`) — how the 94 recipes nothing teaches are learnt.
+ */
+export const RECIPE_KNOWN = 1
+export const RECIPE_MADE = 2
+
+/** The trigger action that teaches a recipe — see {@link RECIPE_KNOWN}. */
+export const OP_LEARN_RECIPE = 161
+
+/** Learn a recipe: known, and made too when `made`. Its bits are only ever added to. */
+export function learnRecipe(known: Map<number, number>, recipe: number, made = false): void {
+  if (!Number.isInteger(recipe) || recipe <= 0) return
+  known.set(recipe, (known.get(recipe) ?? 0) | RECIPE_KNOWN | (made ? RECIPE_MADE : 0))
+}
+
+/** Whether the Alchenomicon names a recipe: known or made in its slot (`func_ov006_02153744`). */
+export const recipeKnown = (known: ReadonlyMap<number, number>, recipe: number): boolean =>
+  (known.get(recipe) ?? 0) !== 0
+
+/** Game-wide flag `0x777`: set when the Krak Pot first opens (`func_ov006_02157a60`); a bookcase teaches nothing before it. */
+export const FLAG_POT_USED = 0x777

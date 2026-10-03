@@ -188,7 +188,15 @@ export function moveStory(
   for (const { op, arg, params } of actions) {
     if (op === 100) globals?.add(arg)
     else if (op === 101) globals?.delete(arg)
-    else if (op === 102) story.marks.add(arg)
+    // `202 : n` sets game-wide flag `0x1198 + n` (`func_02061c04` case 102,
+    // `0x02063a34`) — the Krak Pot's first talk sets 0x1198, INFERRED "has
+    // the Alchenomicon"; `224 : v` sets flag `0x798` to *v* (case 124,
+    // `0x02064054`), what it means not read.
+    else if (op === 202) globals?.add(0x1198 + arg)
+    else if (op === 224) {
+      if (arg !== 0) globals?.add(0x798)
+      else globals?.delete(0x798)
+    } else if (op === 102) story.marks.add(arg)
     else if (op === 103) story.marks.delete(arg)
     else if (op === 104) story.flags.add(arg)
     // `155 : e` sets the flag in its value's high half, as it runs — see `OP_FLAG_AND_EVENT`.

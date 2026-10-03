@@ -32,6 +32,7 @@ export {
   WEIGHT_TOTAL,
   type WeightTables,
 } from './battle-tables.ts'
+export { BOOK_FLAG, type Bookshelf, readBookshelves, shelfAt } from './bookshelves.ts'
 export {
   BUILD_ONE,
   BUILD_SEXES,
@@ -415,9 +416,11 @@ export {
 } from './table.ts'
 export { readTalk, type TalkLine } from './talk.ts'
 export {
+  type Bookcase,
   type DoorwayRegion,
   type MapTransition,
   mapAreas,
+  mapBookcases,
   mapDoorwayRegions,
   mapDoorways,
   readMapTransitions,

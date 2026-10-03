@@ -15,6 +15,8 @@ import {
   type ActionScript,
   type AttendingCharacter,
   type BattleZone,
+  type Bookcase,
+  type Bookshelf,
   type BuildTable,
   type CharaColours,
   type CharacterPreset,
@@ -44,6 +46,7 @@ import {
   type MedalRewards,
   type MonsterBattle,
   mapAreas,
+  mapBookcases,
   mapDoorwayRegions,
   mapDoorways,
   NO_ACTION,
@@ -61,6 +64,7 @@ import {
   readActions,
   readAttendingCharacters,
   readBattleEncounters,
+  readBookshelves,
   readBuildTable,
   readCharaColours,
   readCharacterPresets,
@@ -376,6 +380,10 @@ export interface Loaded {
    * `@minstrel/game-formats`. In the file's own units, as a trigger's are.
    */
   readonly mapAreas: readonly StoryArea[]
+  /** The map's bookcases, from its link table — see `mapBookcases`. */
+  readonly bookcases: readonly Bookcase[]
+  /** What the shelves of maps with this map's first letter hold — `htana<L>`, see `readBookshelves`. */
+  readonly bookshelves: readonly Bookshelf[]
   /** The map's doorway regions, by the two numbers a doorway record names — see `mapDoorwayRegions`. */
   readonly doorwayRegions: readonly DoorwayRegion[]
   /** Which archive the map came out of, for the status line. */
@@ -2190,6 +2198,28 @@ export function entranceOf(
   return undefined
 }
 
+/**
+ * The bookshelves of the maps whose code begins as this one's does —
+ * `data/scenario/htana<L>.gp2` › `htana<L>_en.bin`, INFERRED `<L>` the code's
+ * first letter (it holds on all 162 records). None when it will not read.
+ */
+function bookshelvesOf(rom: Uint8Array, code: string): readonly Bookshelf[] {
+  const letter = code.charAt(0).toUpperCase()
+  if (!/^[A-Z]$/.test(letter)) return []
+  const { cat } = walkOnce(rom, [`/data/scenario/htana${letter}.gp2`])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (!name.toLowerCase().endsWith(`htana${letter.toLowerCase()}_en.bin`)) continue
+      try {
+        return readBookshelves(bytes)
+      } catch {
+        return []
+      }
+    }
+  }
+  return []
+}
+
 /** A map's own areas, out of its link table — see `mapAreas`. None when there is none or it will not read. */
 function mapAreasOf(cat: Catalogue, code: string): readonly StoryArea[] {
   return fromLinkTable(cat, code, mapAreas)
@@ -2845,6 +2875,8 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     wardrobe: parts,
     doorways: doorwaysOf(cat, code),
     mapAreas: mapAreasOf(cat, code),
+    bookcases: fromLinkTable(cat, code, mapBookcases),
+    bookshelves: bookshelvesOf(rom, code),
     doorwayRegions: doorwayRegionsOf(cat, code),
     archive,
     code,

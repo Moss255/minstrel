@@ -67,15 +67,26 @@ const RECIPES = [SWORD, SHIELD, NEBULA, HYPER]
 const name = (item: number) => `item ${item}`
 
 describe('the pot’s list', () => {
-  it('puts what can be cooked first, then the book’s own order', () => {
+  it('lists in the book’s own order, never the better recipe an alchemiracle makes', () => {
     let bag = take(take(EMPTY_BAG, { item: 22010 }), { item: 22011 })
     bag = take(bag, { item: 22011 })
     const list = potList(RECIPES, bag, name)
-    // The sword and both nebula grades can be made from this bag, in the
-    // book's own order — 2, 3, 4; the shield cannot, so it goes last even
-    // though the book puts it first. That reordering is ours, see `potList`.
-    expect(list.map((entry) => entry.recipe.id)).toEqual([1, 17, 18, 2])
-    expect(list.map((entry) => entry.ready)).toEqual([true, true, true, false])
+    // The shield, the sword, the nebula grade — the book's 1, 2, 3; the
+    // hypernova grade, reached only by an alchemiracle, has no line.
+    expect(list.map((entry) => entry.recipe.id)).toEqual([2, 1, 17])
+    expect(list.map((entry) => entry.ready)).toEqual([false, true, true])
+  })
+
+  it('keeps a page of 16 only when it holds a known recipe, the rest of it unknown', () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      recipe({ id: 100 + i, makes: 30000 + i, order: i }),
+    )
+    // Known: one on the first page and one on the third.
+    const known = (id: number) => id === 103 || id === 135
+    const list = potList(many, EMPTY_BAG, name, { known })
+    expect(list).toHaveLength(16 + 8)
+    expect(list.filter((e) => e.known).map((e) => e.recipe.id)).toEqual([103, 135])
+    expect(list[16]?.recipe.id).toBe(132)
   })
 
   it('says what each unready recipe is short of', () => {
@@ -151,19 +162,20 @@ describe('the Alchenomicon’s own grouping', () => {
 
   it('narrows to a category, All Recipes being all of them', () => {
     const weapons = potList(RECIPES, bag, name, { category: 1, kindOf })
-    expect(weapons.map((e) => e.recipe.id).sort((a, b) => a - b)).toEqual([1, 17, 18])
+    // The better nebula grade, 18, has no line of its own.
+    expect(weapons.map((e) => e.recipe.id).sort((a, b) => a - b)).toEqual([1, 17])
     const armour = potList(RECIPES, bag, name, { category: 2, kindOf })
     expect(armour.map((e) => e.recipe.id)).toEqual([2])
     // Place 0 is All Recipes, whose category list is empty.
     expect(POT_CATEGORIES[0]?.categories).toEqual([])
-    expect(potList(RECIPES, bag, name, { category: 0, kindOf })).toHaveLength(RECIPES.length)
+    expect(potList(RECIPES, bag, name, { category: 0, kindOf })).toHaveLength(RECIPES.length - 1)
   })
 
   it('narrows again to a By Type heading', () => {
     // Place 0 of the types is Swords, subtype 0.
     expect(POT_TYPES[0]?.subtypes).toEqual([0])
     const swords = potList(RECIPES, bag, name, { category: 1, type: 0, kindOf })
-    expect(swords.map((e) => e.recipe.id).sort((a, b) => a - b)).toEqual([1, 17, 18])
+    expect(swords.map((e) => e.recipe.id).sort((a, b) => a - b)).toEqual([1, 17])
     // Shields are type 12 in the pot's order, subtype 12.
     expect(POT_TYPES[12]?.subtypes).toEqual([12])
     expect(potList(RECIPES, bag, name, { category: 2, type: 12, kindOf })).toHaveLength(1)
@@ -171,35 +183,16 @@ describe('the Alchenomicon’s own grouping', () => {
 
   it('does not filter at all without a way to ask an item’s kind', () => {
     // Better the whole book than a book silently emptied by a missing lookup.
-    expect(potList(RECIPES, bag, name, { category: 1 })).toHaveLength(RECIPES.length)
+    expect(potList(RECIPES, bag, name, { category: 1 })).toHaveLength(RECIPES.length - 1)
   })
 
-  it('orders by the book’s two ranks, inside the ready-first split', () => {
-    // **Ready-first is ours and wins**, so a rank rises within each half
-    // rather than over the whole list — see `potList`.
-    const rises = (
-      list: ReturnType<typeof potList>,
-      rank: (e: (typeof list)[number]) => number,
-    ) => {
-      for (let i = 1; i < list.length; i++) {
-        const before = list[i - 1] as (typeof list)[number]
-        const after = list[i] as (typeof list)[number]
-        if (before.ready !== after.ready) continue
-        if (rank(after) < rank(before)) return false
-      }
-      return true
-    }
+  it('orders by the book’s two ranks, straight through', () => {
+    // By Type is `order`, By Name `alphabetical`; what can be cooked is not
+    // put first, which an earlier version of this did and was ours.
     const byType = potList(RECIPES, bag, name, { sort: 'type' })
     const byName = potList(RECIPES, bag, name, { sort: 'name' })
-    expect(rises(byType, (e) => e.recipe.order)).toBe(true)
-    expect(rises(byName, (e) => e.recipe.alphabetical)).toBe(true)
-    // **And the two really are different orders**, which needs the fixture to
-    // give them different ranks — with every `alphabetical` the same, a stable
-    // sort makes this pass for no reason, and so does a bag that happens to
-    // make the two agree. This bag makes 17 and 18 ready; the other two then
-    // fall the opposite way round under each rank.
-    expect(byType.map((e) => e.recipe.id)).toEqual([17, 18, 2, 1])
-    expect(byName.map((e) => e.recipe.id)).toEqual([17, 18, 1, 2])
+    expect(byType.map((e) => e.recipe.id)).toEqual([2, 1, 17])
+    expect(byName.map((e) => e.recipe.id)).toEqual([17, 1, 2])
   })
 })
 

@@ -821,7 +821,9 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     }
     const entry = entries[state.row]
     // A recipe the bag will not cover says so rather than doing nothing.
-    return entry?.ready ? { state, talk: false, cook: entry.recipe.id } : { state, talk: false }
+    return entry?.ready && entry.known
+      ? { state, talk: false, cook: entry.recipe.id }
+      : { state, talk: false }
   }
   if (state.panel === 'skills') {
     // A tree opens its panels; a panel in an open tree is bought into.
@@ -1178,7 +1180,7 @@ export function panelLines(
       }
       const pot = context.pot
       if (!pot) return ['The recipes are not read: `recipe.gp2` did not load.']
-      const ready = pot.filter((entry) => entry.ready)
+      const ready = pot.filter((entry) => entry.ready && entry.known)
       const sortLabel =
         where.sort === 'type'
           ? label(POT_LABELS.byType, 'By Type')
@@ -1190,6 +1192,8 @@ export function panelLines(
           ` · ${ready.length} of ${pot.length} can be made · ${sortLabel}`,
         ...pot.slice(from, from + 10).map((entry, i) => {
           const at = from + i
+          // An unknown recipe on a kept page: `str_ren` 37, "???".
+          if (!entry.known) return `${mark(at === row)}${potSay(37, '???')}`
           const wanted = entry.recipe.ingredients
             .map(({ item, count }) => `${count}× ${nameOf(item)}`)
             .join(' + ')

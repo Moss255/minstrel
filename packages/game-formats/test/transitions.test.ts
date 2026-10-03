@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
 import { inArea } from '../src/story.ts'
-import { mapAreas, mapDoorways, readMapTransitions } from '../src/transitions.ts'
+import { mapAreas, mapBookcases, mapDoorways, readMapTransitions } from '../src/transitions.ts'
 
 /**
  * Fixtures are built here, never taken from a cartridge.
@@ -348,5 +348,39 @@ describe("a map's own areas", () => {
     // across x and four deep along z.
     expect(inArea(turned, 10, 0, 1.8)).toBe(true)
     expect(inArea(turned, 11.8, 0, 0)).toBe(false)
+  })
+})
+
+describe('a map’s bookcases', () => {
+  const shelf = (index: number, at: [number, number, number], facing: number) => [
+    {
+      tag: 0x73,
+      fields: [int(8), ...at.map(float), float(1), float(1), float(1), float(0), float(facing)],
+    },
+    { tag: 0x74, fields: [int(index)] },
+  ]
+  // Stornway's inn has this shape: two shelves on its west wall, read facing
+  // three quarters of a turn; and an area, type 3, that is not a bookcase.
+  const table = build(
+    [
+      ...shelf(0, [-6.206, 0, 2.932], (3 * Math.PI) / 2),
+      ...shelf(1, [-6.206, 0, 4.308], (3 * Math.PI) / 2),
+      {
+        tag: 0x73,
+        fields: [int(3), ...[0, 0, 0].map(float), ...[2, 2, 2].map(float), float(0), float(0)],
+      },
+      { tag: 0x74, fields: [int(4)] },
+    ],
+    [],
+  )
+
+  it('reads the type-8 regions, numbered by the 0x74 after each, with the way to face', () => {
+    const cases = mapBookcases(table)
+    expect(cases.map((c) => c.index)).toEqual([0, 1])
+    expect(cases[0]?.facing).toBeCloseTo((3 * Math.PI) / 2, 5)
+    expect(cases[0]?.area.min.x).toBeCloseTo(-6.706, 3)
+    expect(cases[1]?.area.max.z).toBeCloseTo(4.808, 3)
+    // And an area is not one.
+    expect(mapAreas(table).map((a) => a.id)).toEqual([4])
   })
 })

@@ -255,6 +255,55 @@ export function mapAreas(data: Uint8Array): StoryArea[] {
   return out
 }
 
+/** The kind of a `0x73` region that is a bookcase — see {@link mapBookcases}. */
+const REGION_BOOKCASE = 8
+
+/** A bookcase: its box, as an area's, and the way the Hero faces to read it. */
+export interface Bookcase {
+  /** Its number, matched against a bookshelf record's value 1 — see `readBookshelves`. */
+  readonly index: number
+  readonly area: StoryArea
+  /** The way the Hero is turned to read it, in radians — the `0x73`'s value 8. */
+  readonly facing: number
+}
+
+/**
+ * **A map's bookcases** — the `0x73` regions of type 8, each with a `0x74`
+ * holding its number (`func_0201d638` case 8, `0x0201dbd8`). Read 4 October
+ * 2026: the Hero reads one standing in its box and facing within about 117°
+ * of its value 8 (`func_ov017_021984f4`, `< 8364.2` fx32), the closest such
+ * angle winning. 163 on the cartridge, in 64 maps. In the file's own units,
+ * as a trigger's areas are.
+ */
+export function mapBookcases(data: Uint8Array): Bookcase[] {
+  const table = readDataTable(data)
+  const records = table.records
+  const out: Bookcase[] = []
+  for (let i = 0; i < records.length; i++) {
+    const region = records[i] as TableRecord
+    if (region.tag !== TAG_TRIGGER || region.values[0] !== REGION_BOOKCASE) continue
+    const action = records[i + 1]
+    if (action?.tag !== TAG_ACTION || action.values.length === 0) continue
+    const f = region.floats
+    const [x, y, z, width, height, depth, angle, facing] = [1, 2, 3, 4, 5, 6, 7, 8].map(
+      (slot) => (f[slot] as number) ?? 0,
+    ) as [number, number, number, number, number, number, number, number]
+    const turn = 2 * Math.PI
+    out.push({
+      index: action.values[0] as number,
+      area: {
+        id: action.values[0] as number,
+        max: { x: x + width / 2, y: y + height / 2, z: z + depth / 2 },
+        min: { x: x - width / 2, y: y - height / 2, z: z - depth / 2 },
+        angle: ((angle % turn) + turn) % turn,
+        reach: (width / 2) ** 2 + (depth / 2) ** 2,
+      },
+      facing,
+    })
+  }
+  return out
+}
+
 /** The kind of a `0x73` region that is a doorway — see {@link mapDoorwayRegions}. */
 const REGION_DOORWAY = 2
 

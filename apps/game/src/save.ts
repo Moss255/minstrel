@@ -206,6 +206,12 @@ export interface SaveGame {
    * made before it was kept**, which read as the start, 1.
    */
   readonly storySoFar?: number
+  /**
+   * The recipes known, as pairs of a recipe and its bits — see `learnRecipe`.
+   * **Absent from saves made before recipes were kept**: see `restore` in
+   * `main.ts` for how one of those is read.
+   */
+  readonly recipes?: readonly (readonly [number, number])[]
 }
 
 export class SaveError extends Error {
@@ -329,6 +335,13 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.medalsGiven !== undefined && !isCount(s.medalsGiven)) {
     throw new SaveError('the save has a mini medal count that does not read')
+  }
+  if (
+    s.recipes !== undefined &&
+    (!Array.isArray(s.recipes) ||
+      !s.recipes.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every(isCount)))
+  ) {
+    throw new SaveError('the save has a recipe list that does not read')
   }
   if (s.storySoFar !== undefined && !isCount(s.storySoFar)) {
     throw new SaveError('the save has a story-so-far number that does not read')

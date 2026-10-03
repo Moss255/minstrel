@@ -21,6 +21,7 @@ import {
   areaEvent,
   areasOf,
   BONE_SLOTS,
+  BOOK_FLAG,
   blocksDoorway,
   type CharaColours,
   conditionsOfWords,
@@ -34,6 +35,7 @@ import {
   flagsHold,
   GRANTS_REGARDLESS,
   ITEM_EXPERIENCE_BONUS,
+  inArea,
   inTalkBox,
   type LevelRow,
   type LevelTable,
@@ -50,6 +52,7 @@ import {
   type StoryArea,
   type StoryState,
   settingsPlay,
+  shelfAt,
   spellsLearnt,
   TRICK_NAMES_FROM,
   TRICKS,
@@ -171,7 +174,16 @@ import {
 import { BUILT_IN_EFFECTS, LINE_MS, makeReactions, type ReactionEvent } from './action-reactions.ts'
 import { actionOf, objectOf, scriptFor } from './action-show.ts'
 import { type ActorLook, actorLookOf, packMotions } from './actors.ts'
-import { cook, POT_SAYS, potList, tryYourLuck } from './alchemy.ts'
+import {
+  cook,
+  FLAG_POT_USED,
+  learnRecipe,
+  OP_LEARN_RECIPE,
+  POT_SAYS,
+  potList,
+  recipeKnown,
+  tryYourLuck,
+} from './alchemy.ts'
 import {
   type Appearance,
   buildOf,
@@ -2089,6 +2101,16 @@ function restore(game: SaveGame): void {
   liveThread = game.thread
   medalsGiven = game.medalsGiven ?? 0
   storySoFar = game.storySoFar ?? STORY_START
+  recipesKnown.clear()
+  for (const [recipe, bits] of game.recipes ?? []) recipesKnown.set(recipe, bits)
+  // **A save from before recipes were kept** knew every recipe here. Read as
+  // the game would have it — **ours**: past the Krak Pot's first talk (4.1 on,
+  // its record's span), its six recipes known and the pot used; before, none.
+  if (!game.recipes && storyStage && storyStage.major >= 4) {
+    for (const recipe of [440, 441, 442, 443, 444, 445]) learnRecipe(recipesKnown, recipe)
+    storyGlobals.add(FLAG_POT_USED)
+    storyGlobals.add(0x1198)
+  }
   // The whole party, each with their own — see `SaveMember`. An older save's
   // companions come back with nothing, which is all they ever had.
   members = partyRestored(game.members)
@@ -2142,6 +2164,7 @@ function confess(): string {
     })),
     ...(medalsGiven > 0 ? { medalsGiven } : {}),
     ...(storySoFar !== STORY_START ? { storySoFar } : {}),
+    recipes: [...recipesKnown],
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
     gold: bag.gold,
@@ -4149,6 +4172,70 @@ function refreshTreasures(): void {
   ]
 }
 
+/** The recipes known — see `learnRecipe` in `alchemy.ts`. Saved. */
+const recipesKnown = new Map<number, number>()
+
+/** How far from a bookcase's own way the Hero may face and still read it: `8364.2` fx32 (`func_ov017_021984f4`), about 117°. */
+const BOOKCASE_TURN = 8364.2 / 4096
+
+/**
+ * **Read the bookcase the Hero stands at**, if any — read 4 October 2026
+ * (`func_ov017_021ac3b0`): inside its box and facing within
+ * {@link BOOKCASE_TURN} of its way, the nearest way winning. The Hero turns
+ * to it, its book's text is shown — a plain book's, or a recipe book's
+ * first reading, or "already knows", or "nothing of interest" before the Krak
+ * Pot has been used — and once the text is read, a recipe book's recipes are
+ * learnt and its flag set. True when there was one.
+ *
+ * **Ours**: the book-taking sound and `<SE_RECIPE>`, whose ids are not read,
+ * are not played.
+ */
+function readBookcaseAhead(): boolean {
+  if (!loaded || !self || loaded.mapId === undefined) return false
+  const x = toFloat(self.state.x) / worldScale
+  const y = toFloat(self.state.y) / worldScale
+  const z = toFloat(self.state.z) / worldScale
+  const turnTo = (way: number) => {
+    const d = Math.abs((self?.facing ?? 0) - way) % (2 * Math.PI)
+    return Math.min(d, 2 * Math.PI - d)
+  }
+  const found = loaded.bookcases
+    .filter((c) => inArea(c.area, x, y, z) && turnTo(c.facing) < BOOKCASE_TURN)
+    .sort((a, b) => turnTo(a.facing) - turnTo(b.facing))[0]
+  if (!found) return false
+  self.facing = found.facing
+  const shelf = shelfAt(loaded.bookshelves, loaded.mapId, found.index)
+  const nothing =
+    loaded.standardWords.get(0x53) ?? "There don't seem to be any books of particular interest."
+  let text = nothing
+  let teaches = false
+  if (shelf) {
+    if (!shelf.recipeBook || !storyGlobals.has(FLAG_POT_USED)) text = shelf.text0 ?? nothing
+    else if (storyGlobals.has(BOOK_FLAG + shelf.book)) text = shelf.text2 ?? shelf.text1 ?? nothing
+    else {
+      text = shelf.text1 ?? nothing
+      teaches = true
+    }
+  }
+  talkContext = textContext()
+  talking = startConversation(
+    { id: -1, name: '', x: toFloat(self.state.x), z: toFloat(self.state.z) },
+    `bookcase ${found.index}`,
+    [text],
+    [shelf ? `htana, book ${shelf.book}` : 'strstd 0x53'],
+    talkContext,
+  )
+  if (teaches && shelf) {
+    afterTalk = () => {
+      for (const recipe of shelf.recipes) learnRecipe(recipesKnown, recipe)
+      storyGlobals.add(BOOK_FLAG + shelf.book)
+      status(`a recipe book: ${shelf.recipes.length} recipes learnt`)
+    }
+  }
+  showTalk()
+  return true
+}
+
 /**
  * Open the treasure the Hero is facing, if there is one near enough: the same
  * reach and facing as talking. True when there was one.
@@ -4424,6 +4511,7 @@ function talk(everyLine = false): void {
   const who = picked?.who
   if (!who) {
     if (openTreasureAhead()) return
+    if (readBookcaseAhead()) return
     const here = { x: toFloat(self.state.x), z: toFloat(self.state.z) }
     const nearest = nearestTreasure(loaded.treasures, here)
     const cabinet = cabinets
@@ -4833,6 +4921,10 @@ function cookRecipe(id: number, state: MenuState | undefined): MenuState | undef
   for (const [id, n] of used) for (let k = 0; k < n; k++) takeAway(id)
   bag = { ...bag, gold: made.bag.gold }
   give(made.item)
+  // **What is made is learnt** (`func_ov006_02153cbc`): known and made; and
+  // after an alchemiracle, the recipe attempted known too.
+  learnRecipe(recipesKnown, made.made.id, true)
+  if (made.miracle) learnRecipe(recipesKnown, recipe.id)
   const item = itemNamed(made.item)
   return {
     ...state,
@@ -5574,6 +5666,7 @@ function menuContext(): MenuContext {
     // its chosen order — see `potList`.
     pot: loaded
       ? potList(loaded.recipes, bag, nameOf, {
+          known: (id) => recipeKnown(recipesKnown, id),
           category: menu?.pot?.category,
           sort: menu?.pot?.sort,
           kindOf: (item) => loaded?.itemKinds.get(item),
@@ -5592,6 +5685,7 @@ function menuContext(): MenuContext {
     potCount: (at) =>
       loaded
         ? potList(loaded.recipes, bag, nameOf, {
+            known: (id) => recipeKnown(recipesKnown, id),
             category: at,
             kindOf: (item) => loaded?.itemKinds.get(item),
           }).length
@@ -6259,6 +6353,8 @@ function openService(service: Service, who?: Talker): void {
     // **The Krak Pot is spoken to, not chosen from a menu.** `<RENKIN>` at the
     // end of the pot's own talk line is facility code 7 — see `Service` in
     // `talk.ts` — so this is the pot's real entry point and the only one.
+    // Opening it sets flag 0x777, which a bookcase's recipe book waits on.
+    storyGlobals.add(FLAG_POT_USED)
     menu = { ...openMenu(), panel: 'pot', pot: openPot() }
     self?.held.clear()
     showMenu()
@@ -9774,6 +9870,9 @@ function storyFromRecord(outcome: EventOutcome): void {
   storyStep = story.step
   // The Story So Far's number, which `197 : n` sets — see `story-so-far.ts`.
   storySoFar = storySoFarAfter(outcome.actions, storySoFar)
+  // A recipe taught, `161 : r` — see `learnRecipe`.
+  for (const action of outcome.actions ?? [])
+    if (action.op === OP_LEARN_RECIPE) learnRecipe(recipesKnown, action.arg)
   // Any areas it adds to the map, as it runs — see `areasAdded`. Once each:
   // the map's watch runs every frame.
   for (const area of outcome.areas) {

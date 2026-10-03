@@ -1301,6 +1301,37 @@ which is what a "slim to broad" row looks like; nothing in the code names
 them. The two sexes share the middle build and differ elsewhere, which is what
 makes it a table of ten rather than five used twice.
 
+# Bookshelves — `/data/scenario/htana<L>.gp2` and the type-8 regions
+
+Read 4 October 2026 from the bookcase service (`func_ov017_021ac3b0`, overlay
+17; US code, European files). `readBookshelves`, `mapBookcases`.
+
+**A bookcase is a region**, not a cast member, a treasure or a trigger: a
+`0x73` record of type **8** in a map's `.bmbl` link table, followed by a
+`0x74` holding its number (`func_0201d638` case 8). Values 1–3 the centre,
+4–6 the whole size, 7 the box's turn, **8 the way the Hero faces to read it**.
+The Hero reads one standing in its box and facing within about 117° of value 8
+(`func_ov017_021984f4`, `< 8364.2` fx32). 163 on the cartridge, in 64 maps.
+
+**What a shelf holds** is `htana<L>_<lang>.bin`, a tagged data table run as a
+script; `<L>` is INFERRED the first letter of the map's code (it holds on all
+162 records). Each tag-`0x66` record: the map's `maplist9` id, the bookcase's
+number, 1 for a recipe book or 0 for a book to read, the recipe book's number,
+three texts (a string offset or `0xFFFFFFFF`), then the recipes it teaches.
+The last record naming a map and a number wins.
+
+| | |
+|---|---|
+| text 0 | a plain book's text; on a recipe book, "There don't seem to be any books of particular interest." |
+| text 1 | a recipe book's first reading, ending "…finds recipes for … `<SE_RECIPE>`" |
+| text 2 | read again: "…already knows the recipes in this book." |
+
+A recipe book teaches only once **game-wide flag `0x777`** is set — the Krak
+Pot sets it when it first opens (`func_ov006_02157a60`) — and its own flag,
+`0x114C` + its number, is clear; then, once its text is read, its recipes are
+known and the flag set. 54 recipe books, numbered 1 to 55 with no 8, hold 327
+recipes, none in two. Stornway inn's *Alchemical Essentials* is a plain book.
+
 # Alchemy recipes — `/data/bin/recipe.gp2`
 
 **Found 25 September 2026** by reading **overlay 6**, the Krak Pot, which
