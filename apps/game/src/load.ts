@@ -247,6 +247,10 @@ export interface Loaded {
    */
   readonly pattyWords: ReadonlyMap<number, string>
   readonly pattyLabels: ReadonlyMap<number, string>
+  /** Alltrades Abbey's lines, `str_dam`, by number — see `abbey.ts`. Empty if they will not read. */
+  readonly abbeyWords: ReadonlyMap<number, string>
+  /** Its windows' words, `bm_dama`'s labels: Yes, No, Change Vocation, Revocate, the vocations. */
+  readonly abbeyLabels: ReadonlyMap<number, string>
   /** The area's triggers — see `readTriggers`. */
   readonly triggers: readonly Trigger[]
   /** The map's treasure, in world units — see `readTreasure`. Empty when it has none. */
@@ -2815,6 +2819,10 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     ),
     pattyWords: englishText(rom, '/data/bin/menu/str_lui.gp2', 'str_lui_en.nat', readSystemStrings),
     pattyLabels: englishText(rom, '/data/bin/menu/bm_lui.gp2', 'bm_lui_en.bin', (bytes) =>
+      messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
+    ),
+    abbeyWords: englishText(rom, '/data/bin/menu/str_dam.gp2', 'str_dam_en.nat', readSystemStrings),
+    abbeyLabels: englishText(rom, '/data/bin/menu/bm_dama.gp2', 'bm_dama_en.bin', (bytes) =>
       messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
     ),
     region: regionHead(entry?.region),

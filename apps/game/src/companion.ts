@@ -263,9 +263,11 @@ export const isVocation = (vocation: number): boolean =>
  * the other six their flag has been set for.
  *
  * `unlocked` is asked for the game's flag id, {@link VOCATION_FLAG} plus the
- * vocation — see the caution there. Nothing is filtered out for being the
- * vocation somebody already has: **the builder does not do that**, and what
- * it builds is handed to the setter unfiltered.
+ * vocation: a raw bit of the game-wide bank at `+0x8c`, the bank record
+ * operations 100 and 101 set (`func_0206dfb0`). Nothing is filtered out for
+ * being the vocation somebody already has — **the builder does not do that**
+ * — but choosing it is refused, with Jack's line 48 (`0x021571b0`); see
+ * `abbey.ts`.
  */
 export function vocationsOffered(unlocked: (flag: number) => boolean): number[] {
   return [
@@ -289,19 +291,19 @@ export function vocationsOffered(unlocked: (flag: number) => boolean): number[] 
  * neither belongs to the vocation being left.
  *
  * **What the Abbey asks is read now** (ov003 `0x0215582c`, reached through
- * the same service dispatcher the shop and the inn use, service 46): nothing.
- * There is no level requirement, nothing consults the "has held" mask, and
- * the vocation somebody already has is not excluded. What may be chosen is
+ * the same service dispatcher the shop and the inn use, service 46): no
+ * level, nothing of the "has held" mask. What may be chosen is
  * {@link vocationsOffered}; this refuses only what is not a vocation at all.
+ * What else the Abbey does around it — HP and MP made whole, the vocation
+ * already held refused — is its flow's, in `main.ts`; see `abbey.ts`.
  *
  * **Equipment comes with them**, because it is kept per vocation too — see
  * {@link Member.outfits}. Changing stows nothing and restores nothing: what
  * the vocation wears is simply what that vocation's set holds, which is
- * empty the first time anybody takes a trade up.
- *
- * The one thing the Abbey does that this does not is **drop to the bag
- * whatever the new vocation may not wear**. Ours keeps it; see
- * `docs/party-and-vocations.md`.
+ * empty the first time anybody takes a trade up. **Ours**: the game stows
+ * what was worn by id, puts it all in the bag, and dresses the new vocation
+ * from the bag (`0x021558e0`–`0x02155d70`), so an item sold meanwhile is not
+ * put back on.
  */
 export function changeVocation(member: Member, vocation: number): Member | undefined {
   if (!isVocation(vocation)) return undefined

@@ -51,6 +51,19 @@ export type Visit =
       readonly cursor: number
       readonly said: string
     }
+  | {
+      /**
+       * One of Alltrades Abbey's windows — see `abbey.ts`: Jack's Change
+       * Vocation / Revocate menu, who, or which vocation. Its rows are made
+       * by the flow; choosing one hands it back, for his lines to take on.
+       */
+      readonly kind: 'abbey'
+      readonly window: 'menu' | 'who' | 'vocation'
+      readonly title: string
+      readonly rows: readonly string[]
+      readonly cursor: number
+      readonly said: string
+    }
 
 /** What a visit needs to know about the items, and about the Hero. */
 export interface Counter {
@@ -76,6 +89,8 @@ export interface Outcome {
   readonly confessed?: boolean
   /** Cap'n Max's exchange: the one chosen, by place in his list, or -1 to leave. */
   readonly medalPick?: number
+  /** An Abbey window's row chosen, by place — see `abbey.ts`. */
+  readonly abbeyPick?: number
 }
 
 /** How a visit looks: its rows, which is chosen, and the lines beside them. */
@@ -135,6 +150,7 @@ function carrierRows(counter: Counter): string[] {
 }
 
 function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
+  if (visit.kind === 'abbey') return [...visit.rows]
   if (visit.kind === 'medals') {
     return [
       ...visit.exchanges.map(
@@ -165,6 +181,9 @@ function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
 }
 
 export function viewOf(visit: Visit, bag: Bag, counter: Counter): VisitView {
+  if (visit.kind === 'abbey') {
+    return { title: visit.title, rows: [...visit.rows], cursor: visit.cursor, lines: [visit.said] }
+  }
   if (visit.kind === 'medals') {
     return {
       title: visit.title,
@@ -206,6 +225,7 @@ export function leaveVisit(visit: Visit): Visit | undefined {
 
 /** Take the chosen row. */
 export function chooseInVisit(visit: Visit, bag: Bag, counter: Counter): Outcome {
+  if (visit.kind === 'abbey') return { visit: undefined, bag, abbeyPick: visit.cursor }
   if (visit.kind === 'medals') {
     const picked = visit.cursor < visit.exchanges.length ? visit.cursor : -1
     return { visit: undefined, bag, medalPick: picked }

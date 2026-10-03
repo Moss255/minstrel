@@ -143,7 +143,7 @@ export interface TextContext {
  * of somebody's talk line**, which is why the pot has to be spoken to.
  */
 export interface Service {
-  readonly kind: 'SHOP' | 'INN' | 'CHURCH' | 'RENKIN' | 'LUIDA'
+  readonly kind: 'SHOP' | 'INN' | 'CHURCH' | 'RENKIN' | 'LUIDA' | 'DAMA'
   readonly id: number
 }
 
@@ -154,11 +154,17 @@ const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
  * Services whose tag is bare — they select nothing, because there is only one
  * of each. `<RENKIN>` is the Krak Pot (facility code 7) and `<LUIDA>` is
  * Patty's Party Planning Place (codes 5 and 8; ルイーダ is the tavern's
- * Japanese name, which is why the tag is not "PATTY").
+ * Japanese name, which is why the tag is not "PATTY"). `<DAMA>` is Alltrades
+ * Abbey's vocation change (code 9; ダーマ is the Abbey's Japanese name): the
+ * whole of Jack of Alltrades' line in `X02M01`, with no text before it — see
+ * `abbey.ts`. **Every facility code has its tag**, in the table at
+ * `0x020f0afc` that `func_0206f550` matches a line against, the code being
+ * the tag's place: also `<RIKKA>` 6, `<LAVIELL>` 8, `<DAMA_SATORI>` 10 and
+ * `<ARKSANDY>` 11, none of them built.
  *
  * `<BANK>` is the same shape and is not here: the bank is not built.
  */
-const BARE_SERVICES = new Set<string>(['RENKIN', 'LUIDA'])
+const BARE_SERVICES = new Set<string>(['RENKIN', 'LUIDA', 'DAMA'])
 
 /**
  * A sound a line asks for: `<ME_008>` a jingle, `<SE_014>` an effect.

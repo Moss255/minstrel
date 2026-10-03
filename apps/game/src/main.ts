@@ -43,6 +43,7 @@ import {
   type NpcPlacement,
   OP_EVENT,
   OP_FACILITY,
+  parseMarkup,
   partName,
   QUEST_SLOTS,
   readSprite,
@@ -140,6 +141,20 @@ import {
   WORLD_SCALE,
   waysOut,
 } from '@minstrel/world'
+import {
+  ABBEY_JINGLE,
+  ABBEY_LABELS,
+  ABBEY_SAYS,
+  type AbbeyFill,
+  abbeyOpen,
+  abbeyText,
+  CEREMONY_MS,
+  FLAG_REVOCATION,
+  medalSaid,
+  REVOCATION_LEVEL,
+  REVOCATION_MEDALS,
+  vocationSaid,
+} from './abbey.ts'
 import {
   type ActionRun,
   BLEND_MS,
@@ -276,8 +291,10 @@ import {
   partyAfter,
   partyRestored,
   partySaved,
+  REVOCATION_FLAG,
   revocationsOf,
   revoke,
+  vocationsOffered,
   wear,
   wornBy,
 } from './companion.ts'
@@ -504,6 +521,7 @@ import {
   OPENING_STAGE,
   pickLine,
   promptOf,
+  runLine,
   type Service,
   sameStage,
   stageOrder,
@@ -1844,9 +1862,8 @@ function openWorld(map: string): void {
   // recruitment is built. See `recruit`.
   const asParty = params.get('party')
   if (asParty) recruit(asParty)
-  // `?vocation=1:3` changes party place 1 to vocation 3 — **ours**, standing
-  // in for Alltrades Abbey until the flow the Abbey uses is found. See
-  // `changeVocation`.
+  // `?vocation=1:3` changes party place 1 to vocation 3 — **ours**, for
+  // driving. The Abbey's own flow is Jack's — see `openAbbey`.
   for (const one of (params.get('vocation') ?? '').split(',')) {
     const asked = /^(\d+):(\d+)$/.exec(one)
     const who = asked ? members[Number(asked[1])] : undefined
@@ -3077,6 +3094,12 @@ function frame(now = 0): void {
   }
   // The status line goes with the debug screen once a map is up.
   if (!debugOn && loaded && !statusEl.hidden) statusEl.hidden = true
+  // Alltrades Abbey's ceremony, run its time — see `ceremony`.
+  if (abbeyWait && performance.now() >= abbeyWait.until) {
+    const then = abbeyWait.then
+    abbeyWait = undefined
+    then()
+  }
   // **A page that tells an action shows it** — see `startShown` — and goes on
   // when it ends, as the game's does; a page that tells an event with no
   // action goes on when its lines have been up their time. **Ours**: the
@@ -4305,6 +4328,8 @@ function countTalk(id: number): void {
 
 function talk(everyLine = false): void {
   if (!loaded || !self || opening) return
+  // The Abbey's ceremony runs its time before anything more is said.
+  if (abbeyWait) return
   if (talking) {
     const ending = talking
     // The answer given at a prompt, kept even where its branch ends the talk:
@@ -4314,7 +4339,7 @@ function talk(everyLine = false): void {
     if (given !== undefined) talkAnswer = given
     showTalk()
     // A line that ends by handing over — `<ADD><SHOP=32>` — opens its service.
-    if (!talking && ending.run.service) openService(ending.run.service)
+    if (!talking && ending.run.service) openService(ending.run.service, ending.who)
     // An event's message, read to its end, lets the event go on.
     if (!talking && playing) {
       playing.player.dismiss()
@@ -4483,6 +4508,15 @@ function talkWith(who: Talker, label: number | undefined, everyLine = false, box
         talkContext,
       )
       talkAfter = { after: choice.after, who }
+      // A line that is nothing but its service — Jack's `<DAMA>` — opens it
+      // at once, with no page to read first.
+      const bare = talking
+        ? undefined
+        : runLine(parseMarkup(choice.line.text ?? ''), 0, talkContext).service
+      if (bare) {
+        openService(bare, who)
+        return
+      }
     }
     if (!talking && !playing) {
       const when = storyStage ? ` at ${storyStage.major}.${storyStage.minor}` : ''
@@ -4917,6 +4951,325 @@ function pickMedal(at: number): void {
 function medalFarewell(): void {
   const held = bag.items.get(MINI_MEDAL) ?? 0
   sayMedals([exchangeLine(150, medalsGiven, held), exchangeLine(151, medalsGiven, held)])
+}
+
+/**
+ * **Alltrades Abbey while Jack's service is open** — see `abbey.ts`, and
+ * `docs/party-and-vocations.md`, "The Abbey's own flow", for the steps this
+ * follows: who said `<DAMA>`, the member his lines are about, whether it is
+ * a change or a revocation, and the vocations his list offered.
+ */
+let abbey:
+  | {
+      readonly who: Talker
+      target: number
+      flow: 'change' | 'revoke'
+      offered: readonly number[]
+    }
+  | undefined
+
+/** The ceremony under way: when it has run its time, and what then — see `ceremony`. */
+let abbeyWait: { readonly until: number; readonly then: () => void } | undefined
+
+/** A vocation as his lines name it, `str_dam 35 + v`. */
+function abbeyVocation(vocation: number): string {
+  return loaded?.abbeyWords.get(vocationSaid(vocation)) ?? vocationWord(vocation)
+}
+
+/** A window's word, `bm_dama`'s label. */
+function abbeyLabel(label: number, fallback: string): string {
+  return plainMarkup(loaded?.abbeyLabels.get(label) ?? fallback, heroName())
+}
+
+/**
+ * What his lines are filled with, about the member he is speaking of. **Ours**:
+ * a member whose sex is not kept — a story companion — is spoken of as a man.
+ */
+function abbeyFill(extra: Partial<AbbeyFill> = {}): AbbeyFill {
+  const target = abbey ? members[abbey.target] : undefined
+  const current = target ? abbeyVocation(target.vocation) : undefined
+  return {
+    target: target ? nameFor(target) : heroName(),
+    sex: target?.sex === SEX.female ? 'f' : 'm',
+    solo: members.length === 1,
+    current,
+    articleOf: current,
+    ...extra,
+  }
+}
+
+/**
+ * Say some of his lines as one conversation; the last asks Yes or No when
+ * `ask` does, with the cursor on No when `onNo` — the Abbey's own Yes/No
+ * window, drawn by the talk's prompt in the game's words.
+ */
+function sayAbbey(lines: readonly number[], fill = abbeyFill(), ask?: 'yes' | 'no'): void {
+  if (!abbey) return
+  const words = loaded?.abbeyWords
+  talkContext = textContext()
+  const texts = lines.map((line, i) => {
+    const text = abbeyText(words?.get(line) ?? `(str_dam ${line})`, fill)
+    return ask && i === lines.length - 1 ? `${text.replace(/<ADD>$/, '')}<YESNO>` : text
+  })
+  const said = startConversation(
+    abbey.who,
+    'Alltrades Abbey',
+    texts,
+    lines.map((line) => `str_dam ${line}`),
+    talkContext,
+  )
+  talking = said && ask === 'no' ? { ...said, choice: 1 } : said
+  showTalk()
+}
+
+/** His line, and the visit over. */
+function abbeyEnd(lines: readonly number[], fill = abbeyFill()): void {
+  sayAbbey(lines, fill)
+  afterTalk = () => {
+    abbey = undefined
+  }
+}
+
+/**
+ * **Jack is spoken to** — step 0. Too soon, and he says so; with revocation
+ * open, his menu; otherwise whether anybody wishes to change.
+ */
+function openAbbey(who: Talker | undefined): void {
+  if (!loaded || !who) return
+  abbey = { who, target: 0, flow: 'change', offered: [] }
+  const flag = (bit: number) => storyGlobals.has(bit)
+  if (!abbeyOpen(flag, storyStage)) {
+    abbeyEnd([ABBEY_SAYS.greet, ABBEY_SAYS.tooSoon])
+    return
+  }
+  if (flag(FLAG_REVOCATION)) {
+    sayAbbey([ABBEY_SAYS.greet, ABBEY_SAYS.how])
+    afterTalk = () => openAbbeyWindow('menu')
+    return
+  }
+  sayAbbey([ABBEY_SAYS.greet, ABBEY_SAYS.wish], abbeyFill(), 'yes')
+  afterTalk = (answer) => (answer === 0 ? abbeyChange() : abbeyEnd([ABBEY_SAYS.content]))
+}
+
+/** Change Vocation chosen, or Yes said: who — or, alone, the Hero at once. */
+function abbeyChange(): void {
+  if (!abbey) return
+  abbey.flow = 'change'
+  if (members.length === 1) {
+    abbeyTarget(0, false)
+    return
+  }
+  sayAbbey([ABBEY_SAYS.who])
+  afterTalk = () => openAbbeyWindow('who')
+}
+
+/**
+ * The member to change. **Fallen** — refused (49); chosen from the list only,
+ * as the game checks it there. **A curse** (8) is not modelled here, so
+ * nobody is refused for one. Then which vocation.
+ */
+function abbeyTarget(index: number, fromList: boolean): void {
+  if (!abbey) return
+  abbey.target = index
+  if (fromList && members[index]?.hp === 0) {
+    abbeyEnd([ABBEY_SAYS.dead])
+    return
+  }
+  sayAbbey([ABBEY_SAYS.which])
+  afterTalk = () => openAbbeyWindow('vocation')
+}
+
+/**
+ * One of the Abbey's windows, in the menu's box: his menu, who, or the
+ * vocations — the six, then whichever of the other six their flag is set
+ * for, each with the member's level in it.
+ *
+ * **Ours**: the list is one column, where the game's is two of six; the
+ * revocation marks beside a name (`<tc1>`…`<tc10>`) are a count here; and
+ * the panel describing the vocation under the cursor, on the sub screen, is
+ * not drawn.
+ */
+function openAbbeyWindow(window: 'menu' | 'who' | 'vocation'): void {
+  if (!loaded || !abbey) return
+  const target = members[abbey.target]
+  let rows: string[]
+  let title = ''
+  if (window === 'menu') {
+    rows = [
+      abbeyLabel(ABBEY_LABELS.change, 'Change Vocation'),
+      abbeyLabel(ABBEY_LABELS.revocate, 'Revocate'),
+    ]
+  } else if (window === 'who') {
+    rows = members.map((member) => nameFor(member))
+  } else {
+    abbey.offered = vocationsOffered((bit) => storyGlobals.has(bit))
+    title = abbeyLabel(ABBEY_LABELS.heading, 'Vocation')
+    rows = abbey.offered.map((vocation) => {
+      const level = target ? (levelOf({ ...target, vocation })?.level ?? 1) : 1
+      const revoked = target ? revocationsOf(target, vocation) : 0
+      return (
+        `${abbeyLabel(vocation - 1, vocationWord(vocation))} — ${abbeyLabel(ABBEY_LABELS.level, 'Lv. ')}${level}` +
+        (revoked > 0 ? ` · revoked ${revoked}×` : '')
+      )
+    })
+  }
+  visit = { kind: 'abbey', window, title, rows, cursor: 0, said: '' }
+  self?.held.clear()
+  showMenu()
+}
+
+/** A row of one of his windows chosen. */
+function abbeyPicked(window: 'menu' | 'who' | 'vocation', pick: number): void {
+  if (!abbey) return
+  if (window === 'menu') {
+    if (pick === 0) abbeyChange()
+    else abbeyRevocation()
+    return
+  }
+  if (window === 'who') {
+    if (abbey.flow === 'revoke') abbeyRevokeTarget(pick)
+    else abbeyTarget(pick, true)
+    return
+  }
+  const vocation = abbey.offered[pick]
+  const target = members[abbey.target]
+  if (vocation === undefined || !target) return
+  const chosen = abbeyVocation(vocation)
+  const fill = abbeyFill({ chosen, articleOf: chosen })
+  // The vocation they already have: listed, and refused (`0x021571b0`).
+  if (vocation === target.vocation) {
+    sayAbbey([ABBEY_SAYS.already, ABBEY_SAYS.which], fill)
+    afterTalk = () => openAbbeyWindow('vocation')
+    return
+  }
+  sayAbbey([ABBEY_SAYS.confirm], fill, 'yes')
+  afterTalk = (answer) => {
+    if (answer !== 0) {
+      sayAbbey([ABBEY_SAYS.again], fill)
+      afterTalk = () => openAbbeyWindow('vocation')
+      return
+    }
+    sayAbbey([ABBEY_SAYS.prayer], fill)
+    afterTalk = () => ceremony(() => abbeyApply(vocation, fill))
+  }
+}
+
+/** B in one of his windows: his menu (5), or who and which (7). */
+function abbeyCancelled(window: 'menu' | 'who' | 'vocation'): void {
+  if (!abbey) return
+  abbeyEnd([window === 'menu' ? ABBEY_SAYS.adrift : ABBEY_SAYS.cancel])
+}
+
+/**
+ * The ceremony: jingle 52, and 140 ticks before what it does is done.
+ * **Not yet shown**: its effect, `data/effect/ev999991800.chr`, over the
+ * member.
+ */
+function ceremony(then: () => void): void {
+  if (cartridge && !params.get('bgm')) void playJingle(cartridge, ABBEY_JINGLE)
+  abbeyWait = { until: performance.now() + CEREMONY_MS, then }
+}
+
+/**
+ * The change made, as `func_ov003_0215582c` makes it: the vocation set
+ * (`changeVocation`, the setter `0x02083ca0`), their attributes now the new
+ * vocation's at their level in it — which here they are by being worked out
+ * from the level table — and **HP and MP whole**. A Priest's Heal and a
+ * Mage's Frizz, which the game grants at the change, come from the spell
+ * table at level one the same way. Then line 13.
+ *
+ * **Ours**: what they wear is the new vocation's own set, kept for it, where
+ * the game puts everything worn in the bag and dresses them from it.
+ */
+function abbeyApply(vocation: number, fill: AbbeyFill): void {
+  const target = abbey ? members[abbey.target] : undefined
+  if (!target) return
+  const was = target.vocation
+  changeVocation(target, vocation)
+  target.hp = undefined
+  target.mp = undefined
+  dressParty()
+  status(
+    `${nameFor(target)}: ${vocationWord(was)} → ${vocationWord(vocation)}, level ${levelOf(target)?.level ?? '?'}`,
+  )
+  abbeyEnd([ABBEY_SAYS.done], fill)
+}
+
+/**
+ * Revocate chosen — step 4. Nobody at level 99: 14 and 66. Otherwise 14,
+ * then who (15) — or, alone, the Hero.
+ */
+function abbeyRevocation(): void {
+  if (!abbey) return
+  abbey.flow = 'revoke'
+  const anyMaster = members.some((member) => levelOf(member)?.level === REVOCATION_LEVEL)
+  if (!anyMaster) {
+    abbeyEnd([ABBEY_SAYS.revocation, ABBEY_SAYS.noneMaster])
+    return
+  }
+  if (members.length === 1) {
+    sayAbbey([ABBEY_SAYS.revocation])
+    afterTalk = () => abbeyRevokeTarget(0)
+    return
+  }
+  sayAbbey([ABBEY_SAYS.revocation, ABBEY_SAYS.revokeWho])
+  afterTalk = () => openAbbeyWindow('who')
+}
+
+/** The member to revoke: at 99, living — then are they sure, the cursor on No. */
+function abbeyRevokeTarget(index: number): void {
+  if (!abbey) return
+  abbey.target = index
+  const target = members[index]
+  if (!target) return
+  if (levelOf(target)?.level !== REVOCATION_LEVEL) {
+    abbeyEnd([ABBEY_SAYS.notMaster])
+    return
+  }
+  if (target.hp === 0) {
+    abbeyEnd([ABBEY_SAYS.sure, ABBEY_SAYS.revokeDead])
+    return
+  }
+  sayAbbey([ABBEY_SAYS.sure, ABBEY_SAYS.revokeConfirm], abbeyFill(), 'no')
+  afterTalk = (answer) => {
+    if (answer !== 0) {
+      abbeyEnd([ABBEY_SAYS.revokeDoubt])
+      return
+    }
+    // **Ours**: the game tests line 21's article against the last vocation
+    // its list had under the cursor — stale here — and this, their own.
+    sayAbbey([ABBEY_SAYS.revokePrayer])
+    afterTalk = () => ceremony(abbeyRevoke)
+  }
+}
+
+/**
+ * The revocation made (`func_ov003_02155e38`), HP and MP whole; the first
+ * time for this vocation — event flag `0x118B + v` — its medal is given.
+ * **Not built**: the titles a Hero earns at ten revocations of a vocation.
+ */
+function abbeyRevoke(): void {
+  const target = abbey ? members[abbey.target] : undefined
+  if (!target) return
+  const vocation = target.vocation
+  revoke(target)
+  target.hp = undefined
+  target.mp = undefined
+  const first = !storyGlobals.has(REVOCATION_FLAG + vocation)
+  const medal = REVOCATION_MEDALS.get(vocation)
+  if (first && medal !== undefined) {
+    storyGlobals.add(REVOCATION_FLAG + vocation)
+    sayAbbey([ABBEY_SAYS.revoked, ABBEY_SAYS.reward])
+    afterTalk = () => {
+      give(medal)
+      const fill = abbeyFill({
+        medal: loaded?.abbeyWords.get(medalSaid(vocation)) ?? nameOf(medal),
+      })
+      abbeyEnd([ABBEY_SAYS.receives, ABBEY_SAYS.farewell], fill)
+    }
+    return
+  }
+  abbeyEnd([ABBEY_SAYS.revoked, ABBEY_SAYS.farewell])
 }
 
 /**
@@ -5732,7 +6085,7 @@ function counter(): Counter {
 }
 
 /** Open what a line handed over to — see `services.ts`. */
-function openService(service: Service): void {
+function openService(service: Service, who?: Talker): void {
   if (!loaded) return
   if (service.kind === 'SHOP') {
     const shop = loaded.shops.get(service.id)
@@ -5746,6 +6099,10 @@ function openService(service: Service): void {
     menu = { ...openMenu(), panel: 'patty', patty: openPatty() }
     self?.held.clear()
     showMenu()
+    return
+  } else if (service.kind === 'DAMA') {
+    // Alltrades Abbey — facility code 9, `<DAMA>` on Jack's line.
+    openAbbey(who)
     return
   } else if (service.kind === 'RENKIN') {
     // **The Krak Pot is spoken to, not chosen from a menu.** `<RENKIN>` at the
@@ -10597,6 +10954,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     if (action === 'up') visit = moveVisit(visit, -1, bag, told)
     else if (action === 'down') visit = moveVisit(visit, 1, bag, told)
     else if (action === 'confirm') {
+      const abbeyWindow = visit.kind === 'abbey' ? visit.window : undefined
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
@@ -10612,10 +10970,15 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       if (outcome.confessed && visit) visit = { ...visit, said: confess() }
       // Cap'n Max's list hands its choice back to his lines — see `pickMedal`.
       if (outcome.medalPick !== undefined) pickMedal(outcome.medalPick)
+      // The Abbey's windows hand their choice back to Jack's lines — see `abbeyPicked`.
+      if (outcome.abbeyPick !== undefined && abbeyWindow)
+        abbeyPicked(abbeyWindow, outcome.abbeyPick)
     } else if (action === 'cancel' || action === 'menu') {
       const leaving = visit.kind === 'medals'
+      const abbeyWindow = visit.kind === 'abbey' ? visit.window : undefined
       visit = leaveVisit(visit)
       if (leaving) medalFarewell()
+      if (abbeyWindow) abbeyCancelled(abbeyWindow)
     }
     showMenu()
     event.preventDefault()

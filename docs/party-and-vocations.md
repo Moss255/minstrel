@@ -519,7 +519,8 @@ Skill points are deliberately untouched. They are **one pool per character**
 and the spend is per tree; neither belongs to the vocation being left.
 
 `?vocation=0:0,0:6` changes party place 0 to vocation 0 and then back — ours,
-for driving, until the Abbey's own flow is found.
+for driving. The Abbey's own flow is built now; see "The Abbey's own flow"
+below.
 
 **And the Abbey's own rules are read now** — it is a menu, dispatched exactly
 as the shop and the inn are (service 46). The wiki's `Party` page has the
@@ -542,10 +543,57 @@ That the ungated six are exactly the starting vocations, and the gated six the
 advanced ones, is an independent check on the numbering `FORMAT.md` infers
 from the status screen's order.
 
-**Not established, and flagged where it matters:** whether this host's story
-flags are numbered as the game's event flags are. `VOCATION_FLAG` is the
-game's `0x113F`; ours come from the trigger files' own flag words, and nothing
-has tied the two together.
+~~**Not established, and flagged where it matters:** whether this host's story
+flags are numbered as the game's event flags are.~~ **Settled 3 October 2026**:
+the Abbey tests its flags with `func_0206dfb0` on the game-wide bank at
+`+0x8c` — the bank record operations 100 and 101 set raw bits of, and that
+this host keeps as its game-wide flags. So `0x113F + v` is a raw bit there.
+Nothing on the cartridge's records sets it, though: not 100, and not 130 by
+number (`flagBit`, 427 of them searched). What does is the game's code.
+
+### The Abbey's own flow
+
+**Built, 3 October 2026** — `abbey.ts`, and its flow in `main.ts`
+(`openAbbey` on). Read from overlay 3's **service 46**, a seven-step state
+machine whose table is at `0x0217f340` (US). Its lines are `str_dam`'s, its
+windows' words `bm_dama`'s.
+
+**The way in is Jack's line**, a bare `<DAMA>`: facility code 9, in the table
+`func_0206f550` matches tags against (`docs/event-scripts.md`). Code 10,
+`<DAMA_SATORI>`, is the same change said by the "Voice of Vocation", with HP
+and MP kept in proportion. **It is not revocation**, as this file had it, and
+no line on the cartridge uses it.
+
+| step | what the player meets |
+|---|---|
+| 0 | flag `0x799` clear: "too soon" (lines 0, 1), and done. Flag `0x796` set: line 4 and the Change Vocation / Revocate menu. Otherwise line 2 and a Yes or No |
+| 2 | Yes: who, from the party only, or the Hero alone at once. A fallen member is refused once chosen (49); so is one cursed (8) |
+| 3 | which vocation: the six, then the other six whose flags are set, each with its level. The one already held is refused (48). Then line 10 and a Yes or No; Yes, the prayer (12), the ceremony — `ev999991800.chr` over them, jingle 52, 140 ticks — and the change, with HP and MP whole; then 13 |
+| 4 | revocation: nobody at 99 (66); not at 99 (16); fallen (65); then a Yes or No with the cursor on No; Yes, the prayer (21), the ceremony, `revoke`, HP and MP whole. The first time for a vocation (flag `0x118B + v`), its medal, 18043 to 18054 by the table at `0x0217f2e8` |
+| any | B: 5 at the menu, 7 at who or which |
+
+**The change itself** (`0x0215582c`) is the setter `0x02083ca0` — the same
+writes as `0x02086598`, which this file named before — and the base
+attributes worked out afresh from the new vocation's level table, which here
+they are by being derived. A Priest is given Heal and a Mage Frizz, the spell
+table's two level-one learnings, which here come from that table the same way.
+
+**Ours**, each marked where it is:
+
+- **The three flags' setters are not read**, so: the Abbey counts as open
+  once its own story thread is at 7.1, where Jack's chapter-G lines begin, or
+  when `0x799` is set; the Change / Revocate menu, and so revocation, waits on
+  `0x796`, which nothing here sets — `?revoke=` still stands in; and the
+  advanced six wait on their flags.
+- The list is one column, where the game's is two of six; the panel on the
+  sub screen describing the vocation under the cursor is not drawn; nor is
+  the ceremony's effect.
+- What is worn: the new vocation's own kept set, where the game puts
+  everything in the bag and dresses them from it.
+- A curse is not modelled, so nobody is refused for one; a member whose sex
+  is not kept is spoken of as a man.
+- The titles a Hero earns at ten revocations of a vocation (`0x0217f2ce`, 101
+  to 112, by the Hero's own counts) are not built.
 
 ### Equipment is per vocation too
 

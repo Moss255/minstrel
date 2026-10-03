@@ -1371,11 +1371,18 @@ code byte through a table at `0x0206f70c`:
 | 5, 8 | `0x21b65e0` | Patty's party planning (modes 0 and 1) |
 | 6, 12 | `0x218d77c` | the Quester's Rest counter |
 | **7** | `0x21b146c` | **the Krak Pot** |
-| 9, 10 | `0x21c12fc` | Alltrades (modes 0 and 1, the second being revocation) |
+| 9, 10 | `0x21c12fc` | Alltrades (mode 0 Jack's `<DAMA>`; mode 1 `<DAMA_SATORI>`, the same change said by the "Voice of Vocation" — **not** revocation, which is inside mode 0; corrected 3 October 2026) |
 | 11 | `0x21a8614` | the Starflight Express |
 
-Only five of those have a text tag in the list above, so the other flows are
-begun some other way and **where their code comes from is not established**.
+~~Only five of those have a text tag in the list above, so the other flows are
+begun some other way and where their code comes from is not established.~~
+**Settled 3 October 2026: every code has a tag.** `func_0206f550` walks a talk
+line and, on `<`, prefix-compares against the thirteen-entry table at
+`0x020f0afc`, taking the tag's **place as the code** (`0x0206f59c`–`0x0206f61c`),
+keeping up to four, and dropping the tag from the text: `""` 0, `<INN=` 1,
+`<CHURCH=` 2, `<BANK>` 3, `<SHOP=` 4, `<LUIDA>` 5, `<RIKKA>` 6, `<RENKIN>` 7,
+`<LAVIELL>` 8, `<DAMA>` 9, `<DAMA_SATORI>` 10, `<ARKSANDY>` 11, `<RIKKAFIRST>`
+12. Only 1, 2 and 4 take a number.
 
 `<RENKIN>` is read as a service by `apps/game/src/talk.ts` now. It is bare —
 there is one pot — and it appears both as a line of its own and as

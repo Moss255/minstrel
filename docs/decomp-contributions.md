@@ -708,3 +708,26 @@ held by `apps/game/test/recruit.test.ts`.
 and accessory by the item tables, INFERRED); `func_ov009_02188b14`'s choices
 for the hair and face.
 
+
+### Alltrades Abbey's service — read 3 October 2026
+
+Overlay 3's **service 46**, reached from `func_0206f6cc`'s codes 9 and 10 by
+`func_ov017_021c12fc` → `func_ov017_021c1350` (service `0x2E`, the mode at
+`+0x1E`), run by `func_ov017_021c1404` → `func_ov003_02154720(svc, mode)`
+(the mode to bit 0 of `svc+0x1FC`) and, each frame,
+`func_ov003_02154af4`, which calls the step table at `0x0217f340`.
+
+| function | what it does | a name |
+|---|---|---|
+| `func_0206f550` | match a talk line's tags against the thirteen at `0x020f0afc`, the place being the facility code; keep four; strip them | `Talk::ReadFacilityTags` |
+| `func_ov003_021560e4` | step 0: load `str_dam`, `bm_dama`, `str_daj`; flag `0x799`, then `0x796`; greet | `Abbey::StepGreet` |
+| `func_ov003_02156ad4` | step 1: the Change Vocation / Revocate menu | `Abbey::StepMenu` |
+| `func_ov003_02156d40` | step 2: Yes or No, then who | `Abbey::StepWho` |
+| `func_ov003_0215704c` | step 3: the list, the confirm, the ceremony, the change | `Abbey::StepChange` |
+| `func_ov003_021575dc` | step 4: revocation, its medal, the titles | `Abbey::StepRevoke` |
+| `func_ov003_0215582c` | the change: stow, all to the bag, `func_02083ca0`, restore, attributes, Heal and Frizz | `Abbey::ApplyChange` |
+| `func_ov003_02155e38` | the revocation | `Abbey::ApplyRevocation` |
+| `func_ov003_02155e14` | a vocation's equipment block, `rec+0x4A4 + (v−1)·16`, null outside 1–12 — **not** a bounds check on the choice, as this file had it | `Character::VocationOutfit` |
+| `func_ov003_021552b8` | put a line up with its slots filled; a closed box ends the visit | `Abbey::SayLine` |
+| `func_ov003_02156054` | the vocation list: 1–6, then `[7, 9, 8, 12, 10, 11]` behind `0x113F + v` | `Abbey::BuildList` |
+| `func_02083ca0` | the vocation setter: `rec+0x950 = v`, `rec+0x954 \|= 1 << v` | `Character::SetVocation` |

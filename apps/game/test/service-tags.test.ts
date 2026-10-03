@@ -30,6 +30,13 @@ describe('a line that hands over to a service', () => {
     })
   })
 
+  it('takes the Abbey’s bare tag, which is the whole of Jack’s line', () => {
+    // `<DAMA>` — ダーマ, the Abbey's Japanese name — is facility codes 9 and 10.
+    const jack = runLine(parseMarkup('<DAMA>'))
+    expect(jack.service).toEqual({ kind: 'DAMA', id: 0 })
+    expect(jack.pages.every((p) => p.text === '')).toBe(true)
+  })
+
   it('does not take a bare tag it has no service for', () => {
     // `<BANK>` is the same shape and the bank is not built. A tag that
     // quietly became a service nobody wrote would be worse than one ignored.
