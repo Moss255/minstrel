@@ -418,7 +418,15 @@ import {
   questNibble,
   questsAfter,
 } from './quests.ts'
-import { applyFor, callUp, dropOff, PATTY_SAYS, partWith, type Roster } from './recruit.ts'
+import {
+  applyFor,
+  callUp,
+  dropOff,
+  PATTY_SAYS,
+  partWith,
+  type Roster,
+  recruitKit,
+} from './recruit.ts'
 import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
 import { SceneBrowser } from './scene-browser.ts'
 import { conditionsFor, firstWay, type SceneConditions, sceneIndex } from './scenes.ts'
@@ -4941,6 +4949,8 @@ function askPatty(
       ? applyFor(before, {
           ...freshMember(undefined),
           vocation: asked.vocation,
+          // Made wearing the game's own kit for a recruit — see `recruitKit`.
+          outfits: new Map([[asked.vocation, recruitKit(asked.vocation)]]),
           // What the eight screens settled on — see `CREATION_ORDER` and `naming.ts`.
           look: asked.look,
           sex: asked.look.sex,

@@ -1,4 +1,5 @@
 import { type Member, PARTY_MOST, VOCATIONS_ALWAYS } from './companion.ts'
+import type { Equipped, Slot } from './equipment.ts'
 
 /**
  * Patty's Party Planning Place — where a party of four is actually made.
@@ -27,6 +28,53 @@ import { type Member, PARTY_MOST, VOCATIONS_ALWAYS } from './companion.ts'
  * independent check on the numbering.
  */
 export const RECRUIT_VOCATIONS = VOCATIONS_ALWAYS
+
+/**
+ * **What a new recruit is made wearing** — read 3 October 2026 from overlay 9,
+ * the creation screens Patty's step 4 drives (`func_ov009_02185634`, which
+ * writes the new character's ten equipment slots at `+0x488`; filed by
+ * `func_ov009_0218742c` → `func_02086778`).
+ *
+ * Every slot starts empty (`data_ov009_0218aa40`, all `0xFFFF` but the hair
+ * and the face). Then, with a vocation chosen — Patty's, passed in by overlay
+ * 3 at `0x0217e8e0` with mode 1 — slot 7 takes **the vocation's weapon** (the jump
+ * table at `0x02185b00`) and slots 0, 1 and 5 **plain clothes, cotton
+ * trousers and sandals**; nothing else. The slots are named here by the item
+ * tables the ids are in (`w`, `b`, `u`, `l`), checked on the cartridge.
+ *
+ * The weapons fall to each vocation's own: a Priest's lance, a Thief's knife,
+ * a Ranger's boomerang — an independent check on the vocation numbering.
+ */
+export const RECRUIT_WEAPONS: ReadonlyMap<number, number> = new Map([
+  [1, 20004], // Warrior: copper sword
+  [2, 20500], // Priest: bamboo lance
+  [3, 20403], // Mage: oak staff
+  [4, 20600], // Martial Artist: laundry pole
+  [5, 19050], // Thief: paring knife
+  [6, 20100], // Minstrel: feather fan
+  [7, 20004], // Gladiator: copper sword
+  [8, 20004], // Armamentalist: copper sword
+  [9, 20500], // Paladin: bamboo lance
+  [10, 20403], // Sage: oak staff
+  [11, 20100], // Luminary: feather fan
+  [12, 20700], // Ranger: boomerang
+])
+
+/** What every recruit wears besides: plain clothes, cotton trousers, sandals (`0x02185b84`). */
+export const RECRUIT_CLOTHES: readonly (readonly [Slot, number])[] = [
+  ['body', 13005],
+  ['legs', 16213],
+  ['feet', 17406],
+]
+
+/** A new recruit's equipment, in the vocation they were made — see {@link RECRUIT_WEAPONS}. */
+export function recruitKit(vocation: number): Equipped {
+  const weapon = RECRUIT_WEAPONS.get(vocation)
+  return new Map<Slot, number>([
+    ...(weapon === undefined ? [] : [['weapon', weapon] as const]),
+    ...RECRUIT_CLOTHES,
+  ])
+}
 
 /**
  * The most characters the list holds.

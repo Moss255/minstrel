@@ -682,3 +682,27 @@ Findings in `docs/conformance.md`, "A round's draws, outside the resolver".
 `021f8f20`); `0215858c` past its first draw; the targeting handlers past those
 named; the status bits that rules 4–7 and the weighted pick's halving read.
 
+### 17. What a new character is made wearing — overlays 3, 9 and 21, 3 October 2026
+
+Findings in `docs/party-and-vocations.md`, "What a recruit is made wearing".
+**Where minstrel translates it**: `recruitKit` in `apps/game/src/recruit.ts`,
+held by `apps/game/test/recruit.test.ts`.
+
+- **Creation's start**: `func_ov009_0218454c(this, vocation, mode)` — the
+  vocation to `+0xda2`, the mode to `+0xd95`; called by overlay 3 (Patty,
+  `0x0217e8e0`, mode 1, her chosen vocation) and overlay 21 (the Hero,
+  `0x0218b95c`, vocation 0, mode 0).
+- **The look, and the equipment with it**: `func_ov009_02185634` — the ten
+  equipment slots at character `+0x488` from `data_ov009_0218aa40` (all
+  empty but slot 2, the hair, `0x233c` + a choice, and slot 3, the face,
+  `0x2328` + a choice); with a vocation, slot 7 by the jump table at
+  `0x02185b00` and slots 0, 1, 5 and the arms at `+0x49e` from `0x02185b84`;
+  in mode 0, slots 0, 1, 5 and the arms again from `0x02185ba4`.
+- **Filing**: `func_ov009_0218742c` — vocation (`func_02083ca0`), level 1,
+  `data/prm/level%d.bin` applied, the parts of slots 0, 1, 4–8 by the table at
+  `data_ov009_0218aac8`, then `func_02086778` appends the record.
+
+**What is open**: what slots 4, 6, 8 and 9 hold by name (head, arms, shield
+and accessory by the item tables, INFERRED); `func_ov009_02188b14`'s choices
+for the hair and face.
+

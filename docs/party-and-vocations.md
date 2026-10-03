@@ -1036,6 +1036,23 @@ Two things fell out of it:
 
 - **The bag is the party's; the equipment is not.** Anybody can be dressed
   out of the one bag, which is why `taken.equip` acts on the chosen member.
+- **What a recruit is made wearing — read, 3 October 2026.** Overlay 9, the
+  creation screens, writes the new character's ten equipment slots
+  (`func_ov009_02185634`): all empty but the hair and face, then — with a
+  vocation chosen, which only Patty's recruiting passes (overlay 3
+  `0x0217e8e0`, mode 1) — **the vocation's weapon, plain clothes (13005),
+  cotton trousers (16213) and sandals (17406)**; head, arms, shield and
+  accessory stay empty. The weapons, by vocation: Warrior, Gladiator and
+  Armamentalist a copper sword (20004); Priest and Paladin a bamboo lance
+  (20500); Mage and Sage an oak staff (20403); Martial Artist a laundry pole
+  (20600); Thief a paring knife (19050); Minstrel and Luminary a feather fan
+  (20100); Ranger a boomerang (20700). `recruitKit` in `recruit.ts`; Patty's
+  recruits are made in it.
+- **The Hero is made otherwise.** Overlay 21 starts the same screens with
+  vocation 0 and mode 0 (`0x0218b95c`): no weapon, and the **celestial suit
+  (13007), celestial stockings (16215) and celestial shoes (17120)**. The
+  Hero here still starts in `STARTING_EQUIPMENT`, the tester's copper sword —
+  not changed with this reading, and now known not to be the game's.
 - **A ready-made character comes in wearing it** (3 October 2026, `dressFromPreset`
   in `main.ts`) — **ours**, as `?party=` is. Each piece their preset names
   (`charapreset.bin` values 79–85) that is an item goes in the slot its own

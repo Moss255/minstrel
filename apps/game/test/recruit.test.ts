@@ -11,7 +11,9 @@ import {
   partWith,
   partyHasRoom,
   RECRUIT_VOCATIONS,
+  RECRUIT_WEAPONS,
   type Roster,
+  recruitKit,
 } from '../src/recruit.ts'
 
 /**
@@ -176,5 +178,30 @@ describe('a character is in one place or the other, never both', () => {
     expect(r.kept.map((one) => one.name)).toEqual(['Brittany'])
     expect(r.party).toHaveLength(1)
     expect(unique(r)).toBe(true)
+  })
+})
+
+describe('what a new recruit is made wearing — overlay 9', () => {
+  it('a weapon of their vocation’s own, plain clothes, cotton trousers and sandals', () => {
+    expect([...recruitKit(1)]).toEqual([
+      ['weapon', 20004],
+      ['body', 13005],
+      ['legs', 16213],
+      ['feet', 17406],
+    ])
+    expect(recruitKit(5).get('weapon')).toBe(19050)
+    expect(recruitKit(12).get('weapon')).toBe(20700)
+  })
+
+  it('has a weapon for each of the twelve, and none for a vocation of 0', () => {
+    for (let v = 1; v <= 12; v++) expect(RECRUIT_WEAPONS.has(v)).toBe(true)
+    expect(recruitKit(0).has('weapon')).toBe(false)
+    expect(recruitKit(0).get('body')).toBe(13005)
+  })
+
+  it('leaves the head, the arms, the shield and the accessory empty', () => {
+    for (const slot of ['head', 'arms', 'shield', 'accessory'] as const) {
+      expect(recruitKit(3).has(slot)).toBe(false)
+    }
   })
 })
