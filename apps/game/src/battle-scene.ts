@@ -20,8 +20,12 @@ import {
   withMp,
 } from '@minstrel/sim'
 import {
+  type Armed,
   type Asked,
   allyTargets,
+  armsKinds,
+  armsMembers,
+  armsOfKind,
   backCommand,
   COMMAND_GRID,
   COMMAND_SAYS,
@@ -596,6 +600,8 @@ export interface BattleScene {
   readonly tactics: ReadonlyMap<number, number>
   /** Rows set from Misc.'s Line-Up, by fighter — true the Back Line — for the caller to keep. */
   readonly lines: ReadonlyMap<number, boolean>
+  /** Weapons changed from Misc.'s Equipment, in order, for the caller to apply to its bag and members. */
+  readonly armed: readonly Armed[]
   /** The monsters' own spells and changes of state, by action, to tell them by. */
   readonly known: ReadonlyMap<number, Told>
   /** What the last round came to — an item used, for the caller to take from the bag. */
@@ -639,6 +645,7 @@ export function beginBattle(
     spells: [],
     tactics: new Map(),
     lines: new Map(),
+    armed: [],
     known: options.known ?? new Map(),
     events: [],
   }
@@ -1266,6 +1273,27 @@ export function battleMenu(
             ).text
       return { rows: [text], cursor: -1, columns: 1 }
     }
+    case 'armsWho':
+      return {
+        rows: armsMembers(c).map((k) => c.members[k]?.name ?? '?'),
+        cursor: s.cursor,
+        columns: 1,
+      }
+    case 'armsKind':
+      // One row a kind, ascending, each its word — `str_btl` 7 + kind (`func_ov000_02177f74`).
+      return {
+        rows: armsKinds(c.members[s.member]?.arms ?? { bag: [] }).map(
+          (kind) => word('menu', COMMAND_SAYS.weaponKinds + kind) ?? `kind ${kind}`,
+        ),
+        cursor: s.cursor,
+        columns: 1,
+      }
+    case 'armsWeapon':
+      return {
+        rows: armsOfKind(c.members[s.member]?.arms ?? { bag: [] }, s.kind).map((w) => w.name),
+        cursor: s.cursor,
+        columns: 1,
+      }
     case 'lineUp':
       // Each member's name, then their row's word at x 70 (`func_ov000_02178648`).
       return {
@@ -1280,10 +1308,19 @@ export function battleMenu(
         columns: 1,
       }
     case 'say': {
-      const named = s.say.actor === undefined ? {} : { actor: { name: s.say.actor } }
+      // The actor is the target too, which a fallen member's lines name (21, 23).
+      const actor =
+        s.say.actor === undefined
+          ? undefined
+          : {
+              name: s.say.actor,
+              ...(s.say.actorGender === undefined ? {} : { gender: s.say.actorGender }),
+            }
+      const named = actor === undefined ? {} : { actor, target: actor }
       const str2 = s.say.str2 === undefined ? undefined : word('menu', s.say.str2)
       const text = say(scene, 'menu', s.say.number, {
         ...named,
+        ...(s.say.item === undefined ? {} : { item: s.say.item }),
         ...(str2 === undefined ? {} : { values: { str_2: str2 } }),
       })
       return { rows: [text ?? '…'], cursor: -1, columns: 1 }
@@ -1392,7 +1429,7 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
         next.tactics.size > 0 ? new Map([...scene.tactics, ...next.tactics]) : scene.tactics
       // A row set is the member's at once: the monsters' pick this round reads it.
       const lines = next.lines.size > 0 ? new Map([...scene.lines, ...next.lines]) : scene.lines
-      const state =
+      const rowed =
         next.lines.size > 0
           ? {
               ...scene.state,
@@ -1401,8 +1438,34 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
               ),
             }
           : scene.state
-      if (next.step.at !== 'done') return { ...scene, state, commanding: next, tactics, lines }
-      return play({ ...scene, state, tactics, lines }, commandsOf(next))
+      // A weapon changed is the wielder's at once: what it adds comes off, the
+      // new one's goes on — the attack the resolver reads next (`base+0x34`).
+      const changes = next.armed.slice(c.armed.length)
+      const state =
+        changes.length === 0
+          ? rowed
+          : {
+              ...rowed,
+              fighters: rowed.fighters.map((f, i) => {
+                let out = f
+                for (const { fighter, from, to } of changes) {
+                  if (fighter !== i) continue
+                  const add = (key: 'attack' | 'defence' | 'agility') =>
+                    out[key] - (from?.[key] ?? 0) + (to?.[key] ?? 0)
+                  out = {
+                    ...out,
+                    attack: add('attack'),
+                    defence: add('defence'),
+                    agility: add('agility'),
+                  }
+                }
+                return out
+              }),
+            }
+      const armed = changes.length === 0 ? scene.armed : [...scene.armed, ...changes]
+      if (next.step.at !== 'done')
+        return { ...scene, state, commanding: next, tactics, lines, armed }
+      return play({ ...scene, state, tactics, lines, armed }, commandsOf(next))
     }
     case 'over':
       return scene

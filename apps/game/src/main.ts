@@ -231,7 +231,14 @@ import {
   startCombo,
   tickCombo,
 } from './battle-combo.ts'
-import { type Asked, type Entry, FOLLOW_ORDERS, monsterTargets } from './battle-commands.ts'
+import {
+  type Arms,
+  type Asked,
+  type Entry,
+  FOLLOW_ORDERS,
+  monsterTargets,
+  type Weapon,
+} from './battle-commands.ts'
 import { battleLog, logLine, logLongFrame, logText, motionChanges } from './battle-log.ts'
 import {
   NUDGE_AT,
@@ -6382,6 +6389,8 @@ function battleOffered(): Offered {
       name: battle?.names[fighter]?.name ?? nameFor(member),
       tactic: member.tactic ?? FOLLOW_ORDERS,
       ...(member.backLine ? { backLine: true } : {}),
+      ...(member.sex === undefined ? {} : { gender: member.sex }),
+      ...(armsOf(member) ? { arms: armsOf(member) as Arms } : {}),
       own: fighter === 0,
       // A story companion acts by themselves. **Ours**: how the game takes a guest is not read.
       guest: member.attnpc !== undefined,
@@ -6485,6 +6494,70 @@ function keepTactics(): void {
     const member = battleMembers[fighter]
     if (member) member.backLine = back || undefined
   }
+}
+
+/**
+ * **A member's weapons, as battle Equipment offers them** — see `Arms`: the
+ * one in hand, and the bag's of a kind their vocation's trees, or a tree's
+ * "may wield" panel, let them wield. The sex rule is not asked: the battle's
+ * kind mask does not ask it (`func_020dd3cc`). None for a guest.
+ */
+function armsOf(member: Member): Arms | undefined {
+  if (member.attnpc !== undefined || !loaded) return undefined
+  const here = loaded
+  const trees = here.vocationTrees
+  const weapon = (id: number): Weapon | undefined => {
+    const stats = here.itemStats.get(id)
+    const kind = (stats?.kind ?? 0) - 1
+    if (kind < 0 || kind > 11) return undefined
+    const named = itemNamed(id)
+    return {
+      item: id,
+      kind,
+      name: tellBattle('<SGL_I_NAME>', { item: named }, new Map()).text,
+      named,
+      attack: stats?.attack ?? 0,
+      defence: stats?.defence ?? 0,
+      agility: stats?.agility ?? 0,
+    }
+  }
+  const wields = (id: number) =>
+    armoury ||
+    mayWear(
+      here.itemStats.get(id),
+      { vocation: member.vocation },
+      {
+        wielding: trees ? (tree) => vocationsWielding(trees, tree) : undefined,
+        regardless: (tree) =>
+          panelsHeld(member, here.skillPanels ?? []).some(
+            (panel) => panel.tree === tree && panel.grants === GRANTS_REGARDLESS,
+          ),
+      },
+    )
+  const held = wornBy(member).get('weapon')
+  return {
+    inHand: held === undefined ? undefined : weapon(held),
+    bag: [...bag.items.keys()]
+      .filter((id) => slotOf(here.goods.get(id)?.table) === 'weapon' && wields(id))
+      .flatMap((id) => weapon(id) ?? []),
+  }
+}
+
+/** How many of this battle's weapon changes are applied — see `keepArms`. */
+let armsKept = 0
+
+/** Weapons changed from Misc. in battle, put on from the bag at once, and drawn — see `Arms`. */
+function keepArms(): void {
+  if (!battle) return
+  for (const { fighter, to } of battle.armed.slice(armsKept)) {
+    const member = battleMembers[fighter]
+    const worn = member && equip(bag, wornBy(member), 'weapon', to?.item)
+    if (!member || !worn) continue
+    bag = worn.bag
+    wear(member, worn.equipped)
+    dressHero()
+  }
+  armsKept = battle.armed.length
 }
 
 /** The numbers using an item or casting a spell outside battle draws from: seeded, as a battle's are. */
@@ -7440,6 +7513,7 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
   // The monsters' places first: on the field, they turn the Hero to face them.
   const foeSpots = battleStage ? battleStage.spots.slice(party.length) : spotsFor(foes.length)
   inOpening = true
+  armsKept = 0
   battle = beginBattle([...party, ...foes], BigInt(battlesFought) * 0x9e3779b97f4a7c15n, {
     canFlee,
     opening,
@@ -9521,7 +9595,8 @@ function bottomView(scene: BattleScene): BottomView {
           step?.at === 'tactics' ||
           step?.at === 'tactic' ||
           step?.at === 'examine' ||
-          step?.at === 'lineUp'
+          step?.at === 'lineUp' ||
+          step?.at === 'armsWho'
         ? (c?.members.find((m) => !m.guest && (m.tactic ?? FOLLOW_ORDERS) === FOLLOW_ORDERS)
             ?.fighter ?? 0)
         : undefined
@@ -11822,6 +11897,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       if (ending) battleSound('battle', 1)
       battle = battleChoose(battle, battleOffered())
       keepTactics()
+      keepArms()
       cueStarted = battleClock
       // An item used this round is gone from its user's own — when it is one
       // that is used up (`func_020ddb38`: `+0x08` bit 19).

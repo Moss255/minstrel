@@ -105,6 +105,8 @@ const MENU = { x: 72, y: 8, indent: 16, pitch: 16, column: 69 } as const
 const BAR_DROP = 4
 /** A space between words — **ours**: the font's own space is not read. */
 const SPACE = 4
+/** What a message leaves clear at the window's right — **ours**. */
+const MESSAGE_MARGIN = 10
 
 /** A picture's pixels, RGBA. */
 interface Picture {
@@ -428,6 +430,40 @@ function drawMenu(
   x: number,
   y: number,
 ): void {
+  // A message — one row, no cursor — broken between words at the window's
+  // right edge, a line a pitch. **Ours**: the game says these in its message
+  // box (`func_020421a0`), not in this window.
+  const only = menu.rows[0]
+  if (menu.cursor < 0 && menu.rows.length === 1 && typeof only === 'string') {
+    const hand = art.cell(CELLS.hand)
+    const start = x + MENU.x + MENU.indent + Math.max(0, hand.left + hand.width - 8 + 2)
+    const room = SCREEN_WIDTH - MESSAGE_MARGIN - start
+    const widthOf = (words: string) =>
+      words
+        .split(' ')
+        .reduce(
+          (w, word, i) =>
+            w +
+            (art.font ? (setWord(art.font, word, 'white')?.width ?? 0) : word.length * 6) +
+            (i > 0 ? SPACE : 0),
+          0,
+        )
+    const lines: string[] = []
+    for (const paragraph of only.split('\n')) {
+      let line = ''
+      for (const word of paragraph.split(' ')) {
+        const tried = line === '' ? word : `${line} ${word}`
+        if (line !== '' && widthOf(tried) > room) {
+          lines.push(line)
+          line = word
+        } else line = tried
+      }
+      lines.push(line)
+    }
+    for (const [i, line] of lines.entries())
+      text(context, art.font, line, start, y + MENU.y + i * MENU.pitch, 'left')
+    return
+  }
   // A list shows four lines at a time, the page the cursor is on.
   const perPage = menu.columns === 2 ? menu.rows.length : 4
   const page = menu.cursor < 0 ? 0 : Math.floor(menu.cursor / perPage)

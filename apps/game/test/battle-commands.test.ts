@@ -1,7 +1,10 @@
 import { type Fighter, startBattle } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import {
+  type Arms,
   type Asked,
+  armsKinds,
+  armsOfKind,
   backCommand,
   chooseCommand,
   commandsOf,
@@ -194,5 +197,55 @@ describe('Examine and Line-Up', () => {
     c = chooseCommand(state, c)
     expect(inBackLine(c, member(1))).toBe(false)
     expect(backCommand(state, c).step).toEqual({ at: 'misc', cursor: MISC_ROWS.indexOf('lineUp') })
+  })
+})
+
+describe('Equipment', () => {
+  const sword = (item: number, attack: number) => ({
+    item,
+    kind: 0,
+    name: `sword ${item}`,
+    named: { name: `sword ${item}` },
+    attack,
+    defence: 0,
+    agility: 0,
+  })
+  const spear = { ...sword(20500, 9), kind: 1, name: 'spear', named: { name: 'spear' } }
+  const armed = (arms: Arms) =>
+    openCommands([member(0, { arms }), member(1, { guest: true, arms: { bag: [] } })])
+  const toEquipment = (c: ReturnType<typeof armed>) =>
+    chooseCommand(state, { ...c, step: { at: 'misc', cursor: MISC_ROWS.indexOf('equipment') } })
+
+  it('offers the kinds the bag holds and the one in hand, ascending', () => {
+    const arms: Arms = { inHand: sword(20000, 5), bag: [spear, sword(20001, 7)] }
+    expect(armsKinds(arms)).toEqual([0, 1])
+    expect(armsOfKind(arms, 0).map((w) => w.item)).toEqual([20000, 20001])
+  })
+
+  it('puts the chosen weapon on, the old one in the bag, and comes back to Misc. free', () => {
+    // The guest is never asked, so there is no choosing whom.
+    let c = toEquipment(armed({ inHand: sword(20000, 5), bag: [sword(20001, 7)] }))
+    expect(c.step).toEqual({ at: 'armsKind', member: 0, cursor: 0 })
+    c = chooseCommand(state, c)
+    c = moveCommand(state, c, 0, 1)
+    c = chooseCommand(state, c)
+    expect(c.armed).toEqual([{ fighter: 0, from: sword(20000, 5), to: sword(20001, 7) }])
+    expect(c.members[0]?.arms?.inHand?.item).toBe(20001)
+    expect(c.members[0]?.arms?.bag.map((w) => w.item)).toEqual([20000])
+    expect(c.step.at === 'say' && c.step.say.number).toBe(20)
+    expect(chooseCommand(state, c).step).toEqual({
+      at: 'misc',
+      cursor: MISC_ROWS.indexOf('equipment'),
+    })
+    expect(c.chosen.size).toBe(0)
+  })
+
+  it('takes off the weapon in hand, and says so when there is nothing to carry', () => {
+    let c = toEquipment(armed({ inHand: sword(20000, 5), bag: [] }))
+    c = chooseCommand(state, chooseCommand(state, c))
+    expect(c.armed).toEqual([{ fighter: 0, from: sword(20000, 5), to: undefined }])
+    expect(c.step.at === 'say' && c.step.say.number).toBe(22)
+    const none = toEquipment(armed({ bag: [] }))
+    expect(none.step.at === 'say' && none.step.say.number).toBe(35)
   })
 })

@@ -1,4 +1,5 @@
 import type { BattleState, Command, FighterState } from '@minstrel/sim'
+import type { Named } from './battle-text.ts'
 
 /**
  * **The battle's command phase**, as the game runs it — overlay 0's menu
@@ -26,10 +27,13 @@ import type { BattleState, Command, FighterState } from '@minstrel/sim'
  * - **Misc. → Line-Up** (`func_ov000_0217dcf0`) puts a member in the Front
  *   Line or the Back Line, free — see `Fighter.backLine`.
  *
- * **Ours**, each marked where it lives: Equipment, whose screens are not built,
- * does nothing; the AI of a member not following orders is not read, and they
- * hand in no command (the battle's own default, an attack); a Coup de Grâce is
- * never ready, its readiness not being modelled.
+ * - **Misc. → Equipment** (`func_ov000_0217ce24`, states 5, 6, 7 and 32)
+ *   changes a member's weapon, and only their weapon, free — see {@link Arms}.
+ *
+ * **Ours**, each marked where it lives: the AI of a member not following
+ * orders is not read, and they hand in no command (the battle's own default,
+ * an attack); a Coup de Grâce is never ready, its readiness not being
+ * modelled.
  */
 
 /** The party menu's rows, top to bottom (`data_ov000_021833e8`), and each one's word in `strstd`. */
@@ -80,7 +84,69 @@ export const COMMAND_SAYS = {
   group: 30031,
   /** Line-Up's two words, by the row: 30033 + 1 for the Back Line. */
   frontLine: 30033,
+  /** Equipment's: a weapon kind's word, 7 + its kind — Swords to Bows. */
+  weaponKinds: 7,
+  /** "…equips himself with X", or of a fallen member 21. */
+  equips: 20,
+  equipsFallen: 21,
+  /** "…takes off X", or of a fallen member 23. */
+  takesOff: 22,
+  takesOffFallen: 23,
+  /** "…isn't carrying any equipment." */
+  carriesNoEquipment: 35,
 } as const
+
+/** A weapon as Equipment offers it: its item, its kind 0–11, and what it adds. */
+export interface Weapon {
+  readonly item: number
+  /** Its kind, 0 Swords to 11 Bows — the item's skill tree less one. */
+  readonly kind: number
+  readonly name: string
+  /** Its name as a message tells it, articles and all. */
+  readonly named: Named
+  /** What it adds to its wielder's attack, defence and agility. */
+  readonly attack: number
+  readonly defence: number
+  readonly agility: number
+}
+
+/**
+ * **A member's weapons, as Equipment sees them** (`func_ov000_0217ce24`): the
+ * one in hand, and the party's bag's weapons **of the kinds the member may
+ * wield** — a kind by the vocation's four weapon trees, or the tree's "may
+ * wield" panel (`func_020dd3cc`, `func_020dd11c`, `func_02083b00`). The caller
+ * filters the bag so.
+ *
+ * - The kinds offered are those the bag holds, and the kind in hand, so it
+ *   can be taken off (`func_ov000_0217c514`); none, and the member "isn't
+ *   carrying any equipment" (35).
+ * - Choosing the weapon in hand takes it off (22); another puts it on, the old
+ *   one back in the bag (20). **Free**: Misc. comes back, and the member's
+ *   figure and attack are rebuilt.
+ *
+ * **Ours**: a kind's list is the weapon in hand, then the bag's in its order
+ * (`func_0207c984`, which builds it, is not read); no weapon is cursed (the
+ * def's bit 18 is not read — lines 36, 37).
+ */
+export interface Arms {
+  readonly inHand?: Weapon | undefined
+  readonly bag: readonly Weapon[]
+}
+
+/** The kinds Equipment offers, ascending. */
+export function armsKinds(arms: Arms): number[] {
+  const kinds = new Set(arms.bag.map((w) => w.kind))
+  if (arms.inHand) kinds.add(arms.inHand.kind)
+  return [...kinds].sort((a, b) => a - b)
+}
+
+/** One kind's weapons: the one in hand, then the bag's — see {@link Arms}. */
+export function armsOfKind(arms: Arms, kind: number): Weapon[] {
+  return [
+    ...(arms.inHand?.kind === kind ? [arms.inHand] : []),
+    ...arms.bag.filter((w) => w.kind === kind),
+  ]
+}
 
 /**
  * **Examine's line for one monster** — `str_ex2` (`func_ov000_0217ff34`),
@@ -185,6 +251,17 @@ export interface Asked {
   readonly items: readonly ItemEntry[]
   /** In the Back Line — see `Fighter.backLine`. */
   readonly backLine?: boolean
+  /** Their weapons, for Equipment — see {@link Arms}. None, and they are not offered. */
+  readonly arms?: Arms
+  /** Their gender, which a message about them chooses its words by: 0 he, 1 she. */
+  readonly gender?: number
+}
+
+/** A weapon changed in this phase: whose, and what is in hand now — undefined, nothing. */
+export interface Armed {
+  readonly fighter: number
+  readonly from: Weapon | undefined
+  readonly to: Weapon | undefined
 }
 
 /** Where the menu is. */
@@ -216,6 +293,14 @@ export type Step =
   | { readonly at: 'say'; readonly say: Said; readonly back: Step }
   | { readonly at: 'examine'; readonly pages: readonly Examined[]; readonly page: number }
   | { readonly at: 'lineUp'; readonly cursor: number }
+  | { readonly at: 'armsWho'; readonly cursor: number }
+  | { readonly at: 'armsKind'; readonly member: number; readonly cursor: number }
+  | {
+      readonly at: 'armsWeapon'
+      readonly member: number
+      readonly kind: number
+      readonly cursor: number
+    }
   | { readonly at: 'misc'; readonly cursor: number }
   | { readonly at: 'tactics'; readonly cursor: number }
   | { readonly at: 'tactic'; readonly who: number | 'all'; readonly cursor: number }
@@ -225,7 +310,11 @@ export type Step =
 export interface Said {
   readonly number: number
   readonly actor?: string
+  /** The actor's gender — see `Asked.gender`. */
+  readonly actorGender?: number
   readonly str2?: number
+  /** The item it names. */
+  readonly item?: Named
 }
 
 /** What a member's panel says of their choice (`func_ov000_0217f480`). */
@@ -254,6 +343,13 @@ export interface Commanding {
   readonly tactics: ReadonlyMap<number, number>
   /** Rows set in this phase, by fighter — true the Back Line — for the caller to keep. */
   readonly lines: ReadonlyMap<number, boolean>
+  /** Weapons changed in this phase, in order — for the caller to apply. */
+  readonly armed: readonly Armed[]
+}
+
+/** The members Equipment may change: those it has weapons for, who are not guests. */
+export function armsMembers(c: Commanding): number[] {
+  return c.members.flatMap((m, k) => (m.arms && !m.guest ? [k] : []))
 }
 
 /** Whether a member stands in the Back Line now, Line-Up's change and all. */
@@ -317,6 +413,7 @@ export function openCommands(members: readonly Asked[]): Commanding {
     chosen: new Map(),
     tactics: new Map(),
     lines: new Map(),
+    armed: [],
   }
 }
 
@@ -417,6 +514,12 @@ export function rowsOf(state: BattleState, c: Commanding): number {
       return TACTIC_GRID.length
     case 'lineUp':
       return c.members.length
+    case 'armsWho':
+      return armsMembers(c).length
+    case 'armsKind':
+      return armsKinds(c.members[s.member]?.arms ?? { bag: [] }).length
+    case 'armsWeapon':
+      return armsOfKind(c.members[s.member]?.arms ?? { bag: [] }, s.kind).length
     default:
       return 0
   }
@@ -578,6 +681,17 @@ export function chooseCommand(
     case 'examine':
       if (s.page + 1 < s.pages.length) return { ...c, step: { ...s, page: s.page + 1 } }
       return { ...c, step: { at: 'party', cursor: PARTY_ROWS.indexOf('examine') } }
+    case 'armsWho': {
+      const k = armsMembers(c)[s.cursor]
+      return k === undefined ? c : armsFor(state, c, k)
+    }
+    case 'armsKind': {
+      const kind = armsKinds(c.members[s.member]?.arms ?? { bag: [] })[s.cursor]
+      if (kind === undefined) return c
+      return { ...c, step: { at: 'armsWeapon', member: s.member, kind, cursor: 0 } }
+    }
+    case 'armsWeapon':
+      return armWith(state, c, s)
     case 'lineUp': {
       // A toggles the member's row and stays in the list (`0x0217dd94`).
       const m = c.members[s.cursor]
@@ -596,8 +710,11 @@ export function chooseCommand(
         return { ...c, step: { at: 'tactics', cursor: 0 } }
       }
       if (row === 'lineUp') return { ...c, step: { at: 'lineUp', cursor: 0 } }
-      // Equipment is not built. **Ours**: nothing.
-      return c
+      // Equipment: whom, unless there is only one to ask (state 5).
+      const who = armsMembers(c)
+      if (who.length === 0) return c
+      if (who.length === 1) return armsFor(state, c, who[0] as number)
+      return { ...c, step: { at: 'armsWho', cursor: 0 } }
     }
     case 'tactics': {
       const who = tacticsRows(c)[s.cursor]
@@ -627,6 +744,72 @@ export function chooseCommand(
   }
 }
 
+/** Equipment for one member: their kinds, or "isn't carrying any equipment" (state 43). */
+function armsFor(_state: BattleState, c: Commanding, k: number): Commanding {
+  const m = c.members[k] as Asked
+  const backTo: Step = { at: 'misc', cursor: MISC_ROWS.indexOf('equipment') }
+  if (armsKinds(m.arms ?? { bag: [] }).length === 0) {
+    return {
+      ...c,
+      step: {
+        at: 'say',
+        say: {
+          number: COMMAND_SAYS.carriesNoEquipment,
+          actor: m.name,
+          ...(m.gender === undefined ? {} : { actorGender: m.gender }),
+        },
+        back: backTo,
+      },
+    }
+  }
+  return { ...c, step: { at: 'armsKind', member: k, cursor: 0 } }
+}
+
+/**
+ * The weapon chosen (state 32, `0x02176aa8`–`0x02176ccc`): the one in hand
+ * taken off into the bag, or another put on and the old one into the bag; the
+ * message, and Misc. again — the member's command untouched.
+ */
+function armWith(
+  state: BattleState,
+  c: Commanding,
+  s: Extract<Step, { at: 'armsWeapon' }>,
+): Commanding {
+  const m = c.members[s.member] as Asked
+  const arms = m.arms ?? { bag: [] }
+  const chosen = armsOfKind(arms, s.kind)[s.cursor]
+  if (!chosen) return c
+  const off = arms.inHand?.item === chosen.item
+  const bag = arms.bag.filter((w) => w !== chosen)
+  const next: Arms = off
+    ? { inHand: undefined, bag: [...bag, chosen] }
+    : { inHand: chosen, bag: arms.inHand ? [...bag, arms.inHand] : bag }
+  const members = c.members.map((x, k) => (k === s.member ? { ...x, arms: next } : x))
+  const fallen = (state.fighters[m.fighter]?.hp ?? 1) <= 0
+  const number = off
+    ? fallen
+      ? COMMAND_SAYS.takesOffFallen
+      : COMMAND_SAYS.takesOff
+    : fallen
+      ? COMMAND_SAYS.equipsFallen
+      : COMMAND_SAYS.equips
+  return {
+    ...c,
+    members,
+    armed: [...c.armed, { fighter: m.fighter, from: arms.inHand, to: off ? undefined : chosen }],
+    step: {
+      at: 'say',
+      say: {
+        number,
+        actor: m.name,
+        ...(m.gender === undefined ? {} : { actorGender: m.gender }),
+        item: chosen.named,
+      },
+      back: { at: 'misc', cursor: MISC_ROWS.indexOf('equipment') },
+    },
+  }
+}
+
 /** Go back a step. */
 export function backCommand(state: BattleState, c: Commanding): Commanding {
   const s = c.step
@@ -653,6 +836,16 @@ export function backCommand(state: BattleState, c: Commanding): Commanding {
       return { ...c, step: { at: 'party', cursor: PARTY_ROWS.indexOf('examine') } }
     case 'lineUp':
       return { ...c, step: { at: 'misc', cursor: MISC_ROWS.indexOf('lineUp') } }
+    case 'armsWho':
+      return { ...c, step: { at: 'misc', cursor: MISC_ROWS.indexOf('equipment') } }
+    case 'armsKind':
+      return armsMembers(c).length > 1
+        ? { ...c, step: { at: 'armsWho', cursor: armsMembers(c).indexOf(s.member) } }
+        : { ...c, step: { at: 'misc', cursor: MISC_ROWS.indexOf('equipment') } }
+    case 'armsWeapon': {
+      const kinds = armsKinds(c.members[s.member]?.arms ?? { bag: [] })
+      return { ...c, step: { at: 'armsKind', member: s.member, cursor: kinds.indexOf(s.kind) } }
+    }
     case 'misc':
       return { ...c, step: { at: 'party', cursor: PARTY_ROWS.indexOf('misc') } }
     case 'tactics':
