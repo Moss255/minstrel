@@ -214,6 +214,8 @@ export interface SaveGame {
   readonly recipes?: readonly (readonly [number, number])[]
   /** The day's clock, in ticks — see `Clock` in the sim. Absent from saves made before it was kept. */
   readonly clock?: number
+  /** Gold in the bank — see `counter.ts`. Absent for none. */
+  readonly banked?: number
 }
 
 export class SaveError extends Error {
@@ -344,6 +346,9 @@ export function decodeSave(text: string): SaveGame {
       !s.recipes.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every(isCount)))
   ) {
     throw new SaveError('the save has a recipe list that does not read')
+  }
+  if (s.banked !== undefined && !isCount(s.banked)) {
+    throw new SaveError('the save has a bank balance that does not read')
   }
   if (s.clock !== undefined && !isCount(s.clock)) {
     throw new SaveError('the save has a clock that does not read')

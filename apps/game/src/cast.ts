@@ -79,6 +79,16 @@ export interface Cast {
    * files say is what examining them says.
    */
   readonly spots: readonly { readonly placement: NpcPlacement }[]
+  /**
+   * **Stand-ins over a counter**: unnamed records with a talk box — never drawn,
+   * talked to only from their box, with its label. The Quester's Rest's keepers
+   * are talked to so: Erinn's counter is 208, Ginny's bank 212, each a box of
+   * label 80 on the near side, while Erinn herself (98) stands behind it with
+   * talk of her own. INFERRED that the game draws nothing for them: their
+   * entries name no sprite (`0xFFFFFFFF`), and its talk picker reads the box,
+   * not the figure — see `TalkBox`.
+   */
+  readonly standIns: readonly { readonly placement: NpcPlacement }[]
   /** Named `kind` 2 characters whose archive or model would not read. */
   readonly missing: readonly string[]
   /** Characters the map has no ground for at their own height. See `standsHere`. */
@@ -149,13 +159,15 @@ export function cast(
   }
 
   const spots: { placement: NpcPlacement }[] = []
+  const standIns: { placement: NpcPlacement }[] = []
   for (const { entry, placement } of placed) {
     if (entry.kind === NPC_KIND.SPOT) {
       spots.push({ placement })
       continue
     }
     if (entry.name === undefined) {
-      unclassified++
+      if ((placement.boxes ?? []).length > 0) standIns.push({ placement })
+      else unclassified++
       continue
     }
     if (entry.kind === NPC_KIND.SPRITE) {
@@ -197,7 +209,16 @@ export function cast(
       ...(found.speed !== undefined ? { speed: found.speed } : {}),
     })
   }
-  return { members: out, sprites2d: drawn2d, sprites, unclassified, spots, missing, elsewhere }
+  return {
+    members: out,
+    sprites2d: drawn2d,
+    sprites,
+    unclassified,
+    spots,
+    standIns,
+    missing,
+    elsewhere,
+  }
 }
 
 /** A character's model and idle, out of the `.chr` archive named for it. */

@@ -321,6 +321,23 @@ import {
 } from './companion.ts'
 import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
 import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
+import {
+  BANK_MOST,
+  BANK_SAYS,
+  bankLimit,
+  COUNTER_CANVASS,
+  COUNTER_GUESTBOOK,
+  COUNTER_LEAVE,
+  COUNTER_SAYS,
+  COUNTER_STAY,
+  menuLabels,
+  newDigits,
+  PURSE_MOST,
+  pressDigits,
+  REST_PER_HEAD,
+  REST_SAYS,
+  THOUSAND,
+} from './counter.ts'
 import { lightingFor, TINTS, type TimeOfDay, timeOfPhase, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
@@ -410,6 +427,7 @@ import {
   type Loaded,
   load,
   mapLighting,
+  menuServiceWords,
   motionSet,
   motionSpeeds,
   type Stage,
@@ -1858,6 +1876,11 @@ function openWorld(map: string): void {
   for (const flag of (params.get('flags') ?? '').split(',')) {
     if (/^\d+$/.test(flag)) storyFlags.add(Number(flag))
   }
+  // `?globals=156` sets game-wide flags — the bank at `+0x8c` — by number, as
+  // `?flags=` does the story's. **Ours**, a development parameter.
+  for (const flag of (params.get('globals') ?? '').split(',')) {
+    if (/^\d+$/.test(flag)) storyGlobals.add(Number(flag))
+  }
   // `?ivor=1` opens it with Ivor in the party, as his call leaves him, for
   // looking at a stage he goes along over; an event's record may send him away.
   if (params.get('ivor') === '1' && !memberOf(IVOR)) members.push(freshMember(IVOR))
@@ -1933,6 +1956,10 @@ function openWorld(map: string): void {
     for (let n = 0; n < Number(asked[2] ?? 1); n++) bag = take(bag, { item })
   }
   if (params.get('give')) status(`bag: ${bagLines(bag, nameOf).join(' · ')}`)
+  // `?gold=5000` puts that much in the purse — **ours**, for driving the bank.
+  const gold = params.get('gold')
+  if (gold !== null && /^\d+$/.test(gold))
+    bag = { ...bag, gold: Math.min(PURSE_MOST, Number(gold)) }
   // `?pot=1` opens the Krak Pot — **ours, for driving**. Its real way in is
   // `<RENKIN>` at the end of the pot's own talk line in the Quester's Rest,
   // which needs the story far enough along for the pot to be placed and
@@ -2121,6 +2148,7 @@ function restore(game: SaveGame): void {
   liveThread = game.thread
   medalsGiven = game.medalsGiven ?? 0
   storySoFar = game.storySoFar ?? STORY_START
+  goldBanked = game.banked ?? 0
   // The day's clock, as saved; its running is not saved (INFERRED, as the
   // game's), so it runs on loading. A save from before it was kept is at the
   // day's start.
@@ -2190,6 +2218,7 @@ function confess(): string {
     ...(medalsGiven > 0 ? { medalsGiven } : {}),
     ...(storySoFar !== STORY_START ? { storySoFar } : {}),
     recipes: [...recipesKnown],
+    ...(goldBanked > 0 ? { banked: goldBanked } : {}),
     clock: clock.ticks,
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
@@ -4558,6 +4587,8 @@ function talkBoxesAt(x: number, z: number): { who: Talker; label: number }[] {
       name: m.name,
     })),
     ...loaded.cast.spots.map(({ placement }) => ({ placement, name: 'something to examine' })),
+    // Talked to only so — see `Cast.standIns`.
+    ...loaded.cast.standIns.map(({ placement }) => ({ placement, name: STAND_IN_NAME })),
   ]
   for (const { placement, name } of all) {
     const box = (placement.boxes ?? []).find((b) => inTalkBox(b, x, z))
@@ -4722,19 +4753,22 @@ function talkerFor(id: number): Talker | undefined {
     return { id, name: member.name, x, z }
   }
   const spot = loaded.cast.spots.find(({ placement }) => placement.id === id)
-  return spot && { id, name: 'something to examine', x: spot.placement.x, z: spot.placement.z }
+  if (spot) return { id, name: 'something to examine', x: spot.placement.x, z: spot.placement.z }
+  const standIn = loaded.cast.standIns.find(({ placement }) => placement.id === id)
+  return standIn && { id, name: STAND_IN_NAME, x: standIn.placement.x, z: standIn.placement.z }
 }
+
+/** What a stand-in over a counter is called on the status line — **ours**; see `Cast.standIns`. */
+const STAND_IN_NAME = 'someone over the counter'
 
 /**
  * The innkeeper's line asks the engine for its price (`<val_2>`) and for how
- * many are staying (`<val_1>`); it is given the stand-in price, `INN_PRICE`,
- * and a party of one.
+ * many are staying (`<val_1>`): the keeper's own price a head times the
+ * living — see `innPrice`.
  */
 function contextFor(texts: readonly string[]): TextContext {
   const inn = texts.map((text) => /<INN=(\d+)>/.exec(text)).find((m) => m)
   if (!inn || !cartridge) return textContext()
-  // The innkeeper's line is filled as the inn's service fills its own: the
-  // beds wanted and the price — see `innPrice`.
   const words = keeperWords(cartridge, 'in', Number(inn[1]) - 1)
   const living = members.filter((m) => m.hp !== 0).length
   const { total } = innPrice(words.get(INN_SAYS.perHead), living)
@@ -5085,13 +5119,20 @@ function medalFarewell(): void {
 let keeper:
   | {
       readonly who: Talker
-      readonly service: 'inn' | 'church'
+      readonly service: 'inn' | 'church' | 'counter' | 'bank'
       readonly n: number
       readonly words: ReadonlyMap<number, string>
       price: { readonly perHead: number; readonly total: number }
       cure?: 'resurrection' | 'purification' | 'benediction'
+      /** Erinn's inn, behind her counter: its Leave and its "too poor" go back to the counter. */
+      readonly rest?: boolean
+      /** The bank's transaction under way. */
+      banking?: 'deposit' | 'withdrawal'
     }
   | undefined
+
+/** Gold in the bank — `GameState+0x396c`, see `counter.ts`. Saved; spared at a wipe-out. */
+let goldBanked = 0
 
 /** One of the keeper's lines, its tags filled — the member it names, its values, its singulars and plurals. */
 function keeperText(
@@ -5115,6 +5156,7 @@ function sayKeeper(
   lines: readonly (
     | number
     | { readonly line: number; readonly fill: Parameters<typeof keeperText>[1] }
+    | { readonly text: string }
   )[],
   fill: Parameters<typeof keeperText>[1] = {},
   ask = false,
@@ -5123,18 +5165,22 @@ function sayKeeper(
   const words = keeper.words
   talkContext = textContext()
   const texts = lines.map((one, i) => {
-    const line = typeof one === 'number' ? one : one.line
-    const text = keeperText(
-      words.get(line) ?? `(${keeper?.service} line ${line})`,
-      typeof one === 'number' ? fill : one.fill,
-    )
+    const text =
+      typeof one === 'number'
+        ? keeperText(words.get(one) ?? `(${keeper?.service} line ${one})`, fill)
+        : 'text' in one
+          ? keeperText(one.text, fill)
+          : keeperText(words.get(one.line) ?? `(${keeper?.service} line ${one.line})`, one.fill)
     return ask && i === lines.length - 1 ? `${text.replace(/<ADD>$/, '')}<YESNO>` : text
   })
   talking = startConversation(
     keeper.who,
-    keeper.service === 'inn' ? 'the inn' : 'the church',
+    `the ${keeper.service}`,
     texts,
-    lines.map((one) => `${keeper?.service} ${typeof one === 'number' ? one : one.line}`),
+    lines.map(
+      (one) =>
+        `${keeper?.service} ${typeof one === 'number' ? one : 'text' in one ? 'strstd' : one.line}`,
+    ),
     talkContext,
   )
   showTalk()
@@ -5237,6 +5283,15 @@ function openKeeperWindow(window: 'menu' | 'who'): void {
 /** B in a keeper's window. */
 function keeperCancelled(window: string): void {
   if (!keeper) return
+  if (keeper.service === 'counter') {
+    counterPicked(COUNTER_LEAVE)
+    return
+  }
+  if (keeper.service === 'bank') {
+    if (window === 'digits') bankAmount(0)
+    else bankPicked(2)
+    return
+  }
   if (keeper.service === 'inn') {
     keeperPicked(window, INN_CANCEL)
     return
@@ -5252,6 +5307,14 @@ function keeperCancelled(window: string): void {
 /** A row of a keeper's window chosen: the value it stands for. */
 function keeperPicked(window: string, value: number): void {
   if (!keeper) return
+  if (keeper.service === 'counter') {
+    counterPicked(value)
+    return
+  }
+  if (keeper.service === 'bank') {
+    bankPicked(value)
+    return
+  }
   if (keeper.service === 'inn') {
     innPicked(value)
     return
@@ -5273,14 +5336,17 @@ function keeperPicked(window: string, value: number): void {
 function innPicked(choice: number): void {
   if (!keeper) return
   const bed = keeper.n === 15
+  const rest = keeper.rest === true
   if (choice === INN_CANCEL) {
     if (bed) keeper = undefined
+    else if (rest) backToCounter(REST_SAYS.changedMind)
     else keeperEnd([INN_SAYS.cancel])
     return
   }
   const { total } = keeper.price
   if (bag.gold < total) {
-    keeperEnd([INN_SAYS.tooPoor])
+    if (rest) backToCounter(REST_SAYS.tooPoor)
+    else keeperEnd([INN_SAYS.tooPoor])
     return
   }
   const night = () => {
@@ -5299,15 +5365,216 @@ function innPicked(choice: number): void {
           `the inn: ${choice === INN_REST ? 'rested until the night' : 'stayed the night'}, ${total} G`,
         )
         if (bed) keeper = undefined
+        else if (rest) keeperEnd([choice === INN_REST ? REST_SAYS.rested : REST_SAYS.morning])
         else keeperEnd([INN_SAYS.after])
       },
     }
   }
   if (bed) night()
   else {
-    sayKeeper([INN_SAYS.paid])
+    sayKeeper([rest ? REST_SAYS.paid : INN_SAYS.paid])
     afterTalk = night
   }
+}
+
+/** A keeper with no file number of its own — the counter, the bank — over `words`. */
+function menuKeeper(who: Talker, service: 'counter' | 'bank', words: string): void {
+  if (!cartridge) return
+  keeper = {
+    who,
+    service,
+    n: 0,
+    words: menuServiceWords(cartridge, words),
+    price: { perHead: 0, total: 0 },
+  }
+}
+
+/**
+ * **Erinn's counter** — see `counter.ts`: "What can I do for you today?"
+ * (`strstd` 68), then her menu, `str_rkm` 92.
+ */
+function openCounter(who: Talker | undefined): void {
+  if (!loaded || !who) return
+  menuKeeper(who, 'counter', 'str_rkm')
+  const greeting = loaded.standardWords.get(COUNTER_SAYS.greeting)
+  sayKeeper([greeting === undefined ? COUNTER_SAYS.again : { text: greeting }])
+  afterTalk = () => openCounterMenu()
+}
+
+/** Her four-item menu, `str_rkm` 92. */
+function openCounterMenu(): void {
+  if (!keeper) return
+  const rows = menuLabels(keeper.words.get(COUNTER_SAYS.menu)).map((l) =>
+    plainMarkup(l, heroName()),
+  )
+  visit = {
+    kind: 'keeper',
+    service: 'counter',
+    window: 'menu',
+    title: '',
+    rows,
+    values: rows.map((_, i) => i),
+    lines: [],
+    cursor: 0,
+    said: '',
+  }
+  self?.held.clear()
+  showMenu()
+}
+
+/** Back from her inn to her counter: the inn's line, "So what can I do for you today?" (41), her menu. */
+function backToCounter(line: number): void {
+  if (!keeper) return
+  sayKeeper([line])
+  const who = keeper.who
+  afterTalk = () => {
+    menuKeeper(who, 'counter', 'str_rkm')
+    sayKeeper([COUNTER_SAYS.again])
+    afterTalk = () => openCounterMenu()
+  }
+}
+
+/**
+ * Her counter's choice. **Ours**: canvassing and the guestbook — tag mode,
+ * multiplayer — say so and come back to the menu.
+ */
+function counterPicked(choice: number): void {
+  if (!keeper || !cartridge) return
+  if (choice === COUNTER_STAY) {
+    // **Her inn**: the inn's own flow with the Quester's Rest switch on —
+    // `str_rki`'s words, 3 gold a head for the living.
+    const living = members.filter((m) => m.hp !== 0).length
+    const total = REST_PER_HEAD * living
+    keeper = {
+      who: keeper.who,
+      service: 'inn',
+      n: 0,
+      words: menuServiceWords(cartridge, 'str_rki'),
+      price: { perHead: REST_PER_HEAD, total },
+      rest: true,
+    }
+    const night = isNight(clock)
+    sayKeeper(
+      [
+        REST_SAYS.staffRate,
+        night ? REST_SAYS.welcomeAtNight : REST_SAYS.welcome,
+        night ? REST_SAYS.offerAtNight : REST_SAYS.offer,
+      ],
+      { values: { val_1: living, val_2: total } },
+    )
+    afterTalk = () => openKeeperWindow('menu')
+    return
+  }
+  if (choice === COUNTER_CANVASS || choice === COUNTER_GUESTBOOK) {
+    status('canvassing and the guestbook are tag mode — multiplayer, and not built')
+    openCounterMenu()
+    return
+  }
+  keeperEnd([COUNTER_SAYS.leave])
+}
+
+/** The bank's farewell: the balance, or none (`func_0216abd8`). */
+function bankFarewell(): {
+  readonly line: number
+  readonly fill: Parameters<typeof keeperText>[1]
+} {
+  return goldBanked > 0
+    ? { line: BANK_SAYS.farewell, fill: { values: { val_1: goldBanked } } }
+    : { line: BANK_SAYS.farewellEmpty, fill: {} }
+}
+
+/** **The bank** — see `counter.ts`: the welcome, every visit, then the balance and the menu. */
+function openBank(who: Talker | undefined): void {
+  if (!loaded || !who) return
+  menuKeeper(who, 'bank', 'str_bank')
+  sayKeeper([
+    BANK_SAYS.welcome,
+    goldBanked > 0
+      ? { line: BANK_SAYS.banked, fill: { values: { val_1: goldBanked } } }
+      : BANK_SAYS.nothingBanked,
+  ])
+  afterTalk = () => {
+    if (!keeper) return
+    const words = keeper.words
+    const label = (n: number) => plainMarkup(words.get(n) ?? `(bank line ${n})`, heroName())
+    visit = {
+      kind: 'keeper',
+      service: 'bank',
+      window: 'menu',
+      title: '',
+      rows: [label(BANK_SAYS.deposit), label(BANK_SAYS.withdrawal), label(BANK_SAYS.leave)],
+      values: [BANK_SAYS.deposit, BANK_SAYS.withdrawal, BANK_SAYS.leave],
+      lines: [goldLine()],
+      cursor: 0,
+      said: '',
+    }
+    self?.held.clear()
+    showMenu()
+  }
+}
+
+/** Say the bank's lines, its farewell after them, and end the visit. */
+function bankEnd(lines: Parameters<typeof sayKeeper>[0]): void {
+  sayKeeper([...lines, bankFarewell()])
+  afterTalk = () => {
+    keeper = undefined
+  }
+}
+
+/** The bank's choice: a deposit or a withdrawal — its most, or its refusal — then the number window. */
+function bankPicked(choice: number): void {
+  if (!keeper) return
+  if (choice !== BANK_SAYS.deposit && choice !== BANK_SAYS.withdrawal) {
+    bankEnd([])
+    return
+  }
+  const kind = choice === BANK_SAYS.deposit ? 'deposit' : 'withdrawal'
+  const limit = bankLimit(kind, bag.gold, goldBanked)
+  if ('refused' in limit) {
+    bankEnd([limit.refused])
+    return
+  }
+  keeper.banking = kind
+  sayKeeper([
+    kind === 'deposit'
+      ? BANK_SAYS.askDeposit
+      : { line: BANK_SAYS.askWithdraw, fill: { values: { val_1: goldBanked } } },
+  ])
+  afterTalk = () => {
+    visit = {
+      kind: 'digits',
+      title: '',
+      digits: newDigits(limit.most),
+      lines: [goldLine()],
+      said: '',
+    }
+    self?.held.clear()
+    showMenu()
+  }
+}
+
+/** The number set, in thousands, and the money moved — or the changed mind. One a visit. */
+function bankAmount(thousands: number | undefined): void {
+  if (!keeper?.banking) return
+  const amount = (thousands ?? 0) * THOUSAND
+  if (amount === 0) {
+    // An amount of 0 counts as a cancel (`0x0216a7a4`).
+    bankEnd([BANK_SAYS.changedMind])
+    return
+  }
+  if (keeper.banking === 'deposit') {
+    if (goldBanked + amount > BANK_MOST) {
+      bankEnd([{ line: BANK_SAYS.vaultLimit, fill: { values: { val_1: BANK_MOST - goldBanked } } }])
+      return
+    }
+    bag = { ...bag, gold: bag.gold - amount }
+    goldBanked += amount
+    bankEnd([{ line: BANK_SAYS.deposited, fill: { values: { val_1: amount } } }])
+    return
+  }
+  goldBanked -= amount
+  bag = { ...bag, gold: Math.min(PURSE_MOST, bag.gold + amount) }
+  bankEnd([{ line: BANK_SAYS.withdrawn, fill: { values: { val_1: amount } } }])
 }
 
 /** The church's menu chosen — see `keepers.ts`. */
@@ -6684,6 +6951,13 @@ function openService(service: Service, who?: Talker): void {
     self?.held.clear()
     showMenu()
     return
+  } else if (service.kind === 'RIKKA' || service.kind === 'RIKKAFIRST') {
+    // Erinn's counter — codes 6 and 12, the same flow; see `counter.ts`.
+    openCounter(who)
+    return
+  } else if (service.kind === 'BANK') {
+    openBank(who)
+    return
   } else if (service.kind === 'DAMA') {
     // Alltrades Abbey — facility code 9, `<DAMA>` on Jack's line.
     openAbbey(who)
@@ -6722,14 +6996,15 @@ function showVisit(current: Visit): void {
   }
   const panel = document.createElement('div')
   panel.className = 'panel'
-  for (const line of [view.title, ...view.lines]) {
+  for (const line of [view.title, ...view.lines].filter((l) => l !== '')) {
     const row = document.createElement('div')
     row.textContent = line
     panel.append(row)
   }
-  menuEl.append(rows, panel)
+  // A window with nothing beside it — Erinn's counter — draws no empty panel.
+  menuEl.append(...(panel.childElementCount > 0 ? [rows, panel] : [rows]))
   menuEl.hidden = false
-  status(`${view.title} · ↑/↓ choose, f take, Esc back`)
+  status(`${view.title || 'choose'} · ↑/↓ choose, f take, Esc back`)
 }
 
 /**
@@ -9451,7 +9726,9 @@ function settleBattle(): void {
     // when your characters die" — though the rule is not found in code, and
     // rounding down is ours. Coming round in the village church is ours — see
     // `CHURCH`; the game's own words for either are not found.
-    bag = pay(bag, Math.floor(bag.gold / 2)) ?? bag
+    // The purse halved, rounding down (`func_02010604`, `0x020106e4`: `lsr #1`);
+    // the bank is spared.
+    bag = pay(bag, bag.gold - Math.floor(bag.gold / 2)) ?? bag
     wakeInChurch = true
     lines.push(`${name} comes round in the church, restored — but half the gold is gone.`)
   } else if (hero) {
@@ -10002,9 +10279,12 @@ function witnessHook(): void {
  */
 function standAndTalk(id: number): void {
   if (!loaded || !self) return
-  const member = [...loaded.cast.members, ...loaded.cast.sprites2d, ...loaded.cast.spots].find(
-    (m) => m.placement.id === id,
-  )
+  const member = [
+    ...loaded.cast.members,
+    ...loaded.cast.sprites2d,
+    ...loaded.cast.spots,
+    ...loaded.cast.standIns,
+  ].find((m) => m.placement.id === id)
   if (!member) {
     status(`nobody with placement ${id} is in ${loaded.code}`)
     return
@@ -10386,6 +10666,9 @@ function bubbleKindNow(at: { x: number; z: number; facing: number }): BubbleKind
     })),
   ])
   if (who) return spots.has(who.id) ? 'examine' : 'talk'
+  // A talk box the Hero stands in — a keeper over a counter — see `talkBoxesAt`.
+  const boxed = talkBoxesAt(at.x, at.z)[0]
+  if (boxed) return spots.has(boxed.who.id) ? 'examine' : 'talk'
   if (gate.armed && doorAhead(loaded.doorways, at, TALK_REACH)) return 'door'
   return undefined
 }
@@ -11574,14 +11857,20 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   // A shop, the inn or the church: the same keys as the menu, over its list.
   if (visit) {
     const told = counter()
-    if (action === 'up') visit = moveVisit(visit, -1, bag, told)
+    // The bank's number window: left and right move its cursor — see `Digits`.
+    if (visit.kind === 'digits' && (action === 'left' || action === 'right'))
+      visit = { ...visit, digits: pressDigits(visit.digits, action) }
+    else if (action === 'up') visit = moveVisit(visit, -1, bag, told)
     else if (action === 'down') visit = moveVisit(visit, 1, bag, told)
     else if (action === 'confirm') {
       const abbeyWindow = visit.kind === 'abbey' ? visit.window : undefined
       const keeperWindow = visit.kind === 'keeper' ? visit.window : undefined
+      const digits = visit.kind === 'digits'
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
+      // The bank's number window hands its value back to the bank — see `bankAmount`.
+      if (digits) bankAmount(outcome.digitsPick)
       // A keeper's window hands its choice back to the keeper's flow — see `keeperPicked`.
       if (outcome.keeperPick !== undefined && keeperWindow)
         keeperPicked(keeperWindow, outcome.keeperPick)
@@ -11593,7 +11882,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     } else if (action === 'cancel' || action === 'menu') {
       const leaving = visit.kind === 'medals'
       const abbeyWindow = visit.kind === 'abbey' ? visit.window : undefined
-      const keeperWindow = visit.kind === 'keeper' ? visit.window : undefined
+      const keeperWindow =
+        visit.kind === 'keeper' ? visit.window : visit.kind === 'digits' ? 'digits' : undefined
       visit = leaveVisit(visit)
       if (keeperWindow) keeperCancelled(keeperWindow)
       if (leaving) medalFarewell()

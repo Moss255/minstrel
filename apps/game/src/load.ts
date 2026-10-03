@@ -611,6 +611,7 @@ const NOBODY: Cast = {
   sprites: 0,
   unclassified: 0,
   spots: [],
+  standIns: [],
   missing: [],
   elsewhere: 0,
 }
@@ -2198,6 +2199,15 @@ export function entranceOf(
     }
   }
   return undefined
+}
+
+/**
+ * A menu service's own words, `/data/bin/menu/<name>.gp2` › `<name>_en.nat`
+ * — the counter's `str_rkm`, Erinn's inn's `str_rki`, the bank's `str_bank`.
+ * Empty when it will not read.
+ */
+export function menuServiceWords(rom: Uint8Array, name: string): ReadonlyMap<number, string> {
+  return englishText(rom, `/data/bin/menu/${name}.gp2`, `${name}_en.nat`, readSystemStrings)
 }
 
 /**

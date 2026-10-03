@@ -35,6 +35,7 @@ is one the menu will not know about.
 | `stage=5.1` | the story stage. **Set this.** See the warning below |
 | `step=4` | the step within the stage |
 | `flags=0,1` | story flags set |
+| `globals=156` | game-wide flags set, by number — the arrival scene at the Quester's Rest, for one, plays until 156 is |
 | `door=F26` | arrive through the doorway that leads there, rather than at the default spot |
 | `fly=-99,-26` | on the sky map (`map=O01`), the Starflight Express in flight at that place in the sky's own units, as Sterling's whistle would put it there — see `apps/game/src/flight.ts` |
 | `at=x,z` | stand at a world position, on the highest floor under it |
@@ -52,6 +53,7 @@ is one the menu will not know about.
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `gold=5000` | that much gold in the purse — for the bank, the inn and the shops |
 | `armoury=1` | one of every weapon, shield and piece of armour in the bag, and anyone may wear anything — for trying every weapon and outfit on the Hero. With `heromotion=` and a fight, every weapon through every motion |
 | `medals=80` | the mini medals already handed to Cap'n Max, so his milestones or his exchange can be reached without collecting them — ours. Talking to him (`M08M07`, cast 103) opens his service; see `apps/game/src/medals.ts` |
 | `patty=1` | open Patty's Party Planning Place. Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest |

@@ -37,10 +37,12 @@ describe('a line that hands over to a service', () => {
     expect(jack.pages.every((p) => p.text === '')).toBe(true)
   })
 
-  it('does not take a bare tag it has no service for', () => {
-    // `<BANK>` is the same shape and the bank is not built. A tag that
-    // quietly became a service nobody wrote would be worse than one ignored.
-    expect(runLine(parseMarkup('Hello.<END><BANK>')).service).toBeUndefined()
+  it('takes Erinn’s counter’s and the bank’s, and not a tag it has no service for', () => {
+    // `<RIKKA>`, Erinn's counter at the Quester's Rest, code 6; `<BANK>`, code 3.
+    expect(runLine(parseMarkup('<RIKKA>')).service).toEqual({ kind: 'RIKKA', id: 0 })
+    expect(runLine(parseMarkup('Hello.<END><BANK>')).service).toEqual({ kind: 'BANK', id: 0 })
+    // A tag that quietly became a service nobody wrote would be worse than one ignored.
+    expect(runLine(parseMarkup('Hello.<END><ARKSANDY>')).service).toBeUndefined()
   })
 
   it("fills in the engine's values when it is given them, and leaves them out when not", () => {

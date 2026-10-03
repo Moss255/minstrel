@@ -1416,22 +1416,32 @@ export function marksSet(words: readonly TriggerWord[]): number[] {
 }
 
 /**
- * Talking to the character opens a facility — INFERRED from where it stands:
+ * Talking to the character opens a facility — **read** (US ARM9, case 31 of
+ * `func_0206f81c`, its table at `0x02070134`, checked from raw bytes):
+ *
+ * | value | what |
+ * |---|---|
+ * | 0, 1, 3, 4 | nothing |
+ * | 2 | **the Rapportal** — Patty's flow in mode 1, as `<LAVIELL>` (code 8): Pavo, character 99. Multiplayer |
+ * | 5 | **DQVC, connected**: `auction.stb` |
+ * | 6 | **DQVC without connecting**: bit `0x20` of `GameState+0x5f78` set, then 5's arm |
+ * | 7 | the mini medals, `medal.stb` — Cap'n Max Meddlin', `M08` map 1807 |
+ * | 8 | `memory2.stb` |
+ *
  * `145` occurs 58 times on the cartridge, always on a character's record
- * beside `6`, always in a place with a counter to serve at — 0, 2 and 3 in
- * Stornway, which has the bank and a church; 2, 5 and 6 at the Quester's Rest,
- * Patty's and the counter's — and **7 once, on Cap'n Max Meddlin'** in his
- * castle (`M08`, map 1807: `6:103 145:7`), whose talk file is empty and whose
- * lines are the medal service's own. The numbering is its own: the line-tag
- * facility codes put the Krak Pot at 7.
+ * beside `6`. Stornway's 0 and 3 do nothing — its bank is `<BANK>` on a line.
+ * The numbering is its own: the line-tag facility codes put the Krak Pot at 7.
  */
 export const OP_FACILITY = 145
 /** The mini medal service, by {@link OP_FACILITY} — see there. */
 export const FACILITY_MEDALS = 7
 /**
- * DQVC by Nintendo Wi-Fi Connection, by {@link OP_FACILITY}: the queue's case
- * (US ARM9 `0x02070164`) sets a "connected" bit and runs `auction.stb`, as 6
- * does without it. Sellma's "Connect to Nintendo Wi-Fi Connection? — Yes".
+ * DQVC by Nintendo Wi-Fi Connection, by {@link OP_FACILITY}: its arm
+ * (`0x0207019c`) runs `auction.stb`. Sellma's "Connect to Nintendo Wi-Fi
+ * Connection? — Yes" (labels 114, 115). Value 6 (`0x02070164`) sets bit `0x20`
+ * of `GameState+0x5f78` and falls into this arm — her "use DQVC without
+ * connecting instead?" (113, 126, 127, 131); INFERRED the bit means "not
+ * connected", from those labels.
  */
 export const FACILITY_DQVC_ONLINE = 5
 

@@ -1,6 +1,7 @@
 import type { Shop } from '@minstrel/game-formats'
 import { ITEM_KIND_EVERYDAY } from '@minstrel/game-formats'
 import { type Bag, drop, pay, take } from './bag.ts'
+import { type Digits, digitsValue, pressDigits } from './counter.ts'
 import { CARRIED_MOST, type Carriers, type Owner } from './inventory.ts'
 
 /**
@@ -28,6 +29,18 @@ export type Visit =
       readonly said: string
       /** An everyday item bought, waiting for who carries it (overlay 3, state `0xc`). */
       readonly bought?: { readonly item: number; readonly cost: number } | undefined
+    }
+  | {
+      /**
+       * The bank's number window — four digits of thousands, see `Digits` in
+       * `counter.ts`: up and down turn the digit under the cursor, left and
+       * right move it; choosing hands back the value set.
+       */
+      readonly kind: 'digits'
+      readonly title: string
+      readonly digits: Digits
+      readonly lines: readonly string[]
+      readonly said: string
     }
   | {
       /**
@@ -99,6 +112,8 @@ export interface Outcome {
   readonly abbeyPick?: number
   /** A keeper's window's row chosen: the value it stands for — see `keepers.ts`. */
   readonly keeperPick?: number | undefined
+  /** The bank's number window's value, in thousands — see `counter.ts`. */
+  readonly digitsPick?: number
 }
 
 /** How a visit looks: its rows, which is chosen, and the lines beside them. */
@@ -149,6 +164,13 @@ function carrierRows(counter: Counter): string[] {
 
 function rowsOf(visit: Visit, bag: Bag, counter: Counter): string[] {
   if (visit.kind === 'abbey' || visit.kind === 'keeper') return [...visit.rows]
+  if (visit.kind === 'digits') {
+    // The four digits, then three noughts and the coin, the cursor's column marked.
+    const shown = visit.digits.digits
+      .map((d, i) => (i === visit.digits.column ? `[${d}]` : `${d}`))
+      .join(' ')
+    return [`${shown} 0 0 0 G`]
+  }
   if (visit.kind === 'medals') {
     return [
       ...visit.exchanges.map(
@@ -180,6 +202,14 @@ export function viewOf(visit: Visit, bag: Bag, counter: Counter): VisitView {
   if (visit.kind === 'abbey') {
     return { title: visit.title, rows: [...visit.rows], cursor: visit.cursor, lines: [visit.said] }
   }
+  if (visit.kind === 'digits') {
+    return {
+      title: visit.title,
+      rows: rowsOf(visit, bag, counter),
+      cursor: 0,
+      lines: [...visit.lines, visit.said].filter((l) => l !== ''),
+    }
+  }
   if (visit.kind === 'keeper') {
     return {
       title: visit.title,
@@ -207,6 +237,8 @@ export function viewOf(visit: Visit, bag: Bag, counter: Counter): VisitView {
 
 /** Choose another row, round and round. */
 export function moveVisit(visit: Visit, by: number, bag: Bag, counter: Counter): Visit {
+  if (visit.kind === 'digits')
+    return { ...visit, digits: pressDigits(visit.digits, by < 0 ? 'up' : 'down') }
   const count = rowsOf(visit, bag, counter).length
   return { ...visit, cursor: (((visit.cursor + by) % count) + count) % count }
 }
@@ -225,6 +257,8 @@ export function leaveVisit(visit: Visit): Visit | undefined {
 /** Take the chosen row. */
 export function chooseInVisit(visit: Visit, bag: Bag, counter: Counter): Outcome {
   if (visit.kind === 'abbey') return { visit: undefined, bag, abbeyPick: visit.cursor }
+  if (visit.kind === 'digits')
+    return { visit: undefined, bag, digitsPick: digitsValue(visit.digits) }
   if (visit.kind === 'keeper')
     return { visit: undefined, bag, keeperPick: visit.values[visit.cursor] }
   if (visit.kind === 'medals') {

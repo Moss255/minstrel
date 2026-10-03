@@ -143,7 +143,16 @@ export interface TextContext {
  * of somebody's talk line**, which is why the pot has to be spoken to.
  */
 export interface Service {
-  readonly kind: 'SHOP' | 'INN' | 'CHURCH' | 'RENKIN' | 'LUIDA' | 'DAMA'
+  readonly kind:
+    | 'SHOP'
+    | 'INN'
+    | 'CHURCH'
+    | 'RENKIN'
+    | 'LUIDA'
+    | 'DAMA'
+    | 'RIKKA'
+    | 'RIKKAFIRST'
+    | 'BANK'
   readonly id: number
 }
 
@@ -162,9 +171,11 @@ const SERVICES = new Set<string>(['SHOP', 'INN', 'CHURCH'])
  * the tag's place: also `<RIKKA>` 6, `<LAVIELL>` 8, `<DAMA_SATORI>` 10 and
  * `<ARKSANDY>` 11, none of them built.
  *
- * `<BANK>` is the same shape and is not here: the bank is not built.
+ * `<RIKKA>` and `<RIKKAFIRST>` (codes 6 and 12) are Erinn's counter at the
+ * Quester's Rest, the same flow — `RIKKAFIRST` is on no line — and `<BANK>`
+ * (code 3) the bank; see `counter.ts`.
  */
-const BARE_SERVICES = new Set<string>(['RENKIN', 'LUIDA', 'DAMA'])
+const BARE_SERVICES = new Set<string>(['RENKIN', 'LUIDA', 'DAMA', 'RIKKA', 'RIKKAFIRST', 'BANK'])
 
 /**
  * A sound a line asks for: `<ME_008>` a jingle, `<SE_014>` an effect.

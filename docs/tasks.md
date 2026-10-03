@@ -89,6 +89,8 @@ a finished one looks like.
 
 ## 1. The Story So Far — find and build
 
+**Done, 4 October 2026** (`355633a`): `story-so-far.ts`; the wiki's Story-So-Far.
+
 A button that "summarises the latest goal" (p. 7). Not built.
 
 **Done when** what it shows is read: which message, chosen by what (the
@@ -96,11 +98,15 @@ stage, the live thread, a flag), and from which file.
 
 ## 2. Heal All — find and build
 
+**Done, 4 October 2026** (`2ead6bf`): `heal-all.ts`; the wiki's Heal-All.
+
 The Misc. menu's Heal All heals the party with its own spells (p. 11). Not
 built. **Done when** its rule is read: who casts, which spell, in what order,
 when it stops.
 
 ## 3. The last four engine functions — translate
+
+**Done, 4 October 2026** (`3b3cf8b`): `event.ts`; the wiki's Engine-Functions.
 
 `apps/game/test/event-coverage.test.ts` counts the engine functions that
 events call and that the host does not answer. **Four are left on the whole
@@ -119,6 +125,8 @@ list is empty.
 
 ## 4. Recipe books — find and build
 
+**Done, 4 October 2026** (`1b36196`): `bookshelves.ts`, `alchemy.ts`; the wiki's Bookshelves.
+
 "Almost all of these are found in bookcases… once read, the Krak Pot keeps
 track" (p. 24); the first is in Stornway's inn (p. 68). The pot lists all 470
 recipes from the start (`alchemy.ts`, `potList`), and nothing reads a
@@ -128,6 +136,8 @@ bookcase.
 recipes, and how a bookcase is examined are read, with a recipe for both.
 
 ## 5. The Quester's Rest counter and the bank — find and build
+
+**Done, 4 October 2026**: `counter.ts`; the wiki's Quester's-Rest-Counter-And-Bank. Value 2 is the Rapportal (multiplayer), value 6 DQVC without connecting.
 
 - **The counter**, `<RIKKA>` (code 6) and `<RIKKAFIRST>` (12): Stay, and
   **Rest until evening** (p. 68). Canvass and the Guestbook are tag mode, so
@@ -145,6 +155,8 @@ prices, what is saved), and `<RIKKA>`, `<RIKKAFIRST>` and `<BANK>` are in
 reading is small, and its pattern is `<DAMA>`'s.
 
 ## 6. The church and the inn — find and build
+
+**Done, 4 October 2026** (`25b0669`): `keepers.ts`; the wiki's Inns-and-Churches.
 
 - **The church's other services**: resurrect, cure poison, lift a curse —
   "costs climb as heroes increase in level" (p. 23). Ours offers Confess and
@@ -168,6 +180,8 @@ formula, the lines — and the stand-ins in `services.ts` are named for
 replacement. A curse is not modelled at all; say what the game keeps for one.
 
 ## 7. The game's clock — find and build
+
+**Done, 4 October 2026** (`dfa338f`): `packages/sim/src/clock.ts`; the wiki's Time-Of-Day.
 
 Night falls only at stage 2.2 here (`daytime.ts`, a choice made for the
 slice from the let's play), so **there is no evening to rest until** at any
