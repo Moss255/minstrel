@@ -29,9 +29,11 @@ describe('handing mini medals to Cap’n Max', () => {
   })
 
   it('takes only what a milestone needs, gives its reward, and goes on with the rest', () => {
-    // 5 held, 0 given: 4 for the first milestone, then 1 more towards 8.
+    // 5 held, 0 given: 21 counts them first (its section, before handler 6);
+    // 4 for the first milestone, its reward, then the last 1 towards 8, the
+    // tally after a reward, and the next target.
     const visit = visitMax(rewards, 0, 5)
-    expect(said(visit)).toEqual([10, 11, 20, 40, 41, 21, 51])
+    expect(said(visit)).toEqual([10, 11, 20, 21, 40, 41, 50, 51])
     expect(visit).toMatchObject({ handed: 5, given: 5, gifts: [12004] })
   })
 
@@ -39,17 +41,31 @@ describe('handing mini medals to Cap’n Max', () => {
     const visit = visitMax(rewards, 3, 11)
     expect(visit.gifts).toEqual([12004, 12008, 12013])
     expect(visit.given).toBe(14)
-    expect(said(visit)).toEqual([30, 31, 40, 41, 40, 41, 40, 41, 32, 50, 51])
+    expect(said(visit)).toEqual([30, 31, 32, 40, 41, 40, 41, 40, 41, 50, 51])
   })
 
   it('on a later visit with nothing to give, says the tally and the next target', () => {
     expect(said(visitMax(rewards, 9, 0))).toEqual([30, 50, 51])
   })
 
-  it('says when every milestone is passed, and the scene is due', () => {
+  it('says when every milestone is passed, and the scene and the Curtsy are due', () => {
     const visit = visitMax(rewards, 75, 5)
     expect(visit.gifts).toEqual([12080])
-    expect(visit.allPassed).toBe(true)
+    expect(visit).toMatchObject({ allPassed: true, curtsy: true })
+  })
+
+  it('leaves medals past the last milestone in the bag, for the exchange', () => {
+    // 70 given and 20 held: 10 for the 80th, and 10 stay — the game hands
+    // nothing over with no milestone left (`0x02167b14`).
+    const visit = visitMax(rewards, 70, 20)
+    expect(visit).toMatchObject({ handed: 10, given: 80, curtsy: true })
+    expect(said(visit)).toEqual([30, 31, 32, 40, 41])
+  })
+
+  it('says the tally only after a reward, on any visit', () => {
+    // A later visit with medals that reach nothing: counted, then the next target.
+    expect(said(visitMax(rewards, 5, 1))).toEqual([30, 31, 32, 51])
+    expect(said(visitMax(rewards, 0, 2))).toEqual([10, 11, 20, 21, 51])
   })
 
   it('opens at the exchange once all are passed: the list follows with medals held', () => {

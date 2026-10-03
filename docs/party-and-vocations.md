@@ -1196,7 +1196,12 @@ actually left.
   saved, and his own lines say it. The eightieth medal's scene plays after,
   and then **his exchange**: the six he offers at their prices, a yes-or-no
   on each, the price counted into the total as the game counts it. **Not
-  built**: the long introduction at 200, whose condition is not established. Medals themselves come from chests,
+  built**: label 200, which is not a count of medals but a guest's visit in
+  another player's session — multiplayer, so it never arises (3 October
+  2026). Corrected the same day from his script, `medal.stb`: medals past the
+  last milestone stay in the bag, 21 and 32 come before the hand-over, 50
+  only after a reward, and the Curtsy is taught at label 60. Max's own
+  motions are not played. Medals themselves come from chests,
   quests and scenes as any item does.
 - ~~**Name entry.**~~ **Done, 26 September 2026** — `naming.ts`. The eighth
   screen runs after the seventh knob for the Hero and for everyone Patty

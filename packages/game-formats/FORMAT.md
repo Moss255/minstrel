@@ -5639,16 +5639,26 @@ orichalcum, 20 pixie boots.
 
 | function | what it does |
 |---|---|
-| `func_ov004_02167d90` | where a visit starts: a global set (not established) → 200; nothing handed in → 10; every milestone passed → 100; else 30 |
+| `func_ov004_02167d90` | where a visit starts: a guest in another player's session (`func_0202c540`, INFERRED guest) → label 200, line 200 alone — **not a count of medals**; nothing handed in → 10; every milestone passed → 100; else 30 |
 | `func_ov004_0216794c` | the numbers: handed in so far (progress `+0xf74`), held (item 22039 in the bag), the next milestone — the first above the total — and whether handing in reaches it |
 | `func_ov004_02167b78` | fills the lines: `val_1` so far, `val_2` held, `val_3` the next milestone, `val_4` the total after, held to 80; the reward's name |
-| `func_ov004_02167adc` | hands over: **only as many as the next milestone needs** when they reach it, and its reward; otherwise all |
+| `func_ov004_02167adc` | hands over: **only as many as the next milestone needs** when they reach it, and its reward; otherwise all; **with no milestone left, none** (`0x02167b14`) |
 | `func_ov004_02167a0c` | takes that many item 22039 out of the bag and adds them to `+0xf74`, **held to 500** |
 | `func_ov004_02167a6c` | gives an item |
-| `02167e28`, `02167e6c`, `02167eb0`, `02167f1c`, `02167fb0` | what follows: medals held → hand them over; none → the tally (50) on a later visit; reached → 40; not reached → 51, after 50 on a later visit; every milestone passed → 60 |
+| `02167e28`, `02167e6c`, `02167eb0`, `02167f1c`, `02167fb0` | what follows, by the progress read **before** each hand-over: medals held → hand them over; none → the tally (50) on a later visit; reached → 40; after 21 or 32 not reached → 51; after 41 every milestone passed → 60, otherwise 50 then 51 — **50 follows a reward, or a later visit with nothing** (corrected 3 October 2026) |
+| `02167fd4` | label 60: starts `ev28590` and **teaches trick 23, the Cap'n's Curtsy** (`func_0206e348(…, 0x17, 1)` at `0x02168014`, as action `142` teaches one) |
 
 The eightieth medal's scene is `ev28590`, whose own record is in map 1807; its
 lines are `str_mdl` 60 to 63 again.
+
+**His script** is `/data/menu/medal.stb`, an SB2 script whose sections are
+numbered by label (2, 3, 10 … 151, 200, 0); engine function 39 *n* runs
+handler *n* of overlay 4's table at `0x02170038`, 64 (3, *m*) shows
+`str_mdl` line *m*, 48 closes the service. Section 20 is 20, 21, then the
+hand-over; 31 is 31, 32, then the hand-over — so 21 and 32 count the medals
+**before** they go. **Not built**: Max's motions and pauses — `"fr"`, `"cp"`,
+`"stand"`, `"yb"` (INFERRED motion names) and the 48- and 40-frame waits;
+handler 20, on a list move.
 
 **The exchange after 80** (`func_ov004_021680cc` on): after his greeting, 110,
 medals held → 120 and the list, none → 151 (`02168074`). The list is the six

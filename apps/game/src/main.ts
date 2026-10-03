@@ -53,6 +53,7 @@ import {
   TRICKS,
   type Treasure,
   trickKnown,
+  trickLearntBit,
   trickPlay,
   triggerWords,
   vocationsWielding,
@@ -4810,8 +4811,14 @@ function visitMedals(who: Talker): void {
   medalsGiven = visit.given
   medalTalker = who
   sayMedals(visit.lines)
-  // Every milestone passed: the scene he has waited for — see `CURTSY_SCENE`.
-  if (visit.allPassed && visit.handed > 0) afterTalk = () => startEvent(CURTSY_SCENE, true)
+  // The last milestone's reward given: his label 60 — the scene he has waited
+  // for, and the Cap'n's Curtsy taught by his own handler, as `142` teaches a
+  // trick (`func_0206e348`). See `CURTSY_SCENE`.
+  if (visit.curtsy) {
+    const bit = trickLearntBit(CURTSY_TRICK)
+    if (bit !== undefined) storyGlobals.add(bit)
+    afterTalk = () => startEvent(CURTSY_SCENE, true)
+  }
   // Past every milestone, with medals to trade: his list, once he has spoken.
   else if (visit.allPassed && held > 0) afterTalk = () => openMedalList()
   status(
@@ -4912,6 +4919,8 @@ function medalFarewell(): void {
  * Its record stands in his map, 1807.
  */
 const CURTSY_SCENE = 28590
+/** The Cap'n's Curtsy, trick 23 (`str_tm` 4532) — taught at his label 60 (`0x02168014`). */
+const CURTSY_TRICK = 23
 
 /**
  * Do what Patty was asked — see `recruit.ts`, which holds the rules; this puts
