@@ -9,6 +9,7 @@ import {
   dealt,
   drawnAmount,
   experienceShares,
+  fieldAmount,
   levelled,
   monsterHp,
   partyAmount,
@@ -35,6 +36,7 @@ import {
   evasionRate,
   experienceAdd,
   experienceShare,
+  fieldHealAmount,
   GameRandom,
   MONSTER_EVASION,
   partyBlockRate,
@@ -625,6 +627,44 @@ describe('an action’s amount', () => {
       }
     }
     expect(wrong).toBe(0)
+  })
+
+  it('is the game’s field heal outside a battle: the same draws, rounded half up', () => {
+    // `func_ov002_021538e4`: Heal All's and every field heal's amount.
+    let wrong = 0
+    let roundedUp = 0
+    for (const range of ranges) {
+      for (const stat of [0, 50, 51, 100, 500, 998, 999]) {
+        const mending = { stat, lo: 50, hi: 999 }
+        for (let seed = 1n; seed <= 200n; seed++) {
+          const ours = BattleRng.fromGameState(seed)
+          const mine = fieldAmount(
+            ours,
+            { min: range.min, max: range.max, scales: mending },
+            range.spread,
+            true,
+          )
+          if (mine !== fieldHealAmount(new GameRandom(seed), range, mending)) wrong++
+          if (ours.drawn !== 1) wrong++
+          const battle = partyAmount(
+            BattleRng.fromGameState(seed),
+            { min: range.min, max: range.max, scales: mending },
+            range.spread,
+          )
+          if (mine === battle + 1) roundedUp++
+          else if (mine !== battle) wrong++
+        }
+      }
+      for (let seed = 1n; seed <= 500n; seed++) {
+        const ours = BattleRng.fromGameState(seed)
+        const mine = fieldAmount(ours, { min: range.min, max: range.max }, range.spread, false)
+        if (mine !== fieldHealAmount(new GameRandom(seed), range)) wrong++
+        if (ours.drawn !== 2) wrong++
+      }
+    }
+    expect(wrong).toBe(0)
+    // Rounding half up is the one difference, and it shows.
+    expect(roundedUp).toBeGreaterThan(0)
   })
 
   it('gives Frizz 14 at a might of 50, 99 at 999, and what lies between', () => {

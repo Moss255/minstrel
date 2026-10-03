@@ -731,3 +731,16 @@ Overlay 3's **service 46**, reached from `func_0206f6cc`'s codes 9 and 10 by
 | `func_ov003_021552b8` | put a line up with its slots filled; a closed box ends the visit | `Abbey::SayLine` |
 | `func_ov003_02156054` | the vocation list: 1–6, then `[7, 9, 8, 12, 10, 11]` behind `0x113F + v` | `Abbey::BuildList` |
 | `func_02083ca0` | the vocation setter: `rec+0x950 = v`, `rec+0x954 \|= 1 << v` | `Character::SetVocation` |
+
+### The Story So Far, and Heal All — read 4 October 2026
+
+| function | what it does | a name |
+|---|---|---|
+| `func_0201081c`, `func_02010810` | get and set the story-so-far number, `GameState+0x5CBC` | `GameState::GetStorySoFar`, `::SetStorySoFar` |
+| `func_02061c04` case 97 (`0x020636b4`) | trigger action `197 : n`: set the number; clear 40 bytes at `+0x75a8` when its range changes | — |
+| `func_ov017_021a51a4` | the field's buttons: X the menu, Y the Story So Far (service 45, `story.stb`), the treasure map's own Y | `FieldInput::Update` |
+| `func_ov004_0216aaec` | the Story So Far's text: the number's `str_ol` page, `<val_1>` the fyggs (flags 4–10) | `StorySoFar::BuildText` |
+| `func_ov002_021665b0` | Heal All, the field menu's state 23 | `FieldMenu::HealAll` |
+| `func_ov002_021594e8` | one of Heal All's casts: the lines 9005, 9017/31052/9003, the MP spent | `FieldMenu::HealAllCast` |
+| `func_ov002_021538e4` | a heal's amount outside a battle: `GetAttackBaseDamage`'s party arms by base mending, `RoundUp`, the world's generator | `FieldMenu::RollHealAmount` |
+| `func_ov002_02153ccc` | the field's heal handler: Fullheal 999, else one roll a target | `FieldMenu::ApplyHeal` |

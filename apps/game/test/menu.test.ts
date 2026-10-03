@@ -315,6 +315,8 @@ describe('the main menu', () => {
       'Assign Party Tricks',
       // And the Quest List, `str_tm` 4007, also the Misc. menu's.
       'Quest List',
+      // **Heal All**, `str_tm` 4001 — the Misc. menu's first row in the game.
+      'Heal All',
       // **Ours**, and last: the controls panel `k` opens — the keys, the pad
       // and the text speed — which nothing on screen pointed to once the
       // hint line went behind the debug screen.

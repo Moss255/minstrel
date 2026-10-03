@@ -34,6 +34,7 @@ export {
   criticalHit,
   dealt,
   drawnAmount,
+  fieldAmount,
   initiative,
   monsterHp,
   type PartyAmount,

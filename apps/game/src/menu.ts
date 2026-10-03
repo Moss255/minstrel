@@ -47,6 +47,7 @@ import type { SkillTreeView } from './skills.ts'
 export type MenuCommand =
   | 'talk'
   | 'controls'
+  | 'healAll'
   | 'status'
   | 'items'
   | 'equip'
@@ -72,6 +73,10 @@ export const MENU_SAYS = {
   healed: 9004,
   /** Someone casts a spell. */
   casts: 9005,
+  /** "Y's wounds are healed!" — Heal All's, a cast that took. */
+  wounds: 9017,
+  /** "… is no longer poisoned." — Squelch's, in Heal All. */
+  unpoisoned: 31052,
   /** They know no spell to cast here. */
   noFieldSpells: 9006,
   notEnoughMp: 9007,
@@ -96,6 +101,8 @@ export const MENU_WORDS = {
   cancel: 1204,
   equipment: 1903,
   mp: 4351,
+  /** "Heal All" — the Misc. menu's own first row, `str_tm` 4001 + its code 0. */
+  healAll: 4001,
   /** "Allocate Skill Points" — the game's own name for the skill screen. */
   skills: 4003,
   /** "Points Remaining:" */
@@ -132,6 +139,9 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
   { id: 'tricks', label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
   { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
+  // **Heal All** — see `heal-all.ts`. In the game the first row of the Misc.
+  // submenu, which this flat list does not have; where it stands is ours.
+  { id: 'healAll', label: 'Heal All', word: MENU_WORDS.healAll },
   // **Ours**: the keys, the pad and the text speed — `controls-panel.ts`, which
   // `k` also opens. The game's own Misc. menu has its settings; this is not it.
   { id: 'controls', label: 'Controls & Settings' },
@@ -627,7 +637,8 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     return { ...state, row: wrap(state.row, count) }
   }
   if (state.panel) return state
-  return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length) }
+  // What a command said — Heal All's lines — goes with the cursor.
+  return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length), said: undefined }
 }
 
 /** What taking a row asks for: talking, putting something on, using or discarding an item, casting. */
@@ -636,6 +647,8 @@ export interface Taken {
   readonly talk: boolean
   /** Open the controls panel — see `MENU_COMMANDS`' last entry. */
   readonly controls?: boolean
+  /** Run Heal All, its lines said under the menu — see `heal-all.ts`. */
+  readonly healAll?: boolean
   /** Put this in the slot — undefined to take off what is there. */
   readonly equip?: { readonly slot: Slot; readonly item: number | undefined }
   /** Use this item, from where it is. */
@@ -838,6 +851,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
   if (command === undefined) return { state, talk: false }
   if (command === 'talk') return { state: undefined, talk: true }
   if (command === 'controls') return { state: undefined, talk: false, controls: true }
+  if (command === 'healAll') return { state, talk: false, healAll: true }
   return {
     state: {
       ...state,
@@ -1284,6 +1298,7 @@ export function panelLines(
     }
     case 'talk':
     case 'controls':
+    case 'healAll':
       return []
   }
 }

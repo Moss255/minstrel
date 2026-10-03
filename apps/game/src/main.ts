@@ -114,6 +114,7 @@ import {
   type Fighter,
   type Follower,
   facingOff,
+  fieldAmount,
   groundBelow,
   headingAngle,
   howItOpens,
@@ -345,6 +346,7 @@ import {
 } from './flight.ts'
 import { fpsLine, fpsMeter, LONG_FRAME_MS, resetFps, tickFps } from './fps-meter.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
+import { HEALS, type Healer, healAll } from './heal-all.ts'
 import {
   CARRY_BONES,
   type Carry,
@@ -6083,6 +6085,93 @@ function transferInField(move: NonNullable<Taken['transfer']>): string[] {
   return [`${nameOf(move.held.item)} goes to ${to}.`]
 }
 
+/**
+ * **Heal All** over the party, as the game runs it — see `heal-all.ts` — and
+ * what it says: for each cast, `str_tm` 9005 "X casts Heal.", then 9017 "Y's
+ * wounds are healed!" (31052 for Squelch) or 9003 "But nothing happens."; and
+ * 9003 alone when nothing was cast. Each amount is the field's own roll,
+ * `fieldAmount`, from the world's generator.
+ */
+function healAllInField(): string[] {
+  if (!loaded) return []
+  const here = loaded
+  const table = here.spellTable
+  const rows = members.map((member) => menuMember(member).standing?.level)
+  const party: Healer[] = members.map((member, i) => {
+    const row = rows[i]
+    const maxHp = row?.maxHp ?? 0
+    const maxMp = row?.maxMp ?? 0
+    const level = levelOf(member)
+    const known = new Set(
+      table && level ? spellsLearnt(table, member.vocation, level.level).map((s) => s.action) : [],
+    )
+    return {
+      hp: member.hp ?? maxHp,
+      maxHp,
+      mp: member.mp ?? maxMp,
+      // A story companion is no vocation's healer: Heal All ranks by
+      // vocation, and theirs is not kept as one.
+      vocation: member.attnpc === undefined ? member.vocation : -1,
+      knows: (action) => known.has(action),
+    }
+  })
+  const roll = (action: number, caster: number): number => {
+    const range = here.actions.get(action)?.range
+    if (!range) return 0
+    const { min, max, scales } = range.party
+    const mending = rows[caster]?.magicalMending ?? 0
+    return fieldAmount(
+      roamRng,
+      scales ? { min, max, scales: { stat: mending, lo: scales.lo, hi: scales.hi } } : { min, max },
+      range.spread,
+      scales?.by === 'mending',
+    )
+  }
+  const run = healAll(party, roll, (action) => here.actions.get(action)?.cost ?? 0)
+  members.forEach((member, i) => {
+    const row = rows[i]
+    if (!row) return
+    const hp = run.hp[i] ?? 0
+    const mp = run.mp[i] ?? 0
+    member.hp = hp >= row.maxHp ? undefined : hp
+    member.mp = mp >= row.maxMp ? undefined : mp
+  })
+  const named = (i: number): Named => {
+    const member = members[i]
+    return {
+      name: member ? nameFor(member) : heroName(),
+      gender: member?.sex === SEX.female ? 1 : 0,
+    }
+  }
+  const nothing = menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.'
+  const lines: string[] = []
+  for (const cast of run.casts) {
+    const spell = here.actions.get(cast.action)?.name ?? `action ${cast.action}`
+    lines.push(
+      menuSay(MENU_SAYS.casts, { actor: named(cast.caster), values: { str_2: spell } }) ??
+        `${named(cast.caster).name} casts ${spell}.`,
+    )
+    if (!cast.took) {
+      lines.push(nothing)
+      continue
+    }
+    for (const [j, target] of cast.targets.entries()) {
+      if ((cast.gained[j] ?? 0) <= 0 && cast.action !== HEALS.squelch) continue
+      lines.push(
+        menuSay(cast.action === HEALS.squelch ? MENU_SAYS.unpoisoned : MENU_SAYS.wounds, {
+          target: named(target),
+        }) ?? `${named(target).name} is healed.`,
+      )
+    }
+  }
+  if (run.nothing) lines.push(nothing)
+  status(
+    `Heal All: ${run.casts.length} cast${run.casts.length === 1 ? '' : 's'}` +
+      (run.nothing ? ', and nothing happens' : ''),
+  )
+  return lines
+}
+
 /** Cast a spell on the Hero from the spells panel, and say what came of it — see `castOn`. */
 function castInField(action: number): string[] {
   const row = heroRow()
@@ -10504,6 +10593,17 @@ function showMenu(): void {
       panel.append(row)
     }
     menuEl.append(panel)
+  } else if (menu.said && menu.said.length > 0) {
+    // What a command run from the list said — Heal All's casts — in the
+    // panel's place.
+    const panel = document.createElement('div')
+    panel.className = 'panel'
+    for (const line of menu.said) {
+      const row = document.createElement('div')
+      row.textContent = line
+      panel.append(row)
+    }
+    menuEl.append(panel)
   }
   menuEl.hidden = false
 }
@@ -11107,6 +11207,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         event.preventDefault()
         return handled
       }
+      // **Heal All**: run to its end, its lines said under the menu, which
+      // stays — the game's field menu says them in its own window and goes
+      // back to the Misc. menu.
+      if (taken.healAll && menu) menu = { ...menu, said: healAllInField() }
       if (taken.controls) {
         showMenu()
         self?.held.clear()

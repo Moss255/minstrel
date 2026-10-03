@@ -161,6 +161,43 @@ export function partyAmount(rng: BattleRng, amount: PartyAmount, spread: number)
 }
 
 /**
+ * **A heal's amount outside a battle** — the field's own roll,
+ * `func_ov002_021538e4` (overlay 2), which every field heal goes through,
+ * Heal All's among them. Read 4 October 2026.
+ *
+ * **The same three arms as {@link partyAmount}**, in the same float order,
+ * and four differences: it **rounds half up** at the end (`RoundUp`,
+ * `0x020744a8`: `(int)(0.5f + x)`) where the battle truncates; it scales by
+ * **magical mending from the base numbers** only, an action that scales by
+ * might taking the unscaled arm; it draws from **the world's generator**
+ * (`GetBTRandom`), which the caller passes; and a range of none gives 0 with
+ * no draw. Fullheal's 999 is its handler's, not this.
+ */
+export function fieldAmount(
+  rng: BattleRng,
+  amount: PartyAmount,
+  spread: number,
+  scalesByMending: boolean,
+): number {
+  const f = Math.fround
+  const { min, max, scales } = amount
+  const draw = () => rng.floatBetween(f(f(spread) * -1), f(spread))
+  let x: number
+  if (scales && scalesByMending) {
+    const { stat, lo, hi } = scales
+    let base: number
+    if (stat <= lo) base = min
+    else if (stat >= hi) base = max
+    else base = Math.trunc(f(f(f(max - min) / f(hi - lo)) * f(stat - lo))) + min
+    x = f(f(base) + draw())
+  } else {
+    const base = rng.floatBetween(f(min), f(max))
+    x = f(base + draw())
+  }
+  return Math.trunc(f(0.5 + x))
+}
+
+/**
  * What a critical is worth when it is not an attack's — a spell going haywire
  * — the game's `func_02074838` with its flag clear: the amount times a draw
  * from 1.5 to 2.0, in the game's floats. The reference's

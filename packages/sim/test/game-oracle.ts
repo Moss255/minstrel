@@ -470,6 +470,34 @@ export function actionAmount(
 }
 
 /**
+ * A heal's amount outside a battle — `func_ov002_021538e4` (overlay 2), which
+ * every field heal goes through. The party's two arms of `actionAmount`, the
+ * scaling one by **base** magical mending only, then `RoundUp`
+ * (`0x020744a8`): `(int)(0.5f + x)`, not `_ffix`. No range, 0 and no draw.
+ */
+export function fieldHealAmount(
+  random: GameRandom,
+  range: RangeRecord,
+  mending?: { stat: number; lo: number; hi: number },
+): number {
+  const spread = () => random.floatBetween(f(f(range.spread) * -1), f(range.spread))
+  let x: number
+  if (mending) {
+    let base: number
+    if (mending.stat <= mending.lo) base = range.min
+    else if (mending.stat >= mending.hi) base = range.max
+    else {
+      const ratio = f(f(range.max - range.min) / f(mending.hi - mending.lo))
+      base = Math.trunc(f(ratio * f(mending.stat - mending.lo))) + range.min
+    }
+    x = f(f(base) + spread())
+  } else {
+    x = f(random.floatBetween(f(range.min), f(range.max)) + spread())
+  }
+  return Math.trunc(f(0.5 + x))
+}
+
+/**
  * What each one an action reaches costs in draws, in the resolver's order —
  * `func_ov024_021eb5d0`. `'die'` is the hundred thrown at the top of each
  * target's pass and kept at `[battle + 0x8e6e]` (`0x021ebf28`); the critical
