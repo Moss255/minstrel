@@ -169,6 +169,21 @@ describe('readTex0', () => {
     expect(Array.from(pixels.subarray(4, 8))).toEqual([0, 255, 0, 255])
   })
 
+  it('decodes a texture once, handing back the same pixels for the same palette and colours', () => {
+    const set = readTex0(simple())
+    const texture = set.texture('grass')
+    const palette = set.palette('grass_pl')
+    if (!texture || !palette) throw new Error('fixture is incomplete')
+    const first = set.decode(texture, palette)
+    expect(set.decode(texture, palette)).toBe(first)
+    // Other colours are another decoding.
+    const grey = new Uint8Array(32)
+    const recoloured = set.decode(texture, palette, grey)
+    expect(recoloured).not.toBe(first)
+    expect(set.decode(texture, palette, grey)).toBe(recoloured)
+    expect(Array.from(recoloured.subarray(0, 4))).toEqual([0, 0, 0, 255])
+  })
+
   it('decodes through the palette as edited, leaving the texels alone', () => {
     // A character's skin, recoloured by writing over palette entries: index 1
     // becomes blue, and index 2, left as it was, stays green.

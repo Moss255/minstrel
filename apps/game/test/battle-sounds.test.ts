@@ -26,4 +26,18 @@ describe.skipIf(!romPath)('the battle sounds on a real cartridge', { timeout: 12
       expect(effectOf(sdat, 101, sound), `sound ${sound}`).toBeDefined()
     }
   })
+
+  it('reads the bank and samples its sounds share once, and hands back the same ones', () => {
+    const rom = new Uint8Array(readFileSync(romPath as string))
+    const leaf = [...scanCartridge(rom, { pathFilter: '/data/sound/se_btl.sdat' })].find((l) =>
+      l.path.toLowerCase().endsWith('se_btl.sdat'),
+    )
+    const sdat = readSdat(leaf?.bytes ?? new Uint8Array())
+    // What lets the player send them to the worklet once — see `Music.keep`.
+    const swing = effectOf(sdat, 101, 40)
+    const hit = effectOf(sdat, 101, 85)
+    expect(effectOf(sdat, 101, 40)?.bank).toBe(swing?.bank)
+    expect(hit?.bank).toBe(swing?.bank)
+    expect(hit?.archives[0]).toBe(swing?.archives[0])
+  })
 })

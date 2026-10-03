@@ -1,3 +1,4 @@
+import type { DecodedWave, Sbnk } from '@minstrel/nitro-snd'
 import type { Song } from './sequencer.ts'
 import { MUSIC_PROCESSOR, type MusicMessage, type MusicReport } from './worklet.ts'
 
@@ -41,14 +42,50 @@ export class Music {
     this.node?.port.postMessage(message)
   }
 
+  /** The number each bank and wave archive was sent to the worklet under — see `KeepMessage`. */
+  private readonly kept = new WeakMap<object, number>()
+  private nextKept = 1
+  /** Once the page has let a kept bank or archive go, the worklet is told to as well. */
+  private readonly forgotten = new FinalizationRegistry<number>((id) =>
+    this.send({ kind: 'forget', id }),
+  )
+
+  /**
+   * A song's commands as they cross: their own bytes only. They are a view
+   * onto the cartridge, and posting a view copies the whole buffer under it —
+   * the cartridge, for every sound. Copied once a sequence.
+   */
+  private readonly tight = new WeakMap<Uint8Array, Uint8Array>()
+  private tightOf(commands: Uint8Array): Uint8Array {
+    if (commands.byteOffset === 0 && commands.byteLength === commands.buffer.byteLength)
+      return commands
+    let copy = this.tight.get(commands)
+    if (!copy) {
+      copy = commands.slice()
+      this.tight.set(commands, copy)
+    }
+    return copy
+  }
+
+  /** A bank or archive's number, sending it to be kept the first time. */
+  private keep(value: Sbnk | readonly DecodedWave[]): number {
+    const already = this.kept.get(value)
+    if (already !== undefined) return already
+    const id = this.nextKept++
+    this.kept.set(value, id)
+    this.forgotten.register(value, id)
+    this.send({ kind: 'keep', id, value })
+    return id
+  }
+
   private async sendSong(kind: 'song' | 'effect' | 'jingle', song: Song): Promise<void> {
     await this.open()
     if (this.context?.state !== 'running') await this.context?.resume()
     this.send({
       kind,
-      commands: song.commands,
-      bank: song.bank,
-      archives: song.archives,
+      commands: this.tightOf(song.commands),
+      bank: this.keep(song.bank),
+      archives: song.archives.map((archive) => (archive ? this.keep(archive) : undefined)),
       volume: song.volume,
       ...(song.start !== undefined ? { start: song.start } : {}),
     })

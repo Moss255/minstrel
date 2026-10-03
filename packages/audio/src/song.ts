@@ -35,17 +35,53 @@ function sequenceSong(sdat: Sdat, record: SdatRecord): Song | undefined {
   return kit ? { commands: sseq.commands, ...kit, volume: info.volume } : undefined
 }
 
+type Kit = Pick<Song, 'bank' | 'archives'>
+
+/**
+ * What each archive's banks and wave archives have been read to, so each is
+ * decoded once — and is the same object every time, which is what lets the
+ * player send it to the worklet once (`Music.keep`). A battle's every sound
+ * shares a bank; decoding and sending it again for each one cost whole frames.
+ */
+const kits = new WeakMap<Sdat, Map<number, Kit | undefined>>()
+const waves = new WeakMap<Sdat, Map<number, Song['archives'][number]>>()
+
 /** A bank and its decoded wave archives, by the bank's index. */
-function bankKit(sdat: Sdat, bankId: number): Pick<Song, 'bank' | 'archives'> | undefined {
+function bankKit(sdat: Sdat, bankId: number): Kit | undefined {
+  let byBank = kits.get(sdat)
+  if (!byBank) {
+    byBank = new Map()
+    kits.set(sdat, byBank)
+  }
+  if (byBank.has(bankId)) return byBank.get(bankId)
+  const kit = readKit(sdat, bankId)
+  byBank.set(bankId, kit)
+  return kit
+}
+
+function readKit(sdat: Sdat, bankId: number): Kit | undefined {
   const bankRecord = sdat.banks[bankId]
   if (!bankRecord || bankRecord.fileId === undefined) return undefined
   const bank = readSbnk(sdat.read(bankRecord))
-  const archives = sdat.bankInfo(bankRecord).waveArchiveIds.map((id) => {
-    const archive = sdat.waveArchives[id]
-    if (id === 0xffff || !archive || archive.fileId === undefined) return undefined
-    return readSwar(sdat.read(archive)).waves.map(decodeWave)
-  })
+  const archives = sdat.bankInfo(bankRecord).waveArchiveIds.map((id) => waveArchive(sdat, id))
   return { bank, archives }
+}
+
+/** A wave archive decoded to PCM, once — banks that share one share it. */
+function waveArchive(sdat: Sdat, id: number): Song['archives'][number] {
+  let byId = waves.get(sdat)
+  if (!byId) {
+    byId = new Map()
+    waves.set(sdat, byId)
+  }
+  if (byId.has(id)) return byId.get(id)
+  const archive = sdat.waveArchives[id]
+  const decoded =
+    id === 0xffff || !archive || archive.fileId === undefined
+      ? undefined
+      : readSwar(sdat.read(archive)).waves.map(decodeWave)
+  byId.set(id, decoded)
+  return decoded
 }
 
 /**

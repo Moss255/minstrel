@@ -9,18 +9,34 @@ import type { Song } from './sequencer.ts'
  * imports this file and nothing else, so the worklet scope sees no DOM.
  */
 
-/** A song as it crosses to the worklet: the same fields, structured-cloned. */
+/**
+ * A song as it crosses to the worklet: its commands cloned, but its bank and
+ * its wave archives **by the number each was kept under** — see
+ * {@link KeepMessage}. The samples are the bulk of a song, and the same few
+ * banks and archives serve every sound a battle makes; cloning them for each
+ * effect cost the page whole frames.
+ */
 export interface SongMessage {
   readonly kind: 'song' | 'effect' | 'jingle'
   readonly commands: Uint8Array
-  readonly bank: Sbnk
-  readonly archives: readonly (readonly DecodedWave[] | undefined)[]
+  readonly bank: number
+  readonly archives: readonly (number | undefined)[]
   readonly volume: number
   readonly start?: number
 }
 
+/** A bank or a wave archive, sent once and kept by the worklet under its number. */
+export interface KeepMessage {
+  readonly kind: 'keep'
+  readonly id: number
+  readonly value: Sbnk | readonly DecodedWave[]
+}
+
 export type MusicMessage =
   | SongMessage
+  | KeepMessage
+  /** A kept bank or archive the page no longer holds: let it go. */
+  | { readonly kind: 'forget'; readonly id: number }
   | { readonly kind: 'play' }
   | { readonly kind: 'stop'; readonly now: boolean }
   /** Let every effect and jingle go, their notes released. */
@@ -58,6 +74,8 @@ export function registerMusicProcessor(): void {
     private gainTo = 1
     private gainStep = 0
     private sinceReport = 0
+    /** What the page has sent to be kept — see `KeepMessage`. */
+    private readonly kept = new Map<number, Sbnk | readonly DecodedWave[]>()
 
     constructor() {
       super()
@@ -66,13 +84,26 @@ export function registerMusicProcessor(): void {
 
     private take(message: MusicMessage): void {
       switch (message.kind) {
+        case 'keep':
+          this.kept.set(message.id, message.value)
+          break
+        case 'forget':
+          // What is playing holds its own references; only the map lets go.
+          this.kept.delete(message.id)
+          break
         case 'song':
         case 'effect':
         case 'jingle': {
+          const bank = this.kept.get(message.bank) as Sbnk | undefined
+          if (!bank) break
           const song: Song = {
             commands: message.commands,
-            bank: message.bank,
-            archives: message.archives,
+            bank,
+            archives: message.archives.map((id) =>
+              id === undefined
+                ? undefined
+                : (this.kept.get(id) as readonly DecodedWave[] | undefined),
+            ),
             volume: message.volume,
             ...(message.start !== undefined ? { start: message.start } : {}),
           }

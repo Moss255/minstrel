@@ -3090,7 +3090,8 @@ function frame(now = 0): void {
     // Doors swing on the frame's own time, and a door that moved is a map to redraw.
     const swung = self !== undefined && moveDoors(doors, peopleAtDoors(), elapsedMs / 1000)
     const slid = moveSlides(slides, elapsedMs / 1000)
-    if (wanted !== mapFrame || swung || slid) {
+    // A fight on its stage hides the map, so it is not posed until the fight is over.
+    if (!battleStage && (wanted !== mapFrame || swung || slid)) {
       mapFrame = wanted
       poseMap(wanted)
     }

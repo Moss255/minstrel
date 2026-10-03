@@ -100,6 +100,10 @@ export interface TextureSet {
    * A texture and its palette are separate resources; by convention a
    * texture's palette carries the same name with `_pl` appended, but nothing
    * enforces that, so the caller passes the one it wants.
+   *
+   * **The same texture, palette and colours give back the same array**, decoded
+   * once: a renderer that knows a texture by its pixels then uploads it once,
+   * however often it is asked for. Treat what comes back as read-only.
    */
   decode(texture: TextureInfo, palette?: PaletteInfo, colours?: Uint8Array): Uint8Array
 }
@@ -235,7 +239,34 @@ export function readTex0(block: Uint8Array): TextureSet {
       paletteDataOffset + palette.dataOffset + palette.dataSize,
     )
 
+  /** What each texture has been decoded to, by its palette and then its colours — see `decode`. */
+  const decoded = new Map<
+    TextureInfo,
+    Map<PaletteInfo | undefined, Map<Uint8Array | undefined, Uint8Array>>
+  >()
   const decode = (
+    texture: TextureInfo,
+    palette?: PaletteInfo,
+    colours?: Uint8Array,
+  ): Uint8Array => {
+    let byPalette = decoded.get(texture)
+    if (!byPalette) {
+      byPalette = new Map()
+      decoded.set(texture, byPalette)
+    }
+    let byColours = byPalette.get(palette)
+    if (!byColours) {
+      byColours = new Map()
+      byPalette.set(palette, byColours)
+    }
+    const already = byColours.get(colours)
+    if (already) return already
+    const out = decodeOnce(texture, palette, colours)
+    byColours.set(colours, out)
+    return out
+  }
+
+  const decodeOnce = (
     texture: TextureInfo,
     palette?: PaletteInfo,
     colours?: Uint8Array,
