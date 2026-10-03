@@ -504,6 +504,14 @@ import {
   victoryView,
 } from './stage.ts'
 import { moveStory, type Story, swapThread, THREADS, threadOf, unstarted } from './story.ts'
+import {
+  drawStoryPage,
+  fyggsFound,
+  readStoryArt,
+  STORY_START,
+  type StoryArt,
+  storySoFarAfter,
+} from './story-so-far.ts'
 import { doorShut, doorsOf, moveDoors, type SwingDoor, swingGeometry } from './swing.ts'
 import {
   type After,
@@ -521,6 +529,7 @@ import {
   OPENING_STAGE,
   pickLine,
   promptOf,
+  renderLine,
   runLine,
   type Service,
   sameStage,
@@ -2077,6 +2086,7 @@ function restore(game: SaveGame): void {
   }
   liveThread = game.thread
   medalsGiven = game.medalsGiven ?? 0
+  storySoFar = game.storySoFar ?? STORY_START
   // The whole party, each with their own — see `SaveMember`. An older save's
   // companions come back with nothing, which is all they ever had.
   members = partyRestored(game.members)
@@ -2129,6 +2139,7 @@ function confess(): string {
       marks: [...kept.marks],
     })),
     ...(medalsGiven > 0 ? { medalsGiven } : {}),
+    ...(storySoFar !== STORY_START ? { storySoFar } : {}),
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
     gold: bag.gold,
@@ -4957,6 +4968,51 @@ function pickMedal(at: number): void {
 function medalFarewell(): void {
   const held = bag.items.get(MINI_MEDAL) ?? 0
   sayMedals([exchangeLine(150, medalsGiven, held), exchangeLine(151, medalsGiven, held)])
+}
+
+/** The Story So Far's number — see `story-so-far.ts`. Saved. */
+let storySoFar = STORY_START
+/** Whether its page is up, on the bottom screen. */
+let storyPageOpen = false
+/** The parchment, read once. */
+let storyArt: StoryArt | undefined
+
+/**
+ * **Open the Story So Far** — the page `storySoFar` names, on the parchment,
+ * on the bottom screen, its `<val_1>` the fyggs found. **Ours**: the world
+ * map the game puts on the top screen is not drawn, and there is no fade.
+ */
+function openStorySoFar(): void {
+  if (!loaded || !cartridge) return
+  storyArt ??= readStoryArt(cartridge)
+  const raw = loaded.storySoFarWords.get(storySoFar)
+  const context = battleBottomEl.getContext('2d')
+  if (!storyArt || !raw || !context) {
+    status(
+      `the Story So Far: no page ${storySoFar}${storyArt ? '' : ', and the parchment did not read'}`,
+    )
+    return
+  }
+  const rendered = renderLine(raw, {
+    ...textContext(),
+    values: { val_1: String(fyggsFound(storyGlobals)) },
+  })
+  const text = rendered.pages.map((page) => page.text).join('\n')
+  self?.held.clear()
+  turning.clear()
+  drawStoryPage(context, storyArt, readNameFont(cartridge), text)
+  battleBottomEl.hidden = false
+  document.body.classList.add('battle-bottom')
+  storyPageOpen = true
+  status(`the Story So Far: str_ol ${storySoFar} · Esc closes`)
+}
+
+function closeStorySoFar(): void {
+  storyPageOpen = false
+  if (!battle) {
+    battleBottomEl.hidden = true
+    document.body.classList.remove('battle-bottom')
+  }
 }
 
 /**
@@ -9627,6 +9683,8 @@ function storyFromRecord(outcome: EventOutcome): void {
   )
   storyStage = story.stage
   storyStep = story.step
+  // The Story So Far's number, which `197 : n` sets — see `story-so-far.ts`.
+  storySoFar = storySoFarAfter(outcome.actions, storySoFar)
   // Any areas it adds to the map, as it runs — see `areasAdded`. Once each:
   // the map's watch runs every frame.
   for (const area of outcome.areas) {
@@ -10955,6 +11013,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     event.preventDefault()
     return handled
   }
+  // The Story So Far takes every key while it is up, and B closes it
+  // (`story.stb`'s section 999); nothing else is read.
+  if (storyPageOpen) {
+    if (action === 'cancel') closeStorySoFar()
+    event.preventDefault()
+    return handled
+  }
   // A shop, the inn or the church: the same keys as the menu, over its list.
   if (visit) {
     const told = counter()
@@ -11059,6 +11124,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     self?.held.clear()
     menu = openMenu()
     showMenu()
+    event.preventDefault()
+    return handled
+  }
+  // **The Story So Far**: the Y Button, in the field with the player free —
+  // see `story-so-far.ts`.
+  if (action === 'y' && loaded && !talking && !playing && !battle && !opening && !abbeyWait) {
+    openStorySoFar()
     event.preventDefault()
     return handled
   }

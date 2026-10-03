@@ -37,6 +37,10 @@ const TAGGED: Readonly<Record<string, string>> = {
   '>': '<>>',
   // The text's `<r_arrow>`, which the results window's rows draw.
   '→': '<r_arrow>',
+  // The apostrophe and the dash the text spells as tags — `<1>` and `<-->` —
+  // which the talk engine turns into ’ and —; the font has glyphs of those names.
+  '’': '<1>',
+  '—': '<-->',
 }
 
 /** The name of the glyph a character is drawn with; undefined when the text has no way to spell it. */

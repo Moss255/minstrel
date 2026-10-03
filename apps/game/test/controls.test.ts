@@ -40,7 +40,7 @@ describe('the controls', () => {
     expect(actionOfKey(DEFAULT_BINDINGS, 'z')).toBe('y')
     expect(ACTION_LABELS.confirm.startsWith('A Button')).toBe(true)
     expect(ACTION_LABELS.menu.startsWith('X Button')).toBe(true)
-    // Y, START and SELECT do nothing yet, so a layout may leave them keyless.
+    // START and SELECT do nothing yet, so a layout may leave them keyless.
     expect(playable(clearAction(DEFAULT_BINDINGS, 'start'))).toBe(true)
     expect(playable(clearAction(DEFAULT_BINDINGS, 'menu'))).toBe(false)
   })

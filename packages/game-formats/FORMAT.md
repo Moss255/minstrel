@@ -4900,10 +4900,16 @@ September 2026; the engine's `express.ts` follows it.
   the field plays it once the next map is in (`0x0218c5fc`).
 
 **`225 : map`** is queued, and not read; it sits on records that end in a
-new map (`ev29004`'s `225:4301`). **`110 : n`** is `GameState::SetTimeOfDay(n)`. **`197 : n`** sets a
-number of the game's state (`func_02010810`), clearing a 40-byte block when
-the old and new fall in different ranges of a table of them (`0x020636b4`) —
-a progress counter, INFERRED; on nearly every event's own record.
+new map (`ev29004`'s `225:4301`). **`110 : n`** is `GameState::SetTimeOfDay(n)`. **`197 : n`** sets
+**the Story So Far's number**, `GameState+0x5CBC` (`func_02010810`) — read
+4 October 2026: the page the Y Button shows is message *n* of
+`/data/scenario/str_ol.gp2` (tag `0x67`), one number for the whole game,
+1 on a new game, saved, and set to *n* at once with no forward-only rule;
+when the old and new fall in different ranges of a table (`0x020636b4`) a
+40-byte block is cleared, the ranges being `cmtFileTbl.bin`'s groups, the
+continue screen's comments. On nearly every event's own record; the
+Hexagoon's lost battle sets 10, "…he was defeated", and the won one 11. See
+`apps/game/src/story-so-far.ts`.
 
 **`124 : c` takes character *c* out of the map** (queue case `0x0206fca0`):
 the object is found by its id (`func_0203df78`) and bit `0x8000` of its first

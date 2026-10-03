@@ -36,7 +36,7 @@ export const ACTIONS = [
 export type Action = (typeof ACTIONS)[number]
 
 /** The buttons that do nothing yet, which a layout may leave without a key. */
-const NOT_YET: ReadonlySet<Action> = new Set(['y', 'start', 'select'])
+const NOT_YET: ReadonlySet<Action> = new Set(['start', 'select'])
 
 /** What each button reads as in the controls panel: the DS's name, then what it does. */
 export const ACTION_LABELS: Readonly<Record<Action, string>> = {
@@ -47,7 +47,7 @@ export const ACTION_LABELS: Readonly<Record<Action, string>> = {
   confirm: 'A Button — talk, examine, confirm',
   cancel: 'B Button — back; held with the +Control Pad, a trick',
   menu: 'X Button — the menu',
-  y: 'Y Button — the world map, the story so far (not built yet)',
+  y: 'Y Button — the story so far',
   turnLeft: 'L Button — turn the view left',
   turnRight: 'R Button — turn the view right',
   start: 'START — nothing in the field',

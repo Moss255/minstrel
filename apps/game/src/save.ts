@@ -201,6 +201,11 @@ export interface SaveGame {
    * a field takes no new version.
    */
   readonly medalsGiven?: number
+  /**
+   * The Story So Far's number — see `story-so-far.ts`. **Absent from saves
+   * made before it was kept**, which read as the start, 1.
+   */
+  readonly storySoFar?: number
 }
 
 export class SaveError extends Error {
@@ -324,6 +329,9 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.medalsGiven !== undefined && !isCount(s.medalsGiven)) {
     throw new SaveError('the save has a mini medal count that does not read')
+  }
+  if (s.storySoFar !== undefined && !isCount(s.storySoFar)) {
+    throw new SaveError('the save has a story-so-far number that does not read')
   }
   if (!Array.isArray(s.opened) || !s.opened.every((key) => typeof key === 'string')) {
     throw new SaveError('the save has an opened-treasure list that does not read')
