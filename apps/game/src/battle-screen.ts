@@ -1,3 +1,4 @@
+import { scanCartridge } from '@minstrel/cartridge'
 import {
   type Bncl,
   type Bnsc,
@@ -10,6 +11,16 @@ import {
 import { type CellImage, drawCell, readNcer, readNcgr, readNclr } from '@minstrel/nitro-gfx'
 import { membersOf } from './equip-screen.ts'
 import { setText } from './latin-text.ts'
+import {
+  attributeRowY,
+  experienceRowsY,
+  type ResultsWindow,
+  rowsShown,
+  TILE,
+  windowAt,
+  windowPixels,
+  windowTiles,
+} from './results-window.ts'
 
 /**
  * **The battle's bottom screen** — the party's panels and the command
@@ -110,6 +121,10 @@ export interface BattleScreenArt {
   readonly lv: (place: number) => Picture
   readonly cell: (index: number) => CellImage
   readonly font: LatinFont | undefined
+  /** A results window's frame and body, w × h tiles — see `results-window.ts`; undefined without `windata3.bncg`. */
+  readonly window: ((w: number, h: number) => Picture) | undefined
+  /** Colour `index` of the battle palette's first row, as CSS — INFERRED the window's (`bg_bt.bncl`). */
+  readonly colour: (index: number) => string
 }
 
 export function readBattleScreenArt(rom: Uint8Array, font: LatinFont | undefined): BattleScreenArt {
@@ -147,6 +162,17 @@ export function readBattleScreenArt(rom: Uint8Array, font: LatinFont | undefined
   const chars = readNcgr(objNeed('obj_bt.ncgr'))
   const colours = readNclr(objNeed('obj_bt.nclr'))
   const cells = new Map<number, CellImage>()
+  // The windows' frame tiles, a file of their own (`func_020421c4`).
+  const windata = [...scanCartridge(rom, { pathFilter: '/data/ani/windata3.bncg' })].find((leaf) =>
+    leaf.path.toLowerCase().endsWith('/windata3.bncg'),
+  )
+  const frameTiles = windata ? readBncg(windata.bytes).tiles : undefined
+  const rgbOf = (index: number): [number, number, number] => {
+    const c = palette.colours[index] ?? 0
+    const to8 = (v: number) => Math.round((v * 255) / 31)
+    return [to8(c & 31), to8((c >> 5) & 31), to8((c >> 10) & 31)]
+  }
+  const windows = new Map<string, Picture>()
   return {
     back,
     panel(isLarge, place, danger) {
@@ -172,7 +198,126 @@ export function readBattleScreenArt(rom: Uint8Array, font: LatinFont | undefined
       return image
     },
     font,
+    window: frameTiles
+      ? (w, h) => {
+          const key = `${w}x${h}`
+          let picture = windows.get(key)
+          if (!picture) {
+            const indices = windowPixels(frameTiles, w, h)
+            const rgba = new Uint8Array(indices.length * 4)
+            for (const [i, c] of indices.entries()) {
+              if (c === 0) continue
+              const [r, g, b] = rgbOf(c)
+              rgba.set([r, g, b, 255], i * 4)
+            }
+            picture = { width: w * TILE, height: h * TILE, rgba }
+            windows.set(key, picture)
+          }
+          return picture
+        }
+      : undefined,
+    colour(index) {
+      const [r, g, b] = rgbOf(index)
+      return `rgb(${r} ${g} ${b})`
+    },
   }
+}
+
+/** What a results window's words are, from `str_btl`. */
+export interface ResultsWords {
+  /** 30200 or 30210. */
+  readonly title: string
+  /** 30202, the experience window's "None". */
+  readonly none: string
+  /** 30220 to 30228, Strength to Max. MP. */
+  readonly attributes: readonly string[]
+}
+
+/**
+ * **A results window** over the backdrop, its rows as many as are up `ms`
+ * after it opened — see `results-window.ts`. The party's panels and the
+ * sprites are not drawn while it is up (sub `DISPCNT` OBJ off, `021d8ea0`).
+ */
+export function drawResults(
+  context: CanvasRenderingContext2D,
+  art: BattleScreenArt,
+  window: ResultsWindow,
+  words: ResultsWords,
+  ms: number,
+): void {
+  context.imageSmoothingEnabled = false
+  context.putImageData(imageOf(art.back), 0, 0)
+  const { w, h } = windowTiles(window)
+  const at = windowAt(window)
+  const frame = art.window?.(w, h)
+  if (frame) blit(context, frame, at.x, at.y)
+  const font = art.font
+  const white = art.colour(15)
+  const width = (words: string) => measure(font, words)
+  // The title, centred in its line (`<TITLE=16>`; INFERRED, its text 3 px down).
+  const title = (y: number) =>
+    text(
+      context,
+      font,
+      words.title,
+      at.x + Math.round((w * TILE - width(words.title)) / 2),
+      at.y + y,
+      'left',
+      white,
+    )
+  const shown = rowsShown(window, ms)
+  if (window.kind === 'experience') {
+    title(9)
+    if (window.rows.length === 0) {
+      text(
+        context,
+        font,
+        words.none,
+        at.x + Math.round((w * TILE - width(words.none)) / 2),
+        at.y + Math.round((h * TILE - 26) / 2) + 16,
+        'left',
+        white,
+      )
+      return
+    }
+    const ys = experienceRowsY(window.rows.length, h)
+    for (const [i, row] of window.rows.slice(0, shown).entries()) {
+      const y = at.y + (ys[i] ?? 0)
+      text(context, font, row.name, at.x + 8, y, 'left', white)
+      // "+" at 148 less the number's width, then the number, 4 px, "Exp." (`str_btl` 30201).
+      const n = String(row.share)
+      const plus = at.x + 148 - width(n)
+      text(context, font, '+', plus, y, 'left', white)
+      const nx = plus + width('+')
+      text(context, font, n, nx, y, 'left', white)
+      text(context, font, 'Exp.', nx + width(n) + 4, y, 'left', white)
+    }
+    return
+  }
+  title(4)
+  // Three digits wide, right-aligned — INFERRED from `func_020465f0(…, 3)`.
+  const field = width('999')
+  for (const [r, row] of window.rows.slice(0, shown).entries()) {
+    const y = at.y + attributeRowY(r)
+    text(context, font, words.attributes[r] ?? '', at.x + 10 + 24, y, 'left', white)
+    const old = String(row.before)
+    const oldX = at.x + 10 + 106
+    text(context, font, old, oldX + field - width(old), y, 'left', white)
+    const arrowX = oldX + field + 8
+    text(context, font, '→', arrowX, y, 'left', white)
+    const neu = String(row.after)
+    const newX = arrowX + width('→') + 8
+    // Colour 5 when it rose, 15 when not (`<PLTT=%d>`, `0x021d95b0`).
+    const colour = art.colour(row.after > row.before ? 5 : 15)
+    text(context, font, neu, newX + field - width(neu), y, 'left', colour)
+  }
+}
+
+/** How wide words are set in the font, or a stand-in's guess without it. */
+function measure(font: LatinFont | undefined, words: string): number {
+  const parts = words.split(' ').map((word) => (font ? setWord(font, word, 'white') : undefined))
+  if (!font || parts.some((p) => p === undefined && words !== '')) return words.length * 6
+  return parts.reduce((w, p, i) => w + (p?.width ?? 0) + (i > 0 ? SPACE : 0), 0)
 }
 
 /** One member's panel, as the screen shows it. */
@@ -369,11 +514,12 @@ function text(
   x: number,
   y: number,
   align: 'left' | 'centre',
+  colour = 'white',
 ): void {
-  const parts = words.split(' ').map((word) => (font ? setWord(font, word) : undefined))
+  const parts = words.split(' ').map((word) => (font ? setWord(font, word, colour) : undefined))
   if (!font || parts.some((p) => p === undefined)) {
     context.font = 'bold 10px system-ui, sans-serif'
-    context.fillStyle = 'white'
+    context.fillStyle = colour
     context.textBaseline = 'top'
     context.textAlign = align === 'centre' ? 'center' : 'left'
     context.fillText(words, x, y)
@@ -391,14 +537,15 @@ function text(
 
 const wordsSet = new WeakMap<LatinFont, Map<string, HTMLCanvasElement | undefined>>()
 
-/** A word set white in the game's letters, once; undefined when the font has no glyph for it. */
-function setWord(font: LatinFont, word: string): HTMLCanvasElement | undefined {
+/** A word set in the game's letters in a colour, once; undefined when the font has no glyph for it. */
+function setWord(font: LatinFont, word: string, colour = 'white'): HTMLCanvasElement | undefined {
   let set = wordsSet.get(font)
   if (!set) {
     set = new Map()
     wordsSet.set(font, set)
   }
-  if (set.has(word)) return set.get(word)
+  const key = `${colour}|${word}`
+  if (set.has(key)) return set.get(key)
   const drawn = word === '' ? undefined : setText(font, word)
   let image: HTMLCanvasElement | undefined
   if (drawn && drawn.width > 0) {
@@ -406,8 +553,16 @@ function setWord(font: LatinFont, word: string): HTMLCanvasElement | undefined {
     for (let i = 0; i < drawn.pixels.length; i++)
       if (drawn.pixels[i]) rgba.fill(255, i * 4, i * 4 + 4)
     image = canvasOf({ width: drawn.width, height: drawn.height, rgba })
+    if (colour !== 'white') {
+      const tint = image.getContext('2d')
+      if (tint) {
+        tint.globalCompositeOperation = 'source-in'
+        tint.fillStyle = colour
+        tint.fillRect(0, 0, image.width, image.height)
+      }
+    }
   }
-  set.set(word, image)
+  set.set(key, image)
   return image
 }
 

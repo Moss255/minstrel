@@ -35,6 +35,8 @@ const TAGGED: Readonly<Record<string, string>> = {
   // The font's names are tags, so the two brackets are tags too.
   '<': '<<>',
   '>': '<>>',
+  // The text's `<r_arrow>`, which the results window's rows draw.
+  '→': '<r_arrow>',
 }
 
 /** The name of the glyph a character is drawn with; undefined when the text has no way to spell it. */

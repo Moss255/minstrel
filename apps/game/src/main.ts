@@ -228,6 +228,7 @@ import {
   type BattleScreenArt,
   type BottomView,
   drawBottom,
+  drawResults,
   type PanelView,
   readBattleScreenArt,
 } from './battle-screen.ts'
@@ -428,6 +429,7 @@ import {
   type Roster,
   recruitKit,
 } from './recruit.ts'
+import type { ResultsWindow } from './results-window.ts'
 import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
 import { SceneBrowser } from './scene-browser.ts'
 import { conditionsFor, firstWay, type SceneConditions, sceneIndex } from './scenes.ts'
@@ -3090,6 +3092,8 @@ function frame(now = 0): void {
     // it would be told without its action — its numbers up at once and its
     // blow played from the page's cue — and then again by the action.
     openPage(now)
+    // A results window's rows come in over time — see `results-window.ts`.
+    if (resultsShown) drawBattleBottom()
     battleClock += elapsedMs * battleSpeed()
   }
 
@@ -7833,6 +7837,7 @@ function openPage(now: number): void {
   if (battle?.phase !== 'telling' || battle.pages === pagesSeen) return
   const first = pagesSeen === undefined
   pagesSeen = battle.pages
+  openResults()
   log(`page: ${(battle.pages[0] ?? '').split('\n').join(' / ') || battle.phase}`)
   startShown()
   // The box says what the action has said so far — nothing yet — not the page.
@@ -8237,7 +8242,24 @@ function drawBattleBottom(): boolean {
   }
   const context = battleBottomEl.getContext('2d')
   if (!battleScreenArt || !context) return false
-  drawBottom(context, battleScreenArt, bottomView(battle))
+  if (resultsShown) {
+    const word = (n: number) => {
+      const w = loaded?.battleWords?.menu.get(n)
+      return w === undefined ? '' : tellBattle(w, {}, new Map()).text
+    }
+    const attributes = resultsShown.window.kind === 'attributes'
+    drawResults(
+      context,
+      battleScreenArt,
+      resultsShown.window,
+      {
+        title: word(attributes ? 30210 : 30200),
+        none: word(30202),
+        attributes: Array.from({ length: 9 }, (_, r) => word(30220 + r)),
+      },
+      performance.now() - resultsShown.since,
+    )
+  } else drawBottom(context, battleScreenArt, bottomView(battle))
   battleBottomEl.hidden = false
   document.body.classList.add('battle-bottom')
   return true
@@ -8302,6 +8324,53 @@ function bottomView(scene: BattleScene): BottomView {
   return { panels, menu: menu && current !== undefined ? menu : undefined }
 }
 
+/** What one of a victory's pages opens on the bottom screen — a results window — and sounds. */
+interface ResultsSlot {
+  readonly window?: ResultsWindow
+  readonly jingle?: number
+}
+
+/**
+ * The victory's pages' slots, one a page, as `settleBattle` made them; each
+ * is taken up as its page opens (`openPage`). A slot with no window keeps
+ * the last one up, as the game keeps it through the gold and the items.
+ */
+let resultsQueue: readonly ResultsSlot[] = []
+/** The results window up, and when it opened. */
+let resultsShown: { readonly window: ResultsWindow; readonly since: number } | undefined
+
+/** A level's jingle, `ME_004` (`func_0209c6d8(snd, 0x35)`, `0x021f1010`). */
+const LEVEL_JINGLE = 0x35
+
+/** The nine attributes the level-up window lists, Strength to Max. MP (`str_btl` 30220–30228). */
+function attributesOf(before: LevelRow, after: LevelRow): { before: number; after: number }[] {
+  const pick = (row: LevelRow) => [
+    row.strength,
+    row.agility,
+    row.resilience,
+    row.deftness,
+    row.charm,
+    row.magicalMending,
+    row.magicalMight,
+    row.maxHp,
+    row.maxMp,
+  ]
+  const was = pick(before)
+  return pick(after).map((value, i) => ({ before: was[i] ?? 0, after: value }))
+}
+
+/** Take up the slot of the page just opened, if it is one of the victory's. */
+function openResults(): void {
+  if (!battle || resultsQueue.length === 0) return
+  const k = resultsQueue.length - battle.pages.length
+  const slot = k >= 0 ? resultsQueue[k] : undefined
+  if (!slot) return
+  if (slot.window) resultsShown = { window: slot.window, since: performance.now() }
+  if (slot.jingle !== undefined && cartridge && !params.get('bgm')) {
+    void playJingle(cartridge, slot.jingle)
+  }
+}
+
 /**
  * What a battle comes to, once, as it comes to it: a win pays out experience
  * and gold, and a level reached says what it brought; a loss brings the Hero
@@ -8321,6 +8390,8 @@ function settleBattle(): void {
       : undefined
   }
   const lines: string[] = []
+  /** What each of a victory's pages opens on the bottom screen, and sounds — see `resultsQueue`. */
+  const slots: ResultsSlot[] = []
   if (eventFight) eventFight = { ...eventFight, won: battle.state.outcome === 'won' }
   /** Hit points each companion's level brought, by place — added to their wounds below. */
   const grown = new Map<number, number>()
@@ -8340,30 +8411,24 @@ function settleBattle(): void {
         : one
           ? said(RESULT_SAYS.receives, { target: one.named })
           : undefined
-    // How much each earns: the game shows the numbers in a results window of
-    // overlay 17's, which is not built — its lines 6 to 9, one for each
-    // number of earners, say them here instead. **Ours**, that use of them.
-    const values: Record<string, number | string> = {}
-    for (const [i, s] of earners.entries()) {
-      values[`str_${i + 1}`] = s.named.name
-      values[`val_${i + 1}`] = s.share
-    }
-    const earned =
-      earners.length > 0 && earners.length <= 4
-        ? said(RESULT_SAYS.earns + earners.length - 1, { values })
-        : undefined
+    // **The amounts are the window's alone** — see `results-window.ts`:
+    // "Experience Earned" opens on the bottom screen with this line, and the
+    // game never says lines 6 to 9 in a victory (overlay 23, sub-state 6).
+    lines.push(
+      receives ?? earners.map((s) => `${s.named.name} gains ${s.share} experience.`).join('\n'),
+    )
+    slots.push({
+      window: {
+        kind: 'experience',
+        rows: earners.map((s) => ({ name: s.named.name, share: s.share })),
+      },
+    })
     // `<IF_SOLO>` taken to be a party of one — INFERRED from its name.
     const solo = battle.state.fighters.filter((f) => f.side === 'party').length === 1
-    const obtained = said(RESULT_SAYS.gold, { leader: heroNamed(), solo, values: { val_1: gold } })
-    const told = [receives, earned, obtained].filter((line) => line !== undefined)
-    lines.push(
-      told.length === 3
-        ? told.join('\n')
-        : [
-            ...earners.map((s) => `${s.named.name} gains ${s.share} experience.`),
-            `The party obtains ${gold} gold coin${gold === 1 ? '' : 's'}.`,
-          ].join('\n'),
-    )
+    // The gold after every level-up, in the box only (sub-state 11).
+    const obtained =
+      said(RESULT_SAYS.gold, { leader: heroNamed(), solo, values: { val_1: gold } }) ??
+      `The party obtains ${gold} gold coin${gold === 1 ? '' : 's'}.`
     // The Hero's wounds and magic go on as the battle left them, whether or
     // not they earned; a level's new HP and MP come with it.
     const heroBefore = standing(levels, expOf(leader()), leader().gains).level
@@ -8377,20 +8442,39 @@ function settleBattle(): void {
       if (s.place !== 0) grown.set(s.place, after.maxHp - before.maxHp)
       if (after.level <= before.level) continue
       const named = s.place === 0 ? heroNamed() : s.named
+      // **A level reached** (sub-state 7): line 10, or 22 for more than one,
+      // with `ME_004`, and "Attributes Increased" for them; then 38; then the
+      // skill points, 13.
+      const jumped = after.level - before.level > 1
       lines.push(
-        said(RESULT_SAYS.level, { target: named, values: { val_1: after.level } }) ??
+        (jumped
+          ? said(RESULT_SAYS.levelJump, {
+              target: named,
+              values: { val_1: before.level, val_2: after.level },
+            })
+          : said(RESULT_SAYS.level, { target: named, values: { val_1: after.level } })) ??
           `${named.name} reaches level ${after.level}!`,
       )
-      lines.push(levelGainsText(before, after))
-      // A level's skill points, into the one pool a character has — see
-      // `earnSkillPoints`. The game's own sentence for it is `str_gskl`'s
-      // "<val_1> skill point(s) earned"; ours until that table is wired to
-      // the battle's words.
+      slots.push({
+        window: { kind: 'attributes', rows: attributesOf(before, after) },
+        jingle: LEVEL_JINGLE,
+      })
+      lines.push(
+        said(RESULT_SAYS.improve, { target: named }) ?? `${named.name}'s attributes improve!`,
+      )
+      slots.push({})
+      // A level's skill points, into the one pool a character has — see `earnSkillPoints`.
       const points = earnSkillPoints(s.member, before, after)
       if (points > 0) {
-        lines.push(`${named.name} earns ${points} skill point${points === 1 ? '' : 's'}.`)
+        lines.push(
+          said(RESULT_SAYS.skillPoints, { target: named, values: { val_1: points } }) ??
+            `${named.name} earns ${points} skill point${points === 1 ? '' : 's'}.`,
+        )
+        slots.push({})
       }
     }
+    lines.push(obtained)
+    slots.push({})
     const heroAfter = standing(levels, expOf(leader()), leader().gains).level
     leader().hp = Math.min(heroAfter.maxHp, hero.hp + (heroAfter.maxHp - heroBefore.maxHp))
     // MP spent in the battle stay spent, but a level's new MP come with it.
@@ -8410,6 +8494,7 @@ function settleBattle(): void {
           ? `${chest}\n${holds}`
           : `${monster.name} drops a treasure chest! It contains ${item.name}.`,
       )
+      slots.push({})
     }
   } else if (battle.state.outcome === 'lost') {
     leader().hp = undefined
@@ -8442,6 +8527,7 @@ function settleBattle(): void {
     if (along) along.hp = left >= most ? undefined : left
   }
   battle = { ...withPages(battle, lines), settled: true }
+  resultsQueue = slots.length === lines.length ? slots : lines.map(() => ({}))
 }
 
 /**
@@ -8508,6 +8594,8 @@ function endFight(): void {
   ownSounds = undefined
   fallenShown = new Set()
   leftIn.clear()
+  resultsQueue = []
+  resultsShown = undefined
   lastShown = undefined
   pagesSeen = undefined
   pageLeft = 0

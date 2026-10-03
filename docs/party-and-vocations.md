@@ -1244,9 +1244,12 @@ actually left.
   line is the game's own: 26, "Each party member receives some
   experience!", or 25 naming the one. **INFERRED**: that the counter it
   weighs by counts rounds (`+0x19c` → `+8`, added to at one point of
-  overlay 26's loop), and that a member down is not counted. **Ours**: the
-  numbers said in lines 6–9 (the game shows them in a results window of
-  overlay 17's, not built); a story companion taking no share (the game's
+  overlay 26's loop), and that a member down is not counted. **The amounts
+  are shown as the game shows them** (3 October 2026, `results-window.ts`):
+  in overlay 23's "Experience Earned" window on the bottom screen, never in
+  lines 6–9, which no victory says; a level reached brings its own
+  "Attributes Increased" window, lines 10 or 22, 38 and 13, and `ME_004`.
+  **Ours**: a story companion taking no share (the game's
   party has no fighting guest). **The 1.05 bonus is read** (3 October 2026):
   bit 16 of a worn item's `itembtlprm.nat` flags, which only the elevating
   shoes carry — the wearer's share alone, once. Who counts as down is

@@ -202,6 +202,12 @@ export const RESULT_SAYS = {
    */
   earns: 6,
   level: 10,
+  /** "<TARGET>'s experience level jumps from Lv. <val_1> to Lv. <val_2>!" — more than one. */
+  levelJump: 22,
+  /** "<TARGET>'s attributes improve!" */
+  improve: 38,
+  /** "<val_1> skill point(s) earned." */
+  skillPoints: 13,
   gold: 16,
   /** A monster's drop: "<M_NAME> drops a treasure chest! <TARGET> opens it up." */
   dropsChest: 17,
