@@ -43,8 +43,10 @@ export interface Sharer {
   readonly down: boolean
   /**
    * Whether their share is multiplied by 1.05: `func_0208538c` of their
-   * record — true when something they have equipped carries bit 16 of its
-   * entry's `+0x2f4` word. Which items do is **not read**; nothing sets it yet.
+   * record — true when something worn in one of the battle's eight places
+   * carries bit 16 of its `itembtlprm.nat` record's flags. Only the elevating
+   * shoes do. Theirs alone, and once however many; the sum the shares are
+   * divided by does not include it.
    */
   readonly bonus?: boolean
 }

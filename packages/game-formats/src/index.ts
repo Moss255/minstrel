@@ -85,6 +85,7 @@ export {
 } from './font.ts'
 export { type Grammar, readGrammar } from './grammar.ts'
 export {
+  ITEM_EXPERIENCE_BONUS,
   type ItemBattleParams,
   RESISTANCE_COUNT,
   RESISTANCE_ELEMENTS,

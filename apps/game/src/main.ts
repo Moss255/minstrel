@@ -32,6 +32,7 @@ import {
   facilityFor,
   flagsHold,
   GRANTS_REGARDLESS,
+  ITEM_EXPERIENCE_BONUS,
   inTalkBox,
   type LevelRow,
   type LevelTable,
@@ -8460,7 +8461,17 @@ function sharesOf(
     const fighter = state.fighters[index]
     const row = member && levelsUp(member) ? levelOf(member) : undefined
     if (!member || !fighter || !row) return undefined
-    return { rounds: fighter.rounds ?? 0, level: row.level, down: fighter.hp <= 0 }
+    // Anything worn that carries the experience bonus — the elevating shoes;
+    // see `ITEM_EXPERIENCE_BONUS`. Once, however many.
+    const bonus = [...wornBy(member).values()].some(
+      (id) => ((loaded?.itemFlags.get(id) ?? 0) & ITEM_EXPERIENCE_BONUS) !== 0,
+    )
+    return {
+      rounds: fighter.rounds ?? 0,
+      level: row.level,
+      down: fighter.hp <= 0,
+      ...(bonus ? { bonus } : {}),
+    }
   })
   const shares = experienceShares(total, places, loaded?.experienceBands ?? [])
   return fighting.flatMap(({ member, place }, i) =>

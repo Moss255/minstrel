@@ -3101,14 +3101,14 @@ was the same packing as the monster list's, misread.
 # What equipment does in a battle — `itembtlprm.nat`
 
 Read 22 September 2026, from the game. `/data/prm/itembtlprm.nat` is **1,423
-records of 44 bytes** behind a `u32` count — its low 20 bits, as
-`func_0209a088` masks them — in order of the item they belong to, which is how
+records of 44 bytes** behind a `u32` count — its low 12 bits, as
+`func_0209a088` masks them (`0x0209a0b0`; corrected 3 October 2026 from 20) — in order of the item they belong to, which is how
 the game finds one (a binary search, `func_0209a004`, on the id at `+0x28`).
 `readItemBattleParams` reads it.
 
 | offset | type | reading | evidence |
 |---|---|---|---|
-| `+0x00` | `u32` | flags, one bit to an accessor; not read | the game tests bits of it one at a time |
+| `+0x00` | `u32` | flags, one bit to an accessor. **Bit 16: the wearer's share of a battle's experience ×1.05**, theirs alone and once however many — read 3 October 2026; the only record carrying it is 17189, the elevating shoes. The other bits are not read | `func_0208538c` tests bit 16 of each of the eight worn places' copied records (place pairs at `0x020e8b6c`); the share multiplies by `1.05f` at ov023 `0x021f43a0` |
 | `+0x08` | 10 bytes | not established | 1,178 of the 1,423 carry something |
 | `+0x14` | `i8` ×20 | **what it adds to a resistance**, one an element — elements 1 to 7 and 9 to 21, never 8 or 22 | the game's own loop (`func_02083e28`), which writes the eighth byte to the ninth element's place |
 | `+0x28` | `i16` | the item's id | strictly ascending across all 1,423, from 994 to 22,290 |

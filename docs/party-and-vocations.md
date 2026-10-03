@@ -1242,8 +1242,11 @@ actually left.
   overlay 26's loop), and that a member down is not counted. **Ours**: the
   numbers said in lines 6–9 (the game shows them in a results window of
   overlay 17's, not built); a story companion taking no share (the game's
-  party has no fighting guest); and the 1.05 bonus is carried but never set,
-  because which items carry its flag (`func_0208538c`) is not read.
+  party has no fighting guest). **The 1.05 bonus is read** (3 October 2026):
+  bit 16 of a worn item's `itembtlprm.nat` flags, which only the elevating
+  shoes carry — the wearer's share alone, once. Who counts as down is
+  `func_02061bd8`, the low nibble of the record's `+0x56b`, whose values are
+  still INFERRED.
 
 ### The menu shows the party
 

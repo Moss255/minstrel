@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
-import { RESISTANCE_ELEMENTS, readItemBattleParams, wornResistances } from '../src/itembattle.ts'
+import {
+  ITEM_EXPERIENCE_BONUS,
+  RESISTANCE_ELEMENTS,
+  readItemBattleParams,
+  wornResistances,
+} from '../src/itembattle.ts'
 
 /** Built in code, from FORMAT.md: a count word, then 44-byte records. */
-function build(items: { id: number; resistances?: readonly number[] }[]): Uint8Array {
+function build(
+  items: { id: number; resistances?: readonly number[]; flags?: number }[],
+): Uint8Array {
   const out = new Uint8Array(4 + items.length * 0x2c)
   const view = new DataView(out.buffer)
   view.setUint32(0, items.length, true)
@@ -11,6 +18,7 @@ function build(items: { id: number; resistances?: readonly number[] }[]): Uint8A
     const at = 4 + r * 0x2c
     for (const [i, value] of (item.resistances ?? []).entries()) view.setInt8(at + 0x14 + i, value)
     view.setInt16(at + 0x28, item.id, true)
+    view.setUint32(at, item.flags ?? 0, true)
     // A neighbour either side, which must not leak into the twenty.
     out[at + 0x13] = 0x7f
   }
@@ -29,6 +37,20 @@ describe('what a worn thing does in a battle', () => {
     expect(second?.id).toBe(20004)
     expect(second?.resistances.every((value) => value === 0)).toBe(true)
     expect(first?.raw).toHaveLength(0x2c)
+  })
+
+  it('reads each record’s flags, the experience bonus among them', () => {
+    const [shoes, sandals] = readItemBattleParams(
+      build([{ id: 17189, flags: ITEM_EXPERIENCE_BONUS | 1 }, { id: 17406 }]),
+    )
+    expect((shoes?.flags ?? 0) & ITEM_EXPERIENCE_BONUS).toBe(ITEM_EXPERIENCE_BONUS)
+    expect(sandals?.flags).toBe(0)
+  })
+
+  it('takes the count from the head’s low twelve bits, as the game masks it', () => {
+    const bytes = build([{ id: 1 }])
+    new DataView(bytes.buffer).setUint32(0, 0x7000 | 1, true)
+    expect(readItemBattleParams(bytes)).toHaveLength(1)
   })
 
   it('refuses a head cut short, and records that run past the end', () => {
