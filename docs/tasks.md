@@ -1,13 +1,14 @@
-# Tasks — reading the game's code
+# Tasks — find it in the game, then build it
 
 Written 3 October 2026, with Phase 2 closed and the story walk reaching 19.2
-(the credits' stage) in one go. Every task here is **assembly work**: reading
-the game's own functions in the decomp and either translating them or writing
-down exactly what they do. Each is meant to be taken whole by one session:
-*"take task N from `docs/tasks.md`"*.
-
-Work that needs no assembly — building windows from a finished reading,
-lint, keeping docs current — is left out on purpose and is done separately.
+(the credits' stage) in one go. **Every task is the same job: find where the
+game does the thing — its code in the decomp, the files and the text it
+reads — and then implement it in the engine as the game does it**, reached
+the way the game reaches it. Each is meant to be taken whole by one session:
+*"take task N from `docs/tasks.md`"*. Alltrades Abbey (3 October) is the
+worked example: `<DAMA>` found on Jack's line, overlay 3's service 46 read,
+then built — `abbey.ts`, and `docs/party-and-vocations.md`, "The Abbey's
+own flow".
 
 ## How to take one
 
@@ -29,15 +30,23 @@ lint, keeping docs current — is left out on purpose and is done separately.
 - **Where findings go**: a file format's in that package's `FORMAT.md`; a
   function's in `docs/binaries.md`; every function read, logged under "Read
   since" in `docs/decomp-contributions.md`.
-- **Two kinds of result**, and each task says which it wants:
-  - **Translate**: the function *is* the behaviour, such as a formula, a
-    generator or an opcode. Port it into the engine, cite it, and hold it to
-    golden tests. Fixtures are synthetic; the cartridge is used only in tests
-    gated on `MINSTREL_TEST_ROM`.
-  - **Read**: write the recipe someone can build from without opening the
-    assembly again — what it reads, what it writes, in what order, with
-    which numbers — and mark every step read or INFERRED. A report like that
-    is a finished task even if nothing is built from it yet.
+- **Find, then build.** Each task's "done when" names what has to be found;
+  the task is finished when that is **built and working in the game**, not
+  when it is written down. Two shapes, which each heading says:
+  - **Translate**: the function *is* the behaviour — a formula, a generator,
+    an opcode. Port it, cite it, and hold it to golden tests.
+  - **Find and build**: a feature — a service, a window, a rule. Write down
+    what was found (where above), then build it: its own screens and lines in
+    the game's words, from the game's files, reached as the game reaches it —
+    by the tag, the button or the place, never a menu command of ours.
+  Fixtures are synthetic; the cartridge is used only in tests gated on
+  `MINSTREL_TEST_ROM`. Look at it running (`tools/shot`) before calling it
+  done.
+- **Where something cannot be found**, build what was found and stand the
+  rest in with something marked **ours** in the code, in `docs/still-open.md`
+  §2, and in the commit — never a guess passed off as the game's. If a
+  missing piece would make the feature wrong rather than incomplete, stop
+  there and say so instead.
 - Done means the full gate: `pnpm typecheck`, the tests with
   `MINSTREL_TEST_ROM=$PWD/rom/dq9-europe.nds`, and lint on what you touched.
   Commits carry no co-author, session or "Generated with" lines.
@@ -78,14 +87,14 @@ a finished one looks like.
 
 ---
 
-## 1. The Story So Far — read
+## 1. The Story So Far — find and build
 
 A button that "summarises the latest goal" (p. 7). Not built.
 
 **Done when** what it shows is read: which message, chosen by what (the
 stage, the live thread, a flag), and from which file.
 
-## 2. Heal All — read
+## 2. Heal All — find and build
 
 The Misc. menu's Heal All heals the party with its own spells (p. 11). Not
 built. **Done when** its rule is read: who casts, which spell, in what order,
@@ -108,7 +117,7 @@ and `838`).
 **Done when** each is answered, its reading cited, and the test's expected
 list is empty.
 
-## 4. Recipe books — read
+## 4. Recipe books — find and build
 
 "Almost all of these are found in bookcases… once read, the Krak Pot keeps
 track" (p. 24); the first is in Stornway's inn (p. 68). The pot lists all 470
@@ -118,7 +127,7 @@ bookcase.
 **Done when** where the known recipes are kept, how a book maps to its
 recipes, and how a bookcase is examined are read, with a recipe for both.
 
-## 5. The Quester's Rest counter and the bank — read, then wire the tags
+## 5. The Quester's Rest counter and the bank — find and build
 
 - **The counter**, `<RIKKA>` (code 6) and `<RIKKAFIRST>` (12): Stay, and
   **Rest until evening** (p. 68). Canvass and the Guestbook are tag mode, so
@@ -135,7 +144,7 @@ prices, what is saved), and `<RIKKA>`, `<RIKKAFIRST>` and `<BANK>` are in
 `talk.ts`'s `BARE_SERVICES`, each opening its flow — the change to the tag
 reading is small, and its pattern is `<DAMA>`'s.
 
-## 6. The church and the inn — read
+## 6. The church and the inn — find and build
 
 - **The church's other services**: resurrect, cure poison, lift a curse —
   "costs climb as heroes increase in level" (p. 23). Ours offers Confess and
@@ -158,7 +167,7 @@ reading is small, and its pattern is `<DAMA>`'s.
 formula, the lines — and the stand-ins in `services.ts` are named for
 replacement. A curse is not modelled at all; say what the game keeps for one.
 
-## 7. The game's clock — read
+## 7. The game's clock — find and build
 
 Night falls only at stage 2.2 here (`daytime.ts`, a choice made for the
 slice from the let's play), so **there is no evening to rest until** at any
@@ -172,7 +181,7 @@ Rest, `str_rki`/`str_rkm`, task 5 — people met at night (p. 150, "talk to Nich
 how fast, what the inn sets it to — with a recipe to replace `daytime.ts`'s
 stand-in. Whatever only footage can settle goes to `docs/still-open.md` §1b.
 
-## 8. The battle's other commands — read
+## 8. The battle's other commands — find and build
 
 Examine, Equipment and Line-Up do nothing (`battle-commands.ts`), and the
 coup de grâce is never ready (p. 13; `docs/still-open.md` §2, "the command
@@ -183,7 +192,7 @@ what Line-Up changes and whether the order affects targeting, and **how a
 coup de grâce becomes ready** and what each vocation's does. Equipment is
 mostly the field's equip screen in battle; say only where it differs.
 
-## 9. Party tricks, performed — read
+## 9. Party tricks, performed — find and build
 
 Assigning tricks (Misc. → Assign Party Tricks), holding B with a direction,
 and the map's kind-19 reactions (Gleeba's Drak answering a Clap) are built.
@@ -208,11 +217,11 @@ and the map's kind-19 reactions (Gleeba's Drak answering a Clap) are built.
   trick's number, and whether the gesture drives the same rig as the
   player's motions (`packMotions`, `packages/actor`).
 
-**Done when** the recipe is written. Playing the gesture is then the chest's
+**Done when** it is built. Playing the gesture is then the chest's
 pattern (`chestOpeningPose`): a pose over the Hero's, timed by its frames,
 with what follows at its end.
 
-## 10. Single questions — read
+## 10. Single questions — find and build
 
 Each is short alone; take them as a batch, in any order.
 
@@ -245,8 +254,9 @@ Each is short alone; take them as a batch, in any order.
   `results-window.ts`'s readings).
 
 **Done when** each is answered with addresses or recorded as not found, with
-where the search stopped. Where an answer changes what the engine does,
-apply it if it is small; otherwise leave the recipe.
+where the search stopped, and **every answer that changes what the engine
+does is applied** — the preset's face, the hair's ramp, the sound ids, the
+victory's lines.
 
 ## 11. The ending: opcode `0x1e` and the staff roll — translate
 
@@ -263,7 +273,7 @@ interpreter it was read from (`docs/event-scripts.md`); then the overlay that
 order and speed are read rather than set by eye, so `ev29300` plays to the
 end of the roll. Whatever cannot be read becomes a line for a video.
 
-## 12. Travel — read
+## 12. Travel — find and build
 
 A play-through needs these to get around once the world opens up past
 Stornway, and every one is a stand-in today (`docs/still-open.md` §2):
@@ -277,13 +287,14 @@ Stornway, and every one is a stand-in today (`docs/still-open.md` §2):
   church is ours.
 
 The places reached are save data, which is why this comes before more
-content. Write the recipe; building the windows from it is a separate step.
+content. Find the lists and the rules, then build them: Zoom from the
+spell, the wing from the bag, each in the game's own window.
 
 **Done when** each of the four has a recipe with its addresses, and any file
 or table it reads is described in `FORMAT.md` with a check against the
 cartridge.
 
-## 13. Gathering spots and treasure that comes back — read
+## 13. Gathering spots and treasure that comes back — find and build
 
 Ingredients lie on the ground and come back (pp. 22, 24); blue chests, pots
 and barrels refill, red ones never do (p. 23). Here, opened treasure is
@@ -293,7 +304,7 @@ remembered for ever (`treasure.ts`), and nothing places a gathering spot.
 it holds, how it is chosen) and the refill rule (what counts the time, and
 how a blue container is told from a red) are read.
 
-## 14. Battle Records and accolades — read
+## 14. Battle Records and accolades — find and build
 
 Stella's Battle Records (pp. 8–10), from when she joins (~p. 64): a summary,
 the monsters defeated, the items found, the wardrobe, **accolades** (titles,
@@ -305,7 +316,7 @@ and accolades have no reader. The Abbey's revocation titles are accolades too
 accolades' table is read and parsed into `game-formats` with a `FORMAT.md`
 entry, and what awards each accolade is read or listed as not found.
 
-## 15. The battle's presentation — read
+## 15. The battle's presentation — find and build
 
 The battle looks right in outline, but much of how it is staged is ours. From
 `docs/still-open.md` §2, the rows "the battle stage" and "the command phase",
@@ -326,10 +337,10 @@ each of these is wanted as a reading:
   10-frame music fade.
 
 **Done when** each is read with addresses or written down as not found and
-where the search stopped. Building any of them is optional; the readings are
-the deliverable.
+where the search stopped — and **what was found is put into the battle**,
+in place of the stand-in `docs/still-open.md` §2 lists for it.
 
-## 16. Getting around: ladders and vines, keys, the ferry, the ship — read
+## 16. Getting around: ladders and vines, keys, the ferry, the ship — find and build
 
 - **Climbing** (p. 5; dungeons from ~p. 108): nothing handles a ladder or a
   vine. Is it collision, an object, or a map flag?
@@ -410,8 +421,10 @@ package of its own.
 **Done when** a grotto's seed gives a floor layout by the game's own
 generator, with golden tests, and the `.bpos` grid's codes are read for what
 the generator uses them for. Where the seed comes from — a grotto map's name
-and its numbers — is part of the task if the code shows it. Drawing a floor
-can wait.
+and its numbers — is part of the task if the code shows it. **Then the
+floor is built from it**: the pieces the generator places, put together into
+a floor the Hero can walk. If those pieces need finding of their own, finish
+the generator, say so, and leave the floor as the next step in this file.
 
 ## Not assembly work — screens over what is already read
 
