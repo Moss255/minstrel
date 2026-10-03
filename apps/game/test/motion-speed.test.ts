@@ -44,6 +44,13 @@ describe('how fast a motion plays', () => {
     // A motion no record names goes at the engine's old 30 a second.
     expect(frameAt(1000, undefined, 60, false)).toBeCloseTo(1000 * (UNNAMED_SPEED / MOTION_MS))
   })
+
+  it('gives a frame for a time without end — a fallen fighter lying at the end of `death`', () => {
+    expect(frameAt(Number.POSITIVE_INFINITY, 0.25, 19, false)).toBe(18)
+    // Going round, there is no end to be at: it starts again rather than give NaN.
+    expect(frameAt(Number.POSITIVE_INFINITY, 0.25, 19, true)).toBe(0)
+    expect(frameAt(Number.NaN, 0.25, 19, true)).toBe(0)
+  })
 })
 
 const romPath = process.env.MINSTREL_TEST_ROM

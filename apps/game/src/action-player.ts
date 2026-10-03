@@ -66,6 +66,8 @@ export interface StageFighter {
   /** The motion it is playing as the action begins, and how far in, ms. */
   readonly motion: string
   readonly motionAt: number
+  /** Its flags — see {@link FighterShow.motionFlags}; 0, going round, unless given. */
+  readonly motionFlags?: number
   /** How fast it turns, radians a tick — `+0xb0`: 0x324 unless a big monster's slower. */
   readonly turnRate: number
   /** A motion it is changing from as the action begins — see {@link Blend}. */
@@ -354,7 +356,7 @@ export function startAction(
       grid: f.grid,
       row: f.row,
       motion: f.motion,
-      motionFlags: 0,
+      motionFlags: f.motionFlags ?? 0,
       motionAt: f.motionAt,
       blend: f.blend ? { ...f.blend } : undefined,
       alpha: 31,

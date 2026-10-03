@@ -6,6 +6,7 @@ import {
   EFFECT_BASE,
   effectFileOf,
   MONSTER_BASE,
+  normalized,
   PASS_MS,
   type StageFighter,
   startAction,
@@ -222,5 +223,30 @@ describe('a change of motion, blended as the game blends it', () => {
     )
     run.pass(PASS_MS)
     expect(run.fighters.get(0)).toMatchObject({ motion: 'attack1a', blend: undefined })
+  })
+})
+
+describe('a fighter fallen before the action', () => {
+  it('lies at the end of `death`, held, rather than going round it', () => {
+    const [hero, slime] = stage(6) as [StageFighter, StageFighter]
+    const run = startAction(
+      [{ tag: 8, ms: 100 }] as ActionCommand[],
+      CONTEXT,
+      [
+        {
+          ...hero,
+          alive: false,
+          motion: 'death',
+          motionAt: Number.POSITIVE_INFINITY,
+          motionFlags: 1,
+        },
+        slime,
+      ],
+      TIMINGS,
+    )
+    run.pass(PASS_MS)
+    const lying = run.fighters.get(0)
+    expect(lying?.motionFlags).toBe(1)
+    expect(normalized(lying as never, 1000)).toBe(1)
   })
 })

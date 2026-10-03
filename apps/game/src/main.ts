@@ -7548,6 +7548,9 @@ function startShown(): void {
         visible: true,
         motion: fallen ? 'death' : 'stand',
         motionAt: fallen ? Number.POSITIVE_INFINITY : 0,
+        // `death` is played once and held (`func_02033ba0`'s flag 1), so it
+        // lies at its end; going round, its end would be no frame at all.
+        motionFlags: fallen ? 1 : 0,
         ...blendIntoIdle(object, fallen),
         // `+0xb0`: 0x324 a tick, slower for a big monster (`0x021666e8`).
         turnRate: turnRateOf(stage.radii[i] ?? 0) / 4096,

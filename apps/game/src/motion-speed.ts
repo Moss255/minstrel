@@ -54,7 +54,10 @@ export function frameAt(
 ): number {
   const span = Math.max(0, frames - 1)
   const at = (Math.max(0, ms) / MOTION_MS) * (speed ?? UNNAMED_SPEED)
-  if (span === 0) return 0
+  if (span === 0 || Number.isNaN(at)) return 0
+  // Held at its end, a motion's time may be without end; going round, that is
+  // no frame, so it starts again.
+  if (!Number.isFinite(at)) return loops ? 0 : span
   return loops ? at % span : Math.min(at, span)
 }
 
