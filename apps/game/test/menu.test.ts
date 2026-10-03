@@ -315,6 +315,10 @@ describe('the main menu', () => {
       'Assign Party Tricks',
       // And the Quest List, `str_tm` 4007, also the Misc. menu's.
       'Quest List',
+      // **Ours**, and last: the controls panel `k` opens — the keys, the pad
+      // and the text speed — which nothing on screen pointed to once the
+      // hint line went behind the debug screen.
+      'Controls & Settings',
       // **And that is the whole list.** The Krak Pot and character creation
       // were here and should not have been: the pot is spoken to and
       // creation is its own scene. See `UNLISTED_PANELS` in `menu.ts`.

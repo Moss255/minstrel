@@ -46,6 +46,7 @@ import type { SkillTreeView } from './skills.ts'
 
 export type MenuCommand =
   | 'talk'
+  | 'controls'
   | 'status'
   | 'items'
   | 'equip'
@@ -131,6 +132,9 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
   { id: 'tricks', label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
   { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
+  // **Ours**: the keys, the pad and the text speed — `controls-panel.ts`, which
+  // `k` also opens. The game's own Misc. menu has its settings; this is not it.
+  { id: 'controls', label: 'Controls & Settings' },
 ]
 
 /**
@@ -630,6 +634,8 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
 export interface Taken {
   readonly state: MenuState | undefined
   readonly talk: boolean
+  /** Open the controls panel — see `MENU_COMMANDS`' last entry. */
+  readonly controls?: boolean
   /** Put this in the slot — undefined to take off what is there. */
   readonly equip?: { readonly slot: Slot; readonly item: number | undefined }
   /** Use this item, from where it is. */
@@ -831,6 +837,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
   const command = MENU_COMMANDS[state.cursor]?.id
   if (command === undefined) return { state, talk: false }
   if (command === 'talk') return { state: undefined, talk: true }
+  if (command === 'controls') return { state: undefined, talk: false, controls: true }
   return {
     state: {
       ...state,
@@ -1276,6 +1283,7 @@ export function panelLines(
       ]
     }
     case 'talk':
+    case 'controls':
       return []
   }
 }

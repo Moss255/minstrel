@@ -11035,6 +11035,14 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         event.preventDefault()
         return handled
       }
+      if (taken.controls) {
+        showMenu()
+        self?.held.clear()
+        turning.clear()
+        controlsPanel.show()
+        event.preventDefault()
+        return handled
+      }
     } else if (action === 'cancel' || action === 'menu') menu = back(menu)
     showMenu()
     event.preventDefault()
