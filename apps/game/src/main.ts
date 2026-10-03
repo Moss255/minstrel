@@ -106,6 +106,7 @@ import {
   BattleRng,
   type BattleState,
   blockChance,
+  type Clock,
   type CollisionWorld,
   type Command,
   calmFor,
@@ -122,18 +123,23 @@ import {
   headingAngle,
   howItOpens,
   monsterHp,
+  newClock,
   type OpenGround,
   type Opening,
   PERSON,
   type PlacedMesh,
+  phaseOf,
   type Roamer,
   type RoamerKind,
   type Roaming,
   type RoamRules,
   resetFollower,
   type Sharer,
+  STAY_TICKS,
+  setPhase,
   spoils,
   startRoaming,
+  tickClock,
   tickRoaming,
 } from '@minstrel/sim'
 import {
@@ -313,7 +319,7 @@ import {
 } from './companion.ts'
 import { type Action, actionOfKey, MOVE_TOKENS, pressedActions } from './controls.ts'
 import { ControlsPanel, turnHint, walkHint } from './controls-panel.ts'
-import { lightingFor, TINTS, type TimeOfDay, timeOfDay, ZONE_KIND_BY_TIME } from './daytime.ts'
+import { lightingFor, TINTS, type TimeOfDay, timeOfPhase, ZONE_KIND_BY_TIME } from './daytime.ts'
 import { doorGate, doorTaken } from './doors.ts'
 import { type EquipScreens, makeEquipScreens, PORTRAIT, readEquipPieces } from './equip-screen.ts'
 import {
@@ -334,7 +340,6 @@ import {
   type EventStage,
   OPACITY_WHOLE,
   sceneMotion,
-  TIME_OF_DAY,
 } from './event.ts'
 import {
   conductorLine,
@@ -2101,6 +2106,11 @@ function restore(game: SaveGame): void {
   liveThread = game.thread
   medalsGiven = game.medalsGiven ?? 0
   storySoFar = game.storySoFar ?? STORY_START
+  // The day's clock, as saved; its running is not saved (INFERRED, as the
+  // game's), so it runs on loading. A save from before it was kept is at the
+  // day's start.
+  clock.ticks = game.clock ?? STAY_TICKS
+  clock.running = true
   recipesKnown.clear()
   for (const [recipe, bits] of game.recipes ?? []) recipesKnown.set(recipe, bits)
   // **A save from before recipes were kept** knew every recipe here. Read as
@@ -2165,6 +2175,7 @@ function confess(): string {
     ...(medalsGiven > 0 ? { medalsGiven } : {}),
     ...(storySoFar !== STORY_START ? { storySoFar } : {}),
     recipes: [...recipesKnown],
+    clock: clock.ticks,
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
     gold: bag.gold,
@@ -3681,22 +3692,14 @@ function person() {
 }
 /** Which of the map's lightings to build: the time of day's — see `keepTime` — or `?lighting=night`'s. */
 let wantedLighting: 'day' | 'night' = params.get('lighting') === 'night' ? 'night' : 'day'
-/** Seconds spent in the field, which at 2.2 bring the evening and the night — see `daytime.ts`. */
-let fieldSeconds = 0
+/** **The day's clock** — see `Clock` in the sim. Saved; a new game's is the day's start, running. */
+const clock: Clock = newClock()
+/** The milliseconds not yet a tick of the clock. */
+let clockCarry = 0
 /** The time of day as last shown, to notice it turning. */
 let shownTime: TimeOfDay | undefined
 /** The colour the view is multiplied by — see `TINTS`. */
 const tintEl = document.querySelector<HTMLDivElement>('#tint')
-
-/**
- * This engine's three times of day as the game's own four phases — see
- * `TIME_OF_DAY`. There is no morning here; the day's stretch covers it.
- */
-const GAME_PHASE: Record<TimeOfDay, number> = {
-  day: TIME_OF_DAY.day,
-  evening: TIME_OF_DAY.evening,
-  night: TIME_OF_DAY.night,
-}
 
 /** The scene's light scale as last shown, so the tint is only rewritten when it moves. */
 let shownScale = 1
@@ -3719,20 +3722,6 @@ function showTint(time: TimeOfDay): void {
 }
 
 /**
- * The time a scene last set with `808` — `GameState::SetTimeOfDay` in the
- * decomp — as this engine's three: the game's morning is our day. It holds
- * until a scene sets another. Not saved yet — ours.
- */
-let sceneTime: TimeOfDay | undefined
-
-/** One of the game's four phases as this engine's three — see `GAME_PHASE`. */
-function fromGamePhase(phase: number): TimeOfDay {
-  if (phase === TIME_OF_DAY.night) return 'night'
-  if (phase === TIME_OF_DAY.evening) return 'evening'
-  return 'day'
-}
-
-/**
  * The time of day now: `?time=evening` forces one, `?lighting=night` the
  * night; else what a scene last set, else the story's.
  */
@@ -3740,8 +3729,7 @@ function timeNow(): TimeOfDay {
   const forced = params.get('time')
   if (forced === 'day' || forced === 'evening' || forced === 'night') return forced
   if (params.get('lighting') === 'night') return 'night'
-  if (sceneTime) return sceneTime
-  return timeOfDay(storyStage, fieldSeconds)
+  return timeOfPhase(phaseOf(clock.ticks))
 }
 
 /**
@@ -3754,16 +3742,21 @@ function timeNow(): TimeOfDay {
 function keepTime(elapsedMs: number): void {
   const here = loaded
   if (!here || !self) return
-  if (here.fieldZones.length > 0 && !playing && !battle && !menu && !visit && !talking) {
-    fieldSeconds += elapsedMs / 1000
+  // **The clock runs on a field, the ocean or the sky** — a second a second,
+  // whatever else is going on there (INFERRED: the game has no gate for
+  // menus, talk, scenes or battles) — and nowhere else. See `Clock`.
+  clockCarry = Math.min(clockCarry + elapsedMs, 250)
+  while (clockCarry >= 1000 / 60) {
+    tickClock(clock, here.mapKind)
+    clockCarry -= 1000 / 60
   }
-  // **A scene's `808` sets the time**, and it stays set when the scene ends.
-  // It was kept on the scene and never read back, so a scene that made it
-  // night left the world as it was.
-  const setByScene = playing?.player.stage.timeOfDay
-  if (setByScene !== undefined && setByScene !== GAME_PHASE[timeNow()]) {
-    const wanted = fromGamePhase(setByScene)
-    if (wanted !== timeNow()) sceneTime = wanted
+  // **What a scene asked of the clock** — `808`'s phase, `579`'s running —
+  // applied once, and it stays when the scene ends.
+  const asked = playing?.player.stage.clockAsked
+  if (asked && (asked.phase !== undefined || asked.running !== undefined)) {
+    if (asked.phase !== undefined) setPhase(clock, asked.phase)
+    if (asked.running !== undefined) clock.running = asked.running
+    if (playing) playing.player.stage.clockAsked = {}
   }
   const time = timeNow()
   // A scene's own light scale changes every frame while it fades, so the tint
@@ -3815,7 +3808,7 @@ Object.defineProperty(window, 'minstrelWorn', {
 })
 // For a headless check: the time of day, readable from the page.
 Object.defineProperty(window, 'minstrelTime', {
-  get: () => ({ time: timeNow(), fieldSeconds, lighting: wantedLighting }),
+  get: () => ({ time: timeNow(), clock: { ...clock }, lighting: wantedLighting }),
 })
 // For a headless check: the camera, to pull back and look round from a script.
 Object.defineProperty(window, 'minstrelCamera', { get: () => camera })
@@ -9407,7 +9400,7 @@ function startEvent(number: number, afterTalk = false): boolean {
   // own four phases, night 0, morning 1, day 2, evening 3. This engine has
   // three times of day, so they map onto three of the four — there is no
   // morning here, and the day's stretch covers it.
-  playing.player.stage.timeOfDay = GAME_PHASE[timeNow()]
+  playing.player.stage.timeOfDay = phaseOf(clock.ticks)
   // **Say it where it happens.** An engine function the host has not got is
   // answered with 0 so the scene goes on, which is the right thing to do and
   // the wrong thing to be quiet about: a scene half-plays and nothing says
@@ -9457,7 +9450,6 @@ function playScene(wanted: SceneConditions): void {
   // The scene's own map, which it enters next if it is elsewhere, takes the story as set.
   liveThread = wanted.map === loaded.mapId ? threadOf(loaded.mapId) : undefined
   castLeft.clear()
-  sceneTime = undefined
   const code = loaded.mapCodeOf(wanted.map)
   if (code && !enter(code)) return
   if (!code) status(`map ${wanted.map} has no code — playing where you are`)
@@ -9868,6 +9860,17 @@ function storyFromRecord(outcome: EventOutcome): void {
   )
   storyStage = story.stage
   storyStep = story.step
+  // **The day's clock**, as a record sets it (`func_02061c04`): `110 : p`
+  // puts it at phase p's start; `177 : a, v` starts it when a is 0 or stops
+  // it, and puts it at phase v. See `Clock`.
+  for (const action of outcome.actions ?? []) {
+    if (action.op === 110) setPhase(clock, action.arg)
+    else if (action.op === 177) {
+      clock.running = action.arg === 0
+      const phase = ((action.params?.[0] ?? -1) >>> 16) & 0xffff
+      setPhase(clock, phase)
+    }
+  }
   // The Story So Far's number, which `197 : n` sets — see `story-so-far.ts`.
   storySoFar = storySoFarAfter(outcome.actions, storySoFar)
   // A recipe taught, `161 : r` — see `learnRecipe`.
@@ -11231,7 +11234,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       visit = outcome.visit
       // A night at the inn restores the Hero whole, and the morning comes.
       if (outcome.rested) {
-        fieldSeconds = 0
+        // The night's stay wakes at the day's start — see `Clock`.
+        clock.ticks = STAY_TICKS
         // The whole party rests, not only the Hero.
         for (const member of members) {
           member.hp = undefined

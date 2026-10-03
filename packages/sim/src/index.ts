@@ -69,6 +69,21 @@ export {
   step,
 } from './character.ts'
 export {
+  CLOCK_MAP_KINDS,
+  type Clock,
+  DAY_TICKS,
+  isNight,
+  newClock,
+  PHASE,
+  PHASE_START,
+  type Phase,
+  phaseOf,
+  REST_TICKS,
+  STAY_TICKS,
+  setPhase,
+  tickClock,
+} from './clock.ts'
+export {
   type CollisionWorld,
   createCollisionWorld,
   type GroundHit,

@@ -740,6 +740,12 @@ export class EventStage {
   lightingOverride = 0
   /** Whether the day clock runs — see `579`, whose number means the opposite. */
   dayClockRunning = true
+  /**
+   * What a scene asked of the day's clock — `808`'s phase and `579`'s
+   * running — for whoever keeps the clock to apply and clear. See `Clock` in
+   * the sim.
+   */
+  clockAsked: { phase?: number; running?: boolean } = {}
   /** `559`'s byte. **Nothing in the cartridge reads it**; it is kept so as to say so. */
   unreadByte_0x490 = 0
   /** Which buttons are held, as the DS numbers them — what `0` counts. */
@@ -1657,6 +1663,7 @@ export class EventStage {
       // which gives up at once while it is clear.
       case 579:
         this.dayClockRunning = num(args[0]) === 0
+        this.clockAsked = { ...this.clockAsked, running: this.dayClockRunning }
         return 1
       // **How big a character is to everything else**, `226` and `227` — read
       // from overlay 1, and the exact shape of `219` and `220` over another
@@ -1993,7 +2000,10 @@ export class EventStage {
       // table short — that is the game's, and this refuses it instead.
       case 808: {
         const to = num(args[0])
-        if (to >= 0 && to < 4) this.timeOfDay = to
+        if (to >= 0 && to < 4) {
+          this.timeOfDay = to
+          this.clockAsked = { ...this.clockAsked, phase: to }
+        }
         return 1
       }
       // **A third kind of camera shake**, `803` — read from overlay 1, and not

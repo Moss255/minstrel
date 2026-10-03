@@ -121,6 +121,14 @@ export interface MapEntry {
    */
   readonly indoors: boolean
   /**
+   * **The map's kind**, value 3 — which the game keeps as the low nibble of
+   * its map record's `+0xC` (`func_020995f8`). Read 4 October 2026: **the
+   * day's clock runs only where it is 0, a field, or 7, the ocean and the
+   * sky**; towns, dungeons, the Quester's Rest and battles stop it. The other
+   * values' meanings are not established.
+   */
+  readonly kind: number
+  /**
    * The track that plays here: an index into `bgm.sdat`'s sequences — Angel
    * Falls and its houses 5, its church 10, the region round it 14, the
    * Hexagon 19, the battle stages 23 and the boss stages 24. INFERRED; see
@@ -201,6 +209,7 @@ export function readMapList(data: Uint8Array): MapList {
       unknown_13: at(SLOT_UNKNOWN_13, record),
       unknown_2: at(SLOT_UNKNOWN_2, record),
       indoors: record.values[SLOT_SPACE] === SPACE_INDOORS,
+      kind: record.values[3] ?? 0,
       music: record.values[SLOT_MUSIC] ?? 0,
       world:
         record.kinds[SLOT_WORLD_X] === 1 && record.kinds[SLOT_WORLD_Z] === 1

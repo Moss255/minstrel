@@ -212,6 +212,8 @@ export interface SaveGame {
    * `main.ts` for how one of those is read.
    */
   readonly recipes?: readonly (readonly [number, number])[]
+  /** The day's clock, in ticks — see `Clock` in the sim. Absent from saves made before it was kept. */
+  readonly clock?: number
 }
 
 export class SaveError extends Error {
@@ -342,6 +344,9 @@ export function decodeSave(text: string): SaveGame {
       !s.recipes.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every(isCount)))
   ) {
     throw new SaveError('the save has a recipe list that does not read')
+  }
+  if (s.clock !== undefined && !isCount(s.clock)) {
+    throw new SaveError('the save has a clock that does not read')
   }
   if (s.storySoFar !== undefined && !isCount(s.storySoFar)) {
     throw new SaveError('the save has a story-so-far number that does not read')

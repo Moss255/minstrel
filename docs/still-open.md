@@ -133,6 +133,14 @@ confirm a find, and what to do if the binaries do not give it up.
   price is not established.
 - **The Hero's starting purse.** 180 gold — seen in a let's play, not read.
 
+**The day's clock — for footage** (read 4 October 2026; `Clock` in the sim):
+whether the clock runs through battles and menus on a field (the code has no
+gate: the 2.2 field time to dusk should be 210 s counting them); the let's
+play's first step onto `F01` at 2.2, predicted about 70 s before 33:00; that
+the field time between the morning resets at 2.3 and 2.4 stays under 210 s;
+that the inn's Rest wakes at nightfall, not dusk; bodkin archers roaming by day
+in their own part of `F01`; Angel Falls' night tune.
+
 ### 1c. The story's last stretch, quests and the Express — to check in the emulator
 
 Added 29 September 2026. Each was read as far as the code goes and built on a

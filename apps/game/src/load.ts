@@ -380,6 +380,8 @@ export interface Loaded {
    * `@minstrel/game-formats`. In the file's own units, as a trigger's are.
    */
   readonly mapAreas: readonly StoryArea[]
+  /** The map's kind in the map list — see `MapEntry.kind`; the day's clock runs only on 0 and 7. */
+  readonly mapKind: number | undefined
   /** The map's bookcases, from its link table — see `mapBookcases`. */
   readonly bookcases: readonly Bookcase[]
   /** What the shelves of maps with this map's first letter hold — `htana<L>`, see `readBookshelves`. */
@@ -2861,6 +2863,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
       messagesBy(readTableMessages(bytes, STRING_TABLE_TAG)),
     ),
     region: regionHead(entry?.region),
+    mapKind: entry?.kind,
     regionExterior: exteriorOf(cat, code),
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],

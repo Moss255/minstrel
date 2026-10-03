@@ -1,34 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import {
-  EVENING_AFTER_S,
-  lightingFor,
-  NIGHT_AFTER_S,
-  timeOfDay,
-  ZONE_KIND_BY_TIME,
-} from '../src/daytime.ts'
+import { lightingFor, timeOfPhase, ZONE_KIND_BY_TIME } from '../src/daytime.ts'
 
-describe('the time of day', () => {
-  it('is day at every stage but 2.2', () => {
-    expect(timeOfDay({ major: 2, minor: 1 }, 1000)).toBe('day')
-    expect(timeOfDay({ major: 2, minor: 3 }, 1000)).toBe('day')
-    expect(timeOfDay(undefined, 1000)).toBe('day')
+describe('the time of day, as drawn', () => {
+  it('draws the clock’s four phases as three looks, the morning as the day', () => {
+    // Night 0, morning 1, day 2, evening 3 — see `Clock` in the sim.
+    expect([0, 1, 2, 3].map(timeOfPhase)).toEqual(['night', 'day', 'day', 'evening'])
   })
 
-  it('turns with the seconds in the field at 2.2', () => {
-    const at = (s: number) => timeOfDay({ major: 2, minor: 2 }, s)
-    expect(at(0)).toBe('day')
-    expect(at(EVENING_AFTER_S - 1)).toBe('day')
-    expect(at(EVENING_AFTER_S)).toBe('evening')
-    expect(at(NIGHT_AFTER_S - 1)).toBe('evening')
-    expect(at(NIGHT_AFTER_S)).toBe('night')
-  })
-
-  it('lights the night pieces by night only, and roams each kind in turn', () => {
+  it('lights the night pieces by night only', () => {
     expect(lightingFor('day')).toBe('day')
     expect(lightingFor('evening')).toBe('day')
     expect(lightingFor('night')).toBe('night')
+  })
+
+  it('roams a field’s day zone by day and evening, its night zone by night', () => {
+    // encfld's kinds: 0 not at night, 1 only at night, 2 at all hours.
     expect([ZONE_KIND_BY_TIME.day, ZONE_KIND_BY_TIME.evening, ZONE_KIND_BY_TIME.night]).toEqual([
-      0, 1, 2,
+      0, 0, 1,
     ])
   })
 })
