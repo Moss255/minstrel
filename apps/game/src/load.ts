@@ -2477,6 +2477,20 @@ export function battleSheets(rom: Uint8Array): ReadonlyMap<string, Uint8Array> {
 }
 const battleSheetsRead = new WeakMap<Uint8Array, Map<string, Uint8Array>>()
 
+/** The party tricks' bubbles — `data/ani/sg.gp2`'s `.spr`s, by name less `.spr`, lower case. */
+export function trickBubbleSheets(rom: Uint8Array): ReadonlyMap<string, Uint8Array> {
+  const already = trickBubblesRead.get(rom)
+  if (already) return already
+  const sheets = new Map<string, Uint8Array>()
+  for (const leaf of scanCartridge(rom, { pathFilter: '/data/ani/sg.gp2' })) {
+    const found = /\/([^/]+)\.spr$/i.exec(leaf.path)
+    if (found) sheets.set((found[1] as string).toLowerCase(), leaf.bytes)
+  }
+  trickBubblesRead.set(rom, sheets)
+  return sheets
+}
+const trickBubblesRead = new WeakMap<Uint8Array, Map<string, Uint8Array>>()
+
 /**
  * **A map's lighting**, by its code: `<code>00.bats` in `ats_<letter>.ambl`,
  * by the code's first letter — `B01M1600.bats` in `ats_B.ambl` (see

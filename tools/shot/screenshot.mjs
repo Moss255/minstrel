@@ -18,6 +18,8 @@ const height = Number(rest[3] ?? 800)
  * Drive the page before the shot, so the game can be looked at somewhere other
  * than where it starts.
  *
+ * `--down=Escape` and `--up=Escape` press a key and let it go as two steps,
+ * so another can be held between them — B held with a direction.
  * `--hold=w:120` holds a key for that many frames — the game reads keys, not
  * key events, so a press has to stay down while the simulation ticks. Several
  * may be given and they run in order. `--drag=200,0` turns the camera by
@@ -181,6 +183,11 @@ for (const [index, step] of script.entries()) {
     await keyEvent('keyDown', key)
     await sleep(Number(frames ?? 60) * 16)
     await keyEvent('keyUp', key)
+    await sleep(120)
+  } else if (name === 'down' || name === 'up') {
+    // A key pressed or let go and left so, for a chord: `--down=Escape
+    // --hold=ArrowUp:10 --up=Escape` holds B while Up is pressed.
+    await keyEvent(name === 'down' ? 'keyDown' : 'keyUp', value)
     await sleep(120)
   } else if (name === 'drag') {
     const [dx, dy] = value.split(',').map(Number)

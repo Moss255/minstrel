@@ -163,9 +163,10 @@ export interface SaveGame {
   /** The game-wide flags set — see `OP_SET_GLOBAL`. Absent from saves made before they were kept. */
   readonly globals?: readonly number[]
   /**
-   * The party trick in each of the four places the B Button and +Control Pad
-   * reach, by number, null for none — see `trickSlots` in `main.ts`. Absent
-   * from saves made before tricks were kept, which read as none assigned.
+   * The party trick in each of the seven slots — Up, Left, Right, Down 1 to
+   * 4 — by number, null for none; see `tricks.ts`. Absent from saves made
+   * before tricks were kept, which read as none assigned; four long in saves
+   * made before the seven, in the menu's order Up, Right, Left, Down.
    */
   readonly tricks?: readonly (number | null)[]
   /** The stop the Starflight Express is at — see `expressAt` in `main.ts`. Absent for none. */

@@ -328,13 +328,14 @@ describe('the main menu', () => {
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
   })
 
-  it('assigns a party trick to one of the four places, and clears it', () => {
-    // The tricks the Hero knows, by number, and the places — see `MenuContext.tricks`.
+  it('assigns a party trick to one of the seven places, and clears it', () => {
+    // The tricks the Hero knows, by number, and the slots — Up, Left, Right,
+    // Down 1 to 4 — see `MenuContext.tricks`. Air Punch is in Left's.
     const context = {
       hero: 'Hero',
       map: undefined,
       stage: undefined,
-      tricks: { known: [2, 3], assigned: [undefined, 3, undefined, undefined] },
+      tricks: { known: [2, 3], assigned: [undefined, 3, undefined, undefined, 2] },
       words: new Map([
         [MENU_WORDS.tricks, 'Assign Party Tricks'],
         [MENU_WORDS.trickSlots, 'Up'],
@@ -345,14 +346,21 @@ describe('the main menu', () => {
       ]),
     }
     const open = { ...openMenu(), panel: 'tricks' as const }
-    // The four places, the game's words where given, and what each holds.
+    // The rows Up, Right, Left and four Downs, mapped to their slots
+    // (`data_ov002_0216c9c0`), the game's words where given.
     expect(panelLines('tricks', context, open)).toEqual([
       'Assign Party Tricks',
       '▶ Up: ------',
-      '   Right: Air Punch',
-      '   Left: ------',
+      '   Right: ------',
+      '   Left: Air Punch',
+      '   Down: ------',
+      '   Down: Clap',
+      '   Down: ------',
       '   Down: ------',
     ])
+    // The Right row goes into the Right slot, 2.
+    const onRight = choose({ ...open, row: 1 }, context).state as MenuState
+    expect(choose(onRight, context).assign).toEqual({ slot: 2, trick: 2 })
     // A place opens the tricks known and Clear; a trick goes into the place.
     const inSlot = choose(open, context).state as MenuState
     expect(inSlot.slot).toBe(0)

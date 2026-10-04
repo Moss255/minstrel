@@ -637,3 +637,43 @@ body.scenes-open #minimap:not([hidden]) {
   flex: 0 1 auto;
   min-height: 0;
 }
+
+/*
+ * The cross of the party tricks' names while B is held — Up, Left, Right and
+ * Down about the bottom of the view (`func_ov017_0219a388`). Ours in its look.
+ */
+#tricks:not([hidden]) {
+  position: absolute;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-areas: ". up ." "left . right" ". down .";
+  gap: 4px 12px;
+  pointer-events: none;
+}
+
+#tricks > .place {
+  padding: 2px 10px;
+  text-align: center;
+  white-space: nowrap;
+  background: rgb(16 16 32 / 85%);
+  border: 2px solid rgb(232 230 225 / 85%);
+  border-radius: 4px;
+}
+
+#tricks > .up {
+  grid-area: up;
+}
+
+#tricks > .left {
+  grid-area: left;
+}
+
+#tricks > .right {
+  grid-area: right;
+}
+
+#tricks > .down {
+  grid-area: down;
+}

@@ -119,8 +119,15 @@ export const MENU_WORDS = {
   noTrick: 4509,
 } as const
 
-/** The four places a party trick can be assigned to, in the game's order — `str_tm` 4501 to 4504. */
-export const TRICK_SLOTS = 4
+/**
+ * **The seven places a party trick can be assigned to**, as the menu's rows
+ * list them — Up, Right, Left, then Down four times, each row's word `str_tm`
+ * 4501 to 4504 — and the slot each row is (`data_ov002_0216c9c0`: 0, 2, 1, 3,
+ * 4, 5, 6). The slots themselves are Up, Left, Right, Down 1 to 4 — see
+ * `tricks.ts`.
+ */
+export const TRICK_ROW_SLOTS = [0, 2, 1, 3, 4, 5, 6] as const
+export const TRICK_SLOTS = TRICK_ROW_SLOTS.length
 
 export interface MenuEntry<Id extends string> {
   readonly id: Id
@@ -632,7 +639,7 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'tricks') {
-    // The four places, or the tricks known and Clear.
+    // The seven places, or the tricks known and Clear.
     const count = state.slot === undefined ? TRICK_SLOTS : (context?.tricks?.known.length ?? 0) + 1
     return { ...state, row: wrap(state.row, count) }
   }
@@ -837,7 +844,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     return { state, talk: false, buy: { tree: open.tree, panel: step.panel.id } }
   }
   if (state.panel === 'tricks') {
-    // A place opens the tricks known; a trick, or Clear, goes into it.
+    // A place opens the tricks known; a trick, or Clear, goes into its slot.
     if (state.slot === undefined)
       return { state: { ...state, slot: state.row, row: 0 }, talk: false }
     const known = context?.tricks?.known ?? []
@@ -845,7 +852,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     return {
       state: { ...state, slot: undefined, row: state.slot },
       talk: false,
-      assign: { slot: state.slot, trick },
+      assign: { slot: TRICK_ROW_SLOTS[state.slot] ?? state.slot, trick },
     }
   }
   if (state.panel) return { state, talk: false }
@@ -1110,10 +1117,11 @@ export function panelLines(
       ]
     }
     case 'tricks': {
-      // **Assign Party Tricks**, as the game's Misc. menu has it: the four
-      // places the B Button and +Control Pad reach, and for each the tricks
-      // the Hero knows, or Clear. The words are the cartridge's, `str_tm`
-      // 4500 to 4540; the tricks are numbered as those strings are.
+      // **Assign Party Tricks**, as the game's Misc. menu has it: the seven
+      // places the B Button and +Control Pad reach — Down's four played in
+      // turn — and for each the tricks the Hero knows, or Clear. The words
+      // are the cartridge's, `str_tm` 4500 to 4540; the tricks are numbered
+      // as those strings are.
       const tricks = context.tricks
       const row = state?.panel === 'tricks' ? (state.row ?? 0) : -1
       const nameOfTrick = (trick: number | undefined) =>
@@ -1124,14 +1132,18 @@ export function panelLines(
       if (state?.slot === undefined) {
         return [
           word(MENU_WORDS.tricks, 'Assign Party Tricks'),
-          ...Array.from({ length: TRICK_SLOTS }, (_, i) => {
-            const place = word(MENU_WORDS.trickSlots + i, ['Up', 'Right', 'Left', 'Down'][i] ?? '')
-            return `${mark(i === row)}${place}: ${nameOfTrick(tricks.assigned[i])}`
+          ...TRICK_ROW_SLOTS.map((slot, i) => {
+            const at = Math.min(i, 3)
+            const place = word(
+              MENU_WORDS.trickSlots + at,
+              ['Up', 'Right', 'Left', 'Down'][at] ?? '',
+            )
+            return `${mark(i === row)}${place}: ${nameOfTrick(tricks.assigned[slot])}`
           }),
         ]
       }
       return [
-        `${word(MENU_WORDS.trickSlots + state.slot, '')}:`,
+        `${word(MENU_WORDS.trickSlots + Math.min(state.slot, 3), '')}:`,
         ...tricks.known.map((trick, i) => `${mark(i === row)}${nameOfTrick(trick)}`),
         `${mark(tricks.known.length === row)}${word(MENU_WORDS.trickClear, 'Clear')}`,
       ]

@@ -1,5 +1,5 @@
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
-import type { ActionScript } from '@minstrel/game-formats'
+import { type ActionScript, readMotionTable } from '@minstrel/game-formats'
 import {
   type Animation,
   isNsbma,
@@ -89,6 +89,28 @@ export function packMotions(rom: Uint8Array, file: string): ReadonlyMap<string, 
   }
   byFile.set(file, motions)
   return motions
+}
+
+/**
+ * A pack's motion table — its `.bcfg` records' names, in order, and their
+ * speeds — which says what the game plays, whatever `.nsbca` files the pack
+ * holds (`BCFG::SearchAnimationByName`). Empty when there is none.
+ */
+export function packTable(
+  rom: Uint8Array,
+  file: string,
+): { readonly names: readonly string[]; readonly speeds: ReadonlyMap<string, number> } {
+  const leaves = leavesOf(rom, file)
+  const names: string[] = []
+  for (const { path, bytes } of leaves) {
+    if (!path.toLowerCase().endsWith('.bcfg')) continue
+    try {
+      for (const motion of readMotionTable(bytes).motions) names.push(motion.name)
+    } catch {
+      // A table that will not read names nothing.
+    }
+  }
+  return { names, speeds: speedsOf(leaves) }
 }
 
 /** A file's first texture and material animations, where it carries them; one that will not read is left out. */

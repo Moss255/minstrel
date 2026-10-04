@@ -4078,6 +4078,23 @@ sound (`0x021e6340`): 40 on the swing, **85** on the hit, from `se_btl.sdat`.
 moment (`SetNoTextureTimer(2)` on a monster, `0x021da408`; the party's parts
 by `func_02054028(obj, 100)`); the earlier search had looked for a colour.
 
+## A party trick's files
+
+Read 4 October 2026 (USA code; the European files).
+
+- **`/data/chara/sg<nn><m|w>.chr`**, 64 of them, `sg00` to `sg31` in each sex:
+  a pack of one `.bcfg` and its `.nsbca`s, no model. `<nn>` is the trick's
+  number, the sex letter `"mw"[sex]` (`func_0205308c`). **What plays is what
+  the `.bcfg` names** — `sigusa` once, or `in`, `loop`, `out` — not which
+  `.nsbca`s are there: `sg11w.chr` holds a `sigusa.nsbca` its table does not
+  name. The motions are on the player's 14-bone rig (`mp0200`'s), animated on
+  bones 2 to 13. `sg00`'s table names `sigusa` with no such motion: nothing.
+- **`/data/bin/menu/str_sgs.gp2`** › `str_sgs_<lang>.nat`: the tricks' names by
+  number, 0 `------`, the same as `str_tm` 4509 + n.
+- **`/data/ani/sg.gp2`**: the bubbles, one-frame sprites — `sg12`, `sg13`,
+  `sg14` in each language (`_en`, 48 × 24; `sg14_it` 56 × 24), `sg15` and
+  `sg16` (24 × 24) and `sg30` (16 × 16) once.
+
 ## How fast a motion plays — the `.bcfg` speed
 
 Read from the decomp, 29 September 2026. **A motion's speed is its own**,

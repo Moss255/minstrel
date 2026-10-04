@@ -54,7 +54,6 @@ import {
   settingsPlay,
   shelfAt,
   spellsLearnt,
-  TRICK_NAMES_FROM,
   TRICKS,
   type Treasure,
   trickKnown,
@@ -183,7 +182,7 @@ import {
 } from './action-player.ts'
 import { BUILT_IN_EFFECTS, LINE_MS, makeReactions, type ReactionEvent } from './action-reactions.ts'
 import { actionOf, objectOf, scriptFor } from './action-show.ts'
-import { type ActorLook, actorLookOf, packMotions } from './actors.ts'
+import { type ActorLook, actorLookOf, packMotions, packTable } from './actors.ts'
 import {
   cook,
   FLAG_POT_USED,
@@ -442,6 +441,7 @@ import {
   type Stage,
   setActionScript,
   stageMap,
+  trickBubbleSheets,
 } from './load.ts'
 import { afterMarsh, MARSH_TICKS } from './marsh.ts'
 import { exchangeLine, type MedalLine, medalText, visitMax } from './medals.ts'
@@ -613,6 +613,22 @@ import {
   treasureTargets,
   treasureText,
 } from './treasure.ts'
+import {
+  bubbleOffset,
+  type Performance,
+  phaseLoops,
+  startPerformance,
+  stepPerformance,
+  TRICK_BUBBLES,
+  TRICK_SLOT,
+  TRICK_SLOT_COUNT,
+  TRICK_SOUNDS,
+  type TrickMotions,
+  type TrickShape,
+  trickPack,
+  trickShape,
+  tricksFor,
+} from './tricks.ts'
 import { castOn, type Outcome, useOn, type Vitals } from './use.ts'
 
 /**
@@ -978,16 +994,20 @@ function takeAway(id: number): boolean {
   return true
 }
 /**
- * The party trick in each of the four places the B Button and +Control Pad
- * reach — Up, Right, Left, Down, as `str_tm` 4501 to 4504 order them — by
- * number, or undefined for none; set in the menu's Assign Party Tricks. The
- * game's defaults are not read: a new game starts with none assigned. Ours.
+ * The party trick in each of the seven slots the B Button and +Control Pad
+ * reach — Up, Left, Right, Down 1 to 4, see `tricks.ts` — by number, or
+ * undefined for none; set in the menu's Assign Party Tricks. The game's
+ * defaults are not read: a new game starts with none assigned. Ours.
  */
-let trickSlots: (number | undefined)[] = [undefined, undefined, undefined, undefined]
-/** The four places' directions, in the game's order. */
-const TRICK_SLOT_ACTIONS: readonly Action[] = ['up', 'right', 'left', 'down']
+let trickSlots: (number | undefined)[] = Array.from({ length: TRICK_SLOT_COUNT }, () => undefined)
 /** Whether the cancel button — the game's B — is held, for a trick with a direction. */
 let cancelHeld = false
+/** A party trick being performed — see `tricks.ts`. */
+let performing: Performance | undefined
+/** The place in `performing.tricks` whose sound has been started, so each starts once. */
+let performingSounded = -1
+/** A, B, X or Y pressed while a lone trick holds its loop — see `stepPerformance`. */
+let trickReleased = false
 /**
  * The stop the Starflight Express is at, 0 for none — the field state's
  * halfword the Express's task reads (see `express.ts`): set by a record's
@@ -1965,6 +1985,13 @@ function openWorld(map: string): void {
     for (let n = 0; n < Number(asked[2] ?? 1); n++) bag = take(bag, { item })
   }
   if (params.get('give')) status(`bag: ${bagLines(bag, nameOf).join(' · ')}`)
+  // `?tricks=2,0,0,10` fills the trick slots — Up, Left, Right, Down 1 to 4,
+  // by number, 0 for none — **ours**, for driving a performance.
+  const tricksWanted = params.get('tricks')
+  if (tricksWanted)
+    tricksWanted.split(',').forEach((n, i) => {
+      if (i < TRICK_SLOT_COUNT && /^\d+$/.test(n)) trickSlots[i] = Number(n) || undefined
+    })
   // `?gold=5000` puts that much in the purse — **ours**, for driving the bank.
   const gold = params.get('gold')
   if (gold !== null && /^\d+$/.test(gold))
@@ -2132,7 +2159,11 @@ function restore(game: SaveGame): void {
   for (const mark of game.marks ?? []) storyMarks.add(mark)
   storyGlobals.clear()
   for (const flag of game.globals ?? []) storyGlobals.add(flag)
-  trickSlots = Array.from({ length: 4 }, (_, i) => game.tricks?.[i] ?? undefined)
+  // A save from before the seven slots kept four, in the menu's order Up,
+  // Right, Left, Down — Left and Right the other way round from the slots.
+  const kept = game.tricks ?? []
+  const slots = kept.length === 4 ? [kept[0], kept[2], kept[1], kept[3]] : kept
+  trickSlots = Array.from({ length: TRICK_SLOT_COUNT }, (_, i) => slots[i] ?? undefined)
   expressAt = game.express ?? 0
   questBook = game.quests
     ? {
@@ -2959,19 +2990,114 @@ function ride(stop: number, mode: ExpressMode): void {
 }
 
 /**
- * Perform the party trick in one of the four places — see `trickSlots` — and
- * what the map makes of it: the game asks the first trick record for the area
- * the Hero stands in whose conditions hold, with the trick performed (see
- * `trickPlay`), and runs it whole — Gleeba's Drak answers a Clap in area 10.
- * **Ours**: the trick is a line of status, not its motion, which is a
- * `data/chara/sg<nn>.chr` this does not play yet.
+ * **Perform the party tricks a direction holds** — see `tricks.ts`: one, or
+ * Down's four in turn, by the Hero alone, where they stand, from their sex's
+ * `data/chara/sg<nn><m|w>.chr`. Nothing else may happen while it plays.
  */
-function performTrick(slot: number): void {
-  if (!loaded || !self || !storyStage || loaded.mapId === undefined) return
-  const trick = trickSlots[slot]
-  if (trick === undefined || !trickKnown(trick, storyGlobals)) return
-  const name = loaded.menuWords.get(TRICK_NAMES_FROM + trick) ?? `trick ${trick}`
-  status(`${heroName()}: ${name}`)
+function performTricks(direction: 'up' | 'left' | 'right' | 'down'): void {
+  if (performing || !self || opening) return
+  const started = startPerformance(
+    tricksFor(trickSlots, direction),
+    performance.now(),
+    trickMotionsOf,
+  )
+  if (!started) {
+    status(`no trick to perform ${direction}`)
+    return
+  }
+  performing = started
+  const names = trickNames ?? (cartridge ? menuServiceWords(cartridge, 'str_sgs') : new Map())
+  trickNames = names
+  status(
+    `${heroName()}: ${started.tricks.map((t) => plainMarkup(names.get(t) ?? `trick ${t}`, heroName())).join(', ')}`,
+  )
+  performingSounded = -1
+  trickReleased = false
+  self.held.clear()
+}
+
+/** Each trick pack read, by its file — see `trickMotionsOf`. */
+const trickPacksRead = new Map<
+  string,
+  | {
+      readonly shape: TrickShape
+      readonly motions: ReadonlyMap<string, Animation>
+      readonly speeds: ReadonlyMap<string, number>
+    }
+  | undefined
+>()
+
+/** A trick's motions, in the Hero's sex's pack, by what its `.bcfg` names; undefined when it will not read. */
+function trickMotionsOf(trick: number): (TrickMotions & { read: TrickPackRead }) | undefined {
+  if (!cartridge) return undefined
+  const file = trickPack(trick, leader().sex === SEX.female)
+  if (!trickPacksRead.has(file)) {
+    const table = packTable(cartridge, file)
+    const shape = trickShape(table.names)
+    trickPacksRead.set(
+      file,
+      shape ? { shape, motions: packMotions(cartridge, file), speeds: table.speeds } : undefined,
+    )
+  }
+  const read = trickPacksRead.get(file)
+  if (!read) return undefined
+  return {
+    shape: read.shape,
+    ms: (phase) => {
+      const motion = read.motions.get(phase)
+      return motion ? motionMs(read.speeds.get(phase), motion.frameCount) : 0
+    },
+    read,
+  }
+}
+type TrickPackRead = NonNullable<ReturnType<typeof trickPacksRead.get>>
+
+/** The performance a frame on: each trick's sound as it starts, and at the end what the map makes of it. */
+function followPerformance(now: number): void {
+  if (!performing) return
+  const trick = performing.tricks[performing.index]
+  if (performing.index !== performingSounded && trick !== undefined) {
+    performingSounded = performing.index
+    const sound = TRICK_SOUNDS.get(trick)
+    if (sound !== undefined && cartridge) void playEffect(cartridge, sound)
+  }
+  const next = stepPerformance(performing, now, trickReleased, trickMotionsOf)
+  trickReleased = false
+  if (next !== 'done') {
+    performing = next
+    return
+  }
+  const tricks = performing.tricks
+  performing = undefined
+  trickAnswered(tricks)
+}
+
+/** The Hero's pose while performing: the phase's motion, with no blend in or out. */
+function trickPose(
+  now: number,
+): { readonly motion: Animation; readonly frame: number } | undefined {
+  if (!performing) return undefined
+  const trick = performing.tricks[performing.index]
+  const read = trick === undefined ? undefined : trickMotionsOf(trick)?.read
+  const motion = read?.motions.get(performing.phase)
+  if (!read || !motion) return undefined
+  const at = frameAt(
+    now - performing.since,
+    read.speeds.get(performing.phase),
+    motion.frameCount,
+    phaseLoops(performing),
+  )
+  return { motion, frame: Math.floor(at) }
+}
+
+/**
+ * **What the map makes of a performance**, once its last trick ends: the
+ * first trick record for the area the Hero stands in whose conditions hold,
+ * with every trick performed (`func_020649b0(…, 0x13, …)`, `0x02053960`) — and
+ * runs it whole. Gleeba's Drak answers a Clap in area 10.
+ */
+function trickAnswered(tricks: readonly number[]): void {
+  if (!loaded || !storyStage || loaded.mapId === undefined) return
   for (const area of [areaIn.triggers, areaIn.map]) {
     if (area === undefined) continue
     const found = trickPlay(
@@ -2979,7 +3105,7 @@ function performTrick(slot: number): void {
       loaded.mapId,
       storyStage,
       area,
-      (wanted) => wanted === trick,
+      (wanted) => tricks.includes(wanted),
       storyState(),
     )
     if (!found) continue
@@ -2989,6 +3115,43 @@ function performTrick(slot: number): void {
     return
   }
 }
+
+/**
+ * **The cross of the four places' names** while B is held in the field
+ * (`func_ov017_0219a388`): each its trick's name from `str_sgs`, Down's the
+ * first of its four. **Ours**: drawn as the page's own, not the game's
+ * windows.
+ */
+function showTrickCross(): void {
+  const idle =
+    cancelHeld && !!self && !talking && !playing && !battle && !menu && !visit && !opening
+  if (!idle || !cartridge) {
+    trickCrossEl.hidden = true
+    return
+  }
+  const names = trickNames ?? menuServiceWords(cartridge, 'str_sgs')
+  trickNames = names
+  const nameOf = (trick: number | undefined) => names.get(trick ?? 0) ?? '------'
+  const down = TRICK_SLOT.down.map((i) => trickSlots[i]).find((t) => t !== undefined)
+  const places: [string, number | undefined][] = [
+    ['up', trickSlots[TRICK_SLOT.up]],
+    ['left', trickSlots[TRICK_SLOT.left]],
+    ['right', trickSlots[TRICK_SLOT.right]],
+    ['down', down],
+  ]
+  trickCrossEl.replaceChildren(
+    ...places.map(([place, trick]) => {
+      const box = document.createElement('div')
+      box.className = `place ${place}`
+      box.textContent = plainMarkup(nameOf(trick), heroName())
+      return box
+    }),
+  )
+  trickCrossEl.hidden = false
+}
+/** `str_sgs`, the tricks' names by number, 0 "------"; read once. */
+let trickNames: ReadonlyMap<number, string> | undefined
+const trickCrossEl = must<HTMLDivElement>('#tricks')
 
 function maybeAreaEvent(): void {
   if (!self || !loaded || !storyStage || playing || battle || talking || menu || visit) return
@@ -3251,6 +3414,17 @@ function frame(now = 0): void {
     pad = sticks
     // Its buttons act as the keys bound to them do, once as each goes down;
     // the d-pad walks as the movement keys do while it is held.
+    // B held on the pad, as on the keys — for a trick with a direction.
+    const padCancel = controlsPanel.bindings.cancel.buttons.some(
+      (b) => (sticks.buttons[b] ?? 0) > 0.5,
+    )
+    const padCancelWas = controlsPanel.bindings.cancel.buttons.some(
+      (b) => (padButtons[b] ?? 0) > 0.5,
+    )
+    if (padCancel !== padCancelWas) {
+      cancelHeld = padCancel
+      showTrickCross()
+    }
     for (const action of pressedActions(controlsPanel.bindings, sticks.buttons, padButtons)) {
       if (controlsPanel.waiting) continue
       onAction(action, '', false)
@@ -3293,8 +3467,10 @@ function frame(now = 0): void {
     })
     // Opening a chest holds the Hero where they knelt — see `openChest`.
     if (opening) followChestOpening(now)
+    // A party trick holds them where they stand — see `performTricks`.
+    if (performing) followPerformance(now)
     const { moving, travelled, marshTicks } =
-      playing || opening || battleStage
+      playing || opening || performing || battleStage
         ? { moving: false, travelled: 0, marshTicks: 0 }
         : flying
           ? flyOn(elapsedMs)
@@ -3485,7 +3661,7 @@ function frame(now = 0): void {
       if (list) list.push(chunkLocal[chunk] as number)
       else hiddenIn.set(shape, [chunkLocal[chunk] as number])
     }
-    const heroPose = heroEventPose() ?? chestOpeningPose(now)
+    const heroPose = heroEventPose() ?? chestOpeningPose(now) ?? trickPose(now)
     const drawn = battleStage
       ? stageDrawn(battleStage, battleClock)
       : [
@@ -8421,6 +8597,7 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
   context.clearRect(0, 0, width, height)
   if (!battle) {
     risingNumbers = []
+    drawTrickBubble(context, width, height, fov)
     return
   }
   raiseNumbers(now)
@@ -8477,6 +8654,79 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
     }
   }
   context.globalAlpha = 1
+}
+
+/**
+ * **A trick's bubble** over the Hero's head while it plays (`func_0205337c`):
+ * their place raised 1.7 (`0x1B33`), as the camera sees it, the picture's
+ * top left at `bubbleOffset` from there — on the DS's pixels, as the rising
+ * numbers are. INFERRED: that the projection's two outputs are x then y.
+ */
+function drawTrickBubble(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  fov: number | undefined,
+): void {
+  const trick = performing?.tricks[performing.index]
+  if (trick === undefined || !self || !cartridge) return
+  const kind = TRICK_BUBBLES.get(trick)
+  if (!kind) return
+  const name = `sg${String(trick).padStart(2, '0')}${kind === 'words' ? '_en' : ''}`
+  const picture = trickBubbleOf(name)
+  if (!picture) return
+  const aspect = width / height
+  perspective(aspect, 0.01, 1000, numberProjection, fov)
+  viewMatrix(camera, numberView)
+  const unit = aspect >= 256 / 192 ? height / 192 : width / 256
+  const raise = BUBBLE_RAISE * WORLD_SCALE * worldScale
+  const head = [
+    toFloat(self.state.x),
+    toFloat(self.state.y) + raise,
+    toFloat(self.state.z),
+  ] as const
+  const point = onScreen(head, width, height, unit)
+  if (!point) return
+  const offset = bubbleOffset(trick)
+  context.imageSmoothingEnabled = false
+  context.drawImage(
+    picture,
+    width / 2 + (point.x + offset.x - 128) * unit,
+    height / 2 + (point.y + offset.y - 96) * unit,
+    picture.width * unit,
+    picture.height * unit,
+  )
+}
+
+/** How far above a character's feet a trick's bubble rises — 1.7, the game's `0x1B33`. */
+const BUBBLE_RAISE = 0x1b33 / 4096
+
+/** The bubbles, by name, decoded once — `data/ani/sg.gp2`. */
+const trickBubbles = new Map<string, HTMLCanvasElement | undefined>()
+function trickBubbleOf(name: string): HTMLCanvasElement | undefined {
+  if (!trickBubbles.has(name)) {
+    let picture: HTMLCanvasElement | undefined
+    const bytes = cartridge ? trickBubbleSheets(cartridge).get(name) : undefined
+    try {
+      const decoded = bytes ? readSprite(bytes).decode(0) : undefined
+      if (decoded) {
+        picture = document.createElement('canvas')
+        picture.width = decoded.width
+        picture.height = decoded.height
+        picture
+          .getContext('2d')
+          ?.putImageData(
+            new ImageData(new Uint8ClampedArray(decoded.pixels), decoded.width, decoded.height),
+            0,
+            0,
+          )
+      }
+    } catch {
+      // A bubble that will not read is not drawn.
+    }
+    trickBubbles.set(name, picture)
+  }
+  return trickBubbles.get(name)
 }
 
 /** The chooser's marker's phase — see `drawTargetMarkers`. */
@@ -11899,7 +12149,15 @@ addEventListener('keydown', (event) => {
     event.preventDefault()
     return
   }
-  if (actionOfKey(controlsPanel.bindings, key) === 'cancel') cancelHeld = true
+  if (actionOfKey(controlsPanel.bindings, key) === 'cancel') {
+    cancelHeld = true
+    showTrickCross()
+  }
+  // A direction held with B starts a trick once, as the game's newly-pressed test does.
+  if (event.repeat && cancelHeld) {
+    event.preventDefault()
+    return
+  }
   if (onAction(actionOfKey(controlsPanel.bindings, key), key, event.shiftKey))
     event.preventDefault()
 })
@@ -12116,23 +12374,33 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   // assigned to it, which is how the game has it — "Allows you to set which
   // party tricks can be performed with the B Button and +Control Pad", `str_tm`
   // 4023. B is the cancel button here. See `performTrick`.
+  // While one plays, A, B, X or Y ends a lone trick's held pose, and does
+  // nothing else (`func_02012444(keys, 0xc03)`).
+  if (performing) {
+    if (action === 'confirm' || action === 'cancel' || action === 'menu' || action === 'y') {
+      trickReleased = true
+      event.preventDefault()
+      return handled
+    }
+    if (action === 'up' || action === 'down' || action === 'left' || action === 'right') {
+      event.preventDefault()
+      return handled
+    }
+  }
   if (
     cancelHeld &&
-    action &&
     loaded &&
     self &&
     !talking &&
     !playing &&
     !battle &&
     !menu &&
-    !visit
+    !visit &&
+    (action === 'up' || action === 'down' || action === 'left' || action === 'right')
   ) {
-    const slot = TRICK_SLOT_ACTIONS.indexOf(action)
-    if (slot >= 0) {
-      performTrick(slot)
-      event.preventDefault()
-      return handled
-    }
+    performTricks(action)
+    event.preventDefault()
+    return handled
   }
   // While a prompt waits for an answer the arrows choose, before anything else
   // that uses them; f or Enter answers, as it goes on to the next page.
@@ -12263,7 +12531,10 @@ addEventListener('keyup', (event) => {
   const token = action === undefined ? undefined : MOVE_TOKENS[action]
   if (token) self?.held.delete(token)
   if (action) turning.delete(action)
-  if (action === 'cancel') cancelHeld = false
+  if (action === 'cancel') {
+    cancelHeld = false
+    showTrickCross()
+  }
 })
 
 // A key held as the window loses focus never sends its `keyup`, and the camera

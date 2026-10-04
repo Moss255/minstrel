@@ -54,6 +54,7 @@ is one the menu will not know about.
 | `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
 | `gold=5000` | that much gold in the purse — for the bank, the inn and the shops |
+| `tricks=2,0,0,10,12` | the party trick slots — Up, Left, Right, Down 1 to 4 — by number, 0 for none; then B held with a direction performs |
 | `armoury=1` | one of every weapon, shield and piece of armour in the bag, and anyone may wear anything — for trying every weapon and outfit on the Hero. With `heromotion=` and a fight, every weapon through every motion |
 | `medals=80` | the mini medals already handed to Cap'n Max, so his milestones or his exchange can be reached without collecting them — ours. Talking to him (`M08M07`, cast 103) opens his service; see `apps/game/src/medals.ts` |
 | `patty=1` | open Patty's Party Planning Place. Her real way in is `<LUIDA>` on her own talk line at the Quester's Rest |

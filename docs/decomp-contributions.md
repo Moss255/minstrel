@@ -744,3 +744,57 @@ Overlay 3's **service 46**, reached from `func_0206f6cc`'s codes 9 and 10 by
 | `func_ov002_021594e8` | one of Heal All's casts: the lines 9005, 9017/31052/9003, the MP spent | `FieldMenu::HealAllCast` |
 | `func_ov002_021538e4` | a heal's amount outside a battle: `GetAttackBaseDamage`'s party arms by base mending, `RoundUp`, the world's generator | `FieldMenu::RollHealAmount` |
 | `func_ov002_02153ccc` | the field's heal handler: Fullheal 999, else one roll a target | `FieldMenu::ApplyHeal` |
+
+### The keepers, the counter, the bank — overlay 3, read 4 October 2026
+
+**Where minstrel translates it**: `apps/game/src/keepers.ts`, `counter.ts`, held
+by `keepers.test.ts`, `counter.test.ts`.
+
+| function | what it does | a name |
+|---|---|---|
+| `func_ov003_0215c924` | the inn's runner, steps at `0x0217fe94`: load, greet and choose, Stay, Rest, leave | `Inn::Update` |
+| `func_ov003_0215e1ec` | who is staying: the living, by HP `[rec+0x130]+4` | `Inn::ListStaying` |
+| `func_ov003_0215ca90` | the price: a head's times the living | `Inn::SetPrice` |
+| `func_ov003_02158e94` | the church's runner | `Church::Update` |
+| `0x0215a8e0`–`0x0215a99c` | the cures' prices by vocation level | `Church::CurePrice` |
+| `func_ov003_0216af14` | Erinn's counter, steps at `0x0217f578`; `+0x404` turns on the inn's Quester's Rest switch | `Counter::Update` |
+| `func_ov003_02168438` | the bank, service 17: Deposit, Withdrawal, one a visit | `Bank::Update` |
+| `func_ov003_02169938` | the purse: refuse when short, add, clamp at 9,999,999 | `Bank::AddToPurse` |
+| `func_02010604` | the wipe-out's return: the purse halved (`lsr #1`), the bank spared, the fallen revived | `GameState::AfterWipeOut` |
+| `func_0206f81c` case 31 | trigger `145`: 2 the Rapportal, 5/6 DQVC with and without connecting, 7 medals, 8 `memory2.stb` | — |
+
+### The battle's other commands, and the coup de grâce — overlays 0 and 24, read 4 October 2026
+
+**Where minstrel translates it**: `apps/game/src/battle-commands.ts`,
+`packages/sim/src/battle/coup.ts`, held by `battle-commands.test.ts`,
+`coup.test.ts` and the oracle (`coupHpTermOf`, `coupChanceOf`).
+
+| function | what it does | a name |
+|---|---|---|
+| `func_ov000_0217df08` | Examine: a page a monster with a line, else a general line by `W(100) & 1` | `BattleUI::Examine` |
+| `func_ov000_0217ff34` | which `str_ex2` line a monster gets, the first test that holds | `BattleUI::ExamineLine` |
+| `func_ov000_0217ce24` (states 5, 6, 7, 32) | Equipment: weapons only, free | `BattleUI::Equipment` |
+| `func_ov000_0217dcf0` | Line-Up: toggles `base+0x3c` bit 30 | `BattleUI::LineUp` |
+| `func_ov000_02154f30` | the monsters' weighted pick: 2 front, 1 back, the memory bonus, the halving | `Battle::WeightedTarget` |
+| `func_ov024_021eb1ec` | who may come ready for a coup | `Coup::Eligible` |
+| `func_ov024_021eb344` | the share-of-HP term, the table at `0x021fe970` | `Coup::HpTerm` |
+| `func_ov024_021eb3e0` | the count by vocation level: 7, 8, 9, 10 | `Coup::SetCount` |
+| `func_ov000_02157e1c` | the count down at a round's end, actmsg 603 at 0 | `Coup::CountDown` |
+| `func_02085038` | the coup bonus of what is worn: word 4 bits 20–26 | `Character::CoupBonus` |
+| `func_ov000_02159d24` | the vocation's coup term, pairs at `0x02182d88` | `Coup::VocationTerm` |
+
+### A party trick, performed — ARM9 and overlays 2 and 17, read 4 October 2026
+
+**Where minstrel translates it**: `apps/game/src/tricks.ts`, held by
+`tricks.test.ts` and `menu.test.ts`.
+
+| function | what it does | a name |
+|---|---|---|
+| `func_0203970c`, `func_02039730` | set and get the seven slots, `GameState+0x2a04+0x2c8d` | `GameState::SetTrickSlot`, `::GetTrickSlot` |
+| `func_02037d88` (`0x02037e48`–`0x02038094`) | B held and a direction newly pressed starts a trick | `PlayerObject::UpdateTricks` |
+| `func_02052e44`, `func_02052f44` | start one trick, or Down's four compacted | `Object::StartTrick`, `::StartTrickSequence` |
+| `func_0205308c` | load `data/chara/sg%02d%c.chr`, and the bubble from `sg.gp2` | `Object::LoadTrick` |
+| `func_02053634` | the performance: `sigusa`, or `in`/`loop`/`out`; a lone loop held until A, B, X or Y | `Object::UpdateTrick` |
+| `func_020531f0` | end or cancel: back to motion state 0 | `Object::EndTrick` |
+| `func_0205337c` | the bubble's place: the head raised 1.7, projected | `Object::DrawTrickBubble` |
+| `func_ov017_02199f08`, `0219a388` | the B cross of the places' names, `str_sgs` | `Field::TrickCross` |

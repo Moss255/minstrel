@@ -10,6 +10,28 @@ worked example: `<DAMA>` found on Jack's line, overlay 3's service 46 read,
 then built — `abbey.ts`, and `docs/party-and-vocations.md`, "The Abbey's
 own flow".
 
+## Where it stands — 4 October 2026
+
+**Tasks 1 to 9 are done**, each built, checked in the browser, committed and
+written up on the wiki; each says so under its heading.
+
+- **Task 10 is read and not built.** Its readings are in
+  `docs/readings/T10a-questions.md` and `T10b-questions.md`: the Abbey's
+  three flags set by trigger actions `223`, `231` and `160`, which retires the
+  7.1 stand-in and `?revoke=`; the party's slot order; the preset face and
+  hair; the hair ramp and the outline colour; `<SE_n>` being archive 100;
+  Autofilch and Critical in a Crisis; the victory's lines 12 and 36 and its
+  jingle wait. Build straight from them.
+- **Tasks 11 to 14 are not read.** Readers were started on 4 October and cut
+  off before writing anything, so each starts from its brief below.
+- **Built this week and still ours**, listed in `docs/still-open.md` §2: the
+  coups' own effects (every vocation's but the Warrior's says its opening
+  line and does nothing — task 18); the camera easing in for a party trick;
+  Weird Dance's sound not stopped; canvassing and the guestbook (multiplayer).
+- **Development parameters added this week** (`docs/regions.md`): `globals=`,
+  `gold=`, `tricks=`. The screenshot tool takes `--down=` and `--up=` for a
+  key held while another is pressed.
+
 ## How to take one
 
 - `CLAUDE.md` first, then **`docs/binaries.md` before disassembling
@@ -210,6 +232,8 @@ mostly the field's equip screen in battle; say only where it differs.
 
 ## 9. Party tricks, performed — find and build
 
+**Done, 4 October 2026**: `tricks.ts` — the seven slots, B held with a direction, the motions, sounds and bubbles, kind 19 at the end. The camera's ease-in is not built. The wiki's Party-Tricks.
+
 Assigning tricks (Misc. → Assign Party Tricks), holding B with a direction,
 and the map's kind-19 reactions (Gleeba's Drak answering a Clap) are built.
 **The performance is not**: a trick is a line of status, with no motion
@@ -238,6 +262,8 @@ pattern (`chestOpeningPose`): a pose over the Hero's, timed by its frames,
 with what follows at its end.
 
 ## 10. Single questions — find and build
+
+**Read, 4 October 2026; not built.** The answers, with addresses, are in `docs/readings/T10a-questions.md` and `docs/readings/T10b-questions.md`.
 
 Each is short alone; take them as a batch, in any order.
 
