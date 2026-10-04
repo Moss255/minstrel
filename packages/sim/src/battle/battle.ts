@@ -1,5 +1,6 @@
 import { FALLOFF, handled, passesOf, RETARGETED, THRUST_HANDLER } from './blows.ts'
 import { brokenChain, type Chain, chainStep, NO_CHAIN } from './combo.ts'
+import { COUP_ACTIONS, COUP_LEVEL, coupChance, coupHpTerm, coupRounds } from './coup.ts'
 import {
   criticalChance,
   criticalDamage,
@@ -203,6 +204,12 @@ export interface Fighter {
    * battle reads it. The Front Line when not given.
    */
   readonly backLine?: boolean
+  /**
+   * **One of the party's coup de grâce** — see `coup.ts`: their level in their
+   * vocation, and their term after acting, their vocation's and what they
+   * wear. None for a monster or a guest, for whom no draw is made.
+   */
+  readonly coup?: { readonly level: number; readonly bonus: number }
 }
 
 export interface FighterState extends Fighter {
@@ -223,6 +230,11 @@ export interface FighterState extends Fighter {
   readonly rounds?: number
   /** The last two of the party to aim a pass at this monster, the latest first (`+0x32`, `+0x34`). */
   readonly aimedBy?: readonly number[]
+  /**
+   * Ready for their coup de grâce — `status+0x3b` bit 3 — and the count of
+   * rounds' ends left, bits 4–7; see `coup.ts`. Undefined, not ready.
+   */
+  readonly primed?: number
 }
 
 /** What an item does when used: the HP it restores, as a base give or take a spread. */
@@ -445,6 +457,13 @@ export type BattleEvent =
     }
   /** A sleeper's turn, slept through. */
   | { readonly kind: 'asleep'; readonly actor: number }
+  /**
+   * Ready for a coup de grâce, after the action that made them so — the
+   * game's action 922 with actmsg 531 (`func_ov000_0215af54`).
+   */
+  | { readonly kind: 'primed'; readonly actor: number }
+  /** A coup de grâce's moment passed, at the round's end — action 936, actmsg 603. */
+  | { readonly kind: 'coupPassed'; readonly actor: number }
   /** A sleeper waking: on its turn, or at a blow. */
   | { readonly kind: 'woke'; readonly actor: number }
   /** A level worn off, at the round's end. */
@@ -813,10 +832,21 @@ export function playRound(
     setStates(actor, { tension: 0 })
     if (alive(f)) events.push({ kind: 'calmed', actor, most: level === TENSION_MOST })
   }
+  /** A fighter without their coup's readiness — by death, its use or its running out. */
+  const unprime = (target: number) => {
+    fighters = fighters.map((f, i) => {
+      if (i !== target || f.primed === undefined) return f
+      const { primed: _, ...rest } = f
+      return rest
+    })
+  }
   const hurt = (target: number, damage: number) => {
     fighters = fighters.map((f, i) => (i === target ? { ...f, hp: Math.max(0, f.hp - damage) } : f))
-    if (damage > 0 && fighters[target]?.hp === 0) events.push({ kind: 'defeated', actor: target })
-    else if (damage > 0 && fighters[target]?.states.sleep !== undefined) {
+    if (damage > 0 && fighters[target]?.hp === 0) {
+      events.push({ kind: 'defeated', actor: target })
+      // Death clears the readiness and its count (`func_02088e80`).
+      unprime(target)
+    } else if (damage > 0 && fighters[target]?.states.sleep !== undefined) {
       // A blow that hurts wakes a sleeper.
       setStates(target, { sleep: undefined })
       events.push({ kind: 'woke', actor: target })
@@ -824,6 +854,64 @@ export function playRound(
   }
   /** A stat as its level has it — see `states.ts`. */
   const defenceOf = (f: FighterState) => levelled(f.defence, f.states.defence.level)
+  /** Who came ready in this action, told after it — see `coupAfter`. */
+  const primedNow: number[] = []
+  /** The living party ready already, which the chance is multiplied by (`func_ov024_021eb2b4`). */
+  const readyNow = () =>
+    fighters.filter((f) => f.side === 'party' && alive(f) && f.primed !== undefined).length
+  /**
+   * Whether a draw is made for them (`func_ov024_021eb1ec`): one of the party
+   * with a coup, at its level, standing, awake — or woken by the pass's own
+   * damage — and not ready already.
+   */
+  const coupMayCome = (i: number, woken = false) => {
+    const f = fighters[i]
+    return (
+      !!f &&
+      f.side === 'party' &&
+      f.coup !== undefined &&
+      f.coup.level >= COUP_LEVEL &&
+      alive(f) &&
+      (woken || f.states.sleep === undefined) &&
+      f.primed === undefined
+    )
+  }
+  const prime = (i: number) => {
+    const level = fighters[i]?.coup?.level ?? 0
+    fighters = fighters.map((f, k) => (k === i ? { ...f, primed: coupRounds(level) } : f))
+    primedNow.push(i)
+  }
+  /**
+   * **The draw at a pass** that reached `target`, after its results
+   * (`0x021ecf6c`–`0x021ed078`): what it dealt them — of an action of kind 1 —
+   * as a share of their HP. `hpAfter`, where the action's damage is dealt only
+   * once its passes are done, is what the pass leaves them.
+   */
+  const coupAtPass = (target: number, damage: number, hpAfter?: number) => {
+    const f = fighters[target]
+    if (!f || (hpAfter !== undefined && hpAfter <= 0)) return
+    if (!coupMayCome(target, hpAfter !== undefined && damage > 0)) return
+    if (rng.below(100) < coupChance(coupHpTerm(damage, f.maxHp), readyNow())) prime(target)
+  }
+  /**
+   * **After an action through the resolver** (`0x021ed298`–`0x021ed404`): its
+   * actor's own draw while a monster stands; then a coup used clears; then
+   * those it made ready are told.
+   */
+  const coupAfter = (actor: number, action: number | undefined) => {
+    const f = fighters[actor]
+    if (f && livingOn('foes').length > 0 && coupMayCome(actor)) {
+      if (rng.below(100) < coupChance(f.coup?.bonus ?? 0, readyNow())) prime(actor)
+    }
+    if (action !== undefined && COUP_ACTIONS.has(action)) unprime(actor)
+    for (const i of primedNow.splice(0)) events.push({ kind: 'primed', actor: i })
+  }
+  /** The action just resolved, whose after-draw is owed — see `coupAfter`. */
+  let resolved: { readonly actor: number; readonly action: number | undefined } | undefined
+  const settleResolved = () => {
+    if (resolved) coupAfter(resolved.actor, resolved.action)
+    resolved = undefined
+  }
   /** Who took a turn this round: whose levels have a turn off at its end. */
   const acted: number[] = []
   const livingOn = (side: Side) =>
@@ -1205,6 +1293,7 @@ export function playRound(
   }
 
   for (const { actor, command: planned } of queue) {
+    settleResolved()
     if (afterDue && outcome === 'ongoing') rng.below(100)
     afterDue = false
     const me = fighters[actor]
@@ -1255,14 +1344,18 @@ export function playRound(
     // themselves: range 0, so the physical formula's draws after the accuracy
     // (`0x021ec4e4`). A metal monster's wait misses its accuracy; its flight
     // carries `+0x10` bit 24 and does not.
-    if (command.kind === 'defend' || command.kind === 'wait') selfPass(me)
-    else if (command.kind === 'flee' && me.side === 'foes') selfPass(me, false)
+    if (command.kind === 'defend' || command.kind === 'wait') {
+      selfPass(me)
+      coupAtPass(actor, 0)
+    } else if (command.kind === 'flee' && me.side === 'foes') selfPass(me, false)
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
+      resolved = { actor, action: undefined }
       continue
     }
     if (command.kind === 'wait') {
       events.push({ kind: 'wait', actor, action: command.action })
+      resolved = { actor, action: command.action }
       continue
     }
     if (command.kind === 'flee' && me.side === 'foes') {
@@ -1304,6 +1397,8 @@ export function playRound(
       if (level !== was) {
         setStates(actor, { tension: level, ...(level === TENSION_MOST ? { poisoned: false } : {}) })
       }
+      coupAtPass(actor, 0)
+      resolved = { actor, action: command.action }
       events.push({
         kind: 'psyche',
         actor,
@@ -1334,6 +1429,8 @@ export function playRound(
         const gained = healed
         fighters = fighters.map((f, i) => (i === on ? { ...f, hp: f.hp + gained } : f))
       }
+      coupAtPass(on, 0)
+      resolved = { actor, action: undefined }
       events.push({ kind: 'item', actor, target: on, item: command.item, healed })
       continue
     }
@@ -1427,8 +1524,16 @@ export function playRound(
           if (critical) amount = criticalDamage(rng, amount)
         }
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
+        // The coup's draw at this pass: a harm of kind 1 counts what it dealt.
+        const harm = spell.does === 'harm'
+        coupAtPass(
+          target,
+          harm && spell.kind === 1 ? amount : 0,
+          harm ? them.hp - amount : them.hp + amount,
+        )
         return { target, amount }
       })
+      resolved = { actor, action: spell.action }
       // Told before anyone it fells falls.
       events.push({ kind: 'spell', actor, action: spell.action, short: false, critical, hits })
       for (const { target, amount } of hits) {
@@ -1484,7 +1589,7 @@ export function playRound(
         : 0
       const once = changing.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
-      const hits = reached.map((target) => {
+      const changeOne = (target: number) => {
         noteAim(actor, target)
         const them = fighters[target] as FighterState
         rng.below(100)
@@ -1535,7 +1640,14 @@ export function playRound(
         if (!next) return { target, result: 'already' as const }
         setStates(target, { [change.kind]: next })
         return { target, result: change.by > 0 ? ('raised' as const) : ('lowered' as const) }
+      }
+      // Each one reached, then the coup's draw at their pass — nothing dealt.
+      const hits = reached.map((target) => {
+        const hit = changeOne(target)
+        coupAtPass(target, 0)
+        return hit
       })
+      resolved = { actor, action: changing.action }
       events.push({
         kind: 'change',
         actor,
@@ -1576,6 +1688,8 @@ export function playRound(
         blocked: boolean
       }[] = []
       let recoil = 0
+      /** What the passes so far have dealt each target, dealt only once they are done. */
+      const dealtTo = new Map<number, number>()
       for (const [index, aimed] of passes.entries()) {
         // The die each pass keeps (`0x021ebf28`).
         rng.below(100)
@@ -1669,7 +1783,12 @@ export function playRound(
           dodged,
           blocked,
         })
+        // The coup's draw at this pass, on what it dealt and what it leaves.
+        const before = dealtTo.get(target) ?? 0
+        dealtTo.set(target, before + damage)
+        coupAtPass(target, damage, them.hp - before - damage)
       }
+      resolved = { actor, action: blow.action }
       const told: {
         kind: 'blow'
         actor: number
@@ -1820,11 +1939,15 @@ export function playRound(
       ...(combo > 0 ? { combo } : {}),
     })
     hurt(target, damage)
+    // The coup's draw at the pass — the Attack is of kind 1.
+    coupAtPass(target, damage)
+    resolved = { actor, action: undefined }
     calm(actor)
     outcome = outcomeOf(fighters)
     if (outcome !== 'ongoing') break
   }
 
+  settleResolved()
   if (afterDue && outcome === 'ongoing') rng.below(100)
   if (outcome === 'ongoing') {
     // Each who took a turn has a turn off its levels, and they may wear off.
@@ -1835,6 +1958,19 @@ export function playRound(
         const worn = wornAfterTurn((fighters[i] as FighterState).states[stat], rng)
         setStates(i, { [stat]: worn.level })
         if (worn.wore) events.push({ kind: 'wornOff', actor: i, stat })
+      }
+    }
+    // A coup de grâce held a round less, and gone when its count runs out
+    // (`func_ov000_02157e1c`, `0x021581e8`–`0x02158238`) — no draw.
+    for (let i = 0; i < fighters.length; i++) {
+      const f = fighters[i] as FighterState
+      if (f.primed === undefined) continue
+      if (f.primed - 1 > 0) {
+        const left = f.primed - 1
+        fighters = fighters.map((g, k) => (k === i ? { ...g, primed: left } : g))
+      } else {
+        unprime(i)
+        events.push({ kind: 'coupPassed', actor: i })
       }
     }
     // Then poison takes its toll.

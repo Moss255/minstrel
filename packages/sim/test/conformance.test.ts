@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   BattleRng,
   blockChance,
+  coupChance,
+  coupHpTerm,
   criticalBlow,
   criticalChance,
   criticalDamage,
@@ -28,6 +30,8 @@ import {
   calculatePhysicalDamage,
   calculateTensionBonus,
   changeLands,
+  coupChanceOf,
+  coupHpTermOf,
   criticalDamageOf,
   criticalThreshold,
   criticalValue,
@@ -876,5 +880,25 @@ describe('a battle’s experience, shared', () => {
       }
     }
     expect(wrong).toBe(0)
+  })
+})
+
+describe('the coup de grâce’s chance', () => {
+  it('takes the same share of HP as the game’s floats, for every HP to 999', () => {
+    let parted = 0
+    for (let maxHp = 1; maxHp <= 999; maxHp++) {
+      for (let dealt = 0; dealt <= maxHp + 2; dealt++) {
+        if (coupHpTerm(dealt, maxHp) !== coupHpTermOf(dealt, maxHp)) parted++
+      }
+    }
+    expect(parted).toBe(0)
+  })
+
+  it('multiplies by the members already ready, as the game does', () => {
+    for (let term = 0; term <= 127; term++) {
+      for (let ready = 0; ready <= 4; ready++) {
+        expect(coupChance(term, ready)).toBe(coupChanceOf(term, ready))
+      }
+    }
   })
 })

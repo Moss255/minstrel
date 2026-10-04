@@ -54,6 +54,16 @@ describe('an equipment table’s stats', () => {
     ).toMatchObject({ attack: 9, defence: 5 })
   })
 
+  it('reads word 4’s coup bonus from bits 20–26, and nothing either side of them', () => {
+    const [fan] = readItemStats(
+      table([{ name: 'fan', word5: 0, word4: (1 << 27) | (10 << 20) | (13 << 12) | 0xfff }]),
+    )
+    expect(fan).toMatchObject({ coupBonus: 10, motionSet: 13, usedBy: 0xfff, wornBySex: 1 })
+    const [full] = readItemStats(table([{ name: 'x', word5: 0, word4: 0x7f << 20 }]))
+    expect(full?.coupBonus).toBe(127)
+    expect(full?.wornBySex).toBe(0)
+  })
+
   it('reads the rest of an entry: word 7’s three, word 6’s three, the kind and who may wear it', () => {
     const [ring] = readItemStats(
       table([

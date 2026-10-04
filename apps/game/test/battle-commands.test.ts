@@ -8,6 +8,7 @@ import {
   backCommand,
   chooseCommand,
   commandsOf,
+  coupLive,
   type Entry,
   examinePages,
   FOLLOW_ORDERS,
@@ -247,5 +248,39 @@ describe('Equipment', () => {
     expect(c.step.at === 'say' && c.step.say.number).toBe(22)
     const none = toEquipment(armed({ bag: [] }))
     expect(none.step.at === 'say' && none.step.say.number).toBe(35)
+  })
+})
+
+describe('the Coup de Grâce', () => {
+  const coup: Entry = {
+    action: 505,
+    name: 'Critical Claim',
+    cost: 0,
+    side: 1,
+    reach: 2,
+    command: (target) => ({ kind: 'attack', target }),
+  }
+  const onCoup = (primed: number | undefined) => {
+    const s = {
+      ...state,
+      fighters: state.fighters.map((f, i) =>
+        i === 0 && primed !== undefined ? { ...f, primed } : f,
+      ),
+    }
+    const c = openCommands([member(0, { coup }), member(1)])
+    return { s, c: { ...c, step: { at: 'member' as const, member: 0, cursor: 5 } } }
+  }
+
+  it('does nothing until the member is ready', () => {
+    const { s, c } = onCoup(undefined)
+    expect(coupLive(s, member(0, { coup }))).toBe(false)
+    expect(chooseCommand(s, c)).toBe(c)
+  })
+
+  it('asks whom once they are, and plays their coup', () => {
+    const { s, c } = onCoup(3)
+    expect(coupLive(s, member(0, { coup }))).toBe(true)
+    const chosen = chooseCommand(s, c)
+    expect(chosen.step.at).toBe('monster')
   })
 })

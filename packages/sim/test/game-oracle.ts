@@ -658,3 +658,37 @@ export function experienceAdd(
   }
   return 4
 }
+
+/**
+ * The coup de grâce's share-of-HP term — `func_ov024_021eb344` (overlay 24):
+ * 0 for nothing dealt; else `(float)dealt / (float)maxHp` matched, with
+ * `_fgeq`, against the table at `0x021fe970` — nine (float, byte) pairs,
+ * 0.9f to 0.1f, the first it reaches.
+ */
+export function coupHpTermOf(dealt: number, maxHp: number): number {
+  if (dealt <= 0) return 0
+  const share = f(f(dealt) / f(maxHp))
+  const table: readonly (readonly [number, number])[] = [
+    [0.9, 90],
+    [0.8, 90],
+    [0.7, 64],
+    [0.6, 32],
+    [0.5, 16],
+    [0.4, 8],
+    [0.3, 4],
+    [0.2, 2],
+    [0.1, 1],
+  ]
+  for (const [threshold, term] of table) if (share >= f(threshold)) return term
+  return 0
+}
+
+/**
+ * A coup de grâce's chance — `func_ov024_021eb5d0`, `0x021ecf6c` and
+ * `0x021ed298`: `(int)(multiplier × (float)term)`, the multiplier
+ * `data_ov024_021fe738[min(ready, 3)]`, 1.0f to 4.0f.
+ */
+export function coupChanceOf(term: number, ready: number): number {
+  const multipliers = [1, 2, 3, 4]
+  return Math.trunc(f(f(multipliers[Math.min(ready, 3)] as number) * f(term)))
+}

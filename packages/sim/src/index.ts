@@ -27,6 +27,17 @@ export {
 export { handled, handlerKnown, passesOf } from './battle/blows.ts'
 export { brokenChain, type Chain, chainStep, NO_CHAIN } from './battle/combo.ts'
 export {
+  COUP_ACTIONS,
+  COUP_LEVEL,
+  COUP_MULTIPLIERS,
+  COUP_OF,
+  COUP_VOCATION,
+  coupBonus,
+  coupChance,
+  coupHpTerm,
+  coupRounds,
+} from './battle/coup.ts'
+export {
   blockChance,
   criticalBlow,
   criticalChance,

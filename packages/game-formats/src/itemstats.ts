@@ -133,6 +133,17 @@ export interface ItemStats {
    */
   readonly sexLock: boolean
   /**
+   * Word 4, bits 20–26: **what it adds to its wearer's chance of a coup de
+   * grâce coming ready after acting**, in a hundred — read from the game:
+   * `func_02085038` sums this field over the eleven places worn (`[item
+   * def]+0x04`, which is this word), and the resolver adds it to the
+   * vocation's own before the draw (`func_ov024_021eb5d0`, `0x021ed298`).
+   * Set, in the European tables, on the combat action medal (3) and the
+   * critical, overcritical, hypercritical and dire critical fans (6, 7, 8,
+   * 10), and on nothing else.
+   */
+  readonly coupBonus: number
+  /**
    * The entry's 32 bytes as they stand, for what is not read. The first
    * entry's first eight are the last record's actions, id and price.
    */
@@ -194,6 +205,7 @@ export function readItemStats(bytes: Uint8Array): ItemStats[] {
       motionSet: (word4 >>> 12) & 0xff,
       wornBySex: ((word4 >>> 27) & 1) | (((word4 >>> 28) & 1) << 1),
       sexLock: ((word4 >>> 29) & 1) === 1,
+      coupBonus: (word4 >>> 20) & 0x7f,
       unknown_entry: bytes.subarray(entry, entry + ENTRY),
     })
   }

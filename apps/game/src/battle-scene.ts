@@ -33,6 +33,7 @@ import {
   type Commanding,
   chooseCommand,
   commandsOf,
+  coupLive,
   type Entry,
   FOLLOW_ORDERS,
   type ItemEntry,
@@ -104,6 +105,10 @@ export const BATTLE_SAYS = {
 /** `actmsg`'s messages, by what they say. */
 export const ACTION_SAYS = {
   attacks: 1,
+  /** "<ACTOR> is primed to perform a coup de grâce!" — action 922. */
+  primed: 531,
+  /** "The moment for <TARGET>'s coup de grâce has passed." — action 936. */
+  coupPassed: 603,
   takes: 2,
   noDamage: 4,
   dies: 8,
@@ -979,6 +984,18 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       )
     case 'woke':
       return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
+    case 'primed':
+      // Action 922's line (`func_ov000_0215af54`): actmsg 531.
+      return (
+        say(scene, 'actions', ACTION_SAYS.primed, { actor }) ??
+        sentence(`${who} is primed to perform a coup de grâce!`)
+      )
+    case 'coupPassed':
+      // The round's end, action 936: actmsg 603 (`0x02157ed0`).
+      return (
+        say(scene, 'actions', ACTION_SAYS.coupPassed, { target: actor }) ??
+        sentence(`The moment for ${who}'s coup de grâce has passed.`)
+      )
     case 'wornOff':
       return (
         say(
@@ -1174,6 +1191,15 @@ export function itemEntry(i: BattleItem): ItemEntry {
 export type MenuRow =
   | string
   | { readonly text: string; readonly right: string; readonly at: number }
+  | { readonly text: string; readonly colour: string }
+
+/**
+ * The Coup de Grâce's word by its state (`func_ov000_02176500`, `021707f0`):
+ * greyed while not ready; on the last round it is held, orange — the label's
+ * (28, 12, 3) of 31. **Ours**: the label's pulse, and its grey, which is
+ * palette colour 3, not read.
+ */
+export const COUP_COLOURS = { greyed: '#8c8c8c', last: 'rgb(230 99 25)' } as const
 
 export function battleMenu(
   scene: BattleScene,
@@ -1193,15 +1219,21 @@ export function battleMenu(
         cursor: s.cursor,
         columns: 1,
       }
-    case 'member':
+    case 'member': {
       // Drawn row by row from the grid, the cursor on the command's place.
+      const m = c.members[s.member]
+      const primed = m ? scene.state.fighters[m.fighter]?.primed : undefined
       return {
-        rows: COMMAND_GRID.map(
-          (k) => word('menu', COMMAND_WORD_BASE + k) ?? MEMBER_COMMANDS[k] ?? '',
-        ),
+        rows: COMMAND_GRID.map((k) => {
+          const text = word('menu', COMMAND_WORD_BASE + k) ?? MEMBER_COMMANDS[k] ?? ''
+          if (MEMBER_COMMANDS[k] !== 'coup') return text
+          if (!m || !coupLive(scene.state, m)) return { text, colour: COUP_COLOURS.greyed }
+          return primed === 1 ? { text, colour: COUP_COLOURS.last } : text
+        }),
         cursor: COMMAND_GRID.indexOf(s.cursor as never),
         columns: 2,
       }
+    }
     case 'list': {
       const m = c.members[s.member]
       const entries = s.list === 'items' ? (m?.items ?? []) : (m?.[s.list] ?? [])
@@ -1457,6 +1489,15 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
                     attack: add('attack'),
                     defence: add('defence'),
                     agility: add('agility'),
+                    // A fan's coup bonus goes with it (`func_02085038` reads what is worn).
+                    ...(out.coup
+                      ? {
+                          coup: {
+                            ...out.coup,
+                            bonus: out.coup.bonus - (from?.coup ?? 0) + (to?.coup ?? 0),
+                          },
+                        }
+                      : {}),
                   }
                 }
                 return out

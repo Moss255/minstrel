@@ -30,10 +30,12 @@ import type { Named } from './battle-text.ts'
  * - **Misc. → Equipment** (`func_ov000_0217ce24`, states 5, 6, 7 and 32)
  *   changes a member's weapon, and only their weapon, free — see {@link Arms}.
  *
+ * - **The Coup de Grâce** is live while the member is ready for it — see
+ *   `coup.ts` in the sim — and plays their vocation's coup; greyed otherwise.
+ *
  * **Ours**, each marked where it lives: the AI of a member not following
  * orders is not read, and they hand in no command (the battle's own default,
- * an attack); a Coup de Grâce is never ready, its readiness not being
- * modelled.
+ * an attack).
  */
 
 /** The party menu's rows, top to bottom (`data_ov000_021833e8`), and each one's word in `strstd`. */
@@ -108,6 +110,8 @@ export interface Weapon {
   readonly attack: number
   readonly defence: number
   readonly agility: number
+  /** What it adds to their coup de grâce's chance — see `ItemStats.coupBonus`. */
+  readonly coup?: number
 }
 
 /**
@@ -255,6 +259,13 @@ export interface Asked {
   readonly arms?: Arms
   /** Their gender, which a message about them chooses its words by: 0 he, 1 she. */
   readonly gender?: number
+  /** Their vocation's coup de grâce, as the command plays it — see `coup.ts`. None, never live. */
+  readonly coup?: Entry
+}
+
+/** Whether a member's Coup de Grâce is live: they are ready (`status+0x3b` bit 3). */
+export function coupLive(state: BattleState, m: Asked): boolean {
+  return m.coup !== undefined && state.fighters[m.fighter]?.primed !== undefined
 }
 
 /** A weapon changed in this phase: whose, and what is in hand now — undefined, nothing. */
@@ -630,9 +641,15 @@ export function chooseCommand(
           step: { at: 'list', list: 'items', member: s.member, cursor: 0, from: s.cursor },
         }
       }
-      // The Coup de Grâce: greyed, and A does nothing, until it is ready —
-      // which is not modelled (combatant `+0x138 → +0x3b` bit 3).
-      return c
+      // The Coup de Grâce: greyed, and A does nothing, until it is ready
+      // (`func_ov000_02176500`, `0x02176594`); then whom, as any action (P §8).
+      if (!coupLive(state, m) || !m.coup) return c
+      return aimed(state, c, s.member, {
+        command: m.coup.command,
+        aim: m.coup,
+        back: s,
+        caption: { name: m.coup.name },
+      })
     }
     case 'list': {
       const m = c.members[s.member] as Asked

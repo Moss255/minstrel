@@ -345,10 +345,16 @@ multiplying by 1.5 to 2.0 is the harm's rule applied to it — what the game
 does for kind 2 after the amount is not read; and what is worn is not added
 to might or mending.
 
-Two more draws in the resolver are **not followed**: `NextRandomMax(100)` at
-`0x021ecfd8` and `0x021ed324`, each for one of the party whom
-`func_ov024_021eb1ec` picks out, after the damage. And four actions draw
-before any target is looked at (`0x1FF`, `0x200`, `0x20B`, `0x20C`).
+Two more draws in the resolver are **followed since 4 October 2026**: the
+coup de grâce's, `NextRandomMax(100)` at `0x021ecfd8` — at each pass that
+reaches one of the party whom `func_ov024_021eb1ec` picks out, after the
+pass's results — and at `0x021ed324`, after the action, for its actor while a
+monster stands. The chance is held to the oracle (`coupHpTermOf`,
+`coupChanceOf`) over every HP to 999; see `coup.ts`. **Ours still**: where a
+pass's damage is dealt only after the action's other passes — a blow's, a
+spell's — the draw reads what the pass *will* leave, which the game has
+already applied. Four actions draw before any target is looked at (`0x1FF`,
+`0x200`, `0x20B`, `0x20C`), **not followed**.
 
 ## A change of state — and what rides on a blow
 

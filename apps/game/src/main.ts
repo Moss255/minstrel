@@ -107,9 +107,11 @@ import {
   type BattleState,
   blockChance,
   type Clock,
+  COUP_OF,
   type CollisionWorld,
   type Command,
   calmFor,
+  coupBonus,
   createCollisionWorld,
   createFollower,
   DropRng,
@@ -6391,6 +6393,9 @@ function battleOffered(): Offered {
       ...(member.backLine ? { backLine: true } : {}),
       ...(member.sex === undefined ? {} : { gender: member.sex }),
       ...(armsOf(member) ? { arms: armsOf(member) as Arms } : {}),
+      ...(member.attnpc === undefined && coupEntry(member, known)
+        ? { coup: coupEntry(member, known) as Entry }
+        : {}),
       own: fighter === 0,
       // A story companion acts by themselves. **Ours**: how the game takes a guest is not read.
       guest: member.attnpc !== undefined,
@@ -6519,6 +6524,7 @@ function armsOf(member: Member): Arms | undefined {
       attack: stats?.attack ?? 0,
       defence: stats?.defence ?? 0,
       agility: stats?.agility ?? 0,
+      coup: stats?.coupBonus ?? 0,
     }
   }
   const wields = (id: number) =>
@@ -7324,6 +7330,42 @@ function createdFighter(member: Member): Fighter | undefined {
     exp: 0,
     gold: 0,
     level: row.level,
+    coup: coupFor(member, row.level),
+  }
+}
+
+/**
+ * **A member's coup de grâce**, as the battle draws for it — see `coup.ts` in
+ * the sim: their level in their vocation, and their term after acting, their
+ * vocation's and the bonus of what they wear (`func_02085038`).
+ */
+function coupFor(member: Member, level: number): { level: number; bonus: number } {
+  let worn = 0
+  for (const item of wornBy(member).values()) worn += loaded?.itemStats.get(item)?.coupBonus ?? 0
+  return { level, bonus: coupBonus(member.vocation, worn) }
+}
+
+/**
+ * **A member's Coup de Grâce command** — their vocation's coup
+ * (`data_ov000_02183658`): a blow where its handler is read, the Warrior's
+ * Critical Claim among them. **Ours**: any other — its handler, of kinds 10,
+ * 26 and 67 to 77, not read — is said, its opening line, and does nothing.
+ */
+function coupEntry(member: Member, known: Map<number, Told>): Entry | undefined {
+  const id = COUP_OF.get(member.vocation)
+  const action = id === undefined ? undefined : loaded?.actions.get(id)
+  if (id === undefined || !action) return undefined
+  known.set(id, { name: { name: action.name }, message: action.message, opening: action.opening })
+  const blow = blowOf(action)
+  return {
+    action: id,
+    name: renderName(action.name),
+    cost: action.cost,
+    side: action.side,
+    reach: action.reach,
+    command: blow
+      ? (target) => ({ kind: 'blow', blow, target })
+      : () => ({ kind: 'wait', action: id }),
   }
 }
 
@@ -7477,6 +7519,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     gold: 0,
     // What tension's bonus is made from — see `Fighter.level`.
     level: row.level,
+    // What the coup de grâce's draws go by — see `coupFor`.
+    coup: coupFor(leader(), row.level),
   }
   // **Everyone after the Hero fights, whatever they are.** A story companion
   // is `attnpc`'s fixed numbers; a created character is their own vocation's
@@ -9515,7 +9559,9 @@ function showBattle(): void {
     commands.className = shownMenu.columns === 2 ? 'commands grid' : 'commands'
     for (const [index, row] of shownMenu.rows.entries()) {
       const item = document.createElement('div')
-      item.textContent = typeof row === 'string' ? row : `${row.text} ${row.right}`
+      item.textContent =
+        typeof row === 'string' ? row : 'right' in row ? `${row.text} ${row.right}` : row.text
+      if (typeof row !== 'string' && 'colour' in row) item.style.color = row.colour
       if (index === shownMenu.cursor) item.className = 'chosen'
       commands.append(item)
     }

@@ -345,6 +345,7 @@ export interface MenuView {
   readonly rows: readonly (
     | string
     | { readonly text: string; readonly right: string; readonly at: number }
+    | { readonly text: string; readonly colour: string }
   )[]
   readonly columns: 1 | 2
   readonly cursor: number
@@ -477,6 +478,7 @@ function drawMenu(
     const hand = art.cell(CELLS.hand)
     const start = lx + Math.max(0, hand.left + hand.width - 8 + 2)
     if (typeof row === 'string') text(context, art.font, row, start, ly, 'left')
+    else if ('colour' in row) text(context, art.font, row.text, start, ly, 'left', row.colour)
     else {
       text(context, art.font, row.text, start, ly, 'left')
       // The tab is from the window's own left (`<X=118>`).

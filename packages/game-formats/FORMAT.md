@@ -4135,6 +4135,16 @@ composed onto the bone's — translate, then turn about z, y and x
 | 6 | `arm1R`, nothing | `arm1R`, nothing |
 | 11 | `chest` at (0, 0, −3) | `arm1L` at (2.4, 0, 0) |
 
+**What a piece adds to a coup de grâce's chance** is word 4, bits 20 to 26,
+of its stats entry (`ItemStats.coupBonus`) — read 4 October 2026 (USA):
+`func_02085038` sums this field over the eleven places worn, reading the
+item def's `+0x04`, which is this word, and the battle's resolver adds the
+sum to the vocation's own term before a member's draw after acting
+(`func_ov024_021eb5d0`, `0x021ed298`–`0x021ed3c8`). **Observed** on the
+European tables: 3 on the combat action medal (18051), 6, 7, 8 and 10 on the
+critical, overcritical, hypercritical and dire critical fans (20120–20123),
+and 0 on every other piece.
+
 **The motion set a weapon gives** is word 4, bits 12 to 19, of its stats
 entry in `itemdt_w` (`ItemStats.motionSet`): the second number of the packs
 `mp%02d%02d` its wielder moves by (`func_02072c9c`, `sprintf` at

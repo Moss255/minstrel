@@ -11,6 +11,7 @@ import {
   battleMenu,
   battleMove,
   beginBattle,
+  COUP_COLOURS,
   foeWaysOf,
   labelsOf,
   withPages,
@@ -79,7 +80,8 @@ describe('a battle scene', () => {
       'spells',
       'items',
       'defend',
-      'coup',
+      // Greyed: not ready for it.
+      { text: 'coup', colour: COUP_COLOURS.greyed },
     ])
   })
 

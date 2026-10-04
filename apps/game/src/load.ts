@@ -1356,6 +1356,8 @@ export interface ItemNumbers {
   readonly wornBySex: number
   /** Whether accessory 18048 cannot lift its sex restriction — see `ItemStats.sexLock`. */
   readonly sexLock: boolean
+  /** What it adds to a coup de grâce's chance after acting — see `ItemStats.coupBonus`. */
+  readonly coupBonus: number
 }
 
 const statsRead = new WeakMap<Uint8Array, Map<number, ItemNumbers>>()
@@ -1401,6 +1403,7 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
             motionSet: entry.motionSet,
             wornBySex: entry.wornBySex,
             sexLock: entry.sexLock,
+            coupBonus: entry.coupBonus,
           })
         }
       }

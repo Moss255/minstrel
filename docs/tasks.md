@@ -137,7 +137,7 @@ recipes, and how a bookcase is examined are read, with a recipe for both.
 
 ## 5. The Quester's Rest counter and the bank — find and build
 
-**Done, 4 October 2026**: `counter.ts`; the wiki's Quester's-Rest-Counter-And-Bank. Value 2 is the Rapportal (multiplayer), value 6 DQVC without connecting.
+**Done, 4 October 2026** (`715b088`): `counter.ts`; the wiki's Questers-Rest. Value 2 is the Rapportal (multiplayer), value 6 DQVC without connecting.
 
 - **The counter**, `<RIKKA>` (code 6) and `<RIKKAFIRST>` (12): Stay, and
   **Rest until evening** (p. 68). Canvass and the Guestbook are tag mode, so
@@ -196,6 +196,8 @@ how fast, what the inn sets it to — with a recipe to replace `daytime.ts`'s
 stand-in. Whatever only footage can settle goes to `docs/still-open.md` §1b.
 
 ## 8. The battle's other commands — find and build
+
+**Done, 4 October 2026**: Examine and Line-Up (`1133a2f`), Equipment (`4e8fcb0`), the coup de grâce's readiness; the coups' own handlers wait for task 18. The wiki's Battle-Commands.
 
 Examine, Equipment and Line-Up do nothing (`battle-commands.ts`), and the
 coup de grâce is never ready (p. 13; `docs/still-open.md` §2, "the command
