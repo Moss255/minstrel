@@ -24,6 +24,8 @@ import {
   BOOK_FLAG,
   blocksDoorway,
   type CharaColours,
+  type CollisionMesh,
+  type CollisionTriangle,
   conditionsOfWords,
   doorwayPlay,
   type EventOutcome,
@@ -551,6 +553,14 @@ import {
 } from './skills.ts'
 import { bodyColours, faceColours, skinRamp, skinSlot } from './skin.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
+import {
+  type CreditCard,
+  drawCard,
+  drawStaffRoll,
+  readCard,
+  readRollFiles,
+  type StaffRollRun,
+} from './staff-roll.ts'
 import {
   actorCloseUp,
   type BattleView,
@@ -2324,7 +2334,37 @@ interface Arrival {
 /** Whether the Hero was fallen as this map was entered — what `837` answers; the game takes it at the map's load. */
 let heroFallenOnArrival = false
 
-function enter(map: string, arrival?: Arrival): boolean {
+/**
+ * **A floor for a map with no collision, entered for a scene** — **ours**.
+ * The ending's montage plays in maps that have none (`E01M01` to `E01M11`),
+ * where the scene places everyone itself; the game needs nothing to stand on
+ * there, and this engine wants a world to put the Hero in. So a flat square
+ * at height 0, 1,024 units each way, in the format's own `fx32` words.
+ */
+function standInFloor(): CollisionMesh {
+  const r = 1024 * FX32_ONE
+  const corner = (x: number, z: number) => [x, 0, z] as const
+  const triangles: CollisionTriangle[] = [
+    { vertices: [corner(-r, -r), corner(r, -r), corner(-r, r)], normal: [0, 1, 0], attributes: 0 },
+    { vertices: [corner(r, -r), corner(r, r), corner(-r, r)], normal: [0, 1, 0], attributes: 0 },
+  ]
+  return {
+    kind: 3,
+    bounds: { minX: -r, minY: 0, minZ: -r, maxX: r, maxY: 0, maxZ: r },
+    cellSize: FX32_ONE,
+    gridX: 1,
+    gridZ: 1,
+    triangles,
+    cells: [],
+    cellTriangles: [],
+    trailing: [],
+    shift: 0,
+    unknown_0x1a: 0,
+    cell: () => [],
+  }
+}
+
+function enter(map: string, arrival?: Arrival, forScene = false): boolean {
   if (!cartridge) return false
   const previous = loaded
   const previousSelf = self
@@ -2344,6 +2384,14 @@ function enter(map: string, arrival?: Arrival): boolean {
     return false
   }
 
+  if (!opened.world && forScene) {
+    const floor = standInFloor()
+    opened = {
+      ...opened,
+      map: { ...opened.map, meshes: [{ mesh: floor, offset: undefined }] },
+      world: createCollisionWorld(floor),
+    }
+  }
   const world = opened.world
   if (!world) {
     status(`${opened.archive} has no collision — there is nowhere to stand`)
@@ -4928,7 +4976,8 @@ function runTalkRecord(outcome: EventOutcome, who: Talker): boolean {
   }
   if (outcome.onward) {
     const code = loaded.mapCodeOf(outcome.onward.map)
-    if (code && (code === loaded.code || enter(code))) startEvent(outcome.onward.event)
+    if (code && (code === loaded.code || enter(code, undefined, true)))
+      startEvent(outcome.onward.event)
     return true
   }
   if (outcome.event !== undefined) {
@@ -10492,7 +10541,7 @@ function startEvent(number: number, afterTalk = false): boolean {
   const own = eventMapOf(number)
   if (own !== undefined && own !== loaded.mapId) {
     const code = loaded.mapCodeOf(own)
-    if (code && !enter(code)) return false
+    if (code && !enter(code, undefined, true)) return false
     if (!loaded || !self) return false
   }
   // **Starting a scene raises the story to the scene's own stage** when it is
@@ -10558,6 +10607,15 @@ function startEvent(number: number, afterTalk = false): boolean {
     carry: 0,
     framing: { pitch: camera.pitch, distance: camera.distance, yaw: camera.yaw },
   }
+  // The ending's roll: its files when `811` asks, and the roll itself carried
+  // over from the scene before, which a chain into another map ends.
+  playing.player.stage.rollFiles = () => {
+    rollFiles ??= cartridge
+      ? readRollFiles(cartridge)
+      : { roll: undefined, fonts: [undefined, undefined] }
+    return rollFiles
+  }
+  playing.player.stage.staffRoll = carriedRoll
   playing.player.stage.afterTalk = afterTalk
   playing.player.stage.heroFallen = heroFallenOnArrival
   // The live thread's flags and marks, which `601` and `602` read.
@@ -10638,7 +10696,7 @@ function playScene(wanted: SceneConditions): void {
   liveThread = wanted.map === loaded.mapId ? threadOf(loaded.mapId) : undefined
   castLeft.clear()
   const code = loaded.mapCodeOf(wanted.map)
-  if (code && !enter(code)) return
+  if (code && !enter(code, undefined, true)) return
   if (!code) status(`map ${wanted.map} has no code — playing where you are`)
   startEvent(wanted.event)
 }
@@ -10714,6 +10772,7 @@ function playEvent(elapsedMs: number): void {
       return
     }
   }
+  showEnding(now.player.stage)
   // The sounds the scene asked for this frame.
   for (const sound of now.player.stage.sounds.splice(0)) void playSound(sound)
   const shown = now.player.stage.message
@@ -10922,10 +10981,60 @@ function heroAsEvent(now: NonNullable<typeof playing>): void {
 }
 
 /** The event is over: the Hero stands on the floor where it left them, and the camera follows them again. */
+/** The staff roll's file and fonts, read once a cartridge when `811` first asks. */
+let rollFiles: ReturnType<typeof readRollFiles> | undefined
+/** The roll a scene left running, for the next to carry on — see `endEvent`. */
+let carriedRoll: StaffRollRun | undefined
+/** Whether the roll is on the bottom screen, and the card the top screen shows. */
+let rollShown = false
+let cardShown: { readonly path: string; readonly card: CreditCard | undefined } | undefined
+const cardEl = must<HTMLCanvasElement>('#card')
+
+/**
+ * **The ending's two screens**: the staff roll on the bottom while it runs,
+ * `811` to `812`, and the last card `820` put up over the view until `822`
+ * — see `staff-roll.ts`.
+ */
+function showEnding(stage: EventStage | undefined): void {
+  const roll = stage?.staffRoll
+  const context = battleBottomEl.getContext('2d')
+  if (roll && context) {
+    drawStaffRoll(context, roll, rollFiles?.fonts ?? [undefined, undefined])
+    if (!rollShown) {
+      battleBottomEl.hidden = false
+      document.body.classList.add('battle-bottom')
+      rollShown = true
+    }
+  } else if (rollShown) {
+    rollShown = false
+    if (!battle && !storyPageOpen) {
+      battleBottomEl.hidden = true
+      document.body.classList.remove('battle-bottom')
+    }
+  }
+  const path = stage?.lastCard
+  if (!path || !cartridge) {
+    cardShown = undefined
+    cardEl.hidden = true
+    return
+  }
+  if (cardShown?.path !== path) cardShown = { path, card: readCard(cartridge, path) }
+  const top = cardEl.getContext('2d')
+  if (!cardShown.card || !top) {
+    cardEl.hidden = true
+    return
+  }
+  drawCard(top, cardShown.card, stage.cards.length === 0)
+  cardEl.hidden = false
+}
+
 function endEvent(): void {
   const done = playing
   playing = undefined
   if (!done) return
+  // The staff roll is overlay 28's, not the scene's: it carries on into the next.
+  carriedRoll = done.player.stage.staffRoll
+  showEnding(undefined)
   // A scene may have dimmed the light; the field's is whole — see `578`.
   shownScale = 1
   if (tintEl) tintEl.style.background = TINTS[timeNow()]
@@ -10986,7 +11095,7 @@ function endEvent(): void {
   if (done.chainAway) {
     const { map: to, event } = done.chainAway
     const code = loaded?.mapCodeOf(to)
-    if (code && enter(code)) startEvent(event)
+    if (code && enter(code, undefined, true)) startEvent(event)
     return
   }
   followEvent(done.event)

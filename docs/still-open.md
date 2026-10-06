@@ -141,6 +141,14 @@ the field time between the morning resets at 2.3 and 2.4 stays under 210 s;
 that the inn's Rest wakes at nightfall, not dusk; bodkin archers roaming by day
 in their own part of `F01`; Angel Falls' night tune.
 
+- **The staff roll's ground and its names' colour** (task 11, 6 October
+  2026). The roll fills the bottom screen with colour 1 and sets names in
+  colour 15, both from the window colours `func_0204b3a0` loads from the
+  resource at `GameResources+0x2C`, which was not followed; headings are the
+  game's 0x67F5. Black and white stand in. **The witness**: a capture of the
+  credits' bottom screen. And whether the 30-frame fade before the roll moves
+  takes the top screen with it.
+
 ### 1c. The story's last stretch, quests and the Express — to check in the emulator
 
 Added 29 September 2026. Each was read as far as the code goes and built on a
@@ -196,6 +204,7 @@ lives; this is the gathered list.
 | chests | how far a lid goes back (110°), that it goes at the rate of the hands, and the text waiting for the motion. INFERRED: that the lid rises with the hands at all — no file animates one |
 | the character | the person's scale against the buildings, set by eye — the buildings are measured, the ratio to them is not (`sim/src/character.ts`, `PERSON`); the step and snap heights, set by the movement |
 | the look | the doorway fade's quarter-second; the text speeds; the sword and shield on the back; the dusk and night colours |
+| the ending | the staff roll's ground and its names' colour, black and white (§1b); the screen black before the roll's fade, which the game fades from whatever the scene left; the roll's set-up loads taking a frame each; the 30-frame fade drawn on the bottom screen alone; the cards drawn over the whole view on black, the game's top screen being the card alone; **a map with no collision entered for a scene stands the Hero on a flat floor at height 0** — the ending's `E01M01` to `E01M11` have none, and the game needs none there — see `staff-roll.ts` and `standInFloor` |
 | the slice | ~~the title card that closes it~~ — retired 3 October 2026: the story plays on past the slice, and the card sent players out of Angel Falls before 2.6 and 2.7, so Stornway was reached at a stage its people have no lines for |
 
 ---

@@ -982,14 +982,18 @@ The mechanism, in the order a script does it:
 | fn | what it does |
 |---|---|
 | `734` | re-size the two sound heaps — **non-zero gives the music heap both regions**, zero splits them back, so the ending's theme plays unbroken across the segments |
-| `811` | page in the overlay holding the staff roll and start its per-frame task: the credits scroll up the bottom screen's own layer |
-| `838` | how long that task has run, **in milliseconds**, so a script keeps its cards in step with a scroll it does not drive |
+| `811` | page in overlay 28, the staff roll, and start it: the credits scroll up the bottom screen's BG1 — read whole 6 October 2026, `docs/readings/T11-ending.md` |
+| `838` | the roll's stopwatch, **in milliseconds** since `811`, 0 through its set-up; `ev29352` to `ev29373` wait on it for set times, and `ev29373` stops the roll at 268,550 |
 | `821` | save the whole display state — bank mapping, four layer registers, which layers are on |
 | `820` | put a `.pac`'s picture on the top screen's fourth layer, every other layer off |
 | `826` | blank that layer between cards |
 | `822` | put the saved state back |
-| `812` | stop the roll and page the overlay out |
+| `812` | stop the roll — the bottom screen black at once — and page the overlay out |
 | `804` | **fog off and on** around all of it |
+
+**Built 6 October 2026** (task 11): `staff-roll.ts` runs the roll as overlay
+28 does, from `staffroll.bin`, and draws the cards over the view; `ev29350`'s
+`0x1D` and `0x1E` are read, so the chain plays on.
 
 **`804` is not inferred.** The decomp's own hand-written C++
 (`src/Graphics/LightingManager.cpp:818`) makes the identical call,

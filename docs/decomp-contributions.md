@@ -833,3 +833,38 @@ by `keepers.test.ts`, `counter.test.ts`.
 **Open**: the map condition and objects `0x2347`–`0x2349` in the slots' swap;
 object `0xCE`; presetdt 4, 33, 34; whether edge marking is on; what reads
 `battle+0x5901`; `func_ov024_021e2298`'s action.
+
+### The ending: the interpreter's sine and cosine, and the staff roll — overlays 1, 17 and 28, ARM9, read 6 October 2026
+
+Task 11. **Where minstrel translates it**: `OP.SINE`, `OP.COSINE` and the
+comparison (`packages/script/src/vm.ts`, `vm.test.ts`); `readStaffRoll`
+(`game-formats/src/staffroll.ts`, `staffroll.test.ts`); `StaffRollRun`,
+`measure`, `readCard` (`apps/game/src/staff-roll.ts`, `staff-roll.test.ts`).
+The reading, with every step: `docs/readings/T11-ending.md`.
+
+| function | what it does | a name |
+|---|---|---|
+| `func_ov017_021d4e38` | the event VM's interpreter: a jump table on the opcode, 0 to `0x1E`, at `0x021d4e5c`; `0x1D`/`0x1E` at `0x021d5d6c`/`0x021d5de4`, the comparison's six at `0x021d55a4` | `ScriptVM::Step` |
+| `func_02009424`, `func_02008dcc` | fdlibm's `sin` and `cos` | `sin`, `cos` |
+| `func_020076f0`, `func_020085cc`, `func_02007028` | fdlibm's `__kernel_cos`, `__kernel_sin`, `__ieee754_rem_pio2` | the same |
+| `func_ov001_0216224c`, `0216227c`, `02163228` | engine functions `811`, `812`, `838` | `EventFunc_StaffRollStart`, `_Stop`, `_GetTime` |
+| `func_ov001_021624cc`, `02162900` | `820`, `826`: a `.pac` card onto the top screen's BG3, BG3 alone on; and cleared | `EventFunc_ShowCard`, `_ClearCard` |
+| `func_ov001_021619bc`, `02161a1c`, `02161a60` | `592`–`594`: a second, untimed roll at the scene's `+0x160` — no script calls them | |
+| `func_ov028_021d96bc`, `021d9714` | start: reset, allocate, timestamp, a periodic V-count alarm (`func_020c93d0`, line `0xD7`) on `021d9668`; stop: the alarm off, `021d8c20` | `StaffRoll::Start`, `::Stop` |
+| `func_ov028_021d9668`, `021d9574`, `021d9188` | each V-blank by turns: move on by the clock's frames (`× 60 ÷ 0x7FD88`); or set BG1's vertical offset and copy the bitmap | `StaffRoll::OnVAlarm`, `::Update`, `::Commit` |
+| `func_ov028_021d9734` → `021d9624`, `021d8dd0` | state 0, the set-up's seven steps, from overlay 17's frame (`0x0218cfd4`) | `StaffRoll::Prepare` |
+| `func_ov028_021d8d40`, `data_ov028_021d9a34` | the state's job by a table of member pointers | `StaffRoll::Run` |
+| `func_ov028_021d9208`, `021d942c` | state 1, scroll and place lines by group; state 2, run out 16 px past the last | `StaffRoll::Scroll`, `::RunOut` |
+| `func_ov028_021d8a74`, `021d8ad4` | the scroll's sum in floats; clear the band behind every 32 px | `ScrollPos::Add`, `::ClearBehind` |
+| `func_ov028_021d9748` | `838`'s answer, ticks × 64 ÷ 33,514 | `StaffRoll::GetElapsedMs` |
+| `func_ov028_021d98e0`, `021d97b0`, `021d97d8`, `021d9898` | run `staffroll.bin` as a `Script` with tags `0x64`, `0x65`, `0x66` | `StaffRoll::LoadScript`, `::OpRoom`, `::OpLine`, `::OpSpeed` |
+| `func_ov028_021d9940`, `021d999c`, `021d99f8`, `021d987c` | the line array: make room, add, get, clear one | `StaffLineList::Create`, `::Add`, `::Get`, `StaffLine::Clear` |
+| `func_020420e8` | a text's width: glyph + 1 + kerning, a space `table + 1`, less 1 | `Font::MeasureText` |
+| `func_0204254c`, `func_020424e4`, `func_020425b4`, `func_020425e4` | the glyph by name (`strncmp`, length in the flags' low six bits); its index; by index; a kerning pair | `Font::FindGlyph`, `::FindGlyphIndex`, `::GetGlyph`, `::GetKerning` |
+| `func_02042944` | the two fonts, 0 `s7` and 1 `me`, into `data_0210782c` | `Font::LoadAll` |
+| `func_0204f41c` | draws a line of text with its `<…>` tags; no kerning | `TextCanvas::DrawText` |
+
+**Open**: colours 1 and 15 of the roll (from the resource at
+`GameResources+0x2C`, through `func_0204b3a0`); what step 0's
+`func_02094b34(…, 0x7A, 0x20B)` asks for; which screens `SetBrightness`
+fades.

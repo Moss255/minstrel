@@ -46,6 +46,22 @@ main {
   pointer-events: none;
 }
 
+/*
+ * A card of the ending's, which takes the whole top screen with the 3D
+ * switched off — see `staff-roll.ts`. Its own 256 × 192, as large as the view
+ * will hold, on black.
+ */
+#card:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
 /* The time of day over the view: white by day, dusk and night as `daytime.ts` colours them. */
 #tint {
   position: absolute;

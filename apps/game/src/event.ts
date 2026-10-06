@@ -1,4 +1,4 @@
-import type { Script } from '@minstrel/game-formats'
+import type { Script, StaffRoll } from '@minstrel/game-formats'
 import { DEGREE_IN_RADIANS, DS_VERTICAL_FOV, fovOfHalfDegrees } from '@minstrel/render'
 import {
   EventRun,
@@ -8,6 +8,7 @@ import {
   type ScriptThread,
   type ScriptValue,
 } from '@minstrel/script'
+import { type RollFonts, StaffRollRun } from './staff-roll.ts'
 
 /**
  * An event, played: its script run a frame at a time against the engine
@@ -789,10 +790,21 @@ export class EventStage {
   musicGated = false
   /** Whether the scene has fog — see `804`. */
   fog = true
-  /** The staff roll, and the frame it began on — see `811`, `812` and `838`. */
-  staffRoll: { readonly since: number } | undefined
+  /**
+   * The staff roll, from `811` to `812` — see `staff-roll.ts`. It belongs to
+   * the overlay `811` pages in, not to the scene: whoever plays the ending
+   * carries it from one stage to the next.
+   */
+  staffRoll: StaffRollRun | undefined
+  /** What `811` rolls, the file and the two fonts — fetched by whoever plays the event; none here. */
+  rollFiles: () => { readonly roll: StaffRoll | undefined; readonly fonts: RollFonts } = () => ({
+    roll: undefined,
+    fonts: [undefined, undefined],
+  })
   /** The full-screen cards a scene has put up — see `820` and `826`. */
   readonly cards: string[] = []
+  /** The last card put up since the top screen was saved, whose backdrop stays after `826` — until `822`. */
+  lastCard: string | undefined
   /** Whether each screen's state is saved — see `821` and `822`. */
   readonly screenSaved: [boolean, boolean] = [false, false]
   /** Whether the music heap has both regions — see `734`. */
@@ -1051,6 +1063,8 @@ export class EventStage {
   /** One frame on: whatever is walking or turning moves. */
   advance(): void {
     this.frame++
+    // The staff roll runs on its own alarm, every frame, whatever the scene does.
+    this.staffRoll?.tick()
     // The shake is taken off before anything else moves, as the game takes it
     // off at the head of its own frame — so it never builds up.
     if (this.shakeBase && this.camera) {
@@ -1924,35 +1938,41 @@ export class EventStage {
       // | fn | what it does |
       // |---|---|
       // | `734` | re-size the two sound heaps: **non-zero gives the music heap both regions**, zero splits them back, so the ending's theme plays unbroken |
-      // | `811` | page in the overlay that holds the staff roll and start its per-frame task — the credits scroll up the bottom screen's own layer |
-      // | `812` | stop it and page the overlay back out |
-      // | `838` | how long that task has run, in milliseconds, so a script can keep its cards in step with a scroll it does not drive |
+      // | `811` | page in overlay 28, the staff roll, and start it — `staff-roll.ts` |
+      // | `812` | stop it, the bottom screen black at once, and page the overlay out |
+      // | `838` | the roll's stopwatch: milliseconds since `811`, 0 through its set-up — what the ending's scenes keep time by |
       // | `821` | **save the whole display state** — which memory banks are mapped, four layer-control registers, which layers are on. 0 the top screen, 1 the bottom, anything else nothing |
       // | `820` | load a `.pac` and put its picture on the top screen's **fourth layer**, with every other layer and the sprites switched off |
       // | `826` | blank that layer again between cards |
       // | `822` | put the saved state back, so the scene underneath resumes |
       // | `804` | **fog on and off** — and this one is not inferred: the decomp's own C++ makes the very same call. It writes one byte of the lighting manager and two of the hardware's 3D registers |
       //
-      // **Ours**: this engine draws one screen and has no layers to take over,
-      // so the cards are kept by name and the rest is switched state. `804` is
-      // kept too — nothing here fogs yet.
+      // The game draws the cards over the 3D, which `820` switches off; this
+      // keeps them by name, and whoever draws the screen puts the last over the
+      // view until `822` — `readCard` in `staff-roll.ts`. `804` is kept too —
+      // nothing here fogs yet.
       case 804:
         this.fog = num(args[0]) !== 0
         return 1
       case 811:
-        this.staffRoll = { since: this.frame }
+        {
+          const { roll, fonts } = this.rollFiles()
+          this.staffRoll = new StaffRollRun(roll, fonts)
+        }
         return 1
       case 812:
         this.staffRoll = undefined
         return 1
       case 820:
         this.cards.push(`data/${text(args[0])}`)
+        this.lastCard = `data/${text(args[0])}`
         return 1
       case 821:
         this.screenSaved[num(args[0]) === 1 ? 1 : 0] = true
         return 1
       case 822:
         this.screenSaved[num(args[0]) === 1 ? 1 : 0] = false
+        if (num(args[0]) !== 1) this.lastCard = undefined
         return 1
       case 826:
         this.cards.length = 0
@@ -1960,14 +1980,12 @@ export class EventStage {
       case 734:
         this.musicHeapWhole = num(args[0]) !== 0
         return 1
-      // **How long the staff roll has run**, `838` — read from overlay 1, and
-      // now placed: the stopwatch belongs to the overlay `811` pages in.
+      // **How long the staff roll has run**, `838` — overlay 28's
+      // `func_ov028_021d9748`, read 6 October 2026: see `StaffRollRun.stopwatch`.
+      // With no roll it answers 0, as the zeroed object would.
       case 838: {
         const ref = args[0]
-        const since = this.staffRoll
-        if (isRef(ref)) {
-          thread.write(ref, since ? Math.round(((this.frame - since.since) * 1000) / 60) : 0)
-        }
+        if (isRef(ref)) thread.write(ref, this.staffRoll?.stopwatch ?? 0)
         return 1
       }
       // **Queue more files for the scene**, `845` — read from overlay 1, and
