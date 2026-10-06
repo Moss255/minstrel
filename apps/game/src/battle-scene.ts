@@ -427,6 +427,8 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   vanished: 'Vanish',
   dazzle: 'dazzle',
   dazzled: 'dazzle',
+  schizofanic: 'Schizofanic',
+  mist: 'Mist Me',
   focus: 'Focus Pocus',
   might: 'magical might',
   mending: 'magical mending',
@@ -1124,6 +1126,14 @@ function appearing(scene: BattleScene): string[] {
   )
 }
 
+/**
+ * "The mist surrounding <TARGET> absorbs the attack and disperses." — actmsg
+ * `0x1b9`, INFERRED as Mist Me's taking of a blow by its words: where the
+ * game says it is not found. Schizofanic's taking of one says the miss line,
+ * INFERRED likewise — no line of its own is found.
+ */
+const MIST_ABSORBS = 0x1b9
+
 /** Whether one is of the party. */
 const party = (state: BattleState, i: number) => state.fighters[i]?.side === 'party'
 
@@ -1154,45 +1164,49 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       const target = scene.names[event.target]
       const game = lines(
         say(scene, 'actions', ACTION_SAYS.attacks, { actor, target }),
-        ...(event.missed
-          ? [
-              say(scene, 'actions', missSays(undefined, party(state, event.target)), {
-                actor,
-                target,
-              }),
-            ]
-          : event.dodged
-            ? [say(scene, 'actions', ACTION_SAYS.dodges, { actor, target })]
-            : event.blocked
-              ? [say(scene, 'actions', ACTION_SAYS.shield, { actor, target })]
-              : [
-                  ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.critical, {})] : []),
-                  event.damage > 0
-                    ? say(scene, 'actions', ACTION_SAYS.takes, {
-                        actor,
-                        target,
-                        values: { val_1: event.damage },
-                      })
-                    : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
-                  ...(event.poisoned
-                    ? [
-                        say(
-                          scene,
-                          'actions',
-                          event.envenomed === 'again'
-                            ? ACTION_SAYS.envenomedAgain
-                            : event.envenomed
-                              ? ACTION_SAYS.envenomed
-                              : ACTION_SAYS.poisoned,
-                          { target },
-                        ),
-                      ]
-                    : []),
-                ]),
+        ...(event.absorbed === 'mist'
+          ? [say(scene, 'actions', MIST_ABSORBS, { actor, target })]
+          : event.missed
+            ? [
+                say(scene, 'actions', missSays(undefined, party(state, event.target)), {
+                  actor,
+                  target,
+                }),
+              ]
+            : event.dodged
+              ? [say(scene, 'actions', ACTION_SAYS.dodges, { actor, target })]
+              : event.blocked
+                ? [say(scene, 'actions', ACTION_SAYS.shield, { actor, target })]
+                : [
+                    ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.critical, {})] : []),
+                    event.damage > 0
+                      ? say(scene, 'actions', ACTION_SAYS.takes, {
+                          actor,
+                          target,
+                          values: { val_1: event.damage },
+                        })
+                      : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
+                    ...(event.poisoned
+                      ? [
+                          say(
+                            scene,
+                            'actions',
+                            event.envenomed === 'again'
+                              ? ACTION_SAYS.envenomedAgain
+                              : event.envenomed
+                                ? ACTION_SAYS.envenomed
+                                : ACTION_SAYS.poisoned,
+                            { target },
+                          ),
+                        ]
+                      : []),
+                  ]),
       )
       if (game !== undefined) return game
       const ours = [`${who} attacks!`]
-      if (event.missed) ours.push(`Miss! ${whom} takes no damage.`)
+      if (event.absorbed === 'mist')
+        ours.push(`The mist surrounding ${whom} absorbs the attack and disperses.`)
+      else if (event.missed) ours.push(`Miss! ${whom} takes no damage.`)
       else if (event.dodged) ours.push(`${whom} dodges out of the way!`)
       else if (event.blocked) ours.push(`${whom} blocks the blow with a shield!`)
       else {
@@ -1217,6 +1231,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         : []
       const passes = event.hits.flatMap((hit) => {
         const target = scene.names[hit.target]
+        if (hit.absorbed === 'mist') return [say(scene, 'actions', MIST_ABSORBS, { actor, target })]
         if (hit.missed) {
           return [
             say(scene, 'actions', missSays(told, party(state, hit.target)), { actor, target }),
@@ -2150,6 +2165,9 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [54, 'vanish'],
   // Flower Power, Scandal Eyes (`021dd534`): dazzle, of the record's sort.
   [19, 'dazzle'],
+  // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
+  [36, 'schizofanic'],
+  [55, 'mist'],
   [78, 'focus'],
   // The coups (`docs/readings/T18-handlers.md` §10): Spelly Breath
   // (`021ddf5c`), 0 Zone (`021e1580`), Itemised Kill (`021e16a4`), Rough 'n'

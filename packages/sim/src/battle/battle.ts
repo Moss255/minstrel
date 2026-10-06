@@ -471,6 +471,14 @@ export type Change =
    */
   | { readonly kind: 'dazzle'; readonly chance: number; readonly sort: number }
   /**
+   * **Schizofanic** (kind 36, `func_ov024_021dec50`) and **Mist Me** (kind
+   * 55, `021e0a50`): landed, on one who may take it — `+0x14` bit 0 and
+   * `+0x18` bit 6 clear (`func_02088a70`, `02088ab8`; the second a status
+   * not kept) — the decoy, the done line; else the fail line. See
+   * `States.decoy`.
+   */
+  | { readonly kind: 'schizofanic' | 'mist'; readonly chance: number }
+  /**
    * **Rough 'n' Tumble**, the Minstrel's coup (kind 70,
    * `func_ov024_021e1824`): landed, `+0x18` bit 10 with a count of 5
    * (`func_02089124`) — a blow dodged on its die alone, under 50.
@@ -804,6 +812,8 @@ export type BattleEvent =
       readonly blocked: boolean
       /** Missed by a dazzled striker — see `States.dazzled`. Nothing dealt, no damage drawn. */
       readonly missed?: boolean
+      /** Missed for a decoy, which went with it — see `States.decoy`. */
+      readonly absorbed?: 'schizofanic' | 'mist'
       /** A poison attack's poison landed. */
       readonly poisoned?: boolean
       /** …and it was envenomation — again, where they already were. */
@@ -924,8 +934,10 @@ export type BattleEvent =
         readonly critical: boolean
         readonly dodged: boolean
         readonly blocked: boolean
-        /** Missed by a dazzled striker. */
+        /** Missed by a dazzled striker, or for a decoy. */
         readonly missed?: boolean
+        /** The decoy it was missed for, gone with it. */
+        readonly absorbed?: 'schizofanic' | 'mist'
         /** What its rider came to on this pass, where it came to something. */
         readonly rode?: ChangeHit
       }[]
@@ -1793,6 +1805,15 @@ export function playRound(
    */
   const blinded = (me: FighterState, spoilt: boolean | undefined): boolean =>
     spoilt === true && (me.states.dazzled?.level ?? 0) !== 0 && rng.below(8) < 5
+  /**
+   * **A decoy's turn** (`0x02156714`–`0x02156788`): an action a shield may
+   * block, at one under Schizofanic or Mist Me — missed, and the decoy gone.
+   */
+  const decoyed = (target: number, blockable: boolean): 'schizofanic' | 'mist' | undefined => {
+    const decoy = blockable ? fighters[target]?.states.decoy : undefined
+    if (decoy) setStates(target, { decoy: undefined })
+    return decoy
+  }
   /** One of the party aimed a pass at a monster: its memory of who (`0x021ed0d4`). */
   const noteAim = (actor: number, target: number) => {
     const me = fighters[actor]
@@ -2798,6 +2819,11 @@ export function playRound(
             setStates(target, { dazzled: { level: change.sort, turns: LEVEL_COUNTS.dazzled } })
             return { target, result: 'given', ...(again ? { again: true } : {}) }
           }
+          case 'schizofanic':
+          case 'mist':
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            setStates(target, { decoy: change.kind })
+            return { target, result: 'given' }
           case 'vanish':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { vanished: { level: 1, turns: LEVEL_COUNTS.vanished } })
@@ -2980,6 +3006,7 @@ export function playRound(
         dodged: boolean
         blocked: boolean
         missed?: boolean
+        absorbed?: 'schizofanic' | 'mist'
         rode?: ChangeHit
       }[] = []
       /** Who its riders send to sleep or fell, once its damage is dealt. */
@@ -3020,10 +3047,13 @@ export function playRound(
           dodged = false
           blocked = false
         }
-        // The accuracy, at a hundred, its draw spent; then a dazzled
-        // striker's die. Propeller Blade's way back is sure, and throws none.
-        if (!returning) rng.below(100)
-        const missed = !returning && blinded(me, blow.spoiltBySight)
+        // A decoy takes it before any draw of the roll's own — even on
+        // Propeller Blade's sure way back; then the accuracy, at a hundred,
+        // its draw spent; then a dazzled striker's die. The way back is sure,
+        // and throws neither.
+        const absorbed = decoyed(target, blow.blockable)
+        if (!returning && !absorbed) rng.below(100)
+        const missed = absorbed !== undefined || (!returning && blinded(me, blow.spoiltBySight))
         chain = chainStep(chain, {
           combos: blow.combos,
           side: me.side,
@@ -3041,6 +3071,7 @@ export function playRound(
             dodged: false,
             blocked: false,
             missed: true,
+            ...(absorbed ? { absorbed } : {}),
           })
           coupAtPass(target, 0, them.hp - (dealtTo.get(target) ?? 0))
           continue
@@ -3221,8 +3252,11 @@ export function playRound(
     //    plain attack's accuracy stands at a hundred, so it lands every time —
     //    and spends this — then, for a dazzled striker, the die of eight that
     //    misses it on five faces (the plain Attack's sight can be spoilt).
-    rng.below(100)
-    const missed = blinded(me, true)
+    // The decoy first, before any draw of the roll's own (the plain Attack
+    // may be blocked).
+    const absorbed = decoyed(target, true)
+    if (!absorbed) rng.below(100)
+    const missed = absorbed !== undefined || blinded(me, true)
     // 5. The damage, worked out **even for a blow that was dodged or blocked**:
     //    the game calls `GetAttackBaseDamage` whenever the blow lands, and the
     //    dodge and the block ride along as flags — but not for one missed
@@ -3292,6 +3326,7 @@ export function playRound(
       dodged,
       blocked,
       ...(missed ? { missed: true } : {}),
+      ...(absorbed ? { absorbed } : {}),
       ...(poisoned ? { poisoned: true } : {}),
       ...(poisoned && command.envenoms
         ? { envenomed: again ? ('again' as const) : ('newly' as const) }

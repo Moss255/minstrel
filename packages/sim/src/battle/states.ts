@@ -114,6 +114,16 @@ export interface States {
    */
   readonly dazzled?: Level | undefined
   /**
+   * **A decoy against one blow** — status `+0x14` bit 20, **Schizofanic**
+   * (kind 36, `func_ov024_021dec50`; `func_02088a94`), or bit 21, **Mist Me**
+   * (kind 55, `021e0a50`; `02088adc`), each clearing the other, with no
+   * count. The accuracy roll, before any draw of its own, misses an action a
+   * shield may block (`+0x10` bit 6) at its holder, and the decoy goes —
+   * flagged 8 and `func_02088aa8`, or `0x10` and `02088af0`
+   * (`func_ov000_02156648`, `0x02156714`–`0x02156788`).
+   */
+  readonly decoy?: 'schizofanic' | 'mist' | undefined
+  /**
    * **Paralysed** — status `+0x14` bit 3, with a count of 3 at `+0x5c`
    * (`func_0208826c`, rider 11): its holder cannot act
    * (`func_ov000_02156038`). The count goes a pass less on each of their

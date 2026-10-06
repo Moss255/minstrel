@@ -57,7 +57,6 @@ empty):
 | 26 | `func_ov024_021ddf5c` | Spelly Breath |
 | 31 | `func_ov024_021de678` | Bounce, Magic Mirror |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
-| 36 | `func_ov024_021dec50` | Schizofanic |
 | 37 | `func_ov024_021ded48` | Immense Defence |
 | 38 | `func_ov024_021dee84` | Care Prayer |
 | 39 | `func_ov024_021deff8` | Alma Mater |
@@ -74,7 +73,6 @@ empty):
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
 | 52 | `func_ov024_021e05fc` | Mercy |
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
-| 55 | `func_ov024_021e0a50` | Mist Me |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
 | 64 | `func_ov024_021e1120` | Holy Impregnable |
@@ -251,7 +249,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (36 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54 and 19), by the kind whose handler is unread:
+**Still struck as the Attack** (34 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36 and 55), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -262,7 +260,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 25 | `func_ov024_021dde08` | Tap Dance |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
-| 36 | `func_ov024_021dec50` | Schizofanic |
 | 37 | `func_ov024_021ded48` | Immense Defence |
 | 39 | `func_ov024_021deff8` | Alma Mater |
 | 40 | `func_ov024_021df0f0` | Rotstopper |
@@ -276,7 +273,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
 | 52 | `func_ov024_021e05fc` | Mercy |
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
-| 55 | `func_ov024_021e0a50` | Mist Me |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
 | 64 | `func_ov024_021e1120` | Holy Impregnable |
@@ -844,3 +840,21 @@ first, `0x1c4`), Alma Mater (`+0x8a`, first, `0x1cb`), `+0x8d`
 `+0x9e`, `+0x8f` (`0x1cc`), …, then attack's at `0x02159050`. The second
 counts' starts, by `data_ov000_02182efc` (pairs of offset from `+0x5c` and
 start): Rough 'n' Tumble 1, 0 Zone 1, and 4 for every other.
+
+### Schizofanic (kind 36) and Mist Me (kind 55) — built
+
+Both the simple shape: may take it (`func_02088a70`, `02088ab8`: `+0x14` bit
+0 **and** `+0x18` bit 6 clear — the second a status the battle does not keep,
+the one the round's end wears off by its head draw), landed, the decoy set
+(`func_02088a94`: bit 20, clearing 21; `02088adc`: bit 21, clearing 20), the
+done line; else the fail line. No count. **What each does** is the head of
+the accuracy roll (`func_ov000_02156648`, `0x02156714`–`0x02156788`), before
+the sure flag is looked at and before any draw: an action a shield may block
+(`+0x10` bit 6) at one under either misses — the result flagged 8 or `0x10`
+— and the decoy is cleared (`func_02088aa8`, `02088af0`). So it takes even a
+sure blow, Propeller Blade's way back among them, and spends no accuracy
+draw, no dazzle die and no damage's draws. **Ours**: which line each flag
+says is not found. Mist Me's stands as actmsg `0x1b9`, "The mist surrounding
+<TARGET> absorbs the attack and disperses", by its words; Schizofanic's as
+the miss line. INFERRED both. Built for the Attack and for blows; a change
+that a shield may block, none among the party's, is not looked at.

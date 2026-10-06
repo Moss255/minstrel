@@ -223,3 +223,35 @@ describe('dazzle — kind 19, Flower Power and Scandal Eyes', () => {
     expect(plain.events.some((e) => e.kind === 'attack' && e.missed)).toBe(false)
   })
 })
+
+describe('Schizofanic and Mist Me — kinds 36 and 55', () => {
+  it('takes the decoy, and loses it to the first blow a shield may block, with no draw of the roll’s', () => {
+    const given = playRound(startBattle([hero, foe]), using(status(200, 'mist')), new BattleRng(5n))
+    expect(changeOf(given.events).hits).toEqual([{ target: 0, result: 'given' }])
+    // The monster bit after the Hero acted: the mist took it, and is gone.
+    const bite = given.events.find((e) => e.kind === 'attack' && e.actor === 1)
+    expect(bite).toMatchObject({ target: 0, damage: 0, missed: true, absorbed: 'mist' })
+    expect(given.state.fighters[0]?.states.decoy).toBeUndefined()
+  })
+
+  it('spends one draw fewer on the absorbed blow than on one that lands', () => {
+    const decoyed = (decoy: 'schizofanic' | undefined) => {
+      const start = startBattle([hero, foe])
+      return {
+        ...start,
+        fighters: start.fighters.map((f, i) =>
+          i === 0 && decoy ? { ...f, states: { ...f.states, decoy } } : f,
+        ),
+      }
+    }
+    const defend = new Map<number, Command>([[0, { kind: 'defend' }]])
+    const a = new BattleRng(11n)
+    const b = new BattleRng(11n)
+    const with_ = playRound(decoyed('schizofanic'), defend, a)
+    playRound(decoyed(undefined), defend, b)
+    const bite = with_.events.find((e) => e.kind === 'attack' && e.actor === 1)
+    expect(bite).toMatchObject({ missed: true, absorbed: 'schizofanic' })
+    // No accuracy draw, and no damage's draws, where the other spent them.
+    expect(a.drawn).toBeLessThan(b.drawn)
+  })
+})
