@@ -209,3 +209,118 @@ Three words of an action's record hold its lines, ten bits each:
 Read from the handlers that pick them (`func_ov024_021da644`), and borne out
 by the cartridge: the Attack's are 1, 1, 2 / 5, 4, 7 / 8, 9, 140; Whack's
 fail 621 and 27 and kill 8 and 69; Zing's done 32.
+
+## 5. Envenomation, and what a battle tolls — a correction
+
+Status `+0x14` bit 1 is poisoned, and `+0x22`'s low two bits say which:
+**1 poison** (`func_02088624` sets it, `020885b4` tests it), **2
+envenomation** (`func_02088560`, `02088514`). A poison rider (4) or kind 6
+gives envenomation where the record's `+0x32`/`+0x30` is above 0
+(`0x021e309c`, `0x021dbb20`): Toxic Dagger, Venom Mist, Venomissile and the
+poison attack 275. Who may take it: nobody at the maximum of tension, and
+plain poison not on the envenomated (`func_020885e0`, `func_02088540`) — the
+poisoned are poisoned again, "even more powerfully" (`0x53`). Squelch, the
+cure-all and the maximum of tension clear both.
+
+**Only envenomation is tolled in a battle** — the round's end,
+`func_ov000_0215a23c` `0x0215a5c8`–`0x0215a5f4`: a sixteenth of the most HP,
+at most 999 and at least 1. Nothing in the ARM9 or any overlay tests plain
+poison in a battle but to cure it, Victimiser's blow (`func_ov024_021d8d38`)
+and the AI. The reference's "poison takes a sixteenth" is 275's, which is
+envenomation; the simulation had it on plain poison.
+
+## 6. Also read and built
+
+- **Choir of Angels** (kind 67, `021e13e0`): every one of the party,
+  `RoundUp(0.4 × most HP)`, at least 75 (`0x021e1418`–`0x021e1440`), healed
+  with no test of its landing; then the cure-all (`func_ov024_021eae14`:
+  sleep, the poisons, a level below 0 and many statuses the battle does not
+  keep). Lines `0x1ba`, `0x16`, `0x1bb`, or `0x1f` for neither.
+- **Tension Boost** (kind 71, `021e191c`): "a huge boost all of a sudden"
+  (`0x1bc`), then each level to 4 told, no coin; nothing at the maximum.
+- **Egg On** is kind 15, Psyche Up's own handler, on an ally.
+- **Meditation** is kind 2, a heal, on its user.
+- **A metal body's zeroing** (`func_ov024_021e6a90` `0x021e77c4`): a
+  non-critical blow aimed at the monsters with `+0x10` bit 24 comes to
+  nothing, bar `0x205` and Needle Shot (`0x82`); the coin follows.
+
+Measured after: **55 struck as the Attack, where 76 were**; 19 played as
+changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
+`apps/game/test/handlers.test.ts` holds the count.
+
+## 7. What is left — by name, and the address that would answer it
+
+**Still struck as the Attack** (55), by the kind whose handler is unread:
+
+| kind | handler | actions |
+|---|---|---|
+| 0 | `func_ov024_021da670` | Counter Wait, Defending Champion, Back Atcha, Whipping Boy, Selflessness, Forbearance |
+| 10 | `func_ov024_021dc0b8` | Trip of a Deathtime, War Cry, Pratfall |
+| 13 | `func_ov024_021dc540` | M-Pathy |
+| 14 | `func_ov024_021dc700` | H-Pathy |
+| 16 | `func_ov024_021dced0` | Antimagic |
+| 19 | `func_ov024_021dd534` | Flower Power, Scandal Eyes |
+| 20 | `func_ov024_021dd6f0` | Tingle |
+| 21 | `func_ov024_021dd828` | Fuddle |
+| 22 | `func_ov024_021dd968` | Wizard Ward, Spooky Aura |
+| 23 | `func_ov024_021ddaa0` | Mind Over Matter, Insulate, Insulatle |
+| 25 | `func_ov024_021dde08` | Tap Dance |
+| 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
+| 32 | `func_ov024_021de770` | Reverse Cycle |
+| 36 | `func_ov024_021dec50` | Schizofanic |
+| 37 | `func_ov024_021ded48` | Immense Defence |
+| 38 | `func_ov024_021dee84` | Care Prayer |
+| 39 | `func_ov024_021deff8` | Alma Mater |
+| 40 | `func_ov024_021df0f0` | Rotstopper |
+| 41 | `func_ov024_021df1e8` | Wave of Relief |
+| 42 | `func_ov024_021df284` | Channel Anger, Caster Sugar |
+| 43 | `func_ov024_021df454` | Mens Sana |
+| 44 | `func_ov024_021df924` | Half-Inch |
+| 45 | `func_ov024_021dfe9c` | Eye for Trouble |
+| 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
+| 47 | `func_ov024_021e00c0` | Feel the Burn |
+| 48 | `func_ov024_021e01b8` | Right as Rain |
+| 49 | `func_ov024_021e02b0` | Disruptive Wave |
+| 50 | `func_ov024_021e0380` | Extreme Makeover |
+| 51 | `func_ov024_021e04e0` | Eyes on Me |
+| 52 | `func_ov024_021e05fc` | Mercy |
+| 53 | `func_ov024_021e07b0` | Soothe Sayer |
+| 54 | `func_ov024_021e093c` | Vanish |
+| 55 | `func_ov024_021e0a50` | Mist Me |
+| 56 | `func_ov024_021e0b48` | Whistle |
+| 63 | `func_ov024_021e1028` | Twocus Pocus |
+| 64 | `func_ov024_021e1120` | Holy Impregnable |
+| 66 | `func_ov024_021e1328` | Pincushion |
+| 78 | `func_ov024_021e268c` | Focus Pocus |
+
+Most need a status the battle does not keep — a counter, a barrier, Bounce's
+mirror, dazzle, confusion, a stance (kind 0 is the six stances: Counter
+Wait, Defending Champion …).
+
+**Played as a plain blow, their own code unread:** Propeller Blade,
+Crosscutter Throw, Gold Rush (its post-step 6, gold spent,
+`data_ov024_021ff3f8`), and the six that scale by the user's number and what
+they hold — Gigaslash, Gigagash, Lightning Storm, Hand of God, Whopper Chop,
+Boulder Toss — by the table at `0x021fe8b6` (`docs/conformance.md`).
+
+**Riders not played** (`data_ov024_021ff450`): 1 `021e2bd0` (the dances' and
+War Cry's — a turn lost, INFERRED), 5 and 6 (the antidotes') `021e324c`,
+`021e32f4`, 9 `021e373c` (Soothe Sayer), 10 `021e386c` (confusion,
+INFERRED), 11 `021e3a34` (paralysis, INFERRED), 12 `021e3cec` (Rake 'n'
+Break), 13 `021e3d88` (Conjury Conductor), 14 `021e3f14` (Morale Masher),
+19 `021e4588` (Sobering Slap), 21 `021e47f4` (Caster Sugar). Their blows
+land and deal; the rider is dropped.
+
+**Coups not built** — each says its opening and does nothing: Roaring
+Tirade and Disco Tech (kind 10, `021dc0b8`), Spelly Breath (kind 26,
+`021ddf5c`, damage handler 48), 0 Zone (68, `021e1580`), Itemised Kill (69,
+`021e16a4`), Rough 'n' Tumble (70, `021e1824`), Voice of Experience (72,
+`021e1cbc`), Knight Watch (73, `021e1de8`), Brownie Boost (74, `021e1ed4`).
+
+**Ours in what was built**: nobody's susceptibility bytes (`+0x46`–`+0x52`),
+so a level rider's fall always lands; attack's turns run down as defence's
+(its count, 5 at `+0x6e`, is not read in use) and wear off first at the
+round's end; a raised one comes back with at least 1 HP; the flags a
+raising and a waking set (`+0x3a`, `+0x3b` bit 0) are not kept; Whack's
+heavenly protection (`func_ov024_021ea78c`) is a status not kept, so it never
+spares; the cure-all clears only what the battle keeps.
