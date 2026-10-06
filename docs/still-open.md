@@ -100,9 +100,9 @@ confirm a find, and what to do if the binaries do not give it up.
 - ~~**How a monster weights its six ways**~~ **Read 22 September 2026**: the
   record's `+0x10` bits 5–7 choose among eight ways, four of which draw by one
   of the four tables (`MonsterBattle.aiType`), and the boss bit — which this
-  repository had chosen by — does not come into it. **Still ours**: the other
-  four ways, a round robin and the rest, fall back to the even table; 34 of
-  the 438 monsters use them, the hammerhood among the slice's.
+  repository had chosen by — does not come into it. The other four were read
+  and built 6 October 2026 (`docs/readings/T17-ai.md`); **still ours**, the
+  counts they keep start at 0.
 - **How the game keeps time**, and **what ends the night of 2.2** — sleeping,
   or time. The decomp names five lengths at USA `0x020f030c`–`0x020f031c` to
   read first.
@@ -206,7 +206,7 @@ lives; this is the gathered list.
 |---|---|
 | drops | the seed of the generator a drop is rolled from, and the order the kinds of monster are rolled in — the roll itself, its table and Autofilch's passes are the game's; a grotto's or legacy boss's scaled roll not built |
 | battle numbers | **the Hero's attack and defence are strength and resilience plus what they wear** — the equipment's numbers are read, the adding is ours; the battle reference takes attack and defence as given |
-| battle | the four ways of choosing that are not weight tables — a round robin, a pair and a coin, two passes — which fall back to the even table; where a monster's actions more fall in the order; the targeting handlers not read, which take the first; the weighted pick's halving under a status; the extra-action rule's status bit, taken as clear |
+| battle | the counts monsters' way rules 3, 5, 6 and 7 keep, taken to start at 0; the party's tactics, read as far as their frame and not built — a member not following orders hands in the Attack (task 17b); where a monster's actions more fall in the order; the 67 targeting handlers monsters take that are not read, which take the first, and a handler's further picks, drawn with the command aimed at the first; the weighted pick's halving under a status; the extra-action rule's status bit, taken as clear |
 | the party's order | the Hero walks first even when fallen, where the game's leader is the first one alive (`marchingOrder`); the swap the game makes on some maps for objects `0x2347`–`0x2349` not built |
 | a line's sounds | `<EXC>` and `<QES>`'s effects 6 and 28 not played |
 | party tricks | the camera not easing in while B is held or a trick plays (the game's orbit is 6.0 by 3.3 in its own units, the field's ordinary one not read in them); Weird Dance's sound not stopped at its end, the engine having no way to stop one effect; the B cross drawn in the page's own boxes, not the game's windows; the records' two counters not kept; only the Hero performs, as INFERRED for one player — see `tricks.ts` |

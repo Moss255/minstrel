@@ -1027,3 +1027,40 @@ panel; under which view the swirl's model is drawn; what
 **Open**: the ship's own code, `func_020a6084`–`func_020a7eb8` (task 16b);
 what string 44 was meant to say.
 
+
+### The battle's AI: a monster's way rules, the targeting handlers, the party's tactics — ARM9 and overlays 0 and 24, read 6 October 2026
+
+Findings in `docs/readings/T17-ai.md`. **Where minstrel translates it**:
+`chooseFoe`, `pickedBy` and `byHandler` in `packages/sim/src/battle/battle.ts`,
+held by `packages/sim/test/battle.test.ts`, "a foe".
+
+| function | what it does | a name |
+|---|---|---|
+| `func_0208a91c` | a monster's way by its rule, `+0x10` bits 5–7, through the table at `0x020f10b0` | `MonsterAI::ChooseAction` |
+| `func_0208a370` | by a weight table (rules 0, 1, 2, 4 through `func_0208a4ac`–`0208a50c`) | `MonsterAI::ChooseByWeights` |
+| `func_0208a52c` | rule 3: in turn, the count at status `+0x38` | `MonsterAI::ChooseInTurn` |
+| `func_0208a5d8` | rule 5: a pair in turn, `NextRandom`'s low bit within it | `MonsterAI::ChooseByPairs` |
+| `func_0208a700` | rule 6: the first way, then a draw among the rest, by turns | `MonsterAI::ChooseFirstThenRest` |
+| `func_0208a840` | rule 7: in turn, the group's count at `battle + 0x81c0 + 0x18 g` | `MonsterAI::ChooseInTurnByGroup` |
+| `func_0208a910` | a way's out-parameter cleared | — |
+| `func_ov024_021f66cc` | the targeting dispatcher: `+0x0c` / `+0x0e` by AI mode, the table at `0x021ff790` | `TargetAI::Dispatch` |
+| `func_ov024_021ed890`, `021ed8c0` | one of a list by a draw; the weighted picks a hit code asks for | `TargetAI::PickOne`, `::PickByHitCode` |
+| `func_ov024_021edf00`, `021ede2c`, `021eda60`, `021edbd8`–`021edc38` | a forced aim; a third of the party warded; status `+0x14` bit tests | `TargetAI::ForcedAim`, `::PartyWarded`, … |
+| `func_ov000_0215e9fc`, `0215eb1c`, `0215ec80` | the party, the monsters, one group, standing | `Battle::ListParty`, `::ListMonsters`, `::ListGroup` |
+| targeting handlers 3–6, 20, 22, 23, 26, 32, 61, 62, 114, 157 | see the reading's table | `TargetAI::Handler<n>` |
+| `func_ov024_021f9030` | the party's AI in the command phase: ten actions decided before the round | `PartyAI::PlanRound` |
+| `func_ov024_021f8f20` | the party's AI at a member's turn, by tactic (table `0x021ff054`) | `PartyAI::ChooseTurn` |
+| `func_ov024_021f8144`, `021f81dc`, `021f84f0`, `021f83f8`, `021f8300` | Show No Mercy, Fight Wisely, Mix It Up, Focus On Healing, Don't Use MP: threshold and list order | `PartyAI::Tactic<n>` |
+| `func_ov024_021f8628` | the Attack on the monster lowest in HP | `PartyAI::AttackWeakest` |
+| `func_ov024_021f73b8`, `021f7478` | the AI object cleared; its setting up, with the 21 behaviours' draws | `PartyAI::Clear`, `::Prepare` |
+| `func_ov024_021f9660` | every candidate action scored by its kind (table `0x021ffeac`) | `PartyAI::ScoreAll` |
+| `func_ov024_021f6830`, `021f68c8`, `021f691c` | a best-four list: put in, cleared, taken | `ChoiceList::Insert`, `::Clear`, `::Take` |
+| `func_ov024_021f8874`, `021f87dc`, `021f875c` | an action usable and paid for; its MP; the target's resistance to it | `PartyAI::CanUse`, `::CostOf`, `::ResistanceOf` |
+| `func_ov024_021f8938` | an amount's mean and least, from its range and the user's might or mending | `PartyAI::ExpectedAmount` |
+| `func_ov024_021fb490` | kind 1's evaluator, a harm (partly read) | `PartyAI::ScoreHarm` |
+
+**What is open**: the scoring — `func_ov024_021f9874`, `021fa7ec` past its
+first half, the evaluators of kinds 2 on, `021fd858`, `021fd954`,
+`021fdf04` — and what the 21 behaviours each govern (task 17b); 67 targeting
+handlers; what status `+0x14` bits 9 and 26 and `+0x50` are; what the counts
+of rules 3, 5, 6 and 7 start at.

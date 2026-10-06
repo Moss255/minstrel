@@ -85,11 +85,11 @@ import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
  * - a round of more than two fighters, which the reference, one against one,
  *   does not have: everyone is ordered by the same draw;
  * - where a monster's actions more fall in the order: straight after its first;
- * - the targeting handlers not read — Sap's, and those past the ones
- *   `byHandler` names — which take the first; the weighted pick's halving
- *   under a status, not identified;
- * - which of its six ways a monster takes is the game's weights for its AI
- *   type; a monster that flees gets away, and pays nothing;
+ * - the targeting handlers not read — those past the ones `byHandler`
+ *   names; `docs/readings/T17-ai.md` lists all 161 — which take the first;
+ *   the weighted pick's halving under a status, not identified;
+ * - the counts a monster's way rule keeps, taken to start at 0
+ *   (`Fighter.wayRule`); a monster that flees gets away, and pays nothing;
  * - the critical chance, the reference's 200 in 10,000 for its level-13 case —
  *   how the game derives it is not read;
  * - fleeing, which the reference does not model: {@link Rules.flee} in 100;

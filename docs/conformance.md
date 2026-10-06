@@ -48,7 +48,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **A battle's experience, shared** | `func_ov023_021f4098`, once a place from the victory routine: `total × (k + level) × rounds ÷ Σ`, in floats, summed in the game's order, × 1.05 on a flag, rounded up; `k` from `expadj.nat` by the total | `experienceShares`, `bandAdd` | **the game's**, held to the oracle on 20,000 random parties with no difference. **INFERRED**: that the weight's counter is rounds stood. **Ours**: nothing sets the 1.05 flag; one player always |
 | **The generators** | two: the battle's own, seeded from the clock as it is made; and the world's, `GetBTRandom()` | `BattleRng`, one a battle; the field's | **settled.** A battle's rolls replay from its own seed alone |
 | **The surprise round** | `ProcessCombatTurn`: `[battle + 0xe49]` is how the fight opened. At 1 the monsters sit out; at 2 the party does, the first monster always acts, and each after it acts on `NextRandomMax(100) < 67`. One passed over is **not rolled for**, so a surprised round makes fewer draws | `BattleState.opening`, `SURPRISED_ACTS_BELOW`, `howItOpens` | **the game's**, and **what sets it is read too**: who was facing whom as they met — see below. **Ours**: which monster counts as the first |
-| **How a monster chooses its way** | `func_0208a91c` reads bits 5–7 of the record's `+0x10` and dispatches to one of eight handlers; four draw by a weight table — `func_0208a370`, `NextRandomMax(256) + 1` walked down `monsterActionWeights` at `0x020e8caa` | `chosenWay`, the table by `aiType` | **the game's draw, and now the game's table.** It was the boss bit that chose, which this repository had INFERRED and which is not it: Hexagoon is way 0, where the bit had it drawing by the falling table. **Ours**: ways 3, 5, 6 and 7 — a round robin, a pair and a coin, two passes — fall back to the even table, and a slot the monster cannot use is not scanned past |
+| **How a monster chooses its way** | `func_0208a91c` reads bits 5–7 of the record's `+0x10` and dispatches to one of eight handlers; four draw by a weight table — `func_0208a370`, `NextRandomMax(256) + 1` walked down `monsterActionWeights` at `0x020e8caa` | `chosenWay`, the table by `aiType` | **the game's draw, and now the game's table.** It was the boss bit that chose, which this repository had INFERRED and which is not it: Hexagoon is way 0, where the bit had it drawing by the falling table. **All eight now the game's** (6 October 2026, `docs/readings/T17-ai.md`): 3 in turn by a count of the monster's, 7 by its group's, 5 a pair in turn and a coin within it, 6 its first way and the others by turns. **Ours**: the counts start at 0 (INFERRED) |
 | **Initiative** | inlined in `ProcessCombatTurn`: the **buffed** agility, capped at 999, times `NextRandomFloatBetween(0.51, 1.0)`, sorted highest first by a quicksort over floats | `initiative`, over `levelled(agility)` | **the game's**, in its floats, over the buffed agility. It was the reference's arithmetic in exact whole numbers, which orders two close scores differently where a float's rounding parts them. `0.51f` appears once in the whole build. **Ours**: how a tie breaks, the game's sort being unstable, and the 999 cap, which no stat of the slice's reaches |
 | **The party fleeing** | `func_ov000_0215f7a8`: away outright where the party surprised them, where nothing is left that can act, or where three times the monsters' mean attack-and-defence is not above the party's; otherwise `10 + deftness ÷ 20` held up to the floor its attempt gives — `25 50 75 100` at `0x02182c04` — and a draw below a hundred under it, **from the world's generator** | `fleeChance` | **the game's shape**, and the draw is the world's, so a flight spends none of the battle's numbers. It was a flat 50 in 100 of ours. The ten-bit field its own term reads is **deftness**, the same one `RollCritical` hands `CalculateCritRate`. **Ours**: reading "nothing that can act" as fallen or asleep. The table's own fifth step is `65535`, which any draw passes, so the zeros after it cannot be reached and holding the count at `100` comes to the same thing |
 | **A monster fleeing** | the action dispatcher, `func_ov024_021da670`: action `0xE1` (and `0x395`) on oneself removes the combatant, **with no draw** | a refusal, ours | **a monster that chooses to flee, flees.** If anything refuses it, that is in the choosing and not here. `still-open.md` lists "a monster attacking when its drawn Flee is refused" as ours, and it has no counterpart at this point in the game |
@@ -847,9 +847,13 @@ modelled:
 | 96 | Psyche Up: refused at the most tension |
 | 112 | Flee: refused unless the party's mean attack and defence is three times its own |
 
-**Ours**: Sap's (22, 23) taken as Kasap's; the handlers past these take the
-first. A heal of mode 1 or 2 is a draw among those below half, not the most
-wounded, as the simulation had it.
+**Added 6 October 2026** (`docs/readings/T17-ai.md`, which lists all 161):
+5 and 6, Body Slam only when low; 20, Kabuff by a draw among the groups; 22,
+Sap; 26, Accelerate; 32, Deceleratle; 61, the single abilities by the hit
+code's weighted picks; 62, all; 114, Poison Breath while one is unpoisoned;
+157, the breaths. **Ours**: the 67 that monsters take and are not read take
+the first; where a handler picks more than once, the command aims at the
+first pick.
 
 **The weighted pick** (`func_ov000_02154f30`): each of the party weighs 2,
 and where the record's `+0x10` bit 26 is set (263 of 438), the last of them
@@ -884,11 +888,13 @@ turn as action `0x385`, which also goes through the resolver.
   trait `0xa4`) who stood for half the battle's rounds, at one in
   `N × 100 ÷ level` (`dropsWon`). "Above half its HP" was wrong: it is half
   the rounds. `docs/readings/T10b-questions.md` §1;
-- what the four ways of choosing that do not draw by weights do, exactly — a
-  round robin (3 and 7), a pair and a coin (5), two passes (6). What makes a
-  slot unusable is read (above);
-- the targeting handlers not yet read, Sap's among them, and the party's own
-  command-phase processing, `021f9030` and `021f8f20`;
+- ~~what the four ways of choosing that do not draw by weights do~~ —
+  **read and built, 6 October 2026** (`docs/readings/T17-ai.md` §1);
+- the targeting handlers not yet read — 67 that monsters take, listed in
+  `docs/readings/T17-ai.md` §3; Sap's is read;
+- **the party's tactics**: `021f9030` and `021f8f20` read as far as their
+  frame (`docs/readings/T17-ai.md` §2); the scoring — `021f9874`,
+  `021fa7ec`, the evaluators at `0x021ffeac` — is not, and is task 17b;
 - ~~what the trait `0x11d` is~~ — **read and built, 4 October 2026**:
   Critical in a Crisis, panel 285; the quarter is a quarter of maximum HP
   (`inCrisis`, `criticalChance`'s `crisis`).

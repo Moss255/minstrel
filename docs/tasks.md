@@ -40,6 +40,10 @@ written up on the wiki; each says so under its heading.
   the keys the party holds by their own records (they all opened with none
   before), and the six locked chests by their lock bits; the ferry worked
   already. The ship is split off as **16b**, its code found and not read.
+- **Task 17 is done in part**, 6 October 2026: monsters choose their ways
+  by all eight of the game's rules, and ten more targeting handlers are
+  built, with all 161 listed; the party's tactics are read as far as their
+  frame and split off as **17b**, their scoring not read.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
   line and does nothing — task 18); the camera easing in for a party trick;
@@ -448,6 +452,13 @@ addresses, and built the way `flight.ts` built the Express.
 
 ## 17. Battle AI — translate
 
+**Done in part, 6 October 2026; the party's tactics split off as 17b.**
+Monsters choose their ways by all eight of the game's rules (`665ac17`); ten
+more targeting handlers are read and built, and all 161 are listed with who
+takes each — 67 that monsters take are not read, and take the first
+(`81ffde5`). The tactics are read as far as their frame and not built.
+`docs/readings/T17-ai.md`; the wiki's Battle-AI.
+
 - **The party's tactics.** A member not on Follow Orders hands in no command,
   because the AI is not read. The party's command-phase processing is at
   `021f9030` and `021f8f20`.
@@ -465,6 +476,32 @@ wanted", then `battle.ts` (`chooseFoe`, `byHandler`, `firstHandler`) and
 **Done when** each tactic chooses as the game's code chooses, the four
 methods are translated, and every targeting handler is read or listed as
 unread. A seeded battle with the party on a tactic replays identically.
+
+## 17b. The party's tactics — translate
+
+Split from 17 on 6 October 2026, with its frame read: where the game
+reaches the AI (the command phase's `func_ov024_021f9030`, a member's turn
+`func_ov024_021f8f20`, only when the action handed in is the Attack), each
+tactic's lists and threshold, the setting up (`021f7478`) and its draws,
+the weakest monster's Attack, the best-four lists — all in
+`docs/readings/T17-ai.md` §2.
+
+**Still to read**: the scoring. `func_ov024_021f9874` (3,832 bytes),
+`021fa7ec` (3,140; its first half is read), the evaluators by action kind at
+`0x021ffeac` (kind 1's, `021fb490`, partly read; 2 on not), `021fd858`,
+`021fd954`, `021fdf04`, `021f8bd8`, `021f8d80`, and what the 21 behaviours
+the setting up draws for each govern. Much of it is float arithmetic, to be
+held to `packages/sim/test/game-oracle.ts`.
+
+**Then build** it in the sim, reached as the game reaches it: a member
+not following orders keeps the Attack in the command phase
+(`battle-commands.ts`), and the AI runs at their turn. Its draws come from
+the battle's own generator, so a replay depends on them all.
+
+**Done when** each tactic chooses as the game's code chooses, the
+command phase's ten actions are decided as it decides them where the
+simulation has the action, and a seeded battle with the party on a tactic
+replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
 
