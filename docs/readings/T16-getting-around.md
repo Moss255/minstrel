@@ -184,8 +184,9 @@ run in the file's order, the first that holds:
   "It doesn't look like any of the keys in `<LEADER>`'s possession will open
   it." — and no talk record after.
 
-161 records on the cartridge test a key this way, in `C01`, `D03`, `D08`,
-`D09`, `D12`, `D17` and the rest. **This engine already ran all of it**
+175 records on the cartridge test a key this way, in 17 areas — 62 in `S07`,
+18 in `D08`, 16 in `D17`, 12 in `M03`, 11 in `C01`, and `D03`, `D09`, `D12`,
+`H14`, `H16`, `H19`, `M02`, `M08`, `M09`, `M11`, `S09`, `X05`. **This engine already ran all of it**
 (`doorwayPlay`, `blocksDoorway`, the talk records) — **but did not read 18
 and 19, so they held**, and the first record of a door, the fitting key's,
 opened every locked door with no key at all. Reading them is the whole fix.
