@@ -9,6 +9,7 @@ import {
   withHp,
   withMp,
 } from '../src/battle/battle.ts'
+import { holyResistance } from '../src/battle/damage.ts'
 import { BattleRng } from '../src/battle/rng.ts'
 import { focusMp, rainHp, roundRunDown, WEAR_TABLE } from '../src/battle/states.ts'
 
@@ -308,5 +309,62 @@ describe('Alma Mater — kind 39', () => {
     const other = status(999, 'kill', { side: 'other', change: { kind: 'kill', chance: 100 } })
     const { events } = playRound(almaOn(1, [hero, foe]), using(other, 1), new BattleRng(2n))
     expect(changeOf(events).hits).toEqual([{ target: 1, result: 'killed' }])
+  })
+})
+
+describe('Holy Impregnable — kind 64', () => {
+  it('takes 25 off the resistance to the elements 9 to 21, held at nothing, and none off the rest', () => {
+    const bytes = Array.from({ length: 21 }, (_, i) => (i === 9 ? 10 : 100))
+    expect(holyResistance(bytes, 10)).toBe(0)
+    expect(holyResistance(bytes, 11)).toBe(Math.fround(0.75))
+    expect(holyResistance(bytes, 8)).toBe(1)
+    expect(holyResistance(bytes, 3)).toBe(1)
+    expect(holyResistance(undefined, 16)).toBe(Math.fround(0.75))
+  })
+
+  it('keeps a sleep off one whose resistance it brings to nothing', () => {
+    const sleepy: Fighter = {
+      ...hero,
+      resist: Array.from({ length: 21 }, (_, i) => (i === 9 ? 20 : 100)),
+    }
+    const snooze = status(46, 'sleep', {
+      side: 'other',
+      element: 10,
+      change: { kind: 'sleep', chance: 100 },
+    })
+    const start = startBattle([sleepy, foe])
+    const holy = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 0 ? { ...f, states: { ...f.states, holy: { level: 1, turns: 5 } } } : f,
+      ),
+    }
+    // The monster puts the Hero to sleep: under Holy Impregnable it never
+    // lands; without it, it sometimes does.
+    const casting = (state: typeof holy) => ({
+      ...state,
+      fighters: state.fighters.map((f, i) =>
+        i === 1 ? { ...f, acts: [{ kind: 'change' as const, changing: snooze }] } : f,
+      ),
+    })
+    const slept = (state: typeof holy) => {
+      let landed = 0
+      let cast = 0
+      for (let seed = 0; seed < 200; seed++) {
+        const { events } = playRound(
+          casting(state),
+          new Map([[0, { kind: 'defend' }]]),
+          new BattleRng(BigInt(seed)),
+        )
+        const e = events.find((x) => x.kind === 'change' && x.actor === 1)
+        if (e?.kind !== 'change') continue
+        cast++
+        if (e.hits.some((h) => h.result === 'asleep')) landed++
+      }
+      expect(cast).toBeGreaterThan(100)
+      return landed
+    }
+    expect(slept(holy)).toBe(0)
+    expect(slept(start)).toBeGreaterThan(0)
   })
 })

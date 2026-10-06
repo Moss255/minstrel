@@ -145,6 +145,15 @@ export interface States {
    */
   readonly alma?: Level | undefined
   /**
+   * **Holy Impregnable** — status `+0x18` bit 3, with a count of 5 at `+0x6b`
+   * (kind 64, `func_ov024_021e1120`; `func_02088ccc`): its holder's
+   * resistance to the elements 9 to 21 — sleep, death, poison and the like —
+   * 25 lower, held at nothing (`func_ov000_02156b38`; see `holyResistance`).
+   * Runs down by the first table, its line `0x25d` (`func_ov000_0215858c`,
+   * `0x02158de8`–`0x02158e78`).
+   */
+  readonly holy?: Level | undefined
+  /**
    * **Paralysed** — status `+0x14` bit 3, with a count of 3 at `+0x5c`
    * (`func_0208826c`, rider 11): its holder cannot act
    * (`func_ov000_02156038`). The count goes a pass less on each of their
@@ -219,7 +228,7 @@ export const NO_STATES: States = {
  * defence 6 at `+0x6f` (`func_020878b4`, `0x02087900`), agility 6 at `+0x70`,
  * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
  * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`); Fizzle 6 at
- * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
+ * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); Holy Impregnable 5 at `+0x6b` (`func_02088ccc`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
  * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
  * (`func_0208826c`). Every setter stores its second count 0 beside it.
  */
@@ -236,6 +245,7 @@ export const LEVEL_COUNTS = {
   vanished: 5,
   rotstop: 4,
   alma: 6,
+  holy: 5,
   zeroZone: 5,
   tumble: 5,
   paralysed: 3,
@@ -275,6 +285,7 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   vanished: { table: WEAR_TABLE_SLOW, start: 4 },
   rotstop: { table: WEAR_TABLE_SLOW, start: 4 },
   alma: { table: WEAR_TABLE, start: 4 },
+  holy: { table: WEAR_TABLE, start: 4 },
   zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.

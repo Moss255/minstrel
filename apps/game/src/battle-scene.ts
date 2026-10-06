@@ -434,6 +434,7 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   schizofanic: 'Schizofanic',
   rotstop: 'Rotstopper',
   alma: 'Alma Mater',
+  holy: 'Holy Impregnable',
   mist: 'Mist Me',
   focus: 'Focus Pocus',
   might: 'magical might',
@@ -530,6 +531,7 @@ const WORN_OFF: Readonly<
     | 'vanished'
     | 'rotstop'
     | 'alma'
+    | 'holy'
     | 'zeroZone'
     | 'tumble'
     | 'watched'
@@ -544,8 +546,9 @@ const WORN_OFF: Readonly<
   // Vanish's, `0x1c9` (`0x0215899c`); Rotstopper's, `0x1d8` (`0x02158acc`).
   vanished: 0x1c9,
   rotstop: 0x1d8,
-  // Alma Mater's, `0x1cb` (`0x02158bfc`).
+  // Alma Mater's, `0x1cb` (`0x02158bfc`); Holy Impregnable's, `0x25d` (`0x02158e58`).
   alma: 0x1cb,
+  holy: 0x25d,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
   // `0x1c8` (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`).
   focus: 0x1c8,
@@ -2182,6 +2185,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [40, 'rotstop'],
   // Alma Mater (`021deff8`): kept from the reaper at 1 HP, once.
   [39, 'alma'],
+  // Holy Impregnable (`021e1120`): 25 less taken of the ailments' elements.
+  [64, 'holy'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
   [36, 'schizofanic'],
   [55, 'mist'],

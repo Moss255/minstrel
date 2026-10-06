@@ -57,6 +57,8 @@ describe('how a status runs down — the game’s (`func_ov000_0215858c`, `02159
       rotstop: 4,
       // `func_02088b14`, Alma Mater's.
       alma: 6,
+      // `func_02088ccc`, Holy Impregnable's.
+      holy: 5,
       zeroZone: 5,
       tumble: 5,
       // `func_0208826c`, rider 11's.

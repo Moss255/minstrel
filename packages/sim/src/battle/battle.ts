@@ -7,6 +7,7 @@ import {
   dealt,
   drawnAmount,
   GUARD_LEVELS,
+  holyResistance,
   inCrisis,
   initiative,
   partyAmount,
@@ -412,6 +413,8 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] 
   // Rotstopper's (`+0x87`, `0x02158a5c`); Alma Mater's (`+0x8a`, `0x02158b8c`).
   'rotstop',
   'alma',
+  // Holy Impregnable's (`+0x8e`, `0x02158de8`).
+  'holy',
   'attack',
   'defence',
   'agility',
@@ -476,6 +479,8 @@ export type Change =
   | { readonly kind: 'rotstop'; readonly chance: number }
   /** **Alma Mater** (kind 39, `func_ov024_021deff8`): the simple shape — see `States.alma`. */
   | { readonly kind: 'alma'; readonly chance: number }
+  /** **Holy Impregnable** (kind 64, `func_ov024_021e1120`): the simple shape — see `States.holy`. */
+  | { readonly kind: 'holy'; readonly chance: number }
   /**
    * **Flower Power, Scandal Eyes** (kind 19, `func_ov024_021dd534`): landed,
    * on one who may take it, dazzled of its `sort` — the record's `+0x30` —
@@ -915,6 +920,7 @@ export type BattleEvent =
         | 'vanished'
         | 'rotstop'
         | 'alma'
+        | 'holy'
         | 'zeroZone'
         | 'tumble'
         | 'watched'
@@ -1120,6 +1126,16 @@ function wardsOf(
       : {}),
     ...(action.breath && breaths !== 0 ? { breathWard: wardMultiplier(breaths) } : {}),
   }
+}
+
+/** A target's resistance to an element, with Holy Impregnable's — see `holyResistance`. */
+function resistanceOf(
+  target: { readonly resist?: readonly number[]; readonly states: States },
+  element: number,
+): number {
+  return (target.states.holy?.level ?? 0) !== 0
+    ? holyResistance(target.resist, element)
+    : resistanceTo(target.resist, element)
 }
 
 /** Rotstopper's half: its holder struck by a monster of family 8 — see `States.rotstop`. */
@@ -2608,7 +2624,7 @@ export function playRound(
           // the whole number — the game's, in the game's floats: `dealt`.
           amount = dealt(rng, amount, {
             critical,
-            resistance: resistanceTo(them.resist, spell.element ?? 0),
+            resistance: resistanceOf(them, spell.element ?? 0),
             ...rotOf(me, them),
             ...wardsOf(them, spell),
             ...(spell.cap ? { cap: spell.cap } : {}),
@@ -2766,7 +2782,7 @@ export function playRound(
         // Its accuracy is the chance **times the target's resistance, plus a
         // half, truncated** (`0x02156a74`); gone haywire it lands on anyone
         // not immune (`0x02156a34`).
-        const resistance = resistanceTo(them.resist, changing.element ?? 0)
+        const resistance = resistanceOf(them, changing.element ?? 0)
         const accuracy = Math.trunc(
           Math.fround(Math.fround(Math.fround(chance) * resistance) + Math.fround(0.5)),
         )
@@ -2874,6 +2890,7 @@ export function playRound(
             return { target, result: 'given' }
           case 'rotstop':
           case 'alma':
+          case 'holy':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { [change.kind]: { level: 1, turns: LEVEL_COUNTS[change.kind] } })
             return { target, result: 'given' }
@@ -3169,7 +3186,7 @@ export function playRound(
         const thrust = blow.handler === THRUST_HANDLER
         const damage = dealt(rng, d & 0xffff, {
           critical: critical && !thrust && !(blow.sure && blow.action !== CRITICAL_CLAIM),
-          resistance: resistanceTo(them.resist, blow.element),
+          resistance: resistanceOf(them, blow.element),
           ...rotOf(me, them),
           ...wardsOf(them, blow),
           dodged,
@@ -3340,7 +3357,7 @@ export function playRound(
       : dealt(rng, damage, {
           critical,
           attack: attackOf(me),
-          resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
+          resistance: resistanceOf(them, PLAIN_ATTACK_ELEMENT),
           ...rotOf(me, them),
           dodged,
           blocked,

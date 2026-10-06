@@ -73,7 +73,6 @@ empty):
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
-| 64 | `func_ov024_021e1120` | Holy Impregnable |
 | 66 | `func_ov024_021e1328` | Pincushion |
 | 67 | `func_ov024_021e13e0` | Choir of Angels |
 | 68 | `func_ov024_021e1580` | 0 Zone |
@@ -247,7 +246,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (32 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40 and 39), by the kind whose handler is unread:
+**Still struck as the Attack** (31 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -271,7 +270,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
-| 64 | `func_ov024_021e1120` | Holy Impregnable |
 | 66 | `func_ov024_021e1328` | Pincushion |
 
 Most need a status the battle does not keep — a counter, a barrier, Bounce's
@@ -901,3 +899,18 @@ status not kept. `func_ov024_021e47dc` tests it, and its readers are:
 
 Runs down: `+0x8a`, the first table, line `0x1cb` (`0x02158b8c`–
 `0x02158c1c`).
+
+### Holy Impregnable (kind 64) — built
+
+The simple shape (`func_02088cb8`, `02088ccc`): `+0x18` bit 3 with a count
+of 5 at `+0x6b`. **What it does** — the resistance itself,
+`func_ov000_02156b38`, read whole: the target's byte at `+0x3E + element −
+1`, plus an adjustment, held at nothing, over a hundred, in floats. The
+adjustment: −25 under Holy Impregnable (`func_ov000_02156c94`,
+`0x02156b6c`), else +25 under `+0x18` bit 31 (`func_ov000_02156cac`; not
+kept); but **none for the plain Attack's element, 8** (`0x02156c08`), and for
+1 to 7 the −50 of their own statuses in its place (`func_020886b0` to
+`020887d0`, by element 1; 2; 3 and 4; 5 and 6; 7 — not kept). Elements
+outside 1 to 21 are whole. So it lowers only 9 to 21 — the ailments'. The
+riders read their bytes without it (§8), and so does the poison attack's.
+Runs down: `+0x8e`, the first table, line `0x25d` (`0x02158de8`–`0x02158e78`).

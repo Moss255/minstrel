@@ -365,6 +365,22 @@ export function resistanceTo(bytes: readonly number[] | undefined, element: numb
 }
 
 /**
+ * **A resistance under Holy Impregnable** — `func_ov000_02156b38` whole: the
+ * byte plus an adjustment, held at nothing, over a hundred, in floats. Holy
+ * Impregnable's adjustment is −25 (`0x02156b6c`) — but only to the elements
+ * after the plain Attack's, 9 to 21: the Attack's, 8, takes none
+ * (`0x02156c08`), and 1 to 7 take their own statuses' in its place
+ * (`0x02156c24`–`0x02156c44`; not kept). No bytes kept count as a hundred.
+ */
+export function holyResistance(bytes: readonly number[] | undefined, element: number): number {
+  if (element < 9 || element > 21) return resistanceTo(bytes, element)
+  const f = Math.fround
+  const byte = bytes?.[element - 1] ?? 100
+  const sum = f(f(byte) + f(-25))
+  return f((sum < 0 ? 0 : sum) / f(100))
+}
+
+/**
  * What a worked-out amount comes to on its target — the spine of the game's
  * `func_ov024_021e6a90`, **kept a float to the end as the game keeps it**:
  *
