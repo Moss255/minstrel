@@ -1944,6 +1944,20 @@ of the codes name an archive that ships; the rest are development maps the
 cartridge kept an entry for, with names like "Debug Floor", "Bed Test" and
 "For Encounter Testing".
 
+## Values 1 and 17, read from the code — 6 October 2026
+
+The game reads the list as a `Script` (`func_020995f8`, opcode `0x67`) into a
+16-byte map record. **Value 1 is the map's area**, the record's `+0x02` (15
+bits): a village and its houses share their exterior's id (1100 for Angel
+Falls), a dungeon and its floors theirs (7100, the Hexagon), every field 1 —
+but Stornway's maps are 198, not their exterior's 100. Evac's table is matched
+by it. **Value 17**, already read from the labels as indoors or outdoors, is
+the record's `+0x0E` bits 0–1, and **what Zoom and the chimaera wing do** on
+the map (`func_ov002_02165b44`): 2 they go (119 maps — fields, exteriors, the
+sky's ocean), 1 a bump on the ceiling (520), 0 nothing (232 — the sky, the
+Observatory's exteriors, the Realm of the Almighty, event and test maps).
+`MapEntry.area`, `MapEntry.zoom`.
+
 ## The other fifteen values are not established
 
 They are carried on `MapEntry.values`. One reading was tried and **disproved**:
@@ -5881,3 +5895,60 @@ experience adds it to each member's level before weighing — see
 
 On the reference cartridge, sixteen bytes: three bands, up to 10,000 → 4, up
 to 20,000 → 3, unbounded → 2.
+
+---
+
+# Travel — `loola`, `riremito.bin`, `chur_messet.bin`
+
+Three of the game's `Script` command files (see the tagged data table), read 6
+October 2026 from the code that runs them; `game-formats/src/travel.ts`, and
+the whole reading with addresses in `docs/readings/T12-travel.md`.
+
+## `data/map/loola.gp2` › `loola_<LG>.bin` — Zoom's places
+
+Opcodes `0x64`, `0x65` (version, date: nothing), `0x66 n` (room for n) and
+**`0x67`, a place** (`func_020a7f88`), thirteen values:
+
+| value | what |
+|---|---|
+| 0 | its number: flag `0x200 + n` offers it, and the list is in its order |
+| 1 | 1 to 6 — not read by anything found |
+| 2 | its name |
+| 3 | the town's revival map (a church, or Dourbridge's exterior …) |
+| 4 | the map Zoom lands on |
+| 5 | the facing there (0 on all) |
+| 6–8 | x, y, z, in the map's units |
+| 9 | the map the ship is moved to |
+| 10 | a number passed with it (not read) |
+| 11, 12 | the ship's x and z |
+
+The European file holds 18. The list offered is the places whose flags are set,
+by number (`func_020a8304`).
+
+## `data/map/riremito.bin` — Evac
+
+Opcodes `0x64`, `0x65` (nothing) and **`0x66`** (`func_ov017_021ab6b0`): an
+area (a map's value 1), a map (0 for any), then destinations of five — a map,
+the facing, x, y, z. Each record in order holds when its area is the map's, it
+names this map or none, and the area was not already taken by a record naming a
+map; it takes the destination on the last field the Hero stood in, or else its
+last; one whose destination is map 0 (Zere Rocks' own top) goes nowhere. 21
+records, 19 areas.
+
+## `data/scenario/chur_messet.bin` — the waking priest's voice
+
+**`0x67`** records (`func_0207267c`): a map, then twelve strings, three spans of
+four — the lowest and highest story major (both "0": always), then the voice by
+day and by night (`atoi`; empty is 1). The first span holding the major gives
+the voice; voice 3 says nothing, any other is `str_ch<voice − 1>`'s line 1082.
+18 maps on the European cartridge.
+
+## Evidence
+
+| check | result |
+|---|---|
+| `loola_en.bin` places | **18**, their numbers 0 to 17 |
+| overlay 17 runs with the place maps' shape | **1** |
+| `riremito.bin` records read, each with ≥ 1 destination | **21 / 21** |
+| `chur_messet.bin` maps | **18**: 16 of them `loola`'s revival maps, and 4106 and 4506, the Observatory's |
+

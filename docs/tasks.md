@@ -17,7 +17,10 @@ written up on the wiki; each says so under its heading.
 
 - **Task 11 is done**, 6 October 2026: the ending plays to its end, the staff
   roll on the bottom screen and the cards over the view.
-- **Tasks 12 to 14 are not read.** Readers were started on 4 October and cut
+- **Task 12 is done**, 6 October 2026: Zoom, the chimaera wing, Evac and a
+  wipe-out go where the game sends them; the flight is not drawn and the ship
+  not moved.
+- **Tasks 13 and 14 are not read.** Readers were started on 4 October and cut
   off before writing anything, so each starts from its brief below.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
@@ -314,6 +317,11 @@ order and speed are read rather than set by eye, so `ev29300` plays to the
 end of the roll. Whatever cannot be read becomes a line for a video.
 
 ## 12. Travel — find and build
+
+**Done, 6 October 2026**: `travel.ts` in `@minstrel/game-formats`, `openZoom`,
+`zoomChosen`, `evacuate`, `comeRound` in `main.ts`; the reading is
+`docs/readings/T12-travel.md`; the wiki's Travel. Ours: the flight not drawn,
+the ship not moved, where in the revival map the party stands.
 
 A play-through needs these to get around once the world opens up past
 Stornway, and every one is a stand-in today (`docs/still-open.md` §2):

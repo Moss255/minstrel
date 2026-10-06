@@ -868,3 +868,42 @@ The reading, with every step: `docs/readings/T11-ending.md`.
 `GameResources+0x2C`, through `func_0204b3a0`); what step 0's
 `func_02094b34(…, 0x7A, 0x20B)` asks for; which screens `SetBrightness`
 fades.
+
+### Travel: Zoom, the chimaera wing, Evac, a wipe-out — ARM9 and overlays 2, 3 and 17, read 6 October 2026
+
+Task 12. **Where minstrel builds it**: `travel.ts` in `@minstrel/game-formats`,
+`openZoom`, `zoomChosen`, `evacuate` and `comeRound` in `apps/game/src/main.ts`.
+The whole reading is `docs/readings/T12-travel.md`.
+
+| address (US) | what | suggested name |
+|---|---|---|
+| `func_020a818c`, `data_020f1b6c` | run `data/map/loola.gp2` › `loola_<LG>.bin` with opcodes `0x64`–`0x67` | `ZoomList::Load` |
+| `func_020a7f88`, `func_020a8218`, `func_020a825c` | opcode `0x67`, a place of `0x2C` bytes; `0x66`, make room; add one | `ZoomList::OpPlace`, `::Reserve`, `::Add` |
+| `func_020a8170`, `func_020a810c`, `func_020a8128` | clear the list; clear a place's vector and place | `ZoomList::Init`, `ZoomPlace::Clear` |
+| `func_020a8304`, `func_020a8458` | order the list: the lowest-numbered unplaced place whose flag `0x200 + n` is set, again and again | `ZoomList::Arrange`, `::NextReached` |
+| `func_020a83b0`, `func_020a83fc` | a place by row; by revival map (5801 and 4506 → 1800) | `ZoomList::GetByRow`, `::GetByRevivalMap` |
+| `func_ov017_0219e290`, `data_ov017_021d6638` | a map loaded sets flag `0x200 + n` by the table of 18 | `MarkPlaceReached` |
+| `func_ov002_0215f224` | the list's window: `str_tm` 1400, six a page, `%d/%d` | `FieldMenu::DrawZoomList` |
+| `func_ov002_02165b44` | state `0x14`, a place chosen: value 17 of the map, flag `0x113a`, spend, request the map, the ship | `FieldMenu::ZoomChosen` |
+| `func_ov002_02157d40` | the field's spell dispatcher (Zoom `0xCA` at `0x02158504`, Evac `0xCD` at `0x02157f34`) | `FieldMenu::CastSpell` |
+| `func_ov002_02157634` | the field's item dispatcher (the wing `0x5603` at `0x02157818`) | `FieldMenu::UseItem` |
+| `func_ov017_021acd30`, `func_ov017_021acd7c` | start the flight task with (map change, ?, ceiling) | `FieldTravel::Start` |
+| `func_ov017_021ab860`, `func_ov017_021ab6b0`, `data_ov017_021d78a4` | Evac: `riremito.bin`'s `0x66` records by area, map and the last field | `Evac::Resolve`, `Evac::OpRecord` |
+| `func_020995f8` | `maplist9.bin`'s `0x67` into a 16-byte map record: value 1 → `+0x02`, 3 → `+0x0C` low, 17 → `+0x0E` bits 0–1, and more | `MapList::OpMap` |
+| `func_02099950` | a map record by id | `MapList::Find` |
+| `func_02010604` | a wipe-out: the fallen up, the purse halved, to the revival map, `0x113a` cleared at 16.2.1 | `GameState::Revive` |
+| `func_02010750` | `GameState+0x5729`, the party wiped out | `GameState::IsWipedOut` |
+| `func_ov017_0219bfb4` | change map in a mode; mode 2, the revival: the ship by `loola`, `chur_messet.bin`'s voice | `Field::ChangeMap` |
+| `func_02072928`, `data_020f0cc8`, `func_0207267c` | a string field of a record keyed by a number in a command file | `ScriptTable::GetField` |
+| `func_ov017_021ba90c`, `func_ov017_021ba998` | the revival's church task: overlay 3's church in mode 2 with a voice | `ReviveTask::Init`, `::Update` |
+| `func_ov003_02159174`, `func_ov003_0215af9c` | the church's mode (`+0x587`); state 10, line 1080 + mode | `Church::SetMode`, `Church::SayWelcome` |
+| `func_0201079c` | `GameState+0x5cb0`, the story major | `GameState::GetStoryMajor` |
+| `func_02048150`, `func_020482bc` | a member's HP to a value or full, status cleared; MP to full | `Character::Revive`, `::RestoreMp` |
+| `func_02083b60`, `func_02083bc0`, `func_02083c18` | set, test, clear the spells known (`+0x910`) | `Character::LearnSpell`, `::KnowsSpell`, `::ClearSpells` |
+| `func_02061c04` cases 7, 66, 79, 108 | actions 107 (`0x113a`), 166 (teach a spell), 179 (revival map, `0x113c`), 208 (revival map) | |
+| `func_0202c508`, `func_0202c540`, `func_0202b7d8` | the session at `data_020fefec`: none or the host; a guest; in one | `Session::IsOwnGame`, `::IsGuest`, `::IsActive` |
+| `func_020d3018`, `func_02005a94` | `strcmp`; `strtol(s, 0, 10)` | `strcmp`, `atoi` |
+
+**Open**: how a map's load places a party whose request has no place; what fills
+a set battle's request `+0x3e`; bit 0 of `GameState+0x63dc`
+(`func_02011b50`); the flight task's states.

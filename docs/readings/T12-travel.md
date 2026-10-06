@@ -116,10 +116,17 @@ centred on 120 (`0x78`) at y 99.
   and 31001 "But nothing happens."; the spell 9005 then **9016 "But the
   spell fails."** and sound 100. Nothing spent.
 
-Value 17 on the European cartridge: 2 on every field and town or dungeon
-exterior, 1 indoors (houses, churches, dungeon floors, grottos, the ending's
-maps), 0 on a few (`X04`, the Observatory's exterior). It is what
-`maplist.ts` called "which space the map is built in" from the labels.
+Value 17 on the European cartridge: **2 on 119 maps** — fields, town and
+dungeon exteriors, the ocean — **1 on 520**, indoors (houses, churches,
+dungeon floors, grottos, the ending's maps), **0 on 232** (the sky `O01`, the
+Observatory's exteriors `X01*`, the Realm of the Almighty `X03*`, event and
+test maps). It is what `maplist.ts` called "which space the map is built in"
+from the labels.
+
+**How the Hero knows Zoom**: trigger action **166 : n** sets bit n of the
+Hero's spells (`func_02061c04` case 66, `0x02063170`, `func_02083b60` on
+`+0x910`), n a place in the spell list. One record carries it: the
+Observatory's (`X05`, map 4504) at 5.1, **166 : 60**, and place 60 is Zoom.
 
 **Flag `0x113a`** is trigger action **107** (`func_02061c04` case 7,
 `0x02062090`): in a game of one's own, `0x113a` = (argument = 0). 57 records
