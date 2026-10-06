@@ -16,10 +16,10 @@ import {
   levelled,
   monsterHp,
   partyAmount,
-  SKILL_SCALES,
-  scaleStat,
   physicalDamage,
   resistanceTo,
+  SKILL_SCALES,
+  scaleStat,
 } from '../src/index.ts'
 import {
   AMBUSH_FOLLOWER_ACTS_BELOW,

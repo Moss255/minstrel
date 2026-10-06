@@ -1142,8 +1142,7 @@ export function playRound(
     // Under the action's chance times the byte over a hundred, in floats, or
     // under a hundred on a critical (`0x021e3118`–`0x021e3180`).
     const f = Math.fround
-    const lands = () =>
-      f(rng.below(100)) < (critical ? f(100) : f(f(chance) * f(f(byte) / f(100))))
+    const lands = () => f(rng.below(100)) < (critical ? f(100) : f(f(chance) * f(f(byte) / f(100))))
     switch (rider.slot) {
       case 4: {
         // Envenomation where its levels are above 0 (`0x021e309c`), plain

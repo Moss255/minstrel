@@ -1094,7 +1094,9 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
       }
       if (event.shortOfGold) {
-        return lines(say(scene, 'actions', ACTION_SAYS.notEnoughGold, { actor })) ?? 'Not enough gold!'
+        return (
+          lines(say(scene, 'actions', ACTION_SAYS.notEnoughGold, { actor })) ?? 'Not enough gold!'
+        )
       }
       const landed = event.hits.map((hit) => {
         const target = scene.names[hit.target]

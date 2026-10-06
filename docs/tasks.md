@@ -56,7 +56,12 @@ written up on the wiki; each says so under its heading.
   55 after** — the changes of state, Squelch, waking, Whack, Zing and Kazing,
   Meditation, Egg On, the riders of five slots, a metal body's zeroing, and
   the coups Choir of Angels and Tension Boost are built. Envenomation is told
-  from poison, and only it is tolled in a battle — a correction.
+  from poison, and only it is tolled in a battle — a correction. **Carried
+  on the same day** (§8): the six skills of the table at `0x021fe8b6`
+  (Gigaslash among them), Propeller Blade, Gold Rush's gold, and the riders
+  by the target's resistance byte — death corrected to a flat 12.5, a metal
+  body not spared. Crosscutter Throw, the 38 kinds, ten riders and eight
+  coups are left, each by address.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
   the camera easing in for a party trick;
@@ -558,6 +563,16 @@ in `battle-scene.ts`, the change and blow paths of `battle.ts`,
 `sim/src/battle/handlers.ts`; the reading and what is left by address,
 `docs/readings/T18-handlers.md`. The wiki's Ability-Handlers. 76 struck as
 the Attack before, 55 after; the 55 are listed by kind with their handlers.
+
+**Carried on, 6 October 2026** (`a4f7f68`, `f0074e0`, `b880f53`; the
+reading's §8): Gigaslash and the five like it scale by the game's own table
+at `0x021fe8b6`; Propeller Blade strikes twice, its return clear of
+critical, dodge and block; Gold Rush spends its 1,000 gold, and is refused
+short; the riders read the target's resistance byte, and death lands at a
+flat 12.5, a metal body not spared. **Still left**, each by address in §7:
+Crosscutter Throw's extra pass (by place on the stage, which the simulation
+does not keep), the 55 struck as the Attack by 38 kinds, riders 1, 5, 6,
+9–14, 19 and 21, and the eight coups.
 
 `docs/still-open.md` §2, the rows "abilities" and "combo and tension", lists
 what still does not play as the game plays it:

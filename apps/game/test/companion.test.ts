@@ -400,6 +400,8 @@ describe('the party, the Hero first', () => {
       // Their own, for a spell's amount to scale by — the fixture's Ivor has none.
       might: ivor.numbers.magicalMight,
       mending: ivor.numbers.magicalMending,
+      // What six skills scale by — `SKILL_SCALES`.
+      strength: 15,
       shield: true,
       // A Fighter's `exp` is what beating it awards, not a Member's.
       exp: 0,

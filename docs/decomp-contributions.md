@@ -1129,3 +1129,21 @@ and where a monster's come from.
 
 **What is open**: `func_ov000_0215e9fc`'s count; the character's `+0x134
 +0x34`/`+0x36`; the weapon's metal flags (`+0x2F4` bits 4 and 10).
+
+### Task 18, what it left (6 October 2026)
+
+`docs/readings/T18-handlers.md` §8. Overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `data_ov024_021fe8b6` | seven `u16` quads — action, number, `lo`, `hi` — that six skills scale their amount by, `−1` ending | `SkillScaleTable` |
+| `GetAttackBaseDamage` `0x021e7c0c`–`0x021e7d80` | one of the party's scaling arm: the record's number (might, mending), then the table's, filled from the record's strength (INFERRED) with might, alone, or with deftness | (as named) |
+| `func_ov024_021e5be4` | post-step 6: the record's `+0x32` in gold from the party's purse (`func_02010828()+0xf6c`) or a monster's | `Resolver::SpendGold` |
+| `func_ov024_021eaa50` `0x021ead0c`–`0x021eadd0` | the action put in place of one the purse cannot pay: 935 | (part of) `Resolver::SubstituteAction` |
+| ov000 `func_ov000_0215cda0` | the standing monster with the least first coordinate on the stage — Crosscutter Throw's extra pass | `Battle::GetLeftmostMonster` |
+| `func_ov024_021eb5d0` `0x021eb954`, `0x021eb974`, `0x021ec444`, `0x021ec4a4` | Propeller Blade's target twice and its return's results cleared; Crosscutter Throw's extra target and its flag | (as named) |
+| ov000 `func_ov000_02156648` `[sp+0x38]` | the accuracy roll's flag that lands it with no draw — Propeller Blade's return | `RollAccuracy` |
+| `func_ov024_021e4604` | rider 20 at a flat 12.5 (`0x021e47d0`) times the byte, a metal body's byte passed over | `Resolver::RideDeath` (corrected) |
+
+**What is open**: the 38 kinds §7 lists, the riders 1, 5, 6, 9–14, 19, 21,
+and the eight coups.
