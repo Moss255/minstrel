@@ -210,6 +210,12 @@ Read from the handlers that pick them (`func_ov024_021da644`), and borne out
 by the cartridge: the Attack's are 1, 1, 2 / 5, 4, 7 / 8, 9, 140; Whack's
 fail 621 and 27 and kill 8 and 69; Zing's done 32.
 
+**So `Action.effect`, the byte at `+0x24` read as INFERRED "what it does",
+is the low byte of the done line at a monster** — 5 "does damage to" on the
+Attack and the attack spells, 22 "wounds are healed" on the heals. The code
+still tells heals from harms by it, which holds for the actions it is used on;
+the name is left as it is.
+
 ## 5. Envenomation, and what a battle tolls — a correction
 
 Status `+0x14` bit 1 is poisoned, and `+0x22`'s low two bits say which:
