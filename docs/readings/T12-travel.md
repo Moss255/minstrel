@@ -228,13 +228,116 @@ to 17; 216 (Gleeba) voice 1 by day and 2 by night to 16, 1 at 17; Dourbridge
 5; Batsureg 6; Wormwood 2; the Observatory (4106, 4506) 4; Gittingham and
 Gortress 7; the rest 1.
 
-## Not read
+## Not read (first reading)
 
-- Where in the revival map the party stands: the request carries no place,
-  and how the map's load places a party then is not read.
-- What fills a set battle's `+0x3e`.
-- The flight itself (`func_ov017_021acd30`'s task, overlay 17
-  `0x021ad3c8`–`0x021ada40`): the party's rise, the fade (`SetBrightness`, 30),
-  the landing.
-- Bit 0 of `GameState+0x63dc` (`func_02011b50`), which sends Zoom straight off.
-- Value 1 of a `loola` entry, and value 10 (the ship's).
+What the first reading left, each now answered below but the last:
+
+- Where in the revival map the party stands — **the map's start point**.
+- What fills a set battle's `+0x3e` — **trigger action 180**.
+- The flight itself — **read whole**.
+- Bit 0 of `GameState+0x63dc` — **a guest's flag in another's world**
+  (INFERRED), not built.
+- Value 1 of a `loola` entry, and value 10 (the ship's) — still not read;
+  value 10 is the ship's and goes with task 16b.
+
+## The leftovers — read 6 October 2026, later
+
+Same decomp, same build, US addresses; the disassembly is `dsd dis` of the
+decomp's extract.
+
+### The flight (`func_ov017_021acdf4`, the task `func_ov017_021acd30` starts)
+
+`func_ov017_021acd30(gs, a, b, c)` resets the task (`func_ov017_021acd7c`:
+state `+0x1c` 0, the count `+0x1d` 0, everything else 0) and keeps
+`+0x27c = a`, `+0x27d = b`, `+0x27e = c`, then queues it
+(`func_02046a3c`). Zoom and the wing call it `(0, 0, 0)` to go and
+`(0, 0, 1)` for the ceiling (`func_ov002_02165b44`, `0x02165f24` and
+`0x02165fe4`). Its **count** `+0x1d` adds the vblanks since the last pass
+(`GameState::GetTickCount`, `numTicks_`, `src/GameState/GameTime.cpp`) — two
+a pass in the field. Another caller sets `+0x280` (`func_ov017_0219577c`,
+from overlay 2 `0x0216a56c` and overlay 17) for a variant with its own
+effect, `ev999991710.chr`, its own sound (archive `0xa3`, entry 5) and a
+count of 25 — not Zoom's, not followed.
+
+| state | what (`0x021acdf4`–`0x021adac0`) |
+|---|---|
+| 0 | the memory set aside (`0x7000`) and **`data/effect/em1810.chr`** queued to load (`data_ov017_021d7978`); then 14 |
+| 14 (`0xe`) | the file loaded, the effect made from it as **effect 8** (`func_02057e6c`); then 1 |
+| 1 | **who flies**: the party's members in the field (`func_02010834`, `GameState+0x2a04+0xf78`, count `+0xf7c`), bits 0–3 of `+0x1e`, and in a game of one's own object `0xCE` as bit 4. For each that is drawn (`Object3D::IsVisible`, its alpha not 0), **effect 8 at its place** (`+0x44`) at its scale (`Object3D::GetScale`) (`func_02057fb4`). Then **sound archive `0xb2`, entry 0** (`func_0205ebc0(data_02108760, 0xb2, 0xb2)`, `func_0205ebfc(_, 0, 0)` → `func_0203ac40` → `func_020be7a8`, the start of a sequence-archive sequence); then 2 |
+| 2 | the count past **40**: each one flown **hidden** (`Object3D::EnableFlag(1)`, flag 0 `OBJECT3D_FLAG_HIDDEN`, `src/World/Object3D.cpp`); then 10 for the ceiling (`+0x27e`), else 3 |
+| 3 | past **100**: **both screens to black over 30** (`SetBrightness(_, −16, 30)`, `0x021ad450`; white, 16, for the `+0x27f` variant); then 4 |
+| 4 | past **140**: each shown again (`DisableFlag(1)`), the map change asked (`func_ov017_021a65c4(_, 0, b)`, the map request already made by the caller), and in a game of one's own **game-wide flag `0x113d` set** (`func_0206df6c`, `0x021ad6f8`); then 5 |
+| 5 | once the fade is done: the effect freed (`func_02057f00`), the sound archive let go (`func_0205ebec`), the task ended |
+| 10 (`0xa`) | **the ceiling**, past **55**: each flown shown again and set to **fall from 9.8 above where it stands** — `+0x124` = its height `+0x48` + `0x9ccc`, `+0x128` = its height, `+0x12c` = 0 (`0x021ad84c`–`0x021ad868`); **`strstd` 57** put up in the message window (`func_020e51cc(0x39)`, `func_0204500c(_, _, 0, 0xe3)`); **the camera shaken**, `0xcc` for 1000 (`func_0202ea10(cam, 0xcc, 0x3e8)`) and its point held where it is (`+0x10` kept in `+0x20`; its follow `+0x21c` set to −1, the old kept in `+0x1f`); the sound stopped (`func_0205ec20`) and **archive `0xb2`, entry 1** started; then 11 |
+| 11 (`0xb`) | the camera's point put back each pass; once **every one has landed** (`+0x124` = 0), the count from 0; then 12 |
+| 12 (`0xc`) | past **10**: 13 |
+| 13 (`0xd`) | the camera's follow given back, the effect freed, the sound let go, each shown, the window closed (`func_02043204`), the task ended |
+
+**The fall** (`func_0203348c`, `0x02033678`–`0x02033704`, each object's
+pass): while `+0x124` is not 0, `+0x12c` += 1 and `+0x124` −= `0x51 ×
++0x12c` — **a fall gathering 81/4096 a pass, each pass** — until it is
+below `+0x128`, when all three are 0. While it is not 0 it is the height
+the object is drawn at (`0x020330c4`–`0x020330f4`). From 9.8 that is 31
+passes.
+
+**The shake** (`func_0202e0a4`, `0x0202e238`–`0x0202e3c4`, the camera's
+pass): with a time `+0x1e8` left, 33 off it each pass (all of it, and the
+size `+0x1e4`, when 33 or less is left), and the size made `size −
+33 × size ÷ time-left`; while the size is above 0, one of four ways drawn
+(`rand() & 3`) adds ± size times two fixed directions to the eye and the
+look-at. The directions are `data_0210a05c`, set at run time and **not
+read**.
+
+### Where a party wiped out stands (`func_ov017_0219c598`)
+
+A map request with no place (`+0x07` 0) — which is what the wipe-out's is —
+puts the party at **the map's start point**: `func_0201e80c` and
+`func_0201e820` on the map's `+0x6c` (`0x0219c648`–`0x0219c668`), which the
+map's **`.bmbl`** fills when it is read (`func_02014390`, `func_0201e1d0`
+with the opcode table `data_020ef388`): its **opcode `0x6E`**
+(`func_0201d494`) takes x, y, z and a facing in radians (× 4096,
+`fix32ReduceAngle0To2Pi`) into `+0x70` and `+0x7c`. The table's opcodes are
+`0x64`–`0x6B`, `0x6E`, `0x70`, `0x72`–`0x74`, `0x7B`–`0x7E`; the `.bmbl`s
+carry `0x64`, `0x65`, `0x66`, `0x67`, `0x68`, `0x6A`, `0x6C`, `0x6E`, `0x70`,
+`0x72`, `0x73`, `0x74`, `0x7B` — **667 of 667 carry one `0x6E` of four
+floats**. Angel Falls' church, `M01M06`: (0, 0.15, −2.64), facing π;
+Stornway's, `C01M09`: (0.21, 0.12, −1.38), facing π. Every member is put
+there (`func_020399b0`), and object `0xCE` too when `+0xf7d` says so.
+
+(So the "terminator" `table.ts` names — tag `0x6E`, type `0xFF` — is this
+instruction: `0xFF` is four parameters' type bits, all float.)
+
+### A set battle's own revival map: trigger action 180
+
+`func_02061c04` **case 80** (`0x0206339c`–`0x020633f8`), in a battle
+(`func_02046b60(_, 10)`) that is a set battle (`func_020a3694`, the request's
+`+0x0c` ≥ 0): **`180 : b, m`** puts **m** in the request's `+0x22` — the
+battle's `+0x3e` — when the set battle being fought is **b**, and 0 when it
+is another. The record parser (`func_0205ec70` case 72, `0x0205f3d8`) takes
+180's one parameter's high half as **m**. A battle lost runs its
+lost-record first (`func_ov017_021b790c`, `0x021b7be8`–`0x021b7c64`, through
+`func_0206f81c`) and only then the wipe-out, which reads `+0x3e`
+(`0x021b7c8c`) and passes it (`0x021b7c98`), so the record decides where the
+party wakes. Nothing else
+writes `+0x3e` that was found (overlay 17's only other access is the read).
+
+Two records carry it on the European cartridge:
+
+| map | record | wakes in |
+|---|---|---|
+| 8612, the Magmaroo's summit | `12:14 104:1 180:14 →2309` | 2309, Upover's church (`M13M09`) |
+| 5704, Gortress, floor 1 | `12:16 104:3 197:119 180:16 →5700` | 5700, Gortress's exterior (`S07`) |
+
+### Bit 0 of `GameState+0x63dc`
+
+Set by `func_02011b24`, from overlay 4 (`0x02168770`), overlay 17
+(`0x021cf638`) and the ARM9's `func_02093428` (`0x0209362c`), which sends the
+party to map **10000** (`0x2710`) or 5900 and talks to the wireless code
+(`func_020936f8`, `func_020945ac`). INFERRED: **a guest in another player's
+world** — Zoom then takes them home (`func_ov017_0219ff58`). Multiplayer is
+out of the project, so it is never set here.
+
+### Evac out of a grotto
+
+Only through the grotto's own state (`GetGrottoStruct`), so it waits for the
+grotto generator (task 19).
