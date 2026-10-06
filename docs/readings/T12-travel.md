@@ -33,9 +33,11 @@ command files (`table.ts`).
   Swinedimples, Wormwood Creek, Upover, the Magmaroo's summit, Gortress,
   Gittingham. Each is a village's exterior (its maps' area, below) save
   Newid Isle and the summit, which are the maps themselves.
-- **Its shape, for finding it**: 18 halfwords, the n-th being either the area
-  of the n-th place's revival map in `loola` or that place's own Zoom map —
-  true of all 18, and of no other run in overlay 17.
+- **Its shape, for finding it**: 18 halfwords, the n-th being either the
+  town of the n-th place's revival map in `loola` (the map whose code is the
+  revival map's first three letters, `M01` for `M01M06`) or that place's own
+  Zoom map — true of all 18, and of no other run in overlay 17. (A map's area,
+  value 1, will not do: Stornway's maps are area 198, not 100.)
 
 ## `data/map/loola.gp2` › `loola_<LG>.bin` — the list
 

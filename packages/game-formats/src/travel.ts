@@ -149,22 +149,22 @@ export function placeOfRevivalMap(
  * map is loaded: entering the n-th map sets flag {@link PLACE_FLAG} `+ n`.
  *
  * Found by shape, as the other code tables are: a run of halfwords, as many
- * as the places, where **the n-th is either the area of the n-th place's
+ * as the places, where **the n-th is either the town of the n-th place's
  * revival map or that place's own Zoom map** — true of all 18 on the
- * cartridge, the Abbey's being Newid Isle, its Zoom map. `areaOf` gives a
- * map's area (`maplist9.bin` value 1). Throws when no run, or more than one,
- * has the shape.
+ * cartridge, the Abbey's being Newid Isle, its Zoom map. `townOf` gives the
+ * map a revival map stands in: the one whose code is its first three letters,
+ * `M01` for `M01M06`. Throws when no run, or more than one, has the shape.
  */
 export function readPlaceMaps(
   overlay: Uint8Array,
   places: readonly ZoomPlace[],
-  areaOf: (map: number) => number | undefined,
+  townOf: (map: number) => number | undefined,
 ): number[] {
   const sorted = [...places].sort((a, b) => a.number - b.number)
   if (sorted.length === 0) throw new GameFormatError('place maps: there are no places to look for')
   const wanted = sorted.map((place) => {
-    const area = areaOf(place.revivalMap)
-    return area === undefined ? [place.map] : [area, place.map]
+    const town = townOf(place.revivalMap)
+    return town === undefined ? [place.map] : [town, place.map]
   })
   const view = new DataView(overlay.buffer, overlay.byteOffset, overlay.byteLength)
   const span = 2 * sorted.length

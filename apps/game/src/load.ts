@@ -22,6 +22,7 @@ import {
   type CharacterPreset,
   castAtPoint,
   type DoorwayRegion,
+  type EvacRecord,
   type EventBattle,
   type EventListEntry,
   type EventMessage,
@@ -59,6 +60,7 @@ import {
   type QuestText,
   type RandomTreasure,
   type Recipe,
+  type RevivalWords,
   readActionRanges,
   readActionScript,
   readActions,
@@ -69,6 +71,7 @@ import {
   readCharaColours,
   readCharacterPresets,
   readDataTable,
+  readEvacTable,
   readEventBattles,
   readEventList,
   readEventMessages,
@@ -93,12 +96,14 @@ import {
   readNpcList,
   readNpcPlacements,
   readNpcStates,
+  readPlaceMaps,
   readPlaceRecords,
   readQuestGivers,
   readQuestIds,
   readQuestTexts,
   readRandomTreasure,
   readRecipes,
+  readRevivalWords,
   readScript,
   readShops,
   readSkillTable,
@@ -111,6 +116,7 @@ import {
   readVocationTrees,
   readWeaponPlaces,
   readWeightTables,
+  readZoomPlaces,
   type Script,
   type Shop,
   type SkillPanel,
@@ -122,6 +128,7 @@ import {
   type VocationTrees,
   type WeaponPlaces,
   type WeightTables,
+  type ZoomPlace,
 } from '@minstrel/game-formats'
 import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
 import type { Model } from '@minstrel/nitro-gfx'
@@ -382,6 +389,12 @@ export interface Loaded {
   readonly mapAreas: readonly StoryArea[]
   /** The map's kind in the map list — see `MapEntry.kind`; the day's clock runs only on 0 and 7. */
   readonly mapKind: number | undefined
+  /** The map's area in the map list — see `MapEntry.area`; what Evac's table is matched by. */
+  readonly mapArea: number | undefined
+  /** What Zoom and the chimaera wing do here — see `MapEntry.zoom`: 2 go, 1 the ceiling, 0 nothing. */
+  readonly mapZoom: number | undefined
+  /** Zoom's list, Evac's table and the waking priest's voices — see {@link Travel}. */
+  readonly travel: Travel
   /** The map's bookcases, from its link table — see `mapBookcases`. */
   readonly bookcases: readonly Bookcase[]
   /** What the shelves of maps with this map's first letter hold — `htana<L>`, see `readBookshelves`. */
@@ -1428,6 +1441,67 @@ function overlayOf(rom: Uint8Array, id: number): Uint8Array | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * **Travel** — see `travel.ts` in `@minstrel/game-formats` and
+ * `docs/readings/T12-travel.md`: Zoom's places (`loola_en.bin`), the maps that
+ * mark each reached (overlay 17, found by shape against them), Evac's table
+ * (`riremito.bin`) and the waking priest's voices (`chur_messet.bin`). Each is
+ * empty where it will not read.
+ */
+export interface Travel {
+  readonly places: readonly ZoomPlace[]
+  readonly placeMaps: readonly number[]
+  readonly evac: readonly EvacRecord[]
+  readonly revivalWords: RevivalWords
+}
+
+/** The overlay whose code holds the maps that mark a place reached (`func_ov017_0219e290`). */
+const FIELD_OVERLAY = 17
+
+const travelRead = new WeakMap<Uint8Array, Travel>()
+function travelOf(rom: Uint8Array): Travel {
+  const already = travelRead.get(rom)
+  if (already) return already
+  const first = <T>(
+    filter: string,
+    ends: string,
+    read: (bytes: Uint8Array) => T,
+  ): T | undefined => {
+    for (const leaf of scanCartridge(rom, { pathFilter: filter })) {
+      if (!leaf.path.toLowerCase().endsWith(ends)) continue
+      try {
+        return read(leaf.bytes)
+      } catch {
+        return undefined
+      }
+    }
+    return undefined
+  }
+  const places = first('/data/map/loola', 'loola_en.bin', readZoomPlaces) ?? []
+  const list = first('/data/map/maplist9', 'maplist9.bin', readMapList)
+  // A revival map's town: the map whose code is its code's first three letters — `M01` for `M01M06`.
+  const townOf = (map: number): number | undefined => {
+    const code = list?.maps.find((m) => m.id === map)?.code
+    return code === undefined ? undefined : list?.map(code.slice(0, 3))?.id
+  }
+  const code = places.length > 0 ? overlayOf(rom, FIELD_OVERLAY) : undefined
+  let placeMaps: number[] = []
+  try {
+    if (code) placeMaps = readPlaceMaps(code, places, townOf)
+  } catch {
+    placeMaps = []
+  }
+  const travel: Travel = {
+    places,
+    placeMaps,
+    evac: first('/data/map/riremito', 'riremito.bin', readEvacTable) ?? [],
+    revivalWords:
+      first('/data/scenario/chur_messet', 'chur_messet.bin', readRevivalWords) ?? new Map(),
+  }
+  travelRead.set(rom, travel)
+  return travel
 }
 
 /** The medal service's code, where its reward tables are. */
@@ -2912,6 +2986,9 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     ),
     region: regionHead(entry?.region),
     mapKind: entry?.kind,
+    mapArea: entry?.area,
+    mapZoom: entry?.zoom,
+    travel: travelOf(rom),
     regionExterior: exteriorOf(cat, code),
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],

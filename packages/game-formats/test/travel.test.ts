@@ -100,10 +100,10 @@ describe("Zoom's list, loola", () => {
 describe('the maps that mark a place reached', () => {
   const halfwords = (list: number[]) => list.flatMap((v) => [v & 0xff, v >> 8])
   const places = readZoomPlaces(loola)
-  // Revival maps' areas: 901 → 900, 1702 → 1700, 4401 → 4400.
+  // Revival maps' towns: 901 → 900, 1702 → 1700, 4401 → 4400.
   const areaOf = (map: number) => Math.trunc(map / 100) * 100
 
-  it("finds the run whose n-th is the n-th place's area or Zoom map", () => {
+  it("finds the run whose n-th is the n-th place's town or Zoom map", () => {
     // By number: Hamlet (0), Abbey (1) by its Zoom map, Port (2).
     const overlay = Uint8Array.from([
       ...halfwords([900, 1700, 7]),
