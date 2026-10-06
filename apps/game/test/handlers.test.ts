@@ -135,7 +135,15 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(139))?.change.kind).toBe('holy')
     })
 
-    it('strikes 31 of them as the Attack now, where 76 were', () => {
+    it('plays Tap Dance and Immense Defence as levels, by their records’ +0x30', () => {
+      expect(partyChangeOf(action(803))).toMatchObject({
+        change: { kind: 'evasion', by: 2 },
+        side: 'own',
+      })
+      expect(partyChangeOf(action(136))?.change).toEqual({ kind: 'shield', by: 2, chance: 100 })
+    })
+
+    it('strikes 29 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -152,7 +160,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(31)
+      expect(attack).toBe(29)
     })
   },
 )

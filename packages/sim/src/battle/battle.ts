@@ -378,6 +378,8 @@ export type LevelStat =
   | 'mending'
   | 'spells'
   | 'breaths'
+  | 'shield'
+  | 'evasion'
 
 /** Every level stat, in their order in `+0x58`. */
 export const LEVEL_STATS: readonly LevelStat[] = [
@@ -388,6 +390,8 @@ export const LEVEL_STATS: readonly LevelStat[] = [
   'mending',
   'spells',
   'breaths',
+  'shield',
+  'evasion',
 ]
 
 /**
@@ -422,6 +426,9 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] 
   'mending',
   'spells',
   'breaths',
+  // Immense Defence's and Tap Dance's (`+0x99`, `0x0215954c`; `+0x9a`, `0x021595e4`).
+  'shield',
+  'evasion',
   'zeroZone',
   'tumble',
 ]
@@ -1065,9 +1072,16 @@ function criticalRate(me: FighterState, percent: number, flat: number, passes = 
       )
 }
 
-/** A target's chance of dodging, in a hundred — the game's `func_ov000_02156270`, without its bonuses and statuses. */
-function evadeOf(target: Fighter, rules: Rules): number {
-  return target.evade ?? (target.side === 'party' ? rules.dodge : 0)
+/**
+ * A target's chance of dodging, in a hundred — the game's
+ * `func_ov000_02156270`, without its bonuses; doubled, in floats, under Tap
+ * Dance's evasion (`0x021563ac`–`0x021563c8`) — see `States.evasion`.
+ */
+export function evadeOf(target: Fighter & { readonly states?: States }, rules: Rules): number {
+  const evade = target.evade ?? (target.side === 'party' ? rules.dodge : 0)
+  return (target.states?.evasion?.level ?? 0) !== 0
+    ? Math.fround(Math.fround(2) * Math.fround(evade))
+    : evade
 }
 
 /** The element of the plain Attack, and of poison — the action records' own; see game-formats' `MonsterBattle.resistances`. */
@@ -1150,9 +1164,16 @@ function rotOf(
     : {}
 }
 
-/** A target's chance of blocking, in a hundred — the game's `func_ov000_02156118`, likewise. */
-function blockOf(target: Fighter): number {
-  return target.block ?? (target.shield ? 1 : 0)
+/**
+ * A target's chance of blocking, in a hundred — the game's
+ * `func_ov000_02156118`, likewise; doubled, in floats, under Immense
+ * Defence (`0x02156230`–`0x0215624c`) — see `States.shield`.
+ */
+export function blockOf(target: Fighter & { readonly states?: States }): number {
+  const block = target.block ?? (target.shield ? 1 : 0)
+  return (target.states?.shield?.level ?? 0) !== 0
+    ? Math.fround(Math.fround(2) * Math.fround(block))
+    : block
 }
 
 /**

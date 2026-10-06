@@ -5,6 +5,8 @@ import {
   type Changing,
   type Command,
   type Fighter,
+  blockOf,
+  evadeOf,
   playRound,
   startBattle,
   withHp,
@@ -367,5 +369,36 @@ describe('Holy Impregnable — kind 64', () => {
     }
     expect(slept(holy)).toBe(0)
     expect(slept(start)).toBeGreaterThan(0)
+  })
+})
+
+describe('Tap Dance and Immense Defence — kinds 25 and 37, levels whose flag doubles', () => {
+  const level = (kind: 'evasion' | 'shield', by: number) =>
+    status(kind === 'evasion' ? 803 : 136, kind, {
+      change: { kind, by, chance: 100 } as Changing['change'],
+    })
+
+  it('moves the level by the record’s +0x30 and sets its count of 5, a pass off for its own', () => {
+    const start = startBattle([hero, foe])
+    for (const kind of ['evasion', 'shield'] as const) {
+      const { state, events } = playRound(start, using(level(kind, 2)), new BattleRng(3n))
+      expect(changeOf(events).hits).toEqual([{ target: 0, result: 'raised', level: 2 }])
+      // Set at 5, then a pass less after its holder's own action (`func_ov000_021599f4`).
+      expect(state.fighters[0]?.states[kind]).toEqual({ level: 2, turns: 4 })
+    }
+  })
+
+  it('doubles the evasion and the chance of blocking, in floats, while the level is not 0', () => {
+    const states = startBattle([hero]).fighters[0]?.states ?? ({} as never)
+    const dancer = { ...hero, evade: 7.5, block: 12.25, states }
+    expect(evadeOf(dancer, { dodge: 0 } as never)).toBe(7.5)
+    expect(blockOf(dancer)).toBe(12.25)
+    const held = {
+      ...dancer,
+      states: { ...states, evasion: { level: 1, turns: 5 }, shield: { level: -1, turns: 5 } },
+    }
+    expect(evadeOf(held, { dodge: 0 } as never)).toBe(15)
+    // The flag, not the level's size or sign, is what the block reads.
+    expect(blockOf(held)).toBe(24.5)
   })
 })

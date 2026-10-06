@@ -154,6 +154,26 @@ export interface States {
    */
   readonly holy?: Level | undefined
   /**
+   * **A shield's block, a level** — status `+0x58` bits 24–26, with `+0x18`
+   * bit 0 set beside it while it is not 0 and a count of 5 at `+0x76`
+   * (`func_0208806c`; Immense Defence, kind 37, `func_ov024_021ded48`). What
+   * it does is the flag's: its holder's chance of blocking **doubled**, in
+   * floats (`func_ov000_02156118`, `0x02156230`–`0x0215624c`, the test
+   * `func_ov000_02156258`) — the level's size is read by nothing in the
+   * battle. Runs down by the second table, its line `0x1d5`
+   * (`func_ov000_0215858c`, `0x0215954c`–`0x021595e0`).
+   */
+  readonly shield?: Level | undefined
+  /**
+   * **Evasion, a level** — status `+0x58` bits 27–29, with `+0x14` bit 25
+   * set beside it while it is not 0 and a count of 5 at `+0x77`
+   * (`func_02087f78`; Tap Dance, kind 25, `func_ov024_021dde08`): its
+   * holder's evasion **doubled**, in floats (`func_ov000_02156270`,
+   * `0x021563ac`–`0x021563c8`, the test `func_ov000_021563ec`). Runs down by
+   * the second table, its line `0x1d9` (`0x021595e4`–`0x02159678`).
+   */
+  readonly evasion?: Level | undefined
+  /**
    * **Paralysed** — status `+0x14` bit 3, with a count of 3 at `+0x5c`
    * (`func_0208826c`, rider 11): its holder cannot act
    * (`func_ov000_02156038`). The count goes a pass less on each of their
@@ -227,7 +247,8 @@ export const NO_STATES: States = {
  * (USA ARM9): attack 5 at `+0x6e` (`func_020877c0`),
  * defence 6 at `+0x6f` (`func_020878b4`, `0x02087900`), agility 6 at `+0x70`,
  * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
- * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`); Fizzle 6 at
+ * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`), a shield's
+ * block 5 at `+0x76` (`func_0208806c`), evasion 5 at `+0x77` (`func_02087f78`); Fizzle 6 at
  * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); Holy Impregnable 5 at `+0x6b` (`func_02088ccc`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
  * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
  * (`func_0208826c`). Every setter stores its second count 0 beside it.
@@ -240,6 +261,8 @@ export const LEVEL_COUNTS = {
   mending: 5,
   spells: 5,
   breaths: 5,
+  shield: 5,
+  evasion: 5,
   fizzled: 6,
   dazzled: 4,
   vanished: 5,
@@ -280,6 +303,10 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   mending: { table: WEAR_TABLE, start: 4 },
   spells: { table: WEAR_TABLE_SLOW, start: 4 },
   breaths: { table: WEAR_TABLE, start: 4 },
+  // Their blocks after the resistance to breaths' (`+0x99`, `+0x9a`), each
+  // by the second table (`0x0215959c`, `0x02159634`).
+  shield: { table: WEAR_TABLE_SLOW, start: 4 },
+  evasion: { table: WEAR_TABLE_SLOW, start: 4 },
   fizzled: { table: WEAR_TABLE, start: 4 },
   dazzled: { table: WEAR_TABLE_SLOW, start: 4 },
   vanished: { table: WEAR_TABLE_SLOW, start: 4 },

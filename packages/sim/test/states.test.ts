@@ -49,6 +49,8 @@ describe('how a status runs down — the game’s (`func_ov000_0215858c`, `02159
       mending: 5,
       spells: 5,
       breaths: 5,
+      shield: 5,
+      evasion: 5,
       fizzled: 6,
       // `func_02088854`, dazzle's; `02088994`, Vanish's.
       dazzled: 4,

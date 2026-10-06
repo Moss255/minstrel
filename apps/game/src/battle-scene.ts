@@ -235,6 +235,8 @@ type ChangeKind = Extract<BattleEvent, { kind: 'change' }>['change']
  * `0x021ddb40`–`0x021ddb98`). 0 is no line.
  */
 function levelSays(stat: LevelStat, up: boolean, level: number): number {
+  // Immense Defence's and Tap Dance's say their records' own lines — see `changeSays`.
+  if (stat === 'shield' || stat === 'evasion') return 0
   if (stat === 'mending') {
     if (!up) return 0
     return level === 2 ? ACTION_SAYS.mendingUpMuch : ACTION_SAYS.mendingUp
@@ -311,6 +313,9 @@ function changeSays(
       return ACTION_SAYS.envenomed
     case 'raised':
     case 'lowered':
+      // Immense Defence and Tap Dance (`0x021dedd8`–`0x021dedf4`,
+      // `0x021ddea0`–`0x021ddebc`): the record's done line, whatever the level.
+      if (stat === 'shield' || stat === 'evasion') return pick(own?.done, ACTION_SAYS.unaffected)
       return stat
         ? levelSays(stat, hit.result === 'raised', hit.level ?? (hit.result === 'raised' ? 1 : -1))
         : ACTION_SAYS.unaffected
@@ -441,6 +446,8 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   mending: 'magical mending',
   spells: 'resistance to spells',
   breaths: 'resistance to breath attacks',
+  shield: 'ability to block with a shield',
+  evasion: 'evasion',
 }
 
 /** The same, in ours. */
@@ -564,6 +571,9 @@ const WORN_OFF: Readonly<
   mending: 0x1d2,
   spells: 0x1d3,
   breaths: 0x1d4,
+  // Immense Defence's, `0x1d5` (`0x021595c0`); Tap Dance's, `0x1d9` (`0x02159658`).
+  shield: 0x1d5,
+  evasion: 0x1d9,
 }
 
 /** `str_bres`'s messages, by what they say. */
@@ -2185,6 +2195,10 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [40, 'rotstop'],
   // Alma Mater (`021deff8`): kept from the reaper at 1 HP, once.
   [39, 'alma'],
+  // Tap Dance (`021dde08`): evasion, a level; Immense Defence (`021ded48`): a
+  // shield's block, a level — each doubling while it holds.
+  [25, 'evasion'],
+  [37, 'shield'],
   // Holy Impregnable (`021e1120`): 25 less taken of the ailments' elements.
   [64, 'holy'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
