@@ -1192,3 +1192,8 @@ the sea's battle request with no roamer chooses its monsters.
 | `func_ov024_021e6a90` `0x021e7534`–`0x021e75c8` | a spell (`+0x10` bit 0) and a breath (bit 2) lessened by the target's levels | (part of) `CalculateFinalDamage` |
 | ov000 `func_ov000_0215858c` | each status's count run down, a draw against the table at `0x02182ad4` (1.0, 0.875, 0.75, 0.625, ~0), and its wear-off line | `Battle::RunDownStatuses` |
 | ov000 `data_ov000_02182ad4` | the wear-off chances by the count left | `StatusWearTable` |
+| `func_ov024_021dced0` | kind 16: Fizzle set, "further prevented" if already | `Resolver::HandleAntimagic` |
+| `func_ov024_021dd6f0` | kind 20: paralysis cleared | `Resolver::HandleTingle` |
+| `func_ov024_021eaa50` `0x021eacc4`–`0x021ead08` | a fizzled caster's spell put out as action 914 | (part of) `Resolver::SubstituteAction` |
+| `func_ov024_021dd010`, `021da9b0` | is fizzled (`+0x14` bit 8), is paralysed (bit 3) | `Status::IsFizzled`, `IsParalysed` |
+| ARM9 `func_020888a4`, `func_020882dc` | Fizzle set (count 6 at `+0x60`), paralysis cleared | `Status::SetFizzle`, `ClearParalysis` |

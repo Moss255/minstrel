@@ -588,3 +588,110 @@ describe('Wave of Relief — kind 41, the cure-all alone', () => {
     expect(state.fighters[1]?.states.breaths?.level).toBe(1)
   })
 })
+
+describe('Antimagic and a fizzled caster — kind 16', () => {
+  const antimagic = changing({
+    action: 81,
+    side: 'other',
+    change: { kind: 'fizzle', chance: 100 },
+  })
+  it('fizzles one, and says so again for one already fizzled', () => {
+    const once = playRound(
+      startBattle([hero, ally, foe]),
+      new Map([[0, { kind: 'change', changing: antimagic, target: 2 }]]),
+      new BattleRng(4n),
+    )
+    expect(changeOf(once.events).hits).toEqual([{ target: 2, result: 'fizzled' }])
+    expect(once.state.fighters[2]?.states.fizzled?.level).toBe(1)
+    const twice = playRound(
+      once.state,
+      new Map([[0, { kind: 'change', changing: antimagic, target: 2 }]]),
+      new BattleRng(4n),
+    )
+    expect(changeOf(twice.events).hits).toEqual([{ target: 2, result: 'fizzled', again: true }])
+  })
+
+  it('puts out a fizzled caster’s spell as 914: nothing cast, nothing spent', () => {
+    const frizz = {
+      action: 13,
+      cost: 2,
+      does: 'harm' as const,
+      reach: 'one' as const,
+      amount: { base: 40, spread: 0 },
+      kind: 1,
+      magic: true,
+    }
+    const start = startBattle([hero, ally, foe])
+    const fizzled = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 0 ? { ...f, states: { ...f.states, fizzled: { level: 1, turns: 7 } } } : f,
+      ),
+    }
+    const { state, events } = playRound(
+      fizzled,
+      new Map([
+        [0, { kind: 'spell', spell: frizz, target: 2 }],
+        [1, { kind: 'defend' }],
+      ]),
+      new BattleRng(4n),
+    )
+    expect(events).toContainEqual({
+      kind: 'spell',
+      actor: 0,
+      action: 13,
+      short: false,
+      fizzled: true,
+      critical: false,
+      hits: [],
+    })
+    expect(state.fighters[0]?.mp).toBe(hero.maxMp)
+    expect(state.fighters[2]?.hp).toBe(foe.maxHp)
+    // A change that is a spell likewise; one that is not goes ahead.
+    const sap = changing({
+      action: 43,
+      side: 'other',
+      magic: true,
+      change: { kind: 'defence', by: -1, chance: 100 },
+    })
+    const sapped = playRound(
+      fizzled,
+      new Map([[0, { kind: 'change', changing: sap, target: 2 }]]),
+      new BattleRng(4n),
+    )
+    expect(changeOf(sapped.events)).toMatchObject({ fizzled: true, hits: [] })
+    const shout = { ...sap, magic: false }
+    const shouted = playRound(
+      fizzled,
+      new Map([[0, { kind: 'change', changing: shout, target: 2 }]]),
+      new BattleRng(4n),
+    )
+    expect(changeOf(shouted.events).fizzled).toBeUndefined()
+  })
+})
+
+describe('Tingle — kind 20', () => {
+  it('frees the paralysed, and finds nothing to do on anyone else', () => {
+    const tingle = changing({ action: 36, change: { kind: 'unparalyse', chance: 100 } })
+    const start = startBattle([hero, ally, foe])
+    const stuck = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1 ? { ...f, states: { ...f.states, paralysed: true } } : f,
+      ),
+    }
+    const freed = playRound(
+      stuck,
+      new Map([[0, { kind: 'change', changing: tingle, target: 1 }]]),
+      new BattleRng(2n),
+    )
+    expect(changeOf(freed.events).hits).toEqual([{ target: 1, result: 'unparalysed' }])
+    expect(freed.state.fighters[1]?.states.paralysed).toBe(false)
+    const idle = playRound(
+      start,
+      new Map([[0, { kind: 'change', changing: tingle, target: 1 }]]),
+      new BattleRng(2n),
+    )
+    expect(changeOf(idle.events).hits).toEqual([{ target: 1, result: 'resisted' }])
+  })
+})

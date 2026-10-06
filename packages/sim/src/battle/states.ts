@@ -67,6 +67,20 @@ export interface States {
    */
   readonly spells?: Level
   readonly breaths?: Level
+  /**
+   * **Fizzled** — status `+0x14` bit 8, with a count of 6 at `+0x60`
+   * (Antimagic, kind 16, `func_020888a4`): its spells are put out as action
+   * 914, "tries to cast … but can't cast spells at the moment"
+   * (`func_ov024_021eaa50`, `0x021eacc4`–`0x021ead08`). Kept as a level of
+   * 1 so it runs down as the levels do — **ours**; see `battle.ts`.
+   */
+  readonly fizzled?: Level
+  /**
+   * **Paralysed** — status `+0x14` bit 3, which Tingle clears (kind 20,
+   * `func_020882dc`). **Nothing here sets it yet**: what does — rider 11,
+   * INFERRED — is not read.
+   */
+  readonly paralysed?: boolean
 }
 
 export const NO_STATES: States = {

@@ -20,6 +20,7 @@ import type { BattleRng } from './rng.ts'
 import {
   buffedAttack,
   buffedMagic,
+  LEVEL_TURNS,
   levelled,
   moved,
   NO_STATES,
@@ -355,6 +356,13 @@ export type LevelStat =
   | 'mending'
   | 'spells'
   | 'breaths'
+/**
+ * How long Fizzle holds before it may wear off. **Ours**: the levels' run-down
+ * (`LEVEL_TURNS`), where the game sets a count of 6 (`func_020888a4`) and runs
+ * it down by `func_ov000_0215858c`.
+ */
+const FIZZLE_TURNS = LEVEL_TURNS
+
 /** Every level stat, in their order in `+0x58`. */
 export const LEVEL_STATS: readonly LevelStat[] = [
   'attack',
@@ -393,6 +401,10 @@ export type Change =
    * (`func_ov024_021eae14`), with no test of its landing.
    */
   | { readonly kind: 'relieve'; readonly chance: number }
+  /** **Antimagic** (kind 16, `func_ov024_021dced0`): fizzled, landed — again if already. */
+  | { readonly kind: 'fizzle'; readonly chance: number }
+  /** **Tingle** (kind 20, `func_ov024_021dd6f0`): the paralysed, landed, freed. */
+  | { readonly kind: 'unparalyse'; readonly chance: number }
   | {
       readonly kind: 'revive'
       readonly chance: number
@@ -446,6 +458,8 @@ export interface Blow {
 export interface Changing {
   readonly action: number
   readonly cost: number
+  /** Whether it is a spell, `+0x10` bit 0 — one fizzled cannot cast it. */
+  readonly magic?: boolean
   readonly change: Change
   readonly reach: 'one' | 'group' | 'all'
   readonly side: 'own' | 'other'
@@ -511,6 +525,10 @@ export type ChangeResult =
   | 'restored'
   /** The cure-all alone; `cured` when it cleared something. */
   | 'relieved'
+  /** Fizzled by Antimagic; `again` when it already was. */
+  | 'fizzled'
+  /** Freed of paralysis by Tingle. */
+  | 'unparalysed'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -524,6 +542,8 @@ export interface ChangeHit {
   readonly cured?: boolean
   /** For what rode on an action: which level it moved. */
   readonly stat?: 'attack' | 'defence' | 'agility'
+  /** Fizzled when it already was — "is further prevented from casting spells". */
+  readonly again?: boolean
   /**
    * For a level left where it was (`already`): whether the change would have
    * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
@@ -655,6 +675,12 @@ export type BattleEvent =
        * says so (`0x021eadbc`–`0x021eadd0`), and nothing is spent.
        */
       readonly shortOfGold?: true
+      /**
+       * Its caster fizzled: put out as action 914 in its place, "tries to cast
+       * … but can't cast spells at the moment" (`func_ov024_021eaa50`,
+       * `0x021eacc4`–`0x021ead08`). Nothing spent.
+       */
+      readonly fizzled?: true
       /** The gold it spent, after it acted. */
       readonly goldSpent?: number
       /** Whether it went haywire — the reference's critical, 1.5 to 2.0 times. */
@@ -670,6 +696,8 @@ export type BattleEvent =
       readonly change: Change['kind']
       /** Too little MP to cast it: nothing happens, and nothing is spent. */
       readonly short: boolean
+      /** Its caster fizzled, as a spell's — see the spell's. */
+      readonly fizzled?: true
       readonly hits: readonly ChangeHit[]
       /** What rode on it, on whom — Double Up's defence on its user. */
       readonly rode?: readonly ChangeHit[]
@@ -689,7 +717,7 @@ export type BattleEvent =
   | {
       readonly kind: 'wornOff'
       readonly actor: number
-      readonly stat: LevelStat
+      readonly stat: LevelStat | 'fizzled'
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -1118,21 +1146,29 @@ export function playRound(
     )
   }
   /**
-   * **The cure-all** (`func_ov024_021eae14`): sleep, both poisons, and every
-   * level below 0 — attack, defence, agility, magical might and mending, the
+   * **The cure-all** (`func_ov024_021eae14`): sleep, both poisons, paralysis
+   * (`0x021eae80`), Fizzle (`0x021eaf14`), and every level below 0 — attack, defence, agility, magical might and mending, the
    * resistances to spells and to breaths (`0x021eaf4c`–`0x021eb05c`) — of the
    * many it clears, those kept here. Whether it cleared anything.
    */
   const cureAll = (target: number): boolean => {
     const st = (fighters[target] as FighterState).states
     const lowered = LEVEL_STATS.filter((stat) => (st[stat]?.level ?? 0) < 0)
+    const fizzled = (st.fizzled?.level ?? 0) !== 0
     const cured =
-      st.sleep !== undefined || st.poisoned || st.envenomed === true || lowered.length > 0
+      st.sleep !== undefined ||
+      st.poisoned ||
+      st.envenomed === true ||
+      st.paralysed === true ||
+      fizzled ||
+      lowered.length > 0
     if (cured) {
       setStates(target, {
         sleep: undefined,
         poisoned: false,
         envenomed: false,
+        paralysed: false,
+        ...(fizzled ? { fizzled: { level: 0, turns: 0 } } : {}),
         ...Object.fromEntries(lowered.map((stat) => [stat, { level: 0, turns: 0 }])),
       })
     }
@@ -2058,6 +2094,20 @@ export function playRound(
         })
         continue
       }
+      // A spell from one fizzled is put out as 914 in its place, after the
+      // MP is asked and before anything is spent (`0x021eacc4`).
+      if (spell.magic && (me.states.fizzled?.level ?? 0) !== 0) {
+        events.push({
+          kind: 'spell',
+          actor,
+          action: spell.action,
+          short: false,
+          fizzled: true,
+          critical: false,
+          hits: [],
+        })
+        continue
+      }
       const charged = me.side === 'party' && spell.gold !== undefined && purse !== undefined
       if (charged && (purse as number) < (spell.gold as number)) {
         events.push({
@@ -2193,6 +2243,18 @@ export function playRound(
         })
         continue
       }
+      if (changing.magic && (me.states.fizzled?.level ?? 0) !== 0) {
+        events.push({
+          kind: 'change',
+          actor,
+          action: changing.action,
+          change: changing.change.kind,
+          short: false,
+          fizzled: true,
+          hits: [],
+        })
+        continue
+      }
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - changing.cost } : f))
       const side: Side = changing.side === 'own' ? me.side : me.side === 'party' ? 'foes' : 'party'
       const { change } = changing
@@ -2313,6 +2375,19 @@ export function playRound(
             const cured = cureAll(target)
             return { target, result: 'restored', hp, ...(cured ? { cured: true } : {}) }
           }
+          case 'fizzle': {
+            // Antimagic: landed, fizzled — "further prevented" if it already
+            // was (`0x021dcf18`–`0x021dcf3c`) — its count set again either way.
+            if (!landed) return { target, result: 'resisted' }
+            const again = (was.fizzled?.level ?? 0) !== 0
+            setStates(target, { fizzled: { level: 1, turns: FIZZLE_TURNS } })
+            return { target, result: 'fizzled', ...(again ? { again: true } : {}) }
+          }
+          case 'unparalyse':
+            // Tingle: landed on the paralysed (`func_ov024_021da9b0`), freed.
+            if (!landed || !was.paralysed) return { target, result: 'resisted' }
+            setStates(target, { paralysed: false })
+            return { target, result: 'unparalysed' }
           case 'relieve': {
             // Wave of Relief (`func_ov024_021df1e8`): the cure-all, no test of
             // its landing, on anyone it reaches.
@@ -2727,7 +2802,7 @@ export function playRound(
       // **Ours**: the levels in their order in `+0x58`, each run down as
       // defence's is. The game's own run-down is `func_ov000_0215858c` (read
       // 6 October 2026, not applied — `docs/readings/T18-handlers.md` §9).
-      for (const stat of LEVEL_STATS) {
+      for (const stat of [...LEVEL_STATS, 'fizzled'] as const) {
         const level = (fighters[i] as FighterState).states[stat]
         if (!level) continue
         const worn = wornAfterTurn(level, rng)

@@ -138,6 +138,16 @@ export const ACTION_SAYS = {
    * puts in its place (`func_ov024_021eaa50`, `0x021eadbc`).
    */
   notEnoughGold: 580,
+  /**
+   * A spell from one fizzled: action 914's opening, "tries to cast <ACTION>…
+   * but can't cast spells at the moment" (`func_ov024_021eaa50`, `0x021eace8`).
+   */
+  cannotCast: 29,
+  /** Antimagic on one already fizzled — at one of the party, at a monster (`0x021dcf28`). */
+  furtherFizzledParty: 0x19,
+  furtherFizzledFoe: 0x1a,
+  /** "<TARGET> is no longer paralysed." — Tingle's done line. */
+  unparalysed: 505,
   /** Changes of state. */
   unaffected: 27,
   defenceUpMuch: 0x3a,
@@ -328,6 +338,14 @@ function changeSays(
       return pick(own?.killed, targetParty ? ACTION_SAYS.dies : ACTION_SAYS.killed)
     case 'restored':
       return ACTION_SAYS.healed
+    case 'fizzled':
+      return hit.again
+        ? targetParty
+          ? ACTION_SAYS.furtherFizzledParty
+          : ACTION_SAYS.furtherFizzledFoe
+        : pick(own?.done, 23)
+    case 'unparalysed':
+      return pick(own?.done, ACTION_SAYS.unparalysed)
     case 'relieved':
       // INFERRED: Wave of Relief's handler says nothing of its own
       // (`func_ov024_021df1e8`); its record's lines stand — "is alleviated of
@@ -338,6 +356,7 @@ function changeSays(
 
 /** A level's name, in ours. */
 const STAT_NAMES: Readonly<Record<string, string>> = {
+  fizzled: 'Fizzle',
   might: 'magical might',
   mending: 'magical mending',
   spells: 'resistance to spells',
@@ -384,6 +403,12 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
         : `${whom} recovers ${hit.hp ?? 0} HP.`
     case 'relieved':
       return hit.cured ? `${whom} is rid of all misfortune.` : 'But nothing happens.'
+    case 'fizzled':
+      return hit.again
+        ? `${whom} is further prevented from casting spells.`
+        : `${whom} is prevented from casting spells.`
+    case 'unparalysed':
+      return `${whom} is no longer paralysed.`
   }
 }
 
@@ -392,7 +417,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
  * hands each one as it wears it off (`0x02158da4`–`0x02158db8`, and `0x1d4`
  * at `0x02159528`): "<ACTOR>'s attack returns to normal" and the like.
  */
-const WORN_OFF: Readonly<Record<LevelStat, number>> = {
+const WORN_OFF: Readonly<Record<LevelStat | 'fizzled', number>> = {
+  fizzled: 0x1d6,
   attack: 0x1ce,
   defence: 0x1cf,
   agility: 0x1db,
@@ -1188,6 +1214,12 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           lines(say(scene, 'actions', ACTION_SAYS.notEnoughGold, { actor })) ?? 'Not enough gold!'
         )
       }
+      if (event.fizzled) {
+        return (
+          lines(say(scene, 'actions', ACTION_SAYS.cannotCast, { actor, action })) ??
+          sentence(`${who} tries to cast ${action.name}... but can't cast spells at the moment.`)
+        )
+      }
       const landed = event.hits.map((hit) => {
         const target = scene.names[hit.target]
         const values = { val_1: hit.amount }
@@ -1229,6 +1261,12 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       if (event.short) {
         const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
         return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
+      }
+      if (event.fizzled) {
+        return (
+          lines(say(scene, 'actions', ACTION_SAYS.cannotCast, { actor, action })) ??
+          sentence(`${who} tries to cast ${action.name}... but can't cast spells at the moment.`)
+        )
       }
       const sayHit = (hit: ChangeHit) =>
         say(
@@ -1881,6 +1919,9 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [7, 'cure'],
   [8, 'sleep'],
   [9, 'wake'],
+  // Antimagic (`021dced0`); Tingle (`021dd6f0`).
+  [16, 'fizzle'],
+  [20, 'unparalyse'],
   [17, 'kill'],
   [18, 'revive'],
   // Wizard Ward, Spooky Aura (`021dd968`); Insulate, Insulatle, Mind Over
@@ -1944,6 +1985,8 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     change,
     reach,
     side: action.side === 1 ? 'other' : 'own',
+    // A spell, `+0x10` bit 0: one fizzled cannot cast it.
+    ...(r.spell ? { magic: true } : {}),
     ...(r.landingElement ? { element: r.landingElement } : {}),
     ...(r.evadable ? { evadable: true } : {}),
     ...(r.haywire ? { haywire: true, criticalPercent: r.criticalPercent ?? 100 } : {}),

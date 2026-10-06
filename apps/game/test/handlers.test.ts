@@ -87,6 +87,13 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(151))?.change).toMatchObject({ kind: 'mending' })
       expect(partyChangeOf(action(158))?.change).toMatchObject({ kind: 'might' })
       expect(partyChangeOf(action(154))?.change).toEqual({ kind: 'relieve', chance: 100 })
+      // Antimagic and Tingle; a spell carries what Fizzle stops.
+      expect(partyChangeOf(action(81))).toMatchObject({ change: { kind: 'fizzle' }, side: 'other' })
+      expect(partyChangeOf(action(36))).toMatchObject({
+        change: { kind: 'unparalyse' },
+        magic: true,
+      })
+      expect(partyChangeOf(action(43))?.magic).toBe(true)
       // The flags the wards read: Frizz a spell, Heal a spell, Fire Breath (226) a breath.
       expect(action(13).rolls?.spell).toBe(true)
       expect(action(30).rolls?.spell).toBe(true)
@@ -94,7 +101,7 @@ describe.skipIf(!romPath)(
       expect(action(226).rolls?.breath).toBe(true)
     })
 
-    it('strikes 46 of them as the Attack now, where 76 were', () => {
+    it('strikes 44 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -111,7 +118,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(46)
+      expect(attack).toBe(44)
     })
   },
 )

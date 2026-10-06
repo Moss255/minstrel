@@ -255,7 +255,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (46 — 55 before §9 built kinds 22, 23, 38, 41 and 42), by the kind whose handler is unread:
+**Still struck as the Attack** (44 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -263,9 +263,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 10 | `func_ov024_021dc0b8` | Trip of a Deathtime, War Cry, Pratfall |
 | 13 | `func_ov024_021dc540` | M-Pathy |
 | 14 | `func_ov024_021dc700` | H-Pathy |
-| 16 | `func_ov024_021dced0` | Antimagic |
 | 19 | `func_ov024_021dd534` | Flower Power, Scandal Eyes |
-| 20 | `func_ov024_021dd6f0` | Tingle |
 | 21 | `func_ov024_021dd828` | Fuddle |
 | 25 | `func_ov024_021dde08` | Tap Dance |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
@@ -492,9 +490,36 @@ simulation's run-down is still the reference's (`LEVEL_TURNS`, `wornAfterTurn`)
 and now carries the new levels the same way — **ours**; when it is run, and
 the counts defence and agility store, are what applying this needs.
 
+### Kind 16 — Antimagic (`021dced0`), and what Fizzle does
+
+Landed on one who may take it (`func_02088890`: not `+0x14` bit 0): one
+already fizzled (`func_ov024_021dd010`, `+0x14` bit 8) is "further
+prevented" — `0x19` at one of the party, `0x1a` at a monster
+(`0x021dcf28`); otherwise the record's done line (23, 24). Either way Fizzle
+is set again (`func_020888a4`: a count of 6 at `+0x60`, the flag). Not
+landed: the fail line (621, 27).
+
+**What it does** is in `func_ov024_021eaa50`, which puts an action in
+another's place before it is played: after the MP is asked
+(`0x021eac6c`), a spell (`+0x10` bit 0) from one fizzled is put out as
+**action 914** (`0x021eacc4`–`0x021ead08`; the literal `0x392` at
+`0x021eadf4`), whose opening is 29, "tries to cast <ACTION>… but can't cast
+spells at the moment", and whose cost is 0. The cure-all clears Fizzle
+(`0x021eaf14`); its wear-off line is `0x1d6`.
+
+### Kind 20 — Tingle (`021dd6f0`)
+
+Landed on one paralysed (`func_ov024_021da9b0`: `+0x14` bit 3): the record's
+done line (505, "is no longer paralysed"), the paralysis cleared
+(`func_020882dc`: the bit, and `+0x5c` and `+0x7f`), an event 0x1a
+(`func_ov000_02159eac`) and `+0x3b` bit 0 set. Otherwise the fail line (31).
+**Nothing in the simulation paralyses** — rider 11, which INFERRED does, is
+not read — so Tingle says "But nothing happens" until it is. The cure-all
+clears paralysis too (`0x021eae80`).
+
 Built: `LevelStat`, the four levels and `relieve` in the sim (`battle.ts`,
 `states.ts`: `buffedMagic`, `wardMultiplier`); the wards in `dealt`; a
 fighter's might and mending at their levels wherever an amount, an accuracy
 or a raising scales by them (`atMagicLevels`); the cure-all over every
 level; the wear-off lines in `battle-scene.ts`. Struck as the Attack: **46**,
-where 55 were.
+where 55 were — and with Antimagic and Tingle, **44**.
