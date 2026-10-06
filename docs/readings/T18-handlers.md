@@ -70,7 +70,6 @@ empty):
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
 | 47 | `func_ov024_021e00c0` | Feel the Burn |
-| 48 | `func_ov024_021e01b8` | Right as Rain |
 | 49 | `func_ov024_021e02b0` | Disruptive Wave |
 | 50 | `func_ov024_021e0380` | Extreme Makeover |
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
@@ -90,7 +89,6 @@ empty):
 | 72 | `func_ov024_021e1cbc` | Voice of Experience |
 | 73 | `func_ov024_021e1de8` | Knight Watch |
 | 74 | `func_ov024_021e1ed4` | Brownie Boost |
-| 78 | `func_ov024_021e268c` | Focus Pocus |
 
 ## 2. The handlers read
 
@@ -255,7 +253,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (41 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10), by the kind whose handler is unread:
+**Still struck as the Attack** (39 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48 and 78), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -276,7 +274,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
 | 47 | `func_ov024_021e00c0` | Feel the Burn |
-| 48 | `func_ov024_021e01b8` | Right as Rain |
 | 49 | `func_ov024_021e02b0` | Disruptive Wave |
 | 50 | `func_ov024_021e0380` | Extreme Makeover |
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
@@ -288,7 +285,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
 | 64 | `func_ov024_021e1120` | Holy Impregnable |
 | 66 | `func_ov024_021e1328` | Pincushion |
-| 78 | `func_ov024_021e268c` | Focus Pocus |
 
 Most need a status the battle does not keep — a counter, a barrier, Bounce's
 mirror, dazzle, confusion, a stance (kind 0 is the six stances: Counter
@@ -751,3 +747,53 @@ missed, then gone. Which line each flag says is not read.
 **Dazzle** (kind 19): the actions `+0x10` bit 3 marks (`Action.spoiltBySight`)
 throw a die of eight in the accuracy roll for an attacker under it; which bit
 that roll tests, and so whether bit 6 is dazzle, is not yet read.
+
+## 11. The remaining kinds — 7 October 2026, carried on
+
+### The round's end, read whole — and a draw it was missing
+
+The round's end (`func_ov000_0215e6e8`) clears each one's guard, then calls
+**`func_ov000_0215a23c`** — what is got back and what is tolled — and then,
+unless `battle+0x8e14` is set, **`func_ov000_02157e1c`**, the count-down.
+The battle had them the other way about, and made no draw in the second.
+
+`0215a23c`, in its order:
+
+1. For the party standing (`func_ov000_0215e9fc` with 1, the list at
+   `0x02182b54`): HP — 25 where `func_02085230` holds of their record (an
+   equipped trait; not kept), plus, under **Right as Rain** (`+0x14` bit 31,
+   `func_ov000_02158324`), the larger of 10 and **half their level in their
+   vocation** (`func_0202053c`, `asr #1`, `0x0215a318`–`0x0215a33c`). Given
+   by `func_ov000_0215a16c`, which adds and holds it to the most; told only
+   where it came to something (`0x0215a3a4`), by `func_ov000_0215c758` as
+   action 930 (one) or 931 (more).
+2. The same party, MP — under **Focus Pocus** (`+0x14` bit 30,
+   `func_ov000_0215830c`) the larger of 3 and **a tenth of that level**
+   (`_s32_div_f`, `0x0215a450`–`0x0215a468`), plus trait `0x3f`'s (a draw
+   between 0 and a tenth of the level, under conditions of `GameState`; not
+   kept). Given by `func_ov000_0215a1d4`; told as 932 or 933.
+3. Envenomation's toll on the party (`0x0215a5c8` on), told as 934.
+4. The monsters (`func_ov000_0215eb1c`): Focus Pocus's MP by
+   `func_ov000_02159dbc` (not read; no monster is given it), and their toll.
+
+`02157e1c` (**a draw at its head, `R(100) / 100`, at `0x02157ea8`, every
+round** — kept at `[sp+0xc]` for `+0x18` bit 6's wearing off), then for each
+one standing (`func_ov000_02153e40`):
+
+- **Focus Pocus** (`+0x68`, second count `+0x8b`) and **Right as Rain**
+  (`+0x69`, `+0x8c`): for a holder, a draw of its own first, whichever count
+  is running; with the second running, it less one and the status cleared
+  where `0x02182ad4` by it is above the draw — Focus Pocus's line `0x1c8`
+  (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`); else the first
+  less one, and at 0 the second at 4.
+- `+0x18` bit 11 (`+0x7c`, `+0x9f`, a draw of its own, line `0x249`) and
+  `+0x18` bit 6 (`+0x7a`, `+0x9d`, the head's draw against `0x02182bd4`,
+  line `0x249 − 0x83`): statuses the battle does not keep.
+- The coup de grâce held a round less (`0x021581e8`–`0x02158238`).
+
+**Built**: kinds 48 and 78 (`021e01b8`, `021e268c`) — landed, on one who may
+take it (`func_02088ba0`, `02088b50`: `+0x14` bit 0 clear), the status with
+its count (`func_02088bb4`, `02088b64`), the done line; else the fail line.
+The round's end as above, its head draw made. **Ours**: the two traits; a
+monster's Focus Pocus; the HP and MP got back told in our words — actions
+930–933 have no line of their own, and what the game shows is not read.

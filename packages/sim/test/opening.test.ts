@@ -45,10 +45,12 @@ describe('the round a surprise opens', () => {
     // One initiative draw, the Hero's alone — a monster passed over is not
     // rolled for — then the Hero's turn-start draw, Defend's pass (the
     // builder's two, the die, the critical, the accuracy, the physical
-    // formula's own on itself), and the draw after an action; no monster acts.
+    // formula's own on itself), the draw after an action, and the round's
+    // end's at the head of its count-down (`func_ov000_02157e1c`,
+    // `0x02157ea8`); no monster acts.
     const physical = new BattleRng(0n)
     const base = physicalDamage(physical, hero.attack, hero.defence)
-    expect(rng.drawn).toBe(1 + 1 + 2 + 3 + physical.drawn + (base <= 0 ? 1 : 0) + 1)
+    expect(rng.drawn).toBe(1 + 1 + 2 + 3 + physical.drawn + (base <= 0 ? 1 : 0) + 1 + 1)
     expect(events.some((event) => 'actor' in event && event.actor !== 0)).toBe(false)
   })
 

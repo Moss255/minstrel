@@ -22,14 +22,20 @@ import {
   buffedMagic,
   type Counted,
   countDown,
+  focusMp,
   LEVEL_COUNTS,
   levelled,
   moved,
   NO_STATES,
   poisonDamage,
+  ROUND_COUNTS,
+  type RoundCounted,
+  rainHp,
+  roundRunDown,
   runDown,
   type States,
   WEAR_OF,
+  WEAR_TABLE,
   wakes,
   wardMultiplier,
 } from './states.ts'
@@ -442,6 +448,13 @@ export type Change =
    */
   | { readonly kind: 'zeroZone'; readonly chance: number }
   /**
+   * **Right as Rain** (kind 48, `func_ov024_021e01b8`) and **Focus Pocus**
+   * (kind 78, `func_ov024_021e268c`): landed, on one who may take it — not
+   * `+0x14` bit 0 — the status with its count; else the fail line. What each
+   * does is at the round's end — see `States.rain`, `States.focus`.
+   */
+  | { readonly kind: RoundCounted; readonly chance: number }
+  /**
    * **Rough 'n' Tumble**, the Minstrel's coup (kind 70,
    * `func_ov024_021e1824`): landed, `+0x18` bit 10 with a count of 5
    * (`func_02089124`) — a blow dodged on its die alone, under 50.
@@ -620,6 +633,8 @@ export type ChangeResult =
   | 'zeroZoned'
   /** Rough 'n' Tumble set. */
   | 'tumbling'
+  /** A status given, its record's done line said — Right as Rain, Focus Pocus. */
+  | 'given'
   /** Brownie Boost: the levels it moved, in {@link ChangeHit.boosts}. */
   | 'boosted'
   /** Spelly Breath: MP back, {@link ChangeHit.mp}. */
@@ -846,7 +861,7 @@ export type BattleEvent =
   | {
       readonly kind: 'wornOff'
       readonly actor: number
-      readonly stat: LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched'
+      readonly stat: LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched' | RoundCounted
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -891,6 +906,12 @@ export type BattleEvent =
     }
   /** Tension spent, after the action that spent it — from the maximum, or below it. */
   | { readonly kind: 'calmed'; readonly actor: number; readonly most: boolean }
+  /**
+   * HP or MP got back at the round's end — Right as Rain's and Focus Pocus's
+   * (`func_ov000_0215a23c`), told as actions 930 and 932, or 931 and 933 for
+   * more than one, by `func_ov000_0215c758`.
+   */
+  | { readonly kind: 'regen'; readonly actor: number; readonly hp?: number; readonly mp?: number }
 
 export type Outcome = 'ongoing' | 'won' | 'lost' | 'fled'
 
@@ -2714,6 +2735,11 @@ export function playRound(
             const cured = cureAll(target)
             return { target, result: 'relieved', ...(cured ? { cured: true } : {}) }
           }
+          case 'rain':
+          case 'focus':
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            setStates(target, { [change.kind]: { level: 1, turns: ROUND_COUNTS[change.kind] } })
+            return { target, result: 'given' }
           case 'zeroZone':
           case 'tumble': {
             // 0 Zone and Rough 'n' Tumble (`0x021e15ac`–`0x021e15c8`,
@@ -3200,27 +3226,67 @@ export function playRound(
   settleResolved()
   if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
   if (outcome === 'ongoing') {
-    // A coup de grâce held a round less, and gone when its count runs out
-    // (`func_ov000_02157e1c`, `0x021581e8`–`0x02158238`) — no draw.
-    for (let i = 0; i < fighters.length; i++) {
-      const f = fighters[i] as FighterState
-      if (f.primed === undefined) continue
-      if (f.primed - 1 > 0) {
-        const left = f.primed - 1
-        fighters = fighters.map((g, k) => (k === i ? { ...g, primed: left } : g))
-      } else {
-        unprime(i)
-        events.push({ kind: 'coupPassed', actor: i })
+    // **The round's end** (`func_ov000_0215e6e8`): first what is got back
+    // and what is tolled (`func_ov000_0215a23c`) — the party standing
+    // (`func_ov000_0215e9fc` with 1) get back HP by Right as Rain, every one
+    // of them, then MP by Focus Pocus; then envenomation takes its toll —
+    // plain poison takes none in a battle; see `poisonDamage`. A regaining of
+    // nothing is not told (`0x0215a3a4`). **Ours**: the 25 HP an equipped
+    // trait gives (`func_02085230`) and the MP trait `0x3f`'s are not kept;
+    // a monster's Focus Pocus (`func_ov000_02159dbc`) is not given.
+    const standing = fighters.flatMap((f, i) => (f.side === 'party' && alive(f) ? [i] : []))
+    for (const [stat, give] of [
+      ['rain', rainHp],
+      ['focus', focusMp],
+    ] as const) {
+      for (const i of standing) {
+        const f = fighters[i] as FighterState
+        if ((f.states[stat]?.level ?? 0) === 0) continue
+        const amount = give(f.level ?? 0)
+        const got =
+          stat === 'rain' ? Math.min(amount, f.maxHp - f.hp) : Math.min(amount, f.maxMp - f.mp)
+        if (got <= 0) continue
+        fighters = fighters.map((g, k) =>
+          k === i ? (stat === 'rain' ? { ...g, hp: g.hp + got } : { ...g, mp: g.mp + got }) : g,
+        )
+        events.push({ kind: 'regen', actor: i, ...(stat === 'rain' ? { hp: got } : { mp: got }) })
       }
     }
-    // Then envenomation takes its toll (`func_ov000_0215a23c`) — plain poison
-    // takes none in a battle; see `poisonDamage`.
     for (let i = 0; i < fighters.length; i++) {
       const f = fighters[i] as FighterState
       if (!alive(f) || !f.states.envenomed) continue
       const damage = poisonDamage(f.maxHp)
       events.push({ kind: 'poison', actor: i, damage })
       hurt(i, damage)
+    }
+    // Then the count-down (`func_ov000_02157e1c`): **a draw at its head,
+    // whoever holds what** (`0x02157ea8`) — kept for `+0x18` bit 6's wearing
+    // off, a status the battle does not keep — then for each one standing,
+    // Focus Pocus and Right as Rain worn down, each by a draw of its own (see
+    // `roundRunDown`), and a coup de grâce held a round less, gone when its
+    // count runs out (`0x021581e8`–`0x02158238`).
+    rng.below(100)
+    for (let i = 0; i < fighters.length; i++) {
+      const f = fighters[i] as FighterState
+      if (alive(f)) {
+        for (const stat of ['focus', 'rain'] as const) {
+          const level = (fighters[i] as FighterState).states[stat]
+          if (!level || level.level === 0) continue
+          const draw = Math.fround(Math.fround(rng.below(100)) / 100)
+          const worn = roundRunDown(level, WEAR_TABLE, draw)
+          setStates(i, { [stat]: worn.level.level === 0 ? undefined : worn.level })
+          if (worn.wore) events.push({ kind: 'wornOff', actor: i, stat })
+        }
+      }
+      const primed = (fighters[i] as FighterState).primed
+      if (primed === undefined) continue
+      if (primed - 1 > 0) {
+        const left = primed - 1
+        fighters = fighters.map((g, k) => (k === i ? { ...g, primed: left } : g))
+      } else {
+        unprime(i)
+        events.push({ kind: 'coupPassed', actor: i })
+      }
     }
     outcome = outcomeOf(fighters)
   }

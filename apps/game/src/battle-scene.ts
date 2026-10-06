@@ -361,6 +361,9 @@ function changeSays(
     case 'replenished':
     case 'looted':
     case 'experienced':
+    // Right as Rain's and Focus Pocus's: their records' done lines
+    // (`0x021e0204`–`0x021e0220`, `0x021e26d8`–`0x021e26f4`).
+    case 'given':
       return pick(own?.done, ACTION_SAYS.nothingHappens)
     // Kind 10's own done line — none for Disco Tech; from a blow, rider 1's
     // by the lost turn's kind: 2 "is knocked clean off its feet" (`0x150`), 5
@@ -401,6 +404,8 @@ function boostSays(hit: ChangeHit): number[] {
 /** A level's name, in ours. */
 const STAT_NAMES: Readonly<Record<string, string>> = {
   fizzled: 'Fizzle',
+  rain: 'Right as Rain',
+  focus: 'Focus Pocus',
   might: 'magical might',
   mending: 'magical mending',
   spells: 'resistance to spells',
@@ -457,6 +462,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} can now cast spells without spending any MP!`
     case 'tumbling':
       return `${whom} finds it much easier to dodge and to counter.`
+    case 'given':
+      return `${whom} is under ${stat}.`
     case 'boosted':
       return (hit.boosts ?? [])
         .map((b) => `${whom}'s ${STAT_NAMES[b.stat] ?? b.stat} rises.`)
@@ -484,9 +491,13 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
  * Rough 'n' Tumble's `0x1da` (`0x02159788`).
  */
 const WORN_OFF: Readonly<
-  Record<LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched', number>
+  Record<LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched' | 'rain' | 'focus', number>
 > = {
   fizzled: 0x1d6,
+  // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
+  // `0x1c8` (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`).
+  focus: 0x1c8,
+  rain: 0x24c,
   // Knight Watch's, `0x164` (`0x021586ac`, `0x0215873c`).
   watched: 0x164,
   zeroZone: 0x1c5,
@@ -1458,6 +1469,15 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         say(scene, 'actions', WORN_OFF[event.stat], { actor }) ??
         sentence(`${who}'s ${STAT_NAMES[event.stat] ?? event.stat} returns to normal.`)
       )
+    case 'regen':
+      // **Ours**: actions 930 to 933, which tell it (`func_ov000_0215c758`),
+      // have no opening and no line of their own; what the game shows is
+      // not read.
+      return sentence(
+        event.hp !== undefined
+          ? `${who} recovers ${event.hp} HP.`
+          : `${who} recovers ${event.mp ?? 0} MP.`,
+      )
     case 'poison':
       // Ours: no line for poison's toll is found; the game's damage line stands in.
       return (
@@ -1561,6 +1581,8 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
       return event.damage > 0
         ? [{ fighter: event.actor, motion: 'damage', amount: event.damage }]
         : []
+    case 'regen':
+      return event.hp ? [{ fighter: event.actor, motion: 'heal', amount: event.hp }] : []
     case 'flee':
       // A monster running away stays until its page is told, then is gone.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'flee' }] : []
@@ -2051,6 +2073,10 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [41, 'relieve'],
   [42, 'might'],
   [67, 'restore'],
+  // Right as Rain (`021e01b8`) and Focus Pocus (`021e268c`): a status, what
+  // it does at the round's end.
+  [48, 'rain'],
+  [78, 'focus'],
   // The coups (`docs/readings/T18-handlers.md` §10): Spelly Breath
   // (`021ddf5c`), 0 Zone (`021e1580`), Itemised Kill (`021e16a4`), Rough 'n'
   // Tumble (`021e1824`), Voice of Experience (`021e1cbc`), Brownie Boost

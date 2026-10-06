@@ -135,6 +135,22 @@ export interface States {
    * watcher is down (`func_ov000_0215858c`, `0x0215861c`–`0x02158760`).
    */
   readonly watched?: { readonly by: number; readonly turns: number } | undefined
+  /**
+   * **Right as Rain** — status `+0x14` bit 31, with a count of 6 at `+0x69`
+   * (kind 48, `func_ov024_021e01b8`; `func_02088bb4`): at the round's end its
+   * holder, standing in the party, gets back the larger of 10 and half their
+   * level (`func_ov000_0215a23c`, `0x0215a314`–`0x0215a33c`). Runs down at
+   * the round's end — see {@link roundRunDown}.
+   */
+  readonly rain?: Level | undefined
+  /**
+   * **Focus Pocus** — status `+0x14` bit 30, with a count of 6 at `+0x68`
+   * (kind 78, `func_ov024_021e268c`; `func_02088b64`): at the round's end its
+   * holder, standing in the party, gets back the larger of 3 and a tenth of
+   * their level in MP (`0x0215a43c`–`0x0215a468`). Runs down at the round's
+   * end.
+   */
+  readonly focus?: Level | undefined
 }
 
 export const NO_STATES: States = {
@@ -203,6 +219,55 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   // Not run down after a pass but at the turn's start — see `States.paralysed`.
   paralysed: { table: WEAR_TABLE, start: 4 },
 }
+/**
+ * **The statuses the round's end runs down** — `func_ov000_02157e1c`, which
+ * the round's end calls after the regaining and the toll
+ * (`func_ov000_0215e6e8`, `0x0215e7dc`–`0x0215e7f4`), each with the count its
+ * setter stores: Focus Pocus 6 at `+0x68` (`func_02088b64`), Right as Rain 6
+ * at `+0x69` (`func_02088bb4`). Their second counts start at 4 and go by the
+ * first table.
+ */
+export const ROUND_COUNTS = { focus: 6, rain: 6 } as const
+export type RoundCounted = keyof typeof ROUND_COUNTS
+
+/**
+ * **A status wearing off at the round's end** — one block of
+ * `func_ov000_02157e1c` (Focus Pocus's at `0x02157f30`–`0x02157fd4`), which
+ * differs from the run-down after a pass: **a draw `R(100) / 100` for every
+ * holder, made first**, whichever count is running; then, with the second
+ * count running, that count less one and cleared where the table by it is
+ * above the draw; else the first count less one, and at 0 the second set to
+ * 4. `draw` is that draw, made by the caller.
+ */
+export function roundRunDown(
+  level: Level,
+  table: readonly number[],
+  draw: number,
+): { level: Level; wore: boolean } {
+  if (level.level === 0) return { level, wore: false }
+  if (level.wearing) {
+    const wearing = level.wearing - 1
+    if ((table[wearing] as number) > draw) return { level: { level: 0, turns: 0 }, wore: true }
+    return { level: { level: level.level, turns: 0, wearing }, wore: false }
+  }
+  if (level.turns <= 0) return { level, wore: false }
+  const turns = level.turns - 1
+  return {
+    level: turns === 0 ? { level: level.level, turns: 0, wearing: 4 } : { ...level, turns },
+    wore: false,
+  }
+}
+
+/**
+ * **What Right as Rain gives back at the round's end** — the larger of 10
+ * and half its holder's level in their vocation (`func_0202053c`), the half
+ * an arithmetic shift (`0x0215a328`–`0x0215a33c`). **Focus Pocus's** — the
+ * larger of 3 and a tenth, the division truncated (`_s32_div_f`,
+ * `0x0215a450`–`0x0215a468`).
+ */
+export const rainHp = (level: number): number => Math.max(10, level >> 1)
+export const focusMp = (level: number): number => Math.max(3, Math.trunc(level / 10))
+
 /** How long sleep holds before its sleeper may wake — the reference's Sweet Breath. */
 export const SLEEP_TURNS = 2
 

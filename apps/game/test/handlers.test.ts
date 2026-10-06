@@ -101,7 +101,12 @@ describe.skipIf(!romPath)(
       expect(action(226).rolls?.breath).toBe(true)
     })
 
-    it('strikes 41 of them as the Attack now, where 76 were', () => {
+    it('gives Right as Rain and Focus Pocus as statuses of the round’s end', () => {
+      expect(partyChangeOf(action(188))).toMatchObject({ change: { kind: 'rain' }, side: 'own' })
+      expect(partyChangeOf(action(157))).toMatchObject({ change: { kind: 'focus' }, reach: 'one' })
+    })
+
+    it('strikes 39 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -118,7 +123,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(41)
+      expect(attack).toBe(39)
     })
   },
 )
