@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
 import {
+  FAMILY_BONUS_FIELDS,
   ITEM_EXPERIENCE_BONUS,
   RESISTANCE_ELEMENTS,
   readItemBattleParams,
+  weaponElement,
   wornResistances,
 } from '../src/itembattle.ts'
 
@@ -45,6 +47,40 @@ describe('what a worn thing does in a battle', () => {
     )
     expect((shoes?.flags ?? 0) & ITEM_EXPERIENCE_BONUS).toBe(ITEM_EXPERIENCE_BONUS)
     expect(sandals?.flags).toBe(0)
+  })
+
+  it('reads a weapon’s killer bonus for each of the twelve families, six signed bits in tenths', () => {
+    const bytes = build([{ id: 20111 }])
+    const view = new DataView(bytes.buffer)
+    // Every field 10 — no bonus — then family 3 at 12 and family 9 at −5.
+    const set = (family: number, value: number) => {
+      const [word, low] = FAMILY_BONUS_FIELDS[family - 1] as readonly [number, number]
+      const at = 4 + word
+      const old = view.getUint32(at, true)
+      view.setUint32(at, (old & ~(0x3f << low)) | ((value & 0x3f) << low), true)
+    }
+    for (let family = 1; family <= 12; family++) set(family, 10)
+    set(3, 12)
+    set(9, -5)
+    const [sword] = readItemBattleParams(bytes)
+    expect(sword?.familyTenths).toEqual([10, 10, 12, 10, 10, 10, 10, 10, -5, 10, 10, 10])
+    // The twelve fields are apart, and none reaches the resistances at +0x14.
+    const bits = new Set(
+      FAMILY_BONUS_FIELDS.flatMap(([word, low]) =>
+        Array.from({ length: 6 }, (_, i) => word * 8 + low + i),
+      ),
+    )
+    expect(bits.size).toBe(72)
+    expect(Math.max(...bits)).toBeLessThan(0x14 * 8)
+    expect(sword?.resistances.every((value) => value === 0)).toBe(true)
+  })
+
+  it('reads a weapon’s element from flags bits 23–25, nothing standing for the plain Attack’s', () => {
+    expect(weaponElement(0)).toBe(8)
+    expect(weaponElement(1 << 23)).toBe(1)
+    expect(weaponElement((5 << 23) | ITEM_EXPERIENCE_BONUS | 1)).toBe(5)
+    expect(weaponElement(7 << 23)).toBe(7)
+    expect(weaponElement(1 << 26)).toBe(8)
   })
 
   it('takes the count from the head’s low twelve bits, as the game masks it', () => {

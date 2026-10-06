@@ -111,11 +111,13 @@ export {
 } from './gathering.ts'
 export { type Grammar, readGrammar } from './grammar.ts'
 export {
+  FAMILY_BONUS_FIELDS,
   ITEM_EXPERIENCE_BONUS,
   type ItemBattleParams,
   RESISTANCE_COUNT,
   RESISTANCE_ELEMENTS,
   readItemBattleParams,
+  weaponElement,
   wornResistances,
 } from './itembattle.ts'
 export {

@@ -510,16 +510,20 @@ would score harm and heal right and every state change, protection, rider
 and coup wrong — which is most of what Fight Wisely and Focus On Healing
 choose among. **The steps, each its own piece of work, in order:**
 
-1. **The susceptibility bytes** of every fighter's status, `+0x3e`–`+0x52`
-   — where a monster's come from (the open question task 18 left) and a
-   party member's; the forecast and every state evaluator read them.
-2. **The killer bonuses of what is worn**, by family (the twelve
-   `func_02085968`… accessors on `member+0x150`), and the vocation table
-   behind `ai+0x654` (`0x02200154`, outside overlay 24).
-3. **The monsters' own action flags** the setting up gathers
-   (`ai+0x69`–`0x72` from their six actions; `ai+0x13c`/`0x154` from their
-   records' `+0x6c`–`+0x72`), and the character record's `+0x134 +0x34`
-   and `+0x36`, and `func_ov000_0215e9fc`'s count (`ai+0x78`).
+1. ~~**The susceptibility bytes**~~ — **settled 6 October 2026**: they are
+   the resistance bytes, status `+0x3E + element − 1`, which the
+   simulation keeps as `Fighter.resist` (a monster's from its record, one
+   of the party's from what they wear). Task 18's riders still treat them
+   as a hundred; they can read `resist` now.
+2. ~~**The killer bonuses of what is worn**~~ — **read 6 October 2026**:
+   six-bit fields in tenths at `itembtlprm.nat` `+0x08`–`+0x13` of the
+   weapon's record, and the weapon's element in its flags' bits 23–25
+   (`FAMILY_BONUS_FIELDS`, `weaponElement` in `game-formats`). The
+   simulation's party fighters do not carry them yet.
+3. **What is left to find**: the flags the setting up gathers from the
+   monsters' six ways (`ai+0x69`–`0x72`), the character record's `+0x134
+   +0x34` and `+0x36`, `func_ov000_0215e9fc`'s count (`ai+0x78`), and the
+   weapon's metal flags (`+0x2F4` bits 4 and 10).
 4. **The port**, in the sim (`packages/sim/src/battle/tactics.ts`): the
    setting up with its draws, the evaluators, the forecast and the scorer,
    every float op through `Math.fround` in the game's order, the doubles in

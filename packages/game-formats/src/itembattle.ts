@@ -18,9 +18,10 @@ import { GameFormatError } from './errors.ts'
  * | offset | type | meaning |
  * |---|---|---|
  * | `+0x00` | `u32` | **flags**, which the game's accessors test a bit at a time. Bit 16 is the wearer's **experience ×1.05** — see {@link ITEM_EXPERIENCE_BONUS} |
+ * | `+0x08`–`+0x13` | 6-bit fields | **a weapon's killer bonus by monster family**, in tenths — see {@link FAMILY_BONUS_FIELDS} |
  * | `+0x14` | `i8` ×20 | **what it adds to a resistance**, one an element — see {@link RESISTANCE_ELEMENTS} |
  * | `+0x28` | `i16` | the item's id, as the item tables give it; the records are in its order, which is how the game finds one |
- * | the rest | | carried, not read: the flags' other bits, and a run at `+0x08` that 1,178 of the records carry |
+ * | the rest | | carried, not read: the flags' other bits |
  */
 
 /**
@@ -33,6 +34,53 @@ import { GameFormatError } from './errors.ts'
  * any does. Of the 1,423 records, only the elevating shoes' carry it.
  */
 export const ITEM_EXPERIENCE_BONUS = 1 << 16
+
+/**
+ * **Where each monster family's killer bonus sits** in a record — read 6
+ * October 2026 (task 17b) from the twelve accessors the party's damage
+ * forecast calls (`func_ov024_021fa7ec`, `0x021faa20`–`0x021fac98`): for
+ * family *n*, 1 to 12, it asks `func_ov000_02156068(battle, target, n, 0)` —
+ * the target a monster whose `mon_data +0x0A` bits 7–10 are *n* — and then
+ * multiplies by the worn weapon's field over `10.0f`. Each accessor reads the
+ * record copied into the character at `+0x2f4` (`func_02085968`, `02085818`,
+ * `02085a10`, `02085a48`, `020859d8`, `020859a0`, `02085930`, `02085850`,
+ * `020858f8`, `02085a80`, `020858c0`, `02085888`, in family order) and gives
+ * 1.0 with no weapon. Each entry is (the word's offset, the field's low bit);
+ * a field is six bits, signed.
+ *
+ * On the cartridge 928 records hold 10 in all twelve — no bonus — and 245
+ * hold nothing, which are the 245 the run at `+0x08` was seen empty on; the
+ * rest hold 11 or 12 for one or two families.
+ */
+export const FAMILY_BONUS_FIELDS: readonly (readonly [number, number])[] = [
+  [0x0c, 6],
+  [0x08, 0],
+  [0x0c, 24],
+  [0x10, 0],
+  [0x0c, 18],
+  [0x0c, 12],
+  [0x0c, 0],
+  [0x08, 6],
+  [0x08, 24],
+  [0x10, 6],
+  [0x08, 18],
+  [0x08, 12],
+]
+
+/**
+ * **A weapon's element**: bits 23–25 of the flags (`func_02085748`), which
+ * the party's AI turns into the element it asks a target's resistance to
+ * (`func_ov024_021f7478`, `0x021f7c98`–`0x021f7ce0`, by the pairs at
+ * `0x021fefb0`): 1 to 7 stand for themselves and 0 for 8, the plain Attack's.
+ * 23 records on the cartridge carry one, 1 to 5. Which elements those are is
+ * the element table's (FORMAT.md, "The elements"); that the field is the
+ * weapon's element is INFERRED from that use — nothing else was read using
+ * it.
+ */
+export function weaponElement(flags: number): number {
+  const bits = (flags >>> 23) & 7
+  return bits === 0 ? 8 : bits
+}
 
 /** The head, a `u32` whose low 12 bits are the count. */
 const HEAD = 4
@@ -63,6 +111,12 @@ export interface ItemBattleParams {
   readonly flags: number
   /** The twenty signed numbers it adds to a resistance, in {@link RESISTANCE_ELEMENTS}' order. */
   readonly resistances: readonly number[]
+  /**
+   * Its killer bonus against each monster family, 1 to 12 at 0 to 11, in
+   * tenths — 10 is none; see {@link FAMILY_BONUS_FIELDS}. Only a weapon's is
+   * asked.
+   */
+  readonly familyTenths: readonly number[]
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -84,10 +138,15 @@ export function readItemBattleParams(bytes: Uint8Array): ItemBattleParams[] {
     const at = HEAD + r * RECORD
     const resistances: number[] = []
     for (let i = 0; i < DELTAS; i++) resistances.push(view.getInt8(at + 0x14 + i))
+    const familyTenths = FAMILY_BONUS_FIELDS.map(([word, low]) => {
+      const field = (view.getUint32(at + word, true) >>> low) & 0x3f
+      return field & 0x20 ? field - 0x40 : field
+    })
     out.push({
       id: view.getInt16(at + 0x28, true),
       flags: view.getUint32(at, true),
       resistances,
+      familyTenths,
       raw: bytes.subarray(at, at + RECORD),
     })
   }

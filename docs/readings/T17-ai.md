@@ -349,17 +349,36 @@ susceptibility (the hit code's pair from `0x021fefea`/`0x021fefeb`); the riders'
 of the target's status. `021fd954` (a state on the party) marks a member
 in need at 100 and otherwise 50.
 
-**What a build needs that the simulation does not keep**: the
-susceptibility bytes (`+0x3e`–`+0x52`; task 18 left them open), the
-families' killer bonuses of what is worn, the vocation table `ai+0x654`
-(`0x02200154`, outside overlay 24), the monsters' own action flags
-(`ai+0x69`–`0x72`, their `+0x6c`–`+0x72`), the character record's
-`+0x134 +0x34` and `+0x36`, `func_ov000_0215e9fc`'s count, and the
-handlers task 18 left unread for the actions a tactic would choose (§7 of
-`T18-handlers.md`). Without them a port scores harm and heal faithfully
-but every state change, protection and rider wrongly — and those are what
-Fight Wisely and Focus On Healing choose among. **So the tactics are still
-not built**; task 17b in `docs/tasks.md` lists the steps.
+**The susceptibility bytes are the resistances** — a correction to task
+18's reading, which listed them as kept by nobody. Status `+0x3E` holds 22
+bytes, element *e* at `+0x3E + e − 1` (`func_ov000_02156b38`;
+`packages/game-formats/FORMAT.md`, "Resistances"), so `+0x46`–`+0x52` are
+elements 9 to 21's: `+0x47` sleep (10), `+0x4A` fuddle (13), `+0x4D` poison
+(16), `+0x4F` attack down (18), `+0x50` defence down (19). A monster's come
+from its record's `+0x6C`, one of the party's from what they wear
+(`wornResistances`), and the simulation keeps both as `Fighter.resist`.
+
+**The killer bonuses and the weapon's element are read** too (6 October
+2026): the twelve accessors on `member+0x150` are six-bit fields of the
+weapon's `itembtlprm.nat` record, `+0x08`–`+0x13`, in tenths, and
+`func_02085748` is its flags' bits 23–25, which the setting up turns into an
+element by the pairs at `0x021fefb0` (1–7 themselves, 0 the plain Attack's
+8) — `FAMILY_BONUS_FIELDS` and `weaponElement` in `game-formats`, FORMAT.md
+"What equipment does in a battle".
+
+**What a build still needs that the simulation does not keep**: the
+flags the setting up gathers from the monsters' six ways (`ai+0x69`–`0x72`,
+from each way's action record — the combatant's `+0x148` is its
+`mon_btldata` record, ways at `+0x18`); the character record's `+0x134
++0x34` and `+0x36`; `func_ov000_0215e9fc`'s count (`ai+0x78`); the
+weapon's metal flags (`+0x2F4` bits 4 and 10, `func_02085128`,
+`020851d8`); and, the largest, the handlers task 18 left unread for the
+actions a tactic would choose (§7 of `T18-handlers.md`) — a tactic must
+not choose what the battle cannot play. `ai+0x13c`/`0x154`, the most and
+least over the monsters of the bytes at their record's `+0x6c`–`+0x72`,
+are their resistances to elements 1 to 7 (fire, ice, the greater of 3 and
+4, the greater of 5 and 6, and 7), which the simulation keeps. **So the tactics are still not
+built**; task 17b in `docs/tasks.md` lists the steps.
 
 ## 3. The targeting handlers
 
