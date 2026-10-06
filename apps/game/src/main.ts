@@ -2249,7 +2249,8 @@ function openWorld(map: string): void {
   // `?ship=20002:0` moors the ship in that map at that mooring — **ours**, for
   // driving the ship without sailing it there; see `ship.ts`.
   const shipAt = /^(\d+):(\d+)$/.exec(params.get('ship') ?? '')
-  if (shipAt) shipKeep = { ...shipKeep, map: Number(shipAt[1]), mooring: Number(shipAt[2]), atSea: false }
+  if (shipAt)
+    shipKeep = { ...shipKeep, map: Number(shipAt[1]), mooring: Number(shipAt[2]), atSea: false }
   // `?gold=5000` puts that much in the purse — **ours**, for driving the bank.
   const gold = params.get('gold')
   if (gold !== null && /^\d+$/.test(gold))
@@ -3606,7 +3607,18 @@ function shoreAgainst(x: Fx32, z: Fx32): ShoreContact | undefined {
   for (const index of triangleAt(world, x, z)) {
     const triangle = world.triangles[index]
     if (!triangle || slopeOf(triangle) >= PERSON.maxSlope) continue
-    const [a, b] = triangle.vertices
+    // A wall projects onto the ground as a thin triangle: its two corners
+    // furthest apart there are the line to measure from.
+    const [p, q, r] = triangle.vertices
+    const across = (u: typeof p, v: typeof p) => Math.hypot(v[0] - u[0], v[2] - u[2])
+    const [a, b] = [
+      [p, q],
+      [q, r],
+      [r, p],
+    ].sort(
+      (m, n) =>
+        across(n[0] as typeof p, n[1] as typeof p) - across(m[0] as typeof p, m[1] as typeof p),
+    )[0] as [typeof p, typeof p]
     const ex = b[0] - a[0]
     const ez = b[2] - a[2]
     const length = Math.hypot(ex, ez) || 1
