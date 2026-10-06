@@ -390,6 +390,9 @@ function changeSays(
     // the resolver says one for all after — see the page's `dispelled`.
     case 'dispelled':
       return 0
+    // H-Pathy's and M-Pathy's: the record's done line (`0x021dc790`,
+    // `0x021dc5d0`) — 22, "…'s wounds are healed"; 106, "…'s MP are replenished".
+    case 'shared':
     // Mens Sana's (`0x021df630`–`0x021df66c`): its record's done line.
     case 'eradicated':
       return pick(own?.done, ACTION_SAYS.alleviated)
@@ -529,6 +532,10 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `All magical effects cast on ${whom} are removed.`
     case 'eradicated':
       return `All unfortunate effects affecting ${whom} are eradicated.`
+    case 'shared':
+      return hit.hp !== undefined
+        ? `${whom} recovers ${hit.hp} HP.`
+        : `${whom} recovers ${hit.mp ?? 0} MP.`
     case 'paralysed':
       return hit.again ? `${whom} is frozen even further.` : `${whom} is paralysed!`
   }
@@ -2237,6 +2244,9 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [49, 'dispel'],
   // Mens Sana (`021df454`): what is unfortunate cleared.
   [43, 'sound'],
+  // M-Pathy (`021dc540`) and H-Pathy (`021dc700`): the user's own MP or HP shared.
+  [13, 'pathy'],
+  [14, 'pathy'],
   // Holy Impregnable (`021e1120`): 25 less taken of the ailments' elements.
   [64, 'holy'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
@@ -2293,7 +2303,15 @@ export function partyChangeOf(action: Castable): Changing | undefined {
         { kind, chance: 100, share: 0.4, least: 75 }
       : kind === 'dazzle'
         ? { kind, chance: 100, sort: r.levels }
-        : kind === 'stun'
+        : kind === 'pathy'
+          ? {
+              kind,
+              chance: 100,
+              gives: r.kind === 14 ? 'hp' : 'mp',
+              amount: action.range ?? { base: 0, spread: 0 },
+              ...(r.tensed ? { tensed: true } : {}),
+            }
+          : kind === 'stun'
           ? // The lost turn's kind is the record's `+0x32`; the two coups
             // (`0x1fc`, `0x20f`) land at the maximum of tension (`func_02088418`).
             {

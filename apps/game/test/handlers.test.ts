@@ -155,7 +155,18 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(162))?.change).toEqual({ kind: 'sound', chance: 100 })
     })
 
-    it('strikes 27 of them as the Attack now, where 76 were', () => {
+    it('plays H-Pathy and M-Pathy as the user’s own HP and MP shared, by their ranges', () => {
+      expect(partyChangeOf(action(183))).toMatchObject({
+        change: { kind: 'pathy', gives: 'hp' },
+        reach: 'one',
+        side: 'own',
+      })
+      const m = partyChangeOf(action(184))?.change
+      expect(m).toMatchObject({ kind: 'pathy', gives: 'mp' })
+      expect(m && 'amount' in m ? m.amount.party : undefined).toMatchObject({ min: 15, max: 55 })
+    })
+
+    it('strikes 25 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -172,7 +183,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(27)
+      expect(attack).toBe(25)
     })
   },
 )

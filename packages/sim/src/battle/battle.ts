@@ -475,6 +475,21 @@ export type Change =
    * else its fail line. Not sleep or paralysis.
    */
   | { readonly kind: 'sound'; readonly chance: number }
+  /**
+   * **H-Pathy** (kind 14, `func_ov024_021dc700`) and **M-Pathy** (kind 13,
+   * `021dc540`): a share of the user's own HP or MP given to another. The
+   * amount is the resolver's — its record's range, drawn as a heal's
+   * (`GetAttackBaseDamage`, `0x021ec504`, then `func_ov024_021e6a90`) — held
+   * to what the user can spare; see `playRound`.
+   */
+  | {
+      readonly kind: 'pathy'
+      readonly chance: number
+      readonly gives: 'hp' | 'mp'
+      readonly amount: Heal
+      /** Whether tension works on it, its record's `+0x10` bit `0x2000` — see {@link Spell.tensed}. */
+      readonly tensed?: boolean
+    }
   /** **Antimagic** (kind 16, `func_ov024_021dced0`): fizzled, landed — again if already. */
   | { readonly kind: 'fizzle'; readonly chance: number }
   /** **Tingle** (kind 20, `func_ov024_021dd6f0`): the paralysed, landed, freed. */
@@ -721,6 +736,8 @@ export type ChangeResult =
   | 'dispelled'
   /** Mens Sana: something unfortunate cleared — its done line. */
   | 'eradicated'
+  /** H-Pathy or M-Pathy: {@link ChangeHit.hp} or {@link ChangeHit.mp} given, the user's own spent. */
+  | 'shared'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -2832,8 +2849,25 @@ export function playRound(
         const missed = !sure && blinded(me, changing.spoiltBySight)
         const landed = sure || (!missed && draw < accuracy)
         // **Landed, the physical formula's draws** — its record's range is 0
-        // (`0x021ec4e4`) — and the coin when it comes to nothing.
-        if (landed && physicalDamage(rng, attackOf(me), defenceOf(them)) <= 0) rng.below(2)
+        // (`0x021ec4e4`) — and the coin when it comes to nothing. H-Pathy's
+        // and M-Pathy's range is not: theirs is drawn as a heal's is, tension
+        // at its head (`0x021ec504`, `0x021ec7a8`). **INFERRED**: that the
+        // final damage's other steps leave it so — an element of 0, neither
+        // spell nor breath, and no critical in its record.
+        const shared =
+          change.kind === 'pathy'
+            ? landed
+              ? (() => {
+                  const drawn = amountFor(rng, atMagicLevels(me), change.amount)
+                  const tension = change.tensed ? tensionOf(me) : undefined
+                  return tension
+                    ? Math.trunc(tensed(drawn, tension.level, tension.side, tension.dealer))
+                    : drawn
+                })()
+              : 0
+            : undefined
+        if (shared === undefined && landed && physicalDamage(rng, attackOf(me), defenceOf(them)) <= 0)
+          rng.below(2)
         const was = them.states
         switch (change.kind) {
           case 'sleep':
@@ -2941,6 +2975,39 @@ export function playRound(
               ...Object.fromEntries(lowered.map((stat) => [stat, { level: 0, turns: 0 }])),
             })
             return { target, result: 'eradicated' }
+          }
+          case 'pathy': {
+            // H-Pathy (`0x021dc748`–`0x021dc8b4`): nothing where the target is
+            // at their most, the user at 1 HP or less, or the user is the
+            // target; else held to the user's HP less 1. Landed and above 0,
+            // the done line: the user loses all of it (`func_ov000_0215a004`),
+            // the target gets what they have room for (`0215a16c`). M-Pathy
+            // (`0x021dc588`–`0x021dc690`): nothing where the user has no MP,
+            // the target is at their most, or the user is the target; else
+            // held to the user's MP. The target gets what they have room for
+            // (`0215a1d4`), and **the user loses only that** (`0215a124`).
+            const user = fighters[actor] as FighterState
+            const hp = change.gives === 'hp'
+            const room = hp ? them.maxHp - them.hp : them.maxMp - them.mp
+            const spare = hp ? user.hp - 1 : user.mp
+            let amount = shared ?? 0
+            if (room <= 0 || (hp ? user.hp <= 1 : user.mp === 0) || target === actor) amount = 0
+            amount = Math.min(amount, spare)
+            if (!landed || amount <= 0) return { target, result: 'resisted' }
+            const given = Math.min(amount, room)
+            const spent = hp ? amount : given
+            fighters = fighters.map((g, i) =>
+              i === actor
+                ? hp
+                  ? { ...g, hp: g.hp - spent }
+                  : { ...g, mp: g.mp - spent }
+                : i === target
+                  ? hp
+                    ? { ...g, hp: g.hp + given }
+                    : { ...g, mp: g.mp + given }
+                  : g,
+            )
+            return { target, result: 'shared', ...(hp ? { hp: given } : { mp: given }) }
           }
           case 'unparalyse':
             // Tingle: landed on the paralysed (`func_ov024_021da9b0`), freed.

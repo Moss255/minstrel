@@ -478,3 +478,53 @@ describe('Mens Sana — kind 43', () => {
     expect(changeOf(events).hits).toEqual([{ target: 0, result: 'resisted' }])
   })
 })
+
+describe('H-Pathy and M-Pathy — kinds 14 and 13', () => {
+  const ally: Fighter = { ...hero, name: 'Ally' }
+  const pathy = (gives: 'hp' | 'mp') =>
+    ({
+      action: gives === 'hp' ? 183 : 184,
+      cost: 0,
+      change: {
+        kind: 'pathy',
+        chance: 100,
+        gives,
+        amount: { base: 30, spread: 0, party: { min: 30, max: 30 } },
+      },
+      reach: 'one',
+      side: 'own',
+    }) as Changing
+
+  it('gives HP held to the room, and takes all it drew from the user', () => {
+    const start = withHp(startBattle([hero, ally, foe]), new Map([[1, 90]]))
+    const { state, events } = playRound(
+      start,
+      new Map<number, Command>([[0, { kind: 'change', changing: pathy('hp'), target: 1 }]]),
+      new BattleRng(2n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 1, result: 'shared', hp: 10 }])
+    expect(state.fighters[1]?.hp).toBe(100)
+    expect(state.fighters[0]?.hp).toBe(70)
+  })
+
+  it('gives MP held to the room, and takes only what it gave', () => {
+    const start = withMp(startBattle([hero, ally, foe]), new Map([[1, 70]]))
+    const { state, events } = playRound(
+      start,
+      new Map<number, Command>([[0, { kind: 'change', changing: pathy('mp'), target: 1 }]]),
+      new BattleRng(2n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 1, result: 'shared', mp: 10 }])
+    expect(state.fighters[1]?.mp).toBe(80)
+    expect(state.fighters[0]?.mp).toBe(70)
+  })
+
+  it('shares nothing with one at their most, and says the fail line', () => {
+    const { events } = playRound(
+      startBattle([hero, ally, foe]),
+      new Map<number, Command>([[0, { kind: 'change', changing: pathy('hp'), target: 1 }]]),
+      new BattleRng(2n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 1, result: 'resisted' }])
+  })
+})

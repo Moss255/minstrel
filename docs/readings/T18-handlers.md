@@ -246,13 +246,11 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (27 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49 and 43), by the kind whose handler is unread:
+**Still struck as the Attack** (25 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13 and 14), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
 | 0 | `func_ov024_021da670` | Counter Wait, Defending Champion, Back Atcha, Whipping Boy, Selflessness, Forbearance |
-| 13 | `func_ov024_021dc540` | M-Pathy |
-| 14 | `func_ov024_021dc700` | H-Pathy |
 | 21 | `func_ov024_021dd828` | Fuddle |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
@@ -982,3 +980,31 @@ breaths, evasion, the shield's block (`0x021df510`–`0x021df624`) — each
 counted as cleared. Any: the done line; none: the fail line
 (`0x021df628`–`0x021df66c`); then `ApplyCombatantBuffs`. Not sleep,
 paralysis or a lost turn.
+
+### H-Pathy (kind 14) and M-Pathy (kind 13) — built
+
+**The amount** is the resolver's, handed on the stack (`[sp+0x40]`, `[sp+0x48]`
+in the handlers): `GetAttackBaseDamage` (`0x021ec504`) on the record's
+range — 30 to 200 for H-Pathy, 15 to 55 for M-Pathy — and then the final
+damage `func_ov024_021e6a90` (`0x021ec7a8`), as a heal's. Built as the
+battle draws a heal: the range, tension at its head. **INFERRED**: that
+the final damage's other steps leave it so (element 0, neither spell nor
+breath, no critical in either record).
+
+**H-Pathy** (`func_ov024_021dc700`): the amount 0 where the target is at
+their most HP (`+0x00` ≥ `+0x04`), the user at 1 or less, or the user is
+the target; else held to the user's HP less 1 (`0x021dc748`–`0x021dc778`).
+Landed and above 0, the done line (22, "…'s wounds are healed"); else the
+fail line, the amount 0 and `battle+0x6d` cleared. Then the user is struck
+for **all of it** (`func_ov000_0215a004`, `0x021dc890`) and the target
+given what they have room for (`0215a16c`), picture `0x25`. For H-Pathy
+itself (`0xb7`) on a target at 1 HP, landed, `func_ov000_0215a8d4` with 2
+— not read; not kept.
+
+**M-Pathy** (`func_ov024_021dc540`): 0 where the user has no MP, the
+target is at their most MP (`+0x02` ≥ `+0x06`), or the user is the target;
+else held to the user's MP (`0x021dc588`–`0x021dc5bc`). Landed and above 0
+the done line (106), else the fail line. The target is given it, **held to
+their room** (`func_ov000_0215a1d4`, which writes what it gave), and the
+user loses **only what was given** (`0215a124`, `0x021dc684`–`0x021dc690`)
+— where H-Pathy's user loses all it drew.
