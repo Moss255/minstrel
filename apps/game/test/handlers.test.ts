@@ -120,7 +120,14 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(200))?.change.kind).toBe('mist')
     })
 
-    it('strikes 34 of them as the Attack now, where 76 were', () => {
+    it('plays Rotstopper', () => {
+      expect(partyChangeOf(action(153))).toMatchObject({
+        change: { kind: 'rotstop' },
+        reach: 'all',
+      })
+    })
+
+    it('strikes 33 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -137,7 +144,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(34)
+      expect(attack).toBe(33)
     })
   },
 )

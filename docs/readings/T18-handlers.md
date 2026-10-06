@@ -60,7 +60,6 @@ empty):
 | 37 | `func_ov024_021ded48` | Immense Defence |
 | 38 | `func_ov024_021dee84` | Care Prayer |
 | 39 | `func_ov024_021deff8` | Alma Mater |
-| 40 | `func_ov024_021df0f0` | Rotstopper |
 | 41 | `func_ov024_021df1e8` | Wave of Relief |
 | 42 | `func_ov024_021df284` | Channel Anger, Caster Sugar |
 | 43 | `func_ov024_021df454` | Mens Sana |
@@ -249,7 +248,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (34 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36 and 55), by the kind whose handler is unread:
+**Still struck as the Attack** (33 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55 and 40), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -262,7 +261,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 32 | `func_ov024_021de770` | Reverse Cycle |
 | 37 | `func_ov024_021ded48` | Immense Defence |
 | 39 | `func_ov024_021deff8` | Alma Mater |
-| 40 | `func_ov024_021df0f0` | Rotstopper |
 | 43 | `func_ov024_021df454` | Mens Sana |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
@@ -858,3 +856,28 @@ says is not found. Mist Me's stands as actmsg `0x1b9`, "The mist surrounding
 <TARGET> absorbs the attack and disperses", by its words; Schizofanic's as
 the miss line. INFERRED both. Built for the Attack and for blows; a change
 that a shield may block, none among the party's, is not looked at.
+
+### Rotstopper (kind 40) — built
+
+The simple shape (`func_02088a20`, `02088a34`): `+0x14` bit 29 with a count
+of 4 at `+0x64`. **What it does** — the final damage
+(`func_ov024_021e6a90`, `0x021e74f8`–`0x021e7530`): for a target under it,
+where the dealer is a monster of family 8 (`func_ov000_02156068` with 8 and
+mode 0: not one of the party, and `mon_data +0x0A` bits 7–10 at 8), the
+damage times `0.5f`. Its place: after the resistance (`func_ov000_02156b38`,
+`0x021e6e8c`) and the equipment's killer bonuses by family (`0x021e722c`–
+`0x021e7488`, which the battle does not keep — see `T17-ai.md`), and after
+`+0x18` bits 1 and 2's three quarters (statuses not kept), before the wards
+against spells and breaths. Runs down: `+0x87`, the second table, line
+`0x1d8` (`0x02158a5c`–`0x02158aec`).
+
+**Feel the Burn** (kind 47), read toward building: the resolver, after a
+pass of kind 1 or `0x23` that dealt something (`0x021eca94`–`0x021ecac0`),
+marks one under `+0x14` bit 28 with `+0x22` bit 14; `func_ov000_0215b5a0`
+(`0x0215b6d0` on) then clears the mark and, for one standing, awake, not
+paralysed nor under a lost turn, not under `+0x14` bit 24 and able to take
+tension (`func_020881c4`), draws `R(100)` against a table by their tension
+(`+0x24`, the table's address at `0x0215bbb8`) — under it, their tension a
+level up, or to the most from 3 (`func_02088220`, `02088150`), told as
+action 928 with lines `0x31`–`0x34`. **Not built**: where `0215b5a0` runs
+among a round's draws, and the table's values, are not read.

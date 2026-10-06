@@ -397,12 +397,17 @@ export const LEVEL_STATS: readonly LevelStat[] = [
  * `0x02159688`, `0x02159720`). Those it visits that the battle does not keep
  * are left out.
  */
+/** The family Rotstopper halves (`0x021e7510`). */
+const ROT_FAMILY = 8
+
 const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] = [
   // Dazzle's block (`+0x82`, `0x02158764`), after Knight Watch's and before Fizzle's.
   'dazzled',
   'fizzled',
   // Vanish's block (`+0x85`, `0x0215892c`), after Fizzle's and before attack's.
   'vanished',
+  // Rotstopper's (`+0x87`, `0x02158a5c`).
+  'rotstop',
   'attack',
   'defence',
   'agility',
@@ -463,6 +468,8 @@ export type Change =
    * it, `+0x14` bit 27 with its count of 5 — see `States.vanished`.
    */
   | { readonly kind: 'vanish'; readonly chance: number }
+  /** **Rotstopper** (kind 40, `func_ov024_021df0f0`): the simple shape — see `States.rotstop`. */
+  | { readonly kind: 'rotstop'; readonly chance: number }
   /**
    * **Flower Power, Scandal Eyes** (kind 19, `func_ov024_021dd534`): landed,
    * on one who may take it, dazzled of its `sort` — the record's `+0x30` —
@@ -898,6 +905,7 @@ export type BattleEvent =
         | 'fizzled'
         | 'dazzled'
         | 'vanished'
+        | 'rotstop'
         | 'zeroZone'
         | 'tumble'
         | 'watched'
@@ -1103,6 +1111,18 @@ function wardsOf(
       : {}),
     ...(action.breath && breaths !== 0 ? { breathWard: wardMultiplier(breaths) } : {}),
   }
+}
+
+/** Rotstopper's half: its holder struck by a monster of family 8 — see `States.rotstop`. */
+function rotOf(
+  dealer: { readonly side: Side; readonly family?: number },
+  target: { readonly states: States },
+): { rotstop?: true } {
+  return (target.states.rotstop?.level ?? 0) !== 0 &&
+    dealer.side === 'foes' &&
+    dealer.family === ROT_FAMILY
+    ? { rotstop: true }
+    : {}
 }
 
 /** A target's chance of blocking, in a hundred — the game's `func_ov000_02156118`, likewise. */
@@ -2574,6 +2594,7 @@ export function playRound(
           amount = dealt(rng, amount, {
             critical,
             resistance: resistanceTo(them.resist, spell.element ?? 0),
+            ...rotOf(me, them),
             ...wardsOf(them, spell),
             ...(spell.cap ? { cap: spell.cap } : {}),
             // A guard halves what defending works on — Frizz and Crack are
@@ -2827,6 +2848,10 @@ export function playRound(
           case 'vanish':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { vanished: { level: 1, turns: LEVEL_COUNTS.vanished } })
+            return { target, result: 'given' }
+          case 'rotstop':
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            setStates(target, { rotstop: { level: 1, turns: LEVEL_COUNTS.rotstop } })
             return { target, result: 'given' }
           case 'zeroZone':
           case 'tumble': {
@@ -3116,6 +3141,7 @@ export function playRound(
         const damage = dealt(rng, d & 0xffff, {
           critical: critical && !thrust && !(blow.sure && blow.action !== CRITICAL_CLAIM),
           resistance: resistanceTo(them.resist, blow.element),
+          ...rotOf(me, them),
           ...wardsOf(them, blow),
           dodged,
           blocked,
@@ -3282,6 +3308,7 @@ export function playRound(
           critical,
           attack: attackOf(me),
           resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
+          ...rotOf(me, them),
           dodged,
           blocked,
           ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),

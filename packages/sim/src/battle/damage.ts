@@ -409,6 +409,12 @@ export function dealt(
     readonly spellWard?: number
     readonly breathWard?: number
     /**
+     * The target under Rotstopper and the dealer a monster of family 8
+     * (`0x021e74f8`–`0x021e7530`): half, after the resistance and before the
+     * wards.
+     */
+    readonly rotstop?: boolean
+    /**
      * What the target's guard does to it — {@link GUARD_LEVELS} at its guard
      * level, 0.5 for one defending. Whole when not given.
      */
@@ -458,6 +464,8 @@ export function dealt(
     if (d < floor) d = floor
   }
   d = f(d * f(to.resistance))
+  // Rotstopper's half, on what a monster of family 8 deals (`0x021e7524`).
+  if (to.rotstop) d = f(d * f(0.5))
   // Its resistance to spells, then to breaths (`0x021e7580`, `0x021e75c4`).
   if (to.spellWard !== undefined) d = f(d * f(to.spellWard))
   if (to.breathWard !== undefined) d = f(d * f(to.breathWard))

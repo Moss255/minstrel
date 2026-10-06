@@ -255,3 +255,30 @@ describe('Schizofanic and Mist Me — kinds 36 and 55', () => {
     expect(a.drawn).toBeLessThan(b.drawn)
   })
 })
+
+describe('Rotstopper — kind 40', () => {
+  it('halves what a monster of family 8 deals its holder, and nothing else’s', () => {
+    const zombie: Fighter = { ...foe, attack: 400, family: 8 }
+    const other: Fighter = { ...foe, attack: 400, family: 7 }
+    const soft: Fighter = { ...hero, defence: 0, maxHp: 999 }
+    const bite = (monster: Fighter, rot: boolean, seed: bigint) => {
+      const start = startBattle([soft, monster])
+      const state = {
+        ...start,
+        fighters: start.fighters.map((f, i) =>
+          i === 0 && rot ? { ...f, states: { ...f.states, rotstop: { level: 1, turns: 4 } } } : f,
+        ),
+      }
+      const { events } = playRound(state, new Map([[0, { kind: 'defend' }]]), new BattleRng(seed))
+      const e = events.find((x) => x.kind === 'attack' && x.actor === 1)
+      return e?.kind === 'attack' ? e.damage : -1
+    }
+    for (const seed of [1n, 2n, 3n]) {
+      const whole = bite(zombie, false, seed)
+      // A quarter, give or take the floats: its half, and the Hero's guard's.
+      expect(Math.abs(bite(zombie, true, seed) - whole / 2)).toBeLessThanOrEqual(1)
+      expect(bite(zombie, true, seed)).toBeLessThan(whole)
+      expect(bite(other, true, seed)).toBe(bite(other, false, seed))
+    }
+  })
+})

@@ -428,6 +428,7 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   dazzle: 'dazzle',
   dazzled: 'dazzle',
   schizofanic: 'Schizofanic',
+  rotstop: 'Rotstopper',
   mist: 'Mist Me',
   focus: 'Focus Pocus',
   might: 'magical might',
@@ -520,6 +521,7 @@ const WORN_OFF: Readonly<
     | 'fizzled'
     | 'dazzled'
     | 'vanished'
+    | 'rotstop'
     | 'zeroZone'
     | 'tumble'
     | 'watched'
@@ -531,8 +533,9 @@ const WORN_OFF: Readonly<
   fizzled: 0x1d6,
   // Dazzle's, `0x1c7` (`0x021587d4`).
   dazzled: 0x1c7,
-  // Vanish's, `0x1c9` (`0x0215899c`).
+  // Vanish's, `0x1c9` (`0x0215899c`); Rotstopper's, `0x1d8` (`0x02158acc`).
   vanished: 0x1c9,
+  rotstop: 0x1d8,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
   // `0x1c8` (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`).
   focus: 0x1c8,
@@ -2165,6 +2168,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [54, 'vanish'],
   // Flower Power, Scandal Eyes (`021dd534`): dazzle, of the record's sort.
   [19, 'dazzle'],
+  // Rotstopper (`021df0f0`): a monster of family 8's halved.
+  [40, 'rotstop'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
   [36, 'schizofanic'],
   [55, 'mist'],
