@@ -263,6 +263,30 @@ describe('a change of the party’s', () => {
     expect(state.fighters[0]?.states.defence.level).toBe(-2)
     expect(state.fighters[0]?.states.attack?.level).toBe(2)
   })
+
+  it('raises Caster Sugar’s magical mending by its rider 21 before its might, with no draw', () => {
+    const sugar = (rider: boolean) =>
+      changing({
+        action: 0x1e0,
+        change: { kind: 'might', by: 1, chance: 100 },
+        ...(rider ? { rider: { slot: 21, levels: 1 } } : {}),
+      })
+    const play = (rider: boolean) =>
+      playRound(
+        startBattle([hero, foe]),
+        new Map([[0, { kind: 'change', changing: sugar(rider), target: 0 }]]),
+        new BattleRng(5n),
+      )
+    const { state, events } = play(true)
+    expect(changeOf(events).rode).toEqual([
+      { target: 0, result: 'raised', level: 1, stat: 'mending' },
+    ])
+    expect(state.fighters[0]?.states.mending?.level).toBe(1)
+    expect(state.fighters[0]?.states.might?.level).toBe(1)
+    // No draw of its own: everything after it falls as it did without.
+    const others = (e: typeof events) => e.filter((x) => x.kind !== 'change')
+    expect(others(events)).toEqual(others(play(false).events))
+  })
 })
 
 describe('Choir of Angels', () => {

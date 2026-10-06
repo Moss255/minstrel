@@ -1486,7 +1486,13 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                 ),
               ]
             : []),
-          // A lost turn or paralysis takes tension away (`func_ov024_021e8cfc`).
+          // Rake 'n' Break's clear (rider 12): `0xf1` where its tension's
+          // line was not said (`func_ov024_021ea85c`, `0x021eaa04`–`0x021eaa40`).
+          ...(hit.rode?.result === 'dispelled' && !hit.rode.calmed
+            ? [say(scene, 'actions', 0xf1, { actor, target })]
+            : []),
+          // A lost turn or paralysis takes tension away (`func_ov024_021e8cfc`);
+          // so does the clear.
           ...(hit.rode?.calmed && hit.rode.result !== 'mashed'
             ? [say(scene, 'actions', ACTION_SAYS.tensionNormal, { target })]
             : []),
@@ -1734,8 +1740,13 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         }
         return out.length > 0 ? out : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]
       }
+      // Caster Sugar's rider is run before its own level, and said first
+      // (`0x021df2dc`–`0x021df2f0`); Double Up's after.
+      const rodeFirst = event.change === 'might' ? (event.rode ?? []) : []
+      const rodeAfter = event.change === 'might' ? [] : (event.rode ?? [])
       const landed = event.hits.flatMap((hit) => [
         ...turnedSays(scene, hit),
+        ...rodeFirst.filter((rode) => rode.target === hit.target).map(sayHit),
         ...(hit.result === 'restored'
           ? restoring(hit)
           : hit.result === 'boosted'
@@ -1805,7 +1816,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       const game = lines(
         ...opens,
         ...(said.length > 0 ? said : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
-        ...(event.rode ?? []).map(sayHit),
+        ...rodeAfter.map(sayHit),
       )
       if (game !== undefined) return game
       const ours = [
@@ -2677,5 +2688,7 @@ export function partyChangeOf(action: Castable): Changing | undefined {
       : {}),
     // Sobering Slap's: one confused brought to their senses (`func_ov024_021e4588`).
     ...(r.rider === 19 ? { rider: { slot: 19, levels: 0 } } : {}),
+    // Caster Sugar's magical mending (rider 21, `func_ov024_021e47f4`), by its `+0x32`.
+    ...(r.rider === 21 && r.riderLevels ? { rider: { slot: 21, levels: r.riderLevels } } : {}),
   }
 }

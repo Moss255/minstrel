@@ -64,6 +64,17 @@ describe.skipIf(!romPath)(
       expect(blowOf(action(87))?.rider?.slot).toBe(7)
     })
 
+    it('rides 232’s tension step, Rake ’n’ Break’s clear, Conjury Conductor’s fall and Caster Sugar’s mending', () => {
+      expect(blowOf(action(232))?.rider).toEqual({
+        slot: 9,
+        chance: { party: 100, foe: 100 },
+        levels: -1,
+      })
+      expect(blowOf(action(101))?.rider?.slot).toBe(12)
+      expect(blowOf(action(128))?.rider).toMatchObject({ slot: 13, levels: -1 })
+      expect(partyChangeOf(action(190))?.rider).toEqual({ slot: 21, levels: 1 })
+    })
+
     it('scales the six of the game’s table by its numbers, each record saying it scales', () => {
       for (const id of [67, 68, 74, 102, 114, 144]) {
         expect(action(id).range?.party.scales).toEqual(SKILL_SCALES.get(id))

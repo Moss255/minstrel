@@ -267,3 +267,114 @@ describe('Morale Masher — rider 14', () => {
     expect(state.fighters[1]?.states.tension).toBe(1)
   })
 })
+
+describe('rider 9 on a blow — the monsters’ attack 232', () => {
+  const calming = blow({
+    action: 232,
+    rider: { slot: 9, chance: { party: 0, foe: 100 }, levels: -1 },
+  })
+  it('takes a step of tension off, with no draw, and ends no watch', () => {
+    const start = holding(startBattle([hero(), slime()]), 1, {
+      watched: { by: 0, turns: 3 },
+      tension: 2,
+      paralysed: { level: 1, turns: 3 },
+    })
+    const { events, state } = playRound(
+      start,
+      new Map([[0, { kind: 'blow', blow: calming, target: 1 }]]),
+      new BattleRng(seedOf(6)),
+    )
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toEqual({
+      target: 1,
+      result: 'mashed',
+      tension: 1,
+    })
+    expect(state.fighters[1]?.states.watched).toBeDefined()
+    expect(state.fighters[1]?.states.tension).toBe(1)
+  })
+  it('rides on nothing for one with no tension', () => {
+    const start = holding(startBattle([hero(), slime()]), 1, { paralysed: { level: 1, turns: 3 } })
+    const { events } = playRound(
+      start,
+      new Map([[0, { kind: 'blow', blow: calming, target: 1 }]]),
+      new BattleRng(seedOf(6)),
+    )
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toBeUndefined()
+  })
+})
+
+describe('Rake ’n’ Break’s rider 12 and Conjury Conductor’s rider 13', () => {
+  it('12: clears what is magical on the one struck, and their tension, with no draw', () => {
+    const rake = blow({
+      action: 0x7b,
+      rider: { slot: 12, chance: { party: 0, foe: 0 }, levels: 0 },
+    })
+    const start = holding(startBattle([hero(), slime()]), 1, {
+      attack: { level: 2, turns: 5 },
+      tension: 1,
+      paralysed: { level: 1, turns: 3 },
+    })
+    const { events, state } = playRound(
+      start,
+      new Map([[0, { kind: 'blow', blow: rake, target: 1 }]]),
+      new BattleRng(seedOf(6)),
+    )
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toEqual({
+      target: 1,
+      result: 'dispelled',
+      calmed: true,
+    })
+    expect(state.fighters[1]?.states.attack?.level ?? 0).toBe(0)
+    expect(state.fighters[1]?.states.tension ?? 0).toBe(0)
+    // Paralysis is not magical: it stays.
+    expect(state.fighters[1]?.states.paralysed).toBeDefined()
+  })
+
+  it('13: lowers the resistance to spells under the target’s byte, its draw first', () => {
+    const conjury = blow({
+      action: 0x7c,
+      rider: { slot: 13, chance: { party: 0, foe: 0 }, levels: -1 },
+    })
+    const start = holding(
+      startBattle([hero(), slime({ resist: Array.from({ length: 21 }, () => 100) })]),
+      1,
+      {
+        paralysed: { level: 1, turns: 3 },
+      },
+    )
+    const { events, state } = playRound(
+      start,
+      new Map([[0, { kind: 'blow', blow: conjury, target: 1 }]]),
+      new BattleRng(seedOf(6)),
+    )
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toEqual({
+      target: 1,
+      result: 'lowered',
+      level: -1,
+      stat: 'spells',
+    })
+    expect(state.fighters[1]?.states.spells?.level).toBe(-1)
+    // A byte of 0 refuses it.
+    const immune = holding(
+      startBattle([
+        hero(),
+        slime({ resist: Array.from({ length: 21 }, (_, i) => (i === 20 ? 0 : 100)) }),
+      ]),
+      1,
+      {
+        paralysed: { level: 1, turns: 3 },
+      },
+    )
+    const none = playRound(
+      immune,
+      new Map([[0, { kind: 'blow', blow: conjury, target: 1 }]]),
+      new BattleRng(seedOf(6)),
+    )
+    const blowed = none.events.find((e) => e.kind === 'blow')
+    expect(blowed?.kind === 'blow' && blowed.hits[0]?.rode).toBeUndefined()
+  })
+})

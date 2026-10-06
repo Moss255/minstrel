@@ -886,7 +886,7 @@ export interface ChangeHit {
   /** One restored was also rid of a misfortune. */
   readonly cured?: boolean
   /** For what rode on an action: which level it moved. */
-  readonly stat?: 'attack' | 'defence' | 'agility'
+  readonly stat?: 'attack' | 'defence' | 'agility' | 'spells' | 'mending'
   /** Fizzled when it already was — "is further prevented from casting spells". */
   readonly again?: boolean
   /** The MP one replenished got back. */
@@ -928,7 +928,9 @@ export interface Rider {
 const METAL_SPARED: ReadonlySet<number> = new Set([0x205, 0x82])
 
 /** The riders the battle plays. */
-export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 10, 11, 14, 19, 20])
+export const RIDERS_PLAYED: ReadonlySet<number> = new Set([
+  1, 2, 4, 7, 8, 9, 10, 11, 12, 13, 14, 19, 20,
+])
 
 /**
  * The lost turns rider 1 knows, by `+0x32` — the table at
@@ -1582,6 +1584,8 @@ const DOUBLE_UP = 0xad
 /** The elements the level riders' falls land with — their bytes' — see `riderByte`. */
 const ATTACK_DOWN_ELEMENT = 18
 const DEFENCE_DOWN_ELEMENT = 19
+/** Rider 13's byte, `+0x52` (`0x021e3e00`): the resistance to spells' fall. */
+const SPELLS_DOWN_ELEMENT = 21
 /** The blow riders' elements, by slot: 4 poison, 7 sleep, 20 death. */
 const RIDER_ELEMENTS: ReadonlyMap<number, number> = new Map([
   [1, 15],
@@ -1914,11 +1918,28 @@ export function playRound(
     action?: number,
   ): ChangeHit | undefined => {
     const draw = rng.below(100)
-    const stat = slot === 2 ? ('attack' as const) : slot === 8 ? ('defence' as const) : undefined
+    // Rider 13, Conjury Conductor's (`func_ov024_021e3d88`), is the same shape
+    // on the resistance to spells (`func_02087d24`, `02087d78`), its byte
+    // `+0x52` (`0x021e3e00`).
+    const stat =
+      slot === 2
+        ? ('attack' as const)
+        : slot === 8
+          ? ('defence' as const)
+          : slot === 13
+            ? ('spells' as const)
+            : undefined
     if (!stat) return undefined
     const by = Math.max(-2, Math.min(2, levels))
     if (by < 0 && !(stat === 'defence' && action === DOUBLE_UP)) {
-      const byte = riderByte(target, stat === 'attack' ? ATTACK_DOWN_ELEMENT : DEFENCE_DOWN_ELEMENT)
+      const byte = riderByte(
+        target,
+        stat === 'attack'
+          ? ATTACK_DOWN_ELEMENT
+          : stat === 'defence'
+            ? DEFENCE_DOWN_ELEMENT
+            : SPELLS_DOWN_ELEMENT,
+      )
       if (byte === 0) return undefined
       if (!critical && Math.fround(draw) >= Math.fround(byte)) return undefined
     }
@@ -1936,8 +1957,26 @@ export function playRound(
     _action: number,
     out: ChangeHit[],
   ) => {
-    const hit = levelRider(target, rider.slot, rider.levels, false, _action)
+    const hit =
+      rider.slot === 21
+        ? mendingRider(target, rider.levels)
+        : levelRider(target, rider.slot, rider.levels, false, _action)
     if (hit) out.push(hit)
+  }
+  /**
+   * **Rider 21**, Caster Sugar's (`func_ov024_021e47f4`), run by kind 42's
+   * handler before its own level (`0x021df2dc`–`0x021df2f0`): magical
+   * mending moved by the record's `+0x32`, held to ±2 (`func_02087c30`,
+   * `02087c84`, then `UpdateCombatantMagicalMending`) — **no draw and no
+   * byte**; its line by the level it came to (`func_ov024_021e9990`).
+   */
+  const mendingRider = (target: number, levels: number): ChangeHit | undefined => {
+    const by = Math.max(-2, Math.min(2, levels))
+    const level = (fighters[target] as FighterState).states.mending ?? { level: 0, turns: 0 }
+    const next = moved(level, by, LEVEL_COUNTS.mending)
+    if (!next) return undefined
+    setStates(target, { mending: next })
+    return { target, result: by > 0 ? 'raised' : 'lowered', level: next.level, stat: 'mending' }
   }
   /**
    * **A lost turn set** — rider 1's ending (`func_ov024_021e2bd0`,
@@ -1959,6 +1998,37 @@ export function playRound(
     return { target, result: 'stunned', status, ...(calmed ? { calmed: true } : {}) }
   }
   /**
+   * **The clear** (`func_ov024_021ea85c`) — Disruptive Wave's and rider
+   * 12's: the tension, and each status `func_0208…` clears that the battle
+   * keeps: the nine levels (`func_02087838` to `020880e4`), Fizzle
+   * (`020888c4`), Vanish (`020889b4`), Bounce (`02088914`), Reverse Cycle
+   * (`02088964`), Rotstopper (`02088a54`), the decoys (`02088aa8`,
+   * `02088af0`), Alma Mater (`02088b34`), Focus Pocus (`02088b84`), Right as
+   * Rain (`02088bd4`), Holy Impregnable (`02088cf4`), 0 Zone (`020890f4`),
+   * Rough 'n' Tumble (`02089144`). Whether they had tension, which its line
+   * is said by (`func_ov024_021e8cfc`).
+   */
+  const clearMagic = (target: number): boolean => {
+    const calmed = ((fighters[target] as FighterState).states.tension ?? 0) > 0
+    setStates(target, {
+      ...Object.fromEntries(LEVEL_STATS.map((stat) => [stat, { level: 0, turns: 0 }])),
+      fizzled: { level: 0, turns: 0 },
+      vanished: undefined,
+      bounce: undefined,
+      reverse: undefined,
+      rotstop: undefined,
+      decoy: undefined,
+      alma: undefined,
+      focus: undefined,
+      rain: undefined,
+      holy: undefined,
+      zeroZone: { level: 0, turns: 0 },
+      tumble: { level: 0, turns: 0 },
+      tension: 0,
+    })
+    return calmed
+  }
+  /**
    * **A rider on a blow's pass that dealt something** (`func_ov024_021e4b14`
    * from the kind-1 handler). Poison (`021e303c`), sleep (`021e33a4`) and
    * death (`021e4604`) make their draw only for one who can take them, and
@@ -1975,7 +2045,7 @@ export function playRound(
     action = 0,
   ): ChangeHit | undefined => {
     const them = fighters[target] as FighterState
-    if (rider.slot === 2 || rider.slot === 8) {
+    if (rider.slot === 2 || rider.slot === 8 || rider.slot === 13) {
       return levelRider(target, rider.slot, rider.levels, critical)
     }
     const chance = me.side === 'party' ? rider.chance.party : rider.chance.foe
@@ -2022,6 +2092,27 @@ export function playRound(
           ...(had > 0 ? { tension: had - 1 } : {}),
           ...(watched ? { calmed: true } : {}),
         }
+      }
+      case 12: {
+        // Rake 'n' Break's (`func_ov024_021e3cec`), no draw and no test: the
+        // clear on the target (`func_ov024_021ea85c` with a line asked, its
+        // `r2` 1), picture flag `0x28`, and no result line of its own
+        // (`021e8ca0` with 0). The clear's line: the tension's, where they
+        // had any, else `0xf1` (`0x021eaa04`–`0x021eaa40`).
+        const calmed = clearMagic(target)
+        return { target, result: 'dispelled', ...(calmed ? { calmed: true } : {}) }
+      }
+      case 9: {
+        // Rider 9 (`func_ov024_021e373c`), on a pass that dealt something, no
+        // draw: one with tension (`func_ov024_021da998`, `021dd260`) a step
+        // less (`func_02087704`), its line by the level it came to
+        // (`0x021e37ac`–`0x021e37e4`). No watch is ended here — that is
+        // Soothe Sayer's own handler's (`021e07b0`). The monsters' attack 232
+        // carries it, at a hundred.
+        const had = them.states.tension ?? 0
+        if (had === 0) return undefined
+        setStates(target, { tension: had - 1 })
+        return { target, result: 'mashed', tension: had - 1 }
       }
       case 19: {
         // Sobering Slap (`func_ov024_021e4588`): one confused brought to
@@ -3570,23 +3661,7 @@ export function playRound(
             // (`02088b84`), Right as Rain (`02088bd4`), Holy Impregnable
             // (`02088cf4`), 0 Zone (`020890f4`), Rough 'n' Tumble (`02089144`).
             if (!landed || !alive(them)) return { target, result: 'resisted' }
-            const calmed = (was.tension ?? 0) > 0
-            setStates(target, {
-              ...Object.fromEntries(LEVEL_STATS.map((stat) => [stat, { level: 0, turns: 0 }])),
-              fizzled: { level: 0, turns: 0 },
-              vanished: undefined,
-              bounce: undefined,
-              reverse: undefined,
-              rotstop: undefined,
-              decoy: undefined,
-              alma: undefined,
-              focus: undefined,
-              rain: undefined,
-              holy: undefined,
-              zeroZone: { level: 0, turns: 0 },
-              tumble: { level: 0, turns: 0 },
-              tension: 0,
-            })
+            const calmed = clearMagic(target)
             return { target, result: 'dispelled', ...(calmed ? { calmed: true } : {}) }
           }
           case 'sound': {
