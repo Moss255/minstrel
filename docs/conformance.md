@@ -420,10 +420,12 @@ attack — is rider 4 at 12**: the reference's 12 in 100, in its own record.
 accuracy's; `haywire` and `evadable` from the record; a `dodged` result; the
 poison rolled only for a blow that dealt something. **In the game**
 (`foeWaysOf`): chance, levels and dodging from the action's record in place of
-our table. **Ours still, and the largest thing left here: nobody has a
-resistance.** Every target's is whole and every susceptibility byte a hundred,
-which is right for the Hero against the slice's monsters only as far as the
-reference goes; where a monster's come from is not read.
+our table. **The susceptibility bytes are the resistances** (status `+0x3E +
+element − 1`; task 17b): since 6 October 2026 a rider reads the target's —
+a 0 refuses it, poison and sleep land under the chance times the byte over a
+hundred, a fall under the byte — and **death's chance is a flat 12.5** times
+its byte, a metal body's byte passed over (`func_ov024_021e4604`;
+`docs/readings/T18-handlers.md` §8).
 
 ## Resistances
 

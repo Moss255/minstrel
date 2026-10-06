@@ -189,12 +189,11 @@ standing, the fail line.
   a critical.
 - **7, sleep** (`021e33a4`): the same, byte `+0x47`, one who can sleep
   (`func_0208830c`).
-- **20, death** (`021e4604`): not on a metal body (`func_ov000_02156068`);
-  the same, byte `+0x48`; then the protection of kind 17, and all HP taken.
+- **20, death** (`021e4604`): a flat 12.5, not the action's chance, byte
+  `+0x48`, a metal body's byte passed over — **corrected in §8**; then the
+  protection of kind 17, and all HP taken.
 
-Nobody's bytes are modelled — every one is a hundred, as `docs/conformance.md`
-says of resistances — so a fall of attack or defence lands every time and its
-draw is spent.
+The bytes are the target's resistances — §8.
 
 ## 4. The record's lines
 
@@ -322,8 +321,8 @@ Tirade and Disco Tech (kind 10, `021dc0b8`), Spelly Breath (kind 26,
 `021e16a4`), Rough 'n' Tumble (70, `021e1824`), Voice of Experience (72,
 `021e1cbc`), Knight Watch (73, `021e1de8`), Brownie Boost (74, `021e1ed4`).
 
-**Ours in what was built**: nobody's susceptibility bytes (`+0x46`–`+0x52`),
-so a level rider's fall always lands; attack's turns run down as defence's
+**Ours in what was built**: ~~nobody's susceptibility bytes~~ — they are
+the resistances, used since §8; attack's turns run down as defence's
 (its count, 5 at `+0x6e`, is not read in use) and wear off first at the
 round's end; a raised one comes back with at least 1 HP; the flags a
 raising and a waking set (`+0x3a`, `+0x3b` bit 0) are not kept; Whack's
@@ -399,3 +398,25 @@ is short — 935's opening is actmsg 580, and it does nothing else. **Built**:
 `Spell.gold`, `BattleState.purse`, the refusal and the spending; the app
 takes it from the purse as the round's events come in. A monster's gold
 is not kept, so a monster's Gold Rush is neither refused nor charged.
+
+### The riders' bytes are the resistances — and death's own chance
+
+Task 17b found the riders' "susceptibility bytes" are status `+0x3E + element
+− 1`, the resistances the simulation already keeps (`Fighter.resist`). Each
+byte is the element its change lands with: `+0x47` sleep 10, `+0x48` death
+11, `+0x4d` poison 16, `+0x4f` attack down 18, `+0x50` defence down 19 —
+the landing elements of Snooze, Whack, Toxic Dagger, Blunt and Sap. Now
+used: a byte of 0 refuses a rider before its draw (poison `0x021e308c`,
+sleep `0x021e33f0`, a fall `0x021e2f3c`); poison and sleep land under
+`chance × (byte / 100)` in floats (`0x021e3118`–`0x021e3180`); a fall
+under the byte, after its draw.
+
+**Corrected — death (rider 20, `func_ov024_021e4604`)**: it does not land
+by the action's chance, and it does not refuse a metal body. Its chance is
+a flat **12.5** (`0x021e47d0`), times the byte over 100
+(`0x021e4690`–`0x021e46b0`, the divisor the literal's exponent plus three,
+100.0); a hundred on a critical (`0x021e46c4`). For a metal body
+(`func_ov000_02156068(…, 0, 1)`, `0x021e463c`, `0x021e4684`) the byte is
+passed over — neither a 0 refusing it nor scaling it — so Assassin's Stab
+and the others fell a metal slime at 12.5 in a hundred, when their blow
+deals something. §3 said otherwise.

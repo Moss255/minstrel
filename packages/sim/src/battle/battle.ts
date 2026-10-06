@@ -900,6 +900,17 @@ export function fleeChance(
 const DOUBLE_EDGED_SLASH = 0xaf
 /** Critical Claim, the one always-critical action whose critical multiplies. */
 const CRITICAL_CLAIM = 0x1f9
+/** Double Up, whose fall of its user's defence skips the byte (`021e3594`). */
+const DOUBLE_UP = 0xad
+/** The elements the level riders' falls land with — their bytes' — see `riderByte`. */
+const ATTACK_DOWN_ELEMENT = 18
+const DEFENCE_DOWN_ELEMENT = 19
+/** The blow riders' elements, by slot: 4 poison, 7 sleep, 20 death. */
+const RIDER_ELEMENTS: ReadonlyMap<number, number> = new Map([
+  [4, 16],
+  [7, 10],
+  [20, 11],
+])
 /** Propeller Blade, which strikes its one target twice — see the blow's passes. */
 const PROPELLER_BLADE = 0x61
 const MIRACLE_MOON = 0x91
@@ -1056,17 +1067,37 @@ export function playRound(
   const attackOf = (f: FighterState) =>
     buffedAttack(f.attack, f.states.attack?.level ?? 0, f.side === 'party')
   /**
+   * **A target's byte for a rider** — status `+0x3E + element − 1`, which is
+   * its resistance to the element the rider's change lands with: `+0x47`
+   * sleep 10, `+0x48` death 11, `+0x4d` poison 16, `+0x4f` attack down 18,
+   * `+0x50` defence down 19 (task 17b, `docs/readings/T17-ai.md`). A hundred
+   * where nothing is kept.
+   */
+  const riderByte = (target: number, element: number): number =>
+    (fighters[target] as FighterState).resist?.[element - 1] ?? 100
+  /**
    * **A level rider** — 2 attack, 8 defence (`func_ov024_021e2ebc`,
    * `021e3594`): a draw below 100 first; a fall lands under the target's own
    * byte for it, or at once on a critical, and Double Up's (`0xad`) on
-   * defence without the test; a raise always. **Nobody's bytes are kept**,
-   * so each is a hundred and a fall always lands — ours, as resistances are.
+   * defence without the test; a raise always. A byte of 0 refuses a fall
+   * (`0x021e2f3c`). The bytes are the target's resistances (`riderByte`).
    */
-  const levelRider = (target: number, slot: number, levels: number): ChangeHit | undefined => {
-    rng.below(100)
+  const levelRider = (
+    target: number,
+    slot: number,
+    levels: number,
+    critical = false,
+    action?: number,
+  ): ChangeHit | undefined => {
+    const draw = rng.below(100)
     const stat = slot === 2 ? ('attack' as const) : slot === 8 ? ('defence' as const) : undefined
     if (!stat) return undefined
     const by = Math.max(-2, Math.min(2, levels))
+    if (by < 0 && !(stat === 'defence' && action === DOUBLE_UP)) {
+      const byte = riderByte(target, stat === 'attack' ? ATTACK_DOWN_ELEMENT : DEFENCE_DOWN_ELEMENT)
+      if (byte === 0) return undefined
+      if (!critical && Math.fround(draw) >= Math.fround(byte)) return undefined
+    }
     const level = (fighters[target] as FighterState).states[stat] ?? { level: 0, turns: 0 }
     const next = moved(level, by)
     // Not moved, nothing is said (`0x021e2fc8`).
@@ -1081,7 +1112,7 @@ export function playRound(
     _action: number,
     out: ChangeHit[],
   ) => {
-    const hit = levelRider(target, rider.slot, rider.levels)
+    const hit = levelRider(target, rider.slot, rider.levels, false, _action)
     if (hit) out.push(hit)
   }
   /**
@@ -1100,10 +1131,19 @@ export function playRound(
     pending: { asleep: number[]; felled: number[] },
   ): ChangeHit | undefined => {
     const them = fighters[target] as FighterState
-    if (rider.slot === 2 || rider.slot === 8) return levelRider(target, rider.slot, rider.levels)
+    if (rider.slot === 2 || rider.slot === 8) {
+      return levelRider(target, rider.slot, rider.levels, critical)
+    }
     const chance = me.side === 'party' ? rider.chance.party : rider.chance.foe
+    // The target's byte for it, which refuses it outright at 0 (`0x021e308c`).
+    const element = RIDER_ELEMENTS.get(rider.slot)
+    const byte = element === undefined ? 100 : riderByte(target, element)
+    if (byte === 0 && !(rider.slot === 20 && them.metal)) return undefined
+    // Under the action's chance times the byte over a hundred, in floats, or
+    // under a hundred on a critical (`0x021e3118`–`0x021e3180`).
+    const f = Math.fround
     const lands = () =>
-      Math.fround(rng.below(100)) < (critical ? Math.fround(100) : Math.fround(chance))
+      f(rng.below(100)) < (critical ? f(100) : f(f(chance) * f(f(byte) / f(100))))
     switch (rider.slot) {
       case 4: {
         // Envenomation where its levels are above 0 (`0x021e309c`), plain
@@ -1121,12 +1161,18 @@ export function playRound(
         if (!lands()) return undefined
         pending.asleep.push(target)
         return { target, result: 'asleep' }
-      case 20:
-        // Not on a metal body (`func_ov000_02156068`, `0x021e463c`).
-        if (them.metal || pending.felled.includes(target)) return undefined
-        if (!lands()) return undefined
+      case 20: {
+        // **Not the action's chance**: a flat 12.5, times the byte over a
+        // hundred — but on a metal body the byte is passed over, neither
+        // refusing nor scaling (`func_ov000_02156068`, `0x021e463c`,
+        // `0x021e4684`); a hundred on a critical (`0x021e46c4`).
+        if (pending.felled.includes(target)) return undefined
+        const flat = f(12.5)
+        const over = them.metal ? flat : f(flat * f(f(riderByte(target, 11)) / f(100)))
+        if (!(f(rng.below(100)) < (critical ? f(100) : over))) return undefined
         pending.felled.push(target)
         return { target, result: 'killed' }
+      }
       default:
         return undefined
     }

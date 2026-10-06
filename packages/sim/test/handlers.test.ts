@@ -364,16 +364,42 @@ describe('what rides on a blow', () => {
     expect(helm.state.fighters[1]?.states.defence.level).toBe(-1)
   })
 
-  it('fells the one struck with death, but never a metal body', () => {
-    const stab = struck(20)
-    expect(rodeOf(stab.events)).toEqual({ target: 1, result: 'killed' })
-    expect(stab.state.fighters[1]?.hp).toBe(0)
-    const metal = playRound(
-      startBattle([hero, { ...foe, metal: true }]),
-      new Map([[0, { kind: 'blow', blow: blow(20), target: 1 }]]),
+  it('fells with death at a flat 12.5 times the byte, a metal body’s byte passed over (021e4604)', () => {
+    const felled = (target: Fighter, seed: bigint) => {
+      const { events, state } = playRound(
+        startBattle([hero, target]),
+        new Map([[0, { kind: 'blow', blow: blow(20), target: 1 }]]),
+        new BattleRng(seed),
+        { ...DEFAULT_RULES, critical: 0 },
+      )
+      const rode = rodeOf(events)
+      if (rode) expect(state.fighters[1]?.hp).toBe(0)
+      return rode?.result === 'killed'
+    }
+    const count = (target: Fighter) => {
+      let n = 0
+      for (let seed = 1n; seed <= 400n; seed++) if (felled(target, seed)) n++
+      return n
+    }
+    // The action's own chance, a hundred here, is not what it lands by.
+    const plain = count(foe)
+    expect(plain).toBeGreaterThan(25)
+    expect(plain).toBeLessThan(80)
+    // A byte of 0 refuses it; half halves it; a metal body takes the flat chance.
+    const resist = (byte: number) => Array.from({ length: 21 }, (_, i) => (i === 10 ? byte : 100))
+    expect(count({ ...foe, resist: resist(0) })).toBe(0)
+    expect(count({ ...foe, resist: resist(50) })).toBeLessThan(plain)
+    expect(count({ ...foe, metal: true, resist: resist(0) })).toBeGreaterThan(0)
+  })
+
+  it('refuses a fall of attack against a byte of 0, and lands it under the byte', () => {
+    const resist = Array.from({ length: 21 }, (_, i) => (i === 17 ? 0 : 100))
+    const { events } = playRound(
+      startBattle([hero, { ...foe, resist }]),
+      new Map([[0, { kind: 'blow', blow: blow(2, -1), target: 1 }]]),
       new BattleRng(6n),
     )
-    expect(rodeOf(metal.events)).toBeUndefined()
+    expect(rodeOf(events)).toBeUndefined()
   })
 })
 
