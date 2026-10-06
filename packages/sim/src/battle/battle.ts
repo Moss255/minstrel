@@ -329,6 +329,17 @@ export type Change =
   | { readonly kind: 'cure'; readonly chance: number }
   | { readonly kind: 'wake'; readonly chance: number }
   | { readonly kind: 'kill'; readonly chance: number }
+  /**
+   * **Choir of Angels** (kind 67, `func_ov024_021e13e0`): a share of the most
+   * HP rounded half up, at least `least`, healed whether it landed or not;
+   * then every misfortune cleared (`func_ov024_021eae14`).
+   */
+  | {
+      readonly kind: 'restore'
+      readonly chance: number
+      readonly share: number
+      readonly least: number
+    }
   | {
       readonly kind: 'revive'
       readonly chance: number
@@ -439,6 +450,8 @@ export type ChangeResult =
   | 'lifeless'
   /** All their HP taken. */
   | 'killed'
+  /** Healed by {@link ChangeHit.hp}, and — `cured` — misfortunes cleared. */
+  | 'restored'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -446,8 +459,10 @@ export interface ChangeHit {
   readonly result: ChangeResult
   /** The level it came to, for a level moved — which picks its line (`func_ov024_021e94c4`). */
   readonly level?: number
-  /** The HP one raised comes back with. */
+  /** The HP one raised comes back with, or one restored is healed by. */
   readonly hp?: number
+  /** One restored was also rid of a misfortune. */
+  readonly cured?: boolean
   /** For what rode on an action: which level it moved. */
   readonly stat?: 'attack' | 'defence' | 'agility'
 }
@@ -527,6 +542,11 @@ export type Command =
       readonly action: number
       readonly steps: number
       readonly outright?: boolean
+      /**
+       * Whom it psyches up, where not oneself — Egg On, an ally other than its
+       * user, by the same handler (`func_ov024_021dc93c`, kind 15).
+       */
+      readonly target?: number
     }
 
 export type BattleEvent =
@@ -610,6 +630,8 @@ export type BattleEvent =
       readonly steps: readonly number[]
       /** One that went straight up — "…'s tension gets a huge boost all of a sudden!" first. */
       readonly outright?: boolean
+      /** Whom it psyched up, where not its actor — Egg On's ally. */
+      readonly target?: number
     }
   /**
    * An ability's blow: each pass's target and what it came to — a hit, its
@@ -1764,7 +1786,13 @@ export function playRound(
       // 3 a coin of the battle's. At the maximum already, nothing happens.
       // Range 0: the physical formula's draws, and its coin, come before its own.
       selfPass(me, false)
-      const was = me.states.tension ?? 0
+      // Egg On's ally, where it is one standing on the user's side; else the user.
+      const whom = fighters[command.target ?? actor]
+      const at =
+        command.target !== undefined && whom && alive(whom) && whom.side === me.side
+          ? command.target
+          : actor
+      const was = (fighters[at] as FighterState).states.tension ?? 0
       const steps: number[] = []
       let level = was
       if (command.outright) {
@@ -1783,12 +1811,12 @@ export function playRound(
       }
       // Reaching the maximum clears poison (`func_02088150`).
       if (level !== was) {
-        setStates(actor, {
+        setStates(at, {
           tension: level,
           ...(level === TENSION_MOST ? { poisoned: false, envenomed: false } : {}),
         })
       }
-      coupAtPass(actor, 0)
+      coupAtPass(at, 0)
       resolved = { actor, action: command.action }
       events.push({
         kind: 'psyche',
@@ -1796,6 +1824,7 @@ export function playRound(
         action: command.action,
         steps,
         ...(command.outright ? { outright: true } : {}),
+        ...(at !== actor ? { target: at } : {}),
       })
       continue
     }
@@ -2056,6 +2085,45 @@ export function playRound(
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             felled.push(target)
             return { target, result: 'killed' }
+          case 'restore': {
+            // Choir of Angels: no test of its landing (`0x021e1408`–`0x021e14b4`).
+            if (!alive(them)) return { target, result: 'resisted' }
+            const f = Math.fround
+            const heal = Math.max(
+              change.least,
+              Math.trunc(f(f(0.5) + f(f(change.share) * f(them.maxHp)))),
+            )
+            const hp = Math.min(heal, them.maxHp - them.hp)
+            // The cure-all (`func_ov024_021eae14`): sleep, both poisons, and a
+            // level below 0 — of the many it clears, those kept here.
+            const st = them.states
+            const lowered = (l: { level: number } | undefined) => (l?.level ?? 0) < 0
+            const cured =
+              st.sleep !== undefined ||
+              st.poisoned ||
+              st.envenomed === true ||
+              lowered(st.attack) ||
+              lowered(st.defence) ||
+              lowered(st.agility)
+            fighters = fighters.map((g, i) =>
+              i === target
+                ? {
+                    ...g,
+                    hp: g.hp + hp,
+                    states: {
+                      ...g.states,
+                      sleep: undefined,
+                      poisoned: false,
+                      envenomed: false,
+                      ...(lowered(st.attack) ? { attack: { level: 0, turns: 0 } } : {}),
+                      ...(lowered(st.defence) ? { defence: { level: 0, turns: 0 } } : {}),
+                      ...(lowered(st.agility) ? { agility: { level: 0, turns: 0 } } : {}),
+                    },
+                  }
+                : g,
+            )
+            return { target, result: 'restored', hp, ...(cured ? { cured: true } : {}) }
+          }
           case 'revive': {
             // Kind 18 (`func_ov024_021dd278`): the fallen, landed — a share of
             // their most HP, truncated.

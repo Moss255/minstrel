@@ -313,6 +313,7 @@ import {
   type Offered,
   partyChangeOf,
   RESULT_SAYS,
+  TENSION_BOOST,
   type Told,
   withPages,
 } from './battle-scene.ts'
@@ -7379,6 +7380,8 @@ const REVIVAL_KIND = 18
 const RAISES_EITHER = new Set([38, 39, 84])
 /** Psyche Up's kind of action, and the two that go straight to their level. */
 const PSYCHE_KIND = 15
+/** A reach of an ally other than oneself — Egg On's, M-Pathy's (the menu's `exceptSelf`). */
+const ALLY_NOT_SELF = 8
 
 /** A member's Spells and Abilities, in the game's order — see `battleOffered`. */
 function battleListsOf(
@@ -7427,7 +7430,7 @@ function battleListsOf(
     const kind = action.rolls?.kind
     const blow = blowOf(action)
     const changing = spell || blow ? undefined : partyChangeOf(action)
-    if (blow || changing)
+    if (blow || changing || kind === PSYCHE_KIND)
       known.set(id, {
         name: { name: action.name },
         message: action.message,
@@ -7447,7 +7450,15 @@ function battleListsOf(
                 steps: Math.max(1, action.rolls?.levels ?? 1),
                 ...(id === 0x151 || id === 0x152 ? { outright: true } : {}),
               })
-            : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
+            : kind === PSYCHE_KIND && action.reach === ALLY_NOT_SELF
+              ? // Egg On: Psyche Up's handler on the ally chosen (`func_ov024_021dc93c`).
+                (target) => ({
+                  kind: 'psyche',
+                  action: id,
+                  steps: Math.max(1, action.rolls?.levels ?? 1),
+                  target,
+                })
+              : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
     list.push({
       action: id,
       name: renderName(action.name),
@@ -8444,8 +8455,10 @@ function coupFor(member: Member, level: number): { level: number; bonus: number 
 /**
  * **A member's Coup de Grâce command** — their vocation's coup
  * (`data_ov000_02183658`): a blow where its handler is read, the Warrior's
- * Critical Claim among them. **Ours**: any other — its handler, of kinds 10,
- * 26 and 67 to 77, not read — is said, its opening line, and does nothing.
+ * Critical Claim among them; the Priest's Choir of Angels (kind 67) and the
+ * Gladiator's Tension Boost (kind 71), read in task 18. **Ours**: any other —
+ * its handler, of kinds 10, 26, 68 to 70 and 72 to 77, not read — is said,
+ * its opening line, and does nothing.
  */
 function coupEntry(member: Member, known: Map<number, Told>): Entry | undefined {
   const id = COUP_OF.get(member.vocation)
@@ -8453,6 +8466,14 @@ function coupEntry(member: Member, known: Map<number, Told>): Entry | undefined 
   if (id === undefined || !action) return undefined
   known.set(id, { name: { name: action.name }, message: action.message, opening: action.opening })
   const blow = blowOf(action)
+  const changing = blow ? undefined : partyChangeOf(action)
+  if (changing)
+    known.set(id, {
+      name: { name: action.name },
+      message: action.message,
+      opening: action.opening,
+      lines: action.lines,
+    })
   return {
     action: id,
     name: renderName(action.name),
@@ -8461,7 +8482,11 @@ function coupEntry(member: Member, known: Map<number, Told>): Entry | undefined 
     reach: action.reach,
     command: blow
       ? (target) => ({ kind: 'blow', blow, target })
-      : () => ({ kind: 'wait', action: id }),
+      : changing
+        ? (target) => ({ kind: 'change', changing, target })
+        : id === TENSION_BOOST
+          ? () => ({ kind: 'psyche', action: id, steps: 4, outright: true })
+          : () => ({ kind: 'wait', action: id }),
   }
 }
 

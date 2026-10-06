@@ -63,7 +63,7 @@ describe.skipIf(!romPath)(
       expect(blowOf(action(87))?.rider?.slot).toBe(7)
     })
 
-    it('strikes 56 of them as the Attack now, where 76 were', () => {
+    it('strikes 55 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -77,10 +77,10 @@ describe.skipIf(!romPath)(
           (a.reach === ActionReach.Actor && a.effect === ActionEffect.RestoresHp
             ? battleSpellOf({ ...a, reach: ActionReach.One })
             : undefined)
-        const psyche = a.rolls?.kind === 15 && a.reach === ActionReach.Actor
+        const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(56)
+      expect(attack).toBe(55)
     })
   },
 )

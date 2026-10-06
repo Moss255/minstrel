@@ -153,6 +153,9 @@ export const ACTION_SAYS = {
   agilityDown: 79,
   agilityNormal: 80,
   alreadyPoisoned: 82,
+  /** Choir of Angels': "…is healed by the soothing song." and "…is alleviated of all unfortunate effects." */
+  soothingSong: 0x1ba,
+  alleviated: 0x1bb,
   /** "<TARGET> becomes envenomated." / "…even more envenomated." — `func_ov024_021e939c`. */
   envenomed: 0x10a,
   envenomedAgain: 0x10c,
@@ -264,6 +267,8 @@ function changeSays(
       return ACTION_SAYS.lifeless
     case 'killed':
       return pick(own?.killed, targetParty ? ACTION_SAYS.dies : ACTION_SAYS.killed)
+    case 'restored':
+      return ACTION_SAYS.healed
   }
 }
 
@@ -301,6 +306,10 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} remains lifeless.`
     case 'killed':
       return `${whom} is killed.`
+    case 'restored':
+      return hit.cured
+        ? `${whom} recovers ${hit.hp ?? 0} HP, and is rid of all misfortune.`
+        : `${whom} recovers ${hit.hp ?? 0} HP.`
   }
 }
 
@@ -1118,7 +1127,27 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           changeSays(event.change, hit, told, state.fighters[hit.target]?.side === 'party'),
           { actor, target: scene.names[hit.target] },
         )
-      const landed = event.hits.map(sayHit)
+      // Choir of Angels' lines (`0x021e1468`–`0x021e1500`): healed, "the
+      // soothing song" (0x1ba) and the wounds (0x16); cured, the song if not
+      // yet said and 0x1bb; neither, "But nothing happens."
+      const restoring = (hit: ChangeHit) => {
+        const target = scene.names[hit.target]
+        const out = []
+        if ((hit.hp ?? 0) > 0)
+          out.push(
+            say(scene, 'actions', ACTION_SAYS.soothingSong, { actor, target }),
+            say(scene, 'actions', ACTION_SAYS.healed, { actor, target }),
+          )
+        if (hit.cured) {
+          if (out.length === 0)
+            out.push(say(scene, 'actions', ACTION_SAYS.soothingSong, { actor, target }))
+          out.push(say(scene, 'actions', ACTION_SAYS.alleviated, { actor, target }))
+        }
+        return out.length > 0 ? out : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]
+      }
+      const landed = event.hits.flatMap((hit) =>
+        hit.result === 'restored' ? restoring(hit) : [sayHit(hit)],
+      )
       const game = lines(
         ...opens,
         ...(landed.length > 0 ? landed : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
@@ -1177,11 +1206,24 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     case 'psyche': {
       const told = scene.known.get(event.action)
       const action = told?.name ?? { name: `move ${event.action}` }
+      // Egg On's ally, whom its opening names and its steps tell of.
+      const raised = event.target === undefined ? actor : scene.names[event.target]
+      const whose = event.target === undefined ? who : (labels[event.target] ?? '?')
       const opens = [
         ...(told?.opening
-          ? [say(scene, 'actions', told.opening, { actor, action, item: action })]
+          ? [say(scene, 'actions', told.opening, { actor, target: raised, action, item: action })]
           : []),
-        ...(event.outright ? [say(scene, 'actions', ACTION_SAYS.tensionBoost, { actor })] : []),
+        ...(event.outright
+          ? [
+              say(
+                scene,
+                'actions',
+                // Tension Boost's own line, the same words (`0x021e1a7c`).
+                event.action === TENSION_BOOST ? 0x1bc : ACTION_SAYS.tensionBoost,
+                { actor },
+              ),
+            ]
+          : []),
       ]
       const steps =
         event.steps.length === 0
@@ -1191,7 +1233,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                 scene,
                 'actions',
                 step > 0 ? (TENSION_RISES[step] ?? 0) : ACTION_SAYS.tensionFails,
-                { target: actor },
+                { target: raised },
               ),
             )
       const game = lines(...opens, ...steps)
@@ -1202,8 +1244,8 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           ? ['But nothing happens.']
           : event.steps.map((step) =>
               step > 0
-                ? `${who}'s tension increases to ${TENSION_SHOWN[step] ?? 0}.`
-                : `But ${who}'s tension doesn't increase to the maximum.`,
+                ? `${whose}'s tension increases to ${TENSION_SHOWN[step] ?? 0}.`
+                : `But ${whose}'s tension doesn't increase to the maximum.`,
             )),
       ]
       return ours.map(sentence).join('\n')
@@ -1732,7 +1774,10 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [9, 'wake'],
   [17, 'kill'],
   [18, 'revive'],
+  [67, 'restore'],
 ])
+/** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
+export const TENSION_BOOST = 511
 /** Zing and the Zing stick, whose share scales by mending; Kazing, whose is a half (`func_ov024_021dd278`). */
 const ZING = new Set([38, 84])
 const KAZING = 39
@@ -1762,17 +1807,20 @@ export function partyChangeOf(action: Castable): Changing | undefined {
   const change: Change =
     kind === 'attack' || kind === 'defence' || kind === 'agility'
       ? { kind, by: levels, chance: 100 }
-      : kind === 'revive'
-        ? {
-            kind,
-            chance: 100,
-            share: ZING.has(action.action)
-              ? (r.scaleRange ?? { lo: 0, hi: 0 })
-              : action.action === KAZING
-                ? 0.5
-                : 1,
-          }
-        : { kind, chance: 100 }
+      : kind === 'restore'
+        ? // Choir of Angels: 0.4 of the most HP, rounded half up, at least 75 (`0x021e1418`–`0x021e1440`).
+          { kind, chance: 100, share: 0.4, least: 75 }
+        : kind === 'revive'
+          ? {
+              kind,
+              chance: 100,
+              share: ZING.has(action.action)
+                ? (r.scaleRange ?? { lo: 0, hi: 0 })
+                : action.action === KAZING
+                  ? 0.5
+                  : 1,
+            }
+          : { kind, chance: 100 }
   const range = r.accuracyRange
   return {
     action: action.action,

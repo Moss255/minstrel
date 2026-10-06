@@ -257,6 +257,62 @@ describe('a change of the party’s', () => {
   })
 })
 
+describe('Choir of Angels', () => {
+  it('heals 0.4 of the most HP rounded half up, at least 75, and clears misfortune', () => {
+    const big = { ...hero, maxHp: 400 }
+    const start = withHp(
+      startBattle([big, ally, foe]),
+      new Map([
+        [0, 100],
+        [1, 10],
+      ]),
+    )
+    const poorly = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1
+          ? { ...f, states: { ...f.states, poisoned: true, defence: { level: -1, turns: 3 } } }
+          : f,
+      ),
+    }
+    const choir: Changing = {
+      action: 506,
+      cost: 0,
+      reach: 'all',
+      side: 'own',
+      change: { kind: 'restore', chance: 100, share: 0.4, least: 75 },
+    }
+    const { state, events } = playRound(
+      poorly,
+      new Map([[0, { kind: 'change', changing: choir, target: 0 }]]),
+      new BattleRng(8n),
+    )
+    expect(changeOf(events).hits).toEqual([
+      { target: 0, result: 'restored', hp: 160 },
+      { target: 1, result: 'restored', hp: 75, cured: true },
+    ])
+    expect(state.fighters[1]?.states.poisoned).toBe(false)
+    expect(state.fighters[1]?.states.defence.level).toBe(0)
+  })
+})
+
+describe('Egg On', () => {
+  it('psyches up the ally named, not its user', () => {
+    const { state, events } = playRound(
+      startBattle([hero, ally, foe]),
+      new Map([
+        [0, { kind: 'psyche', action: 168, steps: 1, target: 1 }],
+        // The ally keeps it: an Attack would spend it.
+        [1, { kind: 'defend' }],
+      ]),
+      new BattleRng(10n),
+    )
+    expect(state.fighters[1]?.states.tension).toBe(1)
+    expect(state.fighters[0]?.states.tension ?? 0).toBe(0)
+    expect(events).toContainEqual({ kind: 'psyche', actor: 0, action: 168, steps: [1], target: 1 })
+  })
+})
+
 describe('what rides on a blow', () => {
   const blow = (slot: number, levels = 0): Blow => ({
     action: 75,
