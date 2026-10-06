@@ -86,6 +86,27 @@ describe('a spell', () => {
     return { state: played.state, event, events: played.events }
   }
 
+  it('spends Gold Rush’s gold from the purse after it acts, and refuses it short (post-step 6)', () => {
+    const rush: Spell = {
+      action: 479,
+      cost: 0,
+      does: 'harm',
+      reach: 'all',
+      amount: { base: 550, spread: 30 },
+      gold: 1000,
+    }
+    const begun = startBattle([hero, blob('slime', 999)])
+    const paid = cast({ ...begun, purse: 1500 }, rush, 1)
+    expect(paid.event.goldSpent).toBe(1000)
+    expect(paid.event.hits).toHaveLength(1)
+    expect(paid.state.purse).toBe(500)
+    const short = cast({ ...begun, purse: 999 }, rush, 1)
+    expect(short.event).toMatchObject({ shortOfGold: true, hits: [] })
+    expect(short.state.purse).toBe(999)
+    // A purse not kept is neither checked nor charged.
+    expect(cast(begun, rush, 1).event.goldSpent).toBeUndefined()
+  })
+
   it('spends its MP, and harms the one chosen by its range', () => {
     const { state, event } = cast(
       startBattle([hero, blob('slime', 99), blob('slime', 99)]),

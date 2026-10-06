@@ -8932,6 +8932,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     world: roamRng,
     hp,
     mp: new Map([[0, leader().mp ?? row.maxMp]]),
+    // What Gold Rush spends from — see `battleSpellOf`.
+    purse: bag.gold,
     known,
     words: loaded.battleWords,
     names: [
@@ -13803,6 +13805,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       // that is used up (`func_020ddb38`: `+0x08` bit 19).
       if (battle.state.round !== round) {
         for (const event of battle.events) {
+          // Gold Rush's gold, gone from the purse as it acts (post-step 6).
+          if (event.kind === 'spell' && event.goldSpent) {
+            bag = { ...bag, gold: Math.max(0, bag.gold - event.goldSpent) }
+          }
           if (event.kind !== 'item' || !loaded?.itemDefs.get(event.item)?.usedUp) continue
           const list = battleMembers[event.actor]?.carried
           const at = list?.indexOf(event.item) ?? -1

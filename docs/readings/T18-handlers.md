@@ -303,10 +303,10 @@ Most need a status the battle does not keep — a counter, a barrier, Bounce's
 mirror, dazzle, confusion, a stance (kind 0 is the six stances: Counter
 Wait, Defending Champion …).
 
-**Played as a plain blow, their own code unread:** Propeller Blade,
-Crosscutter Throw, Gold Rush (its post-step 6, gold spent,
-`data_ov024_021ff3f8`). ~~The six that scale by the table at `0x021fe8b6`~~
-— read and built 6 October 2026, §8.
+**Played as a plain blow, its own code read and not built:** Crosscutter
+Throw — its extra pass's target is picked by place on the stage (§8).
+~~Propeller Blade, Gold Rush, the six that scale by the table at
+`0x021fe8b6`~~ — read and built 6 October 2026, §8.
 
 **Riders not played** (`data_ov024_021ff450`): 1 `021e2bd0` (the dances' and
 War Cry's — a turn lost, INFERRED), 5 and 6 (the antidotes') `021e324c`,
@@ -362,3 +362,40 @@ the level tables' order, and nothing read here says otherwise.
 Built: `SKILL_SCALES` and `scaleStat` in the sim's `damage.ts`; `load.ts`
 gives the six their table's scaling; a fighter carries its `strength`. The
 amounts stay played as the range's harm (`battleSpellOf`), as before.
+
+### Propeller Blade (97), Crosscutter Throw (121) — the resolver's own
+
+Both are kind 1, damage handler 0; what makes them theirs is in the
+resolver (`func_ov024_021eb5d0`), by the action's id:
+
+- **Propeller Blade** (`0x61`): its target list's first is copied to its
+  second and the count made 2 (`0x021eb954`–`0x021eb964`), so the passes
+  (`func_ov024_021e8dc0`) strike the one target twice. On the second pass
+  (`[sl+0x18]` above 0, `0x021ec444`–`0x021ec48c`) the result's critical
+  (`+0x1c` bit 7, set by `RollCritical`, `0x021ec2d4`), dodged (bit 1) and
+  blocked (bit 2) are cleared — their draws already spent — and the
+  accuracy roll is handed a flag that makes it land with no draw
+  (`func_ov000_02156648`, `[sp+0x38]`, `0x0215678c`). The kind-1 handler
+  says line `0x1f0` on that pass and passes over the record's kill line
+  (`0x021daf4c`, `0x021db0b0`–`0x021db0d0`). **Built**: the passes, the
+  clearing, the accuracy; the line `0x1f0` is not told.
+- **Crosscutter Throw** (`0x79`): one more target is appended
+  (`0x021eb974`–`0x021eb994`), `func_ov000_0215cda0`'s: among the eight
+  monster slots standing (`func_ov000_0215eb1c`), the one whose place on
+  the stage (`func_02049b54`, a `Vector3`) has the least first coordinate.
+  The simulation keeps no places, so **not built** — it stays the plain blow
+  on all, without the extra pass. A flag marks that last pass for the
+  accuracy roll (`[sp+0x40]`, `0x021ec4a4`–`0x021ec4b8`), not followed.
+
+### Gold Rush (479) — post-step 6
+
+`data_ov024_021ff3f8` slot 6, `func_ov024_021e5be4`: after the action, the
+record's `+0x32` (Gold Rush's **1,000**) is taken from the party's gold
+(`func_02010828()+0xf6c`, `0x021e5c14`–`0x021e5c20`) for one of the party
+(`func_ov000_0215fd24`), or from a monster's own gold
+(`battle+0x8e84`, by its place). **Before** acting, `func_ov024_021eaa50`
+(`0x021ead0c`–`0x021eadd0`) puts action **935** in its place when the gold
+is short — 935's opening is actmsg 580, and it does nothing else. **Built**:
+`Spell.gold`, `BattleState.purse`, the refusal and the spending; the app
+takes it from the purse as the round's events come in. A monster's gold
+is not kept, so a monster's Gold Rush is neither refused nor charged.

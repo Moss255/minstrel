@@ -303,6 +303,13 @@ export interface Spell {
   /** The most it can deal — its record's cap. */
   readonly cap?: number
   /**
+   * The gold it spends — Gold Rush's, its record's `+0x32` under post-step 6
+   * (`func_ov024_021e5be4`, `0x021e5c14`–`0x021e5c20`): taken from the
+   * party's purse after it acts, and refused before when the purse holds
+   * less (`func_ov024_021eaa50`, `0x021ead0c`–`0x021eadd0`).
+   */
+  readonly gold?: number
+  /**
    * Its record's `criticalPercent`, which multiplies the caster's chance of
    * going haywire — 50 on the spells, so half of a blow's. Without it the
    * rules' flat chance stands.
@@ -594,6 +601,13 @@ export type BattleEvent =
       readonly action: number
       /** Too little MP to cast it: nothing happens, and nothing is spent. */
       readonly short: boolean
+      /**
+       * Too little gold — Gold Rush's: the action becomes 935, which only
+       * says so (`0x021eadbc`–`0x021eadd0`), and nothing is spent.
+       */
+      readonly shortOfGold?: true
+      /** The gold it spent, after it acted. */
+      readonly goldSpent?: number
       /** Whether it went haywire — the reference's critical, 1.5 to 2.0 times. */
       readonly critical: boolean
       /** Whom it reached, and what each took or recovered. */
@@ -694,6 +708,11 @@ export interface BattleState {
    * {@link onceUsed} is. **INFERRED** to start at 0, as {@link FighterState.wayCount}.
    */
   readonly groupWayCount?: ReadonlyMap<string, number>
+  /**
+   * The party's gold, where an action spends it — see {@link Spell.gold}.
+   * Undefined, not kept: such an action is neither refused nor charged.
+   */
+  readonly purse?: number
 }
 
 export interface Rules {
@@ -881,6 +900,8 @@ export function fleeChance(
 const DOUBLE_EDGED_SLASH = 0xaf
 /** Critical Claim, the one always-critical action whose critical multiplies. */
 const CRITICAL_CLAIM = 0x1f9
+/** Propeller Blade, which strikes its one target twice — see the blow's passes. */
+const PROPELLER_BLADE = 0x61
 const MIRACLE_MOON = 0x91
 
 /** Standing and still in the battle: not fallen, and not fled. */
@@ -935,6 +956,7 @@ export function playRound(
   // not established.
   let attempts = state.fleeAttempts ?? 0
   let caught = false
+  let purse = state.purse
   const fleer = state.fighters.findIndex(
     (f, i) => f.side === 'party' && commands.get(i)?.kind === 'flee' && f.hp > 0,
   )
@@ -1880,6 +1902,19 @@ export function playRound(
         })
         continue
       }
+      const charged = me.side === 'party' && spell.gold !== undefined && purse !== undefined
+      if (charged && (purse as number) < (spell.gold as number)) {
+        events.push({
+          kind: 'spell',
+          actor,
+          action: spell.action,
+          short: false,
+          shortOfGold: true,
+          critical: false,
+          hits: [],
+        })
+        continue
+      }
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spell.cost } : f))
       const side: Side = spell.does === 'heal' ? me.side : me.side === 'party' ? 'foes' : 'party'
       const reached = aimOf(me, actor, side, command.target, spell.reach)
@@ -1967,7 +2002,17 @@ export function playRound(
       })
       resolved = { actor, action: spell.action }
       // Told before anyone it fells falls.
-      events.push({ kind: 'spell', actor, action: spell.action, short: false, critical, hits })
+      // Post-step 6, after the action: the gold spent.
+      if (charged) purse = (purse as number) - (spell.gold as number)
+      events.push({
+        kind: 'spell',
+        actor,
+        action: spell.action,
+        short: false,
+        critical,
+        hits,
+        ...(charged ? { goldSpent: spell.gold as number } : {}),
+      })
       for (const { target, amount } of hits) {
         if (spell.does === 'harm') hurt(target, amount)
         else fighters = fighters.map((f, i) => (i === target ? { ...f, hp: f.hp + amount } : f))
@@ -2193,8 +2238,12 @@ export function playRound(
       const other: Side = me.side === 'party' ? 'foes' : 'party'
       const standing = livingOn(other)
       if (standing.length === 0) break
-      const reached = aimOf(me, actor, other, command.target, blow.reach)
-      if (reached.length === 0) break
+      const aimed = aimOf(me, actor, other, command.target, blow.reach)
+      if (aimed.length === 0) break
+      // Propeller Blade's target is listed twice, the boomerang's way out and
+      // back (`0x021eb954`–`0x021eb964`: the first copied to the second, two).
+      const reached =
+        blow.action === PROPELLER_BLADE ? [aimed[0] as number, aimed[0] as number] : aimed
       const kind = fighters[reached[0] as number]?.name
       // **The two draws every action makes** as its targets are built
       // (`func_ov000_0215fbe0`): 3 or 4, then 6 to 8 — the counts of hit
@@ -2239,15 +2288,25 @@ export function playRound(
         noteAim(actor, target)
         const them = fighters[target] as FighterState
         if (!once && !blow.sure) critical = rng.below(10_000) < rate
-        const dodged =
+        let dodged =
           blow.evadable && canAct(them) && rng.below(100) < Math.trunc(evadeOf(them, rules))
-        const blocked =
+        let blocked =
           blow.blockable &&
           canAct(them) &&
           !dodged &&
           Math.fround(rng.below(100)) < Math.fround(blockOf(them))
+        // Propeller Blade on its way back (`0x021ec444`–`0x021ec48c`): what the
+        // pass rolled — critical, dodged, blocked — cleared, its draws spent,
+        // and the accuracy landing with no draw (`func_ov000_02156648`'s
+        // flag, `0x0215678c`).
+        const returning = blow.action === PROPELLER_BLADE && index > 0
+        if (returning) {
+          critical = false
+          dodged = false
+          blocked = false
+        }
         // The accuracy, at a hundred, its draw spent.
-        rng.below(100)
+        if (!returning) rng.below(100)
         chain = chainStep(chain, {
           combos: blow.combos,
           side: me.side,
@@ -2564,6 +2623,7 @@ export function playRound(
       chain,
       onceUsed,
       groupWayCount,
+      ...(purse === undefined ? {} : { purse }),
     },
     events,
   }

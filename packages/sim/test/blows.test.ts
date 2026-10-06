@@ -131,6 +131,21 @@ describe('a blow in a battle', () => {
     expect(told?.kind === 'blow' && told.hits.map((h) => h.target)).toEqual([1, 1])
   })
 
+  it('strikes Propeller Blade’s one target twice, the way back never a critical, dodged or blocked', () => {
+    const { events } = play(
+      blow({ action: 0x61, sure: true, evadable: true, blockable: true }),
+      7n,
+      [{ ...foe('dragon', 2), evade: 100, block: 100 }],
+    )
+    const told = events.find((e) => e.kind === 'blow')
+    if (told?.kind !== 'blow') throw new Error('no blow')
+    expect(told.hits.map((h) => h.target)).toEqual([1, 1])
+    // Out: dodged, every time at a hundred; back: struck, as the game clears it.
+    expect(told.hits[0]?.dodged).toBe(true)
+    expect(told.hits[1]).toMatchObject({ dodged: false, blocked: false, critical: false })
+    expect(told.hits[1]?.damage).toBeGreaterThan(0)
+  })
+
   it('gives back an eighth in MP, and takes its recoil', () => {
     const hurt = withHp(startBattle([{ ...hero, maxMp: 999 }, foe('dragon', 2)]), new Map())
     const arrow = playRound(

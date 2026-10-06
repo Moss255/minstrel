@@ -131,6 +131,11 @@ export const ACTION_SAYS = {
   /** A spell's critical: it goes haywire. */
   haywire: 141,
   notEnoughMp: 153,
+  /**
+   * Too little gold for Gold Rush: the opening of action 935, which the game
+   * puts in its place (`func_ov024_021eaa50`, `0x021eadbc`).
+   */
+  notEnoughGold: 580,
   /** Changes of state. */
   unaffected: 27,
   defenceUpMuch: 0x3a,
@@ -467,6 +472,9 @@ const REACHES = new Map<number, Spell['reach']>([
  * record says. Undefined for anything else — Zing, with no one fallen to raise,
  * and Evac, which is used outside battle.
  */
+/** The post-step that spends gold — Gold Rush's (`data_ov024_021ff3f8` slot 6). */
+const GOLD_STEP = 6
+
 export function battleSpellOf(
   action: Castable,
   opening: number = action.opening,
@@ -502,6 +510,8 @@ export function battleSpellOf(
       ...(action.rolls?.combos ? { combos: true } : {}),
       ...(action.rolls?.tensed ? { tensed: true } : {}),
       ...(action.rolls?.kind === undefined ? {} : { kind: action.rolls.kind }),
+      // Gold Rush: post-step 6 spends its record's `+0x32` in gold (`func_ov024_021e5be4`).
+      ...(action.rolls?.afterStep === GOLD_STEP ? { gold: action.rolls.riderLevels } : {}),
     },
     name: { name: action.name },
     message: action.message,
@@ -756,6 +766,8 @@ export function beginBattle(
     readonly hp?: ReadonlyMap<number, number>
     /** MP each fighter comes in with, where it is not all of it. */
     readonly mp?: ReadonlyMap<number, number>
+    /** The party's gold, which Gold Rush spends — see the sim's `BattleState.purse`. */
+    readonly purse?: number
     /** The monsters' own spells and changes of state, by action, to tell them by. */
     readonly known?: ReadonlyMap<number, Told>
     readonly words?: BattleWords
@@ -764,7 +776,8 @@ export function beginBattle(
 ): BattleScene {
   const started = startBattle(fighters, options.canFlee, options.opening)
   const wounded = options.hp ? withHp(started, options.hp) : started
-  const state = options.mp ? withMp(wounded, options.mp) : wounded
+  const kept = options.mp ? withMp(wounded, options.mp) : wounded
+  const state = options.purse === undefined ? kept : { ...kept, purse: options.purse }
   const scene: BattleScene = {
     state,
     rng: new BattleRng(seed),
@@ -1079,6 +1092,9 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       if (event.short) {
         const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
         return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
+      }
+      if (event.shortOfGold) {
+        return lines(say(scene, 'actions', ACTION_SAYS.notEnoughGold, { actor })) ?? 'Not enough gold!'
       }
       const landed = event.hits.map((hit) => {
         const target = scene.names[hit.target]
