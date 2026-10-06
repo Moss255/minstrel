@@ -10,7 +10,14 @@ import {
   withMp,
 } from '../src/battle/battle.ts'
 import { BattleRng } from '../src/battle/rng.ts'
-import { guardOf, hpShare, SELFLESS_AT, STANCE, STANCES } from '../src/battle/stances.ts'
+import {
+  guardOf,
+  hpShare,
+  PINCUSHION,
+  SELFLESS_AT,
+  STANCE,
+  STANCES,
+} from '../src/battle/stances.ts'
 
 /**
  * The stances — status `+0x21`, read 7 October 2026: taken up as the round
@@ -187,5 +194,46 @@ describe('the cover — `func_ov024_021e9b74`', () => {
     expect(hits.some((a) => a.covered?.stance === 6 && a.covered.for === 0)).toBe(true)
     expect(hits.some((a) => a.target === 2 && a.covered === undefined)).toBe(true)
     expect(hits.every((a) => a.target !== 0)).toBe(true)
+  })
+})
+
+describe('Pincushion — status `+0x18` bit 5', () => {
+  const spikes: Command = { kind: 'stance', action: PINCUSHION, stance: 0, cost: 0 }
+
+  it('halves what defending works on, by itself and after a stance’s guard', () => {
+    expect(guardOf({ defending: false, spiked: true })).toBe(0.5)
+    expect(guardOf({ defending: true, spiked: true })).toBe(0.25)
+    expect(guardOf({ defending: false, stance: STANCE.champion, spiked: true })).toBe(
+      Math.fround(0.1 * 0.5),
+    )
+  })
+
+  it('pricks the one who struck with a quarter of what it dealt, and goes at the round’s end', () => {
+    const start = startBattle([member('Hero'), slime])
+    let pricked = 0
+    for (const { state, events } of rounds(start, new Map([[0, spikes]]))) {
+      expect(state.fighters[0]?.spiked).toBeUndefined()
+      const hit = attacks(events).find((a) => a.actor === 1)
+      const prick = events.find((e) => e.kind === 'pricked')
+      if (!hit || hit.damage <= 0) {
+        expect(prick).toBeUndefined()
+        continue
+      }
+      expect(prick).toEqual({
+        kind: 'pricked',
+        actor: 1,
+        by: 0,
+        damage: Math.trunc(Math.fround(hit.damage * 0.25)),
+      })
+      pricked++
+    }
+    expect(pricked).toBeGreaterThan(0)
+  })
+
+  it('pricks a metal body by a draw below 2', () => {
+    const start = startBattle([member('Hero'), { ...slime, metal: true }])
+    for (const { events } of rounds(start, new Map([[0, spikes]]))) {
+      for (const e of events) if (e.kind === 'pricked') expect(e.damage).toBe(1)
+    }
   })
 })

@@ -68,7 +68,7 @@ export { bandAdd, experienceShares, type Sharer } from './battle/experience.ts'
 export { revivedHp, scaledAccuracy } from './battle/handlers.ts'
 export { FACING_CONE, facingOff, howItOpens } from './battle/opening.ts'
 export { BattleRng } from './battle/rng.ts'
-export { guardOf, SELFLESS_AT, STANCE, STANCES } from './battle/stances.ts'
+export { guardOf, PINCUSHION, PRICK, SELFLESS_AT, STANCE, STANCES } from './battle/stances.ts'
 export {
   buffedAttack,
   buffedMagic,

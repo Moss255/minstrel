@@ -17,7 +17,7 @@ import {
 } from './damage.ts'
 import { experienceMultiplier, replenishedMp, revivedHp, scaledAccuracy } from './handlers.ts'
 import type { BattleRng } from './rng.ts'
-import { guardOf, hpShare, SELFLESS_AT, STANCE } from './stances.ts'
+import { guardOf, hpShare, PINCUSHION, PRICK, SELFLESS_AT, STANCE } from './stances.ts'
 import {
   buffedAttack,
   buffedMagic,
@@ -273,6 +273,8 @@ export interface FighterState extends Fighter {
   readonly stance?: number
   /** Whom Whipping Boy's holder protects — `+0x2a`, set with the stance (`ProcessCombatTurn`, `0x0215dba8`). */
   readonly protects?: number
+  /** **Pincushion**, status `+0x18` bit 5 — see `stances.ts`. Gone with the stance. */
+  readonly spiked?: boolean
   /** A foe that has fled: out of the battle, and paying nothing. */
   readonly fled: boolean
   /** Its changes of state — see `states.ts`. */
@@ -1024,6 +1026,16 @@ export type BattleEvent =
    * own.
    */
   | { readonly kind: 'stunned'; readonly actor: number; readonly status: number }
+  /**
+   * Pricked back by Pincushion — `damage` dealt to `actor`, who struck `by`
+   * (`func_ov024_021e62cc`).
+   */
+  | {
+      readonly kind: 'pricked'
+      readonly actor: number
+      readonly by: number
+      readonly damage: number
+    }
   /** Freed of paralysis at the turn's start — action 900, "is no longer paralysed" (`0x021583f0`). */
   | { readonly kind: 'freed'; readonly actor: number }
   /**
@@ -1557,14 +1569,16 @@ export function playRound(
       continue
     }
     const held =
-      command.stance === STANCE.defend
-        ? { defending: true }
-        : {
-            stance: command.stance,
-            ...(command.stance === STANCE.whippingBoy && command.target !== undefined
-              ? { protects: command.target }
-              : {}),
-          }
+      command.action === PINCUSHION
+        ? { spiked: true }
+        : command.stance === STANCE.defend
+          ? { defending: true }
+          : {
+              stance: command.stance,
+              ...(command.stance === STANCE.whippingBoy && command.target !== undefined
+                ? { protects: command.target }
+                : {}),
+            }
     fighters = fighters.map((g, k) =>
       k === i ? { ...g, mp: zoned ? g.mp : g.mp - command.cost, ...held } : g,
     )
@@ -1607,7 +1621,7 @@ export function playRound(
   const unstance = (target: number) => {
     fighters = fighters.map((f, i) => {
       if (i !== target) return f
-      const { stance: _stance, protects: _protects, ...rest } = f
+      const { stance: _stance, protects: _protects, spiked: _spiked, ...rest } = f
       return { ...rest, defending: false }
     })
   }
@@ -2138,6 +2152,26 @@ export function playRound(
     const foes = livingOn(them.side === 'party' ? 'foes' : 'party')
     if (foes.length === 0) return undefined
     return { striker: target, target: foes[rng.below(foes.length)] as number, stance: them.stance }
+  }
+  /**
+   * **Pincushion's prick** — see `PRICK`: after an action a stance turns,
+   * for each one it struck, in the order they were struck.
+   */
+  const prick = (actor: number, dealtTo: ReadonlyMap<number, number>) => {
+    if (!canAct(fighters[actor] as FighterState)) return
+    for (const [target, total] of dealtTo) {
+      const them = fighters[target] as FighterState
+      if (target === actor || total <= 0 || !alive(them) || !them.spiked) continue
+      const me = fighters[actor] as FighterState
+      const back =
+        me.side === 'foes' && me.metal
+          ? rng.below(2)
+          : Math.trunc(Math.fround(Math.fround(total) * PRICK))
+      if (back <= 0) continue
+      events.push({ kind: 'pricked', actor, by: target, damage: back })
+      hurt(actor, back)
+      if (!alive(fighters[actor] as FighterState)) return
+    }
   }
   const noteAim = (actor: number, target: number) => {
     const me = fighters[actor]
@@ -3727,6 +3761,8 @@ export function playRound(
           }
         }
       }
+      // Pincushion's prick, after the post-steps (`0x021ed294`).
+      if (blow.counterable) prick(actor, dealtTo)
       if (blow.tensed) calm(actor)
       outcome = outcomeOf(fighters)
       if (outcome !== 'ongoing') break
@@ -3871,6 +3907,8 @@ export function playRound(
     hurt(target, damage)
     // The coup's draw at the pass — the Attack is of kind 1.
     coupAtPass(target, damage)
+    // Pincushion's prick, after the action (the plain Attack has `+0x10` bit 7).
+    if (!counter) prick(actor, new Map([[target, damage]]))
     resolved = { actor, action: undefined }
     if (!counter) calm(actor)
     outcome = outcomeOf(fighters)
@@ -3946,7 +3984,7 @@ export function playRound(
   }
 
   // The stances go at the round's end (`func_ov000_0215e6e8`, `0x0215e7c8`).
-  fighters = fighters.map(({ stance: _stance, protects: _protects, ...f }) => ({
+  fighters = fighters.map(({ stance: _stance, protects: _protects, spiked: _spiked, ...f }) => ({
     ...f,
     defending: false,
   }))

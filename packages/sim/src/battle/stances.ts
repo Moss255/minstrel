@@ -46,6 +46,28 @@ export const STANCES: ReadonlyMap<number, number> = new Map([
   [329, 9],
 ])
 
+/**
+ * **Pincushion** (action 476, kind 66): taken up as the round begins like the
+ * stances, but not by the table — the command sets status `+0x18` bit 5
+ * (`func_ov000_021537b8`, `0x021539dc`–`0x02153a0c`; `func_02088db8`), which
+ * the round's count-down clears (`func_ov000_02157e1c`, `0x02157f18`;
+ * `func_02088dc8`), and paralysis and a lost turn with the stance. Its
+ * holder takes a half of what defending works on (`func_ov024_021e6a90`,
+ * `0x021e761c`–`0x021e7640`), and pricks back — see `PRICK`.
+ */
+export const PINCUSHION = 0x1dc
+
+/**
+ * **What Pincushion pricks back with** — `func_ov024_021e62cc`, after an
+ * action a stance turns (`+0x10` bit 7), if its actor can act: for each one
+ * it struck who stands and holds Pincushion, a quarter of all it dealt them,
+ * in floats and truncated (`0x021e64e0`, `0x021e658c`–`0x021e65a4`) — on a
+ * metal actor, a draw below 2 in its place (`0x021e65b0`–`0x021e65d4`) —
+ * dealt to the actor, "Does … points of damage to …" (555) at a monster;
+ * stopping where it fells them (`func_ov000_02159f18`).
+ */
+export const PRICK = Math.fround(0.25)
+
 export const STANCE = {
   defend: 1,
   champion: 2,
@@ -71,9 +93,16 @@ export function hpShare(hp: number, maxHp: number): number {
 /**
  * **What a stance's guard leaves of a blow it works on** — the table by the
  * stance, for a stance of 3 or under (`0x021e75f8`): Defend's half,
- * Defending Champion's tenth. Whole for any other.
+ * Defending Champion's tenth; and Pincushion's half. Whole for any other.
  */
-export function guardOf(f: { readonly defending: boolean; readonly stance?: number }): number {
+export function guardOf(f: {
+  readonly defending: boolean
+  readonly stance?: number
+  readonly spiked?: boolean
+}): number {
   const stance = f.stance ?? (f.defending ? STANCE.defend : 0)
-  return stance <= 3 ? (GUARD_LEVELS[stance] as number) : 1
+  const guard = stance <= 3 ? (GUARD_LEVELS[stance] as number) : 1
+  // Pincushion's half after it, a second multiplication (`0x021e7630`) —
+  // by a power of two, so taken into the one here exactly.
+  return f.spiked ? Math.fround(guard * 0.5) : guard
 }

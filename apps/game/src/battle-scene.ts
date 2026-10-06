@@ -15,6 +15,7 @@ import {
   LEVEL_STATS,
   type LevelStat,
   type Opening,
+  PINCUSHION,
   playRound,
   RIDERS_PLAYED,
   type Spell,
@@ -164,6 +165,13 @@ export const ACTION_SAYS = {
    * (`func_ov000_0215ff20`) say is not read.
    */
   takesPlace: 126,
+  /**
+   * Pincushion's prick (`func_ov024_021e62cc`, by `func_ov024_021da644`):
+   * at one of the party "<ACTOR> takes <val_1> points of damage.", at a
+   * monster "Does <val_1> points of damage to <ACTOR>.".
+   */
+  prickedParty: 0x1b4,
+  prickedFoe: 0x22b,
   /** Changes of state. */
   unaffected: 27,
   defenceUpMuch: 0x3a,
@@ -1460,6 +1468,15 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       return (
         say(scene, 'actions', ACTION_SAYS.defends, { actor }) ?? sentence(`${who} is on guard.`)
       )
+    case 'pricked': {
+      const game = say(
+        scene,
+        'actions',
+        party(state, event.actor) ? ACTION_SAYS.prickedParty : ACTION_SAYS.prickedFoe,
+        { actor, values: { val_1: event.damage } },
+      )
+      return game ?? sentence(`${who} takes ${event.damage} damage from the spikes.`)
+    }
     case 'stance': {
       // Its record's line (kind 0's handler); taken up short of MP, action
       // 0x3a9's — "tries to use", then "not enough MP".
@@ -2412,6 +2429,8 @@ const CHANGE_REACHES = new Map<number, Changing['reach']>([
  */
 export function stanceOf(action: Castable): { stance: number; cost: number } | undefined {
   if (!action.rolls?.atRoundStart) return undefined
+  // Pincushion: no stance of the table's, a status of its own — see the sim's `PINCUSHION`.
+  if (action.action === PINCUSHION) return { stance: 0, cost: action.cost }
   const stance = STANCES.get(action.action)
   if (stance === undefined || stance === STANCE.defend) return undefined
   return { stance, cost: action.cost }

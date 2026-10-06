@@ -185,6 +185,8 @@ describe.skipIf(!romPath)(
       expect(stanceOf(action(146))).toEqual({ stance: 6, cost: 0 })
       expect(stanceOf(action(185))).toEqual({ stance: 7, cost: 0 })
       expect(stanceOf(action(182))).toEqual({ stance: 8, cost: 0 })
+      // Pincushion: taken up as the round begins, a status of its own.
+      expect(stanceOf(action(476))).toEqual({ stance: 0, cost: 0 })
       // Defend and Blockenspiel are stance 1, played by their own commands.
       expect(action(134).rolls?.atRoundStart).toBe(true)
       expect(stanceOf(action(134))).toBeUndefined()
@@ -194,7 +196,7 @@ describe.skipIf(!romPath)(
       expect(action(30).rolls).toMatchObject({ counterable: false, coverable: false })
     })
 
-    it('strikes 16 of them as the Attack now, where 76 were', () => {
+    it('strikes 15 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -211,7 +213,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(16)
+      expect(attack).toBe(15)
     })
   },
 )
