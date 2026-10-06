@@ -717,3 +717,37 @@ the battle already did.
 **And a correction**: a lost turn of kind 2 is refused not on a metal body
 but where `mon_data +0x0A` bit 11 is set — `func_ov000_02156068` asks bit
 12 with 1, bit 11 with 2, the family with 0 (`0x021560c0`–`0x02156108`).
+
+### Read toward what is left — the statuses the remaining kinds set
+
+Most of §7's kinds are one shape: a test (`+0x14` bit 0 clear, some with
+more), landed, a setter, the done line, else the fail line. **What each
+setter stores** (USA ARM9), so that only *what the status does* is left to
+read for each:
+
+| kind | actions | flag | count | runs down |
+|---|---|---|---|---|
+| 19 | Flower Power, Scandal Eyes | `+0x14` bit 6 (`func_02088854`) | 4 at `+0x5f` | `+0x82`, `0x02182bd4` |
+| 32 | Reverse Cycle | `+0x14` bit 26 (`02088944`) | 5 at `+0x66` | `+0x89`, `0x02182ad4` |
+| 36 | Schizofanic | `+0x14` bit 20, clearing 21 (`02088a94`); test also `+0x18` bit 6 | none | one use (below) |
+| 37 | Immense Defence | a level, `+0x58` bits 24–26 (`0208806c`) | — | — |
+| 39 | Alma Mater | `+0x14` bit 22 (`02088b14`) | 6 at `+0x67` | `+0x8a`, `0x02182ad4` |
+| 40 | Rotstopper | `+0x14` bit 29 (`02088a34`) | 4 at `+0x64` | `+0x87`, `0x02182bd4` |
+| 47 | Feel the Burn | `+0x14` bit 28 (`020889e4`) | 4 at `+0x63` | `+0x86`, `0x02182bd4` |
+| 48 | Right as Rain | `+0x14` bit 31 (`02088bb4`) | 6 at `+0x69` | not in the run-down's table |
+| 54 | Vanish | `+0x14` bit 27 (`02088994`) | 5 at `+0x62` | `+0x85`, `0x02182bd4` |
+| 55 | Mist Me | `+0x14` bit 21, clearing 20 (`02088adc`) | none | one use (below) |
+| 63 | Twocus Pocus | `+0x18` bit 8 (`02088d7c`) | 5 at `+0x7d` | `+0xa0`, `0x02182ad4` |
+| 64 | Holy Impregnable | `+0x18` bit 3 (`02088ccc`) | 5 at `+0x6b` | `+0x8e`, `0x02182ad4`, line `0x25d` |
+| 78 | Focus Pocus | `+0x14` bit 30 (`02088b64`) | 6 at `+0x68` | not in the run-down's table |
+
+**Schizofanic and Mist Me, what they do** (read, not built): the accuracy
+roll (`func_ov000_02156648`, `0x02156714`–`0x02156788`), before its own
+draw, misses an action that a shield may block (`+0x10` bit 6) at one under
+bit 20 — the result flagged 8, and bit 20 cleared (`func_02088aa8`) — or
+under bit 21, flagged `0x10` and bit 21 cleared (`02088af0`): one blow
+missed, then gone. Which line each flag says is not read.
+
+**Dazzle** (kind 19): the actions `+0x10` bit 3 marks (`Action.spoiltBySight`)
+throw a die of eight in the accuracy roll for an attacker under it; which bit
+that roll tests, and so whether bit 6 is dazzle, is not yet read.
