@@ -576,3 +576,71 @@ Rough 'n' Tumble's `0x1da` (`0x02159788`).
 Built: `countDown`, `runDown`, `LEVEL_COUNTS` and `WEAR_OF` in `states.ts`;
 the battle's after-action pass runs them for the one who acted, in place of
 the reference's turns at the round's end (`wornAfterTurn`, gone).
+
+### The coups — six of the eight built
+
+Each is the handler its record's kind names (§1's table, kinds 26 and 68–74),
+on the one its reach gives; their records say their reach is the actor's
+(1) but for Voice of Experience's party (3), Itemised Kill's group (4), and
+Roaring Tirade's, Disco Tech's and Knight Watch's monsters (3).
+
+- **0 Zone** (507, kind 68, `021e1580`): landed, on one not `+0x14` bit 0
+  (`func_020890c0`), `+0x18` bit 9 with a count of 5 at `+0x78`
+  (`func_020890d4`); its done line 520 "can now cast spells without spending
+  any MP", else its fail line. **What it does**: `func_ov024_021eadfc` tests
+  the bit, and `func_ov024_021eaa50` skips asking the MP at `0x021eabd8`, and
+  the resolver clears the spend at `0x021ebbcc`; the AI's own test is
+  `func_ov000_02153a8c`. It goes as §10's run-down says, its line `0x1c5`.
+- **Rough 'n' Tumble** (510, kind 70, `021e1824`): the same shape, `+0x18`
+  bit 10, count 5 at `+0x79` (`func_02089110`, `02089124`), line 518.
+  **What it does**: the evasion roll (`func_ov000_02156f98`,
+  `0x02156fe8`–`0x02157010`) makes no draw of its own for its holder — they
+  dodge when the pass's die (`battle + 0x8e6e`, thrown at `0x021ebf28`) is
+  under 50; the evasion chance (`02156270`) is a flat 50.0; and the counter
+  (`02156558`, `0x021565e4`) comes when the die is 50 to 74. Wears off with
+  `0x1da`.
+- **Brownie Boost** (516, kind 74, `021e1ed4`): no test of its landing;
+  defence (`func_02087860` with 0, `020878b4` with 1), the resistance to
+  breaths (`02087e18`, `02087e6c`) and attack (`0208776c`, `020877c0`) each a
+  level up where it may go, each with its line; none moved, the fail line
+  (31).
+- **Spelly Breath** (514, kind 26, `021ddf5c`): MP back by
+  `func_ov000_0215a1d4`, the amount its damage handler's — 48,
+  `func_ov024_021d974c`: the target's most MP (`status + 6`) times
+  `NextRandomFloatBetween(0.2, 0.5)`, truncated. (Actions `0x19b` and `0x22e`
+  take the most MP whole, `0x021ddf88`–`0x021ddfb8`.) Done line 106 where any
+  came back or the target is a monster of endless MP; else 31.
+- **Itemised Kill** (509, kind 69, `021e16a4`): once an action
+  (`battle + 0x6e`), on the target's group record (`battle + 0x81b4 + 0x18 ×
+  group`): already marked (`+0x16`), or the monster's ordinary drop of step 7
+  (`record + 2`), the fail line and no draw; else a draw below 100 under 100 —
+  50 when the battle's request has `+0x24` or `+0x25`, a grotto's or a legacy
+  boss's (`0x021e1758`–`0x021e1780`) — marks `+0x16` and says 519. **What it
+  does**: the drop list carries `+0x16` as its entry's bit 15
+  (`func_ov000_02155184`, `0x0215533c`), and the drop roll
+  (`func_ov023_021f454c`, `0x021f4ab0`) makes the ordinary drop's chance one
+  in 1 in its first pass. Bit 14, from `+0x17`, does the same for the rare
+  (`0x021f49e8`); what sets `+0x17` is not read.
+- **Voice of Experience** (512, kind 72, `021e1cbc`): the work is the
+  resolver's, before the handler (`0x021eb9dc`–`0x021eba9c`): for one of the
+  party, the most is `1 + (level + 11.0) × 0.01`, at most 2.0, their level in
+  their vocation (`func_0202053c`); `NextRandomFloatScaled(1.1, most, 1)`
+  (`0x020743d4`) draws a whole number of tenths between them by
+  `NextRandomBetween` and is kept at `battle + 0x8e3c`, and on the result for
+  the line's `%.1f`. The handler says 517 where a group in the battle gives
+  experience, else `0x1f`. The victory (`func_ov023_021edf54`, `0x021ee05c`)
+  takes the experience as `(unsigned)((float) total × [0x8e3c])`, and the
+  gold likewise by `[0x8e40]`, which action `0x20c` sets with the
+  experience's to a draw between 1.5 and 3.0 (`0x021ebaa4`).
+
+**Not built**: Roaring Tirade and Disco Tech (kind 10, `021dc0b8`) — rider 1
+(`021e2bd0`) with its levels naming a status, `+0x14` bit 19 and `+0x22`
+bits 2–5 (`func_02088418`, `02088474`): 5 "stricken with terror" (`0x5e`),
+2 "knocked clean off" its feet (`0x150`), 4 Disco Tech's; what the status
+does on its holder's turn, and how long it holds, are not read. Knight
+Watch (kind 73, `021e1de8`): on each monster not dead, asleep, under bit 19,
+paralysed or `+0x14` bit 5 (`func_02088e04`), `+0x18` bit 12 with a count
+drawn between the monster's `+0x148 → +0x28` and `+0x29`
+(`func_02088e48`), and its actor at `+0x2e`; it runs down by the actor
+standing and its own count (`0215858c`, `0x0215861c`–`0x02158760`, line
+`0x164`). What bit 12 does to a monster is not read.

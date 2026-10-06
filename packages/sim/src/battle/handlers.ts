@@ -50,3 +50,29 @@ export function revivedHp(
   }
   return Math.trunc(f(s * f(maxHp)))
 }
+
+/**
+ * **Voice of Experience's multiplier** — drawn in the resolver before its
+ * handler runs (`func_ov024_021eb5d0`, `0x021eba20`–`0x021eba9c`), for one of
+ * the party: the most is `1 + (level + 11) × 0.01`, held to 2.0, their level
+ * in their vocation (`func_0202053c`); the draw `NextRandomFloatScaled(1.1,
+ * most, 1)` — a whole number of tenths between the two, by
+ * `NextRandomBetween` (`0x020743d4`, `0x02074478`), over ten. It is kept at
+ * `battle + 0x8e3c` and shown to a tenth.
+ */
+export function experienceMultiplier(level: number, rng: { below(max: number): number }): number {
+  let most = f(f(f(f(level) + f(11)) * f(0.01)) + f(1))
+  if (most > 2) most = f(2)
+  const lo = Math.trunc(f(f(1.1) * f(10)))
+  const hi = Math.trunc(f(most * f(10)))
+  return f(f(lo + rng.below(hi - lo + 1)) / f(10))
+}
+
+/**
+ * **Spelly Breath's amount** — damage handler 48 (`func_ov024_021d974c`):
+ * the target's most MP (`status + 6`) times a draw between 0.2 and 0.5
+ * (`NextRandomFloatBetween`), truncated.
+ */
+export function replenishedMp(maxMp: number, share: number): number {
+  return Math.trunc(f(f(maxMp) * f(share)))
+}

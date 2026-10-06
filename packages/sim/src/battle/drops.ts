@@ -99,12 +99,14 @@ export interface Filcher {
  * all where the step never drops. In a further pass, `level` scales it — one
  * in `chance × 100 ÷ level` — and step 0 never lands (`0x021f49d0`–`0x021f49e0`).
  */
-function landed(rng: DropRng, drop: Drop, level?: number): boolean {
+function landed(rng: DropRng, drop: Drop, level?: number, sure = false): boolean {
   const chance = DROP_CHANCES[drop.step] ?? 0
   if (chance <= 0 || drop.item === 0) return false
   const n =
     level === undefined
-      ? chance
+      ? sure
+        ? 1
+        : chance
       : drop.step === 0
         ? 0
         : Math.trunc((chance * 100) / Math.max(1, level))
@@ -137,6 +139,12 @@ function landed(rng: DropRng, drop: Drop, level?: number): boolean {
  * first, at one in `N × 100 ÷ L` (`_s32_div_f`), `N` the step's chance and `L`
  * their level; a step 0 never lands in these passes (`0x021f49e0`). A kind
  * that already dropped can drop again. Each such drop carries its member.
+ *
+ * **Itemised Kill's mark** ({@link BattleState.sureLoot}) makes a kind's
+ * ordinary drop one in 1 in the first pass — the entry's bit 15
+ * (`0x021f4ab0`–`0x021f4abc`) — a draw still spent; its rare is rolled as
+ * ever, first. Bit 14 does the same for the rare (`0x021f49e8`); what sets
+ * it is not read, and nothing here does.
  *
  * **Ours**: the order the kinds are rolled in is the order they stand in the
  * battle, where the game's is the order they left the field.
@@ -184,8 +192,9 @@ export function dropsWon(
         ...(by ? { by: by.fighter } : {}),
       }
       const [ordinary, rare] = drops
+      const sure = kind !== undefined && (state.sureLoot ?? []).includes(kind)
       if (landed(rng, rare, by?.level)) won.push({ item: rare.item, rare: true, ...from })
-      else if (landed(rng, ordinary, by?.level))
+      else if (landed(rng, ordinary, by?.level, sure))
         won.push({ item: ordinary.item, rare: false, ...from })
     }
   }

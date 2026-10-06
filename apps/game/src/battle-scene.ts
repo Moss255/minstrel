@@ -351,7 +351,31 @@ function changeSays(
       // (`func_ov024_021df1e8`); its record's lines stand — "is alleviated of
       // all unfortunate effects" done, "But nothing happens" failed.
       return hit.cured ? pick(own?.done, ACTION_SAYS.alleviated) : pick(own?.failed, 31)
+    // The coups' own: each its record's done line — 0 Zone's 520, Rough 'n'
+    // Tumble's 518, Spelly Breath's 106, Itemised Kill's 519, Voice of
+    // Experience's 517 (`func_ov024_021da644` on `+0x20`, `+0x24`).
+    case 'zeroZoned':
+    case 'tumbling':
+    case 'replenished':
+    case 'looted':
+    case 'experienced':
+      return pick(own?.done, ACTION_SAYS.nothingHappens)
+    // Brownie Boost's lines are each level's — see `boostSays`; the first here.
+    case 'boosted': {
+      const first = hit.boosts?.[0]
+      return first ? levelSays(first.stat, true, first.level) : ACTION_SAYS.nothingHappens
+    }
   }
+}
+
+/**
+ * **Brownie Boost's lines** — one for each level it moved, in its order:
+ * defence's by `func_ov024_021e95d4`, the resistance to breaths' by its own
+ * pool (`0x021e1fb4`–`0x021e1fcc`: `0x1b0` at 2, `0x1af` at 0, else
+ * `0x1b1`), attack's by `021e94c4` — each `levelSays`'s.
+ */
+function boostSays(hit: ChangeHit): number[] {
+  return (hit.boosts ?? []).map((b) => levelSays(b.stat, true, b.level))
 }
 
 /** A level's name, in ours. */
@@ -409,6 +433,20 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
         : `${whom} is prevented from casting spells.`
     case 'unparalysed':
       return `${whom} is no longer paralysed.`
+    case 'zeroZoned':
+      return `${whom} can now cast spells without spending any MP!`
+    case 'tumbling':
+      return `${whom} finds it much easier to dodge and to counter.`
+    case 'boosted':
+      return (hit.boosts ?? [])
+        .map((b) => `${whom}'s ${STAT_NAMES[b.stat] ?? b.stat} rises.`)
+        .join(' ')
+    case 'replenished':
+      return `${whom}'s MP are replenished.`
+    case 'looted':
+      return `Guaranteed loot from ${whom}!`
+    case 'experienced':
+      return `The party will earn ${(hit.multiplier ?? 1).toFixed(1)} times more experience than normal for this battle.`
   }
 }
 
@@ -1300,10 +1338,23 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       const landed = event.hits.flatMap((hit) =>
         hit.result === 'restored'
           ? restoring(hit)
-          : // A line of 0 is none: magical mending's fall says nothing.
-            changeSays(event.change, hit, told, state.fighters[hit.target]?.side === 'party') === 0
-            ? []
-            : [sayHit(hit)],
+          : hit.result === 'boosted'
+            ? boostSays(hit).map((line) =>
+                say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
+              )
+            : hit.result === 'experienced'
+              ? // Its line names the multiplier as `%.1f`, filled from the
+                // result's `+0x18` (`0x021eba98`).
+                [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
+              : // A line of 0 is none: magical mending's fall says nothing.
+                changeSays(
+                    event.change,
+                    hit,
+                    told,
+                    state.fighters[hit.target]?.side === 'party',
+                  ) === 0
+                ? []
+                : [sayHit(hit)],
       )
       const game = lines(
         ...opens,
@@ -1937,6 +1988,16 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [41, 'relieve'],
   [42, 'might'],
   [67, 'restore'],
+  // The coups (`docs/readings/T18-handlers.md` §10): Spelly Breath
+  // (`021ddf5c`), 0 Zone (`021e1580`), Itemised Kill (`021e16a4`), Rough 'n'
+  // Tumble (`021e1824`), Voice of Experience (`021e1cbc`), Brownie Boost
+  // (`021e1ed4`).
+  [26, 'replenish'],
+  [68, 'zeroZone'],
+  [69, 'loot'],
+  [70, 'tumble'],
+  [72, 'experience'],
+  [74, 'boost'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
 export const TENSION_BOOST = 511

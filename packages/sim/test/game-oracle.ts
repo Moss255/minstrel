@@ -787,3 +787,40 @@ export function updatedMagic(stat: number, buffLevel: number): number {
 export function wardLeaves(level: number): number {
   return f(f(1) + f(f(-0.25) * f(level)))
 }
+
+/**
+ * `NextRandomFloatScaled(rng, lo, hi, digits)` (0x020743d4): a whole number
+ * between `lo` and `hi` scaled by ten to the digits, each truncated, by
+ * `NextRandomBetween`, then over the scale.
+ */
+export function nextRandomFloatScaled(
+  random: GameRandom,
+  lo: number,
+  hi: number,
+  digits: number,
+): number {
+  let scale = 1
+  for (let i = 0; i < digits; i++) scale *= 10
+  const low = Math.trunc(f(f(lo) * f(scale)))
+  const high = Math.trunc(f(f(hi) * f(scale)))
+  return f(f(random.between(low, high)) / f(scale))
+}
+
+/**
+ * Voice of Experience's multiplier — the resolver, `func_ov024_021eb5d0`,
+ * `0x021eba20`–`0x021eba9c`: `1 + (level + 11.0) × 0.01` (`0x41300000`,
+ * `0x3c23d70a`), at most 2.0, and a draw by `NextRandomFloatScaled` from
+ * 1.1 (`0x3f8ccccd`) to it, to one digit.
+ */
+export function voiceOfExperience(level: number, random: GameRandom): number {
+  let most = f(f(f(level) + f(11)) * f(0.01))
+  most = f(most + f(1))
+  if (most > f(2)) most = f(2)
+  return nextRandomFloatScaled(random, f(1.1), most, 1)
+}
+
+/** Damage handler 48, `func_ov024_021d974c`: the most MP times a draw between 0.2 and 0.5. */
+export function spellyBreath(maxMp: number, random: GameRandom): number {
+  const share = random.floatBetween(f(0.2), f(0.5))
+  return Math.trunc(f(f(maxMp) * share))
+}

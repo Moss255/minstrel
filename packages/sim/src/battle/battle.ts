@@ -15,7 +15,7 @@ import {
   type ScaleBy,
   scaleStat,
 } from './damage.ts'
-import { revivedHp, scaledAccuracy } from './handlers.ts'
+import { experienceMultiplier, replenishedMp, revivedHp, scaledAccuracy } from './handlers.ts'
 import type { BattleRng } from './rng.ts'
 import {
   buffedAttack,
@@ -423,6 +423,41 @@ export type Change =
   | { readonly kind: 'fizzle'; readonly chance: number }
   /** **Tingle** (kind 20, `func_ov024_021dd6f0`): the paralysed, landed, freed. */
   | { readonly kind: 'unparalyse'; readonly chance: number }
+  /**
+   * **0 Zone**, the Mage's coup (kind 68, `func_ov024_021e1580`): landed, on
+   * one who may take it, status `+0x18` bit 9 with a count of 5
+   * (`func_020890d4`) — no MP asked of them while it holds.
+   */
+  | { readonly kind: 'zeroZone'; readonly chance: number }
+  /**
+   * **Rough 'n' Tumble**, the Minstrel's coup (kind 70,
+   * `func_ov024_021e1824`): landed, `+0x18` bit 10 with a count of 5
+   * (`func_02089124`) — a blow dodged on its die alone, under 50.
+   */
+  | { readonly kind: 'tumble'; readonly chance: number }
+  /**
+   * **Brownie Boost**, the Luminary's coup (kind 74, `func_ov024_021e1ed4`):
+   * with no test of its landing, defence, the resistance to breaths and
+   * attack each a level up where they can go, in that order.
+   */
+  | { readonly kind: 'boost'; readonly chance: number }
+  /**
+   * **Spelly Breath**, the Sage's coup (kind 26, `func_ov024_021ddf5c`, its
+   * amount damage handler 48, `func_ov024_021d974c`): MP back, their most
+   * times a draw between 0.2 and 0.5.
+   */
+  | { readonly kind: 'replenish'; readonly chance: number }
+  /**
+   * **Itemised Kill**, the Thief's coup (kind 69, `func_ov024_021e16a4`): its
+   * group's ordinary drop made sure (`+0x16` of the group's record), once.
+   */
+  | { readonly kind: 'loot'; readonly chance: number }
+  /**
+   * **Voice of Experience**, the Paladin's coup (kind 72,
+   * `func_ov024_021e1cbc`): the battle's experience multiplied — the draw is
+   * the resolver's, before the handler (`0x021eba20`).
+   */
+  | { readonly kind: 'experience'; readonly chance: number }
   | {
       readonly kind: 'revive'
       readonly chance: number
@@ -547,6 +582,18 @@ export type ChangeResult =
   | 'fizzled'
   /** Freed of paralysis by Tingle. */
   | 'unparalysed'
+  /** 0 Zone set — "can now cast spells without spending any MP". */
+  | 'zeroZoned'
+  /** Rough 'n' Tumble set. */
+  | 'tumbling'
+  /** Brownie Boost: the levels it moved, in {@link ChangeHit.boosts}. */
+  | 'boosted'
+  /** Spelly Breath: MP back, {@link ChangeHit.mp}. */
+  | 'replenished'
+  /** Itemised Kill: the group's loot made sure. */
+  | 'looted'
+  /** Voice of Experience: the multiplier, {@link ChangeHit.multiplier}. */
+  | 'experienced'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -562,6 +609,12 @@ export interface ChangeHit {
   readonly stat?: 'attack' | 'defence' | 'agility'
   /** Fizzled when it already was — "is further prevented from casting spells". */
   readonly again?: boolean
+  /** The MP one replenished got back. */
+  readonly mp?: number
+  /** The levels Brownie Boost moved, in its order, and where each came to. */
+  readonly boosts?: readonly { readonly stat: LevelStat; readonly level: number }[]
+  /** Voice of Experience's multiplier, to a tenth. */
+  readonly multiplier?: number
   /**
    * For a level left where it was (`already`): whether the change would have
    * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
@@ -808,6 +861,20 @@ export interface BattleState {
    * Undefined, not kept: such an action is neither refused nor charged.
    */
   readonly purse?: number
+  /**
+   * **The kinds whose ordinary drop is sure** — Itemised Kill's mark, the
+   * byte `+0x16` of the group's record at `battle + 0x81b4`, which the drop
+   * list carries as bit 15 (`func_ov000_02155184`, `0x0215533c`) and the
+   * roll reads as a chance of one in 1 (`func_ov023_021f454c`,
+   * `0x021f4ab0`). See `dropsWon`.
+   */
+  readonly sureLoot?: readonly number[]
+  /**
+   * **What the battle's experience is multiplied by** — `battle + 0x8e3c`,
+   * which Voice of Experience sets (`0x021eba20`–`0x021eba9c`) and the
+   * victory reads (`func_ov023_021edf54`, `0x021ee060`). 1 when not given.
+   */
+  readonly expMultiplier?: number
 }
 
 export interface Rules {
@@ -1104,6 +1171,8 @@ export function playRound(
   let attempts = state.fleeAttempts ?? 0
   let caught = false
   let purse = state.purse
+  let sureLoot = state.sureLoot ?? []
+  let expMultiplier = state.expMultiplier
   const fleer = state.fighters.findIndex(
     (f, i) => f.side === 'party' && commands.get(i)?.kind === 'flee' && f.hp > 0,
   )
@@ -1922,6 +1991,21 @@ export function playRound(
   /** Whether a fighter can act — and so dodge or block: standing and not asleep (`func_ov000_02155f9c`). */
   const canAct = (f: FighterState) => alive(f) && f.states.sleep === undefined
   /**
+   * **Under 0 Zone** — `func_ov024_021eadfc`: the MP is not asked
+   * (`func_ov024_021eaa50`, `0x021eabd8`) and not spent (`0x021ebbcc`).
+   */
+  const zeroZoned = (f: FighterState) => (f.states.zeroZone?.level ?? 0) !== 0
+  /**
+   * **A dodge, the game's** (`func_ov000_02156f98`): under Rough 'n' Tumble
+   * the pass's die alone, under 50, with no draw of its own
+   * (`0x02156fe8`–`0x02157010`); otherwise a draw under the evasion,
+   * truncated. The caller has asked whether it may be dodged at all.
+   */
+  const dodges = (them: FighterState, die: number) =>
+    (them.states.tumble?.level ?? 0) !== 0
+      ? die < 50
+      : rng.below(100) < Math.trunc(evadeOf(them, rules))
+  /**
    * **The run-down after every action while the battle goes on**
    * (`func_ov000_02157d3c`, for the one who acted): `func_ov000_0215858c` —
    * its first draw, `0x021585bc`, always; then each status of theirs with
@@ -2127,7 +2211,7 @@ export function playRound(
 
     if (command.kind === 'spell') {
       const { spell } = command
-      if (me.mp < spell.cost) {
+      if (!zeroZoned(me) && me.mp < spell.cost) {
         events.push({
           kind: 'spell',
           actor,
@@ -2165,7 +2249,8 @@ export function playRound(
         })
         continue
       }
-      fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spell.cost } : f))
+      const spent = zeroZoned(me) ? 0 : spell.cost
+      fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spent } : f))
       const side: Side = spell.does === 'heal' ? me.side : me.side === 'party' ? 'foes' : 'party'
       const reached = aimOf(me, actor, side, command.target, spell.reach)
       const first = reached[0]
@@ -2276,7 +2361,7 @@ export function playRound(
 
     if (command.kind === 'change') {
       const { changing } = command
-      if (me.mp < changing.cost) {
+      if (!zeroZoned(me) && me.mp < changing.cost) {
         events.push({
           kind: 'change',
           actor,
@@ -2299,16 +2384,22 @@ export function playRound(
         })
         continue
       }
-      fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - changing.cost } : f))
+      const spent = zeroZoned(me) ? 0 : changing.cost
+      fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spent } : f))
       const side: Side = changing.side === 'own' ? me.side : me.side === 'party' ? 'foes' : 'party'
       const { change } = changing
       // A raising is aimed at the fallen: the one named on its own side,
       // standing or not — the resolver's handler tells which (`0x021dd2c0`).
       const named = fighters[command.target]
-      const reached =
+      const aimed =
         change.kind === 'revive'
           ? [named && named.side === side && !named.fled ? command.target : actor]
           : aimOf(me, actor, side, command.target, changing.reach)
+      // Itemised Kill does its work once an action (`battle + 0x6e`,
+      // `0x021e16cc`), and Voice of Experience's line is the battle's own:
+      // **ours**, each told on the first it reaches alone.
+      const reached =
+        change.kind === 'loot' || change.kind === 'experience' ? aimed.slice(0, 1) : aimed
       const first = reached[0]
       if (first === undefined) {
         events.push({
@@ -2322,6 +2413,13 @@ export function playRound(
         continue
       }
       builtDraws()
+      // Voice of Experience's multiplier, from one of the party, drawn before
+      // anything is done to anyone (`0x021eba20`) — see `experienceMultiplier`.
+      const multiplier =
+        change.kind === 'experience' && me.side === 'party'
+          ? experienceMultiplier(me.level ?? 0, rng)
+          : undefined
+      if (multiplier !== undefined) expMultiplier = multiplier
       // **The game's order, and the game's roll.** A change of state goes
       // through the same resolver as a blow (`docs/conformance.md`, "A change
       // of state"), and its handler makes no draw of its own: **whether it
@@ -2355,12 +2453,9 @@ export function playRound(
       const changeOne = (target: number): ChangeHit => {
         noteAim(actor, target)
         const them = fighters[target] as FighterState
-        rng.below(100)
+        const die = rng.below(100)
         if (!once) critical = rng.below(10_000) < rate
-        const dodged =
-          changing.evadable === true &&
-          canAct(them) &&
-          rng.below(100) < Math.trunc(evadeOf(them, rules))
+        const dodged = changing.evadable === true && canAct(them) && dodges(them, die)
         const draw = rng.below(100)
         const chance = accuracyOf()
         if (dodged) return { target, result: 'dodged' }
@@ -2438,6 +2533,70 @@ export function playRound(
             if (!alive(them)) return { target, result: 'resisted' }
             const cured = cureAll(target)
             return { target, result: 'relieved', ...(cured ? { cured: true } : {}) }
+          }
+          case 'zeroZone':
+          case 'tumble': {
+            // 0 Zone and Rough 'n' Tumble (`0x021e15ac`–`0x021e15c8`,
+            // `0x021e1850`–`0x021e186c`): landed, on one who may take it — not
+            // `+0x14` bit 0 — its count of 5 set; else the fail line.
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            setStates(target, { [change.kind]: { level: 1, turns: LEVEL_COUNTS[change.kind] } })
+            return { target, result: change.kind === 'zeroZone' ? 'zeroZoned' : 'tumbling' }
+          }
+          case 'boost': {
+            // Brownie Boost (`0x021e1f14`–`0x021e204c`): no test of its
+            // landing; defence, breaths, attack, each a level up where it
+            // may go (`func_02087860`, `02087e18`, `0208776c` with 0), its
+            // line as it does; none moved, the fail line.
+            const boosts: { stat: LevelStat; level: number }[] = []
+            for (const stat of ['defence', 'breaths', 'attack'] as const) {
+              const now = fighters[target] as FighterState
+              const level = now.states[stat] ?? { level: 0, turns: 0 }
+              if (!alive(now) || level.level >= 2) continue
+              const next = moved(level, 1, LEVEL_COUNTS[stat])
+              if (!next) continue
+              setStates(target, { [stat]: next })
+              boosts.push({ stat, level: next.level })
+            }
+            return boosts.length > 0
+              ? { target, result: 'boosted', boosts }
+              : { target, result: 'resisted' }
+          }
+          case 'replenish': {
+            // Spelly Breath: its amount by damage handler 48, a draw between
+            // 0.2 and 0.5 of their most MP, given back as far as it goes
+            // (`func_ov000_0215a1d4`); none given, the fail line
+            // (`0x021de00c`). **INFERRED**: the draw after the change's own,
+            // where the base damage is worked before its handler.
+            const amount = replenishedMp(them.maxMp, rng.floatBetween(0.2, 0.5))
+            const mp = Math.max(0, Math.min(amount, them.maxMp - them.mp))
+            if (mp === 0) return { target, result: 'resisted' }
+            fighters = fighters.map((g, i) => (i === target ? { ...g, mp: g.mp + mp } : g))
+            return { target, result: 'replenished', mp }
+          }
+          case 'loot': {
+            // Itemised Kill (`0x021e16cc`–`0x021e17cc`): its group already
+            // marked, or its ordinary drop of step 7, which never drops, the
+            // fail line and no draw; else a draw below 100 under 100 — 50 in
+            // a grotto's or a legacy boss's battle, which the battle does not
+            // have — marks it.
+            const kind = them.kind
+            if (them.side !== 'foes' || kind === undefined) return { target, result: 'resisted' }
+            if (sureLoot.includes(kind) || (them.drops?.[0].step ?? 7) === 7) {
+              return { target, result: 'resisted' }
+            }
+            if (rng.below(100) >= 100) return { target, result: 'resisted' }
+            sureLoot = [...sureLoot, kind]
+            return { target, result: 'looted' }
+          }
+          case 'experience': {
+            // Voice of Experience's handler (`0x021e1cfc`–`0x021e1d84`): the
+            // done line where a group in the battle gives experience, else
+            // "But nothing happens" (`0x1f`). The multiplier stands either way.
+            const gives = fighters.some((g) => g.side === 'foes' && g.exp > 0)
+            return gives && multiplier !== undefined
+              ? { target, result: 'experienced', multiplier }
+              : { target, result: 'already' }
           }
           case 'revive': {
             // Kind 18 (`func_ov024_021dd278`): the fallen, landed — a share of
@@ -2538,7 +2697,7 @@ export function playRound(
       const dealtTo = new Map<number, number>()
       for (const [index, aimed] of passes.entries()) {
         // The die each pass keeps (`0x021ebf28`).
-        rng.below(100)
+        const die = rng.below(100)
         let target = aimed
         if (!alive(fighters[target] as FighterState)) {
           // A random pick fallen is picked again among the living of its
@@ -2553,8 +2712,7 @@ export function playRound(
         noteAim(actor, target)
         const them = fighters[target] as FighterState
         if (!once && !blow.sure) critical = rng.below(10_000) < rate
-        let dodged =
-          blow.evadable && canAct(them) && rng.below(100) < Math.trunc(evadeOf(them, rules))
+        let dodged = blow.evadable && canAct(them) && dodges(them, die)
         let blocked =
           blow.blockable &&
           canAct(them) &&
@@ -2738,15 +2896,15 @@ export function playRound(
     //
     // 0. A die of a hundred the game throws for each one an action reaches and
     //    keeps (`0x021ebf28`, at `[battle + 0x8e6e]`). The dodge reads it in
-    //    place of its own draw for a target in a state not modelled here;
-    //    otherwise nothing comes of it, and it is spent.
-    rng.below(100)
+    //    place of its own draw for a target under Rough 'n' Tumble (see
+    //    `dodges`); otherwise nothing comes of it, and it is spent.
+    const die = rng.below(100)
     // 1. The critical roll, always. A monster's rate is nothing and its draw is
     //    spent all the same.
     const critical = rng.below(10_000) < criticalRate(me, 100, rules.critical)
     // 2. The dodge, its rate truncated. The plain attack can be dodged.
     // Neither is drawn against one who cannot act (`func_ov000_02155f9c`).
-    const dodged = canAct(them) && rng.below(100) < Math.trunc(evadeOf(them, rules))
+    const dodged = canAct(them) && dodges(them, die)
     // 3. The block — not rolled for a blow already dodged — the draw as a float
     //    under the rate, untruncated. The plain attack can be blocked.
     const blocked =
@@ -2876,12 +3034,19 @@ export function playRound(
       onceUsed,
       groupWayCount,
       ...(purse === undefined ? {} : { purse }),
+      ...(sureLoot.length > 0 ? { sureLoot } : {}),
+      ...(expMultiplier === undefined ? {} : { expMultiplier }),
     },
     events,
   }
 }
 
-/** What winning is worth: every foe's experience and gold, added up. */
+/**
+ * What winning is worth: every foe's experience and gold, added up — and the
+ * experience times the battle's multiplier where Voice of Experience set one,
+ * as the victory takes it: `(unsigned)((float) total × multiplier)`
+ * (`func_ov023_021edf54`, `0x021ee05c`–`0x021ee078`).
+ */
 export function spoils(state: BattleState): { exp: number; gold: number } {
   let exp = 0
   let gold = 0
@@ -2890,6 +3055,9 @@ export function spoils(state: BattleState): { exp: number; gold: number } {
     if (f.side !== 'foes' || f.fled) continue
     exp += f.exp
     gold += f.gold
+  }
+  if (state.expMultiplier !== undefined) {
+    exp = Math.trunc(Math.fround(Math.fround(exp) * Math.fround(state.expMultiplier)))
   }
   return { exp, gold }
 }

@@ -9205,10 +9205,12 @@ function coupFor(member: Member, level: number): { level: number; bonus: number 
 /**
  * **A member's Coup de Grâce command** — their vocation's coup
  * (`data_ov000_02183658`): a blow where its handler is read, the Warrior's
- * Critical Claim among them; the Priest's Choir of Angels (kind 67) and the
- * Gladiator's Tension Boost (kind 71), read in task 18. **Ours**: any other —
- * its handler, of kinds 10, 26, 68 to 70 and 72 to 77, not read — is said,
- * its opening line, and does nothing.
+ * Critical Claim among them; Choir of Angels (kind 67) and Tension Boost
+ * (71), and Spelly Breath (26), 0 Zone (68), Itemised Kill (69), Rough 'n'
+ * Tumble (70), Voice of Experience (72) and Brownie Boost (74), read in task
+ * 18 (`docs/readings/T18-handlers.md` §10). **Ours**: any other — Roaring
+ * Tirade and Disco Tech (kind 10) and Knight Watch (73), whose statuses are
+ * not built — is said, its opening line, and does nothing.
  */
 function coupEntry(member: Member, known: Map<number, Told>): Entry | undefined {
   const id = COUP_OF.get(member.vocation)
