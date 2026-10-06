@@ -196,6 +196,11 @@ describe.skipIf(!romPath)(
       expect(action(30).rolls).toMatchObject({ counterable: false, coverable: false })
     })
 
+    it('rides Hypnowhip’s confusion, and Sobering Slap’s coming to one’s senses', () => {
+      expect(blowOf(action(85))?.rider?.slot).toBe(10)
+      expect(partyChangeOf(action(171))?.rider).toEqual({ slot: 19, levels: 0 })
+    })
+
     it('plays Fuddle as confusion', () => {
       expect(partyChangeOf(action(51))).toMatchObject({
         change: { kind: 'confuse' },

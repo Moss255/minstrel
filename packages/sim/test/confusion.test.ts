@@ -162,3 +162,65 @@ describe('coming to one’s senses — `func_ov000_0215833c`', () => {
     expect(came).toBeLessThanOrEqual(6)
   })
 })
+
+describe('the riders — confusion (10) and Sobering Slap (19)', () => {
+  const blow = (slot: number): Command => ({
+    kind: 'blow',
+    target: 1,
+    blow: {
+      action: 0x3f,
+      handler: 0,
+      reach: 'one',
+      hits: 0,
+      criticalPercent: 0,
+      element: 8,
+      falloff: false,
+      evadable: false,
+      blockable: false,
+      defendable: true,
+      tensed: false,
+      combos: false,
+      after: 0,
+      rider: { slot, chance: { party: 100, foe: 100 }, levels: 0 },
+    },
+  })
+  it('confuses on a pass that dealt something, under its chance', () => {
+    const start = startBattle([member('Hero', { agility: 255, attack: 200 }), slime()])
+    const { events, state } = playRound(start, new Map([[0, blow(10)]]), new BattleRng(seedOf(3)))
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toMatchObject({ result: 'confused' })
+    expect(state.fighters[1]?.states.confused).toBeDefined()
+  })
+  it('brings one confused to their senses, with no draw', () => {
+    const start = confused(startBattle([member('Hero', { agility: 255, attack: 200 }), slime()]), 1)
+    const { events, state } = playRound(start, new Map([[0, blow(19)]]), new BattleRng(seedOf(3)))
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toMatchObject({ result: 'sobered' })
+    expect(state.fighters[1]?.states.confused).toBeUndefined()
+  })
+})
+
+describe('Sobering Slap — kind 9 with rider 19', () => {
+  it('brings one confused to their senses before it wakes a sleeper', () => {
+    const slap: Changing = {
+      action: 171,
+      cost: 0,
+      change: { kind: 'wake', chance: 100 },
+      reach: 'one',
+      side: 'own',
+      rider: { slot: 19, levels: 0 },
+    }
+    const start = confused(
+      startBattle([member('Hero', { agility: 255 }), member('Ivy'), slime()]),
+      1,
+    )
+    const { events, state } = playRound(
+      start,
+      new Map<number, Command>([[0, { kind: 'change', changing: slap, target: 1 }]]),
+      new BattleRng(seedOf(5)),
+    )
+    const hit = events.find((e) => e.kind === 'change')
+    expect(hit?.kind === 'change' && hit.hits[0]).toMatchObject({ target: 1, result: 'sobered' })
+    expect(state.fighters[1]?.states.confused).toBeUndefined()
+  })
+})

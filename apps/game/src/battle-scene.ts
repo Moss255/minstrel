@@ -388,7 +388,12 @@ function changeSays(
     case 'confused':
       // INFERRED from their words: one already confused "grows even more
       // confused", 131 and 132, as Antimagic's "further prevented".
-      return hit.again ? (targetParty ? 131 : 132) : pick(own?.done, 130)
+      // Fuddle's own done line; a blow's rider 10 says confusion's, 129 or 130.
+      if (hit.again) return targetParty ? 131 : 132
+      return kind === 'confuse' ? pick(own?.done, 130) : targetParty ? 129 : 130
+    case 'sobered':
+      // INFERRED from its words, for flag 0x19: "returns to … senses".
+      return 367
     case 'relieved':
       // INFERRED: Wave of Relief's handler says nothing of its own
       // (`func_ov024_021df1e8`); its record's lines stand — "is alleviated of
@@ -559,6 +564,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} is no longer paralysed.`
     case 'confused':
       return hit.again ? `${whom} grows even more confused.` : `${whom} becomes confused.`
+    case 'sobered':
+      return `${whom} returns to their senses.`
     case 'zeroZoned':
       return `${whom} can now cast spells without spending any MP!`
     case 'tumbling':
@@ -1747,9 +1754,9 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       // Action 900's opening, 115 (`func_ov000_0215833c`, `0x021583f0`).
       return say(scene, 'actions', 115, { actor }) ?? sentence(`${who} is no longer paralysed.`)
     case 'senses':
-      // Action 0x3aa's line, 371 (`func_ov000_0215833c`, `0x021584b4`).
+      // Action 0x3aa's opening, 458 (`func_ov000_0215833c`, `0x021584b4`).
       return (
-        say(scene, 'actions', CONFUSED_SAYS.senses, { target: actor }) ??
+        say(scene, 'actions', CONFUSED_SAYS.senses, { actor }) ??
         sentence(`${who} pulls themselves together.`)
       )
     case 'confused': {
@@ -2378,12 +2385,12 @@ export function blowOf(action: Castable): Blow | undefined {
  * actions: 219's opening 500 ("attacks at random!"); 221's 135, 915's 501,
  * 222's 500 then its done line 137, 916's 502 then 57 ("But nobody shows
  * up."), 917's 504 ("flees the battle!"). 918 has none, and 134, "is
- * confused.", stands in for it — **ours**. Come to their senses: 0x3aa's 371.
+ * confused.", stands in for it — **ours**. Come to their senses: 0x3aa's 458.
  */
 const CONFUSED_SAYS = {
   atRandom: 500,
   isConfused: 134,
-  senses: 371,
+  senses: 458,
   turns: new Map<number, readonly number[]>([
     [221, [135]],
     [915, [501]],
@@ -2572,5 +2579,7 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     ...((r.rider === 2 || r.rider === 8) && r.riderLevels
       ? { rider: { slot: r.rider, levels: r.riderLevels } }
       : {}),
+    // Sobering Slap's: one confused brought to their senses (`func_ov024_021e4588`).
+    ...(r.rider === 19 ? { rider: { slot: 19, levels: 0 } } : {}),
   }
 }

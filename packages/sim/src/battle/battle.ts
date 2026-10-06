@@ -759,8 +759,10 @@ export type ChangeResult =
   | 'fizzled'
   /** Freed of paralysis by Tingle. */
   | 'unparalysed'
-  /** Confused by Fuddle; `again` when it already was. */
+  /** Confused by Fuddle or rider 10; `again` when it already was. */
   | 'confused'
+  /** Brought to their senses by Sobering Slap's rider 19. */
+  | 'sobered'
   /** Paralysed by rider 11 — `again`, already: "is frozen even further". */
   | 'paralysed'
   /** 0 Zone set — "can now cast spells without spending any MP". */
@@ -843,7 +845,7 @@ export interface Rider {
 const METAL_SPARED: ReadonlySet<number> = new Set([0x205, 0x82])
 
 /** The riders the battle plays. */
-export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 11, 20])
+export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 10, 11, 19, 20])
 
 /**
  * The lost turns rider 1 knows, by `+0x32` — the table at
@@ -980,7 +982,7 @@ export type BattleEvent =
    * random — one of {@link CONFUSED}'s, each its record's lines alone.
    */
   | { readonly kind: 'confused'; readonly actor: number; readonly action: number }
-  /** Come to their senses at the turn's start — action 0x3aa, "pulls … together" (371). */
+  /** Come to their senses at the turn's start — action 0x3aa, "pulls … together" (458). */
   | { readonly kind: 'senses'; readonly actor: number }
   /**
    * A stance's turn: its record's line (kind 0's handler). `short`, taken up
@@ -1497,6 +1499,8 @@ const RIDER_ELEMENTS: ReadonlyMap<number, number> = new Map([
   [11, 17],
   [4, 16],
   [7, 10],
+  // Confusion's, `+0x4a` (`0x021e38b8`) — Fuddle's landing element.
+  [10, 13],
   [20, 11],
 ])
 /** Propeller Blade, which strikes its one target twice — see the blow's passes. */
@@ -1873,6 +1877,24 @@ export function playRound(
     const f = Math.fround
     const lands = () => f(rng.below(100)) < (critical ? f(100) : f(f(chance) * f(f(byte) / f(100))))
     switch (rider.slot) {
+      case 10: {
+        // Confusion (`func_ov024_021e386c`): one who may take it
+        // (`func_020883ac`), a draw, under the chance times the byte or a
+        // hundred on a critical (`0x021e38e0`–`0x021e3988`); already
+        // confused, again, its count set anew (`func_020883cc`, flag 0x2b).
+        if (!alive(them) || !lands()) return undefined
+        const again = them.states.confused !== undefined
+        setStates(target, { confused: { level: 1, turns: LEVEL_COUNTS.confused } })
+        unstance(target)
+        return { target, result: 'confused', ...(again ? { again: true } : {}) }
+      }
+      case 19: {
+        // Sobering Slap (`func_ov024_021e4588`): one confused brought to
+        // their senses (`func_020883fc`, flag 0x19) — no draw.
+        if (them.states.confused === undefined) return undefined
+        setStates(target, { confused: undefined })
+        return { target, result: 'sobered' }
+      }
       case 1: {
         // A lost turn (`func_ov024_021e2bd0`, `0x021e2c18`–`0x021e2d08`): the
         // draw first, under the action's chance times the byte — the byte
@@ -3340,11 +3362,17 @@ export function playRound(
             if (!landed || !(was.poisoned || was.envenomed)) return { target, result: 'resisted' }
             setStates(target, { poisoned: false, envenomed: false })
             return { target, result: 'cured' }
-          case 'wake':
-            // Kind 9 (`func_ov024_021dbf18`): a sleeper, landed.
-            if (!landed || was.sleep === undefined) return { target, result: 'resisted' }
+          case 'wake': {
+            // Kind 9 (`func_ov024_021dbf18`): landed, its rider first
+            // (`0x021dbf7c`) — Sobering Slap's 19, one confused brought to
+            // their senses (`func_ov024_021e4588`) — then a sleeper woken.
+            if (!landed) return { target, result: 'resisted' }
+            const sobered = changing.rider?.slot === 19 && was.confused !== undefined
+            if (sobered) setStates(target, { confused: undefined })
+            if (was.sleep === undefined) return { target, result: sobered ? 'sobered' : 'resisted' }
             setStates(target, { sleep: undefined })
             return { target, result: 'woke' }
+          }
           case 'kill':
             // Kind 17 (`func_ov024_021dd028`): all their HP — but Whack and
             // its like on one under Alma Mater all but 1, and it goes
