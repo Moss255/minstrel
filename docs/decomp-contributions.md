@@ -1328,3 +1328,25 @@ the sea's battle request with no roamer chooses its monsters.
 | `func_ov024_021e324c`, `021e32f4` | riders 5 and 6, the antidotes' items: poison and envenomation cured (`func_02088644`, flag 0x11, line 84); paralysis cured (`020882dc`, flag 0x1a) | `Rider_CurePoison`, `Rider_CureParalysis` |
 | `func_ov024_021e0380` | kind 50, Extreme Makeover: charm a level moved by the record's `+0x30`, held to ±2 (`func_02087a48`, `02087a9c`), then `UpdateCombatantCharm` | `Handler_Charm` |
 | `func_ov024_021d8db4` | a damage that doubles at one asleep or confused | (a damage handler) |
+
+### Task 18, a blow rousing its target, Soothe Sayer, Half-Inch (7 October 2026)
+
+`docs/readings/T18-handlers.md` §15. USA addresses; overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_ov024_021eb5d0` `0x021eca24`–`0x021eca7c`, `0x021ecc90`–`0x021ecd30` | a pass's damage summed at `[sp+0x1c]`; above 0, unturned (`[sp+0x4c]`) and `ctx+0x70` set, `func_ov000_02157288` called, and a result of its own told where it roused | (part of) `Resolver::Resolve` |
+| `func_ov024_021da9e0` `0x021dad3c`–`0x021dad78` | kind 1's handler clears `ctx+0x70` where its rider came back with flag 0xe or 0x17 | (part of) `Handler_Blow` |
+| arm9 `func_02074968`, `func_02074978` | the chances of rousing: asleep 1.0 (party) or 0.5; confused 0.5 or 0.25 | `GetWakeChance`, `GetSenseChance` |
+| `func_ov024_021e07b0` | kind 53, Soothe Sayer: rider 9 through `021e4b14`, then one watched (`021e05e4`) watched no more (`func_02088e64`), `0x164` | `Handler_Soothe` |
+| `func_ov024_021e373c` | rider 9: one with tension (`021da998`, `021dd260`) a step less (`func_02087704`), its line by the level | `Rider_TensionDown` |
+| `func_ov024_021e3f14` | rider 14, Morale Masher's: the watch ended, `0x164`, then rider 9's step | `Rider_Calm` |
+| arm9 `func_02087704` | tension a step less; from the most, bit 24 cleared and 23 set | `Status::LowerTension` |
+| arm9 `func_02088e64` | Knight Watch's watch cleared: `+0x18` bit 12, counts `+0x7e`, `+0xa1` | `Status::ClearWatched` |
+| `func_ov024_021df924` | kind 44, Half-Inch: two float draws, the ordinary then the rare slot by `data_ov024_021fe860`, deftness and item `0x467f`; `+0x3d` marked | `Handler_Steal` |
+| `func_ov024_021dfe9c` | kind 45, Eye for Trouble: `+0x17e` set on a monster with a record, `ctx+0x14` one more, no line | `Handler_Scout` |
+| `func_ov024_021e05fc` | kind 52, Mercy: by level (`func_ov000_02159e60`), random encounters only, the death byte; the defeat routine with reason 4 | `Handler_Mercy` |
+| ov000 `func_ov000_02159e60` | a fighter's level: the party's in their vocation, a monster's by `02159dbc` | `Battle::GetLevel` |
+| ov000 `func_ov000_021554f4` | the defeat routine: logs who fell, by whom and why (`+0x1e`, the reason) | `Battle::RecordDefeat` |
+| arm9 `func_02052df8` | an equipment slot's item: character `+0x150 → +0x488 + 2 × slot`, −1 with none | `Character::GetEquipped` |
+

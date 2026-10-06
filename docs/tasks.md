@@ -75,11 +75,14 @@ written up on the wiki; each says so under its heading.
   21, Crosscutter Throw and M-Pathy. Then (§12–§14) the last kinds, the stances,
   an ability's MP (a correction: a blow spent none), Blockenspiel as the
   round begins, and confusion — Fuddle, a confused fighter's drawn turn,
-  riders 10 and 19 — **14 struck as the Attack**. Left, by address in §7:
-  Half-Inch, Eye for Trouble, the Fources, Feel the Burn, Extreme Makeover,
-  Eyes on Me, Mercy, Soothe Sayer, Whistle, Twocus Pocus; riders 5, 6, 9,
-  12–14 and 21; Crosscutter Throw; a blow shaking one awake (its chance
-  read, its draw not made).
+  riders 10 and 19 — **14 struck as the Attack**. Then (§15) a blow
+  rousing its target — the draw the battle was short of, every blow that
+  deals something now spending it, and no spell waking anyone — Soothe
+  Sayer, Half-Inch, Eye for Trouble and rider 14 (Morale Masher's): **11
+  struck as the Attack**. Left, by address in §7: the Fources, Feel the
+  Burn, Extreme Makeover, Eyes on Me, Whistle, Mercy (read, not built — §15),
+  Twocus Pocus; riders 5 and 6 (the items'), 9 on the monsters' attack 232,
+  12, 13 and 21; Crosscutter Throw.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
   the camera easing in for a party trick;
@@ -577,6 +580,19 @@ simulation has the action, and a seeded battle with the party on a tactic
 replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
+
+**Carried on, 7 October 2026, a blow rousing its target** (`4103c81`,
+`cd57e68`, `7b1c6d1`, `6c3150f`, `436c72a`, `24a2d0a`; the reading's §15):
+`func_ov000_02157288` built — after a pass that dealt something, for an
+action with `+0x10` bit 11 (every blow, no spell or breath), a draw always,
+and the target woken or brought to their senses by its chance; **seeded
+battles change**, and a spell no longer wakes a sleeper. Soothe Sayer (kind
+53 and its rider 9), Half-Inch (kind 44, by deftness, held to the oracle),
+Eye for Trouble (kind 45) and Morale Masher's rider 14. **14 struck as the
+Attack before, 11 after.** Still left, by address in §7: the Fources, Feel
+the Burn, Extreme Makeover, Eyes on Me and Whistle, Mercy (read: what it
+leaves of the experience is not), Twocus Pocus; riders 5 and 6 (items'),
+9 on the monsters' attack 232, 12, 13 and 21; Crosscutter Throw.
 
 **Carried on, 7 October 2026, an ability's MP and confusion** (`6a63e06`,
 `4c83d0c`, `f5d3c0e`; the reading's §14): a blow's MP asked at its turn and

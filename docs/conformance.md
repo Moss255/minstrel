@@ -793,8 +793,10 @@ the draw without it would move every replay without making it right.
 **The chance, read 7 October 2026** (`docs/readings/T18-handlers.md` §14):
 `R(100)` under 100 × `func_02074968` for one asleep — 1.0 at one of the
 party, 0.5 at a monster — or `func_02074978` for one confused — 0.5, 0.25.
-It is still not modelled: the draw moves every replay, and is left for a
-change of its own.
+**Modelled since 7 October 2026** (`roused` in `battle.ts`, §15 of the
+reading): the draw is spent for every pass of an action with the bit that
+deals something, unturned, unless the pass's own rider slept or confused
+the target; a spell wakes nobody. Seeded battles changed with it.
 
 ## A round's draws, outside the resolver — 3 October 2026
 

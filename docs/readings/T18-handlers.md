@@ -245,11 +245,10 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (12 — 14 before §15 built kinds 53 and 44, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
+**Still struck as the Attack** (11 — 14 before §15 built kinds 53, 44 and 45, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
-| 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
 | 47 | `func_ov024_021e00c0` | Feel the Burn |
 | 50 | `func_ov024_021e0380` | Extreme Makeover |
@@ -292,7 +291,7 @@ Throw — its extra pass's target is picked by place on the stage (§8).
 `021e32f4` — read, §14, not built, the battle's items carrying no rider
 —, ~~9~~ (Soothe Sayer's, built — §15), ~~10~~ (confusion, built — §14), ~~11~~
 (paralysis, built — §10), 12 `021e3cec` (Rake 'n' Break), 13 `021e3d88`
-(Conjury Conductor), 14 `021e3f14` (Morale Masher), ~~19~~ (Sobering
+(Conjury Conductor), ~~14~~ (Morale Masher's, built — §15), ~~19~~ (Sobering
 Slap's, built — §14), 21 `021e47f4` (Caster Sugar). Their blows land and
 deal; the rider is dropped.
 
@@ -1318,3 +1317,41 @@ looked at), `0x25a`; else its fail line. `stealChance` in the sim, held to
 the oracle's `halfInchChance`. **Ours**: the quest's pinch; where the item
 goes (as a drop does); the records' item list; one with no record says the
 fail line where the game makes no result.
+
+**Eye for Trouble** (kind 45, `func_ov024_021dfe9c`), no test of its
+landing: a monster (`func_ov000_021536f8`) with a record (`+0x148`) has
+`+0x17e` set to 1 and the action's count of those reached (`ctx+0x14`) is
+one more; its result has no line (`0x021dfee4`–`0x021dff2c`). `ctx+0x14`
+is cleared at the action's head (`0x021eb9c4`) and read by the resolver's
+line-picker (`func_ov024_021e80e4`, `0x021e8164`), where the record's done
+line (`0xdd`) is presumably said — not followed. **Ours**: `0xdd` at each
+one marked, INFERRED from its words.
+
+**Rider 14** (Morale Masher, `func_ov024_021e3f14`), on a pass that dealt
+something, no draw: one watched is watched no more, `0x164`
+(`0x021e3f6c`–`0x021e3fc4`); then one with tension a step less, the lines
+by level as rider 9's (`0x021e3fd8`–`0x021e4068`). Soothe Sayer's two, the
+other way about.
+
+**An opening that names its target** — Half-Inch's `0xd8`, Soothe Sayer's
+`0xfd` — was said with none, the name empty; the first one reached now.
+
+**Read, not built.**
+
+- **Mercy** (kind 52, `func_ov024_021e05fc`): one whose level
+  (`func_ov000_02159e60`: the party's in their vocation, a monster's its
+  record's, `02159dbc`) is 7 or more above the target's; not where the
+  battle's request (`battle+0x8e18`) has `+0xc` at 0 or more — so in a
+  random encounter only (INFERRED, as for 917's flight); and the target's
+  byte `+0x48` (death's, element 11) at 1 or more. Then the defeat routine
+  `func_ov000_021554f4` with reason 4, the target's HP 0, `func_02088f68`,
+  flag 0x24 and `battle+0x8e15` one more; its done line, else its fail line.
+  **Not built**: the defeat routine logs the reason (`+0x1e` of its record,
+  `0x021558ac`), and whether a monster sent off by Mercy is worth its
+  experience and gold at the victory is not read — nor is it added to the
+  kinds beaten (`func_ov000_02155184`, which the HP-taking `0215a004` calls
+  and Mercy does not), so it drops nothing. Built without that, the victory
+  would be wrong.
+- **Rider 9 on the monsters' attack 232**: the plain-Attack path the
+  monsters' attacks take keeps only the poison rider; 232's tension step is
+  dropped.
