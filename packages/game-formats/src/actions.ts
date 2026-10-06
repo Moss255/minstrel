@@ -312,6 +312,20 @@ export interface Action {
   readonly riderLevels: number
   /** The least and the most a scaling action's accuracy can be, in a hundred — `+0x14`, bits 7–13 and 14–20. */
   readonly accuracyRange: { readonly min: number; readonly max: number }
+  /**
+   * **Its lines in `actmsg`**, by whom it reaches — ten bits each of `+0x20`,
+   * `+0x24` and `+0x28` (read 6 October 2026 from the handlers that pick
+   * them, `func_ov024_021da644`, which takes the first of a pair for a target
+   * of the party): what it says done (`+0x20` bits 20–29 at one of the party,
+   * `+0x24` bits 0–9 at a monster), failed (`+0x24` bits 10–19, 20–29) and
+   * killing (`+0x28` bits 0–9, 10–19). The Attack's are 2 and 5, 4 and 7, 8
+   * and 9; Whack's fail 621 and 27, kill 8 and 69.
+   */
+  readonly lines: {
+    readonly done: readonly [party: number, foe: number]
+    readonly failed: readonly [party: number, foe: number]
+    readonly killed: readonly [party: number, foe: number]
+  }
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -416,6 +430,20 @@ export function readActions(bytes: Uint8Array): Action[] {
       accuracyRange: {
         min: (view.getUint32(at + 0x14, true) >>> 7) & 0x7f,
         max: (view.getUint32(at + 0x14, true) >>> 14) & 0x7f,
+      },
+      lines: {
+        done: [
+          (view.getUint32(at + 0x20, true) >>> 20) & 0x3ff,
+          view.getUint32(at + 0x24, true) & 0x3ff,
+        ],
+        failed: [
+          (view.getUint32(at + 0x24, true) >>> 10) & 0x3ff,
+          (view.getUint32(at + 0x24, true) >>> 20) & 0x3ff,
+        ],
+        killed: [
+          view.getUint32(at + 0x28, true) & 0x3ff,
+          (view.getUint32(at + 0x28, true) >>> 10) & 0x3ff,
+        ],
       },
       raw: bytes.subarray(at, at + ACTION_RECORD),
     })

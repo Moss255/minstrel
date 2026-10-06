@@ -521,7 +521,21 @@ export interface ItemEffect {
     readonly element: number
     readonly landingElement: number
     readonly cap: number
+    /** The levels its rider moves, `+0x32` — see `Action.riderLevels`. */
+    readonly riderLevels: number
+    /**
+     * How its accuracy comes (`+0x18` bits 16–17), one of the party's least
+     * and most (`+0x14` bits 7–13, 14–20), and the number and `lo` and `hi`
+     * it scales by — see `Action.accuracyMode`, `accuracyRange`, `scalesBy`,
+     * `scaleRange`; read by the accuracy roll, `func_ov000_02156648`.
+     */
+    readonly accuracyMode: number
+    readonly accuracyRange: { readonly min: number; readonly max: number }
+    readonly scalesBy?: 'might' | 'mending'
+    readonly scaleRange: { readonly lo: number; readonly hi: number }
   }
+  /** Its lines, by whom it reaches — see `Action.lines`. */
+  readonly lines: Action['lines']
   /**
    * The range the party draws from, when it has one. `base` is the party's
    * least, which is what is used outside a battle (ours); `party` is what the
@@ -1921,7 +1935,13 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           element: action.element,
           landingElement: action.landingElement,
           cap: action.damageCap,
+          riderLevels: action.riderLevels,
+          accuracyMode: action.accuracyMode,
+          accuracyRange: action.accuracyRange,
+          ...(action.scalesBy ? { scalesBy: action.scalesBy } : {}),
+          scaleRange: action.scaleRange,
         },
+        lines: action.lines,
         // The party's amount: the Hero is who uses these — see `ActionRange.party`.
         range: range && {
           base: range.party,

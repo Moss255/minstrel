@@ -50,8 +50,9 @@ describe('changes of state, as the reference keeps them', () => {
     expect(sleptThrough(-5, drawing(99)).woke).toBe(true)
   })
 
-  it('takes a sixteenth of maximum HP for poison', () => {
-    expect([15, 16, 20, 33].map(poisonDamage)).toEqual([0, 1, 1, 2])
+  it('takes a sixteenth of maximum HP for envenomation, at least 1 and at most 999', () => {
+    // `func_ov000_0215a23c`, `0x0215a5dc`–`0x0215a5f4`.
+    expect([15, 16, 20, 33, 999, 65_535].map(poisonDamage)).toEqual([1, 1, 1, 2, 62, 999])
   })
 })
 

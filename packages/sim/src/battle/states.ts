@@ -31,8 +31,21 @@ export interface States {
   /** Turns of sleep left, counted as the reference does — to 0 and past it; undefined awake. */
   readonly sleep: number | undefined
   readonly poisoned: boolean
+  /**
+   * **Envenomated** — the stronger poison, status `+0x22` low bits at 2 where
+   * plain poison is 1 (`func_02088560`, `func_02088624`): what a poison rider
+   * or kind 6 with levels above 0 gives — Toxic Dagger, Venom Mist, the poison
+   * attack 275. **It is the one a battle tolls** (`func_ov000_0215a23c`); see
+   * {@link poisonDamage}.
+   */
+  readonly envenomed?: boolean
   readonly defence: Level
   readonly agility: Level
+  /**
+   * Its attack's level, −2 to +2 — status `+0x58` bits 0–2, which Oomph,
+   * Blunt and their like move (kind 3, `func_ov024_021db5ec`). None is level 0.
+   */
+  readonly attack?: Level
   /** Its tension's level, 0 to 4 — see `tension.ts`; none when not given. */
   readonly tension?: number
 }
@@ -77,6 +90,20 @@ export function levelled(value: number, level: number): number {
   return Math.trunc(Math.fround(0.5 + Math.fround(Math.fround(value) * multiplier(level2))))
 }
 
+/**
+ * **An attack at its level** — `UpdateCombatantAttack` (decompiled,
+ * `src/Combat/Overlay_0/UpdateCombatantBuffs.cpp`): the base times
+ * `CalculateAttackBuffMultiplier`, `1 + 0.25 × level` — a quarter a level,
+ * not defence's half — **truncated** to a whole number, and at most 999 for
+ * one of the party.
+ */
+export function buffedAttack(value: number, level: number, party: boolean): number {
+  const f = Math.fround
+  const multiplier = f(1 + f(0.25 * Math.max(-2, Math.min(2, level))))
+  const buffed = Math.trunc(f(multiplier * f(value))) & 0xffff
+  return party && buffed > 999 ? 999 : buffed
+}
+
 /** A level moved by `by` for {@link LEVEL_TURNS} — undefined when it is already at the end it moves toward. */
 export function moved(level: Level, by: number): Level | undefined {
   const next = Math.max(-2, Math.min(2, level.level + by))
@@ -119,5 +146,14 @@ export function sleptThrough(
   return odds >= rng.below(100) ? { sleep: undefined, woke: true } : { sleep: left, woke: false }
 }
 
-/** What poison takes at a round's end: a sixteenth of maximum HP. */
-export const poisonDamage = (maxHp: number): number => maxHp >> 4
+/**
+ * **What envenomation takes at a round's end** — `func_ov000_0215a23c`,
+ * `0x0215a5c8`–`0x0215a5f4`: a sixteenth of the most HP, at most 999 and at
+ * least 1. Read 6 October 2026, and it corrects what stood here: the toll is
+ * envenomation's (`func_02088514`, `+0x22` at 2). **Plain poison takes
+ * nothing in a battle** — no code in the ARM9 or any overlay asks for it
+ * there but to cure it, to multiply Victimiser's blow, and in the AI; the
+ * reference's "poison" is the poison attack 275's, whose record's levels make
+ * it envenomation.
+ */
+export const poisonDamage = (maxHp: number): number => Math.max(1, Math.min(999, maxHp >> 4))

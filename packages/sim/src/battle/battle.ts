@@ -13,8 +13,10 @@ import {
   physicalDamage,
   resistanceTo,
 } from './damage.ts'
+import { revivedHp, scaledAccuracy } from './handlers.ts'
 import type { BattleRng } from './rng.ts'
 import {
+  buffedAttack,
   levelled,
   moved,
   NO_STATES,
@@ -309,11 +311,35 @@ export interface Spell {
   readonly kind?: number
 }
 
-/** What a change of state does, and its chance in 100 of landing — see `states.ts`. */
+/**
+ * What a change of state does, and its chance in 100 of landing — see
+ * `states.ts`. The kinds after the levels are the handlers of task 18
+ * (`docs/readings/T18-handlers.md`): poison cured (kind 7, Squelch), a
+ * sleeper woken (kind 9), the fallen raised (kind 18, Zing) and all HP taken
+ * (kind 17, Whack).
+ */
 export type Change =
   | { readonly kind: 'sleep'; readonly chance: number }
   | { readonly kind: 'poison'; readonly chance: number }
-  | { readonly kind: 'defence' | 'agility'; readonly by: number; readonly chance: number }
+  | {
+      readonly kind: 'attack' | 'defence' | 'agility'
+      readonly by: number
+      readonly chance: number
+    }
+  | { readonly kind: 'cure'; readonly chance: number }
+  | { readonly kind: 'wake'; readonly chance: number }
+  | { readonly kind: 'kill'; readonly chance: number }
+  | {
+      readonly kind: 'revive'
+      readonly chance: number
+      /**
+       * The share of their most HP they come back with (`func_ov024_021dd278`):
+       * a number, or — Zing's and the Zing stick's — by the caster's magical
+       * mending between `lo` and `hi`, a quarter to a half, and a half from a
+       * monster.
+       */
+      readonly share: number | { readonly lo: number; readonly hi: number }
+    }
 
 /** A way of changing state, as the battle casts it: on one, a group or all, of its caster's side or the other. */
 /**
@@ -345,6 +371,8 @@ export interface Blow {
    * but for Critical Claim — never multiplied (`func_ov024_021ea7fc`).
    */
   readonly sure?: boolean
+  /** What rides on each pass that deals something — see {@link Rider}. */
+  readonly rider?: Rider
 }
 
 export interface Changing {
@@ -365,6 +393,29 @@ export interface Changing {
   readonly haywire?: boolean
   /** Its record's `criticalPercent`, which multiplies the caster's chance — see {@link Spell.criticalPercent}. */
   readonly criticalPercent?: number
+  /**
+   * **One of the party's accuracy with it**, for an action whose accuracy
+   * scales (`+0x18` bits 16–17 at 1): the least and the most (`+0x14` bits
+   * 7–13 and 14–20), and the number of the caster's it runs between them by
+   * where the record names one; otherwise drawn between them, a draw more
+   * (`func_ov000_02156648`, `0x021568b4`–`0x021569f8`). Without it one of the
+   * party's accuracy stands at {@link Change.chance}.
+   */
+  readonly accuracy?: {
+    readonly min: number
+    readonly max: number
+    readonly scales?: {
+      readonly by: 'might' | 'mending'
+      readonly lo: number
+      readonly hi: number
+    }
+  }
+  /**
+   * What rides on it, on the one it lands on — Double Up's defence down on
+   * its user (rider 8, with action `0xad` exempt from the target's byte).
+   * Only the level riders are carried here.
+   */
+  readonly rider?: { readonly slot: number; readonly levels: number }
 }
 
 /** How a change came out on one it reached. */
@@ -376,6 +427,46 @@ export type ChangeResult =
   | 'already'
   | 'resisted'
   | 'dodged'
+  /** Envenomated — the stronger poison. */
+  | 'envenomed'
+  /** Squelch: no longer poisoned. */
+  | 'cured'
+  /** Woken by kind 9. */
+  | 'woke'
+  /** Back to life, with {@link ChangeHit.hp}. */
+  | 'revived'
+  /** A raising that did not land on one fallen — "remains lifeless". */
+  | 'lifeless'
+  /** All their HP taken. */
+  | 'killed'
+
+/** A change on one it reached: how it came out, and — moving a level — the level it came to. */
+export interface ChangeHit {
+  readonly target: number
+  readonly result: ChangeResult
+  /** The level it came to, for a level moved — which picks its line (`func_ov024_021e94c4`). */
+  readonly level?: number
+  /** The HP one raised comes back with. */
+  readonly hp?: number
+  /** For what rode on an action: which level it moved. */
+  readonly stat?: 'attack' | 'defence' | 'agility'
+}
+
+/**
+ * **What rides on an action** (`+0x18` bits 0–4; the table at
+ * `data_ov024_021ff450`): its slot, the action's chance with it — one of the
+ * party's `+0x14` bits 7–13, a monster's bits 0–6 — and the levels a level
+ * rider moves (`+0x32`). Played here: 2 attack down, 4 poison, 7 sleep, 8
+ * defence down, 20 death. See `docs/readings/T18-handlers.md` §3.
+ */
+export interface Rider {
+  readonly slot: number
+  readonly chance: { readonly party: number; readonly foe: number }
+  readonly levels: number
+}
+
+/** The riders the battle plays. */
+export const RIDERS_PLAYED: ReadonlySet<number> = new Set([2, 4, 7, 8, 20])
 
 /**
  * One of a foe's ways of acting — the game gives each monster six: attack
@@ -386,7 +477,8 @@ export type ChangeResult =
 export type FoeAction = FoeWay & { readonly targeting?: readonly [number, number] }
 
 export type FoeWay =
-  | { readonly kind: 'attack'; readonly poison?: number }
+  /** Its poison attack's chance, and whether what it gives is envenomation (its record's `+0x32` above 0). */
+  | { readonly kind: 'attack'; readonly poison?: number; readonly envenoms?: boolean }
   | { readonly kind: 'flee' }
   /** A turn spent doing nothing — a monster fluffing around — with the action that says so. */
   | { readonly kind: 'wait'; readonly action: number }
@@ -403,7 +495,12 @@ export type FoeWay =
 
 export type Command =
   /** An attack; one that poisons, by its chance in 100, gives it. */
-  | { readonly kind: 'attack'; readonly target: number; readonly poison?: number }
+  | {
+      readonly kind: 'attack'
+      readonly target: number
+      readonly poison?: number
+      readonly envenoms?: boolean
+    }
   /** Change state on a fighter — for one that reaches further, on that fighter's kind or side. */
   | { readonly kind: 'change'; readonly changing: Changing; readonly target: number }
   | { readonly kind: 'defend' }
@@ -443,6 +540,8 @@ export type BattleEvent =
       readonly blocked: boolean
       /** A poison attack's poison landed. */
       readonly poisoned?: boolean
+      /** …and it was envenomation — again, where they already were. */
+      readonly envenomed?: 'newly' | 'again'
       /** The combo it was multiplied by, 1 to 3 and on — see `combo.ts`; absent for none. */
       readonly combo?: number
     }
@@ -476,7 +575,9 @@ export type BattleEvent =
       readonly change: Change['kind']
       /** Too little MP to cast it: nothing happens, and nothing is spent. */
       readonly short: boolean
-      readonly hits: readonly { readonly target: number; readonly result: ChangeResult }[]
+      readonly hits: readonly ChangeHit[]
+      /** What rode on it, on whom — Double Up's defence on its user. */
+      readonly rode?: readonly ChangeHit[]
     }
   /** A sleeper's turn, slept through. */
   | { readonly kind: 'asleep'; readonly actor: number }
@@ -490,7 +591,11 @@ export type BattleEvent =
   /** A sleeper waking: on its turn, or at a blow. */
   | { readonly kind: 'woke'; readonly actor: number }
   /** A level worn off, at the round's end. */
-  | { readonly kind: 'wornOff'; readonly actor: number; readonly stat: 'defence' | 'agility' }
+  | {
+      readonly kind: 'wornOff'
+      readonly actor: number
+      readonly stat: 'attack' | 'defence' | 'agility'
+    }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
   | { readonly kind: 'defeated'; readonly actor: number }
@@ -520,6 +625,8 @@ export type BattleEvent =
         readonly critical: boolean
         readonly dodged: boolean
         readonly blocked: boolean
+        /** What its rider came to on this pass, where it came to something. */
+        readonly rode?: ChangeHit
       }[]
       /** HP lost to the blow's own recoil (post-step 3). */
       readonly recoil?: number
@@ -889,6 +996,85 @@ export function playRound(
   }
   /** A stat as its level has it — see `states.ts`. */
   const defenceOf = (f: FighterState) => levelled(f.defence, f.states.defence.level)
+  /** The attack a blow is worked from: at its level, `UpdateCombatantAttack`'s. */
+  const attackOf = (f: FighterState) =>
+    buffedAttack(f.attack, f.states.attack?.level ?? 0, f.side === 'party')
+  /**
+   * **A level rider** — 2 attack, 8 defence (`func_ov024_021e2ebc`,
+   * `021e3594`): a draw below 100 first; a fall lands under the target's own
+   * byte for it, or at once on a critical, and Double Up's (`0xad`) on
+   * defence without the test; a raise always. **Nobody's bytes are kept**,
+   * so each is a hundred and a fall always lands — ours, as resistances are.
+   */
+  const levelRider = (target: number, slot: number, levels: number): ChangeHit | undefined => {
+    rng.below(100)
+    const stat = slot === 2 ? ('attack' as const) : slot === 8 ? ('defence' as const) : undefined
+    if (!stat) return undefined
+    const by = Math.max(-2, Math.min(2, levels))
+    const level = (fighters[target] as FighterState).states[stat] ?? { level: 0, turns: 0 }
+    const next = moved(level, by)
+    // Not moved, nothing is said (`0x021e2fc8`).
+    if (!next) return undefined
+    setStates(target, { [stat]: next })
+    return { target, result: by > 0 ? 'raised' : 'lowered', level: next.level, stat }
+  }
+  /** A level rider on a change, told with it — Double Up's. */
+  const rideOn = (
+    target: number,
+    rider: { readonly slot: number; readonly levels: number },
+    _action: number,
+    out: ChangeHit[],
+  ) => {
+    const hit = levelRider(target, rider.slot, rider.levels)
+    if (hit) out.push(hit)
+  }
+  /**
+   * **A rider on a blow's pass that dealt something** (`func_ov024_021e4b14`
+   * from the kind-1 handler). Poison (`021e303c`), sleep (`021e33a4`) and
+   * death (`021e4604`) make their draw only for one who can take them, and
+   * land under the action's chance times the target's byte over a hundred —
+   * a hundred here — or on a critical. What sends one to sleep or fells them
+   * is applied once the blow's damage is: `pending`.
+   */
+  const rideBlow = (
+    me: FighterState,
+    target: number,
+    rider: Rider,
+    critical: boolean,
+    pending: { asleep: number[]; felled: number[] },
+  ): ChangeHit | undefined => {
+    const them = fighters[target] as FighterState
+    if (rider.slot === 2 || rider.slot === 8) return levelRider(target, rider.slot, rider.levels)
+    const chance = me.side === 'party' ? rider.chance.party : rider.chance.foe
+    const lands = () =>
+      Math.fround(rng.below(100)) < (critical ? Math.fround(100) : Math.fround(chance))
+    switch (rider.slot) {
+      case 4: {
+        // Envenomation where its levels are above 0 (`0x021e309c`), plain
+        // poison otherwise; neither at the maximum of tension
+        // (`func_02088540`, `020885e0`), and poison not on the envenomated.
+        const envenom = rider.levels > 0
+        if (them.states.tension === TENSION_MOST) return undefined
+        if (!envenom && them.states.envenomed) return undefined
+        if (!lands()) return undefined
+        setStates(target, envenom ? { envenomed: true } : { poisoned: true })
+        return { target, result: envenom ? 'envenomed' : 'poisoned' }
+      }
+      case 7:
+        if (them.states.sleep !== undefined || pending.asleep.includes(target)) return undefined
+        if (!lands()) return undefined
+        pending.asleep.push(target)
+        return { target, result: 'asleep' }
+      case 20:
+        // Not on a metal body (`func_ov000_02156068`, `0x021e463c`).
+        if (them.metal || pending.felled.includes(target)) return undefined
+        if (!lands()) return undefined
+        pending.felled.push(target)
+        return { target, result: 'killed' }
+      default:
+        return undefined
+    }
+  }
   /** Who came ready in this action, told after it — see `coupAfter`. */
   const primedNow: number[] = []
   /** The living party ready already, which the chance is multiplied by (`func_ov024_021eb2b4`). */
@@ -1110,7 +1296,12 @@ export function playRound(
       case 'attack':
         return way.poison === undefined
           ? { kind: 'attack', target }
-          : { kind: 'attack', target, poison: way.poison }
+          : {
+              kind: 'attack',
+              target,
+              poison: way.poison,
+              ...(way.envenoms ? { envenoms: true } : {}),
+            }
       case 'blow':
         return { kind: 'blow', blow: way.blow, target }
       case 'spell':
@@ -1460,7 +1651,7 @@ export function playRound(
     rng.below(10_000)
     if (metalMisses && me.side === 'foes' && me.metal) return
     rng.below(100)
-    if (physicalDamage(rng, me.attack, defenceOf(me)) <= 0) rng.below(2)
+    if (physicalDamage(rng, attackOf(me), defenceOf(me)) <= 0) rng.below(2)
   }
   /** Whether a fighter can act — and so dodge or block: standing and not asleep (`func_ov000_02155f9c`). */
   const canAct = (f: FighterState) => alive(f) && f.states.sleep === undefined
@@ -1592,7 +1783,10 @@ export function playRound(
       }
       // Reaching the maximum clears poison (`func_02088150`).
       if (level !== was) {
-        setStates(actor, { tension: level, ...(level === TENSION_MOST ? { poisoned: false } : {}) })
+        setStates(actor, {
+          tension: level,
+          ...(level === TENSION_MOST ? { poisoned: false, envenomed: false } : {}),
+        })
       }
       coupAtPass(actor, 0)
       resolved = { actor, action: command.action }
@@ -1758,21 +1952,27 @@ export function playRound(
       }
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - changing.cost } : f))
       const side: Side = changing.side === 'own' ? me.side : me.side === 'party' ? 'foes' : 'party'
-      const reached = aimOf(me, actor, side, command.target, changing.reach)
+      const { change } = changing
+      // A raising is aimed at the fallen: the one named on its own side,
+      // standing or not — the resolver's handler tells which (`0x021dd2c0`).
+      const named = fighters[command.target]
+      const reached =
+        change.kind === 'revive'
+          ? [named && named.side === side && !named.fled ? command.target : actor]
+          : aimOf(me, actor, side, command.target, changing.reach)
       const first = reached[0]
       if (first === undefined) {
         events.push({
           kind: 'change',
           actor,
           action: changing.action,
-          change: changing.change.kind,
+          change: change.kind,
           short: false,
           hits: [],
         })
         continue
       }
       builtDraws()
-      const { change } = changing
       // **The game's order, and the game's roll.** A change of state goes
       // through the same resolver as a blow (`docs/conformance.md`, "A change
       // of state"), and its handler makes no draw of its own: **whether it
@@ -1786,7 +1986,23 @@ export function playRound(
         : 0
       const once = changing.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
-      const changeOne = (target: number) => {
+      /** Those whom it fells, felled once it is told. */
+      const felled: number[] = []
+      const rode: ChangeHit[] = []
+      /**
+       * **One of the party's accuracy** (`func_ov000_02156648`): a scaling
+       * action's runs from its least to its most as the caster's number runs
+       * from the record's `lo` to `hi` — the amount's arithmetic, in floats —
+       * or is drawn between them, truncated, a draw after the hundred's.
+       */
+      const accuracyOf = (): number => {
+        const a = changing.accuracy
+        if (me.side !== 'party' || !a) return change.chance
+        if (!a.scales) return Math.trunc(rng.floatBetween(a.min, a.max))
+        const stat = (a.scales.by === 'might' ? me.might : me.mending) ?? 0
+        return scaledAccuracy(stat, a.min, a.max, a.scales.lo, a.scales.hi)
+      }
+      const changeOne = (target: number): ChangeHit => {
         noteAim(actor, target)
         const them = fighters[target] as FighterState
         rng.below(100)
@@ -1796,47 +2012,79 @@ export function playRound(
           canAct(them) &&
           rng.below(100) < Math.trunc(evadeOf(them, rules))
         const draw = rng.below(100)
-        if (dodged) return { target, result: 'dodged' as const }
-        // **Landed, the physical formula's draws** — its record's range is 0
-        // (`0x021ec4e4`) — and the coin when it comes to nothing.
-        const resistanceNow = resistanceTo(them.resist, changing.element ?? 0)
-        const accuracyNow = Math.trunc(
-          Math.fround(Math.fround(Math.fround(change.chance) * resistanceNow) + Math.fround(0.5)),
-        )
-        if ((critical && resistanceNow > 0) || draw < accuracyNow) {
-          if (physicalDamage(rng, me.attack, defenceOf(them)) <= 0) rng.below(2)
-        }
-        const was = them.states
-        const already =
-          change.kind === 'sleep'
-            ? was.sleep !== undefined
-            : change.kind === 'poison'
-              ? was.poisoned
-              : false
-        if (already) return { target, result: 'already' as const }
-        // A cast gone haywire lands outright (`0x02156a34`); the rest under the chance.
+        const chance = accuracyOf()
+        if (dodged) return { target, result: 'dodged' }
         // Its accuracy is the chance **times the target's resistance, plus a
         // half, truncated** (`0x02156a74`); gone haywire it lands on anyone
-        // not immune.
+        // not immune (`0x02156a34`).
         const resistance = resistanceTo(them.resist, changing.element ?? 0)
         const accuracy = Math.trunc(
-          Math.fround(Math.fround(Math.fround(change.chance) * resistance) + Math.fround(0.5)),
+          Math.fround(Math.fround(Math.fround(chance) * resistance) + Math.fround(0.5)),
         )
-        if (!(critical && resistance > 0) && draw >= accuracy)
-          return { target, result: 'resisted' as const }
-        if (change.kind === 'sleep') {
-          // Sleep takes the tension away (`func_02088338`).
-          setStates(target, { sleep: 0, ...(them.states.tension ? { tension: 0 } : {}) })
-          return { target, result: 'asleep' as const }
+        const landed = (critical && resistance > 0) || draw < accuracy
+        // **Landed, the physical formula's draws** — its record's range is 0
+        // (`0x021ec4e4`) — and the coin when it comes to nothing.
+        if (landed && physicalDamage(rng, attackOf(me), defenceOf(them)) <= 0) rng.below(2)
+        const was = them.states
+        switch (change.kind) {
+          case 'sleep':
+          case 'poison': {
+            const already = change.kind === 'sleep' ? was.sleep !== undefined : was.poisoned
+            if (already) return { target, result: 'already' }
+            if (!landed) return { target, result: 'resisted' }
+            if (change.kind === 'sleep') {
+              // Sleep takes the tension away (`func_02088338`).
+              setStates(target, { sleep: 0, ...(was.tension ? { tension: 0 } : {}) })
+              return { target, result: 'asleep' }
+            }
+            setStates(target, { poisoned: true })
+            return { target, result: 'poisoned' }
+          }
+          case 'cure':
+            // Squelch (`func_ov024_021dbc64`): the poisoned or envenomated, landed.
+            if (!landed || !(was.poisoned || was.envenomed)) return { target, result: 'resisted' }
+            setStates(target, { poisoned: false, envenomed: false })
+            return { target, result: 'cured' }
+          case 'wake':
+            // Kind 9 (`func_ov024_021dbf18`): a sleeper, landed.
+            if (!landed || was.sleep === undefined) return { target, result: 'resisted' }
+            setStates(target, { sleep: undefined })
+            return { target, result: 'woke' }
+          case 'kill':
+            // Kind 17 (`func_ov024_021dd028`): all their HP. The protection
+            // that leaves 1 (`func_ov024_021ea78c`) is a status not kept here.
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            felled.push(target)
+            return { target, result: 'killed' }
+          case 'revive': {
+            // Kind 18 (`func_ov024_021dd278`): the fallen, landed — a share of
+            // their most HP, truncated.
+            if (alive(them)) return { target, result: 'resisted' }
+            if (!landed) return { target, result: 'lifeless' }
+            // **Ours**: never below 1 — what `func_0208902c` makes of 0 is not read.
+            const hp = Math.max(
+              1,
+              revivedHp(change.share, me.side === 'party', me.mending ?? 0, them.maxHp),
+            )
+            fighters = fighters.map((g, i) => (i === target ? { ...g, hp, states: NO_STATES } : g))
+            return { target, result: 'revived', hp }
+          }
+          default: {
+            if (!landed) return { target, result: 'resisted' }
+            const level = was[change.kind] ?? { level: 0, turns: 0 }
+            const next = moved(level, change.by)
+            // The rider, from the handler that has landed (`0x021db674`): a
+            // level's always rolls, its draw first (`func_ov024_021e2ebc`).
+            if (changing.rider) rideOn(target, changing.rider, changing.action, rode)
+            if (!next) return { target, result: 'already' }
+            setStates(target, { [change.kind]: next })
+            return {
+              target,
+              result: change.by > 0 ? 'raised' : 'lowered',
+              level: next.level,
+            }
+          }
         }
-        if (change.kind === 'poison') {
-          setStates(target, { poisoned: true })
-          return { target, result: 'poisoned' as const }
-        }
-        const next = moved(was[change.kind], change.by)
-        if (!next) return { target, result: 'already' as const }
-        setStates(target, { [change.kind]: next })
-        return { target, result: change.by > 0 ? ('raised' as const) : ('lowered' as const) }
       }
       // Each one reached, then the coup's draw at their pass — nothing dealt.
       const hits = reached.map((target) => {
@@ -1852,7 +2100,11 @@ export function playRound(
         change: change.kind,
         short: false,
         hits,
+        ...(rode.length > 0 ? { rode } : {}),
       })
+      for (const target of felled) hurt(target, (fighters[target] as FighterState).hp)
+      outcome = outcomeOf(fighters)
+      if (outcome !== 'ongoing') break
       continue
     }
 
@@ -1883,7 +2135,10 @@ export function playRound(
         critical: boolean
         dodged: boolean
         blocked: boolean
+        rode?: ChangeHit
       }[] = []
+      /** Who its riders send to sleep or fell, once its damage is dealt. */
+      const pending: { asleep: number[]; felled: number[] } = { asleep: [], felled: [] }
       let recoil = 0
       /** What the passes so far have dealt each target, dealt only once they are done. */
       const dealtTo = new Map<number, number>()
@@ -1921,7 +2176,7 @@ export function playRound(
           turn,
         })
         // The base, its draws spent whatever the handler does with it, then the handler.
-        const base = physicalDamage(rng, me.attack, defenceOf(them))
+        const base = physicalDamage(rng, attackOf(me), defenceOf(them))
         const out = handled(
           blow.handler,
           base,
@@ -1940,7 +2195,8 @@ export function playRound(
               family: them.family,
               metal: them.metal,
               hp: them.hp,
-              poisoned: them.states.poisoned,
+              // Victimiser's test asks both poisons (`0x021d8d5c`, `021d8d6c`).
+              poisoned: them.states.poisoned || them.states.envenomed === true,
               asleep: them.states.sleep !== undefined,
             },
             passes: n,
@@ -1973,12 +2229,18 @@ export function playRound(
         if (blow.action === DOUBLE_EDGED_SLASH) {
           recoil = Math.trunc(Math.fround(Math.fround(0.25) * Math.fround(damage)))
         }
+        // What rides on it, on a pass that dealt something (kind 1's handler).
+        const rode =
+          blow.rider && damage > 0 && RIDERS_PLAYED.has(blow.rider.slot)
+            ? rideBlow(me, target, blow.rider, critical, pending)
+            : undefined
         hits.push({
           target,
           damage,
           critical: thrust ? damage > 0 : critical && !dodged && !blocked,
           dodged,
           blocked,
+          ...(rode ? { rode } : {}),
         })
         // The coup's draw at this pass, on what it dealt and what it leaves.
         const before = dealtTo.get(target) ?? 0
@@ -1998,6 +2260,16 @@ export function playRound(
       // Told before anyone it fells falls.
       events.push(told)
       for (const hit of hits) hurt(hit.target, hit.damage)
+      // A rider's sleep holds past the blow that brought it (the game deals
+      // the pass before the rider); its death takes what is left.
+      for (const target of pending.asleep) {
+        const f = fighters[target] as FighterState
+        if (alive(f)) setStates(target, { sleep: 0, ...(f.states.tension ? { tension: 0 } : {}) })
+      }
+      for (const target of pending.felled) {
+        const f = fighters[target] as FighterState
+        if (alive(f)) hurt(target, f.hp)
+      }
       // **After the action, once** (the table at `0x021ff3f8`, by `+0x2c`
       // bits 10–13), when the striker stands (`func_ov000_02155f9c`).
       const mine = fighters[actor] as FighterState
@@ -2079,7 +2351,7 @@ export function playRound(
     // 5. The damage, worked out **even for a blow that was dodged or blocked**:
     //    the game calls `GetAttackBaseDamage` whenever the blow lands, and the
     //    dodge and the block ride along as flags.
-    let damage = physicalDamage(rng, me.attack, defenceOf(them))
+    let damage = physicalDamage(rng, attackOf(me), defenceOf(them))
     // The rest is the game's `func_ov024_021e6a90`, in its floats — `dealt`:
     // the critical (the greatest of the damage and a fifth, the attack power
     // times 0.95 to 1.05, and the damage itself), **times the target's
@@ -2096,7 +2368,7 @@ export function playRound(
     const tension = tensionOf(me)
     damage = dealt(rng, damage, {
       critical,
-      attack: me.attack,
+      attack: attackOf(me),
       resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
       dodged,
       blocked,
@@ -2111,19 +2383,26 @@ export function playRound(
     // A dodge, a block (`0x021ec828`) or a blow of less than one (`0x021e7b20`) breaks it.
     if (dodged || blocked || damage < 1) chain = brokenChain(chain)
     // A poison attack's poison: the reference's 12 in 100, on a blow that lands.
-    // Rolled only for a blow that has dealt something, and not for one already
-    // poisoned — both the game's, from the rider's handler (`func_ov024_021e303c`),
-    // which leaves before its draw otherwise.
+    // Rolled only for a blow that has dealt something, and only on one who can
+    // take it — the rider's handler (`func_ov024_021e303c`), which leaves
+    // before its draw otherwise: **nobody at the maximum of tension, and plain
+    // poison not on the envenomated** (`func_020885e0`, `func_02088540`; read 6
+    // October 2026 — "not on the poisoned", which stood here, was wrong: the
+    // poisoned are poisoned again, "even more powerfully"). Envenomation where
+    // the record's levels are above 0 — the poison attack 275's are.
     // It lands under its chance times a hundredth of the target's byte for
     // poison, the draw a float; and one immune is not rolled for.
     const toPoison = resistanceTo(them.resist, POISON_ELEMENT)
+    const mayTake =
+      them.states.tension !== TENSION_MOST && (command.envenoms || !them.states.envenomed)
     const poisoned =
       damage > 0 &&
       command.poison !== undefined &&
-      !them.states.poisoned &&
+      mayTake &&
       toPoison > 0 &&
       Math.fround(rng.below(100)) < Math.fround(Math.fround(command.poison) * toPoison)
-    if (poisoned) setStates(target, { poisoned: true })
+    const again = command.envenoms ? them.states.envenomed === true : them.states.poisoned
+    if (poisoned) setStates(target, command.envenoms ? { envenomed: true } : { poisoned: true })
     events.push({
       kind: 'attack',
       actor,
@@ -2133,6 +2412,9 @@ export function playRound(
       dodged,
       blocked,
       ...(poisoned ? { poisoned: true } : {}),
+      ...(poisoned && command.envenoms
+        ? { envenomed: again ? ('again' as const) : ('newly' as const) }
+        : {}),
       ...(combo > 0 ? { combo } : {}),
     })
     hurt(target, damage)
@@ -2151,8 +2433,12 @@ export function playRound(
     for (const i of acted) {
       const f = fighters[i]
       if (!f || !alive(f)) continue
-      for (const stat of ['defence', 'agility'] as const) {
-        const worn = wornAfterTurn((fighters[i] as FighterState).states[stat], rng)
+      // **Ours**: attack's turn first, as its bits come first in `+0x58`; the
+      // game's order, and its counts (attack 5, the others 6), are not read.
+      for (const stat of ['attack', 'defence', 'agility'] as const) {
+        const level = (fighters[i] as FighterState).states[stat]
+        if (!level) continue
+        const worn = wornAfterTurn(level, rng)
         setStates(i, { [stat]: worn.level })
         if (worn.wore) events.push({ kind: 'wornOff', actor: i, stat })
       }
@@ -2170,10 +2456,11 @@ export function playRound(
         events.push({ kind: 'coupPassed', actor: i })
       }
     }
-    // Then poison takes its toll.
+    // Then envenomation takes its toll (`func_ov000_0215a23c`) — plain poison
+    // takes none in a battle; see `poisonDamage`.
     for (let i = 0; i < fighters.length; i++) {
       const f = fighters[i] as FighterState
-      if (!alive(f) || !f.states.poisoned) continue
+      if (!alive(f) || !f.states.envenomed) continue
       const damage = poisonDamage(f.maxHp)
       events.push({ kind: 'poison', actor: i, damage })
       hurt(i, damage)

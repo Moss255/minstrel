@@ -4,7 +4,8 @@ import {
   BattleRng,
   type BattleState,
   type Blow,
-  type ChangeResult,
+  type Change,
+  type ChangeHit,
   type Changing,
   type Command,
   type Fighter,
@@ -13,6 +14,7 @@ import {
   handlerKnown,
   type Opening,
   playRound,
+  RIDERS_PLAYED,
   type Spell,
   startBattle,
   TENSION_SHOWN,
@@ -131,9 +133,18 @@ export const ACTION_SAYS = {
   notEnoughMp: 153,
   /** Changes of state. */
   unaffected: 27,
+  defenceUpMuch: 0x3a,
+  defenceDownMuch: 0x3b,
   defenceUp: 60,
   defenceDown: 61,
   defenceNormal: 62,
+  attackUpMuch: 0x47,
+  attackDownMuch: 0x48,
+  attackUp: 0x49,
+  attackDown: 0x4a,
+  attackNormal: 0x4b,
+  agilityUpMuch: 0x4c,
+  agilityDownMuch: 0x4d,
   poisoned: 63,
   fallsAsleep: 65,
   alreadyAsleep: 67,
@@ -142,6 +153,17 @@ export const ACTION_SAYS = {
   agilityDown: 79,
   agilityNormal: 80,
   alreadyPoisoned: 82,
+  /** "<TARGET> becomes envenomated." / "…even more envenomated." — `func_ov024_021e939c`. */
+  envenomed: 0x10a,
+  envenomedAgain: 0x10c,
+  /** "<TARGET> is no longer poisoned." — Squelch's, `0x021dbcc8`. */
+  cured: 0x54,
+  /** "<TARGET> wakes up." — kind 9's, `0x021dbf9c`. */
+  wokenUp: 0x40,
+  /** "<TARGET> remains lifeless." — a raising that did not land, `0x021dd498`. */
+  lifeless: 0x21,
+  /** "<TARGET> is killed." — kind 17's at a monster, and death riding on a blow. */
+  killed: 0x45,
   wakes: 116,
   /** "But …'s tension doesn't increase to the maximum." — the coin lost, 0x36. */
   tensionFails: 0x36,
@@ -159,41 +181,106 @@ const TENSION_RISES = [0, 0x31, 0x32, 0x33, 0x34] as const
 
 type ChangeKind = Extract<BattleEvent, { kind: 'change' }>['change']
 
-/** What a change's result says in `actmsg`, by what it changes. */
-function changeSays(kind: ChangeKind, result: ChangeResult): number {
-  switch (result) {
+/**
+ * **A level's line, by the level it came to** (`func_ov024_021e94c4`): raised
+ * to 2 "increases a lot", to 0 "returns to normal", else "a little"; lowered
+ * to −2 "decreases a lot", to 0 normal, else a little — attack's `0x47`–`0x4b`,
+ * defence's `0x3a`–`0x3e`, agility's `0x4c`–`0x50`.
+ */
+function levelSays(stat: 'attack' | 'defence' | 'agility', up: boolean, level: number): number {
+  const lines = {
+    attack: [
+      ACTION_SAYS.attackUpMuch,
+      ACTION_SAYS.attackDownMuch,
+      ACTION_SAYS.attackUp,
+      ACTION_SAYS.attackDown,
+      ACTION_SAYS.attackNormal,
+    ],
+    defence: [
+      ACTION_SAYS.defenceUpMuch,
+      ACTION_SAYS.defenceDownMuch,
+      ACTION_SAYS.defenceUp,
+      ACTION_SAYS.defenceDown,
+      ACTION_SAYS.defenceNormal,
+    ],
+    agility: [
+      ACTION_SAYS.agilityUpMuch,
+      ACTION_SAYS.agilityDownMuch,
+      ACTION_SAYS.agilityUp,
+      ACTION_SAYS.agilityDown,
+      ACTION_SAYS.agilityNormal,
+    ],
+  }[stat]
+  if (level === 0) return lines[4] as number
+  if (up) return (level === 2 ? lines[0] : lines[2]) as number
+  return (level === -2 ? lines[1] : lines[3]) as number
+}
+
+/**
+ * What a change's result says in `actmsg`, by what it changes — the level
+ * lines by the level reached, and where the record has its own lines (`Told
+ * .lines`), its done, failed and killing lines by whom it reached.
+ */
+function changeSays(
+  kind: ChangeKind,
+  hit: ChangeHit,
+  told: Told | undefined,
+  targetParty: boolean,
+): number {
+  const own = told?.lines
+  const pick = (pair: readonly [number, number] | undefined, otherwise: number) =>
+    (pair && (targetParty ? pair[0] : pair[1])) || otherwise
+  const stat =
+    hit.stat ?? (kind === 'attack' || kind === 'defence' || kind === 'agility' ? kind : undefined)
+  switch (hit.result) {
     case 'asleep':
       return ACTION_SAYS.fallsAsleep
     case 'poisoned':
       return ACTION_SAYS.poisoned
+    case 'envenomed':
+      return ACTION_SAYS.envenomed
     case 'raised':
-      return kind === 'agility' ? ACTION_SAYS.agilityUp : ACTION_SAYS.defenceUp
     case 'lowered':
-      return kind === 'agility' ? ACTION_SAYS.agilityDown : ACTION_SAYS.defenceDown
+      return stat
+        ? levelSays(stat, hit.result === 'raised', hit.level ?? (hit.result === 'raised' ? 1 : -1))
+        : ACTION_SAYS.unaffected
     case 'already':
       return kind === 'sleep'
         ? ACTION_SAYS.alreadyAsleep
         : kind === 'poison'
           ? ACTION_SAYS.alreadyPoisoned
-          : ACTION_SAYS.unaffected
+          : pick(own?.failed, ACTION_SAYS.unaffected)
     case 'resisted':
-      return ACTION_SAYS.unaffected
+      return pick(own?.failed, ACTION_SAYS.unaffected)
     case 'dodged':
       return ACTION_SAYS.dodges
+    case 'cured':
+      return ACTION_SAYS.cured
+    case 'woke':
+      return ACTION_SAYS.wokenUp
+    case 'revived':
+      return pick(own?.done, 32)
+    case 'lifeless':
+      return ACTION_SAYS.lifeless
+    case 'killed':
+      return pick(own?.killed, targetParty ? ACTION_SAYS.dies : ACTION_SAYS.killed)
   }
 }
 
 /** The same, in ours. */
-function changeOurs(kind: ChangeKind, result: ChangeResult, whom: string): string {
-  switch (result) {
+function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
+  const stat = hit.stat ?? kind
+  switch (hit.result) {
     case 'asleep':
       return `${whom} falls asleep.`
     case 'poisoned':
       return `${whom} is poisoned.`
+    case 'envenomed':
+      return `${whom} is envenomated.`
     case 'raised':
-      return `${whom}'s ${kind} rises.`
+      return `${whom}'s ${stat} rises.`
     case 'lowered':
-      return `${whom}'s ${kind} falls.`
+      return `${whom}'s ${stat} falls.`
     case 'already':
       return kind === 'sleep'
         ? `${whom} is already asleep.`
@@ -204,6 +291,16 @@ function changeOurs(kind: ChangeKind, result: ChangeResult, whom: string): strin
       return `${whom} is not affected.`
     case 'dodged':
       return `${whom} dodges out of the way!`
+    case 'cured':
+      return `${whom} is no longer poisoned.`
+    case 'woke':
+      return `${whom} wakes up.`
+    case 'revived':
+      return `${whom} returns to life!`
+    case 'lifeless':
+      return `${whom} remains lifeless.`
+    case 'killed':
+      return `${whom} is killed.`
   }
 }
 
@@ -271,6 +368,12 @@ export interface Told {
    * Cast, 46, unless said.
    */
   readonly opening?: number
+  /** Its own lines, by whom it reaches — the record's (`Action.lines`), where told. */
+  readonly lines?: {
+    readonly done: readonly [number, number]
+    readonly failed: readonly [number, number]
+    readonly killed: readonly [number, number]
+  }
 }
 
 /**
@@ -329,7 +432,16 @@ export interface Castable {
     readonly element?: number
     readonly landingElement?: number
     readonly cap?: number
+    /** The levels its rider moves, `+0x32`. */
+    readonly riderLevels?: number
+    /** How its accuracy comes, the party's least and most, and what scales it — see the loader's. */
+    readonly accuracyMode?: number
+    readonly accuracyRange?: { readonly min: number; readonly max: number }
+    readonly scalesBy?: 'might' | 'mending'
+    readonly scaleRange?: { readonly lo: number; readonly hi: number }
   }
+  /** Its own lines, by whom it reaches — see `Told.lines`. */
+  readonly lines?: Told['lines']
 }
 
 const REACHES = new Map<number, Spell['reach']>([
@@ -467,9 +579,9 @@ function recordsOwn(
   return {
     side: changes.side,
     change:
-      change.kind === 'sleep' || change.kind === 'poison'
-        ? { ...change, chance }
-        : { ...change, chance, by: levels === 0 ? change.by : levels },
+      change.kind === 'attack' || change.kind === 'defence' || change.kind === 'agility'
+        ? { ...change, chance, by: levels === 0 ? change.by : levels }
+        : { ...change, chance },
     evadable: rolls.evadable,
     haywire: rolls.haywire,
     ...(rolls.criticalPercent === undefined ? {} : { criticalPercent: rolls.criticalPercent }),
@@ -506,7 +618,9 @@ export function foeWaysOf(
     const action = actionOf(word)
     if (word === POISON_ATTACK) {
       const own = action?.rolls?.rider === POISON_RIDER ? action.rolls.foeChance : POISON_CHANCE
-      return { kind: 'attack', poison: own }
+      // Its rider's levels above 0 make it envenomation (`0x021e309c`) — 275's are 1.
+      const envenoms = (action?.rolls?.riderLevels ?? 0) > 0
+      return { kind: 'attack', poison: own, ...(envenoms ? { envenoms: true } : {}) }
     }
     const changes = FOE_CHANGES.get(word)
     const reach = action && REACHES.get(action.reach)
@@ -775,7 +889,18 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                     })
                   : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
                 ...(event.poisoned
-                  ? [say(scene, 'actions', ACTION_SAYS.poisoned, { target })]
+                  ? [
+                      say(
+                        scene,
+                        'actions',
+                        event.envenomed === 'again'
+                          ? ACTION_SAYS.envenomedAgain
+                          : event.envenomed
+                            ? ACTION_SAYS.envenomed
+                            : ACTION_SAYS.poisoned,
+                        { target },
+                      ),
+                    ]
                   : []),
               ]),
       )
@@ -788,7 +913,8 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         ours.push(
           event.damage > 0 ? `${whom} takes ${event.damage} damage.` : `${whom} takes no damage.`,
         )
-        if (event.poisoned) ours.push(`${whom} is poisoned.`)
+        if (event.poisoned)
+          ours.push(event.envenomed ? `${whom} is envenomated.` : `${whom} is poisoned.`)
       }
       return ours.map(sentence).join('\n')
     }
@@ -815,6 +941,23 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                 values: { val_1: hit.damage },
               })
             : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
+          // What rode on it — its line by what it came to (`func_ov024_021e939c`
+          // and the level riders' `021e94c4`).
+          ...(hit.rode
+            ? [
+                say(
+                  scene,
+                  'actions',
+                  changeSays(
+                    'poison',
+                    hit.rode,
+                    told,
+                    state.fighters[hit.target]?.side === 'party',
+                  ),
+                  { actor, target },
+                ),
+              ]
+            : []),
         ]
       })
       const after = [
@@ -858,6 +1001,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           ours.push(
             hit.damage > 0 ? `${whom} takes ${hit.damage} damage.` : `${whom} takes no damage.`,
           )
+          if (hit.rode) ours.push(changeOurs('poison', hit.rode, whom))
         }
       }
       if (event.regained?.mp) ours.push(`${who} recovers ${event.regained.mp} MP.`)
@@ -967,19 +1111,26 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
         return game ?? [...ourOpening.map(sentence), 'Not enough MP!'].join('\n')
       }
-      const landed = event.hits.map((hit) =>
-        say(scene, 'actions', changeSays(event.change, hit.result), {
-          target: scene.names[hit.target],
-        }),
-      )
+      const sayHit = (hit: ChangeHit) =>
+        say(
+          scene,
+          'actions',
+          changeSays(event.change, hit, told, state.fighters[hit.target]?.side === 'party'),
+          { actor, target: scene.names[hit.target] },
+        )
+      const landed = event.hits.map(sayHit)
       const game = lines(
         ...opens,
         ...(landed.length > 0 ? landed : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
+        ...(event.rode ?? []).map(sayHit),
       )
       if (game !== undefined) return game
       const ours = [
         ...ourOpening,
-        ...event.hits.map((hit) => changeOurs(event.change, hit.result, labels[hit.target] ?? '?')),
+        ...event.hits.map((hit) => changeOurs(event.change, hit, labels[hit.target] ?? '?')),
+        ...(event.rode ?? []).map((hit) =>
+          changeOurs(event.change, hit, labels[hit.target] ?? '?'),
+        ),
       ]
       if (event.hits.length === 0) ours.push('But nothing happens.')
       return ours.map(sentence).join('\n')
@@ -1007,7 +1158,11 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         say(
           scene,
           'actions',
-          event.stat === 'agility' ? ACTION_SAYS.agilityNormal : ACTION_SAYS.defenceNormal,
+          event.stat === 'agility'
+            ? ACTION_SAYS.agilityNormal
+            : event.stat === 'attack'
+              ? ACTION_SAYS.attackNormal
+              : ACTION_SAYS.defenceNormal,
           { target: actor },
         ) ?? sentence(`${who}'s ${event.stat} returns to normal.`)
       )
@@ -1554,5 +1709,91 @@ export function blowOf(action: Castable): Blow | undefined {
     combos: r.combos ?? false,
     after: r.afterStep ?? 0,
     ...(r.alwaysCritical ? { sure: true } : {}),
+    // What rides on each pass — the riders read (`docs/readings/T18-handlers.md` §3).
+    ...(RIDERS_PLAYED.has(r.rider)
+      ? {
+          rider: {
+            slot: r.rider,
+            chance: { party: r.accuracyRange?.min ?? 0, foe: r.foeChance },
+            levels: r.riderLevels ?? 0,
+          },
+        }
+      : {}),
+  }
+}
+
+/** The kinds of change the party's actions are played by — their handlers' (`data_ov024_021ff508`). */
+const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change['kind']>([
+  [3, 'attack'],
+  [4, 'defence'],
+  [5, 'agility'],
+  [7, 'cure'],
+  [8, 'sleep'],
+  [9, 'wake'],
+  [17, 'kill'],
+  [18, 'revive'],
+])
+/** Zing and the Zing stick, whose share scales by mending; Kazing, whose is a half (`func_ov024_021dd278`). */
+const ZING = new Set([38, 84])
+const KAZING = 39
+const CHANGE_REACHES = new Map<number, Changing['reach']>([
+  [ActionReach.Actor, 'one'],
+  [ActionReach.One, 'one'],
+  [ActionReach.Group, 'group'],
+  [ActionReach.All, 'all'],
+  // An ally other than oneself — Egg On's, M-Pathy's.
+  [8, 'one'],
+])
+
+/**
+ * **One of the party's actions that changes state**, as the battle plays it —
+ * by its kind's handler (task 18, `docs/readings/T18-handlers.md` §2): a level
+ * of attack, defence or agility moved by its record's levels; sleep; poison
+ * cured; a sleeper woken; all HP taken; the fallen raised. Whether it lands is
+ * its accuracy — a hundred, or for one that scales the party's own between
+ * its least and most (`func_ov000_02156648`). Undefined for any other kind.
+ */
+export function partyChangeOf(action: Castable): Changing | undefined {
+  const r = action.rolls
+  const kind = r?.kind === undefined ? undefined : CHANGE_KINDS.get(r.kind)
+  const reach = CHANGE_REACHES.get(action.reach)
+  if (!r || !kind || !reach) return undefined
+  const levels = Math.max(-2, Math.min(2, r.levels))
+  const change: Change =
+    kind === 'attack' || kind === 'defence' || kind === 'agility'
+      ? { kind, by: levels, chance: 100 }
+      : kind === 'revive'
+        ? {
+            kind,
+            chance: 100,
+            share: ZING.has(action.action)
+              ? (r.scaleRange ?? { lo: 0, hi: 0 })
+              : action.action === KAZING
+                ? 0.5
+                : 1,
+          }
+        : { kind, chance: 100 }
+  const range = r.accuracyRange
+  return {
+    action: action.action,
+    cost: action.cost,
+    change,
+    reach,
+    side: action.side === 1 ? 'other' : 'own',
+    ...(r.landingElement ? { element: r.landingElement } : {}),
+    ...(r.evadable ? { evadable: true } : {}),
+    ...(r.haywire ? { haywire: true, criticalPercent: r.criticalPercent ?? 100 } : {}),
+    ...(r.accuracyMode === 1 && range
+      ? {
+          accuracy: {
+            ...range,
+            ...(r.scalesBy && r.scaleRange ? { scales: { by: r.scalesBy, ...r.scaleRange } } : {}),
+          },
+        }
+      : {}),
+    // Double Up's defence on its user (rider 8 from kind 3's handler).
+    ...((r.rider === 2 || r.rider === 8) && r.riderLevels
+      ? { rider: { slot: r.rider, levels: r.riderLevels } }
+      : {}),
   }
 }

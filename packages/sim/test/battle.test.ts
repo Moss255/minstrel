@@ -440,8 +440,11 @@ describe('a change of state', () => {
     ).toBe(true)
   })
 
-  it('poisons with a poison attack, and the poison takes a sixteenth at each round’s end', () => {
-    const toad = { ...blob('toad', 99, 40), acts: [{ kind: 'attack', poison: 100 }] as const }
+  it('envenomates with the poison attack, which takes a sixteenth at each round’s end', () => {
+    const toad = {
+      ...blob('toad', 99, 40),
+      acts: [{ kind: 'attack', poison: 100, envenoms: true }] as const,
+    }
     const { state, events } = playRound(
       startBattle([tough, toad]),
       wait,
@@ -451,8 +454,21 @@ describe('a change of state', () => {
     const blow = events.find((e) => e.kind === 'attack' && e.actor === 1)
     if (blow?.kind !== 'attack' || blow.dodged || blow.blocked) throw new Error('the blow missed')
     expect(blow.poisoned).toBe(true)
-    expect(state.fighters[0]?.states.poisoned).toBe(true)
+    expect(blow.envenomed).toBe('newly')
+    expect(state.fighters[0]?.states.envenomed).toBe(true)
     expect(events).toContainEqual({ kind: 'poison', actor: 0, damage: 62 })
+  })
+
+  it('takes nothing for plain poison at the round’s end', () => {
+    const toad = { ...blob('toad', 99, 40), acts: [{ kind: 'attack', poison: 100 }] as const }
+    const { state, events } = playRound(
+      startBattle([tough, toad]),
+      wait,
+      new BattleRng(2n),
+      only(0),
+    )
+    expect(state.fighters[0]?.states.poisoned).toBe(true)
+    expect(events.some((e) => e.kind === 'poison')).toBe(false)
   })
 })
 

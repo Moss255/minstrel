@@ -3,6 +3,7 @@ export {
   type BattleState,
   type Blow,
   type Change,
+  type ChangeHit,
   type ChangeResult,
   type Changing,
   type Command,
@@ -15,6 +16,8 @@ export {
   type Opening,
   type Outcome,
   playRound,
+  RIDERS_PLAYED,
+  type Rider,
   type Rules,
   type Side,
   type Spell,
@@ -56,9 +59,11 @@ export {
 } from './battle/damage.ts'
 export { DROP_CHANCES, DropRng, type DropWon, dropsWon, type Filcher } from './battle/drops.ts'
 export { bandAdd, experienceShares, type Sharer } from './battle/experience.ts'
+export { revivedHp, scaledAccuracy } from './battle/handlers.ts'
 export { FACING_CONE, facingOff, howItOpens } from './battle/opening.ts'
 export { BattleRng } from './battle/rng.ts'
 export {
+  buffedAttack,
   LEVEL_TURNS,
   type Level,
   levelled,

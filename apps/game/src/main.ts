@@ -311,6 +311,7 @@ import {
   itemEntry,
   labelsOf,
   type Offered,
+  partyChangeOf,
   RESULT_SAYS,
   type Told,
   withPages,
@@ -7415,28 +7416,38 @@ function battleListsOf(
     if (!action || (action.usableIn & 2) === 0) continue
     const list = action.list === 2 ? out.spells : action.list === 1 ? out.abilities : undefined
     if (!list) continue
-    const spell = battleSpellOf(action)
+    // A heal on oneself — Meditation — is a heal at the one choosing it, whom
+    // the menu hands back for an action that reaches its actor.
+    const spell =
+      battleSpellOf(action) ??
+      (action.reach === ActionReach.Actor && action.effect === ActionEffect.RestoresHp
+        ? battleSpellOf({ ...action, reach: ActionReach.One })
+        : undefined)
     if (spell) told.push(spell)
     const kind = action.rolls?.kind
     const blow = blowOf(action)
-    if (blow)
+    const changing = spell || blow ? undefined : partyChangeOf(action)
+    if (blow || changing)
       known.set(id, {
         name: { name: action.name },
         message: action.message,
         opening: action.opening,
+        lines: action.lines,
       })
     const command: Entry['command'] = spell
       ? (target) => ({ kind: 'spell', spell: spell.spell, target })
       : blow
         ? (target) => ({ kind: 'blow', blow, target })
-        : kind === PSYCHE_KIND && action.reach === ActionReach.Actor
-          ? () => ({
-              kind: 'psyche',
-              action: id,
-              steps: Math.max(1, action.rolls?.levels ?? 1),
-              ...(id === 0x151 || id === 0x152 ? { outright: true } : {}),
-            })
-          : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
+        : changing
+          ? (target) => ({ kind: 'change', changing, target })
+          : kind === PSYCHE_KIND && action.reach === ActionReach.Actor
+            ? () => ({
+                kind: 'psyche',
+                action: id,
+                steps: Math.max(1, action.rolls?.levels ?? 1),
+                ...(id === 0x151 || id === 0x152 ? { outright: true } : {}),
+              })
+            : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
     list.push({
       action: id,
       name: renderName(action.name),

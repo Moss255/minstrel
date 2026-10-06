@@ -703,3 +703,65 @@ export function coupChanceOf(term: number, ready: number): number {
   const multipliers = [1, 2, 3, 4]
   return Math.trunc(f(f(multipliers[Math.min(ready, 3)] as number) * f(term)))
 }
+
+/**
+ * `UpdateCombatantAttack` (`src/Combat/Overlay_0/UpdateCombatantBuffs.cpp`):
+ * the base attack times `CalculateAttackBuffMultiplier` — `1.0f + 0.25f ×
+ * level` (`src/Combat/Main/BasicAttackCalculation.cpp`) — into an `unsigned
+ * short`, and at most 999 for one of the party (ids 0 to 3).
+ */
+export function updatedAttack(attack: number, buffLevel: number, isPlayer: boolean): number {
+  const multiplier = f(f(1) + f(f(0.25) * f(buffLevel)))
+  const buffed = Math.trunc(f(multiplier * f(attack >>> 0))) & 0xffff
+  return isPlayer && buffed > 999 ? 999 : buffed
+}
+
+/**
+ * The share of their most HP one raised comes back with — kind 18's handler,
+ * `func_ov024_021dd278`, from the assembly (`0x021dd2fc`–`0x021dd3d0`). By the
+ * action: Zing (`0x26`) and the Zing stick (`0x54`), cast by one of the party,
+ * a quarter at or under `lo`, a half at or over `hi`, and between,
+ * `((int)((25 / (hi − lo)) × (mending − lo)) + 25) / 100`; by a monster a
+ * half. Kazing (`0x27`) a half; anything else whole. The HP is the share times
+ * the most, truncated (`0x021dd3d8`–`0x021dd3ec`).
+ */
+export function revivalHp(
+  action: number,
+  casterIsParty: boolean,
+  mending: number,
+  lo: number,
+  hi: number,
+  maxHp: number,
+): number {
+  let share = f(1)
+  if (action === 0x27) share = f(0.5)
+  else if (action === 0x26 || action === 0x54) {
+    if (!casterIsParty) share = f(0.5)
+    else if (mending <= lo) share = f(0.25)
+    else if (mending >= hi) share = f(0.5)
+    else {
+      const step = f(f(25) / f(hi - lo))
+      const whole = Math.trunc(f(step * f(mending - lo)))
+      share = f(f(f(whole) + f(25)) / f(100))
+    }
+  }
+  return Math.trunc(f(share * f(maxHp)))
+}
+
+/**
+ * One of the party's accuracy with an action that scales by a number of
+ * theirs — the accuracy roll's scaled arm, `func_ov000_02156648`
+ * `0x0215690c`–`0x021569b4`: the least at or under `lo`, the most at or over
+ * `hi`, and between `(int)((stat − lo) × ((max − min) / (hi − lo))) + min`.
+ */
+export function scaledAccuracy(
+  stat: number,
+  min: number,
+  max: number,
+  lo: number,
+  hi: number,
+): number {
+  if (stat <= lo) return min
+  if (stat >= hi) return max
+  return Math.trunc(f(f(stat - lo) * f(f(max - min) / f(hi - lo)))) + min
+}
