@@ -106,7 +106,16 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(157))).toMatchObject({ change: { kind: 'focus' }, reach: 'one' })
     })
 
-    it('strikes 39 of them as the Attack now, where 76 were', () => {
+    it('dazzles with Flower Power and Scandal Eyes by their sorts, and plays Vanish', () => {
+      expect(partyChangeOf(action(103))?.change).toEqual({ kind: 'dazzle', chance: 100, sort: 1 })
+      expect(partyChangeOf(action(191))?.change).toEqual({ kind: 'dazzle', chance: 100, sort: 2 })
+      expect(partyChangeOf(action(199))?.change.kind).toBe('vanish')
+      // The plain Attack's sight can be spoilt; Heal's cannot.
+      expect(action(1).rolls?.spoiltBySight).toBe(true)
+      expect(action(30).rolls?.spoiltBySight).toBe(false)
+    })
+
+    it('strikes 36 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -123,7 +132,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(39)
+      expect(attack).toBe(36)
     })
   },
 )

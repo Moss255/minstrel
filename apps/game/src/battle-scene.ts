@@ -325,6 +325,9 @@ function changeSays(
             ? ACTION_SAYS.nothingHappens
             : pick(own?.failed, ACTION_SAYS.unaffected)
     case 'resisted':
+      // One already dazzled of its sort, missed: "already has sand in …" and
+      // the like (`func_ov024_021e9198` with 0).
+      if (kind === 'dazzle' && hit.again) return DAZZLED_ALREADY[hit.level ?? 0] ?? 0
       return pick(own?.failed, ACTION_SAYS.unaffected)
     case 'dodged':
       return ACTION_SAYS.dodges
@@ -362,8 +365,11 @@ function changeSays(
     case 'looted':
     case 'experienced':
     // Right as Rain's and Focus Pocus's: their records' done lines
-    // (`0x021e0204`–`0x021e0220`, `0x021e26d8`–`0x021e26f4`).
+    // (`0x021e0204`–`0x021e0220`, `0x021e26d8`–`0x021e26f4`); dazzle's,
+    // on one already of its sort, "is dazzled even more deeply" and the like
+    // (`func_ov024_021e9198` with 1).
     case 'given':
+      if (kind === 'dazzle' && hit.again) return DAZZLED_MORE[hit.level ?? 0] ?? 0
       return pick(own?.done, ACTION_SAYS.nothingHappens)
     // Kind 10's own done line — none for Disco Tech; from a blow, rider 1's
     // by the lost turn's kind: 2 "is knocked clean off its feet" (`0x150`), 5
@@ -392,6 +398,18 @@ function changeSays(
 }
 
 /**
+ * **Dazzle's lines for one already of its sort** (`func_ov024_021e9198`), by
+ * the sort — 1 hallucinating, 2 dazzled, 3 sand, 4 ink: landed, and missed.
+ */
+const DAZZLED_MORE: Readonly<Record<number, number>> = { 1: 0x26, 2: 0x140, 3: 0x126, 4: 0x13d }
+const DAZZLED_ALREADY: Readonly<Record<number, number>> = {
+  1: 0x27,
+  2: 0x141,
+  3: 0x137,
+  4: 0x13f,
+}
+
+/**
  * **Brownie Boost's lines** — one for each level it moved, in its order:
  * defence's by `func_ov024_021e95d4`, the resistance to breaths' by its own
  * pool (`0x021e1fb4`–`0x021e1fcc`: `0x1b0` at 2, `0x1af` at 0, else
@@ -405,6 +423,10 @@ function boostSays(hit: ChangeHit): number[] {
 const STAT_NAMES: Readonly<Record<string, string>> = {
   fizzled: 'Fizzle',
   rain: 'Right as Rain',
+  vanish: 'Vanish',
+  vanished: 'Vanish',
+  dazzle: 'dazzle',
+  dazzled: 'dazzle',
   focus: 'Focus Pocus',
   might: 'magical might',
   mending: 'magical mending',
@@ -491,9 +513,24 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
  * Rough 'n' Tumble's `0x1da` (`0x02159788`).
  */
 const WORN_OFF: Readonly<
-  Record<LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched' | 'rain' | 'focus', number>
+  Record<
+    | LevelStat
+    | 'fizzled'
+    | 'dazzled'
+    | 'vanished'
+    | 'zeroZone'
+    | 'tumble'
+    | 'watched'
+    | 'rain'
+    | 'focus',
+    number
+  >
 > = {
   fizzled: 0x1d6,
+  // Dazzle's, `0x1c7` (`0x021587d4`).
+  dazzled: 0x1c7,
+  // Vanish's, `0x1c9` (`0x0215899c`).
+  vanished: 0x1c9,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
   // `0x1c8` (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`).
   focus: 0x1c8,
@@ -628,6 +665,8 @@ export interface Castable {
     readonly tensed?: boolean
     readonly kind?: number
     readonly blockable?: boolean
+    /** Whether a dazzled striker may miss it — `+0x10` bit 3. */
+    readonly spoiltBySight?: boolean
     readonly handler?: number
     readonly hitCode?: number
     readonly afterStep?: number
@@ -1085,6 +1124,23 @@ function appearing(scene: BattleScene): string[] {
   )
 }
 
+/** Whether one is of the party. */
+const party = (state: BattleState, i: number) => state.fighters[i]?.side === 'party'
+
+/**
+ * **A blow missed by a dazzled striker** — its handler handed a miss
+ * (`0x021ec868` on) says its record's fail line, the plain Attack's 4 at one
+ * of the party and 7 at a monster: "Miss! … takes no damage". INFERRED for a
+ * blow other than the Attack: that its kind's handler says its own.
+ */
+function missSays(
+  told: { readonly lines?: { readonly failed: readonly [number, number] } } | undefined,
+  targetParty: boolean,
+): number {
+  const own = told?.lines?.failed
+  return (own && (targetParty ? own[0] : own[1])) || (targetParty ? 4 : 7)
+}
+
 /** What one event says, as a page — the game's words when the scene has them. */
 function tell(scene: BattleScene, event: BattleEvent, state: BattleState): string {
   const labels = labelsOf(state)
@@ -1098,38 +1154,46 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       const target = scene.names[event.target]
       const game = lines(
         say(scene, 'actions', ACTION_SAYS.attacks, { actor, target }),
-        ...(event.dodged
-          ? [say(scene, 'actions', ACTION_SAYS.dodges, { actor, target })]
-          : event.blocked
-            ? [say(scene, 'actions', ACTION_SAYS.shield, { actor, target })]
-            : [
-                ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.critical, {})] : []),
-                event.damage > 0
-                  ? say(scene, 'actions', ACTION_SAYS.takes, {
-                      actor,
-                      target,
-                      values: { val_1: event.damage },
-                    })
-                  : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
-                ...(event.poisoned
-                  ? [
-                      say(
-                        scene,
-                        'actions',
-                        event.envenomed === 'again'
-                          ? ACTION_SAYS.envenomedAgain
-                          : event.envenomed
-                            ? ACTION_SAYS.envenomed
-                            : ACTION_SAYS.poisoned,
-                        { target },
-                      ),
-                    ]
-                  : []),
-              ]),
+        ...(event.missed
+          ? [
+              say(scene, 'actions', missSays(undefined, party(state, event.target)), {
+                actor,
+                target,
+              }),
+            ]
+          : event.dodged
+            ? [say(scene, 'actions', ACTION_SAYS.dodges, { actor, target })]
+            : event.blocked
+              ? [say(scene, 'actions', ACTION_SAYS.shield, { actor, target })]
+              : [
+                  ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.critical, {})] : []),
+                  event.damage > 0
+                    ? say(scene, 'actions', ACTION_SAYS.takes, {
+                        actor,
+                        target,
+                        values: { val_1: event.damage },
+                      })
+                    : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
+                  ...(event.poisoned
+                    ? [
+                        say(
+                          scene,
+                          'actions',
+                          event.envenomed === 'again'
+                            ? ACTION_SAYS.envenomedAgain
+                            : event.envenomed
+                              ? ACTION_SAYS.envenomed
+                              : ACTION_SAYS.poisoned,
+                          { target },
+                        ),
+                      ]
+                    : []),
+                ]),
       )
       if (game !== undefined) return game
       const ours = [`${who} attacks!`]
-      if (event.dodged) ours.push(`${whom} dodges out of the way!`)
+      if (event.missed) ours.push(`Miss! ${whom} takes no damage.`)
+      else if (event.dodged) ours.push(`${whom} dodges out of the way!`)
       else if (event.blocked) ours.push(`${whom} blocks the blow with a shield!`)
       else {
         if (event.critical) ours.push('A critical hit!')
@@ -1153,6 +1217,11 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         : []
       const passes = event.hits.flatMap((hit) => {
         const target = scene.names[hit.target]
+        if (hit.missed) {
+          return [
+            say(scene, 'actions', missSays(told, party(state, hit.target)), { actor, target }),
+          ]
+        }
         if (hit.dodged) return [say(scene, 'actions', ACTION_SAYS.dodges, { actor, target })]
         if (hit.blocked) return [say(scene, 'actions', ACTION_SAYS.shield, { actor, target })]
         return [
@@ -2032,6 +2101,7 @@ export function blowOf(action: Castable): Blow | undefined {
     falloff: r.fallsOff ?? false,
     evadable: r.evadable,
     blockable: r.blockable ?? false,
+    ...(r.spoiltBySight ? { spoiltBySight: true } : {}),
     defendable: r.defendable ?? false,
     tensed: r.tensed ?? false,
     combos: r.combos ?? false,
@@ -2076,6 +2146,10 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   // Right as Rain (`021e01b8`) and Focus Pocus (`021e268c`): a status, what
   // it does at the round's end.
   [48, 'rain'],
+  // Vanish (`021e093c`): halved in a monster's weighted pick.
+  [54, 'vanish'],
+  // Flower Power, Scandal Eyes (`021dd534`): dazzle, of the record's sort.
+  [19, 'dazzle'],
   [78, 'focus'],
   // The coups (`docs/readings/T18-handlers.md` §10): Spelly Breath
   // (`021ddf5c`), 0 Zone (`021e1580`), Itemised Kill (`021e16a4`), Rough 'n'
@@ -2125,26 +2199,28 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     : kind === 'restore'
       ? // Choir of Angels: 0.4 of the most HP, rounded half up, at least 75 (`0x021e1418`–`0x021e1440`).
         { kind, chance: 100, share: 0.4, least: 75 }
-      : kind === 'stun'
-        ? // The lost turn's kind is the record's `+0x32`; the two coups
-          // (`0x1fc`, `0x20f`) land at the maximum of tension (`func_02088418`).
-          {
-            kind,
-            chance: 100,
-            status: r.riderLevels ?? 0,
-            ...(action.action === 0x1fc || action.action === 0x20f ? { coup: true } : {}),
-          }
-        : kind === 'revive'
-          ? {
+      : kind === 'dazzle'
+        ? { kind, chance: 100, sort: r.levels }
+        : kind === 'stun'
+          ? // The lost turn's kind is the record's `+0x32`; the two coups
+            // (`0x1fc`, `0x20f`) land at the maximum of tension (`func_02088418`).
+            {
               kind,
               chance: 100,
-              share: ZING.has(action.action)
-                ? (r.scaleRange ?? { lo: 0, hi: 0 })
-                : action.action === KAZING
-                  ? 0.5
-                  : 1,
+              status: r.riderLevels ?? 0,
+              ...(action.action === 0x1fc || action.action === 0x20f ? { coup: true } : {}),
             }
-          : ({ kind, chance: 100 } as Change)
+          : kind === 'revive'
+            ? {
+                kind,
+                chance: 100,
+                share: ZING.has(action.action)
+                  ? (r.scaleRange ?? { lo: 0, hi: 0 })
+                  : action.action === KAZING
+                    ? 0.5
+                    : 1,
+              }
+            : ({ kind, chance: 100 } as Change)
   const range = r.accuracyRange
   return {
     action: action.action,
@@ -2156,6 +2232,7 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     ...(r.spell ? { magic: true } : {}),
     ...(r.landingElement ? { element: r.landingElement } : {}),
     ...(r.evadable ? { evadable: true } : {}),
+    ...(r.spoiltBySight ? { spoiltBySight: true } : {}),
     ...(r.haywire ? { haywire: true, criticalPercent: r.criticalPercent ?? 100 } : {}),
     ...(r.accuracyMode === 1 && range
       ? {

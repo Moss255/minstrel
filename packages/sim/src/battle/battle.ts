@@ -398,7 +398,11 @@ export const LEVEL_STATS: readonly LevelStat[] = [
  * are left out.
  */
 const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] = [
+  // Dazzle's block (`+0x82`, `0x02158764`), after Knight Watch's and before Fizzle's.
+  'dazzled',
   'fizzled',
+  // Vanish's block (`+0x85`, `0x0215892c`), after Fizzle's and before attack's.
+  'vanished',
   'attack',
   'defence',
   'agility',
@@ -454,6 +458,18 @@ export type Change =
    * does is at the round's end — see `States.rain`, `States.focus`.
    */
   | { readonly kind: RoundCounted; readonly chance: number }
+  /**
+   * **Vanish** (kind 54, `func_ov024_021e093c`): landed, on one who may take
+   * it, `+0x14` bit 27 with its count of 5 — see `States.vanished`.
+   */
+  | { readonly kind: 'vanish'; readonly chance: number }
+  /**
+   * **Flower Power, Scandal Eyes** (kind 19, `func_ov024_021dd534`): landed,
+   * on one who may take it, dazzled of its `sort` — the record's `+0x30` —
+   * with its count of 4; landed or not, one already of that sort is told so
+   * (`func_ov024_021e9198`). See `States.dazzled`.
+   */
+  | { readonly kind: 'dazzle'; readonly chance: number; readonly sort: number }
   /**
    * **Rough 'n' Tumble**, the Minstrel's coup (kind 70,
    * `func_ov024_021e1824`): landed, `+0x18` bit 10 with a count of 5
@@ -537,6 +553,8 @@ export interface Blow {
   readonly falloff: boolean
   readonly evadable: boolean
   readonly blockable: boolean
+  /** Whether a dazzled striker may miss it, `+0x10` bit 3 — see `States.dazzled`. */
+  readonly spoiltBySight?: boolean
   readonly defendable: boolean
   readonly tensed: boolean
   readonly combos: boolean
@@ -565,6 +583,8 @@ export interface Changing {
   readonly element?: number
   /** Whether it can be dodged — the action's own flag; Sweet Breath's is set, Kasap's is not. */
   readonly evadable?: boolean
+  /** Whether a dazzled caster may miss it, `+0x10` bit 3 — see `States.dazzled`. */
+  readonly spoiltBySight?: boolean
   /**
    * Whether one of the party's cast of it can go haywire — its record's
    * critical multiplier is not nothing; 50 on Sap, Snooze and their like. A
@@ -782,6 +802,8 @@ export type BattleEvent =
       readonly critical: boolean
       readonly dodged: boolean
       readonly blocked: boolean
+      /** Missed by a dazzled striker — see `States.dazzled`. Nothing dealt, no damage drawn. */
+      readonly missed?: boolean
       /** A poison attack's poison landed. */
       readonly poisoned?: boolean
       /** …and it was envenomation — again, where they already were. */
@@ -861,7 +883,15 @@ export type BattleEvent =
   | {
       readonly kind: 'wornOff'
       readonly actor: number
-      readonly stat: LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched' | RoundCounted
+      readonly stat:
+        | LevelStat
+        | 'fizzled'
+        | 'dazzled'
+        | 'vanished'
+        | 'zeroZone'
+        | 'tumble'
+        | 'watched'
+        | RoundCounted
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -894,6 +924,8 @@ export type BattleEvent =
         readonly critical: boolean
         readonly dodged: boolean
         readonly blocked: boolean
+        /** Missed by a dazzled striker. */
+        readonly missed?: boolean
         /** What its rider came to on this pass, where it came to something. */
         readonly rode?: ChangeHit
       }[]
@@ -1727,9 +1759,11 @@ export function playRound(
    * each weighs 2 in the Front Line and 1 in the Back Line (see
    * `Fighter.backLine`), and — where its record says it remembers — the last
    * to strike it 2 more and the one before 1 more; a draw below the total,
-   * and the first whose weight is not below what is left. **Ours**: the
-   * weight's halving under a status not identified (`0x8000000`), and the
-   * fixed target of an enraged monster (`+0x18` bit `0x1000`), not modelled.
+   * and the first whose weight is not below what is left — one **vanished**
+   * weighing half, halved after the total is made (`0x021550ac`–
+   * `0x021550c0`), so the draw may pass them all and fall to the even draw
+   * after. **Ours**: the fixed target of an enraged monster (`+0x18` bit
+   * `0x1000`), not modelled.
    */
   const weighted = (actor: number, list: readonly number[]): number | undefined => {
     if (list.length === 0) return undefined
@@ -1739,16 +1773,26 @@ export function playRound(
     const watcher = watch ? fighters[watch.by] : undefined
     if (watch && watcher && alive(watcher)) return watch.by
     const by = me.remembers ? (me.aimedBy ?? []) : []
-    const weights = list.map(
+    const full = list.map(
       (i) => (fighters[i]?.backLine ? 1 : 2) + (by[0] === i ? 2 : 0) + (by[1] === i ? 1 : 0),
     )
-    let left = rng.below(weights.reduce((a, b) => a + b, 0)) + 1
+    const weights = full.map((w, k) =>
+      (fighters[list[k] as number]?.states.vanished?.level ?? 0) !== 0 ? w >> 1 : w,
+    )
+    let left = rng.below(full.reduce((a, b) => a + b, 0)) + 1
     for (const [k, w] of weights.entries()) {
       if (w >= left) return list[k]
       left -= w
     }
     return list[rng.below(list.length)]
   }
+  /**
+   * **A dazzled striker's die** (`func_ov000_02156648`, `0x02156a90`–
+   * `0x02156ac8`): last in the accuracy roll, for an action whose sight can
+   * be spoilt, a die of eight — under 5, missed. No draw for anyone else.
+   */
+  const blinded = (me: FighterState, spoilt: boolean | undefined): boolean =>
+    spoilt === true && (me.states.dazzled?.level ?? 0) !== 0 && rng.below(8) < 5
   /** One of the party aimed a pass at a monster: its memory of who (`0x021ed0d4`). */
   const noteAim = (actor: number, target: number) => {
     const me = fighters[actor]
@@ -2667,7 +2711,11 @@ export function playRound(
         const accuracy = Math.trunc(
           Math.fround(Math.fround(Math.fround(chance) * resistance) + Math.fround(0.5)),
         )
-        const landed = (critical && resistance > 0) || draw < accuracy
+        // Then a dazzled caster's die, for one gone haywire on one not immune
+        // too late to matter, so not thrown (`0x02156a34`–`0x02156a3c`).
+        const sure = critical && resistance > 0
+        const missed = !sure && blinded(me, changing.spoiltBySight)
+        const landed = sure || (!missed && draw < accuracy)
         // **Landed, the physical formula's draws** — its record's range is 0
         // (`0x021ec4e4`) — and the coin when it comes to nothing.
         if (landed && physicalDamage(rng, attackOf(me), defenceOf(them)) <= 0) rng.below(2)
@@ -2739,6 +2787,20 @@ export function playRound(
           case 'focus':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { [change.kind]: { level: 1, turns: ROUND_COUNTS[change.kind] } })
+            return { target, result: 'given' }
+          case 'dazzle': {
+            // Flower Power, Scandal Eyes (`0x021dd56c`–`0x021dd670`): one
+            // already of its sort told so, landed or not.
+            const again = (was.dazzled?.level ?? 0) === change.sort
+            if (!landed || !alive(them)) {
+              return { target, result: 'resisted', ...(again ? { again: true } : {}) }
+            }
+            setStates(target, { dazzled: { level: change.sort, turns: LEVEL_COUNTS.dazzled } })
+            return { target, result: 'given', ...(again ? { again: true } : {}) }
+          }
+          case 'vanish':
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            setStates(target, { vanished: { level: 1, turns: LEVEL_COUNTS.vanished } })
             return { target, result: 'given' }
           case 'zeroZone':
           case 'tumble': {
@@ -2917,6 +2979,7 @@ export function playRound(
         critical: boolean
         dodged: boolean
         blocked: boolean
+        missed?: boolean
         rode?: ChangeHit
       }[] = []
       /** Who its riders send to sleep or fell, once its damage is dealt. */
@@ -2957,8 +3020,10 @@ export function playRound(
           dodged = false
           blocked = false
         }
-        // The accuracy, at a hundred, its draw spent.
+        // The accuracy, at a hundred, its draw spent; then a dazzled
+        // striker's die. Propeller Blade's way back is sure, and throws none.
         if (!returning) rng.below(100)
+        const missed = !returning && blinded(me, blow.spoiltBySight)
         chain = chainStep(chain, {
           combos: blow.combos,
           side: me.side,
@@ -2966,6 +3031,20 @@ export function playRound(
           target,
           turn,
         })
+        // Missed: no damage worked out (`0x021ec4e8`), the chain broken.
+        if (missed) {
+          chain = brokenChain(chain)
+          hits.push({
+            target,
+            damage: 0,
+            critical: false,
+            dodged: false,
+            blocked: false,
+            missed: true,
+          })
+          coupAtPass(target, 0, them.hp - (dealtTo.get(target) ?? 0))
+          continue
+        }
         // The base, its draws spent whatever the handler does with it, then the handler.
         const base = physicalDamage(rng, attackOf(me), defenceOf(them))
         const out = handled(
@@ -3140,13 +3219,15 @@ export function playRound(
       canAct(them) && !dodged && Math.fround(rng.below(100)) < Math.fround(blockOf(them))
     // 4. The accuracy: a draw below 100 made before anything is compared. The
     //    plain attack's accuracy stands at a hundred, so it lands every time —
-    //    and spends this. (Sight spoilt, which would miss it five times in
-    //    eight, is not modelled.)
+    //    and spends this — then, for a dazzled striker, the die of eight that
+    //    misses it on five faces (the plain Attack's sight can be spoilt).
     rng.below(100)
+    const missed = blinded(me, true)
     // 5. The damage, worked out **even for a blow that was dodged or blocked**:
     //    the game calls `GetAttackBaseDamage` whenever the blow lands, and the
-    //    dodge and the block ride along as flags.
-    let damage = physicalDamage(rng, attackOf(me), defenceOf(them))
+    //    dodge and the block ride along as flags — but not for one missed
+    //    (`0x021ec4e4`–`0x021ec4e8`).
+    let damage = missed ? 0 : physicalDamage(rng, attackOf(me), defenceOf(them))
     // The rest is the game's `func_ov024_021e6a90`, in its floats — `dealt`:
     // the critical (the greatest of the damage and a fifth, the attack power
     // times 0.95 to 1.05, and the damage itself), **times the target's
@@ -3161,20 +3242,22 @@ export function playRound(
     // nothing still deals 0 or 1; and the code never asks whose blow it is,
     // so a monster's guard halves the party's blow as well.
     const tension = tensionOf(me)
-    damage = dealt(rng, damage, {
-      critical,
-      attack: attackOf(me),
-      resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
-      dodged,
-      blocked,
-      ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),
-      combo: chain.count,
-      // The plain Attack carries tension (`+0x10` bit `0x2000`), and is of kind 1.
-      ...(tension ? { tension } : {}),
-      ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
-      // The plain Attack carries `+0x10` bit 24 and is aimed at the monsters.
-      ...(them.metal && them.side === 'foes' ? { metal: true } : {}),
-    })
+    damage = missed
+      ? 0
+      : dealt(rng, damage, {
+          critical,
+          attack: attackOf(me),
+          resistance: resistanceTo(them.resist, PLAIN_ATTACK_ELEMENT),
+          dodged,
+          blocked,
+          ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),
+          combo: chain.count,
+          // The plain Attack carries tension (`+0x10` bit `0x2000`), and is of kind 1.
+          ...(tension ? { tension } : {}),
+          ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
+          // The plain Attack carries `+0x10` bit 24 and is aimed at the monsters.
+          ...(them.metal && them.side === 'foes' ? { metal: true } : {}),
+        })
     // The count the blow was multiplied by, for its showing — 0 for none.
     const combo = !dodged && !blocked && damage >= 1 ? chain.count : 0
     // A dodge, a block (`0x021ec828`) or a blow of less than one (`0x021e7b20`) breaks it.
@@ -3208,6 +3291,7 @@ export function playRound(
       critical: critical && !dodged && !blocked,
       dodged,
       blocked,
+      ...(missed ? { missed: true } : {}),
       ...(poisoned ? { poisoned: true } : {}),
       ...(poisoned && command.envenoms
         ? { envenomed: again ? ('again' as const) : ('newly' as const) }

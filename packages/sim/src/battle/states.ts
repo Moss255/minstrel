@@ -92,6 +92,28 @@ export interface States {
    */
   readonly fizzled?: Level
   /**
+   * **Vanished** — status `+0x14` bit 27, with a count of 5 at `+0x62`
+   * (Vanish, kind 54, `func_ov024_021e093c`; `func_02088994`): a monster's
+   * weighted pick halves its holder's weight — after the total is made, so
+   * the draw can fall past every weight and the pick go to the even draw
+   * after it (`func_ov000_02154f30`, `0x021550ac`–`0x021550c0`). Runs down by
+   * the second table, its line `0x1c9` (`func_ov000_0215858c`,
+   * `0x0215892c`–`0x021589bc`).
+   */
+  readonly vanished?: Level | undefined
+  /**
+   * **Dazzled** — status `+0x14` bit 6, with a count of 4 at `+0x5f`, and
+   * its sort at `+0x22` bits 6–8 (`func_02088854`; kind 19,
+   * `func_ov024_021dd534`, Flower Power and Scandal Eyes): kept as its
+   * `level`, the record's `+0x30` — 1 hallucinating, 2 dazzled, 3 sand, 4
+   * ink, by the lines it picks (`func_ov024_021e9198`). An action its holder
+   * takes that sight spoils (`+0x10` bit 3) throws a die of eight after its
+   * accuracy, and misses on five faces (`func_ov000_02156648`,
+   * `0x02156a90`–`0x02156ac8`). Runs down by the second table, its line
+   * `0x1c7` (`func_ov000_0215858c`, `0x02158764`–`0x021587f4`).
+   */
+  readonly dazzled?: Level | undefined
+  /**
    * **Paralysed** — status `+0x14` bit 3, with a count of 3 at `+0x5c`
    * (`func_0208826c`, rider 11): its holder cannot act
    * (`func_ov000_02156038`). The count goes a pass less on each of their
@@ -166,7 +188,7 @@ export const NO_STATES: States = {
  * defence 6 at `+0x6f` (`func_020878b4`, `0x02087900`), agility 6 at `+0x70`,
  * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
  * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`); Fizzle 6 at
- * `+0x60` (`func_020888a4`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
+ * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
  * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
  * (`func_0208826c`). Every setter stores its second count 0 beside it.
  */
@@ -179,6 +201,8 @@ export const LEVEL_COUNTS = {
   spells: 5,
   breaths: 5,
   fizzled: 6,
+  dazzled: 4,
+  vanished: 5,
   zeroZone: 5,
   tumble: 5,
   paralysed: 3,
@@ -214,6 +238,8 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   spells: { table: WEAR_TABLE_SLOW, start: 4 },
   breaths: { table: WEAR_TABLE, start: 4 },
   fizzled: { table: WEAR_TABLE, start: 4 },
+  dazzled: { table: WEAR_TABLE_SLOW, start: 4 },
+  vanished: { table: WEAR_TABLE_SLOW, start: 4 },
   zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.

@@ -523,6 +523,8 @@ export interface ItemEffect {
     /** Its kind (`+0x18` bits 5–11): 1 a blow's, 15 Psyche Up's. */
     readonly kind: number
     readonly blockable: boolean
+    /** Whether a dazzled attacker may miss it — see `Action.spoiltBySight`. */
+    readonly spoiltBySight: boolean
     /** Its damage handler, hit code, step after, and falloff — see `Action.damageHandler`, `hitCode`, `afterStep`, `fallsOff`. */
     readonly handler: number
     readonly hitCode: number
@@ -1948,6 +1950,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           tensed: action.tensed,
           kind: action.kind,
           blockable: action.blockable,
+          spoiltBySight: action.spoiltBySight,
           handler: action.damageHandler,
           hitCode: action.hitCode,
           afterStep: action.afterStep,

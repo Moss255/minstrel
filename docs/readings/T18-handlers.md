@@ -49,7 +49,6 @@ empty):
 | 16 | `func_ov024_021dced0` | Antimagic |
 | 17 | `func_ov024_021dd028` | Whack, Thwack, Kathwack |
 | 18 | `func_ov024_021dd278` | Zing, Zing Stick |
-| 19 | `func_ov024_021dd534` | Flower Power, Scandal Eyes |
 | 20 | `func_ov024_021dd6f0` | Tingle |
 | 21 | `func_ov024_021dd828` | Fuddle |
 | 22 | `func_ov024_021dd968` | Spooky Aura, Wizard Ward |
@@ -75,7 +74,6 @@ empty):
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
 | 52 | `func_ov024_021e05fc` | Mercy |
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
-| 54 | `func_ov024_021e093c` | Vanish |
 | 55 | `func_ov024_021e0a50` | Mist Me |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
@@ -253,14 +251,13 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (39 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48 and 78), by the kind whose handler is unread:
+**Still struck as the Attack** (36 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54 and 19), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
 | 0 | `func_ov024_021da670` | Counter Wait, Defending Champion, Back Atcha, Whipping Boy, Selflessness, Forbearance |
 | 13 | `func_ov024_021dc540` | M-Pathy |
 | 14 | `func_ov024_021dc700` | H-Pathy |
-| 19 | `func_ov024_021dd534` | Flower Power, Scandal Eyes |
 | 21 | `func_ov024_021dd828` | Fuddle |
 | 25 | `func_ov024_021dde08` | Tap Dance |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
@@ -279,7 +276,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
 | 52 | `func_ov024_021e05fc` | Mercy |
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
-| 54 | `func_ov024_021e093c` | Vanish |
 | 55 | `func_ov024_021e0a50` | Mist Me |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
@@ -797,3 +793,54 @@ its count (`func_02088bb4`, `02088b64`), the done line; else the fail line.
 The round's end as above, its head draw made. **Ours**: the two traits; a
 monster's Focus Pocus; the HP and MP got back told in our words — actions
 930–933 have no line of their own, and what the game shows is not read.
+
+### Vanish (kind 54) and dazzle (kind 19) — what each does, built
+
+**Vanish** (`func_ov024_021e093c`): the simple shape — landed (its flag at
+`[sp+0x30]`, the frame being larger), on one who may take it
+(`func_02088980`: `+0x14` bit 0 clear), `+0x14` bit 27 with a count of 5 at
+`+0x62` (`func_02088994`), a picture flag `0x2c` (`func_ov000_02159eac`), the
+done line; else the fail line. **What it does** — the one reader in the
+battle's rules, `func_ov000_0215516c`, from the monsters' weighted pick
+(`func_ov000_02154f30`, `0x021550ac`–`0x021550c0`): each one's weight is added
+to the total **and then** halved for one vanished (`asr #1`), so the draw
+below the old total can pass every weight and fall to the even draw after it
+(`0x0215512c`). Two of the party at 2, one vanished: 3 in 8 for them. Its
+other readers draw it (`func_020c5354`) and gather the statuses for the
+picture (`func_ov024_021eda78`), and the tactics' scoring (`021fc754`). It
+runs down after its holder's pass: second count `+0x85`, start 4
+(`data_ov000_02182efc`), the second table, line `0x1c9` "<ACTOR>'s Vanish
+wears off" (`0x0215892c`–`0x021589bc`).
+
+**Dazzle** (`func_ov024_021dd534`): may take it (`func_02088840`, bit 0
+clear) and landed — the line for one already dazzled **of the record's sort**
+(`+0x30`; `+0x22` bits 6–8 hold it), else the done line; dazzled with a count
+of 4 at `+0x5f` (`func_02088854`), the sort stored. Not landed: the other
+line for one already of that sort, else the fail line. The lines
+(`func_ov024_021e9198`), by sort — 1 hallucinating (`0x26` landed, `0x27`
+not), 2 dazzled (`0x140`, `0x141`), 3 sand (`0x126`, `0x137`), 4 ink
+(`0x13d`, `0x13f`). Flower Power's sort is 1, Scandal Eyes' 2. **What it
+does** — the last step of the accuracy roll (`func_ov000_02156648`,
+`0x02156a90`–`0x02156ac8`): for an action with `+0x10` bit 3 whose striker
+is dazzled (`func_ov000_02156b20`), `R(8)`, under 5 a miss. Thrown after the
+accuracy's own draws, and not where the roll has already returned — a sure
+action, or one gone haywire on one not immune (`0x02156a34`). A miss deals
+nothing and works no damage out (`0x021ec4e4`–`0x021ec4e8`): the action's
+handler is handed it, and the plain Attack's fail lines say "Miss!" (4 at one
+of the party, 7 at a monster). Runs down: second count `+0x82`, start 4, the
+second table, line `0x1c7` "<ACTOR> is no longer dazzled" (`0x02158764`–
+`0x021587f4`). `+0x10` bit 3 (`Action.spoiltBySight`, INFERRED dazzle until
+now) is on 110 of 681 actions, every one a blow that can be dodged.
+
+**Ours**: a blow other than the Attack missed says its record's fail line,
+INFERRED from the Attack's; the picture flags not drawn.
+
+**Order of the run-down after a pass** (`func_ov000_0215858c`), read whole
+for placing these: Knight Watch, dazzle (`+0x82`), Fizzle (`+0x83`), Bounce
+(`+0x84`, first table), Vanish (`+0x85`), Feel the Burn (`+0x86`, second,
+`0x1d7`), Rotstopper (`+0x87`, second, `0x1d8`), Reverse Cycle (`+0x89`,
+first, `0x1c4`), Alma Mater (`+0x8a`, first, `0x1cb`), `+0x8d`
+(`func_02088660`, second), … Holy Impregnable (`+0x8e`, first, `0x25d`),
+`+0x9e`, `+0x8f` (`0x1cc`), …, then attack's at `0x02159050`. The second
+counts' starts, by `data_ov000_02182efc` (pairs of offset from `+0x5c` and
+start): Rough 'n' Tumble 1, 0 Zone 1, and 4 for every other.

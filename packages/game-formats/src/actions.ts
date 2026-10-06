@@ -170,7 +170,9 @@ export interface Action {
    * roll (`func_ov000_02156648`) throws a die of eight for such an action when
    * the attacker is under that status, and it misses on five faces. On 110 of
    * 681, **every one a blow that can be dodged**: the plain Attack has it and
-   * Heal, Frizz and the medicinal herb do not. INFERRED: the status is dazzle.
+   * Heal, Frizz and the medicinal herb do not. The status is **dazzle**,
+   * `+0x14` bit 6 (`func_ov000_02156b20`, `0x02156aa8`), which Flower Power
+   * and Scandal Eyes set (kind 19, `func_02088854`) — read 7 October 2026.
    */
   readonly spoiltBySight: boolean
   /**

@@ -129,3 +129,97 @@ describe('Right as Rain and Focus Pocus — kinds 48 and 78, at the round’s en
     expect(state.fighters[0]?.states.rain).toBeUndefined()
   })
 })
+
+describe('Vanish — kind 54', () => {
+  it('sets its count of 5, and says its done line', () => {
+    const { state, events } = playRound(
+      startBattle([hero, foe]),
+      using(status(199, 'vanish')),
+      new BattleRng(5n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 0, result: 'given' }])
+    // A pass less after its holder's own action (`021599f4`).
+    expect(state.fighters[0]?.states.vanished).toEqual({ level: 1, turns: 4 })
+  })
+
+  it('halves its holder in a monster’s weighted pick, after the total is made', () => {
+    // Two of the party at 2 each: the vanished one weighs 1 of a total still
+    // 4, so a draw of 1 takes them, 2 and 3 the other, and 4 passes both and
+    // falls to the even draw — 3 in 8 for the vanished, where it was 4 in 8.
+    const ally: Fighter = { ...hero, name: 'Ally', agility: 254 }
+    const biter: Fighter = { ...foe, attack: 1, agility: 0 }
+    const defend = new Map<number, Command>([
+      [0, { kind: 'defend' }],
+      [1, { kind: 'defend' }],
+    ])
+    const picks = (vanished: boolean) => {
+      let hero = 0
+      for (let seed = 0; seed < 800; seed++) {
+        const start = startBattle([hero0, ally, biter])
+        const state = vanished
+          ? {
+              ...start,
+              fighters: start.fighters.map((f, i) =>
+                i === 0 ? { ...f, states: { ...f.states, vanished: { level: 1, turns: 5 } } } : f,
+              ),
+            }
+          : start
+        const { events } = playRound(state, defend, new BattleRng(BigInt(seed)))
+        const bite = events.find((e) => e.kind === 'attack' && e.actor === 2)
+        if (bite?.kind === 'attack' && bite.target === 0) hero++
+      }
+      return hero / 800
+    }
+    const hero0 = hero
+    expect(picks(false)).toBeCloseTo(0.5, 1)
+    expect(Math.abs(picks(true) - 0.375)).toBeLessThan(0.05)
+  })
+})
+
+describe('dazzle — kind 19, Flower Power and Scandal Eyes', () => {
+  const dazzle = (sort: number) =>
+    status(103, 'dazzle', { side: 'other', change: { kind: 'dazzle', chance: 100, sort } })
+  const dazzled = (sort: number) => ({
+    ...startBattle([hero, foe]),
+    fighters: startBattle([hero, foe]).fighters.map((f, i) =>
+      i === 1 ? { ...f, states: { ...f.states, dazzled: { level: sort, turns: 4 } } } : f,
+    ),
+  })
+
+  it('dazzles of its sort with a count of 4, and tells one already of that sort so', () => {
+    const once = playRound(startBattle([hero, foe]), using(dazzle(2), 1), new BattleRng(5n))
+    expect(changeOf(once.events).hits).toEqual([{ target: 1, result: 'given' }])
+    const again = playRound(dazzled(2), using(dazzle(2), 1), new BattleRng(5n))
+    expect(changeOf(again.events).hits).toEqual([{ target: 1, result: 'given', again: true }])
+    // Of another sort, it is a fresh dazzle, and takes the new sort.
+    const other = playRound(dazzled(1), using(dazzle(2), 1), new BattleRng(5n))
+    expect(changeOf(other.events).hits).toEqual([{ target: 1, result: 'given' }])
+  })
+
+  it('throws a die of eight after the accuracy of a dazzled striker’s Attack, missing on five', () => {
+    // The monster, dazzled, attacks the Hero: a miss deals nothing and draws no damage.
+    let missed = 0
+    let draws = 0
+    for (let seed = 0; seed < 400; seed++) {
+      const rng = new BattleRng(BigInt(seed))
+      const { events } = playRound(dazzled(2), new Map([[0, { kind: 'defend' }]]), rng)
+      const bite = events.find((e) => e.kind === 'attack' && e.actor === 1)
+      if (bite?.kind !== 'attack') continue
+      draws++
+      if (bite.missed) {
+        missed++
+        expect(bite.damage).toBe(0)
+      }
+    }
+    expect(Math.abs(missed / draws - 5 / 8)).toBeLessThan(0.06)
+  })
+
+  it('throws no die for one not dazzled', () => {
+    const plain = playRound(
+      startBattle([hero, foe]),
+      new Map([[0, { kind: 'defend' }]]),
+      new BattleRng(9n),
+    )
+    expect(plain.events.some((e) => e.kind === 'attack' && e.missed)).toBe(false)
+  })
+})
