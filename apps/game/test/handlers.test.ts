@@ -215,6 +215,13 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(171))?.rider).toEqual({ slot: 19, levels: 0 })
     })
 
+    it('plays Soothe Sayer as its rider 9 and the watch ended', () => {
+      expect(partyChangeOf(action(198))).toMatchObject({
+        change: { kind: 'soothe' },
+        side: 'other',
+      })
+    })
+
     it('plays Fuddle as confusion', () => {
       expect(partyChangeOf(action(51))).toMatchObject({
         change: { kind: 'confuse' },
@@ -223,7 +230,7 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 14 of them as the Attack now, where 76 were', () => {
+    it('strikes 13 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -240,7 +247,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(14)
+      expect(attack).toBe(13)
     })
   },
 )

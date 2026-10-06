@@ -426,6 +426,9 @@ function changeSays(
     // the resolver says one for all after — see the page's `dispelled`.
     case 'dispelled':
       return 0
+    // Soothe Sayer's: its lines are `sootheSays`'s.
+    case 'soothed':
+      return 0
     // H-Pathy's and M-Pathy's: the record's done line (`0x021dc790`,
     // `0x021dc5d0`) — 22, "…'s wounds are healed"; 106, "…'s MP are replenished".
     case 'shared':
@@ -490,6 +493,20 @@ const DAZZLED_ALREADY: Readonly<Record<number, number>> = {
  */
 function boostSays(hit: ChangeHit): number[] {
   return (hit.boosts ?? []).map((b) => levelSays(b.stat, true, b.level))
+}
+
+/**
+ * **Soothe Sayer's lines** — its rider 9's by the tension it came to
+ * (`func_ov024_021e373c`, `0x021e37b0`–`0x021e37e4`: 0 `0x17f`, 1 `0x180`,
+ * 2 `0x181`, 3 `0x259`), then "…'s rage subsides" (`0x164`) where a watch
+ * ended (`0x021e0868`).
+ */
+const SOOTHED_TENSION = [0x17f, 0x180, 0x181, 0x259] as const
+function sootheSays(hit: ChangeHit): number[] {
+  return [
+    ...(hit.tension === undefined ? [] : [SOOTHED_TENSION[hit.tension] ?? 0x17f]),
+    ...(hit.calmed ? [0x164] : []),
+  ]
 }
 
 /** A level's name, in ours. */
@@ -592,6 +609,11 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `All magical effects cast on ${whom} are removed.`
     case 'eradicated':
       return `All unfortunate effects affecting ${whom} are eradicated.`
+    case 'soothed':
+      return [
+        ...(hit.tension === undefined ? [] : [`${whom}'s tension decreases.`]),
+        ...(hit.calmed ? [`${whom}'s rage subsides.`] : []),
+      ].join(' ')
     case 'shared':
       return hit.hp !== undefined
         ? `${whom} recovers ${hit.hp} HP.`
@@ -1671,38 +1693,42 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
             ? boostSays(hit).map((line) =>
                 say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
               )
-            : hit.result === 'stunned'
-              ? [
-                  ...(changeSays(
-                    event.change,
-                    hit,
-                    told,
-                    state.fighters[hit.target]?.side === 'party',
-                  )
-                    ? [sayHit(hit)]
-                    : []),
-                  // Their tension taken away with it (`func_ov024_021e8cfc`).
-                  ...(hit.calmed
-                    ? [
-                        say(scene, 'actions', ACTION_SAYS.tensionNormal, {
-                          target: scene.names[hit.target],
-                        }),
-                      ]
-                    : []),
-                ]
-              : hit.result === 'experienced'
-                ? // Its line names the multiplier as `%.1f`, filled from the
-                  // result's `+0x18` (`0x021eba98`).
-                  [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
-                : // A line of 0 is none: magical mending's fall says nothing.
-                  changeSays(
+            : hit.result === 'soothed'
+              ? sootheSays(hit).map((line) =>
+                  say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
+                )
+              : hit.result === 'stunned'
+                ? [
+                    ...(changeSays(
                       event.change,
                       hit,
                       told,
                       state.fighters[hit.target]?.side === 'party',
-                    ) === 0
-                  ? []
-                  : [sayHit(hit)]),
+                    )
+                      ? [sayHit(hit)]
+                      : []),
+                    // Their tension taken away with it (`func_ov024_021e8cfc`).
+                    ...(hit.calmed
+                      ? [
+                          say(scene, 'actions', ACTION_SAYS.tensionNormal, {
+                            target: scene.names[hit.target],
+                          }),
+                        ]
+                      : []),
+                  ]
+                : hit.result === 'experienced'
+                  ? // Its line names the multiplier as `%.1f`, filled from the
+                    // result's `+0x18` (`0x021eba98`).
+                    [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
+                  : // A line of 0 is none: magical mending's fall says nothing.
+                    changeSays(
+                        event.change,
+                        hit,
+                        told,
+                        state.fighters[hit.target]?.side === 'party',
+                      ) === 0
+                    ? []
+                    : [sayHit(hit)]),
       ])
       // Disruptive Wave's one line for all (`func_ov024_021e80e4`,
       // `0x021e8560`–`0x021e85d4`): `0xf1` for one, `0xf2` "… and co." for
@@ -2485,6 +2511,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [72, 'experience'],
   [73, 'watch'],
   [74, 'boost'],
+  // Soothe Sayer (`021e07b0`): a step of tension off by its rider 9, and a watch ended.
+  [53, 'soothe'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
 export const TENSION_BOOST = 511

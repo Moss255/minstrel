@@ -198,3 +198,42 @@ describe('a blow rousing its target', () => {
     expect(drawn(true)).toBe(drawn(false))
   })
 })
+
+describe('Soothe Sayer — kind 53 and its rider 9', () => {
+  const soothe = {
+    action: 198,
+    cost: 0,
+    change: { kind: 'soothe', chance: 100 },
+    reach: 'one',
+    side: 'other',
+  } as const
+  const play = (patch: Partial<States>) => {
+    const start = holding(startBattle([hero(), slime()]), 1, patch)
+    return playRound(
+      start,
+      new Map<number, Command>([[0, { kind: 'change', changing: soothe, target: 1 }]]),
+      new BattleRng(seedOf(2)),
+    )
+  }
+  const hitOf = (events: readonly BattleEvent[]) => {
+    const told = events.find((e) => e.kind === 'change')
+    return told?.kind === 'change' ? told.hits[0] : undefined
+  }
+
+  it('takes a step of tension off, and says the level it came to', () => {
+    // Asleep, so that it spends none of what is left on a blow of its own.
+    const { events, state } = play({ tension: 3, sleep: 0 })
+    expect(hitOf(events)).toMatchObject({ target: 1, result: 'soothed', tension: 2 })
+    expect(state.fighters[1]?.states.tension).toBe(2)
+  })
+
+  it('ends a watch — the rage subsides', () => {
+    const { events, state } = play({ watched: { by: 0, turns: 3 } })
+    expect(hitOf(events)).toEqual({ target: 1, result: 'soothed', calmed: true })
+    expect(state.fighters[1]?.states.watched).toBeUndefined()
+  })
+
+  it('says its fail line on one with neither', () => {
+    expect(hitOf(play({}).events)).toMatchObject({ target: 1, result: 'resisted' })
+  })
+})

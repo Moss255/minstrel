@@ -462,6 +462,13 @@ export type Change =
     }
   | { readonly kind: 'cure'; readonly chance: number }
   | { readonly kind: 'wake'; readonly chance: number }
+  /**
+   * **Soothe Sayer** (kind 53, `func_ov024_021e07b0`): no test of its
+   * landing; its rider 9 (`func_ov024_021e373c`) takes a step of tension
+   * off one who has any, and one watched (`+0x18` bit 12, Knight Watch's)
+   * is watched no more, "…'s rage subsides" (`0x164`). Neither, its fail line.
+   */
+  | { readonly kind: 'soothe'; readonly chance: number }
   | { readonly kind: 'kill'; readonly chance: number }
   /**
    * **Choir of Angels** (kind 67, `func_ov024_021e13e0`): a share of the most
@@ -795,6 +802,11 @@ export type ChangeResult =
   | 'eradicated'
   /** H-Pathy or M-Pathy: {@link ChangeHit.hp} or {@link ChangeHit.mp} given, the user's own spent. */
   | 'shared'
+  /**
+   * Soothe Sayer: a step of tension taken, to {@link ChangeHit.tension}, and
+   * — `calmed` — a watch ended; or, neither, `resisted`.
+   */
+  | 'soothed'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -822,8 +834,10 @@ export interface ChangeHit {
   readonly multiplier?: number
   /** The kind of lost turn coming, 2 to 8 — see `States.stunned`. */
   readonly status?: number
-  /** Their tension taken away with it — "…'s tension returns to normal" (`0x25c`). */
+  /** Their tension taken away with it — "…'s tension returns to normal" (`0x25c`). Soothe Sayer's: a watch ended. */
   readonly calmed?: boolean
+  /** Soothe Sayer's: the tension a step lowered came to — its line by it (`func_ov024_021e373c`). */
+  readonly tension?: number
   /**
    * For a level left where it was (`already`): whether the change would have
    * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
@@ -3655,6 +3669,26 @@ export function playRound(
             return (
               stun(target, change.status, change.coup === true) ?? { target, result: 'resisted' }
             )
+          }
+          case 'soothe': {
+            // Soothe Sayer (`func_ov024_021e07b0`), no test of its landing.
+            // First its rider 9 (`021e373c`, called with a pass of 1): one
+            // with tension (`+0x14` bit 23 or 24) a step less
+            // (`func_02087704`), no draw. Then one watched is watched no
+            // more (`func_ov024_021e05e4`, `func_02088e64`; `0x021e0818`–
+            // `0x021e0870`). **Ours**: `func_020488cc`, called then for a
+            // monster, is not read.
+            const had = was.tension ?? 0
+            if (had > 0) setStates(target, { tension: had - 1 })
+            const watched = was.watched !== undefined
+            if (watched) setStates(target, { watched: undefined })
+            if (had === 0 && !watched) return { target, result: 'resisted' }
+            return {
+              target,
+              result: 'soothed',
+              ...(had > 0 ? { tension: had - 1 } : {}),
+              ...(watched ? { calmed: true } : {}),
+            }
           }
           case 'watch': {
             // Knight Watch (`0x021e1e14`–`0x021e1e78`): no test of its
