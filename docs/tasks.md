@@ -581,6 +581,17 @@ Crosscutter Throw's extra pass (by place on the stage, which the simulation
 does not keep), the 55 struck as the Attack by 38 kinds, riders 1, 5, 6,
 9–14, 19 and 21, and the eight coups.
 
+**Carried on again, 6 October 2026** (`b0ea6e6`, `1957a19`; the reading's
+§9): magical might and mending (Channel Anger, Caster Sugar, Care Prayer)
+and the resistances to spells and breaths (Wizard Ward, Spooky Aura,
+Insulate, Insulatle, Mind Over Matter) as levels, with what they do to an
+amount and to a spell or a breath; Wave of Relief's cure-all; Antimagic, and
+a fizzled caster's spell put out as 914; Tingle. The levels' wear-off lines
+are the game's, and how the game runs them down (`func_ov000_0215858c`) is
+read and not applied. **55 struck as the Attack before, 44 after.** Still
+left, by address in §7: 31 kinds (Bounce and Magic Mirror next — §7 has
+where the reflection is), the riders, the eight coups, Crosscutter Throw.
+
 `docs/still-open.md` §2, the rows "abilities" and "combo and tension", lists
 what still does not play as the game plays it:
 

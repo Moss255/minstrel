@@ -295,6 +295,19 @@ Most need a status the battle does not keep — a counter, a barrier, Bounce's
 mirror, dazzle, confusion, a stance (kind 0 is the six stances: Counter
 Wait, Defending Champion …).
 
+**Bounce and Magic Mirror (kind 31), read toward building** (6 October
+2026): the handler sets `+0x14` bit 9 with a count of 5 at `+0x61`
+(`func_020888f4`) on anyone not under `+0x14` bit 0; its done line is 168.
+The reflection is `func_ov024_021e9f68`, called per target by the resolver
+before the combo chain (`0x021ec0f4`): for an action with `+0x10` bit 10
+(74 on the cartridge — the spells, Squelch and Snooze among them) aimed at
+the other side (`+0x08` bits 8–9 at 1), at a target not its actor and under
+bit 9, the actor and the target are swapped (`0x021ea058`–`0x021ea068`) and
+a note of kind 1 is put on the result (`func_ov000_0215ff50`); the lines are
+169 and 170, "The wall of light deflects the spell" — which says which is
+not read. What 021e9f68 does past `0x021ea100` (the other redirections) is
+not read.
+
 **Played as a plain blow, its own code read and not built:** Crosscutter
 Throw — its extra pass's target is picked by place on the stage (§8).
 ~~Propeller Blade, Gold Rush, the six that scale by the table at
