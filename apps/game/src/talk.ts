@@ -196,11 +196,14 @@ const BARE_SERVICES = new Set<string>(['RENKIN', 'LUIDA', 'DAMA', 'RIKKA', 'RIKK
  * The two go to different calls — `0x209c830` for a jingle, `0x205eaa0` for an
  * effect, the latter shared with `<EXC>` and `<QES>` at ids 6 and 28.
  *
- * **What that id space is has not been read**, and it is not this host's:
- * `playEffect` takes an index into the effect archive's SSAR records, and the
- * cartridge has no record 14. So the cue is carried and nothing plays it —
- * see `docs/still-open.md`. Playing the archive's 14th effect because the
- * game asked for sound 14 would be an invented mapping that appeared to work.
+ * **What the ids index, read 4 October 2026**: a jingle's is `bgm.sdat`'s
+ * sequence number (`func_020bd454`, the INFO list indexed directly), and 50
+ * is `ME_001`, so `<ME_n>` sounds `ME_00n`; an effect's is an entry of the
+ * sequence archive mounted at `[se+0xb4]` — 100 on the field, `se_norm.sdat`
+ * (`func_0205ea20`) — so `<SE_n>` is that archive's entry 14. The earlier
+ * attempt took 14 for an archive, which there is none of; the archive is 100
+ * and 14 is the entry in it. A text's jingle is timed apart from a battle's —
+ * see `TEXT_JINGLE` in `music.ts`.
  *
  * `page` is the page it falls on, since that is when it should be heard.
  */

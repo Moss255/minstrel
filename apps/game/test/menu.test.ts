@@ -13,6 +13,7 @@ import {
   MENU_WORDS,
   type MenuContext,
   type MenuState,
+  menuCommands,
   moveCursor,
   openMenu,
   panelLines,
@@ -21,6 +22,22 @@ import {
 const at = (cursor: number) => ({ member: 0, cursor, panel: undefined, row: 0, picking: undefined })
 
 describe('the main menu', () => {
+  it('lists Allocate Skill Points only once flag 0x119c is set', () => {
+    const shut: MenuContext = {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      skillsListed: false,
+    }
+    expect(menuCommands(shut).map((c) => c.id)).not.toContain('skills')
+    expect(menuCommands({ ...shut, skillsListed: true }).map((c) => c.id)).toContain('skills')
+    // The cursor goes round the shorter list, and chooses from it.
+    const last = menuCommands(shut).length - 1
+    expect(moveCursor(openMenu(), -1, shut).cursor).toBe(last)
+    const tricks = menuCommands(shut).findIndex((c) => c.id === 'tricks')
+    expect(choose(at(tricks), shut).state?.panel).toBe('tricks')
+  })
+
   it('opens on the first command and chooses round and round', () => {
     const menu = openMenu()
     expect(MENU_COMMANDS[menu.cursor]?.id).toBe('talk')

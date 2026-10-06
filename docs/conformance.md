@@ -31,7 +31,7 @@ a float is in the simulation stays written down beside the proof it matches.
 | **The critical chance** | `CalculateCritRate` — `src/Combat/Main/CritRateCalculation.cpp` | `criticalChance` | **settled, and it was an open question.** Two in a hundred, plus a hundredth of a point for each point of deftness **past 150**; an accessory's and a book's bonus added, a skill's multiplying, a move of several hits sharing it out. The reference's 200 in 10,000 is this at any deftness to 150; its 500s are a bonus, not a level |
 | **How the chance meets a draw** | `func_ov000_02156cc4`, the one caller: `NextRandomMax(10000) < (int)(100.0f × rate)` — the multiply a float's, the `int` a truncation | `below(10_000) < critical` | **the game's, exactly, at every deftness.** Past 150 that is one *under* `200 + (deftness − 150)` at 151 of the 850 values, because `0.01f` is not a hundredth and the game truncates: deftness 159 gives 208. Closed 20 September, see below |
 | **A monster's critical** | `func_020748f8` — `(1 / hits) × (0.0 × skill)` | never | **settled: a literal zero.** A monster never criticals through this roll whatever its skill field says. `still-open.md` had this as the reference's; it is the game's |
-| **The rate doubling** | `× 2.0f` when the character has trait `0x11d` and `func_ov000_02155a04` of them is under `0.25f` | not modelled | read, not understood: what the trait is and what the quarter is a quarter *of* are not established |
+| **The rate doubling** | `× 2.0f` when the character has trait `0x11d` and `func_ov000_02155a04` of them is under `0.25f` | `criticalChance(…, crisis)`, `inCrisis` | **read, 4 October 2026**: the trait is Critical in a Crisis, skill panel 285, and the quarter is current HP over maximum |
 | **A coin instead of the roll** | actions `0x48` and `0x70` take `NextRandomMax(2) == 0` in place of the critical roll, in `func_ov024_021eb5d0` | not modelled | read. INFERRED: the all-or-nothing blows, which land a critical half the time |
 | **A blow that comes to nothing** | the end of `func_ov024_021e6a90`, `0x021e7824`: damage not above nothing, not dodged, not blocked → `NextRandomMax(2)` | `below(2)` | **the game's, and it changed ours.** The code never asks whose blow it is: **the party's feeble blows deal 0 or 1 as a monster's do.** The reference had it for monsters only. Closed 20 September |
 | **Defending** | a **guard level** on the defender, the byte at `[combatant + 0x138] + 0x21`, which `func_ov024_021e57c0` sets to 1 and the round's end clears. `CalculateFinalDamage` multiplies by the four floats at `0x020e88c0` — `1.0 0.5 0.1 0.0` — at step 6 of its tail, where the action carries `+0x10` bit 4 | `dealt`, with `guard` | **the game's**: a half, on any defender, before the 0-or-1 coin — so a defended blow that comes to nothing still deals 0 or 1, and a guarding monster halves the party's blow too. 243 actions are defendable, the plain attack and Frizz among them, and a heal and a herb are not. Nothing sets levels 2 and 3 |
@@ -879,17 +879,19 @@ turn as action `0x385`, which also goes through the resolver.
 
 ## Still to read, in the order it is wanted
 
-- what the drop roll's four further passes scale their chance by —
-  `func_ov023_021f454c` at `0x021f4628` on, one pass a standing party member
-  above half its HP: the series' item-finding abilities, which the slice has
-  not;
+- ~~what the drop roll's four further passes scale their chance by~~ —
+  **read and built, 4 October 2026**: a member holding Autofilch (panel 164,
+  trait `0xa4`) who stood for half the battle's rounds, at one in
+  `N × 100 ÷ level` (`dropsWon`). "Above half its HP" was wrong: it is half
+  the rounds. `docs/readings/T10b-questions.md` §1;
 - what the four ways of choosing that do not draw by weights do, exactly — a
   round robin (3 and 7), a pair and a coin (5), two passes (6). What makes a
   slot unusable is read (above);
 - the targeting handlers not yet read, Sap's among them, and the party's own
   command-phase processing, `021f9030` and `021f8f20`;
-- what the trait `0x11d` is, and what `func_ov000_02155a04`'s quarter is a
-  quarter of, which together double a critical rate.
+- ~~what the trait `0x11d` is~~ — **read and built, 4 October 2026**:
+  Critical in a Crisis, panel 285; the quarter is a quarter of maximum HP
+  (`inCrisis`, `criticalChance`'s `crisis`).
 
 ## What opens a fight — 23 September 2026
 

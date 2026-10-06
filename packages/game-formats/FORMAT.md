@@ -863,6 +863,13 @@ per-category table's. The categories by their first records: `a` gloves, `b`
 body, `d` accessories, `h` helms, `l` footwear, `s` shields, `t` tools, `u`
 legwear, `w` weapons. `readItemTable` reads one.
 
+**`itemdt_<lang>.nat`'s `+0x10`** (read 4 October 2026, `func_020de234`):
+bits 0–9 the item's **model number for a man**, 10–19 **for a woman**, 999
+meaning the other's; bits 20–27 the model's **letter**, a character code —
+`h` on the hairs 9000–9013, `f` on the faces 9020–9033. So face 9024 is
+`p_f004` on a man and `p_f014` on a woman, and hair 9006 `p_h060` and
+`p_h180`. `ItemDef.model`, `modelName`.
+
 **A record begins four bytes before its id.** It was first read from the id,
 behind a 36-byte head, and then each record's last four bytes held the *next*
 item's actions: the medicinal herb's ended `(256, 256)`, strong medicine's
@@ -5038,6 +5045,20 @@ record asks 192, his line for it is said, and the talk record for 192 plays
 `6:199 11:80 16:0 119:21510` plays. Stornway's #11 asks 192 only once mark 4
 is set, which talking to #4 from its box sets.
 
+**Actions that set a game-wide flag of their own** (read 4 October 2026,
+`func_02061c04`; all through `func_0206df6c` on the bank at `+0x8c`;
+`bankBit` in `story.ts`):
+
+| action | case | sets | carried by |
+|---|---|---|---|
+| `223 : x` | 123, `0x02064038` | `0x799` := *x* ≠ 0 — Alltrades Abbey open | the two outcome records of `ev26510`, Tower of Trades map 9008, 6.5 |
+| `224 : x` | 124, `0x02064054` | `0x798` := *x* ≠ 0 — not established | `R01`–`R04` records from 4.1 |
+| `231 : x` | 131, `0x0206414c` | `0x796` := *x* ≠ 0 — revocation offered; unless `func_0202ae18`→`func_0202c540` holds (INFERRED a wireless guest); then once stamps a record with the clock, the Hero's `+0x134` and the play time (INFERRED "cleared") | the credits' record, `ev29300`, map 4403, 17.2 |
+| `160 : v` | 60, `0x02062fd8` | `0x113F + v` — advanced vocation *v* unlocked | six records, each beside a `127` quest cleared: quests 25, 27, 26, 124, 128, 28 give vocations 7–12 |
+| `202 : n` | 102, `0x02063a34` | `0x1198 + n` | the Krak Pot's first talk, `0x1198` |
+
+None takes a parameter; nothing on the cartridge clears `0x799` or `0x796`.
+
 # The mini-map — `/data/pack_lv5/minimap.gp2`
 
 The DS's top screen shows a map of where the party is. It is drawn from this
@@ -5481,8 +5502,8 @@ records each — and twenty-three name a vocation and a sex: せん (warrior), �
 | 0–74 | `unknown_items`: item ids, `0xFFFFFFFF` for none, in runs — weapons, then shields, legwear, footwear, gloves, armour, then headgear | every one an item's id; what the lists are for is not established |
 | 75 | `unknown_75` | 64, 66 and 55 on the vocations; 18 to 25 on the named four |
 | 76 | the name | a string, as above |
-| 77 | `unknown_77` | 9024 on all 23 vocations; 9023 or 9024 on the named |
-| 78 | a face, 9000 and its number — INFERRED | `f006` on every man's vocation record, `f005` on every woman's, and on all 41 presets here and in `presetdt` it lands on a face that exists |
+| 77 | **the face**, an item, 9020–9033 — INFERRED, by the order below | 9024 on all 23 vocations (`p_f004` a man, `p_f014` a woman); 9023 or 9024 on the named |
+| 78 | **the hair**, an item, 9000–9013 — INFERRED the same way | 9006 on the men (`p_h060`), 9005 on the women (`p_h150`) |
 | 79 | armour worn | 13xxx |
 | 80 | legwear worn | 16xxx; 8001 on the sage man, which names nothing |
 | 81 | gloves worn, or the arms when there are none | 15xxx or 14xxx |
@@ -5514,12 +5535,15 @@ boots 17140, her headkerchief 12432.
 |---|---|
 | 0 | the record's number |
 | 1 | its name |
-| 2 | 0 on Aquila, 1 on Erinn, Patty and Sellma — a sex, INFERRED |
 | 3 | the arms, 14xxx — numbered as the armour on 11 of 12 |
 | 4–8 | `unknown_4` to `unknown_8` |
 | 9 | armour |
 | 10 | legwear |
-| 11, 12 | as `charapreset`'s 77 and 78 — 12 a face, INFERRED |
+| 2 | **the sex**, to record `+0x174` bit 0 (read: `func_02089b90`, then `func_02086f24` `0x02087080`) |
+| 5, 6, 7 | **skin tone**, **hair colour**, **eye colour** — `+0x174` bits 1–3, `+0x175` bits 0–3, `+0x174` bits 4–7 |
+| 8 | the build, 0–5, two floats from `data_020e8c58`/`5c` by sex |
+| 9–18 | the ten slots h0–h9 in order (`0x02087070`): armour, legwear, **11 the face**, **12 the hair**, gloves, footwear, headgear, weapon, shield, accessory |
+| 11, 12 | **11 the face (9020–9033), 12 the hair (9000–9013)** — read 4 October 2026; this file had 12 as the face, which was wrong |
 | 13 | none on all 12 — gloves, INFERRED |
 | 14 | footwear |
 | 15 | headgear |
@@ -5530,10 +5554,14 @@ boots 17140, her headkerchief 12432.
 
 55 of the 57 ids these records wear name a part that exists.
 
-Not read by anything yet — the game dresses the Hero by hand, `hero.ts`. Not
-established: the first of the two 90xx values, and where a preset's hair
-style, variant and colour are kept, if in it at all. The Hero's own are the
-player's, chosen at character creation.
+**Read 4 October 2026** (US): the game loads `presetdt_<lang>.bin` by
+`func_02089de8`, running its records as a script (opcodes `0x64`–`0x6a`,
+table at `0x020f1048`); action `219 : n` builds record *n* + 7 into the roster
+(`func_02086f24`). **`charapreset.bin` has no reader in the code** — its name
+is in no string and its FAT id in no constant — so its 77 and 78 are read by
+analogy with `presetdt`'s slots: the same h0…h8 order with 77 and 78 in h2's
+and h3's places. A face or a hair is an **item**, drawn as `itemdt`'s `+0x10`
+names it (see Items). `charapreset`'s hair colour is not established.
 
 # Attending characters — `/data/bin/attnpc.gp2`
 
@@ -5646,7 +5674,7 @@ from `0x02109928`:
 | `0x66` | `0x02099b7c` | `0x02109970` | 8 × 4 | skin, four shades a tone |
 | `0x67` | `0x02099bd8` | `0x021099b0` | 8 × 8 | skin, eight shades a tone |
 | `0x68` | `0x02099c34` | `0x02109a30` | 8 × 2 | eyes, a pair per colour |
-| `0x69` | `0x02099c90` | `0x02109a50` | 1 | not established |
+| `0x69` | `0x02099c90` | `0x02109a50` | 1 | **the characters' outline colour**, BGR555, `0x1086` on the EU cartridge: overlay 23's `func_ov023_021e5628` copies it into all eight halfwords of the 3D engine's EDGE_COLOR table (`0x04000330`, by `func_020c555c`) before drawing a menu or creation figure; overlay 15's viewer the same. Read 4 October 2026. Not drawn: `render` has no edge marking |
 
 Colours are BGR555. On the reference cartridge the skin rows run pale to dark
 by tone and each ramp light to dark by shade; the eye pairs are greys, browns,
@@ -5690,6 +5718,22 @@ by a part index 0–7:
 **The appearance fields**, from the same caller: the skin tone is bits 1–3 of
 the appearance record's `+0x14` byte, the eye colour bits 4–7, and the hair
 colour the low four bits of `+0x15`.
+
+**The hair's colour texture takes its count from the hair item** (slot h3,
+`GetItemSkinShades` at `0x020731f0`, read 4 October 2026): on this cartridge
+items 9008, 9009 and 9010 give a man eight shades and every other hair none;
+the texture's model is `p_h<number + hair colour>a`. **The shape's letter is
+the headgear's** (`func_02072e94`, `0x02072f68`–`0x0207300c`): `a` with none,
+else the headgear's model number ÷ 100 into `"bbdcc\0cea\0"` (`data_020e883c`)
+— a `\0`, or ten and over, draws no hair; a man of hair 9001 under a 3xx
+takes `f`.
+
+**Overlay 23's second skin path** (`func_ov023_021e540c`) is the menu's and
+creation's figure, built of `d_` parts from `chara_pd.gp2` (not battle, as
+this was first taken): the face's brows, eyes and skin at `+0x24`, `+0x28`,
+`+0x30` of its palette, and parts 0, 1, 5, 4, 6, 7 each by
+`GetItemSkinShades(rec, 0, sex)` — bits 11–14 a man, 19–22 a woman. Not drawn
+here.
 
 # Mini medals — Cap'n Max Meddlin's service
 

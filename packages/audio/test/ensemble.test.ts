@@ -74,6 +74,38 @@ describe('the ensemble', () => {
     expect(ensemble.music.playing).toBe(true)
   })
 
+  it('times a text’s jingle as the game does: a fade, a wait, and the music back after', () => {
+    const rate = 32768
+    const ensemble = new Ensemble(rate, 2)
+    const long = songWith([0x81, 0, 0xd4, 0, 60, 100, ...vl(20), 0x80, ...vl(20), 0xfc])
+    ensemble.music.load(long)
+    ensemble.music.play()
+    const short = songWith([0x81, 0, 72, 127, ...vl(8), 0xff])
+    const l = new Float32Array(rate)
+    const r = new Float32Array(rate)
+    ensemble.jingle(short, { fade: 20 / 60, delay: 0.8, after: 0.5, back: 0.5 })
+    // Asked for: counted as sounding, the music still playing as it fades.
+    expect(ensemble.jingling).toBe(true)
+    ensemble.render(l, r, rate / 2)
+    expect(ensemble.music.playing).toBe(true)
+    expect(ensemble.sounding).toBe(0)
+    ensemble.render(l, r, Math.floor(rate * 0.29))
+    expect(ensemble.sounding).toBe(0)
+    // Past the 800 ms: the jingle has started and the music is paused.
+    ensemble.render(l, r, rate / 64)
+    expect(ensemble.sounding).toBe(1)
+    expect(ensemble.music.playing).toBe(false)
+    // Once it ends the music waits half a second more.
+    for (let i = 0; i < 64 && ensemble.sounding > 0; i++) ensemble.render(l, r, rate / 64)
+    ensemble.render(l, r, rate / 4)
+    expect(ensemble.music.playing).toBe(false)
+    // The worklet renders 128 frames at a time; the next after the wait.
+    ensemble.render(l, r, rate / 2)
+    ensemble.render(l, r, 128)
+    expect(ensemble.music.playing).toBe(true)
+    expect(ensemble.jingling).toBe(false)
+  })
+
   it('takes the longest-playing voice when every voice is busy', () => {
     const ensemble = new Ensemble(32768, 2)
     const held = songWith([0x81, 0, 60, 127, ...vl(TICK_RATE * 10), 0xff])

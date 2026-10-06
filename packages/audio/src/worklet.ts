@@ -1,5 +1,5 @@
 import type { DecodedWave, Sbnk } from '@minstrel/nitro-snd'
-import { Ensemble } from './render.ts'
+import { Ensemble, type JingleTiming } from './render.ts'
 import type { Song } from './sequencer.ts'
 
 /**
@@ -23,6 +23,8 @@ export interface SongMessage {
   readonly archives: readonly (number | undefined)[]
   readonly volume: number
   readonly start?: number
+  /** A jingle's timing, where a line of text asked for it — see `JingleTiming`. */
+  readonly timing?: JingleTiming
 }
 
 /** A bank or a wave archive, sent once and kept by the worklet under its number. */
@@ -55,6 +57,8 @@ export interface MusicReport {
   readonly finished: boolean
   /** How many effects are sounding over it. */
   readonly effects: number
+  /** Whether a jingle is sounding, or asked for and waiting — see `Ensemble.jingling`. */
+  readonly jingling: boolean
 }
 
 declare const sampleRate: number
@@ -108,7 +112,7 @@ export function registerMusicProcessor(): void {
             ...(message.start !== undefined ? { start: message.start } : {}),
           }
           if (message.kind === 'effect') this.ensemble.effect(song)
-          else if (message.kind === 'jingle') this.ensemble.jingle(song)
+          else if (message.kind === 'jingle') this.ensemble.jingle(song, message.timing)
           else {
             this.sequencer.load(song)
             this.gain = 1
@@ -169,6 +173,7 @@ export function registerMusicProcessor(): void {
           playing: this.sequencer.playing,
           finished: this.sequencer.finished,
           effects: this.ensemble.sounding,
+          jingling: this.ensemble.jingling,
         }
         this.port.postMessage(report)
       }

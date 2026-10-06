@@ -156,6 +156,22 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
 ]
 
 /**
+ * The commands as the menu lists them now: every one, but **Allocate Skill
+ * Points only once game-wide flag `0x119c` is set** — the Misc. submenu's own
+ * test (overlay 2, `func_ov002_02166168`), the flag the first victory with
+ * points to spend sets as it says `str_bres` 36. Listed where the context does
+ * not say.
+ */
+export function menuCommands(context?: MenuContext): readonly MenuEntry<MenuCommand>[] {
+  return context?.skillsListed === false
+    ? MENU_COMMANDS.filter((command) => command.id !== 'skills')
+    : MENU_COMMANDS
+}
+
+/** The flag that lists Allocate Skill Points — see {@link menuCommands}. */
+export const FLAG_SKILLS_LISTED = 0x119c
+
+/**
  * **Two panels that are not menu commands**, and never were in the game.
  *
  * Read 25 September 2026, after a play session found them in the wrong place:
@@ -650,7 +666,7 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
   }
   if (state.panel) return state
   // What a command said — Heal All's lines — goes with the cursor.
-  return { ...state, cursor: wrap(state.cursor, MENU_COMMANDS.length), said: undefined }
+  return { ...state, cursor: wrap(state.cursor, menuCommands(context).length), said: undefined }
 }
 
 /** What taking a row asks for: talking, putting something on, using or discarding an item, casting. */
@@ -861,7 +877,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     }
   }
   if (state.panel) return { state, talk: false }
-  const command = MENU_COMMANDS[state.cursor]?.id
+  const command = menuCommands(context)[state.cursor]?.id
   if (command === undefined) return { state, talk: false }
   if (command === 'talk') return { state: undefined, talk: true }
   if (command === 'controls') return { state: undefined, talk: false, controls: true }

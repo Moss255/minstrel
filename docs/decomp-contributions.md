@@ -798,3 +798,38 @@ by `keepers.test.ts`, `counter.test.ts`.
 | `func_020531f0` | end or cancel: back to motion state 0 | `Object::EndTrick` |
 | `func_0205337c` | the bubble's place: the head raised 1.7, projected | `Object::DrawTrickBubble` |
 | `func_ov017_02199f08`, `0219a388` | the B cross of the places' names, `str_sgs` | `Field::TrickCross` |
+
+### Task 10's single questions — ARM9 and overlays 0, 9, 17 and 23, read 4 October 2026
+
+**Where minstrel translates it**: `bankBit` (`game-formats/src/story.ts`,
+`abbey.test.ts`); `marchingOrder` (`companion.ts`, `companion.test.ts`);
+`modelNumber`, `modelName` (`itemdefs.ts`, `itemdefs.test.ts`); `hairLetter`
+(`hero.ts`, `hero-outfit.test.ts`); `CREATION_ITEMS` (`appearance.ts`);
+`dropsWon`'s passes (`sim/battle/drops.ts`, `drops.test.ts`); `inCrisis` and
+`criticalChance`'s `crisis` (`damage.ts`, `conformance.test.ts` against
+`game-oracle.ts`'s `partyCritRate`); `JingleTiming` (`audio/render.ts`,
+`ensemble.test.ts`). The readings: `docs/readings/T10a-questions.md`, `T10b-questions.md`.
+
+| function | what it does | a name |
+|---|---|---|
+| `func_02061c04` cases 123, 124, 131, 60, 102 | actions `223`, `224`, `231`, `160`, `202`: set flags `0x799`, `0x798`, `0x796`, `0x113F + v`, `0x1198 + n` | `TriggerObject::RunAction` |
+| `func_0206df6c` / `func_0206dfb0` | set or clear / test a bit of a flag bank | `FlagBank::Set`, `::Test` |
+| `func_02010828` | `GameState + 0x2A04`, the party block | `GameState::GetPartyBlock` |
+| `func_ov017_02191108` | rebuild the slots `+0xF78` and count `+0xF7C` | `Field::RebuildParty` |
+| `func_ov017_02190884` | the list: living by `[obj+0x2D2]`, then fallen | `Field::OrderParty` |
+| `func_020a95a4` | the save's slots copied in (INFERRED the save load, from `func_020aaf84`) | |
+| `func_02089de8`, `func_02089b90`, `func_02086f24` | run `presetdt` as a script; its `0x6a` record; build record *n* + 7 into the roster (action `219`) | `CharaPreset::Load`, `::ReadRecord`, `Roster::AddPreset` |
+| `func_020de234` | an item's model number for a sex, `+0x10`, 999 the other's | `ItemData::GetModelNumber` |
+| `func_02072e94` | a part's file name; the hair's letter from the headgear's hundreds, `data_020e883c` | `CharaParts::GetPartName` |
+| `func_ov009_02188944`, `func_ov009_02188b14` | creation writes h2/h3 as `9020`/`9000` + a remap by sex | `CharaMake::ApplyLook`, `::RemapChoice` |
+| `func_ov023_021e5628` | `palette.bin` tag `0x69` into EDGE_COLOR (`func_020c555c`) | `MenuFigure::SetEdgeColour` |
+| `func_ov023_021e540c` | the `d_` figure's skin, `which` 0 | `MenuFigure::ApplySkin` |
+| `func_ov023_021f454c` passes 1–4 | Autofilch: trait `0xa4`, half the rounds, `N × 100 ÷ level` | `BattleResult::RollDrops` |
+| `func_ov000_02156cc4`, `func_ov000_02155a04` | trait `0x11d` doubles the rate under a quarter HP; HP over max as `float` | `Combat::RollCritical`, `Combatant::GetHpRatio` |
+| `func_0209c830`, `func_0209c840` | a text's jingle: fade 20, 800 ms, play, 500 ms after | `SoundPlayer::RequestJingle`, `::UpdateJingle` |
+| `func_0205ea20`, `func_0205eaa0` | mount `se_norm` 100 / `se_btl` 101; play entry *n* of `[+0xb4]` | `SePlayer::Mount`, `::Play` |
+| `func_ov023_021f0a5c` steps 4–7, `func_ov023_021f2368`, `func_ov023_021f1234` | victory: the jingle wait, the spells' line 12, the skill screen and line 36 under flag `0x119c` | `BattleResult::LevelUp`, `::NewSpells`, `::SkillAllocation` |
+
+**Open**: the map condition and objects `0x2347`–`0x2349` in the slots' swap;
+object `0xCE`; presetdt 4, 33, 34; whether edge marking is on; what reads
+`battle+0x5901`; `func_ov024_021e2298`'s action.

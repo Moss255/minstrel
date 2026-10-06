@@ -1,4 +1,5 @@
 import type { DecodedWave, Sbnk } from '@minstrel/nitro-snd'
+import type { JingleTiming } from './render.ts'
 import type { Song } from './sequencer.ts'
 import { MUSIC_PROCESSOR, type MusicMessage, type MusicReport } from './worklet.ts'
 
@@ -78,7 +79,11 @@ export class Music {
     return id
   }
 
-  private async sendSong(kind: 'song' | 'effect' | 'jingle', song: Song): Promise<void> {
+  private async sendSong(
+    kind: 'song' | 'effect' | 'jingle',
+    song: Song,
+    timing?: JingleTiming,
+  ): Promise<void> {
     await this.open()
     if (this.context?.state !== 'running') await this.context?.resume()
     this.send({
@@ -88,6 +93,7 @@ export class Music {
       archives: song.archives.map((archive) => (archive ? this.keep(archive) : undefined)),
       volume: song.volume,
       ...(song.start !== undefined ? { start: song.start } : {}),
+      ...(timing ? { timing } : {}),
     })
   }
 
@@ -108,9 +114,22 @@ export class Music {
     this.send({ kind: 'stop-effects' })
   }
 
-  /** Sound a jingle: the music pauses until it is over. */
-  async jingle(song: Song): Promise<void> {
-    await this.sendSong('jingle', song)
+  /** Sound a jingle: the music pauses until it is over — after `timing`'s waits, where given. */
+  async jingle(song: Song, timing?: JingleTiming): Promise<void> {
+    await this.sendSong('jingle', song, timing)
+    // Taken to be sounding at once, until the worklet next says — see `jingling`.
+    this.askedAt = performance.now()
+  }
+
+  /** When a jingle was last asked for, ms — see {@link jingling}. */
+  private askedAt = Number.NEGATIVE_INFINITY
+
+  /**
+   * **Whether a jingle is sounding**, as the worklet last said — or asked for
+   * since that report, which a quarter of a second behind would not know.
+   */
+  get jingling(): boolean {
+    return performance.now() - this.askedAt < 300 || this.report?.jingling === true
   }
 
   /** Stop: at once, or letting the notes fade. */

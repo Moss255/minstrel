@@ -458,13 +458,14 @@ import {
   back,
   changeCharacter,
   choose,
+  FLAG_SKILLS_LISTED,
   labelOf,
-  MENU_COMMANDS,
   MENU_SAYS,
   type MenuContext,
   type MenuMember,
   type MenuSpell,
   type MenuState,
+  menuCommands,
   moveCursor,
   openMenu,
   openPatty,
@@ -484,12 +485,14 @@ import { type MonsterLook, monsterLookOf, monsterPieces } from './monsters.ts'
 import { frameAt, MOTION_MS, motionMs } from './motion-speed.ts'
 import {
   BATTLE_SOUNDS,
+  FIELD_EFFECTS,
   music,
   playBattleSound,
   playBgm,
   playEffect,
   playJingle,
   playTrack,
+  TEXT_JINGLE,
 } from './music.ts'
 import { NAME_MOST, rollName, tidyName } from './naming.ts'
 import {
@@ -3396,6 +3399,13 @@ function frame(now = 0): void {
   // through a hit-stop — see `battleSpeed`.
   if (battle) {
     if (battle.phase !== 'telling') inOpening = false
+    // The skill-point screen put away: the results go on.
+    if (allocating && menu?.panel !== 'skills') {
+      allocating = false
+      menu = undefined
+      showMenu()
+      turnPages(1)
+    }
     openPage(now)
     if (shown) stepShown(elapsedMs)
     else if (pageLeft > 0) {
@@ -6512,6 +6522,8 @@ function menuContext(): MenuContext {
           }).length
         : 0,
     look: loaded ? appearanceRows(members[menu?.member ?? 0] ?? leader()) : undefined,
+    modelOf: loaded ? itemModels(loaded.itemDefs) : undefined,
+    skillsListed: storyGlobals.has(FLAG_SKILLS_LISTED),
     // The pot's lines carry the same markup item names do — `you<1>re` is an
     // apostrophe — so they go through `renderName` as the skill labels do.
     potWords: potLines(),
@@ -9991,6 +10003,25 @@ function bottomView(scene: BattleScene): BottomView {
 interface ResultsSlot {
   readonly window?: ResultsWindow
   readonly jingle?: number
+  /**
+   * The page may not be turned while the level's jingle sounds — a key then
+   * is not taken (sub-state 7's step 7, `0x021f11d8`, read 4 October 2026).
+   */
+  readonly waitJingle?: boolean
+  /** The results window closes — sub-state 8 closes it (`+0x5588`), and nothing after reopens it. */
+  readonly closes?: boolean
+  /** The skill-point screen opens for this member, by place, and the results wait on it — sub-state 8. */
+  readonly skills?: number
+}
+
+/** Whether the results wait on the skill-point screen — see `ResultsSlot.skills`. */
+let allocating = false
+
+/** The slot of the page up now, if it is one of the victory's. */
+function resultsSlotNow(): ResultsSlot | undefined {
+  if (!battle || resultsQueue.length === 0) return undefined
+  const k = resultsQueue.length - battle.pages.length
+  return k >= 0 ? resultsQueue[k] : undefined
 }
 
 /**
@@ -10024,11 +10055,15 @@ function attributesOf(before: LevelRow, after: LevelRow): { before: number; afte
 
 /** Take up the slot of the page just opened, if it is one of the victory's. */
 function openResults(): void {
-  if (!battle || resultsQueue.length === 0) return
-  const k = resultsQueue.length - battle.pages.length
-  const slot = k >= 0 ? resultsQueue[k] : undefined
+  const slot = resultsSlotNow()
   if (!slot) return
+  if (slot.closes) resultsShown = undefined
   if (slot.window) resultsShown = { window: slot.window, since: performance.now() }
+  if (slot.skills !== undefined) {
+    allocating = true
+    menu = { ...openMenu(), member: slot.skills, panel: 'skills' }
+    showMenu()
+  }
   if (slot.jingle !== undefined && cartridge && !params.get('bgm')) {
     void playJingle(cartridge, slot.jingle)
   }
@@ -10051,6 +10086,15 @@ function settleBattle(): void {
     return words && template !== undefined
       ? tellBattle(template, telling, words.articles).text
       : undefined
+  }
+  /** A line of several pages, `<PAGE>` apart, each its own. */
+  const saidPages = (number: number, telling: Telling): string[] => {
+    const template = words?.results.get(number)
+    if (!words || template === undefined) return []
+    return template
+      .split('<PAGE>')
+      .map((part) => tellBattle(part, telling, words.articles).text)
+      .filter((page) => page.trim() !== '')
   }
   const lines: string[] = []
   /** What each of a victory's pages opens on the bottom screen, and sounds — see `resultsQueue`. */
@@ -10125,7 +10169,21 @@ function settleBattle(): void {
       lines.push(
         said(RESULT_SAYS.improve, { target: named }) ?? `${named.name}'s attributes improve!`,
       )
-      slots.push({})
+      // What follows 38 waits for the jingle to end (step 7).
+      slots.push({ waitJingle: true })
+      // **Each spell the levels brought**, one a page, in the table's order:
+      // line 12 with the spell's name (step 1's `func_0209aa54`, then
+      // sub-state 10, `func_ov023_021f2368`).
+      for (const spell of loaded?.spellTable?.learnt ?? []) {
+        if (spell.vocation !== s.member.vocation) continue
+        if (spell.level <= before.level || spell.level > after.level) continue
+        const spellName = loaded?.actions.get(spell.action)?.name ?? `action ${spell.action}`
+        lines.push(
+          said(RESULT_SAYS.newSpell, { target: named, values: { str_2: spellName } }) ??
+            `${named.name} learns a new spell: ${spellName}!`,
+        )
+        slots.push({})
+      }
       // A level's skill points, into the one pool a character has — see `earnSkillPoints`.
       const points = earnSkillPoints(s.member, before, after)
       if (points > 0) {
@@ -10134,6 +10192,23 @@ function settleBattle(): void {
             `${named.name} earns ${points} skill point${points === 1 ? '' : 's'}.`,
         )
         slots.push({})
+      }
+      // **The skill-point screen** (sub-state 8), where a tree of their
+      // vocation's five is under 100 — after points earned, or with points
+      // unspent (`func_ov023_021f5228`, `0x021f1188`). The first time, flag
+      // `0x119c` is set and line 36 says what the screen is (`0x021f1360`).
+      const trees = treesOf(loaded?.vocationTrees, s.member.vocation)
+      const under = trees.some((tree) => (s.member.treePoints.get(tree) ?? 0) < 100)
+      if (under && (points > 0 || s.member.skillPool > 0)) {
+        if (!storyGlobals.has(FLAG_SKILLS_LISTED)) {
+          storyGlobals.add(FLAG_SKILLS_LISTED)
+          for (const page of saidPages(RESULT_SAYS.skillsFirst, { target: named })) {
+            lines.push(page)
+            slots.push({ closes: true })
+          }
+        }
+        lines.push('')
+        slots.push({ closes: true, skills: members.indexOf(s.member) })
       }
     }
     lines.push(obtained)
@@ -10269,6 +10344,7 @@ function endFight(): void {
   fallenShown = new Set()
   leftIn.clear()
   resultsQueue = []
+  allocating = false
   resultsShown = undefined
   lastShown = undefined
   pagesSeen = undefined
@@ -11860,7 +11936,7 @@ function showMenu(): void {
   menuEl.replaceChildren()
   const commands = document.createElement('div')
   commands.className = 'commands'
-  for (const [index, command] of MENU_COMMANDS.entries()) {
+  for (const [index, command] of menuCommands(menuContext()).entries()) {
     const item = document.createElement('div')
     item.textContent = labelOf(command, loaded?.menuWords)
     if (index === menu.cursor) item.className = 'chosen'
@@ -12107,14 +12183,17 @@ function showTalk(): void {
     cuedRun = run
     cuedPage = page
     turnSpeaker(who, run.turn)
-    // **The cues are read and nothing plays them**, on purpose. `run.cues`
-    // carries the id the game would ask for — `<ME_008>` is 57, `<SE_014>` is
-    // a flat 14 — and that id belongs to the game's own sound-request space,
-    // which is not `playEffect`'s index into the effect archive's records.
-    // This did play them for half a day, and Gleeba's witness caught it:
-    // "no effect 14 in the sound archive". Playing the archive's 14th effect
-    // because the game asked for sound 14 is the kind of mapping that appears
-    // to work. See `SoundCue` and `docs/still-open.md`.
+    // The ids are the game's own, read 4 October 2026: `<ME_n>`'s `n + 49`
+    // is `bgm.sdat`'s sequence `ME_00n`, timed as the text's jingle is
+    // (`TEXT_JINGLE`); `<SE_n>`'s flat 14 is entry 14 of the field's
+    // sequence archive, 100 (`FIELD_EFFECTS`). See `SoundCue`.
+    if (cartridge && !params.get('bgm')) {
+      for (const cue of run.cues) {
+        if (cue.page !== page) continue
+        if (cue.kind === 'ME') void playJingle(cartridge, cue.id, TEXT_JINGLE)
+        else void playEffect(cartridge, FIELD_EFFECTS, cue.id)
+      }
+    }
   }
   talkEl.replaceChildren()
   // `<CEN>` centres the box — the game's narration card, "Some days later…".
@@ -12347,8 +12426,9 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     event.preventDefault()
     return handled
   }
-  // A battle takes every key while it lasts: the same keys as the menu.
-  if (battle) {
+  // A battle takes every key while it lasts: the same keys as the menu — but
+  // the skill-point screen its results open takes them while it is up.
+  if (battle && !allocating) {
     if (action === 'up') battle = battleMove(battle, 0, -1)
     else if (action === 'down') battle = battleMove(battle, 0, 1)
     else if (action === 'left') battle = battleMove(battle, -1, 0)
@@ -12360,6 +12440,11 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         battle.phase === 'telling' &&
         (battle.told[0] !== undefined || inOpening || wipeHeld(performance.now()))
       ) {
+        event.preventDefault()
+        return handled
+      }
+      // A page that waits on the level's jingle takes no key while it sounds.
+      if (resultsSlotNow()?.waitJingle && music.jingling) {
         event.preventDefault()
         return handled
       }

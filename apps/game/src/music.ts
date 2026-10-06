@@ -1,4 +1,4 @@
-import { effectOf, songAt, songNames, songOf } from '@minstrel/audio'
+import { effectOf, type JingleTiming, songAt, songNames, songOf } from '@minstrel/audio'
 import { Music } from '@minstrel/audio/player'
 import { scanCartridge } from '@minstrel/cartridge'
 import { readSdat, type Sdat } from '@minstrel/nitro-snd'
@@ -27,6 +27,19 @@ export const EFFECTS_ARCHIVE = '/data/sound/se_norm.sdat'
 export const BATTLE_ARCHIVE = '/data/sound/se_btl.sdat'
 /** The battle's own sequence archive in it — the one the presenter's sounds are from (`+0xb4`). */
 export const BATTLE_SOUNDS = 101
+/**
+ * The field's sequence archive in `se_norm.sdat`, which boot mounts as 100
+ * (`func_0205ea20`, `main_18` at `0x0205ea20`): what a line's `<SE_n>` asks
+ * entry 14 of, through `func_0205eaa0` → `func_0203ac40(se, [se+0xb4], n)`.
+ */
+export const FIELD_EFFECTS = 100
+
+/**
+ * A line's `<ME_n>` timing — `func_0209c840`, see `JingleTiming`: the music
+ * fades out over 20 frames, the jingle starts 800 ms after the asking, and
+ * the music comes back 500 ms after it ends, over 30 frames.
+ */
+export const TEXT_JINGLE: JingleTiming = { fade: 20 / 60, delay: 0.8, after: 0.5, back: 30 / 60 }
 
 export const music = new Music(workletUrl)
 
@@ -99,12 +112,21 @@ export async function playTrack(rom: Uint8Array, index: number): Promise<string 
   return name
 }
 
-/** Play a jingle by its index among the music archive's sequences; the music waits for it. */
-export async function playJingle(rom: Uint8Array, index: number): Promise<boolean> {
+/**
+ * Play a jingle by its index among the music archive's sequences; the music
+ * waits for it. **The index is the game's own request id**: `bgm.sdat`'s
+ * sequence 50 is `ME_001`, so `<ME_n>`'s `n + 49` names `ME_00n` (read 4
+ * October 2026, `func_020bd454`, the INFO list indexed directly).
+ */
+export async function playJingle(
+  rom: Uint8Array,
+  index: number,
+  timing?: JingleTiming,
+): Promise<boolean> {
   const sdat = bgmArchive(rom)
   const song = sdat ? songAt(sdat, index) : undefined
   if (!song) return false
-  await music.jingle(song)
+  await music.jingle(song, timing)
   return true
 }
 

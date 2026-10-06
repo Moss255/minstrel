@@ -221,6 +221,10 @@ export const RESULT_SAYS = {
   improve: 38,
   /** "<val_1> skill point(s) earned." */
   skillPoints: 13,
+  /** "<TARGET> learns a new spell: <str_2>!" — one a spell the levels brought (sub-state 10). */
+  newSpell: 12,
+  /** The skill-point screen explained, the first time it opens (sub-state 8, flag `0x119c`). */
+  skillsFirst: 36,
   gold: 16,
   /** A monster's drop: "<M_NAME> drops a treasure chest! <TARGET> opens it up." */
   dropsChest: 17,

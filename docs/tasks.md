@@ -10,18 +10,11 @@ worked example: `<DAMA>` found on Jack's line, overlay 3's service 46 read,
 then built — `abbey.ts`, and `docs/party-and-vocations.md`, "The Abbey's
 own flow".
 
-## Where it stands — 4 October 2026
+## Where it stands — 6 October 2026
 
-**Tasks 1 to 9 are done**, each built, checked in the browser, committed and
+**Tasks 1 to 10 are done**, each built, checked in the browser, committed and
 written up on the wiki; each says so under its heading.
 
-- **Task 10 is read and not built.** Its readings are in
-  `docs/readings/T10a-questions.md` and `T10b-questions.md`: the Abbey's
-  three flags set by trigger actions `223`, `231` and `160`, which retires the
-  7.1 stand-in and `?revoke=`; the party's slot order; the preset face and
-  hair; the hair ramp and the outline colour; `<SE_n>` being archive 100;
-  Autofilch and Critical in a Crisis; the victory's lines 12 and 36 and its
-  jingle wait. Build straight from them.
 - **Tasks 11 to 14 are not read.** Readers were started on 4 October and cut
   off before writing anything, so each starts from its brief below.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
@@ -29,7 +22,8 @@ written up on the wiki; each says so under its heading.
   line and does nothing — task 18); the camera easing in for a party trick;
   Weird Dance's sound not stopped; canvassing and the guestbook (multiplayer).
 - **Development parameters added this week** (`docs/regions.md`): `globals=`,
-  `gold=`, `tricks=`. The screenshot tool takes `--down=` and `--up=` for a
+  `gold=`, `tricks=`; `revoke=` is gone, the credits opening revocation. The
+  screenshot tool takes `--down=` and `--up=` for a
   key held while another is pressed.
 
 ## How to take one
@@ -263,7 +257,7 @@ with what follows at its end.
 
 ## 10. Single questions — find and build
 
-**Read, 4 October 2026; not built.** The answers, with addresses, are in `docs/readings/T10a-questions.md` and `docs/readings/T10b-questions.md`.
+**Done, 6 October 2026** (`c8853c2`, `939ef55`, `c7c0178` and the commit that marks it done): the Abbey's flags by actions 223, 231 and 160, and the slots' order (`bankBit`, `marchingOrder`); faces and hairs as items, by sex, the hair's letter by its headgear and its ramp (`modelName`, `hairLetter`, `CREATION_ITEMS`); Autofilch and Critical in a Crisis (`dropsWon`, `inCrisis`); the text's sounds and the victory's jingle wait, spell lines and skill screen (`TEXT_JINGLE`, `ResultsSlot`). The outline colour and overlay 23's `d_` figure are read and not drawn. The readings are in `docs/readings/T10a-questions.md` and `docs/readings/T10b-questions.md`; the wiki's Single-Questions.
 
 Each is short alone; take them as a batch, in any order.
 

@@ -79,7 +79,22 @@ uses to decide who a speaker turns to face — see `docs/event-scripts.md` §7a.
 0200fde8  bx   ip                 ; -> GetPartyMemberByIndex
 ```
 
-### What writes the slots has not been found
+### What writes the slots — found 4 October 2026
+
+**Corrected.** The sections below concluded that nothing writes the slots
+and that they are serialisation, not state. **That was wrong**: the search
+tried bases at `state` and `state + 0x3000` and missed `P = state + 0x2A04`
+(`func_02010828`), through which the slots are `P + 0xF78` and the count
+`P + 0xF7C`. The rebuild `func_ov017_02191108` writes them field-wise
+(`0x02191204`–`0x02191220`) from `func_ov017_02190884`'s list — **the living
+by their order byte `[obj+0x2D2]`, then the fallen** — and has 25 callers,
+action `203`'s revival among them; the save load copies them
+(`func_020a95a4`), the new game zeroes the count (`func_0208660c`). A slot is
+a game-object index. `marchingOrder` in `companion.ts` follows the order;
+`docs/readings/T10a-questions.md` §2 has the rest. What follows is kept as
+the record of the search.
+
+#### The search that missed it
 
 Three reads of `+0x397c` exist in the ARM9 (`0x0200fde4`, `0x020100b4`,
 `0x0201064c`) and **no write**, and the search behind that is now much wider
@@ -226,7 +241,7 @@ all — the picture is complete and consistent:
 |---|---|---|
 | the party in play | `0x021015aa`, sixteen bits | two instructions, by message |
 | the roster | `0x020fefec` | Patty's screens |
-| the ordered slots | `state+0x397c` | **nothing writes them field-wise** |
+| the ordered slots | `state+0x397c` | ~~nothing writes them field-wise~~ — the rebuild does, through `state+0x2A04` (corrected above) |
 
 **So the slots are serialisation, not state.** That is the answer to the
 question this section has carried since the party was first read: they are
@@ -1279,13 +1294,12 @@ actually left.
   man's hairs 9008–9010 take eight shades) is not written, as our hair styles
   are not yet paired with their records; and our underclothes stand for the
   bare parts, counted as the bare parts are.
-- **Where a preset's hair comes from**, if anywhere. The record names none, so
-  a character made from a preset wears the Hero's. Still on the wiki's "not
-  established" list — this one *is* an unknown rather than work not done.
-- **What writes the party slots and the count.** Three reads of `+0x397c` in
-  the ARM9 and **no write anywhere**, in the ARM9 or any overlay. This was
-  written down as the thread to pull when recruitment was implemented;
-  recruitment is now implemented and the thread is still unpulled.
+- ~~**Where a preset's hair comes from**~~ — **read 4 October 2026**: it is
+  value 78 (presetdt's 12), an item, 9000–9013; the face is 77 (presetdt's
+  11). Its colour, in `charapreset`, is not found — the style's first stands.
+- ~~**What writes the party slots and the count.**~~ **Found, 4 October
+  2026** — the rebuild `func_ov017_02191108`, through `state + 0x2A04`; see
+  "What writes the slots" above.
 - ~~**How a battle's experience is split among the party.**~~ **Done, 27
   September 2026** — `experienceShares` in the simulation's battle,
   translated from `func_ov023_021f4098` in the game's floats and held to the
@@ -1354,7 +1368,6 @@ with a test that now does exactly that round trip.
 
 - What bit `0x800` on a character's halfword actually means.
 - That the party is four, as opposed to four being what fits.
-- What writes the party slots and the count.
 - What vocation an attending character has. `attnpc` does not say, so whoever
   joins is given the Hero's.
 - **Why six legwear parts the presets name are on neither archive.** The
