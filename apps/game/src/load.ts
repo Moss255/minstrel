@@ -53,11 +53,13 @@ import {
   type MapTransition,
   type MedalRewards,
   type MonsterBattle,
+  type Mooring,
   mapAreas,
   mapBookcases,
   mapDoorwayRegions,
   mapDoorways,
   mapLadders,
+  mapMoorings,
   mapStart,
   NO_ACTION,
   type NpcEntry,
@@ -426,6 +428,8 @@ export interface Loaded {
   readonly doorwayRegions: readonly DoorwayRegion[]
   /** The ends of the map's ladders and vines, in the file's own units — see `mapLadders`. */
   readonly ladders: readonly LadderEnd[]
+  /** The map's moorings for the ship, from its link table — see `mapMoorings`. */
+  readonly moorings: readonly Mooring[]
   /** Where a party asked in with no place stands — a wipe-out's — in the file's own units; see `mapStart`. */
   readonly start: MapStart | undefined
   /** Which archive the map came out of, for the status line. */
@@ -3180,6 +3184,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     bookshelves: bookshelvesOf(rom, code),
     doorwayRegions: doorwayRegionsOf(cat, code),
     ladders: fromLinkTable(cat, code, mapLadders),
+    moorings: fromLinkTable(cat, code, mapMoorings),
     start: fromLinkTable(cat, code, (bytes) => {
       const start = mapStart(bytes)
       return start ? [start] : []

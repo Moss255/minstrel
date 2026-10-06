@@ -244,6 +244,23 @@ export interface SaveGame {
    * them up as a new game does.
    */
   readonly gathering?: { readonly variant: number; readonly words: readonly number[] }
+  /**
+   * **The ship** — what the game keeps of it, `func_02012fe4()` `+0x2774` on:
+   * the map and mooring it is tied up at, whether it is out at sea, its place
+   * and facing on the ocean in the game's fixed point, and the sea's
+   * encounter count. See `ShipKeep` in `ship.ts`. Absent from saves made
+   * before it was kept, which have it where a new game does.
+   */
+  readonly ship?: {
+    readonly map: number
+    readonly mooring: number
+    readonly atSea: boolean
+    readonly x: number
+    readonly y: number
+    readonly z: number
+    readonly facing: number
+    readonly count: number
+  }
 }
 
 export class SaveError extends Error {
@@ -391,6 +408,19 @@ export function decodeSave(text: string): SaveGame {
       !gathering.words.every(isCount))
   ) {
     throw new SaveError('the save has gathering spots that do not read')
+  }
+  const ship = s.ship as Record<string, unknown> | null | undefined
+  const whole = (v: unknown) => typeof v === 'number' && Number.isInteger(v)
+  if (
+    ship !== undefined &&
+    (typeof ship !== 'object' ||
+      ship === null ||
+      !isCount(ship.map) ||
+      !isCount(ship.mooring) ||
+      typeof ship.atSea !== 'boolean' ||
+      !['x', 'y', 'z', 'facing', 'count'].every((k) => whole(ship[k])))
+  ) {
+    throw new SaveError('the save has a ship that does not read')
   }
   if (s.lastField !== undefined && !isCount(s.lastField)) {
     throw new SaveError('the save has a last field that does not read')

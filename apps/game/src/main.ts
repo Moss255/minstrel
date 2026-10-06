@@ -50,6 +50,7 @@ import {
   type Lighting,
   MEDALS_MOST,
   MINI_MEDAL,
+  type Mooring,
   modelName,
   modelNumber,
   type NpcPlacement,
@@ -124,6 +125,8 @@ import {
   BattleRng,
   type BattleState,
   blockChance,
+  type CharacterShape,
+  type CharacterState,
   type Climb,
   type Clock,
   COUP_OF,
@@ -172,12 +175,15 @@ import {
   SPOT_COUNT,
   STAY_TICKS,
   setPhase,
+  slopeOf,
   spoils,
   startPlay,
   startRoaming,
+  step as stepBody,
   tickClock,
   tickGathering,
   tickRoaming,
+  triangleAt,
   tryClimb,
 } from '@minstrel/sim'
 import {
@@ -586,6 +592,33 @@ import {
 } from './services.ts'
 import { revealedCharacters } from './settings.ts'
 import { shadowPieces } from './shadows.ts'
+import {
+  BLOOMINGDALE,
+  BLOOMINGDALE_ASHORE,
+  COUNT_LEAST,
+  COUNT_MOST,
+  DECK_FROM_SEA,
+  DECK_MAP,
+  FLAG_SHIP,
+  keptFromGangway,
+  LINE_DISEMBARK,
+  LINE_INSIDE,
+  legsSailed,
+  mooringFor,
+  newShipKeep,
+  OCEAN_MAP,
+  putToSea,
+  type Sailing,
+  SHIP_MODEL,
+  SHIP_OBJECT,
+  SHIP_SCALE_FIELD,
+  SHIP_SCALE_SEA,
+  type ShipKeep,
+  type ShoreContact,
+  sailVblank,
+  shoreVblank,
+  wrapped,
+} from './ship.ts'
 import {
   buy,
   POOL_MOST,
@@ -1129,6 +1162,14 @@ let expressAt = 0
 let flying: FlightState | undefined
 /** Milliseconds of flight not yet a tick — the Express moves at 60 ticks a second. */
 let flightCarry = 0
+/** What the game keeps of the ship — see `ship.ts`. Saved. */
+let shipKeep: ShipKeep = newShipKeep()
+/** The ship sailing on the ocean, the party aboard — see `sailOn`. Undefined anywhere else. */
+let sailing: Sailing | undefined
+/** Milliseconds of sailing not yet a vblank. */
+let sailCarry = 0
+/** Trigger action 164 asked for the ocean; it goes once the talk is over — see `putOutToSea`. */
+let seaWanted = false
 /** The quests — their states, the log and when each was cleared; see `quests.ts`. Saved. */
 let questBook: QuestBook = newQuestBook()
 /** Who opened the Express's list and which conductor they are, while it is up or being answered. */
@@ -2205,6 +2246,10 @@ function openWorld(map: string): void {
     tricksWanted.split(',').forEach((n, i) => {
       if (i < TRICK_SLOT_COUNT && /^\d+$/.test(n)) trickSlots[i] = Number(n) || undefined
     })
+  // `?ship=20002:0` moors the ship in that map at that mooring — **ours**, for
+  // driving the ship without sailing it there; see `ship.ts`.
+  const shipAt = /^(\d+):(\d+)$/.exec(params.get('ship') ?? '')
+  if (shipAt) shipKeep = { ...shipKeep, map: Number(shipAt[1]), mooring: Number(shipAt[2]), atSea: false }
   // `?gold=5000` puts that much in the purse — **ours**, for driving the bank.
   const gold = params.get('gold')
   if (gold !== null && /^\d+$/.test(gold))
@@ -2404,6 +2449,8 @@ function restore(game: SaveGame): void {
   )
     taughtSpells.add(ZOOM_PLACE)
   lastField = game.lastField ?? 0
+  // The ship, as saved; a save from before it was kept has it where a new game does.
+  shipKeep = game.ship ? { ...game.ship } : newShipKeep()
   // The day's clock, as saved; its running is not saved (INFERRED, as the
   // game's), so it runs on loading. A save from before it was kept is at the
   // day's start.
@@ -2497,6 +2544,7 @@ function confess(): string {
     items: [...bag.items],
     opened: [],
     gathering: { variant: gathering.variant, words: [...gathering.words] },
+    ship: { ...shipKeep },
   }
   return writeSave(storage(), game)
     ? 'Your progress is recorded.'
@@ -2618,7 +2666,12 @@ function enter(map: string, arrival?: Arrival | 'start', forScene = false): bool
   // stood the character at the river's edge by the waterfall.
   // `'start'` asks for the map's start point, as a request with no place does
   // (`func_ov017_0219c598`) — a wipe-out's; see `mapStart`.
-  const named = arrival === 'start' ? opened.start : arrival
+  // **The ship's side of the request**: from the deck, to where the ship is
+  // moored; from the ocean, ashore at its mooring — see `shipArrival`.
+  const redirect = forScene ? undefined : shipRedirect(previous?.mapId, opened)
+  if (redirect && redirect !== map) return enter(redirect)
+  const shipped = forScene ? undefined : shipArrival(previous?.mapId, opened, arrival)
+  const named = arrival === 'start' ? opened.start : (shipped ?? arrival)
   const entrance = named ? undefined : entranceOf(opened.catalogue, opened.code)
   const via: Arrival | undefined =
     named ??
@@ -2690,6 +2743,9 @@ function enter(map: string, arrival?: Arrival | 'start', forScene = false): bool
       cast: opened.castAt(storyStage, stepNow(), timeNow() === 'night', storyGlobals),
     }
   loaded = opened
+  // On the ocean the party is aboard, the ship where it is kept — see `sailOn`.
+  sailing = opened.mapId === OCEAN_MAP ? putToSea(shipKeep) : undefined
+  sailCarry = 0
   // What each pot, barrel, cupboard and blue chest holds, drawn as the map
   // loads (`LoadZoneContainers`) — see `rollsAtLoad`.
   loadRolls = rollsAtLoad(opened.treasures, (n) => treasureRng.below(n))
@@ -3365,6 +3421,425 @@ function landIn(map: number): void {
 }
 
 /**
+ * Whether the ship's object is made in this map (`func_020a6728`): a field
+ * region (20000 to 29999) whose code has no `M` — the fields themselves, not
+ * the places inside them.
+ */
+function shipFieldOf(map: Loaded): boolean {
+  const id = map.mapId
+  return id !== undefined && id >= 20000 && id < 30000 && !map.code.includes('M')
+}
+
+/** A place in the game's fixed point, as an arrival: the world's units with its scale taken out. */
+function arrivalOfWords(at: { x: number; y: number; z: number; facing: number }): Arrival {
+  return {
+    x: (at.x / 4096) * WORLD_SCALE,
+    y: (at.y / 4096) * WORLD_SCALE,
+    z: (at.z / 4096) * WORLD_SCALE,
+    facing: at.facing / 4096,
+  }
+}
+
+/** A mooring's shore, as an arrival. */
+function ashoreOf(mooring: Mooring): Arrival {
+  return {
+    x: mooring.ashore.x * WORLD_SCALE,
+    y: mooring.ashore.y * WORLD_SCALE,
+    z: mooring.ashore.z * WORLD_SCALE,
+    facing: mooring.ashoreFacing,
+  }
+}
+
+/**
+ * **A request from the deck** (`func_020a696c`): one for a field or for
+ * Bloomingdale goes to the map the ship is moored in instead, its place left
+ * for that map to fill — see {@link shipArrival}.
+ */
+function shipRedirect(from: number | undefined, opened: Loaded): string | undefined {
+  const id = opened.mapId
+  if (from !== DECK_MAP || id === undefined || id === shipKeep.map) return undefined
+  if (!shipFieldOf(opened) && id !== BLOOMINGDALE) return undefined
+  return opened.mapCodeOf(shipKeep.map)
+}
+
+/**
+ * **The ship's side of entering a map** (`func_020a6aac`):
+ *
+ * - from the ocean into a field: the mooring it comes in at
+ *   (`func_0201b678`), where the party is put ashore and the ship tied up;
+ * - from the ocean into Bloomingdale: its quay, mooring 0;
+ * - from the deck into the field it is moored in: that mooring's shore;
+ * - the field it is moored in: its place on the ocean becomes the mooring's.
+ *
+ * Out of the ocean, it is no longer at sea. Returns where the party is put,
+ * when the request named nowhere of its own.
+ */
+function shipArrival(
+  from: number | undefined,
+  opened: Loaded,
+  asked: Arrival | 'start' | undefined,
+): Arrival | undefined {
+  const id = opened.mapId
+  if (id === undefined) return undefined
+  let put: Arrival | undefined
+  if (from === OCEAN_MAP && shipFieldOf(opened)) {
+    const world = opened.mapEntryOf(id)?.world ?? { x: 0, z: 0 }
+    const at = mooringFor(opened.moorings, shipKeep, world)
+    if (at) {
+      shipKeep = { ...shipKeep, map: id, mooring: at.id, atSea: false }
+      if (asked === undefined) put = ashoreOf(at)
+    }
+  } else if (from === OCEAN_MAP && id === BLOOMINGDALE) {
+    shipKeep = { ...shipKeep, map: BLOOMINGDALE, mooring: 0, atSea: false }
+    if (asked === undefined) put = arrivalOfWords(BLOOMINGDALE_ASHORE)
+  } else if (from === DECK_MAP && shipFieldOf(opened) && shipKeep.map === id) {
+    const at = opened.moorings.find((m) => m.id === shipKeep.mooring)
+    if (at) put = ashoreOf(at)
+  }
+  if (shipKeep.map === id && shipFieldOf(opened)) {
+    const at = opened.moorings.find((m) => m.id === shipKeep.mooring)
+    if (at?.sea)
+      shipKeep = {
+        ...shipKeep,
+        x: Math.round(at.sea.x * 4096),
+        y: Math.round(at.sea.y * 4096),
+        z: Math.round(at.sea.z * 4096),
+      }
+  }
+  return put
+}
+
+/**
+ * **Board the ship** — the A Button's check kind 11 (ov017
+ * `func_ov017_02198618`, run by `func_ov017_02199360`): standing in the
+ * mooring the ship is tied up at, in the map it is moored in, the party goes
+ * to sea — the ship at the mooring's place on the ocean, facing its way out,
+ * and **at sea**. No question is asked. True when it did.
+ */
+function boardShip(): boolean {
+  if (!loaded || !self || loaded.mapId !== shipKeep.map || !shipFieldOf(loaded)) return false
+  const scale = WORLD_SCALE * worldScale
+  const x = toFloat(self.state.x) / scale
+  const y = toFloat(self.state.y) / scale
+  const z = toFloat(self.state.z) / scale
+  const at = loaded.moorings.find((m) => m.id === shipKeep.mooring && inArea(m.area, x, y, z))
+  if (!at?.sea) return false
+  shipKeep = {
+    ...shipKeep,
+    x: Math.round(at.sea.x * 4096),
+    y: Math.round(at.sea.y * 4096),
+    z: Math.round(at.sea.z * 4096),
+    facing: reduceAngle(Math.round(at.sea.facing * 4096)),
+    atSea: true,
+  }
+  putOutToSea()
+  return true
+}
+
+/** Trigger action 164: to sea, at the ship's place — see `putOutToSea`. */
+const OP_TO_SEA = 164
+
+/**
+ * **The deck at sea** (`func_020a72ac`, `0x020a7444`–`0x020a74b8`): a Hero
+ * come too near the gangway is put back — see `keptFromGangway`.
+ */
+function keepOnDeck(): void {
+  if (!self || loaded?.mapId !== DECK_MAP || !shipKeep.atSea) return
+  const scale = WORLD_SCALE * worldScale
+  const word = (v: Fx32) => Math.round((toFloat(v) / scale) * 4096)
+  const back = keptFromGangway({ x: word(self.state.x), z: word(self.state.z) })
+  if (!back) return
+  self.state = {
+    ...self.state,
+    x: fx32(Math.round(back.x * scale)),
+    y: fx32(Math.round(back.y * scale)),
+    z: fx32(Math.round(back.z * scale)),
+  }
+}
+
+/** To the ocean, the ship where it is kept: boarding, and trigger action 164 (task `0x37`, `0x021c1be8`). */
+function putOutToSea(): void {
+  seaWanted = false
+  const code = loaded?.mapCodeOf(OCEAN_MAP)
+  if (code) enter(code, arrivalOfWords(shipKeep))
+}
+
+/**
+ * The ship's size against the ocean's shores, in its own units. **Ours**: no
+ * radius is set on its object (`func_020a6728`), and how the field's
+ * collision meets objects is not read.
+ */
+const SHIP_RADIUS = 1
+/** The ocean's shores are low walls, −0.06 to 0.09 high: the ship steps over none of them. */
+function shipShape(): CharacterShape {
+  const grow = WORLD_SCALE * worldScale
+  return {
+    ...PERSON,
+    radius: fx32(Math.round(SHIP_RADIUS * grow * FX32_ONE)),
+    height: fx32(Math.round(grow * FX32_ONE)),
+    stepUp: fx32(0),
+    snapDown: fx32(Math.round(0.5 * grow * FX32_ONE)),
+  }
+}
+
+/** The ocean's collision record a triangle names — see `regionIndexOf`. */
+function oceanRecordOf(triangle: number): Uint8Array | undefined {
+  if (!world || !loaded) return undefined
+  const attributes = world.triangles[triangle]?.attributes
+  if (attributes === undefined) return undefined
+  const records = loaded.map.meshes.flatMap((placed) => placed.mesh.trailing)
+  return records[regionIndexOf(attributes)]
+}
+
+/**
+ * The shore the ship is against, if any: the nearest wall within its reach,
+ * its record's land bits, map and kind (bits 10 to 14 of its second halfword,
+ * `func_0204be90`), and its normal turned toward the ship. **Ours**: the
+ * game's wall contact (`+0xe0` bit 6, `+0xe4`, `+0x11c`) is its own
+ * collision's, which is not read; this asks the engine's.
+ */
+function shoreAgainst(x: Fx32, z: Fx32): ShoreContact | undefined {
+  if (!world) return undefined
+  const reach = toFloat(shipShape().radius) * 1.5
+  let best: ShoreContact | undefined
+  let bestAt = Number.POSITIVE_INFINITY
+  for (const index of triangleAt(world, x, z)) {
+    const triangle = world.triangles[index]
+    if (!triangle || slopeOf(triangle) >= PERSON.maxSlope) continue
+    const [a, b] = triangle.vertices
+    const ex = b[0] - a[0]
+    const ez = b[2] - a[2]
+    const length = Math.hypot(ex, ez) || 1
+    const side = ((x - a[0]) * -ez + (z - a[2]) * ex) / length
+    const at = Math.abs(side) / FX32_ONE
+    if (at > reach || at >= bestAt) continue
+    const record = oceanRecordOf(index)
+    if (!record) continue
+    const region = skyRegionOf(record)
+    const kind = (((record[2] ?? 0) | ((record[3] ?? 0) << 8)) & 0x7c00) >> 10
+    const toward = Math.sign(side) || 1
+    bestAt = at
+    best = {
+      land: region.land,
+      map: region.map,
+      kind,
+      normalX: Math.round((-ez / length) * toward * 4096),
+      normalZ: Math.round((ex / length) * toward * 4096),
+    }
+  }
+  return best
+}
+
+/**
+ * **One frame at sea** — see `sailVblank`: the +Control Pad held steers the
+ * ship, which turns, speeds up and coasts as its object does, a vblank at a
+ * time; the world has the last word on where it goes, and the Hero rides it,
+ * hidden, so the camera follows. Every 3 units sailed takes one from the sea's
+ * count; steering into a shore with land for 40 vblanks asks "Disembark?".
+ *
+ * **Ours**: the camera is the field's own follow camera, the game's at sea not
+ * being read; the walls are the engine's — see `shoreAgainst`.
+ */
+function sailOn(elapsedMs: number): { moving: boolean; travelled: number; marshTicks: number } {
+  if (!sailing || !self || !world) return { moving: false, travelled: 0, marshTicks: 0 }
+  if (loaded?.mapId !== OCEAN_MAP) {
+    sailing = undefined
+    return { moving: false, travelled: 0, marshTicks: 0 }
+  }
+  const free = !menu && !talking && !visit && !playing && !entering && !battle
+  if (free) {
+    sailCarry += elapsedMs
+    const held = heldDirection()
+    const turn = Math.round(camera.yaw * 4096)
+    const grow = WORLD_SCALE * worldScale
+    const shape = shipShape()
+    while (sailCarry >= 1000 / 60 && sailing) {
+      sailCarry -= 1000 / 60
+      const was = sailing
+      const wanted = sailVblank(was, held, turn)
+      const from: CharacterState = {
+        x: fx32(Math.round(was.x * grow)),
+        y: self.state.y,
+        z: fx32(Math.round(was.z * grow)),
+        fallSpeed: fx32(0),
+        grounded: true,
+      }
+      const moved = stepBody(
+        world,
+        from,
+        fx32(Math.round((wanted.x - was.x) * grow)),
+        fx32(Math.round((wanted.z - was.z) * grow)),
+        shape,
+      )
+      let next: Sailing = wrapped({
+        ...wanted,
+        x: Math.round(moved.x / grow),
+        z: Math.round(moved.z / grow),
+      })
+      const legs = legsSailed(next, Math.round(Math.hypot(next.x - was.x, next.z - was.z)))
+      next = legs.state
+      shipKeep = {
+        ...shipKeep,
+        x: next.x,
+        z: next.z,
+        facing: next.facing,
+        count: shipKeep.count - legs.legs,
+      }
+      const shore = shoreVblank(
+        next,
+        held !== undefined,
+        moved.hitWall ? shoreAgainst(moved.x, moved.z) : undefined,
+      )
+      sailing = shore.state
+      if (shore.reached !== undefined) {
+        askToDisembark(shore.reached)
+        break
+      }
+      if (seaEncounter()) break
+    }
+  }
+  if (!sailing) return { moving: false, travelled: 0, marshTicks: 0 }
+  const grow = WORLD_SCALE * worldScale
+  self.state = {
+    ...self.state,
+    x: fx32(Math.round(sailing.x * grow)),
+    z: fx32(Math.round(sailing.z * grow)),
+  }
+  self.facing = sailing.facing / 4096
+  return { moving: false, travelled: 0, marshTicks: 0 }
+}
+
+/** A line at sea, `strstd`, said with no speaker, its answer handed on. */
+function sayAtSea(line: number, then: (answer: number | undefined) => void): void {
+  if (!loaded || !self) return
+  talkContext = textContext()
+  talking = startConversation(
+    { id: -1, name: '', x: toFloat(self.state.x), z: toFloat(self.state.z) },
+    'the ship',
+    [loaded.standardWords.get(line) ?? `(strstd ${line})`],
+    [`strstd ${line}`],
+    talkContext,
+  )
+  afterTalk = then
+  showTalk()
+}
+
+/**
+ * **A shore reached** — the task `0x39` (ov017 `func_ov017_021a9454`):
+ * "Disembark?" (`strstd` 58). Yes asks for the shore's map with no place of
+ * its own, and the map puts the party ashore — see {@link shipArrival}; no
+ * sails on.
+ */
+function askToDisembark(map: number): void {
+  if (sailing) sailing = { ...sailing, ashore: 0, going: false }
+  sayAtSea(LINE_DISEMBARK, (answer) => {
+    if (answer !== 0 || !loaded) return
+    const code = loaded.mapCodeOf(map)
+    if (code) enter(code)
+  })
+}
+
+/**
+ * **B at sea** (`0x020a7858`–`0x020a78c0`), with the ship the party's (flag
+ * `0x2b`): the ship stopped, "Switch to the inside of the boat?" (`strstd` 59);
+ * yes goes to the deck (5900) at its place from the sea.
+ */
+function askToGoBelow(): void {
+  if (!storyGlobals.has(FLAG_SHIP)) return
+  if (sailing) sailing = { ...sailing, going: false, speed: 0 }
+  sayAtSea(LINE_INSIDE, (answer) => {
+    if (answer !== 0 || !loaded) return
+    const code = loaded.mapCodeOf(DECK_MAP)
+    if (code) enter(code, arrivalOfWords(DECK_FROM_SEA))
+  })
+}
+
+/**
+ * **The sea's encounters** (ov017 `func_ov017_02196c4c`): on the ocean with
+ * the ship the party's, when the count is spent it is drawn again, 30 to 100,
+ * and a battle is asked for in the zone of the floor under the ship — its
+ * record's third halfword, packed as 100a + 10b + c (`func_0204be3c`).
+ *
+ * **Ours**: the draw is this engine's, not the game's battle generator; and
+ * who the battle brings is the field's own stand-in, one of the zone's
+ * roamers with company — how the game's battle request with no roamer chooses
+ * is not read.
+ */
+function seaEncounter(): boolean {
+  if (shipKeep.count > 0 || !storyGlobals.has(FLAG_SHIP) || !sailing || !world || !loaded)
+    return false
+  shipKeep = {
+    ...shipKeep,
+    count: COUNT_LEAST + roamRng.below(COUNT_MOST - COUNT_LEAST + 1),
+  }
+  const grow = WORLD_SCALE * worldScale
+  const hit = groundBelow(
+    world,
+    fx32(Math.round(sailing.x * grow)),
+    fx32(Math.round(sailing.z * grow)),
+    fx32(Math.round(world.bounds.maxY + FX32_ONE)),
+  )
+  const record = hit ? oceanRecordOf(hit.triangle) : undefined
+  if (!record) return false
+  const packed = (record[4] ?? 0) | ((record[5] ?? 0) << 8)
+  const zone = (packed & 0x1f) * 100 + ((packed >> 5) & 0x1f) * 10 + ((packed >> 10) & 0x1f)
+  const roamers = loaded.battleZones.get(zone)?.roamers ?? []
+  const leader = roamers[roamRng.below(Math.max(1, roamers.length))]
+  const codes = leader ? battleCodes(leader.number, zone) : undefined
+  if (!codes) return false
+  sailing = { ...sailing, going: false, speed: 0 }
+  startFight(codes, true)
+  return true
+}
+
+/** The ship drawn: sailing on the ocean, where it is kept on the sky, or moored in its field. */
+function shipPieces(): ReturnType<typeof castPieces> {
+  const here = loaded
+  const rom = cartridge
+  if (!here || !rom || here.mapId === undefined) return []
+  const grow = WORLD_SCALE * worldScale
+  let at: { x: number; y: number; z: number; facing: number } | undefined
+  let scale = SHIP_SCALE_SEA
+  if (here.mapId === OCEAN_MAP && sailing) {
+    at = {
+      x: (sailing.x / 4096) * grow,
+      y: (sailing.y / 4096) * grow,
+      z: (sailing.z / 4096) * grow,
+      facing: sailing.facing / 4096,
+    }
+  } else if (here.mapId === SKY_MAP) {
+    at = {
+      x: (shipKeep.x / 4096) * grow,
+      y: (shipKeep.y / 4096) * grow,
+      z: (shipKeep.z / 4096) * grow,
+      facing: shipKeep.facing / 4096,
+    }
+  } else if (here.mapId === shipKeep.map && shipFieldOf(here)) {
+    // Whatever at sea says: entering the field it is moored in shows it
+    // (`func_020a6aac`, `0x020a6e4c`–`0x020a6ec4`).
+    const moored = here.moorings.find((m) => m.id === shipKeep.mooring)
+    if (moored)
+      at = { x: moored.x * grow, y: moored.y * grow, z: moored.z * grow, facing: moored.facing }
+    scale = SHIP_SCALE_FIELD
+  }
+  if (!at) return []
+  const look = actorLookOf(rom, SHIP_MODEL, [])
+  if (!look) return []
+  return castPieces(
+    {
+      name: SHIP_MODEL,
+      model: look.model,
+      motion: look.motions.get('stand'),
+      floor: 0,
+      placement: { id: SHIP_OBJECT, map: here.mapId, ...at, offset: 0 },
+    },
+    look.catalogue,
+    (scale / 4096) * WORLD_SCALE * worldScale,
+    0,
+  )
+}
+
+/**
  * **The Starflight Express's list**, opened by its conductor's record — see
  * `express.ts`. The game turns the Hero to face the conductor as it opens;
  * this does not. Ours.
@@ -3979,10 +4454,15 @@ function frame(now = 0): void {
         ? { moving: false, travelled: 0, marshTicks: 0 }
         : climbing
           ? climbOn(elapsedMs)
-          : flying
-            ? flyOn(elapsedMs)
-            : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
+          : sailing
+            ? sailOn(elapsedMs)
+            : flying
+              ? flyOn(elapsedMs)
+              : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
     if (!wasClimbing) maybeClimb(elapsedMs, moving)
+    // The deck's gangway at sea, and the sailor's 164 — see `keptFromGangway`, `putOutToSea`.
+    keepOnDeck()
+    if (seaWanted && !talking && !playing && !menu) putOutToSea()
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
     marshCarry += marshTicks
     while (marshCarry >= MARSH_TICKS) {
@@ -4206,7 +4686,7 @@ function frame(now = 0): void {
                   ...loaded.cast.sprites2d.map((sprite) => castPlaced(sprite.placement)),
                   // Not under those Zoom's flight has hidden (INFERRED: a
                   // hidden object casts none).
-                  ...(flownAway()
+                  ...(flownAway() || sailing
                     ? []
                     : [
                         {
@@ -4251,7 +4731,9 @@ function frame(now = 0): void {
           ...bubblePieces(now),
           // The Starflight Express and its carriages, in flight — see `flight.ts`.
           ...expressPieces(),
-          ...(flying || flownAway()
+          // The ship: at sea, on the sky, or moored — see `shipPieces`.
+          ...shipPieces(),
+          ...(flying || sailing || flownAway()
             ? []
             : playerPieces(
                 lifted(heroPose ? { ...self, motionFrame: heroPose.frame } : self),
@@ -5417,6 +5899,7 @@ function talk(everyLine = false): void {
   )[0]
   const who = picked?.who
   if (!who) {
+    if (boardShip()) return
     if (openTreasureAhead()) return
     if (readBookcaseAhead()) return
     if (gatherHere()) return
@@ -7949,6 +8432,17 @@ function zoomChosen(row: number): void {
   menu = undefined
   showMenu()
   status(line)
+  // **The ship goes too**, when the party has it (flag `0x2b`;
+  // `0x02165e94`–`0x02165f0c`): to the place's `loola` values 9 to 12 — its
+  // map, value 10 its mooring, its x and z on the ocean, y kept.
+  if (storyGlobals.has(FLAG_SHIP))
+    shipKeep = {
+      ...shipKeep,
+      map: place.ship.map,
+      mooring: place.ship.mooring,
+      x: Math.round(place.ship.x * 4096),
+      z: Math.round(place.ship.z * 4096),
+    }
   startZoomFlight(false, {
     code: to,
     arrival: { x: place.x, y: place.y, z: place.z, facing: place.facing },
@@ -8477,28 +8971,8 @@ function beginRoaming(): void {
  * `encbtl`'s numbers beside each monster say about who joins is not read.
  */
 function fightRoamer(touched: Roamer): void {
-  if (!loaded) return
-  const code = loaded.monsterCodeOf.get(touched.number)
-  if (!code) return
-  const company = roamZone === undefined ? [] : (loaded.battleZones.get(roamZone)?.company ?? [])
-  const codes = [code]
-  const total = company.reduce((sum, c) => sum + c.weight, 0)
-  const kinds = total > 0 ? roamRng.below(3) : 0
-  for (let i = 0; i < kinds && codes.length < BATTLE_MOST; i++) {
-    let roll = roamRng.below(total)
-    let joined: (typeof company)[number] | undefined
-    for (const candidate of company) {
-      roll -= candidate.weight
-      if (roll < 0) {
-        joined = candidate
-        break
-      }
-    }
-    const joinedCode = joined ? loaded.monsterCodeOf.get(joined.number) : undefined
-    if (!joined || !joinedCode) continue
-    const count = joined.least + roamRng.below(Math.max(1, joined.most - joined.least + 1))
-    for (let k = 0; k < count && codes.length < BATTLE_MOST; k++) codes.push(joinedCode)
-  }
+  const codes = battleCodes(touched.number, roamZone)
+  if (!codes) return
   // **How the fight opens is the game's** — who was facing whom as they met,
   // and a draw from the C library's generator: `howItOpens`. The Hero's is the
   // party's highest deftness, no one else in the slice having numbers.
@@ -8523,6 +8997,37 @@ function fightRoamer(touched: Roamer): void {
       deftness: heroRow()?.deftness ?? 0,
     }),
   )
+}
+
+/**
+ * Who fights: a monster by its number, with up to two more from the zone's
+ * battle company, each drawn evenly. **The company is a stand-in** — see
+ * {@link fightRoamer}.
+ */
+function battleCodes(number: number, zone: number | undefined): string[] | undefined {
+  if (!loaded) return undefined
+  const code = loaded.monsterCodeOf.get(number)
+  if (!code) return undefined
+  const company = zone === undefined ? [] : (loaded.battleZones.get(zone)?.company ?? [])
+  const codes = [code]
+  const total = company.reduce((sum, c) => sum + c.weight, 0)
+  const kinds = total > 0 ? roamRng.below(3) : 0
+  for (let i = 0; i < kinds && codes.length < BATTLE_MOST; i++) {
+    let roll = roamRng.below(total)
+    let joined: (typeof company)[number] | undefined
+    for (const candidate of company) {
+      roll -= candidate.weight
+      if (roll < 0) {
+        joined = candidate
+        break
+      }
+    }
+    const joinedCode = joined ? loaded.monsterCodeOf.get(joined.number) : undefined
+    if (!joined || !joinedCode) continue
+    const count = joined.least + roamRng.below(Math.max(1, joined.most - joined.least + 1))
+    for (let k = 0; k < count && codes.length < BATTLE_MOST; k++) codes.push(joinedCode)
+  }
+  return codes
 }
 
 /** The open ground worked out last, and the map and scale it was for. */
@@ -9118,7 +9623,9 @@ function companionsInField(): {
   y: number
   z: number
 }[] {
-  if (!self || battle || playing) return []
+  // At sea the party is aboard, at the ship's place (`0x020a777c`), drawn by
+  // nobody but the ship — INFERRED, as the Express's riders are.
+  if (!self || battle || playing || sailing) return []
   const hx = toFloat(self.state.x)
   const hz = toFloat(self.state.z)
   const near = toFloat(person().radius) * 2
@@ -12404,6 +12911,10 @@ function storyFromRecord(outcome: EventOutcome): void {
   // A spell the story teaches the Hero, `166 : n` — see `taughtSpells`.
   for (const action of outcome.actions ?? [])
     if (action.op === OP_TEACH_SPELL) taughtSpells.add(action.arg)
+  // To sea, `164` — the deck's sailor's: task `0x37` asks for the ocean at
+  // the ship's place once the talk is over (`func_02061c04` case 64,
+  // `func_ov017_021c1af0`). See `putOutToSea`.
+  for (const action of outcome.actions ?? []) if (action.op === OP_TO_SEA) seaWanted = true
   // The revival map, which `208 : m` sets — see `revivalMap`.
   for (const action of outcome.actions ?? [])
     if (action.op === OP_REVIVAL_MAP) revivalMap = action.arg
@@ -14040,6 +14551,12 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   if (self && token) {
     self.held.add(token)
     event.preventDefault()
+  }
+  // At sea, B asks to go inside the boat — see `askToGoBelow`.
+  if (sailing && !talking && !playing && !menu && action === 'cancel') {
+    askToGoBelow()
+    event.preventDefault()
+    return handled
   }
   // In flight, A asks to land and B to go inside — see `askToLand`.
   if (flying && !talking && !playing && (action === 'confirm' || action === 'cancel')) {

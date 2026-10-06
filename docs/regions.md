@@ -54,6 +54,7 @@ is one the menu will not know about.
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
 | `minutes=1` | let that many minutes of play pass for the gathering spots before the first map, by their own rule — at a new game, one is enough for every spot to fill (`apps/game/src/main.ts`, `beginPlay`). A spot's items show as its map is entered |
 | `gold=5000` | that much gold in the purse — for the bank, the inn and the shops |
+| `ship=20002:0` | the ship moored in that map, by its id, at that mooring (a type-10 region's number) — ours, for boarding it without sailing it there. `map=O00` puts the party at sea where the ship is kept; `globals=43` gives the party the ship (flag `0x2b`), which B at sea and Zoom need |
 | `tricks=2,0,0,10,12` | the party trick slots — Up, Left, Right, Down 1 to 4 — by number, 0 for none; then B held with a direction performs |
 | `armoury=1` | one of every weapon, shield and piece of armour in the bag, and anyone may wear anything — for trying every weapon and outfit on the Hero. With `heromotion=` and a fight, every weapon through every motion |
 | `medals=80` | the mini medals already handed to Cap'n Max, so his milestones or his exchange can be reached without collecting them — ours. Talking to him (`M08M07`, cast 103) opens his service; see `apps/game/src/medals.ts` |

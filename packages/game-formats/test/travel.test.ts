@@ -63,7 +63,7 @@ describe("Zoom's list, loola", () => {
       x: 1.5,
       y: 0.25,
       z: -2,
-      ship: { map: 30001, unknown_10: 2, x: -57, z: -31.5 },
+      ship: { map: 30001, mooring: 2, x: -57, z: -31.5 },
     })
   })
 

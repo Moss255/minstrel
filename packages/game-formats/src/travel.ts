@@ -49,11 +49,13 @@ export interface ZoomPlace {
   readonly z: number
   /**
    * Values 9 to 12: where the ship is put when the party has one (flag
-   * `0x2b`) — its map, a number handed with it (not read), and its x and z.
+   * `0x2b`) — its map, **the mooring there** (value 10, kept at the ship's
+   * `+0x2784`; `func_ov002_02165b44`, `0x02165ec8`; read 6 October 2026, see
+   * `docs/readings/T16b-ship.md`), and its x and z on the ocean.
    */
   readonly ship: {
     readonly map: number
-    readonly unknown_10: number
+    readonly mooring: number
     readonly x: number
     readonly z: number
   }
@@ -107,7 +109,7 @@ export function readZoomPlaces(bytes: Uint8Array): ZoomPlace[] {
       z: float(record, 8),
       ship: {
         map: int(record, 9),
-        unknown_10: int(record, 10),
+        mooring: int(record, 10),
         x: float(record, 11),
         z: float(record, 12),
       },
