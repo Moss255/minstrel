@@ -42,8 +42,13 @@ written up on the wiki; each says so under its heading.
   already. The ship is split off as **16b**, its code found and not read.
 - **Task 17 is done in part**, 6 October 2026: monsters choose their ways
   by all eight of the game's rules, and ten more targeting handlers are
-  built, with all 161 listed; the party's tactics are read as far as their
-  frame and split off as **17b**, their scoring not read.
+  built, with all 161 listed; the party's tactics are split off as
+  **17b**.
+- **Task 17b is read and not built**, 6 October 2026: the tactics' scoring
+  is read whole (`docs/readings/T17-ai.md` §2b); a faithful build needs
+  state the simulation does not keep — the susceptibility bytes, the
+  killer bonuses of what is worn, the monsters' action flags — listed as
+  steps under 17b.
 - **Task 18 is done to its "done when"**, 6 October 2026: every ability on
   the 26 trees and every spell of the six starting vocations either plays by
   its handler or is listed by name with the address that would answer it
@@ -494,12 +499,34 @@ tactic's lists and threshold, the setting up (`021f7478`) and its draws,
 the weakest monster's Attack, the best-four lists — all in
 `docs/readings/T17-ai.md` §2.
 
-**Still to read**: the scoring. `func_ov024_021f9874` (3,832 bytes),
-`021fa7ec` (3,140; its first half is read), the evaluators by action kind at
-`0x021ffeac` (kind 1's, `021fb490`, partly read; 2 on not), `021fd858`,
-`021fd954`, `021fdf04`, `021f8bd8`, `021f8d80`, and what the 21 behaviours
-the setting up draws for each govern. Much of it is float arithmetic, to be
-held to `packages/sim/test/game-oracle.ts`.
+**Read, 6 October 2026; not built.** The scoring is read whole —
+`docs/readings/T17-ai.md` §2b: the scorer `021f9874` and its lists, the
+forecast `021fa7ec`, all 79 evaluators by kind, the state helpers
+`021fd954`/`021fdf04`, the riders' evaluators (`0x021ffcec`), and what the
+21 behaviours govern (the second byte of each is a gate on the turns
+needed, not an MP need — corrected). It is not built because a faithful
+score needs what the simulation does not keep, and without it a tactic
+would score harm and heal right and every state change, protection, rider
+and coup wrong — which is most of what Fight Wisely and Focus On Healing
+choose among. **The steps, each its own piece of work, in order:**
+
+1. **The susceptibility bytes** of every fighter's status, `+0x3e`–`+0x52`
+   — where a monster's come from (the open question task 18 left) and a
+   party member's; the forecast and every state evaluator read them.
+2. **The killer bonuses of what is worn**, by family (the twelve
+   `func_02085968`… accessors on `member+0x150`), and the vocation table
+   behind `ai+0x654` (`0x02200154`, outside overlay 24).
+3. **The monsters' own action flags** the setting up gathers
+   (`ai+0x69`–`0x72` from their six actions; `ai+0x13c`/`0x154` from their
+   records' `+0x6c`–`+0x72`), and the character record's `+0x134 +0x34`
+   and `+0x36`, and `func_ov000_0215e9fc`'s count (`ai+0x78`).
+4. **The port**, in the sim (`packages/sim/src/battle/tactics.ts`): the
+   setting up with its draws, the evaluators, the forecast and the scorer,
+   every float op through `Math.fround` in the game's order, the doubles in
+   two places held as doubles; golden tests against hand-worked cases of
+   the game's arithmetic; then reached as the game reaches it.
+5. The handlers task 18 left unread for anything a tactic can choose — a
+   tactic should never pick an action the battle cannot play.
 
 **Then build** it in the sim, reached as the game reaches it: a member
 not following orders keeps the Attack in the command phase

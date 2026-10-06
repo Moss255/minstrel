@@ -174,9 +174,9 @@ HP fraction (`func_ov024_021db358`) is lowest, strictly, from 1.1 — action
 - **and, on the member's turn only** (not when `+7` is set, as the command
   phase sets it), draws from the battle's own generator: one
   `NextRandomFloat01`, then for each of 21 behaviours a `NextRandomMax(100)`
-  against the tactic's chance and a `NextRandomBetween(lo, hi)`, then a
+  against the tactic's chance and a `NextRandomBetween(lo, hi)` (§2b: the second byte is a gate on the turns needed, not an MP need), then a
   `NextRandomFloatBetween(0, 0.9)` (`0x021f801c`–`0x021f8104`). The four
-  tables of 21 × (chance, MP need × 10, lo, hi): Show No Mercy `0x021ff084`,
+  tables of 21 × (chance, gate, lo, hi): Show No Mercy `0x021ff084`,
   Fight Wisely and Don't Use MP `0x021ff0d8`, Mix It Up `0x021ff12c`, Focus
   On Healing `0x021ff180`.
 
@@ -193,13 +193,173 @@ monster (`021fa7ec` — tension, Critical Claim, the families' killer
 weapons, the elements, …), then a score per target set
 (`func_ov024_021f9874`) into the lists.
 
-**Not read**: `021f9874` (3,832 bytes of float arithmetic), the rest of
-`021fa7ec` (3,140), the evaluators of kinds 2 on (heals, states, Zing,
-items…), `021fd858`, `021fd954`, `021fdf04`, and what the 21 behaviours each
-govern. Until they are, a tactic cannot choose as the game does: building
-the frame alone would choose by the fallback in every case — the weakest
-monster's Attack, a heal never cast — which is the game's answer only when
-every list is empty. **So the tactics are not built** (task 17b).
+### 2b. The scoring — read 6 October 2026 (task 17b)
+
+Read whole from overlay 24: the scorer, the forecast, the 79 evaluators and
+their helpers. Every float operation is the runtime's single-precision
+`_fadd`/`_fsub`/`_fmul`/`_fdiv`, except where a double is named; the
+runtime's double helpers are `func_0200b0f0` (**`_dmul`**: the two
+exponents added, `umull` of the mantissas) and `func_0200b608`
+(**`_dsub`**: a mixed-sign pair sent to the adder), `func_0200c578` is
+`_f2d`, and ARM9 `func_02008f5c` is fdlibm's **`ceil`** (a magnitude under
+one goes to `0x3ff00000`, 1.0, when positive). All three are exact in a
+JavaScript double, so a port can hold them bit for bit.
+
+**The 21 behaviours** (`021f7478`, `0x021f8058`–`0x021f80f0`). Per
+behaviour *i* the tactic's table holds four bytes (*chance*, *gate*, *lo*,
+*hi*). The flag `ai+0x10+i` is set on `NextRandomMax(100) < chance`, and
+cleared again when the party's turns needed (`ai+0x0c`) are fewer than
+`gate × ai+0x78 ÷ 10` (`_s32_div_f`); `ai+0x78` is
+`func_ov000_0215e9fc(battle, buf, 4, 1)`, not read. **This corrects §2**,
+which took the second byte for an MP need. Then `ai+0x54+i =
+NextRandomBetween(lo, hi)` for every *i*, and `ai+0x30 =
+NextRandomFloatBetween(0, 0.9)`; the first `NextRandomFloat01` is drawn and
+thrown away. An evaluator asks a behaviour with `func_ov024_021fe698(ai,
+i)` — false when the flag is clear, else it records *i* at `ai+0x38`; the
+scorer weighs the evaluator's state entries by `0.01 × ai+0x54[ai+0x38]`.
+Read from the evaluators, what each governs:
+
+| behaviour | asked by |
+|---|---|
+| 0 | always set (100, 0, 100, 100 in every table) |
+| 1 | a foe's state: sleep (kind 8), kinds 10, 16, 19, 21, Whack's kind 17 via 4, kind 49 |
+| 2 | an ally's levels raised (kinds 3–5), kinds 15 and 46 |
+| 3 | a foe's levels lowered (kinds 3–5) |
+| 4 | Whack and its like (kind 17); and, in the scorer, the second pass over sure kills (`ai+0x14`) |
+| 5, 6, 7 | an ally's attack, defence, agility (kinds 3, 4, 5) |
+| 10, 11, 12 | an ally's protections: kind 22; kinds 23, 32, 61, 62; kind 39 |
+| 13, 14, 15 | a foe's attack, defence, agility (kinds 3, 4, 5) |
+| 16 | a foe's kind 22 |
+| 18 | the coups de grâce (kinds 10's two, 26, 68–74) |
+| 8, 9, 17, 19, 20 | not asked by any evaluator read |
+
+Show No Mercy's table sets only 0 and 4; Focus On Healing's never sets 2,
+4, 5, 8, 14 or 20.
+
+**An evaluator's entries.** Each evaluator fills a target set — up to 16
+entries of 12 bytes, count at `+0xc0`, a float bonus at `+0xc4`
+(`func_ov024_021f6a1c`) — and hands it to the scorer `021f9874` with a
+group and a target. An entry: `+0` a float, `+4` an effect number, `+5`
+whether it lands on a monster, `+6` the target's index, `+7` a chance in
+100, `+8` a category, `+9` bits 0–5 the hits, bit 6 "a several-hit
+action", bit 7 "weigh by the slot `ai+0x3c` instead".
+
+**The scorer** (`func_ov024_021f9874`, `0x021f9874`–`0x021fa718`), in its
+order:
+
+1. category 0 on a monster: `dealt[t] += value × hits`, × 1.2 when the
+   target is the combo chain's (`ai+0x34`); `dealt ≥` its HP marks it
+   killed. Bit 6 notes "several hits".
+2. with behaviour 4's flag: category 2 on a monster is a chance of a
+   kill — `p = 0.01 × chance`; unless Show No Mercy, `p = (float)((double)p
+   − 0.005 × cost)`; then `dealt[t] += (HP − dealt) × min(p², 0.9)` for
+   each monster not already killed.
+3. categories 3 and 4 on the party: HP and (INFERRED) MP given, summed as
+   whole numbers per member.
+4. the cost: `float(MP)`, + 30 for an item.
+5. **harm** = Σ over monsters `100 × min(dealt, HP) ÷ max HP`; 0 for an
+   item unless Show No Mercy.
+6. **heal** = Σ over the party `100 × given ÷ max HP`, doubled for the
+   weakest (`ai+0x128`). Action `0x310` multiplies it by 0.66 when two or
+   more are at 0.08 or less, else 0.55, and zeroes it unless two or more
+   are at a quarter or less (`ai+0x139`); action `0x21`, by 0.9. Action
+   `0x28` sets it to 400.
+7. category 5: Σ chance. Categories 5–8 (state changes) each set a weight
+   in one of four slots from the tables below, zeroed when the behaviour
+   asked is clear and −1.5 × weight when the entry's value is negative,
+   then add `weight × chance × 0.01 × w` to their slot, where
+   `w = 0.01 × ai+0x54[behaviour]`: category 8 (slot A) by
+   `0x021ffc98` (6 × effect, weight; 10 otherwise), category 7 by
+   `0x021ffca4` (11 × effect, slot, weight; effect `0xd` instead
+   `ai+0x16c × 13 ÷ 100`, effect `0x11` on the party × `ai+0x44[t]`),
+   category 6 adds the value to slot D, category 5 on a monster not
+   killed by `0x021ffcc5` (13 × effect, slot, weight; effect `0x12`
+   instead `min(100 × (status+0x36 ÷ 4) ÷ max HP, 29)`).
+8. the lists, each entry's score less the cost × a factor: **list 2**
+   harm (+ slot D when `ai+0x2c`; × `ai+0x30` when "several hits") −
+   0.01 × cost, and **list 3** too when it costs nothing; **list 5**
+   category 5's sum − 0.1 × cost; **list 6** heal − 0.1 × cost, when
+   someone is under the threshold (`ai+0x655`); **list 8** slot A −
+   0.1 × cost + 0.01 × heal; Mix It Up multiplies harm by 0.3 here unless
+   the action is Critical Claim (`0x1f9`); **lists 9, 10, 11** slots B,
+   C, D − cost × 0.1 (0.01 under Show No Mercy); **list 0** the bonus +
+   B + C + D + harm − cost × that factor; **list 1** the same entry when
+   harm is not above 0 or it costs nothing. One of the party with an
+   MP-taking weapon (character record `+0x2ac` > 0, `+0x29c` bits 4–8 =
+   3), Attacking a monster that has MP, adds 50, 30 and 10 to the bonus at
+   a tenth, three tenths and half their MP or less.
+
+The tables (overlay 24, USA): `0x021ffc98` `(2,20) (3,22) (4,20) (5,19)
+(6,20) (7,21)`; `0x021ffca4` `(17,1,20) (18,2,15) (19,2,8) (20,1,7)
+(21,2,7) (22,2,16) (23,2,16) (14,2,14) (15,2,14) (16,2,10) (11,2,17)`;
+`0x021ffcc5` `(2,1,20) (3,3,40) (4,3,25) (5,3,21) (6,3,22) (7,3,30)
+(8,3,10) (17,3,14) (18,1,0) (19,2,8) (20,3,7) (21,3,7) (22,1,12)`.
+
+**The forecast** (`func_ov024_021fa7ec`): a blow's mean and least on one
+monster. It starts from the amount (`021f8938`; for the Attack, the
+member's own blow `ai+0xe4[t]` and 0.9375 of it) and multiplies, in order:
+tension (`func_02074738`, plus `CalculateTensionBonus` unless the target's
+`+0x144` bit 12); the action `ai+0x170`-weighted mean; action `0x1f9`
+(Critical Claim) from the member's level-like `+0x134 +0x34` and 1.2/0.95
+caps; the twelve families' killer bonuses of what the member wears
+(`func_ov000_02156068(battle, target, n)` then `func_02085968`,
+`02085818`, … on `member+0x150`), or the vocation's table `ai+0x654`
+(`func_ov000_02156b38`); the target's susceptibility bytes `+0x3e`–`+0x44`
+by the action's element for an element-8 action; 0.75 for a target with
+status `+0x18` bit 1 or 2 against elements 1 or 2; the target's defence
+and agility levels (`func_020748d0`, `020748a8`); its `+0x21`
+(`func_02074938`); 0.5 when `func_ov024_021dd260` and kind 1; the combo
+chain (`0x021fefa0`: 1.0, 1.2, 1.5, 2.0 by its length + 1, at most 3);
+action `0x79` by the monsters' count (`1 + 0.125 n`); a metal body
+(1, or 1 + 1 with one equipment flag, unless the action works on metal —
+`+0x10` bit 24) and the record's cap (`+0x1c` bits 0–13). Its result is
+`mean × ai+0x170 + least × (1 − ai+0x170)`, `ai+0x170` 0.4 and 0 under Show
+No Mercy.
+
+**The evaluators** by kind (`0x021ffeac`): 1 harm (`021fb490`: the
+forecast on each monster, the hits by `0x021ff002` and the hit code, a
+reach 5 by the weapon, then the scorer per group or for all); 2 and 14
+heal (`021fb91c`: on each standing member — the actor alone for reach 1 —
+the amount's mean capped to what is missing, with 999 for action `0x1fa`
+and a check at 0.4 of the actor's HP for kind 14's own; `ai+0x655` set when
+the member's HP fraction is under the threshold); 3, 4, 5 levels — on a
+foe behaviour 3 and 13/14/15 then `021fdf04(0x11/0x12/0x13)`, on an ally 2
+and 5/6/7 then `021fd954`; 7 `fd954(2)`; 8 `fdf04(4)`; 9 `fd954(4)` with
+three or more turns needed; 10 the two coups `0x1fc`, `0x20f` (bonus 1000)
+else `fdf04(8)`; 16, 17, 19, 21 `fdf04(6, 9, 5, 7)`; 18 the fallen (50, or
+100 for action `0x27`, at half their most HP); 20 `fd954(3)`; 22, 23, 32,
+39, 61, 62 an ally's protections by the monsters' own flags (`ai+0x6b`
+…`0x71`); 24 `fdf04(3)`; 26 Psyche Up's coup `0x202` by the actor's HP;
+27 `fd954(7)`; 33 the fallen when two or more are down; 46 by
+`ai+0x13c`/`ai+0x154`; 49 a sum over the monsters of their good states
+and levels (tables `0x021ff026`, 22 × (flag, weight), and `0x021fefd6`, ten levels × weight; a level above 0 counts its weight, one below three times it); 67 heal with the threshold
+0.6 (0.65 Focus On Healing, + 0.2 with few turns or low HP); 68–74 the
+coups, bonus 1000 under their own condition. Kinds 6, 13, 25, 28, 36–38,
+40–43, 47, 48, 50, 51, 53–56, 63, 64, 73, 75–78 are empty; 0, 11, 12,
+29–31, 34, 35, 44, 45, 52, 57–60, 65, 66 null.
+
+`021fdf04` (a state on the monsters) weighs each by its chance
+(`021f8bd8`: the record's accuracy, by might or mending between `+0x14`'s
+least and most), the target's levels and `+0x21`, and its resistance
+(`021f875c` → `func_ov000_02156b38`), passes over a monster whose chance
+comes under 30 or under the effect's own floor (33.3; 40.3 for effects 4,
+5 and 7; 55.3 for 8), and for each effect asks the target's state and its
+susceptibility (the hit code's pair from `0x021fefea`/`0x021fefeb`); the riders' own evaluators (`021fd858`, the table at
+`0x021ffcec`, 23 entries) read the **susceptibility bytes `+0x47`–`+0x50`**
+of the target's status. `021fd954` (a state on the party) marks a member
+in need at 100 and otherwise 50.
+
+**What a build needs that the simulation does not keep**: the
+susceptibility bytes (`+0x3e`–`+0x52`; task 18 left them open), the
+families' killer bonuses of what is worn, the vocation table `ai+0x654`
+(`0x02200154`, outside overlay 24), the monsters' own action flags
+(`ai+0x69`–`0x72`, their `+0x6c`–`+0x72`), the character record's
+`+0x134 +0x34` and `+0x36`, `func_ov000_0215e9fc`'s count, and the
+handlers task 18 left unread for the actions a tactic would choose (§7 of
+`T18-handlers.md`). Without them a port scores harm and heal faithfully
+but every state change, protection and rider wrongly — and those are what
+Fight Wisely and Focus On Healing choose among. **So the tactics are still
+not built**; task 17b in `docs/tasks.md` lists the steps.
 
 ## 3. The targeting handlers
 
