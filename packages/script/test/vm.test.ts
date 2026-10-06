@@ -246,6 +246,38 @@ describe('the script machine', () => {
     expect(calls.map((c) => c.args)).toEqual([[1], [1], [0], [5], [7]])
   })
 
+  it('takes a sine and a cosine of the top value, as floats, an integer made one first', () => {
+    // As ev29350 turns a character about a point: r × cos θ + x.
+    const script = assemble([
+      {
+        code: [
+          ...engine(909, [
+            float(2),
+            float(Math.PI),
+            [OP.COSINE],
+            [OP.MULTIPLY],
+            float(1),
+            [OP.ADD],
+          ]),
+          ...engine(909, [float(Math.PI / 6), [OP.SINE]]),
+          ...engine(909, [int(0), [OP.COSINE]]),
+          ...engine(909, [int(1), [OP.SINE]]),
+          [OP.RETURN],
+        ],
+      },
+    ])
+    const { host, calls } = recorder()
+    run(script, host)
+    expect(calls.map((c) => c.args[0])).toEqual([
+      -1,
+      Math.fround(Math.sin(Math.fround(Math.PI / 6))),
+      1,
+      Math.fround(Math.sin(1)),
+    ])
+    // Each answer is a float's: 0.5 is not quite what sin(π/6) rounds to.
+    expect(Math.fround(calls[3]?.args[0] as number)).toBe(calls[3]?.args[0])
+  })
+
   it('passes a note on, and gives the script what an engine function answers', () => {
     const script = assemble(
       [
@@ -278,9 +310,9 @@ describe('the script machine', () => {
   })
 
   it('stops on an opcode it does not read, saying which and where', () => {
-    const script = assemble([{ code: [[0x1d], [OP.RETURN]] }])
+    const script = assemble([{ code: [[0x1c], [OP.RETURN]] }])
     expect(() => run(script, recorder().host)).toThrow(ScriptError)
-    expect(() => run(script, recorder().host)).toThrow(/opcode 0x1d .*at 0x138/)
+    expect(() => run(script, recorder().host)).toThrow(/opcode 0x1c .*at 0x138/)
   })
 
   it('stops a script that never waits', () => {

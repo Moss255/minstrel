@@ -20,7 +20,7 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * | `0x08` | multiply | the second event folder's: 4,761 of its 4,777 follow `1 negate`; `3.14 1.5` makes a three-quarter turn | read from use |
  * | `0x09` | divide | the second, by the top — `4.5 180 divide 3.14 multiply` turns degrees to radians | read from use |
  * | `0x0B` | negate | the value on top; coordinates are stored positive and negated | read from use |
- * | `0x0E c` | compare | 40 `==` … 45 `>=`, in C's order — INFERRED past `==` | INFERRED |
+ * | `0x0E c` | compare | 40 `==`, 41 `!=`, 42 `<`, 43 `<=`, 44 `>`, 45 `>=`, the second value against the top; an integer against a float compares as floats | read from the interpreter |
  * | `0x0F` | return | with the value on top | established |
  * | `0x10 t` | jump | to `t`, from the code base | established |
  * | `0x11 t w` | jump if | pops; jumps when its truth is `w` | read from use |
@@ -30,12 +30,18 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * | `0x15 n` | invoke | takes `n` values: an engine function's number, then what it is handed | established |
  * | `0x16 n` | label | nothing; marks a jump's target | read from use |
  * | `0x17` | yield | waits for the next frame | read from use |
- * | `0x19` | or | only ever of flag values, `4 \| 16` | INFERRED |
+ * | `0x19` | or | only ever of flag values, `4 \| 16` | read from the interpreter |
  * | `0x1A` | not | | read from use |
+ * | `0x1D` | sine | of the top value, in radians | read from the interpreter |
+ * | `0x1E` | cosine | | read from the interpreter |
  *
- * Anything else stops the machine with a `ScriptError` rather than being
- * guessed at — `0x1D` and `0x1E`, twice each in one event outside the slice,
- * among them.
+ * **The interpreter** is overlay 17's `func_ov017_021d4e38` (USA), a jump
+ * table on the opcode from `0x021d4e5c`, 0 to `0x1E`; read 6 October 2026.
+ * The comparison's six are its sub-table at `0x021d55a4`; `0x18` is an `and`
+ * (`0x021d5c2c`) that no script on the cartridge uses, and `0x0A`, `0x0C`,
+ * `0x0D`, `0x1B` and `0x1C` are cases no script uses either, left unread.
+ * Anything not in the table above stops the machine with a `ScriptError`
+ * rather than being guessed at.
  *
  * Variables have a scope: 1 is the routine's own locals, 8 the event's, and 64
  * the game's, which the host keeps — the last two INFERRED from use.
@@ -71,6 +77,8 @@ export const OP = {
   YIELD: 0x17,
   OR: 0x19,
   NOT: 0x1a,
+  SINE: 0x1d,
+  COSINE: 0x1e,
 } as const
 
 /** A push's type word. */
@@ -284,6 +292,12 @@ export class ScriptThread {
       case OP.NOT:
         this.stack.push(truth(this.pop(at)) ? 0 : 1)
         return false
+      case OP.SINE:
+        this.stack.push(sineOrCosine(Math.sin, this.popNumber(at)))
+        return false
+      case OP.COSINE:
+        this.stack.push(sineOrCosine(Math.cos, this.popNumber(at)))
+        return false
       case OP.COMPARE: {
         const right = this.pop(at)
         const left = this.pop(at)
@@ -344,7 +358,23 @@ export class ScriptThread {
   }
 }
 
-/** 40 to 45 as C orders them: `==`, `!=`, `<`, `<=`, `>`, `>=`. Past `==`, INFERRED. */
+/**
+ * **A sine or a cosine, as the interpreter takes one** — `0x1D` at
+ * `0x021d5d6c` and `0x1E` at `0x021d5de4` (USA, overlay 17): the top value
+ * popped, an integer made a float (`_fflt`), widened to a double, handed to
+ * the ARM9's `sin` (`func_02009424`) or `cos` (`func_02008dcc`), narrowed to
+ * a float (`_d2f`) and pushed as one. Those two are fdlibm's — the |x| ≤ π/4
+ * test against `0x3fe921fb`, the reduction by π/2 and the four quadrants of
+ * kernel sine and cosine — and so is the engine this runs on, whose `sin`
+ * and `cos` are fdlibm's ported; the result is rounded to a float besides.
+ * The one script that uses them, `ev29350`, turns a character about a point
+ * with them.
+ */
+function sineOrCosine(f: (x: number) => number, x: number): number {
+  return Math.fround(f(Math.fround(x)))
+}
+
+/** 40 to 45 as C orders them: `==`, `!=`, `<`, `<=`, `>`, `>=` — read from the interpreter, `0x021d55a4`. */
 function compare(kind: number, left: ScriptValue, right: ScriptValue, at: number): boolean {
   if (kind === 40) return left === right
   if (kind === 41) return left !== right

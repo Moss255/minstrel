@@ -2701,7 +2701,7 @@ below — none unread, on all 523.
 | `0x08` | multiply | only in `/data/evspt_lv5`'s 164, where it is common — 4,777, in 127 of them. **4,761 follow `1 negate`**: a value times −1. The rest: `3.14 1.5` — a three-quarter turn in radians — `2.0 3.14`, a whole one, and `30 0.2` |
 | `0x09` | divide, the second value by the top | the same folder, 9 times: `4.5 180 divide 3.14 multiply` turns 4.5° into radians; `0.95 L6 divide`. Every one divides a float, so what an integer division does is not seen |
 | `0x0B` | negate the top value | follows coordinates, which are stored positive |
-| `0x0E c` | compare: 40 `==`, 41 `!=`, 42–45 ordered | `==` from its use in "wait while busy is 1"; the rest INFERRED in C's order |
+| `0x0E c` | compare the second value against the top: 40 `==`, 41 `!=`, 42 `<`, 43 `<=`, 44 `>`, 45 `>=` | read from the interpreter, 6 October 2026 (below) |
 | `0x0F` | return, with the top value | ends every routine |
 | `0x10 t` | jump | every target inside its own routine |
 | `0x11 t w` | pop, and jump when its truth is `w` | loops' exits |
@@ -2711,16 +2711,29 @@ below — none unread, on all 523.
 | `0x15 n` | invoke an engine function: `n` values, the first its number | below |
 | `0x16 n` | nothing: a label | always at a jump's target |
 | `0x17` | wait for the next frame | inside every waiting loop |
-| `0x19` | or | only ever of flags, `4 \| 16`, `1 \| 16`; INFERRED |
+| `0x19` | or | only ever of flags, `4 \| 16`, `1 \| 16`; read from the interpreter |
 | `0x1A` | not | before a jump on an engine function's answer |
+| `0x1D` | sine of the top value, in radians, pushed as a float | read from the interpreter |
+| `0x1E` | cosine | read from the interpreter |
 
 `0x08` and `0x09` are the second event folder's (see "Event text"): in the 523
 of `/data/event`, `0x08` appears only in one shared routine that no event
 calls. That folder also has `0x1D` and `0x1E`, twice each and only in
-`ev29350`, outside the slice: `r θ 0x1E multiply cx add` and the same with
-`0x1D` and `cz` read like the two coordinates of a point on a circle — a
-cosine and a sine, one each — but which is which is not settled, and both are
-not read.
+`ev29350`: `r θ 0x1E multiply cx add` and the same with `0x1D` and `cz`, the
+two coordinates of a point on a circle.
+
+**The interpreter, read 6 October 2026**: overlay 17's
+`func_ov017_021d4e38` (USA), a jump table on the opcode at `0x021d4e5c` for
+0 to `0x1E`; a value on its stack is a type word (0 integer, 1 float) and a
+word. `0x1D` (`0x021d5d6c`) and `0x1E` (`0x021d5de4`) pop a value, make an
+integer a float, widen it to a double and hand it to the ARM9's `sin`
+(`func_02009424`) and `cos` (`func_02008dcc`) — fdlibm's, by their shape:
+the |x| ≤ π/4 test against `0x3fe921fb`, the π/2 reduction, the quadrant's
+kernel — and push the answer narrowed to a float. The comparison is the
+sub-table at `0x021d55a4`, the second value against the top, an integer
+against a float compared as floats. `0x18` is an `and` (`0x021d5c2c`) and
+`0x19` an `or` (`0x021d5c9c`); `0x0A`, `0x0C`, `0x0D`, `0x18`, `0x1B` and
+`0x1C` are cases no script on the cartridge uses, and are left unread.
 
 **A string's offset counts from the code base**, as jumps and routine calls
 do. Of the 9,273 string pushes in the 523 event scripts, 3,305 are handed
