@@ -402,3 +402,42 @@ describe('Tap Dance and Immense Defence — kinds 25 and 37, levels whose flag d
     expect(blockOf(held)).toBe(24.5)
   })
 })
+
+describe('Disruptive Wave — kind 49', () => {
+  it('clears every level, the given statuses and the tension, but not poison or dazzle', () => {
+    const start = startBattle([hero, foe])
+    const charged: BattleState = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1
+          ? {
+              ...f,
+              states: {
+                ...f.states,
+                attack: { level: 2, turns: 3 },
+                shield: { level: 1, turns: 5 },
+                fizzled: { level: 1, turns: 6 },
+                vanished: { level: 1, turns: 5 },
+                decoy: 'mist',
+                tension: 2,
+                dazzled: { level: 2, turns: 4 },
+                poisoned: true,
+              },
+            }
+          : f,
+      ),
+    }
+    const wave = status(189, 'dispel', { side: 'other', reach: 'group' })
+    const { state, events } = playRound(charged, using(wave, 1), new BattleRng(9n))
+    expect(changeOf(events).hits).toEqual([{ target: 1, result: 'dispelled', calmed: true }])
+    const after = state.fighters[1]?.states
+    expect(after?.attack?.level).toBe(0)
+    expect(after?.shield?.level).toBe(0)
+    expect(after?.fizzled?.level).toBe(0)
+    expect(after?.vanished).toBeUndefined()
+    expect(after?.decoy).toBeUndefined()
+    expect(after?.tension).toBe(0)
+    expect(after?.dazzled?.level).toBe(2)
+    expect(after?.poisoned).toBe(true)
+  })
+})

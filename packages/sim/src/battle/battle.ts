@@ -460,6 +460,14 @@ export type Change =
    * (`func_ov024_021eae14`), with no test of its landing.
    */
   | { readonly kind: 'relieve'; readonly chance: number }
+  /**
+   * **Disruptive Wave** (kind 49, `func_ov024_021e02b0`): landed, everything
+   * magical on its target cleared (`func_ov024_021ea85c`) — every level, the
+   * statuses a spell or an ability gives and the tension; not sleep, poison,
+   * paralysis, a lost turn or dazzle. One line for them all after, by the
+   * resolver (`func_ov024_021e80e4`, `0x021e8560`–`0x021e85d4`).
+   */
+  | { readonly kind: 'dispel'; readonly chance: number }
   /** **Antimagic** (kind 16, `func_ov024_021dced0`): fizzled, landed — again if already. */
   | { readonly kind: 'fizzle'; readonly chance: number }
   /** **Tingle** (kind 20, `func_ov024_021dd6f0`): the paralysed, landed, freed. */
@@ -702,6 +710,8 @@ export type ChangeResult =
   | 'stunned'
   /** Watched by Knight Watch — see `States.watched`. */
   | 'watched'
+  /** Disruptive Wave: all its magic cleared; `calmed` where that took tension. */
+  | 'dispelled'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -2872,6 +2882,34 @@ export function playRound(
             const again = (was.fizzled?.level ?? 0) !== 0
             setStates(target, { fizzled: { level: 1, turns: LEVEL_COUNTS.fizzled } })
             return { target, result: 'fizzled', ...(again ? { again: true } : {}) }
+          }
+          case 'dispel': {
+            // Disruptive Wave (`0x021e02d8`–`0x021e0320`): landed, the clear
+            // (`func_ov024_021ea85c`) — its tension's line where it had any
+            // (`021da998`, `021dd260`; `func_ov024_021e8cfc`), and each
+            // status `func_0208…` clears that the battle keeps: the nine
+            // levels (`func_02087838` to `020880e4`), Fizzle (`020888c4`),
+            // Vanish (`020889b4`), Rotstopper (`02088a54`), the decoys
+            // (`02088aa8`, `02088af0`), Alma Mater (`02088b34`), Focus Pocus
+            // (`02088b84`), Right as Rain (`02088bd4`), Holy Impregnable
+            // (`02088cf4`), 0 Zone (`020890f4`), Rough 'n' Tumble (`02089144`).
+            if (!landed || !alive(them)) return { target, result: 'resisted' }
+            const calmed = (was.tension ?? 0) > 0
+            setStates(target, {
+              ...Object.fromEntries(LEVEL_STATS.map((stat) => [stat, { level: 0, turns: 0 }])),
+              fizzled: { level: 0, turns: 0 },
+              vanished: undefined,
+              rotstop: undefined,
+              decoy: undefined,
+              alma: undefined,
+              focus: undefined,
+              rain: undefined,
+              holy: undefined,
+              zeroZone: { level: 0, turns: 0 },
+              tumble: { level: 0, turns: 0 },
+              tension: 0,
+            })
+            return { target, result: 'dispelled', ...(calmed ? { calmed: true } : {}) }
           }
           case 'unparalyse':
             // Tingle: landed on the paralysed (`func_ov024_021da9b0`), freed.

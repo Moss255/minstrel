@@ -386,6 +386,10 @@ function changeSays(
     // Knight Watch's handler says nothing of its own (`021e1de8`): its opening alone.
     case 'watched':
       return 0
+    // Disruptive Wave's own result has no line (`0x021e0324`–`0x021e0370`):
+    // the resolver says one for all after — see the page's `dispelled`.
+    case 'dispelled':
+      return 0
     // Rider 11's (`func_ov024_021e9464` with 1): "is paralysed!" (`0x1e`), or
     // on one already, "is frozen even further" (`0x6e`).
     case 'paralysed':
@@ -518,6 +522,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} cannot move!`
     case 'watched':
       return `${whom} is watched.`
+    case 'dispelled':
+      return `All magical effects cast on ${whom} are removed.`
     case 'paralysed':
       return hit.again ? `${whom} is frozen even further.` : `${whom} is paralysed!`
   }
@@ -1531,9 +1537,32 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                   ? []
                   : [sayHit(hit)],
       )
+      // Disruptive Wave's one line for all (`func_ov024_021e80e4`,
+      // `0x021e8560`–`0x021e85d4`): `0xf1` for one, `0xf2` "… and co." for
+      // more, naming the first it cleared (`+0x44`, `0x021e0318`); each one's
+      // tension taken before it (`func_ov024_021e8cfc`).
+      const dispelled = event.hits.filter((hit) => hit.result === 'dispelled')
+      const first = dispelled[0]
+      const dispelling =
+        event.change === 'dispel' && first
+          ? [
+              ...dispelled
+                .filter((hit) => hit.calmed)
+                .map((hit) =>
+                  say(scene, 'actions', ACTION_SAYS.tensionNormal, {
+                    target: scene.names[hit.target],
+                  }),
+                ),
+              say(scene, 'actions', dispelled.length > 1 ? 0xf2 : 0xf1, {
+                actor,
+                target: scene.names[first.target],
+              }),
+            ]
+          : []
+      const said = [...landed, ...dispelling]
       const game = lines(
         ...opens,
-        ...(landed.length > 0 ? landed : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
+        ...(said.length > 0 ? said : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]),
         ...(event.rode ?? []).map(sayHit),
       )
       if (game !== undefined) return game
@@ -2199,6 +2228,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   // shield's block, a level — each doubling while it holds.
   [25, 'evasion'],
   [37, 'shield'],
+  // Disruptive Wave (`021e02b0`): everything magical cleared.
+  [49, 'dispel'],
   // Holy Impregnable (`021e1120`): 25 less taken of the ailments' elements.
   [64, 'holy'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.

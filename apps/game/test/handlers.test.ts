@@ -143,7 +143,15 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(136))?.change).toEqual({ kind: 'shield', by: 2, chance: 100 })
     })
 
-    it('strikes 29 of them as the Attack now, where 76 were', () => {
+    it('plays Disruptive Wave as the clear of everything magical', () => {
+      expect(partyChangeOf(action(189))).toMatchObject({
+        change: { kind: 'dispel' },
+        side: 'other',
+        reach: 'all',
+      })
+    })
+
+    it('strikes 28 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -160,7 +168,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(29)
+      expect(attack).toBe(28)
     })
   },
 )

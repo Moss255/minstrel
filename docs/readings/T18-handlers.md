@@ -246,7 +246,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (29 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25 and 37), by the kind whose handler is unread:
+**Still struck as the Attack** (28 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37 and 49), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -261,7 +261,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
 | 47 | `func_ov024_021e00c0` | Feel the Burn |
-| 49 | `func_ov024_021e02b0` | Disruptive Wave |
 | 50 | `func_ov024_021e0380` | Extreme Makeover |
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
 | 52 | `func_ov024_021e05fc` | Mercy |
@@ -937,3 +936,37 @@ So only the flag is read, never the level's size: a level of 1 doubles as
 2 does. `+0x58` bits 9–11, between agility and magical might, is **charm**
 (`func_02087a9c`, count `+0x71`; Extreme Makeover, kind 50, with
 `UpdateCombatantCharm`) — not built.
+
+### Disruptive Wave (kind 49) — built
+
+`func_ov024_021e02b0`: landed, the clear `func_ov024_021ea85c` on the
+target, picture flag `0x28`, the count of those reached (`+0x14`) one more,
+and the first of them kept at `+0x44` (`0x021e0318`–`0x021e0320`); its
+result has **no line of its own**. The clear, in its order:
+
+- the tension — `+0x14` bit 23 or bit 24 with the byte `+0x24`
+  (`func_02088234`, `020881ac`); where bit 23 was set
+  (`func_ov024_021da998`), `func_ov024_021e8cfc` with picture 1 — the line
+  `0x25c`, "…'s tension returns to normal"; else where bit 24 was and is no
+  longer (`021dd260`), the same with picture 8;
+- Bounce (`02088914`), Vanish (`020889b4`), Feel the Burn (`02088a04`),
+  Rotstopper (`02088a54`), Schizofanic (`02088aa8`), Alma Mater
+  (`02088b34`), Reverse Cycle (`02088964`, twice), Focus Pocus (`02088b84`),
+  **Fizzle** (`020888c4`), Mist Me (`02088af0`), Right as Rain
+  (`02088bd4`), `+0x18` bit 7 with `+0x22` bits 9–11 (`02088674`), Holy
+  Impregnable (`02088cf4`), `+0x18` bits 4, 1 and 2 (`02088d4c`,
+  `02088c38`, `02088c9c`), 0 Zone (`020890f4`), Rough 'n' Tumble
+  (`02089144`), `+0x18` bit 11 (`02089194`), Twocus Pocus (`02088d9c`);
+- every level of `+0x58`, attack to evasion (`02087838` … `020880e4`,
+  `02087ff0`), then `ApplyCombatantBuffs`;
+- with a line asked (`r3`; Disruptive Wave asks none), `0xf1` where nothing
+  else was said.
+
+Not cleared: sleep, poison, paralysis, a lost turn, dazzle, Knight Watch.
+**The line** is the resolver's, once for the action
+(`func_ov024_021e80e4`, `0x021e8560`–`0x021e85d4`): for kind `0x31`,
+`0xf1` "All magical effects cast on <TARGET> are removed" where one was
+reached, `0xf2` "… and co." where more, the target the one kept at
+`+0x44`. **Ours**: none reached is told "But nothing happens" — the
+resolver's way for a count of 0 (`0x021e8580`–`0x021e85cc`) is not
+followed.
