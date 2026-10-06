@@ -76,7 +76,7 @@ const isMapCode = (name: string) => known.has(name.toUpperCase())
 describe('readMapLinks', () => {
   it('reads the header and every name', () => {
     const links = readMapLinks(build(M01))
-    expect(links.unknown_0x00).toBe(39)
+    expect(links.instructions).toBe(39)
     expect(links.names).toEqual(M01)
   })
 

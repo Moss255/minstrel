@@ -46,10 +46,10 @@ export interface LatinGlyph {
    */
   readonly hasCapital: boolean
   /**
-   * The flags' other seven bits, not established. Bit 6 is on the vowels,
-   * capital and small, plain and accented, and on Æ and æ — and on ñ, though
-   * not Ñ, Œ or œ; the low six are 1 on the letters and digits and 3 or 4 on
-   * most of the rest.
+   * The flags' other seven bits. **The low six are the name's length**, by
+   * which the game matches a glyph to the text (`func_0204254c`, USA; 487 of
+   * 487). Bit 6, not established, is on the vowels, capital and small, plain
+   * and accented, and on Æ and æ — and on ñ, though not Ñ, Œ or œ.
    */
   readonly unknown_flags: number
 }

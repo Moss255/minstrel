@@ -9,7 +9,7 @@ import { GameFormatError } from './errors.ts'
  *
  * | offset | type | meaning |
  * |---|---|---|
- * | `0x00` | `u32` | `unknown_0x00` |
+ * | `0x00` | `u32` | the instruction count: the records, a terminator among them — see `table.ts` |
  * | `0x04` | `u32` | string table offset |
  * | `0x08` | `u32` | string table size |
  * | `0x0C` | `u32` | string count |
@@ -48,8 +48,8 @@ import { GameFormatError } from './errors.ts'
 
 /** A `.bmbl`: the header fields that are established, and its names. */
 export interface MapLinks {
-  /** Header word at `0x00`. Meaning not established. */
-  readonly unknown_0x00: number
+  /** Header word at `0x00`: the instruction count — the records, a terminator among them (`table.ts`). */
+  readonly instructions: number
   /** Every name in the string table, in table order. */
   readonly names: readonly string[]
   /**
@@ -107,7 +107,7 @@ export function readMapLinks(data: Uint8Array): MapLinks {
   if (data.length < HEADER_SIZE) {
     throw new GameFormatError(`file is ${data.length} bytes, shorter than its header`)
   }
-  const unknown_0x00 = u32(data, 0, 'maplinks.unknown_0x00')
+  const instructions = u32(data, 0, 'maplinks.instructions')
   const stringOffset = u32(data, 4, 'maplinks.stringOffset')
   const stringSize = u32(data, 8, 'maplinks.stringSize')
   const stringCount = u32(data, 12, 'maplinks.stringCount')
@@ -156,7 +156,7 @@ export function readMapLinks(data: Uint8Array): MapLinks {
   }
 
   return {
-    unknown_0x00,
+    instructions,
     names,
     nameAt: (offset) => byOffset.get(offset),
     linksTo(ownCode, isMapCode) {

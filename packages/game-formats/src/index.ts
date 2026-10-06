@@ -288,6 +288,7 @@ export {
   type SpriteFrame,
   type SpritePart,
 } from './sprite.ts'
+export { readStaffRoll, type StaffRoll, type StaffRollLine } from './staffroll.ts'
 export {
   afterBattle,
   areaAt,

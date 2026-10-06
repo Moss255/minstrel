@@ -137,8 +137,21 @@ be made a capital (`hasCapital`). Bit 6 is set on the vowels, capital and
 small, plain and accented, and on Æ and æ — and on ñ, though not on Ñ, nor on
 Œ or œ: 55 glyphs, the same in both fonts. So it is not simply "a vowel", and
 what it marks is not established. Neither bit is set on anything but a letter.
-The low six bits are 1 on the letters and digits and 3 or 4 on most of the
-rest; not established. The seven are carried as `unknown_flags`.
+**The low six bits are the name's length** — 1 on `A`, 4 on `<'e>` — 242 of
+242 in `fi_me` and 245 of 245 in `fi_s7`; read 6 October 2026 from the
+glyph lookup (`func_0204254c`, USA), which takes the first glyph whose name
+matches the text's next bytes over that length (`strncmp`). Bits 6 and 7
+stay unread. The seven are carried as `unknown_flags`.
+
+**How the game sets a line** (read the same day, USA): the fonts are
+numbered **0 `s7`, 1 `me`** (`func_02042944` fills `data_0210782c` from
+`fd_%s.bin` and `fi_%s.bin`). A space is `data_020e7bd8[font] + 1` wide —
+**3 in `s7`, 4 in `me`** — and so is a character no glyph names, which draws
+glyph 0. **Drawing** (`func_0204f41c`) moves on by each glyph's width + 1,
+with no kerning; **measuring** (`func_020420e8`) adds the kerning pair's
+signed byte between a glyph and the one before (`func_020425e4`; a space
+breaks the pair) and takes 1 off the total. So text placed by its width is
+placed by a kerned one and drawn unkerned.
 
 **A kerning pair is four bytes**: the left glyph, the right, a signed byte and
 one that is 0 on all 127. The signed byte is −1 on every pair: `AT`, `AV`,
@@ -208,7 +221,7 @@ standalone tables such as `data/bin/mapbgm.bin`. One container, several uses.
 
 | offset | type | meaning |
 |---|---|---|
-| `+0x00` | `u32` | `unknown_0x00` |
+| `+0x00` | `u32` | how many records, a terminator among them — the instruction count |
 | `+0x04` | `u32` | string table offset — the file size when there is no table |
 | `+0x08` | `u32` | string table size |
 | `+0x0C` | `u32` | string count |
@@ -252,6 +265,21 @@ The string table lists a map's resources by name: `M01M0000.imd`,
 `M01M00D1.imd`, and so on, `.imd` being the source-format name for what ships as
 NSBMD. That makes the map descriptor the **map-to-model manifest**, which is what
 tells an engine which models compose a given map — needed for M2.
+
+## It is the game's `Script` command file
+
+Read 6 October 2026 from the decomp's `Script` class
+(`src/Resource/Script.cpp`, `include/Resource/Script.h`): **a record is an
+instruction** — an opcode, a parameter count, two bits of type a parameter (0
+a string's offset, 1 an integer, 2 a float) — run in order by
+`Script::Execute`, which hands each to whatever function its reader put
+against that opcode (`Script::SetOpcodeLookup`, a table of number and
+function sorted by number). **The header's first word is the instruction
+count** (`FileHeader::numInstructions`): it equals the records on all 5,675
+tables in the European cartridge's files, counting the `0x6E` terminator
+where there is one (854 of them). So a table's tags mean what its reader
+says they mean, file kind by file kind — the staff roll's are below, in
+"The staff roll".
 
 ## What the tags mean is not established
 
@@ -1956,7 +1984,7 @@ Identical to the shared table's.
 
 | offset | type | meaning |
 |---|---|---|
-| `0x00` | `u32` | `unknown_0x00` |
+| `0x00` | `u32` | the instruction count — see the shared table |
 | `0x04` | `u32` | string table offset |
 | `0x08` | `u32` | string table size |
 | `0x0C` | `u32` | string count |
@@ -2909,13 +2937,41 @@ inscription's and Yggdrasil's both.
 
 ---
 
+# The staff roll — `/data/evspt_lv5/staffroll.bin`
+
+A command file (the tagged data table, above), run by overlay 28 when `811`
+starts the roll; read 6 October 2026, `docs/readings/T11-ending.md` has the
+overlay. `readStaffRoll` in `staffroll.ts`.
+
+| tag | values | does |
+|---|---|---|
+| `0x66` | speed, a float | pixels the roll moves a frame: **0.86** |
+| `0x64` | count | room for that many lines: 470 |
+| `0x65` | group, flags, gap, text | one line |
+
+A line's **flags**: bits 0–3 its size — 12 is set in font 1 (`me`),
+anything else in font 0 (`s7`); bits 4–5 where it stands — 0 at x 0, 1
+centred, `(256 − w) / 2`, 2 ending at x 120, 3 starting at x 136; bits 7–10
+the colour of its letters. Bit 6 and bits 11 up are read by nothing. Lines of
+**one group** stand at one height; a **new group** goes `gap` pixels below
+the last, once the roll has scrolled far enough to show it.
+
+On the European cartridge: 472 instructions, 470 lines in 418 groups.
+Headings — "Development Staff", "Chief Scenario Planner" — are size 10,
+centred, colour 5; names are size 12, colour 15, centred or, on the pages of
+two columns, a pair in one group ending at 120 and starting at 136. Gaps are
+209 between companies, 37 between roles, 23 under a heading and 13 between
+names. The text spells accents as the fonts name their glyphs, `Micha<:e>l`.
+
+---
+
 # Treasure — `/data/scenario/treasure.nsarc/<map>.bin`
 
 One member per map that has any: 268 members, two of them empty (`M09M05`,
 `D13M02`), and three — `randTBox`, `randTD`, `randTTT` — named for no map.
 Every non-empty one is a tagged data table (above) and walks to its string
-table, and the first header word, `unknown_0x00` to the table, is the record
-count on all 266.
+table, and the first header word, the table's instruction count, is the
+record count on all 266.
 
 | tag | values | seen | meaning |
 |---|---|---|---|

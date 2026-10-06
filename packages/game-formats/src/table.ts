@@ -9,7 +9,7 @@ import { GameFormatError } from './errors.ts'
  *
  * | offset | type | meaning |
  * |---|---|---|
- * | `+0x00` | `u32` | `unknown_0x00` |
+ * | `+0x00` | `u32` | how many records, the terminator among them |
  * | `+0x04` | `u32` | string table offset, or the file size when there is none |
  * | `+0x08` | `u32` | string table size |
  * | `+0x0C` | `u32` | string count |
@@ -39,7 +39,17 @@ import { GameFormatError } from './errors.ts'
  * The stream proper ends on a record whose tag is `0x6E` and whose type is
  * `0xFF`, or by reaching the string table.
  *
- * **What the tags mean is not established.** They are exposed as numbers, and
+ * **It is the game's `Script` command file** (the decomp's
+ * `src/Resource/Script.cpp`, read 6 October 2026): a record is an
+ * instruction, its tag an opcode the reader looks up in a table of functions
+ * it was handed, its values that function's parameters; the header's first
+ * word is the instruction count, and its second, third and fourth the string
+ * section's place, size and count. The count is the records on all 5,675
+ * tables in the European cartridge's files — the terminator, where there is
+ * one, being an instruction too.
+ *
+ * **What the tags mean is not established** in general: each reader gives
+ * them its own meanings. They are exposed as numbers, and
  * values as raw `u32`s alongside their float reading, so a caller that works one
  * out can use it without this package having guessed. The one part that is
  * established is the string table: in a `.bmdj` it lists the map's resource
@@ -73,7 +83,8 @@ export interface TableRecord {
 }
 
 export interface DataTable {
-  readonly unknown_0x00: number
+  /** How many records the header says there are, a terminator among them — `Script::FileHeader`'s instruction count. */
+  readonly instructions: number
   /** NUL-separated names from the string table; empty when there is none. */
   readonly strings: readonly string[]
   readonly records: readonly TableRecord[]
@@ -118,7 +129,7 @@ export function readDataTable(data: Uint8Array): DataTable {
   if (data.length < 16) {
     throw new GameFormatError(`table is ${data.length} bytes, shorter than its header`)
   }
-  const unknown_0x00 = u32(data, 0, 'table.unknown_0x00')
+  const instructions = u32(data, 0, 'table.instructions')
   const stringOffset = u32(data, 4, 'table.stringOffset')
   const stringSize = u32(data, 8, 'table.stringSize')
   const stringCount = u32(data, 12, 'table.stringCount')
@@ -206,7 +217,7 @@ export function readDataTable(data: Uint8Array): DataTable {
   }
 
   return {
-    unknown_0x00,
+    instructions,
     strings,
     stringAt: (offset) => byOffset.get(offset),
     records,
