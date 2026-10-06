@@ -196,12 +196,6 @@ export interface Loaded {
   readonly mapId: number | undefined
   /** The region the index puts it in — "Angel Falls" — which the map's corner names in its tab. */
   readonly region: string | undefined
-  /**
-   * The region's outside — the map the index labels "Exterior" in it, `D01`
-   * for the Hexagon's rooms — where Evac takes the Hero; undefined where the
-   * region has none, or this is it. Ours: which map Evac chooses is not read.
-   */
-  readonly regionExterior: string | undefined
   /** The track that plays here, an index into `bgm.sdat`'s sequences — see `MapEntry.music`. */
   readonly music: number | undefined
   /**
@@ -1972,27 +1966,6 @@ function regionHead(region: string | undefined): string | undefined {
   return region?.split(' - ')[0]?.trim()
 }
 
-/** The map labelled "Exterior" in a map's place, when that is another map — see `Loaded.regionExterior`. */
-function exteriorOf(cat: Catalogue, code: string): string | undefined {
-  for (const leaf of cat.other) {
-    if (!leaf.path.toLowerCase().endsWith('maplist9.bin') || !isMapList(leaf.bytes)) continue
-    try {
-      const list = readMapList(leaf.bytes)
-      const own = list.map(code.toUpperCase())
-      const place = regionHead(own?.region)
-      if (!own || !place) return undefined
-      const outside = list.maps.find(
-        (entry) =>
-          entry.id !== 0 && entry.label === 'Exterior' && regionHead(entry.region) === place,
-      )
-      return outside && outside.code !== own.code ? outside.code : undefined
-    } catch {
-      return undefined
-    }
-  }
-  return undefined
-}
-
 /** The ARM9 binary unpacked once, by cartridge: the header says where it lies, and it is BLZ-packed. */
 const arm9Read = new WeakMap<Uint8Array, Uint8Array | undefined>()
 function arm9Of(rom: Uint8Array): Uint8Array | undefined {
@@ -2989,7 +2962,6 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     mapArea: entry?.area,
     mapZoom: entry?.zoom,
     travel: travelOf(rom),
-    regionExterior: exteriorOf(cat, code),
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,

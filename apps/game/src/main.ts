@@ -30,9 +30,11 @@ import {
   doorwayPlay,
   type EventOutcome,
   entryPlay,
+  evacDestination,
   eventOutcome,
   FACILITY_DQVC_ONLINE,
   FACILITY_MEDALS,
+  FLAG_NO_ZOOM,
   facilityFor,
   flagsHold,
   GRANTS_REGARDLESS,
@@ -50,10 +52,16 @@ import {
   type NpcPlacement,
   OP_EVENT,
   OP_FACILITY,
+  OP_REVIVAL_MAP,
   parseMarkup,
   partName,
+  placeFlagOf,
+  placesOffered,
   QUEST_SLOTS,
+  REVIVAL_SILENT,
   readSprite,
+  revivalVoice,
+  revivalWordsFile,
   type StoryArea,
   type StoryState,
   settingsPlay,
@@ -68,6 +76,7 @@ import {
   vocationsWielding,
   watchPlay,
   wornResistances,
+  type ZoomPlace,
 } from '@minstrel/game-formats'
 import { type Backdrop, ModelRenderer, type Piece } from '@minstrel/gl'
 import {
@@ -2222,6 +2231,8 @@ function restore(game: SaveGame): void {
   medalsGiven = game.medalsGiven ?? 0
   storySoFar = game.storySoFar ?? STORY_START
   goldBanked = game.banked ?? 0
+  revivalMap = game.revival ?? NEW_GAME_REVIVAL
+  lastField = game.lastField ?? 0
   // The day's clock, as saved; its running is not saved (INFERRED, as the
   // game's), so it runs on loading. A save from before it was kept is at the
   // day's start.
@@ -2258,6 +2269,8 @@ function restore(game: SaveGame): void {
 /** Record where the Hero stands and all they carry: the church's confession. What the priest says. */
 function confess(): string {
   if (!loaded || !self) return 'There is nothing to record.'
+  // A church's save makes this the revival map (`func_020a9eb8`, `0x020a9fac`).
+  if (loaded.mapId !== undefined && !storyGlobals.has(FLAG_REVIVAL_KEPT)) revivalMap = loaded.mapId
   const game: SaveGame = {
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
@@ -2292,6 +2305,8 @@ function confess(): string {
     ...(storySoFar !== STORY_START ? { storySoFar } : {}),
     recipes: [...recipesKnown],
     ...(goldBanked > 0 ? { banked: goldBanked } : {}),
+    revival: revivalMap,
+    ...(lastField !== 0 ? { lastField } : {}),
     clock: clock.ticks,
     members: partySaved(members),
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
@@ -2331,6 +2346,20 @@ interface Arrival {
  * already loaded is left alone: a doorway onto a map that will not read should
  * not throw the player out of the one they are in.
  */
+/**
+ * **What entering a map marks**, as the game's load does: a field becomes the
+ * last field stood in (`Zone3D::SwitchZone`), and a map in overlay 17's table
+ * marks its place reached for Zoom and the wing (`func_ov017_0219e290`,
+ * `0x0219d7b0`) — see `docs/readings/T12-travel.md`.
+ */
+function arrivedIn(opened: Loaded): void {
+  const id = opened.mapId
+  if (id === undefined) return
+  if (opened.mapKind === 0) lastField = id
+  const flag = placeFlagOf(opened.travel.placeMaps, id)
+  if (flag !== undefined) storyGlobals.add(flag)
+}
+
 /** Whether the Hero was fallen as this map was entered — what `837` answers; the game takes it at the map's load. */
 let heroFallenOnArrival = false
 
@@ -2465,6 +2494,7 @@ function enter(map: string, arrival?: Arrival, forScene = false): boolean {
 
   // The story thread this map is in, and then the cast where its stage has them.
   enterThread(opened.mapId)
+  arrivedIn(opened)
   // Entering a map starts its talk counts again — see `Talked`.
   enteredForTalk(opened.code)
   if (storyStage !== undefined)
@@ -5398,6 +5428,23 @@ let keeper:
 /** Gold in the bank — `GameState+0x396c`, see `counter.ts`. Saved; spared at a wipe-out. */
 let goldBanked = 0
 
+/**
+ * **The map a party wiped out comes round in** — `GameState+0x5698`, see
+ * `docs/readings/T12-travel.md`: a new game's is Angel Falls' church
+ * (`func_0208660c`, `0x02086770`); a church's confession makes it the map
+ * saved in, and trigger action 208 sets it. Saved.
+ */
+const NEW_GAME_REVIVAL = 1106
+let revivalMap = NEW_GAME_REVIVAL
+/** The flag that keeps the revival map through a confession (`0x113c`; trigger action 179, on no record). */
+const FLAG_REVIVAL_KEPT = 0x113c
+/**
+ * **The last field the Hero stood in**, by its id — the protagonist's
+ * `+0x566`, written on entering a map of kind 0 (`Zone3D::SwitchZone`).
+ * Evac chooses by it. Saved.
+ */
+let lastField = 0
+
 /** One of the keeper's lines, its tags filled — the member it names, its values, its singulars and plurals. */
 function keeperText(
   raw: string,
@@ -6837,24 +6884,29 @@ function keepArms(): void {
 const fieldRng = new BattleRng(0x6d656e75n)
 
 /**
- * The chimaera wing's action, as its item table names it. Its record says
- * nothing of what it does — no effect, no range, no message — so what it does
- * here is ours: thrown outdoors, in `actmsg` 363's words, it takes the Hero to
- * {@link WING_TOWN}, the slice's one village, where a map's own spawn stands
- * them; indoors the Hero bangs their head on the ceiling, `strstd` 57, and the
- * wing is kept.
+ * **Zoom, the chimaera wing and Evac**, as the field menu runs them — read 6
+ * October 2026, `docs/readings/T12-travel.md`. The game knows Zoom and Evac by
+ * their actions (`func_ov002_02157d40`: `0xCA`, `0xCD`) and the wing by its
+ * item (`func_ov002_02157634`: `0x5603`).
  */
-const WING_ACTION = 261
-const WING_TOWN = 'M01'
-const WING_THROWN = 363
+const ZOOM_ACTION = 0xca
+const EVAC_ACTION = 0xcd
+const CHIMAERA_WING = 0x5603
+/** The field menu's lines for them, in `str_tm`. */
+const TRAVEL_SAYS = {
+  /** "But the spell fails." — Zoom with nowhere to go or where it cannot, Evac while closed. */
+  spellFails: 9016,
+  /** "X casts Evac." with its pause, the line Evac's success says (`0x02158c84`). */
+  castsEvac: 9020,
+  /** "X flings a chimaera wing!" */
+  flings: 31090,
+  /** "X tries using the chimaera wing." */
+  triesWing: 31030,
+  /** "But nothing happens." — the wing's. */
+  wingNothing: 31001,
+} as const
+/** `strstd` 57, "… bangs … head on the ceiling!" — the flight's state 10 (`0x021ad8a4`). */
 const CEILING = 57
-/**
- * Evac's action, whose record says nothing of what it does either: **ours**,
- * cast in a dungeon's rooms it takes the Hero to the region's outside —
- * `Loaded.regionExterior`, the Hexagon's `D01` — at its entrance, for its 3
- * MP; anywhere else it does nothing and costs nothing.
- */
-const EVAC_ACTION = 205 // its rooms are the `D` maps' — a house is no dungeon
 /**
  * Holy water's field action, likewise unread: **ours**, sprinkled in `actmsg`
  * 362's words, it keeps the field's monsters away for {@link HOLY_WATER_CALM}
@@ -6863,18 +6915,7 @@ const EVAC_ACTION = 205 // its rooms are the `D` maps' — a house is no dungeon
 const HOLY_WATER_ACTION = 259
 const HOLY_WATER_CALM = 3600
 
-/**
- * Where a Hero who is wiped out comes round: before the village church's
- * priest — character 13 of `M01M06`, whose line hands over to `<CHURCH=1>`, and
- * who stands at (0, 0.053, −0.575) facing the door — on the near side of his
- * altar, facing him. **Ours**: that a defeat ends at a church, this one, and
- * where in it; the game's rule is in its code, and no text says it.
- */
-const CHURCH = {
-  map: 'M01M06',
-  spot: { x: 0, y: 0.053, z: -0.2, facing: Math.PI },
-} as const
-/** Whether the battle just put away was lost, and the Hero is to come round in the church. */
+/** Whether the battle just put away was lost, and the party is to come round in the revival map — see `comeRound`. */
 let wakeInChurch = false
 
 /** The Hero's numbers now: their level's, with what seeds have added. */
@@ -7020,7 +7061,7 @@ function settle(outcome: Outcome, row: LevelRow): string {
  * Use an item from the items panel and say what came of it — see `use.ts`.
  * What would do nothing now is kept; what has no use outside battle does
  * nothing, and is kept; what does something is used up. The chimaera wing is
- * {@link WING_ACTION}'s.
+ * {@link CHIMAERA_WING}, which opens Zoom's list.
  */
 function useInField(held: Held): string[] {
   const id = held.item
@@ -7033,7 +7074,7 @@ function useInField(held: Held): string[] {
   const uses =
     menuSay(MENU_SAYS.uses, { actor: hero, item: itemNamed(id) }) ??
     `${hero.name} uses ${nameOf(id)}.`
-  if (use?.action === WING_ACTION) return flyHome(id)
+  if (id === CHIMAERA_WING) return openZoom({ by: 'wing', held })
   // Sterling's whistle is the field item code's own case, by the item — see `blowWhistle`.
   if (id === STERLINGS_WHISTLE) {
     const said = blowWhistle()
@@ -7070,23 +7111,113 @@ function spend(id: number): void {
   bag = drop(bag, id) ?? bag
 }
 
-/** A chimaera wing, thrown — see {@link WING_ACTION}. Outdoors it closes the menu and flies. */
-function flyHome(id: number): string[] {
-  const hero = heroNamed()
-  if (self?.inside) {
-    return [
-      told(loaded?.standardWords, CEILING, { actor: hero }) ??
-        `${hero.name} bangs his head on the ceiling!`,
-    ]
+/** Zoom's or the wing's list, while it is up: who opened it and the places it offers — see `openZoom`. */
+let zooming:
+  | { readonly by: 'spell' | 'wing'; readonly held?: Held; readonly places: readonly ZoomPlace[] }
+  | undefined
+
+/**
+ * **Zoom cast, or the chimaera wing used** (`func_ov002_02158504`,
+ * `func_ov002_02157818`): the places reached, by their flags, open the list
+ * (`str_tm` 1400 "To where?"); with none, the spell fails — 9005 then 9016 —
+ * or the wing does nothing, 31001, and is kept. Nothing is spent yet.
+ */
+function openZoom(from: { readonly by: 'spell' | 'wing'; readonly held?: Held }): string[] {
+  const here = loaded
+  if (!here || !menu) return []
+  const places = placesOffered(here.travel.places, (flag) => storyGlobals.has(flag))
+  if (places.length === 0) {
+    zooming = undefined
+    return from.by === 'wing'
+      ? [menuSay(TRAVEL_SAYS.wingNothing, {}) ?? 'But nothing happens.']
+      : [zoomCasts(), menuSay(TRAVEL_SAYS.spellFails, {}) ?? 'But the spell fails.']
   }
-  const thrown =
-    actionSay(WING_THROWN, { actor: hero, item: itemNamed(id) }) ??
-    `${hero.name} throws the chimaera wing high into the air!`
-  spend(id)
+  zooming = { ...from, places }
+  menu = {
+    ...menu,
+    panel: 'zoom',
+    row: 0,
+    said: undefined,
+    zoom: { names: places.map((place) => place.name), back: menu },
+  }
+  return []
+}
+
+/** "X casts Zoom." — `str_tm` 9005. */
+function zoomCasts(): string {
+  const name = loaded?.actions.get(ZOOM_ACTION)?.name ?? 'Zoom'
+  return (
+    menuSay(MENU_SAYS.casts, { actor: heroNamed(), values: { str_2: name } }) ??
+    `${heroName()} casts ${name}.`
+  )
+}
+
+/**
+ * **A place chosen** (`func_ov002_02165b44`): what happens turns on the map
+ * — its Zoom kind, `MapEntry.zoom`, or 0 while game-wide flag `0x113a` is set.
+ * 2: the MP or the wing is spent and the party flies there; 1: the same line,
+ * nothing spent, and a bump on the ceiling, `strstd` 57; 0: nothing happens.
+ *
+ * **Ours**: the flight itself — the rise, the fade and the landing — is not
+ * drawn; the map is entered with the line on the status bar. The ship is not
+ * moved (task 16).
+ */
+function zoomChosen(row: number): void {
+  const how = zooming
+  const place = how?.places[row]
+  const here = loaded
+  if (!how || !place || !here || !menu) return
+  const hero = heroNamed()
+  const wing = how.by === 'wing'
+  const line = wing
+    ? (menuSay(TRAVEL_SAYS.flings, { actor: hero, item: itemNamed(CHIMAERA_WING) }) ??
+      `${hero.name} flings a chimaera wing!`)
+    : zoomCasts()
+  const kind = storyGlobals.has(FLAG_NO_ZOOM) ? 0 : (here.mapZoom ?? 0)
+  const back = menu.zoom?.back
+  if (kind === 0) {
+    zooming = undefined
+    menu = back && {
+      ...back,
+      said: wing
+        ? [
+            menuSay(TRAVEL_SAYS.triesWing, { actor: hero, item: itemNamed(CHIMAERA_WING) }) ??
+              `${hero.name} tries using the chimaera wing.`,
+            menuSay(TRAVEL_SAYS.wingNothing, {}) ?? 'But nothing happens.',
+          ]
+        : [line, menuSay(TRAVEL_SAYS.spellFails, {}) ?? 'But the spell fails.'],
+    }
+    return
+  }
+  if (kind === 1) {
+    zooming = undefined
+    menu = back && {
+      ...back,
+      said: [
+        line,
+        told(here.standardWords, CEILING, { actor: hero }) ??
+          `${hero.name} bangs ${hero.gender === 1 ? 'her' : 'his'} head on the ceiling!`,
+      ],
+    }
+    return
+  }
+  const to = here.mapCodeOf(place.map)
+  if (!to) {
+    status(`${place.name}'s map, ${place.map}, is not in the map list`)
+    return
+  }
+  if (wing) {
+    spending = how.held
+    spend(CHIMAERA_WING)
+  } else {
+    const cost = here.actions.get(ZOOM_ACTION)?.cost ?? 0
+    const row = heroRow()
+    if (row) leader().mp = Math.max(0, (leader().mp ?? row.maxMp) - cost)
+  }
+  zooming = undefined
   menu = undefined
   showMenu()
-  if (enter(WING_TOWN)) status(thrown)
-  return [thrown]
+  if (enter(to, { x: place.x, y: place.y, z: place.z, facing: place.facing })) status(line)
 }
 
 /** Holy water, sprinkled — see {@link HOLY_WATER_ACTION}: the field's monsters keep away a while. */
@@ -7100,7 +7231,13 @@ function sprinkle(id: number): string[] {
   return [sprinkled]
 }
 
-/** Evac, cast — see {@link EVAC_ACTION}: out of a dungeon to its region's outside, or nothing. */
+/**
+ * **Evac, cast** (`func_ov002_02157f34`, `func_ov017_021ab860`): too little MP
+ * says so; while flag `0x113a` is set the spell fails; otherwise Evac's table
+ * (`riremito.bin`, see `evacDestination`) says where — nowhere, and nothing
+ * happens; somewhere, and the MP is spent and the party goes, to "X casts
+ * Evac." A grotto's way out is not built. **Ours**: the flight is not drawn.
+ */
 function evacuate(spell: { readonly name: string; readonly cost: number }): string[] {
   const row = heroRow()
   const here = loaded
@@ -7109,18 +7246,23 @@ function evacuate(spell: { readonly name: string; readonly cost: number }): stri
   const casts =
     menuSay(MENU_SAYS.casts, { actor: hero, values: { str_2: spell.name } }) ??
     `${hero.name} casts ${spell.name}.`
-  // A dungeon's rooms only — the `D` maps; a house in the village is no dungeon.
-  const outside = here.regionExterior
-  if (!outside || outside === here.code || !/^D/i.test(outside)) {
-    return [casts, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
-  }
   const mp = leader().mp ?? row.maxMp
   if (mp < spell.cost) return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
+  if (storyGlobals.has(FLAG_NO_ZOOM))
+    return [casts, menuSay(TRAVEL_SAYS.spellFails, {}) ?? 'But the spell fails.']
+  const to =
+    here.mapId === undefined || here.mapArea === undefined
+      ? undefined
+      : evacDestination(here.travel.evac, { map: here.mapId, area: here.mapArea, lastField })
+  const code = to && here.mapCodeOf(to.map)
+  if (!to || !code) return [casts, menuSay(MENU_SAYS.nothingHappens, {}) ?? 'But nothing happens.']
   leader().mp = mp - spell.cost
   menu = undefined
   showMenu()
-  if (enter(outside)) status(casts)
-  return [casts]
+  const went =
+    menuSay(TRAVEL_SAYS.castsEvac, { actor: hero, values: { str_2: spell.name } }) ?? casts
+  if (enter(code, { x: to.x, y: to.y, z: to.z, facing: to.facing })) status(went)
+  return [went]
 }
 
 /** Throw an item away, from where it is — a member's slot, or one from the bag — and say so. */
@@ -7241,6 +7383,11 @@ function castInField(action: number): string[] {
   if (!row || !spell) return ['That spell is not read.']
   const hero = heroNamed()
   if (action === EVAC_ACTION) return evacuate(spell)
+  if (action === ZOOM_ACTION) {
+    if ((leader().mp ?? row.maxMp) < spell.cost)
+      return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
+    return openZoom({ by: 'spell' })
+  }
   const cast = castOn(spell, heroVitals(row), fieldRng)
   if (cast.outcome.kind === 'notEnoughMp') {
     return [menuSay(MENU_SAYS.notEnoughMp, {}) ?? 'Not enough MP!']
@@ -10120,14 +10267,13 @@ function openResults(): void {
 
 /**
  * What a battle comes to, once, as it comes to it: a win pays out experience
- * and gold, and a level reached says what it brought; a loss brings the Hero
- * round with half the gold gone. **The loss is a stand-in**: the game sends
- * the Hero back to a church, which is not done here.
+ * and gold, and a level reached says what it brought; a loss gets the fallen
+ * up, halves the purse and sends the party to the revival map — see
+ * `comeRound`.
  */
 function settleBattle(): void {
   if (!battle || battle.settled || battle.state.outcome === 'ongoing') return
   const hero = battle.state.fighters[0]
-  const name = heroName()
   const levels = levelsFor(leader())
   const words = loaded?.battleWords
   const said = (number: number, telling: Telling) => {
@@ -10293,23 +10439,24 @@ function settleBattle(): void {
       slots.push({})
     }
   } else if (battle.state.outcome === 'lost') {
+    // **A wipe-out** (`func_02010604`, `docs/readings/T12-travel.md`): each
+    // fallen member gets up with full HP and MP (`func_02048150`,
+    // `func_020482bc`) — the living are left as they are, and in a wipe-out
+    // none is; the purse is halved (`0x020106e4`, `lsr #1`) and the bank
+    // spared; and the party comes round in the revival map — see `comeRound`.
     leader().hp = undefined
     leader().mp = undefined
-    // Half the gold is the game's — a published guide: "Money on hand is halved
-    // when your characters die" — though the rule is not found in code, and
-    // rounding down is ours. Coming round in the village church is ours — see
-    // `CHURCH`; the game's own words for either are not found.
-    // The purse halved, rounding down (`func_02010604`, `0x020106e4`: `lsr #1`);
-    // the bank is spared.
     bag = pay(bag, bag.gold - Math.floor(bag.gold / 2)) ?? bag
+    // Zoom and Evac open again at 16.2 step 1 (`0x02010714`–`0x02010734`).
+    if (storyStage?.major === 16 && storyStage.minor === 2 && stepNow() === 1)
+      storyGlobals.delete(FLAG_NO_ZOOM)
     wakeInChurch = true
-    lines.push(`${name} comes round in the church, restored — but half the gold is gone.`)
   } else if (hero) {
     leader().hp = hero.hp
     leader().mp = hero.mp >= hero.maxMp ? undefined : hero.mp
   }
-  // Each companion's wounds go on with them; one who fell gets up with 1 HP,
-  // and after a loss they come round whole with the Hero — ours, all.
+  // Each companion's wounds go on with them; one who fell gets up with 1 HP —
+  // ours. After a loss they come round whole, HP and MP, as the game's do.
   for (const at of battleCompanions) {
     const fighter = battle.state.fighters[at.index]
     if (!fighter) continue
@@ -10323,6 +10470,7 @@ function settleBattle(): void {
     // By their place, so a created character keeps their wounds too.
     const along = members[at.place]
     if (along) along.hp = left >= most ? undefined : left
+    if (along && battle.state.outcome === 'lost') along.mp = undefined
   }
   battle = { ...withPages(battle, lines), settled: true }
   resultsQueue = slots.length === lines.length ? slots : lines.map(() => ({}))
@@ -10413,8 +10561,7 @@ function endFight(): void {
   eventFight = undefined
   if (wakeInChurch) {
     wakeInChurch = false
-    if (enter(CHURCH.map, CHURCH.spot)) {
-      status(`${heroName()} comes round in the church`)
+    if (comeRound()) {
       if (fought) followBattle(fought)
       return
     }
@@ -10422,6 +10569,50 @@ function endFight(): void {
   status(`back on the map · HP ${leader().hp ?? 'full'}`)
   if (fought) followBattle(fought)
 }
+
+/**
+ * **The party comes round after a wipe-out** (`func_ov017_0219bfb4`, mode 2):
+ * in the revival map — see `revivalMap` — and the priest speaks: the voice
+ * `chur_messet.bin` gives the map at this story major, by day or night
+ * (`revivalVoice`), says its line **1082** in `str_ch<voice − 1>`, and the
+ * visit ends (`func_ov003_0215af9c`, states 10 and 11). Voice 3 says nothing.
+ *
+ * **Ours**: where in the map the party stands — the game's request carries no
+ * place, and how the map's load places it then is not read, so the party
+ * comes in by the map's entrance; a set battle passes its own map
+ * (`+0x3e`), which is not read, so every wipe-out comes round here; and the
+ * priest's line is said by nobody in particular.
+ */
+function comeRound(): boolean {
+  const code = loaded?.mapCodeOf(revivalMap)
+  if (!code || !cartridge || !enter(code)) return false
+  status(`${heroName()} comes round in ${loaded?.region ?? code}`)
+  const here = loaded
+  if (!here || !self) return true
+  const voice = revivalVoice(
+    here.travel.revivalWords,
+    revivalMap,
+    storyStage?.major ?? 0,
+    timeNow() === 'night',
+  )
+  if (voice === REVIVAL_SILENT) return true
+  const words = keeperWords(cartridge, 'ch', revivalWordsFile(voice))
+  const line = words.get(REVIVAL_LINE)
+  if (line === undefined) return true
+  talkContext = textContext()
+  talking = startConversation(
+    { id: -1, name: '', x: toFloat(self.state.x), z: toFloat(self.state.z) },
+    'the church',
+    [keeperText(line, {})],
+    [`church ${REVIVAL_LINE}`],
+    talkContext,
+  )
+  showTalk()
+  return true
+}
+
+/** The priest's line to a party come round, `str_ch` 1080 + the church's mode, 2 (`0x0215b0a0`). */
+const REVIVAL_LINE = 1082
 
 /**
  * The party as the drop roll's further passes see them, in the party's order
@@ -11170,6 +11361,9 @@ function storyFromRecord(outcome: EventOutcome): void {
       setPhase(clock, phase)
     }
   }
+  // The revival map, which `208 : m` sets — see `revivalMap`.
+  for (const action of outcome.actions ?? [])
+    if (action.op === OP_REVIVAL_MAP) revivalMap = action.arg
   // The Story So Far's number, which `197 : n` sets — see `story-so-far.ts`.
   storySoFar = storySoFarAfter(outcome.actions, storySoFar)
   // A recipe taught, `161 : r` — see `learnRecipe`.
@@ -12691,6 +12885,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       if (taken.patty) menu = askPatty(taken.patty, menu)
       if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)
       if (taken.assign) trickSlots[taken.assign.slot] = taken.assign.trick
+      // A place of Zoom's or the wing's list — see `zoomChosen`.
+      if (taken.zoomTo !== undefined) zoomChosen(taken.zoomTo)
       if (taken.stop !== undefined) pickStop(taken.stop)
       // The Express's list closed without a stop: it is done with.
       else if (!menu) expressBy = undefined

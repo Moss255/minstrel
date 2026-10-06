@@ -60,6 +60,7 @@ export type MenuCommand =
   | 'make'
   | 'patty'
   | 'express'
+  | 'zoom'
 
 /**
  * The field menu's messages, by their numbers in `str_tm` — about using an
@@ -198,13 +199,29 @@ export const FLAG_SKILLS_LISTED = 0x119c
  * They keep their `MenuCommand` ids because the panels are real; what they
  * lost is a row in the list, which is the thing that was wrong.
  */
-export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make', 'patty', 'express']
+export const UNLISTED_PANELS: readonly MenuCommand[] = ['pot', 'make', 'patty', 'express', 'zoom']
 
 /** The Starflight Express's list, while it is up: the conductor and the stops offered — see `express.ts`. */
 export interface ExpressWhere {
   readonly mode: 0 | 1
   readonly stops: readonly number[]
 }
+
+/**
+ * **Zoom's and the chimaera wing's list**, while it is up: the places' names,
+ * and the menu it was opened from, which the B Button goes back to — see
+ * `docs/readings/T12-travel.md`.
+ */
+export interface ZoomWhere {
+  readonly names: readonly string[]
+  readonly back: MenuState
+}
+
+/** The rows a page of the list shows (`func_ov002_0215f224`: the cursor ÷ 6). */
+export const ZOOM_PAGE = 6
+
+/** The list's title, `str_tm` 1400 "To where?". */
+export const ZOOM_TITLE = 1400
 
 /** What can be done with the item chosen in the items panel. */
 export const ITEM_ACTIONS: readonly MenuEntry<'use' | 'discard' | 'cancel'>[] = [
@@ -252,6 +269,8 @@ export interface MenuState {
   readonly patty?: PattyWhere | undefined
   /** The Starflight Express's list — see {@link ExpressWhere}. Undefined unless a conductor opened it. */
   readonly express?: ExpressWhere | undefined
+  /** Zoom's or the wing's list — see {@link ZoomWhere}. Undefined unless one opened it. */
+  readonly zoom?: ZoomWhere | undefined
   /**
    * In the skill panel, the tree being climbed — the rows are then its panels
    * rather than the five trees. Undefined at the list of trees.
@@ -642,6 +661,10 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = potRows(context, state.pot)
     return count === 0 ? state : { ...state, row: wrap(state.row, count), said: undefined }
   }
+  if (state.panel === 'zoom') {
+    const count = state.zoom?.names.length ?? 0
+    return count === 0 ? state : { ...state, row: wrap(state.row, count) }
+  }
   if (state.panel === 'express') {
     // The stops, then Cancel.
     const count = (state.express?.stops.length ?? 0) + 1
@@ -695,6 +718,8 @@ export interface Taken {
   readonly luck?: readonly number[]
   /** The Starflight Express's stop chosen — see `express.ts`. The list is closed. */
   readonly stop?: number
+  /** The row of Zoom's or the wing's list chosen — see {@link ZoomWhere}. */
+  readonly zoomTo?: number
   /** What Patty was asked to do — see `recruit.ts`. */
   readonly patty?:
     | { readonly does: 'callUp' | 'dropOff' | 'partWith'; readonly at: number }
@@ -720,6 +745,8 @@ export interface Taken {
  * closed.
  */
 export function choose(state: MenuState, context?: MenuContext): Taken {
+  // A place is chosen; what comes of it is the field's to say — see `zoomChosen`.
+  if (state.panel === 'zoom') return { state, talk: false, zoomTo: state.row }
   if (state.panel === 'equip') {
     const slotIndex = SLOTS.findIndex((s) => s.slot === state.picking)
     if (!state.picking) {
@@ -897,6 +924,8 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
 
 /** Go back a step: out of an item's uses, out of a slot's choices, out of a panel, or out of the menu. */
 export function back(state: MenuState): MenuState | undefined {
+  // Out of Zoom's list to where it was opened from (`func_ov002_02161b48`).
+  if (state.panel === 'zoom') return state.zoom?.back
   if (state.panel === 'items' && state.items && state.items.at !== 'kinds') {
     const went = backItems(state.items)
     return { ...state, items: went.where, row: Math.max(0, went.row), said: undefined }
@@ -929,7 +958,16 @@ export function panelLines(
     Partial<
       Pick<
         MenuState,
-        'panel' | 'said' | 'items' | 'member' | 'tree' | 'pot' | 'patty' | 'slot' | 'express'
+        | 'panel'
+        | 'said'
+        | 'items'
+        | 'member'
+        | 'tree'
+        | 'pot'
+        | 'patty'
+        | 'slot'
+        | 'express'
+        | 'zoom'
       >
     >,
 ): string[] {
@@ -1250,6 +1288,23 @@ export function panelLines(
       return [
         `${who?.name ?? context.hero} — take a row to change it`,
         ...knobs.map((knob, i) => `${mark(i === row)}${knob.label}: ${knob.shown}`),
+        ...(state?.said ?? []),
+      ]
+    }
+    case 'zoom': {
+      // **Zoom's and the wing's list** (`func_ov002_0215f224`): "To where?",
+      // six places a page, and "n/m" under them when there is more than one
+      // page (`data_ov002_0216d2a8`).
+      const names = state?.zoom?.names ?? []
+      const row = state?.panel === 'zoom' ? (state.row ?? 0) : 0
+      const page = Math.trunc(row / ZOOM_PAGE)
+      const pages = Math.ceil(names.length / ZOOM_PAGE)
+      return [
+        word(ZOOM_TITLE, 'To where?'),
+        ...names
+          .slice(page * ZOOM_PAGE, (page + 1) * ZOOM_PAGE)
+          .map((name, i) => `${mark(page * ZOOM_PAGE + i === row)}${name}`),
+        ...(pages > 1 ? [`${page + 1}/${pages}`] : []),
         ...(state?.said ?? []),
       ]
     }

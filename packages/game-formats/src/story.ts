@@ -606,11 +606,30 @@ export const OP_VOCATION_UNLOCK = 160
 export const OP_FLAG_FROM_1198 = 202
 
 /**
+ * **Zoom and Evac closed or opened**: `107 : x` sets game-wide flag `0x113a`
+ * to *x = 0* (`func_02061c04` case 7, `0x02062090`), in a game of one's own
+ * (`func_0202c508`). While it is set, Zoom and the chimaera wing do nothing
+ * and Evac fails (`func_ov002_02165b44`, `func_ov017_021ab860`). On 57
+ * records, round a story's scenes: Stornway's castle at 3.1 to 3.7, the
+ * Magmaroo at 14.1, Gortress at 14.4 to 14.6. See `docs/readings/T12-travel.md`.
+ */
+export const OP_ZOOM_OPEN = 107
+/** The flag {@link OP_ZOOM_OPEN} sets: Zoom, the wing and Evac closed. */
+export const FLAG_NO_ZOOM = 0x113a
+/**
+ * **Where a party wiped out comes round**: `208 : m` makes map m the revival
+ * map (`func_02061c04` case 108, `0x02063ce4`), in a game of one's own — on
+ * 12 records, 1106 at 1.4, 4201 at 6.5, 109 at 12.1 and 16.1 among them.
+ */
+export const OP_REVIVAL_MAP = 208
+
+/**
  * The game-wide flag one of the actions above sets or clears, and which —
  * every one goes through `func_0206df6c` on the bank at `+0x8c`.
  */
 export function bankBit(op: number, arg: number): { flag: number; on: boolean } | undefined {
   if (op === OP_ABBEY_OPEN) return { flag: 0x799, on: arg !== 0 }
+  if (op === OP_ZOOM_OPEN) return { flag: FLAG_NO_ZOOM, on: arg === 0 }
   if (op === OP_FLAG_798) return { flag: 0x798, on: arg !== 0 }
   if (op === OP_REVOCATION_OPEN) return { flag: 0x796, on: arg !== 0 }
   if (op === OP_VOCATION_UNLOCK) return { flag: 0x113f + arg, on: true }

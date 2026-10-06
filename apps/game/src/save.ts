@@ -219,6 +219,14 @@ export interface SaveGame {
   readonly clock?: number
   /** Gold in the bank — see `counter.ts`. Absent for none. */
   readonly banked?: number
+  /**
+   * The map a party wiped out comes round in, by its id — `GameState+0x5698`,
+   * see `docs/readings/T12-travel.md`. Absent from saves made before it was
+   * kept, which come round where a new game does.
+   */
+  readonly revival?: number
+  /** The last field the Hero stood in, by its id — the protagonist's `+0x566`, what Evac chooses by. Absent for none. */
+  readonly lastField?: number
 }
 
 export class SaveError extends Error {
@@ -349,6 +357,12 @@ export function decodeSave(text: string): SaveGame {
       !s.recipes.every((pair) => Array.isArray(pair) && pair.length === 2 && pair.every(isCount)))
   ) {
     throw new SaveError('the save has a recipe list that does not read')
+  }
+  if (s.revival !== undefined && !isCount(s.revival)) {
+    throw new SaveError('the save has a revival map that does not read')
+  }
+  if (s.lastField !== undefined && !isCount(s.lastField)) {
+    throw new SaveError('the save has a last field that does not read')
   }
   if (s.banked !== undefined && !isCount(s.banked)) {
     throw new SaveError('the save has a bank balance that does not read')
