@@ -522,12 +522,36 @@ export interface Chase {
   readonly target: number
   /** The draw, 0–99, it was started with (`+0x00`). */
   readonly draw: number
-  /** For a target taller than 2.5, the orbit height a forced start set (`+0x08`), −1.2 to −2.0. */
-  readonly tallHeight: number | undefined
+  /** The action is Frizz, Frizzle or Kafrizz — 9 to 11 — which takes no yaw offset (`func_ov000_0216f728`). */
+  readonly frizz: boolean
+  /** What a forced start on a tall target leaves for every chase after — see {@link ChaseKept}. */
+  readonly kept: ChaseKept
+  /** Ticks before it may count as settled (`+2`): 5 on a forced start, else 0. */
+  count: number
+  /** The look-at came within 5 of where it wants to be once the count ran out (`+0x261`). */
+  settled: boolean
   /** Where it is now, and how fast each part may move a tick (`data_ov000_02184270`). */
   now: { look: [number, number, number]; orbit: Orbit; roll: number } | undefined
   caps: { look: number; yaw: number; roll: number }
 }
+
+/**
+ * **What the chase keeps between chases** (`data_ov000_02184270`, `+8` and
+ * `+0xc`, both 0 at first): a forced start on a target taller than 2.5 draws
+ * them, and the follow takes them for every tall target after, forced or not
+ * (`0x0216ee60`–`0x0216eeb8`). One for the battle.
+ */
+export interface ChaseKept {
+  /** The orbit's height over a tall target: −1.2 to −2.0. */
+  height: number
+  /** The yaw's offset for a tall target: ±0.35π. */
+  yaw: number
+}
+
+/** The chase's settling distance (`0x0216ecd0`): the look-at within 5 of where it wants to be. */
+const SETTLE_WITHIN = 5
+/** A forced start's count before it may settle (`0x0216e9dc`). */
+const SETTLE_COUNT = 5
 
 /** Distances and heights by the pair's indices mod 3 (`data_ov000_02183268`, `02183298`). */
 const CHASE_DISTANCE = [10, 12, 14] as const
@@ -535,19 +559,38 @@ const CHASE_HEIGHT = [1, 1.75, 2.25] as const
 /** Its roll by the pair's indices mod 5 (`data_ov000_0218325c`), in 4096ths — INFERRED radians. */
 const CHASE_ROLL = [-238, -178, 0, 178, 238] as const
 
-/** Start the chase on an action (`0216e678`): its draw, and the start pose a forced start sets. */
+/**
+ * **Start the chase on an action** (`func_ov000_0216e678`): its draw, and —
+ * forced, on a target taller than 2.5 — the kept height, −1.2 − 0.8 × a
+ * draw, and unless the action is 9 to 11 the kept yaw offset, π × (0.35 −
+ * 0.7 × a draw) (`0x0216e918`, `0x0216e968`). `tallDraws` are those two, 0 to
+ * 1, taken only when they are made.
+ */
 export function startChase(
   actor: number,
   target: number,
   draw: number,
   forced: boolean,
-  tallDraw: number,
+  options: {
+    readonly action: number
+    readonly kept: ChaseKept
+    readonly tall: boolean
+    readonly tallDraws: () => number
+  },
 ): Chase {
+  const frizz = options.action >= 9 && options.action <= 11
+  if (forced && options.tall) {
+    options.kept.height = -1.2 - 0.8 * options.tallDraws()
+    if (!frizz) options.kept.yaw = Math.PI * (0.35 - 0.7 * options.tallDraws())
+  }
   return {
     actor,
     target,
     draw,
-    tallHeight: forced ? -1.2 - tallDraw * 0.8 : undefined,
+    frizz,
+    kept: options.kept,
+    count: forced ? SETTLE_COUNT : 0,
+    settled: false,
     now: undefined,
     caps: { look: 0, yaw: 0, roll: 0 },
   }
@@ -562,15 +605,17 @@ export function startChase(
  * target's side), whichever is nearer `yawNow`; height and distance 1 and the
  * larger of 1.6 times the gap and 7 when the draw is under 30, else by the
  * pair's indices mod 3; a target taller than 2.5 looked at half its height,
- * at least 2.5, at least 8 away. **Not read**: the yaw offset a forced start
- * draws for a tall target.
+ * at least 2.5, at least 8 away, the orbit's height and the yaw's offset the
+ * kept ones (`0x0216ee60`–`0x0216eeb8`) — the offset left off for Frizz,
+ * Frizzle and Kafrizz. A tall target's look-at height is set at once, not
+ * eased (`tall`).
  */
 export function chasePose(
   a: Chased,
   t: Chased,
   chase: Chase,
   yawNow: number,
-): { look: [number, number, number]; orbit: Orbit; roll: number } {
+): { look: [number, number, number]; orbit: Orbit; roll: number; tall: boolean } {
   const dx = t.x - a.x
   const dz = t.z - a.z
   const gap = Math.hypot(dx, dz)
@@ -588,18 +633,20 @@ export function chasePose(
   const turn = (162 * Math.PI) / 180
   const nearer = (p: number, q: number) =>
     Math.abs(wrap(p - yawNow)) <= Math.abs(wrap(q - yawNow)) ? p : q
-  const yaw = nearer(along + turn, along - turn)
+  let yaw = nearer(along + turn, along - turn)
   const pair = chase.actor + chase.target
   let height: number = chase.draw < 30 ? 1 : (CHASE_HEIGHT[pair % 3] ?? 1)
   let distance: number = chase.draw < 30 ? Math.max(1.6 * gap, 7) : (CHASE_DISTANCE[pair % 3] ?? 10)
   if (tall) {
-    if (chase.tallHeight !== undefined) height = chase.tallHeight
+    height = chase.kept.height
+    if (!chase.frizz) yaw = wrap(yaw + chase.kept.yaw)
     distance = Math.max(distance, 8)
   }
   return {
     look,
     orbit: { yaw, height, distance },
     roll: (CHASE_ROLL[pair % 5] ?? 0) / 4096,
+    tall,
   }
 }
 
@@ -607,13 +654,22 @@ export function chasePose(
  * **One tick of the chase following** (`0216ea38`): the look-at 5% of the way,
  * no more than its cap, the yaw 5% within its cap, height and distance 2%, the
  * roll 10% within its cap; each cap growing a tick (`+0xcc`, `+0x14`, `+4`, in
- * 4096ths). The first tick cuts.
+ * 4096ths). The first tick cuts. **Settling** (`0x0216ecd0`): once its count
+ * has run out, the chase is settled when the look-at is within 5 of where it
+ * wants to be — what state 6 waits on to put a blow's line up. **Ours**: on
+ * the first tick the look-at is taken as already there, the camera's look
+ * before the cut not being kept here.
  */
 export function followChase(
   chase: Chase,
-  want: { look: [number, number, number]; orbit: Orbit; roll: number },
+  want: { look: [number, number, number]; orbit: Orbit; roll: number; tall?: boolean },
 ): void {
   const now = chase.now
+  const off = now
+    ? Math.hypot(want.look[0] - now.look[0], want.look[1] - now.look[1], want.look[2] - now.look[2])
+    : 0
+  if (chase.count > 0) chase.count--
+  else if (off < SETTLE_WITHIN) chase.settled = true
   if (!now) {
     chase.now = { look: [...want.look], orbit: { ...want.orbit }, roll: want.roll }
     return
@@ -635,6 +691,8 @@ export function followChase(
     height: now.orbit.height + (want.orbit.height - now.orbit.height) * 0.02,
     distance: now.orbit.distance + (want.orbit.distance - now.orbit.distance) * 0.02,
   }
+  // A tall target's look-at height, set at once (`0x0216ee90`).
+  if (want.tall) now.look[1] = want.look[1]
   const droll = (want.roll - now.roll) * 0.1
   now.roll += Math.max(-chase.caps.roll, Math.min(chase.caps.roll, droll))
 }

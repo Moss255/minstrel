@@ -187,8 +187,15 @@ export interface MonsterName {
   readonly radius: number
   /** `+0x0E`, its body's height, an `s16` in `fx32` — handed to `Object3D::SetHeight`, as above. */
   readonly height: number
-  /** `+0x10`, two bytes not established. */
-  readonly unknown_0x10: Uint8Array
+  /**
+   * `+0x10`, a `u16`: **its kind**, one value to a monster across its story
+   * versions — 1 to `0x133`, the bosses `0x101` (the hexagoon) on. Read 6
+   * October 2026 (USA): overlay 0's `func_ov000_0215fc8c` compares it, on each
+   * monster object's record (`+0x144`, stored by `func_02048850`), with the
+   * keys of overlay 26's fixed shots — see {@link readFixedShots}. INFERRED:
+   * that it is the bestiary's kind; the code only compares it.
+   */
+  readonly kind: number
   /**
    * `+0x12`, its size in battle, an `s16` in 4096ths — 1.0 for the slime,
    * 3.12 for the hexagoon. Read 1 October 2026 (USA): `func_02048588` copies
@@ -295,7 +302,7 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       level: view.getUint16(at + 0x0a, true) & 0x7f,
       radius: view.getInt16(at + 0x0c, true) * 4,
       height: view.getInt16(at + 0x0e, true),
-      unknown_0x10: bytes.subarray(at + 0x10, at + 0x12),
+      kind: view.getUint16(at + 0x10, true),
       size: view.getInt16(at + 0x12, true),
     })
   }

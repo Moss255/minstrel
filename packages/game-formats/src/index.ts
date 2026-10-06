@@ -79,6 +79,14 @@ export {
 } from './expadj.ts'
 export { type FieldMonster, readFieldMonsters } from './fieldmonsters.ts'
 export {
+  FIXED_SHOT_ANY,
+  FIXED_SHOT_BY_ROUND,
+  FIXED_SHOT_MONSTER,
+  type FixedShot,
+  fixedShotFor,
+  readFixedShots,
+} from './fixedshots.ts'
+export {
   type BitmapFont,
   type Glyph,
   glyphStride,

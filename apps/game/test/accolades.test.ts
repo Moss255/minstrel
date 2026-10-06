@@ -123,7 +123,7 @@ describe('the accolade scripts, run as the game runs them', () => {
 describe.skipIf(!romPath)('the accolade scripts on the cartridge', () => {
   const rom = romPath ? new Uint8Array(readFileSync(romPath)) : new Uint8Array()
   const scripts = new Map<string, Script>()
-  for (const leaf of scanCartridge(rom, { pathFilter: '/data/scenario/title_' })) {
+  for (const leaf of romPath ? scanCartridge(rom, { pathFilter: '/data/scenario/title_' }) : []) {
     for (const [which, path] of Object.entries(TITLE_SCRIPTS))
       if (leaf.path === path) scripts.set(which, readScript(leaf.bytes))
   }

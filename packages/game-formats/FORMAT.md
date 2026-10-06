@@ -3434,8 +3434,19 @@ is read by the actor close-up's distance, tags 115 and 117's scale
 (`func_ov000_0216352c`), the death effect's scale (`func_02048690`) and the
 battle shadow's (`0x02161134`). It is 1.0 for the slime, 1.40 for the bodkin
 fletcher, 1.44 for the brownie and 3.12 for the hexagoon; 1.0 to 6.8 over all
-438. Not a model's scale: every monster model is drawn at `0x10a`. `+0x10`,
-the two bytes before it, are still not established.
+438. Not a model's scale: every monster model is drawn at `0x10a`.
+
+**The kind — `+0x10`**, a `u16`, read 6 October 2026 (USA): overlay 0's
+`func_ov000_0215fc8c` takes each of the battle's eight monster objects
+(`data_ov000_02182c44`), their record at `+0x144` — this file's, stored by
+`func_02048850`, which reads its `+0x0c` — and compares `+0x10` with a key of
+overlay 26's fixed shots (`data_ov026_021de87c`; "The camera while a command
+is chosen", below, and `docs/readings/T15-presentation.md`). On the cartridge
+it is 1 to `0x133`, one value to each kind of monster across its story
+versions (Baramos's 607–609 all `0x129`), the bosses `0x101` (the hexagoon)
+on; 0 on nine records, among them the claws and monsters 800 and 801.
+INFERRED: that it is the bestiary's kind — the code only compares it.
+`readMonsterNames` gives it as `kind`.
 
 **The witness is that the numbers sort the bestiary.** The slime is 0.80 wide
 and 0.80 tall, a ball; the metal slime as wide and 0.60 tall; the bag o' laughs
@@ -3445,7 +3456,7 @@ great dragons, and not one of the 438 negative. A wrong offset does not order
 a bestiary by size. `tools/harness/test/monster-body.test.ts` pins it.
 
 Two of the ten bytes this section used to carry as not established are these;
-`+0x0A`, `+0x10`, `+0x12` and one more remain. `readMonsterNames` gives them
+`+0x0A`, `+0x10` and `+0x12` have since been read, and one more remains. `readMonsterNames` gives them
 as `radius` (already shifted into `fx32`) and `height` since 29 September
 2026; overlay 0 lines monsters up in battle by the radius — see "Who stands
 where on the stage".
@@ -4485,6 +4496,7 @@ An item names its action in its item table — see "Items".
 | `+0x10` bit 5 | flag | **can be dodged**: the evasion roll makes no draw without it | the plain Attack has it; the herb and fleeing do not. 156 of 681 |
 | `+0x10` bit 6 | flag | **can be blocked** | 162 of 681 |
 | `+0x14` bits 21–27 | `u7` | the critical chance's multiplier, in hundredths | 100 on the plain Attack |
+| `+0x14` bits 28–31 | `u4` | **how the battle brings its line up** (`lineKind`): 2 or 5 sends the action loop to state 6 (`func_ov025_021dc220` through `func_ov000_021627fc`), its line up once the chase shot has settled; any other to state 3, its line up with its script's first camera. Read 6 October 2026; `docs/readings/T15-presentation.md` | 5 on the Attack's two records alone; 2 on 189, the heals, Zing and the herbs that take one ally; 1 on 238, 3 on 162, 4 on 58, 6 the five Fources, 7 on 15, 8 on 7, 0 on 5. INFERRED: what the values other than 2 and 5 mean |
 | `+0x10` bit 3 | flag | **spoilt by a status on the attacker**: the accuracy roll's die of eight misses on five faces. INFERRED: dazzle | 110 of 681, every one a blow that can be dodged |
 | `+0x18` bits 16–17 | `u2` | how the accuracy is come by: at 1 it scales | 202 of 681; not the plain Attack |
 | `+0x14` bits 7–13, 14–20 | `u7` ×2 | a scaling action's least and most accuracy, in a hundred | |

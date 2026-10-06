@@ -38,6 +38,7 @@ import {
   FACILITY_MEDALS,
   FLAG_NO_ZOOM,
   facilityFor,
+  fixedShotFor,
   flagsHold,
   GRANTS_REGARDLESS,
   ITEM_EXPERIENCE_BONUS,
@@ -252,6 +253,7 @@ import {
   type BattleCamera,
   type CameraStage,
   type Chase,
+  type ChaseKept,
   cameraFrom,
   viewOf as cameraView,
   chasePose,
@@ -595,6 +597,7 @@ import {
 } from './staff-roll.ts'
 import {
   actorCloseUp,
+  type BattleShot,
   type BattleView,
   EYE_CEILING,
   easeOrbit,
@@ -604,6 +607,7 @@ import {
   monsterExtent,
   monsterRow,
   type Orbit,
+  openingShot,
   openingStart,
   orbitOf,
   PARTY_FACING,
@@ -613,7 +617,6 @@ import {
   placesOf,
   pulled,
   recordOfTriangle,
-  sideShot,
   stageOfRecord,
   stageToFight,
   victoryView,
@@ -1485,13 +1488,17 @@ interface BattleStage {
     readonly radius: number
     readonly height: number
   }[]
-  /** The opening's wide shot, which the command phase cuts to each round, and its half-angle. */
-  readonly commandShot: BattleView
-  readonly commandHalfFov: number
+  /**
+   * The opening's shot by the round, which the command phase cuts to each
+   * round — the wide side shot, or overlay 26's fixed one — see `openingShot`.
+   */
+  readonly commandShotFor: (round: number) => BattleShot
   /** Its eye's z on the stage, which the monsters face while commands are chosen (`func_ov026_021daec8`). */
-  readonly commandEyeZ: number
+  commandEyeZ: number
   /** How many actions have passed without the chase's start pose — see `chaseFor`. */
   unchased: number
+  /** What a forced chase on a tall target leaves for the chases after — see `ChaseKept`. */
+  readonly chaseKept: ChaseKept
   /** The draws the camera's choices take, ours: a number each. */
   draws: number
 }
@@ -8765,7 +8772,17 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
       size: who?.size ?? 4096,
     }
   })
-  const shot = sideShot(1, monsterExtent(bodies), true)
+  // **Overlay 26's fixed shots** (`func_ov026_021d8aac`): by the monsters'
+  // kinds, and for monster 801 by the first group's number — a set battle's
+  // record's, else the first record of the code's.
+  const kinds = codes.map((c) => here.monsterCodes.get(c)?.kind ?? 0)
+  const firstNumber = eventFight
+    ? here.eventBattles.get(eventFight.index)?.foes[0]?.monster
+    : here.monsterCodes.get(codes[0] ?? '')?.number
+  const extent = monsterExtent(bodies)
+  const commandShotFor = (round: number) =>
+    openingShot(extent, fixedShotFor(here.fixedShots, kinds, firstNumber, round))
+  const shot = commandShotFor(0)
   const end = orbitOf(shot)
   // **On the grid**, where the set-up leaves everyone (`0x02167dd8`); an
   // action's script moves them to their rows and back (overlay 25,
@@ -8816,10 +8833,10 @@ function openStage(codes: readonly string[], partyCount: number): BattleStage | 
       })),
     ],
     bodies,
-    commandShot: { target: shot.target, orbit: end, pull: 0 },
-    commandHalfFov: shot.halfFov,
+    commandShotFor,
     commandEyeZ: shot.eye[2],
     unchased: 0,
+    chaseKept: { height: 0, yaw: 0 },
     draws: 0,
     view: { target: shot.target, orbit: openingStart(end), pull: 0 },
     halfFov: shot.halfFov,
@@ -9592,19 +9609,36 @@ const LOOPS: ReadonlySet<string> = new Set(['stand', 'run', 'walk'])
 
 /**
  * **The chase shot, as an action without a camera of its own begins**
- * (`ov025 func_021db8d8`, `func_ov000_0216e678`): always taken; its start
- * pose forced on a round's first action, else on the fifth without one, or a
- * draw of one in 5 less those passed. **Ours**: the draws — the camera's own
- * generator here is not traced.
+ * (`ov025 func_021db8d8`, `func_ov000_0216e678`): always taken; its draws in
+ * the game's order — a hundred; when 1 to 4 have passed unforced, one in 5
+ * less those passed, forced on 0 (forced without a draw on the 5th, and on a
+ * round's first); forced, one of four start poses (`data_ov000_021832c4`,
+ * which the first follow's cut leaves unseen); and, forced on a target taller
+ * than 2.5, the kept height and yaw offset — see `startChase`. **Ours**: the
+ * draws — the camera's own generator here is not traced.
  */
-function chaseFor(stage: BattleStage, actor: number, target: number, firstOfRound: boolean): Chase {
+function chaseFor(
+  stage: BattleStage,
+  actor: number,
+  target: number,
+  firstOfRound: boolean,
+  action: number,
+  targetHeight: number,
+): Chase {
   const passed = stage.unchased
+  const draw = Math.floor(cameraDraw(stage) * 100)
   const forced =
     firstOfRound ||
     passed >= 5 ||
     (passed >= 1 && Math.floor(cameraDraw(stage) * (5 - passed)) === 0)
   stage.unchased = forced ? 0 : passed + 1
-  return startChase(actor, target, Math.floor(cameraDraw(stage) * 100), forced, cameraDraw(stage))
+  if (forced) cameraDraw(stage)
+  return startChase(actor, target, draw, forced, {
+    action,
+    kept: stage.chaseKept,
+    tall: targetHeight > 2.5,
+    tallDraws: () => cameraDraw(stage),
+  })
 }
 
 /** The fighter a battle object index is, back from `objectOf`. */
@@ -9713,14 +9747,17 @@ function wantedView(
   // experience step only, `0x021f04b8`), from its lines on.
   if (ending?.kind === 'won') return { key: 'victory', view: victoryView(standing) }
   // **While commands are chosen** (overlay 26, sub-state 3, `0x021d8fd0`):
-  // the opening's wide shot, cut to again each round and held still — eased
-  // in on round 0 only, which the opening already is. **Ours**: the fixed
-  // shots overlay 26 keeps for 47 kinds of monster (`0x021de87c`), not read.
+  // the opening's shot, cut to again each round and held still — eased in on
+  // round 0 only, which the opening already is. The wide side shot, or the
+  // fixed one overlay 26 keeps for the fight's monsters (`0x021de87c`), by
+  // the round for Corvus's last form — see `openingShot`.
   if (scene.phase !== 'telling' && scene.phase !== 'over') {
+    const shot = stage.commandShotFor(scene.state.round)
+    stage.commandEyeZ = shot.eye[2]
     return {
       key: `command ${scene.state.round}`,
-      view: stage.commandShot,
-      halfFov: stage.commandHalfFov,
+      view: { target: shot.target, orbit: orbitOf(shot), pull: 0 },
+      halfFov: shot.halfFov,
     }
   }
   return undefined
@@ -9882,6 +9919,11 @@ function startShown(): void {
     },
     {
       resources: BUILT_IN_EFFECTS,
+      // State 6's actions (`func_ov000_021627fc`): the Attack, and what turns
+      // into it, and the one-ally heals.
+      ...(lineAfterChaseOf(context.action)
+        ? { lineAfterChase: () => !shown?.chase || shown.chase.settled }
+        : {}),
       makeReactions: (hooks) => {
         reactions = makeReactions(hooks, results, onReaction)
         return reactions
@@ -9900,7 +9942,16 @@ function startShown(): void {
   const firstOfRound = chasedRound !== scene.state.round
   chasedRound = scene.state.round
   const chase =
-    !ownCamera && target !== undefined ? chaseFor(stage, actor, target, firstOfRound) : undefined
+    !ownCamera && target !== undefined
+      ? chaseFor(
+          stage,
+          actor,
+          target,
+          firstOfRound,
+          context.action,
+          fighters.find((f) => f.index === target)?.height ?? 0,
+        )
+      : undefined
   const actionName = loaded?.actions.get(context.action)?.name
   const aimed = context.targets.flatMap((t) => t.receivers.slice(0, 1).map(logName))
   log(
@@ -9919,6 +9970,15 @@ function startShown(): void {
   }
   // The chase is cut to as the action begins, before its first frame is drawn.
   followShownChase(shown)
+}
+
+/**
+ * **Whether an action's line waits for the chase** — state 6 — by its
+ * `+0x14` bits 28–31 being 2 or 5 (`func_ov000_021627fc`).
+ */
+function lineAfterChaseOf(action: number): boolean {
+  const kind = loaded?.actions.get(action)?.lineKind
+  return kind === 2 || kind === 5
 }
 
 /** Where each fighter was left by the last action shown — its motion, how far in, and whether it loops. */

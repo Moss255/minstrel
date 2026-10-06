@@ -271,6 +271,25 @@ export function sideShot(
   }
 }
 
+/**
+ * **The opening's shot, and each round's while commands are chosen**
+ * (`func_ov000_0216118c` → `0216d600(cam, 1, wide, 0, 0, 0, 0, 1)`): the wide
+ * side shot on the monsters — unless overlay 26 has a fixed shot for this
+ * fight, whose eye and look-at stand in for the side shot's, the wide
+ * half-angle kept (`0x0216d830`–`0x0216d880`). Side 1 keeps them as they are.
+ * The fixed shot's are `fx32`; see `fixedShotFor` in `@minstrel/game-formats`.
+ */
+export function openingShot(
+  extent: { readonly width: number; readonly height: number },
+  fixed: { readonly eye: readonly number[]; readonly look: readonly number[] } | undefined,
+): BattleShot {
+  const wide = sideShot(1, extent, true)
+  if (!fixed) return wide
+  const at = (v: readonly number[]) =>
+    [(v[0] ?? 0) / 4096, (v[1] ?? 0) / 4096, (v[2] ?? 0) / 4096] as const
+  return { eye: at(fixed.eye), target: at(fixed.look), halfFov: wide.halfFov }
+}
+
 /** An orbit: the look-at's yaw, the eye's height over it and the distance, as the game's camera keeps it (`+0x70`). */
 export interface Orbit {
   readonly yaw: number

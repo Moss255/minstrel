@@ -30,6 +30,7 @@ import {
   type ExperienceBand,
   type FieldMonster,
   type FieldZone,
+  type FixedShot,
   FOUNTAIN_MAP,
   type Fountain,
   type GatheringSpot,
@@ -83,6 +84,7 @@ import {
   readExperienceAdjust,
   readFieldEncounters,
   readFieldMonsters,
+  readFixedShots,
   readFountain,
   readGatheringBias,
   readGatheringSpots,
@@ -399,6 +401,8 @@ export interface Loaded {
   readonly mapZoom: number | undefined
   /** Zoom's list, Evac's table and the waking priest's voices — see {@link Travel}. */
   readonly travel: Travel
+  /** Overlay 26's fixed shots for the command phase — see `readFixedShots`; empty when they will not read. */
+  readonly fixedShots: readonly FixedShot[]
   /** The accolades, their names, words and the scripts that award them — see {@link Accolades}. */
   readonly accolades: Accolades
   /** The gathering spots: every field's, the timings, the Fountain, and this map's — see {@link Gathering}. */
@@ -442,6 +446,8 @@ export interface MonsterWords {
   readonly metal: boolean
   /** Its level — see `MonsterName.level`. */
   readonly level: number
+  /** Its kind, the fixed shots' key — see `MonsterName.kind`. */
+  readonly kind: number
 }
 
 /**
@@ -465,6 +471,8 @@ export interface ItemEffect {
   readonly opening: number
   /** Its cost in MP; 255 for all there is. INFERRED. */
   readonly cost: number
+  /** How the battle brings its line up — see `Action.lineKind`: 2 and 5 once the chase has settled. */
+  readonly lineKind: number
   /** Whom it reaches — see `ActionReach`. INFERRED. */
   readonly reach: number
   /** Whom it is aimed at, 1 the monsters, 2 the party — see `Action.side`. */
@@ -1069,6 +1077,7 @@ function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
               family: monster.family,
               metal: monster.metal,
               level: monster.level,
+              kind: monster.kind,
             })
         }
       } catch {
@@ -1439,7 +1448,7 @@ function itemStatsOf(rom: Uint8Array): Map<number, ItemNumbers> {
  * One ARM9 overlay's code, unpacked: overlays are FAT files, and BLZ-packed
  * where the overlay table says so — as the ARM9 binary is, see `arm9Of`.
  */
-function overlayOf(rom: Uint8Array, id: number): Uint8Array | undefined {
+export function overlayOf(rom: Uint8Array, id: number): Uint8Array | undefined {
   try {
     const fs = readNitroFs(rom)
     const entry = fs.arm9Overlays.find((overlay) => overlay.overlayId === id)
@@ -1469,6 +1478,19 @@ export interface Travel {
 const FIELD_OVERLAY = 17
 
 const travelRead = new WeakMap<Uint8Array, Travel>()
+/** The overlay the battle's command phase runs in. */
+const COMMAND_OVERLAY = 26
+
+/** Overlay 26's fixed shots, or none when the overlay or the table will not read. */
+function fixedShotsOf(rom: Uint8Array): FixedShot[] {
+  const code = overlayOf(rom, COMMAND_OVERLAY)
+  try {
+    return code ? readFixedShots(code) : []
+  } catch {
+    return []
+  }
+}
+
 function travelOf(rom: Uint8Array): Travel {
   const already = travelRead.get(rom)
   if (already) return already
@@ -1875,6 +1897,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         side: action.side,
         list: action.list,
         usableIn: action.usableIn,
+        lineKind: action.lineKind,
         rolls: {
           foeChance: action.foeChance,
           chanceIsAccuracy: action.accuracyMode === 1,
@@ -3097,6 +3120,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     mapArea: entry?.area,
     mapZoom: entry?.zoom,
     travel: travelOf(rom),
+    fixedShots: fixedShotsOf(rom),
     accolades: accoladesOf(rom),
     gathering: gatheringOf(rom, code),
     ...tracks,
