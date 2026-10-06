@@ -3362,6 +3362,7 @@ and `readMonsterNames` read them.
 | `+0x08` | `u32` | experience | the metal family: 4,096, 40,200 and 120,040, against a median of 940; the guide's, below |
 | `+0x0C` | `u16` | gold | a median of 2,490 on the bosses against 120; the guide's, below |
 | `+0x18` | `u16` ×6 | its six ways of acting: action numbers (see "Actions"), INFERRED | 1 Attack on 1,064 of the 2,628 words and 225 Flee on 109; the healslime's Heal, the drakulard's Inferno, the uncommon cold's C-C-Cold Breath. The reference's own boss, Ragin' Contagion (`b006a`), has 1, 275, 1, 48, 44, 228 — the reference's six candidates exactly and in order: attack, poison attack, attack, Deceleratle, Kasap, Sweet Breath |
+| `+0x28` | `u8` ×2 | **the least and most passes Knight Watch holds it** — 6 October 2026. `watchTurns` | the Paladin's coup draws between them by `NextRandomBetween`, the record being the combatant's `+0x148` (`func_ov024_021e1de8`, `0x021e1e34`–`0x021e1e40`); a draw of 0 leaves it unwatched |
 | `+0x5C` | `u16` | maximum HP | a median of 6,500 on the bosses against 134; the metal slime's 4; the game's code and the guide, below |
 | `+0x5E` | `u16` | maximum MP | 255 on most bosses and the metal family; likewise |
 | `+0x60` | `u16` | attack | likewise |
@@ -3521,7 +3522,13 @@ great dragons, and not one of the 438 negative. A wrong offset does not order
 a bestiary by size. `tools/harness/test/monster-body.test.ts` pins it.
 
 Two of the ten bytes this section used to carry as not established are these;
-`+0x0A`, `+0x10` and `+0x12` have since been read, and one more remains. `readMonsterNames` gives them
+`+0x0A`, `+0x10` and `+0x12` have since been read, and one more remains.
+**`+0x0A` bit 11** (6 October 2026) is what `func_ov000_02156068` asks with
+its third argument at 2 — bit 12, metal, at 1; the family at 0
+(`0x021560c0`–`0x02156108`) — and its one reader asks it before a lost turn
+of kind 2, a fall off its feet, refusing it where set
+(`func_ov024_021e8fa4`). `readMonsterNames` gives it as `untrippable`, a
+name from that one use. `readMonsterNames` gives them
 as `radius` (already shifted into `fx32`) and `height` since 29 September
 2026; overlay 0 lines monsters up in battle by the radius — see "Who stands
 where on the stage".

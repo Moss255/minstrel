@@ -106,3 +106,37 @@ sequence, a run of sixes summing to 256 — rather than for values recalled
 from anywhere else. A shape unique across the ARM9 and all overlays, with
 one independent witness (a let's play, a preset, the reference emulator), is
 what counts as found.
+
+### Task 18, the coups, the run-down, the lost turn and paralysis (6 October 2026)
+
+`docs/readings/T18-handlers.md` §10. USA addresses; overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov000 `func_ov000_021599f4`, `data_ov000_02182efc`, `data_ov000_02182a94` | each status's count a pass less on its holder's pass, and at 0 its second count started (4, or 1 for 0 Zone and Rough 'n' Tumble); the offsets and starts | `Battle::CountDownStatuses`, `StatusCountTable` |
+| ov000 `func_ov000_0215858c` | corrected: the second counts' run-down, a draw of each status's own, by `0x02182ad4` or `0x02182bd4`; Knight Watch's own; the lost turn cleared first | `Battle::RunDownStatuses` |
+| ov000 `func_ov000_0215833c` | the turn's start: paralysis freed (action 900), a sleeper woken (901), `+0x81`'s (0x3aa), by the turn-start draw | `Battle::RecoverAtTurnStart` |
+| ov000 `func_ov000_02155f9c` | whether one cannot act: paralysis, sleep (`+0x14` bit 4), a lost turn (bit 19) | `Battle::CannotAct` |
+| ov000 `func_ov000_0215767c` `0x02157ac0`, `0x02157b60`–`0x02157bb0` | one who cannot act has action 503 in their turn; a lost turn marked to clear | (part of) `Battle::PrepareTurn` |
+| ov000 `func_ov000_02156068` | the target's body: family (0), metal `+0x0A` bit 12 (1), bit 11 (2) | `Battle::IsMonsterOfKind` |
+| ov000 `func_ov000_02156f98` `0x02156fe8`, `02156270`, `02156558` | Rough 'n' Tumble: a dodge on the pass's die under 50, evasion 50.0, a counter on 50 to 74 | `Battle::RollEvasion`, `GetEvasionChance`, `RollCounter` |
+| ov000 `func_ov000_02154f30` `0x02154f9c` | a watched monster's weighted pick: the Paladin, no draw | (part of) `Battle::PickTargetWeighted` |
+| ov000 `func_ov000_02156648` `0x02156714`–`0x02156788` | Schizofanic's and Mist Me's one blow missed before the accuracy's draw | (part of) `Battle::RollAccuracy` |
+| `func_ov024_021dc0b8` | kind 10: rider 1 with no chance of its own; done or fail line | `Resolver::HandleIntimidate` |
+| `func_ov024_021ddf5c`, `func_ov024_021d974c` | kind 26, Spelly Breath; damage handler 48, the most MP × 0.2–0.5 | `Resolver::HandleSpellyBreath`, `Damage::SpellyBreath` |
+| `func_ov024_021e1580` | kind 68, 0 Zone | `Resolver::HandleZeroZone` |
+| `func_ov024_021e16a4` | kind 69, Itemised Kill: the group's `+0x16` | `Resolver::HandleItemisedKill` |
+| `func_ov024_021e1824` | kind 70, Rough 'n' Tumble | `Resolver::HandleRoughNTumble` |
+| `func_ov024_021e1cbc`; `func_ov024_021eb5d0` `0x021eba20`–`0x021eba9c` | kind 72, Voice of Experience; its multiplier, drawn in the resolver | `Resolver::HandleVoiceOfExperience` |
+| `func_ov024_021e1de8` | kind 73, Knight Watch | `Resolver::HandleKnightWatch` |
+| `func_ov024_021e1ed4` | kind 74, Brownie Boost | `Resolver::HandleBrownieBoost` |
+| `func_ov024_021eadfc`; `func_ov024_021eaa50` `0x021eabd8` | under 0 Zone; the MP not asked | `Status::IsZeroZone` |
+| `func_ov024_021e2bd0`, `021e8fa4`, `021e9018`, `data_ov024_021fe820` | rider 1: a lost turn by `+0x32`; the kinds' table | `Rider::LostTurn` |
+| `func_ov024_021e3a34`, `021e9464` | rider 11: paralysis; its line | `Rider::Paralyse` |
+| `func_ov024_021e8cfc` | tension taken away, line `0x25c` | `Resolver::ResetTension` |
+| ARM9 `func_02088418`, `02088474`, `020884f8` | a lost turn: may take it, set, clear | `Status::CanLoseTurn`, `SetLostTurn`, `ClearLostTurn` |
+| ARM9 `func_0208824c`, `0208826c` | paralysis: may take it, set (count 3 at `+0x5c`) | `Status::CanParalyse`, `Paralyse` |
+| ARM9 `func_020890c0`/`d4`/`f4`, `02089110`/`24`/`44`, `02088e04`/`48`/`64` | 0 Zone, Rough 'n' Tumble, Knight Watch: test, set, clear | `Status::…ZeroZone`, `…Tumble`, `…KnightWatch` |
+| ARM9 `func_020743d4`, `02074478` | `NextRandomFloatScaled`, `NextRandomBetween` | (named already) |
+| ov023 `func_ov023_021f454c` `0x021f49e8`, `0x021f4ab0`; ov000 `func_ov000_02155184` `0x0215533c` | a sure drop, rare and ordinary, from the group's `+0x17` and `+0x16` | (part of) `Victory::RollDrops` |
+| ov023 `func_ov023_021edf54` `0x021ee05c`–`0x021ee080` | the experience and gold times `battle + 0x8e3c` and `+0x8e40` | (part of) `Victory::Settle` |

@@ -823,10 +823,15 @@ each turn: the turn (`0215767c`), the resolver, and the step after
    hundred, so none charms; **the draws are spent**;
 2. a mode-2 monster's choosing;
 3. **the turn-start `R(100)`**, every fighter's, every turn
-   (`func_ov000_0215833c`, `0x0215838c`). It is the wake test (below);
+   (`func_ov000_0215833c`, `0x0215838c`). It is the wake test (below), and
+   paralysis's freeing (since 6 October 2026: `T18-handlers.md` §10);
 4. the action;
 5. **an `R(100)` after it**, while the battle goes on (`func_ov000_0215858c`,
-   `0x021585bc`). That function's draws by status are not followed.
+   `0x021585bc`) — then, for the one who acted, **a draw of each status's
+   own** whose second count is running, and their counts a pass less
+   (`func_ov000_021599f4`). Followed since 6 October 2026; it replaced the
+   reference's seven turns and its table at the round's end
+   (`T18-handlers.md` §10).
 
 **A monster's choosing** (`func_0208a91c`): the way by its weights; that way
 unusable, the one before, down to the first, then those after; none usable,

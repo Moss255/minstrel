@@ -448,7 +448,7 @@ export type Change =
    */
   | { readonly kind: 'tumble'; readonly chance: number }
   /**
-   * **Brownie Boost**, the Luminary's coup (kind 74, `func_ov024_021e1ed4`):
+   * **Brownie Boost**, the Ranger's coup (kind 74, `func_ov024_021e1ed4`):
    * with no test of its landing, defence, the resistance to breaths and
    * attack each a level up where they can go, in that order.
    */
@@ -465,7 +465,7 @@ export type Change =
    */
   | { readonly kind: 'loot'; readonly chance: number }
   /**
-   * **Voice of Experience**, the Paladin's coup (kind 72,
+   * **Voice of Experience**, the Armamentalist's coup (kind 72,
    * `func_ov024_021e1cbc`): the battle's experience multiplied — the draw is
    * the resolver's, before the handler (`0x021eba20`).
    */

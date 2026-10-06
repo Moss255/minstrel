@@ -620,6 +620,21 @@ answer it. Count what is "struck as the Attack" before and after.
 
 The battle's floats are allowed only under `CLAUDE.md`'s "The one exception".
 
+**Carried on a third time, 6 October 2026** (`47b1d4f`, `6907c2f`, `5db7eae`,
+`bed164d`; the reading's §10): **every coup is built** — 0 Zone, Rough 'n'
+Tumble, Brownie Boost, Spelly Breath, Itemised Kill, Voice of Experience,
+Roaring Tirade, Disco Tech and Knight Watch, beside Choir of Angels and
+Tension Boost; **statuses run down as the game runs them** — a count on
+their holder's passes, then a draw of their own against the game's tables
+(`func_ov000_021599f4`, `0215858c`); **the lost turn** (status bit 19,
+rider 1 and kind 10: War Cry, Pratfall, Trip of a Deathtime, Heart
+Breaker's rider) and **paralysis** (rider 11, freed at a turn's start).
+Struck as the Attack: **41**, where 44 were. **Still left**, by address in
+§7 and §10: the 30 kinds behind the 41 — §10 has what each one's setter
+stores, so only what its status does is left to read for most (Schizofanic
+and Mist Me's is read); riders 5, 6, 9, 10, 12–14, 19, 21; Crosscutter
+Throw; M-Pathy.
+
 ## 19. The grotto generator — translate
 
 The longest pure translation job in the project, and it needs no map or story
