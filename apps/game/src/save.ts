@@ -225,6 +225,8 @@ export interface SaveGame {
    * kept, which come round where a new game does.
    */
   readonly revival?: number
+  /** The spells the story has taught the Hero, by their place in the spell list — trigger action 166. Absent from saves made before they were kept. */
+  readonly taught?: readonly number[]
   /** The last field the Hero stood in, by its id — the protagonist's `+0x566`, what Evac chooses by. Absent for none. */
   readonly lastField?: number
 }
@@ -360,6 +362,9 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.revival !== undefined && !isCount(s.revival)) {
     throw new SaveError('the save has a revival map that does not read')
+  }
+  if (s.taught !== undefined && (!Array.isArray(s.taught) || !s.taught.every(isCount))) {
+    throw new SaveError('the save has a list of taught spells that does not read')
   }
   if (s.lastField !== undefined && !isCount(s.lastField)) {
     throw new SaveError('the save has a last field that does not read')

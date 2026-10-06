@@ -2232,6 +2232,16 @@ function restore(game: SaveGame): void {
   storySoFar = game.storySoFar ?? STORY_START
   goldBanked = game.banked ?? 0
   revivalMap = game.revival ?? NEW_GAME_REVIVAL
+  taughtSpells.clear()
+  for (const place of game.taught ?? []) taughtSpells.add(place)
+  // **A save from before taught spells were kept**, past 5.1, has had Zoom
+  // taught — ours, read as the Observatory's record would have left it.
+  if (
+    !game.taught &&
+    storyStage &&
+    (storyStage.major > 5 || (storyStage.major === 5 && storyStage.minor >= 1))
+  )
+    taughtSpells.add(ZOOM_PLACE)
   lastField = game.lastField ?? 0
   // The day's clock, as saved; its running is not saved (INFERRED, as the
   // game's), so it runs on loading. A save from before it was kept is at the
@@ -2306,6 +2316,7 @@ function confess(): string {
     recipes: [...recipesKnown],
     ...(goldBanked > 0 ? { banked: goldBanked } : {}),
     revival: revivalMap,
+    taught: [...taughtSpells],
     ...(lastField !== 0 ? { lastField } : {}),
     clock: clock.ticks,
     members: partySaved(members),
@@ -7402,13 +7413,31 @@ function castInField(action: number): string[] {
   return [casts, settle(cast.outcome, row)]
 }
 
-/** The spells the Hero has learnt by their level, with what each costs and whether it is cast here. */
+/**
+ * **The spells the Hero has been taught** by the story, by their place in the
+ * spell list — trigger action `166 : n` sets bit n of the Hero's spells
+ * (`func_02061c04` case 66, `0x02063170`, `func_02083b60` on `+0x910`), as the
+ * Observatory's record at 5.1 teaches Zoom, place 60. Saved.
+ */
+const taughtSpells = new Set<number>()
+const OP_TEACH_SPELL = 166
+/** Zoom's place in the spell list — what the Observatory's `166` teaches. */
+const ZOOM_PLACE = 60
+
+/** The spells the Hero has learnt by their level, and the story's, with what each costs and whether it is cast here. */
 function heroSpells(member: Member = leader()): MenuSpell[] | undefined {
   const here = loaded
   const table = here?.spellTable
   const row = levelOf(member)
   if (!here || !table || !row) return undefined
-  return spellsLearnt(table, member.vocation, row.level).flatMap((spell) => {
+  const taught =
+    member === members[0]
+      ? [...taughtSpells].flatMap((place) => {
+          const action = table.list.get(place)
+          return action ? [{ action }] : []
+        })
+      : []
+  return [...spellsLearnt(table, member.vocation, row.level), ...taught].flatMap((spell) => {
     const action = here.actions.get(spell.action)
     return action
       ? [{ action: spell.action, name: action.name, cost: action.cost, field: action.field }]
@@ -11361,6 +11390,9 @@ function storyFromRecord(outcome: EventOutcome): void {
       setPhase(clock, phase)
     }
   }
+  // A spell the story teaches the Hero, `166 : n` — see `taughtSpells`.
+  for (const action of outcome.actions ?? [])
+    if (action.op === OP_TEACH_SPELL) taughtSpells.add(action.arg)
   // The revival map, which `208 : m` sets — see `revivalMap`.
   for (const action of outcome.actions ?? [])
     if (action.op === OP_REVIVAL_MAP) revivalMap = action.arg
