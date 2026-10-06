@@ -27,8 +27,8 @@ describe('a victory’s results windows — overlay 23', () => {
     expect(windowAt(levelled)).toEqual({ x: 24, y: 16 })
   })
 
-  it('brings its rows in one every 5 ticks: the first window from one, the second from none', () => {
-    const tick = 1000 / 60
+  it('brings its rows in one every 5 vblanks: the first window from one, the second from none', () => {
+    const tick = 1000 / 59.8261
     expect(rowsShown(earners(4), 0)).toBe(1)
     expect(rowsShown(earners(4), 5 * tick)).toBe(2)
     expect(rowsShown(earners(4), 60 * tick)).toBe(4)

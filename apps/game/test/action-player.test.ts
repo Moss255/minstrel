@@ -67,9 +67,10 @@ describe('an action script, played', () => {
       stage(6),
       TIMINGS,
     )
-    passes(run, 6)
+    // A pass is two vblanks, 33 ms: three passes are short of 100, four past it.
+    passes(run, 3)
     expect(run.fighters.get(0)?.motion).toBe('stand')
-    passes(run, 2)
+    passes(run, 1)
     expect(run.fighters.get(0)?.motion).toBe('magic')
     expect(run.scriptDone).toBe(true)
   })
@@ -177,11 +178,11 @@ describe('a change of motion, blended as the game blends it', () => {
     const hero = run.fighters.get(0)
     run.hooks.setMotion(0, 'run', 0x10)
     expect(hero?.blend).toMatchObject({ from: 'stand', weight: 1, left: BLEND_MS })
-    passes(run, 6)
+    passes(run, 3)
     expect(hero?.motionAt).toBe(0)
     expect(hero?.blend?.weight).toBeLessThan(1)
     expect(hero?.blend?.weight).toBeGreaterThan(0)
-    passes(run, 12)
+    passes(run, 6)
     expect(hero?.blend).toBeUndefined()
     expect(hero?.motionAt).toBeGreaterThan(0)
   })
