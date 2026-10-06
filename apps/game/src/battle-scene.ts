@@ -2350,25 +2350,25 @@ export function partyChangeOf(action: Castable): Changing | undefined {
               ...(r.tensed ? { tensed: true } : {}),
             }
           : kind === 'stun'
-          ? // The lost turn's kind is the record's `+0x32`; the two coups
-            // (`0x1fc`, `0x20f`) land at the maximum of tension (`func_02088418`).
-            {
-              kind,
-              chance: 100,
-              status: r.riderLevels ?? 0,
-              ...(action.action === 0x1fc || action.action === 0x20f ? { coup: true } : {}),
-            }
-          : kind === 'revive'
-            ? {
+            ? // The lost turn's kind is the record's `+0x32`; the two coups
+              // (`0x1fc`, `0x20f`) land at the maximum of tension (`func_02088418`).
+              {
                 kind,
                 chance: 100,
-                share: ZING.has(action.action)
-                  ? (r.scaleRange ?? { lo: 0, hi: 0 })
-                  : action.action === KAZING
-                    ? 0.5
-                    : 1,
+                status: r.riderLevels ?? 0,
+                ...(action.action === 0x1fc || action.action === 0x20f ? { coup: true } : {}),
               }
-            : ({ kind, chance: 100 } as Change)
+            : kind === 'revive'
+              ? {
+                  kind,
+                  chance: 100,
+                  share: ZING.has(action.action)
+                    ? (r.scaleRange ?? { lo: 0, hi: 0 })
+                    : action.action === KAZING
+                      ? 0.5
+                      : 1,
+                }
+              : ({ kind, chance: 100 } as Change)
   const range = r.accuracyRange
   return {
     action: action.action,

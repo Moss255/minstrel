@@ -2932,7 +2932,11 @@ export function playRound(
                 })()
               : 0
             : undefined
-        if (shared === undefined && landed && physicalDamage(rng, attackOf(me_), defenceOf(them)) <= 0)
+        if (
+          shared === undefined &&
+          landed &&
+          physicalDamage(rng, attackOf(me_), defenceOf(them)) <= 0
+        )
           rng.below(2)
         const was = them.states
         switch (change.kind) {
