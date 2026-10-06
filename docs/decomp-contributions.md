@@ -1109,3 +1109,23 @@ of rules 3, 5, 6 and 7 start at.
 **What is open**: every handler listed in the reading's §7 by its address;
 how the level counts run down; the susceptibility bytes `+0x46`–`+0x52`
 and where a monster's come from.
+
+### Task 17b — the party's tactics' scoring (6 October 2026)
+
+`docs/readings/T17-ai.md` §2b has the reading whole. Overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_ov024_021f9874` | scores one target set into the lists: harm, heal, a kill's chance, the state slots, less the cost | `PartyAI::ScoreTargets` |
+| `func_ov024_021fa7ec` | a blow's forecast on one monster: tension, killer bonus or weapon element, resistance, levels, combo, metal, cap | `PartyAI::ForecastDamage` |
+| `func_ov024_021fb490`, `021fb91c` | the harm and heal evaluators (kinds 1; 2 and 14) | `PartyAI::EvaluateHarm`, `::EvaluateHeal` |
+| `func_ov024_021fd954`, `021fdf04` | a state on the party, on the monsters | `PartyAI::EvaluateAllyState`, `::EvaluateFoeState` |
+| `func_ov024_021fd858` | the riders' evaluators, 23 at `0x021ffcec` | `PartyAI::EvaluateRider` |
+| `func_ov024_021fe698`, `021fe6b4` | ask a behaviour; note the rider's | `PartyAI::UseBehaviour`, `::UseRiderBehaviour` |
+| `func_ov024_021f8938`, `021f8bd8`, `021f8d80`, `021f875c` | an amount's mean and least; an accuracy; the best of a group; a resistance for the AI | `PartyAI::AmountRange`, `::Accuracy`, `::PickInGroup`, `::Resistance` |
+| `func_ov024_021f6830`, `021f68c8`, `021f691c`, `021f6a1c` | a best-four list: insert, clear, take; a target set's add | `AIChoiceList::Insert`, `::Clear`, `::Take`; `AITargetSet::Add` |
+| ARM9 `func_02085968` … `02085888`, `func_02085748` | a weapon's killer bonus by family (twelve), its element | `Character::GetFamilyBonus*`, `::GetWeaponElement` |
+| ARM9 `func_0200b0f0`, `func_0200b608`, `func_0200c578`, `func_02008f5c` | `_dmul`, `_dsub`, `_f2d`, `ceil` | as said (runtime) |
+
+**What is open**: `func_ov000_0215e9fc`'s count; the character's `+0x134
++0x34`/`+0x36`; the weapon's metal flags (`+0x2F4` bits 4 and 10).
