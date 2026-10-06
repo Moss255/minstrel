@@ -4472,7 +4472,7 @@ function frame(now = 0): void {
               ? flyOn(elapsedMs)
               : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
     if (!wasClimbing) maybeClimb(elapsedMs, moving)
-    // The deck's gangway at sea, and the sailor's 164 — see `keptFromGangway`, `putOutToSea`.
+    // The deck's gangway at sea, and the wheel's 164 — see `keptFromGangway`, `putOutToSea`.
     keepOnDeck()
     if (seaWanted && !talking && !playing && !menu) putOutToSea()
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
@@ -12923,7 +12923,7 @@ function storyFromRecord(outcome: EventOutcome): void {
   // A spell the story teaches the Hero, `166 : n` — see `taughtSpells`.
   for (const action of outcome.actions ?? [])
     if (action.op === OP_TEACH_SPELL) taughtSpells.add(action.arg)
-  // To sea, `164` — the deck's sailor's: task `0x37` asks for the ocean at
+  // To sea, `164` — the deck's wheel's: task `0x37` asks for the ocean at
   // the ship's place once the talk is over (`func_02061c04` case 64,
   // `func_ov017_021c1af0`). See `putOutToSea`.
   for (const action of outcome.actions ?? []) if (action.op === OP_TO_SEA) seaWanted = true

@@ -168,7 +168,8 @@ facing 3π/2** (`0x5f0a`, `0x3614`, `0x570`, `0x4b66`).
 - **At sea** (`func_020a72ac`, `0x020a7444`–`0x020a74b8`): walking toward the
   gangway — z 6 or more and x between −8.2 and −5.8 — puts the Hero back at
   (−7, 0.18, 5.9).
-- **Back to sea**: the deck's sailor, character 1, has a talk record
+- **Back to sea**: **the ship's wheel** — character 1, a talk box where the party
+  arrives from the sea (checked running, 6 October 2026) — has a talk record
   `6:1 164:1`. **Trigger action 164** (`func_02061c04` case 64, `0x0206313c`)
   starts task `0x37` (`func_ov017_021c1a98` with 0, run by
   `func_ov017_021c1af0`): the map asked for is **10000, at the ship's place and

@@ -1147,3 +1147,31 @@ and where a monster's come from.
 
 **What is open**: the 38 kinds §7 lists, the riders 1, 5, 6, 9–14, 19, 21,
 and the eight coups.
+
+### Task 16b — the ship (6 October 2026)
+
+`docs/readings/T16b-ship.md` has the reading whole. US ARM9 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_020a6728` | the ship's object made with a map: ocean, sky, a field without `M`; `s201.chr`, its rates | `Ship::Create` |
+| `func_020a6aac` | the ship's side of entering a map: ashore from the ocean, Bloomingdale's quay, from the deck, the moored field | `Ship::OnMapEnter` |
+| `func_020a696c` | a request from the deck turned to the map the ship is moored in | `Ship::RedirectFromDeck` |
+| `func_020a72ac` | where the ship is drawn, the deck's view, the gangway at sea | `Ship::UpdateVisibility` |
+| `func_020a654c`, `func_020a75ec`, `func_020a78dc` | a pass at sea; the mover kept at its speed, the wrap, the party aboard; the steering by pad and camera | `Ship::Update`, `::Move`, `::Steer` |
+| `func_020a7ce0`, `func_020a7d74` | the legs sailed against the sea's count; a shore reached | `Ship::CountLegs`, `::CheckShore` |
+| `func_020a75a0`, `func_020a7eb8` | the object set up; drawn bobbing by `+0x140` | `Ship::Init`, `::Draw` |
+| `func_0201b678`, `func_0201b754` | the mooring nearest an ocean place; a mooring by its number | `MapRegions::NearestMooring`, `::MooringById` |
+| `func_0201b8c8`, `func_0201b600` | the deck's pieces by at-sea; a map piece by its number | `Ship::SetDeckView`, `MapPieces::Find` |
+| `func_0201e8fc`, `0x0201dfcc`, `0x0201e018` | the `.bmbl`'s lane boxes `0x7b`/`0x7c` and their lookup | `MapRegions::LaneAt` |
+| `func_0204be78`, `func_0204be90`, `func_0204bea0`, `func_0204be3c` | a collision record's land bits, kind, map, encounter zone | `CollisionRecord::CanLand`, `::Kind`, `::Map`, `::Zone` |
+| `func_020134e0` (`0x020136b8`–`0x02013704`) | a new game's ship: Bloomingdale, the ocean's default place, count 80 | `GameState::NewGame` |
+| `func_02033710`, `func_0203348c` (`0x02033544`–`0x02033674`) | an object's turn toward `+0xae` by `+0xb0`; its speed by `+0xb6` to `+0xb4`, slowed by the turn left | `Object3D::UpdateTurn`, `::UpdateMove` |
+| ov017 `func_ov017_02198618`, `func_ov017_02199360` | the A Button's kind 11 at the ship's mooring; boarding | `Field::CheckShip`, `::BoardShip` |
+| ov017 `func_ov017_0219aa7c` (`0x0219acec`), `data_ov017_021d64f4` | the A Button's handlers by kind | `Field::RunCheck` |
+| ov017 `func_ov017_021a93f0`, `func_ov017_021a9454` | the ship's question task (`0x39`): "Disembark?", "inside of the boat?" | `ShipQuestion::Start`, `::Update` |
+| ov017 `func_ov017_021c1a98`, `func_ov017_021c1af0` | trigger action 164's task (`0x37`): to the ocean at the ship's place | `ToSea::Start`, `::Update` |
+| ov017 `func_ov017_02196c4c` | the sea's encounters: the count, its draw 30–100, the floor's zone | `Field::CheckSeaEncounter` |
+
+**What is open**: the ship's size against the walls; the camera at sea; how
+the sea's battle request with no roamer chooses its monsters.

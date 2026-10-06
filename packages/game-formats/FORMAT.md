@@ -2054,6 +2054,35 @@ request with no place — a wipe-out's — puts the party there
 `mapStart` reads it. The terminator `table.ts` stops on is `0x6E` typed
 `0xFF`, which no `.bmbl` carries.
 
+## The moorings — `0x73` type 10, and its `0x74`
+
+Read 6 October 2026 from the game's code (US; `docs/readings/T16b-ship.md`):
+the region reader's case 10 (`func_0201d638`, `0x0201dd98`–`0x0201de3c`).
+A mooring is where the ship is tied up in a field. **The ship stands at the
+region's centre, turned by the `0x73`'s value 8**; the box is where the Hero
+stands to board it by the A Button.
+
+| `0x74` value | kept at | what |
+|---|---|---|
+| 0 | `+0x2c` | its number — what the game keeps the ship tied up at |
+| 1–3 | `+0x30` | where the party is put ashore |
+| 4 | `+0x2e` | the facing there, radians |
+| 5 | `+0x3c` | its reach on the ocean: the ship comes in at the nearest within it, else the nearest of all (`func_0201b678`) |
+| 6–8 | `+0x40` | where the ship puts to sea, on the ocean (map 10000) — read only with more than six values |
+| 9 | `+0x4c` | its facing there |
+
+The values are integers on the cartridge, whole units and whole radians,
+which the game reads as floats (`Script::Parameter::ToFloat`).
+
+| check | result |
+|---|---|
+| type-10 regions | **204**, in 30 fields (`F02`–`F63`) and no other map |
+| with ten `0x74` values | 204 of 204 |
+| region types on the cartridge | 0 ×283, 1 ×184, 2 ×670, 3 ×22, 4 ×63, 5 ×113, 6 ×160, 8 ×163, 9 ×56, 10 ×204, 11 ×360, 12 ×23 |
+| `0x7b` lane counts | 509, every one 0: no `0x7c` box (`0x0201e018`, read by the ship's steering through `func_0201e8fc`) on any map |
+
+`mapMoorings` reads them.
+
 ## The doorways — `0x72`, and `0x73` + `0x74`
 
 A doorway is a volume you walk into, the map it leads to, and where you come out.
@@ -5993,7 +6022,7 @@ Opcodes `0x64`, `0x65` (version, date: nothing), `0x66 n` (room for n) and
 | 5 | the facing there (0 on all) |
 | 6–8 | x, y, z, in the map's units |
 | 9 | the map the ship is moved to |
-| 10 | a number passed with it (not read) |
+| 10 | **the mooring** the ship is tied up at there (`+0x2784`; read 6 October 2026) |
 | 11, 12 | the ship's x and z |
 
 The European file holds 18. The list offered is the places whose flags are set,

@@ -40,6 +40,11 @@ written up on the wiki; each says so under its heading.
   the keys the party holds by their own records (they all opened with none
   before), and the six locked chests by their lock bits; the ferry worked
   already. The ship is split off as **16b**, its code found and not read.
+- **Task 16b is done**, 6 October 2026: the ship is moored at a field's
+  moorings and boarded by A, sails the ocean by its object's own mover, comes
+  ashore after steering into land ("Disembark?"), goes below with B and back
+  to sea by the deck's wheel, is moved by Zoom and is saved. Its size against
+  the shores and the sea's battle are ours (`docs/still-open.md` §2).
 - **Task 17 is done in part**, 6 October 2026: monsters choose their ways
   by all eight of the game's rules, and ten more targeting handlers are
   built, with all 161 listed; the party's tactics are split off as
@@ -464,6 +469,8 @@ Getting-Around. The reading is `docs/readings/T16-getting-around.md`.
 be big enough to split off once its reading is done.
 
 ## 16b. The ship — find and build
+
+**Done, 6 October 2026**: `ship.ts`; `docs/readings/T16b-ship.md`; the wiki's Ship.
 
 Split off from 16 on 6 October 2026, with only where its code lives found —
 `docs/readings/T16-getting-around.md`, "The ship": the ARM9's
