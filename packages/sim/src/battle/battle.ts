@@ -657,6 +657,19 @@ export interface Blow {
   /** Whether an ally may take it in its target's place, `+0x10` bit 12; whether a stance counters it, bit 7. */
   readonly coverable?: boolean
   readonly counterable?: boolean
+  /**
+   * **Its MP** — the record's `+0x08` low byte, 255 "all there is": asked at
+   * its turn (`func_ov024_021eaa50`, `0x021eabe8`–`0x021eac68`) and spent by
+   * the resolver (`func_ov024_021eb5d0`, `0x021ebc10`–`0x021ebcb0`;
+   * `func_ov000_0215a124`), as a spell's is. None under 0 Zone.
+   */
+  readonly cost?: number
+  /**
+   * **Taken up as the round begins** (`+0x08` bit 28) — Blockenspiel: its MP
+   * asked and spent then and stance 1 set (`func_ov000_021537b8`), its turn
+   * asking none (`0x021eabe8`–`0x021eabf4`) — see `stances.ts`.
+   */
+  readonly atRoundStart?: boolean
 }
 
 export interface Changing {
@@ -1112,6 +1125,8 @@ export type BattleEvent =
       readonly regained?: { readonly hp?: number; readonly mp?: number }
       /** It set its striker to guarding (post-step 2). */
       readonly guards?: boolean
+      /** Short of its MP — 0x3a9's "tries to use", "Not enough MP": nothing struck. */
+      readonly short?: true
     }
   /** Tension spent, after the action that spent it — from the maximum, or below it. */
   | { readonly kind: 'calmed'; readonly actor: number; readonly most: boolean }
@@ -1475,6 +1490,16 @@ const MIRACLE_MOON = 0x91
 const alive = (f: FighterState) => f.hp > 0 && !f.fled
 
 /**
+ * **The MP an ability asks**, by its record's `+0x08` low byte: that many,
+ * or for 255 all there is, which none is short of (`func_ov024_021eaa50`,
+ * `0x021eac3c`–`0x021eac68`; spent so, `0x021ebc24`–`0x021ebc40`).
+ */
+function mpAsked(f: { readonly mp: number }, cost: number): number | undefined {
+  if (cost >= 0xff) return f.mp === 0 ? undefined : f.mp
+  return cost
+}
+
+/**
  * Which of its ways a foe takes: a draw from 1 to 256, walked down the weights
  * — the reference's `ProcessEnemyRandomAction2A`, `getPercent(0x100) + 1`.
  */
@@ -1560,12 +1585,22 @@ export function playRound(
   // A trait that lessens the MP (`func_020dd290`) is not kept.
   const shortStance = new Set<number>()
   for (const [i, command] of commands) {
-    if (command.kind !== 'stance') continue
+    // Blockenspiel, the one blow among them: stance 1 as Defend's, its blow
+    // at its turn asking no MP.
+    const blockenspiel = command.kind === 'blow' && command.blow.atRoundStart
+    if (command.kind !== 'stance' && !blockenspiel) continue
     const f = fighters[i]
     if (!f || !alive(f) || f.states.sleep !== undefined) continue
     const zoned = (f.states.zeroZone?.level ?? 0) !== 0
-    if (!zoned && f.mp < command.cost) {
+    const cost = command.kind === 'stance' ? command.cost : mpAsked(f, command.blow.cost ?? 0)
+    if (!zoned && (cost === undefined || f.mp < cost)) {
       shortStance.add(i)
+      continue
+    }
+    if (command.kind !== 'stance') {
+      fighters = fighters.map((g, k) =>
+        k === i ? { ...g, mp: zoned ? g.mp : g.mp - (cost as number), defending: true } : g,
+      )
       continue
     }
     const held =
@@ -2443,7 +2478,13 @@ export function playRound(
       const once = ((me.oncePerGroup ?? 0) >> w) & 1
       if (once && (used >> w) & 1) return undefined
       const cost =
-        way.kind === 'spell' ? way.spell.cost : way.kind === 'change' ? way.changing.cost : 0
+        way.kind === 'spell'
+          ? way.spell.cost
+          : way.kind === 'change'
+            ? way.changing.cost
+            : way.kind === 'blow'
+              ? (way.blow.cost ?? 0)
+              : 0
       if (mode === 2 && cost > me.mp) return undefined
       const slot =
         mode === 0
@@ -3514,6 +3555,21 @@ export function playRound(
 
     if (command.kind === 'blow') {
       const { blow } = command
+      // **Its MP**: one taken up as the round began asks none now, or, short
+      // of it then, is 0x3a9's "tries to use" (`func_ov000_021537b8`); any
+      // other is asked here and spent before it strikes (`0x021ebc10` on).
+      const asked = blow.atRoundStart ? 0 : mpAsked(me, blow.cost ?? 0)
+      if (
+        (blow.atRoundStart && shortStance.has(actor)) ||
+        (!zeroZoned(me) && (asked === undefined || me.mp < asked))
+      ) {
+        events.push({ kind: 'blow', actor, action: blow.action, hits: [], short: true })
+        resolved = { actor, action: blow.action }
+        continue
+      }
+      if (!zeroZoned(me) && asked) {
+        fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - asked } : f))
+      }
       const other: Side = me.side === 'party' ? 'foes' : 'party'
       const standing = livingOn(other)
       if (standing.length === 0) break

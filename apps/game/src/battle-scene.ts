@@ -1361,6 +1361,16 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       // `021e5988`, `021e57e0`).
       const told = scene.known.get(event.action)
       const action = told?.name ?? { name: `move ${event.action}` }
+      // Short of its MP: action 0x3a9's "tries to use", then "not enough MP"
+      // (`func_ov024_021eaa50`, `0x021eac74`–`0x021eac9c`).
+      if (event.short) {
+        return (
+          lines(
+            say(scene, 'actions', ACTION_SAYS.triesToUse, { actor, action }),
+            say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}),
+          ) ?? [`${who} tries to use ${action.name}.`, 'Not enough MP!'].map(sentence).join('\n')
+        )
+      }
       const opens = told?.opening
         ? [say(scene, 'actions', told.opening, { actor, action, item: action })]
         : []
@@ -2315,6 +2325,9 @@ export function blowOf(action: Castable): Blow | undefined {
     tensed: r.tensed ?? false,
     combos: r.combos ?? false,
     after: r.afterStep ?? 0,
+    // Its MP, asked at its turn — or, for Blockenspiel, as the round begins.
+    ...(action.cost ? { cost: action.cost } : {}),
+    ...(r.atRoundStart ? { atRoundStart: true } : {}),
     ...(r.alwaysCritical ? { sure: true } : {}),
     ...(r.worksOnMetal ? { worksOnMetal: true } : {}),
     // What rides on each pass — the riders read (`docs/readings/T18-handlers.md` §3).
@@ -2424,8 +2437,9 @@ const CHANGE_REACHES = new Map<number, Changing['reach']>([
 /**
  * **A stance**, as the battle takes it up — an action with `+0x08` bit 28
  * that the table at `0x02182e24` names (`func_ov000_021537b8`): see the
- * sim's `stances.ts`. Defend's and Blockenspiel's, 1, are played as they
- * were — Defend by its command, Blockenspiel as its blow.
+ * sim's `stances.ts`. Defend's and Blockenspiel's, 1, are played by their
+ * own commands — Defend's, and Blockenspiel's blow, taken up as the round
+ * begins (`Blow.atRoundStart`).
  */
 export function stanceOf(action: Castable): { stance: number; cost: number } | undefined {
   if (!action.rolls?.atRoundStart) return undefined

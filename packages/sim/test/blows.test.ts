@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { type Blow, type Fighter, playRound, startBattle, withHp } from '../src/battle/battle.ts'
+import {
+  type BattleEvent,
+  type Blow,
+  type Fighter,
+  playRound,
+  startBattle,
+  withHp,
+  withMp,
+} from '../src/battle/battle.ts'
 import { FALLOFF, handled, passesOf } from '../src/battle/blows.ts'
 import { BattleRng } from '../src/battle/rng.ts'
 
@@ -165,5 +173,53 @@ describe('a blow in a battle', () => {
       0,
     )
     expect(slam.state.fighters[0]?.hp).toBe(100 - (Math.trunc(f(f(0.8) * 100)) + 2) - struck)
+  })
+})
+
+describe('an ability’s MP — `func_ov024_021eaa50`, spent by the resolver', () => {
+  const at = (mp: number) => withMp(startBattle([hero, foe('dragon', 2)]), new Map([[0, mp]]))
+  const play = (b: Blow, mp: number) =>
+    playRound(at(mp), new Map([[0, { kind: 'blow', blow: b, target: 1 }]]), new BattleRng(5n))
+  const told = (events: readonly { kind: string }[]) => events.find((e) => e.kind === 'blow')
+
+  it('spends the record’s MP before it strikes', () => {
+    const { state, events } = play(blow({ cost: 4 }), 10)
+    expect(state.fighters[0]?.mp).toBe(6)
+    expect(told(events)).toMatchObject({ hits: [{ target: 1 }] })
+  })
+
+  it('strikes nothing short of it, "tries to use" and "not enough MP", spending none', () => {
+    const { state, events } = play(blow({ cost: 4 }), 3)
+    expect(state.fighters[0]?.mp).toBe(3)
+    expect(told(events)).toMatchObject({ short: true, hits: [] })
+  })
+
+  it('takes all there is for 255, and is short only of none', () => {
+    expect(play(blow({ cost: 255 }), 7).state.fighters[0]?.mp).toBe(0)
+    expect(told(play(blow({ cost: 255 }), 0).events)).toMatchObject({ short: true })
+  })
+
+  it('takes Blockenspiel up as the round begins: its MP then, guarding before the slime strikes', () => {
+    const block = blow({ action: 134, cost: 3, atRoundStart: true, after: 2 })
+    const slime = { ...foe('slime'), attack: 200, agility: 255 }
+    const start = withMp(startBattle([{ ...hero, agility: 1 }, slime]), new Map([[0, 9]]))
+    const round = (b: Blow) =>
+      playRound(start, new Map([[0, { kind: 'blow', blow: b, target: 1 }]]), new BattleRng(3n))
+    const struck = (events: readonly BattleEvent[]) =>
+      events.flatMap((e) => (e.kind === 'attack' ? [e.damage] : []))
+    const guarded = round(block)
+    // Spent once, at the round's start — its turn asks none; the slime, first
+    // to act, strikes a guard already up. Played after its blow, it did not.
+    expect(guarded.state.fighters[0]?.mp).toBe(6)
+    expect(struck(guarded.events)).toEqual([51])
+    expect(struck(round({ ...block, atRoundStart: false }).events)).toEqual([102])
+    expect(told(guarded.events)).toMatchObject({ hits: [{ target: 1 }] })
+  })
+
+  it('short of Blockenspiel’s MP as the round begins, takes up nothing and strikes nothing', () => {
+    const block = blow({ action: 134, cost: 3, atRoundStart: true, after: 2 })
+    const { state, events } = play(block, 2)
+    expect(state.fighters[0]?.mp).toBe(2)
+    expect(told(events)).toMatchObject({ short: true, hits: [] })
   })
 })
