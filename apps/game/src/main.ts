@@ -4906,9 +4906,12 @@ const BOOKCASE_TURN = 8364.2 / 4096
  */
 function readBookcaseAhead(): boolean {
   if (!loaded || !self || loaded.mapId === undefined) return false
-  const x = toFloat(self.state.x) / worldScale
-  const y = toFloat(self.state.y) / worldScale
-  const z = toFloat(self.state.z) / worldScale
+  // The boxes are in the file's own units, as a trigger's areas are; the world
+  // is those times its scale — see `maybeAreaEvent`.
+  const scale = WORLD_SCALE * worldScale
+  const x = toFloat(self.state.x) / scale
+  const y = toFloat(self.state.y) / scale
+  const z = toFloat(self.state.z) / scale
   const turnTo = (way: number) => {
     const d = Math.abs((self?.facing ?? 0) - way) % (2 * Math.PI)
     return Math.min(d, 2 * Math.PI - d)
