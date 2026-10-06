@@ -59,8 +59,12 @@ export function windowAt(window: ResultsWindow): { readonly x: number; readonly 
   return { x: ((32 - w) >> 1) * TILE, y: ((24 - h) >> 1) * TILE }
 }
 
-/** A tick, ms — INFERRED a 60th of a second. */
-const TICK_MS = 1000 / 60
+/**
+ * A tick, ms: **a vblank** — the row counter is taken down by
+ * `GameState::GetTickCount`, the vblanks since the last pass
+ * (`func_ov023_021d8f2c`, `0x021d8f38`); the DS's 59.8261 Hz (GBATEK).
+ */
+const TICK_MS = 1000 / 59.8261
 /** The ticks between one row and the next (`+0x11d`). */
 const ROW_TICKS = 5
 

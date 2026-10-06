@@ -212,6 +212,7 @@ import {
   isParty as isPartyObject,
   LOOSE_SCALE,
   MONSTER_BASE,
+  PASS_GAME_MS,
   PASS_MS,
   type ShowEvent,
   type StageFighter,
@@ -881,16 +882,29 @@ function playMapMusic(again = false): void {
  * **A battle's track** (`func_0209c480`, from the transition): 23 (`0x17`),
  * unless the battle has an `eventbattle.bin` record — then that record's
  * `+0x24`. The field's music is cut, not faded, for a roamer; a set battle's
- * fades over 10 (`func_0209c678`) — ours, cut here too.
+ * fades over 10 (`func_0209c678`).
  */
 const BATTLE_TRACK = 0x17
 function playBattleMusic(): void {
   if (!cartridge || !loaded || params.get('bgm')) return
+  const rom = cartridge
   const own = eventFight ? loaded.eventBattles.get(eventFight.index)?.music : undefined
   const wanted = own !== undefined && own !== 0 ? own : BATTLE_TRACK
   track = wanted
-  void playTrack(cartridge, wanted)
+  if (!eventFight) {
+    void playTrack(rom, wanted)
+    return
+  }
+  // A set battle's field music fades over 10 frames (`func_0209c678`). **Ours**:
+  // the battle's track waits for the fade, the one player here having no
+  // second handle to start it on at once.
+  music.fade(0, SET_BATTLE_FADE_MS / 1000)
+  window.setTimeout(() => {
+    if (track === wanted) void playTrack(rom, wanted)
+  }, SET_BATTLE_FADE_MS)
 }
+/** A set battle's field music fades over 10 frames of 16.667 ms. */
+const SET_BATTLE_FADE_MS = 10 * (1000 / 60)
 // For a headless check: the scene playing and its frame, readable from the page.
 Object.defineProperty(window, 'minstrelScene', {
   get: () =>
@@ -1200,9 +1214,14 @@ let doorFade:
   | undefined
 let returning: { readonly from: number; readonly since: number } | undefined
 
-/** A frame of the game's, ms: its ticks are taken at 60 a second — the tick source is not read. */
+/** A frame as the game's own code turns frames into time: 16.667 ms (`SetMainBrightness`, `src/Resource/Brightness.cpp`). */
 const FRAME_MS = 1000 / 60
-/** The swirl (`func_0204700c`): done past 35 ticks; from past 15 both screens to black over 20 frames. */
+/**
+ * The swirl (`func_0204700c`): its count is vblanks (`GetTickCount`,
+ * `0x0204702c`), done past 35, and from past 15 both screens to black over 20
+ * frames; but its turn and narrowing are once a pass — two vblanks, see
+ * `PASS_MS`.
+ */
 const SWIRL_TICKS = 35
 const SWIRL_DARK_AFTER = 15
 const SWIRL_DARK_FRAMES = 20
@@ -1227,7 +1246,9 @@ const VICTORY_JINGLE = 0x36
 const WIPED_OUT_JINGLE = 0x3a
 
 /** The swirl into a battle, while it runs — see {@link startFight}. */
-let entering: { readonly since: number; readonly begin: () => void } | undefined
+let entering:
+  | { readonly since: number; readonly begin: () => void; dark?: number | undefined }
+  | undefined
 /** A fade of both screens, 0 lit to 1 black, and what follows it — see {@link battleDarkness}. */
 let screenFade:
   | {
@@ -1245,17 +1266,19 @@ let leaving = false
 /** What the battle's end has started: the victory's or the wipe-out's music and shot, once. */
 let ending: { readonly kind: 'won' | 'lost'; readonly since: number } | undefined
 
-/** The swirl's tick now, and the camera's turn and half-angle at it. */
+/** The swirl's count of vblanks now, and the camera's turn and half-angle at it — a step each pass. */
 function swirlAt(
   now: number,
 ): { readonly tick: number; readonly roll: number; readonly halfFov: number } | undefined {
-  if (!entering) return undefined
-  const tick = Math.floor(Math.max(0, now - entering.since) / FRAME_MS) + 1
-  const degrees = ((((-SWIRL_ROLL * tick) % 360) + 540) % 360) - 180
+  // A set battle's wait before the swirl: nothing turns yet.
+  if (!entering || now < entering.since) return undefined
+  const passes = Math.floor(Math.max(0, now - entering.since) / PASS_MS) + 1
+  const tick = 2 * passes
+  const degrees = ((((-SWIRL_ROLL * passes) % 360) + 540) % 360) - 180
   return {
     tick,
     roll: (degrees * Math.PI) / 180,
-    halfFov: Math.max(0.5, SWIRL_FOV_FROM - SWIRL_FOV_STEP * tick),
+    halfFov: Math.max(0.5, SWIRL_FOV_FROM - SWIRL_FOV_STEP * passes),
   }
 }
 
@@ -1275,9 +1298,13 @@ function battleDarkness(now: number): number {
       screenFade = battle ? { from: 1, to: 0, since: now, ms: BATTLE_UP_MS } : undefined
       return 1
     }
-    return swirl.tick > SWIRL_DARK_AFTER
-      ? Math.min(1, (swirl.tick - SWIRL_DARK_AFTER) / SWIRL_DARK_FRAMES)
-      : 0
+    // From the count past 15, to black over 20 frames of 16.667 ms (`SetBrightness`).
+    if (swirl.tick <= SWIRL_DARK_AFTER) {
+      entering.dark = undefined
+      return 0
+    }
+    entering.dark ??= now
+    return Math.min(1, (now - entering.dark) / (SWIRL_DARK_FRAMES * FRAME_MS))
   }
   if (!screenFade) return 0
   const t = Math.min(1, Math.max(0, (now - screenFade.since) / screenFade.ms))
@@ -1627,8 +1654,15 @@ function startEventBattle(index: number): void {
     return
   }
   eventFight = { index, map: loaded?.mapId }
-  startFight(codes, false)
+  startFight(codes, false, 'even', SET_BATTLE_WAIT_MS)
 }
+
+/**
+ * A set battle from a trigger record's `120` waits 15 frames before its swirl
+ * (FORMAT.md, "The way into a battle, and out"). **Ours**: a frame taken as
+ * the code's 16.667 ms — what counts the 15 is not read.
+ */
+const SET_BATTLE_WAIT_MS = 15 * (1000 / 60)
 
 /**
  * What follows a set battle: the flags its map's record for the outcome sets,
@@ -8223,7 +8257,12 @@ function coupEntry(member: Member, known: Map<number, Told>): Entry | undefined 
 /** The lighting slot the battle being entered was asked for at — see {@link startFight}. */
 let askedSlot: number = LIGHTING_SLOT.day
 
-function startFight(codes: readonly string[], canFlee: boolean, opening: Opening = 'even'): void {
+function startFight(
+  codes: readonly string[],
+  canFlee: boolean,
+  opening: Opening = 'even',
+  waitMs = 0,
+): void {
   blog = battleLog(performance.now())
   logMotions.clear()
   log(`fight: ${codes.join(', ')}${canFlee ? '' : ' (no running)'}, opening ${opening}`)
@@ -8236,7 +8275,10 @@ function startFight(codes: readonly string[], canFlee: boolean, opening: Opening
   // battle draws by it with no blend (`DrawBackgroundGradient`,
   // `GetCurrentAdvancedLightingValues`), whatever the clock does after.
   askedSlot = LIGHTING_SLOT[timeNow()]
-  entering = { since: performance.now(), begin: () => openFight(codes, canFlee, opening) }
+  entering = {
+    since: performance.now() + waitMs,
+    begin: () => openFight(codes, canFlee, opening),
+  }
 }
 
 /** Set a battle up, in the black the swirl leaves — see {@link startFight}. */
@@ -9294,9 +9336,11 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
   perspective(aspect, 0.01, 1000, numberProjection, fov)
   viewMatrix(camera, numberView)
   const unit = aspect >= 256 / 192 ? height / 192 : width / 256
-  numbersCarry = Math.min(numbersCarry + elapsedMs, TICK_MS * 8)
-  while (numbersCarry >= TICK_MS) {
-    numbersCarry -= TICK_MS
+  // Once a battle update, not by time (`func_02039fec` from `func_ov000_02160620`,
+  // `0x021606c0`): a pass of two vblanks — see `PASS_MS`.
+  numbersCarry = Math.min(numbersCarry + elapsedMs, PASS_MS * 8)
+  while (numbersCarry >= PASS_MS) {
+    numbersCarry -= PASS_MS
     risingNumbers = risingNumbers.flatMap((n) => numberFrame(n) ?? [])
     tickCombo(combo)
     // The chooser's marker bobs: a phase of 0.1 a frame, round at 6.28 (`0x021de17c`).
@@ -10103,9 +10147,9 @@ function stepShown(elapsedMs: number): void {
   s.carry = Math.min(s.carry + elapsedMs, PASS_MS * 8)
   while (s.carry >= PASS_MS && shown === s) {
     s.carry -= PASS_MS
-    for (const event of s.run.pass(PASS_MS)) onShow(event)
+    for (const event of s.run.pass(PASS_GAME_MS)) onShow(event)
     for (const line of motionChanges(s.run.fighters.values(), logMotions, logName)) log(`  ${line}`)
-    tickCamera(s.camera, PASS_MS * s.run.speed)
+    tickCamera(s.camera, PASS_GAME_MS * s.run.speed)
     followShownChase(s)
     if (s.run.ended) {
       finishShown()
@@ -10241,16 +10285,17 @@ function aimAtBattle(stage: BattleStage, elapsedMs: number): void {
       // The chase shot's look-at follows, 5% of the way a frame (`0x0216ea38`).
       const [x, y, z] = stage.view.target
       const [tx, ty, tz] = wanted.view.target
-      const k = Math.min(1, (0xcc / 4096) * (elapsedMs / TICK_MS))
+      const k = Math.min(1, (0xcc / 4096) * (elapsedMs / PASS_MS))
       stage.view = {
         ...stage.view,
         target: [x + (tx - x) * k, y + (ty - y) * k, z + (tz - z) * k],
       }
     }
   }
-  stage.carry = Math.min(stage.carry + elapsedMs, TICK_MS * 8)
-  while (stage.carry >= TICK_MS) {
-    stage.carry -= TICK_MS
+  // The camera's ticks are the battle's passes, two vblanks each — see `PASS_MS`.
+  stage.carry = Math.min(stage.carry + elapsedMs, PASS_MS * 8)
+  while (stage.carry >= PASS_MS) {
+    stage.carry -= PASS_MS
     if (stage.easing) {
       const next = easeOrbit(stage.view.orbit, stage.easing)
       stage.view = { ...stage.view, orbit: next.orbit }

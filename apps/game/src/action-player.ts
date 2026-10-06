@@ -22,13 +22,23 @@ import type { ActionCommand, Vec3 } from '@minstrel/game-formats'
  * {@link ShowEvent}s: the camera's shots, sounds, numbers, the lights. The
  * reactions to the action's results are {@link ./action-reactions.ts}'s.
  *
- * **Ours**, each marked where it is used: a pass every {@link PASS_MS}, the
- * game's own pass rate not being read; and how a fighter comes back to its
- * idle motion between actions.
+ * **A pass every {@link PASS_MS}**, handing {@link PASS_GAME_MS} — read 6
+ * October 2026 (`docs/readings/T15-presentation.md`). **Ours**, marked where
+ * it is used: how a fighter comes back to its idle motion between actions.
  */
 
-/** The dispatcher runs once a frame; how many frames a second it has is not read. **Ours**: 60. */
-export const PASS_MS = 1000 / 60
+/** A vblank, ms: the DS's 59.8261 Hz (GBATEK, "LCD Dimensions and Timings": 355 dots × 263 lines × 6 cycles at 33.513982 MHz). */
+export const VBLANK_MS = 1000 / 59.8261
+/**
+ * **A pass of the battle**: the dispatcher runs once a battle update
+ * (`func_ov000_02160620` → overlay 25), and the field's loop, which runs the
+ * battle's task, waits for two vblanks a pass (overlay 17 `0x0218c78c`–
+ * `0x0218c7b4`) — 30 a second. INFERRED: that the battle's task runs once a
+ * pass, as the field's tasks do.
+ */
+export const PASS_MS = 2 * VBLANK_MS
+/** What a pass hands on: `GameState::CalculateDeltaTime`'s whole milliseconds of it, 33. */
+export const PASS_GAME_MS = Math.trunc(PASS_MS)
 
 /** Object indices, as the battle numbers them (`func_ov000_0215ec1c`): the party 0–3, the monsters `0xc0` on. */
 export const MONSTER_BASE = 0xc0
