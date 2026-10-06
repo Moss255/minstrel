@@ -10,6 +10,7 @@ import {
 import { type Catalogue, catalogue, scanCartridge } from '@minstrel/cartridge'
 import { FX32_ONE, fx32, toFloat } from '@minstrel/fixed'
 import {
+  type Accolade,
   type Action,
   type ActionRange,
   type ActionScript,
@@ -64,6 +65,7 @@ import {
   type RandomTreasure,
   type Recipe,
   type RevivalWords,
+  readAccoladeData,
   readActionRanges,
   readActionScript,
   readActions,
@@ -142,6 +144,7 @@ import type { Model } from '@minstrel/nitro-gfx'
 import { parseRomHeader, readNitroFs } from '@minstrel/nitrofs'
 import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
+import { TITLE_SCRIPTS, type TitleScript } from './accolades.ts'
 import type { BattleWords } from './battle-scene.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
@@ -396,6 +399,8 @@ export interface Loaded {
   readonly mapZoom: number | undefined
   /** Zoom's list, Evac's table and the waking priest's voices — see {@link Travel}. */
   readonly travel: Travel
+  /** The accolades, their names, words and the scripts that award them — see {@link Accolades}. */
+  readonly accolades: Accolades
   /** The gathering spots: every field's, the timings, the Fountain, and this map's — see {@link Gathering}. */
   readonly gathering: Gathering
   /** The map's bookcases, from its link table — see `mapBookcases`. */
@@ -1677,6 +1682,69 @@ function englishText(
     }
   }
   return new Map()
+}
+
+/**
+ * **The accolades** — `ttldata`, their names by sex, the Battle Records'
+ * words and the four scripts that award them. See `accolades.ts` and
+ * `docs/readings/T14-records.md`. Empty where a file will not read.
+ */
+export interface Accolades {
+  readonly data: ReadonlyMap<number, Accolade>
+  /** The names: a man's (`ttlname0`), then a woman's (`ttlname1`). */
+  readonly names: readonly [ReadonlyMap<number, string>, ReadonlyMap<number, string>]
+  /** `str_tg`: the award's lines. */
+  readonly awardWords: ReadonlyMap<number, string>
+  /** `str_jr`: the Battle Records' summary. */
+  readonly recordWords: ReadonlyMap<number, string>
+  /** `str_tl`: the Accolades Earnt list's words. */
+  readonly listWords: ReadonlyMap<number, string>
+  readonly scripts: Partial<Record<TitleScript, Script>>
+}
+
+const accoladesKept = new WeakMap<Uint8Array, Accolades>()
+
+function accoladesOf(rom: Uint8Array): Accolades {
+  const already = accoladesKept.get(rom)
+  if (already) return already
+  const strings = (name: string) =>
+    englishText(rom, `/data/bin/${name}.gp2`, `${name.split('/').pop()}_en.nat`, readSystemStrings)
+  let data: ReadonlyMap<number, Accolade> = new Map()
+  try {
+    const bytes = englishBytes(rom, '/data/bin/ttldata.gp2', 'ttldata_en.bin')
+    if (bytes) data = readAccoladeData(bytes).accolades
+  } catch {
+    // An unreadable table leaves no accolades.
+  }
+  const scripts: Partial<Record<TitleScript, Script>> = {}
+  for (const [which, path] of Object.entries(TITLE_SCRIPTS) as [TitleScript, string][]) {
+    const bytes = looseFile(rom, path)
+    if (!bytes) continue
+    try {
+      scripts[which] = readScript(bytes)
+    } catch {
+      // A script that will not read awards nothing.
+    }
+  }
+  const out: Accolades = {
+    data,
+    names: [strings('ttlname0'), strings('ttlname1')],
+    awardWords: strings('menu/str_tg'),
+    recordWords: strings('menu/str_jr'),
+    listWords: strings('menu/str_tl'),
+    scripts,
+  }
+  accoladesKept.set(rom, out)
+  return out
+}
+
+/** One English member of an archive, as bytes. */
+function englishBytes(rom: Uint8Array, archive: string, member: string): Uint8Array | undefined {
+  const { cat } = walkOnce(rom, [archive])
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) if (name.toLowerCase().endsWith(member)) return bytes
+  }
+  return undefined
 }
 
 const questsKept = new WeakMap<
@@ -3029,6 +3097,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     mapArea: entry?.area,
     mapZoom: entry?.zoom,
     travel: travelOf(rom),
+    accolades: accoladesOf(rom),
     gathering: gatheringOf(rom, code),
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],

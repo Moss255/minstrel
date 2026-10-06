@@ -36,7 +36,7 @@ export const ACTIONS = [
 export type Action = (typeof ACTIONS)[number]
 
 /** The buttons that do nothing yet, which a layout may leave without a key. */
-const NOT_YET: ReadonlySet<Action> = new Set(['start', 'select'])
+const NOT_YET: ReadonlySet<Action> = new Set(['start'])
 
 /** What each button reads as in the controls panel: the DS's name, then what it does. */
 export const ACTION_LABELS: Readonly<Record<Action, string>> = {
@@ -51,7 +51,7 @@ export const ACTION_LABELS: Readonly<Record<Action, string>> = {
   turnLeft: 'L Button — turn the view left',
   turnRight: 'R Button — turn the view right',
   start: 'START — nothing in the field',
-  select: 'SELECT — the Battle Records (not built yet)',
+  select: 'SELECT — the Battle Records',
   map: 'Ours — the mini-map on and off',
   music: 'Ours — the music on and off',
 }
@@ -88,7 +88,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   menu: { keys: ['x'], buttons: [2] },
   y: { keys: ['z'], buttons: [3] },
   start: { keys: [], buttons: [9] },
-  select: { keys: [], buttons: [8] },
+  select: { keys: ['g'], buttons: [8] },
   map: { keys: ['m'], buttons: [6] },
   music: { keys: ['b'], buttons: [7] },
 }

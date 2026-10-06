@@ -291,7 +291,8 @@ export function buildTable(records: FixtureRecord[], strings: string[] = []): Ui
     // The type's further bytes, for the fifth value on, follow its first.
     const type = record.type ?? 0
     body.push(record.tag & 0xff, (record.tag >>> 8) & 0xff, count, type & 0xff)
-    for (let i = 4; i < header; i++) body.push(i < 3 + typeBytes ? (type >>> (8 * (i - 3))) & 0xff : 0)
+    for (let i = 4; i < header; i++)
+      body.push(i < 3 + typeBytes ? (type >>> (8 * (i - 3))) & 0xff : 0)
     for (const v of values) push32(v)
     for (const f of floats) {
       const buf = new DataView(new ArrayBuffer(4))

@@ -37,9 +37,9 @@ describe('the accolades', () => {
   it('throws on a record of the wrong shape, and on a table with none', () => {
     const wrong = buildTable([{ tag: 0x67, type: 0x55, values: [2, 79, 75, 2] }])
     expect(() => readAccoladeData(wrong)).toThrow(/five integers and a string/)
-    expect(() => readAccoladeData(buildTable([{ tag: 0x66, type: 0x55, values: [1, 2, 3, 4] }]))).toThrow(
-      /no accolades/,
-    )
+    expect(() =>
+      readAccoladeData(buildTable([{ tag: 0x66, type: 0x55, values: [1, 2, 3, 4] }])),
+    ).toThrow(/no accolades/)
     expect(() => readAccoladeData(new Uint8Array(8))).toThrow()
   })
 })

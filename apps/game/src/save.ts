@@ -215,6 +215,8 @@ export interface SaveGame {
    * made before it was kept**, which read as the start, 1.
    */
   readonly storySoFar?: number
+  /** The accolades earned, by number — see `accolades.ts`. Absent is none. */
+  readonly accolades?: readonly number[]
   /**
    * The recipes known, as pairs of a recipe and its bits — see `learnRecipe`.
    * **Absent from saves made before recipes were kept**: see `restore` in

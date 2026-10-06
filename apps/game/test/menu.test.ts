@@ -41,8 +41,11 @@ describe('the main menu', () => {
   it('opens on the first command and chooses round and round', () => {
     const menu = openMenu()
     expect(MENU_COMMANDS[menu.cursor]?.id).toBe('talk')
-    expect(moveCursor(menu, -1).cursor).toBe(MENU_COMMANDS.length - 1)
-    expect(moveCursor(menu, MENU_COMMANDS.length + 1).cursor).toBe(1)
+    // Battle Records is left out until they are open — see `menuCommands`.
+    const listed = menuCommands().length
+    expect(listed).toBe(MENU_COMMANDS.length - 1)
+    expect(moveCursor(menu, -1).cursor).toBe(listed - 1)
+    expect(moveCursor(menu, listed + 1).cursor).toBe(1)
   })
 
   it('closes to talk, and opens a panel for anything else', () => {
@@ -332,6 +335,9 @@ describe('the main menu', () => {
       'Assign Party Tricks',
       // And the Quest List, `str_tm` 4007, also the Misc. menu's.
       'Quest List',
+      // **Battle Records**, `strstd` 21, the game's own field-menu row, listed
+      // once they are open — see `menuCommands`.
+      'Battle Records',
       // **Heal All**, `str_tm` 4001 — the Misc. menu's first row in the game.
       'Heal All',
       // **Ours**, and last: the controls panel `k` opens — the keys, the pad

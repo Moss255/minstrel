@@ -141,6 +141,7 @@ export class ScriptThread {
   readonly stack: ScriptValue[] = []
   private readonly frames: Frame[] = []
   private done = false
+  private returned: ScriptValue | undefined
 
   constructor(
     private readonly script: Script,
@@ -153,6 +154,11 @@ export class ScriptThread {
 
   get finished(): boolean {
     return this.done
+  }
+
+  /** What the routine it began with returned, once it has. */
+  get result(): ScriptValue | undefined {
+    return this.returned
   }
 
   /**
@@ -334,6 +340,7 @@ export class ScriptThread {
         this.stack.length = frame.stackBase
         if (this.frames.length === 0) {
           this.done = true
+          this.returned = value
           return true
         }
         this.stack.push(value)

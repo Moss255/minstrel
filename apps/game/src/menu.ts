@@ -56,6 +56,7 @@ export type MenuCommand =
   | 'skills'
   | 'tricks'
   | 'quests'
+  | 'records'
   | 'pot'
   | 'make'
   | 'patty'
@@ -148,6 +149,11 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
   { id: 'tricks', label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
   { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
+  // **Battle Records**, `strstd` 21 — Stella's, the field menu's row the
+  // game lists from game-wide flag `0x119a` (overlay 2, `func_ov002_0215c178`)
+  // and the SELECT Button's too (overlay 17, `func_ov017_021c05f4`). See
+  // `accolades.ts`.
+  { id: 'records', label: 'Battle Records' },
   // **Heal All** — see `heal-all.ts`. In the game the first row of the Misc.
   // submenu, which this flat list does not have; where it stands is ours.
   { id: 'healAll', label: 'Heal All', word: MENU_WORDS.healAll },
@@ -164,9 +170,11 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
  * not say.
  */
 export function menuCommands(context?: MenuContext): readonly MenuEntry<MenuCommand>[] {
-  return context?.skillsListed === false
-    ? MENU_COMMANDS.filter((command) => command.id !== 'skills')
-    : MENU_COMMANDS
+  return MENU_COMMANDS.filter(
+    (command) =>
+      !(command.id === 'skills' && context?.skillsListed === false) &&
+      !(command.id === 'records' && context?.records === undefined),
+  )
 }
 
 /** The flag that lists Allocate Skill Points — see {@link menuCommands}. */
@@ -511,6 +519,21 @@ export interface MenuContext {
   readonly quests?:
     | readonly { readonly name: string; readonly text: string; readonly cleared: boolean }[]
     | undefined
+  /**
+   * **The Battle Records**, when they are open to the Hero: their summary's
+   * lines, `str_jr`, and the accolades earned, by number, each its name and
+   * its line — see `accolades.ts`. Undefined leaves the row out.
+   */
+  readonly records?:
+    | {
+        readonly title: string
+        readonly summary: readonly string[]
+        /** The list's heading, `str_tl` 0, when the Accolades Earnt screen is open; else none. */
+        readonly listTitle: string | undefined
+        readonly empty: string
+        readonly accolades: readonly { readonly name: string; readonly text: string }[]
+      }
+    | undefined
   readonly tricks?:
     | {
         readonly known: readonly number[]
@@ -680,6 +703,10 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
   }
   if (state.panel === 'quests') {
     const count = context?.quests?.length ?? 0
+    return count === 0 ? state : { ...state, row: wrap(state.row, count) }
+  }
+  if (state.panel === 'records') {
+    const count = context?.records?.listTitle ? context.records.accolades.length : 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'tricks') {
@@ -1173,6 +1200,31 @@ export function panelLines(
         word(MENU_WORDS.quests, 'Quest List'),
         ...quests.map((q, i) => `${mark(i === row)}${q.cleared ? '✓ ' : ''}${q.name}`),
         ...(chosen ? ['', chosen.text] : []),
+      ]
+    }
+    case 'records': {
+      // **The Battle Records**: the summary, then Accolades Earnt by number
+      // and the chosen one's line. The words are the game's, `str_jr` and
+      // `str_tl`. Ours: one panel, where the game's screens have their own
+      // layout and menu pictures (`cell_jrm`), not read.
+      const records = context.records
+      if (!records) return []
+      const row = state?.panel === 'records' ? (state.row ?? 0) : -1
+      const list = records.listTitle
+      const chosen = list ? records.accolades[Math.max(0, row)] : undefined
+      return [
+        records.title,
+        ...records.summary,
+        ...(list
+          ? [
+              '',
+              list,
+              ...(records.accolades.length === 0
+                ? [records.empty]
+                : records.accolades.map((a, i) => `${mark(i === row)}${a.name}`)),
+              ...(chosen ? ['', chosen.text] : []),
+            ]
+          : []),
       ]
     }
     case 'tricks': {

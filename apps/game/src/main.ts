@@ -198,6 +198,13 @@ import {
   vocationSaid,
 } from './abbey.ts'
 import {
+  type AccoladeFacts,
+  AWARD_LINE,
+  awardsOf,
+  FIRST_AWARD_LINE,
+  type TitleScript,
+} from './accolades.ts'
+import {
   type ActionRun,
   BLEND_MS,
   type Blend,
@@ -2299,6 +2306,12 @@ function restore(game: SaveGame): void {
   liveThread = game.thread
   medalsGiven = game.medalsGiven ?? 0
   storySoFar = game.storySoFar ?? STORY_START
+  accoladesEarned.clear()
+  for (const id of game.accolades ?? []) accoladesEarned.add(id)
+  // A save from past Stella's event, made before the Records were kept, has
+  // them open — see `RECORDS_EVENT`.
+  const at = game.stage
+  if (at && (at.major > 2 || (at.major === 2 && at.minor >= 6))) storyGlobals.add(FLAG_RECORDS)
   goldBanked = game.banked ?? 0
   revivalMap = game.revival ?? NEW_GAME_REVIVAL
   taughtSpells.clear()
@@ -2390,6 +2403,7 @@ function confess(): string {
     })),
     ...(medalsGiven > 0 ? { medalsGiven } : {}),
     ...(storySoFar !== STORY_START ? { storySoFar } : {}),
+    ...(accoladesEarned.size > 0 ? { accolades: [...accoladesEarned].sort((a, b) => a - b) } : {}),
     recipes: [...recipesKnown],
     ...(goldBanked > 0 ? { banked: goldBanked } : {}),
     revival: revivalMap,
@@ -3583,6 +3597,16 @@ function frame(now = 0): void {
   }
   // The status line goes with the debug screen once a map is up.
   if (!debugOn && loaded && !statusEl.hidden) statusEl.hidden = true
+  // **The skill-point screen put away** runs `title_skl` — the victory's
+  // (overlay 23, step 9) and the field menu's (overlay 2,
+  // `func_ov002_021688f8`) both do.
+  const skillsUp = menu?.panel === 'skills'
+  if (skillsWereUp && !skillsUp) {
+    const lines = award('skills')
+    if (battle) for (const line of lines) status(line)
+    else sayAwards(lines)
+  }
+  skillsWereUp = skillsUp
   // Alltrades Abbey's ceremony, run its time — see `ceremony`.
   if (serviceWait && performance.now() >= serviceWait.until) {
     const done = serviceWait.done
@@ -6220,6 +6244,144 @@ function curePicked(index: number): void {
 
 /** The Story So Far's number — see `story-so-far.ts`. Saved. */
 let storySoFar = STORY_START
+
+/** The accolades earned, by number — `GameState+0x7504`'s bits. Saved. See `accolades.ts`. */
+const accoladesEarned = new Set<number>()
+/** Game-wide flags the Battle Records read: the Records open (`0x119a`), Accolades Earnt listed (`0x119b`). */
+const FLAG_RECORDS = 0x119a
+const FLAG_ACCOLADES_LISTED = 0x119b
+/**
+ * The event that opens the Battle Records here — Stella's, at 2.6, whose
+ * lines tell of the X and SELECT Buttons. **Ours**: what sets `0x119a` is not
+ * found (no code, record or script names it), so it is set as her event plays.
+ */
+const RECORDS_EVENT = 22593
+/** Whether the skill-point screen was up last frame — its closing runs `title_skl`. */
+let skillsWereUp = false
+
+/** What the accolade scripts ask about the Hero — see `accolades.ts`. */
+function accoladeFacts(): AccoladeFacts {
+  const hero = leader()
+  return {
+    earned: accoladesEarned,
+    vocation: hero.vocation,
+    levelIn: () => levelOf(hero)?.level ?? 1,
+    sex: hero.sex === SEX.female ? 1 : 0,
+    treePoints: (tree) => hero.treePoints.get(tree) ?? 0,
+  }
+}
+
+/** An accolade's name for the Hero's sex, `ttlname0` or `ttlname1`, its markup read. */
+function accoladeName(id: number): string {
+  const names = loaded?.accolades.names
+  const raw = names?.[leader().sex === SEX.female ? 1 : 0].get(id) || names?.[0].get(id) || ''
+  return plainMarkup(raw, heroName()) || `accolade ${id}`
+}
+
+/** An accolade's line, `ttldata`, about the Hero. */
+function accoladeText(id: number): string {
+  const raw = loaded?.accolades.data.get(id)?.text ?? ''
+  const male = leader().sex !== SEX.female
+  const rendered = renderLine(raw, {
+    ...textContext(),
+    conditions: { ...DEFAULT_CONTEXT.conditions, ADDRESSEE_MALE: male, MALE: male },
+    values: { ADDRESSEE: heroName() },
+  })
+  return rendered.pages.map((page) => page.text).join(' ')
+}
+
+/**
+ * **Run one of the four scripts** and mark what it awards earned — see
+ * `accolades.ts`. Returns the lines saying so: `str_tg` 100 for each, and
+ * 1000 after them the first time any is earned, when the Accolades Earnt
+ * screen opens (`0x119b`). **Ours**: that the line's opening sets
+ * `0x119b` — the flag the Records' menu lists it by; what sets it is not found.
+ */
+function award(which: TitleScript): string[] {
+  const script = loaded?.accolades.scripts[which]
+  if (!loaded || !script) return []
+  const ids = awardsOf(script, accoladeFacts())
+  if (ids.length === 0) return []
+  const first = accoladesEarned.size === 0
+  const words = loaded.accolades.awardWords
+  const lines = ids.map(
+    (id) =>
+      told(words, AWARD_LINE, { actor: heroNamed(), values: { str_2: accoladeName(id) } }) ??
+      `${heroName()} is awarded the accolade ${accoladeName(id)}!`,
+  )
+  for (const id of ids) accoladesEarned.add(id)
+  log(`accolades from ${which}: ${ids.join(', ')}`)
+  if (first) {
+    storyGlobals.add(FLAG_ACCOLADES_LISTED)
+    const opened = words.get(FIRST_AWARD_LINE)
+    if (opened) lines.push(plainMarkup(opened, heroName()))
+  }
+  return lines
+}
+
+/** Say what was awarded, in a box of its own, when nothing else is talking. */
+function sayAwards(lines: readonly string[]): void {
+  if (lines.length === 0) return
+  if (talking || playing || battle) {
+    for (const line of lines) status(line)
+    return
+  }
+  talkContext = textContext()
+  talking = startConversation(
+    { id: -1, name: '', x: 0, z: 0 },
+    'an accolade',
+    [...lines],
+    lines.map(() => `str_tg ${AWARD_LINE}`),
+    talkContext,
+  )
+  showTalk()
+}
+
+/** The Battle Records' panel, when they are open — see `MenuContext.records`. */
+function recordsContext(): MenuContext['records'] {
+  if (!loaded || !storyGlobals.has(FLAG_RECORDS)) return undefined
+  const words = loaded.accolades.recordWords
+  const value = (line: number, n: number, name: string) =>
+    plainMarkup((words.get(line) ?? `${name}:<val_1>`).replace(/<val_\d+>/, ` ${n}`), heroName())
+  const listed = storyGlobals.has(FLAG_ACCOLADES_LISTED)
+  return {
+    title: loaded.systemStrings?.get(21) ?? 'Battle Records',
+    // The summary's lines the game's records hold that are kept here. **Ours**:
+    // the quests cleared are counted from the quest book, where the game keeps
+    // its own count in the records (not read); the rest — victories, alchemy,
+    // guests — are not kept, and are left out.
+    summary: [
+      value(122, accoladesEarned.size, 'Accolades Earnt'),
+      value(123, questBook.cleared.size, 'Quests Completed'),
+      value(124, 0, 'Grottoes Completed'),
+    ],
+    listTitle: listed ? (loaded.accolades.listWords.get(0) ?? 'Accolades Earnt') : undefined,
+    empty: loaded.accolades.listWords.get(100) ?? 'This list is currently empty.',
+    accolades: [...accoladesEarned]
+      .sort((a, b) => a - b)
+      .map((id) => ({ name: accoladeName(id), text: accoladeText(id) })),
+  }
+}
+
+/**
+ * **Open the Battle Records** — the SELECT Button in the field, or the menu's
+ * row. As they open, `title_gyalel` runs (overlay 8, step 0 to 2) and what it
+ * awards is said. **Ours**: Stella's comment, which the game gives first
+ * (`cmtFileTbl.bin`, `cmtHeader.stb` and the stage's own), is not built, and
+ * the game runs `title_gyalel` only when she has none; the award is said
+ * before the panel, which opens on the next press.
+ */
+function openRecords(): void {
+  if (!loaded || !storyGlobals.has(FLAG_RECORDS)) return
+  const lines = award('records')
+  if (lines.length > 0) {
+    sayAwards(lines)
+    return
+  }
+  self?.held.clear()
+  menu = { ...openMenu(), panel: 'records' }
+  showMenu()
+}
 /** Whether its page is up, on the bottom screen. */
 let storyPageOpen = false
 /** The parchment, read once. */
@@ -6849,6 +7011,7 @@ function menuContext(): MenuContext {
     look: loaded ? appearanceRows(members[menu?.member ?? 0] ?? leader()) : undefined,
     modelOf: loaded ? itemModels(loaded.itemDefs) : undefined,
     skillsListed: storyGlobals.has(FLAG_SKILLS_LISTED),
+    records: recordsContext(),
     // The pot's lines carry the same markup item names do — `you<1>re` is an
     // apostrophe — so they go through `renderName` as the skill labels do.
     potWords: potLines(),
@@ -10778,6 +10941,7 @@ function sharesOf(
 
 /** Put the battle away. */
 function endFight(): void {
+  const won = ending?.kind === 'won'
   battle = undefined
   battleStage = undefined
   shown = undefined
@@ -10814,7 +10978,14 @@ function endFight(): void {
     }
   }
   status(`back on the map · HP ${leader().hp ?? 'full'}`)
-  if (fought) followBattle(fought)
+  // **A victory's accolades**, `title_btl` — the results' step 15 in the
+  // game, said here as the field comes back (ours: the results' own window
+  // for it is not built).
+  const awarded = won ? award('battle') : []
+  if (fought) {
+    for (const line of awarded) status(line)
+    followBattle(fought)
+  } else sayAwards(awarded)
 }
 
 /**
@@ -10967,6 +11138,7 @@ function eventMapOf(event: number): number | undefined {
 function startEvent(number: number, afterTalk = false): boolean {
   if (!loaded || !self) return false
   const name = `ev${String(number).padStart(5, '0')}`
+  if (number === RECORDS_EVENT) storyGlobals.add(FLAG_RECORDS)
   const script = loaded.eventScript(number)
   if (!script) {
     status(`${name} will not read`)
@@ -13167,6 +13339,22 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     self?.held.clear()
     menu = openMenu()
     showMenu()
+    event.preventDefault()
+    return handled
+  }
+  // **The Battle Records**: the SELECT Button, in the field with the player
+  // free (overlay 17, `func_ov017_021c05f4`: `func_02012444(pad, 4)`, with
+  // game-wide flag `0x119a`). See `openRecords`.
+  if (
+    action === 'select' &&
+    loaded &&
+    !talking &&
+    !playing &&
+    !battle &&
+    !opening &&
+    !serviceWait
+  ) {
+    openRecords()
     event.preventDefault()
     return handled
   }
