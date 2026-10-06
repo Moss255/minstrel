@@ -10,7 +10,7 @@ worked example: `<DAMA>` found on Jack's line, overlay 3's service 46 read,
 then built — `abbey.ts`, and `docs/party-and-vocations.md`, "The Abbey's
 own flow".
 
-## Where it stands — 6 October 2026
+## Where it stands — 7 October 2026
 
 **Tasks 1 to 10 are done**, each built, checked in the browser, committed and
 written up on the wiki; each says so under its heading.
@@ -65,8 +65,14 @@ written up on the wiki; each says so under its heading.
   on the same day** (§8): the six skills of the table at `0x021fe8b6`
   (Gigaslash among them), Propeller Blade, Gold Rush's gold, and the riders
   by the target's resistance byte — death corrected to a flat 12.5, a metal
-  body not spared. Crosscutter Throw, the 38 kinds, ten riders and eight
-  coups are left, each by address.
+  body not spared. Carried on again (§9, §10): might, mending and the
+  wards as levels, Antimagic, Tingle, Wave of Relief, all eight coups, the
+  game's run-down, the lost turn and paralysis — 44, then 41. **And on 7
+  October** (§11): the round's end read whole (a draw it was missing), Right
+  as Rain, Focus Pocus, dazzle, Vanish, Schizofanic, Mist Me, Rotstopper,
+  Alma Mater and Holy Impregnable — **31 struck as the Attack**. Left, each
+  by address in §7: the 31 (by 23 kinds), riders 5, 6, 9, 10, 12–14, 19 and
+  21, Crosscutter Throw and M-Pathy.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
   the camera easing in for a party trick;
@@ -570,6 +576,18 @@ in `battle-scene.ts`, the change and blow paths of `battle.ts`,
 `sim/src/battle/handlers.ts`; the reading and what is left by address,
 `docs/readings/T18-handlers.md`. The wiki's Ability-Handlers. 76 struck as
 the Attack before, 55 after; the 55 are listed by kind with their handlers.
+
+**Carried on, 7 October 2026** (`f2c5452`, `7684539`, `2f87fbc`, `38daa26`,
+`8071063`, `731f411`; the reading's §11): Right as Rain and Focus Pocus at
+the round's end, which was read whole and was a draw short; dazzle (Flower
+Power, Scandal Eyes) and the die it throws; Vanish in a monster's pick;
+Schizofanic's and Mist Me's decoys; Rotstopper; Alma Mater, the heavenly
+protection; Holy Impregnable in the resistance. **41 struck as the Attack
+before, 31 after.** Still left, by address in §7: the 31 (kind 0's six
+stances, the Pathies, Fuddle, Tap Dance, Bounce and Magic Mirror, Reverse
+Cycle, Immense Defence, Mens Sana, Half-Inch, Eye for Trouble, the Fources,
+Feel the Burn — read, §11 — and the rest of §7's table), riders 5, 6, 9, 10,
+12–14, 19 and 21, Crosscutter Throw and M-Pathy.
 
 **Carried on, 6 October 2026** (`a4f7f68`, `f0074e0`, `b880f53`; the
 reading's §8): Gigaslash and the five like it scale by the game's own table

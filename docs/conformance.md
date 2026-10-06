@@ -1030,3 +1030,20 @@ way.
 instruction in the ROM, and what the flee chance and the surprise round read
 for deftness is the same field the critical roll reads — so the last inference
 in either formula is gone.
+
+## The round's end, read whole — 7 October 2026
+
+`func_ov000_0215e6e8` clears the guards, then gives back and tolls
+(`func_ov000_0215a23c`: the party's HP by Right as Rain, their MP by Focus
+Pocus, then envenomation), and then counts down (`func_ov000_02157e1c`),
+which **makes a draw at its head every round** (`0x02157ea8`), whoever holds
+anything — kept for `+0x18` bit 6's wearing off. The battle had counted the
+coup down before the toll and made no such draw: a battle of more than one
+round drew one short each round end. **Modelled** in `playRound` since
+`f2c5452`; `opening.test.ts` counts it. See `docs/readings/T18-handlers.md` §11.
+
+**Also modelled since** (§11): a dazzled striker's die of eight, last in the
+accuracy roll; Schizofanic's and Mist Me's miss before any of the roll's
+draws; the vanished halved in a monster's weighted pick after its total;
+Rotstopper's half in the final damage; Holy Impregnable's −25 in the
+resistance (`func_ov000_02156b38`, read whole).

@@ -1231,3 +1231,24 @@ the sea's battle request with no roamer chooses its monsters.
 | ARM9 `func_020743d4`, `02074478` | `NextRandomFloatScaled`, `NextRandomBetween` | (named already) |
 | ov023 `func_ov023_021f454c` `0x021f49e8`, `0x021f4ab0`; ov000 `func_ov000_02155184` `0x0215533c` | a sure drop, rare and ordinary, from the group's `+0x17` and `+0x16` | (part of) `Victory::RollDrops` |
 | ov023 `func_ov023_021edf54` `0x021ee05c`–`0x021ee080` | the experience and gold times `battle + 0x8e3c` and `+0x8e40` | (part of) `Victory::Settle` |
+
+### Task 18, the remaining kinds carried on (7 October 2026)
+
+`docs/readings/T18-handlers.md` §11. USA addresses; overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov000 `func_ov000_0215e6e8` | the round's end: guards cleared, then `0215a23c`, then (unless `battle+0x8e14`) `02157e1c` | `Battle::EndRound` |
+| ov000 `func_ov000_0215a23c` | what the round's end gives back and tolls: the party's HP (a trait's 25, Right as Rain's), their MP (Focus Pocus's, trait `0x3f`'s), envenomation; the monsters' MP and toll | `Battle::RegenAndToll` |
+| ov000 `func_ov000_02157e1c` | corrected: a draw at its head every round (`0x02157ea8`); Focus Pocus, Right as Rain, `+0x18` bits 11 and 6 worn down; the coup counted down | `Battle::CountDownAtRoundEnd` |
+| ov000 `func_ov000_0215a16c`, `0215a1d4` | HP, MP given, held to the most | `Battle::GiveHp`, `GiveMp` |
+| ov000 `func_ov000_0215c758` | the round's end's HP, MP and toll told, as actions 930–934 | `Battle::ShowRoundEndAmounts` |
+| ov000 `func_ov000_02154f30` `0x021550ac`–`0x021550c0` | the vanished halved after the total is made | (part of) `Battle::PickTargetWeighted` |
+| ov000 `func_ov000_02156648` `0x02156a90`–`0x02156ac8` | a dazzled striker's die of eight, last, for `+0x10` bit 3 | (part of) `Battle::RollAccuracy` |
+| ov000 `func_ov000_02156b38` | the resistance whole: the byte plus Holy Impregnable's −25 (elements 9–21), `+0x18` bit 31's +25, elements 1–7's own −50s, held at 0, over 100 | `Battle::GetResistance` |
+| ov000 `func_ov000_0215b5a0` `0x0215b6d0` on | Feel the Burn's mark: a draw against a table by tension, tension up (action 928) | (part of) `Battle::AfterAction` |
+| `func_ov024_021dd534`, `021e9198` | kind 19, dazzle of the record's sort, and its lines for one already so | `Handler_Dazzle`, `GetDazzleLine` |
+| `func_ov024_021e093c`, `021dec50`, `021e0a50`, `021df0f0`, `021deff8`, `021e1120`, `021e01b8`, `021e268c` | kinds 54, 36, 55, 40, 39, 64, 48, 78: Vanish, Schizofanic, Mist Me, Rotstopper, Alma Mater, Holy Impregnable, Right as Rain, Focus Pocus — the simple shape | `Handler_Vanish`, … |
+| `func_ov024_021ea78c`, `data_ov024_021fe6e0` | Alma Mater against Whack, Thwack, Kathwack, Kamikazee | `IsHeavenlyProtected` |
+| `func_ov024_021e6a90` `0x021e74f8`–`0x021e7530` | Rotstopper: half from a monster of family 8 | (part of) `CalculateFinalDamage` |
+| arm9 `func_0202053c` | a member's level in their vocation | `Character::GetLevel` |
