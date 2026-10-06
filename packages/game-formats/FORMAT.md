@@ -2687,6 +2687,13 @@ the 523** — common to every event, not part of one. The sections are numbered
 and 101); section 100 is the largest, a median 3,632 bytes. Each section is a routine,
 whose first word is its entry address — see "The code".
 
+**A routine's code runs to its last return, not its first.** A return is the
+end only when no jump in the routine lands past it: the accolade scripts
+(`data/scenario/title_*.stb`) end every candidate's `if` with `push 1;
+return` and jump over it to the rest, which a reader stopping at the first
+return cut off — and the machine then refused the jump as landing outside its
+routine. Read 6 October 2026.
+
 **A script names its own messages.** 3,522 of the 3,649 message numbers an
 event's text carries occur in its own script as a word, against 43 of 3,649
 control numbers it does not carry — mostly in section 100. The words around them
@@ -5962,6 +5969,65 @@ four — the lowest and highest story major (both "0": always), then the voice b
 day and by night (`atoi`; empty is 1). The first span holding the major gives
 the voice; voice 3 says nothing, any other is `str_ch<voice − 1>`'s line 1082.
 18 maps on the European cartridge.
+
+## Accolades — `ttldata`, `ttlname0`/`ttlname1`, and the `title_*.stb` that award them
+
+Read 6 October 2026 from the decomp's USA build; `docs/readings/T14-records.md`
+has every address.
+
+**`/data/bin/ttldata.gp2/ttldata_<LG>.bin`** is a command file (the tagged data
+table). Tag `0x65` a date, `0x64` a version string, `0x66` four integers (151,
+21, 260, 12 on the European cartridge, not read), and **`0x67`, one accolade**:
+its number; where its man's name and its woman's name fall in alphabetical
+order, from 1, 0 when that sex has none (observed: the English names sorted
+give exactly these, 442 of 442 for each sex — the Accolades Earnt list's "By
+Name"); two values not read, kept as `unknown_3` (0, 1, 2, 6 — the twelve
+revocation titles 101–112 — or 7, the 260 skill titles 121–380) and
+`unknown_4` (0, 1 or 2); and the line describing it. 445 records, numbered 2
+to 454 with gaps. The ARM9 loads it (`func_020a13c4`) and finds a record by
+number (`func_020a15bc`). `readAccoladeData`.
+
+**The names** are system strings, keyed by the accolade's number:
+`/data/bin/ttlname0.gp2/ttlname0_<LG>.nat` a man's, `ttlname1` a woman's —
+every reader builds `ttlname%d` from the Hero's sex (bit 0 of `+0x49c` of the
+protagonist's data). An empty name is the other sex's only (116 "Cool
+Customer" a man's, 117 "Haughty Beauty" a woman's). `ttlname_<LG>.bin`, a
+command file pairing each number with two names of its own, is named by no
+code found.
+
+**Four scripts award them** (`data/scenario/title_btl.stb`, `title_skl.stb`,
+`title_clr.stb`, `title_gyalel.stb`), run on a machine of their own: the event
+interpreter with a table of 95 functions (overlay 23 `data_ov023_021fddb8`,
+pairs of handler and number, registered by `func_ov023_021eb000`). Section 100
+calls one routine a candidate, each beginning "has it already?" and ending 1
+when it is due; when it is, function **0** adds the number to a list of up to
+50 (`func_0209ffe0`). `title_btl` and `title_skl` award every one due;
+`title_clr` and `title_gyalel` return after the first. Which accolades:
+
+| script | accolades | due when |
+|---|---|---|
+| `title_btl` | 89–100 | the Hero (member −1) at level 99 in vocation 1 to 12 (`101`) |
+| | 2 | eleven monsters, 296 to 306, each defeated (`251`) |
+| | 3–6, 7–10 | a grotto boss of level 25, 50, 75, 99 beaten; a grotto of that level cleared (`253`, `252` — 0 outside a grotto) |
+| `title_skl` | 121–380 | points in a skill tree (`106`) |
+| `title_clr` | 425–454 | the first completion's records (`201`–`215`) |
+| `title_gyalel` | 11–88, 113–120, 381–424 | counts kept in the records block, outfits worn (`103`), and more (`102`–`165`) |
+
+The functions the scripts call, as read: **0** award; **1** whether earned,
+into a reference; **101** a member's vocation and that vocation's level;
+**102** a member's sex; **106** a member's points in a skill tree; **110** the
+grottoes cleared; **201** the first completion's time; **251** a monster's
+defeated count; **252**, **253** a grotto's level cleared and its boss's.
+Member −1 is the character `GameState+0x3ac` names (`func_020100a8`) —
+INFERRED the Hero. The rest are listed, not read, in the reading.
+
+**The earned bits** are `GameState+0x7504`, 0x3C bytes, bit `n` for accolade
+`n` (`func_020ac460`; set only by `func_020ac3c8`, from overlay 23's
+`func_ov023_021ed724`, which every awarding screen calls).
+
+**A routine runs past a return** when a jump lands beyond it — every
+candidate here ends `push 1; return` with its `else` jumped over it; see
+"Event scripts".
 
 ## Evidence
 

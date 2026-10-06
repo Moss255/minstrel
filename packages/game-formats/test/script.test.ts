@@ -105,6 +105,34 @@ describe('readScript', () => {
     expect(new TextDecoder().decode(script.stringAt(main?.code[0]?.b ?? -1))).toBe('stand')
   })
 
+  it('reads on past an early return to where a jump lands', () => {
+    // One section after the two-instruction shared routine: its fifth
+    // instruction is 0x50 (the shared routine) + 0x38 + 4 × 12 from the base.
+    const label = 0x50 + 0x38 + 4 * 12
+    const script = readScript(
+      build({
+        shared: wait,
+        sections: [
+          {
+            id: 100,
+            code: () => [
+              [3, 1, 1],
+              [0x11, label, 0],
+              [3, 1, 1],
+              [OP_RETURN, 0, 0],
+              [0x16, 0, 0],
+              [3, 1, 0],
+              [OP_RETURN, 0, 0],
+            ],
+          },
+        ],
+      }),
+    )
+    const code = script.sections[0]?.routine.code ?? []
+    expect(code.map((i) => i.op)).toEqual([3, 0x11, 3, OP_RETURN, 0x16, 3, OP_RETURN])
+    expect((code[4]?.at ?? 0) - script.base).toBe(label)
+  })
+
   it('refuses what is not a script', () => {
     const bytes = build({ shared: wait, sections: [] })
     bytes[0] = 0x58

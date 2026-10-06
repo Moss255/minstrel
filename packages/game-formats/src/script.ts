@@ -29,14 +29,23 @@ import { GameFormatError } from './errors.ts'
  * | `+0x0C` | how many parameters it takes |
  * | `+0x10` .. `+0x37` | `unknown_0x10`: a 1 per parameter where there are any |
  * | `+0x38` | instructions, three `u32`s each — an opcode and two arguments — to `0x0F` |
+ *
+ * **A return is the routine's end only when no jump lands past it** (read 6
+ * October 2026, on `data/scenario/title_*.stb`): a routine that returns early
+ * goes on after the return, reached by a jump over it, and is read on to the
+ * return at or beyond the furthest jump.
  */
 
 /** `SB2\0`, read as a little-endian word. */
 export const SCRIPT_MAGIC = 0x00324253
 /** A routine's header: its first instruction is this far in. */
 export const ROUTINE_HEADER = 0x38
-/** The instruction that ends a routine. */
+/** The instruction that ends a routine — the last one, unless a jump lands past it. */
 export const OP_RETURN = 0x0f
+/** The three jumps, whose targets say how far a routine's code runs. */
+const OP_JUMP = 0x10
+const OP_JUMP_IF = 0x11
+const OP_SHORT_CIRCUIT = 0x12
 
 export interface ScriptInstruction {
   /** File offset of the instruction. */
@@ -120,6 +129,10 @@ export function readScript(bytes: Uint8Array): Script {
       )
     }
     const code: ScriptInstruction[] = []
+    // The furthest place a jump in the routine lands. A return before it is
+    // an early one, and the code goes on: the accolade scripts end every `if`
+    // that awards with `push 1; return`, its `else` jumping over it.
+    let reach = 0
     for (let pc = at + ROUTINE_HEADER; ; pc += 12) {
       if (pc + 12 > bytes.length) {
         throw new GameFormatError(
@@ -128,8 +141,12 @@ export function readScript(bytes: Uint8Array): Script {
         )
       }
       const op = view.getUint32(pc, true)
-      code.push({ at: pc, op, a: view.getUint32(pc + 4, true), b: view.getUint32(pc + 8, true) })
-      if (op === OP_RETURN) break
+      const a = view.getUint32(pc + 4, true)
+      code.push({ at: pc, op, a, b: view.getUint32(pc + 8, true) })
+      if (op === OP_JUMP || op === OP_JUMP_IF || op === OP_SHORT_CIRCUIT) {
+        reach = Math.max(reach, base + a)
+      }
+      if (op === OP_RETURN && pc >= reach) break
     }
     const found: ScriptRoutine = {
       at,

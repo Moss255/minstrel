@@ -1,3 +1,4 @@
+export { type Accolade, type AccoladeData, readAccoladeData } from './accolades.ts'
 export {
   type Action,
   ActionEffect,
