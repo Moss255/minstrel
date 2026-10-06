@@ -363,6 +363,15 @@ export function dealt(
     readonly halved?: boolean
     /** No 0-or-1 coin — Thunder Thrust and Hatchet Man (`0x021e7870`). */
     readonly noCoin?: boolean
+    /**
+     * **A metal body's zeroing** (`0x021e77c4`–`0x021e7820`): a blow the
+     * target's metal body takes nothing from unless it is a critical — the
+     * caller's to say: a body metal (`func_ov000_02156068`), an action that
+     * carries `+0x10` bit 24 aimed at the monsters (`+0x08` bits 8–9 at 1),
+     * and not `0x205` nor `0x82`, Needle Shot. Before the coin, which then
+     * makes it 0 or 1.
+     */
+    readonly metal?: boolean
   },
 ): number {
   const f = Math.fround
@@ -384,7 +393,10 @@ export function dealt(
   // The target's guard, before the coin below — `0x021e7614`.
   if (to.guard !== undefined && to.guard !== 1) d = f(d * f(to.guard))
   if (to.blocked || to.dodged) d = 0
-  else if (d <= 0 && to.resistance > 0 && !to.noCoin) d = f(rng.below(2))
+  else {
+    if (to.metal && !to.critical) d = 0
+    if (d <= 0 && to.resistance > 0 && !to.noCoin) d = f(rng.below(2))
+  }
   // A target at the maximum of tension takes half a blow (`0x021e7a58`–`0x021e7a88`).
   if (to.halved) d = f(f(0.5) * d)
   // **The combo** (`0x021e7a8c`–`0x021e7b28`), after the coin and before the

@@ -523,6 +523,8 @@ export interface ItemEffect {
     readonly cap: number
     /** The levels its rider moves, `+0x32` — see `Action.riderLevels`. */
     readonly riderLevels: number
+    /** Whether a metal body zeroes its blow — see `Action.worksOnMetal`. */
+    readonly worksOnMetal: boolean
     /**
      * How its accuracy comes (`+0x18` bits 16–17), one of the party's least
      * and most (`+0x14` bits 7–13, 14–20), and the number and `lo` and `hi`
@@ -1936,6 +1938,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           landingElement: action.landingElement,
           cap: action.damageCap,
           riderLevels: action.riderLevels,
+          worksOnMetal: action.worksOnMetal,
           accuracyMode: action.accuracyMode,
           accuracyRange: action.accuracyRange,
           ...(action.scalesBy ? { scalesBy: action.scalesBy } : {}),

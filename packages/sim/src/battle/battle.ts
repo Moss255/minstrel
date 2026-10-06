@@ -384,6 +384,8 @@ export interface Blow {
   readonly sure?: boolean
   /** What rides on each pass that deals something — see {@link Rider}. */
   readonly rider?: Rider
+  /** Whether a metal body zeroes it — its record's `+0x10` bit 24 (see `dealt`'s `metal`). */
+  readonly worksOnMetal?: boolean
 }
 
 export interface Changing {
@@ -479,6 +481,9 @@ export interface Rider {
   readonly chance: { readonly party: number; readonly foe: number }
   readonly levels: number
 }
+
+/** The two a metal body does not zero (`0x021e77e8`, `0x021e77f4`): 0x205, and 0x82 — Needle Shot. */
+const METAL_SPARED: ReadonlySet<number> = new Set([0x205, 0x82])
 
 /** The riders the battle plays. */
 export const RIDERS_PLAYED: ReadonlySet<number> = new Set([2, 4, 7, 8, 20])
@@ -2291,6 +2296,9 @@ export function playRound(
           ...(tension && !(thrust && d === 0) ? { tension } : {}),
           ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
           ...(thrust ? { noCoin: true } : {}),
+          ...(them.metal && blow.worksOnMetal && !METAL_SPARED.has(blow.action)
+            ? { metal: true }
+            : {}),
         })
         if (dodged || blocked || damage < 1) chain = brokenChain(chain)
         // Double-Edged Slash keeps a quarter of what it dealt (`0x021e7b54`).
@@ -2445,6 +2453,8 @@ export function playRound(
       // The plain Attack carries tension (`+0x10` bit `0x2000`), and is of kind 1.
       ...(tension ? { tension } : {}),
       ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
+      // The plain Attack carries `+0x10` bit 24 and is aimed at the monsters.
+      ...(them.metal && them.side === 'foes' ? { metal: true } : {}),
     })
     // The count the blow was multiplied by, for its showing — 0 for none.
     const combo = !dodged && !blocked && damage >= 1 ? chain.count : 0

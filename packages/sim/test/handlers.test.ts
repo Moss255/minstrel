@@ -3,6 +3,7 @@ import {
   type BattleEvent,
   type Blow,
   type Changing,
+  DEFAULT_RULES,
   type Fighter,
   playRound,
   startBattle,
@@ -373,5 +374,23 @@ describe('what rides on a blow', () => {
       new BattleRng(6n),
     )
     expect(rodeOf(metal.events)).toBeUndefined()
+  })
+})
+
+describe('a metal body', () => {
+  it('takes 0 or 1 from an Attack that is not a critical', () => {
+    const metal = { ...foe, metal: true }
+    const noCriticals = { ...DEFAULT_RULES, critical: 0 }
+    for (let seed = 1n; seed <= 20n; seed++) {
+      const { events } = playRound(
+        startBattle([hero, metal]),
+        new Map([[0, { kind: 'attack', target: 1 }]]),
+        new BattleRng(seed),
+        noCriticals,
+      )
+      const hit = events.find((e) => e.kind === 'attack' && e.actor === 0)
+      if (hit?.kind !== 'attack') throw new Error('no attack')
+      expect(hit.damage).toBeLessThanOrEqual(1)
+    }
   })
 })

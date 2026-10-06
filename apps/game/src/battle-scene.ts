@@ -443,6 +443,8 @@ export interface Castable {
     readonly cap?: number
     /** The levels its rider moves, `+0x32`. */
     readonly riderLevels?: number
+    /** Whether a metal body zeroes its blow, `+0x10` bit 24. */
+    readonly worksOnMetal?: boolean
     /** How its accuracy comes, the party's least and most, and what scales it — see the loader's. */
     readonly accuracyMode?: number
     readonly accuracyRange?: { readonly min: number; readonly max: number }
@@ -1751,6 +1753,7 @@ export function blowOf(action: Castable): Blow | undefined {
     combos: r.combos ?? false,
     after: r.afterStep ?? 0,
     ...(r.alwaysCritical ? { sure: true } : {}),
+    ...(r.worksOnMetal ? { worksOnMetal: true } : {}),
     // What rides on each pass — the riders read (`docs/readings/T18-handlers.md` §3).
     ...(RIDERS_PLAYED.has(r.rider)
       ? {
