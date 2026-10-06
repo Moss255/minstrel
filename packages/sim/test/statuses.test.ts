@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   type BattleEvent,
+  type BattleState,
   type Changing,
   type Command,
   type Fighter,
@@ -341,13 +342,13 @@ describe('Holy Impregnable — kind 64', () => {
     }
     // The monster puts the Hero to sleep: under Holy Impregnable it never
     // lands; without it, it sometimes does.
-    const casting = (state: typeof holy) => ({
+    const casting = (state: BattleState) => ({
       ...state,
       fighters: state.fighters.map((f, i) =>
         i === 1 ? { ...f, acts: [{ kind: 'change' as const, changing: snooze }] } : f,
       ),
     })
-    const slept = (state: typeof holy) => {
+    const slept = (state: BattleState) => {
       let landed = 0
       let cast = 0
       for (let seed = 0; seed < 200; seed++) {
