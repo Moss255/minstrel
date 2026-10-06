@@ -1677,8 +1677,20 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       const told = scene.known.get(event.action)
       const action = told?.name ?? { name: `move ${event.action}` }
       // How it opens — cast, or a breath's own line — or nothing where it has none.
+      // An opening may name the one it is aimed at — Half-Inch's "tries to
+      // pick …'s pocket", Soothe Sayer's: the first it reached.
       const opening = told?.opening ?? ACTION_SAYS.casts
-      const opens = opening ? [say(scene, 'actions', opening, { actor, action, item: action })] : []
+      const aimedAt = event.hits[0] === undefined ? undefined : scene.names[event.hits[0].target]
+      const opens = opening
+        ? [
+            say(scene, 'actions', opening, {
+              actor,
+              action,
+              item: action,
+              ...(aimedAt ? { target: aimedAt } : {}),
+            }),
+          ]
+        : []
       const ourOpening = ourOpeningOf(opening, who, action)
       if (event.short) {
         const game = lines(...opens, say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}))
