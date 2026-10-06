@@ -195,6 +195,15 @@ export interface Fighter {
    * who last struck it. Mode 1, no more actions, when not given.
    */
   readonly aiMode?: number
+  /**
+   * **How it chooses among its ways** — `mon_btldata +0x10` bits 5–7, the
+   * rule `func_0208a91c` dispatches on (the table at `0x020f10b0`): 0, 1, 2
+   * and 4 draw by a weight table ({@link choice}); 3 takes them in turn by a
+   * count of its own, 7 by a count its group shares; 5 takes a pair in turn
+   * and a coin within it; 6 its first way and its others by turns. Read 6
+   * October 2026 — see `docs/readings/T17-ai.md`. By the weights when not given.
+   */
+  readonly wayRule?: number
   readonly extraRule?: number
   readonly oncePerGroup?: number
   readonly remembers?: boolean
@@ -237,6 +246,13 @@ export interface FighterState extends Fighter {
   readonly rounds?: number
   /** The last two of the party to aim a pass at this monster, the latest first (`+0x32`, `+0x34`). */
   readonly aimedBy?: readonly number[]
+  /**
+   * The count way rules 3, 5 and 6 keep for a monster — the byte at `+0x38`
+   * of its status (`+0x138`): the next way, pair or pass. **INFERRED** to
+   * start at 0: nothing found writes it but the rules themselves, so it is
+   * taken to be cleared with the rest of the status as the battle sets up.
+   */
+  readonly wayCount?: number
   /**
    * Ready for their coup de grâce — `status+0x3b` bit 3 — and the count of
    * rounds' ends left, bits 4–7; see `coup.ts`. Undefined, not ready.
@@ -531,6 +547,12 @@ export interface BattleState {
   readonly chain?: Chain
   /** The ways each group of monsters has used that it may use once, by kind, a bit a way. */
   readonly onceUsed?: ReadonlyMap<string, number>
+  /**
+   * The count way rule 7 keeps for a group — the first byte of the group's
+   * record of 0x18 at `battle + 0x81c0` (`func_0208a840`), by kind as
+   * {@link onceUsed} is. **INFERRED** to start at 0, as {@link FighterState.wayCount}.
+   */
+  readonly groupWayCount?: ReadonlyMap<string, number>
 }
 
 export interface Rules {
@@ -825,6 +847,7 @@ export function playRound(
   let outcome: Outcome = 'ongoing'
   let chain: Chain = state.chain ?? NO_CHAIN
   const onceUsed = new Map(state.onceUsed ?? [])
+  const groupWayCount = new Map(state.groupWayCount ?? [])
   const setStates = (target: number, patch: Partial<States>) => {
     fighters = fighters.map((f, i) =>
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
@@ -1209,10 +1232,13 @@ export function playRound(
     }
   }
   /**
-   * **A monster's choosing** (`func_0208a91c`): the way by the weights, then —
-   * that way unusable — the one before, down to the first, then those after;
-   * none usable, the Attack. Usable: a way it may use once a group not yet
-   * used by its group; MP enough, for mode 2; and its handler not refusing.
+   * **A monster's choosing** (`func_0208a91c`), by its way rule — see
+   * {@link Fighter.wayRule}. A way is tried by the usable test
+   * (`func_0208a03c`): a way it may use once a group not yet used by its
+   * group; MP enough, for mode 2; and its handler not refusing — which makes
+   * the handler's draws whether it refuses or not. When no way is usable, the
+   * Attack by the first handler (`func_ov000_02154a04` with action 2), every
+   * rule alike.
    */
   const chooseFoe = (actor: number): Command => {
     const me = fighters[actor] as FighterState
@@ -1220,28 +1246,95 @@ export function playRound(
     const ways = me.acts ?? []
     const attack: FoeAction = { kind: 'attack' }
     if (ways.length === 0) return firstHandler(actor, attack)
-    const first = chosenWay(rng, me.choice ?? rules.choice)
-    const tries = [first]
-    for (let w = first - 1; w >= 0; w--) tries.push(w)
-    for (let w = first + 1; w < ways.length; w++) tries.push(w)
-    const used = onceUsed.get(me.name) ?? 0
-    for (const w of tries) {
+    const tryWay = (w: number): Command | undefined => {
       const way = ways[w]
-      if (!way) continue
+      if (!way) return undefined
+      const used = onceUsed.get(me.name) ?? 0
       const once = ((me.oncePerGroup ?? 0) >> w) & 1
-      if (once && (used >> w) & 1) continue
+      if (once && (used >> w) & 1) return undefined
       const cost =
         way.kind === 'spell' ? way.spell.cost : way.kind === 'change' ? way.changing.cost : 0
-      if (mode === 2 && cost > me.mp) continue
+      if (mode === 2 && cost > me.mp) return undefined
       const slot =
         mode === 0
           ? 0
           : (way.targeting?.[mode === 1 ? 0 : 1] ?? (way.kind === 'attack' && mode === 2 ? 1 : 0))
       const command =
         slot === 0 || slot >= 0xa1 ? firstHandler(actor, way) : byHandler(actor, way, slot)
-      if (!command) continue
-      if (once) onceUsed.set(me.name, used | (1 << w))
+      if (command && once) onceUsed.set(me.name, used | (1 << w))
       return command
+    }
+    const count = () => (fighters[actor] as FighterState).wayCount ?? 0
+    const setCount = (n: number) => {
+      fighters = fighters.map((f, i) => (i === actor ? { ...f, wayCount: n } : f))
+    }
+    switch (me.wayRule) {
+      case 3: {
+        // **In turn** (`func_0208a52c`): the way its count names, the count
+        // on by one round six, six times; none usable, the Attack.
+        for (let k = 0; k < 6; k++) {
+          const w = count()
+          setCount((w + 1) % 6)
+          const command = tryWay(w)
+          if (command) return command
+        }
+        return firstHandler(actor, attack)
+      }
+      case 7: {
+        // **In turn, by the group's count** (`func_0208a840`): as 3, the count
+        // the group's own. No monster on the cartridge has it.
+        for (let k = 0; k < 6; k++) {
+          const w = groupWayCount.get(me.name) ?? 0
+          groupWayCount.set(me.name, (w + 1) % 6)
+          const command = tryWay(w)
+          if (command) return command
+        }
+        return firstHandler(actor, attack)
+      }
+      case 5: {
+        // **A pair in turn and a coin within it** (`func_0208a5d8`): the count
+        // taken round three; three times, the low bit of a draw picks which
+        // of the pair 2c, 2c + 1 goes first, the count moves on, and the
+        // first then the other is tried.
+        setCount(count() % 3)
+        for (let k = 0; k < 3; k++) {
+          const coin = rng.top32() & 1
+          const c = count()
+          setCount((c + 1) % 3)
+          const command = tryWay(2 * c + coin) ?? tryWay(2 * c + (coin ^ 1))
+          if (command) return command
+        }
+        return firstHandler(actor, attack)
+      }
+      case 6: {
+        // **Its first way, then the others** (`func_0208a700`): the count's
+        // low bit; twice, at 0 the first way alone, at 1 a draw among the
+        // other five and on round them from it; the count flips each pass.
+        setCount(count() & 1)
+        for (let k = 0; k < 2; k++) {
+          const others = count() !== 0
+          const first = others ? 1 : 0
+          const n = others ? 5 : 1
+          let at = rng.below(n)
+          setCount((count() + 1) & 1)
+          for (let j = 0; j < n; j++) {
+            const command = tryWay(first + at)
+            if (command) return command
+            at = (at + 1) % n
+          }
+        }
+        return firstHandler(actor, attack)
+      }
+    }
+    // **By the weights** (`func_0208a370`, rules 0, 1, 2 and 4): the way
+    // drawn, then the one before, down to the first, then those after.
+    const first = chosenWay(rng, me.choice ?? rules.choice)
+    const tries = [first]
+    for (let w = first - 1; w >= 0; w--) tries.push(w)
+    for (let w = first + 1; w < 6; w++) tries.push(w)
+    for (const w of tries) {
+      const command = tryWay(w)
+      if (command) return command
     }
     return firstHandler(actor, attack)
   }
@@ -2006,6 +2099,7 @@ export function playRound(
       fleeAttempts: attempts,
       chain,
       onceUsed,
+      groupWayCount,
     },
     events,
   }

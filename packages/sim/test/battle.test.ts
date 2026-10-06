@@ -238,6 +238,57 @@ describe('a foe', () => {
     expect([...ways].sort()).toEqual([100, 101, 102, 103, 104, 105])
   })
 
+  /** Six ways a foe may always use — spells of no cost, told apart by their actions 100 to 105. */
+  const sixWays = [0, 1, 2, 3, 4, 5].map((i) => ({
+    kind: 'spell' as const,
+    spell: { ...frizz, action: 100 + i, cost: 0 },
+  }))
+  /** The ways a foe took, round by round, as their actions less 100. */
+  const waysTaken = (foes: Fighter[], seed: bigint, rounds: number) => {
+    const { events } = fight(startBattle([tough, ...foes]), seed, wait, rounds)
+    return events.flatMap((e) => (e.kind === 'spell' ? [[e.actor, e.action - 100]] : []))
+  }
+
+  it('takes its ways in turn by its own count under rule 3 (`func_0208a52c`)', () => {
+    const turner = { ...blob('turner', 999), acts: sixWays, wayRule: 3 }
+    expect(waysTaken([turner], 3n, 8).map(([, w]) => w)).toEqual([0, 1, 2, 3, 4, 5, 0, 1])
+  })
+
+  it('takes its ways in turn by its group’s count under rule 7 (`func_0208a840`)', () => {
+    const turner = { ...blob('turner', 999), acts: sixWays, wayRule: 7 }
+    // Two of one group share the count: between them, each way in turn.
+    const taken = waysTaken([turner, turner], 3n, 3).map(([, w]) => w)
+    expect(taken).toEqual([0, 1, 2, 3, 4, 5])
+  })
+
+  it('takes a pair in turn and one of it by a coin under rule 5 (`func_0208a5d8`)', () => {
+    const pairer = { ...blob('pairer', 999), acts: sixWays, wayRule: 5 }
+    const taken = waysTaken([pairer], 11n, 9).map(([, w]) => w as number)
+    expect(taken.map((w) => w >> 1)).toEqual([0, 1, 2, 0, 1, 2, 0, 1, 2])
+    // The coin is a draw's low bit, so over nine both halves turn up.
+    expect(new Set(taken.map((w) => w & 1))).toEqual(new Set([0, 1]))
+  })
+
+  it('takes its first way and then one of the others, by turns, under rule 6 (`func_0208a700`)', () => {
+    const sixer = { ...blob('sixer', 999), acts: sixWays, wayRule: 6 }
+    const taken = waysTaken([sixer], 7n, 10).map(([, w]) => w as number)
+    expect(taken.filter((_, i) => i % 2 === 0)).toEqual([0, 0, 0, 0, 0])
+    for (const w of taken.filter((_, i) => i % 2 === 1)) expect(w).toBeGreaterThan(0)
+  })
+
+  it('passes over a way it may not use, and attacks when none is left (rule 3)', () => {
+    // Mode 2 and no MP: every spell costing 2 is unusable, so the Attack.
+    const broke = {
+      ...blob('broke', 999),
+      aiMode: 2,
+      wayRule: 3,
+      acts: sixWays.map((w) => ({ ...w, spell: { ...w.spell, cost: 2 } })),
+    }
+    const { events } = fight(startBattle([tough, broke]), 3n, wait, 2)
+    expect(events.filter((e) => e.kind === 'attack' && e.actor === 1)).toHaveLength(2)
+    expect(events.some((e) => e.kind === 'spell')).toBe(false)
+  })
+
   it('heals an ally below half its HP, and attacks when no one is', () => {
     // Handler 11: one of its own side below half its HP, by a draw; with none, refused.
     const healer = {

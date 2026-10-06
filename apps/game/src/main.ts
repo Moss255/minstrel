@@ -1469,9 +1469,8 @@ const smashedAt = new Map<number, number>()
 /**
  * Which of the four weight tables each of the game's eight ways of choosing
  * draws by, in the order `readWeightTables` finds them — the even, the
- * falling, the steep and the fourth. Types 3, 5, 6 and 7 pick another way
- * altogether (a round robin, a pair and a coin, two passes) and are not
- * modelled; they fall to the even table, which is **ours**.
+ * falling, the steep and the fourth (`func_0208a4ac`–`0208a50c`). Types 3,
+ * 5, 6 and 7 take no table — see `Fighter.wayRule`.
  */
 const WAYS_BY_AI: Readonly<Record<number, number>> = { 0: 0, 1: 1, 2: 2, 4: 3 }
 
@@ -8538,10 +8537,11 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     for (const [action, spell] of ways.known) known.set(action, spell)
     foes.push({
       acts: ways.acts,
-      // Which weights it draws its ways by: **the game's own selector**, the
-      // record's `aiType` — see `MonsterBattle.aiType` and `WAYS_BY_AI`. Its
-      // four other types do not draw by weights at all, and take the even
-      // table here: **ours**, and marked so in `docs/still-open.md`.
+      // How it chooses its ways: **the game's own selector**, the record's
+      // `aiType` — see `MonsterBattle.aiType`. Four of the eight draw by the
+      // weight table `WAYS_BY_AI` names; the other four take their ways in
+      // turn by counts of their own (`Fighter.wayRule`).
+      wayRule: numbers.aiType,
       ...(loaded.weightTables
         ? { choice: loaded.weightTables.tables[WAYS_BY_AI[numbers.aiType] ?? 0] }
         : {}),

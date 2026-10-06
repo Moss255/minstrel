@@ -68,9 +68,10 @@ export interface MonsterBattle {
    * | 1 | the falling weights, `68 58 48 38 27 17` | 281 |
    * | 2 | the steep weights, `210 29 10 4 2 1` | 2 |
    * | 4 | the fourth weights, `70 70 70 16 15 15` | 25 |
-   * | 3, 7 | round robin, by a counter kept for the monster | 9 |
-   * | 5 | a counter picks a pair, a coin picks within it | 22 |
-   * | 6 | two passes over the slots, the first often skipped | 3 |
+   * | 3 | in turn, by a count kept for the monster (`func_0208a52c`) | 9 |
+   * | 7 | in turn, by a count kept for its group (`func_0208a840`) | 0 |
+   * | 5 | a pair in turn, a coin within it (`func_0208a5d8`) | 22 |
+   * | 6 | its first way, then a draw among the other five, by turns (`func_0208a700`) | 3 |
    *
    * The four weight tables are one array in the ARM9, `monsterActionWeights`
    * at `0x020e8caa` — see `readWeightTables`. **Not** {@link bossAi}, which was
