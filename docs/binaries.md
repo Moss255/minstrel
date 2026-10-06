@@ -161,3 +161,28 @@ what counts as found.
 | `func_ov024_021ea78c`, `data_ov024_021fe6e0` | Alma Mater against Whack, Thwack, Kathwack, Kamikazee | `IsHeavenlyProtected` |
 | `func_ov024_021e6a90` `0x021e74f8`–`0x021e7530` | Rotstopper: half from a monster of family 8 | (part of) `CalculateFinalDamage` |
 | arm9 `func_0202053c` | a member's level in their vocation | `Character::GetLevel` |
+
+### Task 18, the last kinds (7 October 2026)
+
+`docs/readings/T18-handlers.md` §12. USA addresses; overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_ov024_021dde08`, `021ded48` | kinds 25 and 37: Tap Dance's evasion and Immense Defence's shield, levels moved by `+0x30`, the record's lines | `Handler_Evasion`, `Handler_ShieldGuard` |
+| arm9 `func_02087f24`, `02087f78`, `02087ff0` | evasion's level, `+0x58` bits 27–29 with `+0x14` bit 25: may move, move (count 5 at `+0x77`), clear | `Status::CanMoveEvasion`, `MoveEvasion`, `ClearEvasion` |
+| arm9 `func_02088018`, `0208806c`, `020880e4` | the shield's level, `+0x58` bits 24–26 with `+0x18` bit 0: may move, move (5 at `+0x76`), clear | `Status::…ShieldGuard` |
+| ov000 `func_ov000_02156118` `0x02156230`–`0x0215624c`, `02156258` | the chance of blocking doubled under `+0x18` bit 0 | (part of) `Battle::GetBlockRate`, `HasShieldGuard` |
+| ov000 `func_ov000_02156270` `0x021563ac`–`0x021563c8`, `021563ec`, `02156404` | the evasion doubled under `+0x14` bit 25; 50 under `+0x18` bit 10 | (part of) `Battle::GetEvasion`, `HasEvasionUp`, `HasTumble` |
+| `func_ov024_021e02b0`, `021ea85c` | kind 49, Disruptive Wave; the clear of everything magical, its tension's line | `Handler_DisruptiveWave`, `ClearMagicalEffects` |
+| `func_ov024_021da998`, `021dd260` | `+0x14` bits 23 and 24 (the tension's two flags) | `HasTension`, `HasTensionB` |
+| `func_ov024_021e80e4` `0x021e8560`–`0x021e85d4` | the action's line for kind `0x31`: `0xf1` for one, `0xf2` for more, the target `+0x44` | (part of) `Resolver::SetActionLine` |
+| `func_ov024_021df454`, `021df6ec`, `021df704` | kind 43, Mens Sana: poison, envenomation, dazzle, Fizzle, `+0x18` bit 4 and every level below 0 | `Handler_MensSana` |
+| arm9 `func_020885b4`, `02088644`, `02088514`, `02088598`, `02088874` | poisoned, poison cleared; envenomated, cleared; dazzle cleared | `Status::IsPoisoned`, `CurePoison`, `IsEnvenomated`, `CureEnvenomation`, `ClearDazzle` |
+| `func_ov024_021dc540`, `021dc700` | kinds 13 and 14, M-Pathy and H-Pathy: the resolver's amount held to what the user can spare | `Handler_MPathy`, `Handler_HPathy` |
+| ov000 `func_ov000_0215a124` | MP taken, held at 0 | `Battle::TakeMp` |
+| `func_ov024_021de678`, `021de770` | kinds 31 and 32, Bounce and Reverse Cycle: the simple shape | `Handler_Bounce`, `Handler_ReverseCycle` |
+| arm9 `func_020888e0`, `020888f4`, `02088914`, `02088930`, `02088944`, `02088964` | Bounce (bit 9, 5 at `+0x61`) and Reverse Cycle (bit 26, 5 at `+0x66`): may take, set, clear | `Status::…Bounce`, `…ReverseCycle` |
+| `func_ov024_021e9f68` `0x021e9f68`–`0x021ea158` | the redirection: Bounce's and the equipment's turning back of `+0x10` bit 10, Reverse Cycle's of a breath | `Resolver::Reflect` |
+| `func_ov024_021dfe9c` | kind 45, Eye for Trouble: a monster's `+0x17e` set, for the defeated list | `Handler_EyeForTrouble` |
+| ov000 `func_ov000_021539dc`–`0x02153a0c` | Pincushion (`0x1dc`) at the command: `func_02088db8`, `+0xc1` high nibble 1 | (part of) `Battle::SetCommand` |
+| `func_ov024_021e1328` | kind 66, Pincushion's handler: its done line only | `Handler_Pincushion` |

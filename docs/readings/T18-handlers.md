@@ -1045,3 +1045,31 @@ turned back, the chain is not stepped (`func_ov000_0215cd80` in its place,
 spell" is said for Bounce's, INFERRED — 169 and 170 are its pair, and which
 the note picks is not read; Reverse Cycle's says nothing, its line not
 found; the chain is stepped as before.
+
+### Read toward what is left — 7 October 2026
+
+- **Eye for Trouble** (kind 45, `func_ov024_021dfe9c`): no test of its
+  landing; on a monster (`func_ov000_021536f8`) whose `+0x148` is not 0, its
+  `+0x17e` set to 1 and the count of those reached one more; a result with
+  **no line of its own** (`0x021dfed0`–`0x021dff2c`). The record's done line
+  221 says the monster's "every last detail is committed to the defeated
+  monster list", which the battle does not keep; which line is said, and
+  where, is not read — `func_ov024_021e80e4` has no case for it.
+- **Pincushion** (kind 66, `func_ov024_021e1328`): the handler says its done
+  line and nothing else. The stance is set at the command
+  (`func_ov000_021539dc`–`0x02153a0c`: for action `0x1dc`,
+  `func_02088db8` and `+0xc1`'s high nibble at 1), and what it does to
+  one who strikes its holder is not read — a counter, which the battle does
+  not have.
+- **The Fources** (kind 46, `func_ov024_021dff3c`) set one of
+  `func_0208869c` … `020887fc`, by the record's `+0x30` (1 fire … 5 life).
+  The resistance reads statuses of the same family for elements 1 to 7
+  (`func_020886b0` … `020887d0`, §11), on the **target**; the element a
+  member's **weapon** lends a blow is a table, `data_ov024_021fe798` by
+  `func_02085748` (`func_ov024_021e6a90`, `0x021e6ea0`–`0x021e6f04`, applied
+  for `+0x10` bit 18 at `0x021e6f44`–`0x021e6f88`). How a Fource reaches
+  either is not read.
+- **Twocus Pocus** (kind 63) sets `+0x18` bit 8 with 5 at `+0x7d`
+  (`func_02088d7c`); "can now cast two spells a turn" is the command
+  phase's, not read.
+

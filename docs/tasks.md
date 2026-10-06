@@ -571,6 +571,20 @@ replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
 
+**Carried on, 7 October 2026, the last kinds** (`156c13c`, `8dab2eb`,
+`cb81a49`, `3cdc602`, `52fe15a`; the reading's §12): Tap Dance and Immense
+Defence, levels whose flag doubles the evasion and the chance of blocking;
+Disruptive Wave, everything magical cleared and one line for all; Mens
+Sana; H-Pathy and M-Pathy, the user's own shared; Bounce, Magic Mirror and
+Reverse Cycle, and the resolver's turning back of a pass (`+0x10` bit 10
+read). **31 struck as the Attack before, 22 after.** Still left, by address
+in §7: kind 0's six stances (counters, which the battle does not have),
+Fuddle (confusion), Half-Inch, Eye for Trouble (its line, and the defeated
+list it writes to, not kept), the Fources, Feel the Burn, Extreme Makeover
+(charm), Eyes on Me, Mercy, Soothe Sayer, Whistle, Twocus Pocus and
+Pincushion (a stance set at the command); riders 5, 6, 9, 10, 12–14, 19 and
+21; Crosscutter Throw.
+
 **Done, 6 October 2026** (`c905518`, `33090d5`, `3f5bb6a`): `partyChangeOf`
 in `battle-scene.ts`, the change and blow paths of `battle.ts`,
 `sim/src/battle/handlers.ts`; the reading and what is left by address,

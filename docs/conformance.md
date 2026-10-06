@@ -1047,3 +1047,24 @@ accuracy roll; Schizofanic's and Mist Me's miss before any of the roll's
 draws; the vanished halved in a monster's weighted pick after its total;
 Rotstopper's half in the final damage; Holy Impregnable's −25 in the
 resistance (`func_ov000_02156b38`, read whole).
+
+## A pass turned back, and the doublings — 7 October 2026
+
+**The resolver's redirection** (`func_ov024_021e9f68`, from `0x021ec0f4`,
+for each one reached after their die): an action with `+0x10` bit 10 aimed
+at the other side, at one under Bounce who is not its actor, or a breath at
+one under Reverse Cycle, has its actor and target swapped for the rest of
+the pass — its accuracy, its amount and its final damage are the turned-back
+one's. **Modelled** in `playRound` since `52fe15a`, for spells and changes;
+`turnedBack`. The equipment's one in four (a draw `R(4)` where
+`func_02085474` holds) is not kept, so neither is its draw.
+
+**Doubled under a flag, in floats**: the evasion under Tap Dance's
+(`func_ov000_02156270`, `0x021563ac`) and the chance of blocking under
+Immense Defence's (`02156118`, `0x02156230`) — `156c13c`.
+
+**H-Pathy's and M-Pathy's amount** is the resolver's, drawn as a heal's
+(`GetAttackBaseDamage` on the record's range, then the final damage) —
+`3cdc602`, INFERRED that the final damage's other steps leave it so. See
+`docs/readings/T18-handlers.md` §12.
+
