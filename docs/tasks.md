@@ -72,7 +72,14 @@ written up on the wiki; each says so under its heading.
   as Rain, Focus Pocus, dazzle, Vanish, Schizofanic, Mist Me, Rotstopper,
   Alma Mater and Holy Impregnable — **31 struck as the Attack**. Left, each
   by address in §7: the 31 (by 21 kinds), riders 5, 6, 9, 10, 12–14, 19 and
-  21, Crosscutter Throw and M-Pathy.
+  21, Crosscutter Throw and M-Pathy. Then (§12–§14) the last kinds, the stances,
+  an ability's MP (a correction: a blow spent none), Blockenspiel as the
+  round begins, and confusion — Fuddle, a confused fighter's drawn turn,
+  riders 10 and 19 — **14 struck as the Attack**. Left, by address in §7:
+  Half-Inch, Eye for Trouble, the Fources, Feel the Burn, Extreme Makeover,
+  Eyes on Me, Mercy, Soothe Sayer, Whistle, Twocus Pocus; riders 5, 6, 9,
+  12–14 and 21; Crosscutter Throw; a blow shaking one awake (its chance
+  read, its draw not made).
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
   the camera easing in for a party trick;
@@ -570,6 +577,19 @@ simulation has the action, and a seeded battle with the party on a tactic
 replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
+
+**Carried on, 7 October 2026, an ability's MP and confusion** (`6a63e06`,
+`4c83d0c`, `f5d3c0e`; the reading's §14): a blow's MP asked at its turn and
+spent before it strikes, as a spell's — it spent none before; Blockenspiel
+taken up as the round begins; Fuddle's confusion, a confused fighter's turn
+drawn for them (`func_ov000_0215f67c`), coming to their senses at a turn's
+start, rider 10 (Hypnowhip's) and rider 19 (Sobering Slap's). `+0x14` bit 5
+is confusion, not sleep — corrected. **15 struck as the Attack before, 14
+after.** Still left, by address in §7: Half-Inch, Eye for Trouble, the
+Fources, Feel the Burn, Extreme Makeover (charm, a level — read), Eyes on Me
+and Whistle, Mercy, Soothe Sayer, Twocus Pocus; riders 5 and 6 (items',
+read), 9, 12–14 and 21; Crosscutter Throw; and a blow shaking a sleeper or
+the confused out of it (`func_ov000_02157288`, its chance read).
 
 **Carried on, 7 October 2026, the stances** (`2881283`, `a29fb44`; the
 reading's §13): the six stances and Pincushion, taken up as the round

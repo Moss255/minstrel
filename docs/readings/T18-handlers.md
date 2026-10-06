@@ -50,7 +50,6 @@ empty):
 | 17 | `func_ov024_021dd028` | Whack, Thwack, Kathwack |
 | 18 | `func_ov024_021dd278` | Zing, Zing Stick |
 | 20 | `func_ov024_021dd6f0` | Tingle |
-| 21 | `func_ov024_021dd828` | Fuddle |
 | 22 | `func_ov024_021dd968` | Spooky Aura, Wizard Ward |
 | 23 | `func_ov024_021ddaa0` | Insulate, Insulatle, Mind Over Matter |
 | 25 | `func_ov024_021dde08` | Tap Dance |
@@ -246,7 +245,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (15 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66), by the kind whose handler is unread:
+**Still struck as the Attack** (14 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -268,9 +267,9 @@ Read toward each, 7 October 2026 (§13): **Whistle** (56) and **Eyes on Me**
 put in an action for it at once (`func_ov000_0215a908`), which the battle's
 order cannot yet take; **Mercy** (52) works on a monster seven or more
 levels below its user (`func_ov000_02159e60`), which needs a monster's level;
-**Fuddle** (21) sets confusion (`func_020883cc`), what a confused fighter
-does is not read; **Extreme Makeover** (50) charm, whose draws are spent
-(`func_ov000_0215704c`) and whose effect is not read; **Twocus Pocus** (63)
+~~**Fuddle** (21)~~ built, §14; **Extreme Makeover** (50) moves charm a
+level (§14), whose draws are spent (`func_ov000_0215704c`) and whose
+effect on a monster is not read; **Twocus Pocus** (63)
 is the command phase's; the Fources (46), Feel the Burn (47), Half-Inch (44)
 and Eye for Trouble (45) as §12 has them.
 
@@ -292,12 +291,13 @@ Throw — its extra pass's target is picked by place on the stage (§8).
 ~~Propeller Blade, Gold Rush, the six that scale by the table at
 `0x021fe8b6`~~ — read and built 6 October 2026, §8.
 
-**Riders not played** (`data_ov024_021ff450`): ~~1~~ (built, §10), 5 and 6 (the antidotes') `021e324c`,
-`021e32f4`, 9 `021e373c` (Soothe Sayer), 10 `021e386c` (confusion,
-INFERRED), ~~11~~ (paralysis, built — §10), 12 `021e3cec` (Rake 'n'
-Break), 13 `021e3d88` (Conjury Conductor), 14 `021e3f14` (Morale Masher),
-19 `021e4588` (Sobering Slap), 21 `021e47f4` (Caster Sugar). Their blows
-land and deal; the rider is dropped.
+**Riders not played** (`data_ov024_021ff450`): ~~1~~ (built, §10), 5 and 6 (the antidotes', items) `021e324c`,
+`021e32f4` — read, §14, not built, the battle's items carrying no rider
+—, 9 `021e373c` (Soothe Sayer), ~~10~~ (confusion, built — §14), ~~11~~
+(paralysis, built — §10), 12 `021e3cec` (Rake 'n' Break), 13 `021e3d88`
+(Conjury Conductor), 14 `021e3f14` (Morale Masher), ~~19~~ (Sobering
+Slap's, built — §14), 21 `021e47f4` (Caster Sugar). Their blows land and
+deal; the rider is dropped.
 
 **Coups** — all eight built since (§10).
 
@@ -1163,3 +1163,102 @@ blow's path.
 from Abilities said "Hero is surrounded by a sea of protective spikes."; the
 slime's attack that followed missed, so no prick was shown — the prick is
 held by `packages/sim/test/stances.test.ts`.
+
+
+## 14. An ability's MP, Blockenspiel, and confusion — 7 October 2026
+
+**Built.** Struck as the Attack: 15 before, 14 after (Fuddle).
+
+**An ability's MP — a correction.** A blow spent no MP here. The turn asks
+every action's MP by its record's `+0x08` low byte (`func_ov024_021eaa50`,
+`0x021eabe8`–`0x021eac68`) — 255 is all there is, short only of none; none
+for an action taken up as the round begins (`+0x08` bit 28) or under 0 Zone
+(`021eadfc`) — and short of it the action becomes 0x3a9 for an ability
+(`+0x18` bits 12–15 at 1), 0x1f8 for a spell: "tries to use …", "Not enough
+MP". The resolver spends it before it strikes (`func_ov024_021eb5d0`,
+`0x021ebc10`–`0x021ebcb0`; `func_ov000_0215a124`). Now `Blow.cost`, asked
+and spent so; a monster of mode 2 weighs a blow's MP in its usable test as
+it did a spell's.
+
+**Blockenspiel** (134, `+0x08` bit 28) is taken up as the round begins with
+the stances (`func_ov000_021537b8`): its MP spent then and stance 1 set, so
+a monster striking before its turn meets the guard; its turn asks no MP,
+and post-step 2 (`func_ov024_021e57c0`) sets `+0x21` to 1 again. Short of
+the MP then, its turn is 0x3a9's and strikes nothing.
+
+**Confusion — `+0x14` bit 5.** A correction first: the bit the round start
+passes over (`func_ov000_021543f4`, §13), taken there for sleep, is
+**confusion** — `func_020883cc` sets it; sleep is bit 4 (`func_02088338`).
+
+- **Fuddle** (kind 21, `func_ov024_021dd828`): on one who may take it
+  (`func_020883ac`: `+0x14` bits 0 and 24 clear), landed (`021e9320`),
+  confused — a count of 3 at `+0x5e`, its second `+0x81` cleared, the stance
+  and Pincushion cleared with it — and set anew on one already confused
+  (flags 0x2b and 0x17). Its lines: the record's done line, 129 / 130; one
+  already confused says "grows even more confused", 131 / 132 — INFERRED from
+  their words.
+- **Its count** (`func_ov000_021599f4`, `0x02159a14`–`0x02159aac`): the
+  first held of paralysis, sleep and confusion a pass less on its holder's
+  action pass, and at 0 its second set to 4. **At a turn's start**
+  (`func_ov000_0215833c`, `0x0215846c`–`0x021584c8`), after paralysis and
+  sleep: the second count less one, and to their senses where `0x02182ad4`
+  by it is above the turn-start draw — action 0x3aa, whose opening is 458,
+  "pulls … together".
+- **A confused fighter's turn** (`func_ov000_0215767c`, `0x02157c20`–
+  `0x02157c44`) is drawn for them by `func_ov000_0215f67c`: `R(2)`, and with
+  two or more of their side standing (`0215e9fc` for the party, `0215eb1c`
+  for the monsters) a 0 is **219**, the Attack at an ally other than
+  themselves (opening 500, "is confused. … attacks at random!"). Otherwise a
+  second draw among the party's **221** (135, "can't work out what to do"),
+  **915** (501, "too flustered to move"), **222** (500, then its done line
+  137, "But … body can't keep up") and **918** (no line); a monster's the
+  same but for **916** (502, "calls for backup!", then 57, "But nobody shows
+  up.") in 918's place, and **917**, its flight (504), as a fifth where the
+  battle's `+0xc` is below 0 (`func_020a3694`).
+- **219's target**, for one of the party (`func_ov000_021540fc` →
+  `02153f98`): a draw among the party standing (`0215e9fc` with 4, 1), all
+  but themselves for its reach 8 — and none of `0215fbe0`'s two draws.
+- **Rider 10** (`func_ov024_021e386c`): on a pass that dealt something, the
+  byte `+0x4a` (element 13, Fuddle's), a draw under the action's chance times
+  it or a hundred on a critical, then confused as Fuddle confuses.
+  Hypnowhip carries it.
+- **Rider 19** (`func_ov024_021e4588`): one confused brought to their senses
+  (`func_020883fc`), flag 0x19, no draw. Sobering Slap is kind 9's, whose
+  handler runs its rider before it wakes a sleeper (`0x021dbf7c`).
+- **The cure-all** clears it (`func_ov024_021eae14`, `0x021eae70`).
+
+**Read, not built.**
+
+- **A blow shaking one awake** (`func_ov000_02157288`, from the resolver at
+  `0x021ecca8`): after a pass that dealt something (`[sp+0x1c] > 0`), gated
+  by `ctx+0x70` — set for each target, cleared where the blow's own rider
+  slept or confused them (`0x021dad74`) — for an action with `+0x10` bit 11:
+  a draw `R(100)`, **always made**, under 100 × `func_02074968` for one
+  asleep (1.0 at one of the party, 0.5 at a monster) or `func_02074978` for
+  one confused (0.5, 0.25) — woken (0x40) or to their senses (0x173). The
+  chance `docs/conformance.md` "A draw not yet in the ledger" lacked is
+  these; the draw is still not made, and a hurt sleeper still wakes at once.
+- **Riders 5 and 6** (`021e324c`, `021e32f4`) are the antidotes' items':
+  poison and envenomation cured (flag 0x11, line 84, "is no longer
+  poisoned"), paralysis cured (flag 0x1a). The battle's items carry no rider.
+- **Extreme Makeover** (kind 50, `func_ov024_021e0380`): charm moved a level
+  by the record's `+0x30`, held to ±2 (`func_02087a48`, `02087a9c`), then
+  `UpdateCombatantCharm`; the line 0xf7 where it is at its most. What charm
+  does to a monster is `func_ov000_0215704c`'s, whose party charm the
+  battle does not keep.
+- **A damage that doubles at one asleep or confused** (`func_ov024_021d8db4`)
+  — which action's handler it is is not read.
+
+**Ours, in what was built**: 918's turn says 134, "is confused.", having no
+line of its own; a monster's attack at random aims at a draw among the
+others of its side standing, its two built draws made — INFERRED, its
+targeting (`func_ov000_0215440c`) reading no confusion; nobody shows up
+for 916, the battle not summoning; that the battle's `+0xc` below 0 is a
+random encounter's, for 917 — INFERRED, `canFlee` standing in; Sobering
+Slap on one both asleep and confused tells only the waking.
+
+**Checked in the browser** (F01, level 30, `skills=1:100`): Miracle Slash
+on a slime took the Hero's MP from 57 to 53, its record's 4 — before, a
+blow spent none. Fuddle and a confused turn were not reached in a fight
+(`vocation=0:3` leaves the Mage at level 1); they are held by
+`packages/sim/test/confusion.test.ts`.

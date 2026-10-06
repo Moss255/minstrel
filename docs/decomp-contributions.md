@@ -1284,7 +1284,7 @@ the sea's battle request with no roamer chooses its monsters.
 
 | address | what it does | name proposed |
 |---|---|---|
-| ov000 `func_ov000_0215f110` | as the round begins, each queued action with `+0x08` bit 28 handed to `021537b8`, unless its actor's `+0x14` bit 5 | `Battle::TakeUpStances` |
+| ov000 `func_ov000_0215f110` | as the round begins, each queued action with `+0x08` bit 28 handed to `021537b8`, unless its actor's `+0x14` bit 5 (confused) | `Battle::TakeUpStances` |
 | ov000 `func_ov000_021537b8` | one such action: its MP asked and spent (`0215a124`), short of it the action made 0x3a9 (an ability) or 0x1f8; then Pincushion's `+0x18` bit 5, or the stance from the table at `0x02182e24` into `+0x21` and a motion into `+0xc1` | `Battle::TakeUpStance` |
 | ov000 data `0x02182e24` | the stance table: action, stance, motion — 3:1, 134:1, 135:2, 237:3, 96:4, 138:5, 146:6, 929:6, 185:7, 182:8, 329:9, ended by −1 | `stanceTable` |
 | ov000 `ProcessCombatTurn` `0x0215db68`–`0x0215dba8`, `0x0215dcd0`–`0x0215dd10` | Whipping Boy (`0x92`, `0x3a1`): the protected one's index into the holder's `+0x2a`, the holder into theirs at `+0x2c` | (part of) `ProcessCombatTurn` |
@@ -1300,3 +1300,31 @@ the sea's battle request with no roamer chooses its monsters.
 | `func_ov024_021da670` | kind 0's handler: on its actor, its record's line; on another (`0x150`), the line only | `Handler_Stance` |
 | `func_ov024_021eb08c` | a monster drawn to watch one of the party by its record's own chance (`mon_btldata +0x24`, by kind 0x11 Whistle, 0x12 Eyes on Me), for a count between `+0x28` and `+0x29` | `TryEnthral` |
 | ov000 `func_ov000_0215a908` | an action put in for a watching monster at once, at its watcher | `Battle::InsertWatchAction` |
+
+### Task 18, an ability's MP, Blockenspiel and confusion (7 October 2026)
+
+`docs/readings/T18-handlers.md` §14. USA addresses; overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_ov024_021eaa50` `0x021eabe8`–`0x021eac68` | an action's MP asked at its turn, by its record's `+0x08` low byte — 255 all there is, short only of none; none for `+0x08` bit 28 nor under 0 Zone; short, the action made 0x3a9 (`+0x18` bits 12–15 at 1) or 0x1f8 | `Resolver::CheckMp` |
+| `func_ov024_021eb5d0` `0x021ebc10`–`0x021ebcb0` | the same MP spent before the action strikes (`func_ov000_0215a124`), a party member's lessened by a trait (`func_020dd290`) | (part of) `Resolver::Resolve` |
+| `func_ov024_021e57c0` | post-step 2, Blockenspiel's: its striker's stance `+0x21` set to 1 | `PostStep_Guard` |
+| `func_ov024_021dd828` | kind 21, Fuddle: on one who may take it (`func_020883ac`), landed (`021e9320`), confused (`func_020883cc`) — set anew on one already, flags 0x2b and 0x17 | `Handler_Confuse` |
+| arm9 `func_020883cc` | confusion set: `+0x14` bit 5, a count of 3 at `+0x5e`, its second `+0x81` cleared; the stance `+0x21` and Pincushion cleared | `Status::SetConfused` |
+| arm9 `func_020883fc` | confusion cleared | `Status::ClearConfused` |
+| arm9 `func_020883ac` | whether one may be confused: `+0x14` bits 0 and 24 clear | `Status::CanConfuse` |
+| ov000 `func_ov000_021543f4`, ov024 `func_ov024_021de25c` | `+0x14` bit 5 — **confusion**, not sleep (sleep is bit 4, `func_02088338`) | `IsConfused` |
+| ov000 `func_ov000_0215767c` `0x02157c20`–`0x02157c44` | a confused fighter's action replaced by one drawn (`0215f67c`) | (part of) `Battle::ProcessTurn` |
+| ov000 `func_ov000_0215f67c` | a confused fighter's action: `R(2)`, and with two of its side standing a 0 is 219 (the Attack at an ally); else a draw among 221, 915, 222, 918 for the party, or 221, 915, 222, 916, and 917 where the battle's `+0xc` is below 0 (`func_020a3694`), for a monster | `Battle::ChooseConfusedAction` |
+| ov000 `func_ov000_021540fc`, `02153f98` | a party member's targets; confused, drawn among the party standing (`0215e9fc` with 4, 1) — all of them for reach 2, all but themselves for reach 8, themselves otherwise — without `0215fbe0`'s two draws | `Battle::BuildPartyTargets`, `BuildConfusedTargets` |
+| ov000 `func_ov000_0215e9fc` | the party's standing members (flag 1) into a list, at most its count | `Battle::ListParty` |
+| ov000 `func_ov000_0215833c` `0x0215846c`–`0x021584c8` | a confused fighter's second count `+0x81` less one at their turn's start, and to their senses where `0x02182ad4` by it is above the turn-start draw — action 0x3aa, opening 458 | (part of) `Battle::RecoverAtTurnStart` |
+| ov000 `func_ov000_021599f4` `0x02159a14`–`0x02159aac` | the first held of paralysis (`+0x5c`), sleep (`+0x5d`), confusion (`+0x5e`) a pass less, and at 0 its second (`+0x7f` on) set to 4 | (part of) `Battle::CountDownStatuses` |
+| ov000 `func_ov000_02157288` | after a pass that dealt something, for an action with `+0x10` bit 11 (gate `ctx+0x70`): a draw `R(100)` always, under 100 × `func_02074968` (sleep: 1.0 at one of the party, 0.5 at a monster) or `02074978` (confusion: 0.5, 0.25) to wake them (0x40) or bring them to their senses (0x173) | `Battle::ShakeAwake` |
+| `func_ov024_021e386c` | rider 10, confusion: byte `+0x4a`, a draw under the action's chance times it or a hundred on a critical, then `020883cc` | `Rider_Confuse` |
+| `func_ov024_021e4588` | rider 19, Sobering Slap's: one confused brought to their senses (`020883fc`), flag 0x19, no draw | `Rider_Sober` |
+| `func_ov024_021dbf18` `0x021dbf7c` | kind 9 runs its rider (`021e4b14`) before it wakes a sleeper | (part of) `Handler_Wake` |
+| `func_ov024_021e324c`, `021e32f4` | riders 5 and 6, the antidotes' items: poison and envenomation cured (`func_02088644`, flag 0x11, line 84); paralysis cured (`020882dc`, flag 0x1a) | `Rider_CurePoison`, `Rider_CureParalysis` |
+| `func_ov024_021e0380` | kind 50, Extreme Makeover: charm a level moved by the record's `+0x30`, held to ±2 (`func_02087a48`, `02087a9c`), then `UpdateCombatantCharm` | `Handler_Charm` |
+| `func_ov024_021d8db4` | a damage that doubles at one asleep or confused | (a damage handler) |

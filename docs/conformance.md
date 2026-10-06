@@ -790,6 +790,12 @@ lands** until this is modelled. The simulation still wakes a sleeper on any
 blow that hurts, without a draw: the chance itself is not read, and adding
 the draw without it would move every replay without making it right.
 
+**The chance, read 7 October 2026** (`docs/readings/T18-handlers.md` §14):
+`R(100)` under 100 × `func_02074968` for one asleep — 1.0 at one of the
+party, 0.5 at a monster — or `func_02074978` for one confused — 0.5, 0.25.
+It is still not modelled: the draw moves every replay, and is left for a
+change of its own.
+
 ## A round's draws, outside the resolver — 3 October 2026
 
 Read from `ProcessCombatTurn` (`0x0215d63c`) and the turn
@@ -1083,3 +1089,12 @@ is HP over the most HP in floats against 0.08; the prick is the total times
 0.5 under Pincushion — taken here as one multiplier, which is exact, the
 second being a power of two. **Modelled** in `playRound` (`stances.ts`,
 `coverFor`, `counterOf`, `prick`); the counter on the plain Attack only.
+
+## An ability's MP — 7 October 2026
+
+An ability's blow spent no MP in the simulation. It is asked at its turn by
+its record's `+0x08` low byte and spent before it strikes, as a spell's is
+(`func_ov024_021eaa50`, `func_ov024_021eb5d0` `0x021ebc10`–`0x021ebcb0`) —
+255 all there is — and short of it the turn is 0x3a9's and strikes nothing.
+Blockenspiel's is spent as the round begins. A seeded battle with an
+ability in it now ends with less MP; no draw moved.
