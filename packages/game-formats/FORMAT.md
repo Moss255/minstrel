@@ -2999,9 +2999,9 @@ record count on all 266.
 **`0x66` numbers every treasure in the game.** Taking each file's span as its
 `0x66` value up to that plus its count of `0x67` records, the 265 spans run from
 0 to 847 without overlapping and without a gap. So a treasure's number is its
-file's first plus its place in the file. INFERRED: that number is what an
-opened treasure is remembered by — it is the one numbering that covers every
-treasure exactly once. (Until 28 September 2026 two files, `M09M05` and
+file's first plus its place in the file. It was INFERRED to be what an
+opened treasure is remembered by; **it is not** — the game keeps value 0's
+high half, the container's id (corrected 6 October 2026, below). (Until 28 September 2026 two files, `M09M05` and
 `D13M02`, read as empty and left two gaps 13 wide where they sort: their first
 word is 16, which the cartridge walk took for an empty compressed stream — see
 `tryDecompressLz10` in `@minstrel/nitro-comp`.)
@@ -3031,12 +3031,31 @@ A `0x67` record, by its number of values:
   0.05 to 6.28, with 3.14 and 1.57 among the commonest, and 98 of the other 100
   are 0. Only the six-value kinds have one — which a chest would need and a pot
   would not, also INFERRED.
-- **Kind**, value 1: which kind is a chest, a pot or a barrel is not
-  established. **`0x30`, the three-value kind with no position, is what a
-  cabinet holds** — below. INFERRED: `0x10` is a pot and `0x20` a barrel. The
-  random table they share with the cabinet is `randTTT` — *tsubo*, *taru*,
-  *tansu*: pot, barrel, cabinet — and the cabinet is the third kind, `0x30`, so
-  the first two are taken in the name's order. Nothing else says which is which.
+- **Kind**, value 1, **read 6 October 2026 from the game's own reader**,
+  `LootManager_CreateContainer` (US `0x0207ba90`, decompiled in the decomp's
+  `src/World/LootableContainer.cpp`): **bits 4–6 the container** — 0 a red
+  chest, 1 a pot, 2 a barrel, 3 a cupboard, 4 a blue chest — **bits 2–3 what
+  it holds** — 0 nothing, 1 gold, 2 an item, 3 a monster — and bits 0–1 not
+  read here (1 on the five kind-`0x9` chests). So `0x4` is gold, `0x8` an
+  item, `0x10` a pot, `0x20` a barrel, `0x30` a cupboard, `0x40` a blue chest.
+  The code tells the chests (0, 4) from the rest by the position it reads, and
+  blue from red by the table it draws from; that 1 is the pot and 2 the barrel
+  is the decomp's naming, the two taking different sprite sheets
+  (`func_02013d24`). (Until then the pot and barrel order and `0x40`'s table
+  were INFERRED from `randTTT`'s name.)
+- **Value 0** is **the container's id** in the high half and the item, gold or
+  rank in the low (`packedID >> 16`, `& 0xffff`). The ids run 0–206 for the
+  red chests and 0–699 for the rest over the cartridge, repeated only by
+  `C04M04` and `C04M05`, one room's two versions. **An opened one is
+  remembered by a flag of its id** — a red chest's `0x212 + id` for ever, the
+  rest's `0x79e + id` until play next begins, which clears all 700. See
+  `docs/readings/T13-gathering.md`. (This replaces the running number below,
+  INFERRED until then to be the key; `0x66`'s first number is kept by the game,
+  `LootManager_Unknown_66`, and read by nothing found.)
+- **What a drawn container holds is drawn at every load of its map**
+  (`LoadZoneContainers`): a blue chest from `randTBox` at its rank, a pot, a
+  barrel or a cupboard from `randTTT`, by a draw below 100 against the rank's
+  rows in file order — past their weights, nothing.
 - **`unknown_2`**, value 2 of a three-value record: in the village it is the
   number of the room's cabinet holding it, less one — `M01M03`'s two records
   read 0 and 1 beside cabinets `G1` and `G2`, `M01M09`'s and `M01M10`'s one
@@ -3136,7 +3155,7 @@ A chest's value names its item by that id. See "Items" for the tables.
 | bits | meaning |
 |---|---|
 | 26–31 | rank |
-| 23–25 | what it gives: 1 gold, 2 an item, 3 a monster (INFERRED, below) |
+| 23–25 | what it gives: 1 gold, 2 an item, 3 a monster (`LootDistribution_DeclareOutcome`; "ambush" in the decomp) |
 | 7–22 | the gold amount, the item's id, or the monster's number |
 | 0–6 | weight among the rank's rows |
 
@@ -3144,9 +3163,10 @@ Read off the whole cartridge: taking bits 7–22 as an item id lands on one for
 61 of `randTBox`'s 68 rows, 147 of `randTD`'s 162 and 80 of `randTTT`'s 98, and
 every row that does not is a gold or a kind-3 row; no other alignment comes
 close. `randTBox` has ranks 1 to 5, `randTD` 1 to 10, each rank's weights coming
-to 100; `randTTT` has 1 to 20, its weights coming to 20 to 50. INFERRED: kind
-`0x40` draws from `randTBox` — its values are 1 to 5 — and pots, barrels and
-cabinets from `randTTT`, the shortfall below 100 being their chance of nothing.
+to 100; `randTTT` has 1 to 20, its weights coming to 20 to 50. Kind `0x40`, the
+blue chest, draws from `randTBox` — its values are 1 to 5 — and pots, barrels
+and cupboards from `randTTT`, the shortfall below 100 being their chance of
+nothing: the game's own reader says so (above).
 `randTD` is no village treasure's; its name and ten ranks suggest the
 treasure-map grottoes. The game's own dice are not reproduced.
 
@@ -5952,3 +5972,39 @@ the voice; voice 3 says nothing, any other is `str_ch<voice − 1>`'s line 1082.
 | `riremito.bin` records read, each with ≥ 1 destination | **21 / 21** |
 | `chur_messet.bin` maps | **18**: 16 of them `loola`'s revival maps, and 4106 and 4506, the Observatory's |
 
+
+
+# Gathering spots — `/data/scenario/flditem.pac`, `/data/bin/izmitm.bin`
+
+Read 6 October 2026 from the code that reads them (US ARM9 `func_0208e520`
+and the opcodes it hands the command reader); the whole reading is
+`docs/readings/T13-gathering.md`. All three are the game's `Script` command
+files (tagged data tables, above).
+
+**`flditem.pac`** is a NARC of `F01flditem.bin` … `F63flditem.bin` — 40 of
+the fields — and `fldbias.bin` (with a `.svn` folder's copies the game never
+names). A field's file is loaded as its map is entered, by `F%02dflditem.bin`.
+
+`F<nn>flditem.bin`, tag `0x66`, one gathering spot each, 32 integers:
+
+| value | meaning |
+|---|---|
+| 0 | the spot's id, 0–97, game-wide — 87 spots, none repeated |
+| 1 | the item it gives |
+| 2 | when it is there: 1 always, 2 once flag `0x798` is set, 3 once `0x796` is; 1 on all 87 |
+| 3 | `unknown_3`: nothing reads it; 1 on all 87 |
+| 4 | 8: values 5–7 are the spot's own; 0–7: they come from that row of `fldbias.bin` |
+| 5 | minutes between refills: 30, 60, 90, 120, 240, 360 |
+| 6 | the fewest an empty spot refills with |
+| 7 | the most it holds — where value 4 is 8, the number of places listed |
+| 8–31 | eight places, x y z in the files' units; the unused at 0 |
+
+`fldbias.bin`, tag `0x67`, eight rows: the row's number, then for each of
+eight variants (minutes, fewest, most). A game uses one variant, drawn at its
+first start and saved. The rows are one cycle a step apart: (60, 1, 3),
+(120, 1, 3), (180, 1, 3), (360, 1, 3), (60, 3, 4), (120, 4, 5), (180, 5, 6),
+(360, 7, 8).
+
+**`izmitm.bin`**, for Stornway's Guardian Fountain, `R01M07`: tag `0x66` its
+two spots, 98 and 99, an id and seven places as floats; tag `0x68` a variant's
+number and 16 items, of which the first 8 are given before story 19.

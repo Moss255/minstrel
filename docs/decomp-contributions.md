@@ -907,3 +907,31 @@ The whole reading is `docs/readings/T12-travel.md`.
 **Open**: how a map's load places a party whose request has no place; what fills
 a set battle's request `+0x3e`; bit 0 of `GameState+0x63dc`
 (`func_02011b50`); the flight task's states.
+
+### Gathering spots, and treasure that comes back — ARM9 and overlay 17, read 6 October 2026
+
+`docs/readings/T13-gathering.md` has the whole reading.
+
+| function | what it does | suggested name |
+|---|---|---|
+| `func_0208e520` | on a field (`F` and three letters) or `R01M07`: `izmitm.bin`, `fldbias.bin` once, then `F<nn>flditem.bin`, through the command reader | `FieldItems::LoadForMap` |
+| `func_0208e0c4`, `func_0208e2c0` | `flditem`'s `0x66` (a spot: id, item, when, timing, 8 places) and `fldbias`'s `0x67` (the variant's timing for a row) | `FieldItems::OpSpot`, `::OpBias` |
+| `func_0208e35c`, `func_0208e444` | `izmitm`'s `0x66` (a Fountain spot, 7 places) and `0x68` (the variant's 16 items) | `FieldItems::OpFountainSpot`, `::OpFountainItems` |
+| `func_0208e894` | a spot's saved word at `GameState+0x5cdc + 4·id` set up empty | `FieldItems::OpInitSpot` |
+| `func_0208ea10`, `func_0208ec04` | play begins: a new game draws the variant and sets every spot up; a game carried on empties what lies, refill a tenth off | `FieldItems::StartPlay`, `::ResumePlay` |
+| `func_0208ec78`, `func_0208f048` | each frame: a minute of play, then a sweep, one spot a frame — refill and minutes; the Fountain's fill by the guests canvassed | `FieldItems::Update`, `::FillFountain` |
+| `func_0208f168`, `func_0208f410`, `func_0208f3b4`, `func_0208f36c` | the sparkles placed on entering, drawn, one removed; the sparkle model set (`0x10a`) | `FieldItems::PlaceSparkles`, `::Draw`, `::RemoveSparkle`, `::SetModel` |
+| `func_0208e7d0` | the Fountain's item: of 8, or 16 from story 19 | `FieldItems::FountainItem` |
+| `func_0208e824` | whether a map has field items: `F` with three letters, or `R01M07` | `FieldItems::MapHasItems` |
+| `func_020120d4` | `GameState+0x5cda`, the variant | `GameState::SetFieldItemVariant` |
+| `func_ov017_021986fc` | the Hero within 0.7 of an item and A pressed: take it, minutes again, flag `0xc12 + id`, service 35 | `Field::CheckGather` |
+| `func_ov017_021ae800`, `func_ov017_021ae85c` | service 35: bend (state 8, sound 91), 30 frames, the icon, `func_0207d538` kind 2 and sound 14 | `GatherService::Init`, `::Update` |
+| `func_ov017_021d38f8`, `func_ov017_021d3950` | a field-item change sent to the session (`0xb7`); one received, a sparkle removed | `FieldItems::Send`, `::Receive` |
+| `func_ov017_021adcb0` | service 33, a treasure opened: a red chest's flag `0x212 + id`, the rest's `0x79e + id` | `TreasureService::Update` |
+| `func_ov017_0218b688` | the field's start: clears flags `0x79e` for `0x2bc`, calls `func_0208ea10` | `Field::Start` |
+| `func_0206dfe8`, `func_0206df6c` | clear a run of flags; set or clear one | `FlagBank::ClearRange`, `::Set` |
+| `func_02018fbc` | the floor under a point, from 1 above to 10 below, plus `0x199` | `FieldState::SparkleHeight` |
+| `func_0207d538` | an item obtained with its line: kind 2, system string 84 | `ItemMessage::Obtained` |
+
+**Open**: what the Hero's state 8 plays (`func_02033dd4`); what reads flag
+`0xc12 + id`; what seeds `rand()`.

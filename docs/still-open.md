@@ -107,9 +107,11 @@ confirm a find, and what to do if the binaries do not give it up.
   or time. The decomp names five lengths at USA `0x020f030c`–`0x020f031c` to
   read first.
 - **Which zone roams when and where**, and whether the mix changes at night.
-- **Which treasure kind is the pot and which the barrel.** The ids are read —
-  pots 5–7, barrels 8–10, overlay 17 `0x4AFCC` — and how a map object's kind
-  chooses among them is still in code.
+- **Which treasure kind is the pot and which the barrel.** Narrowed 6 October
+  2026: the kind's bits 4–6 are the container, and 1 and 2 take different
+  sprite sheets (`func_02013d24`), so `0x10` and `0x20` are told apart by the
+  code; which sheet each loads — and so which is the pot — is still the
+  decomp's naming, unread.
 - **A party member's colour** on the top screen.
 - **Whether Ivor's greeting plays as the Hero comes near**, or only on being
   talked to.
@@ -210,6 +212,8 @@ lives; this is the gathered list.
 | shops, inn | the inn's price |
 | items | holy water's calm |
 | time of day | 120 s to evening, 150 s to night, from the let's play; the zone kind by the time of day — 0 by day, 1 at dusk, 2 by night |
+| gathering spots | **read 6 October 2026** (`docs/readings/T13-gathering.md`) and built: the spots, their refill, the sparkles, picking up, the Fountain. Ours: **the draws** — the game's `rand()`, whose seed is not read; **a minute counted as 3,600 ticks**, where the game sums each frame's milliseconds to 60 seconds; **the item's icon** the game raises over the Hero (`/data/ani/d_%c%03d.spr`) not drawn; the line said by the Hero, where the game names whoever `func_020100b0` gives; the pick-up motion `hirou`, INFERRED for the Hero's state 8; where each sparkle starts its loop; **the order of the A Button's checks** — talk, treasure, a bookcase, then a spot; the minutes counting through battles, menus and scenes (INFERRED: the game's one gate is a map changing). A refill while the Hero is on the map shows on the next entry, as the game's sparkles are placed only on entering (INFERRED: nothing found adds one after) |
+| treasure that comes back | **read 6 October 2026** and built: red chests remembered for ever, the rest cleared as play begins, every drawn container drawn again at each load of its map. Ours: **the draws** (the game's "A table" not reproduced); a red chest an old save named by its running number converted as its map is entered |
 | chests | how far a lid goes back (110°), that it goes at the rate of the hands, and the text waiting for the motion. INFERRED: that the lid rises with the hands at all — no file animates one |
 | the character | the person's scale against the buildings, set by eye — the buildings are measured, the ratio to them is not (`sim/src/character.ts`, `PERSON`); the step and snap heights, set by the movement |
 | the look | the doorway fade's quarter-second; the text speeds; the sword and shield on the back; the dusk and night colours |

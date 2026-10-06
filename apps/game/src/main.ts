@@ -146,6 +146,7 @@ import {
   headingAngle,
   howItOpens,
   isNight,
+  MINUTE_TICKS,
   monsterHp,
   newClock,
   newGathering,
@@ -1843,6 +1844,13 @@ function beginPlay(rom: Uint8Array): void {
     storyGlobals.delete(flag)
   const data = gatheringOf(rom, '')
   startPlay(gathering, data.all, data.bias, gatherDraws)
+  // Development convenience: `?minutes=n` lets n minutes of play pass for the
+  // gathering spots before the first map, by their own rule — see `docs/regions.md`.
+  const minutes = Number(params.get('minutes'))
+  if (minutes > 0) {
+    for (let t = Math.round(minutes * MINUTE_TICKS); t > 0; t--)
+      tickGathering(gathering, storyGlobals, gatherDraws)
+  }
 }
 
 /**

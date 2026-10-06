@@ -52,6 +52,7 @@ is one the menu will not know about.
 | `preset=7` | dress the Hero as a ready-made character |
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
+| `minutes=1` | let that many minutes of play pass for the gathering spots before the first map, by their own rule — at a new game, one is enough for every spot to fill (`apps/game/src/main.ts`, `beginPlay`). A spot's items show as its map is entered |
 | `gold=5000` | that much gold in the purse — for the bank, the inn and the shops |
 | `tricks=2,0,0,10,12` | the party trick slots — Up, Left, Right, Down 1 to 4 — by number, 0 for none; then B held with a direction performs |
 | `armoury=1` | one of every weapon, shield and piece of armour in the bag, and anyone may wear anything — for trying every weapon and outfit on the Hero. With `heromotion=` and a fight, every weapon through every motion |

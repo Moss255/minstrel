@@ -20,14 +20,17 @@ written up on the wiki; each says so under its heading.
 - **Task 12 is done**, 6 October 2026: Zoom, the chimaera wing, Evac and a
   wipe-out go where the game sends them; the flight is not drawn and the ship
   not moved.
-- **Tasks 13 and 14 are not read.** Readers were started on 4 October and cut
-  off before writing anything, so each starts from its brief below.
+- **Task 13 is done**, 6 October 2026: the fields' gathering spots sparkle,
+  are picked from and refill by the game's minutes; red chests stay opened,
+  and blue chests, pots, barrels and cupboards come back as play begins.
+- **Task 14 is not read.** A reader was started on 4 October and cut off
+  before writing anything, so it starts from its brief below.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
   line and does nothing — task 18); the camera easing in for a party trick;
   Weird Dance's sound not stopped; canvassing and the guestbook (multiplayer).
 - **Development parameters added this week** (`docs/regions.md`): `globals=`,
-  `gold=`, `tricks=`; `revoke=` is gone, the credits opening revocation. The
+  `gold=`, `tricks=`, `minutes=`; `revoke=` is gone, the credits opening revocation. The
   screenshot tool takes `--down=` and `--up=` for a
   key held while another is pressed.
 
@@ -343,6 +346,8 @@ or table it reads is described in `FORMAT.md` with a check against the
 cartridge.
 
 ## 13. Gathering spots and treasure that comes back — find and build
+
+**Done, 6 October 2026**: `sim/src/gathering.ts`, `sparkles.ts`, `game-formats/src/gathering.ts`, the treasure's flags; the reading is `docs/readings/T13-gathering.md`; the wiki's Gathering. The item's icon over the Hero is not drawn; the draws are ours.
 
 Ingredients lie on the ground and come back (pp. 22, 24); blue chests, pots
 and barrels refill, red ones never do (p. 23). Here, opened treasure is
