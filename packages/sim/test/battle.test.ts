@@ -289,6 +289,60 @@ describe('a foe', () => {
     expect(events.some((e) => e.kind === 'spell')).toBe(false)
   })
 
+  it('Body Slams only at a third of its HP or less, by handler 5 (`func_ov024_021ee2fc`)', () => {
+    const slam: Changing = {
+      action: 148,
+      cost: 0,
+      change: { kind: 'defence', by: -1, chance: 100 },
+      reach: 'one',
+      side: 'other',
+    }
+    const slammer = {
+      ...blob('slammer', 30),
+      acts: [{ kind: 'attack' }, { kind: 'change', changing: slam, targeting: [5, 6] }] as const,
+    }
+    const took = (hp: number) =>
+      playRound(
+        withHp(startBattle([tough, slammer]), new Map([[1, hp]])),
+        wait,
+        new BattleRng(2n),
+        only(1),
+      ).events.some((e) => e.kind === 'change' && e.actor === 1)
+    expect(took(10)).toBe(true)
+    // Above a third: refused, and the way before it, the Attack.
+    expect(took(11)).toBe(false)
+  })
+
+  it('breathes poison only while one of the party is not poisoned, by handler 114', () => {
+    const breath: Changing = {
+      action: 229,
+      cost: 0,
+      change: { kind: 'poison', chance: 100 },
+      reach: 'all',
+      side: 'other',
+    }
+    const breather = {
+      ...blob('breather', 30),
+      acts: [
+        { kind: 'attack' },
+        { kind: 'change', changing: breath, targeting: [114, 114] },
+      ] as const,
+    }
+    const start = startBattle([tough, breather])
+    const breathes = (state: BattleState) =>
+      playRound(state, wait, new BattleRng(2n), only(1)).events.some(
+        (e) => e.kind === 'change' && e.actor === 1,
+      )
+    expect(breathes(start)).toBe(true)
+    const poisoned = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 0 ? { ...f, states: { ...f.states, poisoned: true } } : f,
+      ),
+    }
+    expect(breathes(poisoned)).toBe(false)
+  })
+
   it('heals an ally below half its HP, and attacks when no one is', () => {
     // Handler 11: one of its own side below half its HP, by a draw; with none, refused.
     const healer = {

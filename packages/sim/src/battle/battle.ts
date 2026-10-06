@@ -1148,6 +1148,36 @@ export function playRound(
   /** Whether a fighter is below half its HP (`021db358` < 0.5). */
   const belowHalf = (f: FighterState) => Math.fround(Math.fround(f.hp) / Math.fround(f.maxHp)) < 0.5
   /**
+   * **The weighted picks an action's hit code asks for**
+   * (`func_ov024_021ed8c0`): code 3 a draw of three or four
+   * (`NextRandomBetween`), 4 two, 5 four, 7 seven, 8 three, any other one —
+   * each by the weighted pick among those given; refused with none. **Ours**:
+   * the command aims at the first pick, the resolver making its passes from
+   * there.
+   */
+  const pickedBy = (actor: number, way: FoeAction, among: readonly number[]) => {
+    if (among.length === 0) return undefined
+    const code = way.kind === 'blow' ? way.blow.hits : 0
+    const k =
+      code === 3
+        ? rng.below(2) + 3
+        : code === 4
+          ? 2
+          : code === 5
+            ? 4
+            : code === 7
+              ? 7
+              : code === 8
+                ? 3
+                : 1
+    let first: number | undefined
+    for (let n = 0; n < k; n++) {
+      const t = weighted(actor, among)
+      if (first === undefined) first = t
+    }
+    return first === undefined ? undefined : commandOf(way, first)
+  }
+  /**
    * **A targeting handler by its number** — mode 1's `+0x0C`, mode 2's
    * `+0x0E` (the table at `0x021ff790`): its draws, or undefined where it
    * refuses the way (read 3 October 2026). A number not read takes the first.
@@ -1192,11 +1222,73 @@ export function playRound(
         if (open.length === 0) return undefined
         return commandOf(way, open[rng.below(open.length)] as number)
       }
-      case 22:
-      case 23:
+      case 5:
+      case 6: {
+        // Body Slam, Kamikazee (`func_ov024_021ee2fc`, `021ee33c`): only at a
+        // third of its HP or less (5), half or less (6). It names no target —
+        // its count is left at 0 — so, **INFERRED**, the target is the first
+        // handler's, draws and all.
+        const low = slot === 5 ? 3 * me.hp <= me.maxHp : me.maxHp >= 2 * me.hp
+        return low ? firstHandler(actor, way) : undefined
+      }
+      case 20: {
+        // Kabuff (`func_ov024_021ef074`): a draw among its side's groups with
+        // one standing whose defence is not at its most and below two steps
+        // up; that group.
+        const groups = groupsOf(own).filter((name) =>
+          own.some((i) => {
+            const f = fighters[i] as FighterState
+            return f.name === name && f.defence < 0xffff && f.states.defence.level < 2
+          }),
+        )
+        if (groups.length === 0) return undefined
+        const name = groups[rng.below(groups.length)] as string
+        return commandOf(way, own.find((i) => fighters[i]?.name === name) as number)
+      }
+      case 22: {
+        // Sap (`func_ov024_021ef388`): those with a defence to lower and above
+        // two steps down, by the weighted picks its hit code asks for.
+        const open = party.filter((i) => {
+          const f = fighters[i] as FighterState
+          return f.defence !== 0 && f.states.defence.level > -2
+        })
+        return pickedBy(actor, way, open)
+      }
+      case 26: {
+        // Accelerate (`func_ov024_021ef7b8`): a draw among its own standing
+        // whose agility is under 999 and below two steps up.
+        const open = own.filter((i) => {
+          const f = fighters[i] as FighterState
+          return f.agility < 999 && f.states.agility.level < 2
+        })
+        if (open.length === 0) return undefined
+        return commandOf(way, open[rng.below(open.length)] as number)
+      }
+      case 32:
+        // Deceleratle (`func_ov024_021eff3c`): all of the party, while one has
+        // an agility to lower and is above two steps down.
+        return party.some((i) => {
+          const f = fighters[i] as FighterState
+          return f.agility !== 0 && f.states.agility.level > -2
+        })
+          ? commandOf(way, party[0] as number)
+          : undefined
+      case 61:
+        // One of the party by the weighted picks its hit code asks for (`func_ov024_021f1844`).
+        return pickedBy(actor, way, party)
+      case 62:
+        // All of the party, no draw (`func_ov024_021f18a0`).
+        return party.length > 0 ? commandOf(way, party[0] as number) : undefined
+      case 114:
+        // Poison Breath (`func_ov024_021f43b0`): all of the party, unless every one is poisoned.
+        return party.some((i) => !(fighters[i] as FighterState).states.poisoned)
+          ? commandOf(way, party[0] as number)
+          : undefined
+      case 157:
+        // The breaths (`func_ov024_021f639c`): all of the party.
+        return party.length > 0 ? commandOf(way, party[0] as number) : undefined
       case 24:
       case 25: {
-        // Sap (22, 23) is not read: ours, as Kasap — a pick for one, none for more.
         const open = party.filter((i) => (fighters[i] as FighterState).states.defence.level > -2)
         if (open.length === 0) return undefined
         if (wayAim(way).reach === 'one') {
