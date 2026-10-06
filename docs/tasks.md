@@ -71,7 +71,7 @@ written up on the wiki; each says so under its heading.
   October** (§11): the round's end read whole (a draw it was missing), Right
   as Rain, Focus Pocus, dazzle, Vanish, Schizofanic, Mist Me, Rotstopper,
   Alma Mater and Holy Impregnable — **31 struck as the Attack**. Left, each
-  by address in §7: the 31 (by 23 kinds), riders 5, 6, 9, 10, 12–14, 19 and
+  by address in §7: the 31 (by 21 kinds), riders 5, 6, 9, 10, 12–14, 19 and
   21, Crosscutter Throw and M-Pathy.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
