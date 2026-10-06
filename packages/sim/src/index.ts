@@ -6,6 +6,7 @@ export {
   type ChangeHit,
   type ChangeResult,
   type Changing,
+  CONFUSED,
   type Command,
   type Covered,
   DEFAULT_RULES,

@@ -7,6 +7,7 @@ import {
   type Change,
   type ChangeHit,
   type Changing,
+  CONFUSED,
   type Command,
   type Fighter,
   type FoeAction,
@@ -384,6 +385,10 @@ function changeSays(
         : pick(own?.done, 23)
     case 'unparalysed':
       return pick(own?.done, ACTION_SAYS.unparalysed)
+    case 'confused':
+      // INFERRED from their words: one already confused "grows even more
+      // confused", 131 and 132, as Antimagic's "further prevented".
+      return hit.again ? (targetParty ? 131 : 132) : pick(own?.done, 130)
     case 'relieved':
       // INFERRED: Wave of Relief's handler says nothing of its own
       // (`func_ov024_021df1e8`); its record's lines stand — "is alleviated of
@@ -552,6 +557,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
         : `${whom} is prevented from casting spells.`
     case 'unparalysed':
       return `${whom} is no longer paralysed.`
+    case 'confused':
+      return hit.again ? `${whom} grows even more confused.` : `${whom} becomes confused.`
     case 'zeroZoned':
       return `${whom} can now cast spells without spending any MP!`
     case 'tumbling':
@@ -1288,7 +1295,10 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                   target: scene.names[event.covered.for],
                 }),
               ]
-            : [say(scene, 'actions', ACTION_SAYS.attacks, { actor, target })]
+            : event.confused
+              ? // Action 219's opening, 500: "is confused. … attacks at random!"
+                [say(scene, 'actions', CONFUSED_SAYS.atRandom, { actor, target })]
+              : [say(scene, 'actions', ACTION_SAYS.attacks, { actor, target })]
       const game = lines(
         ...turned,
         ...(event.absorbed === 'mist'
@@ -1736,6 +1746,21 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     case 'freed':
       // Action 900's opening, 115 (`func_ov000_0215833c`, `0x021583f0`).
       return say(scene, 'actions', 115, { actor }) ?? sentence(`${who} is no longer paralysed.`)
+    case 'senses':
+      // Action 0x3aa's line, 371 (`func_ov000_0215833c`, `0x021584b4`).
+      return (
+        say(scene, 'actions', CONFUSED_SAYS.senses, { target: actor }) ??
+        sentence(`${who} pulls themselves together.`)
+      )
+    case 'confused': {
+      // A confused turn's record's lines (`func_ov000_0215f67c`): its opening,
+      // and for 222 and 916 the done line after it.
+      const own = CONFUSED_SAYS.turns.get(event.action) ?? [CONFUSED_SAYS.isConfused]
+      return (
+        lines(...own.map((n) => say(scene, 'actions', n, { actor }))) ??
+        sentence(`${who} is confused.`)
+      )
+    }
     case 'woke':
       return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
     case 'primed':
@@ -1872,6 +1897,11 @@ function cuesOf(event: BattleEvent, state: BattleState): Cue[] {
     case 'flee':
       // A monster running away stays until its page is told, then is gone.
       return foe(event.actor) ? [{ fighter: event.actor, motion: 'flee' }] : []
+    case 'confused':
+      // A confused monster's flight, 917, as any monster's.
+      return event.action === CONFUSED.flees && foe(event.actor)
+        ? [{ fighter: event.actor, motion: 'flee' }]
+        : []
     case 'defeated':
       return foe(event.actor) || party(event.actor)
         ? [{ fighter: event.actor, motion: 'death' }]
@@ -2343,6 +2373,26 @@ export function blowOf(action: Castable): Blow | undefined {
   }
 }
 
+/**
+ * **A confused turn's lines** — the records of `func_ov000_0215f67c`'s
+ * actions: 219's opening 500 ("attacks at random!"); 221's 135, 915's 501,
+ * 222's 500 then its done line 137, 916's 502 then 57 ("But nobody shows
+ * up."), 917's 504 ("flees the battle!"). 918 has none, and 134, "is
+ * confused.", stands in for it — **ours**. Come to their senses: 0x3aa's 371.
+ */
+const CONFUSED_SAYS = {
+  atRandom: 500,
+  isConfused: 134,
+  senses: 371,
+  turns: new Map<number, readonly number[]>([
+    [221, [135]],
+    [915, [501]],
+    [222, [500, 137]],
+    [916, [502, 57]],
+    [917, [504]],
+  ]),
+} as const
+
 /** The kinds of change the party's actions are played by — their handlers' (`data_ov024_021ff508`). */
 const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change['kind']>([
   [3, 'attack'],
@@ -2354,6 +2404,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   // Antimagic (`021dced0`); Tingle (`021dd6f0`).
   [16, 'fizzle'],
   [20, 'unparalyse'],
+  // Fuddle (`021dd828`): confusion.
+  [21, 'confuse'],
   [17, 'kill'],
   [18, 'revive'],
   // Wizard Ward, Spooky Aura (`021dd968`); Insulate, Insulatle, Mind Over

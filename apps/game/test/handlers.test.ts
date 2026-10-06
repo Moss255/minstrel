@@ -196,7 +196,15 @@ describe.skipIf(!romPath)(
       expect(action(30).rolls).toMatchObject({ counterable: false, coverable: false })
     })
 
-    it('strikes 15 of them as the Attack now, where 76 were', () => {
+    it('plays Fuddle as confusion', () => {
+      expect(partyChangeOf(action(51))).toMatchObject({
+        change: { kind: 'confuse' },
+        side: 'other',
+        reach: 'group',
+      })
+    })
+
+    it('strikes 14 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -213,7 +221,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(15)
+      expect(attack).toBe(14)
     })
   },
 )

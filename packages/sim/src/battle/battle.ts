@@ -421,7 +421,7 @@ const WHACKS: ReadonlySet<number> = new Set([24, 25, 26, 27])
 /** The family Rotstopper halves (`0x021e7510`). */
 const ROT_FAMILY = 8
 
-const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] = [
+const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed' | 'confused'> & keyof States)[] = [
   // Dazzle's block (`+0x82`, `0x02158764`), after Knight Watch's and before Fizzle's.
   'dazzled',
   'fizzled',
@@ -511,6 +511,12 @@ export type Change =
   | { readonly kind: 'fizzle'; readonly chance: number }
   /** **Tingle** (kind 20, `func_ov024_021dd6f0`): the paralysed, landed, freed. */
   | { readonly kind: 'unparalyse'; readonly chance: number }
+  /**
+   * **Fuddle** (kind 21, `func_ov024_021dd828`): on one who may take it
+   * (`func_020883ac` — `+0x14` bits 0 and 24 clear), landed, confused —
+   * see `States.confused` — its count set anew if it already was.
+   */
+  | { readonly kind: 'confuse'; readonly chance: number }
   /**
    * **0 Zone**, the Mage's coup (kind 68, `func_ov024_021e1580`): landed, on
    * one who may take it, status `+0x18` bit 9 with a count of 5
@@ -753,6 +759,8 @@ export type ChangeResult =
   | 'fizzled'
   /** Freed of paralysis by Tingle. */
   | 'unparalysed'
+  /** Confused by Fuddle; `again` when it already was. */
+  | 'confused'
   /** Paralysed by rider 11 — `again`, already: "is frozen even further". */
   | 'paralysed'
   /** 0 Zone set — "can now cast spells without spending any MP". */
@@ -963,8 +971,17 @@ export type BattleEvent =
        * and `target` whom they struck; `from`, the monster whose blow it was.
        */
       readonly countered?: { readonly stance: number; readonly from: number }
+      /** A confused fighter's attack at random, 219 — "is confused. … attacks at random!" (500). */
+      readonly confused?: true
     }
   | { readonly kind: 'defend'; readonly actor: number }
+  /**
+   * **A confused fighter's turn**, drawn for them, other than the attack at
+   * random — one of {@link CONFUSED}'s, each its record's lines alone.
+   */
+  | { readonly kind: 'confused'; readonly actor: number; readonly action: number }
+  /** Come to their senses at the turn's start — action 0x3aa, "pulls … together" (371). */
+  | { readonly kind: 'senses'; readonly actor: number }
   /**
    * A stance's turn: its record's line (kind 0's handler). `short`, taken up
    * without the MP for it — the action 0x3a9 in its place, nothing set.
@@ -1490,6 +1507,28 @@ const MIRACLE_MOON = 0x91
 const alive = (f: FighterState) => f.hp > 0 && !f.fled
 
 /**
+ * **What a confused fighter does** — `func_ov000_0215f67c`, its turn's
+ * action drawn: `R(2)`, and with two or more of its side standing (the
+ * party's by `func_ov000_0215e9fc`, the monsters' by `0215eb1c`) a 0 makes
+ * it **219**, the Attack at an ally other than itself ("attacks at random!",
+ * 500). Otherwise one of its side's list by a second draw: the party's 221
+ * ("can't work out what to do", 135), 915 ("too flustered to move", 501),
+ * 222 ("attacks at random!", then "But … body can't keep up", 137) and 918
+ * (no line); a monster's the same but for 916 ("calls for backup!", 502 —
+ * "But nobody shows up.", 57) in 918's place, and **917**, its flight
+ * ("flees the battle!", 504), as a fifth where the battle's `+0xc` is below
+ * 0 (`func_020a3694`) — INFERRED a random encounter's, which
+ * {@link BattleState.canFlee} stands in for.
+ */
+export const CONFUSED = {
+  atRandom: 219,
+  flees: 917,
+  party: [221, 915, 222, 918] as readonly number[],
+  foes: (canFlee: boolean): readonly number[] =>
+    canFlee ? [221, 915, 222, 916, 917] : [221, 915, 222, 916],
+} as const
+
+/**
  * **The MP an ability asks**, by its record's `+0x08` low byte: that many,
  * or for 255 all there is, which none is short of (`func_ov024_021eaa50`,
  * `0x021eac3c`–`0x021eac68`; spent so, `0x021ebc24`–`0x021ebc40`).
@@ -1579,9 +1618,9 @@ export function playRound(
   // **The stances, taken up as the round begins** (`func_ov000_0215f110`,
   // before the order is drawn): each one's MP spent and its stance set
   // (`func_ov000_021537b8`) — see `stances.ts`. Short of the MP, nothing is
-  // set, and its turn says so. No draw is made. **Ours**: one asleep takes up
-  // none, as Defend's guard is not held asleep here; the game's own test is
-  // `+0x14` bit 5 (`func_ov000_021543f4`), a status the battle does not keep.
+  // set, and its turn says so. No draw is made. One **confused** takes up
+  // none: the game's test is `+0x14` bit 5 (`func_ov000_021543f4`), which is
+  // confusion (`func_020883cc` sets it) — not sleep, as this said before.
   // A trait that lessens the MP (`func_020dd290`) is not kept.
   const shortStance = new Set<number>()
   for (const [i, command] of commands) {
@@ -1590,7 +1629,7 @@ export function playRound(
     const blockenspiel = command.kind === 'blow' && command.blow.atRoundStart
     if (command.kind !== 'stance' && !blockenspiel) continue
     const f = fighters[i]
-    if (!f || !alive(f) || f.states.sleep !== undefined) continue
+    if (!f || !alive(f) || f.states.confused !== undefined) continue
     const zoned = (f.states.zeroZone?.level ?? 0) !== 0
     const cost = command.kind === 'stance' ? command.cost : mpAsked(f, command.blow.cost ?? 0)
     if (!zoned && (cost === undefined || f.mp < cost)) {
@@ -1675,6 +1714,7 @@ export function playRound(
       st.poisoned ||
       st.envenomed === true ||
       st.paralysed !== undefined ||
+      st.confused !== undefined ||
       fizzled ||
       lowered.length > 0
     if (cured) {
@@ -1683,6 +1723,8 @@ export function playRound(
         poisoned: false,
         envenomed: false,
         paralysed: undefined,
+        // Confusion (`0x021eae60`–`0x021eae70`, `func_020883fc`).
+        confused: undefined,
         ...(fizzled ? { fizzled: { level: 0, turns: 0 } } : {}),
         ...Object.fromEntries(lowered.map((stat) => [stat, { level: 0, turns: 0 }])),
       })
@@ -2661,11 +2703,24 @@ export function playRound(
       if (worn.level !== level) setStates(actor, { [stat]: worn.level })
       if (worn.wore) events.push({ kind: 'wornOff', actor, stat })
     }
-    for (const stat of [...RUN_DOWN_ORDER, 'paralysed'] as const) {
+    for (const stat of RUN_DOWN_ORDER) {
       const level = (fighters[actor] as FighterState).states[stat]
       if (!level) continue
       const next = countDown(level, WEAR_OF[stat].start)
       if (next !== level) setStates(actor, { [stat]: next })
+    }
+    // Paralysis, sleep and confusion: the first of them held, alone
+    // (`0x02159a14`–`0x02159aac`) — sleep counted by its own turns here.
+    const held = (fighters[actor] as FighterState).states
+    const first = held.paralysed
+      ? ('paralysed' as const)
+      : held.sleep === undefined && held.confused
+        ? ('confused' as const)
+        : undefined
+    const level = first && held[first]
+    if (first && level) {
+      const next = countDown(level, WEAR_OF[first].start)
+      if (next !== level) setStates(actor, { [first]: next })
     }
   }
 
@@ -2710,10 +2765,12 @@ export function playRound(
     }
     // The way, for a monster of mode 2 — or one that could not act as the
     // round began and can now — chosen here at its turn (`0x02157980`).
-    const command: Command | undefined =
+    let command: Command | undefined =
       me.side === 'party'
         ? (commands.get(actor) ?? { kind: 'attack', target: -1 })
         : (planned ?? (canAct(me) ? chooseFoe(actor) : undefined))
+    /** Whom a confused fighter's attack at random (219) strikes — see `CONFUSED`. */
+    let confusedAim: number | undefined
     // **The turn-start draw**, every fighter's, every turn (`0x0215838c`) —
     // and a sleeper's waking.
     const startDraw = rng.below(100)
@@ -2746,6 +2803,22 @@ export function playRound(
       selfPass(me)
       continue
     }
+    // **Confusion at the turn's start** (`0x0215846c`–`0x021584c8`), after
+    // paralysis and sleep: its second count, once running, a turn less, and
+    // to their senses where the table by it is above the turn-start draw —
+    // action 0x3aa in the turn.
+    const confusion = me.states.confused
+    if (confusion?.wearing) {
+      const wearing = confusion.wearing - 1
+      const clear =
+        (WEAR_OF.confused.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
+      setStates(actor, { confused: clear ? undefined : { ...confusion, wearing } })
+      if (clear) {
+        events.push({ kind: 'senses', actor })
+        selfPass(me)
+        continue
+      }
+    }
     // **A lost turn** (`func_ov000_0215767c`, `0x02157b60`–`0x02157bb0`): one
     // who cannot act has action 503 in their action's place, and one under
     // `States.stunned` is marked to be cleared after it.
@@ -2754,6 +2827,38 @@ export function playRound(
       lostTurn = actor
       selfPass(me)
       continue
+    }
+    // **Confused** (`func_ov000_0215f67c`, from the turn at `0x02157c20`):
+    // the turn is drawn for them in their action's place — see `CONFUSED`.
+    if (me.states.confused !== undefined) {
+      const half = rng.below(2)
+      const mine = livingOn(me.side)
+      const ways = me.side === 'party' ? CONFUSED.party : CONFUSED.foes(state.canFlee)
+      const action =
+        mine.length >= 2 && half === 0
+          ? CONFUSED.atRandom
+          : (ways[rng.below(ways.length)] as number)
+      if (action === CONFUSED.atRandom) {
+        // The Attack at an ally other than themselves (reach 8): for one of
+        // the party a draw among the party standing (`func_ov000_02153f98`,
+        // `0x02154030`–`0x021540ac`), with none of the two draws every other
+        // action's targets make (`0x02154170`).
+        const allies = mine.filter((i) => i !== actor)
+        confusedAim = allies[rng.below(allies.length)] as number
+        command = { kind: 'attack', target: confusedAim }
+      } else {
+        // The rest are its record's lines alone, through the resolver's pass
+        // on its actor (kind 0, reach 1) — a monster's flight as 917's is.
+        selfPass(me, action !== CONFUSED.flees)
+        events.push({ kind: 'confused', actor, action })
+        if (action === CONFUSED.flees) {
+          fighters = fighters.map((f, i) => (i === actor ? { ...f, fled: true } : f))
+          outcome = outcomeOf(fighters)
+        }
+        resolved = { actor, action }
+        if (outcome !== 'ongoing') break
+        continue
+      }
     }
     if (!command) continue
     // This fighter's turn, as the chain tells turns apart (`ctx + 4`). Ours: by round and fighter.
@@ -3264,6 +3369,16 @@ export function playRound(
             fighters = fighters.map((g, i) => (i === target ? { ...g, hp: g.hp + hp } : g))
             const cured = cureAll(target)
             return { target, result: 'restored', hp, ...(cured ? { cured: true } : {}) }
+          }
+          case 'confuse': {
+            // Fuddle (`0x021dd858`–`0x021dd8e8`): landed, confused
+            // (`func_020883cc`), the stance and Pincushion cleared with it —
+            // and set anew on one already confused, flags 0x2b and 0x17.
+            if (!landed) return { target, result: 'resisted' }
+            const again = was.confused !== undefined
+            setStates(target, { confused: { level: 1, turns: LEVEL_COUNTS.confused } })
+            unstance(target)
+            return { target, result: 'confused', ...(again ? { again: true } : {}) }
           }
           case 'fizzle': {
             // Antimagic: landed, fizzled — "further prevented" if it already
@@ -3825,15 +3940,19 @@ export function playRound(
       continue
     }
 
-    // An attack: at the target named, or at someone living on the other side.
+    // An attack: at the target named, or at someone living on the other side
+    // — or, confused, at the ally drawn.
     const others = livingOn(me.side === 'party' ? 'foes' : 'party')
     if (others.length === 0) break
     const aimed =
-      me.side === 'party'
+      confusedAim ??
+      (me.side === 'party'
         ? partyAim(command.target, 'one')[0]
-        : (aimOf(me, actor, 'party', command.target, 'one')[0] as number)
+        : (aimOf(me, actor, 'party', command.target, 'one')[0] as number))
     if (aimed === undefined) break
-    builtDraws()
+    // A monster's, INFERRED: its targets built as ever (`func_ov000_0215440c`
+    // reads no confusion), so the two draws made.
+    if (confusedAim === undefined || me.side === 'foes') builtDraws()
     noteAim(actor, aimed)
 
     // **The game's order of a blow's draws** — `func_ov024_021eb5d0`, read from
@@ -3959,6 +4078,7 @@ export function playRound(
         ? { envenomed: again ? ('again' as const) : ('newly' as const) }
         : {}),
       ...(combo > 0 ? { combo } : {}),
+      ...(confusedAim !== undefined ? { confused: true as const } : {}),
     })
     hurt(target, damage)
     // The coup's draw at the pass — the Attack is of kind 1.

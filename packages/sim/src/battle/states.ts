@@ -202,6 +202,20 @@ export interface States {
    */
   readonly paralysed?: Level | undefined
   /**
+   * **Confused** — status `+0x14` bit 5, with a count of 3 at `+0x5e` and
+   * its second at `+0x81` cleared (`func_020883cc`, kind 21; the stance and
+   * Pincushion cleared with it). Its turn is drawn for it
+   * (`func_ov000_0215f67c`, from the turn at `0x02157c20`–`0x02157c44`): see
+   * `CONFUSED`. Its count goes a pass less on each of its holder's action
+   * passes when neither paralysed nor asleep, and at 0 the second starts at 4
+   * (`func_ov000_021599f4`, the first of the three held); then at each turn's
+   * start that count less one and the turn-start draw against `0x02182ad4`
+   * bring them to their senses, action 0x3aa (`func_ov000_0215833c`,
+   * `0x0215846c`–`0x021584c8`). Mens Sana and the cure-all clear it
+   * (`func_020883fc`).
+   */
+  readonly confused?: Level | undefined
+  /**
    * **0 Zone** — status `+0x18` bit 9, with a count of 5 at `+0x78` (kind 68,
    * `func_ov024_021e1580`; `func_020890d4`): no MP is asked of its holder's
    * actions (`func_ov024_021eadfc`, read by `func_ov024_021eaa50` at
@@ -291,6 +305,7 @@ export const LEVEL_COUNTS = {
   zeroZone: 5,
   tumble: 5,
   paralysed: 3,
+  confused: 3,
 } as const
 
 /** The kinds of count {@link LEVEL_COUNTS} names. */
@@ -338,6 +353,8 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.
   paralysed: { table: WEAR_TABLE, start: 4 },
+  // So too confusion, by the same table (`0x02158488`) — see `States.confused`.
+  confused: { table: WEAR_TABLE, start: 4 },
 }
 /**
  * **The statuses the round's end runs down** — `func_ov000_02157e1c`, which
