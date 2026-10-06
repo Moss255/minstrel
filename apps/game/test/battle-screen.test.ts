@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dangerOf, type PanelView, panelsPlaced } from '../src/battle-screen.ts'
+import { dangerOf, type PanelView, panelsPlaced, pulseColour } from '../src/battle-screen.ts'
 
 const panel = (large: boolean): PanelView => ({
   place: 0,
@@ -12,6 +12,7 @@ const panel = (large: boolean): PanelView => ({
   box: '',
   chosen: false,
   status: undefined,
+  level: 1,
 })
 
 describe('the battle’s bottom screen', () => {
@@ -30,5 +31,12 @@ describe('the battle’s bottom screen', () => {
       0, 1, 2, 3,
     ])
     expect(dangerOf(26, 100)).toBe(0)
+  })
+
+  it('pulses the acting member’s border from yellow to grey (`func_ov000_02170b0c`)', () => {
+    // sin 0 = 0: t = 1, red and green 31, blue 0 — yellow.
+    expect(pulseColour(0)).toBe(31 | (31 << 5))
+    // sin π/2 = 1: t = 0, grey (10, 10, 10).
+    expect(pulseColour(Math.PI / 2)).toBe(10 | (10 << 5) | (10 << 10))
   })
 })

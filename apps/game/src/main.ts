@@ -316,6 +316,9 @@ import {
   drawBottom,
   drawResults,
   type PanelView,
+  PULSE_ROUND,
+  PULSE_STEP,
+  pulseColour,
   readBattleScreenArt,
 } from './battle-screen.ts'
 import { type Named, type Telling, tellBattle } from './battle-text.ts'
@@ -9343,6 +9346,11 @@ function drawNumbers(now: number, elapsedMs: number, fov: number | undefined): v
     numbersCarry -= PASS_MS
     risingNumbers = risingNumbers.flatMap((n) => numberFrame(n) ?? [])
     tickCombo(combo)
+    // The acting member's pulse: 0.2 a vblank, two a pass (`func_ov000_02170b0c`).
+    if (pulse) {
+      pulse.phase += 2 * PULSE_STEP
+      while (pulse.phase >= PULSE_ROUND) pulse.phase -= PULSE_ROUND
+    }
     // The chooser's marker bobs: a phase of 0.1 a frame, round at 6.28 (`0x021de17c`).
     markerPhase = (markerPhase + 0.1) % 6.28
     // Each, on its first showing frame, nudged clear of the rest — see `nudged`.
@@ -10003,6 +10011,7 @@ function startShown(): void {
       `${aimed.length ? ` at ${aimed.join(', ')}` : ''} · ${chase ? 'chase shot' : 'its own camera'}`,
   )
   logMotions.clear()
+  pulse = isPartyObject(actor) ? { member: actor, phase: 0 } : undefined
   shown = {
     page: cueStarted,
     run,
@@ -10186,10 +10195,19 @@ function followShownChase(s: ActionShown): void {
   followChase(chase, chasePose(a, t, chase, chase.now?.orbit.yaw ?? s.camera.orbit.yaw))
 }
 
+/**
+ * **The acting member's pulse** on their panel's border — see `pulseColour`.
+ * Stopped as the action ends (`func_ov000_021754e0`, overlay 25 `0x021dcbc8`),
+ * the border white again. **Ours**: started as a party member's action is
+ * shown — what turns it on is not found.
+ */
+let pulse: { readonly member: number; phase: number } | undefined
+
 /** An action over: its deaths kept, its pages done. */
 function finishShown(): void {
   const s = shown
   if (!s) return
+  pulse = undefined
   log('■ action over')
   // Its showing over, the combo display goes (`0x021db8ac`).
   leaveCombo(combo)
@@ -10703,6 +10721,8 @@ function bottomView(scene: BattleScene): BottomView {
         box,
         chosen: chosen !== undefined,
         status,
+        level: f.level,
+        border: pulse?.member === i ? pulseColour(pulse.phase) : undefined,
       },
     ]
   })

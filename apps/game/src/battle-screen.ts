@@ -118,8 +118,8 @@ interface Picture {
 /** What the screen is drawn from, read once. */
 export interface BattleScreenArt {
   readonly back: Picture
-  /** A panel in a member's palette, 2 + their place; its "HP"/"MP" letters in a danger colour. */
-  panel(large: boolean, place: number, danger: number): Picture
+  /** A panel in a member's palette, 2 + their place; its "HP"/"MP" letters in a danger colour, its border (colour 15) in `border`. */
+  panel(large: boolean, place: number, danger: number, border?: number): Picture
   readonly lv: (place: number) => Picture
   readonly cell: (index: number) => CellImage
   readonly font: LatinFont | undefined
@@ -177,12 +177,14 @@ export function readBattleScreenArt(rom: Uint8Array, font: LatinFont | undefined
   const windows = new Map<string, Picture>()
   return {
     back,
-    panel(isLarge, place, danger) {
-      const key = `${isLarge}:${place}:${danger}`
+    panel(isLarge, place, danger, border) {
+      const key = `${isLarge}:${place}:${danger}:${border ?? ''}`
       let picture = panels.get(key)
       if (!picture) {
         const p = 2 + place
-        picture = drawBnsc(inPalette(isLarge ? large : small, p), tiles, tinted(p, danger))
+        const colours = tinted(p, danger)
+        if (border !== undefined) (colours.colours as Uint16Array)[p * 16 + 15] = border
+        picture = drawBnsc(inPalette(isLarge ? large : small, p), tiles, colours)
         panels.set(key, picture)
       }
       return picture
@@ -338,7 +340,29 @@ export interface PanelView {
   /** Their command chosen: "OK!". */
   readonly chosen: boolean
   readonly status: 'dead' | 'asleep' | undefined
+  /** Their level in their vocation, drawn where no status icon is. */
+  readonly level: number | undefined
+  /** The border's colour, BGR555, while the acting member's pulse is on — see {@link pulseColour}. */
+  readonly border?: number | undefined
 }
+
+/**
+ * **The acting member's pulse** (`func_ov000_02170b0c`): a phase growing 0.2
+ * a vblank, round at π; t = 1 − sin(phase); red and green 10 + ⌊21t⌋, blue
+ * 10 + ⌊−10t⌋ — grey (10, 10, 10) to yellow (31, 31, 0) — as BGR555, into
+ * colour 15 of the member's panel palette.
+ */
+export function pulseColour(phase: number): number {
+  const t = Math.fround(1 - Math.sin(phase))
+  const rg = 10 + Math.trunc(21 * t)
+  const b = 10 + Math.trunc(-10 * t)
+  return rg | (rg << 5) | (b << 10)
+}
+/** The pulse's phase a vblank, and where it goes round. */
+export const PULSE_STEP = 0.2
+export const PULSE_ROUND = 3.1415925
+/** Where a panel's level stands: a 16-pixel sprite at (44, 22), the number right-aligned in it (`func_ov000_021811f4`, `func_ov000_02174738`). */
+const LEVEL = { x: 44, y: 22, width: 16 } as const
 
 /** The menu in the large panel: its lines, its columns, and which the hand points at. */
 export interface MenuView {
@@ -387,7 +411,7 @@ export function drawBottom(
     // (`0x02174014`).
     const x = 0
     const danger = dangerOf(p.hp, p.maxHp)
-    blit(context, art.panel(large, p.place, danger), large ? 0 : 8, y)
+    blit(context, art.panel(large, p.place, danger, p.border), large ? 0 : 8, y)
     const places = large ? PLACES.large : PLACES.small
     text(context, art.font, p.name, x + places.name.x, y + places.name.y, 'centre')
     digits(context, art, p.hp, x + places.hp.x, y + places.hp.y, places.hp.pitch)
@@ -415,6 +439,17 @@ export function drawBottom(
       sprite(context, icon, x + places.icon.x, y + places.icon.y)
     } else {
       blit(context, art.lv(p.place), x + 32, y + 24)
+      if (p.level !== undefined) {
+        const n = String(p.level)
+        text(
+          context,
+          art.font,
+          n,
+          x + LEVEL.x + LEVEL.width - measure(art.font, n),
+          y + LEVEL.y,
+          'left',
+        )
+      }
     }
     if (!large) {
       text(context, art.font, p.box, BOX.x, y + BOX.y - 4, 'centre')
