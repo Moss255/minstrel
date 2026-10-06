@@ -25,9 +25,12 @@ export {
   type Rules,
   type Side,
   type Spell,
+  STEAL_DOUBLER,
+  STEAL_SHARES,
   SURPRISED_ACTS_BELOW,
   spoils,
   startBattle,
+  stealChance,
   withHp,
   withMp,
 } from './battle/battle.ts'

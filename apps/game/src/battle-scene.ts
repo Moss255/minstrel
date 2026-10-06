@@ -429,6 +429,12 @@ function changeSays(
     // Soothe Sayer's: its lines are `sootheSays`'s.
     case 'soothed':
       return 0
+    // Half-Inch's (`0x021dfda8`–`0x021dfe08`): pinched, the record's done
+    // line; nothing to steal, `0x25a`.
+    case 'stole':
+      return pick(own?.done, 0xd9)
+    case 'empty':
+      return 0x25a
     // H-Pathy's and M-Pathy's: the record's done line (`0x021dc790`,
     // `0x021dc5d0`) — 22, "…'s wounds are healed"; 106, "…'s MP are replenished".
     case 'shared':
@@ -609,6 +615,10 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `All magical effects cast on ${whom} are removed.`
     case 'eradicated':
       return `All unfortunate effects affecting ${whom} are eradicated.`
+    case 'stole':
+      return `${whom} has something pinched.`
+    case 'empty':
+      return `But ${whom} isn't carrying anything.`
     case 'soothed':
       return [
         ...(hit.tension === undefined ? [] : [`${whom}'s tension decreases.`]),
@@ -1123,6 +1133,8 @@ export interface BattleScene {
   readonly words: BattleWords | undefined
   /** What the Items command offers, while one is being chosen. */
   readonly items: readonly BattleItem[]
+  /** The names of what the monsters carry, which Half-Inch tells by — see `beginBattle`'s `loot`. */
+  readonly loot?: ReadonlyMap<number, Named>
   /** What the Spells command offers, while one is being chosen and told. */
   readonly spells: readonly BattleSpell[]
   /** The command phase, while the round's commands are chosen — see `battle-commands.ts`. */
@@ -1157,6 +1169,8 @@ export function beginBattle(
     readonly known?: ReadonlyMap<number, Told>
     readonly words?: BattleWords
     readonly names?: readonly Named[]
+    /** The names of what the monsters carry — Half-Inch's pinch is told by them. */
+    readonly loot?: ReadonlyMap<number, Named>
   },
 ): BattleScene {
   const started = startBattle(fighters, options.canFlee, options.opening)
@@ -1182,6 +1196,7 @@ export function beginBattle(
     armed: [],
     known: options.known ?? new Map(),
     events: [],
+    ...(options.loot ? { loot: options.loot } : {}),
   }
   const pages = appearing(scene)
   // Every monster appears as the first page tells of them.
@@ -1665,7 +1680,14 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           scene,
           'actions',
           changeSays(event.change, hit, told, state.fighters[hit.target]?.side === 'party'),
-          { actor, target: scene.names[hit.target] },
+          {
+            actor,
+            target: scene.names[hit.target],
+            // Half-Inch's: the item pinched, by the name the monsters' own carry.
+            ...(hit.item === undefined
+              ? {}
+              : { item: scene.loot?.get(hit.item) ?? { name: `item ${hit.item}` } }),
+          },
         )
       // Choir of Angels' lines (`0x021e1468`–`0x021e1500`): healed, "the
       // soothing song" (0x1ba) and the wounds (0x16); cured, the song if not
@@ -2513,6 +2535,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [74, 'boost'],
   // Soothe Sayer (`021e07b0`): a step of tension off by its rider 9, and a watch ended.
   [53, 'soothe'],
+  // Half-Inch (`021df924`): a monster's item pinched, by deftness.
+  [44, 'steal'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
 export const TENSION_BOOST = 511

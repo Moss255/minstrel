@@ -156,6 +156,12 @@ export interface Fighter {
    */
   readonly deftness?: number
   /**
+   * What one of the party wears in equipment slot 9, the accessory
+   * (`func_02052df8` with 9): Half-Inch's chance doubles at item 18047,
+   * `0x467f` (`func_ov024_021df924`, `0x021dfb1c`–`0x021dfb50`).
+   */
+  readonly accessory?: number
+  /**
    * Whether they hold **Critical in a Crisis**, skill panel 285 — trait
    * `0x11d`, which its book grants: their chance of a critical doubles while
    * their HP is under a quarter — see `criticalChance` and `inCrisis`.
@@ -420,6 +426,38 @@ export const LEVEL_STATS: readonly LevelStat[] = [
 /** Whack, Thwack, Kathwack, Kamikazee — what Alma Mater spares from (`data_ov024_021fe6e0`). */
 const WHACKS: ReadonlySet<number> = new Set([24, 25, 26, 27])
 
+/**
+ * **Half-Inch's share by a drop's step** — `data_ov024_021fe860`, floats:
+ * 1, ⅛, ¹⁄₁₆ … ¹⁄₂₅₆, 0 — the drop's own one-in-so-many as a share.
+ */
+export const STEAL_SHARES = [1, 0.125, 0.0625, 0.03125, 0.015625, 0.0078125, 0.00390625, 0] as const
+/** The accessory that doubles it — item 18047, `0x467f` (`0x021dfb28`). */
+export const STEAL_DOUBLER = 0x467f
+
+/**
+ * **Half-Inch's chance at a slot**, out of a hundred — `func_ov024_021df924`,
+ * `0x021dfad8`–`0x021dfbc8`, in its floats: the share times 100, times 2 at
+ * the least and 6 at the most, both doubled for {@link STEAL_DOUBLER} and
+ * each held to 50; then by deftness above 51, the least moved toward the
+ * most a 948th of the way a point (`0x446d0000`), the most itself from 999.
+ * The draw for the slot is under it.
+ */
+export function stealChance(share: number, deftness: number, accessory?: number): number {
+  const f = Math.fround
+  let lo = f(f(2) * f(f(share) * f(100)))
+  let hi = f(f(6) * f(f(share) * f(100)))
+  if (accessory === STEAL_DOUBLER) {
+    lo = f(f(2) * lo)
+    hi = f(f(2) * hi)
+  }
+  if (lo > 50) lo = f(50)
+  if (hi > 50) hi = f(50)
+  // The deftness is the record's ten bits, a halfword signed (`0x021df998`–`0x021df9bc`).
+  const d = deftness & 0x3ff
+  if (d > 51) lo = d >= 999 ? hi : f(lo + f(f(f(hi - lo) / f(948)) * f(d - 51)))
+  return lo
+}
+
 /** The family Rotstopper halves (`0x021e7510`). */
 const ROT_FAMILY = 8
 
@@ -469,6 +507,12 @@ export type Change =
    * is watched no more, "…'s rage subsides" (`0x164`). Neither, its fail line.
    */
   | { readonly kind: 'soothe'; readonly chance: number }
+  /**
+   * **Half-Inch** (kind 44, `func_ov024_021df924`): one of the party picks a
+   * monster's pocket — its ordinary item, then its rare — by deftness; see
+   * `stealChance`.
+   */
+  | { readonly kind: 'steal'; readonly chance: number }
   | { readonly kind: 'kill'; readonly chance: number }
   /**
    * **Choir of Angels** (kind 67, `func_ov024_021e13e0`): a share of the most
@@ -807,6 +851,10 @@ export type ChangeResult =
    * — `calmed` — a watch ended; or, neither, `resisted`.
    */
   | 'soothed'
+  /** Half-Inch: {@link ChangeHit.item} pinched — the record's done line. */
+  | 'stole'
+  /** Half-Inch on one with nothing to steal: "But … isn't carrying anything." (`0x25a`). */
+  | 'empty'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -838,6 +886,8 @@ export interface ChangeHit {
   readonly calmed?: boolean
   /** Soothe Sayer's: the tension a step lowered came to — its line by it (`func_ov024_021e373c`). */
   readonly tension?: number
+  /** Half-Inch's: the item pinched. */
+  readonly item?: number
   /**
    * For a level left where it was (`already`): whether the change would have
    * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
@@ -3689,6 +3739,32 @@ export function playRound(
               ...(had > 0 ? { tension: had - 1 } : {}),
               ...(watched ? { calmed: true } : {}),
             }
+          }
+          case 'steal': {
+            // Half-Inch (`func_ov024_021df924`), no test of its landing: one
+            // of the party's (`func_0200ff1c`) at a monster with a record
+            // (`+0x148`); else no result at all — **ours**: its fail line.
+            if (me_.side !== 'party' || them.side !== 'foes' || !them.drops) {
+              return { target, result: 'resisted' }
+            }
+            // Two draws first, one a slot, always (`0x021df9c0`–`0x021df9d4`).
+            const draws = [rng.floatBetween(0, 100), rng.floatBetween(0, 100)]
+            let any = false
+            for (const slot of [0, 1] as const) {
+              const drop = them.drops[slot]
+              // A step of 0 is passed over (`0x021dfa0c`–`0x021dfa14`), as is
+              // one stolen from already (`+0x3d`, `0x021dfaa0`–`0x021dfab8`).
+              // **Ours**: the quest's own pinch (`func_ov024_021df71c`) is not read.
+              if (drop.step === 0 || was.stolen !== undefined) continue
+              const share = STEAL_SHARES[drop.step] ?? 0
+              if (share > 0) any = true
+              if ((draws[slot] as number) < stealChance(share, me_.deftness ?? 0, me_.accessory)) {
+                setStates(target, { stolen: (slot + 1) as 1 | 2 })
+                return { target, result: 'stole', item: drop.item }
+              }
+            }
+            // Nothing to steal: "isn't carrying anything" (`0x021dfde4`–`0x021dfdec`).
+            return { target, result: any ? 'resisted' : 'empty' }
           }
           case 'watch': {
             // Knight Watch (`0x021e1e14`–`0x021e1e78`): no test of its

@@ -824,3 +824,30 @@ export function spellyBreath(maxMp: number, random: GameRandom): number {
   const share = random.floatBetween(f(0.2), f(0.5))
   return Math.trunc(f(f(maxMp) * share))
 }
+
+/**
+ * Half-Inch's chance at a slot — `func_ov024_021df924`, `0x021dfad8`–
+ * `0x021dfbc8`, instruction by instruction: `2 × (share × 100)` and
+ * `6 × (share × 100)`, both doubled where `0x467f` is worn (`0x021dfb34`–
+ * `0x021dfb50`), each held to 50 (`_fgr`); then for a deftness `d` (the
+ * record's ten bits) above 51, the most from 999, else
+ * `lo + (d − 51) × ((hi − lo) ÷ 948)`.
+ */
+export function halfInchChance(share: number, d: number, doubled: boolean): number {
+  let lo = f(f(2) * f(f(share) * f(100)))
+  let hi = f(f(6) * f(f(share) * f(100)))
+  if (doubled) {
+    lo = f(f(2) * lo)
+    hi = f(f(2) * hi)
+  }
+  if (lo > f(50)) lo = f(50)
+  if (hi > f(50)) hi = f(50)
+  if (d > 0x33) {
+    if (d >= 0x3e7) lo = hi
+    else {
+      const step = f(f(hi - lo) / f(948))
+      lo = f(lo + f(f(d - 0x33) * step))
+    }
+  }
+  return lo
+}

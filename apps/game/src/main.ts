@@ -9169,6 +9169,12 @@ function levelOf(member: Member): LevelRow | undefined {
  * Undefined when their vocation's level table did not read, which leaves them
  * out of the fight rather than standing there with nothing.
  */
+/** Equipment slot 9, the accessory, where one is worn — which Half-Inch asks after (`Fighter.accessory`). */
+function accessoryOf(worn: ReadonlyMap<string, number>): { accessory?: number } {
+  const accessory = worn.get('accessory')
+  return accessory === undefined ? {} : { accessory }
+}
+
 function createdFighter(member: Member): Fighter | undefined {
   const row = levelOf(member)
   if (!row) return undefined
@@ -9194,6 +9200,8 @@ function createdFighter(member: Member): Fighter | undefined {
     // What six skills' amounts scale by, with might or deftness — `SKILL_SCALES`.
     strength: row.strength,
     shield: wornBy(member).has('shield'),
+    // Equipment slot 9, which Half-Inch asks after — `Fighter.accessory`.
+    ...accessoryOf(wornBy(member)),
     block: blockChance(wornBy(member).has('shield'), worn.block),
     exp: 0,
     gold: 0,
@@ -9397,6 +9405,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     agility: row.agility + worn.agility,
     // The chance of a critical climbs with deftness past 150 — `criticalChance`.
     deftness: row.deftness,
+    // Equipment slot 9, which Half-Inch asks after — `Fighter.accessory`.
+    ...accessoryOf(wornBy(leader())),
     ...(holdsPanel(leader(), CRITICAL_IN_A_CRISIS) ? { crisisCritical: true } : {}),
     // What the Hero takes of each element: a hundred each, and what is worn
     // added on — the game's own sum (`wornResistances`). Nothing the slice
@@ -9470,6 +9480,10 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     purse: bag.gold,
     known,
     words: loaded.battleWords,
+    // What the monsters carry, by name — Half-Inch's pinch is told by them.
+    loot: new Map(
+      foes.flatMap((f) => (f.drops ?? []).map((d) => [d.item, itemNamed(d.item)] as const)),
+    ),
     names: [
       heroNamed(),
       ...behind.flatMap(({ who, member }) =>
@@ -14348,6 +14362,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
           // Gold Rush's gold, gone from the purse as it acts (post-step 6).
           if (event.kind === 'spell' && event.goldSpent) {
             bag = { ...bag, gold: Math.max(0, bag.gold - event.goldSpent) }
+          }
+          // Half-Inch's pinch, the party's at once (`func_0207ccf0`, `0x021dfc9c`).
+          // **Ours**: where it goes — as a battle's drop does, to the first
+          // living member with room, else the bag.
+          if (event.kind === 'change') {
+            for (const hit of event.hits)
+              if (hit.result === 'stole' && hit.item) give(hit.item, 1, true)
           }
           if (event.kind !== 'item' || !loaded?.itemDefs.get(event.item)?.usedUp) continue
           const list = battleMembers[event.actor]?.carried

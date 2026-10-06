@@ -249,6 +249,12 @@ export interface States {
    */
   readonly watched?: { readonly by: number; readonly turns: number } | undefined
   /**
+   * **Stolen from** by Half-Inch — status `+0x3d`, the slot taken and one
+   * more: 1 the ordinary item, 2 the rare (`func_ov024_021df924`,
+   * `0x021dfbf0`–`0x021dfbfc`). Nothing more is stolen from one with it.
+   */
+  readonly stolen?: 1 | 2 | undefined
+  /**
    * **Right as Rain** — status `+0x14` bit 31, with a count of 6 at `+0x69`
    * (kind 48, `func_ov024_021e01b8`; `func_02088bb4`): at the round's end its
    * holder, standing in the party, gets back the larger of 10 and half their
