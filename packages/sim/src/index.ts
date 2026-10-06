@@ -70,12 +70,17 @@ export { BattleRng } from './battle/rng.ts'
 export {
   buffedAttack,
   buffedMagic,
-  LEVEL_TURNS,
+  countDown,
+  LEVEL_COUNTS,
   type Level,
   levelled,
   NO_STATES,
+  runDown,
   SLEEP_TURNS,
   type States,
+  WEAR_OF,
+  WEAR_TABLE,
+  WEAR_TABLE_SLOW,
   wardMultiplier,
 } from './battle/states.ts'
 export {

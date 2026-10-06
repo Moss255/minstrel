@@ -437,8 +437,35 @@ describe('a change of state', () => {
       change: 'defence',
       hits: [{ target: 0, result: 'lowered' }],
     })
-    // Seven turns, less the Hero's own this round.
-    expect(state.fighters[0]?.states.defence).toEqual({ level: -1, turns: 6 })
+    // Its count of 6 (`func_020878b4`), less the pass after the Hero's own
+    // action this round (`func_ov000_021599f4`).
+    expect(state.fighters[0]?.states.defence).toEqual({ level: -1, turns: 5 })
+  })
+
+  it('runs a level down on its holder’s own passes, and wears it off by its second count', () => {
+    // `func_ov000_021599f4` then `0215858c`: a count of 1 runs out on the
+    // Hero's pass and starts the second at 4; on later passes each takes one
+    // off and draws against 1.0, 0.875, 0.75, 0.625 — at the second count's
+    // last, the table's 1.0 wears it off whatever the draw.
+    let state = startBattle([tough, blob('blob', 999, 0)])
+    state = {
+      ...state,
+      fighters: state.fighters.map((f, i) =>
+        i === 0 ? { ...f, states: { ...f.states, defence: { level: -1, turns: 1 } } } : f,
+      ),
+    }
+    const rng = new BattleRng(7n)
+    const noFoe = { ...DEFAULT_RULES }
+    let played = playRound(state, wait, rng, noFoe)
+    expect(played.state.fighters[0]?.states.defence).toEqual({ level: -1, turns: 0, wearing: 4 })
+    // At most four passes more and it is gone, told as it goes.
+    let worn = false
+    for (let r = 0; r < 4 && !worn; r++) {
+      played = playRound(played.state, wait, rng, noFoe)
+      worn = played.events.some((e) => e.kind === 'wornOff' && e.actor === 0)
+    }
+    expect(worn).toBe(true)
+    expect(played.state.fighters[0]?.states.defence).toEqual({ level: 0, turns: 0 })
   })
 
   it('puts the Hero to sleep, so they lose their turns until they wake', () => {

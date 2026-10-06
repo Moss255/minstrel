@@ -413,12 +413,16 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
 }
 
 /**
- * **A level worn off at the round's end** — the lines `func_ov000_0215858c`
- * hands each one as it wears it off (`0x02158da4`–`0x02158db8`, and `0x1d4`
- * at `0x02159528`): "<ACTOR>'s attack returns to normal" and the like.
+ * **A level worn off after its holder's action** — the lines
+ * `func_ov000_0215858c` hands each one as it wears it off
+ * (`0x02158da4`–`0x02158db8`, and `0x1d4` at `0x02159528`): "<ACTOR>'s
+ * attack returns to normal" and the like; 0 Zone's `0x1c5` (`0x021596f0`),
+ * Rough 'n' Tumble's `0x1da` (`0x02159788`).
  */
-const WORN_OFF: Readonly<Record<LevelStat | 'fizzled', number>> = {
+const WORN_OFF: Readonly<Record<LevelStat | 'fizzled' | 'zeroZone' | 'tumble', number>> = {
   fizzled: 0x1d6,
+  zeroZone: 0x1c5,
+  tumble: 0x1da,
   attack: 0x1ce,
   defence: 0x1cf,
   agility: 0x1db,

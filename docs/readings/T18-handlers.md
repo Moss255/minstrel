@@ -536,3 +536,43 @@ fighter's might and mending at their levels wherever an amount, an accuracy
 or a raising scales by them (`atMagicLevels`); the cure-all over every
 level; the wear-off lines in `battle-scene.ts`. Struck as the Attack: **46**,
 where 55 were — and with Antimagic and Tingle, **44**.
+
+## 10. Coups, the run-down, and what is left — 6 October 2026, carried on
+
+### How a status runs down — applied
+
+§9 read `func_ov000_0215858c` as one count against one table. It is two
+counts, and the half §9 did not find is `func_ov000_021599f4`, which
+`func_ov000_02157d3c` calls right after it for each one in the action's list
+(the one who acted):
+
+- **The count** — the status's byte at `+0x5c + n`, set by its setter
+  (attack 5 at `+0x6e`, `func_020877c0`; defence 6 at `+0x6f`, `020878b4`;
+  agility and charm 6; might, mending and the two wards 5; Fizzle 6 at
+  `+0x60`; 0 Zone 5 at `+0x78`; Rough 'n' Tumble 5 at `+0x79`). Each of the
+  holder's action passes, `021599f4` takes one off every status held; at 0,
+  **the second count** at `+0x7f + n` is set to its start
+  (`0x02159c14`–`0x02159c30`). The offsets and starts are the table at
+  `data_ov000_02182efc`, 26 pairs — 4 for every one but 0 Zone and Rough 'n'
+  Tumble, which start at 1. No draw.
+- **The wear-off** — `0215858c`, before it on the same pass: its first draw
+  at `0x021585bc` always (the "draw after every action" the battle already
+  made), then for each status held whose second count is running, in the
+  order of its blocks (Fizzle `+0x83` at `0x02158804` … attack `+0x91` at
+  `0x02159050`, defence `+0x92`, agility, charm, might, mending, spells
+  `+0x97` at `0x02159428`, breaths `+0x98`, … 0 Zone `+0x9b` at `0x02159688`,
+  Rough 'n' Tumble `+0x9c` at `0x02159720`): that count less one, **a draw of
+  its own** `R(100) / 100`, and the status cleared, its line said, where the
+  table by the count is above it. The table is `0x02182ad4` (1.0, 0.875,
+  0.75, 0.625) for most, `0x02182bd4` (1.0, 0.875, 0.625, 0.375) for the
+  resistance to spells, 0 Zone and Rough 'n' Tumble, among others.
+- So a level of defence holds its holder's next six passes, then wears off
+  by 63, 75, 88 and 100 in 100 over the four after; 0 Zone holds five and
+  goes on the sixth.
+
+The wear-off lines of the two coups are 0 Zone's `0x1c5` (`0x021596f0`) and
+Rough 'n' Tumble's `0x1da` (`0x02159788`).
+
+Built: `countDown`, `runDown`, `LEVEL_COUNTS` and `WEAR_OF` in `states.ts`;
+the battle's after-action pass runs them for the one who acted, in place of
+the reference's turns at the round's end (`wornAfterTurn`, gone).

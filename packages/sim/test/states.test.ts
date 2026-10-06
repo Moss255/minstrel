@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import type { BattleRng } from '../src/battle/rng.ts'
 import {
-  LEVEL_TURNS,
+  countDown,
+  LEVEL_COUNTS,
   levelled,
   moved,
   poisonDamage,
+  runDown,
   sleptThrough,
+  WEAR_OF,
+  WEAR_TABLE,
+  WEAR_TABLE_SLOW,
   wakes,
-  wornAfterTurn,
 } from '../src/battle/states.ts'
 
 /** A generator that always draws the same, below any bound: the odds, tested at their edge. */
@@ -23,25 +27,80 @@ describe('changes of state, as the reference keeps them', () => {
     expect(levelled(9, 5)).toBe(18)
   })
 
-  it('moves a level for seven turns, and not past two either way', () => {
-    expect(moved({ level: 0, turns: 0 }, -1)).toEqual({ level: -1, turns: LEVEL_TURNS })
-    expect(moved({ level: -2, turns: 3 }, -1)).toBeUndefined()
-    expect(moved({ level: 1, turns: 3 }, 1)).toEqual({ level: 2, turns: LEVEL_TURNS })
+  it('moves a level, its count set again, and not past two either way', () => {
+    expect(moved({ level: 0, turns: 0 }, -1, 6)).toEqual({ level: -1, turns: 6 })
+    expect(moved({ level: -2, turns: 3 }, -1, 6)).toBeUndefined()
+    // A setter clears the second count (`func_020878b4`, `0x02087908`).
+    expect(moved({ level: 1, turns: 0, wearing: 2 }, 1, 5)).toEqual({ level: 2, turns: 5 })
+    // Brought back to 0, it is cleared (`0x020878e0`).
+    expect(moved({ level: 1, turns: 4 }, -1, 6)).toEqual({ level: 0, turns: 0 })
+  })
+})
+
+describe('how a status runs down — the game’s (`func_ov000_0215858c`, `021599f4`)', () => {
+  it('sets the counts its setters store', () => {
+    // `func_020877c0` 5, `020878b4` 6, the agility and charm setters 6, might,
+    // mending and the wards 5, Fizzle 6, 0 Zone and Rough 'n' Tumble 5.
+    expect(LEVEL_COUNTS).toEqual({
+      attack: 5,
+      defence: 6,
+      agility: 6,
+      might: 5,
+      mending: 5,
+      spells: 5,
+      breaths: 5,
+      fizzled: 6,
+      zeroZone: 5,
+      tumble: 5,
+    })
   })
 
-  it('wears a level off only once its turns are out, by 62, 75, 87 and 100 in 100', () => {
-    expect(wornAfterTurn({ level: -1, turns: 2 }, drawing(0))).toEqual({
-      level: { level: -1, turns: 1 },
+  it('takes a pass off the count, and at 0 starts the second (`0x02159c14`)', () => {
+    expect(countDown({ level: -1, turns: 6 }, 4)).toEqual({ level: -1, turns: 5 })
+    expect(countDown({ level: -1, turns: 1 }, 4)).toEqual({ level: -1, turns: 0, wearing: 4 })
+    // Nothing held, or the second already running: left as it is.
+    const running = { level: 2, turns: 0, wearing: 3 }
+    expect(countDown(running, 4)).toBe(running)
+    expect(countDown({ level: 0, turns: 0 }, 4)).toEqual({ level: 0, turns: 0 })
+  })
+
+  it('wears it off where the table by the second count is above the draw', () => {
+    // The tables at `0x02182ad4` and `0x02182bd4`, with their fifth word.
+    expect(WEAR_TABLE.slice(0, 4)).toEqual([1, 0.875, 0.75, 0.625])
+    expect(WEAR_TABLE_SLOW.slice(0, 4)).toEqual([1, 0.875, 0.625, 0.375])
+    expect(WEAR_TABLE[4]).toBeGreaterThan(0)
+    expect(WEAR_TABLE[4]).toBeLessThan(1e-38)
+    // Its odds over the passes: 63, 75, 88 and 100 in 100 by the first; the
+    // spells' ward 38, 63, 88, 100 by the second.
+    const odds = (wearing: number, table: readonly number[]) =>
+      Array.from({ length: 100 }, (_, d) => d).filter(
+        (d) => runDown({ level: 1, turns: 0, wearing }, table, drawing(d)).wore,
+      ).length
+    expect([4, 3, 2, 1].map((w) => odds(w, WEAR_TABLE))).toEqual([63, 75, 88, 100])
+    expect([4, 3, 2, 1].map((w) => odds(w, WEAR_TABLE_SLOW))).toEqual([38, 63, 88, 100])
+    expect(WEAR_OF.spells.table).toBe(WEAR_TABLE_SLOW)
+    // 0 Zone's second count starts at 1: gone on the next pass, whatever the draw.
+    expect(WEAR_OF.zeroZone.start).toBe(1)
+    expect(odds(1, WEAR_OF.zeroZone.table)).toBe(100)
+  })
+
+  it('keeps it where the draw is not under, the second count a pass less', () => {
+    expect(runDown({ level: -1, turns: 0, wearing: 4 }, WEAR_TABLE, drawing(70))).toEqual({
+      level: { level: -1, turns: 0, wearing: 3 },
       wore: false,
     })
-    expect(wornAfterTurn({ level: -1, turns: 1 }, drawing(62)).wore).toBe(true)
-    expect(wornAfterTurn({ level: -1, turns: 1 }, drawing(63)).wore).toBe(false)
-    // The 75 wants the draw one lower: 74 wears it off, 75 does not.
-    expect(wornAfterTurn({ level: 1, turns: 0 }, drawing(74)).wore).toBe(true)
-    expect(wornAfterTurn({ level: 1, turns: 0 }, drawing(75)).wore).toBe(false)
-    expect(wornAfterTurn({ level: 1, turns: -5 }, drawing(99)).wore).toBe(true)
+    // No second count running: no draw, nothing changed.
+    let drawn = 0
+    const counting = {
+      below: () => {
+        drawn++
+        return 0
+      },
+    } as unknown as BattleRng
+    const held = { level: 1, turns: 3 }
+    expect(runDown(held, WEAR_TABLE, counting)).toEqual({ level: held, wore: false })
+    expect(drawn).toBe(0)
   })
-
   it('keeps a sleeper asleep two turns, then wakes it by 37, 62, 87 and 100 in 100', () => {
     expect(sleptThrough(2, drawing(0))).toEqual({ sleep: 1, woke: false })
     expect(sleptThrough(1, drawing(37))).toEqual({ sleep: undefined, woke: true })

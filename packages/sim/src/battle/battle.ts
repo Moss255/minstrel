@@ -20,15 +20,18 @@ import type { BattleRng } from './rng.ts'
 import {
   buffedAttack,
   buffedMagic,
-  LEVEL_TURNS,
+  type Counted,
+  countDown,
+  LEVEL_COUNTS,
   levelled,
   moved,
   NO_STATES,
   poisonDamage,
+  runDown,
   type States,
+  WEAR_OF,
   wakes,
   wardMultiplier,
-  wornAfterTurn,
 } from './states.ts'
 import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
 
@@ -356,12 +359,6 @@ export type LevelStat =
   | 'mending'
   | 'spells'
   | 'breaths'
-/**
- * How long Fizzle holds before it may wear off. **Ours**: the levels' run-down
- * (`LEVEL_TURNS`), where the game sets a count of 6 (`func_020888a4`) and runs
- * it down by `func_ov000_0215858c`.
- */
-const FIZZLE_TURNS = LEVEL_TURNS
 
 /** Every level stat, in their order in `+0x58`. */
 export const LEVEL_STATS: readonly LevelStat[] = [
@@ -372,6 +369,27 @@ export const LEVEL_STATS: readonly LevelStat[] = [
   'mending',
   'spells',
   'breaths',
+]
+
+/**
+ * **The statuses a run-down visits, in its order** — `func_ov000_0215858c`'s
+ * blocks: Fizzle (`+0x83`, `0x02158804`), then attack, defence, agility,
+ * might, mending, the resistances to spells and to breaths (`+0x91`–`+0x98`,
+ * `0x02159050` on), then 0 Zone and Rough 'n' Tumble (`+0x9b`, `+0x9c`,
+ * `0x02159688`, `0x02159720`). Those it visits that the battle does not keep
+ * are left out.
+ */
+const RUN_DOWN_ORDER: readonly (Counted & keyof States)[] = [
+  'fizzled',
+  'attack',
+  'defence',
+  'agility',
+  'might',
+  'mending',
+  'spells',
+  'breaths',
+  'zeroZone',
+  'tumble',
 ]
 
 export type Change =
@@ -717,7 +735,7 @@ export type BattleEvent =
   | {
       readonly kind: 'wornOff'
       readonly actor: number
-      readonly stat: LevelStat | 'fizzled'
+      readonly stat: LevelStat | 'fizzled' | 'zeroZone' | 'tumble'
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -1246,7 +1264,7 @@ export function playRound(
       if (!critical && Math.fround(draw) >= Math.fround(byte)) return undefined
     }
     const level = (fighters[target] as FighterState).states[stat] ?? { level: 0, turns: 0 }
-    const next = moved(level, by)
+    const next = moved(level, by, LEVEL_COUNTS[stat])
     // Not moved, nothing is said (`0x021e2fc8`).
     if (!next) return undefined
     setStates(target, { [stat]: next })
@@ -1903,8 +1921,34 @@ export function playRound(
   }
   /** Whether a fighter can act — and so dodge or block: standing and not asleep (`func_ov000_02155f9c`). */
   const canAct = (f: FighterState) => alive(f) && f.states.sleep === undefined
-  /** The draw after every action while the battle goes on (`func_ov000_0215858c`, `0x021585bc`). */
-  let afterDue = false
+  /**
+   * **The run-down after every action while the battle goes on**
+   * (`func_ov000_02157d3c`, for the one who acted): `func_ov000_0215858c` —
+   * its first draw, `0x021585bc`, always; then each status of theirs with
+   * its second count running, in the game's order, a count less and a draw
+   * of its own against its table (see `runDown`) — then
+   * `func_ov000_021599f4`, each status's count a pass less (`countDown`).
+   * Undefined when nobody acted since the last.
+   */
+  let afterDue: number | undefined
+  const afterPass = (actor: number) => {
+    rng.below(100)
+    const f = fighters[actor]
+    if (!f || !alive(f)) return
+    for (const stat of RUN_DOWN_ORDER) {
+      const level = (fighters[actor] as FighterState).states[stat]
+      if (!level) continue
+      const worn = runDown(level, WEAR_OF[stat].table, rng)
+      if (worn.level !== level) setStates(actor, { [stat]: worn.level })
+      if (worn.wore) events.push({ kind: 'wornOff', actor, stat })
+    }
+    for (const stat of RUN_DOWN_ORDER) {
+      const level = (fighters[actor] as FighterState).states[stat]
+      if (!level) continue
+      const next = countDown(level, WEAR_OF[stat].start)
+      if (next !== level) setStates(actor, { [stat]: next })
+    }
+  }
 
   // **The command phase** (`ProcessCombatTurn`, `0x0215d9fc`–`0x0215e0a8`):
   // after every fighter's initiative and before anyone acts, in that order,
@@ -1930,14 +1974,14 @@ export function playRound(
 
   for (const { actor, command: planned } of queue) {
     settleResolved()
-    if (afterDue && outcome === 'ongoing') rng.below(100)
-    afterDue = false
+    if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
+    afterDue = undefined
     const me = fighters[actor]
     if (!me || !alive(me)) continue
     // A flight that failed: the party's round is lost (above).
     if (caught && me.side === 'party') continue
     if (!acted.includes(actor)) acted.push(actor)
-    afterDue = true
+    afterDue = actor
     // **The charm draws** (`func_ov000_0215704c`): a monster able to act whose
     // status byte `+0x53` — its record's 22nd resistance — is not 0 makes one
     // draw for each of the party standing. **Ours**: none of the party's
@@ -2380,7 +2424,7 @@ export function playRound(
             // was (`0x021dcf18`–`0x021dcf3c`) — its count set again either way.
             if (!landed) return { target, result: 'resisted' }
             const again = (was.fizzled?.level ?? 0) !== 0
-            setStates(target, { fizzled: { level: 1, turns: FIZZLE_TURNS } })
+            setStates(target, { fizzled: { level: 1, turns: LEVEL_COUNTS.fizzled } })
             return { target, result: 'fizzled', ...(again ? { again: true } : {}) }
           }
           case 'unparalyse':
@@ -2416,7 +2460,7 @@ export function playRound(
           default: {
             if (!landed) return { target, result: 'resisted' }
             const level = was[change.kind] ?? { level: 0, turns: 0 }
-            const next = moved(level, change.by)
+            const next = moved(level, change.by, LEVEL_COUNTS[change.kind])
             // The rider, from the handler that has landed (`0x021db674`): a
             // level's always rolls, its draw first (`func_ov024_021e2ebc`).
             if (changing.rider) rideOn(target, changing.rider, changing.action, rode)
@@ -2793,23 +2837,8 @@ export function playRound(
   }
 
   settleResolved()
-  if (afterDue && outcome === 'ongoing') rng.below(100)
+  if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
   if (outcome === 'ongoing') {
-    // Each who took a turn has a turn off its levels, and they may wear off.
-    for (const i of acted) {
-      const f = fighters[i]
-      if (!f || !alive(f)) continue
-      // **Ours**: the levels in their order in `+0x58`, each run down as
-      // defence's is. The game's own run-down is `func_ov000_0215858c` (read
-      // 6 October 2026, not applied — `docs/readings/T18-handlers.md` §9).
-      for (const stat of [...LEVEL_STATS, 'fizzled'] as const) {
-        const level = (fighters[i] as FighterState).states[stat]
-        if (!level) continue
-        const worn = wornAfterTurn(level, rng)
-        setStates(i, { [stat]: worn.level })
-        if (worn.wore) events.push({ kind: 'wornOff', actor: i, stat })
-      }
-    }
     // A coup de grâce held a round less, and gone when its count runs out
     // (`func_ov000_02157e1c`, `0x021581e8`–`0x02158238`) — no draw.
     for (let i = 0; i < fighters.length; i++) {

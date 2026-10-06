@@ -1,15 +1,21 @@
 import type { BattleRng } from './rng.ts'
 
 /**
- * A fighter's changes of state in battle, translated from DQIX/BattleEmulator
- * (MIT — see `damage.ts`), which reproduces the game's code:
+ * A fighter's changes of state in battle. What is translated from
+ * DQIX/BattleEmulator (MIT — see `damage.ts`), which reproduces the game's
+ * code, and what is the game's own, read since:
  *
  * - **defence and agility levels**, −2 to +2, multiplying the stat by 0.25,
  *   0.5, 1, 1.5 and 2 — the game's own multipliers, and the product **rounded
  *   half up** as its `RoundUp` does (see {@link levelled});
- * - a level lasting {@link LEVEL_TURNS} turns, a turn off after each of its
- *   holder's turns, then wearing off by 62, 75, 87 and 100 in 100 as the turns
- *   run past — the reference's `0x0215a8a8`, whose 75 wants the draw one lower;
+ * - **how a level runs down — the game's** (read 6 October 2026, task 18;
+ *   `docs/readings/T18-handlers.md` §10): a count set with it — {@link
+ *   LEVEL_COUNTS} — less one on each of its **holder's own action passes**
+ *   (`func_ov000_021599f4`), and at 0 a second count of 4; from then, on each
+ *   of the holder's passes, that count less one and a draw of the battle's,
+ *   `R(100) / 100`, against a table by it — the level clears where the table
+ *   is above the draw (`func_ov000_0215858c`). See {@link countDown} and
+ *   {@link runDown};
  * - **sleep** for {@link SLEEP_TURNS} turns, a turn off on each of the
  *   sleeper's own, then waking on it by 37, 62, 87 and 100 in 100 — its
  *   `sleepTable`;
@@ -23,8 +29,18 @@ import type { BattleRng } from './rng.ts'
 export interface Level {
   /** From −2 to +2. */
   readonly level: number
-  /** Turns left before it may wear off; 0 and below once they are out. */
+  /**
+   * Its count — the status's byte at `+0x5c` and on (attack's `+0x6e`):
+   * its holder's action passes left before it may wear off. See
+   * {@link countDown}.
+   */
   readonly turns: number
+  /**
+   * Its second count, once the first is out — the byte `0x23` further on
+   * (attack's `+0x91`): 0 until then, and the wear-off table's index after
+   * each pass takes one off. See {@link runDown}.
+   */
+  readonly wearing?: number
 }
 
 export interface States {
@@ -81,6 +97,20 @@ export interface States {
    * INFERRED — is not read.
    */
   readonly paralysed?: boolean
+  /**
+   * **0 Zone** — status `+0x18` bit 9, with a count of 5 at `+0x78` (kind 68,
+   * `func_ov024_021e1580`; `func_020890d4`): no MP is asked of its holder's
+   * actions (`func_ov024_021eadfc`, read by `func_ov024_021eaa50` at
+   * `0x021eabd8`). Kept as a level of 1, to run down as the game runs it.
+   */
+  readonly zeroZone?: Level
+  /**
+   * **Rough 'n' Tumble** — status `+0x18` bit 10, with a count of 5 at
+   * `+0x79` (kind 70, `func_ov024_021e1824`; `func_02089124`). What it does
+   * is read by `func_ov000_02156404`'s callers — see `battle.ts`. Kept as a
+   * level of 1.
+   */
+  readonly tumble?: Level
 }
 
 export const NO_STATES: States = {
@@ -90,8 +120,62 @@ export const NO_STATES: States = {
   agility: { level: 0, turns: 0 },
 }
 
-/** How long a level holds before it may wear off — the reference's Kasap and Deceleratle. */
-export const LEVEL_TURNS = 7
+/**
+ * **The count a level is set with** — what each setter stores at its byte
+ * (USA ARM9): attack 5 at `+0x6e` (`func_020877c0`),
+ * defence 6 at `+0x6f` (`func_020878b4`, `0x02087900`), agility 6 at `+0x70`,
+ * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
+ * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`); Fizzle 6 at
+ * `+0x60` (`func_020888a4`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
+ * Tumble 5 at `+0x79` (`func_02089124`). Every setter stores its second count
+ * 0 beside it.
+ */
+export const LEVEL_COUNTS = {
+  attack: 5,
+  defence: 6,
+  agility: 6,
+  might: 5,
+  mending: 5,
+  spells: 5,
+  breaths: 5,
+  fizzled: 6,
+  zeroZone: 5,
+  tumble: 5,
+} as const
+
+/** The kinds of count {@link LEVEL_COUNTS} names. */
+export type Counted = keyof typeof LEVEL_COUNTS
+
+/**
+ * **The two wear-off tables**, by the second count after it has taken one
+ * off (`func_ov000_0215858c`): `0x02182ad4` — 1.0, 0.875, 0.75, 0.625 — and
+ * `0x02182bd4` — 1.0, 0.875, 0.625, 0.375 — each with a fifth word of
+ * `0x0000ffff`, a float a shade above nothing that a second count never
+ * reaches (it starts at 4 and is taken one from before it is looked up).
+ */
+const DENORMAL = Math.fround(9.183409485952689e-41)
+export const WEAR_TABLE = [1, 0.875, 0.75, 0.625, DENORMAL].map(Math.fround)
+export const WEAR_TABLE_SLOW = [1, 0.875, 0.625, 0.375, DENORMAL].map(Math.fround)
+
+/**
+ * Which table each runs down by, and what its second count starts at
+ * (`data_ov000_02182efc`, read by `func_ov000_021599f4`): the levels and
+ * Fizzle 4, by the first table — but the resistance to spells by the second
+ * (its block, `0x02159428` on); 0 Zone and Rough 'n' Tumble 1, by the second, so they
+ * go on the pass after their count runs out, a draw spent all the same.
+ */
+export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start: number }>> = {
+  attack: { table: WEAR_TABLE, start: 4 },
+  defence: { table: WEAR_TABLE, start: 4 },
+  agility: { table: WEAR_TABLE, start: 4 },
+  might: { table: WEAR_TABLE, start: 4 },
+  mending: { table: WEAR_TABLE, start: 4 },
+  spells: { table: WEAR_TABLE_SLOW, start: 4 },
+  breaths: { table: WEAR_TABLE, start: 4 },
+  fizzled: { table: WEAR_TABLE, start: 4 },
+  zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
+  tumble: { table: WEAR_TABLE_SLOW, start: 1 },
+}
 /** How long sleep holds before its sleeper may wake — the reference's Sweet Breath. */
 export const SLEEP_TURNS = 2
 
@@ -108,8 +192,6 @@ function multiplier(level: number): number {
 }
 /** Waking, in 100, as the turns run past — `sleepTable`. */
 const WAKE = [37, 62, 87, 100]
-/** A level wearing off, in 100, as the turns run past. */
-const WEAR = [62, 75, 87, 100]
 
 /**
  * A stat at a level: its value times the level's multiplier, **rounded half
@@ -164,20 +246,47 @@ export function wardMultiplier(level: number): number {
   return f(1 + f(f(-0.25) * f(level)))
 }
 
-/** A level moved by `by` for {@link LEVEL_TURNS} — undefined when it is already at the end it moves toward. */
-export function moved(level: Level, by: number): Level | undefined {
+/**
+ * A level moved by `by`, its count set again and its second cleared, as
+ * every setter does (`func_020878b4`) — undefined when it is already at the
+ * end it moves toward. A level brought to 0 is cleared (`0x020878e0`).
+ */
+export function moved(level: Level, by: number, count: number): Level | undefined {
   const next = Math.max(-2, Math.min(2, level.level + by))
-  return next === level.level ? undefined : { level: next, turns: LEVEL_TURNS }
+  if (next === level.level) return undefined
+  return next === 0 ? { level: 0, turns: 0 } : { level: next, turns: count }
 }
 
-/** A level after its holder's turn: a turn less, and worn off by the reference's odds once they are out. */
-export function wornAfterTurn(level: Level, rng: BattleRng): { level: Level; wore: boolean } {
+/**
+ * **A status's count, on its holder's pass** — `func_ov000_021599f4`: one
+ * less, and at 0 the second count set to its start (`0x02159c14`–
+ * `0x02159c30`). No draw. A status not held is left as it is.
+ */
+export function countDown(level: Level, start: number): Level {
+  if (level.level === 0 || level.turns <= 0) return level
   const turns = level.turns - 1
-  if (level.level === 0 || turns > 0) return { level: { level: level.level, turns }, wore: false }
-  const odds = WEAR[Math.min(3, -turns)] as number
-  const draw = rng.below(100)
-  const wore = odds >= draw + (odds === 75 ? 1 : 0)
-  return { level: { level: wore ? 0 : level.level, turns }, wore }
+  return turns === 0 ? { level: level.level, turns: 0, wearing: start } : { ...level, turns }
+}
+
+/**
+ * **A status wearing off, on its holder's pass** — one block of
+ * `func_ov000_0215858c` (attack's at `0x02159050`–`0x021590ac`): held, with a
+ * second count, that count less one, a draw `R(100) / 100` of the battle's,
+ * and cleared where the table by the count is above it. No draw for one
+ * whose second count is not running.
+ */
+export function runDown(
+  level: Level,
+  table: readonly number[],
+  rng: BattleRng,
+): { level: Level; wore: boolean } {
+  if (level.level === 0 || !level.wearing) return { level, wore: false }
+  const wearing = level.wearing - 1
+  const draw = Math.fround(Math.fround(rng.below(100)) / 100)
+  const wore = (table[wearing] as number) > draw
+  return wore
+    ? { level: { level: 0, turns: 0 }, wore: true }
+    : { level: { level: level.level, turns: 0, wearing }, wore: false }
 }
 
 /**
