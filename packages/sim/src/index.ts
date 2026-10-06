@@ -56,6 +56,9 @@ export {
   partyAmount,
   physicalDamage,
   resistanceTo,
+  type ScaleBy,
+  SKILL_SCALES,
+  scaleStat,
 } from './battle/damage.ts'
 export { DROP_CHANCES, DropRng, type DropWon, dropsWon, type Filcher } from './battle/drops.ts'
 export { bandAdd, experienceShares, type Sharer } from './battle/experience.ts'

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { ActionEffect, ActionReach } from '@minstrel/game-formats'
+import { SKILL_SCALES } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
 import { battleSpellOf, blowOf, partyChangeOf } from '../src/battle-scene.ts'
 import { type Loaded, load } from '../src/load.ts'
@@ -61,6 +62,14 @@ describe.skipIf(!romPath)(
         levels: 1,
       })
       expect(blowOf(action(87))?.rider?.slot).toBe(7)
+    })
+
+    it('scales the six of the game’s table by its numbers, each record saying it scales', () => {
+      for (const id of [67, 68, 74, 102, 114, 144]) {
+        expect(action(id).range?.party.scales).toEqual(SKILL_SCALES.get(id))
+      }
+      // Gigaslash's own range stays the record's: 160 to 360, give or take 20.
+      expect(action(67).range?.party).toMatchObject({ min: 160, max: 360 })
     })
 
     it('strikes 55 of them as the Attack now, where 76 were', () => {

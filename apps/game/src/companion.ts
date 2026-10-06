@@ -616,6 +616,7 @@ export function companionFighter(
     // What a spell's amount may scale by — `attnpc`'s own, INFERRED as the rest are.
     might: who.numbers.magicalMight,
     mending: who.numbers.magicalMending,
+    strength: who.numbers.strength,
     shield: who.shield !== undefined,
     // The game's, from what is worn — `blockChance`. Only with `numbersOf`.
     ...(numbersOf

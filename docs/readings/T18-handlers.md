@@ -305,9 +305,8 @@ Wait, Defending Champion …).
 
 **Played as a plain blow, their own code unread:** Propeller Blade,
 Crosscutter Throw, Gold Rush (its post-step 6, gold spent,
-`data_ov024_021ff3f8`), and the six that scale by the user's number and what
-they hold — Gigaslash, Gigagash, Lightning Storm, Hand of God, Whopper Chop,
-Boulder Toss — by the table at `0x021fe8b6` (`docs/conformance.md`).
+`data_ov024_021ff3f8`). ~~The six that scale by the table at `0x021fe8b6`~~
+— read and built 6 October 2026, §8.
 
 **Riders not played** (`data_ov024_021ff450`): 1 `021e2bd0` (the dances' and
 War Cry's — a turn lost, INFERRED), 5 and 6 (the antidotes') `021e324c`,
@@ -330,3 +329,36 @@ round's end; a raised one comes back with at least 1 HP; the flags a
 raising and a waking set (`+0x3a`, `+0x3b` bit 0) are not kept; Whack's
 heavenly protection (`func_ov024_021ea78c`) is a status not kept, so it never
 spares; the cure-all clears only what the battle keeps.
+
+## 8. Finishing what §7 left — 6 October 2026
+
+### The six skills of the table at `0x021fe8b6`
+
+`GetAttackBaseDamage` (`0x021e7bc0`), its arm for one of the party whose
+amount scales (`+0x18` bits 16–17 at 2, `0x021e7c0c`–`0x021e7c1c`):
+
+- the record's own number first — `+0x10` bit 14 magical might, bit 15
+  mending, the fighter's `[obj+0x138]+0x10` bits 10–19 and 20–29 — with the
+  record's `lo` and `hi` (`+0x04` bits 12–21, 22–31) (`0x021e7c34`–`0x021e7ca0`);
+- then 0x1c halfwords copied from `0x021fe8b6` to the stack
+  (`0x021e7ca4`–`0x021e7cbc`): seven entries of `id, number, lo, hi`, the last
+  `−1`. On the cartridge: **67 Gigaslash, 68 Gigagash, 74 Lightning Storm
+  500–1,998; 102 Hand of God 300–999; 114 Whopper Chop 250–600; 144 Boulder
+  Toss 500–1,998**;
+- the numbers filled in (`0x021e7cc0`–`0x021e7d2c`): `A` = the character
+  record's (`[obj+0x150]`) word 0 bits 0–9, and the fighter's magical might
+  now — `A + might` for the first three, `A` for Hand of God and Whopper Chop,
+  `A + [rec+4]` bits 0–9 for Boulder Toss; each kept in sixteen bits, signed;
+- the action's id (`+0x04` bits 0–11) looked up until the `−1`
+  (`0x021e7d3c`–`0x021e7d80`); a match takes the table's number, `lo` and
+  `hi`, and goes on through the same three arms as a record's own scaling
+  (`0x021e7d8c` on) — the least at or under `lo`, the most at or over `hi`.
+
+`[rec+4]` bits 0–9 is deftness (`RollCritical`, `0x02156d28`; the flight's
+roll, `0x0215f9d4`). **`A` is strength — INFERRED**: the record's word 1
+starting with deftness puts word 0 at strength, resilience and agility in
+the level tables' order, and nothing read here says otherwise.
+
+Built: `SKILL_SCALES` and `scaleStat` in the sim's `damage.ts`; `load.ts`
+gives the six their table's scaling; a fighter carries its `strength`. The
+amounts stay played as the range's harm (`battleSpellOf`), as before.

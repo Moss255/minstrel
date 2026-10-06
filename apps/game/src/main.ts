@@ -8663,6 +8663,8 @@ function createdFighter(member: Member): Fighter | undefined {
     ),
     might: row.magicalMight,
     mending: row.magicalMending,
+    // What six skills' amounts scale by, with might or deftness — `SKILL_SCALES`.
+    strength: row.strength,
     shield: wornBy(member).has('shield'),
     block: blockChance(wornBy(member).has('shield'), worn.block),
     exp: 0,
@@ -8874,6 +8876,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     // What a spell's amount may scale by — the level's own; what is worn is not added, ours.
     might: row.magicalMight,
     mending: row.magicalMending,
+    // What six skills' amounts scale by, with might or deftness — `SKILL_SCALES`.
+    strength: row.strength,
     shield: wornBy(leader()).has('shield'),
     // The game's: what is worn says, and only behind a shield — `blockChance`.
     block: blockChance(wornBy(leader()).has('shield'), worn.block),

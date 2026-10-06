@@ -148,7 +148,14 @@ import {
 import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
 import type { Model } from '@minstrel/nitro-gfx'
 import { parseRomHeader, readNitroFs } from '@minstrel/nitrofs'
-import { type CollisionWorld, createCollisionWorld, groundBelow, PERSON } from '@minstrel/sim'
+import {
+  type CollisionWorld,
+  createCollisionWorld,
+  groundBelow,
+  PERSON,
+  type ScaleBy,
+  SKILL_SCALES,
+} from '@minstrel/sim'
 import { type AssembledMap, assembleMap, type MapLighting, WORLD_SCALE } from '@minstrel/world'
 import { TITLE_SCRIPTS, type TitleScript } from './accolades.ts'
 import type { BattleWords } from './battle-scene.ts'
@@ -557,7 +564,7 @@ export interface ItemEffect {
           readonly min: number
           readonly max: number
           readonly scales?: {
-            readonly by: 'might' | 'mending'
+            readonly by: ScaleBy
             readonly lo: number
             readonly hi: number
           }
@@ -1907,6 +1914,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
     }
     for (const action of actions) {
       if (out.has(action.id)) continue
+      const skillScale = SKILL_SCALES.get(action.id)
       const range = action.range ? ranges.get(action.range) : undefined
       out.set(action.id, {
         action: action.id,
@@ -1956,10 +1964,14 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           party: {
             min: range.party,
             max: range.peak,
-            // Only an action whose record says its amount scales, and by what.
-            ...(action.amountScales && action.scalesBy
-              ? { scales: { by: action.scalesBy, ...action.scaleRange } }
-              : {}),
+            // Only an action whose record says its amount scales, and by what —
+            // or, for the six in the game's own table, by its number between
+            // its `lo` and `hi` (`SKILL_SCALES`, `GetAttackBaseDamage`).
+            ...(action.amountScales && skillScale
+              ? { scales: skillScale }
+              : action.amountScales && action.scalesBy
+                ? { scales: { by: action.scalesBy, ...action.scaleRange } }
+                : {}),
           },
         },
         foeRange: range && { base: range.base, spread: range.spread },

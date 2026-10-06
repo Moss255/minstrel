@@ -12,6 +12,8 @@ import {
   partyAmount,
   physicalDamage,
   resistanceTo,
+  type ScaleBy,
+  scaleStat,
 } from './damage.ts'
 import { revivedHp, scaledAccuracy } from './handlers.ts'
 import type { BattleRng } from './rng.ts'
@@ -153,6 +155,11 @@ export interface Fighter {
    */
   readonly family?: number
   readonly metal?: boolean
+  /**
+   * Strength — the character record's, without what is worn — which six skills'
+   * amounts scale by; see `SKILL_SCALES`. Nothing when not given.
+   */
+  readonly strength?: number
   /** Magical might and magical mending, which a spell's amount may scale by. Nothing when not given. */
   readonly might?: number
   readonly mending?: number
@@ -275,7 +282,7 @@ export interface Heal {
   readonly party?: {
     readonly min: number
     readonly max: number
-    readonly scales?: { readonly by: 'might' | 'mending'; readonly lo: number; readonly hi: number }
+    readonly scales?: { readonly by: ScaleBy; readonly lo: number; readonly hi: number }
   }
 }
 
@@ -747,7 +754,7 @@ function amountFor(rng: BattleRng, user: Fighter, amount: Heal): number {
   return partyAmount(
     rng,
     scales
-      ? { min, max, scales: { stat: user[scales.by] ?? 0, lo: scales.lo, hi: scales.hi } }
+      ? { min, max, scales: { stat: scaleStat(scales.by, user), lo: scales.lo, hi: scales.hi } }
       : { min, max },
     amount.spread,
   )

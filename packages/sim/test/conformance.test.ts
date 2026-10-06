@@ -16,6 +16,8 @@ import {
   levelled,
   monsterHp,
   partyAmount,
+  SKILL_SCALES,
+  scaleStat,
   physicalDamage,
   resistanceTo,
 } from '../src/index.ts'
@@ -650,6 +652,33 @@ describe('an action’s amount', () => {
           const mine = partyAmount(ours, { min: range.min, max: range.max, scales }, range.spread)
           if (mine !== actionAmount(new GameRandom(seed), range, 'party', scales)) wrong++
           if (ours.drawn !== 1) wrong++
+        }
+      }
+    }
+    expect(wrong).toBe(0)
+  })
+
+  it('scales the six skills of the table at 0x021fe8b6 by strength and the rest, between its lo and hi', () => {
+    // Gigaslash's own range, 160 to 360 give or take 20; the table's 500 and 1,998.
+    const gigaslash = SKILL_SCALES.get(67)
+    expect(gigaslash).toEqual({ by: 'strengthMight', lo: 500, hi: 1998 })
+    expect(SKILL_SCALES.get(114)).toEqual({ by: 'strength', lo: 250, hi: 600 })
+    expect(SKILL_SCALES.get(144)?.by).toBe('strengthDeftness')
+    expect(scaleStat('strengthMight', { strength: 400, might: 300 })).toBe(700)
+    expect(scaleStat('strength', { strength: 400, might: 300 })).toBe(400)
+    expect(scaleStat('strengthDeftness', { strength: 400, deftness: 250 })).toBe(650)
+    // Kept in sixteen bits, signed, as the game's `lsl`/`asr` pair keeps it.
+    expect(scaleStat('strength', { strength: 0x8001 })).toBe(-0x7fff)
+    let wrong = 0
+    const range = { base: 160, min: 160, max: 360, spread: 20 }
+    for (let strength = 0; strength <= 999; strength += 13) {
+      for (const might of [0, 250, 999]) {
+        const stat = scaleStat('strengthMight', { strength, might })
+        const scales = { stat, lo: 500, hi: 1998 }
+        for (let seed = 1n; seed <= 20n; seed++) {
+          const ours = BattleRng.fromGameState(seed)
+          const mine = partyAmount(ours, { min: 160, max: 360, scales }, 20)
+          if (mine !== actionAmount(new GameRandom(seed), range, 'party', scales)) wrong++
         }
       }
     }

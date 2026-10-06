@@ -141,8 +141,9 @@ export interface PartyAmount {
  * spent even when the least and the most are the same, as the herb's 35 and
  * 35 are.
  *
- * Not here: six skills (Gigaslash among them) that scale by a number put
- * together from the user's and what they hold, by a table at `0x021fe8b6`.
+ * Six skills scale by a number put together from the user's own, and between
+ * a `lo` and a `hi` of the game's rather than the record's — see
+ * {@link SKILL_SCALES}; the arms are these same ones.
  */
 export function partyAmount(rng: BattleRng, amount: PartyAmount, spread: number): number {
   const f = Math.fround
@@ -158,6 +159,65 @@ export function partyAmount(rng: BattleRng, amount: PartyAmount, spread: number)
   else if (stat >= hi) base = max
   else base = Math.trunc(f(f(stat - lo) * f(f(max - min) / f(hi - lo)))) + min
   return drawnAmount(rng, base, spread)
+}
+
+/**
+ * What a skill's amount scales by, where the number is put together — see
+ * {@link SKILL_SCALES}. `might` and `mending` are an action's own, named by its
+ * record; the others are the table's.
+ */
+export type ScaleBy = 'might' | 'mending' | 'strengthMight' | 'strength' | 'strengthDeftness'
+
+/**
+ * **The six skills that scale by the table at `0x021fe8b6`** — read 6 October
+ * 2026 from `GetAttackBaseDamage` (overlay 24, USA `0x021e7bc0`), its arm for
+ * one of the party with an amount that scales (`+0x18` bits 16–17 at 2):
+ * seven entries of four `u16`s — an action, its number, `lo`, `hi` — copied to
+ * the stack (`0x021e7ca4`–`0x021e7cbc`), the numbers filled in
+ * (`0x021e7cc0`–`0x021e7d2c`), and the action's id (`+0x04` bits 0–11)
+ * looked up until the `−1` that ends it (`0x021e7d3c`–`0x021e7d80`). A match
+ * takes the table's number, `lo` and `hi` in place of the record's, and goes
+ * on through the same arms as {@link partyAmount}'s.
+ *
+ * The numbers: the character record's (`[obj + 0x150]`) word 0 bits 0–9 —
+ * **strength, INFERRED** from the level tables' order, the record's word 1
+ * bits 0–9 being deftness (`RollCritical`'s, `0x02156d28`) — plus the
+ * fighter's magical might now (`[obj + 0x138] + 0x10` bits 10–19) for the
+ * first three, alone for the next two, and plus deftness for Boulder Toss.
+ * The sum is kept in sixteen bits, signed.
+ */
+export const SKILL_SCALES: ReadonlyMap<
+  number,
+  { readonly by: ScaleBy; readonly lo: number; readonly hi: number }
+> = new Map([
+  [67, { by: 'strengthMight', lo: 500, hi: 1998 }], // Gigaslash
+  [68, { by: 'strengthMight', lo: 500, hi: 1998 }], // Gigagash
+  [74, { by: 'strengthMight', lo: 500, hi: 1998 }], // Lightning Storm
+  [102, { by: 'strength', lo: 300, hi: 999 }], // Hand of God
+  [114, { by: 'strength', lo: 250, hi: 600 }], // Whopper Chop
+  [144, { by: 'strengthDeftness', lo: 500, hi: 1998 }], // Boulder Toss
+])
+
+/** The number a skill scales by, as the game puts it together — see {@link SKILL_SCALES}. */
+export function scaleStat(
+  by: ScaleBy,
+  of: {
+    readonly strength?: number | undefined
+    readonly might?: number | undefined
+    readonly mending?: number | undefined
+    readonly deftness?: number | undefined
+  },
+): number {
+  const strength = of.strength ?? 0
+  const sum =
+    by === 'might'
+      ? (of.might ?? 0)
+      : by === 'mending'
+        ? (of.mending ?? 0)
+        : by === 'strength'
+          ? strength
+          : strength + (by === 'strengthMight' ? (of.might ?? 0) : (of.deftness ?? 0))
+  return (sum << 16) >> 16
 }
 
 /**
