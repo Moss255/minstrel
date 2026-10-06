@@ -1165,7 +1165,7 @@ function itemKindsOf(rom: Uint8Array): ReadonlyMap<number, ItemKind> {
 }
 
 /** The items as the code holds them, `itemdt_en.nat` — see `readItemDefs`. Empty when it will not read. */
-function itemDefsOf(rom: Uint8Array): ReadonlyMap<number, ItemDef> {
+export function itemDefsOf(rom: Uint8Array): ReadonlyMap<number, ItemDef> {
   for (const leaf of scanCartridge(rom, { pathFilter: '/data/prm/itemdt.gp2' })) {
     if (!/itemdt_en\.nat$/i.test(leaf.path)) continue
     try {

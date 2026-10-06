@@ -177,9 +177,9 @@ describe('setting a knob outright', () => {
 
 describe('the Hero’s own look', () => {
   it('is the face and hair the slice fixed, and the shared build', () => {
-    // `p_f006` is `HERO_FACE` and `p_h000a` is `HERO_HAIR` — the choices the
-    // slice made because it cuts the prologue that would ask.
-    expect(faceOf(HERO_APPEARANCE)).toBe('p_f006')
+    // `p_f004` is `HERO_FACE` — face 9024, the man's on every vocation
+    // preset — and `p_h000a` is `HERO_HAIR`, ours, until creation asks.
+    expect(faceOf(HERO_APPEARANCE)).toBe('p_f004')
     expect(hairOf(HERO_APPEARANCE)).toBe('p_h000a')
     // Build 3 is the one both sexes share, so it says nothing about them.
     expect(buildOf(HERO_APPEARANCE, TABLE)).toEqual(
@@ -249,5 +249,26 @@ describe('the creation walk', () => {
     expect(makingRows(past)).toEqual([])
     expect(makingTitle(past)).toBe('Nothing is being made.')
     expect(makingPick(past, 0)).toEqual({ made: HERO_APPEARANCE })
+  })
+})
+
+describe('creation’s hairs and faces, as items', () => {
+  // The items' models for each sex, as `itemdt` gives them on the cartridge's
+  // pattern: hair 9000 + k is the man's 10k; the woman's hair 9006 is 180.
+  const modelOf = (item: number, sex: number) => {
+    if (item >= 9020) return item - 9020 + (sex === SEX.female ? 10 : 0)
+    if (sex === SEX.male) return (item - 9000) * 10
+    return item === 9006 ? 180 : 100 + (item - 9000) * 10
+  }
+
+  it('remaps each choice by sex, as overlay 9 does', () => {
+    const man = { ...HERO_APPEARANCE, sex: SEX.male }
+    const woman = { ...HERO_APPEARANCE, sex: SEX.female }
+    const at = (look: Appearance, knob: 'hair' | 'face') =>
+      makingRows({ look, at: CREATION_ORDER.indexOf(knob) }, modelOf)
+    expect(at(man, 'hair').slice(0, 2)).toEqual(['p_h000a', 'p_h010a'])
+    expect(at(woman, 'hair').slice(0, 2)).toEqual(['p_h180a', 'p_h100a'])
+    expect(at(man, 'face').slice(0, 2)).toEqual(['p_f004', 'p_f000'])
+    expect(at(woman, 'face').slice(0, 2)).toEqual(['p_f011', 'p_f010'])
   })
 })

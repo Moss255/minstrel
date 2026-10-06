@@ -88,6 +88,7 @@ const file = (presets: Value[][], strings: string[], count = presets.length) =>
 describe('readCharacterPresets', () => {
   it('reads what a preset is dressed in, and its sex and proportions', () => {
     const warrior = preset({
+      77: int(9024),
       78: int(9006),
       79: int(13001),
       80: int(16001),
@@ -104,7 +105,8 @@ describe('readCharacterPresets', () => {
     const [read] = readCharacterPresets(file([warrior], ['ナイン']))
     expect(read?.index).toBe(0)
     expect(read?.outfit).toEqual({
-      face: 9006,
+      face: 9024,
+      hair: 9006,
       armour: 13001,
       legwear: 16001,
       gloves: 15001,
@@ -134,11 +136,10 @@ describe('readCharacterPresets', () => {
   it('keeps the values it has not read rather than dropping them', () => {
     // The rule this package is held to: an unknown region is carried through
     // as opaque, not skipped. 75 item ids and ten trailing values.
-    const [read] = readCharacterPresets(file([preset({ 75: int(64), 77: int(9024) })], ['x']))
+    const [read] = readCharacterPresets(file([preset({ 75: int(64) })], ['x']))
     expect(read?.unknown_items).toHaveLength(75)
     expect(read?.unknown_items.every((id) => id === NO_ITEM)).toBe(true)
     expect(read?.unknown_75).toBe(64)
-    expect(read?.unknown_77).toBe(9024)
     expect(read?.unknown_92).toHaveLength(10)
   })
 
@@ -166,7 +167,7 @@ describe('readCharacterPresets', () => {
     )
     expect(() => readCharacterPresets(short)).toThrow(/has 50 values, not 102/)
     // A face that is a float where the file should have an integer.
-    const wrong = file([preset({ 78: float(1.5) })], ['a'])
+    const wrong = file([preset({ 77: float(1.5) })], ['a'])
     expect(() => readCharacterPresets(wrong)).toThrow(GameFormatError)
     expect(() => readCharacterPresets(wrong)).toThrow(/a face of kind 2, not 1/)
   })

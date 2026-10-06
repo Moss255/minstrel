@@ -74,13 +74,12 @@ export const STARTING_EQUIPMENT: Equipped = new Map<Slot, number>([
 ])
 
 /**
- * The Hero's face, `p_f006` — the face the character presets give the man of
- * every vocation. That a preset's second 90xx value names a face is INFERRED
- * (FORMAT.md, "Character presets"); that the Hero has a man's face is ours:
- * the slice does not say, and the face is the player's to make in a character
- * creation the slice leaves out.
+ * The Hero's face, `p_f004` — item 9024, the face the character presets give
+ * the man of every vocation (value 77, INFERRED; FORMAT.md, "Character
+ * presets"). That the Hero has a man's face before creation is ours: the face
+ * is the player's to make.
  */
-export const HERO_FACE = 'p_f006'
+export const HERO_FACE = 'p_f004'
 
 /**
  * The Hero's hair — **ours**: style 00 in its variant `a`, in colour 0. Hair
@@ -362,19 +361,43 @@ export function levelGainsText(before: LevelRow, after: LevelRow): string {
 }
 
 /**
- * The face a preset's value 78 names: `9000` and its number, so `9006` is
- * `p_f006`.
+ * **The hair's shape takes its letter from the headgear**, not from a choice
+ * (US `func_02072e94`, `0x02072f68`–`0x0207300c`, read 4 October 2026): `a`
+ * with nothing on the head; otherwise the headgear's model number ÷ 100
+ * indexes `"bbdcc\0cea\0"` (`data_020e883c`), and a `\0` — hundreds 5 and 9
+ * — or hundreds of ten or more draw **no hair at all**. A man in a 3xx whose
+ * hair is item 9001 (`0x2329`) takes `f`.
  *
- * **INFERRED** (FORMAT.md, "Character presets"): on all 41 presets in
- * `charapreset.bin` and `presetdt` the value lands on a face file that exists,
- * and it is `f006` on every man's vocation record and `f005` on every woman's.
- * It is kept apart from {@link partName} because that answers "which part is
- * this *item* worn as", and no item is a face.
+ * `headgear` is the headgear's model number for the wearer's sex, undefined
+ * with none; the answer undefined means no hair.
  */
-export function faceName(id: number): string | undefined {
-  return Number.isInteger(id) && Math.floor(id / 1000) === 9
-    ? `p_f${String(id % 1000).padStart(3, '0')}`
-    : undefined
+export function hairLetter(
+  headgear: number | undefined,
+  woman: boolean,
+  hairItem: number | undefined,
+): string | undefined {
+  if (headgear === undefined || headgear < 0) return 'a'
+  const hundreds = Math.trunc(headgear / 100)
+  const letter = 'bbdcc\0cea\0'[hundreds]
+  if (letter === undefined || letter === '\0') return undefined
+  return hundreds === 3 && !woman && hairItem === HAIR_9001 ? 'f' : letter
+}
+
+/** The one hair a 3xx headgear gives `f` on a man — see {@link hairLetter}. */
+const HAIR_9001 = 9001
+
+/**
+ * How a preset's face and hair items are drawn: the part each item's model
+ * names for the wearer's sex (`modelName` in `@minstrel/game-formats`), and
+ * the headgear's model number for the hair's letter — see {@link hairLetter}.
+ * Given by the caller, from the items as the code holds them.
+ */
+export interface PresetModels {
+  /** An item's part for the preset's sex — `p_f004` for face 9024 on a man — or undefined. */
+  readonly part: (item: number) => string | undefined
+  /** An item's model number for the preset's sex, or undefined. */
+  readonly number: (item: number) => number | undefined
+  readonly woman: boolean
 }
 
 /**
@@ -382,10 +405,11 @@ export function faceName(id: number): string | undefined {
  *
  * This is `outfitOf`'s sibling: that one dresses whoever is wearing a set of
  * equipment, this one dresses a ready-made character out of the ids the file
- * gives. **Hair is not among them.** A preset names a face, armour, legwear,
- * gloves, footwear, headgear, a weapon, a shield and the arms, and nothing
- * about hair at all — so the hair here is the Hero's, and **ours**, exactly as
- * it is everywhere else until character creation offers a choice.
+ * gives: a face and a hair — items, drawn as their models for the sex (see
+ * {@link PresetModels}) — armour, legwear, gloves, footwear, headgear, a
+ * weapon, a shield and the arms. The hair's colour is not in the file, so it
+ * is the style's first, `a` (INFERRED: no field found; **ours**). Without
+ * `models`, the face is left out and the hair is the Hero's, as before.
  *
  * A part the wardrobe has not got is left out rather than guessed at, which is
  * what `has` is for; a preset naming nothing for a slot uses 0 or
@@ -407,6 +431,7 @@ export function outfitOfPreset(
   carry: Carry,
   has: (name: string) => boolean,
   worn: Equipped = new Map(),
+  models?: PresetModels,
 ): Outfit | undefined {
   const named = (id: number | undefined): string | undefined => {
     if (id === undefined) return undefined
@@ -429,8 +454,20 @@ export function outfitOfPreset(
   const legs = underneath('legs', preset.legwear, BARE_OUTFIT.legwear, HERO_OUTFIT.legwear)
   // Only when even the underclothes are missing is there nothing to dress.
   if (!body || !legs) return undefined
-  const face = faceName(preset.face)
+  const face = models?.part(preset.face)
   const headgear = slotted('head', preset.headgear)
+  // The hair: its model, the letter its headgear gives, and its first colour.
+  const hairBase = models?.part(preset.hair)
+  const onHead = worn.get('head') ?? (headgear ? preset.headgear : undefined)
+  const letter = models
+    ? hairLetter(
+        onHead === undefined ? undefined : models.number(onHead),
+        models.woman,
+        preset.hair,
+      )
+    : 'a'
+  const hair = hairBase ? (letter ? `${hairBase}${letter}` : undefined) : HERO_HAIR.model
+  const hairColour = hairBase ? `${hairBase}a` : HERO_HAIR.colour
   const weapon = slotted('weapon', preset.weapon)
   const shield = slotted('shield', preset.shield)
   const bones = CARRY_BONES[carry]
@@ -441,9 +478,9 @@ export function outfitOfPreset(
     body,
     legs,
     ...(face && has(face) ? { face } : {}),
-    hair: HERO_HAIR.model,
+    ...(hair && has(hair) ? { hair } : {}),
     ...(headgear ? { headgear } : {}),
-    textures: [arms, slotted('feet', preset.footwear), HERO_HAIR.colour].filter(
+    textures: [arms, slotted('feet', preset.footwear), hairColour].filter(
       (name): name is string => name !== undefined && has(name),
     ),
     attached: [

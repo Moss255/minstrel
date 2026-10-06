@@ -20,6 +20,8 @@ import { GameFormatError } from './errors.ts'
  * | `+0x08` bit 20 | **kept by its carrier** when everything is put in the bag | `func_ov002_0215a658` |
  * | `+0x08` bit 25 | **goes to the bag**, never to a member, when it is obtained | `func_0207d300` `0x0207d3ac` |
  * | `+0x08` bits 4–8 | 31 on a **skill book** | the battle's grant, `func_ov026_021dc8fc` `0x021dc980` |
+ * | `+0x10` bits 0–9, 10–19 | its **model's number** for a man and for a woman; 999 means the other's | `func_020de234` (read 4 October 2026) |
+ * | `+0x10` bits 20–27 | its **model's letter**, a character code: `h` on 9000–9013, `f` on 9020–9033 | the hair's and the face's names, `CharaParts_GetPartNumbers` |
  * | `+0x14` | on a skill book, the skill panel it grants while carried | `func_ov026_021dc8fc` `0x021dc9e4` |
  * | `+0x18` | `u16`, its id | `func_020de56c` |
  * | `+0x00` | `s32`, a **block** after the records: `0x0C + count × 32 + index × 32`, −1 for none | `func_020de5b0`, `0x020de5d0` |
@@ -46,7 +48,31 @@ export interface ItemDef {
   readonly panel: number
   /** How many shades of skin the part takes, by sex: 1, 2 or 4 (a ramp of 2, 4 or 8), 0 none — see above. */
   readonly skinShades: { readonly man: number; readonly woman: number }
+  /** Its model, `+0x10`: a letter and a number by sex, 999 for the other's — see {@link modelNumber}. */
+  readonly model: { readonly letter: string; readonly man: number; readonly woman: number }
   readonly raw: Uint8Array
+}
+
+/** The number that means "the other sex's" in an item's model — `0x3e7` (`0x020de2a0`). */
+const OTHERS = 999
+
+/**
+ * An item's model number for a sex, as `func_020de234` gives it: the sex's
+ * own, or the other's where the sex's is 999. Undefined for a record with no
+ * id, which the function answers with 999.
+ */
+export function modelNumber(def: ItemDef, woman: boolean): number {
+  const own = woman ? def.model.woman : def.model.man
+  return own === OTHERS ? (woman ? def.model.man : def.model.woman) : own
+}
+
+/**
+ * The part an item is drawn as, by sex: `p_` and its letter and number — so
+ * face 9024 is `p_f004` on a man and `p_f014` on a woman, and hair 9006 is
+ * `p_h060` and `p_h180`. The hair's shape adds its variant letter.
+ */
+export function modelName(def: ItemDef, woman: boolean, prefix = 'p'): string {
+  return `${prefix}_${def.model.letter}${String(modelNumber(def, woman)).padStart(3, '0')}`
 }
 
 /** Kind 11: a part that is no item — the bare body, legs, arms and feet, the hairs, the faces. INFERRED, from which ids carry it. */
@@ -81,6 +107,7 @@ export function readItemDefs(bytes: Uint8Array): Map<number, ItemDef> {
     const shaded =
       (kind <= 7 || kind === ITEM_KIND_PART) && block >= 0 && blockAt + 4 <= bytes.length
     const shades = shaded ? view.getUint32(blockAt, true) : 0
+    const model = view.getUint32(at + 0x10, true)
     out.set(id, {
       id,
       kind,
@@ -90,6 +117,11 @@ export function readItemDefs(bytes: Uint8Array): Map<number, ItemDef> {
       book: ((word >>> 4) & 31) === 31,
       panel: view.getUint16(at + 0x14, true),
       skinShades: { man: (shades >>> 15) & 15, woman: (shades >>> 23) & 15 },
+      model: {
+        letter: String.fromCharCode((model >>> 20) & 0xff),
+        man: model & 1023,
+        woman: (model >>> 10) & 1023,
+      },
       raw: bytes.subarray(at, at + RECORD),
     })
   }

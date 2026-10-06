@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Slot } from '../src/equipment.ts'
-import { BACK_TURNS, outfitOf, STARTING_EQUIPMENT } from '../src/hero.ts'
+import { BACK_TURNS, hairLetter, outfitOf, STARTING_EQUIPMENT } from '../src/hero.ts'
 
 /** Every part and texture file there is, as far as these tests ask. */
 const everything = () => true
@@ -48,5 +48,27 @@ describe('what the Hero is drawn wearing', () => {
     const outfit = outfitOf(worn, 'hands', (name) => !/090$/.test(name))
     expect(outfit).toMatchObject({ body: 'p_b007', legs: 'p_p215' })
     expect(outfit.textures).toContain('p_r120')
+  })
+})
+
+describe('the hair’s shape, by the headgear', () => {
+  it('is `a` bare-headed, and the hundreds’ letter under a hat', () => {
+    expect(hairLetter(undefined, false, 9000)).toBe('a')
+    expect(hairLetter(12, false, 9000)).toBe('b')
+    expect(hairLetter(250, true, 9000)).toBe('d')
+    expect(hairLetter(399, false, 9000)).toBe('c')
+    expect(hairLetter(700, false, 9000)).toBe('e')
+    expect(hairLetter(800, false, 9000)).toBe('a')
+  })
+
+  it('draws no hair under hundreds 5, 9 or ten and over', () => {
+    expect(hairLetter(512, false, 9000)).toBeUndefined()
+    expect(hairLetter(900, false, 9000)).toBeUndefined()
+    expect(hairLetter(1000, false, 9000)).toBeUndefined()
+  })
+
+  it('gives `f` to a man of hair 9001 under a 3xx', () => {
+    expect(hairLetter(300, false, 9001)).toBe('f')
+    expect(hairLetter(300, true, 9001)).toBe('c')
   })
 })

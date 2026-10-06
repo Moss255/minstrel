@@ -12,6 +12,7 @@ const def = (id: number, over: Partial<ItemDef> = {}): ItemDef => ({
   book: false,
   panel: 0,
   skinShades: { man: 0, woman: 0 },
+  model: { letter: '\0', man: 0, woman: 0 },
   raw: new Uint8Array(32),
   ...over,
 })

@@ -31,10 +31,15 @@ const KIND_FLOAT = 2
 /** An item id meaning "none": every value in the lists uses it. */
 export const NO_ITEM = 0xffffffff
 
-/** What a preset is dressed in — the values FORMAT.md names, 78 to 87. */
+/** What a preset is dressed in — the values FORMAT.md names, 77 to 87. */
 export interface PresetOutfit {
-  /** A face: 9000 and its number — INFERRED. */
+  /**
+   * A face, value 77: an item, 9020–9033 — INFERRED, by the order the values
+   * share with `presetdt`'s slots, whose loader is read (FORMAT.md).
+   */
   readonly face: number
+  /** A hair, value 78: an item, 9000–9013 — INFERRED the same way. */
+  readonly hair: number
   readonly armour: number
   /** 8001 on the sage man, which names nothing. */
   readonly legwear: number
@@ -76,7 +81,6 @@ export interface CharacterPreset {
    */
   readonly unknown_items: readonly number[]
   readonly unknown_75: number
-  readonly unknown_77: number
   readonly unknown_88: number
   readonly unknown_89: number
   /** Values 92 to 101: the same ten on most vocation records. */
@@ -131,7 +135,8 @@ export function readCharacterPresets(data: Uint8Array): CharacterPreset[] {
       index,
       name: table.stringAt(value(record, 76, KIND_STRING, 'a name')) ?? '',
       outfit: {
-        face: numberAt(record, 78, 'a face'),
+        face: numberAt(record, 77, 'a face'),
+        hair: numberAt(record, 78, 'a hair'),
         armour: numberAt(record, 79, 'armour'),
         legwear: numberAt(record, 80, 'legwear'),
         gloves: numberAt(record, 81, 'gloves'),
@@ -148,7 +153,6 @@ export function readCharacterPresets(data: Uint8Array): CharacterPreset[] {
       ],
       unknown_items: [...record.values.subarray(0, 75)],
       unknown_75: numberAt(record, 75, 'value 75'),
-      unknown_77: numberAt(record, 77, 'value 77'),
       unknown_88: numberAt(record, 88, 'value 88'),
       unknown_89: numberAt(record, 89, 'value 89'),
       unknown_92: [...record.values.subarray(92, PRESET_VALUES)],

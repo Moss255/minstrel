@@ -98,6 +98,8 @@ export {
   ITEM_KIND_IMPORTANT,
   ITEM_KIND_PART,
   type ItemDef,
+  modelName,
+  modelNumber,
   readItemDefs,
 } from './itemdefs.ts'
 export { type ItemName, readItemNames } from './items.ts'

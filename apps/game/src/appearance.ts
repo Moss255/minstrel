@@ -19,8 +19,12 @@ import { SEX } from './equipment.ts'
  * **Where the game keeps them** is the character record's `+0x160`–`+0x17B`
  * block, which is the live struct's `+0x488` copied whole: ten equipment
  * slots, the sex in `+0x174` bit 0, two colour fields in the rest of that
- * byte, a third in `+0x175`, and the build as two `fx16` at `+0x178`. The
- * face is elsewhere, `+0x01` bits 0–3. See `docs/party-and-vocations.md`.
+ * byte, a third in `+0x175`, and the build as two `fx16` at `+0x178`. **The
+ * face and the hair are slots h2 and h3**, `+0x164` and `+0x166`, each an
+ * item — faces 9020–9033, hairs 9000–9013 — drawn as the item's model for the
+ * sex (`CharaParts_GetPartNumbers`, read 4 October 2026); an earlier reading
+ * here put the face at `+0x01` bits 0–3, which is something else. See
+ * `docs/party-and-vocations.md`.
  *
  * **Three of the seven cannot be drawn here**, and say so below rather than
  * being left out: nothing in `render` swaps a palette.
@@ -80,8 +84,9 @@ export interface Appearance {
 /** The Hero's own look, until character creation chooses one. */
 export const HERO_APPEARANCE: Appearance = {
   sex: SEX.male,
-  // `p_f006`, the face the presets give the man of every vocation — `HERO_FACE`.
-  face: 6,
+  // `p_f004`, face 9024, the face the presets give the man of every vocation —
+  // `HERO_FACE`.
+  face: 4,
   hair: 0,
   hairVariant: 0,
   hairColour: 0,
@@ -152,7 +157,8 @@ export const KNOB_SETTINGS: Readonly<Record<keyof Appearance, number>> = {
  *   a 4×2 grid of **eight**.
  *
  * So the screens are a subset, and the appearance panel can still reach the
- * rest. Which settings the ten hairstyles *are* is **not established**.
+ * rest. **Which settings the ten hairstyles and faces are is read** — see
+ * {@link CREATION_ITEMS}.
  */
 export const CREATION_SETTINGS: Readonly<Record<keyof Appearance, number>> = {
   sex: 2,
@@ -177,6 +183,41 @@ export const KNOB_NAMES: Readonly<Record<keyof Appearance, string>> = {
   hairVariant: 'Hair shape',
 }
 
+/**
+ * **What creation's ten hairs and ten faces are: items**, `9000 +` and
+ * `9020 +` the place each choice is remapped to by sex — overlay 9,
+ * `func_ov009_02188b14`, written to slots h3 and h2 at `0x02188a3c`–
+ * `0x02188a5c` and `0x02188a04`–`0x02188a14` (read 4 October 2026). The man's
+ * hair is the choice itself; the woman's begins with 9006; the man's face
+ * begins with 9024, the woman's with 9021. The part drawn is the item's model
+ * for the sex — `modelNumber` in `@minstrel/game-formats` — so the man's hairs
+ * are `p_h000`–`p_h090` and the woman's `p_h180`, `p_h100`–`p_h150`, `p_h160`,
+ * `p_h170`, `p_h190`. Hairs 9010–9013 and faces 9030–9033 are no choice's:
+ * the four ready-made characters wear them.
+ */
+export const CREATION_ITEMS = {
+  hair: { base: 9000, man: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], woman: [6, 0, 1, 2, 3, 4, 5, 7, 8, 9] },
+  face: { base: 9020, man: [4, 0, 1, 2, 3, 5, 6, 7, 8, 9], woman: [1, 0, 2, 3, 4, 5, 6, 7, 8, 9] },
+} as const
+
+/** An item's model number for a sex — given by the caller from `itemdt`, see `modelNumber`. */
+export type ModelOf = (item: number, sex: number) => number | undefined
+
+/**
+ * The look a creation screen's row sets: for the hair and the face, the
+ * model of the item that row is ({@link CREATION_ITEMS}); for anything else,
+ * or without the items to ask, the row itself.
+ */
+function creationSet(look: Appearance, knob: keyof Appearance, row: number, modelOf?: ModelOf) {
+  if (modelOf && (knob === 'hair' || knob === 'face')) {
+    const items = CREATION_ITEMS[knob]
+    const at = (look.sex === SEX.female ? items.woman : items.man)[row]
+    const model = at === undefined ? undefined : modelOf(items.base + at, look.sex)
+    if (model !== undefined) return setKnob(look, knob, knob === 'hair' ? model / 10 : model)
+  }
+  return setKnob(look, knob, row)
+}
+
 /** An appearance with one knob turned, wrapping round — what a creation screen does. */
 export function turned(look: Appearance, knob: keyof Appearance, by: number): Appearance {
   return { ...look, [knob]: wrap(look[knob] + by, KNOB_SETTINGS[knob]) }
@@ -193,13 +234,17 @@ export const faceOf = (look: Appearance): string => `p_f${String(look.face).padS
 /**
  * The hair model an appearance names: `p_h010c` is style 1, variant `c`.
  *
+ * **The game's letter is the headgear's** — `hairLetter` in `hero.ts` —
+ * and a caller that knows what is worn gives it as `letter`; the
+ * `hairVariant` knob is ours, for looking at the shapes.
+ *
  * Style 010 is the only one with a sixth variant, so a variant past what a
  * style has falls back to its first rather than naming a file that is not
  * there — `has` decides, and this keeps the name inside the band.
  */
-export function hairOf(look: Appearance, has?: (name: string) => boolean): string {
+export function hairOf(look: Appearance, has?: (name: string) => boolean, letter?: string): string {
   const style = String(look.hair * 10).padStart(3, '0')
-  const wanted = `p_h${style}${HAIR_VARIANTS[look.hairVariant] ?? 'a'}`
+  const wanted = `p_h${style}${letter ?? HAIR_VARIANTS[look.hairVariant] ?? 'a'}`
   return !has || has(wanted) ? wanted : `p_h${style}a`
 }
 
@@ -273,11 +318,11 @@ export function makingTitle(making: Making): string {
  * files on the cartridge and can be named; a skin or eye colour is a palette
  * swap nothing here reads, so those count instead.
  */
-export function makingRows(making: Making): string[] {
+export function makingRows(making: Making, modelOf?: ModelOf): string[] {
   const knob = knobAt(making.at)
   if (!knob) return []
   return Array.from({ length: CREATION_SETTINGS[knob] }, (_, at) => {
-    const look = setKnob(making.look, knob, at)
+    const look = creationSet(making.look, knob, at, modelOf)
     if (knob === 'sex') return at === SEX.female ? 'Female' : 'Male'
     if (knob === 'face') return faceOf(look)
     if (knob === 'hair') return hairOf(look)
@@ -290,10 +335,14 @@ export function makingRows(making: Making): string[] {
  * Answering the knob being asked: the next screen, or the finished look once
  * the last of {@link CREATION_ORDER} has been answered.
  */
-export function makingPick(making: Making, row: number): { made: Appearance } | { next: Making } {
+export function makingPick(
+  making: Making,
+  row: number,
+  modelOf?: ModelOf,
+): { made: Appearance } | { next: Making } {
   const knob = knobAt(making.at)
   if (!knob) return { made: making.look }
-  const look = setKnob(making.look, knob, row)
+  const look = creationSet(making.look, knob, row, modelOf)
   const at = making.at + 1
   return at >= CREATION_ORDER.length ? { made: look } : { next: { look, at } }
 }

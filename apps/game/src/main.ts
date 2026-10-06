@@ -35,6 +35,7 @@ import {
   flagsHold,
   GRANTS_REGARDLESS,
   ITEM_EXPERIENCE_BONUS,
+  type ItemDef,
   inArea,
   inTalkBox,
   type LevelRow,
@@ -42,6 +43,8 @@ import {
   type Lighting,
   MEDALS_MOST,
   MINI_MEDAL,
+  modelName,
+  modelNumber,
   type NpcPlacement,
   OP_EVENT,
   OP_FACILITY,
@@ -202,6 +205,7 @@ import {
   HERO_APPEARANCE,
   hairColourOf,
   hairOf,
+  type ModelOf,
   makingPick,
   makingRows,
   makingTitle,
@@ -399,9 +403,11 @@ import {
   expLevelledBy,
   gain,
   HERO_VOCATION_NUMBER,
+  hairLetter,
   levelGainsText,
   outfitOf,
   outfitOfPreset,
+  type PresetModels,
   STARTING_EQUIPMENT,
   STARTING_GOLD,
   standing,
@@ -432,6 +438,7 @@ import {
   battleSheets,
   entranceOf,
   givenNamesFrom,
+  itemDefsOf,
   keeperWords,
   type Loaded,
   load,
@@ -1848,11 +1855,12 @@ function askName(sex: number, who: string): Promise<string> {
 
 function askCreation(map: string): Promise<void> {
   let making = startMaking()
+  const modelOf = cartridge ? itemModels(itemDefsOf(cartridge)) : undefined
   let opened: () => void
   const draw = () => {
     createTitle.textContent = makingTitle(making)
     createRows.replaceChildren(
-      ...makingRows(making).map((shown, at) => {
+      ...makingRows(making, modelOf).map((shown, at) => {
         const button = document.createElement('button')
         button.type = 'button'
         button.textContent = shown
@@ -1863,7 +1871,7 @@ function askCreation(map: string): Promise<void> {
     createHint.textContent = `Making the Hero — screen ${making.at + 1} of ${CREATION_ORDER.length}.`
   }
   const took = async (at: number) => {
-    const picked = makingPick(making, at)
+    const picked = makingPick(making, at, modelOf)
     if ('next' in picked) {
       making = picked.next
       draw()
@@ -1891,6 +1899,32 @@ function askCreation(map: string): Promise<void> {
   createEl.hidden = false
   draw()
   return open
+}
+
+/** How a preset of `sex` draws its face and hair items — see `PresetModels`. */
+function presetModels(sex: number | undefined): PresetModels | undefined {
+  const defs = loaded?.itemDefs
+  if (!defs || sex === undefined) return undefined
+  const woman = sex === SEX.female
+  return {
+    woman,
+    part: (item) => {
+      const def = defs.get(item)
+      return def ? modelName(def, woman) : undefined
+    },
+    number: (item) => {
+      const def = defs.get(item)
+      return def ? modelNumber(def, woman) : undefined
+    },
+  }
+}
+
+/** An item's model number for a sex, from the items as the code holds them — see `modelNumber`. */
+function itemModels(defs: ReadonlyMap<number, ItemDef>): ModelOf {
+  return (item, sex) => {
+    const def = defs.get(item)
+    return def ? modelNumber(def, sex === SEX.female) : undefined
+  }
 }
 
 /** A new game's world, once anything asked before it is done — the rest of `begin`. */
@@ -11134,13 +11168,54 @@ function outfitFor(
     member.appearance === undefined ? undefined : loaded?.presets[member.appearance]?.outfit
   const outfit = placeWeapon(
     shown ??
-      (made && outfitOfPreset(made, carry, has, wornBy(member))) ??
+      (made &&
+        outfitOfPreset(
+          made,
+          carry,
+          has,
+          wornBy(member),
+          presetModels(loaded?.presets[member.appearance ?? -1]?.sex),
+        )) ??
       outfitOf(wornBy(member), carry, has),
     wornBy(member).get('weapon') ?? made?.weapon,
     carry,
   )
-  return lookOver(outfit, member.look, has)
+  return lookOver(outfit, member.look, has, member.look && hairLetterOf(member, made?.headgear))
 }
+
+/**
+ * The letter a member's hair shape takes from what is on their head — see
+ * `hairLetter`; undefined, no hair. `null` where the items are not read, so
+ * the look's own shape stands.
+ */
+function hairLetterOf(member: Member, made: number | undefined): string | null | undefined {
+  const look = member.look
+  const defs = loaded?.itemDefs
+  if (!look || !defs || defs.size === 0) return null
+  const woman = look.sex === SEX.female
+  const head = wornBy(member).get('head') ?? made
+  const def = head === undefined ? undefined : defs.get(head)
+  return hairLetter(def ? modelNumber(def, woman) : undefined, woman, hairItemOf(look))
+}
+
+/**
+ * The hair item, 9000–9013, an appearance's style is — the one whose model
+ * for the sex is the style's (`modelNumber`); undefined where none is, as a
+ * man's styles 10–19 are no item the game can give him.
+ */
+function hairItemOf(look: Appearance): number | undefined {
+  const defs = loaded?.itemDefs
+  if (!defs) return undefined
+  for (let item = HAIR_ITEMS; item < HAIR_ITEMS + HAIR_ITEM_COUNT; item++) {
+    const def = defs.get(item)
+    if (def && modelNumber(def, look.sex === SEX.female) === look.hair * 10) return item
+  }
+  return undefined
+}
+
+/** The hairs as items, 9000–9013 (`itemdt`, letter `h`). */
+const HAIR_ITEMS = 9000
+const HAIR_ITEM_COUNT = 14
 
 /**
  * **The motion set a member moves by**: `mp` and two numbers, the body's and
@@ -11291,10 +11366,12 @@ function lookOver(
   outfit: Outfit,
   look: Appearance | undefined,
   has: (name: string) => boolean,
+  letter: string | null | undefined = null,
 ): Outfit {
   if (!look) return outfit
   const face = faceOf(look)
-  const hair = hairOf(look, has)
+  // The headgear's letter, or no hair under it — see `hairLetterOf`.
+  const hair = letter === undefined ? undefined : hairOf(look, has, letter ?? undefined)
   const colour = hairColourOf(look, has)
   // The hair colour replaces whichever `p_h` texture the outfit carried.
   const textures = [...(outfit.textures ?? []).filter((name) => !name.startsWith('p_h'))]
@@ -11313,10 +11390,12 @@ function lookOver(
           }),
       ])
     : outfit.recolour
+  const { hair: kept, ...rest } = outfit
+  const drawn = hair === undefined ? undefined : has(hair) ? hair : kept
   return {
-    ...outfit,
+    ...rest,
     ...(has(face) ? { face } : {}),
-    ...(has(hair) ? { hair } : {}),
+    ...(drawn !== undefined ? { hair: drawn } : {}),
     textures,
     ...(recolour ? { recolour } : {}),
   }
@@ -11341,8 +11420,13 @@ const BARE_PARTS: Readonly<Record<string, number>> = { b: 1000, p: 8001, a: 8010
 /**
  * **A worn part's skin** — see `skin.ts`: the ramp its record's count gives
  * the character's sex, at the place `S` puts it, over its first palette.
- * Undefined for a part that takes none, and for the hair, whose records'
- * pairing with our hair styles is not read.
+ * Undefined for a part that takes none.
+ *
+ * **The hair's colour texture** (part 4, `p_h<NNN>a`) takes its count from
+ * the hair item (`GetItemSkinShades` on slot h3, `0x020731f0`, read 4 October
+ * 2026) — the one of 9000–9013 that is the look's style, see `hairItemOf` —
+ * and is written at offset 16, not 4. On this cartridge that is a man's
+ * styles 8, 9 and 20, eight shades each. The shape (part 3) never is.
  */
 function bodySkinOf(
   name: string,
@@ -11351,6 +11435,7 @@ function bodySkinOf(
 ): ((palette: PaletteInfo, bytes: Uint8Array) => Uint8Array) | undefined {
   const parsed = /^p_([a-z])(\d{3})/.exec(name)
   const letter = parsed?.[1]
+  if (letter === 'h') return hairSkinOf(name, look, colours)
   const thousands = letter === undefined ? undefined : PART_THOUSANDS[letter]
   if (!parsed || letter === undefined || thousands === undefined) return undefined
   const defs = loaded?.itemDefs
@@ -11450,6 +11535,23 @@ function dressFromPreset(member: Member): void {
 /** The preset the Hero is being shown as, if `?preset=` asked for one. */
 let presetOutfit: Outfit | undefined
 
+/** The hair colour texture's skin — see `bodySkinOf`. */
+function hairSkinOf(
+  name: string,
+  look: Appearance,
+  colours: CharaColours,
+): ((palette: PaletteInfo, bytes: Uint8Array) => Uint8Array) | undefined {
+  const item = hairItemOf(look)
+  const def = item === undefined ? undefined : loaded?.itemDefs.get(item)
+  const count = def ? (look.sex === SEX.female ? def.skinShades.woman : def.skinShades.man) : 0
+  const ramp = skinRamp(colours, look.skin, count)
+  if (!ramp) return undefined
+  const set = loaded?.wardrobe.textures.get(name) ?? loaded?.wardrobe.partTextures.get(name)
+  if (!set) return undefined
+  const size = set.palettes.reduce((most, p) => Math.max(most, p.dataOffset + p.dataSize), 0)
+  return bodyColours(ramp, skinSlot(size, 16))
+}
+
 /**
  * Dress the Hero as a preset, by its place in `charapreset.bin`. What the
  * status line says is what a person needs to judge it: which one, how it is
@@ -11464,7 +11566,7 @@ function showPreset(at: number): void {
   }
   const wardrobe = loaded.wardrobe
   const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
-  const outfit = outfitOfPreset(preset.outfit, 'back', has)
+  const outfit = outfitOfPreset(preset.outfit, 'back', has, new Map(), presetModels(preset.sex))
   if (!outfit) {
     // Say which, and what it was looking for: "no body or legs" on its own
     // tells nobody whether the file is odd or the wardrobe is short.

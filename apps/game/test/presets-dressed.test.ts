@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { partName } from '@minstrel/game-formats'
+import { modelName, modelNumber, partName } from '@minstrel/game-formats'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { outfitOfPreset } from '../src/hero.ts'
+import { outfitOfPreset, type PresetModels } from '../src/hero.ts'
 import { type Loaded, load } from '../src/load.ts'
 
 const romPath = process.env.MINSTREL_TEST_ROM
@@ -95,18 +95,37 @@ describe.skipIf(!romPath)('the presets, dressed', () => {
     }
   })
 
-  it('gives every dressed preset a body, legs and a face', () => {
+  it('gives every dressed preset a body, legs, and the face and hair its items draw', () => {
     const has = (name: string) =>
       loaded.wardrobe.parts.has(name) || loaded.wardrobe.textures.has(name)
+    const models = (woman: boolean): PresetModels => ({
+      woman,
+      part: (item) => {
+        const def = loaded.itemDefs.get(item)
+        return def ? modelName(def, woman) : undefined
+      },
+      number: (item) => {
+        const def = loaded.itemDefs.get(item)
+        return def ? modelNumber(def, woman) : undefined
+      },
+    })
+    const faces = new Set<string>()
+    const hairs = new Set<string>()
     for (const preset of loaded.presets) {
-      const outfit = outfitOfPreset(preset.outfit, 'back', has)
+      const outfit = outfitOfPreset(preset.outfit, 'back', has, new Map(), models(preset.sex === 1))
       if (!outfit) continue
       expect(outfit.body, `preset ${preset.index}`).toMatch(/^p_b\d{3}$/)
       expect(outfit.legs, `preset ${preset.index}`).toMatch(/^p_p\d{3}$/)
-      // A face is INFERRED from value 78 and lands on one that exists.
+      // Value 77 is a face item and 78 a hair item, INFERRED by presetdt's
+      // read loader; each lands on a part that exists.
       expect(outfit.face, `preset ${preset.index}`).toMatch(/^p_f\d{3}$/)
-      // Hair is **ours** — the file names none, so every one wears the Hero's.
-      expect(outfit.hair, `preset ${preset.index}`).toBe('p_h000a')
+      if (outfit.face) faces.add(outfit.face)
+      if (outfit.hair) hairs.add(outfit.hair.slice(0, 6))
     }
+    // Face 9024 on the 23 vocation records — the man's `f004`, the woman's
+    // `f014` — and hair 9006 on the men, `h060`, 9005 on the women, `h150`;
+    // the other six wear face 9023 and other hairs.
+    expect([...faces].sort()).toEqual(['p_f003', 'p_f004', 'p_f013', 'p_f014'])
+    expect([...hairs].sort()).toEqual(['p_h030', 'p_h060', 'p_h140', 'p_h150'])
   })
 })

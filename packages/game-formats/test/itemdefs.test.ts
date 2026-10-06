@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GameFormatError, readItemDefs } from '../src/index.ts'
+import { GameFormatError, modelName, modelNumber, readItemDefs } from '../src/index.ts'
 
 /** A table of two records written here — no cartridge. */
 function table(records: { id: number; word: number }[]): Uint8Array {
@@ -51,6 +51,25 @@ describe('the items as the code holds them', () => {
   it('gives no shades to an everyday item, or to a record with no block', () => {
     const defs = readItemDefs(table([{ id: 22000, word: 8 }]))
     expect(defs.get(22000)?.skinShades).toEqual({ man: 0, woman: 0 })
+  })
+
+  it('names a hair or a face by its model, the sex’s own number or the other’s at 999', () => {
+    const out = table([
+      { id: 9006, word: 11 },
+      { id: 9030, word: 11 },
+    ])
+    const view = new DataView(out.buffer)
+    view.setUint32(0x0c + 0x10, (0x68 << 20) | (180 << 10) | 60, true)
+    view.setUint32(0x0c + 32 + 0x10, (0x66 << 20) | (999 << 10) | 20, true)
+    const defs = readItemDefs(out)
+    const hair = defs.get(9006)
+    const face = defs.get(9030)
+    if (!hair || !face) throw new Error('not read')
+    expect(hair.model).toEqual({ letter: 'h', man: 60, woman: 180 })
+    expect(modelName(hair, false)).toBe('p_h060')
+    expect(modelName(hair, true)).toBe('p_h180')
+    expect(modelNumber(face, true)).toBe(20)
+    expect(modelName(face, true, 'd')).toBe('d_f020')
   })
 
   it('throws on a table shorter than its count says', () => {

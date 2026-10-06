@@ -85,7 +85,8 @@ describe.skipIf(!romPath)('every look a player could choose', { timeout: 120_000
   it('leaves the Hero looking as the slice has them', () => {
     // The look this defaults to must be the one the slice already drew, or
     // every existing screenshot changes underneath us.
-    expect(faceOf(HERO_APPEARANCE)).toBe('p_f006')
+    // Face 9024's man's model, as every man's vocation preset has it.
+    expect(faceOf(HERO_APPEARANCE)).toBe('p_f004')
     expect(hairOf(HERO_APPEARANCE, has)).toBe('p_h000a')
     expect(hairColourOf(HERO_APPEARANCE, has)).toBe('p_h000a')
     expect(HERO_APPEARANCE.sex).toBe(SEX.male)

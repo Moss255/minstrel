@@ -28,10 +28,12 @@ describe.skipIf(!romPath)('character presets on a real cartridge', { timeout: 60
     expect(presets).toHaveLength(29)
 
     for (const p of presets) {
-      // "value 78, a face, 9000 and its number — INFERRED … on all 41 presets
-      // here and in presetdt it lands on a face that exists".
-      expect(p.outfit.face, `preset ${p.index} face`).toBeGreaterThanOrEqual(9000)
-      expect(p.outfit.face, `preset ${p.index} face`).toBeLessThan(9100)
+      // Value 77 a face, 9020–9033, and 78 a hair, 9000–9013 — items, INFERRED
+      // by the order presetdt's read loader gives the same slots.
+      expect(p.outfit.face, `preset ${p.index} face`).toBeGreaterThanOrEqual(9020)
+      expect(p.outfit.face, `preset ${p.index} face`).toBeLessThan(9034)
+      expect(p.outfit.hair, `preset ${p.index} hair`).toBeGreaterThanOrEqual(9000)
+      expect(p.outfit.hair, `preset ${p.index} hair`).toBeLessThan(9014)
       // "86 — sex: 0 a man, 1 a woman".
       expect([0, 1], `preset ${p.index} sex`).toContain(p.sex)
       // "0–74 … item ids, 0xFFFFFFFF for none".
@@ -65,9 +67,10 @@ describe.skipIf(!romPath)('character presets on a real cartridge', { timeout: 60
     const names = new Set(presets.map((p) => p.name))
     expect(names.size).toBe(27)
 
-    // "value 77 — 9024 on all 23 vocations; 9023 or 9024 on the named". Both
-    // values appear, and nothing else does.
-    expect(new Set(presets.map((p) => p.unknown_77))).toEqual(new Set([9023, 9024]))
+    // "value 77 — 9024 on all 23 vocations; 9023 or 9024 on the named" —
+    // the face, an item (INFERRED, by presetdt's read loader). Both values
+    // appear, and nothing else does.
+    expect(new Set(presets.map((p) => p.outfit.face))).toEqual(new Set([9023, 9024]))
 
     // Of the 29, a majority are men and a majority carry no weapon — a weak
     // shape check that would catch reading the wrong column entirely.

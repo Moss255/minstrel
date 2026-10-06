@@ -4,6 +4,7 @@ import {
   type Appearance,
   HERO_APPEARANCE,
   type Making,
+  type ModelOf,
   makingPick,
   makingRows,
   makingTitle,
@@ -396,6 +397,10 @@ export interface MenuMember {
 
 /** What a panel knows to say. */
 export interface MenuContext {
+  /** Whether Allocate Skill Points is listed — see `menuCommands`. Listed when not said. */
+  readonly skillsListed?: boolean | undefined
+  /** An item's model number for a sex, for creation's hairs and faces — see `CREATION_ITEMS`. */
+  readonly modelOf?: ModelOf | undefined
   /**
    * The party, the Hero first. Empty only before a cartridge is in.
    */
@@ -768,7 +773,7 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     if (where.at === 'making') {
       const making = where.making
       if (!making) return { state: back, talk: false }
-      const picked = makingPick(making, state.row)
+      const picked = makingPick(making, state.row, context?.modelOf)
       // The last knob answered files the character with Patty.
       if ('made' in picked) {
         return {
@@ -1270,7 +1275,7 @@ export function panelLines(
         return [
           her(PATTY_SAYS.whatKind, 'What kinda person are you looking for?'),
           makingTitle(making),
-          ...makingRows(making).map((shown, i) => `${mark(i === row)}${shown}`),
+          ...makingRows(making, context?.modelOf).map((shown, i) => `${mark(i === row)}${shown}`),
           ...(state?.said ?? []),
         ]
       }
