@@ -527,6 +527,11 @@ export interface ItemEffect {
     readonly spoiltBySight: boolean
     /** Whether a wall of light turns it back — see `Action.reflectable`. */
     readonly reflectable: boolean
+    /** Whether a stance counters it, and whether an ally may take it in its target's place — see `Action.counterable`, `coverable`. */
+    readonly counterable: boolean
+    readonly coverable: boolean
+    /** Taken up as the round begins — see `Action.atRoundStart`. */
+    readonly atRoundStart: boolean
     /** Its damage handler, hit code, step after, and falloff — see `Action.damageHandler`, `hitCode`, `afterStep`, `fallsOff`. */
     readonly handler: number
     readonly hitCode: number
@@ -1954,6 +1959,9 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           blockable: action.blockable,
           spoiltBySight: action.spoiltBySight,
           reflectable: action.reflectable,
+          counterable: action.counterable,
+          coverable: action.coverable,
+          atRoundStart: action.atRoundStart,
           handler: action.damageHandler,
           hitCode: action.hitCode,
           afterStep: action.afterStep,

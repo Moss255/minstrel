@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { ActionEffect, ActionReach } from '@minstrel/game-formats'
 import { SKILL_SCALES } from '@minstrel/sim'
 import { describe, expect, it } from 'vitest'
-import { battleSpellOf, blowOf, partyChangeOf } from '../src/battle-scene.ts'
+import { battleSpellOf, blowOf, partyChangeOf, stanceOf } from '../src/battle-scene.ts'
 import { type Loaded, load } from '../src/load.ts'
 
 const romPath = process.env.MINSTREL_TEST_ROM
@@ -178,7 +178,23 @@ describe.skipIf(!romPath)(
       expect(action(1).rolls?.reflectable).toBe(false)
     })
 
-    it('strikes 22 of them as the Attack now, where 76 were', () => {
+    it('takes up the six stances as the round begins, by the table at 0x02182e24', () => {
+      expect(stanceOf(action(96))).toEqual({ stance: 4, cost: 8 })
+      expect(stanceOf(action(135))).toEqual({ stance: 2, cost: 3 })
+      expect(stanceOf(action(138))).toEqual({ stance: 5, cost: 12 })
+      expect(stanceOf(action(146))).toEqual({ stance: 6, cost: 0 })
+      expect(stanceOf(action(185))).toEqual({ stance: 7, cost: 0 })
+      expect(stanceOf(action(182))).toEqual({ stance: 8, cost: 0 })
+      // Defend and Blockenspiel are stance 1, played by their own commands.
+      expect(action(134).rolls?.atRoundStart).toBe(true)
+      expect(stanceOf(action(134))).toBeUndefined()
+      // The plain Attack is countered and covered; Zam covered only; Heal neither.
+      expect(action(1).rolls).toMatchObject({ counterable: true, coverable: true })
+      expect(action(13).rolls).toMatchObject({ counterable: false, coverable: true })
+      expect(action(30).rolls).toMatchObject({ counterable: false, coverable: false })
+    })
+
+    it('strikes 16 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -193,9 +209,9 @@ describe.skipIf(!romPath)(
             ? battleSpellOf({ ...a, reach: ActionReach.One })
             : undefined)
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
-        if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
+        if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(22)
+      expect(attack).toBe(16)
     })
   },
 )

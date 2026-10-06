@@ -184,6 +184,30 @@ export interface Action {
    */
   readonly reflectable: boolean
   /**
+   * Whether a stance turns it — `+0x10`, bit 7: the resolver's redirection
+   * (`func_ov024_021e9f68`, `0x021ea1c0`–`0x021ea1c8`) counters such an
+   * action at one in Counter Wait or Back Atcha's stance. 78 of 681 — the
+   * plain Attack, the monsters' attacks and the party's slashes and thrusts.
+   * Read 7 October 2026.
+   */
+  readonly counterable: boolean
+  /**
+   * Whether an ally may take it in its target's place — `+0x10`, bit 12: the
+   * resolver's cover (`func_ov024_021e9b74`, `0x021e9bd8`–`0x021e9be8`) hands
+   * such an action to one in Forbearance's, Selflessness's or Whipping Boy's
+   * stance. 305 of 681 — every harmful action. Read 7 October 2026.
+   */
+  readonly coverable: boolean
+  /**
+   * Whether it is taken up as the round begins — `+0x08`, bit 28: its MP is
+   * spent then, and its stance set (`func_ov000_021537b8`, called for each
+   * such action by `func_ov000_0215f110`, `0x0215f174`–`0x0215f194`), and the
+   * turn asks no MP of it (`func_ov024_021eaa50`, `0x021eabe8`–`0x021eabf4`).
+   * 12 of 681: Defend, Blockenspiel, the six stances, Pincushion and three
+   * nameless. Read 7 October 2026.
+   */
+  readonly atRoundStart: boolean
+  /**
    * How its accuracy is come by — `+0x18`, bits 16 and 17. At 1 the accuracy
    * scales between the two percentages below by one of the attacker's
    * numbers, or is drawn between them when none is named; otherwise it stands
@@ -423,6 +447,9 @@ export function readActions(bytes: Uint8Array): Action[] {
       criticalPercent: (view.getUint32(at + 0x14, true) >>> 21) & 0x7f,
       spoiltBySight: (view.getUint32(at + 0x10, true) & 8) !== 0,
       reflectable: (view.getUint32(at + 0x10, true) & 0x400) !== 0,
+      counterable: (view.getUint32(at + 0x10, true) & 0x80) !== 0,
+      coverable: (view.getUint32(at + 0x10, true) & 0x1000) !== 0,
+      atRoundStart: ((view.getUint32(at + 8, true) >>> 28) & 1) === 1,
       accuracyMode: (view.getUint32(at + 0x18, true) >>> 16) & 3,
       damageHandler: (view.getUint32(at + 0x18, true) >>> 18) & 0x1ff,
       kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,

@@ -6,7 +6,6 @@ import {
   criticalDamage,
   dealt,
   drawnAmount,
-  GUARD_LEVELS,
   holyResistance,
   inCrisis,
   initiative,
@@ -18,6 +17,7 @@ import {
 } from './damage.ts'
 import { experienceMultiplier, replenishedMp, revivedHp, scaledAccuracy } from './handlers.ts'
 import type { BattleRng } from './rng.ts'
+import { guardOf, hpShare, SELFLESS_AT, STANCE } from './stances.ts'
 import {
   buffedAttack,
   buffedMagic,
@@ -266,6 +266,13 @@ export interface FighterState extends Fighter {
   readonly hp: number
   readonly mp: number
   readonly defending: boolean
+  /**
+   * **A stance taken up as the round began** — status `+0x21`, 2 to 8: see
+   * `stances.ts`. Defend's, 1, is {@link defending}. None when not given.
+   */
+  readonly stance?: number
+  /** Whom Whipping Boy's holder protects — `+0x2a`, set with the stance (`ProcessCombatTurn`, `0x0215dba8`). */
+  readonly protects?: number
   /** A foe that has fled: out of the battle, and paying nothing. */
   readonly fled: boolean
   /** Its changes of state — see `states.ts`. */
@@ -334,6 +341,8 @@ export interface Spell {
   readonly breath?: boolean
   /** Whether a wall of light turns it back — its record's `+0x10` bit 10; see `turnedBack`. */
   readonly reflectable?: boolean
+  /** Whether an ally may take it in its target's place — `+0x10` bit 12; see `coverFor`. */
+  readonly coverable?: boolean
   /** The most it can deal — its record's cap. */
   readonly cap?: number
   /**
@@ -643,6 +652,9 @@ export interface Blow {
   readonly rider?: Rider
   /** Whether a metal body zeroes it — its record's `+0x10` bit 24 (see `dealt`'s `metal`). */
   readonly worksOnMetal?: boolean
+  /** Whether an ally may take it in its target's place, `+0x10` bit 12; whether a stance counters it, bit 7. */
+  readonly coverable?: boolean
+  readonly counterable?: boolean
 }
 
 export interface Changing {
@@ -653,6 +665,8 @@ export interface Changing {
   /** Whether it is a breath, `+0x10` bit 2, and whether a wall of light turns it back, bit 10 — see `turnedBack`. */
   readonly breath?: boolean
   readonly reflectable?: boolean
+  /** Whether an ally may take it in its target's place — `+0x10` bit 12; see `coverFor`. */
+  readonly coverable?: boolean
   readonly change: Change
   readonly reach: 'one' | 'group' | 'all'
   readonly side: 'own' | 'other'
@@ -759,6 +773,8 @@ export interface ChangeHit {
   readonly result: ChangeResult
   /** Turned back on its actor, who is then {@link target} — by Bounce or Reverse Cycle. */
   readonly turned?: 'bounce' | 'reverse'
+  /** Taken by an ally in its target's place — see {@link Covered}. */
+  readonly covered?: Covered
   /** The level it came to, for a level moved — which picks its line (`func_ov024_021e94c4`). */
   readonly level?: number
   /** The HP one raised comes back with, or one restored is healed by. */
@@ -850,6 +866,18 @@ export type Command =
   /** Change state on a fighter — for one that reaches further, on that fighter's kind or side. */
   | { readonly kind: 'change'; readonly changing: Changing; readonly target: number }
   | { readonly kind: 'defend' }
+  /**
+   * **A stance** — an action taken up as the round begins (`+0x08` bit 28):
+   * its MP spent then and its stance set — see `stances.ts`. `target`, the
+   * one Whipping Boy protects.
+   */
+  | {
+      readonly kind: 'stance'
+      readonly action: number
+      readonly stance: number
+      readonly cost: number
+      readonly target?: number
+    }
   | { readonly kind: 'flee' }
   /** Do nothing this turn, as the action says — a monster's idle way. */
   | { readonly kind: 'wait'; readonly action: number }
@@ -880,6 +908,16 @@ export type Command =
       readonly target?: number
     }
 
+/**
+ * **Taken in another's place** — the cover (`func_ov024_021e9b74`): by one in
+ * the stance named (6 Whipping Boy, 7 Selflessness, 8 Forbearance), the one
+ * it was aimed at `for`.
+ */
+export interface Covered {
+  readonly stance: number
+  readonly for: number
+}
+
 export type BattleEvent =
   | {
       readonly kind: 'attack'
@@ -899,8 +937,30 @@ export type BattleEvent =
       readonly envenomed?: 'newly' | 'again'
       /** The combo it was multiplied by, 1 to 3 and on — see `combo.ts`; absent for none. */
       readonly combo?: number
+      /**
+       * Taken by an ally in its target's place — {@link Covered}; `actor`
+       * and `target` are then who struck and who took it.
+       */
+      readonly covered?: Covered
+      /**
+       * Struck back by a stance — Counter Wait's (4), at the one who struck,
+       * or Back Atcha's (5), at a monster drawn: `actor` is then the holder
+       * and `target` whom they struck; `from`, the monster whose blow it was.
+       */
+      readonly countered?: { readonly stance: number; readonly from: number }
     }
   | { readonly kind: 'defend'; readonly actor: number }
+  /**
+   * A stance's turn: its record's line (kind 0's handler). `short`, taken up
+   * without the MP for it — the action 0x3a9 in its place, nothing set.
+   */
+  | {
+      readonly kind: 'stance'
+      readonly actor: number
+      readonly action: number
+      readonly target?: number
+      readonly short?: true
+    }
   | { readonly kind: 'wait'; readonly actor: number; readonly action: number }
   | { readonly kind: 'flee'; readonly actor: number; readonly escaped: boolean }
   | {
@@ -938,6 +998,8 @@ export type BattleEvent =
         readonly amount: number
         /** Turned back on its caster, who is then {@link target} — see `turnedBack`. */
         readonly turned?: 'bounce' | 'reverse'
+        /** Taken by an ally in its target's place. */
+        readonly covered?: Covered
       }[]
     }
   | {
@@ -1029,6 +1091,8 @@ export type BattleEvent =
         readonly absorbed?: 'schizofanic' | 'mist'
         /** What its rider came to on this pass, where it came to something. */
         readonly rode?: ChangeHit
+        /** Taken by an ally in its target's place. */
+        readonly covered?: Covered
       }[]
       /** HP lost to the blow's own recoil (post-step 3). */
       readonly recoil?: number
@@ -1475,6 +1539,36 @@ export function playRound(
     // A round counted for each of the party standing at its start.
     ...(f.side === 'party' && alive(f) ? { rounds: (f.rounds ?? 0) + 1 } : {}),
   }))
+  // **The stances, taken up as the round begins** (`func_ov000_0215f110`,
+  // before the order is drawn): each one's MP spent and its stance set
+  // (`func_ov000_021537b8`) — see `stances.ts`. Short of the MP, nothing is
+  // set, and its turn says so. No draw is made. **Ours**: one asleep takes up
+  // none, as Defend's guard is not held asleep here; the game's own test is
+  // `+0x14` bit 5 (`func_ov000_021543f4`), a status the battle does not keep.
+  // A trait that lessens the MP (`func_020dd290`) is not kept.
+  const shortStance = new Set<number>()
+  for (const [i, command] of commands) {
+    if (command.kind !== 'stance') continue
+    const f = fighters[i]
+    if (!f || !alive(f) || f.states.sleep !== undefined) continue
+    const zoned = (f.states.zeroZone?.level ?? 0) !== 0
+    if (!zoned && f.mp < command.cost) {
+      shortStance.add(i)
+      continue
+    }
+    const held =
+      command.stance === STANCE.defend
+        ? { defending: true }
+        : {
+            stance: command.stance,
+            ...(command.stance === STANCE.whippingBoy && command.target !== undefined
+              ? { protects: command.target }
+              : {}),
+          }
+    fighters = fighters.map((g, k) =>
+      k === i ? { ...g, mp: zoned ? g.mp : g.mp - command.cost, ...held } : g,
+    )
+  }
   // **The game's, in its order** (`ProcessCombatTurn`, `0x0215d740` on): each
   // fighter in turn is looked at, and one the opening leaves out is passed
   // over **without an initiative roll**; the rest are rolled for and the
@@ -1508,6 +1602,14 @@ export function playRound(
     fighters = fighters.map((f, i) =>
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
     )
+  }
+  /** A stance cleared — `+0x21` to 0 as paralysis and a lost turn land (`func_0208826c`, `func_02088474`). */
+  const unstance = (target: number) => {
+    fighters = fighters.map((f, i) => {
+      if (i !== target) return f
+      const { stance: _stance, protects: _protects, ...rest } = f
+      return { ...rest, defending: false }
+    })
   }
   /**
    * **The cure-all** (`func_ov024_021eae14`): sleep, both poisons, paralysis
@@ -1642,6 +1744,7 @@ export function playRound(
     if (them.states.stunned === status) return undefined
     const calmed = (them.states.tension ?? 0) > 0
     setStates(target, { stunned: status, tension: 0 })
+    unstance(target)
     return { target, result: 'stunned', status, ...(calmed ? { calmed: true } : {}) }
   }
   /**
@@ -1712,6 +1815,7 @@ export function playRound(
           sleep: undefined,
           tension: 0,
         })
+        unstance(target)
         return {
           target,
           result: 'paralysed',
@@ -1973,6 +2077,68 @@ export function playRound(
     return decoy
   }
   /** One of the party aimed a pass at a monster: its memory of who (`0x021ed0d4`). */
+  /**
+   * **The cover** — `func_ov024_021e9b74`, called for each one an action
+   * reaches after its die and before the redirection (`0x021ec068`): for an
+   * action an ally may take (`+0x10` bit 12), at a target standing, the
+   * others of the target's side who can act (`func_ov000_02155f9c`) in
+   * Forbearance's stance; failing them, for a target at 8 in 100 of their
+   * most HP or less, those in Selflessness's; failing them, those in Whipping
+   * Boy's who protect the target (`+0x2a`). One is drawn among them — a draw
+   * of the battle's, made only where there is one — and takes it in the
+   * target's place. **Ours**: `+0x18` bits 11 and 13, which refuse it, are
+   * statuses the battle does not keep; and a later pass at a target once
+   * covered that no one can cover is not passed over, as the game's
+   * `+0x79` has it (`0x021ec0ac`–`0x021ec0bc`).
+   */
+  const coverFor = (
+    target: number,
+    coverable: boolean | undefined,
+  ): { target: number; covered?: Covered } => {
+    const them = fighters[target]
+    if (!coverable || !them || !alive(them)) return { target }
+    const side = livingOn(them.side)
+    const holding = (stance: number, also: (f: FighterState) => boolean = () => true) =>
+      side.filter((i) => {
+        const f = fighters[i] as FighterState
+        return i !== target && canAct(f) && f.stance === stance && also(f)
+      })
+    let stance: number = STANCE.forbearance
+    let by = holding(stance)
+    if (by.length === 0 && hpShare(them.hp, them.maxHp) <= SELFLESS_AT) {
+      stance = STANCE.selfless
+      by = holding(stance)
+    }
+    if (by.length === 0) {
+      stance = STANCE.whippingBoy
+      by = holding(stance, (f) => f.protects === target)
+    }
+    if (by.length === 0) return { target }
+    return { target: by[rng.below(by.length)] as number, covered: { stance, for: target } }
+  }
+  /**
+   * **A stance's counter** — `func_ov024_021e9f68`, `0x021ea15c`–`0x021ea2e8`:
+   * for an action a stance turns (`+0x10` bit 7) at one who can act, in
+   * Counter Wait's stance the two are swapped — the holder strikes the one
+   * who struck; in Back Atcha's the holder strikes a monster drawn among
+   * those standing (`func_ov000_0215eb1c`, a draw of the battle's). **Ours**:
+   * the party's own Attack is spared by its weapon's flags
+   * (`func_ov024_021ea500`), which only a party member's blow at a party
+   * member could ask.
+   */
+  const counterOf = (
+    actor: number,
+    target: number,
+  ): { striker: number; target: number; stance: number } | undefined => {
+    const them = fighters[target]
+    if (!them || !canAct(them)) return undefined
+    if (them.stance === STANCE.counter)
+      return { striker: target, target: actor, stance: them.stance }
+    if (them.stance !== STANCE.backAtcha) return undefined
+    const foes = livingOn(them.side === 'party' ? 'foes' : 'party')
+    if (foes.length === 0) return undefined
+    return { striker: target, target: foes[rng.below(foes.length)] as number, stance: them.stance }
+  }
   const noteAim = (actor: number, target: number) => {
     const me = fighters[actor]
     const them = fighters[target]
@@ -2521,6 +2687,7 @@ export function playRound(
     // (`func_ov024_021ea584`) — Defend, an item, a change of state, a wait.
     if (
       command.kind === 'defend' ||
+      command.kind === 'stance' ||
       command.kind === 'item' ||
       command.kind === 'change' ||
       command.kind === 'wait'
@@ -2539,6 +2706,27 @@ export function playRound(
     if (command.kind === 'defend') {
       events.push({ kind: 'defend', actor })
       resolved = { actor, action: undefined }
+      continue
+    }
+    // A stance's turn (kind 0, `func_ov024_021da670`): its line, through the
+    // resolver's pass on its holder as Defend's — or, taken up short of the
+    // MP, 0x3a9's, which says so and passes nothing.
+    if (command.kind === 'stance') {
+      const short = shortStance.has(actor)
+      if (!short) {
+        selfPass(me)
+        coupAtPass(actor, 0)
+      }
+      events.push({
+        kind: 'stance',
+        actor,
+        action: command.action,
+        ...(command.target !== undefined && command.target !== actor
+          ? { target: command.target }
+          : {}),
+        ...(short ? { short: true as const } : {}),
+      })
+      resolved = { actor, action: command.action }
       continue
     }
     if (command.kind === 'wait') {
@@ -2705,8 +2893,13 @@ export function playRound(
       )
       const once = spell.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
-      const hits = reached.map((aimed) => {
-        noteAim(actor, aimed)
+      const hits = reached.map((first) => {
+        noteAim(actor, first)
+        // Each one reached: a die of a hundred the game keeps for them
+        // (`0x021ebf28`); then the cover (`0x021ec068`) — see `coverFor`.
+        rng.below(100)
+        const cover = coverFor(first, spell.does === 'harm' && spell.coverable)
+        const aimed = cover.target
         // **Turned back** (`func_ov024_021e9f68`, `0x021ec0f4`): the caster
         // is then the target, and the one it was aimed at the actor, for the
         // rest of the pass — what is drawn, the target's resistances, the
@@ -2723,11 +2916,9 @@ export function playRound(
           target,
           turn,
         })
-        // Each one reached: a die of a hundred the game keeps for them
-        // (`0x021ebf28`), the critical roll where it is theirs, the accuracy's
-        // draw — a spell cannot be dodged or blocked, so neither is rolled —
-        // and the amount.
-        rng.below(100)
+        // Then the critical roll where it is theirs, the accuracy's draw — a
+        // spell cannot be dodged or blocked, so neither is rolled — and the
+        // amount.
         if (!once) critical = rng.below(10_000) < rate
         rng.below(100)
         let amount = spell.amount ? amountFor(rng, atMagicLevels(user), spell.amount) : them.maxHp
@@ -2744,7 +2935,7 @@ export function playRound(
             ...(spell.cap ? { cap: spell.cap } : {}),
             // A guard halves what defending works on — Frizz and Crack are
             // among them, a heal and a herb are not.
-            ...(them.defending && spell.defendable ? { guard: GUARD_LEVELS[1] } : {}),
+            ...(spell.defendable && guardOf(them) !== 1 ? { guard: guardOf(them) } : {}),
             ...(spell.combos ? { combo: chain.count } : {}),
             ...(tension ? { tension } : {}),
             ...(halved ? { halved } : {}),
@@ -2766,7 +2957,12 @@ export function playRound(
           harm && spell.kind === 1 ? amount : 0,
           harm ? them.hp - amount : them.hp + amount,
         )
-        return { target, amount, ...(turned ? { turned } : {}) }
+        return {
+          target,
+          amount,
+          ...(turned ? { turned } : {}),
+          ...(cover.covered ? { covered: cover.covered } : {}),
+        }
       })
       resolved = { actor, action: spell.action }
       // Told before anyone it fells falls.
@@ -2886,9 +3082,15 @@ export function playRound(
       }
       /** How the last pass was turned back, if it was — told on its hit. */
       let turned: 'bounce' | 'reverse' | undefined
-      const changeOne = (aimed: number): ChangeHit => {
-        noteAim(actor, aimed)
+      /** Who took the last pass in its target's place, if anyone did. */
+      let covered: Covered | undefined
+      const changeOne = (first: number): ChangeHit => {
+        noteAim(actor, first)
         const die = rng.below(100)
+        // The cover (`0x021ec068`), before the redirection — see `coverFor`.
+        const cover = coverFor(first, changing.side === 'other' && changing.coverable)
+        covered = cover.covered
+        const aimed = cover.target
         if (!once) critical = rng.below(10_000) < rate
         // **Turned back** by a wall of light or Reverse Cycle
         // (`func_ov024_021e9f68`, `0x021ec0f4`): the actor and the target
@@ -3253,7 +3455,11 @@ export function playRound(
       const hits = reached.map((target) => {
         const hit = changeOne(target)
         coupAtPass(hit.target, 0)
-        return turned ? { ...hit, turned } : hit
+        return {
+          ...hit,
+          ...(turned ? { turned } : {}),
+          ...(covered ? { covered } : {}),
+        }
       })
       resolved = { actor, action: changing.action }
       events.push({
@@ -3306,6 +3512,7 @@ export function playRound(
         missed?: boolean
         absorbed?: 'schizofanic' | 'mist'
         rode?: ChangeHit
+        covered?: Covered
       }[] = []
       /** Who its riders send to sleep or fell, once its damage is dealt. */
       const pending: { asleep: number[]; felled: number[]; spared: number[] } = {
@@ -3331,6 +3538,10 @@ export function playRound(
           target = left[rng.below(left.length)] as number
         }
         noteAim(actor, target)
+        // The cover (`0x021ec068`) — see `coverFor`. **Ours**: a stance's
+        // counter (`0x021ea15c` on) is played on the plain Attack only.
+        const cover = coverFor(target, blow.coverable)
+        target = cover.target
         const them = fighters[target] as FighterState
         if (!once && !blow.sure) critical = rng.below(10_000) < rate
         let dodged = blow.evadable && canAct(them) && dodges(them, die)
@@ -3374,6 +3585,7 @@ export function playRound(
             blocked: false,
             missed: true,
             ...(absorbed ? { absorbed } : {}),
+            ...(cover.covered ? { covered: cover.covered } : {}),
           })
           coupAtPass(target, 0, them.hp - (dealtTo.get(target) ?? 0))
           continue
@@ -3423,7 +3635,7 @@ export function playRound(
           dodged,
           blocked,
           ...(blow.cap ? { cap: blow.cap } : {}),
-          ...(them.defending && blow.defendable ? { guard: GUARD_LEVELS[1] } : {}),
+          ...(blow.defendable && guardOf(them) !== 1 ? { guard: guardOf(them) } : {}),
           ...(blow.combos ? { combo: chain.count } : {}),
           ...(tension && !(thrust && d === 0) ? { tension } : {}),
           ...(them.states.tension === TENSION_MOST ? { halved: true } : {}),
@@ -3449,6 +3661,7 @@ export function playRound(
           dodged,
           blocked,
           ...(rode ? { rode } : {}),
+          ...(cover.covered ? { covered: cover.covered } : {}),
         })
         // The coup's draw at this pass, on what it dealt and what it leaves.
         const before = dealtTo.get(target) ?? 0
@@ -3523,17 +3736,13 @@ export function playRound(
     // An attack: at the target named, or at someone living on the other side.
     const others = livingOn(me.side === 'party' ? 'foes' : 'party')
     if (others.length === 0) break
-    const target =
+    const aimed =
       me.side === 'party'
         ? partyAim(command.target, 'one')[0]
         : (aimOf(me, actor, 'party', command.target, 'one')[0] as number)
-    if (target === undefined) break
+    if (aimed === undefined) break
     builtDraws()
-    noteAim(actor, target)
-    const them = fighters[target] as FighterState
-    // The chain, before the accuracy (`0x021ec178`): the plain Attack's blows
-    // chain (`+0x2C` bit 27). **Ours**: a monster's blow taken as the Attack, 1.
-    chain = chainStep(chain, { combos: true, side: me.side, action: 1, target, turn })
+    noteAim(actor, aimed)
 
     // **The game's order of a blow's draws** — `func_ov024_021eb5d0`, read from
     // the decomp; `docs/conformance.md`, "The resolver of a blow". Each is made
@@ -3545,9 +3754,24 @@ export function playRound(
     //    place of its own draw for a target under Rough 'n' Tumble (see
     //    `dodges`); otherwise nothing comes of it, and it is spent.
     const die = rng.below(100)
+    // **Taken in another's place, or struck back** — the cover, then the
+    // redirection (`0x021ec068`, `0x021ec0f4`): the plain Attack carries
+    // `+0x10` bits 12 and 7, and so does every monster's attack the battle
+    // plays as it (1, 2, 230 to 232, 273 to 275). Struck back, the holder is
+    // the striker for the rest of the pass. **Ours**: a counter carries
+    // neither the striker's tension nor the attack's poison.
+    const cover = coverFor(aimed, true)
+    const counter = counterOf(actor, cover.target)
+    const striker = counter ? counter.striker : actor
+    const target = counter ? counter.target : cover.target
+    const me_ = fighters[striker] as FighterState
+    const them = fighters[target] as FighterState
+    // The chain, before the accuracy (`0x021ec178`): the plain Attack's blows
+    // chain (`+0x2C` bit 27). **Ours**: a monster's blow taken as the Attack, 1.
+    chain = chainStep(chain, { combos: true, side: me_.side, action: 1, target, turn })
     // 1. The critical roll, always. A monster's rate is nothing and its draw is
     //    spent all the same.
-    const critical = rng.below(10_000) < criticalRate(me, 100, rules.critical)
+    const critical = rng.below(10_000) < criticalRate(me_, 100, rules.critical)
     // 2. The dodge, its rate truncated. The plain attack can be dodged.
     // Neither is drawn against one who cannot act (`func_ov000_02155f9c`).
     const dodged = canAct(them) && dodges(them, die)
@@ -3563,12 +3787,12 @@ export function playRound(
     // may be blocked).
     const absorbed = decoyed(target, true)
     if (!absorbed) rng.below(100)
-    const missed = absorbed !== undefined || blinded(me, true)
+    const missed = absorbed !== undefined || blinded(me_, true)
     // 5. The damage, worked out **even for a blow that was dodged or blocked**:
     //    the game calls `GetAttackBaseDamage` whenever the blow lands, and the
     //    dodge and the block ride along as flags — but not for one missed
     //    (`0x021ec4e4`–`0x021ec4e8`).
-    let damage = missed ? 0 : physicalDamage(rng, attackOf(me), defenceOf(them))
+    let damage = missed ? 0 : physicalDamage(rng, attackOf(me_), defenceOf(them))
     // The rest is the game's `func_ov024_021e6a90`, in its floats — `dealt`:
     // the critical (the greatest of the damage and a fifth, the attack power
     // times 0.95 to 1.05, and the damage itself), **times the target's
@@ -3582,17 +3806,17 @@ export function playRound(
     // applied before the 0-or-1 coin, so a defended blow that comes to
     // nothing still deals 0 or 1; and the code never asks whose blow it is,
     // so a monster's guard halves the party's blow as well.
-    const tension = tensionOf(me)
+    const tension = counter ? undefined : tensionOf(me)
     damage = missed
       ? 0
       : dealt(rng, damage, {
           critical,
-          attack: attackOf(me),
+          attack: attackOf(me_),
           resistance: resistanceOf(them, PLAIN_ATTACK_ELEMENT),
-          ...rotOf(me, them),
+          ...rotOf(me_, them),
           dodged,
           blocked,
-          ...(them.defending ? { guard: GUARD_LEVELS[1] } : {}),
+          ...(guardOf(them) !== 1 ? { guard: guardOf(them) } : {}),
           combo: chain.count,
           // The plain Attack carries tension (`+0x10` bit `0x2000`), and is of kind 1.
           ...(tension ? { tension } : {}),
@@ -3619,6 +3843,7 @@ export function playRound(
       them.states.tension !== TENSION_MOST && (command.envenoms || !them.states.envenomed)
     const poisoned =
       damage > 0 &&
+      !counter &&
       command.poison !== undefined &&
       mayTake &&
       toPoison > 0 &&
@@ -3627,8 +3852,10 @@ export function playRound(
     if (poisoned) setStates(target, command.envenoms ? { envenomed: true } : { poisoned: true })
     events.push({
       kind: 'attack',
-      actor,
+      actor: striker,
       target,
+      ...(cover.covered ? { covered: cover.covered } : {}),
+      ...(counter ? { countered: { stance: counter.stance, from: actor } } : {}),
       damage,
       critical: critical && !dodged && !blocked,
       dodged,
@@ -3645,7 +3872,7 @@ export function playRound(
     // The coup's draw at the pass — the Attack is of kind 1.
     coupAtPass(target, damage)
     resolved = { actor, action: undefined }
-    calm(actor)
+    if (!counter) calm(actor)
     outcome = outcomeOf(fighters)
     if (outcome !== 'ongoing') break
   }
@@ -3718,7 +3945,11 @@ export function playRound(
     outcome = outcomeOf(fighters)
   }
 
-  fighters = fighters.map((f) => ({ ...f, defending: false }))
+  // The stances go at the round's end (`func_ov000_0215e6e8`, `0x0215e7c8`).
+  fighters = fighters.map(({ stance: _stance, protects: _protects, ...f }) => ({
+    ...f,
+    defending: false,
+  }))
   return {
     state: {
       ...state,

@@ -18,6 +18,8 @@ import {
   playRound,
   RIDERS_PLAYED,
   type Spell,
+  STANCE,
+  STANCES,
   startBattle,
   TENSION_SHOWN,
   withHp,
@@ -148,6 +150,20 @@ export const ACTION_SAYS = {
   furtherFizzledFoe: 0x1a,
   /** "<TARGET> is no longer paralysed." — Tingle's done line. */
   unparalysed: 505,
+  /** "<ACTOR> tries to use <ACTION>." — action 0x3a9's opening, a stance taken up short of MP. */
+  triesToUse: 598,
+  /**
+   * "<TARGET> performs a cunning counterattack!" — said for a stance's
+   * counter, **INFERRED** from its words: which line the redirection's notes
+   * 3 and 4 (`func_ov000_0215ff50`) say is not read.
+   */
+  counters: 440,
+  /**
+   * "But <ACTOR> leaps in to take the attack in <TARGET>'s place." — said for
+   * the cover, **INFERRED** from its words: which line its notes 6 to 8
+   * (`func_ov000_0215ff20`) say is not read.
+   */
+  takesPlace: 126,
   /** Changes of state. */
   unaffected: 27,
   defenceUpMuch: 0x3a,
@@ -739,6 +755,10 @@ export interface Castable {
     /** Whether a dazzled striker may miss it — `+0x10` bit 3. */
     readonly spoiltBySight?: boolean
     readonly reflectable?: boolean
+    /** Whether a stance counters it and an ally may take it — `+0x10` bits 7 and 12; taken up as the round begins, `+0x08` bit 28. */
+    readonly counterable?: boolean
+    readonly coverable?: boolean
+    readonly atRoundStart?: boolean
     readonly handler?: number
     readonly hitCode?: number
     readonly afterStep?: number
@@ -822,6 +842,8 @@ export function battleSpellOf(
       ...(action.rolls?.breath ? { breath: true } : {}),
       // What a wall of light turns back (`+0x10` bit 10).
       ...(action.rolls?.reflectable ? { reflectable: true } : {}),
+      // What an ally may take in its target's place (`+0x10` bit 12).
+      ...(action.rolls?.coverable ? { coverable: true } : {}),
       // Gold Rush: post-step 6 spends its record's `+0x32` in gold (`func_ov024_021e5be4`).
       ...(action.rolls?.afterStep === GOLD_STEP ? { gold: action.rolls.riderLevels } : {}),
     },
@@ -904,7 +926,7 @@ const FOE_CHANGES: ReadonlyMap<number, Pick<Changing, 'change' | 'side'>> = new 
 function recordsOwn(
   changes: Pick<Changing, 'change' | 'side'>,
   rolls: Castable['rolls'],
-): Pick<Changing, 'change' | 'side' | 'evadable' | 'haywire' | 'element'> {
+): Pick<Changing, 'change' | 'side' | 'evadable' | 'haywire' | 'element' | 'coverable'> {
   if (!rolls) return changes
   const chance = rolls.chanceIsAccuracy ? rolls.foeChance : 100
   const { change } = changes
@@ -919,6 +941,7 @@ function recordsOwn(
     haywire: rolls.haywire,
     ...(rolls.criticalPercent === undefined ? {} : { criticalPercent: rolls.criticalPercent }),
     ...(rolls.landingElement ? { element: rolls.landingElement } : {}),
+    ...(rolls.coverable ? { coverable: true } : {}),
   }
 }
 
@@ -1234,8 +1257,32 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     case 'attack': {
       const whom = labels[event.target] ?? '?'
       const target = scene.names[event.target]
+      // A blow taken in another's place, or struck back by a stance: the
+      // blow as it was aimed first, then who took it or struck back.
+      const from = event.countered?.from
+      const turned =
+        event.countered && from !== undefined
+          ? [
+              say(scene, 'actions', ACTION_SAYS.attacks, {
+                actor: scene.names[from],
+                target: actor,
+              }),
+              say(scene, 'actions', ACTION_SAYS.counters, { target: actor }),
+            ]
+          : event.covered
+            ? [
+                say(scene, 'actions', ACTION_SAYS.attacks, {
+                  actor,
+                  target: scene.names[event.covered.for],
+                }),
+                say(scene, 'actions', ACTION_SAYS.takesPlace, {
+                  actor: target,
+                  target: scene.names[event.covered.for],
+                }),
+              ]
+            : [say(scene, 'actions', ACTION_SAYS.attacks, { actor, target })]
       const game = lines(
-        say(scene, 'actions', ACTION_SAYS.attacks, { actor, target }),
+        ...turned,
         ...(event.absorbed === 'mist'
           ? [say(scene, 'actions', MIST_ABSORBS, { actor, target })]
           : event.missed
@@ -1275,7 +1322,15 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                   ]),
       )
       if (game !== undefined) return game
-      const ours = [`${who} attacks!`]
+      const ours =
+        from !== undefined
+          ? [`${labels[from] ?? '?'} attacks!`, `${who} performs a cunning counterattack!`]
+          : event.covered
+            ? [
+                `${who} attacks!`,
+                `But ${whom} leaps in to take the attack in ${labels[event.covered.for] ?? '?'}'s place.`,
+              ]
+            : [`${who} attacks!`]
       if (event.absorbed === 'mist')
         ours.push(`The mist surrounding ${whom} absorbs the attack and disperses.`)
       else if (event.missed) ours.push(`Miss! ${whom} takes no damage.`)
@@ -1405,6 +1460,25 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       return (
         say(scene, 'actions', ACTION_SAYS.defends, { actor }) ?? sentence(`${who} is on guard.`)
       )
+    case 'stance': {
+      // Its record's line (kind 0's handler); taken up short of MP, action
+      // 0x3a9's — "tries to use", then "not enough MP".
+      const told = scene.known.get(event.action)
+      const action = told?.name ?? { name: `move ${event.action}` }
+      if (event.short) {
+        return (
+          lines(
+            say(scene, 'actions', ACTION_SAYS.triesToUse, { actor, action }),
+            say(scene, 'actions', ACTION_SAYS.notEnoughMp, {}),
+          ) ?? [`${who} tries to use ${action.name}.`, 'Not enough MP!'].map(sentence).join('\n')
+        )
+      }
+      const target = event.target === undefined ? actor : scene.names[event.target]
+      const game = told?.opening
+        ? lines(say(scene, 'actions', told.opening, { actor, target, action }))
+        : undefined
+      return game ?? sentence(`${who} uses ${action.name}.`)
+    }
     case 'flee': {
       // A monster that runs away says so in `actmsg`; the party's flight in `strbtl`.
       if (state.fighters[event.actor]?.side === 'foes') {
@@ -2218,6 +2292,8 @@ export function blowOf(action: Castable): Blow | undefined {
     evadable: r.evadable,
     blockable: r.blockable ?? false,
     ...(r.spoiltBySight ? { spoiltBySight: true } : {}),
+    ...(r.coverable ? { coverable: true } : {}),
+    ...(r.counterable ? { counterable: true } : {}),
     defendable: r.defendable ?? false,
     tensed: r.tensed ?? false,
     combos: r.combos ?? false,
@@ -2328,6 +2404,19 @@ const CHANGE_REACHES = new Map<number, Changing['reach']>([
  * its accuracy — a hundred, or for one that scales the party's own between
  * its least and most (`func_ov000_02156648`). Undefined for any other kind.
  */
+/**
+ * **A stance**, as the battle takes it up — an action with `+0x08` bit 28
+ * that the table at `0x02182e24` names (`func_ov000_021537b8`): see the
+ * sim's `stances.ts`. Defend's and Blockenspiel's, 1, are played as they
+ * were — Defend by its command, Blockenspiel as its blow.
+ */
+export function stanceOf(action: Castable): { stance: number; cost: number } | undefined {
+  if (!action.rolls?.atRoundStart) return undefined
+  const stance = STANCES.get(action.action)
+  if (stance === undefined || stance === STANCE.defend) return undefined
+  return { stance, cost: action.cost }
+}
+
 export function partyChangeOf(action: Castable): Changing | undefined {
   const r = action.rolls
   const kind = r?.kind === undefined ? undefined : CHANGE_KINDS.get(r.kind)
@@ -2381,6 +2470,7 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     // A breath, bit 2, and what a wall of light turns back, bit 10 — see `turnedBack`.
     ...(r.breath ? { breath: true } : {}),
     ...(r.reflectable ? { reflectable: true } : {}),
+    ...(r.coverable ? { coverable: true } : {}),
     ...(r.landingElement ? { element: r.landingElement } : {}),
     ...(r.evadable ? { evadable: true } : {}),
     ...(r.spoiltBySight ? { spoiltBySight: true } : {}),

@@ -7,6 +7,7 @@ export {
   type ChangeResult,
   type Changing,
   type Command,
+  type Covered,
   DEFAULT_RULES,
   type Drop,
   type Fighter,
@@ -67,6 +68,7 @@ export { bandAdd, experienceShares, type Sharer } from './battle/experience.ts'
 export { revivedHp, scaledAccuracy } from './battle/handlers.ts'
 export { FACING_CONE, facingOff, howItOpens } from './battle/opening.ts'
 export { BattleRng } from './battle/rng.ts'
+export { guardOf, SELFLESS_AT, STANCE, STANCES } from './battle/stances.ts'
 export {
   buffedAttack,
   buffedMagic,

@@ -270,6 +270,7 @@ export function actionOf(
       }
     }
     case 'defend':
+    case 'stance':
     case 'wait': {
       const action = event.kind === 'defend' ? ACTIONS.defend : event.action
       return {

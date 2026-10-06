@@ -319,6 +319,7 @@ import {
   type Offered,
   partyChangeOf,
   RESULT_SAYS,
+  stanceOf,
   TENSION_BOOST,
   type Told,
   withPages,
@@ -7988,7 +7989,9 @@ function battleListsOf(
     const kind = action.rolls?.kind
     const blow = blowOf(action)
     const changing = spell || blow ? undefined : partyChangeOf(action)
-    if (blow || changing || kind === PSYCHE_KIND)
+    // A stance, taken up as the round begins — see the sim's `stances.ts`.
+    const stance = spell || blow || changing ? undefined : stanceOf(action)
+    if (blow || changing || stance || kind === PSYCHE_KIND)
       known.set(id, {
         name: { name: action.name },
         message: action.message,
@@ -8016,7 +8019,15 @@ function battleListsOf(
                   steps: Math.max(1, action.rolls?.levels ?? 1),
                   target,
                 })
-              : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
+              : stance
+                ? (target) => ({
+                    kind: 'stance',
+                    action: id,
+                    stance: stance.stance,
+                    cost: stance.cost,
+                    ...(action.reach === ALLY_NOT_SELF ? { target } : {}),
+                  })
+                : (target) => ({ kind: 'attack', target: action.side === 1 ? target : -1 })
     list.push({
       action: id,
       name: renderName(action.name),
