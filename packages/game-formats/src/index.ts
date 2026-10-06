@@ -455,11 +455,14 @@ export { readTalk, type TalkLine } from './talk.ts'
 export {
   type Bookcase,
   type DoorwayRegion,
+  type LadderEnd,
+  type LadderExit,
   type MapTransition,
   mapAreas,
   mapBookcases,
   mapDoorwayRegions,
   mapDoorways,
+  mapLadders,
   readMapTransitions,
 } from './transitions.ts'
 export {

@@ -124,11 +124,13 @@ import {
   BattleRng,
   type BattleState,
   blockChance,
+  type Climb,
   type Clock,
   COUP_OF,
   type CollisionWorld,
   type Command,
   calmFor,
+  climbPass,
   coupBonus,
   createCollisionWorld,
   createFollower,
@@ -163,6 +165,8 @@ import {
   type RoamerKind,
   type Roaming,
   type RoamRules,
+  recordLeader,
+  reduceAngle,
   resetFollower,
   type Sharer,
   SPOT_COUNT,
@@ -174,6 +178,7 @@ import {
   tickClock,
   tickGathering,
   tickRoaming,
+  tryClimb,
 } from '@minstrel/sim'
 import {
   backdrop,
@@ -470,6 +475,7 @@ import {
   innChoices,
   innPrice,
 } from './keepers.ts'
+import { boxTest, climbPose, endsInWords, motionLengths } from './ladders.ts'
 import {
   actionRecordOf,
   actionScripts,
@@ -1079,6 +1085,16 @@ let trickSlots: (number | undefined)[] = Array.from({ length: TRICK_SLOT_COUNT }
 let cancelHeld = false
 /** A party trick being performed — see `tricks.ts`. */
 let performing: Performance | undefined
+/**
+ * **The climb the Hero is on**, up or down a ladder or a vine — see
+ * `ladders.ts` and `ladder.ts` in `@minstrel/sim`. Its passes are the field's,
+ * two vblanks each (`PASS_MS`).
+ */
+let climbing: Climb | undefined
+/** The passes in a row the Hero has pushed along a ladder (`field+0x42ee`). */
+let ladderCount = 0
+/** Milliseconds not yet a pass, for starting a climb and for climbing. */
+let ladderCarry = 0
 /** The place in `performing.tricks` whose sound has been started, so each starts once. */
 let performingSounded = -1
 /** A, B, X or Y pressed while a lone trick holds its loop — see `stepPerformance`. */
@@ -2672,6 +2688,8 @@ function enter(map: string, arrival?: Arrival, forScene = false): boolean {
     return hit ? toFloat(hit.y) / WORLD_SCALE : undefined
   })
   picking = undefined
+  climbing = undefined
+  ladderCount = 0
   playMapMusic()
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
   dressHero()
@@ -2973,6 +2991,159 @@ function flyOn(elapsedMs: number): { moving: boolean; travelled: number; marshTi
   }
   self.facing = flying.facing / 4096
   return { moving: false, travelled: 0, marshTicks: 0 }
+}
+
+/** The Hero's place in the file's own units as words, and their facing × 4096 — what the climb works in. */
+function heroWords(): { x: number; y: number; z: number; facing: number } {
+  const scale = WORLD_SCALE * worldScale
+  const word = (v: Fx32) => Math.round((toFloat(v) / scale) * 4096)
+  if (!self) return { x: 0, y: 0, z: 0, facing: 0 }
+  return {
+    x: word(self.state.x),
+    y: word(self.state.y),
+    z: word(self.state.z),
+    facing: reduceAngle(Math.round(self.facing * 4096)),
+  }
+}
+
+/** Put the Hero where the climb has them, standing — the inverse of {@link heroWords}. */
+function putHeroWords(at: { x: number; y: number; z: number; facing: number }): void {
+  if (!self) return
+  const scale = WORLD_SCALE * worldScale
+  const world = (w: number) => fx32(Math.round((w / 4096) * scale * FX32_ONE))
+  self.state = {
+    x: world(at.x),
+    y: world(at.y),
+    z: world(at.z),
+    fallSpeed: fx32(0),
+    grounded: true,
+  }
+  self.facing = at.facing / 4096
+}
+
+/** Whether the field holds the Hero, so a ladder is neither taken nor climbed. */
+function fieldBusy(): boolean {
+  return Boolean(
+    menu || talking || visit || playing || travelling || battle || opening || picking || performing,
+  )
+}
+
+/**
+ * **Whether to get on a ladder**, each pass (`func_ov017_021975e4`): standing
+ * in an end's box, facing it from below or away from it above, and pushing
+ * along it three passes running — see `tryClimb`. Not with B held, nor while
+ * the field holds the Hero, nor in flight. **Ours**: X held, which the game
+ * also tests, is not, since this engine opens the menu as X goes down.
+ */
+function maybeClimb(elapsedMs: number, walking: boolean): void {
+  if (!self || !loaded || loaded.ladders.length === 0 || flying) {
+    ladderCarry = 0
+    return
+  }
+  const words = endsInWords(loaded.ladders)
+  const free = !cancelHeld && !fieldBusy()
+  ladderCarry = Math.min(ladderCarry + elapsedMs, PASS_MS * 8)
+  while (ladderCarry >= PASS_MS) {
+    ladderCarry -= PASS_MS
+    const hero = heroWords()
+    const inBox = boxTest(loaded.ladders, words, hero.x / 4096, hero.y / 4096, hero.z / 4096)
+    const r = tryClimb(words, inBox, hero, padWords(), walking, free, ladderCount)
+    ladderCount = r.count
+    if (r.climb) {
+      climbing = r.climb
+      ladderCarry = 0
+      return
+    }
+  }
+}
+
+/** The +Control Pad's direction in the world, unit length as words (`field+0x4438`), or none. */
+function padWords(): { x: number; z: number } {
+  if (!self) return { x: 0, z: 0 }
+  let forward = 0
+  let right = 0
+  if (self.held.has('w')) forward += 1
+  if (self.held.has('s')) forward -= 1
+  if (self.held.has('d')) right += 1
+  if (self.held.has('a')) right -= 1
+  if (Math.hypot(self.stick.forward, self.stick.right) > Math.hypot(forward, right)) {
+    forward = self.stick.forward
+    right = self.stick.right
+  }
+  if (forward === 0 && right === 0) return { x: 0, z: 0 }
+  const way = moveRelativeToCamera(camera.yaw, forward, right)
+  return { x: Math.round(way.x * 4096), z: Math.round(way.z * 4096) }
+}
+
+/**
+ * **A pass of climbing**, as many as the time allows — see `climbPass`. Up
+ * and Down are the +Control Pad's own, not the camera's: the keys' `w` and
+ * `s`, or the stick past half. Whoever follows keeps to the Hero's steps up
+ * and down it — **ours**: what the party does on a ladder was not read.
+ */
+function climbOn(elapsedMs: number): { moving: boolean; travelled: number; marshTicks: number } {
+  const still = { moving: false, travelled: 0, marshTicks: 0 }
+  if (!climbing || !self || !loaded) return still
+  const held = self.held
+  const forward = held.has('w') === held.has('s') ? self.stick.forward : held.has('w') ? 1 : -1
+  const pad = forward > 0.5 ? 'up' : forward < -0.5 ? 'down' : undefined
+  const heroSpeeds = cartridge ? motionSpeeds(cartridge, motionFamilyOf(leader())) : undefined
+  const lengths = motionLengths(loaded.figure.motions, heroSpeeds)
+  const from = self.state
+  ladderCarry = Math.min(ladderCarry + elapsedMs, PASS_MS * 8)
+  while (ladderCarry >= PASS_MS && climbing) {
+    ladderCarry -= PASS_MS
+    const r = climbPass(climbing, heroWords(), pad, fieldBusy(), lengths)
+    climbing = r.climb
+    putHeroWords(r.hero)
+    for (const follower of trails) recordLeader(follower, self.state)
+    if (r.leave) {
+      climbing = undefined
+      leaveByLadder(r.leave.id)
+      break
+    }
+  }
+  if (!climbing) ladderCarry = 0
+  const travelled = Math.hypot(
+    toFloat(self.state.x) - toFloat(from.x),
+    toFloat(self.state.z) - toFloat(from.z),
+  )
+  return { ...still, moving: climbing?.step === 5, travelled }
+}
+
+/**
+ * **Leaving a map by a ladder's end** (step 6, `0x02038fe0`): a map request
+ * of the end's map, place and facing, as a doorway's, through the doorway's
+ * fade. **Not built**: an end that enters the new map on a ladder (flag
+ * bit 2) — the cartridge's one, `D07M08`'s, names ends its maps do not have.
+ */
+function leaveByLadder(id: number): void {
+  const exit = loaded?.ladders.find((end) => end.id === id)?.exit
+  if (!exit || typeof exit.map !== 'string' || !self) {
+    status(`ladder end ${id} leads to a map this engine cannot name`)
+    return
+  }
+  travelling = true
+  status(`climbing to ${exit.map}…`)
+  self.held.clear()
+  doorFade = {
+    since: performance.now(),
+    door: {
+      tag: 0x74,
+      to: exit.map,
+      x: 0,
+      y: 0,
+      z: 0,
+      width: 0,
+      height: 0,
+      depth: 0,
+      angle: 0,
+      arriveX: exit.x * WORLD_SCALE,
+      arriveY: exit.y * WORLD_SCALE,
+      arriveZ: exit.z * WORLD_SCALE,
+      arriveFacing: exit.facing,
+    },
+  }
 }
 
 /** The +Control Pad's direction held, of the eight — see `DIRECTION_ANGLES`. */
@@ -3766,12 +3937,17 @@ function frame(now = 0): void {
     if (picking) followPicking(now)
     // A party trick holds them where they stand — see `performTricks`.
     if (performing) followPerformance(now)
+    // On a ladder the climb moves the Hero, pass by pass — see `climbOn`.
+    const wasClimbing = climbing !== undefined
     const { moving, travelled, marshTicks } =
       playing || opening || picking || performing || battleStage
         ? { moving: false, travelled: 0, marshTicks: 0 }
-        : flying
-          ? flyOn(elapsedMs)
-          : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
+        : climbing
+          ? climbOn(elapsedMs)
+          : flying
+            ? flyOn(elapsedMs)
+            : advance(self, world, camera.yaw, elapsedMs, trails, inMarshNow, chestsInTheWay)
+    if (!wasClimbing) maybeClimb(elapsedMs, moving)
     // The marsh takes its toll by the ticks walked in it — see `marsh.ts`.
     marshCarry += marshTicks
     while (marshCarry >= MARSH_TICKS) {
@@ -3958,7 +4134,12 @@ function frame(now = 0): void {
       if (list) list.push(chunkLocal[chunk] as number)
       else hiddenIn.set(shape, [chunkLocal[chunk] as number])
     }
-    const heroPose = heroEventPose() ?? chestOpeningPose(now) ?? pickingPose(now) ?? trickPose(now)
+    const heroPose =
+      heroEventPose() ??
+      climbPose(climbing, loaded.figure.motions) ??
+      chestOpeningPose(now) ??
+      pickingPose(now) ??
+      trickPose(now)
     const drawn = battleStage
       ? stageDrawn(battleStage, battleClock)
       : [

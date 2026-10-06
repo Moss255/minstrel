@@ -146,7 +146,9 @@ export function readMapTransitions(data: Uint8Array): MapTransition[] {
       if (found) out.push(found)
       continue
     }
-    if (record.tag !== TAG_TRIGGER) continue
+    // Only a doorway's region (type 2) is one: a ladder's end (type 9) names a
+    // map in the same slot, and is left by climbing — see `mapLadders`.
+    if (record.tag !== TAG_TRIGGER || record.values[0] !== REGION_DOORWAY) continue
     const action = records[i + 1]
     if (!action || action.tag !== TAG_ACTION) continue
     // A `0x73` leads with an integer, so its volume starts one slot in.
@@ -349,6 +351,127 @@ export function mapDoorwayRegions(data: Uint8Array): DoorwayRegion[] {
         angle: ((angle % turn) + turn) % turn,
         reach: (width / 2) ** 2 + (depth / 2) ** 2,
       },
+    })
+  }
+  return out
+}
+
+/** The kind of a `0x73` region that is an end of a ladder — see {@link mapLadders}. */
+const REGION_LADDER = 9
+
+/** Bits of a ladder end's flags, its `0x74` value 3 (`+0x31`). */
+const LADDER_TOP = 1
+const LADDER_LEAVES = 2
+const LADDER_ENTERS_ON = 4
+
+/** Where leaving a ladder by an end takes the Hero, when it leads out of the map. */
+export interface LadderExit {
+  /** The map, by its code — or its id, where the record gives a number. */
+  readonly map: string | number
+  /** Where the Hero arrives, in the file's own units: values 7 to 9. */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  /** The facing there, in radians: value 10. */
+  readonly facing: number
+  /**
+   * With flag bit 2, the ladder end in the new map the Hero arrives on
+   * (value 22, `+0x6e`) and how far up it, × 4096 (value 21, `+0x6c`, a float
+   * kept as `fx32`) — see `func_020399b0`.
+   */
+  readonly onLadder?: { readonly end: number; readonly along: number }
+  /** Values 5, 6 and 11: −1 or 0 on the cartridge, handed on and not read. */
+  readonly unknown_5: number
+  readonly unknown_6: number
+  readonly unknown_11: number
+}
+
+/**
+ * One end of a ladder or a vine: a `0x73` region of type 9 and its `0x74`
+ * (`func_0201d638` case 9, `0x0201dbf8`). Read 6 October 2026 — see
+ * `docs/readings/T16-getting-around.md`.
+ */
+export interface LadderEnd {
+  /** This end's number, value 0 (`+0x2c`). */
+  readonly id: number
+  /** The other end's number, value 1 (`+0x2e`). */
+  readonly partner: number
+  /** Whether this is the top, flag bit 0. */
+  readonly top: boolean
+  /** Value 2 (`+0x30`): 0 on all 56 ends on the cartridge; nothing found reads it. */
+  readonly unknown_2: number
+  /** Its centre, in the file's own units: the `0x73`'s values 1 to 3. */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  /**
+   * **The ladder's facing**, the way the Hero faces climbing up, in radians:
+   * the `0x73`'s value 8 (`+0x20`), as stored.
+   */
+  readonly facing: number
+  /** Its box, as an area's: where the Hero must stand to take it. */
+  readonly area: StoryArea
+  /** With flag bit 1, where leaving by this end goes. */
+  readonly exit?: LadderExit
+}
+
+/**
+ * **A map's ladders**, end by end: its link table's `0x73` regions of type 9.
+ * Each names the other end of its ladder; one of the two is the top. 56 on the
+ * cartridge, 28 ladders in 18 maps. In the file's own units.
+ */
+export function mapLadders(data: Uint8Array): LadderEnd[] {
+  const table = readDataTable(data)
+  const records = table.records
+  const out: LadderEnd[] = []
+  for (let i = 0; i < records.length; i++) {
+    const region = records[i] as TableRecord
+    if (region.tag !== TAG_TRIGGER || region.values[0] !== REGION_LADDER) continue
+    const action = records[i + 1]
+    if (action?.tag !== TAG_ACTION || action.values.length < 4) continue
+    const f = region.floats
+    const [x, y, z, width, height, depth, angle, facing] = [1, 2, 3, 4, 5, 6, 7, 8].map(
+      (slot) => (f[slot] as number) ?? 0,
+    ) as [number, number, number, number, number, number, number, number]
+    const v = action.values
+    const int = (slot: number) => (v[slot] as number) | 0
+    const flags = int(3)
+    const turn = 2 * Math.PI
+    let exit: LadderExit | undefined
+    if (flags & LADDER_LEAVES && v.length >= 23) {
+      const map = action.kinds[4] === KIND_STRING ? (table.stringAt(v[4] as number) ?? '') : int(4)
+      const a = action.floats
+      exit = {
+        map,
+        x: a[7] as number,
+        y: a[8] as number,
+        z: a[9] as number,
+        facing: a[10] as number,
+        ...(flags & LADDER_ENTERS_ON
+          ? { onLadder: { end: int(22), along: Math.trunc((a[21] as number) * 4096) } }
+          : {}),
+        unknown_5: int(5),
+        unknown_6: int(6),
+        unknown_11: int(11),
+      }
+    }
+    out.push({
+      id: int(0),
+      partner: int(1),
+      top: (flags & LADDER_TOP) !== 0,
+      unknown_2: int(2),
+      x,
+      y,
+      z,
+      facing,
+      area: {
+        id: int(0),
+        max: { x: x + width / 2, y: y + height / 2, z: z + depth / 2 },
+        min: { x: x - width / 2, y: y - height / 2, z: z - depth / 2 },
+        angle: ((angle % turn) + turn) % turn,
+        reach: (width / 2) ** 2 + (depth / 2) ** 2,
+      },
+      ...(exit ? { exit } : {}),
     })
   }
   return out

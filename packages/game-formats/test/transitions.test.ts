@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { GameFormatError } from '../src/errors.ts'
 import { inArea } from '../src/story.ts'
-import { mapAreas, mapBookcases, mapDoorways, readMapTransitions } from '../src/transitions.ts'
+import {
+  mapAreas,
+  mapBookcases,
+  mapDoorways,
+  mapLadders,
+  readMapTransitions,
+} from '../src/transitions.ts'
 
 /**
  * Fixtures are built here, never taken from a cartridge.
@@ -382,5 +388,79 @@ describe('a map’s bookcases', () => {
     expect(cases[1]?.area.max.z).toBeCloseTo(4.808, 3)
     // And an area is not one.
     expect(mapAreas(table).map((a) => a.id)).toEqual([4])
+  })
+})
+
+describe("a map's ladders — the type-9 regions", () => {
+  const end = (
+    at: [number, number, number],
+    facing: number,
+    values: { tag: number; fields: Field[] }['fields'],
+  ) => [
+    {
+      tag: 0x73,
+      fields: [
+        int(9),
+        ...at.map(float),
+        float(1.3),
+        float(1.7),
+        float(1.7),
+        float(0),
+        float(facing),
+      ],
+    },
+    { tag: 0x74, fields: values },
+  ]
+  // Dourbridge's shape: a bottom and a top, numbering each other; and a pair
+  // whose top leads out of the map, as the Heights of Loneliness's do.
+  const leaving = [
+    int(2),
+    int(1),
+    int(0),
+    int(3),
+    name(0),
+    int(-1),
+    int(-1),
+    ...[-13.66, 5.2, 7.16].map(float),
+    float(0),
+    int(0),
+    ...Array.from({ length: 9 }, () => float(0)),
+    float(0),
+    int(0),
+  ]
+  const table = build(
+    [
+      ...end([8.917, 0.665, 19.203], Math.PI, [int(0), int(1), int(0), int(0)]),
+      ...end([8.917, 4.377, 19.203], Math.PI, [int(1), int(0), int(0), int(1)]),
+      ...end([4.146, -5, 2.333], 3.491, [int(1), int(2), int(0), int(0)]),
+      ...end([4.146, -1.4, 2.333], 3.491, leaving),
+    ],
+    ['D07M02'],
+  )
+
+  it('reads each end with its partner, which is the top, its box and its facing', () => {
+    const ends = mapLadders(table)
+    expect(ends.map((e) => [e.id, e.partner, e.top])).toEqual([
+      [0, 1, false],
+      [1, 0, true],
+      [1, 2, false],
+      [2, 1, true],
+    ])
+    expect(ends[1]?.y).toBeCloseTo(4.377, 3)
+    expect(ends[0]?.facing).toBeCloseTo(Math.PI, 5)
+    expect(ends[0]?.area.min.x).toBeCloseTo(8.917 - 0.65, 3)
+    expect(inArea(ends[0]?.area as never, 8.9, 0.7, 19.2)).toBe(true)
+  })
+
+  it('reads where an end that leads out goes, by flag bit 1', () => {
+    const ends = mapLadders(table)
+    expect(ends[0]?.exit).toBeUndefined()
+    expect(ends[3]?.exit?.map).toBe('D07M02')
+    expect(ends[3]?.exit?.x).toBeCloseTo(-13.66, 3)
+    expect(ends[3]?.exit?.onLadder).toBeUndefined()
+  })
+
+  it("is not read as a doorway, though it names a map in the doorway's slot", () => {
+    expect(readMapTransitions(table)).toEqual([])
   })
 })

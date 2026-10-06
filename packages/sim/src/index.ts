@@ -150,3 +150,19 @@ export {
   withField,
   wordField,
 } from './gathering.ts'
+export {
+  ALONG,
+  CLIMB_STEP,
+  type Climb,
+  type ClimbPass,
+  climbPass,
+  type End as LadderEndWords,
+  type Hero as ClimbingHero,
+  LADDER_MOTIONS,
+  type LadderMotion,
+  type MotionLength,
+  PASS_DELTA,
+  reduceAngle,
+  tryClimb,
+  WALK_OFF,
+} from './ladder.ts'

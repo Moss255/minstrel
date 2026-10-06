@@ -13,6 +13,7 @@ import {
   isNpcPlacements,
   isWaterTexture,
   mapDoorways,
+  mapLadders,
   NPC_KIND,
   placementOf,
   placeNpcs,
@@ -1657,6 +1658,41 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     expect(village.length).toBeGreaterThan(5)
   })
 
+  it("reads every ladder's two ends, each naming the other, one of them the top", () => {
+    // Task 16, 6 October 2026: the type-9 regions are a ladder's ends
+    // (`func_0201d638` case 9) — see `docs/readings/T16-getting-around.md`.
+    let ends = 0
+    let ladders = 0
+    const maps: string[] = []
+    for (const file of walkFiles(fs.root)) {
+      const stem = /\/([^/]+)\.ambl$/i.exec(file.path)?.[1]?.toUpperCase()
+      if (!stem) continue
+      const bytes = fs.read(file)
+      if (!isNarc(bytes)) continue
+      for (const member of readNarc(bytes).entries()) {
+        if (
+          !String(member.name ?? member.index)
+            .toLowerCase()
+            .endsWith('.bmbl')
+        )
+          continue
+        const read = mapLadders(tryDecompressLz10(member.data) ?? member.data)
+        if (read.length === 0) continue
+        maps.push(stem)
+        ends += read.length
+        for (const end of read) {
+          const other = read.find((e) => e.id === end.partner)
+          expect(other?.partner, `${stem} end ${end.id}`).toBe(end.id)
+          expect(other?.top, `${stem} end ${end.id}`).toBe(!end.top)
+          if (end.top) ladders++
+        }
+      }
+    }
+    expect(ends).toBe(56)
+    expect(ladders).toBe(28)
+    expect(maps).toContain('M08')
+  })
+
   it("reads every `.bmbl`'s doorways, and they agree with its own names", () => {
     // The claim: the record stream says which doorway leads where, and the
     // string table above says which maps this one connects to. They are read by
@@ -1675,6 +1711,8 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     let triggers = 0
     let secondName = 0
     const doorsOf = new Map<string, ReturnType<typeof mapDoorways>>()
+    /** The maps a ladder's end leads to — named in the string table as a doorway's are. */
+    const laddersTo = new Map<string, string[]>()
     const namesOf = new Map<string, Set<string>>()
     for (const file of walkFiles(fs.root)) {
       const stem = /\/([^/]+)\.ambl$/i.exec(file.path)?.[1]?.toUpperCase()
@@ -1710,6 +1748,12 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
         })
 
         doorsOf.set(stem, mapDoorways(data))
+        laddersTo.set(
+          stem,
+          mapLadders(data).flatMap((end) =>
+            typeof end.exit?.map === 'string' ? [end.exit.map.toUpperCase()] : [],
+          ),
+        )
         namesOf.set(
           stem,
           new Set(
@@ -1734,7 +1778,10 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     let agreed = 0
     for (const [stem, doors] of withDoors) {
       const named = namesOf.get(stem) as Set<string>
-      const led = new Set(doors.map((d) => d.to.toUpperCase()))
+      const led = new Set([
+        ...doors.map((d) => d.to.toUpperCase()),
+        ...(laddersTo.get(stem) ?? []).filter((m) => m !== stem),
+      ])
       if (led.size === named.size && [...led].every((d) => named.has(d))) agreed++
     }
     expect(agreed / withDoors.length).toBeGreaterThan(0.98)

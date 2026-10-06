@@ -44,6 +44,7 @@ import {
   isNpcList,
   isNpcPlacements,
   itemPrice,
+  type LadderEnd,
   type LevelTable,
   type Lighting,
   type MapEntry,
@@ -55,6 +56,7 @@ import {
   mapBookcases,
   mapDoorwayRegions,
   mapDoorways,
+  mapLadders,
   NO_ACTION,
   type NpcEntry,
   type NpcPlacement,
@@ -413,6 +415,8 @@ export interface Loaded {
   readonly bookshelves: readonly Bookshelf[]
   /** The map's doorway regions, by the two numbers a doorway record names — see `mapDoorwayRegions`. */
   readonly doorwayRegions: readonly DoorwayRegion[]
+  /** The ends of the map's ladders and vines, in the file's own units — see `mapLadders`. */
+  readonly ladders: readonly LadderEnd[]
   /** Which archive the map came out of, for the status line. */
   readonly archive: string
   /** The map's own code, which is what a doorway names. */
@@ -3136,6 +3140,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     bookcases: fromLinkTable(cat, code, mapBookcases),
     bookshelves: bookshelvesOf(rom, code),
     doorwayRegions: doorwayRegionsOf(cat, code),
+    ladders: fromLinkTable(cat, code, mapLadders),
     archive,
     code,
   }
