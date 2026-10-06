@@ -9,10 +9,17 @@ import {
   startBattle,
   withHp,
 } from '../src/battle/battle.ts'
+import { dealt } from '../src/battle/damage.ts'
 import { revivedHp, scaledAccuracy } from '../src/battle/handlers.ts'
 import { BattleRng } from '../src/battle/rng.ts'
-import { buffedAttack } from '../src/battle/states.ts'
-import { scaledAccuracy as oracleAccuracy, revivalHp, updatedAttack } from './game-oracle.ts'
+import { buffedAttack, buffedMagic, wardMultiplier } from '../src/battle/states.ts'
+import {
+  scaledAccuracy as oracleAccuracy,
+  revivalHp,
+  updatedAttack,
+  updatedMagic,
+  wardLeaves,
+} from './game-oracle.ts'
 
 /**
  * Task 18's handlers — `docs/readings/T18-handlers.md`: the kinds that change
@@ -418,5 +425,166 @@ describe('a metal body', () => {
       if (hit?.kind !== 'attack') throw new Error('no attack')
       expect(hit.damage).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+describe('magical might and mending at their levels — kinds 42 and 38', () => {
+  it('is the oracle at every stat and level', () => {
+    for (let stat = 0; stat <= 1200; stat++)
+      for (let level = -2; level <= 2; level++)
+        expect(buffedMagic(stat, level)).toBe(updatedMagic(stat, level))
+  })
+
+  it('moves a half a level, and holds anyone to 999', () => {
+    expect(buffedMagic(100, 1)).toBe(150)
+    expect(buffedMagic(100, 2)).toBe(200)
+    expect(buffedMagic(101, -1)).toBe(50)
+    expect(buffedMagic(101, -2)).toBe(0)
+    expect(buffedMagic(700, 1)).toBe(999)
+  })
+
+  it('raises Care Prayer’s mending, which a raising then scales by', () => {
+    const prayer = changing({ action: 151, change: { kind: 'mending', by: 1, chance: 100 } })
+    const { state, events } = playRound(
+      startBattle([hero, ally, foe]),
+      new Map([[0, { kind: 'change', changing: prayer, target: 0 }]]),
+      new BattleRng(3n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 0, result: 'raised', level: 1 }])
+    expect(state.fighters[0]?.states.mending?.level).toBe(1)
+  })
+
+  it('says it is already as high as it goes, with nothing moved', () => {
+    const prayer = changing({ action: 151, change: { kind: 'mending', by: 2, chance: 100 } })
+    const start = startBattle([hero, ally, foe])
+    const high = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 0 ? { ...f, states: { ...f.states, mending: { level: 2, turns: 7 } } } : f,
+      ),
+    }
+    const { events } = playRound(
+      high,
+      new Map([[0, { kind: 'change', changing: prayer, target: 0 }]]),
+      new BattleRng(3n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 0, result: 'already' }])
+  })
+})
+
+describe('the resistances to spells and to breaths — kinds 22 and 23', () => {
+  it('leaves a spell or breath 1 − a quarter a level, the oracle’s', () => {
+    for (let level = -2; level <= 2; level++) expect(wardMultiplier(level)).toBe(wardLeaves(level))
+    expect([2, 1, -1, -2].map(wardMultiplier)).toEqual([0.5, 0.75, 1.25, 1.5])
+  })
+
+  it('multiplies after the resistance and before the guard, each its own multiply', () => {
+    const rng = new BattleRng(1n)
+    expect(dealt(rng, 100, { critical: false, resistance: 1, spellWard: 0.5 })).toBe(50)
+    expect(dealt(rng, 100, { critical: false, resistance: 0.5, breathWard: 0.75 })).toBe(37)
+    expect(dealt(rng, 99, { critical: false, resistance: 1, spellWard: 0.75, guard: 0.5 })).toBe(37)
+  })
+
+  it('lessens a monster’s spell on those Wizard Ward has warded', () => {
+    const frizz = {
+      action: 13,
+      cost: 0,
+      does: 'harm' as const,
+      reach: 'one' as const,
+      amount: { base: 40, spread: 0 },
+      kind: 1,
+      magic: true,
+    }
+    const mage: Fighter = { ...foe, maxMp: 10, acts: [{ kind: 'spell', spell: frizz }] }
+    const ward = changing({
+      action: 156,
+      reach: 'all',
+      change: { kind: 'spells', by: 2, chance: 100 },
+    })
+    const warded = playRound(
+      startBattle([hero, ally, mage]),
+      new Map([
+        [0, { kind: 'change', changing: ward, target: 0 }],
+        [1, { kind: 'defend' }],
+      ]),
+      new BattleRng(5n),
+    )
+    expect(changeOf(warded.events).hits).toEqual([
+      { target: 0, result: 'raised', level: 2 },
+      { target: 1, result: 'raised', level: 2 },
+    ])
+    const cast = (state: typeof warded.state) =>
+      playRound(
+        state,
+        new Map([
+          [0, { kind: 'defend' }],
+          [1, { kind: 'defend' }],
+        ]),
+        new BattleRng(9n),
+      ).events.find((e) => e.kind === 'spell')
+    const plain = cast(startBattle([hero, ally, mage]))
+    const lessened = cast(warded.state)
+    if (plain?.kind !== 'spell' || lessened?.kind !== 'spell') throw new Error('no spell')
+    // Defending does nothing to it: this one does not say it is defendable.
+    expect(plain.hits[0]?.amount).toBe(40)
+    expect(lessened.hits[0]?.amount).toBe(20)
+  })
+
+  it('says “But nothing happens” for Spooky Aura on one already at the bottom', () => {
+    const aura = changing({
+      action: 155,
+      side: 'other',
+      change: { kind: 'spells', by: -1, chance: 100 },
+    })
+    const start = startBattle([hero, ally, foe])
+    const low = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 2 ? { ...f, states: { ...f.states, spells: { level: -2, turns: 7 } } } : f,
+      ),
+    }
+    const { events } = playRound(
+      low,
+      new Map([[0, { kind: 'change', changing: aura, target: 2 }]]),
+      new BattleRng(5n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 2, result: 'already', lowering: true }])
+  })
+})
+
+describe('Wave of Relief — kind 41, the cure-all alone', () => {
+  it('clears poison and every level below 0, the new ones among them, and heals nothing', () => {
+    const start = withHp(startBattle([hero, ally, foe]), new Map([[1, 10]]))
+    const poorly = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1
+          ? {
+              ...f,
+              states: {
+                ...f.states,
+                poisoned: true,
+                might: { level: -1, turns: 3 },
+                breaths: { level: 1, turns: 3 },
+              },
+            }
+          : f,
+      ),
+    }
+    const wave = changing({ action: 154, reach: 'all', change: { kind: 'relieve', chance: 100 } })
+    const { state, events } = playRound(
+      poorly,
+      new Map([[0, { kind: 'change', changing: wave, target: 0 }]]),
+      new BattleRng(8n),
+    )
+    expect(changeOf(events).hits).toEqual([
+      { target: 0, result: 'relieved' },
+      { target: 1, result: 'relieved', cured: true },
+    ])
+    expect(state.fighters[1]?.hp).toBe(10)
+    expect(state.fighters[1]?.states.poisoned).toBe(false)
+    expect(state.fighters[1]?.states.might?.level).toBe(0)
+    // A level above 0 is not a misfortune.
+    expect(state.fighters[1]?.states.breaths?.level).toBe(1)
   })
 })

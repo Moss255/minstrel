@@ -255,7 +255,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (55), by the kind whose handler is unread:
+**Still struck as the Attack** (46 — 55 before §9 built kinds 22, 23, 38, 41 and 42), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -267,18 +267,13 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 19 | `func_ov024_021dd534` | Flower Power, Scandal Eyes |
 | 20 | `func_ov024_021dd6f0` | Tingle |
 | 21 | `func_ov024_021dd828` | Fuddle |
-| 22 | `func_ov024_021dd968` | Wizard Ward, Spooky Aura |
-| 23 | `func_ov024_021ddaa0` | Mind Over Matter, Insulate, Insulatle |
 | 25 | `func_ov024_021dde08` | Tap Dance |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
 | 36 | `func_ov024_021dec50` | Schizofanic |
 | 37 | `func_ov024_021ded48` | Immense Defence |
-| 38 | `func_ov024_021dee84` | Care Prayer |
 | 39 | `func_ov024_021deff8` | Alma Mater |
 | 40 | `func_ov024_021df0f0` | Rotstopper |
-| 41 | `func_ov024_021df1e8` | Wave of Relief |
-| 42 | `func_ov024_021df284` | Channel Anger, Caster Sugar |
 | 43 | `func_ov024_021df454` | Mens Sana |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
@@ -420,3 +415,86 @@ a flat **12.5** (`0x021e47d0`), times the byte over 100
 passed over — neither a 0 refusing it nor scaling it — so Assassin's Stab
 and the others fell a metal slime at 12.5 in a hundred, when their blow
 deals something. §3 said otherwise.
+
+## 9. The kinds §7 left — 6 October 2026, carried on
+
+### The levels: might, mending, and the resistances to spells and breaths
+
+Four handlers of kind 3's shape (§2), each over its own signed three bits
+of status `+0x58`, a count of 5, and a flag in `+0x14`:
+
+| kind | handler | actions | field | test, set | count, flag | worked out again |
+|---|---|---|---|---|---|---|
+| 22 | `021dd968` | Wizard Ward, Spooky Aura | bits 18–20, resistance to spells | `func_02087d24`, `02087d78` | `+0x74`, bit 16 | — |
+| 23 | `021ddaa0` | Insulate, Insulatle, Mind Over Matter | bits 21–23, resistance to breaths | `func_02087e18`, `02087e6c` | `+0x75`, bit 17 | — (it clears `+0x18` bits 1 and 2: `func_02088c38`, `02088c9c`) |
+| 38 | `021dee84` | Care Prayer | bits 15–17, magical mending | `func_02087c30`, `02087c84` | `+0x73`, bit 15 | `UpdateCombatantMagicalMending` |
+| 42 | `021df284` | Channel Anger, Caster Sugar | bits 12–14, magical might | `func_02087b3c`, `02087b90` | `+0x72`, bit 14 | `UpdateCombatantMagicalMight` |
+
+Each: landed, the level from the record's `+0x30` held to ±2; the test (no
+raise past 2, no fall past −2, nothing under `+0x14` bit 0); the set, which
+returns the level it came to. Kind 42 rolls its rider first, as kind 3 does
+(`0x021df2f0`). Not landed, or at the end already: the record's fail line.
+
+**The multipliers.** Might and mending: `1 + 0.5 × level`, truncated to
+sixteen bits, at most 999 for anyone (`UpdateCombatantMagicalMight`,
+`…Mending`, decompiled). The resistances, in the final damage
+(`func_ov024_021e6a90`): a spell (`+0x10` bit 0) not of kind 2 against one
+with `+0x14` bit 16 is multiplied by `func_020748d0(level)` (`0x021e7534`–
+`0x021e7584`); then a breath (`+0x10` bit 2) against bit 17 by
+`func_020748a8(level)` (`0x021e7588`–`0x021e75c8`). Both are `1 + (−0.25 ×
+level)` in floats, the literal `0xbe800000`. They come after the resistance
+to the element and before the guard (`0x021e75cc`).
+
+**`+0x10` bits 0–2** are the action's sort: 1 a spell (85 on the cartridge,
+every spell, Zoom and Evac among them), 2 a dance (10, every one a dance), 4
+a breath (19: the breaths, Hot Lick, Venom Mist). Read by the two tests
+above.
+
+**The lines.** Might (`func_ov024_021e9904`): raised to 2 `0xd0`, to 0
+`0x1b7`, else `0xd1`; lowered to −2 `0x1b6`, to 0 `0x1b7`, else `0x1b5`.
+Mending (`021e9990`): raised to 2 `0xc4`, else `0xc5`; **a fall says
+nothing** (it hands back 0). Spells (`021e97f4`): raised to 2 `0xab`, to 0
+`0xae`, else `0xac`; lowered to −2 `0xaf`, to 0 `0xae`, else `0xad`; left
+where it was on a fall that landed, `0x1f` "But nothing happens"; not landed
+on a fall, "isn't affected" (621, 27) unless `battle+0x8e95` is clear and
+the target's resistance byte `+0x52` (element 21) is above 0, when the
+record's fail line. Breaths (kind 23's own, the pool at `0x021ddc74`): raised
+to 2 `0x1b0`, to 0 `0x1af`, else `0x1b1`; lowered to 0 `0x1af`, else
+`0x1ae` — **no "a lot" for a fall**.
+
+### Kind 41 — Wave of Relief (`021df1e8`)
+
+The cure-all (`func_ov024_021eae14`) on each one reached, with no test of
+its landing, and no line of its own. The cure-all clears sleep, the
+poisons, many statuses the battle does not keep, and **every level below 0**
+— attack, defence, agility, charm, might, mending, spells, breaths and the
+two above (`0x021eaf4c`–`0x021eb05c`) — then `ApplyCombatantBuffs`.
+
+INFERRED: what Wave of Relief says is its record's done line, 203 "is
+alleviated of all unfortunate effects", where something was cleared, and
+its fail line, 31, where nothing was — the handler adds none, and how the
+result is told without one is not read.
+
+### How the levels run down — `func_ov000_0215858c`
+
+Read to find the levels' wear-off lines, and it answers §7's open question,
+not yet applied. For each status in turn, with its flag set and its count
+not 0: the count less one, then a draw `R(100) / 100` against the table at
+`0x02182ad4` by the count — **1.0, 0.875, 0.75, 0.625**, and at 4 a
+denormal (`0x0000ffff`), which only a draw of 0 is under; under it, the
+level clears and its line is said. The counts the setters store are 5
+(attack `+0x6e`, mending `+0x73`, spells `+0x74`, breaths `+0x75`), so a
+level wears off by 1 in 100 after a round, then 63, 75, 88 and 100 in 100.
+The lines (`0x02158da4`–`0x02158db8`, `0x02159528`): attack `0x1ce`, defence
+`0x1cf`, agility `0x1db`, charm `0x1d0`, might `0x1d1`, mending `0x1d2`,
+spells `0x1d3`, breaths `0x1d4` — "<ACTOR>'s … returns to normal". The
+simulation's run-down is still the reference's (`LEVEL_TURNS`, `wornAfterTurn`)
+and now carries the new levels the same way — **ours**; when it is run, and
+the counts defence and agility store, are what applying this needs.
+
+Built: `LevelStat`, the four levels and `relieve` in the sim (`battle.ts`,
+`states.ts`: `buffedMagic`, `wardMultiplier`); the wards in `dealt`; a
+fighter's might and mending at their levels wherever an amount, an accuracy
+or a raising scales by them (`atMagicLevels`); the cure-all over every
+level; the wear-off lines in `battle-scene.ts`. Struck as the Attack: **46**,
+where 55 were.

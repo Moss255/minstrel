@@ -12,6 +12,8 @@ import {
   type FoeAction,
   type Heal,
   handlerKnown,
+  LEVEL_STATS,
+  type LevelStat,
   type Opening,
   playRound,
   RIDERS_PLAYED,
@@ -164,6 +166,26 @@ export const ACTION_SAYS = {
   /** "<TARGET> becomes envenomated." / "…even more envenomated." — `func_ov024_021e939c`. */
   envenomed: 0x10a,
   envenomedAgain: 0x10c,
+  /** Magical might's, `func_ov024_021e9904`. */
+  mightUpMuch: 0xd0,
+  mightUp: 0xd1,
+  mightDown: 0x1b5,
+  mightDownMuch: 0x1b6,
+  mightNormal: 0x1b7,
+  /** Magical mending's — raised only; a fall says nothing (`func_ov024_021e9990`). */
+  mendingUpMuch: 0xc4,
+  mendingUp: 0xc5,
+  /** The resistance to spells', `func_ov024_021e97f4`. */
+  spellsUpMuch: 0xab,
+  spellsUp: 0xac,
+  spellsDown: 0xad,
+  spellsNormal: 0xae,
+  spellsDownMuch: 0xaf,
+  /** The resistance to breaths', kind 23's own (`0x021ddb5c`–`0x021ddb98`, the pool at `0x021ddc74`). */
+  breathsDown: 0x1ae,
+  breathsNormal: 0x1af,
+  breathsUpMuch: 0x1b0,
+  breathsUp: 0x1b1,
   /** "<TARGET> is no longer poisoned." — Squelch's, `0x021dbcc8`. */
   cured: 0x54,
   /** "<TARGET> wakes up." — kind 9's, `0x021dbf9c`. */
@@ -193,9 +215,23 @@ type ChangeKind = Extract<BattleEvent, { kind: 'change' }>['change']
  * **A level's line, by the level it came to** (`func_ov024_021e94c4`): raised
  * to 2 "increases a lot", to 0 "returns to normal", else "a little"; lowered
  * to −2 "decreases a lot", to 0 normal, else a little — attack's `0x47`–`0x4b`,
- * defence's `0x3a`–`0x3e`, agility's `0x4c`–`0x50`.
+ * defence's `0x3a`–`0x3e`, agility's `0x4c`–`0x50`. Magical might's
+ * (`func_ov024_021e9904`) and the resistance to spells' (`021e97f4`) go the
+ * same way. Two have their own: magical mending's says only a raising, "a
+ * lot" at 2 and "a little" else, and nothing for a fall (`021e9990`); the
+ * resistance to breaths' has no "a lot" for a fall (kind 23's own,
+ * `0x021ddb40`–`0x021ddb98`). 0 is no line.
  */
-function levelSays(stat: 'attack' | 'defence' | 'agility', up: boolean, level: number): number {
+function levelSays(stat: LevelStat, up: boolean, level: number): number {
+  if (stat === 'mending') {
+    if (!up) return 0
+    return level === 2 ? ACTION_SAYS.mendingUpMuch : ACTION_SAYS.mendingUp
+  }
+  if (stat === 'breaths') {
+    if (level === 0) return ACTION_SAYS.breathsNormal
+    if (up) return level === 2 ? ACTION_SAYS.breathsUpMuch : ACTION_SAYS.breathsUp
+    return ACTION_SAYS.breathsDown
+  }
   const lines = {
     attack: [
       ACTION_SAYS.attackUpMuch,
@@ -218,6 +254,20 @@ function levelSays(stat: 'attack' | 'defence' | 'agility', up: boolean, level: n
       ACTION_SAYS.agilityDown,
       ACTION_SAYS.agilityNormal,
     ],
+    might: [
+      ACTION_SAYS.mightUpMuch,
+      ACTION_SAYS.mightDownMuch,
+      ACTION_SAYS.mightUp,
+      ACTION_SAYS.mightDown,
+      ACTION_SAYS.mightNormal,
+    ],
+    spells: [
+      ACTION_SAYS.spellsUpMuch,
+      ACTION_SAYS.spellsDownMuch,
+      ACTION_SAYS.spellsUp,
+      ACTION_SAYS.spellsDown,
+      ACTION_SAYS.spellsNormal,
+    ],
   }[stat]
   if (level === 0) return lines[4] as number
   if (up) return (level === 2 ? lines[0] : lines[2]) as number
@@ -239,7 +289,7 @@ function changeSays(
   const pick = (pair: readonly [number, number] | undefined, otherwise: number) =>
     (pair && (targetParty ? pair[0] : pair[1])) || otherwise
   const stat =
-    hit.stat ?? (kind === 'attack' || kind === 'defence' || kind === 'agility' ? kind : undefined)
+    hit.stat ?? (LEVEL_STATS.includes(kind as LevelStat) ? (kind as LevelStat) : undefined)
   switch (hit.result) {
     case 'asleep':
       return ACTION_SAYS.fallsAsleep
@@ -257,7 +307,11 @@ function changeSays(
         ? ACTION_SAYS.alreadyAsleep
         : kind === 'poison'
           ? ACTION_SAYS.alreadyPoisoned
-          : pick(own?.failed, ACTION_SAYS.unaffected)
+          : // Spooky Aura landed on one already at the bottom: "But nothing
+            // happens" (`func_ov024_021e97f4`, `0x021e98a0`).
+            kind === 'spells' && hit.lowering
+            ? ACTION_SAYS.nothingHappens
+            : pick(own?.failed, ACTION_SAYS.unaffected)
     case 'resisted':
       return pick(own?.failed, ACTION_SAYS.unaffected)
     case 'dodged':
@@ -274,12 +328,25 @@ function changeSays(
       return pick(own?.killed, targetParty ? ACTION_SAYS.dies : ACTION_SAYS.killed)
     case 'restored':
       return ACTION_SAYS.healed
+    case 'relieved':
+      // INFERRED: Wave of Relief's handler says nothing of its own
+      // (`func_ov024_021df1e8`); its record's lines stand — "is alleviated of
+      // all unfortunate effects" done, "But nothing happens" failed.
+      return hit.cured ? pick(own?.done, ACTION_SAYS.alleviated) : pick(own?.failed, 31)
   }
+}
+
+/** A level's name, in ours. */
+const STAT_NAMES: Readonly<Record<string, string>> = {
+  might: 'magical might',
+  mending: 'magical mending',
+  spells: 'resistance to spells',
+  breaths: 'resistance to breath attacks',
 }
 
 /** The same, in ours. */
 function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
-  const stat = hit.stat ?? kind
+  const stat = STAT_NAMES[hit.stat ?? kind] ?? hit.stat ?? kind
   switch (hit.result) {
     case 'asleep':
       return `${whom} falls asleep.`
@@ -315,7 +382,24 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return hit.cured
         ? `${whom} recovers ${hit.hp ?? 0} HP, and is rid of all misfortune.`
         : `${whom} recovers ${hit.hp ?? 0} HP.`
+    case 'relieved':
+      return hit.cured ? `${whom} is rid of all misfortune.` : 'But nothing happens.'
   }
+}
+
+/**
+ * **A level worn off at the round's end** — the lines `func_ov000_0215858c`
+ * hands each one as it wears it off (`0x02158da4`–`0x02158db8`, and `0x1d4`
+ * at `0x02159528`): "<ACTOR>'s attack returns to normal" and the like.
+ */
+const WORN_OFF: Readonly<Record<LevelStat, number>> = {
+  attack: 0x1ce,
+  defence: 0x1cf,
+  agility: 0x1db,
+  might: 0x1d1,
+  mending: 0x1d2,
+  spells: 0x1d3,
+  breaths: 0x1d4,
 }
 
 /** `str_bres`'s messages, by what they say. */
@@ -426,6 +510,9 @@ export interface Castable {
   readonly rolls?: {
     readonly foeChance: number
     readonly chanceIsAccuracy: boolean
+    /** A spell, a breath — `+0x10` bits 0 and 2. */
+    readonly spell?: boolean
+    readonly breath?: boolean
     readonly evadable: boolean
     readonly defendable?: boolean
     readonly combos?: boolean
@@ -510,6 +597,9 @@ export function battleSpellOf(
       ...(action.rolls?.combos ? { combos: true } : {}),
       ...(action.rolls?.tensed ? { tensed: true } : {}),
       ...(action.rolls?.kind === undefined ? {} : { kind: action.rolls.kind }),
+      // A spell, a breath: what the target's resistances to them lessen (`+0x10` bits 0 and 2).
+      ...(action.rolls?.spell ? { magic: true } : {}),
+      ...(action.rolls?.breath ? { breath: true } : {}),
       // Gold Rush: post-step 6 spends its record's `+0x32` in gold (`func_ov024_021e5be4`).
       ...(action.rolls?.afterStep === GOLD_STEP ? { gold: action.rolls.riderLevels } : {}),
     },
@@ -1166,7 +1256,12 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         return out.length > 0 ? out : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]
       }
       const landed = event.hits.flatMap((hit) =>
-        hit.result === 'restored' ? restoring(hit) : [sayHit(hit)],
+        hit.result === 'restored'
+          ? restoring(hit)
+          : // A line of 0 is none: magical mending's fall says nothing.
+            changeSays(event.change, hit, told, state.fighters[hit.target]?.side === 'party') === 0
+            ? []
+            : [sayHit(hit)],
       )
       const game = lines(
         ...opens,
@@ -1204,16 +1299,8 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       )
     case 'wornOff':
       return (
-        say(
-          scene,
-          'actions',
-          event.stat === 'agility'
-            ? ACTION_SAYS.agilityNormal
-            : event.stat === 'attack'
-              ? ACTION_SAYS.attackNormal
-              : ACTION_SAYS.defenceNormal,
-          { target: actor },
-        ) ?? sentence(`${who}'s ${event.stat} returns to normal.`)
+        say(scene, 'actions', WORN_OFF[event.stat], { actor }) ??
+        sentence(`${who}'s ${STAT_NAMES[event.stat] ?? event.stat} returns to normal.`)
       )
     case 'poison':
       // Ours: no line for poison's toll is found; the game's damage line stands in.
@@ -1762,6 +1849,7 @@ export function blowOf(action: Castable): Blow | undefined {
     hits: r.hitCode ?? 0,
     criticalPercent: r.criticalPercent ?? 0,
     element: r.element ?? 8,
+    ...(r.breath ? { breath: true } : {}),
     ...(r.cap ? { cap: r.cap } : {}),
     falloff: r.fallsOff ?? false,
     evadable: r.evadable,
@@ -1795,6 +1883,14 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [9, 'wake'],
   [17, 'kill'],
   [18, 'revive'],
+  // Wizard Ward, Spooky Aura (`021dd968`); Insulate, Insulatle, Mind Over
+  // Matter (`021ddaa0`); Care Prayer (`021dee84`); Wave of Relief
+  // (`021df1e8`); Channel Anger, Caster Sugar (`021df284`).
+  [22, 'spells'],
+  [23, 'breaths'],
+  [38, 'mending'],
+  [41, 'relieve'],
+  [42, 'might'],
   [67, 'restore'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
@@ -1825,23 +1921,22 @@ export function partyChangeOf(action: Castable): Changing | undefined {
   const reach = CHANGE_REACHES.get(action.reach)
   if (!r || !kind || !reach) return undefined
   const levels = Math.max(-2, Math.min(2, r.levels))
-  const change: Change =
-    kind === 'attack' || kind === 'defence' || kind === 'agility'
-      ? { kind, by: levels, chance: 100 }
-      : kind === 'restore'
-        ? // Choir of Angels: 0.4 of the most HP, rounded half up, at least 75 (`0x021e1418`–`0x021e1440`).
-          { kind, chance: 100, share: 0.4, least: 75 }
-        : kind === 'revive'
-          ? {
-              kind,
-              chance: 100,
-              share: ZING.has(action.action)
-                ? (r.scaleRange ?? { lo: 0, hi: 0 })
-                : action.action === KAZING
-                  ? 0.5
-                  : 1,
-            }
-          : { kind, chance: 100 }
+  const change: Change = LEVEL_STATS.includes(kind as LevelStat)
+    ? { kind: kind as LevelStat, by: levels, chance: 100 }
+    : kind === 'restore'
+      ? // Choir of Angels: 0.4 of the most HP, rounded half up, at least 75 (`0x021e1418`–`0x021e1440`).
+        { kind, chance: 100, share: 0.4, least: 75 }
+      : kind === 'revive'
+        ? {
+            kind,
+            chance: 100,
+            share: ZING.has(action.action)
+              ? (r.scaleRange ?? { lo: 0, hi: 0 })
+              : action.action === KAZING
+                ? 0.5
+                : 1,
+          }
+        : ({ kind, chance: 100 } as Change)
   const range = r.accuracyRange
   return {
     action: action.action,

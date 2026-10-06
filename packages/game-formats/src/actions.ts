@@ -130,6 +130,19 @@ export interface Action {
    */
   readonly evadable: boolean
   /**
+   * What sort of action it is — `+0x10`, bits 0 to 2: a **spell** (bit 0), a
+   * **dance** (bit 1), a **breath** (bit 2). The final-damage function reads
+   * bits 0 and 2 (`func_ov024_021e6a90`, `0x021e7534` and `0x021e7588`): a
+   * spell is lessened by the target's resistance to spells, Wizard Ward's
+   * level, and a breath by its resistance to breaths, Insulate's. Borne out
+   * on the cartridge: bit 0 on 85 — Heal, Frizz, Zoom and every spell; bit 1
+   * on 10, every one a dance; bit 2 on 19, the breaths, Hot Lick and Venom
+   * Mist among them (read 6 October 2026).
+   */
+  readonly spell: boolean
+  readonly dance: boolean
+  readonly breath: boolean
+  /**
    * Whether defending halves it — `+0x10`, bit 4. `CalculateFinalDamage`
    * (`0x021e75d0`) looks at this before it reads the target's guard level:
    * without it, defending does nothing against the action.
@@ -391,6 +404,9 @@ export function readActions(bytes: Uint8Array): Action[] {
       opening: (view.getUint32(at + 0x20, true) >>> 10) & 0x3ff,
       reach: (bytes[at + 0x17] as number) >> 4,
       evadable: (view.getUint32(at + 0x10, true) & 0x20) !== 0,
+      spell: (view.getUint32(at + 0x10, true) & 1) !== 0,
+      dance: (view.getUint32(at + 0x10, true) & 2) !== 0,
+      breath: (view.getUint32(at + 0x10, true) & 4) !== 0,
       blockable: (view.getUint32(at + 0x10, true) & 0x40) !== 0,
       defendable: (view.getUint32(at + 0x10, true) & 0x10) !== 0,
       alwaysCritical: ((view.getUint32(at + 8, true) >>> 29) & 1) === 1,

@@ -4558,6 +4558,7 @@ An item names its action in its item table — see "Items".
 | at | type | meaning | evidence |
 |---|---|---|---|
 | `+0x08` bit 29 | flag | **always a critical**: the battle's critical roll hands back 1 without a draw | 18 of 681; one is named `Critical Claim` |
+| `+0x10` bits 0–2 | flags | **the action's sort**: bit 0 a spell, bit 1 a dance, bit 2 a breath. The final damage (`func_ov024_021e6a90`) lessens a spell by the target's resistance to spells (Wizard Ward's level) at `0x021e7534`, and a breath by its resistance to breaths (Insulate's) at `0x021e7588` | bit 0 on 85, every spell (Heal, Frizz, Zoom, Evac); bit 1 on 10, every one a dance; bit 2 on 19, the breaths, Hot Lick and Venom Mist. Read 6 October 2026 |
 | `+0x10` bit 5 | flag | **can be dodged**: the evasion roll makes no draw without it | the plain Attack has it; the herb and fleeing do not. 156 of 681 |
 | `+0x10` bit 6 | flag | **can be blocked** | 162 of 681 |
 | `+0x14` bits 21–27 | `u7` | the critical chance's multiplier, in hundredths | 100 on the plain Attack |

@@ -48,6 +48,25 @@ export interface States {
   readonly attack?: Level
   /** Its tension's level, 0 to 4 — see `tension.ts`; none when not given. */
   readonly tension?: number
+  /**
+   * Its magical might's and magical mending's levels, −2 to +2 — status
+   * `+0x58` bits 12–14 and 15–17, which Channel Anger and Caster Sugar (kind
+   * 42, `func_ov024_021df284`) and Care Prayer (kind 38, `021dee84`) move;
+   * the stat is worked out again from it (`UpdateCombatantMagicalMight`,
+   * `…Mending`) — see {@link buffedMagic}. None is level 0.
+   */
+  readonly might?: Level
+  readonly mending?: Level
+  /**
+   * Its **resistance to spells** and **to breaths**, −2 to +2 — status
+   * `+0x58` bits 18–20, set with flag `+0x14` bit 16 (Wizard Ward and Spooky
+   * Aura, kind 22, `func_ov024_021dd968`), and bits 21–23 with bit 17
+   * (Insulate, Insulatle, Mind Over Matter, kind 23, `021ddaa0`). The final
+   * damage multiplies a spell, and a breath, by {@link wardMultiplier} of it
+   * (`func_ov024_021e6a90`, `0x021e7534`–`0x021e75c8`). None is level 0.
+   */
+  readonly spells?: Level
+  readonly breaths?: Level
 }
 
 export const NO_STATES: States = {
@@ -102,6 +121,33 @@ export function buffedAttack(value: number, level: number, party: boolean): numb
   const multiplier = f(1 + f(0.25 * Math.max(-2, Math.min(2, level))))
   const buffed = Math.trunc(f(multiplier * f(value))) & 0xffff
   return party && buffed > 999 ? 999 : buffed
+}
+
+/**
+ * **Magical might or mending at its level** — `UpdateCombatantMagicalMight`
+ * and `UpdateCombatantMagicalMending` (decompiled,
+ * `src/Combat/Overlay_0/UpdateCombatantBuffs.cpp`): the base times
+ * `1 + 0.5 × level` (`CalculateMagicalMightBuffMultiplier`, `…Mending…`, in
+ * `src/Combat/Main/BasicAttackCalculation.cpp`), truncated to the stat's
+ * sixteen bits, and at most 999 — for anyone, the code asks no side.
+ */
+export function buffedMagic(value: number, level: number): number {
+  const f = Math.fround
+  const multiplier = f(1 + f(0.5 * Math.max(-2, Math.min(2, level))))
+  const buffed = Math.trunc(f(multiplier * f(value))) & 0xffff
+  return buffed > 999 ? 999 : buffed
+}
+
+/**
+ * **What a resistance level leaves of a spell or a breath** — `func_020748d0`
+ * (spells) and `func_020748a8` (breaths), the same two lines: `1 + (−0.25 ×
+ * level)`, in floats (the literal `0xbe800000` at `0x020748cc` and
+ * `0x020748f4`). A level of 2 halves it; −2, which Spooky Aura can bring a
+ * monster to, makes it half again.
+ */
+export function wardMultiplier(level: number): number {
+  const f = Math.fround
+  return f(1 + f(f(-0.25) * f(level)))
 }
 
 /** A level moved by `by` for {@link LEVEL_TURNS} — undefined when it is already at the end it moves toward. */

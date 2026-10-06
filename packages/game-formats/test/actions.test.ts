@@ -28,6 +28,8 @@ function actions(
     rider?: number
     levels?: [own: number, rider: number]
     elements?: [deals: number, lands: number]
+    /** `+0x10` bits 0–2: 1 a spell, 2 a dance, 4 a breath. */
+    sort?: number
   }[],
 ) {
   const strings: number[] = []
@@ -66,6 +68,7 @@ function actions(
       rider = 0x1f,
       levels = [0, 0],
       elements = [0, 0x1f],
+      sort = 0,
     },
   ] of records.entries()) {
     const at = 4 + r * 60
@@ -91,6 +94,7 @@ function actions(
     view.setUint32(
       at + 0x10,
       (0x00ff3b98 |
+        sort |
         (evadable ? 0x20 : 0) |
         (blockable ? 0x40 : 0) |
         (worksOnMetal ? 0x1000000 : 0) |
@@ -250,6 +254,22 @@ describe('the range table', () => {
     expect(sure?.reach).toBe(3)
     // And the range beside the always-critical bit is untouched by it.
     expect(sure?.range).toBe(0)
+  })
+
+  it('reads whether it is a spell, a dance or a breath, from +0x10’s bits 0 to 2', () => {
+    const [frizz, dance, breath, attack] = readActions(
+      actions([
+        { id: 13, name: 'Frizz', plural: '', sort: 1, evadable: true },
+        { id: 803, name: 'dance', plural: '', sort: 2 },
+        { id: 224, name: 'breath', plural: '', sort: 4, blockable: true },
+        { id: 1, name: 'Attack', plural: '', evadable: true },
+      ]),
+    )
+    expect(frizz).toMatchObject({ spell: true, dance: false, breath: false, evadable: true })
+    expect(dance).toMatchObject({ spell: false, dance: true, breath: false })
+    expect(breath).toMatchObject({ spell: false, dance: false, breath: true, blockable: true })
+    // The neighbours above them (bits 3, 4 and 7 set in the fixture) do not leak in.
+    expect(attack).toMatchObject({ spell: false, dance: false, breath: false })
   })
 
   it('reads an action’s kind, the most it can deal, and whether it works on metal', () => {

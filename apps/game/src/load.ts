@@ -509,6 +509,9 @@ export interface ItemEffect {
     readonly foeChance: number
     readonly chanceIsAccuracy: boolean
     readonly evadable: boolean
+    /** A spell, `+0x10` bit 0, and a breath, bit 2 — see game-formats' `Action.spell`. */
+    readonly spell?: boolean
+    readonly breath?: boolean
     /** Whether a target's guard halves it — see `Action.defendable`. */
     readonly defendable: boolean
     /** Whether its blows chain into a combo — see `Action.combos`. */
@@ -1935,6 +1938,8 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           foeChance: action.foeChance,
           chanceIsAccuracy: action.accuracyMode === 1,
           evadable: action.evadable,
+          spell: action.spell,
+          breath: action.breath,
           defendable: action.defendable,
           combos: action.combos,
           tensed: action.tensed,

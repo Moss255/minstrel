@@ -765,3 +765,25 @@ export function scaledAccuracy(
   if (stat >= hi) return max
   return Math.trunc(f(f(stat - lo) * f(f(max - min) / f(hi - lo)))) + min
 }
+
+/**
+ * Magical might or mending at its level — `UpdateCombatantMagicalMight` and
+ * `UpdateCombatantMagicalMending` (`src/Combat/Overlay_0/UpdateCombatantBuffs.cpp`),
+ * their multiplier `1.0f + 0.5f * buffLevel`
+ * (`src/Combat/Main/BasicAttackCalculation.cpp`): the product stored to an
+ * `unsigned short`, then held to 999 whoever holds it.
+ */
+export function updatedMagic(stat: number, buffLevel: number): number {
+  const multiplier = f(f(1) + f(f(0.5) * f(buffLevel)))
+  const buffed = Math.trunc(f(multiplier * f(stat >>> 0))) & 0xffff
+  return buffed > 999 ? 999 : buffed
+}
+
+/**
+ * What a resistance level to spells or breaths leaves — `func_020748d0` and
+ * `func_020748a8`, from the assembly: `_fflt(level)`, `_fmul` by the literal
+ * `0xbe800000` (−0.25), `_fadd` to `0x3f800000` (1.0).
+ */
+export function wardLeaves(level: number): number {
+  return f(f(1) + f(f(-0.25) * f(level)))
+}

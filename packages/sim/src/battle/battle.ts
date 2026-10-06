@@ -19,12 +19,14 @@ import { revivedHp, scaledAccuracy } from './handlers.ts'
 import type { BattleRng } from './rng.ts'
 import {
   buffedAttack,
+  buffedMagic,
   levelled,
   moved,
   NO_STATES,
   poisonDamage,
   type States,
   wakes,
+  wardMultiplier,
   wornAfterTurn,
 } from './states.ts'
 import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
@@ -300,6 +302,13 @@ export interface Spell {
   readonly amount: Heal | undefined
   /** The element of what it deals — its record's; none is resisted by no one. */
   readonly element?: number
+  /**
+   * Whether it is a spell, or a breath — its record's `+0x10` bits 0 and 2,
+   * which the target's resistance to spells and to breaths lessen (see
+   * `wardMultiplier`). A spell of kind 2, a heal, is never lessened.
+   */
+  readonly magic?: boolean
+  readonly breath?: boolean
   /** The most it can deal — its record's cap. */
   readonly cap?: number
   /**
@@ -332,11 +341,36 @@ export interface Spell {
  * sleeper woken (kind 9), the fallen raised (kind 18, Zing) and all HP taken
  * (kind 17, Whack).
  */
+/**
+ * **The levels a change moves** — status `+0x58`'s signed fields of three
+ * bits: attack, defence and agility (kinds 3, 4, 5), magical might and
+ * mending (42, 38), the resistances to spells and to breaths (22, 23). See
+ * `states.ts`.
+ */
+export type LevelStat =
+  | 'attack'
+  | 'defence'
+  | 'agility'
+  | 'might'
+  | 'mending'
+  | 'spells'
+  | 'breaths'
+/** Every level stat, in their order in `+0x58`. */
+export const LEVEL_STATS: readonly LevelStat[] = [
+  'attack',
+  'defence',
+  'agility',
+  'might',
+  'mending',
+  'spells',
+  'breaths',
+]
+
 export type Change =
   | { readonly kind: 'sleep'; readonly chance: number }
   | { readonly kind: 'poison'; readonly chance: number }
   | {
-      readonly kind: 'attack' | 'defence' | 'agility'
+      readonly kind: LevelStat
       readonly by: number
       readonly chance: number
     }
@@ -354,6 +388,11 @@ export type Change =
       readonly share: number
       readonly least: number
     }
+  /**
+   * **Wave of Relief** (kind 41, `func_ov024_021df1e8`): the cure-all alone
+   * (`func_ov024_021eae14`), with no test of its landing.
+   */
+  | { readonly kind: 'relieve'; readonly chance: number }
   | {
       readonly kind: 'revive'
       readonly chance: number
@@ -375,6 +414,8 @@ export interface Blow {
   readonly action: number
   /** Its damage handler, `+0x18` bits 18–26. */
   readonly handler: number
+  /** Whether it is a breath, `+0x10` bit 2 — see {@link Spell.breath}. */
+  readonly breath?: boolean
   readonly reach: 'one' | 'group' | 'all'
   /** Its hit code, `+0x1C` bits 14–18 — see `passesOf`. */
   readonly hits: number
@@ -468,6 +509,8 @@ export type ChangeResult =
   | 'killed'
   /** Healed by {@link ChangeHit.hp}, and — `cured` — misfortunes cleared. */
   | 'restored'
+  /** The cure-all alone; `cured` when it cleared something. */
+  | 'relieved'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -481,6 +524,12 @@ export interface ChangeHit {
   readonly cured?: boolean
   /** For what rode on an action: which level it moved. */
   readonly stat?: 'attack' | 'defence' | 'agility'
+  /**
+   * For a level left where it was (`already`): whether the change would have
+   * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
+   * `func_ov024_021e97f4` `0x021e98a0`), where a raising says its fail line.
+   */
+  readonly lowering?: boolean
 }
 
 /**
@@ -640,7 +689,7 @@ export type BattleEvent =
   | {
       readonly kind: 'wornOff'
       readonly actor: number
-      readonly stat: 'attack' | 'defence' | 'agility'
+      readonly stat: LevelStat
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -777,6 +826,47 @@ function amountFor(rng: BattleRng, user: Fighter, amount: Heal): number {
       : { min, max },
     amount.spread,
   )
+}
+
+/**
+ * **A fighter's magical might and mending at their levels** — what
+ * `UpdateCombatantMagicalMight` and `…Mending` leave in the status once
+ * Channel Anger or Care Prayer has moved them; see `buffedMagic`. Everything
+ * that scales by either reads the status's, so this is what an amount, an
+ * accuracy and a raising are worked from.
+ */
+function atMagicLevels<T extends Fighter & { readonly states: States }>(f: T): T {
+  const might = f.states.might?.level ?? 0
+  const mending = f.states.mending?.level ?? 0
+  if (might === 0 && mending === 0) return f
+  return {
+    ...f,
+    ...(might !== 0 && f.might !== undefined ? { might: buffedMagic(f.might, might) } : {}),
+    ...(mending !== 0 && f.mending !== undefined
+      ? { mending: buffedMagic(f.mending, mending) }
+      : {}),
+  }
+}
+
+/**
+ * **What a target's resistance to spells or to breaths leaves of an action**
+ * (`func_ov024_021e6a90`, `0x021e7534`–`0x021e75c8`): a spell (`+0x10` bit
+ * 0) not of kind 2 against one whose flag `+0x14` bit 16 is set, times
+ * {@link wardMultiplier} of their spells level; then a breath (bit 2) against
+ * bit 17, of their breaths level. The flags go with a level not 0.
+ */
+function wardsOf(
+  target: { readonly states: States },
+  action: { readonly magic?: boolean; readonly breath?: boolean; readonly kind?: number },
+): { spellWard?: number; breathWard?: number } {
+  const spells = target.states.spells?.level ?? 0
+  const breaths = target.states.breaths?.level ?? 0
+  return {
+    ...(action.magic && action.kind !== 2 && spells !== 0
+      ? { spellWard: wardMultiplier(spells) }
+      : {}),
+    ...(action.breath && breaths !== 0 ? { breathWard: wardMultiplier(breaths) } : {}),
+  }
 }
 
 /** A target's chance of blocking, in a hundred — the game's `func_ov000_02156118`, likewise. */
@@ -1026,6 +1116,27 @@ export function playRound(
     fighters = fighters.map((f, i) =>
       i === target ? { ...f, states: { ...f.states, ...patch } } : f,
     )
+  }
+  /**
+   * **The cure-all** (`func_ov024_021eae14`): sleep, both poisons, and every
+   * level below 0 — attack, defence, agility, magical might and mending, the
+   * resistances to spells and to breaths (`0x021eaf4c`–`0x021eb05c`) — of the
+   * many it clears, those kept here. Whether it cleared anything.
+   */
+  const cureAll = (target: number): boolean => {
+    const st = (fighters[target] as FighterState).states
+    const lowered = LEVEL_STATS.filter((stat) => (st[stat]?.level ?? 0) < 0)
+    const cured =
+      st.sleep !== undefined || st.poisoned || st.envenomed === true || lowered.length > 0
+    if (cured) {
+      setStates(target, {
+        sleep: undefined,
+        poisoned: false,
+        envenomed: false,
+        ...Object.fromEntries(lowered.map((stat) => [stat, { level: 0, turns: 0 }])),
+      })
+    }
+    return cured
   }
   /** A fighter's tension as the damage takes it — none when it has none. */
   const tensionOf = (f: FighterState) =>
@@ -1922,7 +2033,7 @@ export function playRound(
         rng.below(100)
         rng.below(10_000)
         rng.below(100)
-        const amount = amountFor(rng, me, command.heal)
+        const amount = amountFor(rng, atMagicLevels(me), command.heal)
         const them = fighters[on] as FighterState
         healed = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         const gained = healed
@@ -2010,7 +2121,7 @@ export function playRound(
         rng.below(100)
         if (!once) critical = rng.below(10_000) < rate
         rng.below(100)
-        let amount = spell.amount ? amountFor(rng, me, spell.amount) : them.maxHp
+        let amount = spell.amount ? amountFor(rng, atMagicLevels(me), spell.amount) : them.maxHp
         if (spell.does === 'harm' && spell.amount) {
           const halved = spell.kind === 1 && them.states.tension === TENSION_MOST
           // Its critical, then the target's resistance to its element, then
@@ -2018,6 +2129,7 @@ export function playRound(
           amount = dealt(rng, amount, {
             critical,
             resistance: resistanceTo(them.resist, spell.element ?? 0),
+            ...wardsOf(them, spell),
             ...(spell.cap ? { cap: spell.cap } : {}),
             // A guard halves what defending works on — Frizz and Crack are
             // among them, a heal and a herb are not.
@@ -2130,7 +2242,8 @@ export function playRound(
         const a = changing.accuracy
         if (me.side !== 'party' || !a) return change.chance
         if (!a.scales) return Math.trunc(rng.floatBetween(a.min, a.max))
-        const stat = (a.scales.by === 'might' ? me.might : me.mending) ?? 0
+        const magic = atMagicLevels(me)
+        const stat = (a.scales.by === 'might' ? magic.might : magic.mending) ?? 0
         return scaledAccuracy(stat, a.min, a.max, a.scales.lo, a.scales.hi)
       }
       const changeOne = (target: number): ChangeHit => {
@@ -2196,35 +2309,16 @@ export function playRound(
               Math.trunc(f(f(0.5) + f(f(change.share) * f(them.maxHp)))),
             )
             const hp = Math.min(heal, them.maxHp - them.hp)
-            // The cure-all (`func_ov024_021eae14`): sleep, both poisons, and a
-            // level below 0 — of the many it clears, those kept here.
-            const st = them.states
-            const lowered = (l: { level: number } | undefined) => (l?.level ?? 0) < 0
-            const cured =
-              st.sleep !== undefined ||
-              st.poisoned ||
-              st.envenomed === true ||
-              lowered(st.attack) ||
-              lowered(st.defence) ||
-              lowered(st.agility)
-            fighters = fighters.map((g, i) =>
-              i === target
-                ? {
-                    ...g,
-                    hp: g.hp + hp,
-                    states: {
-                      ...g.states,
-                      sleep: undefined,
-                      poisoned: false,
-                      envenomed: false,
-                      ...(lowered(st.attack) ? { attack: { level: 0, turns: 0 } } : {}),
-                      ...(lowered(st.defence) ? { defence: { level: 0, turns: 0 } } : {}),
-                      ...(lowered(st.agility) ? { agility: { level: 0, turns: 0 } } : {}),
-                    },
-                  }
-                : g,
-            )
+            fighters = fighters.map((g, i) => (i === target ? { ...g, hp: g.hp + hp } : g))
+            const cured = cureAll(target)
             return { target, result: 'restored', hp, ...(cured ? { cured: true } : {}) }
+          }
+          case 'relieve': {
+            // Wave of Relief (`func_ov024_021df1e8`): the cure-all, no test of
+            // its landing, on anyone it reaches.
+            if (!alive(them)) return { target, result: 'resisted' }
+            const cured = cureAll(target)
+            return { target, result: 'relieved', ...(cured ? { cured: true } : {}) }
           }
           case 'revive': {
             // Kind 18 (`func_ov024_021dd278`): the fallen, landed — a share of
@@ -2234,7 +2328,12 @@ export function playRound(
             // **Ours**: never below 1 — what `func_0208902c` makes of 0 is not read.
             const hp = Math.max(
               1,
-              revivedHp(change.share, me.side === 'party', me.mending ?? 0, them.maxHp),
+              revivedHp(
+                change.share,
+                me.side === 'party',
+                atMagicLevels(me).mending ?? 0,
+                them.maxHp,
+              ),
             )
             fighters = fighters.map((g, i) => (i === target ? { ...g, hp, states: NO_STATES } : g))
             return { target, result: 'revived', hp }
@@ -2246,7 +2345,9 @@ export function playRound(
             // The rider, from the handler that has landed (`0x021db674`): a
             // level's always rolls, its draw first (`func_ov024_021e2ebc`).
             if (changing.rider) rideOn(target, changing.rider, changing.action, rode)
-            if (!next) return { target, result: 'already' }
+            if (!next) {
+              return { target, result: 'already', ...(change.by < 0 ? { lowering: true } : {}) }
+            }
             setStates(target, { [change.kind]: next })
             return {
               target,
@@ -2399,6 +2500,7 @@ export function playRound(
         const damage = dealt(rng, d & 0xffff, {
           critical: critical && !thrust && !(blow.sure && blow.action !== CRITICAL_CLAIM),
           resistance: resistanceTo(them.resist, blow.element),
+          ...wardsOf(them, blow),
           dodged,
           blocked,
           ...(blow.cap ? { cap: blow.cap } : {}),
@@ -2622,9 +2724,10 @@ export function playRound(
     for (const i of acted) {
       const f = fighters[i]
       if (!f || !alive(f)) continue
-      // **Ours**: attack's turn first, as its bits come first in `+0x58`; the
-      // game's order, and its counts (attack 5, the others 6), are not read.
-      for (const stat of ['attack', 'defence', 'agility'] as const) {
+      // **Ours**: the levels in their order in `+0x58`, each run down as
+      // defence's is. The game's own run-down is `func_ov000_0215858c` (read
+      // 6 October 2026, not applied — `docs/readings/T18-handlers.md` §9).
+      for (const stat of LEVEL_STATS) {
         const level = (fighters[i] as FighterState).states[stat]
         if (!level) continue
         const worn = wornAfterTurn(level, rng)

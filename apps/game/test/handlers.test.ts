@@ -72,7 +72,29 @@ describe.skipIf(!romPath)(
       expect(action(67).range?.party).toMatchObject({ min: 160, max: 360 })
     })
 
-    it('strikes 55 of them as the Attack now, where 76 were', () => {
+    it('plays the levels of might, mending and the resistances, and Wave of Relief', () => {
+      expect(partyChangeOf(action(60))).toMatchObject({
+        change: { kind: 'breaths', by: 1 },
+        side: 'own',
+      })
+      expect(partyChangeOf(action(156))?.change).toMatchObject({ kind: 'spells' })
+      expect(partyChangeOf(action(155))).toMatchObject({
+        change: { kind: 'spells' },
+        side: 'other',
+      })
+      const aura = partyChangeOf(action(155))?.change
+      expect(aura && 'by' in aura ? aura.by : 0).toBeLessThan(0)
+      expect(partyChangeOf(action(151))?.change).toMatchObject({ kind: 'mending' })
+      expect(partyChangeOf(action(158))?.change).toMatchObject({ kind: 'might' })
+      expect(partyChangeOf(action(154))?.change).toEqual({ kind: 'relieve', chance: 100 })
+      // The flags the wards read: Frizz a spell, Heal a spell, Fire Breath (226) a breath.
+      expect(action(13).rolls?.spell).toBe(true)
+      expect(action(30).rolls?.spell).toBe(true)
+      expect(action(1).rolls?.spell).toBe(false)
+      expect(action(226).rolls?.breath).toBe(true)
+    })
+
+    it('strikes 46 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -89,7 +111,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(55)
+      expect(attack).toBe(46)
     })
   },
 )

@@ -401,6 +401,14 @@ export function dealt(
     readonly blocked?: boolean
     readonly cap?: number
     /**
+     * What the target's resistance to spells and to breaths leaves of it —
+     * `wardMultiplier` of their level, for a spell and for a breath
+     * (`0x021e7534`–`0x021e75c8`); each its own multiply, after the
+     * resistance and before the guard. Whole when not given.
+     */
+    readonly spellWard?: number
+    readonly breathWard?: number
+    /**
      * What the target's guard does to it — {@link GUARD_LEVELS} at its guard
      * level, 0.5 for one defending. Whole when not given.
      */
@@ -450,6 +458,9 @@ export function dealt(
     if (d < floor) d = floor
   }
   d = f(d * f(to.resistance))
+  // Its resistance to spells, then to breaths (`0x021e7580`, `0x021e75c4`).
+  if (to.spellWard !== undefined) d = f(d * f(to.spellWard))
+  if (to.breathWard !== undefined) d = f(d * f(to.breathWard))
   // The target's guard, before the coin below — `0x021e7614`.
   if (to.guard !== undefined && to.guard !== 1) d = f(d * f(to.guard))
   if (to.blocked || to.dodged) d = 0

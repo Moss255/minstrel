@@ -1175,3 +1175,20 @@ and the eight coups.
 
 **What is open**: the ship's size against the walls; the camera at sea; how
 the sea's battle request with no roamer chooses its monsters.
+### Task 18, the kinds carried on (6 October 2026)
+
+`docs/readings/T18-handlers.md` §9. Overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_ov024_021dd968` | kind 22: the resistance to spells' level, `+0x58` bits 18–20 | `Resolver::HandleSpellWard` |
+| `func_ov024_021ddaa0` | kind 23: the resistance to breaths' level, bits 21–23 | `Resolver::HandleBreathWard` |
+| `func_ov024_021dee84` | kind 38: magical mending's level, bits 15–17 | `Resolver::HandleMendingBuff` |
+| `func_ov024_021df1e8` | kind 41: the cure-all alone | `Resolver::HandleRelief` |
+| `func_ov024_021df284` | kind 42: magical might's level, bits 12–14, its rider first | `Resolver::HandleMightBuff` |
+| `func_ov024_021e97f4`, `021e9904`, `021e9990` | the spells', might's and mending's level lines | `Resolver::SpellWardLine`, `MightLine`, `MendingLine` |
+| ARM9 `func_02087b3c`/`02087b90`, `02087c30`/`02087c84`, `02087d24`/`02087d78`, `02087e18`/`02087e6c` | each level's test and set: count 5 at `+0x72`–`+0x75`, flag `+0x14` bits 14–17 | `Status::CanMove…`, `Status::Move…` |
+| ARM9 `func_020748a8`, `func_020748d0` | `1 + (−0.25 × level)`: what a breath and a spell keep | `CalculateBreathWardMultiplier`, `CalculateSpellWardMultiplier` |
+| `func_ov024_021e6a90` `0x021e7534`–`0x021e75c8` | a spell (`+0x10` bit 0) and a breath (bit 2) lessened by the target's levels | (part of) `CalculateFinalDamage` |
+| ov000 `func_ov000_0215858c` | each status's count run down, a draw against the table at `0x02182ad4` (1.0, 0.875, 0.75, 0.625, ~0), and its wear-off line | `Battle::RunDownStatuses` |
+| ov000 `data_ov000_02182ad4` | the wear-off chances by the count left | `StatusWearTable` |

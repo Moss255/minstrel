@@ -13,6 +13,8 @@ export {
   type FighterState,
   type FoeAction,
   type Heal,
+  LEVEL_STATS,
+  type LevelStat,
   type Opening,
   type Outcome,
   playRound,
@@ -67,12 +69,14 @@ export { FACING_CONE, facingOff, howItOpens } from './battle/opening.ts'
 export { BattleRng } from './battle/rng.ts'
 export {
   buffedAttack,
+  buffedMagic,
   LEVEL_TURNS,
   type Level,
   levelled,
   NO_STATES,
   SLEEP_TURNS,
   type States,
+  wardMultiplier,
 } from './battle/states.ts'
 export {
   psychedUp,
