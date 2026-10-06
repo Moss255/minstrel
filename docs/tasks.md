@@ -15,7 +15,9 @@ own flow".
 **Tasks 1 to 10 are done**, each built, checked in the browser, committed and
 written up on the wiki; each says so under its heading.
 
-- **Tasks 11 to 14 are not read.** Readers were started on 4 October and cut
+- **Task 11 is done**, 6 October 2026: the ending plays to its end, the staff
+  roll on the bottom screen and the cards over the view.
+- **Tasks 12 to 14 are not read.** Readers were started on 4 October and cut
   off before writing anything, so each starts from its brief below.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
@@ -295,6 +297,8 @@ does is applied** — the preset's face, the hair's ramp, the sound ids, the
 victory's lines.
 
 ## 11. The ending: opcode `0x1e` and the staff roll — translate
+
+**Done, 6 October 2026** (`3063b1d`, `7147756`, `c714054`): `0x1D`/`0x1E` are fdlibm's sine and cosine (`vm.ts`); overlay 28 read whole and run as `StaffRollRun` from `staffroll.bin` (`staff-roll.ts`), the cards drawn over the view; the ending's chain plays to `ev29450`. Ours: the roll's two colours, the fade's screens, a flat floor in the collision-less `E01` maps. The reading: `docs/readings/T11-ending.md`; the wiki's Staff-Roll.
 
 The story walk reaches 19.2, but the last scene, `ev29300`, stops on VM
 opcode `0x1e`, so the credits never run (`docs/story-walk.md`, cause 6). The

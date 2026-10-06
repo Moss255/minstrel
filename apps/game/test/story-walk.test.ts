@@ -121,8 +121,12 @@ const romPath = process.env.MINSTREL_TEST_ROM
 describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
   /** How many states one walk may visit before it is called a runaway. */
   const STATE_CAP = 50_000
-  /** How many frames one script may run to find what it chains into. */
-  const FRAME_CAP = 20_000
+  /**
+   * How many frames one script may run to find what it chains into. The
+   * ending is the longest: `ev29300`'s chain waits on the staff roll's
+   * stopwatch to 268,550 ms and plays on to `ev29450`, 29,423 frames in all.
+   */
+  const FRAME_CAP = 40_000
   /** How many sets of game-wide flags a map's talks are followed through, from one state — see `movesFrom`. */
   const TALK_SETS = 256
   /** The operations `story.ts`, `talk.ts` and `services.ts` read. The rest are reported as not read. */

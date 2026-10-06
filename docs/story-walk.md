@@ -102,7 +102,7 @@ that unblock the most.
 | 3 | ~~**`214`, a story's stage set by its number**~~ | — | — | **done, 28 September**: read from the game's code and built |
 | 4 | Chained from an event the walk never played | 4 | 7.4 | none directly: a cascade |
 | 5 | A set battle whose starting event the walk never played | 4 | 14.4 step 3 | **Loch Storn done, 28 September**: its scene hands on with `807`. Left: Gortress's set battle 14, and the tower's 20 to 22 at 17.1, which nothing starts |
-| 6 | Nothing reaches the event | — | — | **done, 28 September**: `155`; `ev14903` is chained into by `ev14640` when the thread's flags 11 to 14 are set, which `602` reads (cause 15). Left over: `ev29300`'s opcode `0x1e`, the credits |
+| 6 | Nothing reaches the event | — | — | **done, 28 September**: `155`; `ev14903` is chained into by `ev14640` when the thread's flags 11 to 14 are set, which `602` reads (cause 15). `ev29300`'s opcode `0x1e` read 6 October (task 11): the ending plays to its end |
 | 7 | A flag, mark or step the walk never had | 2 | 1.3 | as 4, mostly. **The Quarantomb's done, 28 September**: `220`, its two switches, sets the flags 901 and 902 its records test with `88` |
 | 8 | ~~An area no record defines~~ | — | — | **done, 28 September**: a map's own areas, and areas turned |
 | 9 | ~~**Another of the character's records chooses first**~~ | 6 | 11.3 | **done, 28 September**: talking is the game's own rule. What is left is a flag (11.3) and the quests (19.3 to 19.7) |
@@ -271,10 +271,12 @@ value `f : 0` sets flag f and plays e, the queue starting it as it starts a
 `119`'s (FORMAT.md, "How a record runs"). All 14 of its records are
 Gortress's, on its characters at 14.4 — `52:203 7:2 155:28991 7:0`.
 
-**Left**: `ev14903` at 14.4 step 8. And eight scripts will not run at all
-(`ev29300`–`ev29350`, VM opcode `0x1e`). **`ev29300` is also what winning the
-last set battle plays**, before `148` sets every thread to 19.2, so it is
-probably the ending and its credits. (`ev12101` was here too until `226` was
+**Left**: `ev14903` at 14.4 step 8. The eight scripts that would not run
+(`ev29300`–`ev29350`, VM opcode `0x1e`) run since 6 October 2026 (task 11):
+**`ev29300`, what winning the last set battle plays, is the ending** — its
+chain runs `ev29310`, `ev29301` … `ev29305`, `ev29350` (the staff roll
+starts), `ev29352` … `ev29373` (it stops at 268,550 ms), `ev29306`,
+`ev29320` and `ev29450`, 29,423 frames in all. (`ev12101` was here too until `226` was
 read as a hand-on.)
 
 ### 8. Areas: done, 28 September 2026
@@ -486,9 +488,8 @@ scripted battles (`quest_btl_%d.stb`, overlay 23) among it, not read.
 - **Geography**: whether the Hero can get from where one event leaves them to
   where the next is. This is the walk's second pass, once the list above is
   short.
-- **The credits.** Winning set battle 25 at 17.2 plays `ev29300` and moves
-  every thread to 19.2 (`148`). `ev29300` needs VM opcode `0x1e`, which is
-  not read, and `838` is the staff roll's stopwatch.
+- ~~**The credits.**~~ Done 6 October 2026 (task 11): `ev29300`'s chain plays
+  to its end, the staff roll with it — `docs/readings/T11-ending.md`.
 - **The prologue's start**: which event a new game plays at 1.1, before the
   Observatory. This goes with character creation's eight screens, which
   already run.

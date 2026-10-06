@@ -1845,9 +1845,14 @@ describe('the ending’s own block, and the rest of the 800s', () => {
     stage.host.call(838, [ref(1)], t)
     expect(written.get(1)).toBe(0)
     stage.host.call(811, [], t)
-    for (let i = 0; i < 60; i++) stage.advance()
+    // 0 through the roll's set-up and its fade — 36 frames — then the time
+    // since 811, renewed on the frames the roll moves: the last at frame 59.
+    for (let i = 0; i < 36; i++) stage.advance()
     stage.host.call(838, [ref(2)], t)
-    expect(written.get(2)).toBe(1000)
+    expect(written.get(2)).toBe(0)
+    for (let i = 36; i < 60; i++) stage.advance()
+    stage.host.call(838, [ref(2)], t)
+    expect(written.get(2)).toBe(Math.floor((59 * 1000) / 60))
     stage.host.call(812, [], t)
     stage.host.call(838, [ref(3)], t)
     expect(written.get(3)).toBe(0)
