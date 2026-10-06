@@ -468,6 +468,13 @@ export type Change =
    * resolver (`func_ov024_021e80e4`, `0x021e8560`–`0x021e85d4`).
    */
   | { readonly kind: 'dispel'; readonly chance: number }
+  /**
+   * **Mens Sana** (kind 43, `func_ov024_021df454`): with no test of its
+   * landing, poison and envenomation, dazzle, Fizzle and every level below
+   * 0 cleared from its target; its done line where it cleared anything,
+   * else its fail line. Not sleep or paralysis.
+   */
+  | { readonly kind: 'sound'; readonly chance: number }
   /** **Antimagic** (kind 16, `func_ov024_021dced0`): fizzled, landed — again if already. */
   | { readonly kind: 'fizzle'; readonly chance: number }
   /** **Tingle** (kind 20, `func_ov024_021dd6f0`): the paralysed, landed, freed. */
@@ -712,6 +719,8 @@ export type ChangeResult =
   | 'watched'
   /** Disruptive Wave: all its magic cleared; `calmed` where that took tension. */
   | 'dispelled'
+  /** Mens Sana: something unfortunate cleared — its done line. */
+  | 'eradicated'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -2910,6 +2919,28 @@ export function playRound(
               tension: 0,
             })
             return { target, result: 'dispelled', ...(calmed ? { calmed: true } : {}) }
+          }
+          case 'sound': {
+            // Mens Sana (`0x021df480`–`0x021df628`), no test of its landing:
+            // poison (`func_020885b4`, `02088644`) and envenomation
+            // (`02088514`, `02088598`), dazzle (`021df6ec`, `02088874`),
+            // Fizzle (`021dd010`, `020888c4`), `+0x18` bit 4 (`021df704`, not
+            // kept), then each level below 0, attack to the shield's block
+            // (`func_02087838` … `020880e4`) — counted; any, the done line.
+            const lowered = LEVEL_STATS.filter((stat) => (was[stat]?.level ?? 0) < 0)
+            const fizzled = (was.fizzled?.level ?? 0) !== 0
+            const dazzled = (was.dazzled?.level ?? 0) !== 0
+            if (!(was.poisoned || was.envenomed || dazzled || fizzled || lowered.length > 0)) {
+              return { target, result: 'resisted' }
+            }
+            setStates(target, {
+              poisoned: false,
+              envenomed: false,
+              dazzled: undefined,
+              ...(fizzled ? { fizzled: { level: 0, turns: 0 } } : {}),
+              ...Object.fromEntries(lowered.map((stat) => [stat, { level: 0, turns: 0 }])),
+            })
+            return { target, result: 'eradicated' }
           }
           case 'unparalyse':
             // Tingle: landed on the paralysed (`func_ov024_021da9b0`), freed.

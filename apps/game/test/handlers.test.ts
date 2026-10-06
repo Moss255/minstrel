@@ -151,7 +151,11 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 28 of them as the Attack now, where 76 were', () => {
+    it('plays Mens Sana as the clear of what is unfortunate', () => {
+      expect(partyChangeOf(action(162))?.change).toEqual({ kind: 'sound', chance: 100 })
+    })
+
+    it('strikes 27 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -168,7 +172,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(28)
+      expect(attack).toBe(27)
     })
   },
 )

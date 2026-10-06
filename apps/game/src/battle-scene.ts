@@ -390,6 +390,9 @@ function changeSays(
     // the resolver says one for all after — see the page's `dispelled`.
     case 'dispelled':
       return 0
+    // Mens Sana's (`0x021df630`–`0x021df66c`): its record's done line.
+    case 'eradicated':
+      return pick(own?.done, ACTION_SAYS.alleviated)
     // Rider 11's (`func_ov024_021e9464` with 1): "is paralysed!" (`0x1e`), or
     // on one already, "is frozen even further" (`0x6e`).
     case 'paralysed':
@@ -524,6 +527,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} is watched.`
     case 'dispelled':
       return `All magical effects cast on ${whom} are removed.`
+    case 'eradicated':
+      return `All unfortunate effects affecting ${whom} are eradicated.`
     case 'paralysed':
       return hit.again ? `${whom} is frozen even further.` : `${whom} is paralysed!`
   }
@@ -2230,6 +2235,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [37, 'shield'],
   // Disruptive Wave (`021e02b0`): everything magical cleared.
   [49, 'dispel'],
+  // Mens Sana (`021df454`): what is unfortunate cleared.
+  [43, 'sound'],
   // Holy Impregnable (`021e1120`): 25 less taken of the ailments' elements.
   [64, 'holy'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.

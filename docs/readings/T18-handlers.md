@@ -246,7 +246,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (28 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37 and 49), by the kind whose handler is unread:
+**Still struck as the Attack** (27 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49 and 43), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -256,7 +256,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 21 | `func_ov024_021dd828` | Fuddle |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
-| 43 | `func_ov024_021df454` | Mens Sana |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
@@ -970,3 +969,16 @@ reached, `0xf2` "… and co." where more, the target the one kept at
 `+0x44`. **Ours**: none reached is told "But nothing happens" — the
 resolver's way for a count of 0 (`0x021e8580`–`0x021e85cc`) is not
 followed.
+
+### Mens Sana (kind 43) — built
+
+`func_ov024_021df454`, with **no test of its landing**: in its order, poison
+(`+0x14` bit 1 with `+0x22` low bits at 1: `func_020885b4`, cleared by
+`02088644`) and envenomation (at 2: `02088514`, `02088598`), dazzle
+(`021df6ec`, `02088874`), Fizzle (`021dd010`, `020888c4`), `+0x18` bit 4
+(`021df704`, `02088d4c` — a status not kept), then each level of `+0x58`
+**below 0** — attack, defence, agility, charm, might, mending, spells,
+breaths, evasion, the shield's block (`0x021df510`–`0x021df624`) — each
+counted as cleared. Any: the done line; none: the fail line
+(`0x021df628`–`0x021df66c`); then `ApplyCombatantBuffs`. Not sleep,
+paralysis or a lost turn.

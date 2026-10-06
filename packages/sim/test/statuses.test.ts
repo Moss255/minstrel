@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   type BattleEvent,
   type BattleState,
+  blockOf,
   type Changing,
   type Command,
-  type Fighter,
-  blockOf,
   evadeOf,
+  type Fighter,
   playRound,
   startBattle,
   withHp,
@@ -439,5 +439,42 @@ describe('Disruptive Wave — kind 49', () => {
     expect(after?.tension).toBe(0)
     expect(after?.dazzled?.level).toBe(2)
     expect(after?.poisoned).toBe(true)
+  })
+})
+
+describe('Mens Sana — kind 43', () => {
+  const sana = status(162, 'sound')
+  const holding = (states: Partial<BattleState['fighters'][number]['states']>) => {
+    const start = startBattle([hero, foe])
+    return {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 0 ? { ...f, states: { ...f.states, ...states } } : f,
+      ),
+    } as BattleState
+  }
+
+  it('clears poison, Fizzle and every level below 0, and leaves the raised', () => {
+    const { state, events } = playRound(
+      holding({
+        poisoned: true,
+        fizzled: { level: 1, turns: 6 },
+        attack: { level: -1, turns: 5 },
+        defence: { level: 2, turns: 6 },
+      }),
+      using(sana),
+      new BattleRng(4n),
+    )
+    expect(changeOf(events).hits).toEqual([{ target: 0, result: 'eradicated' }])
+    const after = state.fighters[0]?.states
+    expect(after?.poisoned).toBe(false)
+    expect(after?.fizzled?.level).toBe(0)
+    expect(after?.attack?.level).toBe(0)
+    expect(after?.defence?.level).toBe(2)
+  })
+
+  it('says its fail line where there is nothing to clear', () => {
+    const { events } = playRound(holding({}), using(sana), new BattleRng(4n))
+    expect(changeOf(events).hits).toEqual([{ target: 0, result: 'resisted' }])
   })
 })
