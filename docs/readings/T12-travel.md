@@ -304,8 +304,9 @@ floats**. Angel Falls' church, `M01M06`: (0, 0.15, −2.64), facing π;
 Stornway's, `C01M09`: (0.21, 0.12, −1.38), facing π. Every member is put
 there (`func_020399b0`), and object `0xCE` too when `+0xf7d` says so.
 
-(So the "terminator" `table.ts` names — tag `0x6E`, type `0xFF` — is this
-instruction: `0xFF` is four parameters' type bits, all float.)
+(The `.bmbl`'s `0x6E` is typed `0xAA`, four floats, so `table.ts` reads it
+as an ordinary record; the terminator it stops on is `0x6E` typed `0xFF`,
+which no `.bmbl` carries.)
 
 ### A set battle's own revival map: trigger action 180
 

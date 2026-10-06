@@ -476,3 +476,42 @@ export function mapLadders(data: Uint8Array): LadderEnd[] {
   }
   return out
 }
+
+/** The `.bmbl` instruction that is the map's start point (`func_0201d494`). */
+const TAG_START = 0x6e
+/** The type bits of a float. */
+const KIND_FLOAT = 2
+
+/** **A map's start point**: where a party asked into the map with no place stands. */
+export interface MapStart {
+  /** In the file's own units. */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  /** The facing there, in radians. */
+  readonly facing: number
+}
+
+/**
+ * **The map's start point** — its `.bmbl`'s instruction `0x6E`, four floats:
+ * x, y, z and a facing in radians, which the map's reader (`func_0201e1d0`,
+ * opcode table `data_020ef388`) puts at the map's `+0x6c + 0x70` and `+0x7c`
+ * (`func_0201d494`). A map request with no place — a wipe-out's — stands the
+ * party there (`func_ov017_0219c598`, `0x0219c648`–`0x0219c668`). One on each
+ * of the cartridge's 667 `.bmbl`; all four 0 on the battle stages. Read 6
+ * October 2026 — `docs/readings/T12-travel.md`, "Where a party wiped out
+ * stands". `undefined` when the file has none.
+ */
+export function mapStart(data: Uint8Array): MapStart | undefined {
+  const record = readDataTable(data).records.find(
+    (r) => r.tag === TAG_START && r.values.length >= 4,
+  )
+  if (!record || [0, 1, 2, 3].some((i) => record.kinds[i] !== KIND_FLOAT)) return undefined
+  const f = record.floats
+  return {
+    x: f[0] as number,
+    y: f[1] as number,
+    z: f[2] as number,
+    facing: f[3] as number,
+  }
+}

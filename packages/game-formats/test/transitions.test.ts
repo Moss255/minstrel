@@ -6,6 +6,7 @@ import {
   mapBookcases,
   mapDoorways,
   mapLadders,
+  mapStart,
   readMapTransitions,
 } from '../src/transitions.ts'
 
@@ -462,5 +463,34 @@ describe("a map's ladders — the type-9 regions", () => {
 
   it("is not read as a doorway, though it names a map in the doorway's slot", () => {
     expect(readMapTransitions(table)).toEqual([])
+  })
+})
+
+describe("a map's start point — 0x6E", () => {
+  it('reads x, y, z and the facing, four floats', () => {
+    // Shaped like Angel Falls' church, `M01M06`: (0, 0.15, −2.64), facing π.
+    const table = build(
+      [
+        { tag: 0x6a, fields: [int(1)] },
+        { tag: 0x6e, fields: [float(0), float(0.15), float(-2.64), float(Math.PI)] },
+      ],
+      [],
+    )
+    const start = mapStart(table)
+    expect(start?.x).toBe(0)
+    expect(start?.y).toBeCloseTo(0.15, 5)
+    expect(start?.z).toBeCloseTo(-2.64, 5)
+    expect(start?.facing).toBeCloseTo(Math.PI, 5)
+  })
+
+  it('is undefined with none, or with values that are not floats', () => {
+    expect(mapStart(build([{ tag: 0x6a, fields: [int(1)] }], []))).toBeUndefined()
+    expect(
+      mapStart(build([{ tag: 0x6e, fields: [int(0), int(0), int(0), int(0)] }], [])),
+    ).toBeUndefined()
+  })
+
+  it('throws on a table that does not read', () => {
+    expect(() => mapStart(new Uint8Array(8))).toThrow(GameFormatError)
   })
 })

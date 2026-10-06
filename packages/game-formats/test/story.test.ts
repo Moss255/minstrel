@@ -19,6 +19,7 @@ import {
   KIND_SETTINGS,
   KIND_WATCH,
   KIND_WON,
+  lostRevival,
   marksSet,
   OP_IF_FLAG,
   OP_UNLESS_FLAG,
@@ -421,6 +422,24 @@ describe('the story in trigger records', () => {
     expect(afterBattle(records, 2, false, 7105)).toMatchObject({ event: undefined, flags: [4] })
     expect(afterBattle(records, 3, true, 7105)).toBeUndefined()
     expect(afterBattle(records, 2, true, 7101)).toBeUndefined()
+    expect(afterBattle(records, 2, false, 7105)?.revival).toBeUndefined()
+  })
+
+  it('reads where 180 sends a party wiped out in its own set battle, and only its own', () => {
+    // The Magmaroo's summit, as the cartridge has it: `12:14 104:1 180:14`
+    // with 2309 in the parameter's high half (`func_0205ec70` case 72).
+    const summit = trigger(8612, KIND_LOST, [
+      [12, 14],
+      [104, 1],
+      [180, 14],
+      [2309, 0],
+    ])
+    expect(lostRevival(summit, 14)).toBe(2309)
+    // Another battle's 180 writes 0: no map of its own (case 80, `0x020633f0`).
+    expect(lostRevival(summit, 15)).toBeUndefined()
+    expect(afterBattle([summit], 14, false, 8612)).toMatchObject({ flags: [1], revival: 2309 })
+    // The 180 is not read as an action of its own parameter.
+    expect(outcomeOf(summit).flags).toEqual([1])
   })
 
   it('holds the second set’s conditions, the marks, only when they are given', () => {

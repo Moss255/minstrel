@@ -622,6 +622,28 @@ export const FLAG_NO_ZOOM = 0x113a
  * 12 records, 1106 at 1.4, 4201 at 6.5, 109 at 12.1 and 16.1 among them.
  */
 export const OP_REVIVAL_MAP = 208
+/**
+ * **A set battle's own revival map**: `180 : b, m` — during set battle `b`,
+ * a party wiped out comes round in map `m` rather than the revival map
+ * (`func_02061c04` case 80, `0x0206339c`–`0x020633f8`, writing the battle
+ * request's `+0x22`, which the wipe-out passes on, `func_ov017_021b790c`
+ * `0x021b7c8c`). Its one parameter's high half is `m` (`func_0205ec70` case
+ * 72). On two lost-records: the Magmaroo's, battle 14 to Upover's church
+ * 2309; Gortress's, 16 to 5700. See `docs/readings/T12-travel.md`.
+ */
+export const OP_LOST_REVIVAL = 180
+
+/** The map `180 : b, m` sends a party wiped out in set battle `battle` to — see {@link OP_LOST_REVIVAL}. */
+export function lostRevival(trigger: Trigger, battle: number): number | undefined {
+  let map: number | undefined
+  for (const entry of entriesOf(trigger)) {
+    if (entry.op !== OP_LOST_REVIVAL) continue
+    // Another battle's 180 puts 0 there: no map of its own.
+    const m = entry.arg === battle ? ((entry.params[0] ?? 0) >>> 16) & 0xffff : 0
+    map = m === 0 ? undefined : m
+  }
+  return map
+}
 
 /**
  * The game-wide flag one of the actions above sets or clears, and which —
@@ -766,6 +788,8 @@ export interface BattleOutcome {
   readonly flags: readonly number[]
   /** Everything its record does — see {@link outcomeOf}. */
   readonly outcome: EventOutcome
+  /** Lost, the map its `180` sends the party to come round in, if it names one — see {@link lostRevival}. */
+  readonly revival: number | undefined
 }
 
 /**
@@ -788,7 +812,12 @@ export function afterBattle(
     if (first?.op !== OP_AFTER_BATTLE || first.arg !== battle) continue
     if (!holds(trigger, state)) continue
     const outcome = outcomeOf(trigger)
-    return { event: outcome.event, flags: outcome.flags, outcome }
+    return {
+      event: outcome.event,
+      flags: outcome.flags,
+      outcome,
+      revival: won ? undefined : lostRevival(trigger, battle),
+    }
   }
   return undefined
 }
