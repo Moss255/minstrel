@@ -158,6 +158,12 @@ in their own part of `F01`; Angel Falls' night tune.
 - **The flight of Zoom and the wing**: the rise, the fade (`SetBrightness`,
   30) and the landing, and the bump on the ceiling — what overlay 17's task at
   `0x021ad3c8` draws.
+- **When the Battle Records first open** (task 14): what sets game-wide flag
+  `0x119a`, which the SELECT Button and the field menu's row both test, was
+  not found in the code, the records or the scripts. **The witness**: the
+  first moment the menu lists Battle Records, and SELECT answers — whether at
+  Stella's `ev22593` (2.6), after it, or on something else. And the Battle
+  Records' screens themselves: the menu's pictures, the summary's layout.
 
 ### 1c. The story's last stretch, quests and the Express — to check in the emulator
 
@@ -213,6 +219,7 @@ lives; this is the gathered list.
 | items | holy water's calm |
 | time of day | 120 s to evening, 150 s to night, from the let's play; the zone kind by the time of day — 0 by day, 1 at dusk, 2 by night |
 | gathering spots | **read 6 October 2026** (`docs/readings/T13-gathering.md`) and built: the spots, their refill, the sparkles, picking up, the Fountain. Ours: **the draws** — the game's `rand()`, whose seed is not read; **a minute counted as 3,600 ticks**, where the game sums each frame's milliseconds to 60 seconds; **the item's icon** the game raises over the Hero (`/data/ani/d_%c%03d.spr`) not drawn; the line said by the Hero, where the game names whoever `func_020100b0` gives; the pick-up motion `hirou`, INFERRED for the Hero's state 8; where each sparkle starts its loop; **the order of the A Button's checks** — talk, treasure, a bookcase, then a spot; the minutes counting through battles, menus and scenes (INFERRED: the game's one gate is a map changing). A refill while the Hero is on the map shows on the next entry, as the game's sparkles are placed only on entering (INFERRED: nothing found adds one after) |
+| accolades and the Battle Records | **read 6 October 2026** (`docs/readings/T14-records.md`) and built: the four award scripts run on the event machine with the functions read, the award's lines, the earned set saved; the Records by SELECT and the field menu's row, their summary and Accolades Earnt. Ours: **`0x119a` set as Stella's `ev22593` plays**, and on a save past 2.6 — what sets it is not found (§1b); **`0x119b` set with the first award**, which `str_tg` 1000 says opens the list; the scripts' functions not read or not kept — 2, 51–53, 102–105, 107–109, 111–177, 201–215, 251 — make a candidate asking them **never due**, so outfits, play time, alchemy, quests' counts, the defeated list and completion records award nothing yet; the award said in the field after the results, where the game says it in them (step 15), and before the Records' panel, which opens on the next press; **Stella's comments** (`cmtFileTbl.bin`, `cmt*.stb`) not built, the game running `title_gyalel` only when she has none; `title_clr` not run (none of its functions kept); the quests completed counted from the quest book; victories, alchemy and guests not shown; one panel for the Records' screens, the game's pictures (`cell_jrm`) not drawn; the Abbey's revocation titles still not given; SELECT on `g` |
 | treasure that comes back | **read 6 October 2026** and built: red chests remembered for ever, the rest cleared as play begins, every drawn container drawn again at each load of its map. Ours: **the draws** (the game's "A table" not reproduced); a red chest an old save named by its running number converted as its map is entered |
 | chests | how far a lid goes back (110°), that it goes at the rate of the hands, and the text waiting for the motion. INFERRED: that the lid rises with the hands at all — no file animates one |
 | the character | the person's scale against the buildings, set by eye — the buildings are measured, the ratio to them is not (`sim/src/character.ts`, `PERSON`); the step and snap heights, set by the movement |

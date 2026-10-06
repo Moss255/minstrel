@@ -935,3 +935,26 @@ a set battle's request `+0x3e`; bit 0 of `GameState+0x63dc`
 
 **Open**: what the Hero's state 8 plays (`func_02033dd4`); what reads flag
 `0xc12 + id`; what seeds `rand()`.
+
+### Battle Records and accolades — ARM9 and overlays 2, 3, 8, 17 and 23, read 6 October 2026
+
+| function | what it does | a name |
+|---|---|---|
+| `func_020ac460`, `func_020ac3c8` | the accolades earned, `GameState+0x7504`: copied out; bits set for a list | `Records::GetEarnedTitles`, `::SetEarnedTitles` |
+| `func_020ac4c0`, `func_020ac494` | the records block, `+0x7540`, 0xB0 bytes: out, back | `Records::Get`, `::Set` |
+| `func_020ac020` | the defeated monster list, `+0x75f0`, a word by monster | `Records::GetDefeated` |
+| `func_020ac104`, `func_020ac0dc` | the item list, `+0x7ac4`: add entries; clear | `Records::AddFoundItems`, `::ClearFoundItems` |
+| `func_020a03c4` | adds to the accolades-earned count, records `+0x10` bits 0–8 | `Records::AddTitleCount` |
+| `func_020a13c4`, `func_020a15bc` | `ttldata` loaded; a record by number | `TitleData::Load`, `::Get` |
+| `func_0209fe9c`, `func_0209fee4`, `func_0209ff64`, `func_0209ff6c`, `func_0209ffe0` | the award script's machine: clear, set up on a script, start a section, step, append a number | `TitleScript::Init`, `::Load`, `::Start`, `::Update`, `::Add` |
+| `func_ov023_021eb000` | registers the 95 title functions (`data_ov023_021fddb8`) | `TitleScript::RegisterFunctions` |
+| `func_ov023_021e8f28` | a member by the script's first value: 0–3 a slot, −1 `GameState+0x3ac`'s, below the party list | `TitleScript::GetMember` |
+| `func_ov023_021e915c` … `func_ov023_021eaf50` | the title functions — see the reading's table | `TitleFn::*` |
+| `func_ov023_021ed724` | marks a list earned, adds the count, returns whether it was 0 | `TitleAward::Commit` |
+| `func_ov023_021f1868`, `func_ov023_021f3aac` | victory steps 9 and 15: the skill screen then `title_skl`; `title_btl` and its windows | `BattleResults::StepSkills`, `::StepTitles` |
+| `func_ov017_021c05f4`, `func_ov017_021c0760` | SELECT or the menu's row: flag `0x119a`, the field free; service 41 | `Field::OpenBattleRecords`, `BattleRecordsService::Init` |
+| `func_ov008_02184a4c`, `func_ov008_02186cec` | the Records' opening (comment, `title_clr`, `title_gyalel`); their menu by flags | `BattleRecords::Update`, `::BuildMenu` |
+| `func_020727f8` | a number's files in `cmtFileTbl.bin` | `CommentTable::Get` |
+
+**Open**: what sets `0x119a`, `0x119b` and the records' `0x2000`; title
+functions 119–177 and 202–215.

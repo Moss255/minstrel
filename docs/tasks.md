@@ -23,8 +23,11 @@ written up on the wiki; each says so under its heading.
 - **Task 13 is done**, 6 October 2026: the fields' gathering spots sparkle,
   are picked from and refill by the game's minutes; red chests stay opened,
   and blue chests, pots, barrels and cupboards come back as play begins.
-- **Task 14 is not read.** A reader was started on 4 October and cut off
-  before writing anything, so it starts from its brief below.
+- **Task 14 is done**, 6 October 2026: accolades are awarded by the game's
+  own four scripts where it runs them, and the Battle Records open with
+  SELECT and the field menu's row — the summary and Accolades Earnt. The
+  monster and item lists, the wardrobe and Stella's comments wait; where the
+  game keeps the first two is read.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
   line and does nothing — task 18); the camera easing in for a party trick;
@@ -359,6 +362,8 @@ how a blue container is told from a red) are read.
 
 ## 14. Battle Records and accolades — find and build
 
+**Done, 6 October 2026** (`f473fb3`, `589fcc7`): `accolades.ts`, `readAccoladeData`; the reading in `docs/readings/T14-records.md`; the wiki's Accolades. The four award scripts run with the functions read; the Battle Records by SELECT and the field menu's row, their summary and Accolades Earnt. What sets `0x119a` is not found, and stands in at Stella's `ev22593`; the monster and item lists, the wardrobe and Stella's comments are not built.
+
 Stella's Battle Records (pp. 8–10), from when she joins (~p. 64): a summary,
 the monsters defeated, the items found, the wardrobe, **accolades** (titles,
 appendix p. 434) and, after the ending, completion records. None is built,
@@ -488,8 +493,10 @@ For any session, not only one reading assembly:
 - **Organise Items** (p. 7), over `inventory.ts`.
 - **The battle's Equipment command**, once task 8 says where it differs
   from the field's.
-- **Battle Records' monster and item lists**, once task 14 says where the
-  game keeps what was defeated and found.
+- **Battle Records' monster and item lists**: where the game keeps them is
+  read (`docs/readings/T14-records.md` — `GameState+0x75f0` and `+0x7ac4`);
+  keeping them and their screens are left, with the wardrobe and Stella's
+  comments (`cmtFileTbl.bin`).
 - Low value, and largely ours anyway: **Quick Save** (p. 12) and the
   **volume** settings.
 
