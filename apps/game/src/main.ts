@@ -704,6 +704,19 @@ import {
   tricksFor,
 } from './tricks.ts'
 import { castOn, type Outcome, useOn, type Vitals } from './use.ts'
+import {
+  CEILING_LINE,
+  FLIGHT_BUMP,
+  FLIGHT_EFFECT,
+  FLIGHT_FADE_FRAMES,
+  FLIGHT_RISE,
+  FLIGHT_SOUNDS,
+  type Flight,
+  type FlightEvent,
+  flightPass,
+  flownHidden,
+  startFlight,
+} from './zoom-flight.ts'
 
 /**
  * Walk a village read from the player's own cartridge.
@@ -1384,7 +1397,7 @@ function showDarkness(stage: { readonly darkness: number } | undefined, now: num
     dark = returning.from * Math.min(1, Math.max(0, 1 - t))
     if (t >= 1) returning = undefined
   }
-  dark = Math.max(dark, battleDarkness(now))
+  dark = Math.max(dark, battleDarkness(now), flightDarkness(now))
   if (fadeEl) fadeEl.style.opacity = String(dark)
 }
 
@@ -2562,7 +2575,7 @@ function standInFloor(): CollisionMesh {
   }
 }
 
-function enter(map: string, arrival?: Arrival, forScene = false): boolean {
+function enter(map: string, arrival?: Arrival | 'start', forScene = false): boolean {
   if (!cartridge) return false
   const previous = loaded
   const previousSelf = self
@@ -2601,9 +2614,12 @@ function enter(map: string, arrival?: Arrival, forScene = false): boolean {
   // With no doorway to arrive by, come in by the map's entrance: where a
   // doorway from outside it puts you. Guessing at the middle of the village
   // stood the character at the river's edge by the waterfall.
-  const entrance = arrival ? undefined : entranceOf(opened.catalogue, opened.code)
+  // `'start'` asks for the map's start point, as a request with no place does
+  // (`func_ov017_0219c598`) — a wipe-out's; see `mapStart`.
+  const named = arrival === 'start' ? opened.start : arrival
+  const entrance = named ? undefined : entranceOf(opened.catalogue, opened.code)
   const via: Arrival | undefined =
-    arrival ??
+    named ??
     (entrance && {
       x: entrance.door.arriveX,
       y: entrance.door.arriveY,
@@ -3030,7 +3046,16 @@ function putHeroWords(at: { x: number; y: number; z: number; facing: number }): 
 /** Whether the field holds the Hero, so a ladder is neither taken nor climbed. */
 function fieldBusy(): boolean {
   return Boolean(
-    menu || talking || visit || playing || travelling || battle || opening || picking || performing,
+    menu ||
+      talking ||
+      visit ||
+      playing ||
+      travelling ||
+      battle ||
+      opening ||
+      picking ||
+      performing ||
+      zoomFlight,
   )
 }
 
@@ -3941,12 +3966,14 @@ function frame(now = 0): void {
     if (opening) followChestOpening(now)
     // So does picking an item up — see `gatherHere`.
     if (picking) followPicking(now)
+    // And Zoom's or the wing's flight — see `startZoomFlight`.
+    if (zoomFlight) followFlight(now)
     // A party trick holds them where they stand — see `performTricks`.
     if (performing) followPerformance(now)
     // On a ladder the climb moves the Hero, pass by pass — see `climbOn`.
     const wasClimbing = climbing !== undefined
     const { moving, travelled, marshTicks } =
-      playing || opening || picking || performing || battleStage
+      playing || opening || picking || performing || zoomFlight || battleStage
         ? { moving: false, travelled: 0, marshTicks: 0 }
         : climbing
           ? climbOn(elapsedMs)
@@ -3969,7 +3996,17 @@ function frame(now = 0): void {
     })
     // The field's monsters, on the Hero's own ticks, and only while nothing
     // else is up — see `beginRoaming`.
-    if (roaming && !battle && !menu && !visit && !talking && !playing && !opening && !picking) {
+    if (
+      roaming &&
+      !battle &&
+      !menu &&
+      !visit &&
+      !talking &&
+      !playing &&
+      !opening &&
+      !picking &&
+      !zoomFlight
+    ) {
       roamCarry = Math.min(roamCarry + elapsedMs, TICK_MS * 8)
       while (roamCarry >= TICK_MS && roaming) {
         roamCarry -= TICK_MS
@@ -4165,8 +4202,18 @@ function frame(now = 0): void {
                 [
                   ...loaded.cast.members.map((member) => castPlaced(member.placement)),
                   ...loaded.cast.sprites2d.map((sprite) => castPlaced(sprite.placement)),
-                  { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
-                  ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
+                  // Not under those Zoom's flight has hidden (INFERRED: a
+                  // hidden object casts none).
+                  ...(flownAway()
+                    ? []
+                    : [
+                        {
+                          x: toFloat(self.state.x),
+                          y: toFloat(self.state.y),
+                          z: toFloat(self.state.z),
+                        },
+                        ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
+                      ]),
                 ],
                 (material) => textureFor(loaded?.catalogue ?? { textures: new Map() }, material),
               )
@@ -4194,16 +4241,18 @@ function frame(now = 0): void {
           ...propPiecesNow(loaded, now),
           // The gathering spots' sparkles — see `sparklePieces`.
           ...sparklePieces(now),
+          // Zoom's or the wing's effect at each one flown — see `flightPieces`.
+          ...flightPieces(now),
           // Whoever goes along, behind the Hero — see `companionsInField`.
           ...companionFieldPieces(now),
           // The mark over the Hero's head: someone to talk to, something to examine, a door.
           ...bubblePieces(now),
           // The Starflight Express and its carriages, in flight — see `flight.ts`.
           ...expressPieces(),
-          ...(flying
+          ...(flying || flownAway()
             ? []
             : playerPieces(
-                heroPose ? { ...self, motionFrame: heroPose.frame } : self,
+                lifted(heroPose ? { ...self, motionFrame: heroPose.frame } : self),
                 loaded.figure,
                 loaded.pieces,
                 loaded.catalogue,
@@ -4238,6 +4287,14 @@ function frame(now = 0): void {
     ? fovOfHalfDegrees(swirl.halfFov)
     : (playing?.player.stage.fov ??
       (battleStage ? fovOfHalfDegrees(battleStage.halfFov) : undefined))
+  // The ceiling's shake moves the eye and the look-at alike — see `shakeOffset`.
+  const shaken = shakeOffset()
+  const focus = [...camera.focus] as typeof camera.focus
+  camera.focus = [
+    focus[0] + shaken[0],
+    focus[1] + shaken[1],
+    focus[2] + shaken[2],
+  ] as typeof camera.focus
   renderer.draw(
     camera,
     false,
@@ -4245,6 +4302,7 @@ function frame(now = 0): void {
     fov,
     battleStage ? stageBackdrop(battleStage, fov) : undefined,
   )
+  camera.focus = focus
   drawNumbers(battleClock, elapsedMs, fov)
   sceneBrowser?.tick()
   requestAnimationFrame(frame)
@@ -7582,8 +7640,6 @@ const TRAVEL_SAYS = {
   /** "But nothing happens." — the wing's. */
   wingNothing: 31001,
 } as const
-/** `strstd` 57, "… bangs … head on the ceiling!" — the flight's state 10 (`0x021ad8a4`). */
-const CEILING = 57
 /**
  * Holy water's field action, likewise unread: **ours**, sprinkled in `actmsg`
  * 362's words, it keeps the field's monsters away for {@link HOLY_WATER_CALM}
@@ -7834,10 +7890,10 @@ function zoomCasts(): string {
  * — its Zoom kind, `MapEntry.zoom`, or 0 while game-wide flag `0x113a` is set.
  * 2: the MP or the wing is spent and the party flies there; 1: the same line,
  * nothing spent, and a bump on the ceiling, `strstd` 57; 0: nothing happens.
+ * Both 2 and 1 close the menu and fly — see {@link startZoomFlight}.
  *
- * **Ours**: the flight itself — the rise, the fade and the landing — is not
- * drawn; the map is entered with the line on the status bar. The ship is not
- * moved (task 16).
+ * **Ours**: the line is on the status bar, where the game's is in the menu's
+ * window. The ship is not moved (task 16b).
  */
 function zoomChosen(row: number): void {
   const how = zooming
@@ -7868,14 +7924,10 @@ function zoomChosen(row: number): void {
   }
   if (kind === 1) {
     zooming = undefined
-    menu = back && {
-      ...back,
-      said: [
-        line,
-        told(here.standardWords, CEILING, { actor: hero }) ??
-          `${hero.name} bangs ${hero.gender === 1 ? 'her' : 'his'} head on the ceiling!`,
-      ],
-    }
+    menu = undefined
+    showMenu()
+    status(line)
+    startZoomFlight(true)
     return
   }
   const to = here.mapCodeOf(place.map)
@@ -7894,7 +7946,181 @@ function zoomChosen(row: number): void {
   zooming = undefined
   menu = undefined
   showMenu()
-  if (enter(to, { x: place.x, y: place.y, z: place.z, facing: place.facing })) status(line)
+  status(line)
+  startZoomFlight(false, {
+    code: to,
+    arrival: { x: place.x, y: place.y, z: place.z, facing: place.facing },
+  })
+}
+
+/**
+ * **Zoom's or the wing's flight while it plays** — see `zoom-flight.ts`: the
+ * flight's own state, when its next pass is due, where it goes, and the
+ * effect's places. The field holds the Hero, and every key waits, until it is
+ * done.
+ */
+let zoomFlight:
+  | {
+      readonly flight: Flight
+      due: number
+      readonly to?: { readonly code: string; readonly arrival: Arrival }
+      /** Effect 8, `em1810.chr`: where it stands at each one flown, in the world's units, and since when. */
+      rise?: {
+        readonly since: number
+        readonly at: readonly { readonly x: number; readonly y: number; readonly z: number }[]
+      }
+      /** When the screens began to go black (state 3). */
+      fading?: number
+      /** The shake's way this pass, ±1 on the world's x and y — **ours**, see `shakeOffset`. */
+      way: readonly [number, number]
+    }
+  | undefined
+
+/** Start the flight: `func_ov017_021acd30(_, 0, 0, ceiling)`. */
+function startZoomFlight(
+  ceiling: boolean,
+  to?: { readonly code: string; readonly arrival: Arrival },
+): void {
+  self?.held.clear()
+  zoomFlight = {
+    flight: startFlight(ceiling),
+    due: performance.now() + PASS_MS,
+    ...(to ? { to } : {}),
+    way: [1, 1],
+  }
+}
+
+/** Run the flight's passes that are due — see `flightPass`. */
+function followFlight(now: number): void {
+  const going = zoomFlight
+  while (going && zoomFlight === going && now >= going.due) {
+    going.due += PASS_MS
+    for (const event of flightPass(going.flight)) flightDoes(going, event, now)
+    // The shake's way: one of four, drawn each pass it is on (`rand() & 3`,
+    // `0x0202e2bc`). **Ours**: the draw, from the field's generator.
+    if (going.flight.shake > 0) {
+      const draw = fieldRng.top32() & 3
+      going.way = [draw & 1 ? -1 : 1, draw & 2 ? -1 : 1]
+    }
+  }
+}
+
+/** What a pass of the flight does in the field. */
+function flightDoes(going: NonNullable<typeof zoomFlight>, event: FlightEvent, now: number): void {
+  switch (event) {
+    case 'rise': {
+      // Effect 8 at each one flown, where they stand, and the rise's sound.
+      if (!self) break
+      going.rise = {
+        since: now,
+        at: [
+          { x: toFloat(self.state.x), y: toFloat(self.state.y), z: toFloat(self.state.z) },
+          ...companionsInField().map(({ x, y, z }) => ({ x, y, z })),
+        ],
+      }
+      if (cartridge) void playEffect(cartridge, FLIGHT_SOUNDS, FLIGHT_RISE)
+      break
+    }
+    case 'fade':
+      going.fading = now
+      break
+    case 'go': {
+      // The game sets game-wide flag `0x113d` as it goes (`0x021ad6f8`); what
+      // reads it is not found.
+      storyGlobals.add(FLAG_FLOWN)
+      const to = going.to
+      if (to) enter(to.code, to.arrival)
+      // The new map comes up as a doorway's does — **ours**, how the game's
+      // map change brings the screens back not being read.
+      delete going.fading
+      returning = { from: 1, since: performance.now() - RETURN_HOLD_MS }
+      break
+    }
+    case 'drop': {
+      const hero = heroNamed()
+      const said =
+        told(loaded?.standardWords, CEILING_LINE, { actor: hero }) ??
+        `${hero.name} bangs ${hero.gender === 1 ? 'her' : 'his'} head on the ceiling!`
+      talkContext = textContext()
+      talking = startConversation(
+        { id: -1, name: '', x: 0, z: 0 },
+        'the ceiling',
+        [said],
+        [`strstd ${CEILING_LINE}`],
+        talkContext,
+      )
+      showTalk()
+      if (cartridge) void playEffect(cartridge, FLIGHT_SOUNDS, FLIGHT_BUMP)
+      break
+    }
+    case 'done':
+      zoomFlight = undefined
+      // The window closed with the task (`func_02043204`, state 13).
+      if (going.flight.ceiling) {
+        talking = undefined
+        showTalk()
+      }
+      break
+  }
+}
+
+/** Game-wide flag `0x113d`, set as a flight goes (state 4). */
+const FLAG_FLOWN = 0x113d
+
+/** How dark the flight has the screens: to black over 30 frames from state 3. */
+function flightDarkness(now: number): number {
+  const since = zoomFlight?.fading
+  return since === undefined
+    ? 0
+    : Math.min(1, Math.max(0, (now - since) / (FLIGHT_FADE_FRAMES * FRAME_MS)))
+}
+
+/** Whether those flown are hidden now — see `flownHidden`. */
+function flownAway(): boolean {
+  return zoomFlight !== undefined && flownHidden(zoomFlight.flight)
+}
+
+/** How far above where they stand those the ceiling dropped are drawn, in the world's units. */
+function flightLift(): number {
+  return zoomFlight ? (zoomFlight.flight.above / 4096) * WORLD_SCALE : 0
+}
+
+/** The Hero as drawn: raised by the ceiling's drop while it falls (`+0x124`, `0x020330c4`). */
+function lifted<T extends { readonly state: { readonly y: Fx32 } }>(hero: T): T {
+  const lift = flightLift()
+  return lift === 0
+    ? hero
+    : { ...hero, state: { ...hero.state, y: fx32(hero.state.y + Math.round(lift * FX32_ONE)) } }
+}
+
+/**
+ * **The shake**, in the world's units: its size times the pass's way, on the
+ * eye and the look-at alike (`func_0202e0a4`, `0x0202e384`–`0x0202e3c4`).
+ * **Ours**: the two directions — the game's are `data_0210a05c`, set at run
+ * time and not read — taken as the world's x and y.
+ */
+function shakeOffset(): readonly [number, number, number] {
+  const size = zoomFlight ? (zoomFlight.flight.shake / 4096) * WORLD_SCALE : 0
+  if (!zoomFlight || size === 0) return [0, 0, 0]
+  return [size * zoomFlight.way[0], size * zoomFlight.way[1], 0]
+}
+
+/**
+ * Effect 8, `em1810.chr`, at each one flown, played once from the rise
+ * (`func_02057fb4`) until the task frees it. INFERRED: once — its spawn's
+ * flags (`+0x11`, bit 2 set, the rest clear) are not read.
+ */
+function flightPieces(now: number): Piece[] {
+  const rise = zoomFlight?.rise
+  if (!rise) return []
+  return rise.at.flatMap((at) =>
+    effectPieces(
+      { file: FLIGHT_EFFECT, motion: undefined },
+      { ...at, facing: 0 },
+      now - rise.since,
+      0,
+    ),
+  )
 }
 
 /** Holy water, sprinkled — see {@link HOLY_WATER_ACTION}: the field's monsters keep away a while. */
@@ -8908,8 +9134,10 @@ function companionFieldPieces(now: number): Piece[] {
   const rom = cartridge
   const hero = self
   const here = loaded
-  if (!rom || !hero || !here) return []
-  return companionsInField().flatMap(({ who, member, place, index, x, y, z }) => {
+  if (!rom || !hero || !here || flownAway()) return []
+  const lift = flightLift()
+  return companionsInField().flatMap(({ who, member, place, index, x, y: standing, z }) => {
+    const y = standing + lift
     const walkingNow = trailWalking[place] === 1
     // **A created character is built from parts, like the Hero**, so they are
     // posed the same way rather than drawn from a whole `.chr` model. This is
@@ -11353,7 +11581,13 @@ function endFight(): void {
   eventFight = undefined
   if (wakeInChurch) {
     wakeInChurch = false
-    if (comeRound()) {
+    // A set battle's lost-record runs before the wipe-out and may name its
+    // own map with `180` (`func_ov017_021b790c`, `0x021b7be8`–`0x021b7c98`).
+    const own =
+      fought && loaded
+        ? afterBattle(loaded.triggers, fought.index, false, fought.map, storyState())?.revival
+        : undefined
+    if (comeRound(own ?? revivalMap)) {
       if (fought) followBattle(fought)
       return
     }
@@ -11371,26 +11605,24 @@ function endFight(): void {
 
 /**
  * **The party comes round after a wipe-out** (`func_ov017_0219bfb4`, mode 2):
- * in the revival map — see `revivalMap` — and the priest speaks: the voice
+ * in `map` — the revival map, see `revivalMap`, or the one a set battle's
+ * `180` names — **at the map's start point**, the request carrying no place
+ * (`func_ov017_0219c598`, see `mapStart`), and the priest speaks: the voice
  * `chur_messet.bin` gives the map at this story major, by day or night
  * (`revivalVoice`), says its line **1082** in `str_ch<voice − 1>`, and the
  * visit ends (`func_ov003_0215af9c`, states 10 and 11). Voice 3 says nothing.
  *
- * **Ours**: where in the map the party stands — the game's request carries no
- * place, and how the map's load places it then is not read, so the party
- * comes in by the map's entrance; a set battle passes its own map
- * (`+0x3e`), which is not read, so every wipe-out comes round here; and the
- * priest's line is said by nobody in particular.
+ * **Ours**: the priest's line is said by nobody in particular.
  */
-function comeRound(): boolean {
-  const code = loaded?.mapCodeOf(revivalMap)
-  if (!code || !cartridge || !enter(code)) return false
+function comeRound(map: number): boolean {
+  const code = loaded?.mapCodeOf(map)
+  if (!code || !cartridge || !enter(code, 'start')) return false
   status(`${heroName()} comes round in ${loaded?.region ?? code}`)
   const here = loaded
   if (!here || !self) return true
   const voice = revivalVoice(
     here.travel.revivalWords,
-    revivalMap,
+    map,
     storyStage?.major ?? 0,
     timeNow() === 'night',
   )
@@ -13597,6 +13829,11 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
     // Whoever the menu is about — the one picked on its attributes or
     // equipment screen — and the Hero with the menu shut.
     levelTo(undefined, event.shiftKey ? -1 : 1, (menu && members[menu.member]) || leader())
+    event.preventDefault()
+    return handled
+  }
+  // Zoom's or the wing's flight reads no key while it plays (`func_ov017_021acdf4`).
+  if (zoomFlight) {
     event.preventDefault()
     return handled
   }

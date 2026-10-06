@@ -49,6 +49,7 @@ import {
   type Lighting,
   type MapEntry,
   type MapManifest,
+  type MapStart,
   type MapTransition,
   type MedalRewards,
   type MonsterBattle,
@@ -57,6 +58,7 @@ import {
   mapDoorwayRegions,
   mapDoorways,
   mapLadders,
+  mapStart,
   NO_ACTION,
   type NpcEntry,
   type NpcPlacement,
@@ -417,6 +419,8 @@ export interface Loaded {
   readonly doorwayRegions: readonly DoorwayRegion[]
   /** The ends of the map's ladders and vines, in the file's own units — see `mapLadders`. */
   readonly ladders: readonly LadderEnd[]
+  /** Where a party asked in with no place stands — a wipe-out's — in the file's own units; see `mapStart`. */
+  readonly start: MapStart | undefined
   /** Which archive the map came out of, for the status line. */
   readonly archive: string
   /** The map's own code, which is what a doorway names. */
@@ -3164,6 +3168,10 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     bookshelves: bookshelvesOf(rom, code),
     doorwayRegions: doorwayRegionsOf(cat, code),
     ladders: fromLinkTable(cat, code, mapLadders),
+    start: fromLinkTable(cat, code, (bytes) => {
+      const start = mapStart(bytes)
+      return start ? [start] : []
+    })[0],
     archive,
     code,
   }
