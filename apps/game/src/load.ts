@@ -530,6 +530,8 @@ export interface ItemEffect {
     /** Whether a stance counters it, and whether an ally may take it in its target's place — see `Action.counterable`, `coverable`. */
     readonly counterable: boolean
     readonly coverable: boolean
+    /** Whether a pass of it may rouse its target — see `Action.rouses`. */
+    readonly rouses: boolean
     /** Taken up as the round begins — see `Action.atRoundStart`. */
     readonly atRoundStart: boolean
     /** Its damage handler, hit code, step after, and falloff — see `Action.damageHandler`, `hitCode`, `afterStep`, `fallsOff`. */
@@ -1961,6 +1963,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           reflectable: action.reflectable,
           counterable: action.counterable,
           coverable: action.coverable,
+          rouses: action.rouses,
           atRoundStart: action.atRoundStart,
           handler: action.damageHandler,
           hitCode: action.hitCode,

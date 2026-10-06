@@ -503,8 +503,11 @@ describe('H-Pathy and M-Pathy — kinds 14 and 13', () => {
       new BattleRng(2n),
     )
     expect(changeOf(events).hits).toEqual([{ target: 1, result: 'shared', hp: 10 }])
-    expect(state.fighters[1]?.hp).toBe(100)
-    expect(state.fighters[0]?.hp).toBe(70)
+    // Less whatever the foe's own blow dealt either this round.
+    const struck = (i: number) =>
+      events.reduce((sum, e) => sum + (e.kind === 'attack' && e.target === i ? e.damage : 0), 0)
+    expect(state.fighters[1]?.hp).toBe(100 - struck(1))
+    expect(state.fighters[0]?.hp).toBe(70 - struck(0))
   })
 
   it('gives MP held to the room, and takes only what it gave', () => {

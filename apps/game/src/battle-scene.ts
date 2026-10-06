@@ -225,8 +225,10 @@ export const ACTION_SAYS = {
   breathsUp: 0x1b1,
   /** "<TARGET> is no longer poisoned." — Squelch's, `0x021dbcc8`. */
   cured: 0x54,
-  /** "<TARGET> wakes up." — kind 9's, `0x021dbf9c`. */
+  /** "<TARGET> wakes up." — kind 9's, `0x021dbf9c`, and a blow's that rouses (`0x0215735c`). */
   wokenUp: 0x40,
+  /** "<TARGET> pulls … together." — a blow's that rouses one confused (`0x0215736c`). */
+  pullsTogether: 0x173,
   /** "<TARGET> remains lifeless." — a raising that did not land, `0x021dd498`. */
   lifeless: 0x21,
   /** "<TARGET> is killed." — kind 17's at a monster, and death riding on a blow. */
@@ -780,6 +782,8 @@ export interface Castable {
     /** Whether a stance counters it and an ally may take it — `+0x10` bits 7 and 12; taken up as the round begins, `+0x08` bit 28. */
     readonly counterable?: boolean
     readonly coverable?: boolean
+    /** Whether a pass of it may rouse its target — `+0x10` bit 11. */
+    readonly rouses?: boolean
     readonly atRoundStart?: boolean
     readonly handler?: number
     readonly hitCode?: number
@@ -866,6 +870,8 @@ export function battleSpellOf(
       ...(action.rolls?.reflectable ? { reflectable: true } : {}),
       // What an ally may take in its target's place (`+0x10` bit 12).
       ...(action.rolls?.coverable ? { coverable: true } : {}),
+      // What may rouse its target (`+0x10` bit 11) — none of the spells.
+      ...(action.rolls?.rouses ? { rouses: true } : {}),
       // Gold Rush: post-step 6 spends its record's `+0x32` in gold (`func_ov024_021e5be4`).
       ...(action.rolls?.afterStep === GOLD_STEP ? { gold: action.rolls.riderLevels } : {}),
     },
@@ -1770,6 +1776,14 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     }
     case 'woke':
       return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
+    case 'roused':
+      // Shaken out of it by a blow (`func_ov000_02157288`): "wakes up", 0x40,
+      // or — confused — "pulls … together", 0x173; the line at its target.
+      return event.senses
+        ? (say(scene, 'actions', ACTION_SAYS.pullsTogether, { target: actor }) ??
+            sentence(`${who} pulls themselves together.`))
+        : (say(scene, 'actions', ACTION_SAYS.wokenUp, { target: actor }) ??
+            sentence(`${who} wakes up.`))
     case 'primed':
       // Action 922's line (`func_ov000_0215af54`): actmsg 531.
       return (
@@ -2358,6 +2372,7 @@ export function blowOf(action: Castable): Blow | undefined {
     ...(r.spoiltBySight ? { spoiltBySight: true } : {}),
     ...(r.coverable ? { coverable: true } : {}),
     ...(r.counterable ? { counterable: true } : {}),
+    ...(r.rouses ? { rouses: true } : {}),
     defendable: r.defendable ?? false,
     tensed: r.tensed ?? false,
     combos: r.combos ?? false,

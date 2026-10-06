@@ -199,6 +199,14 @@ export interface Action {
    */
   readonly coverable: boolean
   /**
+   * Whether it may shake its target out of sleep or confusion — `+0x10`, bit
+   * 11: after a pass of it that dealt something, unturned, the resolver
+   * (`func_ov024_021eb5d0`, `0x021ecc90`–`0x021ecca8`) calls
+   * `func_ov000_02157288`, which leaves at once without it
+   * (`0x0215728c`–`0x021572a0`). Read 7 October 2026.
+   */
+  readonly rouses: boolean
+  /**
    * Whether it is taken up as the round begins — `+0x08`, bit 28: its MP is
    * spent then, and its stance set (`func_ov000_021537b8`, called for each
    * such action by `func_ov000_0215f110`, `0x0215f174`–`0x0215f194`), and the
@@ -449,6 +457,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       reflectable: (view.getUint32(at + 0x10, true) & 0x400) !== 0,
       counterable: (view.getUint32(at + 0x10, true) & 0x80) !== 0,
       coverable: (view.getUint32(at + 0x10, true) & 0x1000) !== 0,
+      rouses: (view.getUint32(at + 0x10, true) & 0x800) !== 0,
       atRoundStart: ((view.getUint32(at + 8, true) >>> 28) & 1) === 1,
       accuracyMode: (view.getUint32(at + 0x18, true) >>> 16) & 3,
       damageHandler: (view.getUint32(at + 0x18, true) >>> 18) & 0x1ff,

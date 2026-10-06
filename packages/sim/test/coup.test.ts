@@ -49,15 +49,19 @@ describe('the coup de grâce', () => {
   })
 
   it('draws for one of the party only from level 10 in their vocation', () => {
+    // Open to the slime's blow, so that it always deals something and makes
+    // its draw to rouse (`func_ov000_02157288`) — which a blow of nothing,
+    // the coin's 0, would not.
+    const open = (coup?: Fighter['coup']): Fighter => ({ ...member(coup), defence: 0 })
     const drawn = (level: number) => {
       const rng = new BattleRng(7n)
-      playRound(startBattle([member({ level, bonus: 0 }), slime]), defend, rng)
+      playRound(startBattle([open({ level, bonus: 0 }), slime]), defend, rng)
       return rng.drawn
     }
     // At their Defend's pass, after it, and at the slime's blow's pass: three draws.
     expect(drawn(COUP_LEVEL) - drawn(COUP_LEVEL - 1)).toBe(3)
     const none = new BattleRng(7n)
-    playRound(startBattle([member(), slime]), defend, none)
+    playRound(startBattle([open(), slime]), defend, none)
     expect(none.drawn).toBe(drawn(COUP_LEVEL - 1))
   })
 

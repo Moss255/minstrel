@@ -713,8 +713,10 @@ describe('the order a blow’s draws are made in — the game’s', () => {
     const dodged = drawsIn({ evade: 100 })
     expect(dodged.blow).toMatchObject({ dodged: true, damage: 0 })
     expect(lands.blow).toMatchObject({ dodged: false })
-    // Critical, dodge, block, accuracy, damage — against the same less the block.
-    expect(lands.drawn - dodged.drawn).toBe(1)
+    // Critical, dodge, block, accuracy, damage — against the same less the
+    // block; and a blow that dealt something then draws to rouse its target
+    // (`func_ov000_02157288`), asleep or not, where one dodged deals nothing.
+    expect(lands.drawn - dodged.drawn).toBe(2)
   })
 
   it('rolls the block whether or not there is anything to block with', () => {
@@ -723,7 +725,9 @@ describe('the order a blow’s draws are made in — the game’s', () => {
     expect(drawsIn({ shield: false }).drawn).toBe(drawsIn({ shield: true }).drawn)
     const blocked = drawsIn({ block: 100 })
     expect(blocked.blow).toMatchObject({ blocked: true, dodged: false, damage: 0 })
-    expect(blocked.drawn).toBe(drawsIn({ block: 0 }).drawn)
+    // The block's draw spent either way; one blocked deals nothing, and so
+    // makes no draw to rouse (`func_ov000_02157288`).
+    expect(blocked.drawn).toBe(drawsIn({ block: 0 }).drawn - 1)
   })
 
   it('spends a critical draw on a monster’s blow, which never lands one', () => {

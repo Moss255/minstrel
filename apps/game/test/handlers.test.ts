@@ -196,6 +196,20 @@ describe.skipIf(!romPath)(
       expect(action(30).rolls).toMatchObject({ counterable: false, coverable: false })
     })
 
+    it('rouses by every blow and attack, by no spell or breath — `+0x10` bit 11', () => {
+      const rousing = [...here.actions.values()].filter((a) => a.rolls?.rouses)
+      expect(rousing.length).toBe(154)
+      // All of kind 1, and none a spell or a breath (`+0x10` bits 0 and 2).
+      expect(rousing.every((a) => a.rolls?.kind === 1 && !a.rolls.spell && !a.rolls.breath)).toBe(
+        true,
+      )
+      for (const id of [1, 2, 230, 231, 232, 273, 274, 275])
+        expect(action(id).rolls?.rouses).toBe(true)
+      expect(blowOf(action(63))?.rouses).toBe(true)
+      // Frizz, Zam, Gigaslash: no.
+      for (const id of [9, 13, 67]) expect(action(id).rolls?.rouses).toBe(false)
+    })
+
     it('rides Hypnowhip’s confusion, and Sobering Slap’s coming to one’s senses', () => {
       expect(blowOf(action(85))?.rider?.slot).toBe(10)
       expect(partyChangeOf(action(171))?.rider).toEqual({ slot: 19, levels: 0 })

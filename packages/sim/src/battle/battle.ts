@@ -345,6 +345,8 @@ export interface Spell {
   readonly reflectable?: boolean
   /** Whether an ally may take it in its target's place — `+0x10` bit 12; see `coverFor`. */
   readonly coverable?: boolean
+  /** Whether a pass of it that deals something may rouse its target — `+0x10` bit 11; see `roused`. */
+  readonly rouses?: boolean
   /** The most it can deal — its record's cap. */
   readonly cap?: number
   /**
@@ -663,6 +665,8 @@ export interface Blow {
   /** Whether an ally may take it in its target's place, `+0x10` bit 12; whether a stance counters it, bit 7. */
   readonly coverable?: boolean
   readonly counterable?: boolean
+  /** Whether a pass of it that deals something may rouse its target, `+0x10` bit 11 — see `roused`. */
+  readonly rouses?: boolean
   /**
    * **Its MP** — the record's `+0x08` low byte, 255 "all there is": asked at
    * its turn (`func_ov024_021eaa50`, `0x021eabe8`–`0x021eac68`) and spent by
@@ -1077,8 +1081,14 @@ export type BattleEvent =
   | { readonly kind: 'primed'; readonly actor: number }
   /** A coup de grâce's moment passed, at the round's end — action 936, actmsg 603. */
   | { readonly kind: 'coupPassed'; readonly actor: number }
-  /** A sleeper waking: on its turn, or at a blow. */
+  /** A sleeper waking on its turn — action 0x74's line, 116. */
   | { readonly kind: 'woke'; readonly actor: number }
+  /**
+   * **Shaken out of it by a blow** — `func_ov000_02157288`: woken, "wakes up"
+   * (`0x40`), or — one confused, asleep or not — brought to their senses,
+   * "pulls … together" (`0x173`). Both are cleared either way. See `roused`.
+   */
+  | { readonly kind: 'roused'; readonly actor: number; readonly senses?: true }
   /** A level worn off, at the round's end. */
   | {
       readonly kind: 'wornOff'
@@ -1763,11 +1773,38 @@ export function playRound(
       events.push({ kind: 'defeated', actor: target })
       // Death clears the readiness and its count (`func_02088e80`).
       unprime(target)
-    } else if (damage > 0 && fighters[target]?.states.sleep !== undefined) {
-      // A blow that hurts wakes a sleeper.
-      setStates(target, { sleep: undefined })
-      events.push({ kind: 'woke', actor: target })
     }
+  }
+  /**
+   * **A pass that may rouse its target** — `func_ov000_02157288`, which the
+   * resolver calls after each pass that dealt something
+   * (`0x021eca68`–`0x021eca7c`), unturned (`func_ov024_021e9f68`'s answer,
+   * `[sp+0x4c]`, 0), unless the pass's own rider put them to sleep or
+   * confused them (`ctx+0x70`, cleared at `0x021dad74` on flags 0xe and
+   * 0x17) — `0x021ecc90`–`0x021ecca8`. For an action with `+0x10` bit 11 —
+   * every blow's, the plain Attack's and the monsters' attacks among them,
+   * no spell's or breath's (154 of 681) — **a draw `R(100)` is always made**
+   * (`0x02157340`), whoever the target, and they are roused where it is under
+   * 100 times a chance (`_ffix(_fmul(c, 100))`): asleep, 1.0 at one of the
+   * party and 0.5 at a monster (`func_02074968`); else confused, 0.5 and
+   * 0.25 (`func_02074978`); else none. Roused, both sleep and confusion go
+   * (`func_02088390`, `func_020883fc`, `0x02157370`–`0x02157378`), told as
+   * woken (`0x40`) or — confused — come to their senses (`0x173`).
+   *
+   * `standing`: whether the pass leaves them standing, where its damage is
+   * dealt only once the action's passes are done. **Ours**, INFERRED: one it
+   * fells has neither to be roused from, the draw still made.
+   */
+  const roused = (target: number, standing: boolean): BattleEvent | undefined => {
+    const f = fighters[target] as FighterState
+    const party = f.side === 'party'
+    const asleep = standing && f.states.sleep !== undefined
+    const confused = standing && f.states.confused !== undefined
+    const chance = asleep ? (party ? 1 : 0.5) : confused ? (party ? 0.5 : 0.25) : 0
+    const draw = rng.below(100)
+    if (!(draw < Math.trunc(Math.fround(Math.fround(chance) * 100)))) return undefined
+    setStates(target, { sleep: undefined, confused: undefined })
+    return { kind: 'roused', actor: target, ...(confused ? { senses: true as const } : {}) }
   }
   /** A stat as its level has it — see `states.ts`. */
   const defenceOf = (f: FighterState) => levelled(f.defence, f.states.defence.level)
@@ -1981,10 +2018,10 @@ export function playRound(
     fighters.filter((f) => f.side === 'party' && alive(f) && f.primed !== undefined).length
   /**
    * Whether a draw is made for them (`func_ov024_021eb1ec`): one of the party
-   * with a coup, at its level, standing, awake — or woken by the pass's own
-   * damage — and not ready already.
+   * with a coup, at its level, standing, awake — roused by the pass, if it
+   * was, already (`roused`) — and not ready already.
    */
-  const coupMayCome = (i: number, woken = false) => {
+  const coupMayCome = (i: number) => {
     const f = fighters[i]
     return (
       !!f &&
@@ -1992,7 +2029,7 @@ export function playRound(
       f.coup !== undefined &&
       f.coup.level >= COUP_LEVEL &&
       alive(f) &&
-      (woken || f.states.sleep === undefined) &&
+      f.states.sleep === undefined &&
       f.primed === undefined
     )
   }
@@ -2010,7 +2047,8 @@ export function playRound(
   const coupAtPass = (target: number, damage: number, hpAfter?: number) => {
     const f = fighters[target]
     if (!f || (hpAfter !== undefined && hpAfter <= 0)) return
-    if (!coupMayCome(target, hpAfter !== undefined && damage > 0)) return
+    // Roused or not, the pass has said so already (`roused`).
+    if (!coupMayCome(target)) return
     if (rng.below(100) < coupChance(coupHpTerm(damage, f.maxHp), readyNow())) prime(target)
   }
   /**
@@ -3095,6 +3133,8 @@ export function playRound(
       )
       const once = spell.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
+      /** Those its passes roused, told after it — see `roused`. None of the game's spells or breaths rouses. */
+      const rousedBy: BattleEvent[] = []
       const hits = reached.map((first) => {
         noteAim(actor, first)
         // Each one reached: a die of a hundred the game keeps for them
@@ -3154,6 +3194,10 @@ export function playRound(
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         // The coup's draw at this pass: a harm of kind 1 counts what it dealt.
         const harm = spell.does === 'harm'
+        if (harm && spell.rouses && amount > 0 && !turned) {
+          const told = roused(target, them.hp - amount > 0)
+          if (told) rousedBy.push(told)
+        }
         coupAtPass(
           target,
           harm && spell.kind === 1 ? amount : 0,
@@ -3179,6 +3223,7 @@ export function playRound(
         hits,
         ...(charged ? { goldSpent: spell.gold as number } : {}),
       })
+      events.push(...rousedBy)
       for (const { target, amount } of hits) {
         if (spell.does === 'harm') hurt(target, amount)
         else fighters = fighters.map((f, i) => (i === target ? { ...f, hp: f.hp + amount } : f))
@@ -3756,6 +3801,8 @@ export function playRound(
       let recoil = 0
       /** What the passes so far have dealt each target, dealt only once they are done. */
       const dealtTo = new Map<number, number>()
+      /** Those its passes roused, told after it — see `roused`. */
+      const rousedBy: BattleEvent[] = []
       for (const [index, aimed] of passes.entries()) {
         // The die each pass keeps (`0x021ebf28`).
         const die = rng.below(100)
@@ -3896,9 +3943,15 @@ export function playRound(
           ...(rode ? { rode } : {}),
           ...(cover.covered ? { covered: cover.covered } : {}),
         })
-        // The coup's draw at this pass, on what it dealt and what it leaves.
         const before = dealtTo.get(target) ?? 0
         dealtTo.set(target, before + damage)
+        // Roused, on a pass that dealt something, unless its own rider has
+        // just put them to sleep or confused them (`ctx+0x70`).
+        if (blow.rouses && damage > 0 && rode?.result !== 'asleep' && rode?.result !== 'confused') {
+          const told = roused(target, them.hp - before - damage > 0)
+          if (told) rousedBy.push(told)
+        }
+        // The coup's draw at this pass, on what it dealt and what it leaves.
         coupAtPass(target, damage, them.hp - before - damage)
       }
       resolved = { actor, action: blow.action }
@@ -3912,7 +3965,7 @@ export function playRound(
         guards?: boolean
       } = { kind: 'blow', actor, action: blow.action, hits }
       // Told before anyone it fells falls.
-      events.push(told)
+      events.push(told, ...rousedBy)
       for (const hit of hits) hurt(hit.target, hit.damage)
       // A rider's sleep holds past the blow that brought it (the game deals
       // the pass before the rider); its death takes what is left.
@@ -4109,6 +4162,12 @@ export function playRound(
       ...(confusedAim !== undefined ? { confused: true as const } : {}),
     })
     hurt(target, damage)
+    // Roused — the plain Attack and the monsters' attacks carry `+0x10` bit
+    // 11 — on a pass that dealt something and was not struck back.
+    if (damage > 0 && !counter) {
+      const told = roused(target, alive(fighters[target] as FighterState))
+      if (told) events.push(told)
+    }
     // The coup's draw at the pass — the Attack is of kind 1.
     coupAtPass(target, damage)
     // Pincushion's prick, after the action (the plain Attack has `+0x10` bit 7).
