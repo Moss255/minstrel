@@ -435,6 +435,26 @@ export {
   readMapTransitions,
 } from './transitions.ts'
 export {
+  type EvacDestination,
+  type EvacFrom,
+  type EvacRecord,
+  evacDestination,
+  PLACE_FLAG,
+  placeFlagOf,
+  placeOfRevivalMap,
+  placesOffered,
+  REVIVAL_SILENT,
+  type RevivalSpan,
+  type RevivalWords,
+  readEvacTable,
+  readPlaceMaps,
+  readRevivalWords,
+  readZoomPlaces,
+  revivalVoice,
+  revivalWordsFile,
+  type ZoomPlace,
+} from './travel.ts'
+export {
   RANDOM_GOLD,
   RANDOM_ITEM,
   RANDOM_MONSTER,

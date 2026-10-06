@@ -72,9 +72,23 @@ const SLOT_WORLD_Z = 15
  * and the named regions. The remaining 371 carry `0` and are mostly entries for
  * maps that do not ship.
  *
+ * **And what Zoom and the chimaera wing do here**, read from the code 6
+ * October 2026: the game copies it to its map record's `+0x0E`, bits 0–1
+ * (`func_020995f8`, parameter 17), and the field menu reads it back when a
+ * place is chosen (`func_ov002_02165b44`, `0x02165cc4`) — **2 off they go, 1
+ * a bump on the ceiling, 0 nothing**. See {@link MapEntry.zoom}.
+ *
  * A label, not a scale — see {@link MapEntry.indoors}.
  */
 const SLOT_SPACE = 17
+/**
+ * **The map's area**, value 1: the game keeps it at its map record's `+0x02`,
+ * 15 bits (`func_020995f8`), and Evac's table is matched against it
+ * (`func_ov017_021ab6b0`). A village and all its houses share their exterior's
+ * id — Angel Falls 1100 — a dungeon and its floors theirs; every field region
+ * is 1.
+ */
+const SLOT_AREA = 1
 /** The value of {@link SLOT_SPACE} that means indoors. */
 const SPACE_INDOORS = 1
 
@@ -120,6 +134,14 @@ export interface MapEntry {
    * share one space and nothing needs this to decide a size.
    */
   readonly indoors: boolean
+  /** **The map's area**, value 1 — see `SLOT_AREA`: what Evac's table is matched by. */
+  readonly area: number
+  /**
+   * **What Zoom and the chimaera wing do here**, value 17 — see `SLOT_SPACE`:
+   * 2 they take the party off, 1 it bumps its head on the ceiling, 0 nothing
+   * happens.
+   */
+  readonly zoom: number
   /**
    * **The map's kind**, value 3 — which the game keeps as the low nibble of
    * its map record's `+0xC` (`func_020995f8`). Read 4 October 2026: **the
@@ -209,6 +231,8 @@ export function readMapList(data: Uint8Array): MapList {
       unknown_13: at(SLOT_UNKNOWN_13, record),
       unknown_2: at(SLOT_UNKNOWN_2, record),
       indoors: record.values[SLOT_SPACE] === SPACE_INDOORS,
+      area: (record.values[SLOT_AREA] ?? 0) & 0x7fff,
+      zoom: (record.values[SLOT_SPACE] ?? 0) & 3,
       kind: record.values[3] ?? 0,
       music: record.values[SLOT_MUSIC] ?? 0,
       world:
