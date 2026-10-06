@@ -133,6 +133,18 @@ export interface States {
    */
   readonly rotstop?: Level | undefined
   /**
+   * **Alma Mater** — status `+0x14` bit 22, with a count of 6 at `+0x67`
+   * (kind 39, `func_ov024_021deff8`; `func_02088b14`): the heavenly
+   * protection. Whack, Thwack, Kathwack and Kamikazee (the list at
+   * `data_ov024_021fe6e0`: 24 to 27; `func_ov024_021ea78c`) landed on its
+   * holder, or the death rider, leave them 1 HP, say `0xc8` "…'s heavenly
+   * protection keeps the reaper at bay for now", and it goes
+   * (`func_02088b34`; kind 17 `0x021dd0a8`–`0x021dd124`, rider 20
+   * `0x021e46f4`–`0x021e4760`). Runs down by the first table, its line
+   * `0x1cb` (`func_ov000_0215858c`, `0x02158b8c`–`0x02158c1c`).
+   */
+  readonly alma?: Level | undefined
+  /**
    * **Paralysed** — status `+0x14` bit 3, with a count of 3 at `+0x5c`
    * (`func_0208826c`, rider 11): its holder cannot act
    * (`func_ov000_02156038`). The count goes a pass less on each of their
@@ -207,7 +219,7 @@ export const NO_STATES: States = {
  * defence 6 at `+0x6f` (`func_020878b4`, `0x02087900`), agility 6 at `+0x70`,
  * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
  * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`); Fizzle 6 at
- * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Rotstopper 4 at `+0x64` (`func_02088a34`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
+ * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
  * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
  * (`func_0208826c`). Every setter stores its second count 0 beside it.
  */
@@ -223,6 +235,7 @@ export const LEVEL_COUNTS = {
   dazzled: 4,
   vanished: 5,
   rotstop: 4,
+  alma: 6,
   zeroZone: 5,
   tumble: 5,
   paralysed: 3,
@@ -261,6 +274,7 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   dazzled: { table: WEAR_TABLE_SLOW, start: 4 },
   vanished: { table: WEAR_TABLE_SLOW, start: 4 },
   rotstop: { table: WEAR_TABLE_SLOW, start: 4 },
+  alma: { table: WEAR_TABLE, start: 4 },
   zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.

@@ -59,7 +59,6 @@ empty):
 | 32 | `func_ov024_021de770` | Reverse Cycle |
 | 37 | `func_ov024_021ded48` | Immense Defence |
 | 38 | `func_ov024_021dee84` | Care Prayer |
-| 39 | `func_ov024_021deff8` | Alma Mater |
 | 41 | `func_ov024_021df1e8` | Wave of Relief |
 | 42 | `func_ov024_021df284` | Channel Anger, Caster Sugar |
 | 43 | `func_ov024_021df454` | Mens Sana |
@@ -248,7 +247,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (33 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55 and 40), by the kind whose handler is unread:
+**Still struck as the Attack** (32 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40 and 39), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -260,7 +259,6 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
 | 37 | `func_ov024_021ded48` | Immense Defence |
-| 39 | `func_ov024_021deff8` | Alma Mater |
 | 43 | `func_ov024_021df454` | Mens Sana |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
@@ -881,3 +879,25 @@ tension (`func_020881c4`), draws `R(100)` against a table by their tension
 level up, or to the most from 3 (`func_02088220`, `02088150`), told as
 action 928 with lines `0x31`–`0x34`. **Not built**: where `0215b5a0` runs
 among a round's draws, and the table's values, are not read.
+
+### Alma Mater (kind 39) — built, and Whack's heavenly protection with it
+
+The simple shape (`func_02088b00`, `02088b14`): `+0x14` bit 22 with a count
+of 6 at `+0x67`. **It is the heavenly protection** that §2 and §7 called a
+status not kept. `func_ov024_021e47dc` tests it, and its readers are:
+
+- `func_ov024_021ea78c`, from kind 17's handler (`0x021dd0a8`): for an action
+  in the list at `data_ov024_021fe6e0` — 24 Whack, 25 Thwack, 26 Kathwack, 27
+  Kamikazee, ended by −1 — at one under it, the kill becomes HP less one
+  (`func_ov000_0215a004` with `hp − 1`), picture flags `0x29` and `0xfe`, the
+  status cleared (`func_02088b34`), and the line `0xc8`, "<TARGET>'s heavenly
+  protection keeps the reaper at bay for now" (`0x021dd124`).
+- Rider 20, death (`func_ov024_021e4604`, `0x021e46f4`–`0x021e4760`): landed,
+  the same — HP less one, the status cleared. Its line is not handed here;
+  `0xc8` stands, INFERRED from the resolver's own use of it on the same test
+  (`func_ov024_021e4c04`, `0x021e4f18`–`0x021e4f90`).
+- `func_ov024_021e4c04` itself (from the resolver, `0x021ecf04`), the gathering
+  of statuses for the picture, and the tactics' scoring.
+
+Runs down: `+0x8a`, the first table, line `0x1cb` (`0x02158b8c`–
+`0x02158c1c`).

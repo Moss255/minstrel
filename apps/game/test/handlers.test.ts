@@ -127,7 +127,11 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 33 of them as the Attack now, where 76 were', () => {
+    it('plays Alma Mater', () => {
+      expect(partyChangeOf(action(152))?.change.kind).toBe('alma')
+    })
+
+    it('strikes 32 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -144,7 +148,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(33)
+      expect(attack).toBe(32)
     })
   },
 )

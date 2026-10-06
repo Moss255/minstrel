@@ -341,6 +341,10 @@ function changeSays(
       return ACTION_SAYS.lifeless
     case 'killed':
       return pick(own?.killed, targetParty ? ACTION_SAYS.dies : ACTION_SAYS.killed)
+    // Alma Mater's: "…'s heavenly protection keeps the reaper at bay for
+    // now" (`0x021dd124`; the death rider's INFERRED the same, `0x021e4f8c`).
+    case 'spared':
+      return 0xc8
     case 'restored':
       return ACTION_SAYS.healed
     case 'fizzled':
@@ -429,6 +433,7 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   dazzled: 'dazzle',
   schizofanic: 'Schizofanic',
   rotstop: 'Rotstopper',
+  alma: 'Alma Mater',
   mist: 'Mist Me',
   focus: 'Focus Pocus',
   might: 'magical might',
@@ -471,6 +476,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} remains lifeless.`
     case 'killed':
       return `${whom} is killed.`
+    case 'spared':
+      return `${whom}'s heavenly protection keeps the reaper at bay for now.`
     case 'restored':
       return hit.cured
         ? `${whom} recovers ${hit.hp ?? 0} HP, and is rid of all misfortune.`
@@ -522,6 +529,7 @@ const WORN_OFF: Readonly<
     | 'dazzled'
     | 'vanished'
     | 'rotstop'
+    | 'alma'
     | 'zeroZone'
     | 'tumble'
     | 'watched'
@@ -536,6 +544,8 @@ const WORN_OFF: Readonly<
   // Vanish's, `0x1c9` (`0x0215899c`); Rotstopper's, `0x1d8` (`0x02158acc`).
   vanished: 0x1c9,
   rotstop: 0x1d8,
+  // Alma Mater's, `0x1cb` (`0x02158bfc`).
+  alma: 0x1cb,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
   // `0x1c8` (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`).
   focus: 0x1c8,
@@ -2170,6 +2180,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [19, 'dazzle'],
   // Rotstopper (`021df0f0`): a monster of family 8's halved.
   [40, 'rotstop'],
+  // Alma Mater (`021deff8`): kept from the reaper at 1 HP, once.
+  [39, 'alma'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
   [36, 'schizofanic'],
   [55, 'mist'],

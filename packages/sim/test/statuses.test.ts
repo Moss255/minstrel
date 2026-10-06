@@ -282,3 +282,31 @@ describe('Rotstopper — kind 40', () => {
     }
   })
 })
+
+describe('Alma Mater — kind 39', () => {
+  const almaOn = (i: number, fighters: Fighter[]) => {
+    const start = startBattle(fighters)
+    return {
+      ...start,
+      fighters: start.fighters.map((f, k) =>
+        k === i ? { ...f, states: { ...f.states, alma: { level: 1, turns: 6 } } } : f,
+      ),
+    }
+  }
+  it('keeps one Whacked at 1 HP, says so, and goes', () => {
+    const whack = status(24, 'kill', { side: 'other', change: { kind: 'kill', chance: 100 } })
+    const { state, events } = playRound(almaOn(1, [hero, foe]), using(whack, 1), new BattleRng(2n))
+    expect(changeOf(events).hits).toEqual([{ target: 1, result: 'spared' }])
+    expect(state.fighters[1]?.hp).toBe(1)
+    expect(state.fighters[1]?.states.alma).toBeUndefined()
+    // Without it, Whack fells them.
+    const plain = playRound(startBattle([hero, foe]), using(whack, 1), new BattleRng(2n))
+    expect(changeOf(plain.events).hits).toEqual([{ target: 1, result: 'killed' }])
+  })
+
+  it('does not spare from a kill of kind 17 not in its list', () => {
+    const other = status(999, 'kill', { side: 'other', change: { kind: 'kill', chance: 100 } })
+    const { events } = playRound(almaOn(1, [hero, foe]), using(other, 1), new BattleRng(2n))
+    expect(changeOf(events).hits).toEqual([{ target: 1, result: 'killed' }])
+  })
+})

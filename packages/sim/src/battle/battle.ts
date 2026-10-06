@@ -397,6 +397,9 @@ export const LEVEL_STATS: readonly LevelStat[] = [
  * `0x02159688`, `0x02159720`). Those it visits that the battle does not keep
  * are left out.
  */
+/** Whack, Thwack, Kathwack, Kamikazee — what Alma Mater spares from (`data_ov024_021fe6e0`). */
+const WHACKS: ReadonlySet<number> = new Set([24, 25, 26, 27])
+
 /** The family Rotstopper halves (`0x021e7510`). */
 const ROT_FAMILY = 8
 
@@ -406,8 +409,9 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] 
   'fizzled',
   // Vanish's block (`+0x85`, `0x0215892c`), after Fizzle's and before attack's.
   'vanished',
-  // Rotstopper's (`+0x87`, `0x02158a5c`).
+  // Rotstopper's (`+0x87`, `0x02158a5c`); Alma Mater's (`+0x8a`, `0x02158b8c`).
   'rotstop',
+  'alma',
   'attack',
   'defence',
   'agility',
@@ -470,6 +474,8 @@ export type Change =
   | { readonly kind: 'vanish'; readonly chance: number }
   /** **Rotstopper** (kind 40, `func_ov024_021df0f0`): the simple shape — see `States.rotstop`. */
   | { readonly kind: 'rotstop'; readonly chance: number }
+  /** **Alma Mater** (kind 39, `func_ov024_021deff8`): the simple shape — see `States.alma`. */
+  | { readonly kind: 'alma'; readonly chance: number }
   /**
    * **Flower Power, Scandal Eyes** (kind 19, `func_ov024_021dd534`): landed,
    * on one who may take it, dazzled of its `sort` — the record's `+0x30` —
@@ -670,6 +676,8 @@ export type ChangeResult =
   | 'tumbling'
   /** A status given, its record's done line said — Right as Rain, Focus Pocus. */
   | 'given'
+  /** Kept at 1 HP by Alma Mater, which went — "heavenly protection keeps the reaper at bay". */
+  | 'spared'
   /** Brownie Boost: the levels it moved, in {@link ChangeHit.boosts}. */
   | 'boosted'
   /** Spelly Breath: MP back, {@link ChangeHit.mp}. */
@@ -906,6 +914,7 @@ export type BattleEvent =
         | 'dazzled'
         | 'vanished'
         | 'rotstop'
+        | 'alma'
         | 'zeroZone'
         | 'tumble'
         | 'watched'
@@ -1525,7 +1534,7 @@ export function playRound(
     target: number,
     rider: Rider,
     critical: boolean,
-    pending: { asleep: number[]; felled: number[] },
+    pending: { asleep: number[]; felled: number[]; spared: number[] },
     action = 0,
   ): ChangeHit | undefined => {
     const them = fighters[target] as FighterState
@@ -1612,6 +1621,12 @@ export function playRound(
         const flat = f(12.5)
         const over = them.metal ? flat : f(flat * f(f(riderByte(target, 11)) / f(100)))
         if (!(f(rng.below(100)) < (critical ? f(100) : over))) return undefined
+        // Alma Mater keeps them at 1 HP, and goes (`0x021e46f4`–`0x021e4760`).
+        if ((them.states.alma?.level ?? 0) !== 0) {
+          setStates(target, { alma: undefined })
+          pending.spared.push(target)
+          return { target, result: 'spared' }
+        }
         pending.felled.push(target)
         return { target, result: 'killed' }
       }
@@ -2722,6 +2737,8 @@ export function playRound(
       let critical = once && rng.below(10_000) < rate
       /** Those whom it fells, felled once it is told. */
       const felled: number[] = []
+      /** Those Alma Mater keeps at 1 HP, brought there once it is told. */
+      const spared: number[] = []
       const rode: ChangeHit[] = []
       /**
        * **One of the party's accuracy** (`func_ov000_02156648`): a scaling
@@ -2787,9 +2804,15 @@ export function playRound(
             setStates(target, { sleep: undefined })
             return { target, result: 'woke' }
           case 'kill':
-            // Kind 17 (`func_ov024_021dd028`): all their HP. The protection
-            // that leaves 1 (`func_ov024_021ea78c`) is a status not kept here.
+            // Kind 17 (`func_ov024_021dd028`): all their HP — but Whack and
+            // its like on one under Alma Mater all but 1, and it goes
+            // (`func_ov024_021ea78c`, `0x021dd0a8`–`0x021dd124`).
             if (!landed || !alive(them)) return { target, result: 'resisted' }
+            if (WHACKS.has(changing.action) && (was.alma?.level ?? 0) !== 0) {
+              setStates(target, { alma: undefined })
+              spared.push(target)
+              return { target, result: 'spared' }
+            }
             felled.push(target)
             return { target, result: 'killed' }
           case 'restore': {
@@ -2850,8 +2873,9 @@ export function playRound(
             setStates(target, { vanished: { level: 1, turns: LEVEL_COUNTS.vanished } })
             return { target, result: 'given' }
           case 'rotstop':
+          case 'alma':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
-            setStates(target, { rotstop: { level: 1, turns: LEVEL_COUNTS.rotstop } })
+            setStates(target, { [change.kind]: { level: 1, turns: LEVEL_COUNTS[change.kind] } })
             return { target, result: 'given' }
           case 'zeroZone':
           case 'tumble': {
@@ -2994,6 +3018,7 @@ export function playRound(
         ...(rode.length > 0 ? { rode } : {}),
       })
       for (const target of felled) hurt(target, (fighters[target] as FighterState).hp)
+      for (const target of spared) hurt(target, (fighters[target] as FighterState).hp - 1)
       outcome = outcomeOf(fighters)
       if (outcome !== 'ongoing') break
       continue
@@ -3035,7 +3060,11 @@ export function playRound(
         rode?: ChangeHit
       }[] = []
       /** Who its riders send to sleep or fell, once its damage is dealt. */
-      const pending: { asleep: number[]; felled: number[] } = { asleep: [], felled: [] }
+      const pending: { asleep: number[]; felled: number[]; spared: number[] } = {
+        asleep: [],
+        felled: [],
+        spared: [],
+      }
       let recoil = 0
       /** What the passes so far have dealt each target, dealt only once they are done. */
       const dealtTo = new Map<number, number>()
@@ -3200,6 +3229,10 @@ export function playRound(
       for (const target of pending.felled) {
         const f = fighters[target] as FighterState
         if (alive(f)) hurt(target, f.hp)
+      }
+      for (const target of pending.spared) {
+        const f = fighters[target] as FighterState
+        if (alive(f) && f.hp > 1) hurt(target, f.hp - 1)
       }
       // **After the action, once** (the table at `0x021ff3f8`, by `+0x2c`
       // bits 10–13), when the striker stands (`func_ov000_02155f9c`).
