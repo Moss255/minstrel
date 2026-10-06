@@ -580,11 +580,13 @@ table's two level-one learnings, which here come from that table the same way.
 
 **Ours**, each marked where it is:
 
-- **The three flags' setters are not read**, so: the Abbey counts as open
-  once its own story thread is at 7.1, where Jack's chapter-G lines begin, or
-  when `0x799` is set; the Change / Revocate menu, and so revocation, waits on
-  `0x796`, which nothing here sets — `?revoke=` still stands in; and the
-  advanced six wait on their flags.
+- ~~The three flags' setters are not read~~ — **read 4 October 2026**: three
+  trigger actions of their own, which earlier searches of `100` and `130`
+  missed (`func_02061c04`): `223 : 1` sets `0x799` on `ev26510`'s outcome in
+  the Tower of Trades at 6.5; `231 : 1` sets `0x796` on the credits' record at
+  17.2; `160 : v` sets `0x113F + v` beside each advanced vocation's quest
+  cleared. The 7.1 stand-in and `?revoke=` are gone. `bankBit` in
+  `@minstrel/game-formats`; `docs/readings/T10a-questions.md` §1.
 - The list is one column, where the game's is two of six; the panel on the
   sub screen describing the vocation under the cursor is not drawn; nor is
   the ceremony's effect.
@@ -737,8 +739,8 @@ points survive**, pool and trees both, which is the whole point of the
 character keeping them rather than the vocation.
 
 `Member.revocations` is the thirteen bytes the record has at `+0x0F`, and the
-attributes panel says "revoked 2×" where there is a count. `?revoke=0` drives
-it, standing in for the Abbey's own step until that flow is built.
+attributes panel says "revoked 2×" where there is a count. The Abbey's own
+step 4 drives it, once `0x796` is set with the credits.
 
 **Not built, and read**: the first-time flag per vocation, `0x118B + v`, which
 drives a line the first time — `REVOCATION_FLAG` names it and nothing sets it.

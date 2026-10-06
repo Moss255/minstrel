@@ -316,6 +316,7 @@ import {
   IVOR,
   levelsUp,
   type Member,
+  marchingOrder,
   PARTY_MOST,
   partyAfter,
   partyRestored,
@@ -2040,22 +2041,6 @@ function openWorld(map: string): void {
     )
   }
   if (params.get('look')) dressParty()
-  // `?revoke=1` revokes party place 1's vocation — **ours**, standing in for
-  // the Abbey's own step slot 4. See `revoke`.
-  for (const one of (params.get('revoke') ?? '').split(',')) {
-    if (!/^\d+$/.test(one)) continue
-    const who = members[Number(one)]
-    if (!who) continue
-    const was = levelOf(who)?.level
-    const marks = revoke(who)
-    status(
-      marks === undefined
-        ? `${nameFor(who)} is ${vocationWord(who.vocation)}, which cannot be revoked`
-        : `${nameFor(who)} revoked ${vocationWord(who.vocation)} from level ${was ?? '?'}` +
-            ` · now level ${levelOf(who)?.level ?? '?'}, ${marks} mark${marks === 1 ? '' : 's'}` +
-            ` · ${who.skillPool} skill points kept`,
-    )
-  }
   // `?save=1` writes a save where it stands — **ours**, and only for driving.
   // The church is the one place a player can record anything, which makes the
   // save impossible to exercise from outside without walking to a priest.
@@ -3281,9 +3266,9 @@ function drawCorner(): void {
   // them. Keyed by place rather than by the story companions' compacted list,
   // so a created character gets a dot too — see `followersNow`.
   const walking = companionsInField()
-  const companions = followersNow().flatMap(({ who, member, place }) => {
+  const companions = marchersNow().flatMap(({ who, member, index }) => {
     if (who && standingHere(who)) return []
-    const seen = walking.find((w) => w.place === place)
+    const seen = walking.find((w) => w.index === index)
     return [
       { x: seen ? seen.x / unit : hero.x, z: seen ? seen.z / unit : hero.z, name: nameFor(member) },
     ]
@@ -5993,7 +5978,7 @@ function openAbbey(who: Talker | undefined): void {
   if (!loaded || !who) return
   abbey = { who, target: 0, flow: 'change', offered: [] }
   const flag = (bit: number) => storyGlobals.has(bit)
-  if (!abbeyOpen(flag, storyStage)) {
+  if (!abbeyOpen(flag)) {
     abbeyEnd([ABBEY_SAYS.greet, ABBEY_SAYS.tooSoon])
     return
   }
@@ -6055,7 +6040,8 @@ function openAbbeyWindow(window: 'menu' | 'who' | 'vocation'): void {
       abbeyLabel(ABBEY_LABELS.revocate, 'Revocate'),
     ]
   } else if (window === 'who') {
-    rows = members.map((member) => nameFor(member))
+    // The slots, in their order — the living, then the fallen: see `marchingOrder`.
+    rows = marchingOrder(members).map((member) => nameFor(member))
   } else {
     abbey.offered = vocationsOffered((bit) => storyGlobals.has(bit))
     title = abbeyLabel(ABBEY_LABELS.heading, 'Vocation')
@@ -6082,8 +6068,9 @@ function abbeyPicked(window: 'menu' | 'who' | 'vocation', pick: number): void {
     return
   }
   if (window === 'who') {
-    if (abbey.flow === 'revoke') abbeyRevokeTarget(pick)
-    else abbeyTarget(pick, true)
+    const index = members.indexOf(marchingOrder(members)[pick] as Member)
+    if (abbey.flow === 'revoke') abbeyRevokeTarget(index)
+    else abbeyTarget(index, true)
     return
   }
   const vocation = abbey.offered[pick]
@@ -7865,9 +7852,15 @@ function companionsNow(): readonly AttendingCharacter[] {
  * they would not once the party is made of created characters, and the bug
  * would be somebody wearing the wrong person's footsteps.
  */
-function followersNow(): { place: number; member: Member; who: AttendingCharacter | undefined }[] {
+function followersNow(): {
+  place: number
+  index: number
+  member: Member
+  who: AttendingCharacter | undefined
+}[] {
   return members.slice(1).map((member, place) => ({
     place,
+    index: place + 1,
     member,
     who:
       member.attnpc === undefined
@@ -7887,18 +7880,35 @@ function standingHere(who: AttendingCharacter): boolean {
 }
 
 /**
- * Where each companion stands in the field: the one in the party's second
+ * Those after the Hero in the field, **in the slots' order — the living, then
+ * the fallen** (`marchingOrder`, the game's rebuild), each with the trail of
+ * the place they walk in. `index` is their place in `members`.
+ *
+ * **Ours**: the Hero walks first even when fallen, where the game's leader
+ * is the first one alive — the walker is the Hero's figure here.
+ */
+function marchersNow(): ReturnType<typeof followersNow> {
+  const behind = followersNow()
+  return marchingOrder(behind.map((one) => one.member)).flatMap((member, place) => {
+    const one = behind.find((f) => f.member === member)
+    return one ? [{ ...one, place }] : []
+  })
+}
+
+/**
+ * Where each companion stands in the field: the one in the line's second
  * place on the Hero's footsteps a pace back, the next a pace further, and so
- * on. None in a battle or an event, which stand them themselves, and none
- * while one stands on the Hero, as all do on arriving until the Hero walks off
- * — **ours**, both. Nor one the map has standing in it — Ivor, waiting in
- * Erinn's house at 2.2 — who is not in two places at once: the same model,
- * see `companionModel`. Ours too.
+ * on — see `marchersNow`. None in a battle or an event, which stand them
+ * themselves, and none while one stands on the Hero, as all do on arriving
+ * until the Hero walks off — **ours**, both. Nor one the map has standing in
+ * it — Ivor, waiting in Erinn's house at 2.2 — who is not in two places at
+ * once: the same model, see `companionModel`. Ours too.
  */
 function companionsInField(): {
   who: AttendingCharacter | undefined
   member: Member
   place: number
+  index: number
   x: number
   y: number
   z: number
@@ -7907,7 +7917,7 @@ function companionsInField(): {
   const hx = toFloat(self.state.x)
   const hz = toFloat(self.state.z)
   const near = toFloat(person().radius) * 2
-  return followersNow().flatMap(({ who, member, place }) => {
+  return marchersNow().flatMap(({ who, member, place, index }) => {
     const trail = trails[place]
     if (!trail) return []
     // A story companion the map already has standing in it is not drawn twice.
@@ -7915,7 +7925,7 @@ function companionsInField(): {
     const x = toFloat(trail.x)
     const z = toFloat(trail.z)
     if (Math.hypot(x - hx, z - hz) < near) return []
-    return [{ who, member, place, x, y: toFloat(trail.y), z }]
+    return [{ who, member, place, index, x, y: toFloat(trail.y), z }]
   })
 }
 
@@ -7928,18 +7938,17 @@ function companionFieldPieces(now: number): Piece[] {
   const hero = self
   const here = loaded
   if (!rom || !hero || !here) return []
-  return companionsInField().flatMap(({ who, place, x, y, z }) => {
+  return companionsInField().flatMap(({ who, member, place, index, x, y, z }) => {
     const walkingNow = trailWalking[place] === 1
     // **A created character is built from parts, like the Hero**, so they are
     // posed the same way rather than drawn from a whole `.chr` model. This is
     // what a party of four is made of; a story companion keeps their model.
-    const built = dressed[place + 1]
+    const built = dressed[index]
     if (built && !who) {
       const name = walkingNow ? 'run' : 'stand'
       const motion = built.figure.motions.get(name)
       // At their own set's speed (`motion-speed.ts`), as the Hero's.
-      const member = members[place + 1]
-      const speed = member ? motionSpeeds(rom, motionFamilyOf(member)).get(name) : undefined
+      const speed = motionSpeeds(rom, motionFamilyOf(member)).get(name)
       return playerPieces(
         {
           ...hero,
@@ -7962,7 +7971,7 @@ function companionFieldPieces(now: number): Piece[] {
         here.catalogue,
         measurements,
         motion,
-        buildScale(members[place]),
+        buildScale(member),
       )
     }
     if (!who) return []

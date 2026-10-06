@@ -51,7 +51,6 @@ is one the menu will not know about.
 | `event=23198` | play a scene. **It goes to the map the scene happens in first**, which its trigger names, and says so on the status line and the console; a scene no trigger names is played where you are. Driving a scene in the wrong map is what produced the `ev03030` "camera in a wall" that was chased for a day — see `docs/still-open.md` |
 | `preset=7` | dress the Hero as a ready-made character |
 | `vocation=0:1` | change party place 0 to vocation 1, as Alltrades would |
-| `revoke=0` | revoke party place 0's current vocation — level 1, no experience, one more mark |
 | `give=20005,22010:3` | put items in the bag, by id and count. `?bag=w,s:3` fills by item table instead |
 | `gold=5000` | that much gold in the purse — for the bank, the inn and the shops |
 | `tricks=2,0,0,10,12` | the party trick slots — Up, Left, Right, Down 1 to 4 — by number, 0 for none; then B held with a direction performs |

@@ -22,12 +22,36 @@ import { equippedOf, equippedRecord, type SaveMember } from './save.ts'
  *
  * **Four, and the game's own shape** — read 24 September 2026, see
  * `docs/party-and-vocations.md`. The game keeps an ordered byte array of
- * character indices at `+0x397c` off its state and the count at `+0x3980`,
- * which leaves exactly the four bytes `+0x397c`–`+0x397f` for the slots. That
- * the four is a bound rather than what happens to fit is INFERRED: no check
- * against 4 has been found.
+ * game-object indices, the slots, at `P + 0xF78` with the count at
+ * `P + 0xF7C`, `P` being `GameState + 0x2A04` — `+0x397c` and `+0x3980` off
+ * the state. That the four is a bound rather than what happens to fit is
+ * INFERRED: no check against 4 has been found.
  */
 export const PARTY_MOST = 4
+
+/**
+ * **The party in the order its slots hold it: the living, then the fallen**,
+ * each kept in the party's own order. Read 4 October 2026 from the rebuild
+ * the game runs whenever someone falls, is revived, joins or leaves
+ * (US `func_ov017_02191108`, which writes the slots at `0x02191204`–
+ * `0x02191220` from `func_ov017_02190884`'s list): each member goes into one
+ * of two groups by the fallen bit, `[obj+0x130]+0` bit 0 (`0x02190a24`), is
+ * placed by their own order byte `[obj+0x2D2]` — the living at 0–3, the
+ * fallen at 4–7 (`0x02190a74`–`0x02190af8`) — and the eight compacted. Slot
+ * 0, the leader, is the first one alive.
+ *
+ * A member with no hit points kept (`hp` undefined) is whole, so alive.
+ *
+ * Not built: a swap the game makes on some maps when slot 0's companion
+ * object is `0x2347`–`0x2349` (`0x02190b3c`–`0x02190b8c`); what the map
+ * condition and those objects are is not read.
+ */
+export function marchingOrder<T extends { readonly hp: number | undefined }>(
+  party: readonly T[],
+): T[] {
+  const alive = (one: T) => one.hp === undefined || one.hp > 0
+  return [...party.filter(alive), ...party.filter((one) => !alive(one))]
+}
 
 /**
  * A place in the party — **the Hero is one of them, and they are first.**
@@ -248,9 +272,11 @@ export const VOCATIONS_UNLOCKED: readonly number[] = [7, 9, 8, 12, 10, 11]
  * plus this. `add r2, r8, #0x3f` then `add r2, r2, #0x1100` — so vocation 7 is
  * flag `0x1146`.
  *
- * **Whether this host's story flags are numbered the same way is not
- * established.** Ours come from the trigger files' own flag words; these are
- * the game's own event-flag ids, read from a different place.
+ * **Set by trigger action `160 : v`** (US `func_02061c04` case 60,
+ * `0x02062fd8`), which sits beside the advanced vocation's quest cleared on
+ * six records — quests 25, 27, 26, 124, 128 and 28 give vocations 7 to 12 —
+ * so each is unlocked when its quest is handed in. See `bankBit` in
+ * `@minstrel/game-formats`.
  */
 export const VOCATION_FLAG = 0x113f
 

@@ -578,6 +578,47 @@ export function quarantombSwitch(arg: number): { flag: number; on: boolean } | u
 }
 
 /**
+ * **Alltrades Abbey opens**: `223 : x` sets game-wide flag `0x799` to *x ≠ 0*
+ * (`func_02061c04` case 123, `0x02064038`; `func_0206df6c` sets or clears).
+ * Carried by the two outcome records of `ev26510` in the Tower of Trades at
+ * 6.5. The Abbey's step 0 tests it (`0x02156278`).
+ */
+export const OP_ABBEY_OPEN = 223
+/** Sets flag `0x798` to *x ≠ 0* (case 124, `0x02064054`); on `R01`–`R04`'s records from 4.1. What it means is not read. */
+export const OP_FLAG_798 = 224
+/**
+ * **Revocation opens**: `231 : x` sets flag `0x796` to *x ≠ 0* (case 131,
+ * `0x0206414c`–`0x02064170`), unless `func_0202ae18`→`func_0202c540` holds —
+ * INFERRED, a guest in a game played together. Carried by the record that
+ * plays the credits, `ev29300`, at 17.2. The same action then stamps a record
+ * once with the clock, the Hero's `+0x134` and the play time (`0x02064174`–
+ * `0x0206435c`) — INFERRED a "cleared" stamp; not kept here.
+ */
+export const OP_REVOCATION_OPEN = 231
+/**
+ * **An advanced vocation is unlocked**: `160 : v` sets flag `0x113F + v`
+ * (case 60, `0x02062fd8`), the Abbey's own test (`func_ov003_02156054`).
+ * Each sits beside a quest cleared (`127`): quests 25, 27, 26, 124, 128 and 28
+ * give vocations 7 to 12.
+ */
+export const OP_VOCATION_UNLOCK = 160
+/** `202 : n` sets flag `0x1198 + n` (case 102, `0x02063a34`) — the Krak Pot's first talk sets `0x1198`. */
+export const OP_FLAG_FROM_1198 = 202
+
+/**
+ * The game-wide flag one of the actions above sets or clears, and which —
+ * every one goes through `func_0206df6c` on the bank at `+0x8c`.
+ */
+export function bankBit(op: number, arg: number): { flag: number; on: boolean } | undefined {
+  if (op === OP_ABBEY_OPEN) return { flag: 0x799, on: arg !== 0 }
+  if (op === OP_FLAG_798) return { flag: 0x798, on: arg !== 0 }
+  if (op === OP_REVOCATION_OPEN) return { flag: 0x796, on: arg !== 0 }
+  if (op === OP_VOCATION_UNLOCK) return { flag: 0x113f + arg, on: true }
+  if (op === OP_FLAG_FROM_1198) return { flag: 0x1198 + arg, on: true }
+  return undefined
+}
+
+/**
  * What a record does when it runs: every one of its actions, as the game runs
  * them all (US ARM9 `func_02064530`). Read from its entries — see
  * {@link entriesOf} — so an action's own values are taken as its own.
@@ -610,6 +651,7 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
   const switches = entries
     .filter((e) => e.op === OP_QUARANTOMB_SWITCH)
     .flatMap((e) => quarantombSwitch(e.arg) ?? [])
+  const bits = entries.flatMap((e) => bankBit(e.op, e.arg) ?? [])
   return {
     stage: point(entries.find((e) => e.op === OP_STAGE_TO)),
     flags: [...args(OP_SET_FLAG), ...both.map((e) => (e.params[0] as number) >>> 16)],
@@ -626,11 +668,13 @@ export function outcomeOf(trigger: Trigger): EventOutcome {
       ...args(OP_SET_GLOBAL),
       ...switches.filter((s) => s.on).map((s) => s.flag),
       ...named(OP_QUEST_SET_FLAG),
+      ...bits.filter((b) => b.on).map((b) => b.flag),
     ],
     unglobals: [
       ...args(OP_CLEAR_GLOBAL),
       ...switches.filter((s) => !s.on).map((s) => s.flag),
       ...named(OP_QUEST_CLEAR_FLAG),
+      ...bits.filter((b) => !b.on).map((b) => b.flag),
     ],
     event: entries.find((e) => e.op === OP_EVENT || e.op === OP_FLAG_AND_EVENT)?.arg,
     ...(talk ? { talk: { character: talk.arg, label: (talk.params[0] as number) >>> 16 } } : {}),

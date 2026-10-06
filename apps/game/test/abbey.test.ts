@@ -1,5 +1,18 @@
+import { readFileSync } from 'node:fs'
+import { outcomeOf } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
-import { abbeyOpen, abbeyText, FLAG_OPEN, medalSaid, vocationSaid } from '../src/abbey.ts'
+import {
+  abbeyOpen,
+  abbeyText,
+  FLAG_OPEN,
+  FLAG_REVOCATION,
+  medalSaid,
+  vocationSaid,
+} from '../src/abbey.ts'
+import { VOCATION_FLAG } from '../src/companion.ts'
+import { allTriggers } from '../src/load.ts'
+
+const romPath = process.env.MINSTREL_TEST_ROM
 
 const fill = { target: 'Ava', sex: 'f' as const, solo: false }
 
@@ -54,14 +67,29 @@ describe('Jack of Alltrades’ lines, filled as the Abbey fills them', () => {
 })
 
 describe('whether the Abbey is open to a change', () => {
-  it('is, by the game’s own flag', () => {
-    expect(abbeyOpen((bit) => bit === FLAG_OPEN, { major: 6, minor: 6 })).toBe(true)
+  it('is by the game’s own flag, and by nothing else', () => {
+    expect(abbeyOpen((bit) => bit === FLAG_OPEN)).toBe(true)
+    expect(abbeyOpen(() => false)).toBe(false)
   })
+})
 
-  it('stands in with the Abbey’s own chapter, 7.1 on, where the flag is not set', () => {
-    expect(abbeyOpen(() => false, { major: 6, minor: 6 })).toBe(false)
-    expect(abbeyOpen(() => false, { major: 7, minor: 1 })).toBe(true)
-    expect(abbeyOpen(() => false, { major: 19, minor: 1 })).toBe(true)
-    expect(abbeyOpen(() => false, undefined)).toBe(false)
+describe.skipIf(!romPath)('what sets the Abbey’s three flags, on the cartridge', () => {
+  it('is three actions of the records: 223 at 6.5, 231 with the credits, 160 by a quest cleared', () => {
+    const rom = new Uint8Array(readFileSync(romPath as string))
+    const setters = new Map<number, Set<number>>()
+    for (const { triggers } of allTriggers(rom))
+      for (const trigger of triggers)
+        for (const flag of outcomeOf(trigger).globals) {
+          const maps = setters.get(flag) ?? new Set<number>()
+          maps.add(trigger.map)
+          setters.set(flag, maps)
+        }
+    // `ev26510`'s outcome in the Tower of Trades, map 9008.
+    expect([...(setters.get(FLAG_OPEN) ?? [])]).toEqual([9008])
+    // The credits' record in the Realm of the Mighty, map 4403.
+    expect([...(setters.get(FLAG_REVOCATION) ?? [])]).toEqual([4403])
+    // The six advanced vocations, each where its quest is handed in.
+    const where = [7, 8, 9, 10, 11, 12].map((v) => [...(setters.get(VOCATION_FLAG + v) ?? [])])
+    expect(where).toEqual([[4202], [4201], [201], [405], [219], [7700]])
   })
 })

@@ -12,6 +12,7 @@ import {
   IVOR,
   joinerOf,
   type Member,
+  marchingOrder,
   PARTY_MOST,
   partyAfter,
   partyRestored,
@@ -433,5 +434,18 @@ describe('the party, the Hero first', () => {
   it('names their model as a map’s cast names the same character', () => {
     expect(companionModel(ivor)).toBe('s017')
     expect(companionModel({ ...ivor, model: 5 })).toBe('s005')
+  })
+})
+
+describe('the slots’ order, as the game rebuilds them', () => {
+  it('puts the living first and the fallen after, each in the party’s own order', () => {
+    const party = [
+      { name: 'Hero', hp: 0 },
+      { name: 'A', hp: 12 },
+      { name: 'B', hp: 0 },
+      { name: 'C', hp: undefined },
+    ]
+    expect(marchingOrder(party).map((one) => one.name)).toEqual(['A', 'C', 'Hero', 'B'])
+    expect(marchingOrder(party.slice(1, 2))).toEqual([party[1]])
   })
 })

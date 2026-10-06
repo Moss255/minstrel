@@ -5,6 +5,7 @@ import {
   areaEvent,
   areasIn,
   areasOf,
+  bankBit,
   conditionsOf,
   conditionsOfWords,
   doorwayPlay,
@@ -182,13 +183,18 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
     145,
     148,
     155,
+    160,
+    202,
     204,
     205,
     214,
     215,
     216,
     220,
+    223,
+    224,
     226,
+    231,
     OP_TRICKS,
   ])
   /** Sets a stage of one of several stories at once — see "Threads" in `docs/story-walk.md`. Not read. */
@@ -537,6 +543,10 @@ describe.skipIf(!romPath)('the story, followed from stage to stage', () => {
       } else if (op === OP_LEARN_TRICK) {
         const bit = trickLearntBit(arg)
         if (bit !== undefined) s.sure.add(bit)
+      } else {
+        const bit = bankBit(op, arg)
+        if (bit?.on) s.sure.add(bit.flag)
+        else if (bit) s.sure.delete(bit.flag)
       }
     }
     if (outcome.leaves) s.party = []

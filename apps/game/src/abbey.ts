@@ -14,9 +14,12 @@
  *   windows' words `bm_dama`'s labels ({@link ABBEY_LABELS}).
  * - **The gates are three game-wide flags** (`func_0206dfb0` on the bank at
  *   `+0x8c`, the bank record operations 100 and 101 set): {@link FLAG_OPEN},
- *   {@link FLAG_REVOCATION} and `VOCATION_FLAG + v`. No record and no script
- *   on the cartridge sets any of them — the game's code does, and where is
- *   not read. See {@link abbeyOpen} for what stands in.
+ *   {@link FLAG_REVOCATION} and `VOCATION_FLAG + v`. Trigger records set all
+ *   three, each by an action of its own (read 4 October 2026, `func_02061c04`):
+ *   `223 : 1` on `ev26510`'s outcome in the Tower of Trades at 6.5 opens the
+ *   Abbey; `231 : 1` on the credits' record at 17.2 opens revocation; `160 : v`
+ *   beside each advanced vocation's quest cleared unlocks it. See
+ *   `bankBit` in `@minstrel/game-formats`.
  */
 
 /** The lines, `str_dam` numbers. */
@@ -77,25 +80,12 @@ export const FLAG_OPEN = 0x799
 export const FLAG_REVOCATION = 0x796
 
 /**
- * Whether the Abbey is open to a change.
- *
- * **The game's test is flag {@link FLAG_OPEN}, and that is asked first.**
- * Nothing on the cartridge's records or scripts sets it, so the code that
- * does is the game's own and not read. **Ours**, standing in for it: open once
- * the Abbey's own story thread is at 7.1 or past it — chapter `G`, where
- * Jack's lines are his own self again (label 1 of `G0`: "When I took on that
- * monstrous form…"), and where `<DAMA>` stands on his file in every chapter
- * after.
+ * Whether the Abbey is open to a change: flag {@link FLAG_OPEN}, set by
+ * `223 : 1` when `ev26510`'s record runs at 6.5 — the game's test, and the
+ * only one (step 0, `0x02156278`).
  */
-export function abbeyOpen(
-  flag: (bit: number) => boolean,
-  abbeyStage: { readonly major: number; readonly minor: number } | undefined,
-): boolean {
-  if (flag(FLAG_OPEN)) return true
-  return (
-    abbeyStage !== undefined &&
-    (abbeyStage.major > 7 || (abbeyStage.major === 7 && abbeyStage.minor >= 1))
-  )
+export function abbeyOpen(flag: (bit: number) => boolean): boolean {
+  return flag(FLAG_OPEN)
 }
 
 /** The jingle the ceremony plays, both of them — `<ME_003>`'s id (`0x02157404`). */
