@@ -677,7 +677,7 @@ describe('Tingle — kind 20', () => {
     const stuck = {
       ...start,
       fighters: start.fighters.map((f, i) =>
-        i === 1 ? { ...f, states: { ...f.states, paralysed: true } } : f,
+        i === 1 ? { ...f, states: { ...f.states, paralysed: { level: 1, turns: 3 } } } : f,
       ),
     }
     const freed = playRound(
@@ -686,7 +686,7 @@ describe('Tingle — kind 20', () => {
       new BattleRng(2n),
     )
     expect(changeOf(freed.events).hits).toEqual([{ target: 1, result: 'unparalysed' }])
-    expect(freed.state.fighters[1]?.states.paralysed).toBe(false)
+    expect(freed.state.fighters[1]?.states.paralysed).toBeUndefined()
     const idle = playRound(
       start,
       new Map([[0, { kind: 'change', changing: tingle, target: 1 }]]),

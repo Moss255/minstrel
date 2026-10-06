@@ -9350,6 +9350,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       // Its family and body, which the abilities' handlers ask — `mon_data` `+0x0A`.
       family: who.family,
       metal: who.metal,
+      // Whether a fall off its feet is refused — `mon_data +0x0A` bit 11.
+      untrippable: who.untrippable,
       // Its level, which its handlers and tension's bonus take — `mon_data` `+0x0A`.
       level: who.level,
       exp: numbers.exp,

@@ -183,6 +183,13 @@ export interface MonsterName {
   readonly family: number
   readonly metal: boolean
   /**
+   * `+0x0A`'s bit 11 — what `func_ov000_02156068` asks with its third
+   * argument at 2, which the one reader found asks before a lost turn of kind
+   * 2, a fall off its feet (`func_ov024_021e8fa4`, `0x021e8fac`–`0x021e8fcc`):
+   * set, the fall is refused. The name is from that one use.
+   */
+  readonly untrippable: boolean
+  /**
    * Its **level**, `+0x0A`'s low seven bits — what the handlers and tension's
    * bonus take as a monster's level (`func_ov000_02159dbc`, `0x02159e50`; read
    * 3 October 2026). A legacy boss's is its map's, not this.
@@ -310,6 +317,7 @@ export function readMonsterNames(bytes: Uint8Array): MonsterName[] {
       unknown_0x0a: bytes.subarray(at + 0x0a, at + 0x0c),
       family: (view.getUint16(at + 0x0a, true) >> 7) & 15,
       metal: ((view.getUint16(at + 0x0a, true) >> 12) & 1) === 1,
+      untrippable: ((view.getUint16(at + 0x0a, true) >> 11) & 1) === 1,
       level: view.getUint16(at + 0x0a, true) & 0x7f,
       radius: view.getInt16(at + 0x0c, true) * 4,
       height: view.getInt16(at + 0x0e, true),

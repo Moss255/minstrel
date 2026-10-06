@@ -368,6 +368,10 @@ function changeSays(
     // Knight Watch's handler says nothing of its own (`021e1de8`): its opening alone.
     case 'watched':
       return 0
+    // Rider 11's (`func_ov024_021e9464` with 1): "is paralysed!" (`0x1e`), or
+    // on one already, "is frozen even further" (`0x6e`).
+    case 'paralysed':
+      return hit.again ? 0x6e : 0x1e
     case 'stunned':
       return kind === 'stun'
         ? pick(own?.done, 0)
@@ -467,6 +471,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} cannot move!`
     case 'watched':
       return `${whom} is watched.`
+    case 'paralysed':
+      return hit.again ? `${whom} is frozen even further.` : `${whom} is paralysed!`
   }
 }
 
@@ -1149,7 +1155,8 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
             : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
           // What rode on it — its line by what it came to (`func_ov024_021e939c`
           // and the level riders' `021e94c4`).
-          ...(hit.rode
+          ...(hit.rode &&
+          changeSays('poison', hit.rode, told, state.fighters[hit.target]?.side === 'party') !== 0
             ? [
                 say(
                   scene,
@@ -1163,6 +1170,10 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                   { actor, target },
                 ),
               ]
+            : []),
+          // A lost turn or paralysis takes tension away (`func_ov024_021e8cfc`).
+          ...(hit.rode?.calmed
+            ? [say(scene, 'actions', ACTION_SAYS.tensionNormal, { target })]
             : []),
         ]
       })
@@ -1422,7 +1433,12 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     case 'stunned':
       // **Ours**: action 503, put in the lost turn's place, has no line, and
       // what the game shows for the turn is not read.
-      return sentence(`${who} cannot move!`)
+      return sentence(
+        event.status === 0 ? `${who} is paralysed and cannot move!` : `${who} cannot move!`,
+      )
+    case 'freed':
+      // Action 900's opening, 115 (`func_ov000_0215833c`, `0x021583f0`).
+      return say(scene, 'actions', 115, { actor }) ?? sentence(`${who} is no longer paralysed.`)
     case 'woke':
       return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
     case 'primed':

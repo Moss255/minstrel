@@ -314,7 +314,7 @@ Throw — its extra pass's target is picked by place on the stage (§8).
 
 **Riders not played** (`data_ov024_021ff450`): ~~1~~ (built, §10), 5 and 6 (the antidotes') `021e324c`,
 `021e32f4`, 9 `021e373c` (Soothe Sayer), 10 `021e386c` (confusion,
-INFERRED), 11 `021e3a34` (paralysis, INFERRED), 12 `021e3cec` (Rake 'n'
+INFERRED), ~~11~~ (paralysis, built — §10), 12 `021e3cec` (Rake 'n'
 Break), 13 `021e3d88` (Conjury Conductor), 14 `021e3f14` (Morale Masher),
 19 `021e4588` (Sobering Slap), 21 `021e47f4` (Caster Sugar). Their blows
 land and deal; the rider is dropped.
@@ -656,8 +656,9 @@ under the action's chance times the byte over 100 — the byte passed over
 for `0x239` and Roaring Tirade (`0x021e2cb8`–`0x021e2cc8`), and no
 critical's hundred; from kind 10 none of that (`0x021e2c10`). Then the
 record's `+0x32` names the lost turn's kind: the table at
-`data_ov024_021fe820` knows 2 to 8, and 2 is refused on a metal body
-(`func_ov024_021e8fa4`); one may take it (`func_02088418`) who stands, is
+`data_ov024_021fe820` knows 2 to 8, and 2 is refused where the monster's
+`mon_data +0x0A` bit 11 is set (`func_ov024_021e8fa4`, which asks
+`func_ov000_02156068` with 2: 1 asks bit 12, metal; 0 asks the family); one may take it (`func_02088418`) who stands, is
 not paralysed, is not at the maximum of tension — but for the two coups
 `0x1fc` and `0x20f` — and is not under the same kind; then it is set
 (`func_02088474`: bit 19, the kind at `+0x22` bits 2–5, tension taken away,
@@ -688,3 +689,31 @@ pass's first draw — so it goes on the pass the count runs out; at once if
 the watcher is down or gone (`func_ov000_02153c0c`). Line `0x164`.
 
 Struck as the Attack: **41** (44 before kind 10).
+
+### Paralysis — rider 11, built
+
+`func_ov024_021e3a34`: with something dealt; for action `0x52` only on a
+monster of family 9 (`func_ov000_02156068` with 9 and 0), for `0x58` on a
+metal body or one whose byte `+0x4e` (element 17) is not 0, any other on
+that byte not 0; one who may take it (`func_0208824c`: standing, not at the
+maximum of tension); a draw below 100 under the chance times the byte —
+`0x52` a flat 25, `0x58` on a metal body a flat 12.5 (`0x021e3bc0`–
+`0x021e3bf4`). Then `func_0208826c`: tension, a lost turn and sleep cleared,
+`+0x14` bit 3 set with a count of 3 at `+0x5c` and its second at `+0x7f`
+cleared; the line `func_ov024_021e9464` gives, "is paralysed!" (`0x1e`) or,
+on one already, "is frozen even further" (`0x6e`), and the tension line
+where they had any.
+
+**How it goes** — not by the run-down after a pass. `021599f4` counts
+`+0x5c` down on its holder's passes as the others, and at 0 starts `+0x7f`
+at 4 (the first three of its statuses, offsets at `0x02182a94`, take the
+first held alone); then **at the start of each of their turns**,
+`func_ov000_0215833c` takes one from `+0x7f` and frees them where
+`0x02182ad4` by it is above the turn-start draw — action 900 ("is no longer
+paralysed", 115) in their turn. The same function wakes a sleeper (bit 4,
+`func_020882f8`, `+0x80`, by `0x02182bd4`, action 901 "wakes up"), which
+the battle already did.
+
+**And a correction**: a lost turn of kind 2 is refused not on a metal body
+but where `mon_data +0x0A` bit 11 is set — `func_ov000_02156068` asks bit
+12 with 1, bit 11 with 2, the family with 0 (`0x021560c0`–`0x02156108`).

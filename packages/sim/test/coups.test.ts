@@ -322,8 +322,8 @@ describe('a lost turn — kind 10 and rider 1', () => {
     expect(once.state.fighters[1]?.states.tension).toBe(0)
   })
 
-  it('does not stun one already under the same kind, nor knock a metal body off its feet', () => {
-    const start = startBattle([hero, { ...foe, metal: true }])
+  it('does not knock one off its feet whose record’s bit 11 says not', () => {
+    const start = startBattle([hero, { ...foe, untrippable: true }])
     const trip = playRound(start, using(withStatus(2), 1), new BattleRng(3n))
     expect(changeOf(trip.events).hits).toEqual([{ target: 1, result: 'resisted' }])
   })
@@ -375,5 +375,63 @@ describe('Knight Watch — kind 73', () => {
     const third = playRound(second.state, defend, rng)
     expect(third.events).toContainEqual({ kind: 'wornOff', actor: 2, stat: 'watched' })
     expect(third.state.fighters[2]?.states.watched).toBeUndefined()
+  })
+})
+
+describe('paralysis — rider 11', () => {
+  const zap = {
+    action: 0x300,
+    handler: 0,
+    reach: 'one' as const,
+    hits: 0,
+    criticalPercent: 0,
+    element: 0,
+    falloff: false,
+    evadable: false,
+    blockable: false,
+    defendable: false,
+    tensed: false,
+    combos: false,
+    after: 0,
+    rider: { slot: 11, chance: { party: 100, foe: 100 }, levels: 0 },
+  }
+
+  it('paralyses on a blow that dealt something: turns lost, its count on their passes, freed at a turn’s start', () => {
+    const start = startBattle([hero, { ...foe, resist: Array.from({ length: 22 }, () => 100) }])
+    const struck = playRound(
+      start,
+      new Map<number, Command>([[0, { kind: 'blow', blow: zap, target: 1 }]]),
+      new BattleRng(3n),
+    )
+    const blow = struck.events.find((e) => e.kind === 'blow')
+    expect(blow?.kind === 'blow' && blow.hits[0]?.rode?.result).toBe('paralysed')
+    // Struck before its turn: that turn is lost, and a pass taken off its 3.
+    expect(struck.events).toContainEqual({ kind: 'stunned', actor: 1, status: 0 })
+    expect(struck.state.fighters[1]?.states.paralysed).toEqual({ level: 1, turns: 2 })
+    // Two more lost turns run the count out; then from its next turn's start
+    // it may be freed — certainly within four.
+    const wait = new Map<number, Command>([[0, { kind: 'defend' }]])
+    const rng = new BattleRng(11n)
+    let state = struck.state
+    let freedAt = -1
+    for (let r = 0; r < 8 && freedAt < 0; r++) {
+      const played = playRound(state, wait, rng)
+      state = played.state
+      if (played.events.some((e) => e.kind === 'freed' && e.actor === 1)) freedAt = r
+    }
+    expect(freedAt).toBeGreaterThanOrEqual(2)
+    expect(freedAt).toBeLessThanOrEqual(6)
+    expect(state.fighters[1]?.states.paralysed).toBeUndefined()
+  })
+
+  it('is refused by a byte of 0, and at the maximum of tension', () => {
+    const immune = { ...foe, resist: Array.from({ length: 22 }, (_, i) => (i === 16 ? 0 : 100)) }
+    const played = playRound(
+      startBattle([hero, immune]),
+      new Map<number, Command>([[0, { kind: 'blow', blow: zap, target: 1 }]]),
+      new BattleRng(3n),
+    )
+    const blow = played.events.find((e) => e.kind === 'blow')
+    expect(blow?.kind === 'blow' && blow.hits[0]?.rode).toBeUndefined()
   })
 })

@@ -52,6 +52,8 @@ describe('how a status runs down — the game’s (`func_ov000_0215858c`, `02159
       fizzled: 6,
       zeroZone: 5,
       tumble: 5,
+      // `func_0208826c`, rider 11's.
+      paralysed: 3,
     })
   })
 

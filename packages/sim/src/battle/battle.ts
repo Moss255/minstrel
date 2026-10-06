@@ -162,6 +162,12 @@ export interface Fighter {
   readonly family?: number
   readonly metal?: boolean
   /**
+   * A monster's `mon_data +0x0A` bit 11, which refuses a lost turn of kind 2
+   * — a fall off its feet (`func_ov000_02156068` asked with 2,
+   * `func_ov024_021e8fa4`).
+   */
+  readonly untrippable?: boolean
+  /**
    * Strength — the character record's, without what is worn — which six skills'
    * amounts scale by; see `SKILL_SCALES`. Nothing when not given.
    */
@@ -385,7 +391,7 @@ export const LEVEL_STATS: readonly LevelStat[] = [
  * `0x02159688`, `0x02159720`). Those it visits that the battle does not keep
  * are left out.
  */
-const RUN_DOWN_ORDER: readonly (Counted & keyof States)[] = [
+const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] = [
   'fizzled',
   'attack',
   'defence',
@@ -608,6 +614,8 @@ export type ChangeResult =
   | 'fizzled'
   /** Freed of paralysis by Tingle. */
   | 'unparalysed'
+  /** Paralysed by rider 11 — `again`, already: "is frozen even further". */
+  | 'paralysed'
   /** 0 Zone set — "can now cast spells without spending any MP". */
   | 'zeroZoned'
   /** Rough 'n' Tumble set. */
@@ -674,7 +682,7 @@ export interface Rider {
 const METAL_SPARED: ReadonlySet<number> = new Set([0x205, 0x82])
 
 /** The riders the battle plays. */
-export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 20])
+export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 11, 20])
 
 /**
  * The lost turns rider 1 knows, by `+0x32` — the table at
@@ -823,6 +831,8 @@ export type BattleEvent =
    * own.
    */
   | { readonly kind: 'stunned'; readonly actor: number; readonly status: number }
+  /** Freed of paralysis at the turn's start — action 900, "is no longer paralysed" (`0x021583f0`). */
+  | { readonly kind: 'freed'; readonly actor: number }
   /**
    * Ready for a coup de grâce, after the action that made them so — the
    * game's action 922 with actmsg 531 (`func_ov000_0215af54`).
@@ -1159,6 +1169,7 @@ const DEFENCE_DOWN_ELEMENT = 19
 /** The blow riders' elements, by slot: 4 poison, 7 sleep, 20 death. */
 const RIDER_ELEMENTS: ReadonlyMap<number, number> = new Map([
   [1, 15],
+  [11, 17],
   [4, 16],
   [7, 10],
   [20, 11],
@@ -1295,7 +1306,7 @@ export function playRound(
       st.sleep !== undefined ||
       st.poisoned ||
       st.envenomed === true ||
-      st.paralysed === true ||
+      st.paralysed !== undefined ||
       fizzled ||
       lowered.length > 0
     if (cured) {
@@ -1303,7 +1314,7 @@ export function playRound(
         sleep: undefined,
         poisoned: false,
         envenomed: false,
-        paralysed: false,
+        paralysed: undefined,
         ...(fizzled ? { fizzled: { level: 0, turns: 0 } } : {}),
         ...Object.fromEntries(lowered.map((stat) => [stat, { level: 0, turns: 0 }])),
       })
@@ -1400,15 +1411,15 @@ export function playRound(
   }
   /**
    * **A lost turn set** — rider 1's ending (`func_ov024_021e2bd0`,
-   * `0x021e2d0c`–`0x021e2e58`): a kind its table knows (2 not on a metal
-   * body, `func_ov024_021e8fa4`); one who may take it (`func_02088418`) —
+   * `0x021e2d0c`–`0x021e2e58`): a kind its table knows (2 not on one whose
+   * `mon_data +0x0A` bit 11 is set, `func_ov024_021e8fa4`); one who may take it (`func_02088418`) —
    * standing, not paralysed, not at the maximum of tension but for the two
    * coups, and not under the same kind already; then set, their tension
    * taken away (`func_02088474`, and `021e8cfc`'s line where they had any).
    */
   const stun = (target: number, status: number, coup: boolean): ChangeHit | undefined => {
     const them = fighters[target] as FighterState
-    if (!STUNS.has(status) || (status === 2 && them.metal)) return undefined
+    if (!STUNS.has(status) || (status === 2 && them.untrippable)) return undefined
     if (!alive(them) || them.states.paralysed) return undefined
     if (them.states.tension === TENSION_MOST && !coup) return undefined
     if (them.states.stunned === status) return undefined
@@ -1440,7 +1451,12 @@ export function playRound(
     // The target's byte for it, which refuses it outright at 0 (`0x021e308c`).
     const element = RIDER_ELEMENTS.get(rider.slot)
     const byte = element === undefined ? 100 : riderByte(target, element)
-    if (byte === 0 && !(rider.slot === 20 && them.metal)) return undefined
+    if (
+      byte === 0 &&
+      !(rider.slot === 20 && them.metal) &&
+      !(rider.slot === 11 && (action === 0x52 || (action === 0x58 && them.metal)))
+    )
+      return undefined
     // Under the action's chance times the byte over a hundred, in floats, or
     // under a hundred on a critical (`0x021e3118`–`0x021e3180`).
     const f = Math.fround
@@ -1454,6 +1470,37 @@ export function playRound(
         const over = STUN_UNSCALED.has(action) ? f(chance) : f(f(chance) * f(f(byte) / f(100)))
         if (!(f(rng.below(100)) < over)) return undefined
         return stun(target, rider.levels, false)
+      }
+      case 11: {
+        // Paralysis (`func_ov024_021e3a34`): one who may take it —
+        // standing, not at the maximum of tension (`func_0208826c`'s test
+        // `0208824c`) — a draw, under the chance times the byte; for 0x52
+        // only on family 9, at a flat 25; for 0x58 on a metal body at a flat
+        // 12.5, its byte passed over (`0x021e3a88`–`0x021e3bf4`). Already
+        // paralysed, it is again, its count set anew.
+        if (action === 0x52 && them.family !== 9) return undefined
+        if (them.states.tension === TENSION_MOST) return undefined
+        const over =
+          action === 0x52
+            ? f(25)
+            : action === 0x58 && them.metal
+              ? f(12.5)
+              : f(f(chance) * f(f(byte) / f(100)))
+        if (!(f(rng.below(100)) < over)) return undefined
+        const again = them.states.paralysed !== undefined
+        const calmed = (them.states.tension ?? 0) > 0
+        setStates(target, {
+          paralysed: { level: 1, turns: LEVEL_COUNTS.paralysed },
+          stunned: undefined,
+          sleep: undefined,
+          tension: 0,
+        })
+        return {
+          target,
+          result: 'paralysed',
+          ...(again ? { again: true } : {}),
+          ...(calmed ? { calmed: true } : {}),
+        }
       }
       case 4: {
         // Envenomation where its levels are above 0 (`0x021e309c`), plain
@@ -2074,7 +2121,7 @@ export function playRound(
     alive(f) &&
     f.states.sleep === undefined &&
     f.states.stunned === undefined &&
-    f.states.paralysed !== true
+    f.states.paralysed === undefined
   /**
    * **Under 0 Zone** — `func_ov024_021eadfc`: the MP is not asked
    * (`func_ov024_021eaa50`, `0x021eabd8`) and not spent (`0x021ebbcc`).
@@ -2129,7 +2176,7 @@ export function playRound(
       if (worn.level !== level) setStates(actor, { [stat]: worn.level })
       if (worn.wore) events.push({ kind: 'wornOff', actor, stat })
     }
-    for (const stat of RUN_DOWN_ORDER) {
+    for (const stat of [...RUN_DOWN_ORDER, 'paralysed'] as const) {
       const level = (fighters[actor] as FighterState).states[stat]
       if (!level) continue
       const next = countDown(level, WEAR_OF[stat].start)
@@ -2185,6 +2232,27 @@ export function playRound(
     // **The turn-start draw**, every fighter's, every turn (`0x0215838c`) —
     // and a sleeper's waking.
     const startDraw = rng.below(100)
+    // **Paralysis at the turn's start** (`func_ov000_0215833c`, before
+    // sleep): its second count, once running, a turn less, and freed where
+    // the table by it is above the turn-start draw — action 900, "is no
+    // longer paralysed", in the turn; otherwise the turn is lost (503).
+    const paralysis = me.states.paralysed
+    if (paralysis !== undefined) {
+      if (paralysis.wearing) {
+        const wearing = paralysis.wearing - 1
+        const freed =
+          (WEAR_OF.paralysed.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
+        setStates(actor, { paralysed: freed ? undefined : { ...paralysis, wearing } })
+        if (freed) {
+          events.push({ kind: 'freed', actor })
+          selfPass(me)
+          continue
+        }
+      }
+      events.push({ kind: 'stunned', actor, status: 0 })
+      selfPass(me)
+      continue
+    }
     // A sleeper's turn goes on sleeping, or on waking — through the resolver either way.
     if (me.states.sleep !== undefined) {
       const woke = wakes(me.states.sleep, startDraw)
@@ -2637,7 +2705,7 @@ export function playRound(
           case 'unparalyse':
             // Tingle: landed on the paralysed (`func_ov024_021da9b0`), freed.
             if (!landed || !was.paralysed) return { target, result: 'resisted' }
-            setStates(target, { paralysed: false })
+            setStates(target, { paralysed: undefined })
             return { target, result: 'unparalysed' }
           case 'relieve': {
             // Wave of Relief (`func_ov024_021df1e8`): the cure-all, no test of
@@ -2706,7 +2774,7 @@ export function playRound(
             // chance of its own (`0x021dc120`–`0x021dc14c`); else, or the
             // rider refused, its fail line. **Ours**: `func_ov024_021e9018`'s
             // other lines for the refused — "isn't affected" on the
-            // paralysed — are not told, nothing here paralysing.
+            // paralysed — are not told.
             if (!landed) return { target, result: 'resisted' }
             return (
               stun(target, change.status, change.coup === true) ?? { target, result: 'resisted' }

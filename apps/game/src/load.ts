@@ -463,6 +463,8 @@ export interface MonsterWords {
   /** Its family and whether its body is metal — see `MonsterName.family`. */
   readonly family: number
   readonly metal: boolean
+  /** `+0x0A` bit 11, a fall off its feet refused — see `MonsterName.untrippable`. */
+  readonly untrippable: boolean
   /** Its level — see `MonsterName.level`. */
   readonly level: number
   /** Its kind, the fixed shots' key — see `MonsterName.kind`. */
@@ -1112,6 +1114,7 @@ function monsterCodesOf(rom: Uint8Array): Map<string, MonsterWords> {
               size: monster.size,
               family: monster.family,
               metal: monster.metal,
+              untrippable: monster.untrippable,
               level: monster.level,
               kind: monster.kind,
             })

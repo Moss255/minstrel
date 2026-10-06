@@ -92,11 +92,16 @@ export interface States {
    */
   readonly fizzled?: Level
   /**
-   * **Paralysed** — status `+0x14` bit 3, which Tingle clears (kind 20,
-   * `func_020882dc`). **Nothing here sets it yet**: what does — rider 11,
-   * INFERRED — is not read.
+   * **Paralysed** — status `+0x14` bit 3, with a count of 3 at `+0x5c`
+   * (`func_0208826c`, rider 11): its holder cannot act
+   * (`func_ov000_02156038`). The count goes a pass less on each of their
+   * action passes, and at 0 its second, at `+0x7f`, starts at 4
+   * (`func_ov000_021599f4`); then at each of their turns' starts that count
+   * less one and the turn-start draw against `0x02182ad4` free them, action
+   * 900 in their action's place (`func_ov000_0215833c`, `0x021583a8`–
+   * `0x02158404`). Tingle frees them (`func_020882dc`).
    */
-  readonly paralysed?: boolean
+  readonly paralysed?: Level | undefined
   /**
    * **0 Zone** — status `+0x18` bit 9, with a count of 5 at `+0x78` (kind 68,
    * `func_ov024_021e1580`; `func_020890d4`): no MP is asked of its holder's
@@ -146,8 +151,8 @@ export const NO_STATES: States = {
  * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
  * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`); Fizzle 6 at
  * `+0x60` (`func_020888a4`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
- * Tumble 5 at `+0x79` (`func_02089124`). Every setter stores its second count
- * 0 beside it.
+ * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
+ * (`func_0208826c`). Every setter stores its second count 0 beside it.
  */
 export const LEVEL_COUNTS = {
   attack: 5,
@@ -160,6 +165,7 @@ export const LEVEL_COUNTS = {
   fizzled: 6,
   zeroZone: 5,
   tumble: 5,
+  paralysed: 3,
 } as const
 
 /** The kinds of count {@link LEVEL_COUNTS} names. */
@@ -194,6 +200,8 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   fizzled: { table: WEAR_TABLE, start: 4 },
   zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
+  // Not run down after a pass but at the turn's start — see `States.paralysed`.
+  paralysed: { table: WEAR_TABLE, start: 4 },
 }
 /** How long sleep holds before its sleeper may wake — the reference's Sweet Breath. */
 export const SLEEP_TURNS = 2
