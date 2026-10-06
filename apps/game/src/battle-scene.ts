@@ -166,6 +166,8 @@ export const ACTION_SAYS = {
   fallsAsleep: 65,
   alreadyAsleep: 67,
   isAsleep: 68,
+  /** "<TARGET>'s tension returns to normal." — `func_ov024_021e8cfc`. */
+  tensionNormal: 0x25c,
   agilityUp: 78,
   agilityDown: 79,
   agilityNormal: 80,
@@ -360,6 +362,20 @@ function changeSays(
     case 'looted':
     case 'experienced':
       return pick(own?.done, ACTION_SAYS.nothingHappens)
+    // Kind 10's own done line — none for Disco Tech; from a blow, rider 1's
+    // by the lost turn's kind: 2 "is knocked clean off its feet" (`0x150`), 5
+    // "is stricken with terror" (`0x5e`), any other none (`0x021e2e0c`).
+    // Knight Watch's handler says nothing of its own (`021e1de8`): its opening alone.
+    case 'watched':
+      return 0
+    case 'stunned':
+      return kind === 'stun'
+        ? pick(own?.done, 0)
+        : hit.status === 2
+          ? 0x150
+          : hit.status === 5
+            ? 0x5e
+            : 0
     // Brownie Boost's lines are each level's — see `boostSays`; the first here.
     case 'boosted': {
       const first = hit.boosts?.[0]
@@ -447,6 +463,10 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `Guaranteed loot from ${whom}!`
     case 'experienced':
       return `The party will earn ${(hit.multiplier ?? 1).toFixed(1)} times more experience than normal for this battle.`
+    case 'stunned':
+      return `${whom} cannot move!`
+    case 'watched':
+      return `${whom} is watched.`
   }
 }
 
@@ -457,8 +477,12 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
  * attack returns to normal" and the like; 0 Zone's `0x1c5` (`0x021596f0`),
  * Rough 'n' Tumble's `0x1da` (`0x02159788`).
  */
-const WORN_OFF: Readonly<Record<LevelStat | 'fizzled' | 'zeroZone' | 'tumble', number>> = {
+const WORN_OFF: Readonly<
+  Record<LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched', number>
+> = {
   fizzled: 0x1d6,
+  // Knight Watch's, `0x164` (`0x021586ac`, `0x0215873c`).
+  watched: 0x164,
   zeroZone: 0x1c5,
   tumble: 0x1da,
   attack: 0x1ce,
@@ -1342,19 +1366,38 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
             ? boostSays(hit).map((line) =>
                 say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
               )
-            : hit.result === 'experienced'
-              ? // Its line names the multiplier as `%.1f`, filled from the
-                // result's `+0x18` (`0x021eba98`).
-                [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
-              : // A line of 0 is none: magical mending's fall says nothing.
-                changeSays(
+            : hit.result === 'stunned'
+              ? [
+                  ...(changeSays(
                     event.change,
                     hit,
                     told,
                     state.fighters[hit.target]?.side === 'party',
-                  ) === 0
-                ? []
-                : [sayHit(hit)],
+                  )
+                    ? [sayHit(hit)]
+                    : []),
+                  // Their tension taken away with it (`func_ov024_021e8cfc`).
+                  ...(hit.calmed
+                    ? [
+                        say(scene, 'actions', ACTION_SAYS.tensionNormal, {
+                          target: scene.names[hit.target],
+                        }),
+                      ]
+                    : []),
+                ]
+              : hit.result === 'experienced'
+                ? // Its line names the multiplier as `%.1f`, filled from the
+                  // result's `+0x18` (`0x021eba98`).
+                  [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
+                : // A line of 0 is none: magical mending's fall says nothing.
+                  changeSays(
+                      event.change,
+                      hit,
+                      told,
+                      state.fighters[hit.target]?.side === 'party',
+                    ) === 0
+                  ? []
+                  : [sayHit(hit)],
       )
       const game = lines(
         ...opens,
@@ -1376,6 +1419,10 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       return (
         say(scene, 'actions', ACTION_SAYS.isAsleep, { actor }) ?? sentence(`${who} is fast asleep.`)
       )
+    case 'stunned':
+      // **Ours**: action 503, put in the lost turn's place, has no line, and
+      // what the game shows for the turn is not read.
+      return sentence(`${who} cannot move!`)
     case 'woke':
       return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
     case 'primed':
@@ -1992,11 +2039,15 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   // (`021ddf5c`), 0 Zone (`021e1580`), Itemised Kill (`021e16a4`), Rough 'n'
   // Tumble (`021e1824`), Voice of Experience (`021e1cbc`), Brownie Boost
   // (`021e1ed4`).
+  // Kind 10 (`021dc0b8`): War Cry, Pratfall, Trip of a Deathtime, and the
+  // coups Roaring Tirade and Disco Tech — a lost turn by rider 1.
+  [10, 'stun'],
   [26, 'replenish'],
   [68, 'zeroZone'],
   [69, 'loot'],
   [70, 'tumble'],
   [72, 'experience'],
+  [73, 'watch'],
   [74, 'boost'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
@@ -2032,17 +2083,26 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     : kind === 'restore'
       ? // Choir of Angels: 0.4 of the most HP, rounded half up, at least 75 (`0x021e1418`–`0x021e1440`).
         { kind, chance: 100, share: 0.4, least: 75 }
-      : kind === 'revive'
-        ? {
+      : kind === 'stun'
+        ? // The lost turn's kind is the record's `+0x32`; the two coups
+          // (`0x1fc`, `0x20f`) land at the maximum of tension (`func_02088418`).
+          {
             kind,
             chance: 100,
-            share: ZING.has(action.action)
-              ? (r.scaleRange ?? { lo: 0, hi: 0 })
-              : action.action === KAZING
-                ? 0.5
-                : 1,
+            status: r.riderLevels ?? 0,
+            ...(action.action === 0x1fc || action.action === 0x20f ? { coup: true } : {}),
           }
-        : ({ kind, chance: 100 } as Change)
+        : kind === 'revive'
+          ? {
+              kind,
+              chance: 100,
+              share: ZING.has(action.action)
+                ? (r.scaleRange ?? { lo: 0, hi: 0 })
+                : action.action === KAZING
+                  ? 0.5
+                  : 1,
+            }
+          : ({ kind, chance: 100 } as Change)
   const range = r.accuracyRange
   return {
     action: action.action,

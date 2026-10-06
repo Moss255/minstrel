@@ -223,7 +223,13 @@ describe('Itemised Kill — kind 69', () => {
   })
 
   it('fails on a kind whose ordinary drop is of step 7, which never drops', () => {
-    const none = { ...foe, drops: [{ item: 0, step: 7 }, foe.drops?.[1]] as Fighter['drops'] }
+    const none: Fighter = {
+      ...foe,
+      drops: [
+        { item: 0, step: 7 },
+        { item: 11, step: 6 },
+      ],
+    }
     const { events } = playRound(
       startBattle([hero, none]),
       using(coup(509, 'loot', { side: 'other' }), 1),
@@ -283,5 +289,91 @@ describe('Voice of Experience — kind 72', () => {
     const m = state.expMultiplier as number
     expect(spoils(won).exp).toBe(Math.trunc(Math.fround(Math.fround(7) * m)))
     expect(spoils(won).gold).toBe(3)
+  })
+})
+
+describe('a lost turn — kind 10 and rider 1', () => {
+  const tirade = coup(508, 'stun', { side: 'other', reach: 'all' })
+  const withStatus = (n: number) =>
+    ({
+      ...tirade,
+      change: { kind: 'stun', chance: 100, status: n, coup: true },
+    }) as Changing
+
+  it('stuns every monster with Roaring Tirade, taking their tension, so each loses its next turn', () => {
+    const start = startBattle([hero, foe, foe])
+    const psyched = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1 ? { ...f, states: { ...f.states, tension: 4 } } : f,
+      ),
+    }
+    const once = playRound(psyched, using(withStatus(5), 1), new BattleRng(3n))
+    expect(changeOf(once.events).hits).toEqual([
+      { target: 1, result: 'stunned', status: 5, calmed: true },
+      { target: 2, result: 'stunned', status: 5 },
+    ])
+    // The Hero is faster: the slimes' turns this round are the ones lost.
+    const lost = once.events.filter((e) => e.kind === 'stunned').map((e) => e.actor)
+    expect(lost).toEqual([1, 2])
+    expect(once.events.some((e) => e.kind === 'attack' && e.actor > 0)).toBe(false)
+    // Cleared at the run-down after the lost turn: the next round they act.
+    expect(once.state.fighters[1]?.states.stunned).toBeUndefined()
+    expect(once.state.fighters[1]?.states.tension).toBe(0)
+  })
+
+  it('does not stun one already under the same kind, nor knock a metal body off its feet', () => {
+    const start = startBattle([hero, { ...foe, metal: true }])
+    const trip = playRound(start, using(withStatus(2), 1), new BattleRng(3n))
+    expect(changeOf(trip.events).hits).toEqual([{ target: 1, result: 'resisted' }])
+  })
+
+  it('refuses a monster at the maximum of tension, but for the two coups', () => {
+    const start = startBattle([hero, foe])
+    const psyched = {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1 ? { ...f, states: { ...f.states, tension: 4 } } : f,
+      ),
+    }
+    const cry = { ...withStatus(5), action: 160, change: { kind: 'stun', chance: 100, status: 5 } }
+    const played = playRound(psyched, using(cry as Changing, 1), new BattleRng(3n))
+    expect(changeOf(played.events).hits).toEqual([{ target: 1, result: 'resisted' }])
+  })
+})
+
+describe('Knight Watch — kind 73', () => {
+  it('draws each monster’s count between its two bytes, and turns its later picks on the Paladin', () => {
+    const paladin = { ...hero, name: 'Paladin', agility: 255 }
+    const other = { ...hero, name: 'Ivor', agility: 1 }
+    const brute = { ...foe, attack: 5, watchTurns: [3, 3] as const }
+    const watch = coup(513, 'watch', { side: 'other', reach: 'all' })
+    const defend = new Map<number, Command>([
+      [0, { kind: 'defend' }],
+      [1, { kind: 'defend' }],
+    ])
+    const rng = new BattleRng(9n)
+    const first = playRound(
+      startBattle([paladin, other, brute]),
+      new Map<number, Command>([
+        [0, { kind: 'change', changing: watch, target: 2 }],
+        [1, { kind: 'defend' }],
+      ]),
+      rng,
+    )
+    expect(changeOf(first.events).hits).toEqual([{ target: 2, result: 'watched' }])
+    // A count of 3, one taken by its own pass this round. Its target this
+    // round was chosen as the round began, before the watch.
+    expect(first.state.fighters[2]?.states.watched).toEqual({ by: 0, turns: 2 })
+    // Next round its pick is the Paladin's, with no draw.
+    const second = playRound(first.state, defend, rng)
+    const attacks = second.events.filter((e) => e.kind === 'attack' && e.actor === 2)
+    expect(attacks.length).toBeGreaterThan(0)
+    expect(attacks.every((e) => e.kind === 'attack' && e.target === 0)).toBe(true)
+    expect(second.state.fighters[2]?.states.watched).toEqual({ by: 0, turns: 1 })
+    // The pass after runs the count out, and it is told.
+    const third = playRound(second.state, defend, rng)
+    expect(third.events).toContainEqual({ kind: 'wornOff', actor: 2, stat: 'watched' })
+    expect(third.state.fighters[2]?.states.watched).toBeUndefined()
   })
 })

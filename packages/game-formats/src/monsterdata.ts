@@ -27,6 +27,7 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | `+0x64` | `u16` | agility |
  * | `+0x6C` | `u8` ×22 | **resistances**, a hundredth each, one an element — from the game's code |
  * | `+0x24` | `u32` | two statuses a blow of its can carry and a chance for each — bits 0–6 and 7–13, then 14–20 and 21–27; the chances are 0, 25, 50, 75 or 100. Read by `0x021eb124` |
+ * | `+0x28` | `u8` ×2 | the least and most passes Knight Watch holds it — see {@link MonsterBattle.watchTurns} |
  * | `+0x82` | `u8` ×2 | copied along with them, not established; 0 on every monster looked at |
  *
  * **The five numbers from `+0x5C` and the resistances are no longer only
@@ -138,6 +139,14 @@ export interface MonsterBattle {
    * game.
    */
   readonly bossAi: boolean
+  /**
+   * **How long Knight Watch holds it**, the least and the most of its own
+   * passes — the bytes at `+0x28` and `+0x29`, which the Paladin's coup draws
+   * between (`func_ov024_021e1de8`, `0x021e1e34`–`0x021e1e40`, by
+   * `NextRandomBetween`, the record being the combatant's `+0x148`). A draw
+   * of 0 leaves it unwatched.
+   */
+  readonly watchTurns: readonly [number, number]
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -249,6 +258,7 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
       agility: u16(0x64),
       resistances: [...bytes.subarray(at + 0x6c, at + 0x6c + 22)],
       bossAi: ((bytes[at + 0x27] as number) & 0x10) !== 0,
+      watchTurns: [bytes[at + 0x28] as number, bytes[at + 0x29] as number],
       raw: bytes.subarray(at, at + BATTLE_RECORD),
     })
   }

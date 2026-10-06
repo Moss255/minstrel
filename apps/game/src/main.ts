@@ -9368,6 +9368,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       extraRule: numbers.extraRule,
       oncePerGroup: numbers.oncePerGroup,
       remembers: numbers.remembers,
+      // How long Knight Watch holds it — `mon_btldata +0x28`, `+0x29`.
+      watchTurns: numbers.watchTurns,
     })
     looks.push(monsterLookOf(cartridge, code))
   }

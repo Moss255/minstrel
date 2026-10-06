@@ -111,6 +111,25 @@ export interface States {
    * level of 1.
    */
   readonly tumble?: Level
+  /**
+   * **A lost turn coming** — status `+0x14` bit 19, its kind at `+0x22` bits
+   * 2–5 (`func_02088474`): 2 knocked off their feet, 3 Pratfall's, 4 a
+   * dance's, 5 terror. Set by rider 1 (`func_ov024_021e2bd0`) and kind 10's
+   * handler (`021dc0b8`); its holder cannot act (`func_ov000_02155f9c`), so
+   * their next turn is lost, and the run-down after it clears it
+   * (`func_ov000_0215767c` sets `+0x3b` bit 1, `0215858c` reads it at
+   * `0x021585d4`).
+   */
+  readonly stunned?: number | undefined
+  /**
+   * **Watched** by a Paladin's Knight Watch — status `+0x18` bit 12, the
+   * watcher at `+0x2e` and a count at `+0x7e` (`func_02088e48`): a monster's
+   * weighted pick takes the watcher, with no draw, while they stand
+   * (`func_ov000_02154f30`, `0x02154f9c`–`0x02154fb8`). Its count runs down
+   * on its own passes and it goes as the count runs out, or at once when the
+   * watcher is down (`func_ov000_0215858c`, `0x0215861c`–`0x02158760`).
+   */
+  readonly watched?: { readonly by: number; readonly turns: number } | undefined
 }
 
 export const NO_STATES: States = {

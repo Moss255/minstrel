@@ -241,6 +241,12 @@ export interface Fighter {
    * wear. None for a monster or a guest, for whom no draw is made.
    */
   readonly coup?: { readonly level: number; readonly bonus: number }
+  /**
+   * A monster's least and most passes under Knight Watch — its record's
+   * `+0x28` and `+0x29` (see game-formats' `MonsterBattle.watchTurns`). None
+   * for the party, which it does not reach.
+   */
+  readonly watchTurns?: readonly [number, number]
 }
 
 export interface FighterState extends Fighter {
@@ -458,6 +464,26 @@ export type Change =
    * the resolver's, before the handler (`0x021eba20`).
    */
   | { readonly kind: 'experience'; readonly chance: number }
+  /**
+   * **Kind 10** (`func_ov024_021dc0b8`) — Roaring Tirade, Disco Tech, War
+   * Cry, Pratfall, Trip of a Deathtime: landed, its rider 1 with no chance of
+   * its own, a lost turn of the kind its record's `+0x32` names — see
+   * {@link States.stunned}. `coup`: the two coups (`0x1fc`, `0x20f`), which
+   * land at the maximum of tension and take it away.
+   */
+  | {
+      readonly kind: 'stun'
+      readonly chance: number
+      readonly status: number
+      readonly coup?: boolean
+    }
+  /**
+   * **Knight Watch**, the Paladin's coup (kind 73, `func_ov024_021e1de8`): on
+   * each monster that may take it, with no test of its landing, watched by
+   * the Paladin for a count drawn between its record's two bytes — see
+   * `States.watched`.
+   */
+  | { readonly kind: 'watch'; readonly chance: number }
   | {
       readonly kind: 'revive'
       readonly chance: number
@@ -594,6 +620,10 @@ export type ChangeResult =
   | 'looted'
   /** Voice of Experience: the multiplier, {@link ChangeHit.multiplier}. */
   | 'experienced'
+  /** A lost turn coming, of the kind {@link ChangeHit.status} — see `States.stunned`. */
+  | 'stunned'
+  /** Watched by Knight Watch — see `States.watched`. */
+  | 'watched'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -615,6 +645,10 @@ export interface ChangeHit {
   readonly boosts?: readonly { readonly stat: LevelStat; readonly level: number }[]
   /** Voice of Experience's multiplier, to a tenth. */
   readonly multiplier?: number
+  /** The kind of lost turn coming, 2 to 8 — see `States.stunned`. */
+  readonly status?: number
+  /** Their tension taken away with it — "…'s tension returns to normal" (`0x25c`). */
+  readonly calmed?: boolean
   /**
    * For a level left where it was (`already`): whether the change would have
    * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
@@ -640,7 +674,15 @@ export interface Rider {
 const METAL_SPARED: ReadonlySet<number> = new Set([0x205, 0x82])
 
 /** The riders the battle plays. */
-export const RIDERS_PLAYED: ReadonlySet<number> = new Set([2, 4, 7, 8, 20])
+export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 20])
+
+/**
+ * The lost turns rider 1 knows, by `+0x32` — the table at
+ * `data_ov024_021fe820` (`func_ov024_021e8fa4`): 2 to 8. Any other, nothing.
+ */
+const STUNS: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7, 8])
+/** The two that pass the target's byte over (`0x021e2cb8`–`0x021e2cc8`): 0x239 and Roaring Tirade. */
+const STUN_UNSCALED: ReadonlySet<number> = new Set([0x239, 0x1fc])
 
 /**
  * One of a foe's ways of acting — the game gives each monster six: attack
@@ -776,6 +818,12 @@ export type BattleEvent =
   /** A sleeper's turn, slept through. */
   | { readonly kind: 'asleep'; readonly actor: number }
   /**
+   * A turn lost to {@link States.stunned} — action 503 in its place
+   * (`func_ov000_0215767c`, `0x02157ac0`), nameless and with no line of its
+   * own.
+   */
+  | { readonly kind: 'stunned'; readonly actor: number; readonly status: number }
+  /**
    * Ready for a coup de grâce, after the action that made them so — the
    * game's action 922 with actmsg 531 (`func_ov000_0215af54`).
    */
@@ -788,7 +836,7 @@ export type BattleEvent =
   | {
       readonly kind: 'wornOff'
       readonly actor: number
-      readonly stat: LevelStat | 'fizzled' | 'zeroZone' | 'tumble'
+      readonly stat: LevelStat | 'fizzled' | 'zeroZone' | 'tumble' | 'watched'
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -1110,6 +1158,7 @@ const ATTACK_DOWN_ELEMENT = 18
 const DEFENCE_DOWN_ELEMENT = 19
 /** The blow riders' elements, by slot: 4 poison, 7 sleep, 20 death. */
 const RIDER_ELEMENTS: ReadonlyMap<number, number> = new Map([
+  [1, 15],
   [4, 16],
   [7, 10],
   [20, 11],
@@ -1350,6 +1399,24 @@ export function playRound(
     if (hit) out.push(hit)
   }
   /**
+   * **A lost turn set** — rider 1's ending (`func_ov024_021e2bd0`,
+   * `0x021e2d0c`–`0x021e2e58`): a kind its table knows (2 not on a metal
+   * body, `func_ov024_021e8fa4`); one who may take it (`func_02088418`) —
+   * standing, not paralysed, not at the maximum of tension but for the two
+   * coups, and not under the same kind already; then set, their tension
+   * taken away (`func_02088474`, and `021e8cfc`'s line where they had any).
+   */
+  const stun = (target: number, status: number, coup: boolean): ChangeHit | undefined => {
+    const them = fighters[target] as FighterState
+    if (!STUNS.has(status) || (status === 2 && them.metal)) return undefined
+    if (!alive(them) || them.states.paralysed) return undefined
+    if (them.states.tension === TENSION_MOST && !coup) return undefined
+    if (them.states.stunned === status) return undefined
+    const calmed = (them.states.tension ?? 0) > 0
+    setStates(target, { stunned: status, tension: 0 })
+    return { target, result: 'stunned', status, ...(calmed ? { calmed: true } : {}) }
+  }
+  /**
    * **A rider on a blow's pass that dealt something** (`func_ov024_021e4b14`
    * from the kind-1 handler). Poison (`021e303c`), sleep (`021e33a4`) and
    * death (`021e4604`) make their draw only for one who can take them, and
@@ -1363,6 +1430,7 @@ export function playRound(
     rider: Rider,
     critical: boolean,
     pending: { asleep: number[]; felled: number[] },
+    action = 0,
   ): ChangeHit | undefined => {
     const them = fighters[target] as FighterState
     if (rider.slot === 2 || rider.slot === 8) {
@@ -1378,6 +1446,15 @@ export function playRound(
     const f = Math.fround
     const lands = () => f(rng.below(100)) < (critical ? f(100) : f(f(chance) * f(f(byte) / f(100))))
     switch (rider.slot) {
+      case 1: {
+        // A lost turn (`func_ov024_021e2bd0`, `0x021e2c18`–`0x021e2d08`): the
+        // draw first, under the action's chance times the byte — the byte
+        // passed over for 0x239 and Roaring Tirade — and no critical's
+        // hundred.
+        const over = STUN_UNSCALED.has(action) ? f(chance) : f(f(chance) * f(f(byte) / f(100)))
+        if (!(f(rng.below(100)) < over)) return undefined
+        return stun(target, rider.levels, false)
+      }
       case 4: {
         // Envenomation where its levels are above 0 (`0x021e309c`), plain
         // poison otherwise; neither at the maximum of tension
@@ -1589,6 +1666,10 @@ export function playRound(
   const weighted = (actor: number, list: readonly number[]): number | undefined => {
     if (list.length === 0) return undefined
     const me = fighters[actor] as FighterState
+    // Watched: the watcher, standing, with no draw (`0x02154f9c`–`0x02154fb8`).
+    const watch = me.states.watched
+    const watcher = watch ? fighters[watch.by] : undefined
+    if (watch && watcher && alive(watcher)) return watch.by
     const by = me.remembers ? (me.aimedBy ?? []) : []
     const weights = list.map(
       (i) => (fighters[i]?.backLine ? 1 : 2) + (by[0] === i ? 2 : 0) + (by[1] === i ? 1 : 0),
@@ -1989,7 +2070,11 @@ export function playRound(
     if (physicalDamage(rng, attackOf(me), defenceOf(me)) <= 0) rng.below(2)
   }
   /** Whether a fighter can act — and so dodge or block: standing and not asleep (`func_ov000_02155f9c`). */
-  const canAct = (f: FighterState) => alive(f) && f.states.sleep === undefined
+  const canAct = (f: FighterState) =>
+    alive(f) &&
+    f.states.sleep === undefined &&
+    f.states.stunned === undefined &&
+    f.states.paralysed !== true
   /**
    * **Under 0 Zone** — `func_ov024_021eadfc`: the MP is not asked
    * (`func_ov024_021eaa50`, `0x021eabd8`) and not spent (`0x021ebbcc`).
@@ -2015,10 +2100,28 @@ export function playRound(
    * Undefined when nobody acted since the last.
    */
   let afterDue: number | undefined
+  /** The one whose turn was lost to `States.stunned`, cleared at the run-down after it. */
+  let lostTurn: number | undefined
   const afterPass = (actor: number) => {
     rng.below(100)
+    // `+0x3b` bit 1: the lost turn's status cleared (`func_020884f8`, `0x021585e8`).
+    if (lostTurn === actor) setStates(actor, { stunned: undefined })
+    lostTurn = undefined
     const f = fighters[actor]
     if (!f || !alive(f)) return
+    // Knight Watch's own (`0x0215861c`–`0x02158760`): its count a pass less;
+    // gone when the watcher is down, or as the count runs out — its second
+    // count starts at 1 and is looked up against 1.0 on the same pass, the
+    // first draw's, so it goes then whatever was drawn.
+    const watched = f.states.watched
+    if (watched) {
+      const turns = watched.turns - 1
+      const watcher = fighters[watched.by]
+      if (turns <= 0 || !watcher || !alive(watcher)) {
+        setStates(actor, { watched: undefined })
+        events.push({ kind: 'wornOff', actor, stat: 'watched' })
+      } else setStates(actor, { watched: { by: watched.by, turns } })
+    }
     for (const stat of RUN_DOWN_ORDER) {
       const level = (fighters[actor] as FighterState).states[stat]
       if (!level) continue
@@ -2087,6 +2190,15 @@ export function playRound(
       const woke = wakes(me.states.sleep, startDraw)
       setStates(actor, { sleep: woke ? undefined : me.states.sleep + 1 })
       events.push({ kind: woke ? 'woke' : 'asleep', actor })
+      selfPass(me)
+      continue
+    }
+    // **A lost turn** (`func_ov000_0215767c`, `0x02157b60`–`0x02157bb0`): one
+    // who cannot act has action 503 in their action's place, and one under
+    // `States.stunned` is marked to be cleared after it.
+    if (me.states.stunned !== undefined) {
+      events.push({ kind: 'stunned', actor, status: me.states.stunned })
+      lostTurn = actor
       selfPass(me)
       continue
     }
@@ -2589,6 +2701,29 @@ export function playRound(
             sureLoot = [...sureLoot, kind]
             return { target, result: 'looted' }
           }
+          case 'stun': {
+            // Kind 10 (`func_ov024_021dc0b8`): landed, its rider with no
+            // chance of its own (`0x021dc120`–`0x021dc14c`); else, or the
+            // rider refused, its fail line. **Ours**: `func_ov024_021e9018`'s
+            // other lines for the refused — "isn't affected" on the
+            // paralysed — are not told, nothing here paralysing.
+            if (!landed) return { target, result: 'resisted' }
+            return (
+              stun(target, change.status, change.coup === true) ?? { target, result: 'resisted' }
+            )
+          }
+          case 'watch': {
+            // Knight Watch (`0x021e1e14`–`0x021e1e78`): no test of its
+            // landing; one who may take it (`func_02088e04` — standing, awake,
+            // not under a lost turn or paralysed) is watched for a count drawn
+            // between its record's two bytes, if that is above 0.
+            if (them.side !== 'foes' || !canAct(them)) return { target, result: 'resisted' }
+            const [least, most] = them.watchTurns ?? [0, 0]
+            const turns = least + rng.below(most - least + 1)
+            if (turns <= 0) return { target, result: 'resisted' }
+            setStates(target, { watched: { by: actor, turns } })
+            return { target, result: 'watched' }
+          }
           case 'experience': {
             // Voice of Experience's handler (`0x021e1cfc`–`0x021e1d84`): the
             // done line where a group in the battle gives experience, else
@@ -2798,7 +2933,7 @@ export function playRound(
         // What rides on it, on a pass that dealt something (kind 1's handler).
         const rode =
           blow.rider && damage > 0 && RIDERS_PLAYED.has(blow.rider.slot)
-            ? rideBlow(me, target, blow.rider, critical, pending)
+            ? rideBlow(me, target, blow.rider, critical, pending, blow.action)
             : undefined
         hits.push({
           target,

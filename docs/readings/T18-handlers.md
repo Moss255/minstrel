@@ -255,12 +255,11 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (44 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42), by the kind whose handler is unread:
+**Still struck as the Attack** (41 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
 | 0 | `func_ov024_021da670` | Counter Wait, Defending Champion, Back Atcha, Whipping Boy, Selflessness, Forbearance |
-| 10 | `func_ov024_021dc0b8` | Trip of a Deathtime, War Cry, Pratfall |
 | 13 | `func_ov024_021dc540` | M-Pathy |
 | 14 | `func_ov024_021dc700` | H-Pathy |
 | 19 | `func_ov024_021dd534` | Flower Power, Scandal Eyes |
@@ -313,19 +312,14 @@ Throw — its extra pass's target is picked by place on the stage (§8).
 ~~Propeller Blade, Gold Rush, the six that scale by the table at
 `0x021fe8b6`~~ — read and built 6 October 2026, §8.
 
-**Riders not played** (`data_ov024_021ff450`): 1 `021e2bd0` (the dances' and
-War Cry's — a turn lost, INFERRED), 5 and 6 (the antidotes') `021e324c`,
+**Riders not played** (`data_ov024_021ff450`): ~~1~~ (built, §10), 5 and 6 (the antidotes') `021e324c`,
 `021e32f4`, 9 `021e373c` (Soothe Sayer), 10 `021e386c` (confusion,
 INFERRED), 11 `021e3a34` (paralysis, INFERRED), 12 `021e3cec` (Rake 'n'
 Break), 13 `021e3d88` (Conjury Conductor), 14 `021e3f14` (Morale Masher),
 19 `021e4588` (Sobering Slap), 21 `021e47f4` (Caster Sugar). Their blows
 land and deal; the rider is dropped.
 
-**Coups not built** — each says its opening and does nothing: Roaring
-Tirade and Disco Tech (kind 10, `021dc0b8`), Spelly Breath (kind 26,
-`021ddf5c`, damage handler 48), 0 Zone (68, `021e1580`), Itemised Kill (69,
-`021e16a4`), Rough 'n' Tumble (70, `021e1824`), Voice of Experience (72,
-`021e1cbc`), Knight Watch (73, `021e1de8`), Brownie Boost (74, `021e1ed4`).
+**Coups** — all eight built since (§10).
 
 **Ours in what was built**: ~~nobody's susceptibility bytes~~ — they are
 the resistances, used since §8; attack's turns run down as defence's
@@ -644,3 +638,53 @@ drawn between the monster's `+0x148 → +0x28` and `+0x29`
 (`func_02088e48`), and its actor at `+0x2e`; it runs down by the actor
 standing and its own count (`0215858c`, `0x0215861c`–`0x02158760`, line
 `0x164`). What bit 12 does to a monster is not read.
+
+### The lost turn — kind 10 and rider 1, built; and Knight Watch, built
+
+**Status `+0x14` bit 19** is a turn lost: `func_ov000_02155f9c`, the test
+of whether one can act, counts it (`0x02155ffc`) beside paralysis (bit 3,
+`func_ov000_02156038`) and bit 4 (`func_020882f8`); so its holder cannot
+dodge, block or choose, and on its turn `func_ov000_0215767c` puts action
+503 — nameless, no line — in its action's place (`0x02157ac0`) and sets
+`+0x3b` bit 1 (`0x02157b98`–`0x02157bb0`), which the run-down after that
+turn reads first, clearing the status (`func_020884f8`, `0x021585d4`–
+`0x021585f8`). One turn lost, whenever its holder's next one is.
+
+**Rider 1** (`021e2bd0`): from a blow that dealt something, with the
+target's byte `+0x4c` (element 15) not 0, a draw below 100, as a float,
+under the action's chance times the byte over 100 — the byte passed over
+for `0x239` and Roaring Tirade (`0x021e2cb8`–`0x021e2cc8`), and no
+critical's hundred; from kind 10 none of that (`0x021e2c10`). Then the
+record's `+0x32` names the lost turn's kind: the table at
+`data_ov024_021fe820` knows 2 to 8, and 2 is refused on a metal body
+(`func_ov024_021e8fa4`); one may take it (`func_02088418`) who stands, is
+not paralysed, is not at the maximum of tension — but for the two coups
+`0x1fc` and `0x20f` — and is not under the same kind; then it is set
+(`func_02088474`: bit 19, the kind at `+0x22` bits 2–5, tension taken away,
+said with `0x25c` where they had any, `func_ov024_021e8cfc`). From a blow,
+kind 2 says `0x150` "knocked clean off", 5 `0x5e` "stricken with terror"
+(`0x021e2e0c`). The kinds on the cartridge: 2 Trip of a Deathtime, 3
+Pratfall, 4 the dances and Disco Tech, 5 War Cry, Roaring Tirade and Heart
+Breaker.
+
+**Kind 10** (`021dc0b8`): landed, its rider with `+0x32`; the rider landed,
+its done line (Disco Tech's none, `0x021dc210`); else
+`func_ov024_021e9018`'s line, or its fail line. **Not built**: 021e9018's
+lines for the paralysed; Pratfall's extra call (`0x021dc194`,
+`func_ov000_0215a8d4` with 5, a count kept for something not read); and
+what the game shows on the lost turn — **ours**: "cannot move!".
+
+**Knight Watch** (kind 73, `021e1de8`): on each monster that may take it
+(`func_02088e04`: standing, not bits 3, 4, 5 or 19), with no test of its
+landing, a count `NextRandomBetween(record + 0x28, record + 0x29)` — the
+combatant's `+0x148`, its `mon_btldata` record; above 0, `+0x18` bit 12
+with the count at `+0x7e` (`func_02088e48`) and the Paladin at `+0x2e`.
+**What it does**: the monster's weighted pick (`func_ov000_02154f30`,
+`0x02154f9c`–`0x02154fb8`) hands back the watcher, with no draw, while they
+stand; a pick made before the watch, as the round began, stands. **How it
+goes**: the run-down (`0x0215861c`–`0x02158760`) takes a pass off its count
+and at 0 starts its second at 1, looked up at once against 1.0 and the
+pass's first draw — so it goes on the pass the count runs out; at once if
+the watcher is down or gone (`func_ov000_02153c0c`). Line `0x164`.
+
+Struck as the Attack: **41** (44 before kind 10).

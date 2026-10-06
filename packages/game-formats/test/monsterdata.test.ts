@@ -19,6 +19,9 @@ function battle(monsters: { number: number; hp: number; exp: number; gold: numbe
     for (let i = 0; i < 6; i++) view.setUint16(at + 0x18 + i * 2, i + 1, true)
     // Bits 5–7 of the word at +0x10: how it chooses among its six ways.
     view.setUint32(at + 0x10, 4 << 5, true)
+    // Knight Watch's least and most passes.
+    out[at + 0x28] = 2
+    out[at + 0x29] = 4
     view.setUint16(at + 0x5c, m.hp, true)
     view.setUint16(at + 0x5e, 2, true)
     view.setUint16(at + 0x60, 10, true)
@@ -94,6 +97,7 @@ describe('monster data', () => {
       attack: 10,
       defence: 7,
       agility: 6,
+      watchTurns: [2, 4],
     })
     expect(slime?.raw).toHaveLength(132)
     expect(big?.number).toBe(900)
