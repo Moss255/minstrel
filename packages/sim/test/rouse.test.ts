@@ -237,3 +237,33 @@ describe('Soothe Sayer — kind 53 and its rider 9', () => {
     expect(hitOf(play({}).events)).toMatchObject({ target: 1, result: 'resisted' })
   })
 })
+
+describe('Morale Masher — rider 14', () => {
+  const masher = blow({
+    action: 0xa6,
+    rider: { slot: 14, chance: { party: 0, foe: 0 }, levels: 0 },
+  })
+  it('ends a watch, then takes a step of tension off, with no draw, on a pass that dealt something', () => {
+    const start = holding(startBattle([hero(), slime()]), 1, {
+      watched: { by: 0, turns: 3 },
+      tension: 2,
+      // Paralysed, so that it spends none of what is left on a blow of its own.
+      paralysed: { level: 1, turns: 3 },
+    })
+    const rng = new BattleRng(seedOf(6))
+    const { events, state } = playRound(
+      start,
+      new Map([[0, { kind: 'blow', blow: masher, target: 1 }]]),
+      rng,
+    )
+    const told = events.find((e) => e.kind === 'blow')
+    expect(told?.kind === 'blow' && told.hits[0]?.rode).toEqual({
+      target: 1,
+      result: 'mashed',
+      tension: 1,
+      calmed: true,
+    })
+    expect(state.fighters[1]?.states.watched).toBeUndefined()
+    expect(state.fighters[1]?.states.tension).toBe(1)
+  })
+})

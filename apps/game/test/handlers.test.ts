@@ -215,6 +215,10 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(171))?.rider).toEqual({ slot: 19, levels: 0 })
     })
 
+    it('rides Morale Masher’s rider 14 on its blow', () => {
+      expect(blowOf(action(149))?.rider?.slot).toBe(14)
+    })
+
     it('plays Eye for Trouble as a monster marked', () => {
       expect(partyChangeOf(action(166))).toMatchObject({ change: { kind: 'note' }, side: 'other' })
     })

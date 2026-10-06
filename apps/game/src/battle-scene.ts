@@ -426,8 +426,9 @@ function changeSays(
     // the resolver says one for all after — see the page's `dispelled`.
     case 'dispelled':
       return 0
-    // Soothe Sayer's: its lines are `sootheSays`'s.
+    // Soothe Sayer's and Morale Masher's: their lines are `sootheSays`'s.
     case 'soothed':
+    case 'mashed':
       return 0
     // Half-Inch's (`0x021dfda8`–`0x021dfe08`): pinched, the record's done
     // line; nothing to steal, `0x25a`.
@@ -626,6 +627,7 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `Every last detail of ${whom} is committed to the defeated monster list.`
     case 'empty':
       return `But ${whom} isn't carrying anything.`
+    case 'mashed':
     case 'soothed':
       return [
         ...(hit.tension === undefined ? [] : [`${whom}'s tension decreases.`]),
@@ -1460,6 +1462,12 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                 values: { val_1: hit.damage },
               })
             : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target }),
+          // Morale Masher's: the rage, then the tension (`func_ov024_021e3f14`).
+          ...(hit.rode?.result === 'mashed'
+            ? sootheSays(hit.rode)
+                .reverse()
+                .map((line) => say(scene, 'actions', line, { actor, target }))
+            : []),
           // What rode on it — its line by what it came to (`func_ov024_021e939c`
           // and the level riders' `021e94c4`).
           ...(hit.rode &&
@@ -1479,7 +1487,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
               ]
             : []),
           // A lost turn or paralysis takes tension away (`func_ov024_021e8cfc`).
-          ...(hit.rode?.calmed
+          ...(hit.rode?.calmed && hit.rode.result !== 'mashed'
             ? [say(scene, 'actions', ACTION_SAYS.tensionNormal, { target })]
             : []),
         ]

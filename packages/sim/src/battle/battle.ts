@@ -858,6 +858,12 @@ export type ChangeResult =
    * — `calmed` — a watch ended; or, neither, `resisted`.
    */
   | 'soothed'
+  /**
+   * Morale Masher's rider 14: a watch ended (`calmed`), then a step of
+   * tension taken, to {@link ChangeHit.tension} — Soothe Sayer's two, the
+   * other way about.
+   */
+  | 'mashed'
   /** Half-Inch: {@link ChangeHit.item} pinched — the record's done line. */
   | 'stole'
   /** Half-Inch on one with nothing to steal: "But … isn't carrying anything." (`0x25a`). */
@@ -922,7 +928,7 @@ export interface Rider {
 const METAL_SPARED: ReadonlySet<number> = new Set([0x205, 0x82])
 
 /** The riders the battle plays. */
-export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 10, 11, 19, 20])
+export const RIDERS_PLAYED: ReadonlySet<number> = new Set([1, 2, 4, 7, 8, 10, 11, 14, 19, 20])
 
 /**
  * The lost turns rider 1 knows, by `+0x32` — the table at
@@ -1997,6 +2003,25 @@ export function playRound(
         setStates(target, { confused: { level: 1, turns: LEVEL_COUNTS.confused } })
         unstance(target)
         return { target, result: 'confused', ...(again ? { again: true } : {}) }
+      }
+      case 14: {
+        // Morale Masher (`func_ov024_021e3f14`), on a pass that dealt
+        // something, no draw: one watched is watched no more, "…'s rage
+        // subsides" (`0x021e3f6c`–`0x021e3fc4`); then one with tension a
+        // step less, its line by the level it came to (`0x021e3fd8`–
+        // `0x021e4068`), as Soothe Sayer's rider 9. **Ours**:
+        // `func_020488cc`, called for a monster calmed, is not read.
+        const watched = them.states.watched !== undefined
+        const had = them.states.tension ?? 0
+        if (watched) setStates(target, { watched: undefined })
+        if (had > 0) setStates(target, { tension: had - 1 })
+        if (!watched && had === 0) return undefined
+        return {
+          target,
+          result: 'mashed',
+          ...(had > 0 ? { tension: had - 1 } : {}),
+          ...(watched ? { calmed: true } : {}),
+        }
       }
       case 19: {
         // Sobering Slap (`func_ov024_021e4588`): one confused brought to
