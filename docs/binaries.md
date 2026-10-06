@@ -186,3 +186,26 @@ what counts as found.
 | `func_ov024_021dfe9c` | kind 45, Eye for Trouble: a monster's `+0x17e` set, for the defeated list | `Handler_EyeForTrouble` |
 | ov000 `func_ov000_021539dc`–`0x02153a0c` | Pincushion (`0x1dc`) at the command: `func_02088db8`, `+0xc1` high nibble 1 | (part of) `Battle::SetCommand` |
 | `func_ov024_021e1328` | kind 66, Pincushion's handler: its done line only | `Handler_Pincushion` |
+
+### Task 18, the stances and Pincushion (7 October 2026)
+
+`docs/readings/T18-handlers.md` §13. USA addresses; overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov000 `func_ov000_0215f110` | as the round begins, each queued action with `+0x08` bit 28 handed to `021537b8`, unless its actor's `+0x14` bit 5 | `Battle::TakeUpStances` |
+| ov000 `func_ov000_021537b8` | one such action: its MP asked and spent (`0215a124`), short of it the action made 0x3a9 (an ability) or 0x1f8; then Pincushion's `+0x18` bit 5, or the stance from the table at `0x02182e24` into `+0x21` and a motion into `+0xc1` | `Battle::TakeUpStance` |
+| ov000 data `0x02182e24` | the stance table: action, stance, motion — 3:1, 134:1, 135:2, 237:3, 96:4, 138:5, 146:6, 929:6, 185:7, 182:8, 329:9, ended by −1 | `stanceTable` |
+| ov000 `ProcessCombatTurn` `0x0215db68`–`0x0215dba8`, `0x0215dcd0`–`0x0215dd10` | Whipping Boy (`0x92`, `0x3a1`): the protected one's index into the holder's `+0x2a`, the holder into theirs at `+0x2c` | (part of) `ProcessCombatTurn` |
+| arm9 `func_02074938`, data `0x020e88c0` | the guard by the stance: 1.0, 0.5, 0.1, 0, then 1.0, 0.8 | `GetGuardMultiplier` |
+| `func_ov024_021e6a90` `0x021e75dc`–`0x021e7640` | the final damage's guard: for `+0x10` bit 4, the stance's (up to 3), then a half under `+0x18` bit 5 | (part of) `CalculateFinalDamage` |
+| `func_ov024_021e67b0` | `+0x18` bit 5, Pincushion | `HasPincushion` |
+| `func_ov024_021e9b74` | the cover, for `+0x10` bit 12: Forbearance (8) always, Selflessness (7) at 0.08 of the most HP or under, Whipping Boy (6) for its `+0x2a`; a draw among those who can act; notes 6–8 | `Resolver::Cover` |
+| `func_ov024_021db358` | HP over the most HP, in floats; 0 for none | `GetHpRatio` |
+| `func_ov024_021e9f68` `0x021ea15c`–`0x021ea2e8` | the counter, for `+0x10` bit 7 at one who can act: Counter Wait (4) swaps actor and target, Back Atcha (5) strikes a monster drawn (`0215eb1c`), its pick kept a pass; notes 3 and 4 | (part of) `Resolver::Reflect` |
+| `func_ov024_021ea500` | the party's own Attack spared a counter by its weapon's flags (`+0x150` `+0x2f4` bits 0–1) | `IsCounterProof` |
+| `func_ov024_021e62cc` | Pincushion's prick after an action with `+0x10` bit 7: a quarter of all dealt each holder (a fifth on half the draws for spiked equipment, `func_02085400`), a draw below 2 on a metal actor; lines 0x1b4 / 0x22b, 0x1b3 / 0x22a | `Resolver::Prick` |
+| arm9 `func_02088db8`, `02088dc8` | Pincushion's `+0x18` bit 5 set and cleared | `Status::SetPincushion`, `ClearPincushion` |
+| `func_ov024_021da670` | kind 0's handler: on its actor, its record's line; on another (`0x150`), the line only | `Handler_Stance` |
+| `func_ov024_021eb08c` | a monster drawn to watch one of the party by its record's own chance (`mon_btldata +0x24`, by kind 0x11 Whistle, 0x12 Eyes on Me), for a count between `+0x28` and `+0x29` | `TryEnthral` |
+| ov000 `func_ov000_0215a908` | an action put in for a watching monster at once, at its watcher | `Battle::InsertWatchAction` |

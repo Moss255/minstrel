@@ -246,11 +246,10 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (22 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32), by the kind whose handler is unread:
+**Still struck as the Attack** (15 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
-| 0 | `func_ov024_021da670` | Counter Wait, Defending Champion, Back Atcha, Whipping Boy, Selflessness, Forbearance |
 | 21 | `func_ov024_021dd828` | Fuddle |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
@@ -262,11 +261,18 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 53 | `func_ov024_021e07b0` | Soothe Sayer |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
-| 66 | `func_ov024_021e1328` | Pincushion |
 
-Most need a status the battle does not keep — a counter, a barrier, Bounce's
-mirror, dazzle, confusion, a stance (kind 0 is the six stances: Counter
-Wait, Defending Champion …).
+Read toward each, 7 October 2026 (§13): **Whistle** (56) and **Eyes on Me**
+(51) make a monster watch their user by its record's own chance
+(`func_ov024_021eb08c`, kinds 0x11 and 0x12 against `mon_btldata +0x24`) and
+put in an action for it at once (`func_ov000_0215a908`), which the battle's
+order cannot yet take; **Mercy** (52) works on a monster seven or more
+levels below its user (`func_ov000_02159e60`), which needs a monster's level;
+**Fuddle** (21) sets confusion (`func_020883cc`), what a confused fighter
+does is not read; **Extreme Makeover** (50) charm, whose draws are spent
+(`func_ov000_0215704c`) and whose effect is not read; **Twocus Pocus** (63)
+is the command phase's; the Fources (46), Feel the Burn (47), Half-Inch (44)
+and Eye for Trouble (45) as §12 has them.
 
 **Bounce and Magic Mirror (kind 31), read toward building** (6 October
 2026): the handler sets `+0x14` bit 9 with a count of 5 at `+0x61`
@@ -1073,3 +1079,87 @@ found; the chain is stepped as before.
   (`func_02088d7c`); "can now cast two spells a turn" is the command
   phase's, not read.
 
+
+## 13. The stances and Pincushion — 7 October 2026
+
+**Built.** Struck as the Attack: 22 before, 15 after.
+
+**Taken up as the round begins.** `ProcessCombatTurn` hands each queued
+action whose record has `+0x08` bit 28 to `func_ov000_021537b8`
+(`func_ov000_0215f110`, `0x0215f174`–`0x0215f194`), passing over an actor
+under `+0x14` bit 5 (`func_ov000_021543f4`). For one of the party it asks the
+record's MP (`0x02153854`–`0x021538e8`; `func_020dd290` may lessen it; none
+under 0 Zone, `func_ov000_02153a8c`) and spends it (`func_ov000_0215a124`);
+short of it, the action becomes 0x3a9 for an ability (`+0x18` bits 12–15 at
+1) or 0x1f8 for a spell — "tries to use …" (598), "Not enough MP" (153) —
+and nothing more is set. Then Pincushion (`0x1dc`) sets `+0x18` bit 5
+(`func_02088db8`); any other takes its stance from the table at `0x02182e24`
+into `+0x21`, and a motion into `+0xc1`'s high nibble (`0x02153a10`–`0x02153a54`):
+
+| action | stance | | action | stance |
+|---|---|---|---|---|
+| 3 Defend | 1 | | 138 Back Atcha | 5 |
+| 134 Blockenspiel | 1 | | 146 Whipping Boy, 929 | 6 |
+| 135 Defending Champion | 2 | | 185 Selflessness | 7 |
+| 237 | 3 | | 182 Forbearance | 8 |
+| 96 Counter Wait | 4 | | 329 | 9 |
+
+The turn asks no MP of such an action (`func_ov024_021eaa50`,
+`0x021eabe8`–`0x021eabf4`); kind 0's handler (`func_ov024_021da670`) says its
+record's line. Whipping Boy's protected one goes into the holder's `+0x2a`,
+the holder into theirs at `+0x2c` (`ProcessCombatTurn`, `0x0215db68`–`0x0215dba8`).
+The round's end clears `+0x21` (`func_ov000_0215e6e8`, `0x0215e7c8`) and its
+count-down `+0x18` bit 5 (`func_ov000_02157e1c`, `0x02157f18`); paralysis and a
+lost turn clear both as they land (`func_0208826c`, `func_02088474`).
+
+**What each does.**
+
+- **1–3, the guard** (`func_ov024_021e6a90`, `0x021e75dc`–`0x021e7618`): for an
+  action with `+0x10` bit 4, the damage times the table at `0x020e88c0` by the
+  stance — 1.0, 0.5, 0.1, 0 — for a stance up to 3 (`func_02074938`); then a
+  half again under Pincushion (`0x021e761c`–`0x021e7640`).
+- **6–8, the cover** (`func_ov024_021e9b74`, from the resolver at `0x021ec068`,
+  after each target's die): for an action with `+0x10` bit 12, at a target
+  standing and not under `+0x18` bits 11 or 13, the others of the target's
+  side who can act (`func_ov000_02155f9c`) in Forbearance's stance; failing
+  them, where the target's HP over their most (`func_ov024_021db358`, floats)
+  is 0.08 or under (`0x021e9f64`), those in Selflessness's; failing them,
+  those in Whipping Boy's whose `+0x2a` is the target. A draw among them
+  (made only where there is one); notes 6, 7, 8 (`func_ov000_0215ff20`);
+  `+0x79` set, and a later pass at the same target that no one covers is
+  skipped (`0x021ec0ac`–`0x021ec0bc`).
+- **4 and 5, the counter** (`func_ov024_021e9f68`, `0x021ea15c`–`0x021ea2e8`,
+  after Bounce's and Reverse Cycle's turning back): at a target who can act,
+  for an action with `+0x10` bit 7 not spared by `func_ov024_021ea500` (the
+  party's own Attack, by its weapon's flags): Counter Wait's swaps actor and
+  target, note 3; Back Atcha's makes the holder the actor and a monster drawn
+  among those standing (`func_ov000_0215eb1c`) the target, the pick kept for
+  the action's later passes, note 4.
+- **Pincushion's prick** (`func_ov024_021e62cc`, at `0x021ed294`, after the
+  post-steps, when the actor can act): for an action with `+0x10` bit 7, each
+  one it struck — in the order of its results — standing, not its actor, and
+  dealt more than 0 in all, under `+0x18` bit 5 pricks back with a quarter of
+  that total (one of the party's spiked equipment, `func_02085400`, a fifth
+  on half the draws), truncated in floats; on a metal actor
+  (`func_ov000_02156068` with 0, 1) a draw below 2 instead. Said "takes …
+  points of damage" (`0x1b4`) at one of the party, "Does … points of damage
+  to …" (`0x22b`) at a monster; "dies!" / "is defeated!" (`0x1b3`, `0x22a`),
+  and it stops where it fells them (`func_ov000_02159f18`).
+
+**Ours, in what was built**: a counter is played on the plain Attack only — a
+monster's blow with bit 7 is not turned — and carries neither the striker's
+tension nor the attack's poison; which line the counter's and the cover's
+notes say is not read, and 440 ("performs a cunning counterattack") and 126
+("leaps in to take the attack") stand in, INFERRED from their words; one
+asleep takes up no stance, as Defend's guard is not held asleep here (the
+game's test is `+0x14` bit 5, a status not kept); the trait that lessens MP,
+`+0x18` bits 11 and 13, and the skip of a pass once covered are not kept;
+the party's spiked equipment is not kept. **Blockenspiel** is still played
+as before — its guard after its blow, its MP at its turn — where the game
+takes it up as the round begins at stance 1: a divergence left for its
+blow's path.
+
+**Checked in the browser** (F01, level 30, `skills=23:4`): Pincushion chosen
+from Abilities said "Hero is surrounded by a sea of protective spikes."; the
+slime's attack that followed missed, so no prick was shown — the prick is
+held by `packages/sim/test/stances.test.ts`.

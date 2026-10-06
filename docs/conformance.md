@@ -1068,3 +1068,18 @@ Immense Defence's (`02156118`, `0x02156230`) — `156c13c`.
 `3cdc602`, INFERRED that the final damage's other steps leave it so. See
 `docs/readings/T18-handlers.md` §12.
 
+
+## The stances: a guard, a counter, a cover and a prick — 7 October 2026
+
+`docs/readings/T18-handlers.md` §13. **Draws** the stances add, each made
+only where the game makes it: the cover's pick among those who may take a
+pass (`func_ov024_021e9b74`, `NextRandomMax` of their count, after the
+target's die and only where there is one); Back Atcha's pick among the
+monsters standing (`func_ov024_021e9f68`, `0x021ea2a4`); Pincushion's draw
+below 2 on a metal actor (`func_ov024_021e62cc`, `0x021e65d0`). Taking a
+stance up as the round begins draws nothing. **Floats**: Selflessness's line
+is HP over the most HP in floats against 0.08; the prick is the total times
+0.25 in floats, truncated; the guard is the table's single by stance, then
+0.5 under Pincushion — taken here as one multiplier, which is exact, the
+second being a power of two. **Modelled** in `playRound` (`stances.ts`,
+`coverFor`, `counterOf`, `prick`); the counter on the plain Attack only.

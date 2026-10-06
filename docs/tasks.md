@@ -571,6 +571,20 @@ replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
 
+**Carried on, 7 October 2026, the stances** (`2881283`, `a29fb44`; the
+reading's §13): the six stances and Pincushion, taken up as the round
+begins with their MP spent then (`+0x08` bit 28, the table at
+`0x02182e24`); Defending Champion's tenth guard; Counter Wait's and Back
+Atcha's counter on the plain Attack (`+0x10` bit 7); Forbearance's,
+Selflessness's and Whipping Boy's cover (`+0x10` bit 12); Pincushion's half
+and its prick. **22 struck as the Attack before, 15 after.** Still left, by
+address in §7: Fuddle (confusion), Half-Inch, Eye for Trouble, the Fources,
+Feel the Burn, Extreme Makeover (charm), Eyes on Me and Whistle (a monster
+made to watch, and an action put in for it at once), Mercy (a monster's
+level), Soothe Sayer, Twocus Pocus; riders 5, 6, 9, 10, 12–14, 19 and 21;
+Crosscutter Throw; and Blockenspiel, which the game takes up as the round
+begins and we still play after its blow.
+
 **Carried on, 7 October 2026, the last kinds** (`156c13c`, `8dab2eb`,
 `cb81a49`, `3cdc602`, `52fe15a`; the reading's §12): Tap Dance and Immense
 Defence, levels whose flag doubles the evasion and the chance of blocking;
