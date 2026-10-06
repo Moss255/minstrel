@@ -525,6 +525,8 @@ export interface ItemEffect {
     readonly blockable: boolean
     /** Whether a dazzled attacker may miss it — see `Action.spoiltBySight`. */
     readonly spoiltBySight: boolean
+    /** Whether a wall of light turns it back — see `Action.reflectable`. */
+    readonly reflectable: boolean
     /** Its damage handler, hit code, step after, and falloff — see `Action.damageHandler`, `hitCode`, `afterStep`, `fallsOff`. */
     readonly handler: number
     readonly hitCode: number
@@ -1951,6 +1953,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           kind: action.kind,
           blockable: action.blockable,
           spoiltBySight: action.spoiltBySight,
+          reflectable: action.reflectable,
           handler: action.damageHandler,
           hitCode: action.hitCode,
           afterStep: action.afterStep,

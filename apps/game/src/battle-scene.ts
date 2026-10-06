@@ -417,6 +417,24 @@ function changeSays(
 }
 
 /**
+ * **A pass turned back** (`func_ov024_021e9f68`): Bounce notes it with 1
+ * (`0x021ea054`), and **INFERRED** the line is 169, "The wall of light
+ * deflects the spell" — 169 and 170 are its two, and which is said is not
+ * read; Reverse Cycle notes it with 2 (`0x021ea140`), whose line is not
+ * found, and says none here.
+ */
+function turnedSays(
+  scene: Pick<BattleScene, 'words'>,
+  hit: { readonly turned?: 'bounce' | 'reverse' },
+): (string | undefined)[] {
+  return hit.turned === 'bounce' ? [say(scene, 'actions', 169, {})] : []
+}
+const TURNED_OURS = {
+  bounce: 'The wall of light deflects the spell.',
+  reverse: 'The breath is turned back.',
+} as const
+
+/**
  * **Dazzle's lines for one already of its sort** (`func_ov024_021e9198`), by
  * the sort — 1 hallucinating, 2 dazzled, 3 sand, 4 ink: landed, and missed.
  */
@@ -444,6 +462,8 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   rain: 'Right as Rain',
   vanish: 'Vanish',
   vanished: 'Vanish',
+  bounce: 'Bounce',
+  reverse: 'Reverse Cycle',
   dazzle: 'dazzle',
   dazzled: 'dazzle',
   schizofanic: 'Schizofanic',
@@ -554,6 +574,8 @@ const WORN_OFF: Readonly<
     | 'fizzled'
     | 'dazzled'
     | 'vanished'
+    | 'bounce'
+    | 'reverse'
     | 'rotstop'
     | 'alma'
     | 'holy'
@@ -571,6 +593,9 @@ const WORN_OFF: Readonly<
   // Vanish's, `0x1c9` (`0x0215899c`); Rotstopper's, `0x1d8` (`0x02158acc`).
   vanished: 0x1c9,
   rotstop: 0x1d8,
+  // Bounce's, `0x1c3` (`0x02158904`); Reverse Cycle's, `0x1c4` (`0x02158b64`).
+  bounce: 0x1c3,
+  reverse: 0x1c4,
   // Alma Mater's, `0x1cb` (`0x02158bfc`); Holy Impregnable's, `0x25d` (`0x02158e58`).
   alma: 0x1cb,
   holy: 0x25d,
@@ -713,6 +738,7 @@ export interface Castable {
     readonly blockable?: boolean
     /** Whether a dazzled striker may miss it — `+0x10` bit 3. */
     readonly spoiltBySight?: boolean
+    readonly reflectable?: boolean
     readonly handler?: number
     readonly hitCode?: number
     readonly afterStep?: number
@@ -794,6 +820,8 @@ export function battleSpellOf(
       // A spell, a breath: what the target's resistances to them lessen (`+0x10` bits 0 and 2).
       ...(action.rolls?.spell ? { magic: true } : {}),
       ...(action.rolls?.breath ? { breath: true } : {}),
+      // What a wall of light turns back (`+0x10` bit 10).
+      ...(action.rolls?.reflectable ? { reflectable: true } : {}),
       // Gold Rush: post-step 6 spends its record's `+0x32` in gold (`func_ov024_021e5be4`).
       ...(action.rolls?.afterStep === GOLD_STEP ? { gold: action.rolls.riderLevels } : {}),
     },
@@ -1436,7 +1464,8 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
           sentence(`${who} tries to cast ${action.name}... but can't cast spells at the moment.`)
         )
       }
-      const landed = event.hits.map((hit) => {
+      const landed = event.hits.flatMap((hit) => [...turnedSays(scene, hit), spellHitSays(hit)])
+      function spellHitSays(hit: { readonly target: number; readonly amount: number }) {
         const target = scene.names[hit.target]
         const values = { val_1: hit.amount }
         if (heals) {
@@ -1445,7 +1474,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         return hit.amount > 0
           ? say(scene, 'actions', chosen?.message || ACTION_SAYS.takes, { actor, target, values })
           : say(scene, 'actions', ACTION_SAYS.noDamage, { actor, target })
-      })
+      }
       const game = lines(
         ...opens,
         ...(event.critical ? [say(scene, 'actions', ACTION_SAYS.haywire, { actor, action })] : []),
@@ -1456,6 +1485,7 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       if (event.critical) ours.push(`The ${shown(action)} goes haywire!`)
       for (const hit of event.hits) {
         const whom = labels[hit.target] ?? '?'
+        if (hit.turned) ours.push(TURNED_OURS[hit.turned])
         ours.push(
           heals
             ? `${whom} recovers ${hit.amount} HP.`
@@ -1509,8 +1539,9 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
         }
         return out.length > 0 ? out : [say(scene, 'actions', ACTION_SAYS.nothingHappens, {})]
       }
-      const landed = event.hits.flatMap((hit) =>
-        hit.result === 'restored'
+      const landed = event.hits.flatMap((hit) => [
+        ...turnedSays(scene, hit),
+        ...(hit.result === 'restored'
           ? restoring(hit)
           : hit.result === 'boosted'
             ? boostSays(hit).map((line) =>
@@ -1547,8 +1578,8 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
                       state.fighters[hit.target]?.side === 'party',
                     ) === 0
                   ? []
-                  : [sayHit(hit)],
-      )
+                  : [sayHit(hit)]),
+      ])
       // Disruptive Wave's one line for all (`func_ov024_021e80e4`,
       // `0x021e8560`–`0x021e85d4`): `0xf1` for one, `0xf2` "… and co." for
       // more, naming the first it cleared (`+0x44`, `0x021e0318`); each one's
@@ -1580,7 +1611,10 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       if (game !== undefined) return game
       const ours = [
         ...ourOpening,
-        ...event.hits.map((hit) => changeOurs(event.change, hit, labels[hit.target] ?? '?')),
+        ...event.hits.flatMap((hit) => [
+          ...(hit.turned ? [TURNED_OURS[hit.turned]] : []),
+          changeOurs(event.change, hit, labels[hit.target] ?? '?'),
+        ]),
         ...(event.rode ?? []).map((hit) =>
           changeOurs(event.change, hit, labels[hit.target] ?? '?'),
         ),
@@ -2244,6 +2278,10 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [49, 'dispel'],
   // Mens Sana (`021df454`): what is unfortunate cleared.
   [43, 'sound'],
+  // Bounce, Magic Mirror (`021de678`) and Reverse Cycle (`021de770`): a pass
+  // turned back on its actor.
+  [31, 'bounce'],
+  [32, 'reverse'],
   // M-Pathy (`021dc540`) and H-Pathy (`021dc700`): the user's own MP or HP shared.
   [13, 'pathy'],
   [14, 'pathy'],
@@ -2340,6 +2378,9 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     side: action.side === 1 ? 'other' : 'own',
     // A spell, `+0x10` bit 0: one fizzled cannot cast it.
     ...(r.spell ? { magic: true } : {}),
+    // A breath, bit 2, and what a wall of light turns back, bit 10 — see `turnedBack`.
+    ...(r.breath ? { breath: true } : {}),
+    ...(r.reflectable ? { reflectable: true } : {}),
     ...(r.landingElement ? { element: r.landingElement } : {}),
     ...(r.evadable ? { evadable: true } : {}),
     ...(r.spoiltBySight ? { spoiltBySight: true } : {}),

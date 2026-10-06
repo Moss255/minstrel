@@ -246,14 +246,12 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (25 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13 and 14), by the kind whose handler is unread:
+**Still struck as the Attack** (22 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
 | 0 | `func_ov024_021da670` | Counter Wait, Defending Champion, Back Atcha, Whipping Boy, Selflessness, Forbearance |
 | 21 | `func_ov024_021dd828` | Fuddle |
-| 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
-| 32 | `func_ov024_021de770` | Reverse Cycle |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
@@ -1008,3 +1006,42 @@ the done line (106), else the fail line. The target is given it, **held to
 their room** (`func_ov000_0215a1d4`, which writes what it gave), and the
 user loses **only what was given** (`0215a124`, `0x021dc684`–`0x021dc690`)
 — where H-Pathy's user loses all it drew.
+
+### Bounce, Magic Mirror (kind 31) and Reverse Cycle (kind 32) — built
+
+Both the simple shape (`func_ov024_021de678`, `021de770`): one who may take
+it (`func_020888e0`, `02088930`: `+0x14` bit 0 clear) and landed — the
+status, the done line; else the fail line. **Bounce** is `+0x14` bit 9
+with a count of 5 at `+0x61` (`func_020888f4`), running down after Fizzle
+by the first table (`+0x84`), its line `0x1c3` "The shining wall of light in
+front of … disappears" (`0x0215889c`–`0x02158924`). **Reverse Cycle** is
+`+0x14` bit 26, 5 at `+0x66` (`02088944`), after Rotstopper by the first
+table (`+0x89`), its line `0x1c4` (`0x02158af4`–`0x02158b84`).
+
+**What they do** — the resolver's redirection `func_ov024_021e9f68`, for
+each one reached (`0x021ec0f4`, after their die and before the chain), with
+the actor's and the target's numbers by pointer:
+
+1. nothing where `func_02010088` holds, `021e6798` holds of the target, or
+   `021e7ba8` does (not read);
+2. an action with `+0x10` bit 10 — **read now as `Action.reflectable`**, 74
+   of 681, the spells among them, Heal too — aimed at the other side
+   (`+0x08` bits 8–9 at 1), at one not its actor: under Bounce, note 1
+   (`func_ov000_0215ff50`), **the actor and the target swapped**,
+   `ctx+0x76` cleared and the out flag set (`0x021ea008`–`0x021ea074`);
+   else, at one of the party whose equipment holds `func_02085474` (on
+   `+0x150`), a draw `R(4)` and on 0 the same (`0x021ea078`–`0x021ea0fc`) —
+   **not kept**;
+3. a breath (`+0x10` bit 2) aimed at the other side, at one under Reverse
+   Cycle: note 2 and swapped, the out flag left clear
+   (`0x021ea100`–`0x021ea158`);
+4. what follows (`0x021ea15c` on) — the other redirections — not read.
+
+The caller goes on with the swapped numbers (`[sp+0xd2]`, `[sp+0xd0]`): the
+accuracy, the amount, the final damage — so what is turned back is drawn as
+the one it was aimed at would draw it, and lands on its actor. Where it was
+turned back, the chain is not stepped (`func_ov000_0215cd80` in its place,
+`0x021ec154`–`0x021ec184`). **Ours**: 169 "The wall of light deflects the
+spell" is said for Bounce's, INFERRED — 169 and 170 are its pair, and which
+the note picks is not read; Reverse Cycle's says nothing, its line not
+found; the chain is stepped as before.

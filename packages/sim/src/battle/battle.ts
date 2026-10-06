@@ -332,6 +332,8 @@ export interface Spell {
    */
   readonly magic?: boolean
   readonly breath?: boolean
+  /** Whether a wall of light turns it back — its record's `+0x10` bit 10; see `turnedBack`. */
+  readonly reflectable?: boolean
   /** The most it can deal — its record's cap. */
   readonly cap?: number
   /**
@@ -412,10 +414,14 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed'> & keyof States)[] 
   // Dazzle's block (`+0x82`, `0x02158764`), after Knight Watch's and before Fizzle's.
   'dazzled',
   'fizzled',
+  // Bounce's (`+0x84`, `0x0215889c`).
+  'bounce',
   // Vanish's block (`+0x85`, `0x0215892c`), after Fizzle's and before attack's.
   'vanished',
-  // Rotstopper's (`+0x87`, `0x02158a5c`); Alma Mater's (`+0x8a`, `0x02158b8c`).
+  // Rotstopper's (`+0x87`, `0x02158a5c`); Reverse Cycle's (`+0x89`,
+  // `0x02158af4` on); Alma Mater's (`+0x8a`, `0x02158b8c`).
   'rotstop',
+  'reverse',
   'alma',
   // Holy Impregnable's (`+0x8e`, `0x02158de8`).
   'holy',
@@ -512,6 +518,11 @@ export type Change =
    * it, `+0x14` bit 27 with its count of 5 — see `States.vanished`.
    */
   | { readonly kind: 'vanish'; readonly chance: number }
+  /**
+   * **Bounce** (kind 31, `func_ov024_021de678`) and **Reverse Cycle** (kind
+   * 32, `021de770`): the simple shape — see `States.bounce`, `States.reverse`.
+   */
+  | { readonly kind: 'bounce' | 'reverse'; readonly chance: number }
   /** **Rotstopper** (kind 40, `func_ov024_021df0f0`): the simple shape — see `States.rotstop`. */
   | { readonly kind: 'rotstop'; readonly chance: number }
   /** **Alma Mater** (kind 39, `func_ov024_021deff8`): the simple shape — see `States.alma`. */
@@ -639,6 +650,9 @@ export interface Changing {
   readonly cost: number
   /** Whether it is a spell, `+0x10` bit 0 — one fizzled cannot cast it. */
   readonly magic?: boolean
+  /** Whether it is a breath, `+0x10` bit 2, and whether a wall of light turns it back, bit 10 — see `turnedBack`. */
+  readonly breath?: boolean
+  readonly reflectable?: boolean
   readonly change: Change
   readonly reach: 'one' | 'group' | 'all'
   readonly side: 'own' | 'other'
@@ -743,6 +757,8 @@ export type ChangeResult =
 export interface ChangeHit {
   readonly target: number
   readonly result: ChangeResult
+  /** Turned back on its actor, who is then {@link target} — by Bounce or Reverse Cycle. */
+  readonly turned?: 'bounce' | 'reverse'
   /** The level it came to, for a level moved — which picks its line (`func_ov024_021e94c4`). */
   readonly level?: number
   /** The HP one raised comes back with, or one restored is healed by. */
@@ -917,7 +933,12 @@ export type BattleEvent =
       /** Whether it went haywire — the reference's critical, 1.5 to 2.0 times. */
       readonly critical: boolean
       /** Whom it reached, and what each took or recovered. */
-      readonly hits: readonly { readonly target: number; readonly amount: number }[]
+      readonly hits: readonly {
+        readonly target: number
+        readonly amount: number
+        /** Turned back on its caster, who is then {@link target} — see `turnedBack`. */
+        readonly turned?: 'bounce' | 'reverse'
+      }[]
     }
   | {
       readonly kind: 'change'
@@ -961,6 +982,8 @@ export type BattleEvent =
         | 'fizzled'
         | 'dazzled'
         | 'vanished'
+        | 'bounce'
+        | 'reverse'
         | 'rotstop'
         | 'alma'
         | 'holy'
@@ -1210,6 +1233,33 @@ export function blockOf(target: Fighter & { readonly states?: States }): number 
   return (target.states?.shield?.level ?? 0) !== 0
     ? Math.fround(Math.fround(2) * Math.fround(block))
     : block
+}
+
+/**
+ * **Whether a pass is turned back on its actor** — the resolver's
+ * redirection, `func_ov024_021e9f68` (from `0x021ec0f4`, for each one
+ * reached): an action a wall of light turns back (`+0x10` bit 10), aimed at
+ * the other side, at one under **Bounce** who is not its actor
+ * (`0x021ea008`–`0x021ea074`), or a breath (`+0x10` bit 2) at one under
+ * **Reverse Cycle** (`0x021ea100`–`0x021ea158`). Then the two are swapped
+ * for the rest of the pass. **Ours**: the equipment that turns a spell back
+ * one time in four (`func_02085474`, a draw `R(4)` at `0x021ea0c4`) is not
+ * kept, and so neither is its draw; nor `func_02010088`, `021e6798` and
+ * `021e7ba8`, which forbid any turning back, nor the redirections after
+ * `0x021ea15c`.
+ */
+function turnedBack(
+  action: { readonly reflectable?: boolean; readonly breath?: boolean },
+  atOther: boolean,
+  actor: number,
+  target: number,
+  fighters: readonly FighterState[],
+): 'bounce' | 'reverse' | undefined {
+  if (!atOther) return undefined
+  const states = fighters[target]?.states
+  if (action.reflectable && target !== actor && (states?.bounce?.level ?? 0) !== 0) return 'bounce'
+  if (action.breath && (states?.reverse?.level ?? 0) !== 0) return 'reverse'
+  return undefined
 }
 
 /**
@@ -2654,10 +2704,16 @@ export function playRound(
         reached.length,
       )
       const once = spell.reach !== 'one'
-      const tension = spell.tensed ? tensionOf(me) : undefined
       let critical = once && rng.below(10_000) < rate
-      const hits = reached.map((target) => {
-        noteAim(actor, target)
+      const hits = reached.map((aimed) => {
+        noteAim(actor, aimed)
+        // **Turned back** (`func_ov024_021e9f68`, `0x021ec0f4`): the caster
+        // is then the target, and the one it was aimed at the actor, for the
+        // rest of the pass — what is drawn, the target's resistances, the
+        // tension.
+        const turned = turnedBack(spell, spell.does === 'harm', actor, aimed, fighters)
+        const target = turned ? actor : aimed
+        const user = (turned ? fighters[aimed] : me) as FighterState
         const them = fighters[target] as FighterState
         // The chain, for each one reached, before the accuracy (`0x021ec178`).
         chain = chainStep(chain, {
@@ -2674,7 +2730,8 @@ export function playRound(
         rng.below(100)
         if (!once) critical = rng.below(10_000) < rate
         rng.below(100)
-        let amount = spell.amount ? amountFor(rng, atMagicLevels(me), spell.amount) : them.maxHp
+        let amount = spell.amount ? amountFor(rng, atMagicLevels(user), spell.amount) : them.maxHp
+        const tension = spell.tensed ? tensionOf(user) : undefined
         if (spell.does === 'harm' && spell.amount) {
           const halved = spell.kind === 1 && them.states.tension === TENSION_MOST
           // Its critical, then the target's resistance to its element, then
@@ -2682,7 +2739,7 @@ export function playRound(
           amount = dealt(rng, amount, {
             critical,
             resistance: resistanceOf(them, spell.element ?? 0),
-            ...rotOf(me, them),
+            ...rotOf(user, them),
             ...wardsOf(them, spell),
             ...(spell.cap ? { cap: spell.cap } : {}),
             // A guard halves what defending works on — Frizz and Crack are
@@ -2709,7 +2766,7 @@ export function playRound(
           harm && spell.kind === 1 ? amount : 0,
           harm ? them.hp - amount : them.hp + amount,
         )
-        return { target, amount }
+        return { target, amount, ...(turned ? { turned } : {}) }
       })
       resolved = { actor, action: spell.action }
       // Told before anyone it fells falls.
@@ -2819,22 +2876,31 @@ export function playRound(
        * from the record's `lo` to `hi` — the amount's arithmetic, in floats —
        * or is drawn between them, truncated, a draw after the hundred's.
        */
-      const accuracyOf = (): number => {
+      const accuracyOf = (who: FighterState): number => {
         const a = changing.accuracy
-        if (me.side !== 'party' || !a) return change.chance
+        if (who.side !== 'party' || !a) return change.chance
         if (!a.scales) return Math.trunc(rng.floatBetween(a.min, a.max))
-        const magic = atMagicLevels(me)
+        const magic = atMagicLevels(who)
         const stat = (a.scales.by === 'might' ? magic.might : magic.mending) ?? 0
         return scaledAccuracy(stat, a.min, a.max, a.scales.lo, a.scales.hi)
       }
-      const changeOne = (target: number): ChangeHit => {
-        noteAim(actor, target)
-        const them = fighters[target] as FighterState
+      /** How the last pass was turned back, if it was — told on its hit. */
+      let turned: 'bounce' | 'reverse' | undefined
+      const changeOne = (aimed: number): ChangeHit => {
+        noteAim(actor, aimed)
         const die = rng.below(100)
         if (!once) critical = rng.below(10_000) < rate
+        // **Turned back** by a wall of light or Reverse Cycle
+        // (`func_ov024_021e9f68`, `0x021ec0f4`): the actor and the target
+        // swapped for the rest of the pass.
+        const back = turnedBack(changing, changing.side === 'other', actor, aimed, fighters)
+        turned = back
+        const target = back ? actor : aimed
+        const me_ = (back ? fighters[aimed] : me) as FighterState
+        const them = fighters[target] as FighterState
         const dodged = changing.evadable === true && canAct(them) && dodges(them, die)
         const draw = rng.below(100)
-        const chance = accuracyOf()
+        const chance = accuracyOf(me_)
         if (dodged) return { target, result: 'dodged' }
         // Its accuracy is the chance **times the target's resistance, plus a
         // half, truncated** (`0x02156a74`); gone haywire it lands on anyone
@@ -2846,7 +2912,7 @@ export function playRound(
         // Then a dazzled caster's die, for one gone haywire on one not immune
         // too late to matter, so not thrown (`0x02156a34`–`0x02156a3c`).
         const sure = critical && resistance > 0
-        const missed = !sure && blinded(me, changing.spoiltBySight)
+        const missed = !sure && blinded(me_, changing.spoiltBySight)
         const landed = sure || (!missed && draw < accuracy)
         // **Landed, the physical formula's draws** — its record's range is 0
         // (`0x021ec4e4`) — and the coin when it comes to nothing. H-Pathy's
@@ -2858,15 +2924,15 @@ export function playRound(
           change.kind === 'pathy'
             ? landed
               ? (() => {
-                  const drawn = amountFor(rng, atMagicLevels(me), change.amount)
-                  const tension = change.tensed ? tensionOf(me) : undefined
+                  const drawn = amountFor(rng, atMagicLevels(me_), change.amount)
+                  const tension = change.tensed ? tensionOf(me_) : undefined
                   return tension
                     ? Math.trunc(tensed(drawn, tension.level, tension.side, tension.dealer))
                     : drawn
                 })()
               : 0
             : undefined
-        if (shared === undefined && landed && physicalDamage(rng, attackOf(me), defenceOf(them)) <= 0)
+        if (shared === undefined && landed && physicalDamage(rng, attackOf(me_), defenceOf(them)) <= 0)
           rng.below(2)
         const was = them.states
         switch (change.kind) {
@@ -2942,6 +3008,8 @@ export function playRound(
               ...Object.fromEntries(LEVEL_STATS.map((stat) => [stat, { level: 0, turns: 0 }])),
               fizzled: { level: 0, turns: 0 },
               vanished: undefined,
+              bounce: undefined,
+              reverse: undefined,
               rotstop: undefined,
               decoy: undefined,
               alma: undefined,
@@ -3045,6 +3113,8 @@ export function playRound(
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { vanished: { level: 1, turns: LEVEL_COUNTS.vanished } })
             return { target, result: 'given' }
+          case 'bounce':
+          case 'reverse':
           case 'rotstop':
           case 'alma':
           case 'holy':
@@ -3148,8 +3218,8 @@ export function playRound(
               1,
               revivedHp(
                 change.share,
-                me.side === 'party',
-                atMagicLevels(me).mending ?? 0,
+                me_.side === 'party',
+                atMagicLevels(me_).mending ?? 0,
                 them.maxHp,
               ),
             )
@@ -3178,8 +3248,8 @@ export function playRound(
       // Each one reached, then the coup's draw at their pass — nothing dealt.
       const hits = reached.map((target) => {
         const hit = changeOne(target)
-        coupAtPass(target, 0)
-        return hit
+        coupAtPass(hit.target, 0)
+        return turned ? { ...hit, turned } : hit
       })
       resolved = { actor, action: changing.action }
       events.push({

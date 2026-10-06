@@ -176,6 +176,14 @@ export interface Action {
    */
   readonly spoiltBySight: boolean
   /**
+   * Whether a wall of light turns it back on its actor — `+0x10`, bit 10.
+   * The resolver's redirection (`func_ov024_021e9f68`,
+   * `0x021ea008`–`0x021ea074`) swaps the actor and the target of such an
+   * action aimed at the other side, at one under Bounce (`+0x14` bit 9) who
+   * is not its actor. Read 7 October 2026.
+   */
+  readonly reflectable: boolean
+  /**
    * How its accuracy is come by — `+0x18`, bits 16 and 17. At 1 the accuracy
    * scales between the two percentages below by one of the attacker's
    * numbers, or is drawn between them when none is named; otherwise it stands
@@ -414,6 +422,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       alwaysCritical: ((view.getUint32(at + 8, true) >>> 29) & 1) === 1,
       criticalPercent: (view.getUint32(at + 0x14, true) >>> 21) & 0x7f,
       spoiltBySight: (view.getUint32(at + 0x10, true) & 8) !== 0,
+      reflectable: (view.getUint32(at + 0x10, true) & 0x400) !== 0,
       accuracyMode: (view.getUint32(at + 0x18, true) >>> 16) & 3,
       damageHandler: (view.getUint32(at + 0x18, true) >>> 18) & 0x1ff,
       kind: (view.getUint32(at + 0x18, true) >>> 5) & 0x7f,

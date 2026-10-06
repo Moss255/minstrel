@@ -528,3 +528,68 @@ describe('H-Pathy and M-Pathy — kinds 14 and 13', () => {
     expect(changeOf(events).hits).toEqual([{ target: 1, result: 'resisted' }])
   })
 })
+
+describe('Bounce and Reverse Cycle — kinds 31 and 32, a pass turned back', () => {
+  const frizz = {
+    action: 13,
+    cost: 0,
+    does: 'harm',
+    reach: 'one',
+    amount: { base: 12, spread: 0 },
+    reflectable: true,
+  } as const
+  const under = (states: object) => {
+    const start = startBattle([hero, foe])
+    return {
+      ...start,
+      fighters: start.fighters.map((f, i) =>
+        i === 1 ? { ...f, states: { ...f.states, ...states } } : f,
+      ),
+    } as BattleState
+  }
+  const casts = (spell: object) =>
+    new Map<number, Command>([[0, { kind: 'spell', spell, target: 1 } as Command]])
+
+  it('sets either with its count of 5', () => {
+    for (const kind of ['bounce', 'reverse'] as const) {
+      const { state, events } = playRound(
+        startBattle([hero, foe]),
+        using(status(55, kind)),
+        new BattleRng(3n),
+      )
+      expect(changeOf(events).hits).toEqual([{ target: 0, result: 'given' }])
+      expect(state.fighters[0]?.states[kind]?.level).toBe(1)
+    }
+  })
+
+  it('turns a spell a wall of light may turn back on its caster, under Bounce', () => {
+    const { state, events } = playRound(
+      under({ bounce: { level: 1, turns: 5 } }),
+      casts(frizz),
+      new BattleRng(6n),
+    )
+    const cast = events.find((e) => e.kind === 'spell')
+    expect(cast?.kind === 'spell' && cast.hits).toEqual([
+      { target: 0, amount: 12, turned: 'bounce' },
+    ])
+    // Drawn as the slime would draw it, and struck on the Hero who cast it.
+    expect(state.fighters[1]?.hp).toBe(999)
+  })
+
+  it('lets a spell without the flag through, and turns back a breath only under Reverse Cycle', () => {
+    const plain = playRound(
+      under({ bounce: { level: 1, turns: 5 } }),
+      casts({ ...frizz, reflectable: false }),
+      new BattleRng(6n),
+    )
+    const hit = plain.events.find((e) => e.kind === 'spell')
+    expect(hit?.kind === 'spell' && hit.hits[0]?.target).toBe(1)
+    const breath = playRound(
+      under({ reverse: { level: 1, turns: 5 } }),
+      casts({ ...frizz, reflectable: false, breath: true }),
+      new BattleRng(6n),
+    )
+    const back = breath.events.find((e) => e.kind === 'spell')
+    expect(back?.kind === 'spell' && back.hits[0]).toMatchObject({ target: 0, turned: 'reverse' })
+  })
+})

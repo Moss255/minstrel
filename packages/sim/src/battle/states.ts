@@ -102,6 +102,23 @@ export interface States {
    */
   readonly vanished?: Level | undefined
   /**
+   * **Bounce** — status `+0x14` bit 9, with a count of 5 at `+0x61` (kind
+   * 31, `func_ov024_021de678`; `func_020888f4`): an action that a wall of
+   * light turns back (`+0x10` bit 10), aimed at its holder from the other
+   * side, is turned back on its actor — the two swapped for that pass
+   * (`func_ov024_021e9f68`, `0x021ea008`–`0x021ea074`). Runs down by the
+   * first table, its line `0x1c3` (`func_ov000_0215858c`, `0x02158884` on).
+   */
+  readonly bounce?: Level | undefined
+  /**
+   * **Reverse Cycle** — status `+0x14` bit 26, with a count of 5 at `+0x66`
+   * (kind 32, `func_ov024_021de770`; `func_02088944`): a breath aimed at
+   * its holder from the other side is turned back on its actor, the same way
+   * (`0x021ea100`–`0x021ea158`). Runs down by the first table, its line
+   * `0x1c4` (`0x02158b60`).
+   */
+  readonly reverse?: Level | undefined
+  /**
    * **Dazzled** — status `+0x14` bit 6, with a count of 4 at `+0x5f`, and
    * its sort at `+0x22` bits 6–8 (`func_02088854`; kind 19,
    * `func_ov024_021dd534`, Flower Power and Scandal Eyes): kept as its
@@ -249,7 +266,7 @@ export const NO_STATES: States = {
  * charm 6 at `+0x71`, magical might 5 at `+0x72`, mending 5 at `+0x73`, the
  * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`), a shield's
  * block 5 at `+0x76` (`func_0208806c`), evasion 5 at `+0x77` (`func_02087f78`); Fizzle 6 at
- * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); Holy Impregnable 5 at `+0x6b` (`func_02088ccc`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
+ * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Bounce 5 at `+0x61` (`func_020888f4`); Reverse Cycle 5 at `+0x66` (`func_02088944`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); Holy Impregnable 5 at `+0x6b` (`func_02088ccc`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
  * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
  * (`func_0208826c`). Every setter stores its second count 0 beside it.
  */
@@ -266,6 +283,8 @@ export const LEVEL_COUNTS = {
   fizzled: 6,
   dazzled: 4,
   vanished: 5,
+  bounce: 5,
+  reverse: 5,
   rotstop: 4,
   alma: 6,
   holy: 5,
@@ -310,6 +329,8 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   fizzled: { table: WEAR_TABLE, start: 4 },
   dazzled: { table: WEAR_TABLE_SLOW, start: 4 },
   vanished: { table: WEAR_TABLE_SLOW, start: 4 },
+  bounce: { table: WEAR_TABLE, start: 4 },
+  reverse: { table: WEAR_TABLE, start: 4 },
   rotstop: { table: WEAR_TABLE_SLOW, start: 4 },
   alma: { table: WEAR_TABLE, start: 4 },
   holy: { table: WEAR_TABLE, start: 4 },

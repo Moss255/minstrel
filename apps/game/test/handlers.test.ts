@@ -166,7 +166,19 @@ describe.skipIf(!romPath)(
       expect(m && 'amount' in m ? m.amount.party : undefined).toMatchObject({ min: 15, max: 55 })
     })
 
-    it('strikes 25 of them as the Attack now, where 76 were', () => {
+    it('plays Bounce, Magic Mirror and Reverse Cycle, and reads what a wall of light turns back', () => {
+      expect(partyChangeOf(action(55))?.change.kind).toBe('bounce')
+      expect(partyChangeOf(action(137))?.change.kind).toBe('bounce')
+      expect(partyChangeOf(action(104))?.change.kind).toBe('reverse')
+      // Frizz and Buff carry the flag, the Attack does not. Heal carries it
+      // too, but is aimed at its own side, so nothing turns it back.
+      expect(action(13).rolls?.reflectable).toBe(true)
+      expect(partyChangeOf(action(41))?.reflectable).toBe(true)
+      expect(action(30).rolls?.reflectable).toBe(true)
+      expect(action(1).rolls?.reflectable).toBe(false)
+    })
+
+    it('strikes 22 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -183,7 +195,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(25)
+      expect(attack).toBe(22)
     })
   },
 )

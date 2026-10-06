@@ -55,6 +55,8 @@ describe('how a status runs down — the game’s (`func_ov000_0215858c`, `02159
       // `func_02088854`, dazzle's; `02088994`, Vanish's.
       dazzled: 4,
       vanished: 5,
+      bounce: 5,
+      reverse: 5,
       // `func_02088a34`, Rotstopper's.
       rotstop: 4,
       // `func_02088b14`, Alma Mater's.
