@@ -408,8 +408,12 @@ the blow has landed. Each handler has one shape:
 - the levels at `+0x32`.
 
 Slots read from their handlers: 2 lowers attack (`UpdateCombatantAttack`), 8
-lowers defence. INFERRED from who carries them: 4 poison, 7 sleep, 10
-confusion, 11 paralysis, 20 death. **Action 275 — the reference's poison
+lowers defence; **4 poison, 7 sleep and 20 death read 6 October 2026** (task
+18, below). INFERRED from who carries them: 10 confusion, 11 paralysis.
+**Corrected 6 October 2026**: the level riders, 2 and 8, draw *first* and
+land under the target's byte alone, the action's chance not read; and the
+poison rider poisons the poisoned again — what it refuses is the maximum of
+tension, and plain poison on the envenomated. **Action 275 — the reference's poison
 attack — is rider 4 at 12**: the reference's 12 in 100, in its own record.
 
 **In the simulation**: the change's draws in this order, its roll the
@@ -512,8 +516,8 @@ In the game's order:
    actions `0x205` and `0x82` and the forced-one flag of step 5. Read 22
    September: the bit must be **set**, not clear, which is the other way about
    from what this file said, and the damage becomes exactly nothing. So the
-   flag reads less like "works on metal" than like "deals damage at all". *Not
-   in the simulation: no monster of the slice has a metal body.*
+   flag reads less like "works on metal" than like "deals damage at all".
+   **In the simulation since 6 October 2026** (`dealt`'s `metal`).
 3. **The coin** (`0x021e7824`–`0x021e7904`): damage not above nothing, and not
    blocked, not dodged, not action `0x70` or `0x48`, the target's resistance to
    both of the action's elements above nothing (`func_ov000_02156b38`), not
@@ -880,6 +884,32 @@ turn as action `0x385`, which also goes through the resolver.
 
 **Neither the dodge nor the block is drawn** against a fighter who cannot act
 (`func_ov000_02155f9c`, from `02156f98` and `02156e30`).
+
+## The kinds' handlers, the riders, and envenomation — 6 October 2026
+
+Task 18; `docs/readings/T18-handlers.md` has it whole. **The resolver's
+second table**, `data_ov024_021ff508`, 81 handlers by the action's kind:
+each handed whether the action landed — the accuracy roll — and none making
+a draw of its own. Built from it: kinds 3, 4 and 5 (attack, defence,
+agility, by `+0x30`; **attack a quarter a level**,
+`CalculateAttackBuffMultiplier`, held to the oracle as `updatedAttack`); 7
+Squelch; 8 sleep; 9 waking; 17 Whack's kill; 18 raising — Zing by mending
+between its own `lo` and `hi`, 180 and 849, a quarter to a half (held to the
+oracle as `revivalHp`); 67 Choir of Angels; 71 Tension Boost; 15 on an ally,
+Egg On. **One of the party's accuracy** with a change that scales is its
+least to most by might or mending, or drawn between them a draw later
+(`scaledAccuracy`, held to the oracle).
+
+**Envenomation, and a correction.** `+0x22`'s low bits tell poison (1) from
+envenomation (2). The poison rider and kind 6 envenomate where their levels
+are above 0 — the poison attack 275 among them. **Only envenomation is
+tolled at a round's end** (`func_ov000_0215a23c`): a sixteenth, at most 999,
+at least 1. Plain poison takes nothing in a battle; the simulation, with
+the reference, tolled it.
+
+What is left, each by name and the address that would answer it, is the
+reading's §7: 55 actions still struck as the Attack, the slot-0 blows with
+code of their own, ten riders, eight coups.
 
 ## Still to read, in the order it is wanted
 

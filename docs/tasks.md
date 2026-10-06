@@ -44,9 +44,17 @@ written up on the wiki; each says so under its heading.
   by all eight of the game's rules, and ten more targeting handlers are
   built, with all 161 listed; the party's tactics are read as far as their
   frame and split off as **17b**, their scoring not read.
-- **Built this week and still ours**, listed in `docs/still-open.md` §2: the
-  coups' own effects (every vocation's but the Warrior's says its opening
-  line and does nothing — task 18); the camera easing in for a party trick;
+- **Task 18 is done to its "done when"**, 6 October 2026: every ability on
+  the 26 trees and every spell of the six starting vocations either plays by
+  its handler or is listed by name with the address that would answer it
+  (`docs/readings/T18-handlers.md` §7). Struck as the Attack: **76 before,
+  55 after** — the changes of state, Squelch, waking, Whack, Zing and Kazing,
+  Meditation, Egg On, the riders of five slots, a metal body's zeroing, and
+  the coups Choir of Angels and Tension Boost are built. Envenomation is told
+  from poison, and only it is tolled in a battle — a correction.
+- **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
+  coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
+  the camera easing in for a party trick;
   Weird Dance's sound not stopped; canvassing and the guestbook (multiplayer).
 - **Development parameters added this week** (`docs/regions.md`): `globals=`,
   `gold=`, `tricks=`, `minutes=`; `revoke=` is gone, the credits opening revocation. The
@@ -504,6 +512,12 @@ simulation has the action, and a seeded battle with the party on a tactic
 replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
+
+**Done, 6 October 2026** (`c905518`, `33090d5`, `3f5bb6a`): `partyChangeOf`
+in `battle-scene.ts`, the change and blow paths of `battle.ts`,
+`sim/src/battle/handlers.ts`; the reading and what is left by address,
+`docs/readings/T18-handlers.md`. The wiki's Ability-Handlers. 76 struck as
+the Attack before, 55 after; the 55 are listed by kind with their handlers.
 
 `docs/still-open.md` §2, the rows "abilities" and "combo and tension", lists
 what still does not play as the game plays it:

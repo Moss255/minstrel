@@ -1064,3 +1064,28 @@ first half, the evaluators of kinds 2 on, `021fd858`, `021fd954`,
 `021fdf04` — and what the 21 behaviours each govern (task 17b); 67 targeting
 handlers; what status `+0x14` bits 9 and 26 and `+0x50` are; what the counts
 of rules 3, 5, 6 and 7 start at.
+
+### Task 18 — the kinds' and riders' handlers (6 October 2026)
+
+`docs/readings/T18-handlers.md` has the reading whole. Overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `data_ov024_021ff508` | 81 pointers-to-member by an action's kind (`+0x18` bits 5–11) | `ActionKindHandlers` |
+| `data_ov024_021ff450` | 22 pointers-to-member by an action's rider (`+0x18` bits 0–4), dispatched by `func_ov024_021e4b14` | `ActionRiderHandlers` |
+| `func_ov024_021db5ec`, `021db7c0`, `021db994` | kinds 3, 4, 5: attack, defence, agility moved by `+0x30` | `Resolver::ChangeAttack`, `::ChangeDefense`, `::ChangeAgility` |
+| `func_ov024_021dbc64`, `021dbd84`, `021dbf18` | kinds 7, 8, 9: poison cured, sleep, a sleeper woken | `Resolver::CurePoison`, `::Sleep`, `::Wake` |
+| `func_ov024_021dd028`, `021dd278` | kinds 17, 18: all HP taken, the fallen raised (Zing by mending, Kazing a half) | `Resolver::Kill`, `::Revive` |
+| `func_ov024_021e13e0`, `021e191c` | kinds 67, 71: Choir of Angels, Tension Boost | `Resolver::ChoirOfAngels`, `::TensionBoost` |
+| `func_ov024_021e2ebc`, `021e303c`, `021e33a4`, `021e3594`, `021e4604` | riders 2, 4, 7, 8, 20: attack down, poison/envenomation, sleep, defence down, death | `Resolver::RideAttackDown`, `::RidePoison`, `::RideSleep`, `::RideDefenseDown`, `::RideDeath` |
+| `func_ov024_021e94c4`, `021e939c`, `021da644` | a level's line by the level reached; a poison's line; a line of the record's by the target's side | `Resolver::LevelMessage`, `::PoisonMessage`, `PickBySide` |
+| `func_ov024_021eae14` | every misfortune cleared, counting them | `Resolver::CureAll` |
+| `func_ov024_021ea78c` | whether heavenly protection spares one from a kill (`0x021fe6e0`'s list) | `Resolver::IsSparedFromDeath` |
+| ARM9 `func_0208776c`/`020877c0`/`02087838`, `02087860`/`020878b4`/`0208792c`, `02087954`/`020879a8`/`02087a20` | a level's may-move, move and clear, for attack, defence, agility (status `+0x58`, counts `+0x6e`–`+0x70`) | `StatusEffects::CanChangeAttack` … |
+| ARM9 `func_02088624`, `020885b4`, `02088560`, `02088514`, `02088644`, `020885e0`, `02088540` | poison and envenomation (`+0x14` bit 1, `+0x22` 1 or 2): set, test, cure, may-take | `StatusEffects::Poison`, `::IsPoisoned`, `::Envenom`, `::IsEnvenomed`, `::CurePoison`, `::CanPoison`, `::CanEnvenom` |
+| ARM9 `func_02088150` | the maximum of tension set, both poisons cleared | `StatusEffects::SetMaxTension` |
+| ov000 `func_ov000_0215a23c` | a round's end: regeneration, envenomation's toll (a sixteenth, 1 to 999) | `Battle::EndOfRoundEffects` |
+
+**What is open**: every handler listed in the reading's §7 by its address;
+how the level counts run down; the susceptibility bytes `+0x46`–`+0x52`
+and where a monster's come from.
