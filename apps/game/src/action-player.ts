@@ -343,7 +343,7 @@ export function startAction(
     readonly resources?: ReadonlyMap<number, string>
     readonly makeReactions?: (hooks: RunHooks) => Reactions
     /**
-     * **State 6** (`func_ov025_021dc324`): for an action whose `lineKind` is 2
+     * **State 6** (`func_ov025_021dc324`): for an action whose reach is 2
      * or 5, the line goes up once this holds — the chase shot not running, or
      * settled — rather than with the script's first camera.
      */
@@ -1330,7 +1330,7 @@ export function startAction(
       const ms = realMs * speed
       effectiveNow = ms
       // The line goes up with the action's first camera, or — for the
-      // Attack and the one-ally heals, `lineKind` 2 and 5 — when state 6 sees
+      // Attack and the one-ally heals, reach 2 and 5 — when state 6 sees
       // the chase shot settled (`func_ov025_021dc220`, `021dc324`), whichever
       // comes first. **Ours**: any other action whose script moves no camera
       // before its first reaction puts its line up as it starts — what does

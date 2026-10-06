@@ -10027,11 +10027,11 @@ function startShown(): void {
 
 /**
  * **Whether an action's line waits for the chase** — state 6 — by its
- * `+0x14` bits 28–31 being 2 or 5 (`func_ov000_021627fc`).
+ * reach — `+0x17`'s high nibble — being 2 or 5 (`func_ov000_021627fc`).
  */
 function lineAfterChaseOf(action: number): boolean {
-  const kind = loaded?.actions.get(action)?.lineKind
-  return kind === 2 || kind === 5
+  const reach = loaded?.actions.get(action)?.reach
+  return reach === 2 || reach === 5
 }
 
 /** Where each fighter was left by the last action shown — its motion, how far in, and whether it loops. */

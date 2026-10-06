@@ -88,7 +88,10 @@ called as the action begins (`func_ov025_021db8d8`, `0x021dbde8`,
 
 `func_ov000_021627fc`: the turn's action — 1 for those `func_ov000_02163690`
 turns into the Attack — looked up in the action table
-(`func_02079e2c`), **its `+0x14` bits 28–31 being 2 or 5**. On the cartridge 5
+(`func_02079e2c`), **its `+0x14` bits 28–31 being 2 or 5** — `+0x17`'s high
+nibble, which minstrel already reads as the action's reach (INFERRED: 2 one
+ally, 3 all, 4 a group; the wiki's Actions page has 3 and 4 roll one critical
+for the whole action). On the cartridge 5
 is the Attack's two records alone; 2 is the heals, Zing and the herbs that
 take one ally (189 records). The other values: 1 (238, Defend and the like),
 3 (162, the many-target spells), 4 (58), 6 (the five Fources), 7 (15, Zoom,

@@ -958,3 +958,36 @@ a set battle's request `+0x3e`; bit 0 of `GameState+0x63dc`
 
 **Open**: what sets `0x119a`, `0x119b` and the records' `0x2000`; title
 functions 119–177 and 202–215.
+
+### The battle's presentation — ARM9 and overlays 0, 17, 23, 25 and 26, read 6 October 2026
+
+Findings in `docs/readings/T15-presentation.md`.
+
+| function | what it does | a name |
+|---|---|---|
+| `func_ov026_021d8aac` | the fixed shot for this fight: the first record of `data_ov026_021de87c` whose key is a monster's kind in it, key 0 for monster 801, by the round for `0x115` | `CommandPhase::ChooseFixedShot` |
+| `func_ov000_0215fc8c` | whether a monster of a kind (`mon_data` `+0x10`) is among the battle's eight objects | `Battle::HasMonsterKind` |
+| `func_ov000_0215fc60` | 1 when the first group is monster 800, 2 when 801 | `Battle::IsCorvusScene` |
+| `func_ov000_0216d600` | the side shot; its last argument takes the fixed shot's eye and look-at | `BattleCamera::FrameSide` |
+| `func_ov000_0216e678` | the chase's start: its draws, the four start poses, the kept tall height and yaw offset | `BattleCamera::StartChase` |
+| `func_ov000_0216ea38` | the chase's follow, and its settling (`+0x261`) | `BattleCamera::FollowChase` |
+| `func_ov000_0216f728` | whether the turn's action is 9 to 11, Frizz to Kafrizz | `BattleCamera::IsFrizz` |
+| `func_ov000_0216f0bc` | whether the chase is off or settled | `BattleCamera::ChaseSettled` |
+| `func_ov000_02160f20` | the turn record now | `Battle::CurrentTurn` |
+| `func_ov000_021627fc` | whether the turn's action's `+0x14` bits 28–31 are 2 or 5 | `Battle::ActionWaitsForCamera` |
+| `func_ov025_021dc220` | the action loop to state 6 or 3 | `ActionLoop::BeginLine` |
+| `func_ov025_021dc324` | state 6: the chase settled, the line up, then state 3 | `ActionLoop::StateLine` |
+| `func_ov000_02170b0c` | the acting member's pulse: colour 15 of the panel palette by 1 − sin | `BattleUI::UpdatePulse` |
+| `func_ov000_021754fc`, `func_ov000_021754e0` | the pulses stepped by the vblanks; one stopped | `BattleUI::UpdatePulses`, `::StopPulse` |
+| `func_ov000_02174738` | a member's level drawn into its sprite, `%d` right-aligned | `BattleUI::DrawLevel` |
+| `func_ov000_021811f4`, `func_ov000_0218124c` | the level's sprite placed at (44, 22); sprite `0x20 +` member's | `BattleUI::PlaceLevel`, `::PlaceIcon` |
+| `func_ov000_02174324` | a status icon in the level's place, or none | `BattleUI::PlaceStatus` |
+| `func_02012bd8` | the vblank handler: brightness, and `GameState+0x3c8`, the vblanks since the last pass | `OnVBlank` |
+| `func_020c9820` | waits for the vblank interrupt | `WaitVBlank` |
+| `func_02046cc8`, `func_02046e70`, `func_02046f84`, `func_0204715c` | the swirl's model loaded, set up, ended, drawn | `Swirl::Load`, `::Init`, `::End`, `::Draw` |
+| `func_0204700c` | the swirl: vblanks counted to 35, a turn and a narrowing a pass | `Swirl::Update` |
+| `func_ov023_021d8f2c` | an Experience window's rows, taken down by the vblanks | `ResultsWindow::UpdateExperience` |
+
+**Open**: what turns the pulse on; what flashes and shakes a hit member's
+panel; under which view the swirl's model is drawn; what
+`func_020709ac` gives the transition (the swirl skipped above 30).

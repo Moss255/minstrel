@@ -4496,7 +4496,6 @@ An item names its action in its item table — see "Items".
 | `+0x10` bit 5 | flag | **can be dodged**: the evasion roll makes no draw without it | the plain Attack has it; the herb and fleeing do not. 156 of 681 |
 | `+0x10` bit 6 | flag | **can be blocked** | 162 of 681 |
 | `+0x14` bits 21–27 | `u7` | the critical chance's multiplier, in hundredths | 100 on the plain Attack |
-| `+0x14` bits 28–31 | `u4` | **how the battle brings its line up** (`lineKind`): 2 or 5 sends the action loop to state 6 (`func_ov025_021dc220` through `func_ov000_021627fc`), its line up once the chase shot has settled; any other to state 3, its line up with its script's first camera. Read 6 October 2026; `docs/readings/T15-presentation.md` | 5 on the Attack's two records alone; 2 on 189, the heals, Zing and the herbs that take one ally; 1 on 238, 3 on 162, 4 on 58, 6 the five Fources, 7 on 15, 8 on 7, 0 on 5. INFERRED: what the values other than 2 and 5 mean |
 | `+0x10` bit 3 | flag | **spoilt by a status on the attacker**: the accuracy roll's die of eight misses on five faces. INFERRED: dazzle | 110 of 681, every one a blow that can be dodged |
 | `+0x18` bits 16–17 | `u2` | how the accuracy is come by: at 1 it scales | 202 of 681; not the plain Attack |
 | `+0x14` bits 7–13, 14–20 | `u7` ×2 | a scaling action's least and most accuracy, in a hundred | |

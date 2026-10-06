@@ -113,7 +113,11 @@ export interface Action {
    * hexagoon's, 350 `is just fluffing around`. 669 of 681 index a message.
    */
   readonly opening: number
-  /** Whom it reaches — see {@link ActionReach}. INFERRED. */
+  /**
+   * Whom it reaches — see {@link ActionReach}. INFERRED. Overlay 25's action
+   * loop reads it (`func_ov000_021627fc`): at 2 or 5 the action goes to state
+   * 6, its line up once the chase shot has settled (read 6 October 2026).
+   */
   readonly reach: number
   /**
    * Whether its target may dodge it — `+0x10`, bit 5.
@@ -290,18 +294,6 @@ export interface Action {
    */
   readonly foeChance: number
   /**
-   * **How the battle shows its line** — `+0x14`, bits 28 to 31. Read 6
-   * October 2026 (USA): overlay 25's action loop puts an action whose value
-   * is 2 or 5 into state 6 (`func_ov025_021dc220`, through
-   * `func_ov000_021627fc`), which brings its line up once the chase shot has
-   * settled; any other into state 3, its line up with its script's first
-   * camera. 5 is the Attack's two records alone, 2 the heals, Zing and the
-   * herbs that take one ally. INFERRED: what the other values (0, 1, 3, 4,
-   * 6, 7, 8) mean — by who carries them, perhaps a reach; nothing found reads
-   * them but this test.
-   */
-  readonly lineKind: number
-  /**
    * What rides on its blow — `+0x18`, bits 0 to 4: a slot of 22 in the table
    * `func_ov024_021e4b14` dispatches by, 0 for none. Each makes one draw below
    * a hundred once the blow has dealt something, and lands under the action's
@@ -407,7 +399,6 @@ export function readActions(bytes: Uint8Array): Action[] {
       element: (view.getUint32(at + 8, true) >>> 22) & 0x1f,
       landingElement: view.getUint32(at + 0x18, true) >>> 27,
       foeChance: view.getUint32(at + 0x14, true) & 0x7f,
-      lineKind: view.getUint32(at + 0x14, true) >>> 28,
       rider: view.getUint32(at + 0x18, true) & 0x1f,
       levels: view.getInt16(at + 0x30, true),
       riderLevels: view.getInt16(at + 0x32, true),

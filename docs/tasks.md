@@ -28,6 +28,13 @@ written up on the wiki; each says so under its heading.
   SELECT and the field menu's row — the summary and Accolades Earnt. The
   monster and item lists, the wardrobe and Stella's comments wait; where the
   game keeps the first two is read.
+- **Task 15 is done**, 6 October 2026: the command phase takes overlay
+  26's fixed shots for the bosses, the chase keeps a tall target's yaw
+  offset, the Attack's and the one-ally heals' lines wait for the chase to
+  settle (state 6), the battle runs at the field loop's 30 passes a second,
+  and the panels show the level and the acting member's pulse. What turns
+  the pulse on, a hit's flash and shake, and the swirl's model are not
+  found or not drawn (§1b).
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
   line and does nothing — task 18); the camera easing in for a party trick;
@@ -375,6 +382,8 @@ accolades' table is read and parsed into `game-formats` with a `FORMAT.md`
 entry, and what awards each accolade is read or listed as not found.
 
 ## 15. The battle's presentation — find and build
+
+**Done, 6 October 2026** (`287bc5a`, `bcd4968`, `7da0c28`): `fixedshots.ts`, `battle-camera.ts`, `action-player.ts`, `battle-screen.ts`; the reading `docs/readings/T15-presentation.md`; the wiki's Battle-Presentation. Not found: what turns the pulse on, a hit's flash and shake, the view the swirl's model is drawn under.
 
 The battle looks right in outline, but much of how it is staged is ours. From
 `docs/still-open.md` §2, the rows "the battle stage" and "the command phase",

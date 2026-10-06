@@ -471,8 +471,6 @@ export interface ItemEffect {
   readonly opening: number
   /** Its cost in MP; 255 for all there is. INFERRED. */
   readonly cost: number
-  /** How the battle brings its line up — see `Action.lineKind`: 2 and 5 once the chase has settled. */
-  readonly lineKind: number
   /** Whom it reaches — see `ActionReach`. INFERRED. */
   readonly reach: number
   /** Whom it is aimed at, 1 the monsters, 2 the party — see `Action.side`. */
@@ -1897,7 +1895,6 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
         side: action.side,
         list: action.list,
         usableIn: action.usableIn,
-        lineKind: action.lineKind,
         rolls: {
           foeChance: action.foeChance,
           chanceIsAccuracy: action.accuracyMode === 1,
