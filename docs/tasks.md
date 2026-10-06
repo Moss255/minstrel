@@ -358,6 +358,15 @@ end of the roll. Whatever cannot be read becomes a line for a video.
 `docs/readings/T12-travel.md`; the wiki's Travel. Ours: the flight not drawn,
 the ship not moved, where in the revival map the party stands.
 
+**Leftovers, 6 October 2026**: the flight read and built (`zoom-flight.ts`,
+`func_ov017_021acdf4`) — the rise's effect and sound, the fade, the map, and
+the ceiling's drop, line, shake and bump; a wiped-out party stands at the
+map's start point (`.bmbl` `0x6E`, `mapStart`); a set battle's own revival
+map is trigger action `180` (`lostRevival`). Bit 0 of `GameState+0x63dc` is,
+INFERRED, a guest in another's world — multiplayer, not built. Still ours:
+the shake's directions, the ship (16b), Evac out of a grotto (19), values 1
+and 10 of a Zoom place.
+
 A play-through needs these to get around once the world opens up past
 Stornway, and every one is a stand-in today (`docs/still-open.md` §2):
 

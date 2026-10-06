@@ -904,9 +904,29 @@ The whole reading is `docs/readings/T12-travel.md`.
 | `func_0202c508`, `func_0202c540`, `func_0202b7d8` | the session at `data_020fefec`: none or the host; a guest; in one | `Session::IsOwnGame`, `::IsGuest`, `::IsActive` |
 | `func_020d3018`, `func_02005a94` | `strcmp`; `strtol(s, 0, 10)` | `strcmp`, `atoi` |
 
-**Open**: how a map's load places a party whose request has no place; what fills
-a set battle's request `+0x3e`; bit 0 of `GameState+0x63dc`
-(`func_02011b50`); the flight task's states.
+**Answered later the same day** (task 12's leftovers, `zoom-flight.ts`,
+`mapStart`, `lostRevival`):
+
+| address (US) | what | suggested name |
+|---|---|---|
+| `func_ov017_021acdf4` | the flight's task: states 0, 14, 1–5 to fly off, 10–13 for the ceiling; its count the vblanks a pass | `FieldTravel::Update` |
+| `func_ov017_021adb1c`, `func_ov017_021adb08` | free the task's memory; end it | `FieldTravel::Free`, `::End` |
+| `func_ov017_0219577c` | start the flight's other variant (`+0x280`: `ev999991710.chr`, archive `0xa3`) | `FieldTravel::StartOther` |
+| `func_0203348c` (`0x02033678`–`0x02033704`) | an object's drop: `+0x124` falls `0x51 × +0x12c` a pass to `+0x128`; drawn at `+0x124` (`0x020330c4`) | `Object::UpdateDrop` |
+| `func_0202ea10`, `func_0202e0a4` (`0x0202e238`–`0x0202e3c4`) | the camera's shake: size `+0x1e4`, time `+0x1e8`, 33 ms a pass, four ways by `rand() & 3` | `Camera::Shake`, `Camera::Update` |
+| `func_0205ebc0`, `func_0205ebfc`, `func_0205ec20`, `func_0205ebec` | a sound handle: load a sequence archive, start an entry of it, stop, let go | `SoundHandle::LoadArc`, `::Start`, `::Stop`, `::Release` |
+| `func_0203aa98`, `func_0203ac40` | load a sequence archive (`func_020bdc80`); start an entry of it (`func_020be7a8`) | `SoundPlayer::LoadSeqArc`, `::StartSeqArc` |
+| `func_ov017_0219c598` (`0x0219c628`–`0x0219c668`) | put the party down: the request's place, or with none the map's start point `+0x6c` | `Field::PlaceParty` |
+| `func_0201e1d0`, `data_020ef388`, `func_02014390` | run a map's `.bmbl` with opcodes `0x64`–`0x7E` | `MapLinks::Run` |
+| `func_0201d494`, `func_0201e80c`, `func_0201e820` | `.bmbl` opcode `0x6E`: the start point, x, y, z and a facing; read it back | `MapLinks::OpStart`, `::GetStart`, `::GetStartFacing` |
+| `func_02061c04` case 80 (`0x0206339c`) | action 180: during set battle b, its request's `+0x22` = m | |
+| `func_0205ec70` case 72 (`0x0205f3d8`) | a one-parameter action keeps the parameter's high half at `+4` | `Trigger::ParseAction` |
+| `func_020a3578`, `func_020a3694` | a battle request made empty; whether it is a set battle (`+0x0c` ≥ 0) | `BattleRequest::Init`, `::IsSetBattle` |
+| `func_02011b24`, `func_02011b3c`, `func_02011af0` | set bit 0 of `GameState+0x63dc`; or bits in; clear all but bit 4 — INFERRED a guest in another's world | `GameState::SetGuest`, … |
+| `func_0207416c`, `func_02074060` | run `eventbattle.bin` for a set battle: index, three monsters and counts, track, stage | `EventBattle::Load`, `::OpBattle` |
+
+**Still open**: the shake's two directions (`data_0210a05c`, set at run time);
+values 1 and 10 of a `loola` place (10 is the ship's, task 16b).
 
 ### Gathering spots, and treasure that comes back — ARM9 and overlay 17, read 6 October 2026
 

@@ -2035,6 +2035,25 @@ texture and `M01M01` is a neighbouring map, and both begin with the map's own
 code. So `linksTo` takes the caller's own test for what is a map code — in
 practice `readMapList`'s index — and the map's own code, which is dropped.
 
+## The start point — `0x6E`
+
+Read 6 October 2026 from the game's code (US): the `.bmbl` is run as a
+`Script` command file by `func_0201e1d0`, whose opcode table
+(`data_020ef388`) has `0x64`–`0x6B`, `0x6E`, `0x70`, `0x72`–`0x74` and
+`0x7B`–`0x7E`. **Opcode `0x6E`** (`func_0201d494`) takes **x, y, z and a
+facing in radians** into the map's `+0x6c + 0x70` and `+0x7c`, and a map
+request with no place — a wipe-out's — puts the party there
+(`func_ov017_0219c598`, `0x0219c648`–`0x0219c668`).
+
+| check | result |
+|---|---|
+| `.bmbl` carrying one `0x6E` of four floats (type byte `0xAA`) | **667 of 667** |
+| the battle stages' (`B…`) | all four 0 |
+| Angel Falls' church, `M01M0600.bmbl` | (0, 0.15, −2.64), facing π |
+
+`mapStart` reads it. The terminator `table.ts` stops on is `0x6E` typed
+`0xFF`, which no `.bmbl` carries.
+
 ## The doorways — `0x72`, and `0x73` + `0x74`
 
 A doorway is a volume you walk into, the map it leads to, and where you come out.
@@ -5997,6 +6016,14 @@ four — the lowest and highest story major (both "0": always), then the voice b
 day and by night (`atoi`; empty is 1). The first span holding the major gives
 the voice; voice 3 says nothing, any other is `str_ch<voice − 1>`'s line 1082.
 18 maps on the European cartridge.
+
+**Where the party stands there** is the map's start point, its `.bmbl`'s
+`0x6E` (see `.bmbl`, "The start point"). **A set battle's own map**: trigger
+action `180 : b, m` (`func_02061c04` case 80), on a lost-record, sends a party
+wiped out in set battle b to map m — the parameter's high half (the parser,
+`func_0205ec70` case 72) — in place of the revival map; on 2 records, the
+Magmaroo's battle 14 to 2309 (Upover's church) and Gortress's 16 to 5700.
+`lostRevival`.
 
 ## Accolades — `ttldata`, `ttlname0`/`ttlname1`, and the `title_*.stb` that award them
 
