@@ -246,7 +246,7 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (31 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64), by the kind whose handler is unread:
+**Still struck as the Attack** (29 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25 and 37), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
@@ -254,10 +254,8 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 | 13 | `func_ov024_021dc540` | M-Pathy |
 | 14 | `func_ov024_021dc700` | H-Pathy |
 | 21 | `func_ov024_021dd828` | Fuddle |
-| 25 | `func_ov024_021dde08` | Tap Dance |
 | 31 | `func_ov024_021de678` | Magic Mirror, Bounce |
 | 32 | `func_ov024_021de770` | Reverse Cycle |
-| 37 | `func_ov024_021ded48` | Immense Defence |
 | 43 | `func_ov024_021df454` | Mens Sana |
 | 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
@@ -914,3 +912,28 @@ kept); but **none for the plain Attack's element, 8** (`0x02156c08`), and for
 outside 1 to 21 are whole. So it lowers only 9 to 21 — the ailments'. The
 riders read their bytes without it (§8), and so does the poison attack's.
 Runs down: `+0x8e`, the first table, line `0x25d` (`0x02158de8`–`0x02158e78`).
+
+## 12. The last kinds — 7 October 2026, carried on
+
+### Tap Dance (kind 25) and Immense Defence (kind 37) — two levels, built
+
+Both are the level shape (`func_ov024_021dde08`, `021ded48`): landed, the
+record's `+0x30` held to −2…2; one who may have it moved that way
+(`func_02087f24`, `02088018`: `+0x14` bit 0 clear, and the level not
+already at the end it would go past) has it moved (`func_02087f78`,
+`0208806c`) — the done line (`+0x20`, `+0x24` by `func_ov024_021da644`),
+else the fail line. **Not** a level's own lines, as attack's are.
+
+| | Tap Dance | Immense Defence |
+|---|---|---|
+| level | `+0x58` bits 27–29 | `+0x58` bits 24–26 |
+| flag beside it while not 0 | `+0x14` bit 25 | `+0x18` bit 0 |
+| count | 5 at `+0x77`, second `+0x9a` | 5 at `+0x76`, second `+0x99` |
+| cleared by | `func_02087ff0` | `func_020880e4` |
+| what reads it | the evasion, `func_ov000_02156270`: ×2.0 in floats under the flag (`021563ec`, `0x021563ac`–`0x021563c8`) | the chance of blocking, `func_ov000_02156118`: ×2.0 under the flag (`02156258`, `0x02156230`–`0x0215624c`) |
+| runs down | after Immense Defence's, the second table, line `0x1d9` (`0x021595e4`–`0x02159678`) | after the resistance to breaths', the second table, line `0x1d5` (`0x0215954c`–`0x021595e0`) |
+
+So only the flag is read, never the level's size: a level of 1 doubles as
+2 does. `+0x58` bits 9–11, between agility and magical might, is **charm**
+(`func_02087a9c`, count `+0x71`; Extreme Makeover, kind 50, with
+`UpdateCombatantCharm`) — not built.
