@@ -465,11 +465,13 @@ export {
   type LadderExit,
   type MapStart,
   type MapTransition,
+  type Mooring,
   mapAreas,
   mapBookcases,
   mapDoorwayRegions,
   mapDoorways,
   mapLadders,
+  mapMoorings,
   mapStart,
   readMapTransitions,
 } from './transitions.ts'

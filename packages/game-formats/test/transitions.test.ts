@@ -6,6 +6,7 @@ import {
   mapBookcases,
   mapDoorways,
   mapLadders,
+  mapMoorings,
   mapStart,
   readMapTransitions,
 } from '../src/transitions.ts'
@@ -492,5 +493,64 @@ describe("a map's start point — 0x6E", () => {
 
   it('throws on a table that does not read', () => {
     expect(() => mapStart(new Uint8Array(8))).toThrow(GameFormatError)
+  })
+})
+
+describe("a map's moorings — the type-10 regions", () => {
+  // Shaped like F02's first: a box 6 × 10 × 2 turned 1.396, the ship moored
+  // facing the same way, the party put ashore at (0, 5, −79) facing 0, a reach
+  // of 15 and the ocean's (−52, 0, −32) facing 3 — integers, as on the cartridge.
+  const mooring = (values: Field[]) => [
+    {
+      tag: 0x73,
+      fields: [
+        int(10),
+        ...[0, -1, -81.597].map(float),
+        ...[6, 10, 2].map(float),
+        float(1.396),
+        float(1.396),
+      ],
+    },
+    { tag: 0x74, fields: values },
+  ]
+
+  it('reads the ship’s place, the shore, the reach and the sea', () => {
+    const table = build(
+      [
+        ...mooring([0, 0, 5, -79, 0, 15, -52, 0, -32, 3].map(int)),
+        // A doorway region is not one.
+        {
+          tag: 0x73,
+          fields: [int(2), ...[0, 0, 0].map(float), ...[1, 1, 1].map(float), float(0), float(0)],
+        },
+        { tag: 0x74, fields: [int(0), int(1)] },
+      ],
+      [],
+    )
+    const [one, ...rest] = mapMoorings(table)
+    expect(rest).toEqual([])
+    expect(one?.id).toBe(0)
+    expect(one?.z).toBeCloseTo(-81.597, 3)
+    expect(one?.facing).toBeCloseTo(1.396, 3)
+    expect(one?.ashore).toEqual({ x: 0, y: 5, z: -79 })
+    expect(one?.ashoreFacing).toBe(0)
+    expect(one?.reach).toBe(15)
+    expect(one?.sea).toEqual({ x: -52, y: 0, z: -32, facing: 3 })
+    expect(one?.area.angle).toBeCloseTo(1.396, 3)
+  })
+
+  it('reads a float as a float, and leaves the sea out of a record of six values', () => {
+    const [one] = mapMoorings(
+      build(mooring([int(4), float(1.5), int(0), int(2), float(-1), int(9)]), []),
+    )
+    expect(one?.id).toBe(4)
+    expect(one?.ashore.x).toBeCloseTo(1.5, 5)
+    expect(one?.ashoreFacing).toBeCloseTo(-1, 5)
+    expect(one?.sea).toBeUndefined()
+  })
+
+  it('passes over a region with too few values, and throws on a table that does not read', () => {
+    expect(mapMoorings(build(mooring([int(0), int(1)]), []))).toEqual([])
+    expect(() => mapMoorings(new Uint8Array(8))).toThrow(GameFormatError)
   })
 })

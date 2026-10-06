@@ -477,6 +477,93 @@ export function mapLadders(data: Uint8Array): LadderEnd[] {
   return out
 }
 
+/** The kind of a `0x73` region that is a mooring for the ship — see {@link mapMoorings}. */
+const REGION_MOORING = 10
+
+/**
+ * **A mooring for the ship**: a `0x73` region of type 10 and its `0x74`
+ * (`func_0201d638` case 10, `0x0201dd98`–`0x0201de3c`). Read 6 October 2026 —
+ * see `docs/readings/T16b-ship.md`. Positions are in the map's own units,
+ * angles in radians; the game keeps them × 4096.
+ */
+export interface Mooring {
+  /** Its number, value 0 (`+0x2c`) — what the game keeps the ship tied up at. */
+  readonly id: number
+  /** Where the ship stands: the region's centre, the `0x73`'s values 1 to 3 (`+0x08`). */
+  readonly x: number
+  readonly y: number
+  readonly z: number
+  /** The way the ship faces moored: the `0x73`'s value 8 (`+0x20`). */
+  readonly facing: number
+  /** Its box, as an area's: where the Hero stands to board — the A Button's check, kind 11. */
+  readonly area: StoryArea
+  /** Where the party is put ashore, values 1 to 3 (`+0x30`). */
+  readonly ashore: { readonly x: number; readonly y: number; readonly z: number }
+  /** The facing ashore, value 4 (`+0x2e`). */
+  readonly ashoreFacing: number
+  /** How near the ship must come on the ocean for this to be the one it ties up at, value 5 (`+0x3c`). */
+  readonly reach: number
+  /**
+   * Where the ship goes out to sea from here, on the ocean (map 10000), and
+   * its facing — values 6 to 9 (`+0x40`, `+0x4c`). Read only when the record
+   * has more than six values; all 204 on the cartridge have ten.
+   */
+  readonly sea?: {
+    readonly x: number
+    readonly y: number
+    readonly z: number
+    readonly facing: number
+  }
+}
+
+/**
+ * **A map's moorings** — its link table's `0x73` regions of type 10. 204 on
+ * the cartridge, in 30 fields and no other map. The `0x74`'s values are
+ * integers there, whole units and whole radians, which the game reads as
+ * floats (`Script::Parameter::ToFloat`, `0x02030b44`); so are they here.
+ */
+export function mapMoorings(data: Uint8Array): Mooring[] {
+  const table = readDataTable(data)
+  const records = table.records
+  const out: Mooring[] = []
+  for (let i = 0; i < records.length; i++) {
+    const region = records[i] as TableRecord
+    if (region.tag !== TAG_TRIGGER || region.values[0] !== REGION_MOORING) continue
+    const action = records[i + 1]
+    if (action?.tag !== TAG_ACTION || action.values.length < 6) continue
+    const f = region.floats
+    const [x, y, z, width, height, depth, angle, facing] = [1, 2, 3, 4, 5, 6, 7, 8].map(
+      (slot) => (f[slot] as number) ?? 0,
+    ) as [number, number, number, number, number, number, number, number]
+    const value = (slot: number) =>
+      action.kinds[slot] === KIND_FLOAT
+        ? (action.floats[slot] as number)
+        : (action.values[slot] as number) | 0
+    const turn = 2 * Math.PI
+    out.push({
+      id: value(0) | 0,
+      x,
+      y,
+      z,
+      facing,
+      area: {
+        id: value(0) | 0,
+        max: { x: x + width / 2, y: y + height / 2, z: z + depth / 2 },
+        min: { x: x - width / 2, y: y - height / 2, z: z - depth / 2 },
+        angle: ((angle % turn) + turn) % turn,
+        reach: (width / 2) ** 2 + (depth / 2) ** 2,
+      },
+      ashore: { x: value(1), y: value(2), z: value(3) },
+      ashoreFacing: value(4),
+      reach: value(5),
+      ...(action.values.length > 6
+        ? { sea: { x: value(6), y: value(7), z: value(8), facing: value(9) } }
+        : {}),
+    })
+  }
+  return out
+}
+
 /** The `.bmbl` instruction that is the map's start point (`func_0201d494`). */
 const TAG_START = 0x6e
 /** The type bits of a float. */
