@@ -230,7 +230,12 @@ export function criticalDamage(rng: BattleRng, damage: number): number {
  * function and not here: nothing the slice plays has one.
  * `packages/sim/test/game-oracle.ts` has the whole of it.
  */
-export function criticalChance(deftness: number, skillPercent = 100, passes = 1): number {
+export function criticalChance(
+  deftness: number,
+  skillPercent = 100,
+  passes = 1,
+  crisis = false,
+): number {
   const f = Math.fround
   // The `short` the game narrows to before it looks at the sign.
   const past = Math.max(0, ((deftness - 150) << 16) >> 16)
@@ -242,7 +247,22 @@ export function criticalChance(deftness: number, skillPercent = 100, passes = 1)
   // **Divided by the passes the action makes** — `CalculateCritRate`'s
   // `hitCount`, the resolver's whole target list (read 2 October 2026).
   const per = passes === 1 ? chance : f(f(f(1) / f(passes)) * chance)
-  return Math.trunc(f(f(100) * per))
+  // **Critical in a Crisis**: doubled, for one of the party who holds skill
+  // panel 285 (trait `0x11d`) while their HP is under a quarter of their
+  // maximum — `func_ov000_02156cc4`, `0x02156d8c`–`0x02156dbc`. See `inCrisis`.
+  const doubled = crisis ? f(per * f(2)) : per
+  return Math.trunc(f(f(100) * doubled))
+}
+
+/**
+ * Whether one of the party is in a crisis, as Critical in a Crisis asks it:
+ * `func_ov000_02155a04`'s current HP over maximum, in `float` — 0 when the HP
+ * is — under `0.25f` (`0x02156da0`). The monsters' branch never asks.
+ */
+export function inCrisis(hp: number, maxHp: number): boolean {
+  const f = Math.fround
+  const share = hp === 0 ? 0 : f(f(hp) / f(maxHp))
+  return share < 0.25
 }
 
 /**

@@ -230,6 +230,8 @@ export const RESULT_SAYS = {
    * them is not established, and 19 is the one used here.
    */
   chestHolds: 19,
+  /** Autofilch's: "<DEF_ART_ACTOR> manages to steal <INDEF_ART_SGL_I_NAME>!" — a drop of the further passes. */
+  steals: 37,
   wipedOut: 20,
   /** "<TARGET> receives some experience!" — one earner. */
   receives: 25,

@@ -7,6 +7,7 @@ import {
   dealt,
   drawnAmount,
   GUARD_LEVELS,
+  inCrisis,
   initiative,
   partyAmount,
   physicalDamage,
@@ -137,6 +138,12 @@ export interface Fighter {
    * the game's comes to at any deftness up to 150.
    */
   readonly deftness?: number
+  /**
+   * Whether they hold **Critical in a Crisis**, skill panel 285 — trait
+   * `0x11d`, which its book grants: their chance of a critical doubles while
+   * their HP is under a quarter — see `criticalChance` and `inCrisis`.
+   */
+  readonly crisisCritical?: boolean
   /**
    * A monster's family, 0–15, and whether its body is metal — `mon_data`
    * `+0x0A` bits 7–10 and bit 12, which the abilities' handlers ask
@@ -560,7 +567,12 @@ function criticalRate(me: FighterState, percent: number, flat: number, passes = 
   // Without deftness, the rules' flat chance over the passes — ours.
   return me.deftness === undefined
     ? Math.trunc(flat / passes)
-    : criticalChance(me.deftness, percent, passes)
+    : criticalChance(
+        me.deftness,
+        percent,
+        passes,
+        me.crisisCritical === true && inCrisis(me.hp, me.maxHp),
+      )
 }
 
 /** A target's chance of dodging, in a hundred — the game's `func_ov000_02156270`, without its bonuses and statuses. */

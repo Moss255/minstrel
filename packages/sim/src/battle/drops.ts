@@ -74,13 +74,42 @@ export interface DropWon {
   /** Its record's number, where the fighter carried one. */
   readonly kind?: number
   readonly rare: boolean
+  /**
+   * The fighter whose Autofilch took it, for a drop of the further passes —
+   * the record's `+5` byte, which the results say with `str_bres` 37.
+   */
+  readonly by?: number
 }
 
-/** Whether a drop lands: `func_02032370(one in so many) == 0`, and nothing at all where the step never drops. */
-function landed(rng: DropRng, drop: Drop): boolean {
+/**
+ * One of the party as the further passes see them, in the party's order: the
+ * fighter they are, their level in the vocation they are now (`func_0202053c`,
+ * `rec + 0x16c + 2 × rec[0x950]`), and whether they hold **skill panel 164,
+ * Autofilch** — trait `0xa4`, bit 164 of the panels held at record `+0x8ec`
+ * (`func_02083b00`), tree 19's eleventh panel, which its book grants.
+ */
+export interface Filcher {
+  readonly fighter: number
+  readonly level: number
+  readonly autofilch: boolean
+}
+
+/**
+ * Whether a drop lands: `func_02032370(one in so many) == 0`, and nothing at
+ * all where the step never drops. In a further pass, `level` scales it — one
+ * in `chance × 100 ÷ level` — and step 0 never lands (`0x021f49d0`–`0x021f49e0`).
+ */
+function landed(rng: DropRng, drop: Drop, level?: number): boolean {
   const chance = DROP_CHANCES[drop.step] ?? 0
   if (chance <= 0 || drop.item === 0) return false
-  return rng.below(chance) === 0
+  const n =
+    level === undefined
+      ? chance
+      : drop.step === 0
+        ? 0
+        : Math.trunc((chance * 100) / Math.max(1, level))
+  if (n <= 0) return false
+  return rng.below(n) === 0
 }
 
 /**
@@ -99,16 +128,24 @@ function landed(rng: DropRng, drop: Drop): boolean {
  *   did not land or never drops — so at most one item a kind;
  * - the list of what was won is capped at 8.
  *
- * **Read and not modelled**: the game rolls four more passes, one for each
- * party member that stands and is above half its HP, at a chance scaled by
- * something of theirs — the series' item-finding abilities, which the slice
- * has not, and which our party of one or two has no way to carry. A step-0
- * drop is not repeated by those passes.
+ * **And four passes more** (`0x021f4628`–`0x021f46b8`, read 4 October 2026):
+ * pass *k* is the party's member *k − 1* (the lineup, `func_02011518`), and
+ * is skipped unless they are in the battle, standing (`func_02010088`), were
+ * standing for **at least half the battle's rounds** — their counter over the
+ * battle's, in `float`, not below 0.5 (`0x021f4678`–`0x021f468c`) — and hold
+ * **Autofilch** (see {@link Filcher}). Then every kind is rolled again, rare
+ * first, at one in `N × 100 ÷ L` (`_s32_div_f`), `N` the step's chance and `L`
+ * their level; a step 0 never lands in these passes (`0x021f49e0`). A kind
+ * that already dropped can drop again. Each such drop carries its member.
  *
  * **Ours**: the order the kinds are rolled in is the order they stand in the
  * battle, where the game's is the order they left the field.
  */
-export function dropsWon(state: BattleState, rng: DropRng): DropWon[] {
+export function dropsWon(
+  state: BattleState,
+  rng: DropRng,
+  lineup: readonly (Filcher | undefined)[] = [],
+): DropWon[] {
   const kinds = new Map<
     number | string,
     { name: string; kind?: number; drops: readonly [Drop, Drop]; beaten: boolean }
@@ -127,13 +164,30 @@ export function dropsWon(state: BattleState, rng: DropRng): DropWon[] {
     })
   }
   const won: DropWon[] = []
-  for (const { name, kind, drops, beaten } of kinds.values()) {
-    if (won.length >= 8) break
-    if (!beaten) continue
-    const from = { from: name, ...(kind === undefined ? {} : { kind }) }
-    const [ordinary, rare] = drops
-    if (landed(rng, rare)) won.push({ item: rare.item, rare: true, ...from })
-    else if (landed(rng, ordinary)) won.push({ item: ordinary.item, rare: false, ...from })
+  for (let pass = 0; pass < 5; pass++) {
+    // The level that scales the chance, and who it is, from pass 1 on.
+    let by: Filcher | undefined
+    if (pass > 0) {
+      by = lineup[pass - 1]
+      const fighter = by ? state.fighters[by.fighter] : undefined
+      if (!by || !fighter || fighter.side !== 'party' || fighter.hp <= 0) continue
+      const f = Math.fround
+      if (f(f(fighter.rounds ?? 0) / f(state.round)) < 0.5) continue
+      if (!by.autofilch) continue
+    }
+    for (const { name, kind, drops, beaten } of kinds.values()) {
+      if (won.length >= 8) return won
+      if (!beaten) continue
+      const from = {
+        from: name,
+        ...(kind === undefined ? {} : { kind }),
+        ...(by ? { by: by.fighter } : {}),
+      }
+      const [ordinary, rare] = drops
+      if (landed(rng, rare, by?.level)) won.push({ item: rare.item, rare: true, ...from })
+      else if (landed(rng, ordinary, by?.level))
+        won.push({ item: ordinary.item, rare: false, ...from })
+    }
   }
   return won
 }

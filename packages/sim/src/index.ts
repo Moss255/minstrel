@@ -46,6 +46,7 @@ export {
   dealt,
   drawnAmount,
   fieldAmount,
+  inCrisis,
   initiative,
   monsterHp,
   type PartyAmount,
@@ -53,7 +54,7 @@ export {
   physicalDamage,
   resistanceTo,
 } from './battle/damage.ts'
-export { DROP_CHANCES, DropRng, type DropWon, dropsWon } from './battle/drops.ts'
+export { DROP_CHANCES, DropRng, type DropWon, dropsWon, type Filcher } from './battle/drops.ts'
 export { bandAdd, experienceShares, type Sharer } from './battle/experience.ts'
 export { FACING_CONE, facingOff, howItOpens } from './battle/opening.ts'
 export { BattleRng } from './battle/rng.ts'

@@ -183,6 +183,17 @@ export function criticalThreshold(ratePercent: number): number {
   return Math.trunc(f(f(100) * f(ratePercent)))
 }
 
+/**
+ * The party's rate as `func_ov000_02156cc4` uses it: `CalculateCritRate`'s,
+ * doubled when the attacker holds trait `0x11d` (Critical in a Crisis) and
+ * `func_ov000_02155a04` — current HP over maximum in `float`, 0 at 0 HP — is
+ * under `0.25f` (`0x02156d8c`–`0x02156dbc`).
+ */
+export function partyCritRate(rate: number, holds: boolean, hp: number, maxHp: number): number {
+  const share = hp === 0 ? 0 : f(f(hp) / f(maxHp))
+  return holds && share < 0.25 ? f(f(rate) * f(2)) : rate
+}
+
 /** The roll itself: one draw, whatever the outcome. */
 export function rollsCritical(random: GameRandom, ratePercent: number): boolean {
   return random.max(10_000) < criticalThreshold(ratePercent)

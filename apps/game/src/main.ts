@@ -120,6 +120,7 @@ import {
   dropsWon,
   experienceShares,
   type Fighter,
+  type Filcher,
   type Follower,
   facingOff,
   fieldAmount,
@@ -6525,6 +6526,14 @@ function heroNamed(): Named {
   return { name: heroName(), gender: 0 }
 }
 
+/** One of the party in a battle, by their fighter's index, as the words name them. */
+function fighterNamed(index: number): Named | undefined {
+  if (index === 0) return heroNamed()
+  const at = battleCompanions.find((one) => one.index === index)
+  const member = at ? members[at.place] : undefined
+  return member ? { name: nameFor(member), gender: member.sex === SEX.female ? 1 : 0 } : undefined
+}
+
 /** A monster as the words name it, by its record's number — see `MonsterWords`. */
 function monsterNamed(number: number | undefined): Named | undefined {
   if (number === undefined) return undefined
@@ -7514,6 +7523,7 @@ function createdFighter(member: Member): Fighter | undefined {
     defence: row.resilience + worn.defence,
     agility: row.agility + worn.agility,
     deftness: row.deftness,
+    ...(holdsPanel(member, CRITICAL_IN_A_CRISIS) ? { crisisCritical: true } : {}),
     resist: wornResistances(
       [...wornBy(member).values()].flatMap((id) => {
         const own = loaded?.itemResistances.get(id)
@@ -7697,6 +7707,7 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     agility: row.agility + worn.agility,
     // The chance of a critical climbs with deftness past 150 — `criticalChance`.
     deftness: row.deftness,
+    ...(holdsPanel(leader(), CRITICAL_IN_A_CRISIS) ? { crisisCritical: true } : {}),
     // What the Hero takes of each element: a hundred each, and what is worn
     // added on — the game's own sum (`wornResistances`). Nothing the slice
     // wears carries any, so these are all whole; something later will not be.
@@ -10134,11 +10145,20 @@ function settleBattle(): void {
     leader().mp = mp >= heroAfter.maxMp ? undefined : mp
     // What the monsters dropped — rolled the game's way, from its own
     // generator, after the experience and the gold are settled; see `dropsWon`.
-    for (const won of dropsWon(battle.state, dropRng)) {
+    for (const won of dropsWon(battle.state, dropRng, filchersOf(battle.state))) {
       // To the first living member with room, else the bag (`func_ov023_021eeaac`).
       give(won.item, 1, true)
       const monster = monsterNamed(won.kind) ?? { name: won.from }
       const item = itemNamed(won.item)
+      // Autofilch's: line 37, the member as ACTOR — sub-state 13 says it for
+      // a drop whose record carries a member (`+5`).
+      const thief = won.by === undefined ? undefined : fighterNamed(won.by)
+      const stolen = thief && said(RESULT_SAYS.steals, { actor: thief, item })
+      if (stolen !== undefined) {
+        lines.push(stolen)
+        slots.push({})
+        continue
+      }
       const chest = said(RESULT_SAYS.dropsChest, { monsters: [monster], target: heroNamed() })
       const holds = said(RESULT_SAYS.chestHolds, { item, target: heroNamed() })
       lines.push(
@@ -10276,6 +10296,42 @@ function endFight(): void {
   }
   status(`back on the map · HP ${leader().hp ?? 'full'}`)
   if (fought) followBattle(fought)
+}
+
+/**
+ * The party as the drop roll's further passes see them, in the party's order
+ * — see `Filcher`: each member's fighter, level in their vocation now, and
+ * whether they hold Autofilch, panel 164 (a book grants it).
+ */
+function filchersOf(state: BattleState): Filcher[] {
+  const fighting = [
+    { member: leader(), index: 0 },
+    ...battleCompanions.map((at) => ({ member: members[at.place], index: at.index })),
+  ]
+  return fighting.flatMap(({ member, index }) => {
+    const row = member ? levelOf(member) : undefined
+    if (!member || !row || !state.fighters[index]) return []
+    return [{ fighter: index, level: row.level, autofilch: holdsPanel(member, AUTOFILCH) }]
+  })
+}
+
+/** Autofilch, tree 19's eleventh panel — trait `0xa4` (`0x021f469c`). */
+const AUTOFILCH = 164
+/** Critical in a Crisis, tree 26's eleventh panel — trait `0x11d` (`0x02156d8c`). */
+const CRITICAL_IN_A_CRISIS = 285
+
+/**
+ * Whether a member holds a skill panel: climbed to, or granted by a skill
+ * book they carry (`func_ov026_021dc8fc`, `0x021dc980`–`0x021dca0c`) — the
+ * bitset at record `+0x8ec` the battle's traits test (`func_02083b00`).
+ */
+function holdsPanel(member: Member, panel: number): boolean {
+  const here = loaded
+  if (!here) return false
+  const book = (id: number) => here.itemDefs.get(id)
+  if ((member.carried ?? []).some((id) => book(id)?.book === true && book(id)?.panel === panel))
+    return true
+  return panelsHeld(member, here.skillPanels).some((held) => held.id === panel)
 }
 
 /**

@@ -133,3 +133,53 @@ describe('what a won battle drops', () => {
     expect(dropsWon(startBattle(many), rng)).toHaveLength(8)
   })
 })
+
+describe('Autofilch’s four further passes', () => {
+  /** The battle three rounds in, the Hero standing for `rounds` of them. */
+  const after = (state: BattleState, rounds: number): BattleState => ({
+    ...state,
+    round: 3,
+    fighters: state.fighters.map((f) => (f.side === 'party' ? { ...f, rounds } : f)),
+  })
+  const filch = { fighter: 0, level: 50, autofilch: true }
+
+  it('rolls again for a member who holds it and stood half the rounds, scaled by their level', () => {
+    // Step 1 is one in 8; at level 50 the pass's is one in 16 — 8 × 100 ÷ 50.
+    const battle = after(startBattle([hero, foe(1, 1, 7)]), 2)
+    const rng = new DropRng(3)
+    const won = dropsWon(battle, rng, [filch])
+    // The ordinary roll, then the Hero's pass: two draws, whatever landed.
+    expect(rng.drawn).toBe(2)
+    for (const drop of won.slice(1)) expect(drop.by).toBe(0)
+    // Worked by hand: the same generator, one in 8 then one in 16.
+    const twin = new DropRng(3)
+    const first = twin.below(8) === 0
+    const second = twin.below(16) === 0
+    expect(won.map((d) => d.by)).toEqual([...(first ? [undefined] : []), ...(second ? [0] : [])])
+  })
+
+  it('passes over a member without it, fallen, or standing under half the rounds', () => {
+    const battle = startBattle([hero, foe(1, 1, 7)])
+    for (const [state, who] of [
+      [after(battle, 3), { ...filch, autofilch: false }],
+      [after(battle, 1), filch],
+      [
+        {
+          ...after(battle, 3),
+          fighters: after(battle, 3).fighters.map((f, i) => (i === 0 ? { ...f, hp: 0 } : f)),
+        },
+        filch,
+      ],
+    ] as const) {
+      const rng = new DropRng(3)
+      dropsWon(state, rng, [who])
+      expect(rng.drawn).toBe(1)
+    }
+  })
+
+  it('never lands a step-0 drop in a further pass', () => {
+    const battle = after(startBattle([hero, foe(1, 0, 7)]), 3)
+    const won = dropsWon(battle, new DropRng(3), [filch])
+    expect(won.map((d) => d.item)).toEqual([101])
+  })
+})

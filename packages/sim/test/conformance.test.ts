@@ -12,6 +12,7 @@ import {
   drawnAmount,
   experienceShares,
   fieldAmount,
+  inCrisis,
   levelled,
   monsterHp,
   partyAmount,
@@ -44,6 +45,7 @@ import {
   GameRandom,
   MONSTER_EVASION,
   partyBlockRate,
+  partyCritRate,
   resistance,
   riderLands,
   rollsBlock,
@@ -212,6 +214,30 @@ describe('the critical chance', () => {
     expect(criticalChance(250)).toBe(300)
   })
 
+  it('doubles for Critical in a Crisis, under a quarter of the HP', () => {
+    // `func_ov000_02156cc4`: the rate × 2.0f before × 100.0f. The doubling
+    // is exact in single precision, but the truncation comes after it — so at
+    // 159, where `100 × rate` is just under 209 and truncates to 208, the
+    // doubled is just under 418 and gives 417, not twice 208.
+    expect(criticalChance(150, 100, 1, true)).toBe(400)
+    expect(criticalChance(159, 100, 1, true)).toBe(417)
+    expect(criticalChance(159)).toBe(208)
+    for (let deftness = 0; deftness <= 999; deftness += 7)
+      for (const [hp, max] of [
+        [1, 100],
+        [24, 99],
+        [25, 100],
+        [0, 50],
+      ] as const)
+        expect(criticalChance(deftness, 100, 1, inCrisis(hp, max))).toBe(
+          criticalThreshold(partyCritRate(calculateCritRate(deftness), true, hp, max)),
+        )
+    // A quarter is not under a quarter; 0 HP counts as none, under it.
+    expect(inCrisis(24, 100)).toBe(true)
+    expect(inCrisis(25, 100)).toBe(false)
+    expect(inCrisis(0, 100)).toBe(true)
+  })
+
   it('is the game’s threshold at every deftness', () => {
     for (let deftness = 0; deftness <= 999; deftness++) {
       expect(criticalChance(deftness)).toBe(criticalThreshold(calculateCritRate(deftness)))
@@ -236,6 +262,16 @@ describe('the critical chance', () => {
     expect(under.length).toBe(151)
     expect(under.slice(0, 5)).toEqual([159, 160, 161, 162, 184])
     expect(criticalChance(159)).toBe(208)
+    for (let deftness = 0; deftness <= 999; deftness += 7)
+      for (const [hp, max] of [
+        [1, 100],
+        [24, 99],
+        [25, 100],
+        [0, 50],
+      ] as const)
+        expect(criticalChance(deftness, 100, 1, inCrisis(hp, max))).toBe(
+          criticalThreshold(partyCritRate(calculateCritRate(deftness), true, hp, max)),
+        )
   })
 
   it('meets one draw below 10,000, and spends it whether or not it lands', () => {
