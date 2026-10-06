@@ -245,19 +245,16 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (14 — 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
+**Still struck as the Attack** (12 — 14 before §15 built kinds 53 and 44, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
-| 21 | `func_ov024_021dd828` | Fuddle |
-| 44 | `func_ov024_021df924` | Half-Inch |
 | 45 | `func_ov024_021dfe9c` | Eye for Trouble |
 | 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
 | 47 | `func_ov024_021e00c0` | Feel the Burn |
 | 50 | `func_ov024_021e0380` | Extreme Makeover |
 | 51 | `func_ov024_021e04e0` | Eyes on Me |
 | 52 | `func_ov024_021e05fc` | Mercy |
-| 53 | `func_ov024_021e07b0` | Soothe Sayer |
 | 56 | `func_ov024_021e0b48` | Whistle |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
 
@@ -293,7 +290,7 @@ Throw — its extra pass's target is picked by place on the stage (§8).
 
 **Riders not played** (`data_ov024_021ff450`): ~~1~~ (built, §10), 5 and 6 (the antidotes', items) `021e324c`,
 `021e32f4` — read, §14, not built, the battle's items carrying no rider
-—, 9 `021e373c` (Soothe Sayer), ~~10~~ (confusion, built — §14), ~~11~~
+—, ~~9~~ (Soothe Sayer's, built — §15), ~~10~~ (confusion, built — §14), ~~11~~
 (paralysis, built — §10), 12 `021e3cec` (Rake 'n' Break), 13 `021e3d88`
 (Conjury Conductor), 14 `021e3f14` (Morale Masher), ~~19~~ (Sobering
 Slap's, built — §14), 21 `021e47f4` (Caster Sugar). Their blows land and
@@ -1262,3 +1259,62 @@ on a slime took the Hero's MP from 57 to 53, its record's 4 — before, a
 blow spent none. Fuddle and a confused turn were not reached in a fight
 (`vocation=0:3` leaves the Mage at level 1); they are held by
 `packages/sim/test/confusion.test.ts`.
+
+## 15. A blow rousing its target, Soothe Sayer, Half-Inch — 7 October 2026
+
+**Built.** Struck as the Attack: 14 before, 12 after (Soothe Sayer, Half-Inch).
+
+**A blow rousing its target** (`func_ov000_02157288`, the resolver at
+`0x021ecc90`–`0x021ecca8`) — what §14 read and left out, now built. After
+each pass whose damage (`[sp+0x1c]`, the pass's own, reset at
+`0x021ebefc`) is above 0, unturned (`func_ov024_021e9f68`'s answer at
+`[sp+0x4c]` 0, `0x021eca74`), and with `ctx+0x70` still set — set at each
+pass's head (`0x021ebf14`), cleared in kind 1's handler where the pass's
+own rider came back with flag 0xe, asleep, or 0x17, confused
+(`0x021dad3c`–`0x021dad78`) — `02157288(rng, target, action)` leaves at
+once unless the action has `+0x10` bit 11 (`0x0215728c`–`0x021572a0`);
+then a draw `R(100)` is **always made** (`0x02157340`), and they are roused
+where it is under `_ffix(_fmul(c, 100))`: `c` 1.0 at one of the party asleep
+(`func_020882f8`, bit 4) and 0.5 at a monster (`func_02074968`); else, one
+confused (`func_ov000_021543f4`, bit 5), 0.5 and 0.25 (`func_02074978`);
+else 0. Roused, sleep and confusion are both cleared (`func_02088390`,
+`func_020883fc`) and `+0x3b` bit 0 set; the line is `0x40`, "wakes up", or
+`0x173`, "pulls … together", for one confused, said at the target by a
+result of its own (`0x021eccb8`–`0x021ecd30`). The bit is on **154 of 681**
+actions, every one of kind 1, neither spell nor breath: the plain Attack,
+the monsters' attacks (1, 2, 230–232, 273–275) and the abilities' blows.
+**A spell wakes nobody**; before this, any damage woke a sleeper, with no
+draw. The coup's draw at the pass (`0x021ecfd8`) comes after it, and now
+reads whether the pass roused them. **Ours**, INFERRED: one the pass fells
+has neither to be roused from, the draw still made.
+
+**Soothe Sayer** (kind 53, `func_ov024_021e07b0`), no test of its landing:
+its rider 9 (`func_ov024_021e373c`, through `021e4b14` with a pass of 1) on
+one with tension (`+0x14` bit 23 or 24, `func_ov024_021da998`, `021dd260`)
+takes a step off (`func_02087704`; from the most, bit 24 cleared and 23
+set), no draw, its line by the level it came to — 0 `0x17f`, 1 `0x180`, 2
+`0x181`, 3 `0x259` and flag 8. Then one watched — `+0x18` bit 12, Knight
+Watch's (`func_ov024_021e05e4`) — is watched no more (`func_02088e64`),
+"…'s rage subsides" (`0x164`). Neither, its fail line. **Ours**:
+`func_020488cc`, called with 1 for a monster calmed, is not read; nor is
+`func_ov000_0215a8d4`'s count, which Soothe Sayer and Pratfall add to.
+
+**Half-Inch** (kind 44, `func_ov024_021df924`), no test of its landing:
+only one of the party's (`func_0200ff1c`) at a monster with a record
+(`+0x148`); two draws `NextRandomFloatBetween(0, 100)` first, one a slot,
+always. Then slot 0, the ordinary item (record `+0x02` step, `+0x04` item),
+and slot 1, the rare (`+0x03`, `+0x06`): a step of 0 passed over; one
+stolen from already (status `+0x3d` above 0) passed over but where the
+quest's pinch (`func_ov024_021df71c`) allows; the share by the step,
+`data_ov024_021fe860` (1, ⅛ … ¹⁄₂₅₆, 0); `lo = 2 × share × 100`,
+`hi = 6 × share × 100`, both doubled where equipment slot 9 holds 18047
+(`0x467f`), each held to 50 (`0x42480000`); a deftness `d` (the record's
+`+0x150 → +4` ten bits) above 51 makes `lo` `hi` from 999, else
+`lo + (d − 51) × ((hi − lo) ÷ 948)`; the slot's draw under `lo` pinches it —
+`+0x3d` the slot and one, the item to the party (`func_0207ccf0`), the
+records' item list marked (`func_020ac020`, `020abe84`). Its lines: pinched,
+the record's done line; nothing stealable (no slot with a share above 0
+looked at), `0x25a`; else its fail line. `stealChance` in the sim, held to
+the oracle's `halfInchChance`. **Ours**: the quest's pinch; where the item
+goes (as a drop does); the records' item list; one with no record says the
+fail line where the game makes no result.
