@@ -2454,7 +2454,9 @@ function confess(): string {
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
     map: loaded.code,
-    // In the file's own units, which is what a doorway's arrival is in.
+    // In the world's units with its scale taken out — the file's own times
+    // `WORLD_SCALE` — which is what a doorway's arrival is in: `enter` scales
+    // it by `worldScale` again.
     at: {
       x: toFloat(self.state.x) / worldScale,
       y: toFloat(self.state.y) / worldScale,
