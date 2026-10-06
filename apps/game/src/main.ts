@@ -9391,6 +9391,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       remembers: numbers.remembers,
       // How long Knight Watch holds it — `mon_btldata +0x28`, `+0x29`.
       watchTurns: numbers.watchTurns,
+      // What enrages it, and how likely — `mon_btldata +0x24`.
+      provokedBy: numbers.provokedBy,
     })
     looks.push(monsterLookOf(cartridge, code))
   }

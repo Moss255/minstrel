@@ -26,7 +26,7 @@ import { type Grammar, readGrammar } from './grammar.ts'
  * | `+0x62` | `u16` | defence |
  * | `+0x64` | `u16` | agility |
  * | `+0x6C` | `u8` ×22 | **resistances**, a hundredth each, one an element — from the game's code |
- * | `+0x24` | `u32` | two statuses a blow of its can carry and a chance for each — bits 0–6 and 7–13, then 14–20 and 21–27; the chances are 0, 25, 50, 75 or 100. Read by `0x021eb124` |
+ * | `+0x24` | `u32` | **what enrages it** — two kinds of provocation and a chance in 100 for each: bits 0–6 and 7–13, then 14–20 and 21–27 — see {@link MonsterBattle.provokedBy}. Read by `func_ov024_021eb08c` (`0x021eb124`–`0x021eb17c`) |
  * | `+0x28` | `u8` ×2 | the least and most passes Knight Watch holds it — see {@link MonsterBattle.watchTurns} |
  * | `+0x82` | `u8` ×2 | copied along with them, not established; 0 on every monster looked at |
  *
@@ -147,6 +147,20 @@ export interface MonsterBattle {
    * of 0 leaves it unwatched.
    */
   readonly watchTurns: readonly [number, number]
+  /**
+   * **What enrages it**, `+0x24` — two pairs of a kind of provocation and its
+   * chance in 100 (`func_ov024_021eb08c`, `0x021eb124`–`0x021eb17c`): the
+   * first pair whose kind is asked is the one tried. The kinds, by who asks
+   * (7 October 2026): 3 and 4 a party member's blow taking it below a half or
+   * a quarter of its HP (kind 1's handler, `0x021daffc`–`0x021db084`); `0x11`
+   * Whistle (`func_ov024_021e0b48`); `0x12` Eyes on Me (`021e04e0`); `0x13`
+   * and `0x14` a party member's action of the heal or the Zing family
+   * (`+0x1c` bits 19–23 5 or 12; the resolver, `0x021ed170`–`0x021ed1d8`);
+   * `0x18` where the turn's record has `+0xa` bit 0 (`0x021ed1dc`), not read.
+   * Enraged, it is watched by whoever provoked it for a count drawn from
+   * {@link watchTurns} — see Knight Watch.
+   */
+  readonly provokedBy: readonly (readonly [number, number])[]
   /** The whole record, for what is not read. */
   readonly raw: Uint8Array
 }
@@ -266,6 +280,10 @@ export function readMonsterBattle(bytes: Uint8Array): MonsterBattle[] {
       resistances: [...bytes.subarray(at + 0x6c, at + 0x6c + 22)],
       bossAi: ((bytes[at + 0x27] as number) & 0x10) !== 0,
       watchTurns: [bytes[at + 0x28] as number, bytes[at + 0x29] as number],
+      provokedBy: [0, 14].map((shift) => {
+        const word = view.getUint32(at + 0x24, true) >>> shift
+        return [word & 0x7f, (word >>> 7) & 0x7f] as const
+      }),
       raw: bytes.subarray(at, at + BATTLE_RECORD),
     })
   }

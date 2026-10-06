@@ -537,6 +537,8 @@ export interface ItemEffect {
     /** Its damage handler, hit code, step after, and falloff — see `Action.damageHandler`, `hitCode`, `afterStep`, `fallsOff`. */
     readonly handler: number
     readonly hitCode: number
+    /** Its family, `+0x1c` bits 19–23 — see `Action.family`. */
+    readonly family: number
     readonly afterStep: number
     readonly fallsOff: boolean
     /** The targeting handlers a monster's AI takes for it in modes 1 and 2 — see `Action.aiTargets`. */
@@ -1967,6 +1969,7 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
           atRoundStart: action.atRoundStart,
           handler: action.damageHandler,
           hitCode: action.hitCode,
+          family: action.family,
           afterStep: action.afterStep,
           fallsOff: action.fallsOff,
           aiTargets: action.aiTargets,

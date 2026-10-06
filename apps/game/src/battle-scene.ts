@@ -213,6 +213,8 @@ export const ACTION_SAYS = {
   mendingUpMuch: 0xc4,
   mendingUp: 0xc5,
   /** The resistance to spells', `func_ov024_021e97f4`. */
+  /** "…is enraged! … now only has eyes for …" — action 921's (`func_ov000_0215a908`). */
+  enraged: 0x212,
   spellsUpMuch: 0xab,
   spellsUp: 0xac,
   spellsDown: 0xad,
@@ -441,6 +443,11 @@ function changeSays(
     // not read — **ours**, INFERRED from its words, at each one marked.
     case 'noted':
       return pick(own?.done, 0xdd)
+    // Eyes on Me's and Whistle's results have no line of their own: the
+    // enraged one's `0x212` is told by the page (`func_ov000_0215a908`).
+    case 'provoked':
+    case 'unprovoked':
+      return 0
     // H-Pathy's and M-Pathy's: the record's done line (`0x021dc790`,
     // `0x021dc5d0`) — 22, "…'s wounds are healed"; 106, "…'s MP are replenished".
     case 'shared':
@@ -625,6 +632,10 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `${whom} has something pinched.`
     case 'noted':
       return `Every last detail of ${whom} is committed to the defeated monster list.`
+    case 'provoked':
+      return `${whom} is enraged!`
+    case 'unprovoked':
+      return ''
     case 'empty':
       return `But ${whom} isn't carrying anything.`
     case 'mashed':
@@ -828,6 +839,7 @@ export interface Castable {
     readonly atRoundStart?: boolean
     readonly handler?: number
     readonly hitCode?: number
+    readonly family?: number
     readonly afterStep?: number
     readonly fallsOff?: boolean
     readonly aiTargets?: readonly [number, number]
@@ -913,6 +925,8 @@ export function battleSpellOf(
       ...(action.rolls?.coverable ? { coverable: true } : {}),
       // What may rouse its target (`+0x10` bit 11) — none of the spells.
       ...(action.rolls?.rouses ? { rouses: true } : {}),
+      // Its family — the heals' provokes the monsters (`0x021ed170`).
+      ...(action.rolls?.family ? { family: action.rolls.family } : {}),
       // Gold Rush: post-step 6 spends its record's `+0x32` in gold (`func_ov024_021e5be4`).
       ...(action.rolls?.afterStep === GOLD_STEP ? { gold: action.rolls.riderLevels } : {}),
     },
@@ -1753,42 +1767,53 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
             ? boostSays(hit).map((line) =>
                 say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
               )
-            : hit.result === 'soothed'
-              ? sootheSays(hit).map((line) =>
-                  say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
-                )
-              : hit.result === 'stunned'
-                ? [
-                    ...(changeSays(
-                      event.change,
-                      hit,
-                      told,
-                      state.fighters[hit.target]?.side === 'party',
+            : hit.result === 'provoked'
+              ? // "…is enraged! It now only has eyes for …" — action 921's
+                // `0x212`, the enraged one its actor (`func_ov000_0215a908`).
+                [
+                  say(scene, 'actions', ACTION_SAYS.enraged, {
+                    actor: scene.names[hit.target],
+                    target: scene.names[hit.by ?? event.actor],
+                  }),
+                ]
+              : hit.result === 'unprovoked'
+                ? []
+                : hit.result === 'soothed'
+                  ? sootheSays(hit).map((line) =>
+                      say(scene, 'actions', line, { actor, target: scene.names[hit.target] }),
                     )
-                      ? [sayHit(hit)]
-                      : []),
-                    // Their tension taken away with it (`func_ov024_021e8cfc`).
-                    ...(hit.calmed
-                      ? [
-                          say(scene, 'actions', ACTION_SAYS.tensionNormal, {
-                            target: scene.names[hit.target],
-                          }),
-                        ]
-                      : []),
-                  ]
-                : hit.result === 'experienced'
-                  ? // Its line names the multiplier as `%.1f`, filled from the
-                    // result's `+0x18` (`0x021eba98`).
-                    [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
-                  : // A line of 0 is none: magical mending's fall says nothing.
-                    changeSays(
-                        event.change,
-                        hit,
-                        told,
-                        state.fighters[hit.target]?.side === 'party',
-                      ) === 0
-                    ? []
-                    : [sayHit(hit)]),
+                  : hit.result === 'stunned'
+                    ? [
+                        ...(changeSays(
+                          event.change,
+                          hit,
+                          told,
+                          state.fighters[hit.target]?.side === 'party',
+                        )
+                          ? [sayHit(hit)]
+                          : []),
+                        // Their tension taken away with it (`func_ov024_021e8cfc`).
+                        ...(hit.calmed
+                          ? [
+                              say(scene, 'actions', ACTION_SAYS.tensionNormal, {
+                                target: scene.names[hit.target],
+                              }),
+                            ]
+                          : []),
+                      ]
+                    : hit.result === 'experienced'
+                      ? // Its line names the multiplier as `%.1f`, filled from the
+                        // result's `+0x18` (`0x021eba98`).
+                        [sayHit(hit)?.replace('%.1f', (hit.multiplier ?? 1).toFixed(1))]
+                      : // A line of 0 is none: magical mending's fall says nothing.
+                        changeSays(
+                            event.change,
+                            hit,
+                            told,
+                            state.fighters[hit.target]?.side === 'party',
+                          ) === 0
+                        ? []
+                        : [sayHit(hit)]),
       ])
       // Disruptive Wave's one line for all (`func_ov024_021e80e4`,
       // `0x021e8560`–`0x021e85d4`): `0xf1` for one, `0xf2` "… and co." for
@@ -1862,6 +1887,15 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
     }
     case 'woke':
       return say(scene, 'actions', ACTION_SAYS.wakes, { actor }) ?? sentence(`${who} wakes up.`)
+    case 'enraged':
+      // Provoked by a blow (kind 1's handler): action 921, `0x212`.
+      return (
+        say(scene, 'actions', ACTION_SAYS.enraged, {
+          actor,
+          target: scene.names[event.target],
+        }) ??
+        sentence(`${who} is enraged! It now only has eyes for ${labels[event.target] ?? '?'}!`)
+      )
     case 'roused':
       // Shaken out of it by a blow (`func_ov000_02157288`): "wakes up", 0x40,
       // or — confused — "pulls … together", 0x173; the line at its target.
@@ -2577,6 +2611,9 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [44, 'steal'],
   // Eye for Trouble (`021dfe9c`): a monster marked for the defeated monster list.
   [45, 'note'],
+  // Eyes on Me (`021e04e0`) and Whistle (`021e0b48`): a monster enraged at the user.
+  [51, 'eyes'],
+  [56, 'whistle'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
 export const TENSION_BOOST = 511
@@ -2664,6 +2701,8 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     change,
     reach,
     side: action.side === 1 ? 'other' : 'own',
+    // Its family — Zing's provokes the monsters (`0x021ed1a8`).
+    ...(r.family ? { family: r.family } : {}),
     // A spell, `+0x10` bit 0: one fizzled cannot cast it.
     ...(r.spell ? { magic: true } : {}),
     // A breath, bit 2, and what a wall of light turns back, bit 10 — see `turnedBack`.

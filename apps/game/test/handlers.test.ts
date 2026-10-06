@@ -75,6 +75,17 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(190))?.rider).toEqual({ slot: 21, levels: 1 })
     })
 
+    it('plays Eyes on Me and Whistle as provocations, and reads what provokes each monster', () => {
+      expect(partyChangeOf(action(194))?.change.kind).toBe('eyes')
+      expect(partyChangeOf(action(147))?.change.kind).toBe('whistle')
+      // The heals are family 5 and Zing's 12, which the resolver asks.
+      expect([30, 31, 32, 33, 34].map((id) => action(id).rolls?.family)).toEqual([5, 5, 5, 5, 5])
+      expect(partyChangeOf(action(38))?.family).toBe(12)
+      // `+0x24`: 94 monsters are provoked by Whistle at 75 and Eyes on Me at 100.
+      const pairs = [...here.monsterBattle.values()].map((m) => JSON.stringify(m.provokedBy))
+      expect(pairs.filter((p) => p === '[[17,75],[18,100]]')).toHaveLength(94)
+    })
+
     it('scales the six of the game’s table by its numbers, each record saying it scales', () => {
       for (const id of [67, 68, 74, 102, 114, 144]) {
         expect(action(id).range?.party.scales).toEqual(SKILL_SCALES.get(id))
@@ -257,7 +268,7 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 11 of them as the Attack now, where 76 were', () => {
+    it('strikes 9 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -274,7 +285,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(11)
+      expect(attack).toBe(9)
     })
   },
 )

@@ -266,6 +266,13 @@ export interface Fighter {
    * for the party, which it does not reach.
    */
   readonly watchTurns?: readonly [number, number]
+  /**
+   * What enrages a monster — its record's `+0x24`, two pairs of a kind of
+   * provocation and its chance in 100 (see game-formats'
+   * `MonsterBattle.provokedBy` and `provoke`). None for the party, and for a
+   * monster with no record, which nothing enrages.
+   */
+  readonly provokedBy?: readonly (readonly [number, number])[]
 }
 
 export interface FighterState extends Fighter {
@@ -355,6 +362,8 @@ export interface Spell {
   readonly rouses?: boolean
   /** The most it can deal — its record's cap. */
   readonly cap?: number
+  /** Its family, `+0x1c` bits 19–23 — 5 the heals, which provoke the monsters; see `provokedByFamily`. */
+  readonly family?: number
   /**
    * The gold it spends — Gold Rush's, its record's `+0x32` under post-step 6
    * (`func_ov024_021e5be4`, `0x021e5c14`–`0x021e5c20`): taken from the
@@ -520,6 +529,15 @@ export type Change =
    * (`ctx+0x14`) is one more. Nothing else in the battle.
    */
   | { readonly kind: 'note'; readonly chance: number }
+  /**
+   * **Eyes on Me** (kind 51, `func_ov024_021e04e0`) and **Whistle** (kind
+   * 56, `021e0b48`): no test of their landing; a monster provoked — of kind
+   * `0x12` and `0x11` (`provoke`) — is enraged at its user and told so at
+   * once (`func_ov000_0215a908`). Eyes on Me, at one watched already, turns
+   * the watch to its user with no draw (`0x021e0518`–`0x021e054c`).
+   */
+  | { readonly kind: 'eyes'; readonly chance: number }
+  | { readonly kind: 'whistle'; readonly chance: number }
   | { readonly kind: 'kill'; readonly chance: number }
   /**
    * **Choir of Angels** (kind 67, `func_ov024_021e13e0`): a share of the most
@@ -750,6 +768,8 @@ export interface Changing {
   readonly reflectable?: boolean
   /** Whether an ally may take it in its target's place — `+0x10` bit 12; see `coverFor`. */
   readonly coverable?: boolean
+  /** Its family, `+0x1c` bits 19–23 — 12 Zing's, which provokes the monsters; see `provokedByFamily`. */
+  readonly family?: number
   readonly change: Change
   readonly reach: 'one' | 'group' | 'all'
   readonly side: 'own' | 'other'
@@ -847,6 +867,10 @@ export type ChangeResult =
   | 'stunned'
   /** Watched by Knight Watch — see `States.watched`. */
   | 'watched'
+  /** Enraged by Eyes on Me or Whistle at `by` — "…now only has eyes for …" (`0x212`). */
+  | 'provoked'
+  /** Not enraged: nothing said of its own. */
+  | 'unprovoked'
   /** Disruptive Wave: all its magic cleared; `calmed` where that took tension. */
   | 'dispelled'
   /** Mens Sana: something unfortunate cleared — its done line. */
@@ -903,6 +927,8 @@ export interface ChangeHit {
   readonly tension?: number
   /** Half-Inch's: the item pinched. */
   readonly item?: number
+  /** Eyes on Me's and Whistle's: whom the one provoked now watches. */
+  readonly by?: number
   /**
    * For a level left where it was (`already`): whether the change would have
    * lowered it — Spooky Aura's then says "But nothing happens" (`0x1f`,
@@ -1170,6 +1196,11 @@ export type BattleEvent =
    * "pulls … together" (`0x173`). Both are cleared either way. See `roused`.
    */
   | { readonly kind: 'roused'; readonly actor: number; readonly senses?: true }
+  /**
+   * A monster enraged — it "now only has eyes for" `target`, which it is
+   * watched by (`func_ov000_0215a908`, action 921, actmsg 530).
+   */
+  | { readonly kind: 'enraged'; readonly actor: number; readonly target: number }
   /** A level worn off, at the round's end. */
   | {
       readonly kind: 'wornOff'
@@ -2027,6 +2058,91 @@ export function playRound(
       tension: 0,
     })
     return calmed
+  }
+  /**
+   * **One who may be watched** (`func_02088dd8`): `func_02088e04` — standing,
+   * not asleep, not under a lost turn, not paralysed, not confused (`+0x14`
+   * bits 0, 4, 19, 3 and 5) — and not watched already (`+0x18` bit 12).
+   */
+  const mayBeWatched = (f: FighterState) =>
+    canAct(f) && f.states.confused === undefined && f.states.watched === undefined
+  /**
+   * **Provoked** (`func_ov024_021eb08c`): a monster with a record, by one of
+   * the party (0 to 3), for a `kind` of provocation. A draw `R(100)` first,
+   * always; then, where it may be watched, a count `NextRandomBetween` its
+   * record's `+0x28` and `+0x29`; and where the first of its two pairs whose
+   * kind is `kind` has a chance above the draw, it is watched by them for
+   * that count (`func_02088e48`). True where it was.
+   */
+  const provoke = (actor: number, target: number, kind: number): boolean => {
+    const me = fighters[actor] as FighterState
+    const them = fighters[target] as FighterState
+    if (them.side !== 'foes' || !them.provokedBy || me.side !== 'party') return false
+    const draw = rng.below(100)
+    if (!mayBeWatched(them)) return false
+    const [least, most] = them.watchTurns ?? [0, 0]
+    const turns = least + rng.below(most - least + 1)
+    const pair = them.provokedBy.find(([k]) => k === kind)
+    if (!pair || !(draw < pair[1])) return false
+    setStates(target, { watched: { by: actor, turns } })
+    return true
+  }
+  /**
+   * **Enraged, told** (`func_ov000_0215a908`): on one watched, by a watcher
+   * standing — else the watch ends there (`func_02088e64`), unsaid — action
+   * 921 is put in at once, "…is enraged! It now only has eyes for …"
+   * (`0x212`). **Ours**: the watcher's `+0x18` bit 13 (`func_ov000_02153c0c`),
+   * which also ends it, is not kept; nor are `+0x181`, `+0x182` and
+   * `func_020488ac`, the records' and the quests' counts.
+   */
+  const enraged = (target: number, out: BattleEvent[]) => {
+    const watch = (fighters[target] as FighterState).states.watched
+    if (!watch) return
+    const watcher = fighters[watch.by]
+    if (!watcher || !alive(watcher)) {
+      setStates(target, { watched: undefined })
+      return
+    }
+    out.push({ kind: 'enraged', actor: target, target: watch.by })
+  }
+  /**
+   * **A party member's blow at a monster** that dealt something and left it
+   * standing (kind 1's handler, `0x021daf9c`–`0x021db0a0`): its HP over its
+   * most, in floats, before the pass and after (`func_ov024_021db358`, 0 at
+   * none) — crossing below a quarter provokes it of kind 4, else below a half
+   * of kind 3.
+   */
+  const provokedByBlow = (
+    actor: number,
+    target: number,
+    before: number,
+    after: number,
+    out: BattleEvent[],
+  ) => {
+    const them = fighters[target] as FighterState
+    const f = Math.fround
+    const share = (hp: number) => (hp === 0 ? 0 : f(f(hp) / f(them.maxHp)))
+    const was = share(before)
+    const is = share(after)
+    const kind = was >= f(0.25) && is < f(0.25) ? 4 : was >= f(0.5) && is < f(0.5) ? 3 : undefined
+    if (kind !== undefined && provoke(actor, target, kind)) enraged(target, out)
+  }
+  /**
+   * **A party member's heal or Zing, after it acts** (the resolver,
+   * `0x021ed110`–`0x021ed228`): each monster (`func_ov000_0215eb1c`) is asked
+   * whether it is provoked — of kind `0x13` for the heal family (5) and
+   * `0x14` for Zing's (12) — and each provoked is told enraged.
+   * **Ours**: kind `0x18`, asked where the turn's record has `+0xa` bit 0,
+   * is not, that bit being unread.
+   */
+  const provokedByFamily = (actor: number, family: number | undefined, out: BattleEvent[]) => {
+    if ((fighters[actor] as FighterState).side !== 'party') return
+    const kind = family === 5 ? 0x13 : family === 12 ? 0x14 : undefined
+    if (kind === undefined) return
+    for (const [i, f] of fighters.entries()) {
+      if (f.side !== 'foes' || !alive(f)) continue
+      if (provoke(actor, i, kind)) enraged(i, out)
+    }
   }
   /**
    * **A rider on a blow's pass that dealt something** (`func_ov024_021e4b14`
@@ -3413,6 +3529,7 @@ export function playRound(
         ...(charged ? { goldSpent: spell.gold as number } : {}),
       })
       events.push(...rousedBy)
+      provokedByFamily(actor, spell.family, events)
       for (const { target, amount } of hits) {
         if (spell.does === 'harm') hurt(target, amount)
         else fighters = fighters.map((f, i) => (i === target ? { ...f, hp: f.hp + amount } : f))
@@ -3849,6 +3966,20 @@ export function playRound(
               ...(watched ? { calmed: true } : {}),
             }
           }
+          case 'eyes':
+          case 'whistle': {
+            // Eyes on Me only at a monster (`func_ov000_021536f8`); Whistle at
+            // anyone, whom `provoke` passes over unless a monster.
+            if (change.kind === 'eyes' && them.side !== 'foes')
+              return { target, result: 'unprovoked' }
+            if (change.kind === 'eyes' && was.watched !== undefined) {
+              setStates(target, { watched: { by: actor, turns: was.watched.turns } })
+              return { target, result: 'provoked', by: actor }
+            }
+            return provoke(actor, target, change.kind === 'eyes' ? 0x12 : 0x11)
+              ? { target, result: 'provoked', by: actor }
+              : { target, result: 'unprovoked' }
+          }
           case 'note':
             // Eye for Trouble (`0x021dfeb0`–`0x021dfee0`): a monster
             // (`func_ov000_021536f8`) with a record. **Ours**: one without
@@ -3885,9 +4016,12 @@ export function playRound(
           case 'watch': {
             // Knight Watch (`0x021e1e14`–`0x021e1e78`): no test of its
             // landing; one who may take it (`func_02088e04` — standing, awake,
-            // not under a lost turn or paralysed) is watched for a count drawn
-            // between its record's two bytes, if that is above 0.
-            if (them.side !== 'foes' || !canAct(them)) return { target, result: 'resisted' }
+            // not under a lost turn, paralysed or confused — `+0x14` bit 5,
+            // read 7 October 2026) is watched for a count drawn between its
+            // record's two bytes, if that is above 0.
+            if (them.side !== 'foes' || !canAct(them) || them.states.confused !== undefined) {
+              return { target, result: 'resisted' }
+            }
             const [least, most] = them.watchTurns ?? [0, 0]
             const turns = least + rng.below(most - least + 1)
             if (turns <= 0) return { target, result: 'resisted' }
@@ -3960,6 +4094,7 @@ export function playRound(
         hits,
         ...(rode.length > 0 ? { rode } : {}),
       })
+      provokedByFamily(actor, changing.family, events)
       for (const target of felled) hurt(target, (fighters[target] as FighterState).hp)
       for (const target of spared) hurt(target, (fighters[target] as FighterState).hp - 1)
       outcome = outcomeOf(fighters)
@@ -4171,6 +4306,13 @@ export function playRound(
         })
         const before = dealtTo.get(target) ?? 0
         dealtTo.set(target, before + damage)
+        // A party member's blow taking a monster below a half or a quarter
+        // may enrage it (kind 1's handler), before the resolver's rousing —
+        // not where its rider killed or spared it (flags `0xd`, `0x29`).
+        if (damage > 0 && rode?.result !== 'killed' && rode?.result !== 'spared') {
+          const left = Math.max(0, them.hp - before - damage)
+          if (left > 0) provokedByBlow(actor, target, them.hp - before, left, rousedBy)
+        }
         // Roused, on a pass that dealt something, unless its own rider has
         // just put them to sleep or confused them (`ctx+0x70`).
         if (blow.rouses && damage > 0 && rode?.result !== 'asleep' && rode?.result !== 'confused') {
@@ -4387,7 +4529,13 @@ export function playRound(
       ...(combo > 0 ? { combo } : {}),
       ...(confusedAim !== undefined ? { confused: true as const } : {}),
     })
+    const hpBefore = (fighters[target] as FighterState).hp
     hurt(target, damage)
+    // A party member's Attack taking a monster below a half or a quarter may
+    // enrage it (kind 1's handler, `0x021daf9c`), before the rousing.
+    // **Ours**: a counter's strike, whose path is not read, provokes nothing.
+    const left = (fighters[target] as FighterState).hp
+    if (damage > 0 && !counter && left > 0) provokedByBlow(striker, target, hpBefore, left, events)
     // Roused — the plain Attack and the monsters' attacks carry `+0x10` bit
     // 11 — on a pass that dealt something and was not struck back.
     if (damage > 0 && !counter) {

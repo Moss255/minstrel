@@ -295,6 +295,15 @@ export interface Action {
    */
   readonly hitCode: number
   /**
+   * **Its family**, `+0x1C` bits 19–23 — the spells by line: 1 Bang, 2 Zam,
+   * 3 Woosh, 4 Crack, 5 the heals (Heal to Omniheal), 6 Frizz, 7 Whack, 8
+   * Oomph, 10 Fuddle, 11 Snooze, 12 Zing, 13 Kamikazee, 14 Magic Burst, 16
+   * Evac; 0 on 616 of 681. The resolver asks 5 and 12 of a party member's
+   * action, to provoke the monsters (`0x021ed170`–`0x021ed1d8`). Read 7
+   * October 2026 from the cartridge's names.
+   */
+  readonly family: number
+  /**
    * What runs once after it, `+0x2C` bits 10–13 (the table at `0x021ff3f8`):
    * 1 MP back, 2 the guard, 3 recoil, 4 HP back, 5 the actor's fall, 6 gold
    * spent.
@@ -470,6 +479,7 @@ export function readActions(bytes: Uint8Array): Action[] {
       list: (view.getUint32(at + 0x18, true) >>> 12) & 0xf,
       usableIn: (view.getUint32(at + 8, true) >>> 10) & 3,
       hitCode: (view.getUint32(at + 0x1c, true) >>> 14) & 31,
+      family: (view.getUint32(at + 0x1c, true) >>> 19) & 31,
       afterStep: (view.getUint32(at + 0x2c, true) >>> 10) & 15,
       fallsOff: (view.getUint32(at + 0x10, true) & 0x20000) !== 0,
       aiTargets: [view.getUint16(at + 0x0c, true), view.getUint16(at + 0x0e, true)],
