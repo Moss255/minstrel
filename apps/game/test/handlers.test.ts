@@ -215,6 +215,10 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(171))?.rider).toEqual({ slot: 19, levels: 0 })
     })
 
+    it('plays Eye for Trouble as a monster marked', () => {
+      expect(partyChangeOf(action(166))).toMatchObject({ change: { kind: 'note' }, side: 'other' })
+    })
+
     it('plays Half-Inch as a pocket picked', () => {
       expect(partyChangeOf(action(165))).toMatchObject({
         change: { kind: 'steal' },
@@ -238,7 +242,7 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 12 of them as the Attack now, where 76 were', () => {
+    it('strikes 11 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -255,7 +259,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(12)
+      expect(attack).toBe(11)
     })
   },
 )

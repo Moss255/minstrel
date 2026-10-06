@@ -139,3 +139,17 @@ describe('Half-Inch in a battle', () => {
     }
   })
 })
+
+describe('Eye for Trouble — kind 45', () => {
+  it('marks a monster for the defeated monster list, and nothing more', () => {
+    const eye: Changing = { ...halfInch, action: 166, change: { kind: 'note', chance: 100 } }
+    const start = startBattle([thief(), slime(undefined)])
+    const { events, state } = playRound(
+      start,
+      new Map<number, Command>([[0, { kind: 'change', changing: eye, target: 1 }]]),
+      new BattleRng(seedOf(4)),
+    )
+    expect(hitOf(events)).toEqual({ target: 1, result: 'noted' })
+    expect(state.fighters[1]?.states).toEqual({ ...start.fighters[1]?.states })
+  })
+})

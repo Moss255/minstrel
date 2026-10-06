@@ -513,6 +513,13 @@ export type Change =
    * `stealChance`.
    */
   | { readonly kind: 'steal'; readonly chance: number }
+  /**
+   * **Eye for Trouble** (kind 45, `func_ov024_021dfe9c`): no test of its
+   * landing; a monster with a record (`+0x148`) is marked for the defeated
+   * monster list (`+0x17e`), and the action's count of those reached
+   * (`ctx+0x14`) is one more. Nothing else in the battle.
+   */
+  | { readonly kind: 'note'; readonly chance: number }
   | { readonly kind: 'kill'; readonly chance: number }
   /**
    * **Choir of Angels** (kind 67, `func_ov024_021e13e0`): a share of the most
@@ -855,6 +862,8 @@ export type ChangeResult =
   | 'stole'
   /** Half-Inch on one with nothing to steal: "But … isn't carrying anything." (`0x25a`). */
   | 'empty'
+  /** Eye for Trouble: marked for the defeated monster list. */
+  | 'noted'
 
 /** A change on one it reached: how it came out, and — moving a level — the level it came to. */
 export interface ChangeHit {
@@ -3740,6 +3749,13 @@ export function playRound(
               ...(watched ? { calmed: true } : {}),
             }
           }
+          case 'note':
+            // Eye for Trouble (`0x021dfeb0`–`0x021dfee0`): a monster
+            // (`func_ov000_021536f8`) with a record. **Ours**: one without
+            // makes no result in the game, and says the fail line here.
+            return them.side === 'foes'
+              ? { target, result: 'noted' }
+              : { target, result: 'resisted' }
           case 'steal': {
             // Half-Inch (`func_ov024_021df924`), no test of its landing: one
             // of the party's (`func_0200ff1c`) at a monster with a record

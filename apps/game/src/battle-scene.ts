@@ -435,6 +435,11 @@ function changeSays(
       return pick(own?.done, 0xd9)
     case 'empty':
       return 0x25a
+    // Eye for Trouble's result has no line of its own (`0x021dfee4`–
+    // `0x021dff2c`); where the game says the record's done line, 0xdd, is
+    // not read — **ours**, INFERRED from its words, at each one marked.
+    case 'noted':
+      return pick(own?.done, 0xdd)
     // H-Pathy's and M-Pathy's: the record's done line (`0x021dc790`,
     // `0x021dc5d0`) — 22, "…'s wounds are healed"; 106, "…'s MP are replenished".
     case 'shared':
@@ -617,6 +622,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return `All unfortunate effects affecting ${whom} are eradicated.`
     case 'stole':
       return `${whom} has something pinched.`
+    case 'noted':
+      return `Every last detail of ${whom} is committed to the defeated monster list.`
     case 'empty':
       return `But ${whom} isn't carrying anything.`
     case 'soothed':
@@ -2537,6 +2544,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [53, 'soothe'],
   // Half-Inch (`021df924`): a monster's item pinched, by deftness.
   [44, 'steal'],
+  // Eye for Trouble (`021dfe9c`): a monster marked for the defeated monster list.
+  [45, 'note'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
 export const TENSION_BOOST = 511
