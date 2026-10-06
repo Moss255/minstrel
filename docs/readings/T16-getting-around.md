@@ -160,3 +160,61 @@ of a stick, past half. **Not built**: the touch screen's drag; entering a map
 on a ladder (bit 2) — `D07M08`'s, the only one, names ends that do not exist;
 the motions' own sounds, which their `.bcfg` names and the field does not yet
 play.
+
+## Locks
+
+**A door's lock is its doorway records'; a chest's is its own two bits.**
+Neither is an object of its own.
+
+### Doors — the trigger records, with `18 : key`
+
+Every locked door is a set of **kind 17 records** (the field's doorways,
+`func_ov017_02198f84`) for its doorway region, in the area's trigger file,
+which test the keys by **condition 18, the party holds an item** (`func_0205faf4`
+case 18, `0x0205ff44`: `func_02086aec` on `func_02010828`'s party — what each
+member carries and wears, and the bag), and 19, holds none. The three keys are
+items 22042 (thief's), 22043 (magic) and 22044 (ultimate). Each door's records
+run in the file's order, the first that holds:
+
+- its flag set → `109`, unblocked;
+- the key that fits held → `108` (blocked for now) and a talk with the door's
+  "character" (`118 : c`, label 193 or 194), whose talk record (kind 1) does
+  `109` and sets the flag (`134`);
+- a key that does not fit, or none → `108` and the talk with another label —
+  "It doesn't look like any of the keys in `<LEADER>`'s possession will open
+  it." — and no talk record after.
+
+161 records on the cartridge test a key this way, in `C01`, `D03`, `D08`,
+`D09`, `D12`, `D17` and the rest. **This engine already ran all of it**
+(`doorwayPlay`, `blocksDoorway`, the talk records) — **but did not read 18
+and 19, so they held**, and the first record of a door, the fitting key's,
+opened every locked door with no key at all. Reading them is the whole fix.
+The talk's line is the door's character's, in the area's scenario text
+(`C01C0`'s 074 and 130: "The door is locked.").
+
+### Chests — value 1 bits 0–1
+
+`LootManager_CreateContainer` keeps a treasure's value 1 bits 0–1 as
+`unk_4_0`, and the chest's opening (`func_ov017_021adcb0`, `0x021ade84`–
+`0x021adf34`) reads them as **the lock**: 0 none, 1 a thief's lock, 2 a magic
+lock. It counts each key (`func_02086aec`, `0x561c`, `0x561a`, `0x561b`): the
+ultimate opens any, a thief's lock opens to the thief's or the magic key, a
+magic lock to the magic key. Opened, system strings **41 and 43** together
+("The treasure chest is locked. `<ACTOR>` unlocks the chest."), 15 frames
+(state 9), then the chest opens as any other. Not, **41** alone with no key
+of the two; with one that does not fit, 41 and **44 — which neither the
+European nor the US cartridge has** (state 8, a wait, then nothing). Six chests
+are locked, all thief's locks: `C01M16`, `M05M05`, `M08M07`, `M09M05`,
+`M09M14`, `S08`.
+
+### Built, 6 October 2026
+
+`OP_HOLDS_ITEM`, `OP_HOLDS_NO_ITEM` and `Conditions.held` (`story.ts`), given
+the party's count (`heldAll`); `lockOf` and `unlocks` (`apps/game/src/treasure.ts`)
+in `openTreasureAhead`. Seen: `D08M03`'s magic-locked door at 11.4 — no key,
+the thief's key ("It doesn't look like any of the keys in Hero's possession
+will open it."), the magic key ("Hero unlocks the door."); `M08M07`'s chest,
+locked without a key and opened with the thief's key — a mini medal.
+
+**Ours**: the chest opens once its line is closed, where the game waits 15
+frames beside it; 44, which the cartridge has not, is left out.

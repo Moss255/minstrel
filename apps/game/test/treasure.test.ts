@@ -6,11 +6,14 @@ import { describe, expect, it } from 'vitest'
 import { load } from '../src/load.ts'
 import {
   findInside,
+  KEYS,
+  lockOf,
   nearestTreasure,
   treasureKey,
   treasurePieces,
   treasureTargets,
   treasureText,
+  unlocks,
 } from '../src/treasure.ts'
 
 function treasure(over: Partial<Treasure> = {}): Treasure {
@@ -157,5 +160,28 @@ describe.skipIf(!romPath)('treasure on a real cartridge', { timeout: 60_000 }, (
     const sorted = [...seen].sort((a, b) => a - b)
     expect(new Set(sorted).size).toBe(sorted.length)
     expect((sorted.at(-1) ?? 0) - (sorted[0] ?? 0)).toBe(sorted.length - 1)
+  })
+})
+
+describe('a locked chest', () => {
+  const holding =
+    (...items: number[]) =>
+    (item: number) =>
+      items.filter((i) => i === item).length
+
+  it("keeps its lock in the kind's bits 0 and 1", () => {
+    expect(lockOf({ kind: 0x01 })).toBe(1)
+    expect(lockOf({ kind: 0x09 })).toBe(1)
+    expect(lockOf({ kind: 0x08 })).toBe(0)
+  })
+
+  it("opens to the ultimate key always, a thief's lock to the thief's or magic, a magic lock to magic", () => {
+    expect(unlocks(1, holding())).toBe(false)
+    expect(unlocks(1, holding(KEYS.thiefs))).toBe(true)
+    expect(unlocks(1, holding(KEYS.magic))).toBe(true)
+    expect(unlocks(2, holding(KEYS.thiefs))).toBe(false)
+    expect(unlocks(2, holding(KEYS.magic))).toBe(true)
+    expect(unlocks(3, holding(KEYS.magic))).toBe(false)
+    expect(unlocks(3, holding(KEYS.ultimate))).toBe(true)
   })
 })

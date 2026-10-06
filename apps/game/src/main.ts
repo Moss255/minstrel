@@ -458,7 +458,7 @@ import {
   VOCATION_WORDS,
   weaponTurn,
 } from './hero.ts'
-import { type Carriers, obtain, removeSlot, takeOne, transfer } from './inventory.ts'
+import { type Carriers, heldAll, obtain, removeSlot, takeOne, transfer } from './inventory.ts'
 import { type Held, itemsRows } from './items-menu.ts'
 import {
   CHURCH_JINGLE,
@@ -671,7 +671,10 @@ import {
   talkTarget,
 } from './talk.ts'
 import {
+  CHEST_LOCKED,
+  CHEST_UNLOCKED,
   findInside,
+  lockOf,
   nearestTreasure,
   renderName,
   rollsAtLoad,
@@ -680,6 +683,7 @@ import {
   treasurePieces,
   treasureTargets,
   treasureText,
+  unlocks,
 } from './treasure.ts'
 import {
   bubbleOffset,
@@ -1007,6 +1011,7 @@ function storyState(): StoryState {
       globals: storyGlobals,
       night: timeNow() === 'night',
       quest: (quest) => questNibble(questBook, quest),
+      held: (item) => heldAll(bag, carriers(), item),
     },
   }
 }
@@ -4948,6 +4953,9 @@ function readBookcaseAhead(): boolean {
  * Open the treasure the Hero is facing, if there is one near enough: the same
  * reach and facing as talking. True when there was one.
  */
+/** Chests being opened past their lock, the line said — see `openTreasureAhead`. */
+const unlocking = new Set<number>()
+
 function openTreasureAhead(): boolean {
   if (!loaded || !self) return false
   const target = talkTarget(
@@ -4979,6 +4987,34 @@ function openTreasureAhead(): boolean {
   }
   const key = treasureKey(treasure)
   const already = storyGlobals.has(key)
+  // **A locked chest** (`func_ov017_021adcb0`, `0x021ade84`): "The treasure
+  // chest is locked.", and with a key that fits "<ACTOR> unlocks the chest."
+  // and it is opened. **Ours**: the opening waits for the line to be closed,
+  // where the game waits 15 frames (state 9) beside it.
+  const lock = lockOf(treasure)
+  if (!already && lock !== 0 && !unlocking.has(key)) {
+    const held = (item: number) => heldAll(bag, carriers(), item)
+    const opens = unlocks(lock, held)
+    const said = (n: number) => told(loaded?.systemStrings, n, { actor: heroNamed() })
+    const lines = [said(CHEST_LOCKED) ?? 'The treasure chest is locked.']
+    if (opens) lines[0] += ` ${said(CHEST_UNLOCKED) ?? `${heroNamed().name} unlocks the chest.`}`
+    talking = startConversation(
+      { ...target, id: treasure.index ?? target.id },
+      `a locked chest in ${loaded.code}`,
+      lines,
+      [opens ? 'strstd 41, 43' : 'strstd 41'],
+      textContext(),
+    )
+    showTalk()
+    if (opens) {
+      afterTalk = () => {
+        unlocking.add(key)
+        openTreasureAhead()
+        unlocking.delete(key)
+      }
+    }
+    return true
+  }
   const found = findInside(
     treasure,
     loaded.randoms,

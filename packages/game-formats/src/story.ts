@@ -833,6 +833,15 @@ export const OP_CLEAR_MARK = 103
  */
 export const OP_TIME = 17
 /**
+ * **The party holds an item**, `18 : i`, and **holds none**, `19 : i` — read
+ * from the game's code (`func_0205faf4` cases 18 and 19, through
+ * `func_02086aec`: what each member in the party carries and wears, and the
+ * bag). The locked doors' records test the three keys by it (22042 the
+ * thief's, 22043 the magic, 22044 the ultimate).
+ */
+export const OP_HOLDS_ITEM = 18
+export const OP_HOLDS_NO_ITEM = 19
+/**
  * Who is playing, in a game played together: tested by the game's code
  * (`func_0205faf4`) against a session object (`0x020fefec` in the US ARM9)
  * whose first word is set only while a session runs — the same test the
@@ -877,6 +886,8 @@ export interface Conditions {
    * read when not given: the quest conditions then hold.
    */
   readonly quest?: (quest: number) => number
+  /** How many of an item the party holds — see {@link OP_HOLDS_ITEM}. Not read when not given: the tests then hold. */
+  readonly held?: (item: number) => number
 }
 
 /**
@@ -1227,6 +1238,9 @@ export function flagsHold(
       (more?.tricks === undefined ||
         w.op !== OP_TRICKS ||
         tricksWanted(w).every((t) => (more.tricks as readonly number[]).includes(t))) &&
+      (more?.held === undefined ||
+        ((w.op !== OP_HOLDS_ITEM || more.held(w.arg) > 0) &&
+          (w.op !== OP_HOLDS_NO_ITEM || more.held(w.arg) <= 0))) &&
       (more?.quest === undefined || questConditionHolds(w, more.quest)),
   )
 }

@@ -309,3 +309,37 @@ export function treasurePieces(
     vertices.length === 0 ? [] : [{ geometry: { vertices, indices, matrixIds: [], scales: [] } }],
   )
 }
+
+/** The keys, by item number: the thief's, the magic and the ultimate (`0x561a`–`0x561c`). */
+export const KEYS = { thiefs: 22042, magic: 22043, ultimate: 22044 } as const
+/** System strings: "The treasure chest is locked." and "<ACTOR> unlocks the chest." */
+export const CHEST_LOCKED = 41
+export const CHEST_UNLOCKED = 43
+/**
+ * The line the game puts beside 41 when the party holds a key but not one
+ * that fits: system string 44 — **which neither the European nor the US
+ * cartridge has**, so the game's `sprintf("%s %s")` is handed nothing for it.
+ */
+export const CHEST_KEY_DOES_NOT_FIT = 44
+
+/**
+ * **A chest's lock**, the treasure's value 1 bits 0–1 (`unk_4_0` of
+ * `LootableContainerManager::Container`): 0 none, 1 a thief's lock, 2 a magic
+ * lock. On the cartridge six chests have one, all 1.
+ */
+export function lockOf(treasure: Pick<Treasure, 'kind'>): number {
+  return treasure.kind & 3
+}
+
+/**
+ * **Whether the party's keys open a lock** (ov017 `func_ov017_021adcb0`,
+ * `0x021ade84`–`0x021adf34`): the ultimate key opens any; a thief's lock the
+ * thief's or the magic key; a magic lock the magic key. `held` counts what the
+ * party holds, as `func_02086aec` does.
+ */
+export function unlocks(lock: number, held: (item: number) => number): boolean {
+  if (held(KEYS.ultimate) > 0) return true
+  if (lock === 1) return held(KEYS.thiefs) > 0 || held(KEYS.magic) > 0
+  if (lock === 2) return held(KEYS.magic) > 0
+  return false
+}

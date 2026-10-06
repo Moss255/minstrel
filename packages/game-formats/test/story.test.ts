@@ -619,3 +619,18 @@ describe('a record, run as the game runs it', () => {
     expect(watchPlay([lobby], 50201, at(2, 7), { flags: new Set([3]) })).toBeUndefined()
   })
 })
+
+describe('holding an item — 18 and 19', () => {
+  const word = (op: number, arg: number) => ({ op, arg })
+  const keys = (item: number) => (item === 22044 ? 1 : 0)
+
+  it('holds 18 with one held and 19 with none, as the locked doors test the keys', () => {
+    expect(flagsHold([word(18, 22044)], new Set(), undefined, undefined, { held: keys })).toBe(true)
+    expect(flagsHold([word(18, 22042)], new Set(), undefined, undefined, { held: keys })).toBe(
+      false,
+    )
+    expect(flagsHold([word(19, 22042)], new Set(), undefined, undefined, { held: keys })).toBe(true)
+    // Not given, as before: the tests hold.
+    expect(flagsHold([word(18, 22042)], new Set())).toBe(true)
+  })
+})
