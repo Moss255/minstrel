@@ -35,6 +35,11 @@ written up on the wiki; each says so under its heading.
   and the panels show the level and the acting member's pulse. What turns
   the pulse on, a hit's flash and shake, and the swirl's model are not
   found or not drawn (§1b).
+- **Task 16 is done but for the ship**, 6 October 2026: ladders and vines
+  are climbed by the game's own two regions and its climb; locked doors test
+  the keys the party holds by their own records (they all opened with none
+  before), and the six locked chests by their lock bits; the ferry worked
+  already. The ship is split off as **16b**, its code found and not read.
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: the
   coups' own effects (every vocation's but the Warrior's says its opening
   line and does nothing — task 18); the camera easing in for a party trick;
@@ -409,6 +414,11 @@ in place of the stand-in `docs/still-open.md` §2 lists for it.
 
 ## 16. Getting around: ladders and vines, keys, the ferry, the ship — find and build
 
+**Done, 6 October 2026, but for the ship** (`8405ff6`, `ce146dc`):
+`ladders.ts`, `ladder.ts` in `sim`, the locks in `treasure.ts` and `story.ts`;
+the ferry shown to work already; the ship split off as 16b. The wiki's
+Getting-Around. The reading is `docs/readings/T16-getting-around.md`.
+
 - **Climbing** (p. 5; dungeons from ~p. 108): nothing handles a ladder or a
   vine. Is it collision, an object, or a map flag?
 - **Locks**: doors and chests that want the thief's, magic or ultimate key
@@ -421,6 +431,20 @@ in place of the stand-in `docs/still-open.md` §2 lists for it.
 
 **Done when** each has a recipe, or is shown to work already. The ship may
 be big enough to split off once its reading is done.
+
+## 16b. The ship — find and build
+
+Split off from 16 on 6 October 2026, with only where its code lives found —
+`docs/readings/T16-getting-around.md`, "The ship": the ARM9's
+`func_020a6084`–`func_020a7eb8`, `data/chara_sub/s201.chr`, its pass from the
+field (`func_020a654c`), its loading with a map (`func_020a6aac`), and where it
+is through `func_ov017_021d1a18` and flag `0x2b` (9.4). Zoom's landing already
+names the ship's place (task 12, `loola` values 9–12) and does not move it.
+
+**Done when** the ship is boarded where the game boards it, sails where the
+game lets it (steering, speed, the sea), is left on a sandy shore as the guide
+says (p. 7), is kept in the save, and Zoom moves it — each read with its
+addresses, and built the way `flight.ts` built the Express.
 
 ## 17. Battle AI — translate
 

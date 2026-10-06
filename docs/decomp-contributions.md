@@ -991,3 +991,39 @@ Findings in `docs/readings/T15-presentation.md`.
 **Open**: what turns the pulse on; what flashes and shakes a hit member's
 panel; under which view the swirl's model is drawn; what
 `func_020709ac` gives the transition (the swirl skipped above 30).
+
+### Getting around: ladders, locks, the ship — ARM9 and overlay 17, read 6 October 2026
+
+`docs/readings/T16-getting-around.md`.
+
+| function | what it does | name for the decomp |
+|---|---|---|
+| `func_0201d638` case 9 (`0x0201dbf8`) | a ladder end's `0x74`: its number, its partner's, flags (top, leaves the map, enters on a ladder), the map request | `MapRegion::ReadLadder` |
+| `func_0201e6d4` | the type-9 region numbered so | `MapRegions::FindLadderEnd` |
+| `func_0201e838` | the head of a type's region list (`+0x3c + type × 4`) | `MapRegions::ListOf` |
+| `func_02094b9c` | a point in a region's box, turned or not, with its hold-once flags | `MapRegion::Contains` |
+| `func_ov017_021975e4` | the field's ladder check: in an end's box, facing, three passes pushing, the climb's record | `Field::TryClimb` |
+| `func_ov017_0219755c` | the field's region checks each pass, ladders first | `Field::CheckRegions` |
+| `func_ov017_0218d8cc` | the +Control Pad's direction in the world, normalised, at `field+0x4438` | `Field::ReadPadDirection` |
+| `func_02038598` | the climb each pass: turn, get on, climb, get off, walk off, another map | `Player::UpdateLadder` |
+| `func_02037d88` | the Hero's update: the object's own, then the ladder | `Player::Update` |
+| `func_020398b4`, `func_02038508`, `func_020399a8`, `func_02039d7c` | the climb's record copied in, cleared, its address, its first byte | `Ladder::Set`, `::Clear`, `Player::GetLadder`, `::IsOnLadder` |
+| `func_020399b0` | a map entered at an entrance: on a ladder end, at step 2, how far up from the request | `Player::PlaceAtEntrance` |
+| `func_02039d84` | off the ladder at once | `Player::DropLadder` |
+| `func_ov017_021d3f00` | the climb's state sent to the others in a session (`0x3b`) | `Net::SendLadder` |
+| `func_02033834`, `func_02033874` | a facing set at once (not in states 3 and 4), and its turn with it | `Object3D::SetFacing`, `::SetFacingNow` |
+| `func_02033e18`, `func_02033e38`, `func_02033ec8` | walk straight to a place at a pace a pass; the step; whether there | `Object3D::WalkTo`, `::StepWalkTo`, `::WalkToDone` |
+| `func_02033b58`, `func_02033b88` | the object's state set (`+0xbe`, the last at `+0xbf`), with its motion | `Object3D::SetState` |
+| `func_02012430`, `func_02012444` | a key held; a key just pressed | `Pad::Held`, `::Pressed` |
+| `func_020123b8`, `func_020123cc` | Up held, Down held | `Pad::UpHeld`, `::DownHeld` |
+| `func_02046b60` | a reason in the field's busy list | `FieldLocks::Has` |
+| `func_0205faf4` cases 18, 19 | the party holds an item, holds none | `Conditions::HoldsItem` |
+| `func_02086aec` | how many of an item the party has: each member's carried and worn, and the bag | `Party::CountItem` |
+| `func_ov017_021adcb0` (`0x021ade84`) | a chest's lock and the three keys; strings 41, 43, 44; states 8 and 9 | `ChestTask::Open` |
+| `func_020e51cc`, `func_020e0440` | a system string by number; none for a number it has not | `SystemStrings::Get` |
+| `func_020a654c` | the ship each pass of the field | `Ship::Update` |
+| `func_020a6aac`, `func_020a696c`, `func_020a6728` | the ship loaded with a map, on entering one, and from `0x021a2fd8` (not read) | `Ship::Load`, … |
+
+**Open**: the ship's own code, `func_020a6084`–`func_020a7eb8` (task 16b);
+what string 44 was meant to say.
+

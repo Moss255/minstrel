@@ -219,3 +219,39 @@ locked without a key and opened with the thief's key — a mini medal.
 
 **Ours**: the chest opens once its line is closed, where the game waits 15
 frames beside it; 44, which the cartridge has not, is left out.
+
+## The ferry — works already
+
+Porth Llaffan's ferryman is character 9 of `M05` (map 1500). From 8.1 his
+record (kind 0, `6:9 23:2 1:65`) talks with label 192; on Yes his talk record
+(kind 1, `6:9 1:65 11:192 16:0 … 100:63 119:9710`) sets flag 63 and plays
+`ev09710`, "Anchors aweigh!", which goes on to `ev09715` at Slurry Quay (`S08`,
+map 5800), whose ferryman (S08's 9) says "This is as far as I can take you".
+**All of it is records and scenes the engine already runs**: seen 6 October
+2026 with `?map=M05&stage=8.1&talk=9`, Yes, and the scenes played through to
+Slurry Quay. Nothing to build. The ferry goes one way; there is no record to
+take it back.
+
+## The ship — split off, its reading begun
+
+The ship is a vehicle of its own, as the Starflight Express is, and the
+reading has only found where it lives, so it is task 16b in `docs/tasks.md`.
+What is found (US):
+
+- **Its code is the ARM9 run before the Express's**, `func_020a6084` to
+  `func_020a7eb8`, which loads `data/chara_sub/s201.chr` (`data_020f1b52`),
+  `data/bin/percol.bin` and `data/ani/bg_slime3.pac`.
+- **Each pass of the field** (`func_ov017_0218cd88` calls `func_020a654c`):
+  unless the field is busy, it steers (`func_020a75ec`), asks
+  `func_ov017_02193428`, on map 10000 (`0x2710`) does `func_020a7ce0`, and
+  then `func_020a7d74` decides whether something is reached, which may run
+  `func_ov017_021a93f0` with 0 or `0x76c`.
+- **Loading** with a map (`func_020a6aac`, from `0x0219f1c8`, `0x800`
+  bytes), entering one (`func_020a696c`, from `0x0219e4a0`), and
+  `func_020a6728` (from `0x021a2fd8`).
+- **Where it is** goes through `func_ov017_021d1a18`, called from the ship's
+  code and from Zoom's landing with `loola`'s values 9–12 (task 12), when
+  game-wide flag `0x2b` is set (at 9.4).
+
+Not yet read: steering and speed, the sea it may go on, how it is boarded and
+left ("approach sandy areas", guide p. 7), what is saved, and how it is drawn.

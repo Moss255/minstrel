@@ -69,7 +69,7 @@ export interface Treasure {
   /**
    * Value 1, as stored: `0x8`, `0x10`, `0x20`, `0x30` or `0x40`, and rarely
    * `0x0`, `0x4` or `0x9` — bits 4–6 the container ({@link containerOf}), bits
-   * 2–3 what it holds ({@link contentsOf}), bits 0–1 not read here.
+   * 2–3 what it holds ({@link contentsOf}), bits 0–1 the lock — 1 a thief's, 2 a magic one (`lockOf` in the game; six chests, all 1).
    */
   readonly kind: number
   /** Where it is, in the file's own units; undefined on a three-value record. */

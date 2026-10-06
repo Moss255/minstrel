@@ -2099,6 +2099,20 @@ by its `0x74`'s first value — see "Areas" under "Triggers". On the cartridge:
 283 of type 0, 184 of 1, 670 of 2, 22 of 3, 63 of 4, 113 of 5, 160 of 6, 163
 of 8, 56 of 9, 204 of 10, 360 of 11 and 23 of 12. The rest are not read.
 
+**Type 9 is an end of a ladder or a vine**, read 6 October 2026
+(`func_0201d638` case 9, `0x0201dbf8`; `mapLadders`): the `0x74`'s value 0 is
+the end's number, 1 its partner's, 2 is 0 on all 56, and 3 its flags — bit 0
+the top, bit 1 leaving by it changes map, bit 2 the new map is entered on a
+ladder. With bit 1 come the map (value 4, a code), two words of −1 or 0, the
+arrival x y z and facing (7–10), a word handed on (11), three more positions
+(12–20), and with bit 2 how far up (21, a float) and the end in the new map
+(22) — the doorway's shape. The `0x73`'s value 8 is the ladder's facing, the
+way the Hero faces climbing up. 56 ends, 28 ladders, in 20 maps; every pair
+names each other and one is the top. **The 11 ends that lead out carry a map
+in the doorway's slot**, and were read as doorways until `readMapTransitions`
+took the `0x73` form for type 2 only. The climb itself is in
+`docs/readings/T16-getting-around.md`.
+
 The destination is taken from a fixed slot rather than by searching, and checked
 against the header's type bits. It holds up: **1,418 records mark that slot a
 string and none marks a second slot one**, so there is nothing to choose between.
@@ -3042,8 +3056,11 @@ A `0x67` record, by its number of values:
   `LootManager_CreateContainer` (US `0x0207ba90`, decompiled in the decomp's
   `src/World/LootableContainer.cpp`): **bits 4–6 the container** — 0 a red
   chest, 1 a pot, 2 a barrel, 3 a cupboard, 4 a blue chest — **bits 2–3 what
-  it holds** — 0 nothing, 1 gold, 2 an item, 3 a monster — and bits 0–1 not
-  read here (1 on the five kind-`0x9` chests). So `0x4` is gold, `0x8` an
+  it holds** — 0 nothing, 1 gold, 2 an item, 3 a monster — and **bits 0–1 the
+  lock**, read 6 October 2026 (`func_ov017_021adcb0`, `0x021ade84`): 1 a
+  thief's lock, opened by the thief's, magic or ultimate key, 2 a magic lock,
+  by the magic or the ultimate. Six chests are locked, all 1 — `C01M16`,
+  `M05M05`, `M08M07`, `M09M05`, `M09M14`, `S08`. So `0x4` is gold, `0x8` an
   item, `0x10` a pot, `0x20` a barrel, `0x30` a cupboard, `0x40` a blue chest.
   The code tells the chests (0, 4) from the rest by the position it reads, and
   blue from red by the table it draws from; that 1 is the pot and 2 the barrel
@@ -4932,7 +4949,7 @@ integer. The full table is `PARAMS` in `story.ts`. So the `0 : n` words after
 | 11 | the context's label (`+0x14`) is the argument — the label the talk was asked with; see "How a talk runs" |
 | 16 | the text system's last answer (`func_020457e0`, `+0x954`) is the argument, from 0 — Yes. A talk's window sets it to 0 as it opens (`func_0204500c`), so after a line with no prompt `16 : 0` holds. 432 records |
 | 17 | `17 : 1` by night; any other argument by morning, day or evening (`GameState::IsMorningDayOrEvening`) |
-| 18, 19 | the bag holds the item, holds none (`func_02086aec`). Not read by the engine |
+| 18, 19 | the party holds the item, holds none (`func_02086aec`: what each member in the party carries and wears, and the bag). **Read since 6 October 2026** (`OP_HOLDS_ITEM`): the locked doors' records test the three keys, 22042 to 22044, by it — 175 records in 17 areas — and held as true, the fitting key's record, first of each door's, opened every one with no key |
 | 20 | a quest's state is 2 and it may be taken (`func_0206e120`, `func_0206e31c`) |
 | 23 | a test of a session object's first word and one more state: 0 with no session, 1 with one, 2 with none or one kind of player, 3 only the other. INFERRED multiplayer; alone, 0 and 2 hold |
 | 26, 27 | a game-wide flag named by its number is set, clear (`func_0206eb98`): below `0x400` the bit itself, from there displaced by 1,786 — the cast script's rule, `flagBit`. 427 records |
