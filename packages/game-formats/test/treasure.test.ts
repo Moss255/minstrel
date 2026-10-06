@@ -123,7 +123,7 @@ describe('readTreasure', () => {
     expect(file.first).toBe(40)
     const [drawer, pot, chest] = file.treasures
     expect(file.treasures.map((t) => t.index)).toEqual([40, 41, 42])
-    expect(drawer).toMatchObject({ kind: 0x30, unknown_0: 0x00050003, unknown_2: 12 })
+    expect(drawer).toMatchObject({ kind: 0x30, packed: 0x00050003, id: 5, unknown_2: 12 })
     expect(drawer?.position).toBeUndefined()
     expect(drawer?.facing).toBeUndefined()
     expect(pot).toMatchObject({ kind: 0x10, position: { x: -2.5, y: 0.25, z: 4.75 } })

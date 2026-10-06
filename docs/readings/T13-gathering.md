@@ -80,10 +80,10 @@ three letters, `func_0208e824`) or `R01M07`, Stornway's Guardian Fountain.
 
 | value | meaning |
 |---|---|
-| 0 | the spot's id, 0–97 — game-wide, unique over the 40 files (89 spots) |
+| 0 | the spot's id, 0–97 — game-wide, unique over the 40 files (87 spots) |
 | 1 | the item it gives |
-| 2 | when it is there: 1 always, 2 once flag `0x798` is set, 3 once `0x796` is (`0x0208ed80`–`0x0208ee20`); 1 on all 89 |
-| 3 | not read by the code; 1 on all 89 |
+| 2 | when it is there: 1 always, 2 once flag `0x798` is set, 3 once `0x796` is (`0x0208ed80`–`0x0208ee20`); 1 on all 87 |
+| 3 | not read by the code; 1 on all 87 |
 | 4 | **8**: values 5–7 are the spot's own; **0–7**: they come from `fldbias.bin`'s row of that number |
 | 5 | minutes between refills: 30, 60, 90, 120, 240, 360 |
 | 6 | the fewest an empty spot refills with |

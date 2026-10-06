@@ -16,7 +16,8 @@ import {
 function treasure(kind: number, placed = true): Treasure {
   return {
     index: 1,
-    unknown_0: 0,
+    packed: 0,
+    id: 0,
     kind,
     position: placed ? { x: 0, y: 0, z: 0 } : undefined,
     facing: undefined,

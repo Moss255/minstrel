@@ -1,4 +1,8 @@
 import {
+  CONTAINER,
+  containerOf,
+  contentsOf,
+  openedFlag,
   RANDOM_GOLD,
   RANDOM_ITEM,
   RANDOM_MONSTER,
@@ -30,11 +34,6 @@ import { DEFAULT_CONTEXT, renderLine, type Talker } from './talk.ts'
 /** A marker's side, as a share of a person's height — a choice, to be seen from the camera. */
 export const TREASURE_MARKER = 0.3
 
-/** What an opened treasure is remembered by: its game-wide number, or failing that, where it is. */
-export function treasureKey(map: string, slot: number, treasure: Treasure): string {
-  return treasure.index === undefined ? `${map}/${slot}` : `#${treasure.index}`
-}
-
 /**
  * The treasures that can be walked up to, as talk targets, so that reach and
  * facing are the same as for talking. Each one's `id` is its place in `treasures`.
@@ -64,18 +63,44 @@ export function nearestTreasure(
 }
 
 /**
- * Which random-treasure table each kind draws from, by its rank — INFERRED.
- * `randTBox` has ranks 1 to 5 and kind `0x40`'s values are 1 to 5; `randTTT`
- * has 1 to 20, and its weights come to less than 100, which leaves pots,
- * barrels and cabinets a chance of nothing — their values run 0 to 20.
- * `randTD`, ranks 1 to 10, is no treasure's the village has.
+ * **Which random-treasure table a container draws from**, by its rank —
+ * `LootableContainerManager::LoadZoneContainers` (US `0x0207bd34`,
+ * decompiled): a blue chest from `randTBox`, a pot, a barrel or a cupboard
+ * from `randTTT`. A red chest is not drawn. `randTD` is the grottoes' (task 19).
  */
 export const DRAWN_FROM: ReadonlyMap<number, string> = new Map([
-  [0x10, 'randTTT'],
-  [0x20, 'randTTT'],
-  [0x30, 'randTTT'],
-  [0x40, 'randTBox'],
+  [CONTAINER.pot, 'randTTT'],
+  [CONTAINER.barrel, 'randTTT'],
+  [CONTAINER.cupboard, 'randTTT'],
+  [CONTAINER.blueChest, 'randTBox'],
 ])
+
+/**
+ * **A roll for every drawn container, as the map is loaded** — the game draws
+ * each one's contents at every load of the map, below 100
+ * (`LootDistribution::Sample`, `func_02032370(100)`), so what a pot holds is
+ * new each time the map is entered. By slot. **Ours**: the draws are the
+ * caller's, not the game's "A table".
+ */
+export function rollsAtLoad(
+  treasures: readonly Treasure[],
+  below: (n: number) => number,
+): Map<number, number> {
+  const rolls = new Map<number, number>()
+  for (const [slot, treasure] of treasures.entries()) {
+    if (DRAWN_FROM.has(containerOf(treasure))) rolls.set(slot, below(100))
+  }
+  return rolls
+}
+
+/**
+ * What an opened treasure is remembered by: **its flag** — a red chest's
+ * `0x212 + id`, anything else's `0x79e + id` (see `openedFlag`), set in the
+ * game-wide bank. The second kind all come back when play begins.
+ */
+export function treasureKey(treasure: Treasure): number {
+  return openedFlag(treasure)
+}
 
 /**
  * What opening a treasure turned up: the words for the box, a note on where they
@@ -88,11 +113,12 @@ export interface Found {
 }
 
 /**
- * The game's own dice are not reproduced, so a draw is made with a stand-in:
- * a number from 0 to 99 fixed by the treasure's own number, the same each time.
+ * A roll for a treasure when none was drawn at the map's load: a number from 0
+ * to 99 fixed by its id. **Ours** — a stand-in for tests and for treasure
+ * outside a loaded map.
  */
 export function standInRoll(treasure: Treasure): number {
-  return ((treasure.index ?? 0) * 61 + 17) % 100
+  return (treasure.id * 61 + 17) % 100
 }
 
 /** The row of a rank a roll from 0 to 99 lands on, by weight; undefined past the weights, which is nothing. */
@@ -111,14 +137,14 @@ export function drawRow(
 }
 
 /**
- * What is inside a treasure, from its first value's low half and its kind:
+ * What is inside a treasure, from its first value's low half and its kind, as
+ * `LootManager_CreateContainer` reads them:
  *
- * - kinds `0x8` and `0x9`: an item, by the id the item names use — every one of
- *   their 142 records names an item;
- * - kind `0x4`: gold, the amount itself — 50 to 5,000, INFERRED;
- * - kinds `0x10`, `0x20`, `0x30` and `0x40`: a rank to draw from a random table,
- *   see {@link DRAWN_FROM}; 0 is nothing;
- * - kind `0x0`: 0 on all six, nothing.
+ * - a red chest holds what its kind's bits 2–3 say (`contentsOf`): an item by
+ *   its id (every one of the 142 names an item), gold by its amount, or
+ *   nothing;
+ * - anything else holds what the roll draws at its rank from its table — see
+ *   {@link DRAWN_FROM}; past the weights, or rank 0, nothing.
  */
 export function findInside(
   treasure: Treasure,
@@ -130,22 +156,23 @@ export function findInside(
   /** The engine's own messages, for the chest's words — see `readSystemStrings`. */
   system: ReadonlyMap<number, string> = new Map(),
 ): Found {
-  const value = treasure.unknown_0 & 0xffff
+  const value = treasure.packed & 0xffff
   const item = (id: number) => {
     const name = names.get(id)
     return name === undefined ? `item 0x${id.toString(16)}` : renderName(name)
   }
-  if (treasure.kind === 0x8 || treasure.kind === 0x9) {
+  const red = containerOf(treasure) === CONTAINER.redChest
+  if (red && contentsOf(treasure) === RANDOM_ITEM) {
     return {
       text: `Inside: ${item(value)}.`,
       note: `item 0x${value.toString(16)}`,
       takings: { item: value },
     }
   }
-  if (treasure.kind === 0x4) {
+  if (red && contentsOf(treasure) === RANDOM_GOLD) {
     return { text: `Inside: ${value} gold coins.`, note: `${value} gold`, takings: { gold: value } }
   }
-  const table = DRAWN_FROM.get(treasure.kind)
+  const table = DRAWN_FROM.get(containerOf(treasure))
   if (table === undefined || value === 0) {
     return {
       text: 'There is nothing inside.',
@@ -225,7 +252,7 @@ export function treasureText(treasure: Treasure, alreadyOpen: boolean, found?: s
   const which = treasure.index === undefined ? 'this treasure' : `treasure #${treasure.index}`
   if (alreadyOpen) return `You have already opened ${which}.`
   if (found !== undefined) return `You open ${which}.\n${found}`
-  return `You open ${which}.\nWhat is inside is not read yet: its first value is ${hex(treasure.unknown_0)}.`
+  return `You open ${which}.\nWhat is inside is not read yet: its first value is ${hex(treasure.packed)}.`
 }
 
 const SHUT: readonly [number, number, number] = [1, 0.78, 0.2]

@@ -14,9 +14,16 @@ import { readDataTable, type TableRecord } from './table.ts'
  * | `0x66` | a number | the game-wide number of the file's first treasure |
  * | `0x67` | 3, 5 or 6 | one treasure |
  *
- * A treasure is `unknown_0`, a kind, and then either one more number — the
+ * A treasure is a packed word, a kind, and then either one more number — the
  * three-value records, all of kind `0x30`, have no position — or a position,
  * and on the six-value records a facing.
+ *
+ * **What the first two values are is the game's own reading**,
+ * `LootManager_CreateContainer` (US `0x0207ba90`, decompiled in the decomp's
+ * `src/World/LootableContainer.cpp`; read 6 October 2026): the word's high
+ * half is the container's **id**, its low half the item, gold or rank it
+ * holds; the kind's bits 4–6 are **which container** and bits 2–3 **what it
+ * holds**. See `docs/readings/T13-gathering.md`.
  *
  * **A number's type bits say how to read it**: a whole number is stored as an
  * integer and anything else as a float, so one position can mix the two —
@@ -37,20 +44,32 @@ export interface TreasurePosition {
 
 export interface Treasure {
   /**
-   * The treasure's game-wide number: the file's first, plus its place among the
-   * file's treasures. Undefined when the file names no first.
+   * The treasure's running number over every file: the file's first, plus its
+   * place among the file's treasures. Undefined when the file names no first.
    *
-   * INFERRED to be what the game remembers an opened treasure by: across every
-   * file the numbers run from 0 to 847 without overlapping, with gaps only where
-   * the two empty files sit.
+   * **Not what the game remembers an opened treasure by** — that is
+   * {@link Treasure.id} (corrected 6 October 2026; this was INFERRED to be the
+   * key). The game keeps the file's first number (`LootManager_Unknown_66`)
+   * and nothing found reads it.
    */
   readonly index: number | undefined
-  /** Value 0, as stored. Not established — see `FORMAT.md`; what the treasure holds is in here if it is anywhere. */
-  readonly unknown_0: number
+  /**
+   * Value 0, as stored: the container's id in the high half (see
+   * {@link Treasure.id}), and in the low half the item, the gold or the rank to
+   * draw at, by the kind.
+   */
+  readonly packed: number
+  /**
+   * **The container's id**, value 0's high half (`packedID >> 16`): what an
+   * opened one is remembered by — see {@link openedFlag}. 0–206 for the red
+   * chests and 0–699 for the rest, over the cartridge; a room's two versions
+   * (`C04M04`, `C04M05`) share theirs.
+   */
+  readonly id: number
   /**
    * Value 1, as stored: `0x8`, `0x10`, `0x20`, `0x30` or `0x40`, and rarely
-   * `0x0`, `0x4` or `0x9`. Which is a chest, a pot or anything else is not
-   * established.
+   * `0x0`, `0x4` or `0x9` — bits 4–6 the container ({@link containerOf}), bits
+   * 2–3 what it holds ({@link contentsOf}), bits 0–1 not read here.
    */
   readonly kind: number
   /** Where it is, in the file's own units; undefined on a three-value record. */
@@ -159,7 +178,8 @@ export function readTreasure(bytes: Uint8Array): TreasureFile {
     }
     return {
       index: first === undefined ? undefined : first + place,
-      unknown_0: record.values[0] as number,
+      packed: record.values[0] as number,
+      id: (record.values[0] as number) >>> 16,
       kind: record.values[1] as number,
       position:
         count === 3
@@ -171,4 +191,41 @@ export function readTreasure(bytes: Uint8Array): TreasureFile {
     }
   })
   return { first, treasures }
+}
+
+/**
+ * **Which container**, value 1's bits 4–6 (`LootManager_CreateContainer`):
+ * a red chest, a pot, a barrel, a cupboard, a blue chest. The game tells the
+ * chests from the rest by the position it reads (a facing besides) and the
+ * blue from the red by the table it draws from; which of 1 and 2 is the pot is
+ * the decomp's naming, and they take different sprite sheets
+ * (`func_02013d24`).
+ */
+export const CONTAINER = { redChest: 0, pot: 1, barrel: 2, cupboard: 3, blueChest: 4 } as const
+
+/** A treasure's container — see {@link CONTAINER}. */
+export function containerOf(treasure: Pick<Treasure, 'kind'>): number {
+  return (treasure.kind >>> 4) & 7
+}
+
+/** **What it holds**, value 1's bits 2–3: 0 nothing, 1 gold, 2 an item, 3 a monster — as a random row's kind. */
+export function contentsOf(treasure: Pick<Treasure, 'kind'>): number {
+  return (treasure.kind >>> 2) & 3
+}
+
+/**
+ * The flags an opened treasure sets, in the game-wide bank at `+0x8c` (the
+ * treasure service, ov017 `0x021ae528`–`0x021ae58c`): **a red chest's
+ * `0x212 + id`, for ever; anything else's `0x79e + id`**, which the field's
+ * start clears, 700 of them (`func_ov017_0218b688`, `0x0218c180`).
+ */
+export const RED_CHEST_FLAG = 0x212
+export const REFILLED_FLAG = 0x79e
+export const REFILLED_COUNT = 0x2bc
+
+/** The flag that says a treasure has been opened — see {@link RED_CHEST_FLAG}. */
+export function openedFlag(treasure: Pick<Treasure, 'kind' | 'id'>): number {
+  return (
+    (containerOf(treasure) === CONTAINER.redChest ? RED_CHEST_FLAG : REFILLED_FLAG) + treasure.id
+  )
 }

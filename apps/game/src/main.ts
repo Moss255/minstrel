@@ -24,9 +24,11 @@ import {
   BOOK_FLAG,
   blocksDoorway,
   type CharaColours,
+  CONTAINER,
   type CollisionMesh,
   type CollisionTriangle,
   conditionsOfWords,
+  containerOf,
   doorwayPlay,
   type EventOutcome,
   entryPlay,
@@ -58,6 +60,8 @@ import {
   placeFlagOf,
   placesOffered,
   QUEST_SLOTS,
+  REFILLED_COUNT,
+  REFILLED_FLAG,
   REVIVAL_SILENT,
   readSprite,
   revivalVoice,
@@ -132,20 +136,26 @@ import {
   experienceShares,
   type Fighter,
   type Filcher,
+  FOUNTAIN_FIRST,
   type Follower,
   facingOff,
   fieldAmount,
+  fountainItem,
+  type Gathering,
   groundBelow,
   headingAngle,
   howItOpens,
   isNight,
   monsterHp,
   newClock,
+  newGathering,
   type OpenGround,
   type Opening,
   PERSON,
+  PICKED_FLAG,
   type PlacedMesh,
   phaseOf,
+  pickUp,
   REST_TICKS,
   type Roamer,
   type RoamerKind,
@@ -153,11 +163,14 @@ import {
   type RoamRules,
   resetFollower,
   type Sharer,
+  SPOT_COUNT,
   STAY_TICKS,
   setPhase,
   spoils,
+  startPlay,
   startRoaming,
   tickClock,
+  tickGathering,
   tickRoaming,
 } from '@minstrel/sim'
 import {
@@ -449,6 +462,7 @@ import {
   allTriggers,
   battleSheets,
   entranceOf,
+  gatheringOf,
   givenNamesFrom,
   itemDefsOf,
   keeperWords,
@@ -562,6 +576,7 @@ import {
 } from './skills.ts'
 import { bodyColours, faceColours, skinRamp, skinSlot } from './skin.ts'
 import { aimSlides, moveSlides, type Slide, standingIn, startSlides } from './slide.ts'
+import { SPARKLE_FILE, type Sparkle, sparklesOf, sparkleWithin } from './sparkles.ts'
 import {
   type CreditCard,
   drawCard,
@@ -638,6 +653,7 @@ import {
   findInside,
   nearestTreasure,
   renderName,
+  rollsAtLoad,
   TREASURE_MARKER,
   treasureKey,
   treasurePieces,
@@ -1354,12 +1370,40 @@ let talking: Conversation | undefined
 /** The main menu while it is up — see `menu.ts`. */
 let menu: MenuState | undefined
 /**
- * The treasure opened this session, by `treasureKey` — its game-wide number, so
- * it stays open whichever way the Hero comes back. Not saved yet.
+ * **Opened treasure is a flag in the game-wide bank** — `treasureKey`: a red
+ * chest's for ever, anything else's until play next begins, which clears them
+ * (see `beginPlay`). Red chests a save from before 6 October 2026 named by
+ * their running number, waiting to be turned into their flags as their maps
+ * are entered.
  */
-const openedTreasure = new Set<string>()
+const legacyOpened = new Set<number>()
+/** Whether a treasure has been opened — its flag set. */
+function isOpened(treasure: Treasure): boolean {
+  return storyGlobals.has(treasureKey(treasure))
+}
+/**
+ * **What each pot, barrel, cupboard and blue chest holds**, drawn as the map
+ * was loaded — see `rollsAtLoad`. By slot. **Ours**: the draws.
+ */
+let loadRolls = new Map<number, number>()
+const treasureRng = new BattleRng(0x74726561n)
+/**
+ * **The gathering spots** — see `gathering.ts` in `@minstrel/sim` and
+ * `docs/readings/T13-gathering.md`: the save's variant and a word a spot,
+ * kept and saved; set up or emptied as play begins (`beginPlay`); swept once
+ * a minute of play (`keepTime`). **Ours**: the draws, which the game makes
+ * with its `rand()`.
+ */
+let gathering: Gathering = newGathering()
+const gatherRng = new BattleRng(0x67617468n)
+const gatherDraws = { below: (n: number) => gatherRng.below(n) }
+let gatherCarry = 0
+/** The items lying on this map, as it was entered — see `sparklesOf`. */
+let sparkles: Sparkle[] = []
+/** An item being picked up: when A was pressed, what it is, and whether its sound has played. */
+let picking: { readonly started: number; readonly item: number; sounded: boolean } | undefined
 /** When each pot or barrel opened this visit was smashed, by its treasure key — see `pots.ts`. */
-const smashedAt = new Map<string, number>()
+const smashedAt = new Map<number, number>()
 /**
  * Which of the four weight tables each of the game's eight ways of choosing
  * draws by, in the order `readWeightTables` finds them — the even, the
@@ -1765,8 +1809,10 @@ function begin(bytes: Uint8Array, map: string): Promise<void> {
   equipScreens = undefined
   // Carry on from the last confession, unless the player asked for a new game.
   const saved = resumeEl.checked ? savedGame : undefined
+  if (saved) restore(saved)
+  // **Play begins**, a new game or one carried on — see `beginPlay`.
+  beginPlay(bytes)
   if (saved) {
-    restore(saved)
     if (enter(saved.map, saved.at)) {
       // Saved in flight, the Express is where the Hero was — see `flight.ts`.
       if (loaded?.mapId === SKY_MAP)
@@ -1782,6 +1828,21 @@ function begin(bytes: Uint8Array, map: string): Promise<void> {
   if (params.get('create') === '1') return askCreation(map)
   openWorld(map)
   return Promise.resolve()
+}
+
+/**
+ * **Play begins** — the field's start, which the game runs for a new game and
+ * for one carried on from the title (`func_ov017_0218b688`): every flag of a
+ * treasure that comes back is cleared, 700 from `0x79e`
+ * (`0x0218c180`) — so every blue chest, pot, barrel and cupboard is full
+ * again, and a red chest stays as it was — and the gathering spots are set up
+ * or emptied (`func_0208ea10`, see `startPlay`).
+ */
+function beginPlay(rom: Uint8Array): void {
+  for (let flag = REFILLED_FLAG; flag < REFILLED_FLAG + REFILLED_COUNT; flag++)
+    storyGlobals.delete(flag)
+  const data = gatheringOf(rom, '')
+  startPlay(gathering, data.all, data.bias, gatherDraws)
 }
 
 /**
@@ -2272,8 +2333,16 @@ function restore(game: SaveGame): void {
     member.skillPool = levels ? standing(levels, expOf(member), member.gains).level.skillPoints : 0
   })
   bag = bagOf(game)
-  openedTreasure.clear()
-  for (const key of game.opened) openedTreasure.add(key)
+  // The gathering spots, or for a save from before they were kept, none set up yet.
+  gathering = newGathering()
+  if (game.gathering) {
+    gathering.variant = game.gathering.variant
+    game.gathering.words.slice(0, SPOT_COUNT).forEach((word, id) => {
+      gathering.words[id] = word
+    })
+  }
+  legacyOpened.clear()
+  for (const key of game.opened) if (/^#\d+$/.test(key)) legacyOpened.add(Number(key.slice(1)))
 }
 
 /** Record where the Hero stands and all they carry: the church's confession. What the priest says. */
@@ -2323,7 +2392,8 @@ function confess(): string {
     ...(withPatty.length === 0 ? {} : { kept: partySaved(withPatty) }),
     gold: bag.gold,
     items: [...bag.items],
-    opened: [...openedTreasure],
+    opened: [],
+    gathering: { variant: gathering.variant, words: [...gathering.words] },
   }
   return writeSave(storage(), game)
     ? 'Your progress is recorded.'
@@ -2514,6 +2584,28 @@ function enter(map: string, arrival?: Arrival, forScene = false): boolean {
       cast: opened.castAt(storyStage, stepNow(), timeNow() === 'night', storyGlobals),
     }
   loaded = opened
+  // What each pot, barrel, cupboard and blue chest holds, drawn as the map
+  // loads (`LoadZoneContainers`) — see `rollsAtLoad`.
+  loadRolls = rollsAtLoad(opened.treasures, (n) => treasureRng.below(n))
+  // A red chest an old save named by its running number becomes its flag.
+  for (const treasure of opened.treasures) {
+    if (treasure.index === undefined || !legacyOpened.has(treasure.index)) continue
+    if (containerOf(treasure) === CONTAINER.redChest) storyGlobals.add(treasureKey(treasure))
+    legacyOpened.delete(treasure.index)
+  }
+  // The gathering spots' items lying here, as the map is entered (`func_0208f168`).
+  const floorWorld = opened.world
+  sparkles = sparklesOf(opened.gathering.here, gathering.words, (x, z, from) => {
+    if (!floorWorld) return undefined
+    const hit = groundBelow(
+      floorWorld,
+      fx32(Math.round(x * WORLD_SCALE * FX32_ONE)),
+      fx32(Math.round(z * WORLD_SCALE * FX32_ONE)),
+      fx32(Math.round(from * WORLD_SCALE * FX32_ONE)),
+    )
+    return hit ? toFloat(hit.y) / WORLD_SCALE : undefined
+  })
+  picking = undefined
   playMapMusic()
   // Drawn in what they wear, which the map's wardrobe dresses — see `dressHero`.
   dressHero()
@@ -3107,7 +3199,7 @@ function ride(stop: number, mode: ExpressMode): void {
  * `data/chara/sg<nn><m|w>.chr`. Nothing else may happen while it plays.
  */
 function performTricks(direction: 'up' | 'left' | 'right' | 'down'): void {
-  if (performing || !self || opening) return
+  if (performing || !self || opening || picking) return
   const started = startPerformance(
     tricksFor(trickSlots, direction),
     performance.now(),
@@ -3236,7 +3328,15 @@ function trickAnswered(tricks: readonly number[]): void {
  */
 function showTrickCross(): void {
   const idle =
-    cancelHeld && !!self && !talking && !playing && !battle && !menu && !visit && !opening
+    cancelHeld &&
+    !!self &&
+    !talking &&
+    !playing &&
+    !battle &&
+    !menu &&
+    !visit &&
+    !opening &&
+    !picking
   if (!idle || !cartridge) {
     trickCrossEl.hidden = true
     return
@@ -3586,10 +3686,12 @@ function frame(now = 0): void {
     })
     // Opening a chest holds the Hero where they knelt — see `openChest`.
     if (opening) followChestOpening(now)
+    // So does picking an item up — see `gatherHere`.
+    if (picking) followPicking(now)
     // A party trick holds them where they stand — see `performTricks`.
     if (performing) followPerformance(now)
     const { moving, travelled, marshTicks } =
-      playing || opening || performing || battleStage
+      playing || opening || picking || performing || battleStage
         ? { moving: false, travelled: 0, marshTicks: 0 }
         : flying
           ? flyOn(elapsedMs)
@@ -3609,7 +3711,7 @@ function frame(now = 0): void {
     })
     // The field's monsters, on the Hero's own ticks, and only while nothing
     // else is up — see `beginRoaming`.
-    if (roaming && !battle && !menu && !visit && !talking && !playing && !opening) {
+    if (roaming && !battle && !menu && !visit && !talking && !playing && !opening && !picking) {
       roamCarry = Math.min(roamCarry + elapsedMs, TICK_MS * 8)
       while (roamCarry >= TICK_MS && roaming) {
         roamCarry -= TICK_MS
@@ -3780,7 +3882,7 @@ function frame(now = 0): void {
       if (list) list.push(chunkLocal[chunk] as number)
       else hiddenIn.set(shape, [chunkLocal[chunk] as number])
     }
-    const heroPose = heroEventPose() ?? chestOpeningPose(now) ?? trickPose(now)
+    const heroPose = heroEventPose() ?? chestOpeningPose(now) ?? pickingPose(now) ?? trickPose(now)
     const drawn = battleStage
       ? stageDrawn(battleStage, battleClock)
       : [
@@ -3827,6 +3929,8 @@ function frame(now = 0): void {
           ...(roaming && !battle ? roamerPieces(now) : []),
           // Pots and barrels face the camera too — see `propPiecesNow`.
           ...propPiecesNow(loaded, now),
+          // The gathering spots' sparkles — see `sparklePieces`.
+          ...sparklePieces(now),
           // Whoever goes along, behind the Hero — see `companionsInField`.
           ...companionFieldPieces(now),
           // The mark over the Hero's head: someone to talk to, something to examine, a door.
@@ -4097,6 +4201,13 @@ function keepTime(elapsedMs: number): void {
   while (clockCarry >= 1000 / 60) {
     tickClock(clock, here.mapKind)
     clockCarry -= 1000 / 60
+  }
+  // **The gathering spots' minute** counts on every map, whatever is going on
+  // — the game's one gate is a map changing (`0x0218ced0`) — see `tickGathering`.
+  gatherCarry = Math.min(gatherCarry + elapsedMs, 250)
+  while (gatherCarry >= 1000 / 60) {
+    tickGathering(gathering, storyGlobals, gatherDraws)
+    gatherCarry -= 1000 / 60
   }
   // **What a scene asked of the clock** — `808`'s phase, `579`'s running —
   // applied once, and it stays when the scene ends.
@@ -4465,8 +4576,8 @@ function moveChapter(by: number): void {
 function propPiecesNow(here: Loaded, now: number): Piece[] {
   const height = toFloat(PERSON.height) * worldScale
   return here.props.flatMap((prop) => {
-    const key = treasureKey(here.code, prop.slot, prop.treasure)
-    if (!openedTreasure.has(key)) return propPieces(prop, height, camera.yaw)
+    const key = treasureKey(prop.treasure)
+    if (!storyGlobals.has(key)) return propPieces(prop, height, camera.yaw)
     const since = smashedAt.get(key)
     const shard = since === undefined ? undefined : breakingFrame(prop, now - since)
     return shard === undefined || !prop.breaking
@@ -4490,12 +4601,11 @@ function refreshTreasures(): void {
     z: Math.round(at.z * FX32_ONE),
     radius: Math.round(at.radius * FX32_ONE),
   }))
-  const { code, treasures } = loaded
-  const isOpen = (treasure: Treasure, slot: number) =>
-    openedTreasure.has(treasureKey(code, slot, treasure))
+  const { treasures } = loaded
+  const isOpen = (treasure: Treasure, _slot: number) => isOpened(treasure)
   // A chest being opened lifts its lid with the Hero's hands — see `openChest`.
   const lidOpenness = (treasure: Treasure, slot: number) => {
-    const key = treasureKey(code, slot, treasure)
+    const key = treasureKey(treasure)
     if (opening?.key === key) return lidRaised(performance.now())
     return isOpen(treasure, slot) ? 1 : 0
   }
@@ -4610,13 +4720,13 @@ function openTreasureAhead(): boolean {
     showTalk()
     return true
   }
-  const key = treasureKey(loaded.code, slot, treasure)
-  const already = openedTreasure.has(key)
+  const key = treasureKey(treasure)
+  const already = storyGlobals.has(key)
   const found = findInside(
     treasure,
     loaded.randoms,
     loaded.itemNames,
-    undefined,
+    loadRolls.get(slot),
     loaded.monsterNames,
     loaded.systemStrings,
   )
@@ -4643,10 +4753,109 @@ function openTreasureAhead(): boolean {
     opening = { key, started: performance.now(), lidUp: false, afterwards: tell }
     return true
   }
-  openedTreasure.add(key)
+  storyGlobals.add(key)
   refreshTreasures()
   tell()
   return true
+}
+
+/**
+ * **Picking up what lies at a gathering spot** — ov017
+ * `func_ov017_021986fc`: the Hero within reach of an item lying here (see
+ * `sparkleWithin`) and A pressed. The place is emptied and the spot's minutes
+ * start again (`pickUp`), flag `0xc12 + id` is set, and the Fountain's spots
+ * give one of the variant's items (`fountainItem`). Then service 35
+ * (`func_ov017_021ae85c`) — see `followPicking`. True when there was one.
+ */
+function gatherHere(): boolean {
+  if (!loaded || !self || picking) return false
+  const hero = { x: toFloat(self.state.x) / WORLD_SCALE, z: toFloat(self.state.z) / WORLD_SCALE }
+  const found = sparkleWithin(sparkles, hero)
+  if (!found || !pickUp(gathering, found.id, found.place)) return false
+  storyGlobals.add(PICKED_FLAG + found.id)
+  sparkles = sparkles.filter((s) => s !== found)
+  const item =
+    found.id >= FOUNTAIN_FIRST
+      ? fountainItem(
+          loaded.gathering.fountain?.items.get(gathering.variant) ?? [],
+          storyStage?.major ?? 0,
+          gatherDraws,
+        )
+      : found.item
+  picking = { started: performance.now(), item, sounded: false }
+  return true
+}
+
+/** Frames of service 35: the Hero bends after 5 (state 8, sound 91), the item is had 30 after. */
+const PICK_BENDS = 5
+const PICK_HAD = PICK_BENDS + 30
+/** The motion the Hero picks up with — INFERRED for state 8, whose motion lookup is not read. */
+const PICK_MOTION = 'hirou'
+
+/**
+ * **Service 35, picking up** (`func_ov017_021ae85c`): 5 frames on, the Hero
+ * bends — state 8 — and sound 91 plays; 30 frames after, the item is obtained
+ * as a chest's is (`func_0207d538` through `func_0207d300`, see `obtain`),
+ * sound 14 plays and system string 84 says so — "<Hero> acquires a …".
+ * **Ours**: the item's icon, which the game raises over the Hero
+ * (`/data/ani/d_%c%03d.spr`), is not drawn, and the line is said by the
+ * Hero, where the game names whoever `func_020100b0` gives.
+ */
+function followPicking(now: number): void {
+  const going = picking
+  if (!going) return
+  const frames = ((now - going.started) * 60) / 1000
+  if (!going.sounded && frames >= PICK_BENDS) {
+    going.sounded = true
+    if (cartridge) void playEffect(cartridge, FIELD_EFFECTS, 91)
+  }
+  if (frames < PICK_HAD) return
+  picking = undefined
+  give(going.item)
+  if (cartridge) void playEffect(cartridge, FIELD_EFFECTS, 14)
+  const said =
+    told(loaded?.systemStrings, 84, { actor: heroNamed(), item: itemNamed(going.item) }) ??
+    `${heroNamed().name} acquires ${nameOf(going.item)}.`
+  talkContext = textContext()
+  talking = startConversation(
+    { id: -1, name: '', x: 0, z: 0 },
+    'a gathering spot',
+    [said],
+    ['strstd 84'],
+    talkContext,
+  )
+  showTalk()
+}
+
+/** The Hero's pose while picking up: the motion from the bend, held at its last frame. */
+function pickingPose(
+  now: number,
+): { readonly motion: Animation; readonly frame: number } | undefined {
+  const motion = picking ? loaded?.figure.motions.get(PICK_MOTION) : undefined
+  if (!motion || !picking) return undefined
+  const since = now - picking.started - (PICK_BENDS * 1000) / 60
+  if (since < 0) return undefined
+  return { motion, frame: Math.min(Math.floor((since * MAP_FPS) / 1000), motion.frameCount - 1) }
+}
+
+/**
+ * **The sparkles**, `ev999990300.chr`, at the characters' scale (`0x10a`,
+ * `func_0208f36c`), each looping its motion. **Ours**: where in its loop each
+ * starts — the game draws a frame of the motion's range for each
+ * (`func_0208f168`) — is set by its spot and place.
+ */
+function sparklePieces(now: number): Piece[] {
+  if (battleStage) return []
+  return sparkles.flatMap((s) =>
+    effectPieces(
+      { file: SPARKLE_FILE, motion: undefined },
+      { x: s.x * WORLD_SCALE, y: s.y * WORLD_SCALE, z: s.z * WORLD_SCALE, facing: 0 },
+      now + (s.id * 8 + s.place) * 137,
+      0,
+      1,
+      true,
+    ),
+  )
 }
 
 /**
@@ -4669,7 +4878,7 @@ const OPEN_CHEST_LID_UP = 9
 /** The chest being opened, when the Hero is opening one. */
 let opening:
   | {
-      readonly key: string
+      readonly key: number
       readonly started: number
       lidUp: boolean
       readonly afterwards: () => void
@@ -4701,12 +4910,12 @@ function followChestOpening(now: number): void {
   const frame = chestOpeningFrame(now)
   if (!going.lidUp && frame >= OPEN_CHEST_LID_FRAME) {
     going.lidUp = true
-    openedTreasure.add(going.key)
+    storyGlobals.add(going.key)
   }
   // The lid moves every frame it is going up.
   refreshTreasures()
   if (!motion || frame >= motion.frameCount) {
-    openedTreasure.add(going.key)
+    storyGlobals.add(going.key)
     opening = undefined
     refreshTreasures()
     going.afterwards()
@@ -4853,6 +5062,7 @@ function talk(everyLine = false): void {
   if (!who) {
     if (openTreasureAhead()) return
     if (readBookcaseAhead()) return
+    if (gatherHere()) return
     const here = { x: toFloat(self.state.x), z: toFloat(self.state.z) }
     const nearest = nearestTreasure(loaded.treasures, here)
     const cabinet = cabinets

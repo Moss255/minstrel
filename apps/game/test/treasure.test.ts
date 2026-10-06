@@ -16,7 +16,8 @@ import {
 function treasure(over: Partial<Treasure> = {}): Treasure {
   return {
     index: 21,
-    unknown_0: 0x01220002,
+    packed: 0x01220002,
+    id: 0x0122,
     kind: 0x10,
     position: { x: 1, y: 0.02, z: 2 },
     facing: undefined,
@@ -34,9 +35,11 @@ function treasure(over: Partial<Treasure> = {}): Treasure {
 }
 
 describe('treasure', () => {
-  it('is remembered by its game-wide number, or by where it is without one', () => {
-    expect(treasureKey('M01M07', 0, treasure())).toBe('#21')
-    expect(treasureKey('M01M07', 3, treasure({ index: undefined }))).toBe('M01M07/3')
+  it('is remembered by its flag: a red chest 0x212 + id, anything else 0x79e + id', () => {
+    // A pot, id 0x122.
+    expect(treasureKey(treasure())).toBe(0x79e + 0x122)
+    expect(treasureKey(treasure({ kind: 0x8, id: 7 }))).toBe(0x212 + 7)
+    expect(treasureKey(treasure({ kind: 0x40, id: 7 }))).toBe(0x79e + 7)
   })
 
   it('can be walked up to only when it has a position', () => {
@@ -80,7 +83,7 @@ describe('treasure', () => {
   })
 
   it('says when a chest was really a monster, by its number, and that nothing follows', () => {
-    const chest = treasure({ kind: 0x40, unknown_0: 4 })
+    const chest = treasure({ kind: 0x40, packed: 4 })
     const randoms = new Map([
       [
         'randTBox',
@@ -103,7 +106,7 @@ describe('treasure', () => {
     const herb = findInside(chest, randoms, new Map([[7, 'medicinal herb']]), 5)
     expect(herb.text).toBe('Inside: medicinal herb.')
     expect(herb.takings).toEqual({ item: 7 })
-    expect(findInside(treasure({ kind: 0x4, unknown_0: 50 }), randoms, new Map()).takings).toEqual({
+    expect(findInside(treasure({ kind: 0x4, packed: 50 }), randoms, new Map()).takings).toEqual({
       gold: 50,
     })
   })

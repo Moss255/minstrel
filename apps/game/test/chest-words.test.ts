@@ -49,7 +49,8 @@ describe.skipIf(!romPath)("the chest's words on a real cartridge", { timeout: 60
       }
       const chest = {
         index: 1,
-        unknown_0: row.rank,
+        packed: row.rank,
+        id: 0,
         kind: 0x40,
         position: { x: 0, y: 0, z: 0 },
         facing: 0,

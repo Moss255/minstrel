@@ -196,7 +196,13 @@ export interface SaveGame {
   readonly gold: number
   /** Each item and how many, in the bag's order. */
   readonly items: readonly (readonly [number, number])[]
-  /** The opened treasure, by `treasureKey`. */
+  /**
+   * **Before 6 October 2026, the opened treasure**, by the treasure files'
+   * running number (`#21`) or a map and slot. Opened treasure is now a flag in
+   * `globals` (`treasureKey`); a red chest named here is turned into its flag
+   * when its map is next entered, and the rest come back at the start of play
+   * anyway. New saves write none.
+   */
   readonly opened: readonly string[]
   /**
    * How many mini medals have been handed to Cap'n Max — see `medals.ts`.
@@ -229,6 +235,13 @@ export interface SaveGame {
   readonly taught?: readonly number[]
   /** The last field the Hero stood in, by its id — the protagonist's `+0x566`, what Evac chooses by. Absent for none. */
   readonly lastField?: number
+  /**
+   * **The gathering spots** — the save's variant, 0–7 or 8 for none drawn,
+   * and a word a spot (`GameState+0x5cda`, `+0x5cdc`; see `Gathering` in
+   * `@minstrel/sim`). Absent from saves made before they were kept, which set
+   * them up as a new game does.
+   */
+  readonly gathering?: { readonly variant: number; readonly words: readonly number[] }
 }
 
 export class SaveError extends Error {
@@ -365,6 +378,17 @@ export function decodeSave(text: string): SaveGame {
   }
   if (s.taught !== undefined && (!Array.isArray(s.taught) || !s.taught.every(isCount))) {
     throw new SaveError('the save has a list of taught spells that does not read')
+  }
+  const gathering = s.gathering as Record<string, unknown> | null | undefined
+  if (
+    gathering !== undefined &&
+    (typeof gathering !== 'object' ||
+      gathering === null ||
+      !isCount(gathering.variant) ||
+      !Array.isArray(gathering.words) ||
+      !gathering.words.every(isCount))
+  ) {
+    throw new SaveError('the save has gathering spots that do not read')
   }
   if (s.lastField !== undefined && !isCount(s.lastField)) {
     throw new SaveError('the save has a last field that does not read')

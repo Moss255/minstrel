@@ -46,7 +46,8 @@ describe('something to examine', () => {
 function treasure(kind: number, value: number, index = 3): Treasure {
   return {
     index,
-    unknown_0: (0x0120 << 16) | value,
+    packed: (0x0120 << 16) | value,
+    id: 0x0120,
     kind,
     position: { x: 0, y: 0, z: 0 },
     facing: undefined,
@@ -89,7 +90,9 @@ describe('what is inside', () => {
   })
 
   it('draws from the right table by rank and weight, and past the weights finds nothing', () => {
-    expect(DRAWN_FROM.get(0x30)).toBe('randTTT')
+    // By container: 3 a cupboard, 4 a blue chest.
+    expect(DRAWN_FROM.get(3)).toBe('randTTT')
+    expect(DRAWN_FROM.get(4)).toBe('randTBox')
     expect(drawRow(ROWS, 1, 0)?.value).toBe(0x5000)
     expect(drawRow(ROWS, 1, 29)?.value).toBe(0x5000)
     expect(drawRow(ROWS, 1, 30)?.value).toBe(40)

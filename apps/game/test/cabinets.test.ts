@@ -20,7 +20,8 @@ import { talkTarget } from '../src/talk.ts'
 function treasure(kind: number, placed: boolean): Treasure {
   return {
     index: 0,
-    unknown_0: 0,
+    packed: 0,
+    id: 0,
     kind,
     position: placed ? { x: 0, y: 0, z: 0 } : undefined,
     facing: undefined,

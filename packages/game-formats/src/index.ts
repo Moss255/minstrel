@@ -84,6 +84,22 @@ export {
   isBitmapFont,
   readBitmapFont,
 } from './font.ts'
+export {
+  FOUNTAIN_MAP,
+  FOUNTAIN_PLACES,
+  FOUNTAIN_SPOTS,
+  type Fountain,
+  type GatheringSpot,
+  gatheringFile,
+  OWN_TIMING,
+  readFountain,
+  readGatheringBias,
+  readGatheringSpots,
+  SPOT_PLACES,
+  type SpotPlace,
+  type SpotTiming,
+  VARIANTS,
+} from './gathering.ts'
 export { type Grammar, readGrammar } from './grammar.ts'
 export {
   ITEM_EXPERIENCE_BONUS,
@@ -458,11 +474,18 @@ export {
   type ZoomPlace,
 } from './travel.ts'
 export {
+  CONTAINER,
+  containerOf,
+  contentsOf,
+  openedFlag,
   RANDOM_GOLD,
   RANDOM_ITEM,
   RANDOM_MONSTER,
   RANDOM_TAG,
   type RandomTreasure,
+  RED_CHEST_FLAG,
+  REFILLED_COUNT,
+  REFILLED_FLAG,
   readRandomTreasure,
   readTreasure,
   TREASURE_TAG,

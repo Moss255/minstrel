@@ -17,7 +17,8 @@ import { load } from '../src/load.ts'
 function treasure(over: Partial<Treasure>): Treasure {
   return {
     index: 0,
-    unknown_0: 0,
+    packed: 0,
+    id: 0,
     kind: 0x8,
     position: { x: 0, y: 0, z: 0 },
     facing: 0,

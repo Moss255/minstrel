@@ -29,6 +29,9 @@ import {
   type ExperienceBand,
   type FieldMonster,
   type FieldZone,
+  FOUNTAIN_MAP,
+  type Fountain,
+  type GatheringSpot,
   type Grammar,
   type ItemDef,
   type ItemKind,
@@ -78,6 +81,9 @@ import {
   readExperienceAdjust,
   readFieldEncounters,
   readFieldMonsters,
+  readFountain,
+  readGatheringBias,
+  readGatheringSpots,
   readItemBattleParams,
   readItemDefs,
   readItemKinds,
@@ -121,6 +127,7 @@ import {
   type Shop,
   type SkillPanel,
   type SpellTable,
+  type SpotTiming,
   type StoryArea,
   type TalkLine,
   type Treasure,
@@ -389,6 +396,8 @@ export interface Loaded {
   readonly mapZoom: number | undefined
   /** Zoom's list, Evac's table and the waking priest's voices — see {@link Travel}. */
   readonly travel: Travel
+  /** The gathering spots: every field's, the timings, the Fountain, and this map's — see {@link Gathering}. */
+  readonly gathering: Gathering
   /** The map's bookcases, from its link table — see `mapBookcases`. */
   readonly bookcases: readonly Bookcase[]
   /** What the shelves of maps with this map's first letter hold — `htana<L>`, see `readBookshelves`. */
@@ -1496,6 +1505,64 @@ function travelOf(rom: Uint8Array): Travel {
   }
   travelRead.set(rom, travel)
   return travel
+}
+
+/**
+ * **The gathering spots** — see `gathering.ts` in `@minstrel/game-formats`
+ * and `docs/readings/T13-gathering.md`: every field's spots
+ * (`flditem.pac`'s `F<nn>flditem.bin`), the timings by variant
+ * (`fldbias.bin`), Stornway's Guardian Fountain (`izmitm.bin`), and the spots
+ * of the map being loaded — a field's own file, or the Fountain's on
+ * {@link FOUNTAIN_MAP} (`func_0208e520`, `func_0208e824`). Each is empty where
+ * it will not read.
+ */
+export interface Gathering {
+  readonly all: readonly GatheringSpot[]
+  readonly bias: ReadonlyMap<number, readonly SpotTiming[]>
+  readonly fountain: Fountain | undefined
+  /** This map's spots: their ids, items (0 for the Fountain's, drawn as picked) and places. */
+  readonly here: readonly {
+    readonly id: number
+    readonly item: number
+    readonly places: readonly { readonly x: number; readonly y: number; readonly z: number }[]
+  }[]
+}
+
+const gatheringRead = new WeakMap<
+  Uint8Array,
+  Omit<Gathering, 'here'> & { readonly byField: ReadonlyMap<string, readonly GatheringSpot[]> }
+>()
+export function gatheringOf(rom: Uint8Array, code: string): Gathering {
+  let read = gatheringRead.get(rom)
+  if (!read) {
+    const byField = new Map<string, GatheringSpot[]>()
+    let bias = new Map<number, SpotTiming[]>()
+    let fountain: Fountain | undefined
+    for (const leaf of scanCartridge(rom, { pathFilter: '/data/scenario/flditem.pac' })) {
+      const name = leaf.path.split('/').pop() ?? ''
+      try {
+        const field = /^(F\d\d)flditem\.bin$/i.exec(name)
+        if (field) byField.set((field[1] as string).toUpperCase(), readGatheringSpots(leaf.bytes))
+        else if (name.toLowerCase() === 'fldbias.bin') bias = readGatheringBias(leaf.bytes)
+      } catch {
+        // A member that will not read gives no spots.
+      }
+    }
+    for (const leaf of scanCartridge(rom, { pathFilter: '/data/bin/izmitm' })) {
+      try {
+        fountain = readFountain(leaf.bytes)
+      } catch {
+        fountain = undefined
+      }
+    }
+    read = { all: [...byField.values()].flat(), bias, fountain, byField }
+    gatheringRead.set(rom, read)
+  }
+  const here =
+    code.toUpperCase() === FOUNTAIN_MAP
+      ? (read.fountain?.spots ?? []).map((spot) => ({ ...spot, item: 0 }))
+      : (read.byField.get(code.toUpperCase()) ?? [])
+  return { all: read.all, bias: read.bias, fountain: read.fountain, here }
 }
 
 /** The medal service's code, where its reward tables are. */
@@ -2962,6 +3029,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     mapArea: entry?.area,
     mapZoom: entry?.zoom,
     travel: travelOf(rom),
+    gathering: gatheringOf(rom, code),
     ...tracks,
     fieldZones: (id === undefined ? undefined : fieldEncountersOf(rom).get(id)) ?? [],
     triggers,
