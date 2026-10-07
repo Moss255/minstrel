@@ -78,6 +78,7 @@ describe.skipIf(!romPath)(
     it('plays Eyes on Me and Whistle as provocations, and reads what provokes each monster', () => {
       expect(partyChangeOf(action(194))?.change.kind).toBe('eyes')
       expect(partyChangeOf(action(147))?.change.kind).toBe('whistle')
+      expect(partyChangeOf(action(179))?.change).toEqual({ kind: 'fource', chance: 100, sort: 3 })
       // The heals are family 5 and Zing's 12, which the resolver asks.
       expect([30, 31, 32, 33, 34].map((id) => action(id).rolls?.family)).toEqual([5, 5, 5, 5, 5])
       expect(partyChangeOf(action(38))?.family).toBe(12)
@@ -268,7 +269,7 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 9 of them as the Attack now, where 76 were', () => {
+    it('strikes 4 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -285,7 +286,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(9)
+      expect(attack).toBe(4)
     })
   },
 )

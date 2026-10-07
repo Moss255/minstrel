@@ -2,11 +2,12 @@ import { FALLOFF, handled, passesOf, RETARGETED, THRUST_HANDLER } from './blows.
 import { brokenChain, type Chain, chainStep, NO_CHAIN } from './combo.ts'
 import { COUP_ACTIONS, COUP_LEVEL, coupChance, coupHpTerm, coupRounds } from './coup.ts'
 import {
+  adjustedResistance,
   criticalChance,
   criticalDamage,
   dealt,
   drawnAmount,
-  holyResistance,
+  FOURCE_ELEMENTS,
   inCrisis,
   initiative,
   partyAmount,
@@ -483,6 +484,8 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed' | 'confused'> & key
   'rotstop',
   'reverse',
   'alma',
+  // A Fource's (`+0x6a`, `0x02158c20`).
+  'fource',
   // Holy Impregnable's (`+0x8e`, `0x02158de8`).
   'holy',
   'attack',
@@ -624,6 +627,12 @@ export type Change =
   | { readonly kind: 'alma'; readonly chance: number }
   /** **Holy Impregnable** (kind 64, `func_ov024_021e1120`): the simple shape — see `States.holy`. */
   | { readonly kind: 'holy'; readonly chance: number }
+  /**
+   * **The Fources** (kind 46, `func_ov024_021dff3c`): landed, on one standing
+   * (`func_0208869c`), a Fource of the record's `+0x30` (`sort`, 1 to 5) with
+   * its count of 5 — see `States.fource`; else the fail line.
+   */
+  | { readonly kind: 'fource'; readonly chance: number; readonly sort: number }
   /**
    * **Flower Power, Scandal Eyes** (kind 19, `func_ov024_021dd534`): landed,
    * on one who may take it, dazzled of its `sort` — the record's `+0x30` —
@@ -1215,10 +1224,13 @@ export type BattleEvent =
         | 'rotstop'
         | 'alma'
         | 'holy'
+        | 'fource'
         | 'zeroZone'
         | 'tumble'
         | 'watched'
         | RoundCounted
+      /** A Fource's sort, which its line is by. */
+      readonly sort?: number
     }
   /** Poison taking its toll, at the round's end. */
   | { readonly kind: 'poison'; readonly actor: number; readonly damage: number }
@@ -1433,14 +1445,33 @@ function wardsOf(
   }
 }
 
-/** A target's resistance to an element, with Holy Impregnable's — see `holyResistance`. */
+/** A target's resistance to an element, with Holy Impregnable's and a Fource's — see `adjustedResistance`. */
 function resistanceOf(
   target: { readonly resist?: readonly number[]; readonly states: States },
   element: number,
 ): number {
-  return (target.states.holy?.level ?? 0) !== 0
-    ? holyResistance(target.resist, element)
-    : resistanceTo(target.resist, element)
+  return adjustedResistance(
+    target.resist,
+    element,
+    (target.states.holy?.level ?? 0) !== 0,
+    target.states.fource?.level ?? 0,
+  )
+}
+
+/**
+ * **Its striker's Fource**, for `dealt` (`func_ov024_021e6a90`,
+ * `0x021e6f98`–`0x021e6fc8`): of an action of the plain element, 8, other
+ * than `0x1f9` and `0x205` — the target's bytes for the Fource's elements.
+ */
+function fourceOf(
+  striker: { readonly states: States },
+  target: { readonly resist?: readonly number[] },
+  element: number,
+  action: number,
+): { fource?: readonly number[] } {
+  const sort = striker.states.fource?.level ?? 0
+  if (sort === 0 || element !== 8 || action === 0x1f9 || action === 0x205) return {}
+  return { fource: (FOURCE_ELEMENTS.get(sort) ?? []).map((e) => target.resist?.[e - 1] ?? 100) }
 }
 
 /** Rotstopper's half: its holder struck by a monster of family 8 — see `States.rotstop`. */
@@ -2053,6 +2084,7 @@ export function playRound(
       focus: undefined,
       rain: undefined,
       holy: undefined,
+      fource: undefined,
       zeroZone: { level: 0, turns: 0 },
       tumble: { level: 0, turns: 0 },
       tension: 0,
@@ -3066,7 +3098,13 @@ export function playRound(
       if (!level) continue
       const worn = runDown(level, WEAR_OF[stat].table, rng)
       if (worn.level !== level) setStates(actor, { [stat]: worn.level })
-      if (worn.wore) events.push({ kind: 'wornOff', actor, stat })
+      if (worn.wore)
+        events.push({
+          kind: 'wornOff',
+          actor,
+          stat,
+          ...(stat === 'fource' ? { sort: level.level } : {}),
+        })
     }
     for (const stat of RUN_DOWN_ORDER) {
       const level = (fighters[actor] as FighterState).states[stat]
@@ -3872,6 +3910,13 @@ export function playRound(
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { vanished: { level: 1, turns: LEVEL_COUNTS.vanished } })
             return { target, result: 'given' }
+          case 'fource':
+            // `0x021dff68`–`0x021e0010`: a sort of 1 to 5, landed, standing.
+            if (change.sort <= 0 || change.sort > 5 || !landed || !alive(them)) {
+              return { target, result: 'resisted' }
+            }
+            setStates(target, { fource: { level: change.sort, turns: LEVEL_COUNTS.fource } })
+            return { target, result: 'given' }
           case 'bounce':
           case 'reverse':
           case 'rotstop':
@@ -4271,6 +4316,7 @@ export function playRound(
         const damage = dealt(rng, d & 0xffff, {
           critical: critical && !thrust && !(blow.sure && blow.action !== CRITICAL_CLAIM),
           resistance: resistanceOf(them, blow.element),
+          ...fourceOf(me, them, blow.element, blow.action),
           ...rotOf(me, them),
           ...wardsOf(them, blow),
           dodged,
@@ -4473,6 +4519,7 @@ export function playRound(
           critical,
           attack: attackOf(me_),
           resistance: resistanceOf(them, PLAIN_ATTACK_ELEMENT),
+          ...fourceOf(me_, them, PLAIN_ATTACK_ELEMENT, 1),
           ...rotOf(me_, them),
           dodged,
           blocked,

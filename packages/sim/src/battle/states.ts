@@ -171,6 +171,19 @@ export interface States {
    */
   readonly holy?: Level | undefined
   /**
+   * **A Fource** — status `+0x18` bit 7, its sort at `+0x22` bits 9–11 (1
+   * Fire, 2 Frost, 3 Gale, 4 Funereal, 5 Life) and a count of 5 at `+0x6a`
+   * (kind 46, `func_ov024_021dff3c`; `func_02088818`). The `level` is its
+   * sort. Its holder's resistance to its elements is 50 lower
+   * (`func_ov000_02156b38`, `0x02156b84`–`0x02156c44` — see `adjustedResistance`),
+   * and its holder's blows of the plain element strike by them instead
+   * (`func_ov024_021e6a90`, `0x021e6f8c`–`0x021e71dc` — see `dealt`'s
+   * `fource`). Runs down by the second table, from 4 (`data_ov000_02182efc`,
+   * index 14), its line by its sort, `0x219` to `0x21d`
+   * (`func_ov000_0215858c`, `0x02158c20`–`0x02158de4`).
+   */
+  readonly fource?: Level | undefined
+  /**
    * **A shield's block, a level** — status `+0x58` bits 24–26, with `+0x18`
    * bit 0 set beside it while it is not 0 and a count of 5 at `+0x76`
    * (`func_0208806c`; Immense Defence, kind 37, `func_ov024_021ded48`). What
@@ -308,6 +321,7 @@ export const LEVEL_COUNTS = {
   rotstop: 4,
   alma: 6,
   holy: 5,
+  fource: 5,
   zeroZone: 5,
   tumble: 5,
   paralysed: 3,
@@ -355,6 +369,7 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   rotstop: { table: WEAR_TABLE_SLOW, start: 4 },
   alma: { table: WEAR_TABLE, start: 4 },
   holy: { table: WEAR_TABLE, start: 4 },
+  fource: { table: WEAR_TABLE_SLOW, start: 4 },
   zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.

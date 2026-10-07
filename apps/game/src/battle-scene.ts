@@ -671,6 +671,7 @@ const WORN_OFF: Readonly<
     | 'rotstop'
     | 'alma'
     | 'holy'
+    | 'fource'
     | 'zeroZone'
     | 'tumble'
     | 'watched'
@@ -691,6 +692,8 @@ const WORN_OFF: Readonly<
   // Alma Mater's, `0x1cb` (`0x02158bfc`); Holy Impregnable's, `0x25d` (`0x02158e58`).
   alma: 0x1cb,
   holy: 0x25d,
+  // Told by its sort — see `tell`'s `wornOff`.
+  fource: 0x219,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
   // `0x1c8` (`0x02157f88`), Right as Rain's `0x24c` (`0x02158040`).
   focus: 0x1c8,
@@ -1918,8 +1921,13 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       )
     case 'wornOff':
       return (
-        say(scene, 'actions', WORN_OFF[event.stat], { actor }) ??
-        sentence(`${who}'s ${STAT_NAMES[event.stat] ?? event.stat} returns to normal.`)
+        say(
+          scene,
+          'actions',
+          // A Fource's by its sort, `0x219` Fire to `0x21d` Life (`0x02158cc4`–`0x02158dc0`).
+          event.stat === 'fource' ? 0x218 + (event.sort ?? 0) : WORN_OFF[event.stat],
+          { actor },
+        ) ?? sentence(`${who}'s ${STAT_NAMES[event.stat] ?? event.stat} returns to normal.`)
       )
     case 'regen':
       // **Ours**: actions 930 to 933, which tell it (`func_ov000_0215c758`),
@@ -2614,6 +2622,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   // Eyes on Me (`021e04e0`) and Whistle (`021e0b48`): a monster enraged at the user.
   [51, 'eyes'],
   [56, 'whistle'],
+  // The Fources (`021dff3c`): a Fource of the record's `+0x30`, 1 Fire to 5 Life.
+  [46, 'fource'],
 ])
 /** The Gladiator's coup, Tension Boost: straight to the maximum, each level told (`func_ov024_021e191c`). */
 export const TENSION_BOOST = 511
@@ -2627,6 +2637,10 @@ const CHANGE_REACHES = new Map<number, Changing['reach']>([
   [ActionReach.All, 'all'],
   // An ally other than oneself — Egg On's, M-Pathy's.
   [8, 'one'],
+  // The Fources' alone, 5 of 681. **INFERRED** one of the party, as their
+  // own side and "<TARGET> is imbued with …" for each suggest; how the
+  // command phase takes 6 is not read.
+  [6, 'one'],
 ])
 
 /**
@@ -2664,7 +2678,7 @@ export function partyChangeOf(action: Castable): Changing | undefined {
     : kind === 'restore'
       ? // Choir of Angels: 0.4 of the most HP, rounded half up, at least 75 (`0x021e1418`–`0x021e1440`).
         { kind, chance: 100, share: 0.4, least: 75 }
-      : kind === 'dazzle'
+      : kind === 'dazzle' || kind === 'fource'
         ? { kind, chance: 100, sort: r.levels }
         : kind === 'pathy'
           ? {

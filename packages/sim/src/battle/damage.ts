@@ -381,6 +381,50 @@ export function holyResistance(bytes: readonly number[] | undefined, element: nu
 }
 
 /**
+ * **The elements a Fource is of**, by its sort (`func_ov000_02156b38`'s table
+ * at `0x02156c24`–`0x02156c40`, `func_ov024_021e6a90` `0x021e6fcc`–`0x021e71a4`):
+ * Fire 1, Frost 2, Gale 3 and 4, Funereal 5 and 6, Life 7.
+ */
+export const FOURCE_ELEMENTS: ReadonlyMap<number, readonly number[]> = new Map([
+  [1, [1]],
+  [2, [2]],
+  [3, [4, 3]],
+  [4, [6, 5]],
+  [5, [7]],
+])
+
+/**
+ * **A resistance, adjusted** — `func_ov000_02156b38` whole: the byte plus an
+ * adjustment, held at nothing, over a hundred, in floats. For the plain
+ * Attack's element, 8, none; for 1 to 7, −50 where its holder's Fource is of
+ * it (`0x02156b84`–`0x02156c44`); for 9 to 21, Holy Impregnable's −25. No
+ * bytes kept count as a hundred.
+ */
+export function adjustedResistance(
+  bytes: readonly number[] | undefined,
+  element: number,
+  holy: boolean,
+  fource: number,
+): number {
+  if (element < 1 || element > 21) return 1
+  const f = Math.fround
+  const by =
+    element === 8
+      ? 0
+      : element <= 7
+        ? (FOURCE_ELEMENTS.get(fource) ?? []).includes(element)
+          ? -50
+          : 0
+        : holy
+          ? -25
+          : 0
+  if (by === 0) return resistanceTo(bytes, element)
+  const byte = bytes?.[element - 1] ?? 100
+  const sum = f(f(byte) + f(by))
+  return f((sum < 0 ? 0 : sum) / f(100))
+}
+
+/**
  * What a worked-out amount comes to on its target — the spine of the game's
  * `func_ov024_021e6a90`, **kept a float to the end as the game keeps it**:
  *
@@ -462,6 +506,14 @@ export function dealt(
      * makes it 0 or 1.
      */
     readonly metal?: boolean
+    /**
+     * **Its striker's Fource** (`0x021e6f8c`–`0x021e71dc`): for an action of
+     * the plain element, not `0x1f9` nor `0x205`, the target's bytes for the
+     * Fource's elements — the amount after the resistance, times 1.1, times
+     * each over a hundred, the greatest standing in its place. (The weapon's
+     * own element, which it is the greater of, is not kept.)
+     */
+    readonly fource?: readonly number[]
   },
 ): number {
   const f = Math.fround
@@ -480,6 +532,14 @@ export function dealt(
     if (d < floor) d = floor
   }
   d = f(d * f(to.resistance))
+  if (to.fource) {
+    const by = d
+    d = 0
+    for (const byte of to.fource) {
+      const v = f(f(f(1.1) * by) * f(f(byte) / f(100)))
+      if (d < v) d = v
+    }
+  }
   // Rotstopper's half, on what a monster of family 8 deals (`0x021e7524`).
   if (to.rotstop) d = f(d * f(0.5))
   // Its resistance to spells, then to breaths (`0x021e7580`, `0x021e75c4`).
