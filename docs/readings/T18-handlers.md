@@ -245,17 +245,17 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (4 — 11 before §16 built kinds 46, 51 and 56, 14 before §15 built kinds 53, 44 and 45, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
+**Still struck as the Attack** (**none** — 4 before §17 built kinds 63, 50, 47 and 52, 11 before §16 built kinds 46, 51 and 56, 14 before §15 built kinds 53, 44 and 45, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
 | ~~46~~ | `func_ov024_021dff3c` | ~~the Fources~~ — built, §16 |
-| 47 | `func_ov024_021e00c0` | Feel the Burn |
-| 50 | `func_ov024_021e0380` | Extreme Makeover |
+| ~~47~~ | `func_ov024_021e00c0` | ~~Feel the Burn~~ — built, §17 |
+| ~~50~~ | `func_ov024_021e0380` | ~~Extreme Makeover~~ — built, §17 |
 | ~~51~~ | `func_ov024_021e04e0` | ~~Eyes on Me~~ — built, §16 |
-| 52 | `func_ov024_021e05fc` | Mercy |
+| ~~52~~ | `func_ov024_021e05fc` | ~~Mercy~~ — built, §17 |
 | ~~56~~ | `func_ov024_021e0b48` | ~~Whistle~~ — built, §16 |
-| 63 | `func_ov024_021e1028` | Twocus Pocus |
+| ~~63~~ | `func_ov024_021e1028` | ~~Twocus Pocus~~ — built, §17 |
 
 Read toward each, 7 October 2026 (§13): **Whistle** (56) and **Eyes on Me**
 (51) make a monster watch their user by its record's own chance
@@ -283,7 +283,14 @@ not read. What 021e9f68 does past `0x021ea100` (the other redirections) is
 not read.
 
 **Played as a plain blow, its own code read and not built:** Crosscutter
-Throw — its extra pass's target is picked by place on the stage (§8).
+Throw — its extra pass's target is picked by place on the stage (§8):
+`func_ov000_0215cda0`, the standing monster whose `func_02049b54` place has
+the least first coordinate. **Left, and why**: the places are the stage's,
+set where the battle lays its monsters out, which is not read; the
+simulation keeps no places, and carrying the render's layout into it would
+be ours, not the game's (7 October 2026, §17).
+
+**Kind `0x18`'s provocation** — built, §17.
 ~~Propeller Blade, Gold Rush, the six that scale by the table at
 `0x021fe8b6`~~ — read and built 6 October 2026, §8.
 
@@ -1443,4 +1450,129 @@ down** in `0215858c` between Alma Mater and Holy Impregnable
 (`data_ov000_02182efc` holds index–start pairs; 14 → 4), its line by sort,
 `0x219` to `0x21d`. **INFERRED**: its reach, 6 — the Fources' alone — as one
 of the party.
+
+## 17. Twocus Pocus, charm, Feel the Burn, Mercy, kind `0x18` — 7 October 2026
+
+**None is struck as the Attack now** (4 before). Left of task 18: riders 5
+and 6 (the antidote items', read — the battle's items carry no rider) and
+Crosscutter Throw (§7, its places unread).
+
+### Twocus Pocus (kind 63, `func_ov024_021e1028`) — built
+
+The simple shape: landed, on one who may take it (`func_02088d68`, not
+`+0x14` bit 0), `+0x18` bit 8 with a count of 5 at `+0x7d` and its second
+cleared (`func_02088d7c`); else the fail line. Its run-down is the last
+block of `func_ov000_0215858c` (`0x021597ac`–`0x02159844`): the first table
+(`0x02182ad4`), its line `0x24b`; the count-down's start 4
+(`data_ov000_02182efc` index 25). The clear takes it (`func_02088d9c` at
+`0x021ea94c`).
+
+What it does is the turn's (`ProcessCombatTurn`):
+
+- before the action is built, `func_ov000_021599dc` reads it
+  (`0x0215e178`); cleared for the turn if its holder cannot act after the
+  first (`func_ov000_02155f9c`, `0x0215e1e4`);
+- after the first, `func_ov000_02157d3c` is handed 1, which skips the
+  run-down (`0x02157db4`–`0x02157dc4`), and the post-steps that tell
+  (`0215bf5c`, `0215bbbc`, `0215c2d0`) wait; `0215ae80`, `0215b5a0` (Feel
+  the Burn), `0215ab88` and `0215b198` run as ever;
+- then (`0x0215e2b4`–`0x0215e578`), for an action whose record
+  (`func_02079e2c`) has `+0x10` bit 10 — every spell, Squelch and Snooze
+  among them, 74 of 681 — and is not `0x1c`, Magic Burst: a new turn record
+  (`func_ov000_0215e9d8`) with the same action; its targets those of the
+  first's aimed at (`+0x9`, `func_ov000_021600f8`) not fallen (`func_02010088`),
+  stopping at one under `+0x18` bit 13 (`func_ov000_02153c0c`); its actors
+  the first's standing. With a target and every actor, the resolver again
+  with its fifth argument 1 — **no MP asked** (`func_ov024_021eaa50`'s
+  fourth, `0x021eabe0`) **nor spent** (`0x021ebbe0`–`0x021ebbec`), its
+  targets built and their two draws made, then put back as these
+  (`0x021ebd54`–`0x021ebd94`) — then the run-down once, and the rest;
+- without one, the first's run-down and post-steps (`0x0215e628` on).
+
+A second cast is a turn record of its own, so the chain counts it as
+another turn. Built: `castAgain`, the queue's `again` entry. **Ours**: the
+second's targets the first's reached who stand, in that order — the
+targeting's expansion of a group is not followed.
+
+### Charm — Extreme Makeover (kind 50, `func_ov024_021e0380`), and what it does — built
+
+The handler, landed: the record's `+0x30` held to ±2, `func_02087a48`
+(not fallen; raising below 2, lowering above −2), `func_02087a9c` — status
+`+0x58` bits 9–11, held to ±2, its count 6 at `+0x71`, second at `+0x94`,
+flag `+0x14` bit 13; at 0 cleared (`func_02087b14`) — then
+`UpdateCombatantCharm`: the `+0x134` record's `+0x3c` charm times
+`CalculateCharmBuffMultiplier` (1 below level 0, else `1 + 0.5 × level`,
+floats), unsigned-truncated, held at 999, into `+0x10` bits 0–9. Its line:
+raised to 2, `0xf7` "…'s charm increases a lot"; moved otherwise, its done
+line; unmoved, its fail line. Run down by the first table between agility
+and might, its line `0x1d0` (`0x02159230`–`0x021592d0`).
+
+What charm does is the charm draws (`func_ov000_0215704c`), made at a
+monster's turn before its action is built (`0x021578e4`): for a monster
+(index above 3) able to act whose `+0x53` is not 0, for each of the party
+(`func_ov000_0215e9fc`), a pull `func_ov000_0215641c` — the levelled charm,
+less the `+0x134` charm, plus the `+0x150` record's `+0xc` charm, less a
+hundred, times `0.02` (`0x021564c8`) — times `+0x53` over a hundred, against
+`R(100)`, in floats. Under it, a second `R(100)` against the table at
+`0x02182aa0`: 90 enthralled (any monster that may lose a turn of kind 10,
+`func_02088418`), 5 frozen to the spot (its byte `+0x4e`, element 17; may be
+paralysed, `0208824c`), 5 confused (`+0x4a`, element 13; `020883ac`); one
+the draw is under and that may, taken — `+0x22` bits 12–13 the sort,
+`+0x28` the member — else the draw less it and on; the first taken ends
+them. Taken, its action is 503 (`0x02157bb4`), enthralled a lost turn of
+kind 10 marked to be cleared after; kind 0's handler then
+(`0x021da7dc`–`0x021da8a4`) says `0x93`, or sets paralysis and says `0x94`,
+or confusion and `0x95`, and clears the sort.
+
+**Ours**: a member's charm is the level tables' — what is worn is not read —
+and the game's two (`+0x134` `+0x3c`, `+0x150` `+0xc`) taken as it
+(INFERRED); `+0x14` bit 24 not kept. Before, the draws were spent and
+nobody's charm counted.
+
+### Feel the Burn (kind 47, `func_ov024_021e00c0`) — built
+
+The simple shape (`func_020889d0`, `020889e4`): `+0x14` bit 28 with a count
+of 4 at `+0x63`. A pass of kind 1 or `0x23` that dealt its holder something,
+unturned, marks them `+0x22` bit 14 (`0x021eca68`–`0x021ecac0`). After the
+action, past its run-down while the battle goes on (`0x0215e278`),
+`func_ov000_0215b5a0` walks the action's targets: each marked, the mark
+cleared; one standing, not under `+0x18` bit 13, awake, neither paralysed
+nor losing a turn, not under `+0x14` bit 24, who may take tension
+(`func_020881c4`), draws `R(100)` against **100, 50, 25, 25, 25** by their
+tension (`0x02182bf4`); under it, tension a level up (`func_02088220`), or
+to the most from 3 (`02088150`), told as action 928's `0x31`–`0x34`. Run
+down by the second table between Vanish and Rotstopper, its line `0x1d7`;
+the clear takes it (`func_02088a04`, `0x021ea8bc`). **INFERRED**: that the
+order marked is the order of the action's targets walked.
+
+### Mercy (kind 52, `func_ov024_021e05fc`) — built
+
+As §15 has it — no landing test; the user's level seven or more above the
+target's (`func_ov000_02159e60`); the battle's request's `+0xc` below 0; the
+target's `+0x48` at 1 or more — and now the victory: **only
+`func_ov000_02155184` adds a monster's experience and gold** to the battle's
+totals (`+0x8e28`, `+0x8e2c`; `0x0215524c`–`0x02155274`), which the victory
+multiplies and pays (`func_ov023_021edf54`, `0x021ee05c`), and only the
+HP-taking `0215a004` calls it (`0x0215a0b0`). Mercy calls the defeat routine
+(`021554f4`) and not it: one sent off is worth nothing, and is not among the
+kinds beaten, so drops nothing. Kept as gone, as one that fled.
+
+### Kind `0x18`'s provocation — built
+
+The resolver asks each monster of `0x18` after a party member's action
+whose turn record has `+0xa` bit 0 (`0x021ed1dc`–`0x021ed204`), after the
+families' `0x13`, `0x14`. The bit is set as the critical rolled once for all
+lands (`0x021ebdc8`–`0x021ebe2c`): for a reach of 3 or 4 with no hit code
+(`func_ov024_021ea4d0`), or the party's plain Attack with a weapon whose
+flags (`+0x150 → +0x2f4` bits 0–1) strike all (`021ea500`) — so the cast
+gone haywire. **Ours**: the whip's and boomerang's Attack rolls no critical
+once for all here.
+
+**Checked in the browser** (F01, level 30): Mercy (`skills=26:16`) — "Hero
+shows his compassionate side. / The slime A leaves the battlefield", and
+"Experience Earned: None"; Eyes on Me (`skills=25:100`) — "…bathed in the
+glow of a powerful spotlight. / The slime A is enraged"; Extreme Makeover —
+"Hero sets to work on a stunning transformation. / Hero's charm increases…".
+A Fource, Twocus Pocus's second cast and Feel the Burn were not reached on
+screen; the sim's tests hold them.
 

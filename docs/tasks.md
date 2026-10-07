@@ -54,12 +54,12 @@ written up on the wiki; each says so under its heading.
   state the simulation does not keep — the susceptibility bytes, the
   killer bonuses of what is worn, the monsters' action flags — listed as
   steps under 17b.
-- **Task 18, 7 October 2026: struck as the Attack, 4** — Feel the Burn,
-  Mercy, Twocus Pocus and Extreme Makeover, each read in part and listed by
-  address (§7, §16); riders 5 and 6 (items'), Crosscutter Throw and the
-  provocation of kind `0x18` also left. The last pass built riders 9, 12, 13
-  and 21, monsters provoked (Eyes on Me, Whistle, blows below a half or a
-  quarter, heals and Zing — **seeded battles change**) and the Fources.
+- **Task 18 is done, 7 October 2026: none struck as the Attack** (76 when
+  it began). The last pass built Twocus Pocus's second cast, Extreme
+  Makeover and the charm draws, Feel the Burn, Mercy and kind `0x18`'s
+  provocation (§17) — **seeded battles change**. Left, with reasons: riders
+  5 and 6 (the antidote items', the battle's items carrying no rider) and
+  Crosscutter Throw (the stage's places not read).
 - **Task 18 is done to its "done when"**, 6 October 2026: every ability on
   the 26 trees and every spell of the six starting vocations either plays by
   its handler or is listed by name with the address that would answer it
@@ -586,6 +586,20 @@ simulation has the action, and a seeded battle with the party on a tactic
 replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
+
+**Done, 7 October 2026** (`468d700`, `eb3d2e1`, `6a9fa52`, `a811838`,
+`0b5d3d9`; the reading's §17): Twocus Pocus — its holder's spells cast twice,
+the turn's second cast with no MP; Extreme Makeover and what charm does —
+the charm draws (`func_ov000_0215704c`) and a monster enthralled, frozen to
+the spot or confused; Feel the Burn — a hurt one's tension raised after the
+action (`func_ov000_0215b5a0`); Mercy — a monster far below sent off, worth
+nothing, since only `func_ov000_02155184` adds a monster's spoils; kind
+`0x18`'s provocation by a cast gone haywire. **Seeded battles change.**
+**4 struck as the Attack before, none after — 76 when the task began.**
+**Left, with reasons** (§7, §17): riders 5 and 6, the antidote items',
+read — the battle's items carry no rider; Crosscutter Throw, its extra
+pass by place on the stage — the stage's places are not read and the
+simulation keeps none.
 
 **Carried on, 7 October 2026, riders, monsters provoked and the Fources**
 (`58e3daf`, `3688006`, `454e10d`; the reading's §16): riders 9 (on the

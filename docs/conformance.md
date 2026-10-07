@@ -1121,3 +1121,22 @@ in the final damage's floats: the amount after the resistance, times
 `0x3f8ccccd` (1.1), times the target's byte over a hundred, each operation
 rounded; the greater of two for Gale and Funereal. `packages/sim/test/fource.test.ts`.
 
+
+## A second cast, charm, Feel the Burn and Mercy — 7 October 2026
+
+Read and built (`docs/readings/T18-handlers.md` §17), each changing what a
+seeded battle draws where it applies:
+
+- **Twocus Pocus's second cast** (`ProcessCombatTurn`, `0x0215e2b4`–`0x0215e578`):
+  the resolver again — its targets built and their two draws made, every
+  pass's draws — with no MP; the run-down once, after it. A second cast is
+  another turn to the chain.
+- **The charm draws** (`func_ov000_0215704c`) are no longer spent for
+  nothing: a pull above a hundred's charm can take a monster, and one taken
+  makes its second draw. Before, nobody's charm counted.
+- **Feel the Burn** (`func_ov000_0215b5a0`): a draw for each one marked
+  after an action, past its run-down.
+- **Kind `0x18`** asked of each monster after a cast gone haywire once for
+  all — a draw, and a count's draw where the monster may be watched.
+- **Mercy**: none of the monster's experience or gold — only
+  `func_ov000_02155184`, from the HP-taking `0215a004`, adds them.

@@ -1357,3 +1357,19 @@ the sea's battle request with no roamer chooses its monsters.
 | `func_ov024_021dff3c` | kind 46, the Fources: a sort, count 5 | `Handler_Fource` |
 | arm9 `func_020886b0`…`020887fc`, `02088818`, `02088674`, `02088660` | the Fources' tests, setters, setting, clearing and any-Fource | `Status::HasFireFource` … |
 | `func_ov024_021e373c`, `021e3cec`, `021e3d88`, `021e47f4` | riders 9, 12, 13 and 21: tension a step, the clear, the resistance to spells, magical mending | `Rider_Tension`, `Rider_Dispel`, `Rider_SpellResist`, `Rider_Mending` |
+| ov000 `ProcessCombatTurn` `0x0215e178`–`0x0215e628` | Twocus Pocus's second cast: the status read before the turn's action is built; after a spell (`+0x10` bit 10, not Magic Burst) a second turn record at those aimed at who stand, the resolver's fifth argument 1 | `Battle::CastAgain` (part of) |
+| ov024 `func_ov024_021eb5d0`'s fifth argument | a second cast: no MP asked (`021eaa50`'s fourth) or spent (`0x021ebbe0`), its targets put back from the slot (`0x021ebd54`) | — |
+| `func_ov024_021e1028` | kind 63, Twocus Pocus: the simple shape, `+0x18` bit 8, count 5 | `Handler_TwocusPocus` |
+| arm9 `func_02088d68`, `02088d7c`, `02088d9c`; ov000 `func_ov000_021599dc` | Twocus Pocus may take, set, clear, test | `Status::SetTwocus` … |
+| ov000 `func_ov000_02157d3c` | the run-down after an action, for each actor of its record; its third, 1, skips it | `Battle::AfterAction` |
+| `func_ov024_021e0380` | kind 50, Extreme Makeover: charm a level by `+0x30`, `0xf7` at the most | `Handler_ExtremeMakeover` |
+| arm9 `func_02087a48`, `02087a9c`, `02087b14`; ov000 `_Z20UpdateCombatantCharmii` | charm: may move, set (count 6, flag `+0x14` bit 13), clear; worked out again, held at 999 | `Status::CanMoveCharm` … |
+| ov000 `func_ov000_0215704c` | the charm draws: a monster's `+0x53`, each of the party's pull, then 90/5/5 at `0x02182aa0` | `Battle::RollCharmed` |
+| ov000 `func_ov000_0215641c` | a member's charm pull: (charm as levelled − 100) × 0.02 | `Battle::CharmPull` |
+| arm9 `func_02088418`, `0208824c`, `020883ac` | may lose a turn of a kind; may be paralysed; may be confused | `Status::CanBeStunned` … |
+| `func_ov024_021da670` `0x021da7dc`–`0x021da8a4` | kind 0's handler on one charmed: `0x93`, `0x94` paralysed, `0x95` confused | — |
+| `func_ov024_021e00c0`; arm9 `func_020889d0`, `020889e4`, `02088a04` | kind 47, Feel the Burn: the simple shape, `+0x14` bit 28, count 4 | `Handler_FeelTheBurn` |
+| ov000 `func_ov000_0215b5a0` | after an action: each marked by Feel the Burn, a draw by tension against `0x02182bf4`, action 928 | `Battle::FeelTheBurn` |
+| arm9 `func_020881c4`, `02088220`, `02088150` | may take tension; tension set; tension to the most | `Status::CanTakeTension` … |
+| ov000 `func_ov000_02155184` | a monster's experience and gold added to the battle's totals (`+0x8e28`, `+0x8e2c`), from `0215a004` alone | `Battle::AddSpoils` |
+| `func_ov024_021ea4d0`, `021ea500` | a critical rolled once for all: a reach of 3 or 4 with no hit code; the party's Attack with a weapon striking all | `IsOnceForAll`, `IsWeaponOnceForAll` |

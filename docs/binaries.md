@@ -52,6 +52,11 @@ Nothing here is copied into the repository; each is read at runtime.
 | **Riders 9, 12, 13, 21 on a blow or a change** | ov024 `func_ov024_021e373c`, `021e3cec`, `021e3d88`, `021e47f4`; the clear `021ea85c` (its `r2` the line asked) | 9: a step of tension, no draw; 12: the clear, its line asked; 13: the level riders' shape on the resistance to spells, byte `+0x52`; 21: magical mending, no draw, run by kind 42 before its own level | `rideBlow`, `mendingRider`, `clearMagic` | Read 7 October 2026, §16 |
 | **Half-Inch's shares and its doubler** | ov024 USA `data_ov024_021fe860`; the literal `0x467f` at `0x021dfe8c` | eight floats by a drop's step: 1, ⅛ … ¹⁄₂₅₆, 0; item 18047 in equipment slot 9 doubles the chance | `STEAL_SHARES`, `STEAL_DOUBLER`, `stealChance`, `battle.ts` | `func_ov024_021df924`, their one reader; held to the oracle's `halfInchChance`. Read 7 October 2026, §15 |
 
+| **Twocus Pocus's second cast** | ov000 USA `ProcessCombatTurn` `0x0215e178`, `0x0215e2b4`–`0x0215e628`; the resolver's fifth argument | the status `+0x18` bit 8 read before the action; a spell (`+0x10` bit 10), not `0x1c`, cast again at those aimed at who stand, with no MP | the second cast in `playRound` | `packages/sim/test/twocus.test.ts` |
+| **The charm draws, and a monster charmed** | ov000 USA `func_ov000_0215704c`, `0215641c`; the table `0x02182aa0`; kind 0's handler `0x021da7dc`–`0x021da8a4` | a pull `(charm as levelled − 100) × 0.02` × `+0x53`/100 against a draw; then 90, 5, 5 — enthralled, frozen, confused | `charmPull`, `charmDraws` | `packages/sim/test/charm.test.ts` |
+| **Feel the Burn's chances** | ov000 USA `0x02182bf4`, read by `func_ov000_0215b5a0` | five words by tension: 100, 50, 25, 25, 25 | `BURN_CHANCE` | `packages/sim/test/burn.test.ts` |
+| **Who adds a monster's spoils** | ov000 USA `func_ov000_02155184`, `0x0215524c`–`0x02155274` | experience and gold into `battle+0x8e28`, `+0x8e2c`, from the HP-taking `0215a004` alone — so Mercy's sent off are worth nothing | Mercy's `sentOff` | `packages/sim/test/burn.test.ts` |
+
 ## Looked at and not identified
 
 - **`1024, 2560, 2048, 1024` are heap sizes, not chances** — settled 19
