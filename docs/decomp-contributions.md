@@ -1349,4 +1349,11 @@ the sea's battle request with no roamer chooses its monsters.
 | ov000 `func_ov000_02159e60` | a fighter's level: the party's in their vocation, a monster's by `02159dbc` | `Battle::GetLevel` |
 | ov000 `func_ov000_021554f4` | the defeat routine: logs who fell, by whom and why (`+0x1e`, the reason) | `Battle::RecordDefeat` |
 | arm9 `func_02052df8` | an equipment slot's item: character `+0x150 → +0x488 + 2 × slot`, −1 with none | `Character::GetEquipped` |
-
+| `func_ov024_021eb08c` | a monster provoked: by a party member, its record's `+0x24` pairs, a draw, a count, watched | `Battle::Provoke` |
+| ov000 `func_ov000_0215a908` | an enraged monster told at once — action 921, `0x212` — or its watch ended where the watcher is down | `Battle::AnnounceEnraged` |
+| `func_ov024_021e04e0`, `021e0b48` | kinds 51 and 56, Eyes on Me and Whistle: provoked of `0x12` and `0x11` | `Handler_EyesOnMe`, `Handler_Whistle` |
+| `func_ov024_021db358` | a fighter's HP over its most, a float, 0 at none | `Combatant::HpShare` |
+| arm9 `func_02088dd8`, `02088e04`, `02088e48` | may be watched; may take it (`+0x14` bits 0, 4, 19, 3, 5); watched, with a count | `Status::CanBeWatched`, `Status::CanAct`, `Status::SetWatched` |
+| `func_ov024_021dff3c` | kind 46, the Fources: a sort, count 5 | `Handler_Fource` |
+| arm9 `func_020886b0`…`020887fc`, `02088818`, `02088674`, `02088660` | the Fources' tests, setters, setting, clearing and any-Fource | `Status::HasFireFource` … |
+| `func_ov024_021e373c`, `021e3cec`, `021e3d88`, `021e47f4` | riders 9, 12, 13 and 21: tension a step, the clear, the resistance to spells, magical mending | `Rider_Tension`, `Rider_Dispel`, `Rider_SpellResist`, `Rider_Mending` |

@@ -245,16 +245,16 @@ changes of state, 39 spells, 5 slot-0 blows now carrying their rider.
 
 ## 7. What is left — by name, and the address that would answer it
 
-**Still struck as the Attack** (11 — 14 before §15 built kinds 53, 44 and 45, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
+**Still struck as the Attack** (4 — 11 before §16 built kinds 46, 51 and 56, 14 before §15 built kinds 53, 44 and 45, 55 before §9 built kinds 16, 20, 22, 23, 38, 41 and 42, 44 before §10 built kind 10, 41 before §11 built 48, 78, 54, 19, 36, 55, 40, 39 and 64, 31 before §12 built 25, 37, 49, 43, 13, 14, 31 and 32, 22 before §13 built kind 0's six stances and 66, 15 before §14 built kind 21), by the kind whose handler is unread:
 
 | kind | handler | actions |
 |---|---|---|
-| 46 | `func_ov024_021dff3c` | Fire Fource, Frost Fource, Gale Fource, Funereal Fource, Life Fource |
+| ~~46~~ | `func_ov024_021dff3c` | ~~the Fources~~ — built, §16 |
 | 47 | `func_ov024_021e00c0` | Feel the Burn |
 | 50 | `func_ov024_021e0380` | Extreme Makeover |
-| 51 | `func_ov024_021e04e0` | Eyes on Me |
+| ~~51~~ | `func_ov024_021e04e0` | ~~Eyes on Me~~ — built, §16 |
 | 52 | `func_ov024_021e05fc` | Mercy |
-| 56 | `func_ov024_021e0b48` | Whistle |
+| ~~56~~ | `func_ov024_021e0b48` | ~~Whistle~~ — built, §16 |
 | 63 | `func_ov024_021e1028` | Twocus Pocus |
 
 Read toward each, 7 October 2026 (§13): **Whistle** (56) and **Eyes on Me**
@@ -292,8 +292,8 @@ Throw — its extra pass's target is picked by place on the stage (§8).
 —, ~~9~~ (Soothe Sayer's, built — §15), ~~10~~ (confusion, built — §14), ~~11~~
 (paralysis, built — §10), 12 `021e3cec` (Rake 'n' Break), 13 `021e3d88`
 (Conjury Conductor), ~~14~~ (Morale Masher's, built — §15), ~~19~~ (Sobering
-Slap's, built — §14), 21 `021e47f4` (Caster Sugar). Their blows land and
-deal; the rider is dropped.
+Slap's, built — §14), ~~21~~ (Caster Sugar's, built — §16). ~~12, 13~~ built,
+§16; ~~9 on the monsters' attack 232~~ built, §16. Only 5 and 6 are left.
 
 **Coups** — all eight built since (§10).
 
@@ -1355,3 +1355,92 @@ other way about.
 - **Rider 9 on the monsters' attack 232**: the plain-Attack path the
   monsters' attacks take keeps only the poison rider; 232's tension step is
   dropped.
+
+## 16. Riders, monsters provoked, and the Fources — 7 October 2026
+
+**Built.** Struck as the Attack: 11 before, 4 after (Eyes on Me, Whistle,
+the five Fources). Left: Feel the Burn (47), Mercy (52), Twocus Pocus (63),
+Extreme Makeover (50); riders 5 and 6 (the antidote items'); Crosscutter
+Throw.
+
+**Riders.** 9 (`func_ov024_021e373c`) rides a blow as well as Soothe
+Sayer: where the pass is above 0, one with tension (`021da998`, `021dd260`)
+a step less (`func_02087704`), no draw, its line by the level it came to;
+no watch is ended — that is kind 53's own. The monsters' attack 232 carries
+it at 100. 12, Rake 'n' Break's (`021e3cec`): the clear (`021ea85c`) on the
+one struck with its line asked — **the clear's third argument is the line
+asked, not its fourth** (§12 had `r3`; Disruptive Wave passes 0 in `r2`,
+rider 12 passes 1) — so the tension's line where they had any, else `0xf1`
+(`0x021eaa04`–`0x021eaa40`); no draw, no test. 13, Conjury Conductor's
+(`021e3d88`): the level riders' shape (rider 2's, `021e2ebc`) on the
+resistance to spells (`func_02087d24`, `02087d78`) — a draw first, always;
+a fall refused at a byte `+0x52` of 0 and landing under it, or sure where
+the pass is a critical (`ctx+0xc → +0x1c` bit 7); lines `0xab`–`0xaf`. 21,
+Caster Sugar's (`021e47f4`): magical mending by `+0x32` held to ±2
+(`func_02087c30`, `02087c84`, `UpdateCombatantMagicalMending`), **no draw
+and no byte**, run by kind 42 before its own level (`0x021df2dc`–`0x021df2f0`),
+its line first (`func_ov024_021e9990`).
+
+**Provoked** (`func_ov024_021eb08c(ctx, actor, target, kind)`): the target
+a monster (`func_ov000_021536f8`) with a record (`+0x148`), the actor one of
+the party (0 to 3); a draw `R(100)` (`0x021eb0f8`); then where it may be
+watched (`func_02088dd8`: `02088e04` — `+0x14` bits 0, 4, 19, 3 and 5 clear
+— and `+0x18` bit 12 clear) a count `NextRandomBetween` its record's
+`+0x28`, `+0x29` (`0x021eb120`); the record's `+0x24` word, two pairs of a
+kind (7 bits) and a chance (7 bits): the first pair whose kind is the one
+asked, the draw under its chance — watched, `func_02088e48` (the count at
+`+0x7e`, `+0xa1` 0, `+0x18` bit 12), `func_020488ac` with 1, and `+0x2e` the
+actor. Where the actor is `func_020100a8`'s, a record is kept
+(`func_020ac4c0` …) — not. **Told** (`func_ov000_0215a908`), where the
+results have room: on one watched (`02155154`), its watcher (`+0x2e`)
+fallen (`func_02010088`) or under `+0x18` bit 13 (`func_ov000_02153c0c`,
+not kept) — the watch ended (`func_02088e64`); else `+0x181` 1, `+0x182` 0,
+and action 921 put in at once, actor the monster, target the watcher, with
+`0x212`, "…is enraged! … now only has eyes for …". `+0x181`/`+0x182` are
+read only by the defeat routine's counts (`func_ov000_021554f4`).
+
+Its askers, by kind (`callers`):
+
+- **3, 4** — kind 1's handler (`0x021daf9c`–`0x021db0a0`), when the pass's
+  rider neither killed (flag `0xd`) nor spared (`0x29`) and the damage
+  (`0215a004`) did not fell them (flag 2): the target not of the party, the
+  actor of it, the damage above 0; the HP share before the pass
+  (`func_ov024_021db358` at the handler's head, `0x021daa20`) and after, in
+  floats (HP ÷ most, 0 at none): at or above 0.25 before and below after,
+  kind 4; else at or above 0.5 and below, kind 3.
+- **`0x11`** — Whistle (kind 56, `021e0b48`), at anyone `GetCombatantByID`
+  finds.
+- **`0x12`** — Eyes on Me (kind 51, `021e04e0`), at a monster: one watched
+  already is turned to the user (`+0x2e`) with no draw, its count kept.
+- **`0x13`, `0x14`** — the resolver after a party member's action, each
+  monster of `func_ov000_0215eb1c(…, 8, 1)`, where the record's `+0x1c`
+  bits 19–23 are 5 (the heals: Heal to Omniheal) or 12 (Zing, Kazing).
+  That field is the spells' **family** — 1 Bang, 2 Zam, 3 Woosh, 4 Crack,
+  5 the heals, 6 Frizz, 7 Whack, 8 Oomph, 9 Dazzle, 10 Fuddle, 11 Snooze,
+  12 Zing, 13 Kamikazee, 14 Magic Burst, 16 Evac, 17 Gigagash; 0 on 616.
+- **`0x18`** — the same loop, where the turn's record (`ctx+4`) has `+0xa`
+  bit 0. **Not read**, so not asked.
+
+On the cartridge, 97 monsters name nothing; 94 Whistle at 75 and Eyes on
+Me at 100; 77 Whistle at 50 and Eyes on Me at 75; the rest pair 3, 4, 19,
+20 and 24 among them.
+
+**The Fources** (kind 46, `func_ov024_021dff3c`): a sort `+0x30` above 0,
+landed and standing (`func_0208869c`): `+0x18` bit 7 and the sort at
+`+0x22` bits 9–11 (`func_02088818`), count 5 at `+0x6a`, `+0x8d` 0 — its
+done line by the target's side (`021da644`); else the fail line. **Its
+resistance** (`func_ov000_02156b38`): for elements 1 to 7, the adjustment is
+the Fource's −50 where its holder's is of the element — Fire 1, Frost 2,
+Gale 3 and 4, Funereal 5 and 6, Life 7 — **in place of** Holy Impregnable's;
+for 8 none. **Its blows** (`func_ov024_021e6a90`): after the resistance
+(`0x021e6e98`), for an action of element 8 not `0x1f9` nor `0x205`, the
+striker's Fource makes `amount × 1.1 × byte ÷ 100` of the target's byte
+for its element — the greater of two for Gale (4, 3) and Funereal (6, 5) —
+and the amount is the greater of that and the weapon's element's
+(`0x021e6ea0`–`0x021e6f88`, not kept), `0x021e71c8`–`0x021e71d8`. **It runs
+down** in `0215858c` between Alma Mater and Holy Impregnable
+(`0x02158c20`–`0x02158de4`) by the second table, its second count from 4
+(`data_ov000_02182efc` holds index–start pairs; 14 → 4), its line by sort,
+`0x219` to `0x21d`. **INFERRED**: its reach, 6 — the Fources' alone — as one
+of the party.
+

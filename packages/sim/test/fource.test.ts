@@ -28,12 +28,12 @@ describe('a Fource on its holder’s resistance', () => {
 describe('a Fource on its holder’s blows', () => {
   const rng = () => new BattleRng(1n)
   it('strikes by the target’s byte for its element, times 1.1, after the resistance', () => {
-    expect(dealt(rng(), 100, { resistance: 1, fource: [150] })).toBe(165)
-    expect(dealt(rng(), 100, { resistance: 0.5, fource: [100] })).toBe(55)
+    expect(dealt(rng(), 100, { critical: false, resistance: 1, fource: [150] })).toBe(165)
+    expect(dealt(rng(), 100, { critical: false, resistance: 0.5, fource: [100] })).toBe(55)
   })
   it('takes the greater of its two elements’ for Gale and Funereal', () => {
-    expect(dealt(rng(), 100, { resistance: 1, fource: [50, 120] })).toBe(132)
-    expect(dealt(rng(), 100, { resistance: 1, fource: [120, 50] })).toBe(132)
+    expect(dealt(rng(), 100, { critical: false, resistance: 1, fource: [50, 120] })).toBe(132)
+    expect(dealt(rng(), 100, { critical: false, resistance: 1, fource: [120, 50] })).toBe(132)
   })
 })
 

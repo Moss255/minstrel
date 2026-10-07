@@ -1100,3 +1100,24 @@ its record's `+0x08` low byte and spent before it strikes, as a spell's is
 255 all there is — and short of it the turn is 0x3a9's and strikes nothing.
 Blockenspiel's is spent as the round begins. A seeded battle with an
 ability in it now ends with less MP; no draw moved.
+
+## Monsters provoked, and the Fources — 7 October 2026
+
+**Seeded battles change again.** `func_ov024_021eb08c` makes a draw `R(100)`
+every time it is asked of a monster with a record by one of the party —
+and, where the monster may be watched, a second, its count. The battle now
+asks it where the game does: a party member's blow (the Attack or an
+ability) that leaves a monster standing below a half or a quarter of its HP,
+having been at or above it (kind 1's handler, `0x021daf9c`–`0x021db0a0`);
+after a party member's heal or Zing, of every monster (the resolver,
+`0x021ed110`–`0x021ed228`); Eyes on Me and Whistle. A monster provoked is
+watched by them — Knight Watch's status — and told so at once, action 921's
+`0x212`. Only a monster whose record's `+0x24` names the kind can be
+provoked, but the first draw is made either way. Kind `0x18`, asked where
+the turn's record has `+0xa` bit 0, is not, the bit being unread.
+
+The Fources' blows (`func_ov024_021e6a90`, `0x021e6f8c`–`0x021e71dc`) are
+in the final damage's floats: the amount after the resistance, times
+`0x3f8ccccd` (1.1), times the target's byte over a hundred, each operation
+rounded; the greater of two for Gale and Funereal. `packages/sim/test/fource.test.ts`.
+

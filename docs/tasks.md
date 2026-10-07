@@ -54,6 +54,12 @@ written up on the wiki; each says so under its heading.
   state the simulation does not keep — the susceptibility bytes, the
   killer bonuses of what is worn, the monsters' action flags — listed as
   steps under 17b.
+- **Task 18, 7 October 2026: struck as the Attack, 4** — Feel the Burn,
+  Mercy, Twocus Pocus and Extreme Makeover, each read in part and listed by
+  address (§7, §16); riders 5 and 6 (items'), Crosscutter Throw and the
+  provocation of kind `0x18` also left. The last pass built riders 9, 12, 13
+  and 21, monsters provoked (Eyes on Me, Whistle, blows below a half or a
+  quarter, heals and Zing — **seeded battles change**) and the Fources.
 - **Task 18 is done to its "done when"**, 6 October 2026: every ability on
   the 26 trees and every spell of the six starting vocations either plays by
   its handler or is listed by name with the address that would answer it
@@ -580,6 +586,16 @@ simulation has the action, and a seeded battle with the party on a tactic
 replays identically.
 
 ## 18. The abilities' and spells' handlers — translate
+
+**Carried on, 7 October 2026, riders, monsters provoked and the Fources**
+(`58e3daf`, `3688006`, `454e10d`; the reading's §16): riders 9 (on the
+monsters' attack 232), 12, 13 and 21; `func_ov024_021eb08c` — a monster
+enraged by Eyes on Me, Whistle, a party blow taking it below a half or a
+quarter, a party heal or Zing — told by action 921; the Fources, on the
+resistance and the blows. **Seeded battles change.** **11 struck as the
+Attack before, 4 after.** Still left, by address in §7: Feel the Burn,
+Mercy, Twocus Pocus, Extreme Makeover; riders 5 and 6 (items'); Crosscutter
+Throw; kind `0x18`'s provocation.
 
 **Carried on, 7 October 2026, a blow rousing its target** (`4103c81`,
 `cd57e68`, `7b1c6d1`, `6c3150f`, `436c72a`, `24a2d0a`; the reading's §15):
