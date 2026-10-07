@@ -419,6 +419,8 @@ function changeSays(
     case 'replenished':
     case 'looted':
     case 'experienced':
+    // Mercy's, its record's done line (`0x021e06bc`–`0x021e06d4`).
+    case 'sentOff':
     // Right as Rain's and Focus Pocus's: their records' done lines
     // (`0x021e0204`–`0x021e0220`, `0x021e26d8`–`0x021e26f4`); dazzle's,
     // on one already of its sort, "is dazzled even more deeply" and the like
@@ -619,6 +621,8 @@ function changeOurs(kind: ChangeKind, hit: ChangeHit, whom: string): string {
       return hit.again ? `${whom} grows even more confused.` : `${whom} becomes confused.`
     case 'sobered':
       return `${whom} returns to their senses.`
+    case 'sentOff':
+      return `${whom} is shown mercy and sent on its way.`
     case 'zeroZoned':
       return `${whom} can now cast spells without spending any MP!`
     case 'tumbling':
@@ -2645,6 +2649,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [63, 'twocus'],
   // Feel the Burn (`021e00c0`): its holder's tension raised, hurt.
   [47, 'burn'],
+  // Mercy (`021e05fc`): a monster far below its user sent off, worth nothing.
+  [52, 'mercy'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
   [36, 'schizofanic'],
   [55, 'mist'],

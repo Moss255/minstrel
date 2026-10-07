@@ -4,6 +4,7 @@ import {
   type Command,
   type Fighter,
   playRound,
+  spoils,
   startBattle,
 } from '../src/battle/battle.ts'
 import { BattleRng } from '../src/battle/rng.ts'
@@ -95,6 +96,55 @@ describe('Feel the Burn — kind 47', () => {
       expect(most.events.filter((e) => e.kind === 'burn')).toEqual([])
       const plain = playRound(startBattle([hero, foe]), defending, new BattleRng(seed))
       expect(plain.events.filter((e) => e.kind === 'burn')).toEqual([])
+    }
+  })
+})
+
+/**
+ * **Mercy** — kind 52, `func_ov024_021e05fc`: a monster seven or more levels
+ * below its user, in a battle that may be fled, sent off and worth nothing.
+ */
+describe('Mercy — kind 52', () => {
+  const mercy: Changing = {
+    action: 197,
+    cost: 0,
+    change: { kind: 'mercy', chance: 100 },
+    reach: 'all',
+    side: 'other',
+  }
+  const slime: Fighter = { ...foe, name: 'slime', attack: 1, level: 3, exp: 7, gold: 3 }
+  const using = new Map<number, Command>([[0, { kind: 'change', changing: mercy, target: 1 }]])
+
+  it('sends off one seven or more levels below, worth nothing at the victory', () => {
+    const { events, state } = playRound(
+      startBattle([{ ...hero, level: 10 }, slime]),
+      using,
+      new BattleRng(3n),
+    )
+    const e = events.find((x) => x.kind === 'change')
+    expect(e?.kind === 'change' && e.hits[0]?.result).toBe('sentOff')
+    expect(state.outcome).toBe('won')
+    expect(spoils(state)).toEqual({ exp: 0, gold: 0 })
+  })
+
+  it('spares none fewer than seven below, none in a battle that may not be fled, none whose byte is nothing', () => {
+    const near = playRound(startBattle([{ ...hero, level: 9 }, slime]), using, new BattleRng(3n))
+    const scripted = playRound(
+      { ...startBattle([{ ...hero, level: 10 }, slime]), canFlee: false },
+      using,
+      new BattleRng(3n),
+    )
+    const proof = playRound(
+      startBattle([
+        { ...hero, level: 10 },
+        { ...slime, resist: Array.from({ length: 21 }, (_, i) => (i === 10 ? 0 : 100)) },
+      ]),
+      using,
+      new BattleRng(3n),
+    )
+    for (const { events } of [near, scripted, proof]) {
+      const e = events.find((x) => x.kind === 'change')
+      expect(e?.kind === 'change' && e.hits[0]?.result).toBe('resisted')
     }
   })
 })

@@ -281,7 +281,11 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(176))?.change.kind).toBe('burn')
     })
 
-    it('strikes 1 of them as the Attack now, where 76 were', () => {
+    it('plays Mercy as a monster far below sent off', () => {
+      expect(partyChangeOf(action(197))?.change.kind).toBe('mercy')
+    })
+
+    it('strikes none of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -298,7 +302,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(1)
+      expect(attack).toBe(0)
     })
   },
 )

@@ -662,6 +662,18 @@ export type Change =
    */
   | { readonly kind: 'burn'; readonly chance: number }
   /**
+   * **Mercy** (kind 52, `func_ov024_021e05fc`): no test of its landing; a
+   * monster seven or more levels below its user (`func_ov000_02159e60`: one
+   * of the party's in their vocation, a monster's its record's), in a battle
+   * whose request's `+0xc` is below 0, and whose byte `+0x48` (element 11's)
+   * is 1 or more, is sent off — the defeat routine with reason 4
+   * (`func_ov000_021554f4`), its HP 0 — worth nothing at the victory, since
+   * only `func_ov000_02155184` adds a monster's experience and gold
+   * (`0x0215524c`–`0x02155274`), from the HP-taking `0215a004` alone, and
+   * not counted among the kinds beaten; else the fail line.
+   */
+  | { readonly kind: 'mercy'; readonly chance: number }
+  /**
    * **The Fources** (kind 46, `func_ov024_021dff3c`): landed, on one standing
    * (`func_0208869c`), a Fource of the record's `+0x30` (`sort`, 1 to 5) with
    * its count of 5 — see `States.fource`; else the fail line.
@@ -857,6 +869,8 @@ export interface Changing {
 
 /** How a change came out on one it reached. */
 export type ChangeResult =
+  /** Sent off by Mercy — gone, worth nothing at the victory. */
+  | 'sentOff'
   | 'asleep'
   | 'poisoned'
   | 'raised'
@@ -3894,6 +3908,8 @@ export function playRound(
       let critical = once && rng.below(10_000) < rate
       /** Those whom it fells, felled once it is told. */
       const felled: number[] = []
+      /** Those Mercy sends off, gone once it is told. */
+      const sentOff: number[] = []
       /** Those Alma Mater keeps at 1 HP, brought there once it is told. */
       const spared: number[] = []
       const rode: ChangeHit[] = []
@@ -4274,6 +4290,20 @@ export function playRound(
             return them.side === 'foes'
               ? { target, result: 'noted' }
               : { target, result: 'resisted' }
+          case 'mercy': {
+            // The levels' gap (`0x021e0630`–`0x021e0660`), the battle's
+            // request (`0x021e0664`–`0x021e0680`) — INFERRED a random
+            // encounter's, `canFlee` standing in, as for 917's flight — and
+            // `+0x48` (`0x021e0684`–`0x021e069c`).
+            const mine = me_.level ?? 0
+            const theirs = them.level ?? 0
+            const below = mine > theirs && mine - theirs >= 7
+            if (!below || !state.canFlee || (them.resist?.[10] ?? 100) < 1) {
+              return { target, result: 'resisted' }
+            }
+            sentOff.push(target)
+            return { target, result: 'sentOff' }
+          }
           case 'steal': {
             // Half-Inch (`func_ov024_021df924`), no test of its landing: one
             // of the party's (`func_0200ff1c`) at a monster with a record
@@ -4385,6 +4415,7 @@ export function playRound(
       provokedByFamily(actor, changing.family, events)
       for (const target of felled) hurt(target, (fighters[target] as FighterState).hp)
       for (const target of spared) hurt(target, (fighters[target] as FighterState).hp - 1)
+      fighters = fighters.map((f, i) => (sentOff.includes(i) ? { ...f, hp: 0, fled: true } : f))
       outcome = outcomeOf(fighters)
       if (outcome !== 'ongoing') break
       if (twocus) castAgain(entry, command, aimed, changing)
