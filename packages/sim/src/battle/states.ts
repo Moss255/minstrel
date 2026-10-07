@@ -74,6 +74,16 @@ export interface States {
   readonly might?: Level
   readonly mending?: Level
   /**
+   * Its **charm's** level, −2 to +2 — status `+0x58` bits 9–11, set with flag
+   * `+0x14` bit 13 and a count of 6 at `+0x71` (`func_02087a9c`; Extreme
+   * Makeover, kind 50, `func_ov024_021e0380`), cleared at 0
+   * (`func_02087b14`). The charm is worked out again from it
+   * (`UpdateCombatantCharm`) — see {@link charmPull}. Runs down by the first
+   * table between agility and might, its line `0x1d0`
+   * (`func_ov000_0215858c`, `0x02159230`–`0x021592d0`). None is level 0.
+   */
+  readonly charm?: Level
+  /**
    * Its **resistance to spells** and **to breaths**, −2 to +2 — status
    * `+0x58` bits 18–20, set with flag `+0x14` bit 16 (Wizard Ward and Spooky
    * Aura, kind 22, `func_ov024_021dd968`), and bits 21–23 with bit 17
@@ -319,6 +329,7 @@ export const LEVEL_COUNTS = {
   attack: 5,
   defence: 6,
   agility: 6,
+  charm: 6,
   might: 5,
   mending: 5,
   spells: 5,
@@ -366,6 +377,8 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   attack: { table: WEAR_TABLE, start: 4 },
   defence: { table: WEAR_TABLE, start: 4 },
   agility: { table: WEAR_TABLE, start: 4 },
+  // Charm's, by the first table (`0x02159274`–`0x0215928c`; `+0x71`, index 18, 4).
+  charm: { table: WEAR_TABLE, start: 4 },
   might: { table: WEAR_TABLE, start: 4 },
   mending: { table: WEAR_TABLE, start: 4 },
   spells: { table: WEAR_TABLE_SLOW, start: 4 },
@@ -592,3 +605,23 @@ export function sleptThrough(
  * it envenomation.
  */
 export const poisonDamage = (maxHp: number): number => Math.max(1, Math.min(999, maxHp >> 4))
+
+/**
+ * **What a member's charm pulls at a monster with** — `func_ov000_0215641c`,
+ * from the charm draws (`func_ov000_0215704c`): their charm as its level
+ * leaves it (`UpdateCombatantCharm`: the charm times
+ * `CalculateCharmBuffMultiplier` — 1 below level 0, else `1 + 0.5 × level`,
+ * in floats — truncated and held at 999), less their charm, plus their
+ * charm, less a hundred, times `0.02` (`0x021564c8`). Nothing above a
+ * hundred, nothing pulled.
+ *
+ * **INFERRED**: that the two charms the game reads — the character's
+ * `+0x134` record's `+0x3c` and the `+0x150` record's `+0xc` — are both the
+ * charm the level tables give; what is worn is not read.
+ */
+export function charmPull(charm: number, level: number): number {
+  const f = Math.fround
+  const multiplier = level < 0 ? 1 : f(f(f(level) * 0.5) + 1)
+  const buffed = Math.min(999, Math.trunc(f(multiplier * f(charm))) & 0xffff)
+  return f(f(buffed - charm + charm - 100) * f(0.02))
+}

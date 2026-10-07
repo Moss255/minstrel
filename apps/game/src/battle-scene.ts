@@ -264,8 +264,9 @@ type ChangeKind = Extract<BattleEvent, { kind: 'change' }>['change']
  * `0x021ddb40`–`0x021ddb98`). 0 is no line.
  */
 function levelSays(stat: LevelStat, up: boolean, level: number): number {
-  // Immense Defence's and Tap Dance's say their records' own lines — see `changeSays`.
-  if (stat === 'shield' || stat === 'evasion') return 0
+  // Immense Defence's, Tap Dance's and Extreme Makeover's say their records'
+  // own lines — see `changeSays`.
+  if (stat === 'shield' || stat === 'evasion' || stat === 'charm') return 0
   if (stat === 'mending') {
     if (!up) return 0
     return level === 2 ? ACTION_SAYS.mendingUpMuch : ACTION_SAYS.mendingUp
@@ -345,6 +346,13 @@ function changeSays(
       // Immense Defence and Tap Dance (`0x021dedd8`–`0x021dedf4`,
       // `0x021ddea0`–`0x021ddebc`): the record's done line, whatever the level.
       if (stat === 'shield' || stat === 'evasion') return pick(own?.done, ACTION_SAYS.unaffected)
+      // Extreme Makeover (`0x021e0424`–`0x021e0444`): `0xf7`, "…'s charm
+      // increases a lot", raised to the most; else the record's done line.
+      if (stat === 'charm') {
+        return hit.result === 'raised' && hit.level === 2
+          ? CHARM_MOST
+          : pick(own?.done, ACTION_SAYS.unaffected)
+      }
       return stat
         ? levelSays(stat, hit.result === 'raised', hit.level ?? (hit.result === 'raised' ? 1 : -1))
         : ACTION_SAYS.unaffected
@@ -528,6 +536,11 @@ function sootheSays(hit: ChangeHit): number[] {
   ]
 }
 
+/** Extreme Makeover's line at the most, "…'s charm increases a lot" (`0x021e043c`). */
+const CHARM_MOST = 0xf7
+/** A monster charmed, by its sort: enthralled, frozen to the spot, confused (`0x021da83c`–`0x021da87c`). */
+const CHARMED_SAYS = [0x93, 0x94, 0x95] as const
+
 /** A level's name, in ours. */
 const STAT_NAMES: Readonly<Record<string, string>> = {
   fizzled: 'Fizzle',
@@ -709,6 +722,8 @@ const WORN_OFF: Readonly<
   attack: 0x1ce,
   defence: 0x1cf,
   agility: 0x1db,
+  // Charm's, `0x1d0` (`0x021592a4`).
+  charm: 0x1d0,
   might: 0x1d1,
   mending: 0x1d2,
   spells: 0x1d3,
@@ -1874,6 +1889,21 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       return sentence(
         event.status === 0 ? `${who} is paralysed and cannot move!` : `${who} cannot move!`,
       )
+    case 'charmed': {
+      // Kind 0's handler on action 503 (`0x021da7dc`–`0x021da8a4`): by its
+      // sort, `0x93` enthralled, `0x94` frozen to the spot, `0x95` confused —
+      // whose charm, the target.
+      const target = scene.names[event.by]
+      const ours = [
+        `${who} stares at ${labels[event.by] ?? '?'}, completely enthralled.`,
+        `${who} is frozen to the spot by ${labels[event.by] ?? '?'}'s appearance.`,
+        `${who} is so taken with ${labels[event.by] ?? '?'} that it gets confused!`,
+      ][event.sort - 1] as string
+      return (
+        say(scene, 'actions', CHARMED_SAYS[event.sort - 1] as number, { actor, target }) ??
+        sentence(ours)
+      )
+    }
     case 'freed':
       // Action 900's opening, 115 (`func_ov000_0215833c`, `0x021583f0`).
       return say(scene, 'actions', 115, { actor }) ?? sentence(`${who} is no longer paralysed.`)
@@ -2570,6 +2600,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [38, 'mending'],
   [41, 'relieve'],
   [42, 'might'],
+  // Extreme Makeover (`021e0380`): charm, a level by the record's `+0x30`.
+  [50, 'charm'],
   [67, 'restore'],
   // Right as Rain (`021e01b8`) and Focus Pocus (`021e268c`): a status, what
   // it does at the round's end.

@@ -45,6 +45,8 @@ describe('how a status runs down — the game’s (`func_ov000_0215858c`, `02159
       attack: 5,
       defence: 6,
       agility: 6,
+      // `func_02087a9c`, charm's.
+      charm: 6,
       might: 5,
       mending: 5,
       spells: 5,

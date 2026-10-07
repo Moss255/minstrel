@@ -9199,6 +9199,8 @@ function createdFighter(member: Member): Fighter | undefined {
     mending: row.magicalMending,
     // What six skills' amounts scale by, with might or deftness — `SKILL_SCALES`.
     strength: row.strength,
+    // What the monsters may be taken by — `charmPull`; what is worn is not read, ours.
+    charm: row.charm,
     shield: wornBy(member).has('shield'),
     // Equipment slot 9, which Half-Inch asks after — `Fighter.accessory`.
     ...accessoryOf(wornBy(member)),
@@ -9424,6 +9426,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     mending: row.magicalMending,
     // What six skills' amounts scale by, with might or deftness — `SKILL_SCALES`.
     strength: row.strength,
+    // What the monsters may be taken by — `charmPull`; what is worn is not read, ours.
+    charm: row.charm,
     shield: wornBy(leader()).has('shield'),
     // The game's: what is worn says, and only behind a shield — `blockChance`.
     block: blockChance(wornBy(leader()).has('shield'), worn.block),

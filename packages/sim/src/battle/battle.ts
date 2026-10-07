@@ -23,6 +23,7 @@ import {
   buffedAttack,
   buffedMagic,
   type Counted,
+  charmPull,
   countDown,
   focusMp,
   LEVEL_COUNTS,
@@ -186,6 +187,11 @@ export interface Fighter {
    * amounts scale by; see `SKILL_SCALES`. Nothing when not given.
    */
   readonly strength?: number
+  /**
+   * Charm — one of the party's, which the monsters may be taken by (the charm
+   * draws, `func_ov000_0215704c`; see `charmPull`). Nothing when not given.
+   */
+  readonly charm?: number
   /** Magical might and magical mending, which a spell's amount may scale by. Nothing when not given. */
   readonly might?: number
   readonly mending?: number
@@ -405,6 +411,7 @@ export type LevelStat =
   | 'attack'
   | 'defence'
   | 'agility'
+  | 'charm'
   | 'might'
   | 'mending'
   | 'spells'
@@ -417,6 +424,7 @@ export const LEVEL_STATS: readonly LevelStat[] = [
   'attack',
   'defence',
   'agility',
+  'charm',
   'might',
   'mending',
   'spells',
@@ -468,6 +476,9 @@ export function stealChance(share: number, deftness: number, accessory?: number)
   return lo
 }
 
+/** The lost turn's kind an enthralled monster is given (`0x02157c00`–`0x02157c08`). */
+const CHARM_STUNNED = 10
+
 /** Magic Burst, which Twocus Pocus never casts twice (`0x0215e2ec`). */
 const MAGIC_BURST = 0x1c
 
@@ -494,6 +505,8 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed' | 'confused'> & key
   'attack',
   'defence',
   'agility',
+  // Charm's (`+0x94`, `0x02159230`).
+  'charm',
   'might',
   'mending',
   'spells',
@@ -1205,6 +1218,19 @@ export type BattleEvent =
     }
   /** A sleeper's turn, slept through. */
   | { readonly kind: 'asleep'; readonly actor: number }
+  /**
+   * **A monster taken by one of the party's charm** — its turn lost to it
+   * (action 503, kind 0's handler `func_ov024_021da670`,
+   * `0x021da7dc`–`0x021da8a4`): `sort` 1 enthralled, a turn lost (`0x93`);
+   * 2 frozen to the spot, paralysed (`0x94`); 3 so taken it is confused
+   * (`0x95`). `by`, whose charm.
+   */
+  | {
+      readonly kind: 'charmed'
+      readonly actor: number
+      readonly by: number
+      readonly sort: 1 | 2 | 3
+    }
   /**
    * A turn lost to {@link States.stunned} — action 503 in its place
    * (`func_ov000_0215767c`, `0x02157ac0`), nameless and with no line of its
@@ -3185,6 +3211,44 @@ export function playRound(
   }
 
   /**
+   * **The charm draws** — `func_ov000_0215704c`, for a monster able to act
+   * whose `+0x53` is not 0: for each of the party standing, in their order, a
+   * draw against what their charm pulls with (`charmPull`) times `+0x53` over
+   * a hundred, in floats; under it, a second draw against the table at
+   * `0x02182aa0` — 90 enthralled, 5 frozen to the spot, 5 confused — each
+   * taken where the draw is under it and the monster may take it (its
+   * resistance to elements 17 and 13 for the last two, `+0x4e`, `+0x4a`), the
+   * draw less each passed. The first taken ends them (`+0x22` bits 12–13 and
+   * `+0x28`, `0x02157218`–`0x0215724c`).
+   */
+  const charmDraws = (me: FighterState) => {
+    const f = Math.fround
+    const ratio = f(f(me.resist?.[21] ?? 0) / f(100))
+    for (const member of livingOn('party')) {
+      const who = fighters[member] as FighterState
+      const pull = charmPull(who.charm ?? 0, who.states.charm?.level ?? 0)
+      if (!(f(pull * ratio) > f(rng.below(100)))) continue
+      // `func_02088418` with 10 (`+0x14` bits 0, 3 and kind 10's lost turn),
+      // `0208824c` and `020883ac` (bit 0): `+0x14` bit 24 is not kept.
+      const ways: readonly { chance: number; byte: number; may: boolean; sort: 1 | 2 | 3 }[] = [
+        {
+          chance: 90,
+          byte: 100,
+          may: me.states.paralysed === undefined && me.states.stunned !== CHARM_STUNNED,
+          sort: 1,
+        },
+        { chance: 5, byte: me.resist?.[16] ?? 100, may: true, sort: 2 },
+        { chance: 5, byte: me.resist?.[12] ?? 100, may: true, sort: 3 },
+      ]
+      let draw = rng.below(100)
+      for (const way of ways) {
+        if (way.chance > draw && way.byte !== 0 && way.may) return { by: member, sort: way.sort }
+        draw -= way.chance
+      }
+    }
+    return undefined
+  }
+  /**
    * **Twocus Pocus's second cast put in** after the first
    * (`ProcessCombatTurn`, `0x0215e2b4`–`0x0215e2f0`): for a spell — `+0x10`
    * bit 10 — other than Magic Burst (`+0x04` bits 0–11 not `0x1c`), cast in
@@ -3224,6 +3288,8 @@ export function playRound(
     let confusedAim: number | undefined
     /** Under Twocus Pocus as the turn began (`0x0215e178`), before its action is built. */
     const twocus = !repeat && (me.states.twocus?.level ?? 0) !== 0
+    /** A monster taken by one of the party's charm this turn — see `charmDraws`. */
+    let charmed: { readonly by: number; readonly sort: 1 | 2 | 3 } | undefined
     if (repeat) {
       // **The second cast** (`ProcessCombatTurn`, `0x0215e1e4`–`0x0215e578`):
       // none for one who cannot act after the first (`func_ov000_02155f9c`,
@@ -3244,10 +3310,9 @@ export function playRound(
     } else {
       // **The charm draws** (`func_ov000_0215704c`): a monster able to act whose
       // status byte `+0x53` — its record's 22nd resistance — is not 0 makes one
-      // draw for each of the party standing. **Ours**: none of the party's
-      // charm is above a hundred, so none charms it; the draws are spent.
+      // draw for each of the party standing — see `charmedBy`.
       if (me.side === 'foes' && canAct(me) && (me.resist?.[21] ?? 0) !== 0) {
-        for (const _ of livingOn('party')) rng.below(100)
+        charmed = charmDraws(me)
       }
       // The way, for a monster of mode 2 — or one that could not act as the
       // round began and can now — chosen here at its turn (`0x02157980`).
@@ -3297,7 +3362,8 @@ export function playRound(
         const clear =
           (WEAR_OF.confused.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
         setStates(actor, { confused: clear ? undefined : { ...confusion, wearing } })
-        if (clear) {
+        // Charmed, its action is 503 in 0x3aa's place (`0x02157bb4`–`0x02157bcc`).
+        if (clear && !charmed) {
           events.push({ kind: 'senses', actor })
           selfPass(me)
           continue
@@ -3310,6 +3376,34 @@ export function playRound(
         events.push({ kind: 'stunned', actor, status: me.states.stunned })
         lostTurn = actor
         selfPass(me)
+        continue
+      }
+      // **Charmed** (`0x02157bb4`–`0x02157c1c`): action 503 in its action's
+      // place — enthralled, a lost turn (kind 10, `func_02088474`) set first
+      // and marked to be cleared after it; then through the resolver's pass
+      // on itself, kind 0's handler doing the rest — see `BattleEvent`'s
+      // `charmed`.
+      if (charmed) {
+        const { by, sort } = charmed
+        if (sort === 1) {
+          setStates(actor, { stunned: CHARM_STUNNED })
+          lostTurn = actor
+        }
+        selfPass(me)
+        if (sort === 2) {
+          setStates(actor, {
+            paralysed: { level: 1, turns: LEVEL_COUNTS.paralysed },
+            stunned: undefined,
+            sleep: undefined,
+            tension: 0,
+          })
+          unstance(actor)
+        } else if (sort === 3) {
+          setStates(actor, { confused: { level: 1, turns: LEVEL_COUNTS.confused } })
+          unstance(actor)
+        }
+        events.push({ kind: 'charmed', actor, by, sort })
+        resolved = { actor, action: 503 }
         continue
       }
       // **Confused** (`func_ov000_0215f67c`, from the turn at `0x02157c20`):
