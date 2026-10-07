@@ -2255,17 +2255,26 @@ export function playRound(
    * **A party member's heal or Zing, after it acts** (the resolver,
    * `0x021ed110`–`0x021ed228`): each monster (`func_ov000_0215eb1c`) is asked
    * whether it is provoked — of kind `0x13` for the heal family (5) and
-   * `0x14` for Zing's (12) — and each provoked is told enraged.
-   * **Ours**: kind `0x18`, asked where the turn's record has `+0xa` bit 0,
-   * is not, that bit being unread.
+   * `0x14` for Zing's (12) — and then of kind `0x18` where the turn's record
+   * has `+0xa` bit 0 (`0x021ed1dc`–`0x021ed204`): **the cast gone haywire
+   * once for all**, which the resolver sets as that critical lands
+   * (`0x021ebdc8`–`0x021ebe2c`; `func_ov024_021ea4d0`, a reach of 3 or 4
+   * with no hit code). Each provoked is told enraged once.
    */
-  const provokedByFamily = (actor: number, family: number | undefined, out: BattleEvent[]) => {
+  const provokedByFamily = (
+    actor: number,
+    family: number | undefined,
+    out: BattleEvent[],
+    haywire = false,
+  ) => {
     if ((fighters[actor] as FighterState).side !== 'party') return
     const kind = family === 5 ? 0x13 : family === 12 ? 0x14 : undefined
-    if (kind === undefined) return
+    if (kind === undefined && !haywire) return
     for (const [i, f] of fighters.entries()) {
       if (f.side !== 'foes' || !alive(f)) continue
-      if (provoke(actor, i, kind)) enraged(i, out)
+      let provoked = kind !== undefined && provoke(actor, i, kind)
+      if (haywire && provoke(actor, i, 0x18)) provoked = true
+      if (provoked) enraged(i, out)
     }
   }
   /**
@@ -3722,6 +3731,8 @@ export function playRound(
       )
       const once = spell.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
+      /** Gone haywire once for all — the turn's record's `+0xa` bit 0. */
+      const haywire = critical
       /** Those its passes roused, told after it — see `roused`. None of the game's spells or breaths rouses. */
       const rousedBy: BattleEvent[] = []
       const hits = reached.map((first) => {
@@ -3817,7 +3828,7 @@ export function playRound(
         ...(command.again ? { again: true as const } : {}),
       })
       events.push(...rousedBy)
-      provokedByFamily(actor, spell.family, events)
+      provokedByFamily(actor, spell.family, events, haywire)
       for (const { target, amount } of hits) {
         if (spell.does === 'harm') hurt(target, amount)
         else fighters = fighters.map((f, i) => (i === target ? { ...f, hp: f.hp + amount } : f))
@@ -3906,6 +3917,8 @@ export function playRound(
         : 0
       const once = changing.reach !== 'one'
       let critical = once && rng.below(10_000) < rate
+      /** Gone haywire once for all — the turn's record's `+0xa` bit 0. */
+      const haywire = critical
       /** Those whom it fells, felled once it is told. */
       const felled: number[] = []
       /** Those Mercy sends off, gone once it is told. */
@@ -4412,7 +4425,7 @@ export function playRound(
         ...(rode.length > 0 ? { rode } : {}),
         ...(command.again ? { again: true as const } : {}),
       })
-      provokedByFamily(actor, changing.family, events)
+      provokedByFamily(actor, changing.family, events, haywire)
       for (const target of felled) hurt(target, (fighters[target] as FighterState).hp)
       for (const target of spared) hurt(target, (fighters[target] as FighterState).hp - 1)
       fighters = fighters.map((f, i) => (sentOff.includes(i) ? { ...f, hp: 0, fled: true } : f))

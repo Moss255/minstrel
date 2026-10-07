@@ -193,3 +193,29 @@ describe('a party member’s heal', () => {
     expect(enragedOf(events)).toEqual([{ kind: 'enraged', actor: 1, target: 0 }])
   })
 })
+
+describe('a cast gone haywire once for all — kind `0x18`', () => {
+  const boom: Spell = {
+    action: 22,
+    cost: 0,
+    does: 'harm',
+    reach: 'all',
+    amount: { base: 10, spread: 0 },
+    criticalPercent: 100,
+  }
+  it('asks each monster of kind `0x18` only where the cast went haywire', () => {
+    let haywire = 0
+    for (let n = 0; n < 600; n++) {
+      const { events } = playRound(
+        startBattle([hero(), slime(angry(0x18))]),
+        new Map([[0, { kind: 'spell', spell: boom, target: 1 }]]),
+        new BattleRng(seedOf(n)),
+      )
+      const cast = events.find((e) => e.kind === 'spell')
+      const critical = cast?.kind === 'spell' && cast.critical
+      expect(enragedOf(events).length).toBe(critical ? 1 : 0)
+      if (critical) haywire++
+    }
+    expect(haywire).toBeGreaterThan(0)
+  })
+})
