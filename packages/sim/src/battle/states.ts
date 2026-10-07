@@ -283,6 +283,18 @@ export interface States {
    * end.
    */
   readonly focus?: Level | undefined
+  /**
+   * **Twocus Pocus** — status `+0x18` bit 8, with a count of 5 at `+0x7d`
+   * (kind 63, `func_ov024_021e1028`; `func_02088d7c`): its holder's spells
+   * are cast twice. The turn reads it before the action is built
+   * (`ProcessCombatTurn`, `0x0215e178`, `func_ov000_021599dc`) and, for a
+   * spell (`+0x10` bit 10) other than Magic Burst, casts it again at those it
+   * was aimed at who still stand, with no MP asked or spent — see
+   * `battle.ts`, the second cast. Runs down by the first table, from 4, last
+   * of all (`func_ov000_0215858c`, `0x021597ac`–`0x02159844`), its line
+   * `0x24b`; the clear takes it (`func_02088d9c`, `0x021ea94c`).
+   */
+  readonly twocus?: Level | undefined
 }
 
 export const NO_STATES: States = {
@@ -300,7 +312,7 @@ export const NO_STATES: States = {
  * resistance to spells 5 at `+0x74`, to breaths 5 at `+0x75` (`func_02087e6c`), a shield's
  * block 5 at `+0x76` (`func_0208806c`), evasion 5 at `+0x77` (`func_02087f78`); Fizzle 6 at
  * `+0x60` (`func_020888a4`); dazzle 4 at `+0x5f` (`func_02088854`); Vanish 5 at `+0x62` (`func_02088994`); Bounce 5 at `+0x61` (`func_020888f4`); Reverse Cycle 5 at `+0x66` (`func_02088944`); Rotstopper 4 at `+0x64` (`func_02088a34`); Alma Mater 6 at `+0x67` (`func_02088b14`); Holy Impregnable 5 at `+0x6b` (`func_02088ccc`); 0 Zone 5 at `+0x78` (`func_020890d4`), Rough 'n'
- * Tumble 5 at `+0x79` (`func_02089124`); paralysis 3 at `+0x5c`
+ * Tumble 5 at `+0x79` (`func_02089124`); Twocus Pocus 5 at `+0x7d` (`func_02088d7c`); paralysis 3 at `+0x5c`
  * (`func_0208826c`). Every setter stores its second count 0 beside it.
  */
 export const LEVEL_COUNTS = {
@@ -324,6 +336,7 @@ export const LEVEL_COUNTS = {
   fource: 5,
   zeroZone: 5,
   tumble: 5,
+  twocus: 5,
   paralysed: 3,
   confused: 3,
 } as const
@@ -372,6 +385,9 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   fource: { table: WEAR_TABLE_SLOW, start: 4 },
   zeroZone: { table: WEAR_TABLE_SLOW, start: 1 },
   tumble: { table: WEAR_TABLE_SLOW, start: 1 },
+  // Twocus Pocus's, the count-down's last (`data_ov000_02182efc` index 25,
+  // `+0x7d`, 4), by the first table (`0x021597f0`–`0x02159808`).
+  twocus: { table: WEAR_TABLE, start: 4 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.
   paralysed: { table: WEAR_TABLE, start: 4 },
   // So too confusion, by the same table (`0x02158488`) — see `States.confused`.

@@ -67,6 +67,8 @@ describe('how a status runs down — the game’s (`func_ov000_0215858c`, `02159
       fource: 5,
       zeroZone: 5,
       tumble: 5,
+      // `func_02088d7c`, Twocus Pocus's.
+      twocus: 5,
       // `func_0208826c`, rider 11's.
       paralysed: 3,
       // Fuddle's, at `+0x5e` (`func_020883cc`).

@@ -468,6 +468,9 @@ export function stealChance(share: number, deftness: number, accessory?: number)
   return lo
 }
 
+/** Magic Burst, which Twocus Pocus never casts twice (`0x0215e2ec`). */
+const MAGIC_BURST = 0x1c
+
 /** The family Rotstopper halves (`0x021e7510`). */
 const ROT_FAMILY = 8
 
@@ -500,6 +503,8 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed' | 'confused'> & key
   'evasion',
   'zeroZone',
   'tumble',
+  // Twocus Pocus's, last of all (`+0xa0`, `0x021597ac`).
+  'twocus',
 ]
 
 export type Change =
@@ -627,6 +632,13 @@ export type Change =
   | { readonly kind: 'alma'; readonly chance: number }
   /** **Holy Impregnable** (kind 64, `func_ov024_021e1120`): the simple shape — see `States.holy`. */
   | { readonly kind: 'holy'; readonly chance: number }
+  /**
+   * **Twocus Pocus** (kind 63, `func_ov024_021e1028`): the simple shape —
+   * landed, on one who may take it (`func_02088d68`, not `+0x14` bit 0),
+   * `+0x18` bit 8 with its count of 5 (`func_02088d7c`); else the fail line.
+   * See `States.twocus`.
+   */
+  | { readonly kind: 'twocus'; readonly chance: number }
   /**
    * **The Fources** (kind 46, `func_ov024_021dff3c`): landed, on one standing
    * (`func_0208869c`), a Fource of the record's `+0x30` (`sort`, 1 to 5) with
@@ -1008,8 +1020,17 @@ export type Command =
       readonly poison?: number
       readonly envenoms?: boolean
     }
-  /** Change state on a fighter — for one that reaches further, on that fighter's kind or side. */
-  | { readonly kind: 'change'; readonly changing: Changing; readonly target: number }
+  /**
+   * Change state on a fighter — for one that reaches further, on that
+   * fighter's kind or side. `again`, Twocus Pocus's second cast at those —
+   * see {@link States.twocus}; the battle puts it in, not a command.
+   */
+  | {
+      readonly kind: 'change'
+      readonly changing: Changing
+      readonly target: number
+      readonly again?: readonly number[]
+    }
   | { readonly kind: 'defend' }
   /**
    * **A stance** — an action taken up as the round begins (`+0x08` bit 28):
@@ -1032,8 +1053,16 @@ export type Command =
    * (`func_ov000_02153cc0`'s fallback to the actor).
    */
   | { readonly kind: 'item'; readonly item: number; readonly heal?: Heal; readonly target?: number }
-  /** Cast a spell at a fighter — for one that reaches further, at that fighter's kind or side. */
-  | { readonly kind: 'spell'; readonly spell: Spell; readonly target: number }
+  /**
+   * Cast a spell at a fighter — for one that reaches further, at that
+   * fighter's kind or side. `again`, as a change's.
+   */
+  | {
+      readonly kind: 'spell'
+      readonly spell: Spell
+      readonly target: number
+      readonly again?: readonly number[]
+    }
   /** An ability's blow at a monster — for one that reaches further, at its group or all. */
   | { readonly kind: 'blow'; readonly blow: Blow; readonly target: number }
   /**
@@ -1144,6 +1173,8 @@ export type BattleEvent =
       readonly fizzled?: true
       /** The gold it spent, after it acted. */
       readonly goldSpent?: number
+      /** Cast a second time by Twocus Pocus — see `States.twocus`. */
+      readonly again?: true
       /** Whether it went haywire — the reference's critical, 1.5 to 2.0 times. */
       readonly critical: boolean
       /** Whom it reached, and what each took or recovered. */
@@ -1166,6 +1197,8 @@ export type BattleEvent =
       readonly short: boolean
       /** Its caster fizzled, as a spell's — see the spell's. */
       readonly fizzled?: true
+      /** Cast a second time by Twocus Pocus, as a spell's. */
+      readonly again?: true
       readonly hits: readonly ChangeHit[]
       /** What rode on it, on whom — Double Up's defence on its user. */
       readonly rode?: readonly ChangeHit[]
@@ -1227,6 +1260,7 @@ export type BattleEvent =
         | 'fource'
         | 'zeroZone'
         | 'tumble'
+        | 'twocus'
         | 'watched'
         | RoundCounted
       /** A Fource's sort, which its line is by. */
@@ -2087,6 +2121,7 @@ export function playRound(
       fource: undefined,
       zeroZone: { level: 0, turns: 0 },
       tumble: { level: 0, turns: 0 },
+      twocus: undefined,
       tension: 0,
     })
     return calmed
@@ -3134,7 +3169,7 @@ export function playRound(
   // round (`func_ov000_0215f57c`), each more chosen at once. Mode 2 chooses at
   // its turn. Each choice is its own turn in the order — **ours**, INFERRED:
   // that a monster's more actions follow its first at once.
-  const queue: { actor: number; command: Command | undefined }[] = []
+  const queue: { actor: number; command: Command | undefined; again?: true }[] = []
   for (const actor of order) {
     const f = fighters[actor] as FighterState
     if (f.side !== 'foes') {
@@ -3149,123 +3184,171 @@ export function playRound(
       queue.push({ actor, command: early ? chooseFoe(actor) : undefined })
   }
 
-  for (const { actor, command: planned } of queue) {
+  /**
+   * **Twocus Pocus's second cast put in** after the first
+   * (`ProcessCombatTurn`, `0x0215e2b4`–`0x0215e2f0`): for a spell — `+0x10`
+   * bit 10 — other than Magic Burst (`+0x04` bits 0–11 not `0x1c`), cast in
+   * full, at those it was aimed at. Whether it is cast is settled as it comes
+   * up — see `repeat` below.
+   */
+  const castAgain = (
+    entry: (typeof queue)[number],
+    command: Command & { readonly kind: 'spell' | 'change' },
+    aimed: readonly number[],
+    action: { readonly action: number; readonly reflectable?: boolean },
+  ) => {
+    if (!action.reflectable || action.action === MAGIC_BURST) return
+    queue.splice(queue.indexOf(entry) + 1, 0, {
+      actor: entry.actor,
+      command: { ...command, again: aimed },
+      again: true,
+    })
+  }
+  for (const entry of queue) {
+    const { actor, command: planned } = entry
+    /** Twocus Pocus's second cast — see `States.twocus` — which is no turn of its own. */
+    const repeat = entry.again
     settleResolved()
-    if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
-    afterDue = undefined
+    if (!repeat) {
+      if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
+      afterDue = undefined
+    }
     const me = fighters[actor]
     if (!me || !alive(me)) continue
     // A flight that failed: the party's round is lost (above).
     if (caught && me.side === 'party') continue
     if (!acted.includes(actor)) acted.push(actor)
     afterDue = actor
-    // **The charm draws** (`func_ov000_0215704c`): a monster able to act whose
-    // status byte `+0x53` — its record's 22nd resistance — is not 0 makes one
-    // draw for each of the party standing. **Ours**: none of the party's
-    // charm is above a hundred, so none charms it; the draws are spent.
-    if (me.side === 'foes' && canAct(me) && (me.resist?.[21] ?? 0) !== 0) {
-      for (const _ of livingOn('party')) rng.below(100)
-    }
-    // The way, for a monster of mode 2 — or one that could not act as the
-    // round began and can now — chosen here at its turn (`0x02157980`).
-    let command: Command | undefined =
-      me.side === 'party'
-        ? (commands.get(actor) ?? { kind: 'attack', target: -1 })
-        : (planned ?? (canAct(me) ? chooseFoe(actor) : undefined))
+    let command: Command | undefined = planned
     /** Whom a confused fighter's attack at random (219) strikes — see `CONFUSED`. */
     let confusedAim: number | undefined
-    // **The turn-start draw**, every fighter's, every turn (`0x0215838c`) —
-    // and a sleeper's waking.
-    const startDraw = rng.below(100)
-    // **Paralysis at the turn's start** (`func_ov000_0215833c`, before
-    // sleep): its second count, once running, a turn less, and freed where
-    // the table by it is above the turn-start draw — action 900, "is no
-    // longer paralysed", in the turn; otherwise the turn is lost (503).
-    const paralysis = me.states.paralysed
-    if (paralysis !== undefined) {
-      if (paralysis.wearing) {
-        const wearing = paralysis.wearing - 1
-        const freed =
-          (WEAR_OF.paralysed.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
-        setStates(actor, { paralysed: freed ? undefined : { ...paralysis, wearing } })
-        if (freed) {
-          events.push({ kind: 'freed', actor })
+    /** Under Twocus Pocus as the turn began (`0x0215e178`), before its action is built. */
+    const twocus = !repeat && (me.states.twocus?.level ?? 0) !== 0
+    if (repeat) {
+      // **The second cast** (`ProcessCombatTurn`, `0x0215e1e4`–`0x0215e578`):
+      // none for one who cannot act after the first (`func_ov000_02155f9c`,
+      // `0x0215e1e4`), nor once the battle is over (`0x0215e214`); then of
+      // those the first was aimed at, the ones standing (`func_02010088`,
+      // `0x0215e344`–`0x0215e3dc`) — none, and there is none. Through the
+      // resolver as ever, its targets built and their two draws made, then
+      // put back as these (`0x021ebd54`–`0x021ebd94`).
+      const aimedAt = command?.kind === 'spell' || command?.kind === 'change' ? command.again : []
+      const standing = (aimedAt ?? []).filter((i) => {
+        const f = fighters[i]
+        return !!f && alive(f)
+      })
+      if (outcome !== 'ongoing' || !canAct(me) || standing.length === 0) continue
+      if (command?.kind === 'spell' || command?.kind === 'change') {
+        command = { ...command, again: standing }
+      }
+    } else {
+      // **The charm draws** (`func_ov000_0215704c`): a monster able to act whose
+      // status byte `+0x53` — its record's 22nd resistance — is not 0 makes one
+      // draw for each of the party standing. **Ours**: none of the party's
+      // charm is above a hundred, so none charms it; the draws are spent.
+      if (me.side === 'foes' && canAct(me) && (me.resist?.[21] ?? 0) !== 0) {
+        for (const _ of livingOn('party')) rng.below(100)
+      }
+      // The way, for a monster of mode 2 — or one that could not act as the
+      // round began and can now — chosen here at its turn (`0x02157980`).
+      command =
+        me.side === 'party'
+          ? (commands.get(actor) ?? { kind: 'attack', target: -1 })
+          : (planned ?? (canAct(me) ? chooseFoe(actor) : undefined))
+      // **The turn-start draw**, every fighter's, every turn (`0x0215838c`) —
+      // and a sleeper's waking.
+      const startDraw = rng.below(100)
+      // **Paralysis at the turn's start** (`func_ov000_0215833c`, before
+      // sleep): its second count, once running, a turn less, and freed where
+      // the table by it is above the turn-start draw — action 900, "is no
+      // longer paralysed", in the turn; otherwise the turn is lost (503).
+      const paralysis = me.states.paralysed
+      if (paralysis !== undefined) {
+        if (paralysis.wearing) {
+          const wearing = paralysis.wearing - 1
+          const freed =
+            (WEAR_OF.paralysed.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
+          setStates(actor, { paralysed: freed ? undefined : { ...paralysis, wearing } })
+          if (freed) {
+            events.push({ kind: 'freed', actor })
+            selfPass(me)
+            continue
+          }
+        }
+        events.push({ kind: 'stunned', actor, status: 0 })
+        selfPass(me)
+        continue
+      }
+      // A sleeper's turn goes on sleeping, or on waking — through the resolver either way.
+      if (me.states.sleep !== undefined) {
+        const woke = wakes(me.states.sleep, startDraw)
+        setStates(actor, { sleep: woke ? undefined : me.states.sleep + 1 })
+        events.push({ kind: woke ? 'woke' : 'asleep', actor })
+        selfPass(me)
+        continue
+      }
+      // **Confusion at the turn's start** (`0x0215846c`–`0x021584c8`), after
+      // paralysis and sleep: its second count, once running, a turn less, and
+      // to their senses where the table by it is above the turn-start draw —
+      // action 0x3aa in the turn.
+      const confusion = me.states.confused
+      if (confusion?.wearing) {
+        const wearing = confusion.wearing - 1
+        const clear =
+          (WEAR_OF.confused.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
+        setStates(actor, { confused: clear ? undefined : { ...confusion, wearing } })
+        if (clear) {
+          events.push({ kind: 'senses', actor })
           selfPass(me)
           continue
         }
       }
-      events.push({ kind: 'stunned', actor, status: 0 })
-      selfPass(me)
-      continue
-    }
-    // A sleeper's turn goes on sleeping, or on waking — through the resolver either way.
-    if (me.states.sleep !== undefined) {
-      const woke = wakes(me.states.sleep, startDraw)
-      setStates(actor, { sleep: woke ? undefined : me.states.sleep + 1 })
-      events.push({ kind: woke ? 'woke' : 'asleep', actor })
-      selfPass(me)
-      continue
-    }
-    // **Confusion at the turn's start** (`0x0215846c`–`0x021584c8`), after
-    // paralysis and sleep: its second count, once running, a turn less, and
-    // to their senses where the table by it is above the turn-start draw —
-    // action 0x3aa in the turn.
-    const confusion = me.states.confused
-    if (confusion?.wearing) {
-      const wearing = confusion.wearing - 1
-      const clear =
-        (WEAR_OF.confused.table[wearing] as number) > Math.fround(Math.fround(startDraw) / 100)
-      setStates(actor, { confused: clear ? undefined : { ...confusion, wearing } })
-      if (clear) {
-        events.push({ kind: 'senses', actor })
+      // **A lost turn** (`func_ov000_0215767c`, `0x02157b60`–`0x02157bb0`): one
+      // who cannot act has action 503 in their action's place, and one under
+      // `States.stunned` is marked to be cleared after it.
+      if (me.states.stunned !== undefined) {
+        events.push({ kind: 'stunned', actor, status: me.states.stunned })
+        lostTurn = actor
         selfPass(me)
         continue
       }
-    }
-    // **A lost turn** (`func_ov000_0215767c`, `0x02157b60`–`0x02157bb0`): one
-    // who cannot act has action 503 in their action's place, and one under
-    // `States.stunned` is marked to be cleared after it.
-    if (me.states.stunned !== undefined) {
-      events.push({ kind: 'stunned', actor, status: me.states.stunned })
-      lostTurn = actor
-      selfPass(me)
-      continue
-    }
-    // **Confused** (`func_ov000_0215f67c`, from the turn at `0x02157c20`):
-    // the turn is drawn for them in their action's place — see `CONFUSED`.
-    if (me.states.confused !== undefined) {
-      const half = rng.below(2)
-      const mine = livingOn(me.side)
-      const ways = me.side === 'party' ? CONFUSED.party : CONFUSED.foes(state.canFlee)
-      const action =
-        mine.length >= 2 && half === 0
-          ? CONFUSED.atRandom
-          : (ways[rng.below(ways.length)] as number)
-      if (action === CONFUSED.atRandom) {
-        // The Attack at an ally other than themselves (reach 8): for one of
-        // the party a draw among the party standing (`func_ov000_02153f98`,
-        // `0x02154030`–`0x021540ac`), with none of the two draws every other
-        // action's targets make (`0x02154170`).
-        const allies = mine.filter((i) => i !== actor)
-        confusedAim = allies[rng.below(allies.length)] as number
-        command = { kind: 'attack', target: confusedAim }
-      } else {
-        // The rest are its record's lines alone, through the resolver's pass
-        // on its actor (kind 0, reach 1) — a monster's flight as 917's is.
-        selfPass(me, action !== CONFUSED.flees)
-        events.push({ kind: 'confused', actor, action })
-        if (action === CONFUSED.flees) {
-          fighters = fighters.map((f, i) => (i === actor ? { ...f, fled: true } : f))
-          outcome = outcomeOf(fighters)
+      // **Confused** (`func_ov000_0215f67c`, from the turn at `0x02157c20`):
+      // the turn is drawn for them in their action's place — see `CONFUSED`.
+      if (me.states.confused !== undefined) {
+        const half = rng.below(2)
+        const mine = livingOn(me.side)
+        const ways = me.side === 'party' ? CONFUSED.party : CONFUSED.foes(state.canFlee)
+        const action =
+          mine.length >= 2 && half === 0
+            ? CONFUSED.atRandom
+            : (ways[rng.below(ways.length)] as number)
+        if (action === CONFUSED.atRandom) {
+          // The Attack at an ally other than themselves (reach 8): for one of
+          // the party a draw among the party standing (`func_ov000_02153f98`,
+          // `0x02154030`–`0x021540ac`), with none of the two draws every other
+          // action's targets make (`0x02154170`).
+          const allies = mine.filter((i) => i !== actor)
+          confusedAim = allies[rng.below(allies.length)] as number
+          command = { kind: 'attack', target: confusedAim }
+        } else {
+          // The rest are its record's lines alone, through the resolver's pass
+          // on its actor (kind 0, reach 1) — a monster's flight as 917's is.
+          selfPass(me, action !== CONFUSED.flees)
+          events.push({ kind: 'confused', actor, action })
+          if (action === CONFUSED.flees) {
+            fighters = fighters.map((f, i) => (i === actor ? { ...f, fled: true } : f))
+            outcome = outcomeOf(fighters)
+          }
+          resolved = { actor, action }
+          if (outcome !== 'ongoing') break
+          continue
         }
-        resolved = { actor, action }
-        if (outcome !== 'ongoing') break
-        continue
       }
     }
     if (!command) continue
     // This fighter's turn, as the chain tells turns apart (`ctx + 4`). Ours: by round and fighter.
-    const turn = state.round * 64 + actor
+    // A second cast is a turn record of its own (`0x0215e308`), so another turn.
+    const turn = state.round * 64 + actor + (repeat ? 0.5 : 0)
     // An action whose blows do not chain resets it as it reaches its target
     // (`func_ov024_021ea584`) — Defend, an item, a change of state, a wait.
     if (
@@ -3406,7 +3489,10 @@ export function playRound(
 
     if (command.kind === 'spell') {
       const { spell } = command
-      if (!zeroZoned(me) && me.mp < spell.cost) {
+      // A second cast asks no MP and spends none (`func_ov024_021eaa50`'s
+      // fourth, `0x021eabe0`; the resolver's, `0x021ebbe0`–`0x021ebbec`).
+      const free = zeroZoned(me) || command.again !== undefined
+      if (!free && me.mp < spell.cost) {
         events.push({
           kind: 'spell',
           actor,
@@ -3444,10 +3530,10 @@ export function playRound(
         })
         continue
       }
-      const spent = zeroZoned(me) ? 0 : spell.cost
+      const spent = free ? 0 : spell.cost
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spent } : f))
       const side: Side = spell.does === 'heal' ? me.side : me.side === 'party' ? 'foes' : 'party'
-      const reached = aimOf(me, actor, side, command.target, spell.reach)
+      const reached = command.again ?? aimOf(me, actor, side, command.target, spell.reach)
       const first = reached[0]
       if (first === undefined) {
         events.push({
@@ -3565,6 +3651,7 @@ export function playRound(
         critical,
         hits,
         ...(charged ? { goldSpent: spell.gold as number } : {}),
+        ...(command.again ? { again: true as const } : {}),
       })
       events.push(...rousedBy)
       provokedByFamily(actor, spell.family, events)
@@ -3575,12 +3662,15 @@ export function playRound(
       if (spell.tensed) calm(actor)
       outcome = outcomeOf(fighters)
       if (outcome !== 'ongoing') break
+      if (twocus) castAgain(entry, command, reached, spell)
       continue
     }
 
     if (command.kind === 'change') {
       const { changing } = command
-      if (!zeroZoned(me) && me.mp < changing.cost) {
+      // A second cast asks no MP and spends none, as a spell's.
+      const free = zeroZoned(me) || command.again !== undefined
+      if (!free && me.mp < changing.cost) {
         events.push({
           kind: 'change',
           actor,
@@ -3603,7 +3693,7 @@ export function playRound(
         })
         continue
       }
-      const spent = zeroZoned(me) ? 0 : changing.cost
+      const spent = free ? 0 : changing.cost
       fighters = fighters.map((f, i) => (i === actor ? { ...f, mp: f.mp - spent } : f))
       const side: Side = changing.side === 'own' ? me.side : me.side === 'party' ? 'foes' : 'party'
       const { change } = changing
@@ -3611,9 +3701,10 @@ export function playRound(
       // standing or not — the resolver's handler tells which (`0x021dd2c0`).
       const named = fighters[command.target]
       const aimed =
-        change.kind === 'revive'
+        command.again ??
+        (change.kind === 'revive'
           ? [named && named.side === side && !named.fled ? command.target : actor]
-          : aimOf(me, actor, side, command.target, changing.reach)
+          : aimOf(me, actor, side, command.target, changing.reach))
       // Itemised Kill does its work once an action (`battle + 0x6e`,
       // `0x021e16cc`), and Voice of Experience's line is the battle's own:
       // **ours**, each told on the first it reaches alone.
@@ -3922,6 +4013,7 @@ export function playRound(
           case 'rotstop':
           case 'alma':
           case 'holy':
+          case 'twocus':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { [change.kind]: { level: 1, turns: LEVEL_COUNTS[change.kind] } })
             return { target, result: 'given' }
@@ -4138,12 +4230,14 @@ export function playRound(
         short: false,
         hits,
         ...(rode.length > 0 ? { rode } : {}),
+        ...(command.again ? { again: true as const } : {}),
       })
       provokedByFamily(actor, changing.family, events)
       for (const target of felled) hurt(target, (fighters[target] as FighterState).hp)
       for (const target of spared) hurt(target, (fighters[target] as FighterState).hp - 1)
       outcome = outcomeOf(fighters)
       if (outcome !== 'ongoing') break
+      if (twocus) castAgain(entry, command, aimed, changing)
       continue
     }
 

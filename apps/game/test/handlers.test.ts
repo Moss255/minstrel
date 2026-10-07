@@ -269,7 +269,11 @@ describe.skipIf(!romPath)(
       })
     })
 
-    it('strikes 4 of them as the Attack now, where 76 were', () => {
+    it('plays Twocus Pocus as its status, its holder’s spells cast twice', () => {
+      expect(partyChangeOf(action(533))).toMatchObject({ change: { kind: 'twocus' } })
+    })
+
+    it('strikes 3 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -286,7 +290,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(4)
+      expect(attack).toBe(3)
     })
   },
 )

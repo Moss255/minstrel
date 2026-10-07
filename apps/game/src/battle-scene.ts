@@ -542,6 +542,7 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   rotstop: 'Rotstopper',
   alma: 'Alma Mater',
   holy: 'Holy Impregnable',
+  twocus: 'Twocus Pocus',
   mist: 'Mist Me',
   focus: 'Focus Pocus',
   might: 'magical might',
@@ -674,6 +675,7 @@ const WORN_OFF: Readonly<
     | 'fource'
     | 'zeroZone'
     | 'tumble'
+    | 'twocus'
     | 'watched'
     | 'rain'
     | 'focus',
@@ -692,6 +694,8 @@ const WORN_OFF: Readonly<
   // Alma Mater's, `0x1cb` (`0x02158bfc`); Holy Impregnable's, `0x25d` (`0x02158e58`).
   alma: 0x1cb,
   holy: 0x25d,
+  // Twocus Pocus's, `0x24b` (`0x02159858`).
+  twocus: 0x24b,
   // Told by its sort — see `tell`'s `wornOff`.
   fource: 0x219,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
@@ -2595,6 +2599,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [14, 'pathy'],
   // Holy Impregnable (`021e1120`): 25 less taken of the ailments' elements.
   [64, 'holy'],
+  // Twocus Pocus (`021e1028`): its holder's spells cast twice.
+  [63, 'twocus'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
   [36, 'schizofanic'],
   [55, 'mist'],
