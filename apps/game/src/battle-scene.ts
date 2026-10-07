@@ -556,6 +556,7 @@ const STAT_NAMES: Readonly<Record<string, string>> = {
   alma: 'Alma Mater',
   holy: 'Holy Impregnable',
   twocus: 'Twocus Pocus',
+  burn: 'Feel the Burn',
   mist: 'Mist Me',
   focus: 'Focus Pocus',
   might: 'magical might',
@@ -689,6 +690,7 @@ const WORN_OFF: Readonly<
     | 'zeroZone'
     | 'tumble'
     | 'twocus'
+    | 'burn'
     | 'watched'
     | 'rain'
     | 'focus',
@@ -707,8 +709,9 @@ const WORN_OFF: Readonly<
   // Alma Mater's, `0x1cb` (`0x02158bfc`); Holy Impregnable's, `0x25d` (`0x02158e58`).
   alma: 0x1cb,
   holy: 0x25d,
-  // Twocus Pocus's, `0x24b` (`0x02159858`).
+  // Twocus Pocus's, `0x24b` (`0x02159858`); Feel the Burn's, `0x1d7` (`0x02158a34`).
   twocus: 0x24b,
+  burn: 0x1d7,
   // Told by its sort — see `tell`'s `wornOff`.
   fource: 0x219,
   // Worn off at the round's end (`func_ov000_02157e1c`): Focus Pocus's
@@ -1889,6 +1892,13 @@ function tell(scene: BattleScene, event: BattleEvent, state: BattleState): strin
       return sentence(
         event.status === 0 ? `${who} is paralysed and cannot move!` : `${who} cannot move!`,
       )
+    case 'burn':
+      // Action 928's line by the level reached, `0x31` to `0x34`
+      // (`func_ov000_0215b5a0`, `0x0215b85c`–`0x0215b8a8`) — its target the one raised.
+      return (
+        say(scene, 'actions', 0x30 + event.level, { target: actor }) ??
+        sentence(`${who}'s tension increases.`)
+      )
     case 'charmed': {
       // Kind 0's handler on action 503 (`0x021da7dc`–`0x021da8a4`): by its
       // sort, `0x93` enthralled, `0x94` frozen to the spot, `0x95` confused —
@@ -2633,6 +2643,8 @@ const CHANGE_KINDS: ReadonlyMap<number, Change['kind']> = new Map<number, Change
   [64, 'holy'],
   // Twocus Pocus (`021e1028`): its holder's spells cast twice.
   [63, 'twocus'],
+  // Feel the Burn (`021e00c0`): its holder's tension raised, hurt.
+  [47, 'burn'],
   // Schizofanic (`021dec50`) and Mist Me (`021e0a50`): a decoy against one blow.
   [36, 'schizofanic'],
   [55, 'mist'],

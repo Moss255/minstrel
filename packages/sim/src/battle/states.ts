@@ -305,6 +305,17 @@ export interface States {
    * `0x24b`; the clear takes it (`func_02088d9c`, `0x021ea94c`).
    */
   readonly twocus?: Level | undefined
+  /**
+   * **Feel the Burn** — status `+0x14` bit 28, with a count of 4 at `+0x63`
+   * (kind 47, `func_ov024_021e00c0`; `func_020889e4`): a pass of kind 1 or
+   * `0x23` that dealt its holder something, unturned, marks them (`+0x22`
+   * bit 14; the resolver, `0x021eca94`–`0x021ecac0`), and after the action
+   * the marked may have their tension raised — see {@link BURN_CHANCE}. Runs
+   * down by the second table between Vanish and Rotstopper, its line `0x1d7`
+   * (`func_ov000_0215858c`, `0x021589c0`–`0x02158a54`); the clear takes it
+   * (`func_02088a04`, `0x021ea8bc`).
+   */
+  readonly burn?: Level | undefined
 }
 
 export const NO_STATES: States = {
@@ -348,6 +359,7 @@ export const LEVEL_COUNTS = {
   zeroZone: 5,
   tumble: 5,
   twocus: 5,
+  burn: 4,
   paralysed: 3,
   confused: 3,
 } as const
@@ -401,6 +413,8 @@ export const WEAR_OF: Readonly<Record<Counted, { table: readonly number[]; start
   // Twocus Pocus's, the count-down's last (`data_ov000_02182efc` index 25,
   // `+0x7d`, 4), by the first table (`0x021597f0`–`0x02159808`).
   twocus: { table: WEAR_TABLE, start: 4 },
+  // Feel the Burn's (`+0x86`, index 6, 4), by the second (`0x02158a10`).
+  burn: { table: WEAR_TABLE_SLOW, start: 4 },
   // Not run down after a pass but at the turn's start — see `States.paralysed`.
   paralysed: { table: WEAR_TABLE, start: 4 },
   // So too confusion, by the same table (`0x02158488`) — see `States.confused`.
@@ -625,3 +639,13 @@ export function charmPull(charm: number, level: number): number {
   const buffed = Math.min(999, Math.trunc(f(multiplier * f(charm))) & 0xffff)
   return f(f(buffed - charm + charm - 100) * f(0.02))
 }
+
+/**
+ * **Feel the Burn's chance, by the tension now** — `0x02182bf4`, read by
+ * `func_ov000_0215b5a0` (`0x0215b754`–`0x0215b774`): for each one the action
+ * marked, standing, awake, neither paralysed nor losing a turn, a draw of a
+ * hundred under it raises their tension a level — to the most from 3
+ * (`func_02088220`, `02088150`) — told as action 928, by the level reached,
+ * `0x31` to `0x34`.
+ */
+export const BURN_CHANCE = [100, 50, 25, 25, 25] as const

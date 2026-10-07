@@ -277,7 +277,11 @@ describe.skipIf(!romPath)(
       expect(partyChangeOf(action(192))?.change.kind).toBe('charm')
     })
 
-    it('strikes 2 of them as the Attack now, where 76 were', () => {
+    it('plays Feel the Burn as its status, tension raised when hurt', () => {
+      expect(partyChangeOf(action(176))?.change.kind).toBe('burn')
+    })
+
+    it('strikes 1 of them as the Attack now, where 76 were', () => {
       const ids = new Set<number>()
       for (const p of here.skillPanels) if (p.action) ids.add(p.action)
       for (const s of here.spellTable?.learnt ?? [])
@@ -294,7 +298,7 @@ describe.skipIf(!romPath)(
         const psyche = a.rolls?.kind === 15 && (a.reach === ActionReach.Actor || a.reach === 8)
         if (!spell && !blowOf(a) && !partyChangeOf(a) && !stanceOf(a) && !psyche) attack++
       }
-      expect(attack).toBe(2)
+      expect(attack).toBe(1)
     })
   },
 )

@@ -20,6 +20,7 @@ import { experienceMultiplier, replenishedMp, revivedHp, scaledAccuracy } from '
 import type { BattleRng } from './rng.ts'
 import { guardOf, hpShare, PINCUSHION, PRICK, SELFLESS_AT, STANCE } from './stances.ts'
 import {
+  BURN_CHANCE,
   buffedAttack,
   buffedMagic,
   type Counted,
@@ -493,6 +494,8 @@ const RUN_DOWN_ORDER: readonly (Exclude<Counted, 'paralysed' | 'confused'> & key
   'bounce',
   // Vanish's block (`+0x85`, `0x0215892c`), after Fizzle's and before attack's.
   'vanished',
+  // Feel the Burn's (`+0x86`, `0x021589c0`).
+  'burn',
   // Rotstopper's (`+0x87`, `0x02158a5c`); Reverse Cycle's (`+0x89`,
   // `0x02158af4` on); Alma Mater's (`+0x8a`, `0x02158b8c`).
   'rotstop',
@@ -652,6 +655,12 @@ export type Change =
    * See `States.twocus`.
    */
   | { readonly kind: 'twocus'; readonly chance: number }
+  /**
+   * **Feel the Burn** (kind 47, `func_ov024_021e00c0`): the simple shape —
+   * landed, on one standing (`func_020889d0`), `+0x14` bit 28 with its count
+   * of 4 (`func_020889e4`); else the fail line. See `States.burn`.
+   */
+  | { readonly kind: 'burn'; readonly chance: number }
   /**
    * **The Fources** (kind 46, `func_ov024_021dff3c`): landed, on one standing
    * (`func_0208869c`), a Fource of the record's `+0x30` (`sort`, 1 to 5) with
@@ -1219,6 +1228,12 @@ export type BattleEvent =
   /** A sleeper's turn, slept through. */
   | { readonly kind: 'asleep'; readonly actor: number }
   /**
+   * **Feel the Burn**, after an action (action 928, `func_ov000_0215b5a0`):
+   * one it marked had their tension raised to `level` — see
+   * `States.burn`.
+   */
+  | { readonly kind: 'burn'; readonly actor: number; readonly level: number }
+  /**
    * **A monster taken by one of the party's charm** — its turn lost to it
    * (action 503, kind 0's handler `func_ov024_021da670`,
    * `0x021da7dc`–`0x021da8a4`): `sort` 1 enthralled, a turn lost (`0x93`);
@@ -1287,6 +1302,7 @@ export type BattleEvent =
         | 'zeroZone'
         | 'tumble'
         | 'twocus'
+        | 'burn'
         | 'watched'
         | RoundCounted
       /** A Fource's sort, which its line is by. */
@@ -2148,6 +2164,7 @@ export function playRound(
       zeroZone: { level: 0, turns: 0 },
       tumble: { level: 0, turns: 0 },
       twocus: undefined,
+      burn: undefined,
       tension: 0,
     })
     return calmed
@@ -3210,6 +3227,40 @@ export function playRound(
       queue.push({ actor, command: early ? chooseFoe(actor) : undefined })
   }
 
+  /** Those the last action's passes marked under Feel the Burn, in the order marked — see `States.burn`. */
+  const burnMarked: number[] = []
+  /** A pass of kind 1 or `0x23` that dealt something, unturned (`0x021eca68`–`0x021ecac0`). */
+  const markBurn = (target: number) => {
+    const f = fighters[target]
+    if (f && (f.states.burn?.level ?? 0) !== 0 && !burnMarked.includes(target)) {
+      burnMarked.push(target)
+    }
+  }
+  /**
+   * **Feel the Burn, after an action** — `func_ov000_0215b5a0`, from the turn
+   * past its run-down while the battle goes on (`0x0215e278`): each marked,
+   * the mark cleared; for one standing, awake, neither paralysed nor losing a
+   * turn (`0x0215b6ec`–`0x0215b750`), a draw of a hundred under
+   * `BURN_CHANCE` by their tension raises it a level, or to the most from 3
+   * (`func_02088150`, which clears poison). **INFERRED**: that the order
+   * marked is the order of the action's targets the game walks.
+   */
+  const feelTheBurn = () => {
+    for (const who of burnMarked.splice(0)) {
+      const f = fighters[who]
+      if (!f || !alive(f) || f.states.sleep !== undefined) continue
+      if (f.states.paralysed !== undefined || f.states.stunned !== undefined) continue
+      const level = f.states.tension ?? 0
+      if (rng.below(100) >= (BURN_CHANCE[level] ?? 0)) continue
+      if (level >= TENSION_MOST) continue
+      const next = level + 1
+      setStates(who, {
+        tension: next,
+        ...(next === TENSION_MOST ? { poisoned: false, envenomed: false } : {}),
+      })
+      events.push({ kind: 'burn', actor: who, level: next })
+    }
+  }
   /**
    * **The charm draws** — `func_ov000_0215704c`, for a monster able to act
    * whose `+0x53` is not 0: for each of the party standing, in their order, a
@@ -3277,6 +3328,7 @@ export function playRound(
       if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
       afterDue = undefined
     }
+    if (outcome === 'ongoing') feelTheBurn()
     const me = fighters[actor]
     if (!me || !alive(me)) continue
     // A flight that failed: the party's round is lost (above).
@@ -3717,6 +3769,9 @@ export function playRound(
         if (spell.does === 'heal') amount = Math.max(0, Math.min(amount, them.maxHp - them.hp))
         // The coup's draw at this pass: a harm of kind 1 counts what it dealt.
         const harm = spell.does === 'harm'
+        if (harm && (spell.kind === 1 || spell.kind === 0x23) && amount > 0 && !turned) {
+          markBurn(target)
+        }
         if (harm && spell.rouses && amount > 0 && !turned) {
           const told = roused(target, them.hp - amount > 0)
           if (told) rousedBy.push(told)
@@ -4108,6 +4163,7 @@ export function playRound(
           case 'alma':
           case 'holy':
           case 'twocus':
+          case 'burn':
             if (!landed || !alive(them)) return { target, result: 'resisted' }
             setStates(target, { [change.kind]: { level: 1, turns: LEVEL_COUNTS[change.kind] } })
             return { target, result: 'given' }
@@ -4547,6 +4603,8 @@ export function playRound(
           const left = Math.max(0, them.hp - before - damage)
           if (left > 0) provokedByBlow(actor, target, them.hp - before, left, rousedBy)
         }
+        // Marked under Feel the Burn — a blow is of kind 1.
+        if (damage > 0) markBurn(target)
         // Roused, on a pass that dealt something, unless its own rider has
         // just put them to sleep or confused them (`ctx+0x70`).
         if (blow.rouses && damage > 0 && rode?.result !== 'asleep' && rode?.result !== 'confused') {
@@ -4773,6 +4831,7 @@ export function playRound(
     if (damage > 0 && !counter && left > 0) provokedByBlow(striker, target, hpBefore, left, events)
     // Roused — the plain Attack and the monsters' attacks carry `+0x10` bit
     // 11 — on a pass that dealt something and was not struck back.
+    if (damage > 0 && !counter) markBurn(target)
     if (damage > 0 && !counter) {
       const told = roused(target, alive(fighters[target] as FighterState))
       if (told) events.push(told)
@@ -4789,6 +4848,7 @@ export function playRound(
 
   settleResolved()
   if (afterDue !== undefined && outcome === 'ongoing') afterPass(afterDue)
+  if (outcome === 'ongoing') feelTheBurn()
   if (outcome === 'ongoing') {
     // **The round's end** (`func_ov000_0215e6e8`): first what is got back
     // and what is tolled (`func_ov000_0215a23c`) — the party standing
