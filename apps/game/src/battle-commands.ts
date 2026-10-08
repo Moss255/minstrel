@@ -33,11 +33,9 @@ import type { Named } from './battle-text.ts'
  * - **The Coup de Grâce** is live while the member is ready for it — see
  *   `coup.ts` in the sim — and plays their vocation's coup; greyed otherwise.
  *
- * **Ours**, each marked where it lives: a member not following orders hands
- * in no command (the battle's own default, an attack). The game's AI for
- * them is read as far as its frame — where it is reached, each tactic's
- * lists and threshold, its setting up and draws — and not built, its
- * scoring not read: `docs/readings/T17-ai.md`, task 17b.
+ * - **A member not following orders** is not asked, and hands in no command:
+ *   the Attack, which the game's tactics then decide over — as the round
+ *   begins and at their turn, in the battle (the sim's `tactics.ts`).
  */
 
 /** The party menu's rows, top to bottom (`data_ov000_021833e8`), and each one's word in `strstd`. */

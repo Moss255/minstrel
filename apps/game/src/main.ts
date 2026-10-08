@@ -122,6 +122,7 @@ import {
   viewMatrix,
 } from '@minstrel/render'
 import {
+  type AiRecord,
   BattleRng,
   type BattleState,
   blockChance,
@@ -152,6 +153,7 @@ import {
   headingAngle,
   howItOpens,
   isNight,
+  type MemberTactics,
   MINUTE_TICKS,
   monsterHp,
   newClock,
@@ -180,6 +182,7 @@ import {
   startPlay,
   startRoaming,
   step as stepBody,
+  type TacticCandidate,
   tickClock,
   tickGathering,
   tickRoaming,
@@ -2229,6 +2232,15 @@ function openWorld(map: string): void {
       `${nameFor(who)} was ${vocationWord(was)} at level ${levelOf({ ...who, vocation: was })?.level ?? '?'}` +
         ` · now ${vocationWord(to)} at level ${levelOf(who)?.level ?? '?'}`,
     )
+  }
+  // `?tactics=1:3,2:0` sets a member's tactic by party place, 0 to 5 —
+  // **ours**, for driving; the game's way is Misc. → Tactics in a battle.
+  for (const one of (params.get('tactics') ?? '').split(',')) {
+    const asked = /^(\d+):([0-5])$/.exec(one)
+    const who = asked ? members[Number(asked[1])] : undefined
+    if (!asked || !who || who === leader()) continue
+    const tactic = Number(asked[2])
+    who.tactic = tactic === FOLLOW_ORDERS ? undefined : tactic
   }
   // `?give=22010:3,22011` puts items in the bag — **ours**, and only for
   // driving: the Krak Pot and the equip screen both need a bag with something
@@ -7909,11 +7921,12 @@ function battleOffered(): Offered {
   const items: BattleItem[] = []
   const spells: BattleSpell[] = []
   const known = new Map<number, Told>()
+  const tactics = new Map<number, MemberTactics>()
   const asked: Asked[] = battleMembers.map((member, fighter) => {
     const lists = battleListsOf(member, spells, known)
     const own = battleItems(member.carried ?? [])
     items.push(...own)
-    return {
+    const one: Asked = {
       fighter,
       name: battle?.names[fighter]?.name ?? nameFor(member),
       tactic: member.tactic ?? FOLLOW_ORDERS,
@@ -7930,8 +7943,69 @@ function battleOffered(): Offered {
       abilities: lists.abilities,
       items: own.map(itemEntry),
     }
+    const reads = memberTactics(member, one)
+    if (reads) tactics.set(fighter, reads)
+    return one
   })
-  return { asked, items, spells, known }
+  return { asked, items, spells, known, tactics }
+}
+
+/** Every action's record, as the party's tactics read them, once a cartridge. */
+const actionRecordsRead = new WeakMap<Loaded, ReadonlyMap<number, AiRecord>>()
+function actionRecordsOf(here: Loaded): ReadonlyMap<number, AiRecord> {
+  const already = actionRecordsRead.get(here)
+  if (already) return already
+  const out = new Map([...here.actions].map(([id, action]) => [id, action.record] as const))
+  actionRecordsRead.set(here, out)
+  return out
+}
+
+/** The skill panels the party's tactics ask of (`func_02083b00`): `0xe6`, a reach of 6 widened; `0x106`, the MP lessened. */
+const TACTIC_PANELS = [0xe6, 0x106] as const
+
+/**
+ * **What a member's tactic reads** — see the sim's `tactics.ts`: the lists
+ * the menu offers them, in its order, each with its command; their items with
+ * the action each does and whether it is used up (the item's `+0x08` bit 19,
+ * `itemdefs`); their weapon's battle record — its flags and killer bonuses —
+ * and its kind; and the two skill panels the AI asks.
+ *
+ * None for the Hero, who always follows orders; nor for a story companion —
+ * **ours**: how the game takes a guest is not read. **INFERRED**: that the
+ * weapon the character record's `+0x2ac` says is held is the one worn, and
+ * its kind (`+0x29c` bits 4–8) the item's subtype.
+ */
+function memberTactics(member: Member, asked: Asked): MemberTactics | undefined {
+  const here = loaded
+  if (!here || asked.own || asked.guest) return undefined
+  const entry = (e: Entry): TacticCandidate => ({ action: e.action, command: e.command(-1) })
+  const items = (member.carried ?? []).map((id, place): TacticCandidate => {
+    const shown = asked.items[place]
+    return {
+      action: here.itemUses.get(id)?.battle?.action ?? 0,
+      bag: place,
+      consumed: here.itemDefs.get(id)?.usedUp === true,
+      ...(shown ? { command: shown.command(-1) } : {}),
+    }
+  })
+  const held = wornBy(member).get('weapon')
+  return {
+    tactic: asked.tactic,
+    spells: asked.spells.map(entry),
+    abilities: asked.abilities.map(entry),
+    items,
+    ...(asked.coup ? { coup: entry(asked.coup) } : {}),
+    ...(held === undefined
+      ? {}
+      : {
+          weapon: {
+            flags: here.itemFlags.get(held) ?? 0,
+            killers: here.itemKillers.get(held) ?? [],
+            kind: (here.itemStats.get(held)?.kind ?? 0) - 1,
+          },
+        }),
+    traits: TACTIC_PANELS.filter((panel) => holdsPanel(member, panel)),
+  }
 }
 
 /** Revival's kind, `+0x18` bits 5–11; and Zing, Kazing and the Zing stick, which take either. */
@@ -9395,6 +9469,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
       watchTurns: numbers.watchTurns,
       // What enrages it, and how likely — `mon_btldata +0x24`.
       provokedBy: numbers.provokedBy,
+      // Its six ways by action, which the party's tactics read — `mon_btldata +0x18`.
+      ways: numbers.actions,
     })
     looks.push(monsterLookOf(cartridge, code))
   }
@@ -9486,6 +9562,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     purse: bag.gold,
     known,
     words: loaded.battleWords,
+    // Every action's record, which the party's tactics read — see the sim's `tactics.ts`.
+    actionRecords: actionRecordsOf(loaded),
     // What the monsters carry, by name — Half-Inch's pinch is told by them.
     loot: new Map(
       foes.flatMap((f) => (f.drops ?? []).map((d) => [d.item, itemNamed(d.item)] as const)),

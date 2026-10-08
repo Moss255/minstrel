@@ -151,6 +151,7 @@ import { decompressBlz, looksBlz } from '@minstrel/nitro-comp'
 import type { Model } from '@minstrel/nitro-gfx'
 import { parseRomHeader, readNitroFs } from '@minstrel/nitrofs'
 import {
+  type AiRecord,
   type CollisionWorld,
   createCollisionWorld,
   groundBelow,
@@ -339,6 +340,8 @@ export interface Loaded {
   readonly itemResistances: ReadonlyMap<number, readonly number[]>
   /** Each item's battle flags, `itembtlprm.nat` `+0x00` — see `ITEM_EXPERIENCE_BONUS`. */
   readonly itemFlags: ReadonlyMap<number, number>
+  /** Each weapon's killer bonuses by family, in tenths — `ItemBattleParams.familyTenths`; the party's tactics read them. */
+  readonly itemKillers: ReadonlyMap<number, readonly number[]>
   /** Each item's price and the table it is listed in — see `readItemTable`. */
   readonly goods: ReadonlyMap<number, Goods>
   /** Each piece of equipment's attack and defence, by id — see `itemStatsOf`. */
@@ -484,6 +487,11 @@ export interface ItemUse {
 export interface ItemEffect {
   readonly action: number
   readonly name: string
+  /**
+   * Its record's 60 bytes and its range, as the party's tactics read them —
+   * the sim's `AiRecord` (see `tactics.ts`).
+   */
+  readonly record: AiRecord
   /** What the action does — see `ActionEffect`. INFERRED. */
   readonly effect: number
   /** What it says: its message in `actmsg`, 0 for none. INFERRED. */
@@ -1037,7 +1045,11 @@ const battleRead = new WeakMap<Uint8Array, Map<number, MonsterBattle>>()
 /** What each worn thing does in a battle, by item — see `readItemBattleParams`. */
 const itemBattleRead = new WeakMap<
   Uint8Array,
-  { resistances: Map<number, readonly number[]>; flags: Map<number, number> }
+  {
+    resistances: Map<number, readonly number[]>
+    flags: Map<number, number>
+    killers: Map<number, readonly number[]>
+  }
 >()
 
 /**
@@ -1057,12 +1069,14 @@ function itemFlagsOf(rom: Uint8Array): Map<number, number> {
 function itemBattleRecords(rom: Uint8Array): {
   resistances: Map<number, readonly number[]>
   flags: Map<number, number>
+  killers: Map<number, readonly number[]>
 } {
   const already = itemBattleRead.get(rom)
   if (already) return already
   const read = {
     resistances: new Map<number, readonly number[]>(),
     flags: new Map<number, number>(),
+    killers: new Map<number, readonly number[]>(),
   }
   for (const leaf of scanCartridge(rom, { pathFilter: ITEM_BATTLE })) {
     if (leaf.path !== ITEM_BATTLE) continue
@@ -1070,6 +1084,7 @@ function itemBattleRecords(rom: Uint8Array): {
       for (const item of readItemBattleParams(leaf.bytes)) {
         read.resistances.set(item.id, item.resistances)
         read.flags.set(item.id, item.flags)
+        read.killers.set(item.id, item.familyTenths)
       }
     } catch {
       // A file that will not read leaves everyone's resistances whole.
@@ -1942,6 +1957,10 @@ function actionsOf(rom: Uint8Array): Map<number, ItemEffect> {
       out.set(action.id, {
         action: action.id,
         name: action.name,
+        record: {
+          raw: action.raw,
+          range: range && { spread: range.spread, party: range.party, peak: range.peak },
+        },
         effect: action.effect,
         message: action.message,
         opening: action.opening,
@@ -3108,6 +3127,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     goods: goodsOf(rom),
     itemResistances: itemBattleOf(rom),
     itemFlags: itemFlagsOf(rom),
+    itemKillers: itemBattleRecords(rom).killers,
     itemStats: itemStatsOf(rom),
     itemWords: itemWordsOf(rom),
     itemUses: itemUsesOf(rom),

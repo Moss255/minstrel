@@ -41,6 +41,7 @@ is one the menu will not know about.
 | `at=x,z` | stand at a world position, on the highest floor under it |
 | `time=night` | force the hour |
 | `party=0:0,11:3,21:10` | a party of created characters, `preset:vocation` each — see `docs/party-and-vocations.md` |
+| `tactics=1:3,2:0` | a member's tactic by party place, 0 Show No Mercy to 5 Follow Orders — the Hero's cannot be set. The game's own way is Misc. → Tactics in a battle; see `packages/sim/src/battle/tactics.ts` |
 | `ivor=1` | open with Ivor along, as his call leaves him |
 | `level=25` | put the Hero at a level, with the experience for it |
 | `skills=1:3,11:58` | put that many points into each of the Hero's skill trees, by tree number — to try an ability in a fight |

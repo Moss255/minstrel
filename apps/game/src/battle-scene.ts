@@ -1,5 +1,6 @@
 import { ActionEffect, ActionReach } from '@minstrel/game-formats'
 import {
+  type AiRecord,
   type BattleEvent,
   BattleRng,
   type BattleState,
@@ -15,6 +16,7 @@ import {
   handlerKnown,
   LEVEL_STATS,
   type LevelStat,
+  type MemberTactics,
   type Opening,
   PINCUSHION,
   playRound,
@@ -1223,12 +1225,15 @@ export function beginBattle(
     readonly names?: readonly Named[]
     /** The names of what the monsters carry — Half-Inch's pinch is told by them. */
     readonly loot?: ReadonlyMap<number, Named>
+    /** Every action's record, which the party's tactics read — see the sim's `BattleState.actionRecords`. */
+    readonly actionRecords?: ReadonlyMap<number, AiRecord>
   },
 ): BattleScene {
   const started = startBattle(fighters, options.canFlee, options.opening)
   const wounded = options.hp ? withHp(started, options.hp) : started
   const kept = options.mp ? withMp(wounded, options.mp) : wounded
-  const state = options.purse === undefined ? kept : { ...kept, purse: options.purse }
+  const purse = options.purse === undefined ? kept : { ...kept, purse: options.purse }
+  const state = options.actionRecords ? { ...purse, actionRecords: options.actionRecords } : purse
   const scene: BattleScene = {
     state,
     rng: new BattleRng(seed),
@@ -2135,6 +2140,33 @@ export interface Offered {
   readonly spells?: readonly BattleSpell[]
   /** How the party's abilities are told — their names and openings, by action. */
   readonly known?: ReadonlyMap<number, Told>
+  /**
+   * **What each member's tactic reads**, by fighter — see the sim's
+   * `tactics.ts`. A member with none, the Hero and a guest, is not reached
+   * by them.
+   */
+  readonly tactics?: ReadonlyMap<number, MemberTactics>
+}
+
+/**
+ * The fighters with their tactics: what `offered` gives, at the tactic set
+ * from Misc. where one is — `set`, by fighter.
+ */
+function withTactics(
+  state: BattleState,
+  offered: ReadonlyMap<number, MemberTactics> | undefined,
+  set: ReadonlyMap<number, number>,
+): BattleState {
+  if (!offered && set.size === 0) return state
+  return {
+    ...state,
+    fighters: state.fighters.map((f, i) => {
+      const t = offered?.get(i) ?? f.tactics
+      if (!t) return f
+      const tactic = set.get(i)
+      return { ...f, tactics: tactic === undefined ? t : { ...t, tactic } }
+    }),
+  }
 }
 
 /** The Hero alone, asked with these items and spells — see `Offered`. */
@@ -2441,6 +2473,7 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
       const asked = offered.asked ?? heroAsked(scene.state, items, spells)
       return {
         ...scene,
+        state: withTactics(scene.state, offered.tactics, scene.tactics),
         pages,
         cues,
         told,
@@ -2460,17 +2493,20 @@ export function battleChoose(scene: BattleScene, offered: Offered = {}): BattleS
       const next = chooseCommand(scene.state, c, () => scene.world?.below(100) ?? 0)
       const tactics =
         next.tactics.size > 0 ? new Map([...scene.tactics, ...next.tactics]) : scene.tactics
+      // A tactic set is the member's at once: their turn this round reads it.
+      const ordered =
+        next.tactics.size > 0 ? withTactics(scene.state, undefined, tactics) : scene.state
       // A row set is the member's at once: the monsters' pick this round reads it.
       const lines = next.lines.size > 0 ? new Map([...scene.lines, ...next.lines]) : scene.lines
       const rowed =
         next.lines.size > 0
           ? {
-              ...scene.state,
-              fighters: scene.state.fighters.map((f, i) =>
+              ...ordered,
+              fighters: ordered.fighters.map((f, i) =>
                 next.lines.has(i) ? { ...f, backLine: next.lines.get(i) as boolean } : f,
               ),
             }
-          : scene.state
+          : ordered
       // A weapon changed is the wielder's at once: what it adds comes off, the
       // new one's goes on — the attack the resolver reads next (`base+0x34`).
       const changes = next.armed.slice(c.armed.length)
