@@ -96,6 +96,18 @@ export {
   wardMultiplier,
 } from './battle/states.ts'
 export {
+  type AiRange,
+  type AiRecord,
+  commandPhaseChoice,
+  type MemberTactics,
+  MONSTER_ID,
+  TACTIC,
+  type TacticCandidate,
+  type TacticChoice,
+  tacticCommand,
+  turnChoice,
+} from './battle/tactics.ts'
+export {
   psychedUp,
   TENSION_MOST,
   TENSION_MULTIPLIERS,

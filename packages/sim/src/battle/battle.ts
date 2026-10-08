@@ -43,6 +43,13 @@ import {
   wakes,
   wardMultiplier,
 } from './states.ts'
+import {
+  type AiRecord,
+  commandPhaseChoice,
+  type MemberTactics,
+  tacticCommand,
+  turnChoice,
+} from './tactics.ts'
 import { psychedUp, TENSION_MOST, tensed } from './tension.ts'
 
 /**
@@ -281,6 +288,18 @@ export interface Fighter {
    * monster with no record, which nothing enrages.
    */
   readonly provokedBy?: readonly (readonly [number, number])[]
+  /**
+   * **A monster's six ways**, by action — its `mon_btldata` record's `+0x18`,
+   * which the party's tactics read for what the monsters may do (see
+   * `tactics.ts`). None for the party, and for a monster with no record.
+   */
+  readonly ways?: readonly number[]
+  /**
+   * **One of the party's tactics** and what they read — see `tactics.ts`.
+   * None, and the member is not reached by them: a guest, or one the battle
+   * is given nothing of.
+   */
+  readonly tactics?: MemberTactics
 }
 
 export interface FighterState extends Fighter {
@@ -1421,6 +1440,11 @@ export interface BattleState {
    * victory reads (`func_ov023_021edf54`, `0x021ee060`). 1 when not given.
    */
   readonly expMultiplier?: number
+  /**
+   * **Every action's record**, by number, as the party's tactics read them —
+   * see `tactics.ts`. None, and no member's tactic is played.
+   */
+  readonly actionRecords?: ReadonlyMap<number, AiRecord>
 }
 
 export interface Rules {
@@ -1812,6 +1836,68 @@ function outcomeOf(fighters: readonly FighterState[]): Outcome {
  * the party by its commands — an attack on the first living foe when it has
  * none — and the foes at a living party member.
  */
+/** The action a command holds, as the command record's `+0` would — what the command phase's tactics ask of the others. */
+function actionOf(command: Command | undefined): number {
+  if (!command) return 1
+  switch (command.kind) {
+    case 'attack':
+      return 1
+    case 'defend':
+      return 3
+    case 'stance':
+    case 'psyche':
+    case 'wait':
+      return command.action
+    case 'spell':
+      return command.spell.action
+    case 'blow':
+      return command.blow.action
+    case 'change':
+      return command.changing.action
+    default:
+      return 0
+  }
+}
+
+/**
+ * **The command phase's part of the party's tactics**, in slot order — see
+ * `commandPhaseChoice`. The AI object is the round's one stack slot, so each
+ * member's call reads the tactic the one before left in it.
+ */
+function tacticsAtRoundStart(
+  state: BattleState,
+  fighters: readonly FighterState[],
+  commands: ReadonlyMap<number, Command>,
+): ReadonlyMap<number, Command> {
+  const records = state.actionRecords
+  if (!records) return commands
+  const party = fighters.flatMap((f, i) => (f.side === 'party' ? [i] : []))
+  if (!party.some((i) => fighters[i]?.tactics)) return commands
+  const out = new Map(commands)
+  const held = new Map(party.map((i) => [i, actionOf(out.get(i))]))
+  let before: number | undefined
+  for (const i of party) {
+    const f = fighters[i] as FighterState
+    if (!f.tactics || actionOf(out.get(i)) !== 1) continue
+    const tactic = f.tactics.tactic & 0xff
+    // Able to act (`func_ov000_02155f9c`); only then is the tactic left behind.
+    const able =
+      alive(f) &&
+      f.states.paralysed === undefined &&
+      f.states.sleep === undefined &&
+      f.states.stunned === undefined
+    if (tactic >= 5 || !able) continue
+    const choice = commandPhaseChoice(state, fighters, i, records, before, held)
+    before = tactic
+    const command = choice && tacticCommand(choice, fighters, i, records)
+    if (choice && command) {
+      out.set(i, command)
+      held.set(i, choice.action)
+    }
+  }
+  return out
+}
+
 export function playRound(
   state: BattleState,
   commands: ReadonlyMap<number, Command>,
@@ -1856,11 +1942,17 @@ export function playRound(
     }
     caught = true
   }
+  // **The party's tactics in the command phase** (`ProcessCombatTurn`,
+  // `0x0215db18`, `func_ov024_021f9030`): each of the party in slot order
+  // whose action is the Attack — the one not asked keeps it — may take up one
+  // of the actions that must be decided before anyone acts. No draw. See
+  // `tactics.ts`.
+  const orders = tacticsAtRoundStart(state, state.fighters, commands)
   // Defending holds from the round's start, whoever acts first.
   // A sleeper cannot defend.
   let fighters: FighterState[] = state.fighters.map((f, i) => ({
     ...f,
-    defending: alive(f) && f.states.sleep === undefined && commands.get(i)?.kind === 'defend',
+    defending: alive(f) && f.states.sleep === undefined && orders.get(i)?.kind === 'defend',
     // A round counted for each of the party standing at its start.
     ...(f.side === 'party' && alive(f) ? { rounds: (f.rounds ?? 0) + 1 } : {}),
   }))
@@ -1872,7 +1964,7 @@ export function playRound(
   // confusion (`func_020883cc` sets it) — not sleep, as this said before.
   // A trait that lessens the MP (`func_020dd290`) is not kept.
   const shortStance = new Set<number>()
-  for (const [i, command] of commands) {
+  for (const [i, command] of orders) {
     // Blockenspiel, the one blow among them: stance 1 as Defend's, its blow
     // at its turn asking no MP.
     const blockenspiel = command.kind === 'blow' && command.blow.atRoundStart
@@ -3393,8 +3485,17 @@ export function playRound(
       // round began and can now — chosen here at its turn (`0x02157980`).
       command =
         me.side === 'party'
-          ? (commands.get(actor) ?? { kind: 'attack', target: -1 })
+          ? (orders.get(actor) ?? { kind: 'attack', target: -1 })
           : (planned ?? (canAct(me) ? chooseFoe(actor) : undefined))
+      // **A member's tactic at their turn** (`func_ov000_0215767c`,
+      // `0x02157888`, `func_ov024_021f8f20`): one whose action is still the
+      // Attack chooses by it now, with the battle's own draws — see
+      // `tactics.ts`.
+      if (me.side === 'party' && command?.kind === 'attack' && me.tactics && state.actionRecords) {
+        const choice = turnChoice(state, fighters, actor, state.actionRecords, rng)
+        const chosen = choice && tacticCommand(choice, fighters, actor, state.actionRecords)
+        if (chosen) command = chosen
+      }
       // **The turn-start draw**, every fighter's, every turn (`0x0215838c`) —
       // and a sleeper's waking.
       const startDraw = rng.below(100)
