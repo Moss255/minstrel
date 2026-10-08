@@ -10,7 +10,7 @@ worked example: `<DAMA>` found on Jack's line, overlay 3's service 46 read,
 then built — `abbey.ts`, and `docs/party-and-vocations.md`, "The Abbey's
 own flow".
 
-## Where it stands — 7 October 2026
+## Where it stands — 8 October 2026
 
 **Tasks 1 to 10 are done**, each built, checked in the browser, committed and
 written up on the wiki; each says so under its heading.
@@ -49,11 +49,12 @@ written up on the wiki; each says so under its heading.
   by all eight of the game's rules, and ten more targeting handlers are
   built, with all 161 listed; the party's tactics are split off as
   **17b**.
-- **Task 17b is read and not built**, 6 October 2026: the tactics' scoring
-  is read whole (`docs/readings/T17-ai.md` §2b); a faithful build needs
-  state the simulation does not keep — the susceptibility bytes, the
-  killer bonuses of what is worn, the monsters' action flags — listed as
-  steps under 17b.
+- **Task 17b is done**, 8 October 2026: the party's tactics choose as the
+  game's code chooses — the command phase's six round-start actions and the
+  turn's scored lists, with the battle's own 44 draws — ported whole
+  (`packages/sim/src/battle/tactics.ts`; `docs/readings/T17-ai.md` §2c, with
+  a dozen corrections to §2 and §2b). Members not following orders now act
+  by their tactic in the game; `?tactics=` sets one for driving.
 - **Task 18 is done, 7 October 2026: none struck as the Attack** (76 when
   it began). The last pass built Twocus Pocus's second cast, Extreme
   Makeover and the charm draws, Feel the Burn, Mercy and kind `0x18`'s
@@ -542,7 +543,19 @@ tactic's lists and threshold, the setting up (`021f7478`) and its draws,
 the weakest monster's Attack, the best-four lists — all in
 `docs/readings/T17-ai.md` §2.
 
-**Read, 6 October 2026; not built.** The scoring is read whole —
+**Done, 8 October 2026**: `tactics.ts` in the sim — `turnChoice` at a
+member's turn and `commandPhaseChoice` as the round begins, reached from
+`playRound` where the game reaches them; `tacticCommand` turns a choice into
+the battle's command; held by `packages/sim/test/tactics.test.ts`. The app
+gives each member their lists, items, weapon and panels (`memberTactics`),
+the monsters their six ways and the battle every action's record. Step 3's
+four are found (§2c); step 5 stands where task 18 left it — riders 5 and 6
+(the antidotes') and Crosscutter Throw are what a tactic may choose that the
+battle plays short. **Ours**, listed in §2c: the statuses not kept read as
+clear, the first member's stale byte, a stale stack bit, a guest taking no
+tactic. The wiki's Battle-AI.
+
+**Read, 6 October 2026.** The scoring is read whole —
 `docs/readings/T17-ai.md` §2b: the scorer `021f9874` and its lists, the
 forecast `021fa7ec`, all 79 evaluators by kind, the state helpers
 `021fd954`/`021fdf04`, the riders' evaluators (`0x021ffcec`), and what the

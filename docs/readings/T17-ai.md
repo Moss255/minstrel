@@ -107,18 +107,25 @@ and can pay for (`func_ov024_021f8874`; under Don't Use MP only those that
 cost nothing) is noted; then, in order:
 
 1. Knight Watch, when nobody in the party has status `+0x18` bit 11, nobody
-   else has chosen it, the tactic is not Show No Mercy, (for Fight Wisely
+   has chosen it already, the tactic is not Show No Mercy, (for Fight Wisely
    and Don't Use MP) the turns needed, `+0x0c`, are over 2, and either the
-   member has no free heal or the weakest member's HP fraction is below the
-   tactic's threshold `+0x124` (`0x021f9344`–`0x021f93cc`);
-2. Mercurial Thrust, when the AI's own damage forecast for it
-   (`func_ov024_021fa7ec`) on the first monster beats that monster's HP
-   (`0x021f93d0`–`0x021f94a8`);
+   member has no heal at hand that costs no item, or the weakest is the
+   member, or the weakest's HP fraction is **not** below the threshold
+   `+0x124` (`0x021f9344`–`0x021f93cc`; corrected 8 October 2026 — it read
+   the last test backwards);
+2. Mercurial Thrust, when one monster stands, under any tactic but Focus On
+   Healing, and the forecast's **least** (`func_ov024_021fa7ec`, the
+   member's own blow) on it is above its HP (`0x021f93d0`–`0x021f94a8`);
 3. at a quarter of its HP or less, Defending Champion (else Defend, `3`) under
-   Focus On Healing with nobody else covering (`0x021f94ac`–`0x021f951c`);
-4. one of Forbearance, Selflessness, Whipping Boy for the weakest member, at
-   half HP or more and with that member's maximum HP no more than half the
-   actor's (`0x021f9520`–`0x021f9648`).
+   Focus On Healing, with nobody under `+0x18` bit 11, nobody on Knight Watch,
+   and no heal at hand that costs no item (`0x021f94ac`–`0x021f951c`);
+4. one of Forbearance, Selflessness, Whipping Boy — **under Focus On Healing
+   only**, with one of the party at 0.08 or less, nobody covering already and
+   no heal at hand that costs no item — at half HP or more, and with the
+   member's **HP** at least twice the weakest's (`+0x104`, HP, not the most;
+   corrected): Forbearance first when two or more are at 0.08 or less, else
+   Selflessness, Whipping Boy, Forbearance; Forbearance on oneself, the others
+   on the weakest (`0x021f9520`–`0x021f9648`).
 
 **The member's turn** (`021f8f20`): tactic 5 does nothing; above 5, the
 Attack on the weakest monster (`021f8628`, below); 0 to 4 by the table at
@@ -266,7 +273,7 @@ order:
    `0x28` sets it to 400.
 7. category 5: Σ chance. Categories 5–8 (state changes) each set a weight
    in one of four slots from the tables below, zeroed when the behaviour
-   asked is clear and −1.5 × weight when the entry's value is negative,
+   asked is clear and −3 × weight when the entry's value is negative (§2c),
    then add `weight × chance × 0.01 × w` to their slot, where
    `w = 0.01 × ai+0x54[behaviour]`: category 8 (slot A) by
    `0x021ffc98` (6 × effect, weight; 10 otherwise), category 7 by
@@ -310,7 +317,7 @@ status `+0x18` bit 1 or 2 against elements 1 or 2; the target's defence
 and agility levels (`func_020748d0`, `020748a8`); its `+0x21`
 (`func_02074938`); 0.5 when `func_ov024_021dd260` and kind 1; the combo
 chain (`0x021fefa0`: 1.0, 1.2, 1.5, 2.0 by its length + 1, at most 3);
-action `0x79` by the monsters' count (`1 + 0.125 n`); a metal body
+action `0x79` by the monsters' count (`0.8 + 0.125 n` for the first, 0.8 after — §2c); a metal body
 (1, or 1 + 1 with one equipment flag, unless the action works on metal —
 `+0x10` bit 24) and the record's cap (`+0x1c` bits 0–13). Its result is
 `mean × ai+0x170 + least × (1 − ai+0x170)`, `ai+0x170` 0.4 and 0 under Show
@@ -327,9 +334,9 @@ foe behaviour 3 and 13/14/15 then `021fdf04(0x11/0x12/0x13)`, on an ally 2
 and 5/6/7 then `021fd954`; 7 `fd954(2)`; 8 `fdf04(4)`; 9 `fd954(4)` with
 three or more turns needed; 10 the two coups `0x1fc`, `0x20f` (bonus 1000)
 else `fdf04(8)`; 16, 17, 19, 21 `fdf04(6, 9, 5, 7)`; 18 the fallen (50, or
-100 for action `0x27`, at half their most HP); 20 `fd954(3)`; 22, 23, 32,
+100 for action `0x27`, valued at their HP halved — §2c); 20 `fd954(3)`; 22, 23, 32,
 39, 61, 62 an ally's protections by the monsters' own flags (`ai+0x6b`
-…`0x71`); 24 `fdf04(3)`; 26 Psyche Up's coup `0x202` by the actor's HP;
+…`0x71`); 24 `fdf04(3)`; 26 Psyche Up's coup `0x202` by the actor's MP (§2c);
 27 `fd954(7)`; 33 the fallen when two or more are down; 46 by
 `ai+0x13c`/`ai+0x154`; 49 a sum over the monsters of their good states
 and levels (tables `0x021ff026`, 22 × (flag, weight), and `0x021fefd6`, ten levels × weight; a level above 0 counts its weight, one below three times it); 67 heal with the threshold
@@ -342,8 +349,8 @@ coups, bonus 1000 under their own condition. Kinds 6, 13, 25, 28, 36–38,
 (`021f8bd8`: the record's accuracy, by might or mending between `+0x14`'s
 least and most), the target's levels and `+0x21`, and its resistance
 (`021f875c` → `func_ov000_02156b38`), passes over a monster whose chance
-comes under 30 or under the effect's own floor (33.3; 40.3 for effects 4,
-5 and 7; 55.3 for 8), and for each effect asks the target's state and its
+comes under 30 or under the effect's own floor (33.3; 35 for effects 4,
+5 and 7; 50 for 8 — corrected in §2c), and for each effect asks the target's state and its
 susceptibility (the hit code's pair from `0x021fefea`/`0x021fefeb`); the riders' own evaluators (`021fd858`, the table at
 `0x021ffcec`, 23 entries) read the **susceptibility bytes `+0x47`–`+0x50`**
 of the target's status. `021fd954` (a state on the party) marks a member
@@ -366,7 +373,7 @@ element by the pairs at `0x021fefb0` (1–7 themselves, 0 the plain Attack's
 8) — `FAMILY_BONUS_FIELDS` and `weaponElement` in `game-formats`, FORMAT.md
 "What equipment does in a battle".
 
-**What a build still needs that the simulation does not keep**: the
+**What a build still needed** (found and built — §2c): the
 flags the setting up gathers from the monsters' six ways (`ai+0x69`–`0x72`,
 from each way's action record — the combatant's `+0x148` is its
 `mon_btldata` record, ways at `+0x18`); the character record's `+0x134
@@ -377,8 +384,99 @@ actions a tactic would choose (§7 of `T18-handlers.md`) — a tactic must
 not choose what the battle cannot play. `ai+0x13c`/`0x154`, the most and
 least over the monsters of the bytes at their record's `+0x6c`–`+0x72`,
 are their resistances to elements 1 to 7 (fire, ice, the greater of 3 and
-4, the greater of 5 and 6, and 7), which the simulation keeps. **So the tactics are still not
-built**; task 17b in `docs/tasks.md` lists the steps.
+4, the greater of 5 and 6, and 7), which the simulation keeps. They are
+built now — §2c.
+
+### 2c. Built — 8 October 2026 (task 17b)
+
+**The tactics are built**, the whole of §2 and §2b ported function by
+function: `packages/sim/src/battle/tactics.ts` (`turnChoice`,
+`commandPhaseChoice`, `tacticCommand`), reached from `playRound` where the
+game reaches it — the command phase's part before the stances are taken up,
+in slot order (`tacticsAtRoundStart`); the turn's part where a party
+member's action is picked up, before the turn-start draw — and held by
+`packages/sim/test/tactics.test.ts`. The AI object and the scorer's frame
+are kept as bytes at the game's offsets, so the scorer's walk past the end of
+one array (below) comes to what the game's does.
+
+**What step 3 asked for, found:**
+
+- `ai+0x69`–`0x72`, from each standing monster's six ways' records: `0x6b`
+  a reflectable blow of kind 1 aimed at the party (`+0x08` bits 8–9 at 1 or
+  3), `0x6c` a spell, `0x6d` a breath and `0x6e` one of kind 1, `0x6f` and
+  `0x70` an element of 1 and of 2, `0x71` kind `0x11` or `0x23` or rider
+  `0x14` (`0x021f7dd4`–`0x021f7eb8`). A grotto's legacy boss's level-up ways
+  are passed over first (`0x021f7d78`–`0x021f7dd0`) — no grottoes here.
+- The character record's `+0x134` `+0x34` and `+0x36` are the **base attack
+  and defence** — `UpdateCombatantAttack` and `…Defense` (decompiled, named)
+  multiply exactly these by the level's multiplier into status `+0x08` and
+  `+0x0a`. So `ai+0x44` is each member's attack over the party's most,
+  Critical Claim's forecast reads the attack, and effect `0x12` on a monster
+  weighs a quarter of its defence.
+- `func_ov000_0215e9fc(battle, buf, 4, flags)` counts the party there — not
+  under `+0x18` bit 13, and with flag 1 not fallen (`0x0215e9fc`–`0x0215eb14`):
+  `ai+0x78` is **the party standing**, `ai+0x74` the party there.
+- `+0x2F4` is the first worn place's `itembtlprm.nat` record, copied whole:
+  bits 4 and 10 of its flags word are what `func_02085128` and `020851d8`
+  test (the latter with `char + 0x2ac` above 0), and bits 0–1 widen a reach
+  of 5 to all (bit 1) or a group (bit 0).
+- The bag entry's `+0x08` bit 19 (`0x021f7c3c`) is the item definition's
+  "used up when used" (`itemdefs`, `func_020ddb20`) — INFERRED that the
+  list's entry is that record.
+
+**Corrections to §2 and §2b**, each read again from the code:
+
+- The command phase's four rules — above, corrected in place. And Mix It Up's
+  threshold of 0.25 there is chosen by the AI object's `+6` **before** it is
+  written (`0x021f90c4`): the object is `ProcessCombatTurn`'s one stack slot,
+  reused member to member, so it is the tactic of the member before.
+- The heal's factors for `0x310` and `0x21` apply only to an action that
+  costs MP (`0x021f9d50`).
+- A state change's weight when its value is below 0 is **−3** times its own,
+  not −1.5: the constant is made by negating `0x3fc00000`'s bits as a whole
+  number (`rsb r0, r0, #0`, `0x021fa034`), which is the float −3.0.
+- The wand's bonus is by **the member's own MP** over their most, and the
+  three steps add (50 at a tenth, 30 more at three tenths, 10 more at a
+  half); with the weapon kind `char + 0x29c` bits 4–8 at 3 (INFERRED: the
+  item's subtype, wands), not under 0 Zone, at a monster that has MP.
+- The forecast: action `0x79` multiplies by `0.8 + 0.125 ×` the monsters'
+  count for the first monster and 0.8 for the rest; the "defence and agility
+  levels" are the target's levels against spells and breaths
+  (`func_020748d0`, `020748a8`, each under its `+0x14` flag); Critical
+  Claim's mean is the greater of the base attack and 1.2 × the mean, its
+  least the greater of 0.95 × the attack and 1.2 × the least. **Tension's
+  bonus is thrown away**: `CalculateTensionBonus` is called and its result
+  dropped, and the member's level added in its place (`0x021fa934`–
+  `0x021fa96c`) — the game's own slip, kept. The weapon's element and the
+  Fource's: the greater of the target's resistance to the weapon's element
+  and 1.1 × its byte for the Fource's (the greater of two for Gale and
+  Funereal).
+- Every handler of the 66 at `0x021ffda4` is read (`0x021f6a88`–`0x021f72f8`):
+  the family bonuses by `mon_data +0x0A` bits 7–10, the flat factors, and
+  four amounts of their own (29: `2 × level + 125`; 34: 4 ÷ (monsters + 1);
+  47: `5 + mean ÷ 4`; 64: the greater of `2 × level` and 35; 65: half and the
+  deftness, `char + 0x04` bits 0–9, INFERRED deftness).
+- Kind 4 on a foe asks behaviours **2 and 14**, not 3; kind 18's value is
+  the fallen's HP halved (nothing); kind 26 is by the member's **MP**; kind
+  49's levels count their weight times the level, three times it below 0.
+- `021fdf04`'s floors are 33.3, **35** for effects 4, 5 and 7, and **50** for
+  8 (`0x41f00000` with `0x1c0000` and `0x580000` added).
+- The single-target pick (`func_ov024_021f8d80`) ranks by paralysed (1),
+  confused (2), asleep (3), standing (4) and felled by the least (5), a
+  bounce −1; ties by what is left of the HP; and hands back its pick
+  whatever the rank.
+- **A list's insertion copies one entry down** — the loop copies the same
+  entry each time round (`0x021f6888`) — so the rest are not shifted. Only a
+  list's first entry is ever taken, so no choice shows it.
+- **The scorer's behaviour-4 pass walks the set's entries** (up to 16) but
+  indexes the arrays of monsters (8): past the eighth it reads the member's
+  own blows as sizes and writes into the kills' flags (`0x021f9a58`).
+
+**Ours** (also in the module's header): the statuses not kept read as clear
+(`+0x18` bits 1, 2, 4, 6, 11, 13, `+0x14` bit 7); the first member's stale
+`+6`; the stack's bit 7 of a state entry's `+9` taken as clear (garbage the
+game leaves); the groups as the monsters of one kind; a story companion
+taking no tactic; the Hero always following orders, as the menu has it.
 
 ## 3. The targeting handlers
 

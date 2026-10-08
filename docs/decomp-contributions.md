@@ -1127,8 +1127,41 @@ and where a monster's come from.
 | ARM9 `func_02085968` … `02085888`, `func_02085748` | a weapon's killer bonus by family (twelve), its element | `Character::GetFamilyBonus*`, `::GetWeaponElement` |
 | ARM9 `func_0200b0f0`, `func_0200b608`, `func_0200c578`, `func_02008f5c` | `_dmul`, `_dsub`, `_f2d`, `ceil` | as said (runtime) |
 
-**What is open**: `func_ov000_0215e9fc`'s count; the character's `+0x134
-+0x34`/`+0x36`; the weapon's metal flags (`+0x2F4` bits 4 and 10).
+**What was open, read 8 October 2026** (§2c): `func_ov000_0215e9fc`'s count
+is the party there, and standing with flag 1; the character's `+0x134 +0x34`
+and `+0x36` are the base attack and defence that `UpdateCombatantAttack` and
+`…Defense` level; `+0x2F4` is the weapon's `itembtlprm.nat` record, its flags
+word's bits 4 and 10 what `func_02085128` and `020851d8` test.
+
+### Task 17b, the rest of the tactics, built (8 October 2026)
+
+`docs/readings/T17-ai.md` §2c; translated in `packages/sim/src/battle/tactics.ts`,
+held by `packages/sim/test/tactics.test.ts`. Overlay 24 unless it says.
+
+| address | what it does | name proposed |
+|---|---|---|
+| `func_ov024_021f73b8` | clears the AI object — not its `+6`, which the command phase reads before writing | `PartyAI::Reset` |
+| `func_ov024_021f7478` | the setting up: monsters, party, blows, turns needed, candidates, the monsters' ways' flags, the 44 draws | `PartyAI::Prepare` |
+| `func_ov024_021f8144`, `021f81dc`, `021f84f0`, `021f83f8`, `021f8300` | the five tactics' lists in order (table `0x021ff054`) | `PartyAI::ShowNoMercy` … `::DontUseMp` |
+| `func_ov024_021f8628` | the Attack on the weakest monster, from 1.1 | `PartyAI::AttackWeakest` |
+| `func_ov024_021f8f20` | a member's turn: the tactic by `+0x94c`, only on the Attack | `PartyAI::DecideTurn` |
+| `func_ov024_021f9030` | the command phase: Knight Watch, Mercurial Thrust, Defending Champion or Defend, Forbearance, Selflessness, Whipping Boy (list `0x021fefc2`) | `PartyAI::DecideRoundStart` |
+| `func_ov024_021f9660` | every candidate scored by its kind (table `0x021ffeac`, 17 nulled once at first use) | `PartyAI::ScoreCandidates` |
+| `func_ov024_021f87dc`, `021f8874` | an action's MP for the member (0 Zone, `0x28` all of it, `func_020dd290`'s trait `0x106`); whether it can be paid for | `PartyAI::MpCost`, `::CanAfford` |
+| `func_ov024_021f736c` and `0x021f6a88`–`0x021f72f8` | a handler's forecast by `+0x18` bits 18–26 (table `0x021ffda4`, 66): family bonuses, flat factors, four amounts of their own | `PartyAI::ForecastByHandler` |
+| `func_ov024_021fbd2c` … `021fd084` | the evaluators by kind | `PartyAI::Evaluate*` |
+| `func_ov024_021fd088`, `021fd104`, `021fd160`; `021fd1bc` … `021fd7b8` | a rider's entry at category 5, 7, 8; riders 1, 2, 4–8, 10, 11, 19, 20 | `PartyAI::AddRiderEntry*`, `::EvaluateRider*` |
+| `func_ov024_021fa76c` | free to be worked on: none of fallen, `+0x18` bit 13, paralysed, asleep, a lost turn, confused | `Combatant::IsFree` |
+| `func_ov024_021fb430`, `021fb448`, `021fb460`, `021fb478`, `021fc498`, `021fcac0` | `+0x18` bits 1 and 2; `+0x14` bits 16 and 17; `+0x3b` bits 4–7; `+0x18` bit 10 | `Status::*` |
+| ov000 `func_ov000_0215e9fc` | the party there, by the party's order: not `+0x18` bit 13, with flag 1 standing, flag 8 not `+0x56b` | `Battle::CountParty` |
+| ov000 `func_ov000_02155f9c` | cannot act: fallen, `+0x18` bit 13, paralysed, asleep, a lost turn; with its third, confused | `Battle::CannotAct` |
+| ov000 `func_ov000_02159cb4` | a member's coup by their vocation (`0x02182d54`) | `Battle::GetCoupAction` |
+| arm9 `func_02085128`, `020851d8` | the held weapon's flags bits 4 and 10 | `Character::Weapon*` |
+| arm9 `func_02083b00` | a skill panel held: bit *n* of `char + 0x8ec` | `Character::HasPanel` |
+
+**What is open**: what `+0x18` bits 4, 6, 11 and 13 are (11 is after-step
+8's, `func_ov024_021e5e80`), and `+0x14` bit 7, which a dance asks; what the
+game's stack holds at `+6` for the first member.
 
 ### Task 18, what it left (6 October 2026)
 
