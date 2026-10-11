@@ -592,6 +592,15 @@ import {
   questsAfter,
 } from './quests.ts'
 import {
+  countDefeated,
+  countDropped,
+  type DefeatedList,
+  defeatedRestored,
+  defeatedSaved,
+  MONSTER_LIST_WORDS,
+  monsterRows,
+} from './records.ts'
+import {
   applyFor,
   callUp,
   dropOff,
@@ -2477,6 +2486,7 @@ function storage(): SaveStore | undefined {
 function restore(game: SaveGame): void {
   volumes = game.volume ? { ...game.volume } : DEFAULT_VOLUMES
   hearVolumes()
+  defeatedList = defeatedRestored(game.defeated)
   storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
   storyStep = game.step ?? 0
   storyFlags.clear()
@@ -2666,6 +2676,7 @@ function snapshot(): SaveGame | undefined {
     gathering: { variant: gathering.variant, words: [...gathering.words] },
     ship: { ...shipKeep },
     volume: { ...volumes },
+    ...(defeatedList.size > 0 ? { defeated: defeatedSaved(defeatedList) } : {}),
   }
   return game
 }
@@ -7256,6 +7267,8 @@ const accoladesEarned = new Set<number>()
 /** Game-wide flags the Battle Records read: the Records open (`0x119a`), Accolades Earnt listed (`0x119b`). */
 const FLAG_RECORDS = 0x119a
 const FLAG_ACCOLADES_LISTED = 0x119b
+/** The Battle Records list the Quest List from game-wide flag `0x119d` — action `160 : 94` sets it. */
+const FLAG_QUESTS_LISTED = 0x119d
 /**
  * The event that opens the Battle Records here — Stella's, at 2.6, whose
  * lines tell of the X and SELECT Buttons. **Ours**: what sets `0x119a` is not
@@ -7366,6 +7379,54 @@ function recordsContext(): MenuContext['records'] {
     accolades: [...accoladesEarned]
       .sort((a, b) => a - b)
       .map((id) => ({ name: accoladeName(id), text: accoladeText(id) })),
+    // The lists, as overlay 8 lists them — see `RECORDS_LISTS` in `menu.ts`.
+    // Their labels are ours: the game's entries are pictures.
+    lists: [
+      { id: 'monsters' as const, label: listLabel(words.get(130), 'Defeated Monster List') },
+      ...(storyGlobals.has(FLAG_QUESTS_LISTED)
+        ? [{ id: 'quests' as const, label: loaded.menuWords.get(4007) ?? 'Quest List' }]
+        : []),
+      ...(listed
+        ? [
+            {
+              id: 'accolades' as const,
+              label: loaded.accolades.listWords.get(0) ?? 'Accolades Earnt',
+            },
+          ]
+        : []),
+    ],
+    monsters: monsterList(),
+  }
+}
+
+/** A completion's line, `str_jr` 130 on, as a list's name: "Defeated Monster List Completion:" less its last word. */
+const listLabel = (line: string | undefined, ours: string) =>
+  line ? line.replace(/\s*Completion:\s*$/, '') : ours
+
+/** The Defeated Monster List — see `records.ts`. */
+let defeatedList: DefeatedList = new Map()
+
+/** The Defeated Monster List as the Records show it, in `str_sml`'s words. */
+function monsterList(): NonNullable<NonNullable<MenuContext['records']>['monsters']> | undefined {
+  if (!loaded) return undefined
+  // A name begins with a capital in a list, as `<Cap>` gives it in a line.
+  const names = new Map(
+    [...loaded.monsterNames].map(([n, name]) => [n, name.charAt(0).toUpperCase() + name.slice(1)]),
+  )
+  const sml = loaded.monsterListWords
+  return {
+    title: listLabel(loaded.accolades.recordWords.get(130), 'Defeated Monster List'),
+    byNumber: sml.get(MONSTER_LIST_WORDS.byNumber) ?? 'By Number',
+    byName: sml.get(MONSTER_LIST_WORDS.byName) ?? 'By Name',
+    unknown: sml.get(MONSTER_LIST_WORDS.unknown) ?? '?????????',
+    rows: {
+      number: monsterRows(defeatedList, names, 'number'),
+      name: monsterRows(defeatedList, names, 'name'),
+    },
+    drops: (number) => {
+      const record = loaded?.monsterBattle.get(number)
+      return record ? [nameOf(record.drops[0]), nameOf(record.drops[1])] : undefined
+    },
   }
 }
 
@@ -7385,7 +7446,7 @@ function openRecords(): void {
     return
   }
   self?.held.clear()
-  menu = { ...openMenu(), panel: 'records' }
+  menu = { ...openMenu(), panel: 'records', records: { at: 'top' } }
   showMenu()
 }
 /** Whether its page is up, on the bottom screen. */
@@ -12200,6 +12261,13 @@ function settleBattle(): void {
   /** Hit points each companion's level brought, by place — added to their wounds below. */
   const grown = new Map<number, number>()
   if (battle.state.outcome === 'won' && hero && levels) {
+    // **The Defeated Monster List**: each one beaten, by its number — see `records.ts`.
+    countDefeated(
+      defeatedList,
+      battle.state.fighters.flatMap((f) =>
+        f.side !== 'party' && !f.fled && f.hp <= 0 && f.kind !== undefined ? [f.kind] : [],
+      ),
+    )
     const { exp, gold } = spoils(battle.state)
     bag = take(bag, { gold })
     // **Shared as the game shares it** — see `sharesOf`: by level and rounds
@@ -12320,6 +12388,8 @@ function settleBattle(): void {
     for (const won of dropsWon(battle.state, dropRng, filchersOf(battle.state))) {
       // To the first living member with room, else the bag (`func_ov023_021eeaac`).
       give(won.item, 1, true)
+      // And one more of it dropped, on the list (`func_ov023_021f2a48`).
+      if (won.kind !== undefined) countDropped(defeatedList, won.kind, won.rare)
       const monster = monsterNamed(won.kind) ?? { name: won.from }
       const item = itemNamed(won.item)
       // Autofilch's: line 37, the member as ACTOR — sub-state 13 says it for

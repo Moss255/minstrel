@@ -377,6 +377,8 @@ export interface Loaded {
   readonly weaponPlaces: ReadonlyMap<number, WeaponPlaces>
   /** The engine's standard messages in English, `strstd`, by number — 57 a head banged on the ceiling. */
   readonly standardWords: ReadonlyMap<number, string>
+  /** The Defeated Monster List's words, `str_sml` — see `records.ts`. */
+  readonly monsterListWords: ReadonlyMap<number, string>
   /** The given names creation's last screen rolls from, out of `str_cm` — see `naming.ts`. */
   readonly givenNames: GivenNames
   /** What a made character's face is recoloured with, out of `palette.bin` — see `skin.ts`. Undefined if it will not read. */
@@ -3212,6 +3214,12 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     itemDefs: itemDefsOf(rom),
     weaponPlaces: weaponPlacesOf(rom),
     standardWords: englishText(rom, '/data/bin/strstd.gp2', 'strstd_en.nat', readSystemStrings),
+    monsterListWords: englishText(
+      rom,
+      '/data/bin/menu/str_sml.gp2',
+      'str_sml_en.nat',
+      readSystemStrings,
+    ),
     givenNames: givenNamesFrom(rom),
     charaColours: charaColoursOf(rom),
     medalRewards: medalRewardsOf(rom),

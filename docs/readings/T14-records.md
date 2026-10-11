@@ -19,9 +19,9 @@ All in `GameState`, beside one another (`func_020ac020`–`func_020ac4f8`):
 |---|---|---|
 | `+0x7504`, 0x3C bytes | **the accolades earned**, bit `n` for accolade `n` | `func_020ac460` copies it out; `func_020ac3c8(buf, ids, n)` sets bits — its one caller is overlay 23's `func_ov023_021ed724`, which every awarding screen calls |
 | `+0x7540`, 0xB0 bytes | **the records block** | `func_020ac4c0` copies it out, `func_020ac494` back — 103 and 32 callers |
-| `+0x75f0`, 308 words | **the defeated monster list**: one word a monster, by its number 1 to 308 (`0x134`), the low 10 bits its defeated count | `func_020ac020(_, ids, out, n)` |
+| `+0x75f0`, 308 words | **the defeated monster list**: one word a monster, by its number 1 to 308 (`0x134`): bits 0–9 its defeated count (to 999), bit 10 a flag not read, bits 11–17 and 18–24 its two drops' counts (to 99) — read 11 October 2026, `apps/game/src/records.ts` | `func_020ac020(_, ids, out, n)` reads; `func_020abe84` writes, and counts a kind newly defeated (`func_020a0460`); the victory `func_ov023_021edf54`, the loot `func_ov023_021f2a48`, a theft `func_ov024_021df924` |
 | `+0x7ac0`, 4 bytes | not read | `func_020ac08c`, `func_020ac0b4` |
-| `+0x7ac4`, 471 halfwords (`0x3ae` bytes) | **the item list**: an entry is `id << 2`, bit 1 and bit 0 flags not read | `func_020ac104` adds entries (callers: action interpreter `0x02063088`, overlay 17 `0x021ac918`, overlay 2/3 `0x02153da8`) and adds to a count in the records (`func_020a0434`); `func_020ac0dc` clears it |
+| `+0x7ac4`, 471 halfwords (`0x3ae` bytes) | **the Alchenomicon's recipes** — *corrected 11 October 2026; first read as the item list*: an entry is `id << 2`, bit 0 known (every caller), bit 1 made | `func_020ac104` adds entries (callers: the action interpreter `0x02063088`, the bookcase service `func_ov017_021ac3b0`, and overlay 6 — the Krak Pot's, `str_ren` — `func_ov006_02153cbc`, which alone sets made) and, for one newly made, adds to a count in the records (`func_020a0434`); `func_020ac0dc` clears it |
 
 Fields of the records block that were read:
 
@@ -150,6 +150,8 @@ Canvassed; 130–133 the four completions. The list's are `str_tl`: 0
 ## Not found, and where the search stopped
 
 - What sets `0x119a`, `0x119b` and the records' `+0x2000` (above).
+- Where the Item List and the Wardrobe are kept — not at `+0x7ac4`, which is
+  the Alchenomicon's (above, corrected 11 October 2026).
 - Where the records' victories, alchemy count and guests are kept: the
   block's other fields are not tied to them.
 - What `+0x7ac0` holds, and the item list's two flag bits.

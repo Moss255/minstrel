@@ -26,6 +26,7 @@ import {
   itemsRows,
   selectItems,
 } from './items-menu.ts'
+import type { MonsterRow } from './records.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
 import { DEFAULT_VOLUMES, stepVolume, VOLUME_WORDS, type Volumes } from './volume.ts'
@@ -182,9 +183,8 @@ export interface MenuEntry<Id extends string> {
  * (overlay 17, `func_ov017_021c05f4`). See `accolades.ts` and
  * {@link commandGreyed}.
  *
- * **Ours**: Talk, first, which the game has as a button; the Quest List, a
- * Battle Records list in the game, listed here until those lists are built;
- * and Controls & Settings, last — the keys, the pad and the text speed
+ * **Ours**: Talk, first, which the game has as a button; and Controls &
+ * Settings, last — the keys, the pad and the text speed
  * (`controls-panel.ts`, which `k` also opens).
  */
 export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
@@ -195,7 +195,6 @@ export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
   { id: 'records', label: 'Battle Records' },
   { id: 'misc', label: 'Misc.', word: MENU_WORDS.misc },
-  { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
   { id: 'controls', label: 'Controls & Settings' },
 ]
 
@@ -371,6 +370,10 @@ export interface MenuState {
   readonly misc?: number | undefined
   /** Where the Tactics screen is — see {@link TacticsWhere}. Undefined until it is opened. */
   readonly tactics?: TacticsWhere | undefined
+  /** Where the Battle Records are — see {@link RecordsWhere}. Undefined is their menu. */
+  readonly records?: RecordsWhere | undefined
+  /** The Battle Records' row the Quest List was opened from, which the B Button goes back to. */
+  readonly fromRecords?: number | undefined
   /**
    * The Volume Settings screen's two levels, copied in as it opens
    * (`func_ov002_0215b234`) and heard at every step — see `volume.ts`.
@@ -649,6 +652,24 @@ export interface MenuContext {
         readonly listTitle: string | undefined
         readonly empty: string
         readonly accolades: readonly { readonly name: string; readonly text: string }[]
+        /** The lists the menu offers, in the game's order — see {@link RECORDS_LISTS}. */
+        readonly lists: readonly { readonly id: RecordsList; readonly label: string }[]
+        /** The Defeated Monster List — see `records.ts`. */
+        readonly monsters?:
+          | {
+              readonly title: string
+              readonly byNumber: string
+              readonly byName: string
+              /** What a monster not yet defeated is called, `str_sml` 21. */
+              readonly unknown: string
+              readonly rows: {
+                readonly number: readonly MonsterRow[]
+                readonly name: readonly MonsterRow[]
+              }
+              /** A monster's two drops' names, ordinary then rare. */
+              readonly drops: (number: number) => readonly [string, string] | undefined
+            }
+          | undefined
       }
     | undefined
   readonly tricks?:
@@ -668,6 +689,37 @@ export interface MenuContext {
   /** Which way the bag will be sorted next — see `sortBag` in `inventory.ts`. */
   readonly bagSort?: BagSort | undefined
 }
+
+/**
+ * **The Battle Records' lists** — overlay 8's menu (`func_ov008_02186cec`,
+ * read 11 October 2026): entries 0, 1 and 2 always, then 3 with game-wide
+ * flag `0x1198`, 4 with the screen's own `0x2000`, 5 with `0x119d`, 6 with
+ * `0x119b`, 7 with its `0x4`. The entries are pictures (`cell_jrm`); which
+ * is which is from the completions' order in `str_jr` (130 Defeated Monster
+ * List, 131 Wardrobe, 132 Item List, 133 Alchenomicon), INFERRED for 0 to 3,
+ * and from the flags for the rest: 5 the Quest List, 6 Accolades Earnt, 7
+ * Completion Records.
+ *
+ * **Built**: the Defeated Monster List, the Quest List and Accolades Earnt.
+ * Not: the Wardrobe and the Item List, whose keeping is not found (the list
+ * at `+0x7ac4` once taken for the Item List is the Alchenomicon's — see
+ * `docs/readings/T14-records.md`); the Alchenomicon, which is the Krak Pot's
+ * book here; entry 4; and the Completion Records.
+ */
+export type RecordsList = 'monsters' | 'quests' | 'accolades'
+
+/** Where the Battle Records are: their menu, or a list. */
+export type RecordsWhere =
+  | { readonly at: 'top' }
+  | { readonly at: 'monsters'; readonly by: 'number' | 'name' }
+  | { readonly at: 'accolades' }
+
+/** The game's order of the built lists, for going back to a list's row — see {@link RecordsWhere}. */
+const RECORDS_ORDER: readonly RecordsList[] = ['monsters', 'quests', 'accolades']
+const recordsRowOf = (id: RecordsList) => RECORDS_ORDER.indexOf(id)
+
+/** How many of the monster list's rows a page shows. **Ours.** */
+export const MONSTER_PAGE = 10
 
 /** Yes and No, `strstd` 27 and 28. */
 export const YES_NO_WORDS = [27, 28] as const
@@ -841,7 +893,14 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'records') {
-    const count = context?.records?.listTitle ? context.records.accolades.length : 0
+    const records = context?.records
+    const where = state.records ?? { at: 'top' }
+    const count =
+      where.at === 'top'
+        ? (records?.lists.length ?? 0)
+        : where.at === 'monsters'
+          ? (records?.monsters?.rows[where.by].length ?? 0)
+          : (records?.accolades.length ?? 0)
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
   }
   if (state.panel === 'misc') {
@@ -891,6 +950,11 @@ export function moveAcross(state: MenuState, by: number, context?: MenuContext):
  * row, it asks to sort the bag — see `selectItems`. Anywhere else, nothing.
  */
 export function menuSelect(state: MenuState, context?: MenuContext): MenuState {
+  // In the Defeated Monster List, SELECT turns its order: by number, by name.
+  if (state.panel === 'records' && state.records?.at === 'monsters') {
+    const by = state.records.by === 'number' ? 'name' : 'number'
+    return { ...state, records: { at: 'monsters', by }, row: 0 }
+  }
   const view = context?.itemsView
   if (state.panel !== 'items' || !state.items || !view) return state
   const went = selectItems(state.items, state.row, view, context?.bagSort ?? 'type')
@@ -1110,6 +1174,18 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     if (!step?.buyable || step.bought) return { state, talk: false }
     return { state, talk: false, buy: { tree: open.tree, panel: step.panel.id } }
   }
+  if (state.panel === 'records') {
+    const where = state.records ?? { at: 'top' }
+    if (where.at !== 'top') return { state, talk: false }
+    const list = context?.records?.lists[state.row]?.id
+    if (list === 'quests')
+      return { state: { ...state, panel: 'quests', fromRecords: state.row, row: 0 }, talk: false }
+    if (list === 'monsters')
+      return { state: { ...state, records: { at: 'monsters', by: 'number' }, row: 0 }, talk: false }
+    if (list === 'accolades')
+      return { state: { ...state, records: { at: 'accolades' }, row: 0 }, talk: false }
+    return { state, talk: false }
+  }
   if (state.panel === 'misc') {
     const chosen = miscRows(context)[state.row]
     if (!chosen) return { state, talk: false }
@@ -1231,6 +1307,20 @@ export function back(state: MenuState): MenuState | undefined {
   if (picking) {
     return { ...state, tactics: { column: state.tactics?.column ?? 0 }, row: picking.member }
   }
+  // Out of a list of the Battle Records, back to their menu, on its row.
+  if (state.panel === 'records' && state.records && state.records.at !== 'top') {
+    const id = state.records.at
+    return { ...state, records: { at: 'top' }, row: Math.max(0, recordsRowOf(id)) }
+  }
+  if (state.panel === 'quests' && state.fromRecords !== undefined) {
+    return {
+      ...state,
+      panel: 'records',
+      records: { at: 'top' },
+      row: state.fromRecords,
+      fromRecords: undefined,
+    }
+  }
   // The Express's list closes whole, as the B Button closes it (its state 4).
   if (state.panel === 'express') return undefined
   // A screen the Misc. menu opened goes back to it, on its row.
@@ -1270,6 +1360,7 @@ export function panelLines(
         | 'zoom'
         | 'tactics'
         | 'volume'
+        | 'records'
       >
     >,
 ): string[] {
@@ -1491,28 +1582,58 @@ export function panelLines(
       ]
     }
     case 'records': {
-      // **The Battle Records**: the summary, then Accolades Earnt by number
-      // and the chosen one's line. The words are the game's, `str_jr` and
-      // `str_tl`. Ours: one panel, where the game's screens have their own
-      // layout and menu pictures (`cell_jrm`), not read.
+      // **The Battle Records**: the summary and the lists' menu, or a list.
+      // The words are the game's — `str_jr`, `str_tl`, `str_sml`. Ours: one
+      // panel, where the game's screens have their own layout and pictures.
       const records = context.records
       if (!records) return []
+      const where = (state?.panel === 'records' ? state.records : undefined) ?? { at: 'top' }
       const row = state?.panel === 'records' ? (state.row ?? 0) : -1
-      const list = records.listTitle
-      const chosen = list ? records.accolades[Math.max(0, row)] : undefined
+      if (where.at === 'accolades') {
+        const chosen = records.accolades[Math.max(0, row)]
+        return [
+          records.listTitle ?? 'Accolades Earnt',
+          ...(records.accolades.length === 0
+            ? [records.empty]
+            : records.accolades.map((a, i) => `${mark(i === row)}${a.name}`)),
+          ...(chosen ? ['', chosen.text] : []),
+        ]
+      }
+      if (where.at === 'monsters') {
+        const list = records.monsters
+        if (!list) return []
+        const rows = list.rows[where.by]
+        const first = Math.max(
+          0,
+          Math.min(row - Math.floor(MONSTER_PAGE / 2), rows.length - MONSTER_PAGE),
+        )
+        const chosen = rows[row]
+        const drops = chosen?.name ? list.drops(chosen.number) : undefined
+        return [
+          `${list.title} — ${where.by === 'number' ? list.byNumber : list.byName}`,
+          ...(rows.length === 0
+            ? [records.empty]
+            : rows
+                .slice(first, first + MONSTER_PAGE)
+                .map(
+                  (r, i) =>
+                    `${mark(first + i === row)}${String(r.number).padStart(3, '0')} ${r.name ?? list.unknown}${r.count > 0 ? ` ×${r.count}` : ''}`,
+                )),
+          ...(drops && chosen
+            ? [
+                '',
+                ...drops.map((item, k) =>
+                  (chosen.drops[k] ?? 0) > 0 ? `${item} ×${chosen.drops[k]}` : list.unknown,
+                ),
+              ]
+            : []),
+        ]
+      }
       return [
         records.title,
         ...records.summary,
-        ...(list
-          ? [
-              '',
-              list,
-              ...(records.accolades.length === 0
-                ? [records.empty]
-                : records.accolades.map((a, i) => `${mark(i === row)}${a.name}`)),
-              ...(chosen ? ['', chosen.text] : []),
-            ]
-          : []),
+        '',
+        ...records.lists.map((one, i) => `${mark(i === row)}${one.label}`),
       ]
     }
     case 'tricks': {

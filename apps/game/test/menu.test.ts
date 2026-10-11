@@ -92,7 +92,14 @@ describe('the main menu', () => {
     expect(
       commandGreyed('records', {
         ...shut,
-        records: { title: '', summary: [], listTitle: undefined, empty: '', accolades: [] },
+        records: {
+          title: '',
+          summary: [],
+          listTitle: undefined,
+          empty: '',
+          accolades: [],
+          lists: [],
+        },
       }),
     ).toBe(false)
   })
@@ -393,8 +400,6 @@ describe('the main menu', () => {
       'Battle Records',
       // `str_tm` 4000: Heal All, Tactics, the skills, the tricks and the rest are in it.
       'Misc.',
-      // **Ours** here: a Battle Records list in the game.
-      'Quest List',
       // **Ours**, and last: the controls panel `k` opens — the keys, the pad
       // and the text speed — which nothing on screen pointed to once the
       // hint line went behind the debug screen.

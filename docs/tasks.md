@@ -871,9 +871,12 @@ For any session, not only one reading assembly:
   Button on the Bag's row sorts it by type, then by name (`sortBag`), which
   read `itemsort`'s two orders.
 - **The battle's Equipment command**: done with task 8.
-- **Battle Records' monster and item lists**: where the game keeps them is
-  read (`docs/readings/T14-records.md` — `GameState+0x75f0` and `+0x7ac4`);
-  keeping them and their screens are left, with the wardrobe and Stella's
+- **Done, 11 October 2026: the Battle Records' lists** — their menu as
+  overlay 8 builds it, **the Defeated Monster List** (`records.ts`: counted
+  at the victory, its drops as they are given, by number and by name), the
+  Quest List moved in from the top menu, and Accolades Earnt. **Left**: the
+  Item List and the Wardrobe, whose keeping is not found — `+0x7ac4` turned
+  out to be the Alchenomicon's recipes; the Completion Records; and Stella's
   comments (`cmtFileTbl.bin`).
 
 **Out of scope, as multiplayer or online**: the Rapportal and Pavo,

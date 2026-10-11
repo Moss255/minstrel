@@ -1525,3 +1525,25 @@ title takes a quick save back.
 | ov023 `func_ov023_021e1814`, `func_ov023_021e1870` (`021e18cc`, `021e19ec`) | the list sorted by taking the least by `+0xa`, or by `+0xc` | `ItemSort::ByType`, `::ByName` |
 
 **Open**: what item `0x570a` does in use; the equipment's sort (9106–9108).
+
+### The Battle Records' lists and the Defeated Monster List (11 October 2026)
+
+`apps/game/src/records.ts`, the Records' panel in `menu.ts`; tests in
+`apps/game/test/records.test.ts`. USA addresses. Corrects task 14's
+reading of `+0x7ac4` (`docs/readings/T14-records.md`).
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov008 `func_ov008_02186cec` | the Records' menu: entries 0, 1, 2, then 3 (`0x1198`), 4 (its `0x2000`), 5 (`0x119d`), 6 (`0x119b`), 7 (its `0x4`) | `BattleRecords::ListEntries` |
+| arm9 `func_020abe84` | the monster words written back; a kind whose count was 0 counted into the records (`func_020a0460`) | `DefeatedMonsters::Set` |
+| arm9 `func_020abf38` | the whole list copied out (`0x4d0` bytes) | `DefeatedMonsters::GetAll` |
+| arm9 `func_020abf60` | bit 10 set on the monsters of a list at `data_020e90d4`, under flags `0x796` and `0x1143` | — |
+| ov023 `func_ov023_021edf54` (`0x021ee4f4`–`0x021ee5b0`) | the victory: each kind's count in the battle (`+0x8d66` records, bits 3–13) added, held at 999; bit 10 from the record's `+6` | `Victory::CountDefeated` |
+| ov023 `func_ov023_021f2a48` (`0x021f2d6c`–`0x021f2e2c`) | the loot: a drop's slot 1 or 2 adds one to bits 11–17 or 18–24, held at 99 | `Victory::CountDrop` |
+| ov024 `func_ov024_021df924` (`0x021dfcc4`–`0x021dfd68`) | a theft in battle counts the same | `Battle::CountStolen` |
+| arm9 `func_020ac104` | the Alchenomicon's list: an id added (471 slots), known and made; a newly made one counted into the records (`func_020a0434`) | `Alchenomicon::Add` |
+| ov017 `func_ov017_021ac3b0` | the bookcase service — one of the three that add to the Alchenomicon | (already logged) |
+| ov014 | the monster list's screen: `str_sml` (families, All Monsters, By Name, By Number, `?????????`) and `mons_info2.nat` (48-byte records, the monster's number at `+8`; the rest not read) | — |
+
+**Open**: what bit 10 of a monster's word means; `mons_info2.nat`'s other
+fields and its tail; where the Item List and the Wardrobe are kept.

@@ -276,6 +276,12 @@ export interface SaveGame {
    * have them where a new game does: 3 and 3.
    */
   readonly volume?: { readonly music: number; readonly effects: number }
+  /**
+   * **The Defeated Monster List**: `[number, defeated, ordinary drops, rare
+   * drops]` for each monster with anything — see `records.ts`. Absent from
+   * saves made before, which have it empty.
+   */
+  readonly defeated?: readonly (readonly [number, number, number, number])[]
 }
 
 export class SaveError extends Error {
@@ -447,6 +453,25 @@ export function decodeSave(text: string): SaveGame {
       !level(volume.effects))
   ) {
     throw new SaveError('the save has volumes that do not read')
+  }
+  if (
+    s.defeated !== undefined &&
+    !(
+      Array.isArray(s.defeated) &&
+      s.defeated.every(
+        (row) =>
+          Array.isArray(row) &&
+          row.length === 4 &&
+          row.every(isCount) &&
+          (row[0] as number) >= 1 &&
+          (row[0] as number) <= 308 &&
+          (row[1] as number) <= 999 &&
+          (row[2] as number) <= 99 &&
+          (row[3] as number) <= 99,
+      )
+    )
+  ) {
+    throw new SaveError('the save has a monster list that does not read')
   }
   if (s.lastField !== undefined && !isCount(s.lastField)) {
     throw new SaveError('the save has a last field that does not read')
