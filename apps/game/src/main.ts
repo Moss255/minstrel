@@ -8540,9 +8540,15 @@ function zoomChosen(row: number): void {
       x: Math.round(place.ship.x * 4096),
       z: Math.round(place.ship.z * 4096),
     }
+  // The place is in the map's own units, as a doorway's arrival is.
   startZoomFlight(false, {
     code: to,
-    arrival: { x: place.x, y: place.y, z: place.z, facing: place.facing },
+    arrival: {
+      x: place.x * WORLD_SCALE,
+      y: place.y * WORLD_SCALE,
+      z: place.z * WORLD_SCALE,
+      facing: place.facing,
+    },
   })
 }
 
@@ -8757,7 +8763,14 @@ function evacuate(spell: { readonly name: string; readonly cost: number }): stri
   showMenu()
   const went =
     menuSay(TRAVEL_SAYS.castsEvac, { actor: hero, values: { str_2: spell.name } }) ?? casts
-  if (enter(code, { x: to.x, y: to.y, z: to.z, facing: to.facing })) status(went)
+  // The destination is in the map's own units, as a doorway's arrival is.
+  const arrival = {
+    x: to.x * WORLD_SCALE,
+    y: to.y * WORLD_SCALE,
+    z: to.z * WORLD_SCALE,
+    facing: to.facing,
+  }
+  if (enter(code, arrival)) status(went)
   return [went]
 }
 

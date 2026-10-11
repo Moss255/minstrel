@@ -1,5 +1,15 @@
 import { readFileSync } from 'node:fs'
-import { evacDestination, revivalVoice } from '@minstrel/game-formats'
+import { fx32 } from '@minstrel/fixed'
+import {
+  evacDestination,
+  isMapManifest,
+  readMapManifest,
+  revivalVoice,
+} from '@minstrel/game-formats'
+import { decompressLz10, isLz10 } from '@minstrel/nitro-comp'
+import { readNarc, readNitroFs, walkFiles } from '@minstrel/nitrofs'
+import { type CollisionWorld, createCollisionWorld, groundBelow } from '@minstrel/sim'
+import { assembleMap, WORLD_SCALE } from '@minstrel/world'
 import { describe, expect, it } from 'vitest'
 import { type Loaded, load } from '../src/load.ts'
 
@@ -32,6 +42,66 @@ describe.skipIf(!romPath)('travel, on a real cartridge', { timeout: 120_000 }, (
     expect(out?.map).toBe(20001)
     expect(out?.x).toBeCloseTo(50.93, 2)
     expect(evacDestination(evac, { map: 7700, area: 7700, lastField: 0 })).toBeUndefined()
+  })
+
+  it('lands Zoom and Evac on floor, in the map’s own units scaled into the world as a doorway’s are', () => {
+    // Both tables give a place in the map's own units, as a doorway's arrival
+    // does, and the world is those at `WORLD_SCALE`. Taken unscaled, they put
+    // the party eight times as far from the map's middle — off its floor, to be
+    // set down "no floor under the doorway" wherever was nearest.
+    const fs = readNitroFs(rom)
+    const files = new Map([...walkFiles(fs.root)].map((f) => [f.path, f]))
+    const worlds = new Map<string, CollisionWorld | undefined>()
+    const worldOf = (code: string): CollisionWorld | undefined => {
+      if (worlds.has(code)) return worlds.get(code)
+      const file = files.get(`/data/map/${code}.amdj`)
+      let world: CollisionWorld | undefined
+      if (file) {
+        const members = new Map<string, Uint8Array>()
+        for (const m of readNarc(fs.read(file)).entries()) {
+          members.set(String(m.name ?? m.index), isLz10(m.data) ? decompressLz10(m.data) : m.data)
+        }
+        const manifest = [...members].find(([n, d]) => n.endsWith('.bmdj') && isMapManifest(d))
+        const built = manifest && assembleMap(readMapManifest(manifest[1]), members)
+        if (built && built.meshes.length > 0) world = createCollisionWorld(built.meshes)
+      }
+      worlds.set(code, world)
+      return world
+    }
+    const { places, evac } = here.travel
+    const landings = [
+      ...places.map((p) => ({ what: p.name, map: p.map, x: p.x, z: p.z })),
+      ...evac.flatMap((r) =>
+        r.destinations
+          .filter((d) => d.map !== 0)
+          .map((d) => ({ what: `Evac from ${r.area}`, map: d.map, x: d.x, z: d.z })),
+      ),
+    ]
+    const floored = (world: CollisionWorld, x: number, z: number) =>
+      groundBelow(
+        world,
+        fx32(Math.round(x * 4096)),
+        fx32(Math.round(z * 4096)),
+        fx32(Math.round(world.bounds.maxY + 4096)),
+      ) !== undefined
+    const missed: string[] = []
+    let scaled = 0
+    let raw = 0
+    let measured = 0
+    for (const landing of landings) {
+      const code = here.mapCodeOf(landing.map)
+      const world = code ? worldOf(code) : undefined
+      if (!code || !world) continue
+      measured++
+      if (floored(world, landing.x * WORLD_SCALE, landing.z * WORLD_SCALE)) scaled++
+      else missed.push(`${landing.what} → ${code}`)
+      if (floored(world, landing.x, landing.z)) raw++
+    }
+    // All 37 on floor scaled; unscaled, 1.
+    expect(measured).toBeGreaterThan(30)
+    expect(missed).toEqual([])
+    expect(scaled).toBe(measured)
+    expect(raw).toBeLessThan(measured / 4)
   })
 
   it("says nothing on waking in Angel Falls' church at 1, and in voice 1 after", () => {

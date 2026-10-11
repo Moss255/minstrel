@@ -101,6 +101,11 @@ written up on the wiki; each says so under its heading.
   game's (0.0625 here, was 0.025), and the development fit stopped rebuilding
   the meshes when it changes nothing. FORMAT.md, "The attribute word", "The
   trailing records"; `docs/decomp-contributions.md`, "The field's walls".
+- **Zoom and Evac land where the game lands them**, 11 October 2026: both
+  tables give a place in the map's own units, as a doorway's arrival does,
+  and they reached the map unscaled — eight times as far out, off the floor,
+  to be set down wherever was nearest ("no floor under the doorway"). All 37
+  of their landings have floor under them now (`apps/game/test/travel.test.ts`).
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
   the camera easing in for a party trick;
