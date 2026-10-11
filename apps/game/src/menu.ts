@@ -26,6 +26,7 @@ import {
 } from './items-menu.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
+import { DEFAULT_VOLUMES, stepVolume, VOLUME_WORDS, type Volumes } from './volume.ts'
 
 /**
  * The main menu — the commands, and moving between them.
@@ -57,6 +58,10 @@ export type MenuCommand =
   | 'tricks'
   | 'quests'
   | 'records'
+  | 'misc'
+  | 'tactics'
+  | 'volume'
+  | 'quickSave'
   | 'pot'
   | 'make'
   | 'patty'
@@ -112,8 +117,30 @@ export const MENU_WORDS = {
   pointsLeft: 4101,
   /** "Assign Party Tricks" — the game's own name for the trick screen, in its Misc. menu. */
   tricks: 4004,
-  /** "Quest List" — the Misc. menu's own. */
+  /** "Quest List" — `str_tm` 4001 + 6, a code the Misc. menu never lists (see `MISC_ROWS`). */
   quests: 4007,
+  /** "Misc." — the field menu's last row, and its submenu's title. */
+  misc: 4000,
+  /** "Tactics" — the Misc. menu's second row, and its screen's title. */
+  tactics: 4002,
+  /** "Profile Settings", "Volume Settings", "Quick Save": the Misc. menu's codes 4, 5 and 7. */
+  profile: 4005,
+  volume: 4006,
+  quickSave: 4008,
+  /** What each Misc. row is for, under the menu: `str_tm` 4020 + its code. */
+  miscAbout: 4020,
+  /** What each Tactics column is for: 4030 the tactic, 4031 the line, 4032 the colour. */
+  tacticsAbout: 4030,
+  /** "---------": the player's own character's tactic, which is not set. */
+  noTactic: 4251,
+  /** "Show No Mercy" to "Follow Orders": a tactic's word, 4252 + it. */
+  tacticNames: 4252,
+  /** "Front Line", "Back Line": 4301 + 1 for the Back Line. */
+  frontLine: 4301,
+  /** "Orange" to "White": a personal colour's word, 4401 + it. */
+  colourNames: 4401,
+  /** "Confirm" — the Volume screen's last row, and the Tactics screen's. */
+  confirm: 4602,
   /** "Up", "Right", "Left", "Down": the four places a trick goes, this and the next three. */
   trickSlots: 4501,
   /** "Clear" */
@@ -140,42 +167,86 @@ export interface MenuEntry<Id extends string> {
   readonly word?: number
 }
 
+/**
+ * **The field menu's six rows**, as overlay 2 lists them (`func_ov002_0215c178`,
+ * read 11 October 2026): `strstd` 17 to 22 — Items, Equip, Attributes, Spells &
+ * Abilities, Battle Records, Misc. — drawn two columns of three, the first
+ * column the first three (`data_ov002_0216ca58` is the order they are drawn
+ * in, row by row: 0, 3, 1, 4, 2, 5). This list is the two columns read down,
+ * which is the strings' own order; the grid is not drawn.
+ *
+ * **Battle Records is always listed, and greyed** (its colour `0xf`) until
+ * game-wide flag `0x119a` is set — Stella's, which the SELECT Button tests too
+ * (overlay 17, `func_ov017_021c05f4`). See `accolades.ts` and
+ * {@link commandGreyed}.
+ *
+ * **Ours**: Talk, first, which the game has as a button; the Quest List, a
+ * Battle Records list in the game, listed here until those lists are built;
+ * and Controls & Settings, last — the keys, the pad and the text speed
+ * (`controls-panel.ts`, which `k` also opens).
+ */
 export const MENU_COMMANDS: readonly MenuEntry<MenuCommand>[] = [
   { id: 'talk', label: 'Talk' },
-  { id: 'status', label: 'Attributes', word: MENU_WORDS.attributes },
   { id: 'items', label: 'Items', word: MENU_WORDS.items },
   { id: 'equip', label: 'Equipment', word: MENU_WORDS.equipment },
+  { id: 'status', label: 'Attributes', word: MENU_WORDS.attributes },
   { id: 'spells', label: 'Spells & Abilities', word: MENU_WORDS.spells },
-  { id: 'skills', label: 'Allocate Skill Points', word: MENU_WORDS.skills },
-  { id: 'tricks', label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
-  { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
-  // **Battle Records**, `strstd` 21 — Stella's, the field menu's row the
-  // game lists from game-wide flag `0x119a` (overlay 2, `func_ov002_0215c178`)
-  // and the SELECT Button's too (overlay 17, `func_ov017_021c05f4`). See
-  // `accolades.ts`.
   { id: 'records', label: 'Battle Records' },
-  // **Heal All** — see `heal-all.ts`. In the game the first row of the Misc.
-  // submenu, which this flat list does not have; where it stands is ours.
-  { id: 'healAll', label: 'Heal All', word: MENU_WORDS.healAll },
-  // **Ours**: the keys, the pad and the text speed — `controls-panel.ts`, which
-  // `k` also opens. The game's own Misc. menu has its settings; this is not it.
+  { id: 'misc', label: 'Misc.', word: MENU_WORDS.misc },
+  { id: 'quests', label: 'Quest List', word: MENU_WORDS.quests },
   { id: 'controls', label: 'Controls & Settings' },
 ]
 
-/**
- * The commands as the menu lists them now: every one, but **Allocate Skill
- * Points only once game-wide flag `0x119c` is set** — the Misc. submenu's own
- * test (overlay 2, `func_ov002_02166168`), the flag the first victory with
- * points to spend sets as it says `str_bres` 36. Listed where the context does
- * not say.
- */
-export function menuCommands(context?: MenuContext): readonly MenuEntry<MenuCommand>[] {
-  return MENU_COMMANDS.filter(
-    (command) =>
-      !(command.id === 'skills' && context?.skillsListed === false) &&
-      !(command.id === 'records' && context?.records === undefined),
-  )
+/** The commands as the menu lists them: all of them — see {@link commandGreyed}. */
+export function menuCommands(_context?: MenuContext): readonly MenuEntry<MenuCommand>[] {
+  return MENU_COMMANDS
 }
+
+/** Whether a command is greyed and does nothing: the Battle Records, until they are open. */
+export function commandGreyed(command: MenuCommand, context?: MenuContext): boolean {
+  return command === 'records' && context?.records === undefined
+}
+
+/**
+ * **The Misc. menu's rows** — overlay 2's `func_ov002_02156080`, read 11
+ * October 2026: nine codes, each row's word `str_tm` 4001 + its code and what
+ * it is for 4020 + it, listed in order but for three —
+ *
+ * - 2, **Allocate Skill Points**, only once game-wide flag `0x119c` is set,
+ *   the flag the first victory with points to spend sets as it says
+ *   `str_bres` 36;
+ * - 6, the Quest List, never: its test is a constant 0 on this cartridge;
+ * - 8, Call to Arms, only in a wireless session (`func_ov002_02161920` is 2),
+ *   which is out.
+ *
+ * Taking one (`func_ov002_02166168`) runs Heal All where it stands, or opens
+ * its screen — field-menu states `0x18` Tactics, `0x1f` the skills, `0x21`
+ * the tricks, `0x2b` the profile, `0x23` the volume, `0x24` Quick Save — and
+ * the B Button comes back here.
+ */
+export const MISC_ROWS: readonly (MenuEntry<MenuCommand | 'profile'> & {
+  readonly code: number
+})[] = [
+  { id: 'healAll', code: 0, label: 'Heal All', word: MENU_WORDS.healAll },
+  { id: 'tactics', code: 1, label: 'Tactics', word: MENU_WORDS.tactics },
+  { id: 'skills', code: 2, label: 'Allocate Skill Points', word: MENU_WORDS.skills },
+  { id: 'tricks', code: 3, label: 'Assign Party Tricks', word: MENU_WORDS.tricks },
+  { id: 'profile', code: 4, label: 'Profile Settings', word: MENU_WORDS.profile },
+  { id: 'volume', code: 5, label: 'Volume Settings', word: MENU_WORDS.volume },
+  { id: 'quickSave', code: 7, label: 'Quick Save', word: MENU_WORDS.quickSave },
+]
+
+/** The Misc. menu's rows as they are listed now — see {@link MISC_ROWS}. */
+export function miscRows(context?: MenuContext): typeof MISC_ROWS {
+  return MISC_ROWS.filter((row) => !(row.id === 'skills' && context?.skillsListed === false))
+}
+
+/**
+ * **What Profile Settings would say.** The profile is the wireless guest
+ * card — a location, birthday, title, speech and greeting — and multiplayer
+ * is out, so the row says so. **Ours.**
+ */
+export const PROFILE_NOT_BUILT = 'Profile Settings are for wireless play, which is not built.'
 
 /** The flag that lists Allocate Skill Points — see {@link menuCommands}. */
 export const FLAG_SKILLS_LISTED = 0x119c
@@ -291,9 +362,47 @@ export interface MenuState {
   readonly slot?: number | undefined
   /** Where the Items panel is — see `items-menu.ts`. Undefined until it is opened. */
   readonly items?: ItemsWhere | undefined
+  /**
+   * The Misc. row a panel was opened from, which the B Button goes back to —
+   * see {@link MISC_ROWS}. Undefined for a panel opened from the top.
+   */
+  readonly misc?: number | undefined
+  /** Where the Tactics screen is — see {@link TacticsWhere}. Undefined until it is opened. */
+  readonly tactics?: TacticsWhere | undefined
+  /**
+   * The Volume Settings screen's two levels, copied in as it opens
+   * (`func_ov002_0215b234`) and heard at every step — see `volume.ts`.
+   */
+  readonly volume?: Volumes | undefined
   /** What using an item or casting a spell came to, shown under the panel until the next choice. */
   readonly said?: readonly string[] | undefined
 }
+
+/**
+ * **Where the Tactics screen is** — overlay 2's field-menu state `0x18`
+ * (`func_ov002_02167998`, `func_ov002_02167eb0`), read 11 October 2026: a
+ * grid of three columns, a row for each of the party and Confirm last. The
+ * row is `MenuState.row`; the column here.
+ *
+ * - **Column 0, the tactic**: the player's own character has none to set —
+ *   nothing happens; anyone else's opens the list of six (state `0x19`, one
+ *   column), the cursor on theirs, `str_tm` 4252 + the tactic.
+ * - **Column 1, the line**: taking it flips them between the Front Line and
+ *   the Back Line at once — bit 30 of their battle record's `+0x3c`, the bit
+ *   the battle's Line-Up flips.
+ * - **Column 2, the colour**: opens the sixteen (state `0x1c`, four by four),
+ *   the cursor on theirs — their personal colour, `+0x56a`.
+ * - **Confirm**, and the B Button, go back to the Misc. menu.
+ */
+export interface TacticsWhere {
+  readonly column: number
+  /** The list open over the grid, and whose row it was opened on. */
+  readonly picking?: { readonly what: 'tactic' | 'colour'; readonly member: number } | undefined
+}
+
+/** How many tactics and colours there are to choose from. */
+export const TACTICS = 6
+export const COLOURS = 16
 
 /** Where the Krak Pot is — see `MenuState.pot`. */
 export interface PotWhere {
@@ -424,6 +533,12 @@ export interface MenuMember {
   readonly equipped?: Equipped | undefined
   /** The spells they have learnt at their level, in their vocation. */
   readonly spells?: readonly MenuSpell[] | undefined
+  /** Their tactic, 0 to 5 — see `Member.tactic`; Follow Orders when undefined. */
+  readonly tactic?: number | undefined
+  /** In the Back Line — see `Member.backLine`. */
+  readonly backLine?: boolean | undefined
+  /** Their personal colour, 0 to 15 — see `Member.colour`. */
+  readonly colour?: number | undefined
   /**
    * Their skill points and the five trees their vocation may spend them in —
    * see `skills.ts`. Undefined for a story companion, who does not level and
@@ -544,7 +659,23 @@ export interface MenuContext {
   readonly noSpells?: string | undefined
   /** The field menu's words, `str_tm`, by number. */
   readonly words?: ReadonlyMap<number, string> | undefined
+  /** The standard words, `strstd`, by number — Yes and No among them. */
+  readonly standardWords?: ReadonlyMap<number, string> | undefined
+  /** The music's and the effects' levels now — see `volume.ts`. */
+  readonly volume?: Volumes | undefined
 }
+
+/** Yes and No, `strstd` 27 and 28. */
+export const YES_NO_WORDS = [27, 28] as const
+
+/**
+ * **Quick Save**, the Misc. menu's code 7 (field-menu state `0x24`,
+ * `func_ov002_02169efc`): it asks `str_tm` 4700, "Do you want to make a quick
+ * save log and suspend your game for the moment?", Yes or No; Yes says 4701
+ * while it writes and 4702, "Quick save log successfully created. Returning
+ * to title screen.", and fades to the title.
+ */
+export const QUICK_SAVE_WORDS = { ask: 4700, writing: 4701, done: 4702 } as const
 
 const byId = (id: number) => `item 0x${id.toString(16)}`
 const EMPTY: Bag = { gold: 0, items: new Map() }
@@ -709,6 +840,21 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
     const count = context?.records?.listTitle ? context.records.accolades.length : 0
     return count === 0 ? state : { ...state, row: wrap(state.row, count) }
   }
+  if (state.panel === 'misc') {
+    return { ...state, row: wrap(state.row, miscRows(context).length), said: undefined }
+  }
+  // The music, the effects and Confirm; Yes and No.
+  if (state.panel === 'volume') return { ...state, row: wrap(state.row, 3) }
+  if (state.panel === 'quickSave') return { ...state, row: wrap(state.row, 2) }
+  if (state.panel === 'tactics') {
+    const picking = state.tactics?.picking
+    const count = picking
+      ? picking.what === 'tactic'
+        ? TACTICS
+        : COLOURS
+      : (context?.party?.length ?? 0) + 1
+    return { ...state, row: wrap(state.row, count) }
+  }
   if (state.panel === 'tricks') {
     // The seven places, or the tricks known and Clear.
     const count = state.slot === undefined ? TRICK_SLOTS : (context?.tricks?.known.length ?? 0) + 1
@@ -717,6 +863,23 @@ export function moveCursor(state: MenuState, by: number, context?: MenuContext):
   if (state.panel) return state
   // What a command said — Heal All's lines — goes with the cursor.
   return { ...state, cursor: wrap(state.cursor, menuCommands(context).length), said: undefined }
+}
+
+/**
+ * **Left and right**: the Tactics screen's columns, round and round, on a
+ * member's row and with no list open over it. Anywhere else, nothing.
+ */
+export function moveAcross(state: MenuState, by: number, context?: MenuContext): MenuState {
+  // The Volume screen's two rows: a level up or down, held between 1 and 5.
+  if (state.panel === 'volume' && state.row < 2) {
+    const now = state.volume ?? context?.volume ?? DEFAULT_VOLUMES
+    const which = state.row === 0 ? 'music' : 'effects'
+    return { ...state, volume: { ...now, [which]: stepVolume(now[which], by) } }
+  }
+  if (state.panel !== 'tactics' || state.tactics?.picking) return state
+  if (state.row >= (context?.party?.length ?? 0)) return state
+  const column = ((((state.tactics?.column ?? 0) + by) % 3) + 3) % 3
+  return { ...state, tactics: { column } }
 }
 
 /** What taking a row asks for: talking, putting something on, using or discarding an item, casting. */
@@ -762,6 +925,14 @@ export interface Taken {
   readonly turn?: { readonly knob: string; readonly by: number }
   /** Put this trick in this place, of the four — undefined to clear it. */
   readonly assign?: { readonly slot: number; readonly trick: number | undefined }
+  /** Give the party's member at this place this tactic — see {@link TacticsWhere}. */
+  readonly tactic?: { readonly member: number; readonly tactic: number }
+  /** Move the party's member at this place to the other line. */
+  readonly line?: number
+  /** Give the party's member at this place this personal colour. */
+  readonly colour?: { readonly member: number; readonly colour: number }
+  /** Make a quick save and go back to the title — see {@link QUICK_SAVE_WORDS}. */
+  readonly quickSave?: boolean
 }
 
 /**
@@ -918,6 +1089,71 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
     if (!step?.buyable || step.bought) return { state, talk: false }
     return { state, talk: false, buy: { tree: open.tree, panel: step.panel.id } }
   }
+  if (state.panel === 'misc') {
+    const chosen = miscRows(context)[state.row]
+    if (!chosen) return { state, talk: false }
+    if (chosen.id === 'healAll') return { state, talk: false, healAll: true }
+    if (chosen.id === 'profile')
+      return { state: { ...state, said: [PROFILE_NOT_BUILT] }, talk: false }
+    return {
+      state: {
+        ...state,
+        panel: chosen.id,
+        row: 0,
+        misc: state.row,
+        said: undefined,
+        tree: undefined,
+        slot: undefined,
+        ...(chosen.id === 'tactics' ? { tactics: { column: 0 } } : {}),
+        ...(chosen.id === 'volume' ? { volume: context?.volume ?? DEFAULT_VOLUMES } : {}),
+      },
+      talk: false,
+    }
+  }
+  // Confirm goes back to the Misc. menu; the levels are already heard.
+  if (state.panel === 'volume') {
+    return state.row === 2 ? { state: back(state), talk: false } : { state, talk: false }
+  }
+  if (state.panel === 'quickSave') {
+    return state.row === 0
+      ? { state, talk: false, quickSave: true }
+      : { state: back(state), talk: false }
+  }
+  if (state.panel === 'tactics') {
+    const where = state.tactics ?? { column: 0 }
+    const party = context?.party ?? []
+    const picking = where.picking
+    if (picking) {
+      const done = { ...state, tactics: { column: where.column }, row: picking.member }
+      return picking.what === 'tactic'
+        ? { state: done, talk: false, tactic: { member: picking.member, tactic: state.row } }
+        : { state: done, talk: false, colour: { member: picking.member, colour: state.row } }
+    }
+    // Confirm goes back to the Misc. menu, as the B Button does.
+    if (state.row >= party.length) return { state: back(state), talk: false }
+    const member = party[state.row]
+    if (where.column === 1) return { state, talk: false, line: state.row }
+    if (where.column === 2) {
+      return {
+        state: {
+          ...state,
+          tactics: { column: 2, picking: { what: 'colour', member: state.row } },
+          row: member?.colour ?? 0,
+        },
+        talk: false,
+      }
+    }
+    // The player's own character's tactic is not set: nothing happens.
+    if (state.row === 0) return { state, talk: false }
+    return {
+      state: {
+        ...state,
+        tactics: { column: 0, picking: { what: 'tactic', member: state.row } },
+        row: member?.tactic ?? TACTICS - 1,
+      },
+      talk: false,
+    }
+  }
   if (state.panel === 'tricks') {
     // A place opens the tricks known; a trick, or Clear, goes into its slot.
     if (state.slot === undefined)
@@ -932,10 +1168,9 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
   }
   if (state.panel) return { state, talk: false }
   const command = menuCommands(context)[state.cursor]?.id
-  if (command === undefined) return { state, talk: false }
+  if (command === undefined || commandGreyed(command, context)) return { state, talk: false }
   if (command === 'talk') return { state: undefined, talk: true }
   if (command === 'controls') return { state: undefined, talk: false, controls: true }
-  if (command === 'healAll') return { state, talk: false, healAll: true }
   return {
     state: {
       ...state,
@@ -970,8 +1205,25 @@ export function back(state: MenuState): MenuState | undefined {
     return { ...state, picking: undefined, row: Math.max(0, row) }
   }
   if (state.slot !== undefined) return { ...state, slot: undefined, row: state.slot }
+  // Out of the tactic or colour list, back to the row it was opened on.
+  const picking = state.tactics?.picking
+  if (picking) {
+    return { ...state, tactics: { column: state.tactics?.column ?? 0 }, row: picking.member }
+  }
   // The Express's list closes whole, as the B Button closes it (its state 4).
   if (state.panel === 'express') return undefined
+  // A screen the Misc. menu opened goes back to it, on its row.
+  if (state.misc !== undefined && state.panel !== 'misc') {
+    return {
+      ...state,
+      panel: 'misc',
+      row: state.misc,
+      misc: undefined,
+      tactics: undefined,
+      volume: undefined,
+      said: undefined,
+    }
+  }
   return state.panel ? { ...state, panel: undefined, row: 0, items: undefined } : undefined
 }
 
@@ -995,6 +1247,8 @@ export function panelLines(
         | 'slot'
         | 'express'
         | 'zoom'
+        | 'tactics'
+        | 'volume'
       >
     >,
 ): string[] {
@@ -1438,6 +1692,98 @@ export function panelLines(
         ...kept.map((who, i) => `${mark(i === row)}${who.name} — ${who.said}`),
         `${mark(row >= kept.length)}Cancel`,
         ...(state?.said ?? []),
+      ]
+    }
+    case 'misc': {
+      // **The Misc. menu**: its rows, and under them what the chosen one is
+      // for (`str_tm` 4020 + its code) — or what Heal All said.
+      const rows = miscRows(context)
+      const row = state?.panel === 'misc' ? (state.row ?? 0) : -1
+      const chosen = rows[row]
+      const said = state?.said ?? []
+      return [
+        word(MENU_WORDS.misc, 'Misc.'),
+        ...rows.map((one, i) => `${mark(i === row)}${labelOf(one, context.words)}`),
+        ...(said.length > 0
+          ? ['', ...said]
+          : chosen
+            ? ['', word(MENU_WORDS.miscAbout + chosen.code, '')]
+            : []),
+      ]
+    }
+    case 'tactics': {
+      // **The Tactics screen**, its three columns told on each member's row:
+      // the tactic, the line, the colour — see `TacticsWhere`. Its words are
+      // the cartridge's, `str_tm` 4250 on. Ours: the grid is a line a member,
+      // and the colours are named rather than shown.
+      const party = context.party ?? []
+      const where = state?.tactics ?? { column: 0 }
+      const row = state?.panel === 'tactics' ? (state.row ?? 0) : -1
+      const tacticName = (t: number | undefined, own: boolean) =>
+        own
+          ? word(MENU_WORDS.noTactic, '---------')
+          : word(MENU_WORDS.tacticNames + (t ?? TACTICS - 1), `tactic ${t ?? TACTICS - 1}`)
+      const colourName = (c: number | undefined) =>
+        word(MENU_WORDS.colourNames + (c ?? 0), `colour ${c ?? 0}`)
+      const lineName = (back: boolean | undefined) =>
+        word(MENU_WORDS.frontLine + (back ? 1 : 0), back ? 'Back Line' : 'Front Line')
+      const picking = where.picking
+      if (picking) {
+        const who = party[picking.member]
+        const count = picking.what === 'tactic' ? TACTICS : COLOURS
+        return [
+          `${who?.name ?? ''}`,
+          ...Array.from(
+            { length: count },
+            (_, i) =>
+              `${mark(i === row)}${picking.what === 'tactic' ? tacticName(i, false) : colourName(i)}`,
+          ),
+        ]
+      }
+      const cell = (text: string, i: number, column: number) =>
+        i === row && where.column === column ? `[${text}]` : text
+      return [
+        word(MENU_WORDS.tactics, 'Tactics'),
+        ...party.map(
+          (m, i) =>
+            `${mark(i === row)}${m.name} — ${cell(tacticName(m.tactic, i === 0), i, 0)} · ${cell(lineName(m.backLine), i, 1)} · ${cell(colourName(m.colour), i, 2)}`,
+        ),
+        `${mark(row >= party.length)}${word(MENU_WORDS.confirm, 'Confirm')}`,
+        '',
+        word(MENU_WORDS.tacticsAbout + where.column, ''),
+      ]
+    }
+    case 'volume': {
+      // **Volume Settings**: each level between Quiet and Loud, the lit one
+      // bracketed, and Confirm — see `volume.ts`.
+      const levels = state?.volume ?? context.volume ?? DEFAULT_VOLUMES
+      const row = state?.panel === 'volume' ? (state.row ?? 0) : -1
+      const scale = (level: number) =>
+        [
+          word(VOLUME_WORDS.quiet, 'Quiet'),
+          ...[1, 2, 3, 4, 5].map((n) => {
+            const box = word(VOLUME_WORDS.levels + n - 1, String(n))
+            return n === level ? `[${box}]` : box
+          }),
+          word(VOLUME_WORDS.loud, 'Loud'),
+        ].join(' ')
+      return [
+        word(MENU_WORDS.volume, 'Volume Settings'),
+        `${mark(row === 0)}${word(VOLUME_WORDS.music, 'Music Volume')}  ${scale(levels.music)}`,
+        `${mark(row === 1)}${word(VOLUME_WORDS.effects, 'Effects Volume')}  ${scale(levels.effects)}`,
+        `${mark(row === 2)}${word(VOLUME_WORDS.confirm, 'Confirm')}`,
+      ]
+    }
+    case 'quickSave': {
+      const row = state?.panel === 'quickSave' ? (state.row ?? 0) : -1
+      const standard = (n: number, ours: string) => context.standardWords?.get(n) ?? ours
+      return [
+        word(
+          QUICK_SAVE_WORDS.ask,
+          'Do you want to make a quick save log and suspend your game for the moment?',
+        ),
+        `${mark(row === 0)}${standard(YES_NO_WORDS[0], 'Yes')}`,
+        `${mark(row === 1)}${standard(YES_NO_WORDS[1], 'No')}`,
       ]
     }
     case 'talk':

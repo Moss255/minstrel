@@ -96,6 +96,12 @@ export class Ensemble {
   private musicGainTo = 1
   private musicGainStep = 0
   private played = 0
+  /**
+   * The player's own two levels, 0–1: the music's (and a jingle's, which
+   * pauses it) and the effects'. See {@link setLevels}.
+   */
+  private musicLevel = 1
+  private effectsLevel = 1
   private scratchL = new Float32Array(0)
   private scratchR = new Float32Array(0)
 
@@ -157,6 +163,12 @@ export class Ensemble {
     this.musicGainStep = samples <= 0 ? 1 : Math.abs(to - this.musicGain) / samples
   }
 
+  /** Set how loud the music (with its jingles) and the effects are, 0–1 each. */
+  setLevels(music: number, effects: number): void {
+    this.musicLevel = music
+    this.effectsLevel = effects
+  }
+
   /** Let every effect go: its notes released, the jingle too. */
   stopEffects(): void {
     for (const voice of this.effects) if (voice.sequencer.playing) voice.sequencer.stop(false)
@@ -201,6 +213,12 @@ export class Ensemble {
       this.fadeMusic(1, this.backOver)
     }
     this.musicMixer.render(left, right, frames)
+    if (this.musicLevel !== 1) {
+      for (let i = 0; i < frames; i++) {
+        left[i] = (left[i] as number) * this.musicLevel
+        right[i] = (right[i] as number) * this.musicLevel
+      }
+    }
     if (this.musicGain !== 1 || this.musicGainTo !== 1) {
       for (let i = 0; i < frames; i++) {
         if (this.musicGain !== this.musicGainTo) {
@@ -223,9 +241,10 @@ export class Ensemble {
       if (!voice.sequencer.playing && voice.sequencer.channels.every((c) => c.phase === Phase.Off))
         continue
       voice.mixer.render(this.scratchL, this.scratchR, frames)
+      const level = voice.sequencer === this.pending ? this.musicLevel : this.effectsLevel
       for (let i = 0; i < frames; i++) {
-        left[i] = (left[i] as number) + (this.scratchL[i] as number)
-        right[i] = (right[i] as number) + (this.scratchR[i] as number)
+        left[i] = (left[i] as number) + (this.scratchL[i] as number) * level
+        right[i] = (right[i] as number) + (this.scratchR[i] as number) * level
       }
     }
     for (let i = 0; i < frames; i++) {

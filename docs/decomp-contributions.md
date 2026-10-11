@@ -1474,3 +1474,34 @@ cartridge, `apps/game/test/grotto.test.ts`.
 numbering; the chests `func_0201a600` puts down after the ways; the entrance's
 model and the discovery line (string `0x3f`); what the four records
 `func_02090294` passes over are.
+
+### The field menu's six rows, Misc., Tactics, colours, volume and Quick Save (11 October 2026)
+
+`apps/game/src/menu.ts` (`MENU_COMMANDS`, `MISC_ROWS`, `TacticsWhere`),
+`apps/game/src/volume.ts`, `packages/game-formats/src/personalcolours.ts`;
+tests in `apps/game/test/menu.test.ts`, `volume.test.ts`, `save.test.ts`
+and `packages/game-formats/test/personalcolours.test.ts`. USA addresses.
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov002 `func_ov002_0215c178` | the field menu's six rows, `strstd` 17–22 by `data_ov002_0216ca04`, drawn in the order of `data_ov002_0216ca58` (0, 3, 1, 4, 2, 5: two columns of three, row by row); the fourth drawn, Battle Records, in colour `0xf` without flag `0x119a` | `FieldMenu::DrawTop` |
+| ov002 `func_ov002_02156080` | the Misc. menu's rows: codes 0–8 from `data_ov002_0216c9ae`, code 2 only with flag `0x119c`, 6 never, 8 only when `func_ov002_02161920` is 2 | `FieldMenu::ListMisc` |
+| ov002 `func_ov002_02166168` | the Misc. menu each frame: a code taken runs Heal All (state `0x17`) or opens Tactics `0x18`, the skills `0x1f`, the tricks `0x21`, the profile `0x2b`, the volume `0x23`, Quick Save `0x24`; code 8 calls the party back | `FieldMenu::UpdateMisc` |
+| ov002 `func_ov002_02161cf0` | each field-menu state's grid: columns, rows and cursor — Tactics 3 × (party + 1), its tactic list 1 × 6, its colours 4 × 4 | `FieldMenu::SetUpGrid` |
+| ov002 `func_ov002_02167998`, `func_ov002_02167eb0` | the Tactics screen: Confirm, the last row, goes back; column 0 opens the tactic list (state `0x19`) for anyone but the player's own (`func_020100a8`), column 1 flips bit 30 of the battle record's `+0x3c`, column 2 opens the colours (state `0x1c`) | `FieldMenu::UpdateTactics` |
+| ov002 `0x021681b0` (in `func_ov002_0216806c`) | a colour chosen: the character's `+0x56a`, the field's palettes reloaded (`func_020dc7e8` 1, 8, 6, 7) | `FieldMenu::UpdateColours` |
+| ov002 `0x02161af4` | a member's colour drawn: colours 1 and 15 take a darker palette for their text | — |
+| ov009 `0x02187658`, `0x02187704` | creation's colour: the protagonist's (mode 0) `data_ov009_0218a9b4[eyes]`, a recruit's (mode 1) `NextRandomMax(GetBTRandom(), 16)` | — |
+| arm9 `func_020a6090`, `func_020a6084` | `percol.bin`'s one opcode, `0x65`: a colour's sixteen halfwords into `data_02109dcc + n × 0x20`; the palettes' address | `PersonalColours::Set`, `::Get` |
+| arm9 `func_020dc70c`, `func_020dc7e8` | a member's colour palette loaded for a screen; the field's sets of them reloaded | `PersonalColours::Load`, `::Reload` |
+| ov002 `func_ov002_02160ce8` | the Volume screen drawn: Music Volume, Effects Volume, Confirm; five boxes between Quiet and Loud, the level's lit | `FieldMenu::DrawVolume` |
+| ov002 `func_ov002_02169bb0` | the Volume screen each frame: left and right step the row's level, held between 1 and 5; a touch on a box sets it; Confirm goes back | `FieldMenu::UpdateVolume` |
+| ov002 `func_ov002_0215b234`, `func_ov002_0215b268` | the two levels copied in from the players; set on them, effect 1 sounded when the effects' changed | `FieldMenu::ReadVolumes`, `::ApplyVolumes` |
+| arm9 `func_0209ca70`, `func_0209c2e0` | the music's level, 1–5: the BGM handles at master × (level − 1) / 4, player groups 5–7 by `data_020e8ec4` | `Bgm::SetLevel` |
+| arm9 `func_0205e9f4`, `func_0205e944` | the effects' level, 1–5: player groups 10–16 by `data_020e7dd4` | `Se::SetLevel` |
+| arm9 `0x020a99b4` | a loaded game's levels from the save's `+0x2c58`, `+0x2c59` | — |
+| ov002 `func_ov002_02169efc` | Quick Save: asks `str_tm` 4700, writes (4701), says 4702, fades and returns to the title | `FieldMenu::UpdateQuickSave` |
+
+**Open**: which of a colour palette's sixteen is drawn on what; which of the
+game's players the music is on, so whether both of its scalings apply; how the
+title takes a quick save back.

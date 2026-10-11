@@ -19,6 +19,9 @@ export class Music {
 
   constructor(private readonly workletUrl: string) {}
 
+  /** The levels last asked for, sent again once the worklet is up. */
+  private levelsAsked: { music: number; effects: number } | undefined
+
   private async open(): Promise<void> {
     if (this.ready) return this.ready
     this.ready = (async () => {
@@ -35,6 +38,7 @@ export class Music {
       node.connect(context.destination)
       this.context = context
       this.node = node
+      if (this.levelsAsked) this.send({ kind: 'levels', ...this.levelsAsked })
     })()
     return this.ready
   }
@@ -141,6 +145,12 @@ export class Music {
   /** Multiply the tempo, for finding by ear where a tempo stands — see `Sequencer.tempoRate`. */
   rate(rate: number): void {
     this.send({ kind: 'rate', rate })
+  }
+
+  /** How loud the music (with its jingles) and the effects are, 0–1 each. */
+  levels(music: number, effects: number): void {
+    this.levelsAsked = { music, effects }
+    this.send({ kind: 'levels', music, effects })
   }
 
   /** Fade the output to `to` over `seconds`. */

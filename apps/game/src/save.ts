@@ -41,6 +41,12 @@ export interface SaveThread {
 }
 
 export const SAVE_KEY = 'minstrel.save'
+/**
+ * **Where a quick save is kept** — the Misc. menu's Quick Save, a save of its
+ * own beside the church's (the game's "quick save log"). See `QUICK_SAVE_WORDS`
+ * in `menu.ts`.
+ */
+export const QUICK_SAVE_KEY = 'minstrel.quicksave'
 export const SAVE_VERSION = 5
 
 /**
@@ -112,6 +118,8 @@ export interface SaveMember {
   readonly tactic?: number
   /** In the Back Line — see `Member.backLine`; absent is the Front Line. */
   readonly backLine?: boolean
+  /** Their personal colour, 0 to 15 — see `Member.colour`; absent is worked out from the look. */
+  readonly colour?: number
   /** What they carry, up to eight item ids — see `Member.carried`; absent is nothing. */
   readonly carried?: readonly number[]
   /** Points put into each tree: pairs of `[tree, points]` — see `Member.treePoints`. */
@@ -261,6 +269,13 @@ export interface SaveGame {
     readonly facing: number
     readonly count: number
   }
+  /**
+   * **The music's and the effects' levels**, 1 to 5 — the game's save keeps
+   * them at `+0x2c58` and `+0x2c59` and hands them back as a game is loaded
+   * (`0x020a99b4`). See `volume.ts`. Absent from saves made before, which
+   * have them where a new game does: 3 and 3.
+   */
+  readonly volume?: { readonly music: number; readonly effects: number }
 }
 
 export class SaveError extends Error {
@@ -421,6 +436,17 @@ export function decodeSave(text: string): SaveGame {
       !['x', 'y', 'z', 'facing', 'count'].every((k) => whole(ship[k])))
   ) {
     throw new SaveError('the save has a ship that does not read')
+  }
+  const volume = s.volume as Record<string, unknown> | null | undefined
+  const level = (v: unknown) => isCount(v) && (v as number) >= 1 && (v as number) <= 5
+  if (
+    volume !== undefined &&
+    (typeof volume !== 'object' ||
+      volume === null ||
+      !level(volume.music) ||
+      !level(volume.effects))
+  ) {
+    throw new SaveError('the save has volumes that do not read')
   }
   if (s.lastField !== undefined && !isCount(s.lastField)) {
     throw new SaveError('the save has a last field that does not read')
@@ -625,6 +651,9 @@ function member(raw: unknown, place: number): SaveMember {
   if (m.tactic !== undefined && !(isCount(m.tactic) && (m.tactic as number) <= 5)) {
     throw new SaveError(`${where} has a tactic that does not read`)
   }
+  if (m.colour !== undefined && !(isCount(m.colour) && (m.colour as number) <= 15)) {
+    throw new SaveError(`${where} has a colour that does not read`)
+  }
   if (
     m.carried !== undefined &&
     !(Array.isArray(m.carried) && m.carried.length <= 8 && m.carried.every(isCount))
@@ -654,6 +683,7 @@ function member(raw: unknown, place: number): SaveMember {
       : { revocations: m.revocations as (readonly [number, number])[] }),
     ...(m.tactic === undefined ? {} : { tactic: m.tactic as number }),
     ...(m.backLine === true ? { backLine: true } : {}),
+    ...(m.colour === undefined ? {} : { colour: m.colour as number }),
     ...(m.carried === undefined ? {} : { carried: m.carried as number[] }),
   }
 }
@@ -662,10 +692,14 @@ function member(raw: unknown, place: number): SaveMember {
 export type SaveStore = Pick<Storage, 'getItem' | 'setItem'>
 
 /** Write a save; false when the storage refuses it. */
-export function writeSave(store: SaveStore | undefined, save: SaveGame): boolean {
+export function writeSave(
+  store: SaveStore | undefined,
+  save: SaveGame,
+  key: string = SAVE_KEY,
+): boolean {
   if (!store) return false
   try {
-    store.setItem(SAVE_KEY, encodeSave(save))
+    store.setItem(key, encodeSave(save))
     return true
   } catch {
     return false
@@ -675,10 +709,11 @@ export function writeSave(store: SaveStore | undefined, save: SaveGame): boolean
 /** The save in storage: the game, nothing, or why it will not read. */
 export function readSave(
   store: SaveStore | undefined,
+  key: string = SAVE_KEY,
 ): { game: SaveGame } | { error: string } | undefined {
   let text: string | null
   try {
-    text = store?.getItem(SAVE_KEY) ?? null
+    text = store?.getItem(key) ?? null
   } catch {
     return undefined
   }

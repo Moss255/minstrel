@@ -238,6 +238,11 @@ export {
 export { isPac, type Pac, type PacMember, readPac } from './pac.ts'
 export { armsFor, PART_LETTERS, partName } from './parts.ts'
 export {
+  PERSONAL_COLOURS,
+  type PersonalColours,
+  readPersonalColours,
+} from './personalcolours.ts'
+export {
   type CharacterPreset,
   NO_ITEM,
   PRESET_COUNT_TAG,

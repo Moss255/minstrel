@@ -5,6 +5,7 @@ import {
   encodeSave,
   equippedOf,
   equippedRecord,
+  QUICK_SAVE_KEY,
   readSave,
   SAVE_KEY,
   SAVE_VERSION,
@@ -102,6 +103,18 @@ describe('saves', () => {
     expect(() => decodeSave(encodeSave({ ...game, medalsGiven: -1 }))).toThrow(/mini medal/)
   })
 
+  it('keep the music’s and the effects’ levels, 1 to 5, and read an older save as none', () => {
+    const kept = decodeSave(encodeSave({ ...game, volume: { music: 1, effects: 5 } }))
+    expect(kept.volume).toEqual({ music: 1, effects: 5 })
+    expect(decodeSave(encodeSave(game)).volume).toBeUndefined()
+    expect(() => decodeSave(encodeSave({ ...game, volume: { music: 0, effects: 3 } }))).toThrow(
+      /volumes/,
+    )
+    expect(() => decodeSave(encodeSave({ ...game, volume: { music: 3, effects: 6 } }))).toThrow(
+      /volumes/,
+    )
+  })
+
   it('are refused whole, saying why, when a field does not read', () => {
     expect(() => decodeSave('not json')).toThrow(/not JSON/)
     expect(() => decodeSave(encodeSave({ ...game, version: 6 as 5 }))).toThrow(/version 6/)
@@ -178,6 +191,9 @@ describe('saves', () => {
     expect(readSave(store)).toEqual({ game })
     store.data.set(SAVE_KEY, '{}')
     expect(readSave(store)).toEqual({ error: expect.stringContaining('version') })
+    // A quick save is kept under a key of its own, beside the church's.
+    expect(writeSave(store, { ...game, gold: 7 }, QUICK_SAVE_KEY)).toBe(true)
+    expect(readSave(store, QUICK_SAVE_KEY)).toEqual({ game: { ...game, gold: 7 } })
     expect(writeSave(undefined, game)).toBe(false)
     const refusing: SaveStore = {
       getItem: () => {

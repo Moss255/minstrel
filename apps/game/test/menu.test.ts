@@ -7,19 +7,26 @@ import {
   back,
   changeCharacter,
   choose,
+  commandGreyed,
   ITEM_ACTIONS,
   labelOf,
   MENU_COMMANDS,
   MENU_WORDS,
   type MenuContext,
   type MenuState,
+  MISC_ROWS,
   menuCommands,
+  miscRows,
+  moveAcross,
   moveCursor,
   openMenu,
+  PROFILE_NOT_BUILT,
   panelLines,
 } from '../src/menu.ts'
 
 const at = (cursor: number) => ({ member: 0, cursor, panel: undefined, row: 0, picking: undefined })
+/** Where a command is in the list. */
+const cursorOf = (id: string) => MENU_COMMANDS.findIndex((c) => c.id === id)
 
 describe('the main menu', () => {
   it('lists Allocate Skill Points only once flag 0x119c is set', () => {
@@ -29,38 +36,91 @@ describe('the main menu', () => {
       stage: undefined,
       skillsListed: false,
     }
-    expect(menuCommands(shut).map((c) => c.id)).not.toContain('skills')
-    expect(menuCommands({ ...shut, skillsListed: true }).map((c) => c.id)).toContain('skills')
+    // **A row of the Misc. menu**, which lists it on the flag.
+    expect(miscRows(shut).map((c) => c.id)).not.toContain('skills')
+    expect(miscRows({ ...shut, skillsListed: true }).map((c) => c.id)).toContain('skills')
     // The cursor goes round the shorter list, and chooses from it.
-    const last = menuCommands(shut).length - 1
-    expect(moveCursor(openMenu(), -1, shut).cursor).toBe(last)
-    const tricks = menuCommands(shut).findIndex((c) => c.id === 'tricks')
-    expect(choose(at(tricks), shut).state?.panel).toBe('tricks')
+    const misc = choose(at(cursorOf('misc')), shut).state
+    if (misc?.panel !== 'misc') throw new Error('no Misc. menu')
+    const last = miscRows(shut).length - 1
+    expect(moveCursor(misc, -1, shut).row).toBe(last)
+    const tricks = miscRows(shut).findIndex((c) => c.id === 'tricks')
+    const opened = choose({ ...misc, row: tricks }, shut).state
+    expect(opened?.panel).toBe('tricks')
+    // And the B Button goes back to the Misc. menu, on that row.
+    expect(opened && back(opened)).toMatchObject({ panel: 'misc', row: tricks })
+  })
+
+  it('lists the Misc. menu as the game does, its rows and their codes', () => {
+    const words = new Map([
+      [4001, 'Heal All'],
+      [4002, 'Tactics'],
+      [4003, 'Allocate Skill Points'],
+      [4004, 'Assign Party Tricks'],
+      [4005, 'Profile Settings'],
+      [4006, 'Volume Settings'],
+      [4008, 'Quick Save'],
+      [4021, 'Allows you to change your party members’ tactics.'],
+    ])
+    // Codes 0 to 5 and 7: the Quest List, 6, is never listed; Call to Arms, 8, is wireless.
+    expect(MISC_ROWS.map((r) => r.code)).toEqual([0, 1, 2, 3, 4, 5, 7])
+    expect(MISC_ROWS.map((r) => labelOf(r, words))).toEqual([
+      'Heal All',
+      'Tactics',
+      'Allocate Skill Points',
+      'Assign Party Tricks',
+      'Profile Settings',
+      'Volume Settings',
+      'Quick Save',
+    ])
+    const context = { hero: 'Hero', map: undefined, stage: undefined, words }
+    const misc = choose(at(cursorOf('misc')), context).state
+    if (!misc) throw new Error('no Misc. menu')
+    // Under the rows, what the chosen one is for: `str_tm` 4020 + its code.
+    expect(panelLines('misc', context, { ...misc, row: 1 }).at(-1)).toBe(
+      'Allows you to change your party members’ tactics.',
+    )
+    // Heal All runs where it stands; Profile Settings says it is not built.
+    expect(choose({ ...misc, row: 0 }, context)).toMatchObject({ healAll: true, state: misc })
+    expect(choose({ ...misc, row: 4 }, context).state?.said).toEqual([PROFILE_NOT_BUILT])
+  })
+
+  it('greys the Battle Records until they are open, and does nothing there', () => {
+    const shut = { hero: 'Hero', map: undefined, stage: undefined }
+    expect(commandGreyed('records', shut)).toBe(true)
+    expect(choose(at(cursorOf('records')), shut).state).toEqual(at(cursorOf('records')))
+    expect(
+      commandGreyed('records', {
+        ...shut,
+        records: { title: '', summary: [], listTitle: undefined, empty: '', accolades: [] },
+      }),
+    ).toBe(false)
   })
 
   it('opens on the first command and chooses round and round', () => {
     const menu = openMenu()
     expect(MENU_COMMANDS[menu.cursor]?.id).toBe('talk')
-    // Battle Records is left out until they are open — see `menuCommands`.
+    // Every command is listed — the Battle Records greyed until they are open.
     const listed = menuCommands().length
-    expect(listed).toBe(MENU_COMMANDS.length - 1)
+    expect(listed).toBe(MENU_COMMANDS.length)
     expect(moveCursor(menu, -1).cursor).toBe(listed - 1)
     expect(moveCursor(menu, listed + 1).cursor).toBe(1)
   })
 
   it('closes to talk, and opens a panel for anything else', () => {
     expect(choose(openMenu())).toEqual({ state: undefined, talk: true })
-    const status = choose(moveCursor(openMenu(), 1))
-    expect(status).toEqual({ state: { ...at(1), panel: 'status' }, talk: false })
+    const status = choose(moveCursor(openMenu(), cursorOf('status')))
+    expect(status).toEqual({
+      state: { ...at(cursorOf('status')), panel: 'status', tree: undefined },
+      talk: false,
+    })
   })
 
   it('keeps its place while a panel is open, and goes back a step at a time', () => {
-    const panel = choose(moveCursor(openMenu(), 2)).state
+    const panel = choose(moveCursor(openMenu(), cursorOf('equip'))).state
     if (!panel) throw new Error('no panel')
-    expect(moveCursor(panel, 1)).toBe(panel)
-    expect(choose(panel).state).toBe(panel)
     const menu = back(panel)
-    expect(menu).toEqual(at(2))
+    expect(menu).toMatchObject(at(cursorOf('equip')))
     expect(menu && back(menu)).toBeUndefined()
   })
 
@@ -251,7 +311,7 @@ describe('the main menu', () => {
       },
       itemName: (id) => (id === 0x55f0 ? 'herb' : 'antidote'),
     }
-    const panel = choose(moveCursor(openMenu(), 2)).state
+    const panel = choose(moveCursor(openMenu(), cursorOf('items'))).state
     if (panel?.panel !== 'items') throw new Error('no items panel')
     // Everyday Items, then whose — the Hero, then the Bag.
     expect(panel.items).toEqual({ at: 'kinds' })
@@ -322,24 +382,19 @@ describe('the main menu', () => {
       [MENU_WORDS.use, 'Use!'],
     ])
     expect(MENU_COMMANDS.map((c) => labelOf(c, words))).toEqual([
+      // **Ours**, first: talking is a button in the game.
       'Talk',
-      'Attributes!',
+      // **The game's six**, `strstd` 17 to 22, its two columns read down.
       'Items',
       'Equipment',
+      'Attributes!',
       'Spells & Abilities',
-      // **The game's own name for the skill screen**, `str_tm` 4003 —
-      // "Allocate Skill Points", which is what the field menu calls it.
-      'Allocate Skill Points',
-      // **And the trick screen's**, `str_tm` 4004, next to it in the game's
-      // Misc. menu: where the B Button's four tricks are chosen.
-      'Assign Party Tricks',
-      // And the Quest List, `str_tm` 4007, also the Misc. menu's.
-      'Quest List',
-      // **Battle Records**, `strstd` 21, the game's own field-menu row, listed
-      // once they are open — see `menuCommands`.
+      // Stella's, greyed until they are open — see `commandGreyed`.
       'Battle Records',
-      // **Heal All**, `str_tm` 4001 — the Misc. menu's first row in the game.
-      'Heal All',
+      // `str_tm` 4000: Heal All, Tactics, the skills, the tricks and the rest are in it.
+      'Misc.',
+      // **Ours** here: a Battle Records list in the game.
+      'Quest List',
       // **Ours**, and last: the controls panel `k` opens — the keys, the pad
       // and the text speed — which nothing on screen pointed to once the
       // hint line went behind the debug screen.
@@ -349,6 +404,61 @@ describe('the main menu', () => {
       // creation is its own scene. See `UNLISTED_PANELS` in `menu.ts`.
     ])
     expect(labelOf(ITEM_ACTIONS[0] as (typeof ITEM_ACTIONS)[number], words)).toBe('Use!')
+  })
+
+  it('sets a tactic, a line and a colour on the Tactics screen, in its three columns', () => {
+    const words = new Map([
+      [4251, '---------'],
+      [4257, 'Follow Orders'],
+      [4253, 'Fight Wisely'],
+      [4301, 'Front Line'],
+      [4302, 'Back Line'],
+      [4413, 'Black'],
+      [4406, 'Pink'],
+    ])
+    const context: MenuContext = {
+      hero: 'Hero',
+      map: undefined,
+      stage: undefined,
+      words,
+      party: [
+        { name: 'Hero', colour: 12 },
+        { name: 'Rosa', tactic: 1, backLine: true, colour: 5 },
+      ],
+    }
+    const misc = choose(at(cursorOf('misc')), context).state
+    const opened = misc && choose({ ...misc, row: 1 }, context).state
+    if (opened?.panel !== 'tactics') throw new Error('no Tactics screen')
+    expect(panelLines('tactics', context, opened).slice(1, 3)).toEqual([
+      '▶ Hero — [---------] · Front Line · Black',
+      '   Rosa — Fight Wisely · Back Line · Pink',
+    ])
+    // The player's own tactic is not set: nothing happens.
+    expect(choose(opened, context).state).toBe(opened)
+    // Rosa's opens the six, on hers; taking one sets it and goes back to her row.
+    const rosa = moveCursor(opened, 1, context)
+    const list = choose(rosa, context).state
+    expect(list).toMatchObject({ row: 1, tactics: { picking: { what: 'tactic', member: 1 } } })
+    if (!list) throw new Error('no list')
+    const set = choose(moveCursor(list, 4, context), context)
+    expect(set.tactic).toEqual({ member: 1, tactic: 5 })
+    expect(set.state).toMatchObject({ row: 1, tactics: { column: 0 } })
+    // Right to the line: taking it flips her at once.
+    const line = moveAcross(rosa, 1, context)
+    expect(choose(line, context)).toMatchObject({ line: 1, state: line })
+    // Right again to the colour: the sixteen, on hers.
+    const colour = choose(moveAcross(line, 1, context), context).state
+    expect(colour).toMatchObject({ row: 5, tactics: { picking: { what: 'colour', member: 1 } } })
+    if (!colour) throw new Error('no colours')
+    expect(choose({ ...colour, row: 12 }, context).colour).toEqual({ member: 1, colour: 12 })
+    // B out of the list, then out of the screen to the Misc. menu's Tactics row.
+    const out = back(colour)
+    expect(out).toMatchObject({ row: 1, tactics: { column: 2 } })
+    expect(out && back(out)).toMatchObject({ panel: 'misc', row: 1 })
+    // Confirm, the last row, goes back too; left and right do nothing there.
+    const confirm = moveCursor(opened, -1, context)
+    expect(moveAcross(confirm, 1, context)).toBe(confirm)
+    expect(choose(confirm, context).state).toMatchObject({ panel: 'misc', row: 1 })
   })
 
   it('assigns a party trick to one of the seven places, and clears it', () => {
@@ -428,7 +538,7 @@ describe('the spells panel', () => {
   ]
   const context: MenuContext = { hero: 'Hero', map: undefined, stage: undefined, spells }
   const spellsPanel = () => {
-    const opened = choose(moveCursor(openMenu(), 4)).state
+    const opened = choose(moveCursor(openMenu(), cursorOf('spells'))).state
     if (opened?.panel !== 'spells') throw new Error('no spells panel')
     return opened
   }
@@ -469,7 +579,7 @@ describe('the equip panel', () => {
     tableOf: (id) => (id === sword ? 'w' : 's'),
   }
   const equipPanel = () => {
-    const opened = choose(moveCursor(openMenu(), 3)).state
+    const opened = choose(moveCursor(openMenu(), cursorOf('equip'))).state
     if (opened?.panel !== 'equip') throw new Error('no equip panel')
     return opened
   }

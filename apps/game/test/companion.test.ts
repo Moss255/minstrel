@@ -1,8 +1,11 @@
 import type { AttendingCharacter } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
+import { HERO_APPEARANCE as HERO_LOOK } from '../src/appearance.ts'
 import {
   attendingStanding,
+  COLOUR_BY_EYES,
   changeVocation,
+  colourOf,
   companionFighter,
   companionLook,
   companionModel,
@@ -356,6 +359,10 @@ describe('the party, the Hero first', () => {
         skillPool: 3,
         treePoints: new Map([[13, 100]]),
         revocations: new Map(),
+        // A tactic, the Back Line and a personal colour, as the Tactics screen sets them.
+        tactic: 1,
+        backLine: true,
+        colour: 6,
       },
     ]
     const after = partyRestored(
@@ -366,6 +373,14 @@ describe('the party, the Hero first', () => {
     // save writes null and the game reads it back as nothing.
     expect(partySaved(before)[0]?.attnpc).toBeNull()
     expect(after[0]?.attnpc).toBeUndefined()
+  })
+
+  it('gives a member their own colour, or what creation would give their eyes', () => {
+    // The protagonist's, by their eyes (`data_ov009_0218a9b4`): Black for the first.
+    expect(COLOUR_BY_EYES).toEqual([12, 13, 4, 1, 6, 7, 9, 14])
+    expect(colourOf({ colour: undefined, look: undefined })).toBe(12)
+    expect(colourOf({ colour: undefined, look: { ...HERO_LOOK, eyes: 3 } })).toBe(1)
+    expect(colourOf({ colour: 9, look: { ...HERO_LOOK, eyes: 3 } })).toBe(9)
   })
 
   it('gives a companion their own numbers, not a level table’s', () => {

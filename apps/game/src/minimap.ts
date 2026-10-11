@@ -34,8 +34,12 @@ import { setText } from './latin-text.ts'
  *   stand; see {@link partyDots};
  * - which colour is whose: each takes the dot and panel of their place in the
  *   party, the Hero the first, blue. The same screenshot shows each member in a
- *   colour of their own, the first one green, and the rule is not found — see
- *   FORMAT.md, "The markers are coloured dots";
+ *   colour of their own, the first one green. **The colour is the
+ *   character's**, their personal colour (`Member.colour`, the Tactics
+ *   screen's, `percol.bin`'s sixteen palettes — FORMAT.md, "Personal
+ *   colours"); which of a palette's colours the dot and strip are drawn in is
+ *   not read, so they are not drawn by it yet — see FORMAT.md, "The markers
+ *   are coloured dots";
  * - the names' face: `fd_s7`, the plainer of the game's two Latin fonts
  *   (FORMAT.md, "The Latin fonts"), chosen by how the party's names look in
  *   that screenshot, and set a pixel apart — see `latin-text.ts`. A name the

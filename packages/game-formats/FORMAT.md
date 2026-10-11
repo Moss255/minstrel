@@ -5366,7 +5366,10 @@ committed), shows four dots in a two-by-two cluster on the town's map, no
 arrow and no facing, each in the colour of that member's name panel along the
 screen's foot: the first member green, then lime, grey and dark red. So a
 dot's colour belongs to the character, not to a place in the party, and **the
-first member's is not blue**. None of those four is exactly a marker's colour
+first member's is not blue**. *Since read (11 October 2026)*: it is the
+character's personal colour, `+0x56a`, one of `percol.bin`'s sixteen
+palettes — see "Personal colours"; which of a palette's entries a dot takes
+is not. None of those four is exactly a marker's colour
 or one of `obj_minimap`'s or `obj_mm.pac`'s palette entries; the screenshot is
 blurred, and where the game takes a character's colour from is not
 established. No string in the code names `marker`. The game here draws the
@@ -5980,6 +5983,35 @@ this was first taken): the face's brows, eyes and skin at `+0x24`, `+0x28`,
 `+0x30` of its palette, and parts 0, 1, 5, 4, 6, 7 each by
 `GetItemSkinShades(rec, 0, sex)` — bits 11–14 a man, 19–22 a woman. Not drawn
 here.
+
+# Personal colours — `/data/bin/percol.bin`
+
+Read 11 October 2026 from the US ARM9; `src/personalcolours.ts`.
+
+A tagged data table run as a `Script` with a one-entry opcode table
+(`0x020f1b04`): **`0x65` → `func_020a6090`**, seventeen integers — the
+colour's number (masked to a byte), then sixteen halfwords copied to
+`data_02109dcc + number × 0x20`. That is one DS palette a colour, sixteen
+colours, each palette's colour 0 `0x7c1f`. `0x64` is a version (`0x10`) and
+has no handler. The European file holds the sixteen, numbered 0 to 15, in
+order.
+
+**Whose colour**: the character record's byte `+0x56a`. `func_020dc70c`
+loads the palette of a party member's colour (`func_020a6084` returns
+`data_02109dcc`), and the field menu's Tactics screen sets it (overlay 2
+`0x021681b0`). Its names are the field menu's `str_tm` 4401 + the number —
+Orange, Yellow, Light Green, Dark Green, Red, Pink, Green, Blue, Dark
+Purple, Light Purple, Purple, Turquoise, Black, Brown, Grey, White — and
+colours 1 and 15, the light two, take a different palette for their text
+(overlay 2 `0x02161af4`).
+
+**Where a colour comes from**: the protagonist's creation sets it from the
+eye colour, `[12, 13, 4, 1, 6, 7, 9, 14][eyes]` (`data_ov009_0218a9b4`,
+written at `0x02187658`); a character made at Patty's draws it,
+`NextRandomMax(GetBTRandom(), 16)` (`0x02187704`).
+
+Not read: which of a palette's colours is drawn on what — a member's dot on
+the map, their name strip, the menus.
 
 # Mini medals — Cap'n Max Meddlin's service
 

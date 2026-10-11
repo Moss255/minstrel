@@ -858,17 +858,20 @@ the generator, say so, and leave the floor as the next step in this file.
 
 For any session, not only one reading assembly:
 
-- **Tactics in the field Misc. menu** (p. 11): settable only in battle now
-  (`battle-scene.ts`). Playing a tactic is task 17.
+- **Done, 11 October 2026: the field menu's own Misc.** The six rows as the
+  game lists them, the Battle Records greyed until they are open, and the
+  Misc. menu's rows by their codes (`MISC_ROWS`) — Heal All, **Tactics** (the
+  tactic, the line and the **personal colour**, `+0x56a` and `percol.bin`),
+  Allocate Skill Points, Assign Party Tricks, Profile Settings (wireless: says
+  so), **Volume Settings** (`volume.ts`, the save keeps the levels) and
+  **Quick Save**. Read rather than only drawn; the functions are in
+  `docs/decomp-contributions.md`, what is ours in `docs/still-open.md`.
 - **Organise Items** (p. 7), over `inventory.ts`.
-- **The battle's Equipment command**, once task 8 says where it differs
-  from the field's.
+- **The battle's Equipment command**: done with task 8.
 - **Battle Records' monster and item lists**: where the game keeps them is
   read (`docs/readings/T14-records.md` — `GameState+0x75f0` and `+0x7ac4`);
   keeping them and their screens are left, with the wardrobe and Stella's
   comments (`cmtFileTbl.bin`).
-- Low value, and largely ours anyway: **Quick Save** (p. 12) and the
-  **volume** settings.
 
 **Out of scope, as multiplayer or online**: the Rapportal and Pavo,
 Canvass and the Guestbook, the DQVC shop and its special guests, map

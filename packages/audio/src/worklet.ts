@@ -47,6 +47,8 @@ export type MusicMessage =
   | { readonly kind: 'fade'; readonly to: number; readonly seconds: number }
   /** Multiply the tempo — see `Sequencer.tempoRate`. */
   | { readonly kind: 'rate'; readonly rate: number }
+  /** How loud the music and the effects are, 0–1 each — see `Ensemble.setLevels`. */
+  | { readonly kind: 'levels'; readonly music: number; readonly effects: number }
 
 /** What the worklet reports back, now and then. */
 export interface MusicReport {
@@ -132,6 +134,9 @@ export function registerMusicProcessor(): void {
           break
         case 'rate':
           this.sequencer.tempoRate = message.rate
+          break
+        case 'levels':
+          this.ensemble.setLevels(message.music, message.effects)
           break
         case 'fade':
           this.gainTo = message.to

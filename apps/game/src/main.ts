@@ -364,8 +364,10 @@ import {
 } from './collisionview.ts'
 import {
   attendingStanding,
+  COLOUR_BY_EYES,
   COMPANION_MOTIONS,
   changeVocation,
+  colourOf,
   companionFighter,
   companionLook,
   companionModel,
@@ -517,6 +519,7 @@ import {
   back,
   changeCharacter,
   choose,
+  commandGreyed,
   FLAG_SKILLS_LISTED,
   labelOf,
   MENU_SAYS,
@@ -525,11 +528,13 @@ import {
   type MenuSpell,
   type MenuState,
   menuCommands,
+  moveAcross,
   moveCursor,
   openMenu,
   openPatty,
   openPot,
   panelLines,
+  QUICK_SAVE_WORDS,
   type Taken,
 } from './menu.ts'
 import {
@@ -584,7 +589,15 @@ import {
   recruitKit,
 } from './recruit.ts'
 import type { ResultsWindow } from './results-window.ts'
-import { bagOf, readSave, SAVE_VERSION, type SaveGame, type SaveStore, writeSave } from './save.ts'
+import {
+  bagOf,
+  QUICK_SAVE_KEY,
+  readSave,
+  SAVE_VERSION,
+  type SaveGame,
+  type SaveStore,
+  writeSave,
+} from './save.ts'
 import { SceneBrowser } from './scene-browser.ts'
 import { conditionsFor, firstWay, type SceneConditions, sceneIndex } from './scenes.ts'
 import {
@@ -743,6 +756,7 @@ import {
   tricksFor,
 } from './tricks.ts'
 import { castOn, type Outcome, useOn, type Vitals } from './use.ts'
+import { DEFAULT_VOLUMES, gainOf, type Volumes } from './volume.ts'
 import {
   CEILING_LINE,
   FLIGHT_BUMP,
@@ -1946,6 +1960,14 @@ function begin(bytes: Uint8Array, map: string): Promise<void> {
   // Carry on from the last confession, unless the player asked for a new game.
   const saved = resumeEl.checked ? savedGame : undefined
   if (saved) restore(saved)
+  // A new game's levels are the game's own, 3 and 3 — see `volume.ts`.
+  else hearVolumes()
+  // A quick save is carried on from once — see `quickSave`.
+  if (saved && savedQuick) {
+    try {
+      window.localStorage.removeItem(QUICK_SAVE_KEY)
+    } catch {}
+  }
   // **Play begins**, a new game or one carried on — see `beginPlay`.
   beginPlay(bytes)
   if (saved) {
@@ -2111,6 +2133,8 @@ function askCreation(map: string): Promise<void> {
     hero.look = picked.made
     hero.sex = picked.made.sex
     hero.name = name
+    // Their personal colour, by their eyes — see `COLOUR_BY_EYES`.
+    hero.colour = COLOUR_BY_EYES[picked.made.eyes] ?? hero.colour
     openWorld(map)
     dressParty()
     status(
@@ -2439,6 +2463,8 @@ function storage(): SaveStore | undefined {
 
 /** Take up where a save left off — everything but the map, which `begin` enters. */
 function restore(game: SaveGame): void {
+  volumes = game.volume ? { ...game.volume } : DEFAULT_VOLUMES
+  hearVolumes()
   storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
   storyStep = game.step ?? 0
   storyFlags.clear()
@@ -2543,6 +2569,42 @@ function confess(): string {
   if (!loaded || !self) return 'There is nothing to record.'
   // A church's save makes this the revival map (`func_020a9eb8`, `0x020a9fac`).
   if (loaded.mapId !== undefined && !storyGlobals.has(FLAG_REVIVAL_KEPT)) revivalMap = loaded.mapId
+  const game = snapshot()
+  return game && writeSave(storage(), game)
+    ? 'Your progress is recorded.'
+    : 'This browser would not keep the record.'
+}
+
+/**
+ * **Quick Save** — the Misc. menu's: the game as it stands, kept in a save of
+ * its own (`QUICK_SAVE_KEY`), then back to the title — see `QUICK_SAVE_WORDS`.
+ * Its lines are the game's, 4701 as it writes and 4702 when it is done; the
+ * title is this page's start screen, which offers it.
+ *
+ * **Ours**: the pause between the lines and before the title, and that the
+ * start screen offers a quick save before the church's and lets it go once
+ * it has been carried on from — how the game takes a quick save back is not
+ * read.
+ */
+function quickSave(): void {
+  const game = snapshot()
+  const said = (n: number, ours: string) => loaded?.menuWords.get(n)?.replaceAll('\\n', ' ') ?? ours
+  if (!game || !writeSave(storage(), game, QUICK_SAVE_KEY)) {
+    if (menu) menu = { ...menu, said: ['This browser would not keep the quick save log.'] }
+    return
+  }
+  menu = undefined
+  status(said(QUICK_SAVE_WORDS.writing, 'Recording quick save log.'))
+  window.setTimeout(() => {
+    status(said(QUICK_SAVE_WORDS.done, 'Quick save log successfully created.'))
+    music.fade(0, 1)
+    window.setTimeout(() => window.location.reload(), 1500)
+  }, 1000)
+}
+
+/** The game as it stands, as a save holds it; undefined before there is a game. */
+function snapshot(): SaveGame | undefined {
+  if (!loaded || !self) return undefined
   const game: SaveGame = {
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
@@ -2591,10 +2653,17 @@ function confess(): string {
     opened: [],
     gathering: { variant: gathering.variant, words: [...gathering.words] },
     ship: { ...shipKeep },
+    volume: { ...volumes },
   }
-  return writeSave(storage(), game)
-    ? 'Your progress is recorded.'
-    : 'This browser would not keep the record.'
+  return game
+}
+
+/** The music's and the effects' levels — see `volume.ts`. */
+let volumes: Volumes = DEFAULT_VOLUMES
+
+/** Hear the levels: the worklet scales the music and the effects by them. */
+function hearVolumes(): void {
+  music.levels(gainOf(volumes.music), gainOf(volumes.effects))
 }
 
 /**
@@ -6281,6 +6350,12 @@ function menuMember(member: Member): MenuMember {
     member.attnpc === undefined
       ? undefined
       : loaded?.attending.find((one) => one.id === member.attnpc)
+  // What the Tactics screen shows of them — see `TacticsWhere`.
+  const tactics = {
+    tactic: member.tactic,
+    backLine: member.backLine,
+    colour: colourOf(member),
+  }
   if (along) {
     return {
       name: along.name,
@@ -6288,6 +6363,7 @@ function menuMember(member: Member): MenuMember {
       hp: member.hp,
       mp: member.mp,
       equipped: wornBy(member),
+      ...tactics,
     }
   }
   const levels = levelsFor(member)
@@ -6308,6 +6384,7 @@ function menuMember(member: Member): MenuMember {
     // story companion took the branch above and never reaches this.
     skills: skillsOf(member),
     revocations: revocationsOf(member),
+    ...tactics,
   }
 }
 
@@ -7717,6 +7794,8 @@ function askPatty(
           look: asked.look,
           sex: asked.look.sex,
           name: asked.name,
+          // Drawn as overlay 9 draws it for a recruit: `NextRandomMax(GetBTRandom(), 16)`.
+          colour: roamRng.below(16),
         })
       : asked.does === 'callUp'
         ? callUp(before, asked.at)
@@ -7864,6 +7943,9 @@ function menuContext(): MenuContext {
   const now = levels ? standing(levels, expOf(leader()), leader().gains) : undefined
   return {
     party: members.map(menuMember),
+    // The Volume screen's levels, and Quick Save's Yes and No.
+    volume: volumes,
+    standardWords: loaded?.standardWords,
     hero: heroName(),
     map: loaded?.code,
     stage: storyStage ? `${storyStage.major}.${storyStage.minor}` : undefined,
@@ -14026,6 +14108,8 @@ function showMenu(): void {
     const item = document.createElement('div')
     item.textContent = labelOf(command, loaded?.menuWords)
     if (index === menu.cursor) item.className = 'chosen'
+    // The Battle Records, greyed until they are open — see `commandGreyed`.
+    if (commandGreyed(command.id, menuContext())) item.classList.add('greyed')
     commands.append(item)
   }
   menuEl.append(commands)
@@ -14647,6 +14731,9 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   if (menu) {
     if (action === 'up') menu = moveCursor(menu, -1, menuContext())
     else if (action === 'down') menu = moveCursor(menu, 1, menuContext())
+    // Left and right cross the Tactics screen's columns — see `moveAcross`.
+    else if (action === 'left' || action === 'right')
+      menu = moveAcross(menu, action === 'left' ? -1 : 1, menuContext())
     // L and R change character on the equipment screen — see `changeCharacter`.
     else if (action === 'turnLeft' || action === 'turnRight')
       menu = changeCharacter(menu, action === 'turnLeft' ? -1 : 1, menuContext())
@@ -14684,6 +14771,26 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       if (taken.patty) menu = askPatty(taken.patty, menu)
       if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)
       if (taken.assign) trickSlots[taken.assign.slot] = taken.assign.trick
+      // The Tactics screen's three columns — see `TacticsWhere`.
+      if (taken.tactic) {
+        const member = members[taken.tactic.member]
+        if (member)
+          member.tactic = taken.tactic.tactic === FOLLOW_ORDERS ? undefined : taken.tactic.tactic
+      }
+      if (taken.line !== undefined) {
+        const member = members[taken.line]
+        if (member) member.backLine = member.backLine ? undefined : true
+      }
+      if (taken.colour) {
+        const member = members[taken.colour.member]
+        if (member) member.colour = taken.colour.colour
+      }
+      if (taken.quickSave) {
+        quickSave()
+        showMenu()
+        event.preventDefault()
+        return handled
+      }
       // A place of Zoom's or the wing's list — see `zoomChosen`.
       if (taken.zoomTo !== undefined) zoomChosen(taken.zoomTo)
       if (taken.stop !== undefined) pickStop(taken.stop)
@@ -14708,6 +14815,15 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         return handled
       }
     } else if (action === 'cancel' || action === 'menu') menu = back(menu)
+    // **Every step of the Volume screen is heard at once** — see `volume.ts`.
+    if (menu?.panel === 'volume' && menu.volume) {
+      const before = volumes
+      volumes = menu.volume
+      if (before.music !== volumes.music || before.effects !== volumes.effects) hearVolumes()
+      // The effects' level sounds the cursor's effect, 1, to be heard by.
+      if (before.effects !== volumes.effects && cartridge)
+        void playEffect(cartridge, FIELD_EFFECTS, 1)
+    }
     showMenu()
     event.preventDefault()
     return handled
@@ -14926,15 +15042,20 @@ addEventListener('blur', () => {
 frame()
 status('choose or drop a cartridge dump')
 
-/** The last confession, offered on the start screen; a save that will not read is said so. */
-const kept = readSave(storage())
+/**
+ * The last confession, offered on the start screen — or a quick save, before
+ * it, when there is one (see `quickSave`); a save that will not read is said so.
+ */
+const quick = readSave(storage(), QUICK_SAVE_KEY)
+const savedQuick = quick && 'game' in quick ? quick.game : undefined
+const kept = savedQuick ? quick : readSave(storage())
 const savedGame = kept && 'game' in kept ? kept.game : undefined
 if (kept) {
   const said = resumeRow.querySelector('span')
   resumeRow.hidden = false
   if (savedGame) {
     if (said) {
-      said.textContent = `Carry on from the confession of ${new Date(savedGame.savedAt).toLocaleString()} in ${savedGame.map}, with ${savedGame.gold} G`
+      said.textContent = `Carry on from the ${savedQuick ? 'quick save log' : 'confession'} of ${new Date(savedGame.savedAt).toLocaleString()} in ${savedGame.map}, with ${savedGame.gold} G`
     }
   } else if ('error' in kept) {
     resumeEl.checked = false

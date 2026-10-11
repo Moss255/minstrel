@@ -252,6 +252,11 @@ main {
   visibility: visible;
 }
 
+/* A row the game draws in its grey: the Battle Records, until they are open. */
+#menu .commands > .greyed {
+  opacity: 0.45;
+}
+
 /* A member's commands and the tactics: two columns, row by row, as the game draws them. */
 #menu .commands.grid {
   display: grid;

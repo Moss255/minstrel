@@ -194,6 +194,14 @@ export interface Member {
    */
   backLine?: boolean | undefined
   /**
+   * **Their personal colour**, 0 to 15 — the character record's byte
+   * `+0x56a`, which the field menu's Tactics screen sets and the field's
+   * screens draw them in (`percol.bin`, see `readPersonalColours`). The
+   * Hero's is set at creation from their eye colour, a recruit's drawn at
+   * random; undefined is worked out from the look — see {@link colourOf}.
+   */
+  colour?: number | undefined
+  /**
    * **What they carry**: up to eight everyday items, one to a slot, packed —
    * the character record's `+0x454` (see `inventory.ts`). Undefined is none.
    */
@@ -435,8 +443,27 @@ export function partySaved(members: readonly Member[]): SaveMember[] {
       : { revocations: [...member.revocations].sort((a, b) => a[0] - b[0]) }),
     ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
     ...(member.backLine ? { backLine: true } : {}),
+    ...(member.colour === undefined ? {} : { colour: member.colour }),
     ...(member.carried?.length ? { carried: [...member.carried] } : {}),
   }))
+}
+
+/**
+ * **The protagonist's colour, by their eye colour** — what creation sets
+ * (`data_ov009_0218a9b4`, written at `0x02187658`, mode 0): Black for the
+ * first eyes, Brown for the second and so on, the colours' numbers in
+ * `str_tm` 4401 on.
+ */
+export const COLOUR_BY_EYES = [12, 13, 4, 1, 6, 7, 9, 14] as const
+
+/**
+ * A member's personal colour: their own, or else what creation would give
+ * their eyes. **The fallback is ours** — for a story companion, who has no
+ * colour in the game that is read, and for a save made before colours were
+ * kept.
+ */
+export function colourOf(member: Pick<Member, 'colour' | 'look'>): number {
+  return member.colour ?? COLOUR_BY_EYES[member.look?.eyes ?? 0] ?? 12
 }
 
 /** The party a save holds, ready to play. */
@@ -463,6 +490,7 @@ export function partyRestored(kept: readonly SaveMember[]): Member[] {
     revocations: new Map(member.revocations ?? []),
     ...(member.tactic === undefined ? {} : { tactic: member.tactic }),
     ...(member.backLine ? { backLine: true } : {}),
+    ...(member.colour === undefined ? {} : { colour: member.colour }),
     ...(member.carried?.length ? { carried: [...member.carried] } : {}),
   }))
 }

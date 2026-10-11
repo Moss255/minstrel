@@ -106,6 +106,27 @@ describe('the ensemble', () => {
     expect(ensemble.jingling).toBe(false)
   })
 
+  it('scales the music and the effects each by its own level', () => {
+    const rate = 32768
+    const loudest = (music: number, effects: number, withMusic: boolean) => {
+      const ensemble = new Ensemble(rate, 2)
+      ensemble.setLevels(music, effects)
+      if (withMusic) {
+        ensemble.music.load(songWith([0x81, 0, 60, 100, ...vl(20), 0xff]))
+        ensemble.music.play()
+      } else ensemble.effect(songWith([0x81, 0, 72, 127, ...vl(20), 0xff]))
+      const l = new Float32Array(rate / 8)
+      const r = new Float32Array(rate / 8)
+      ensemble.render(l, r, rate / 8)
+      return l.reduce((most, v) => Math.max(most, Math.abs(v)), 0)
+    }
+    expect(loudest(1, 1, true)).toBeGreaterThan(0)
+    expect(loudest(0, 1, true)).toBe(0)
+    expect(loudest(0.5, 0, true)).toBeCloseTo(loudest(1, 0, true) / 2, 5)
+    expect(loudest(1, 0, false)).toBe(0)
+    expect(loudest(0, 0.5, false)).toBeCloseTo(loudest(0, 1, false) / 2, 5)
+  })
+
   it('takes the longest-playing voice when every voice is busy', () => {
     const ensemble = new Ensemble(32768, 2)
     const held = songWith([0x81, 0, 60, 127, ...vl(TICK_RATE * 10), 0xff])
