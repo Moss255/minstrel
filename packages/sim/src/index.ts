@@ -142,6 +142,8 @@ export {
   type GroundHit,
   groundBelow,
   type PlacedMesh,
+  quarterTurn,
+  STAIRS_TILE,
   slopeOf,
   triangleAt,
   wallBetween,
@@ -193,6 +195,17 @@ export {
 } from './gathering.ts'
 export { floorSize as grottoFloorSize, type GrottoFloor, grottoFloor } from './grotto/floor.ts'
 export { type GrottoDetails, type GrottoPlace, grottoDetails, grottoPlace } from './grotto/map.ts'
+export {
+  arrivalAt,
+  BOSS_UP,
+  bossFloor,
+  downBox,
+  FIRST_FLOOR,
+  type GrottoStair,
+  grottoStairs,
+  type StairBox,
+  upBox,
+} from './grotto/stairs.ts'
 export {
   floorTiles,
   type GrottoTile,

@@ -2,7 +2,7 @@ import { FX32_ONE, fx32 } from '@minstrel/fixed'
 import type { CollisionMesh, CollisionTriangle } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { type CharacterState, PERSON, step } from '../src/character.ts'
-import { createCollisionWorld } from '../src/collision.ts'
+import { createCollisionWorld, quarterTurn } from '../src/collision.ts'
 import { sweep } from '../src/walls.ts'
 
 /**
@@ -56,6 +56,11 @@ function wall(x0: number, z0: number, x1: number, z1: number): CollisionTriangle
  * eighth.
  */
 function world(triangles: CollisionTriangle[]) {
+  return createCollisionWorld({ mesh: meshOf(triangles), offset: undefined, scale: 1 / 8 })
+}
+
+/** The mesh `world` places: stored at eight times the world's size. */
+function meshOf(triangles: CollisionTriangle[]): CollisionMesh {
   const stored = triangles.map((t) => ({
     ...t,
     vertices: t.vertices.map((v) =>
@@ -85,7 +90,7 @@ function world(triangles: CollisionTriangle[]) {
     unknown_0x1a: 0,
     cell: () => [],
   } as CollisionMesh
-  return createCollisionWorld({ mesh, offset: undefined, scale: 1 / 8 })
+  return mesh
 }
 
 const standing = (x: number, z: number): CharacterState => ({
@@ -148,6 +153,53 @@ describe('the walls, as the game resolves them', () => {
     for (let tick = 0; tick < 300; tick++)
       s = step(plain, s, fx32(-Math.round(PACE)), fx32(0), PERSON)
     expect(s.x / U).toBeLessThan(0)
+  })
+})
+
+describe('a grotto’s turned and tiled walls', () => {
+  it('turns a point a quarter at a time, as the game’s RotationY turns its tiles', () => {
+    expect(quarterTurn(1, 2, 0)).toEqual([1, 2])
+    expect(quarterTurn(1, 2, 1)).toEqual([2, -1])
+    expect(quarterTurn(1, 2, 2)).toEqual([-1, -2])
+    expect(quarterTurn(1, 2, 3)).toEqual([-2, 1])
+    expect(quarterTurn(1, 2, 4)).toEqual([1, 2])
+  })
+
+  it('holds a character off a turned wall where the turn puts it', () => {
+    // The wall at x = 1 facing −x, turned once: at z = −1, facing +z.
+    const turned = createCollisionWorld({
+      mesh: meshOf([...floor(4), ...wall(1, 2, 1, -2)]),
+      offset: undefined,
+      scale: 1 / 8,
+      turn: 1,
+    })
+    let s: CharacterState = standing(0, 0)
+    for (let tick = 0; tick < 300; tick++)
+      s = step(turned, s, fx32(0), fx32(-Math.round(PACE)), PERSON)
+    expect(s.z / U).toBeCloseTo(-(1 - PERSON.radius / U), 3)
+    expect(s.x / U).toBeCloseTo(0, 3)
+  })
+
+  it('sweeps only the tile underfoot in a tiled world', () => {
+    // Tile 0 is the floor about the origin, ±half a unit; tile 1's mesh has a
+    // wall standing inside tile 0's span, at x = 0.3. The game sweeps the
+    // tile it stands on and so walks through it; untiled, it would not.
+    const ground = { mesh: meshOf(floor(4)), offset: undefined, scale: 1 / 8 }
+    const stray = { mesh: meshOf(wall(0.3, 2, 0.3, -2)), offset: undefined, scale: 1 / 8 }
+    const walk = (w: ReturnType<typeof createCollisionWorld>) => {
+      let s: CharacterState = standing(0, 0)
+      for (let tick = 0; tick < 40; tick++) s = step(w, s, fx32(Math.round(PACE)), fx32(0), PERSON)
+      return s.x / U
+    }
+    expect(walk(createCollisionWorld([ground, stray]))).toBeLessThan(0.3)
+    expect(
+      walk(
+        createCollisionWorld([
+          { ...ground, tile: 0 },
+          { ...stray, tile: 1 },
+        ]),
+      ),
+    ).toBeGreaterThan(0.3)
   })
 })
 

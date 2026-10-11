@@ -1,4 +1,5 @@
 import type { CollisionMesh } from '@minstrel/game-formats'
+import { quarterTurn, STAIRS_TILE } from './collision.ts'
 
 /**
  * **Walls, as the game resolves them**, read on 11 October 2026 from the US
@@ -54,6 +55,10 @@ export interface WallPiece {
   readonly mesh: CollisionMesh
   readonly offset: { readonly x: number; readonly y: number; readonly z: number }
   readonly scale: number
+  /** Quarter turns about y — see `PlacedMesh.turn`. */
+  readonly turn?: number
+  /** A grotto tile's number — see `PlacedMesh.tile`. */
+  readonly tile?: number
 }
 
 // --- The NitroSDK's arithmetic ------------------------------------------------
@@ -612,13 +617,21 @@ export function againstWalls(
   // gathers from it; only the sweep's centre carries on from mesh to mesh.
   const movedX = x
   const movedZ = z
-  for (const { mesh, offset, scale } of pieces) {
+  // **A tiled world** — a grotto's floor — sweeps only the tile under the
+  // character and the way up (`func_ov017_0219344c`'s loop in the map's
+  // `+0x23b8` mode): the tile `(x + 4) / 8` across and down, in the game's
+  // units, truncated as `_ffix` does.
+  const tiled = pieces.some((p) => p.tile !== undefined)
+  const under = tiled ? tileUnder(movedX, movedZ, pieces) : -1
+  for (const { mesh, offset, scale, turn = 0, tile } of pieces) {
+    if (tiled && tile !== under && tile !== STAIRS_TILE) continue
     // The game's units per world unit: 8 on every map here.
     const k = Math.round(2 ** mesh.shift / scale)
     const reach = radius * k
-    const boxX = (movedX - offset.x) * k
+    // Into the piece's own frame: the offset taken off and the turn undone,
+    // as the mover turns the place back by the entry's angle.
+    const [boxX, boxZ] = quarterTurn((movedX - offset.x) * k, (movedZ - offset.z) * k, 4 - turn)
     const gy = (feetY - offset.y) * k
-    const boxZ = (movedZ - offset.z) * k
     const count = gather(
       mesh,
       boxX + reach,
@@ -629,18 +642,34 @@ export function againstWalls(
       boxZ - reach,
     )
     if (count === 0) continue
-    centre[0] = (x - offset.x) * k
+    const [cx, cz] = quarterTurn((x - offset.x) * k, (z - offset.z) * k, 4 - turn)
+    centre[0] = cx
     centre[1] = gy + reach
-    centre[2] = (z - offset.z) * k
+    centre[2] = cz
     // The game hands the sweep the place it was in the map's own frame, not
     // the mesh's — the same thing for a mesh at the origin.
     previous[0] = was.x * k
     previous[2] = was.z * k
     const decided = sweep(hitList, count, reach, centre, previous)
     if (decided < 0) continue
-    x = Math.round((centre[0] as number) / k) + offset.x
-    z = Math.round((centre[2] as number) / k) + offset.z
+    const [wx, wz] = quarterTurn(centre[0] as number, centre[2] as number, turn)
+    x = Math.round(wx / k) + offset.x
+    z = Math.round(wz / k) + offset.z
     hitWall = true
   }
   return { x, z, hitWall }
+}
+
+/**
+ * The grotto tile under a world place: `(game x + 4) / 8` across and the same
+ * down, truncated, `x + 16 · y` (`func_02018fbc`, `func_ov017_0219344c`), the
+ * game's units being the world's times the pieces' factor.
+ */
+function tileUnder(x: number, z: number, pieces: readonly WallPiece[]): number {
+  const piece = pieces.find((p) => p.tile !== undefined && p.tile !== STAIRS_TILE)
+  if (!piece) return -1
+  const k = Math.round(2 ** piece.mesh.shift / piece.scale)
+  const across = Math.trunc((x * k + 0x4000) / 4096 / 8)
+  const down = Math.trunc((z * k + 0x4000) / 4096 / 8)
+  return across + 16 * down
 }

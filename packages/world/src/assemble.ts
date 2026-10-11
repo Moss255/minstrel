@@ -34,7 +34,7 @@ import {
   readNsbtp,
   type TextureAnimation,
 } from '@minstrel/nitro-gfx'
-import type { PlacedMesh } from '@minstrel/sim'
+import { type PlacedMesh, quarterTurn } from '@minstrel/sim'
 
 /**
  * Build a map out of the loose files its descriptor names.
@@ -49,6 +49,8 @@ export interface Placement {
   readonly x: number
   readonly y: number
   readonly z: number
+  /** Quarter turns about y, after the scale and before the offset — a grotto's tiles (see `quarterTurn`). */
+  readonly turn?: number
 }
 
 /** One model of a map, where it goes, and the animation it drives itself with. */
@@ -526,14 +528,13 @@ export function inWater(
  * piece.
  */
 export function placeGeometry(geometry: Geometry, place: Placement, scale: number): Geometry {
-  if (scale === 1 && place.x === 0 && place.y === 0 && place.z === 0) return geometry
+  const turn = (place.turn ?? 0) & 3
+  if (scale === 1 && place.x === 0 && place.y === 0 && place.z === 0 && turn === 0) return geometry
   return {
     ...geometry,
-    vertices: geometry.vertices.map((v) => ({
-      ...v,
-      x: v.x * scale + place.x,
-      y: v.y * scale + place.y,
-      z: v.z * scale + place.z,
-    })),
+    vertices: geometry.vertices.map((v) => {
+      const [x, z] = quarterTurn(v.x * scale, v.z * scale, turn)
+      return { ...v, x: x + place.x, y: v.y * scale + place.y, z: z + place.z }
+    }),
   }
 }

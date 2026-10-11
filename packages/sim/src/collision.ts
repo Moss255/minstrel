@@ -95,6 +95,40 @@ export interface PlacedMesh {
    * door's. With two of a door, this is what says which collision is whose.
    */
   readonly attachedTo?: number
+  /**
+   * Quarter turns about y, after the scale and before the offset — a grotto's
+   * tiles are turned so (see `quarterTurn`). The walls are swept in the
+   * mesh's own frame, as the game's are.
+   */
+  readonly turn?: number
+  /**
+   * The grotto tile it stands on, `x + 16 · y`, or {@link STAIRS_TILE} for
+   * the way up. A world with any is **tiled**: the walls are swept against
+   * only the tile under the character and the way up, as the game's map
+   * does in its grotto mode (`func_02017d90`, `+0x23b8`).
+   */
+  readonly tile?: number
+}
+
+/** The tile number the way up's own mesh goes by in a tiled world (`func_02017d90`'s index `0x100`). */
+export const STAIRS_TILE = 0x100
+
+/**
+ * A point turned a quarter `turn` times about y, the way the game's
+ * `RotationY` matrices turn its grotto tiles: `(x, z)` to `(z, −x)` for one
+ * (sin `0x1000`, cos 0, applied to a row vector), and so on. Exact.
+ */
+export function quarterTurn(x: number, z: number, turn: number): [number, number] {
+  switch (turn & 3) {
+    case 1:
+      return [z, -x]
+    case 2:
+      return [-x, -z]
+    case 3:
+      return [-z, x]
+    default:
+      return [x, z]
+  }
 }
 
 const ZERO = { x: 0, y: 0, z: 0 }
@@ -109,7 +143,19 @@ function shift(
   triangle: CollisionTriangle,
   offset: { x: number; y: number; z: number },
   scale: number,
+  turn = 0,
 ): CollisionTriangle {
+  if (turn & 3) {
+    const [nx, nz] = quarterTurn(triangle.normal[0], triangle.normal[2], turn)
+    triangle = {
+      ...triangle,
+      normal: [nx, triangle.normal[1], nz],
+      vertices: triangle.vertices.map((v) => {
+        const [x, z] = quarterTurn(v[0], v[2], turn)
+        return [x, v[1], z]
+      }) as unknown as CollisionTriangle['vertices'],
+    }
+  }
   return {
     ...triangle,
     // Rounded, because an `fx32` is a whole number of 1/4096ths. Scaling a
@@ -137,20 +183,23 @@ export function createCollisionWorld(
   const placed: PlacedMesh[] = given.map((entry) =>
     'mesh' in entry ? entry : { mesh: entry, offset: undefined },
   )
-  const triangles = placed.flatMap(({ mesh, offset, scale }) =>
-    offset === undefined && (scale ?? 1) === 1
+  const triangles = placed.flatMap(({ mesh, offset, scale, turn }) =>
+    offset === undefined && (scale ?? 1) === 1 && !(turn ?? 0)
       ? mesh.triangles
-      : mesh.triangles.map((t) => shift(t, offset ?? ZERO, scale ?? 1)),
+      : mesh.triangles.map((t) => shift(t, offset ?? ZERO, scale ?? 1, turn ?? 0)),
   )
-  const shifted = placed.map(({ mesh, offset, scale }) => {
+  const shifted = placed.map(({ mesh, offset, scale, turn }) => {
     const k = scale ?? 1
+    // A turned box's corners, turned: its extent on the ground is theirs.
+    const [ax, az] = quarterTurn(mesh.bounds.minX * k, mesh.bounds.minZ * k, turn ?? 0)
+    const [bx, bz] = quarterTurn(mesh.bounds.maxX * k, mesh.bounds.maxZ * k, turn ?? 0)
     return {
-      minX: mesh.bounds.minX * k + (offset?.x ?? 0),
+      minX: Math.min(ax, bx) + (offset?.x ?? 0),
       minY: mesh.bounds.minY * k + (offset?.y ?? 0),
-      minZ: mesh.bounds.minZ * k + (offset?.z ?? 0),
-      maxX: mesh.bounds.maxX * k + (offset?.x ?? 0),
+      minZ: Math.min(az, bz) + (offset?.z ?? 0),
+      maxX: Math.max(ax, bx) + (offset?.x ?? 0),
       maxY: mesh.bounds.maxY * k + (offset?.y ?? 0),
-      maxZ: mesh.bounds.maxZ * k + (offset?.z ?? 0),
+      maxZ: Math.max(az, bz) + (offset?.z ?? 0),
     }
   })
   const bounds: CollisionBounds = {
@@ -189,10 +238,12 @@ export function createCollisionWorld(
     }
   })
 
-  const pieces = placed.map(({ mesh, offset, scale }) => ({
+  const pieces = placed.map(({ mesh, offset, scale, turn, tile }) => ({
     mesh,
     offset: offset ?? ZERO,
     scale: scale ?? 1,
+    turn: turn ?? 0,
+    ...(tile === undefined ? {} : { tile }),
   }))
   return {
     triangles,

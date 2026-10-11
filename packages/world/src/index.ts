@@ -15,4 +15,5 @@ export {
 } from './assemble.ts'
 export { backdrop, type Extent } from './backdrop.ts'
 export { DRAWN_WITHIN, GROUND_SHIFT, HEADROOM, openGround } from './footing.ts'
+export { assembleGrottoFloor } from './grotto.ts'
 export { findSpawn, type Spawn, type SpawnOptions, waysOut } from './spawn.ts'
