@@ -88,6 +88,52 @@ export interface CommentFacts {
   readonly battles: number
   /** Comments given, the records' `+0x20` high half (`func_ov008_02185dc0` counts each). */
   readonly heard: number
+  /** Battles won (`+0x08`), wipe-outs (`+0x40`), flee attempts (`+0x34`) and flees (`+0x38`). */
+  readonly victories: number
+  readonly wipeouts: number
+  readonly fleeTries: number
+  readonly flees: number
+  /**
+   * A member's HP and MP now — their battle record's `+0x130` halfwords 4
+   * and 6 (`func_020482bc` writes 6 against the maximum MP). The member is as
+   * the functions name one (`func_ov023_021e8f28`): −1 the Hero, 0 to 3 a
+   * party place; undefined for anyone else.
+   */
+  member(which: number): CommentMember | undefined
+  /**
+   * How many the player's party is, less one — function 157, the list at
+   * `GameState+0x5718` (`func_02011494`), which `func_ov017_02191234` fills
+   * with the player's own party. A story guest is not counted (INFERRED: a
+   * guest is an attending character, not a party member).
+   */
+  readonly companions: number
+  /** Time played, in minutes — function 123's hours and minutes. */
+  readonly played: number
+  /** How many of an item the party holds — carried, worn and in the bag (`func_02086aec`). */
+  held(item: number): number
+  /**
+   * The player's party, its first the Hero, each member's HP and vocation —
+   * the list `func_02011494` gives, and `func_020114ec`'s, the same in a game
+   * of one's own (`func_ov017_02191234`). Story guests are left out, as for
+   * {@link companions}. A member flagged `0x1000` in its first halfword is
+   * passed over by 161 and 162; what sets it is not read, and none is here.
+   */
+  readonly party: readonly { readonly hp: number; readonly vocation: number }[]
+  /** The gold carried and banked: the party's `+0xf6c` and `+0xf68` (the bank shows both in thousands, `func_ov003_02168b50`). */
+  readonly gold: number
+  readonly banked: number
+  /** The Hero's experience in all thirteen vocations together, held at `0x7fffffff` (function 166). */
+  readonly allExp: number
+}
+
+/** What the functions read of a member. */
+export interface CommentMember {
+  readonly hp: number
+  readonly mp: number
+  /** Their vocation, 1 to 12, its level and their experience in it — function 101. */
+  readonly vocation: number
+  readonly level: number
+  readonly exp: number
 }
 
 class NotModelled extends Error {}
@@ -116,9 +162,101 @@ function hostOf(facts: CommentFacts): ScriptHost {
         case 53:
           put(0, facts.storySoFar)
           return 1
+        // 101: a member's vocation, its level and their experience in it (`0x021e9370`).
+        case 101: {
+          const who = facts.member(args[0] as number)
+          if (!who) throw new NotModelled(`member ${String(args[0])}`)
+          put(1, who.vocation)
+          put(2, who.level)
+          put(3, who.exp)
+          return 1
+        }
+        // 107, 108: a member's HP and MP (`0x021e9864`, `0x021e98a0`).
+        case 107:
+        case 108: {
+          const who = facts.member(args[0] as number)
+          if (!who) throw new NotModelled(`member ${String(args[0])}`)
+          put(1, id === 107 ? who.hp : who.mp)
+          return 1
+        }
+        // 123: time played, hours (to 9,999) and minutes (`0x021e9be4`, through
+        // `func_ov023_021e8fe8`, which adds the session's own).
+        case 123:
+          put(0, Math.min(9999, Math.floor(facts.played / 60)))
+          put(1, facts.played % 60)
+          return 1
+        // 124: the records' next time, which the summary shows as time in
+        // multiplayer (`0x021e9c54`) — none here, where multiplayer is out.
+        case 124:
+          put(0, 0)
+          put(1, 0)
+          return 1
+        // 177: how many of an item the party holds (`0x021eaae8`).
+        case 177:
+          put(1, facts.held(args[0] as number))
+          return 1
+        // 158: the fallen among the party but its first (`0x021ea3ec`).
+        case 158:
+          put(0, facts.party.slice(1).filter((m) => m.hp <= 0).length)
+          return 1
+        // 159: those in the vocations 1, 4, 7, 9 — Warrior, Martial Artist,
+        // Gladiator, Paladin (`0x021ea46c`, its jump table).
+        case 159:
+          put(0, facts.party.filter((m) => [1, 4, 7, 9].includes(m.vocation)).length)
+          return 1
+        // 160: those in 2, 3, 10 — Priest, Mage, Sage (`0x021ea51c`).
+        case 160:
+          put(0, facts.party.filter((m) => [2, 3, 10].includes(m.vocation)).length)
+          return 1
+        // 161, 162: the living and the fallen (`0x021ea5a4`, `0x021ea630`).
+        case 161:
+          put(0, facts.party.filter((m) => m.hp > 0).length)
+          return 1
+        case 162:
+          put(0, facts.party.filter((m) => m.hp <= 0).length)
+          return 1
+        // 165: whether the player's own character stands (`0x021ea77c`).
+        case 165:
+          put(0, (facts.party[0]?.hp ?? 0) > 0 ? 1 : 0)
+          return 1
+        // 110: grottoes cleared, the records' `+0x0c` bits 14–27 (`0x021e9910`) —
+        // none is cleared yet: a grotto's boss is not built.
+        case 110:
+          put(0, 0)
+          return 1
+        // 117, 175: the gold banked and carried (`0x021e9a78`, `0x021ea9dc`).
+        case 117:
+          put(0, facts.banked)
+          return 1
+        case 175:
+          put(0, facts.gold)
+          return 1
+        // 166: the player's own character's experience, every vocation's (`0x021ea7e0`).
+        case 166:
+          put(0, Math.min(0x7fffffff, facts.allExp))
+          return 1
+        // 157: the party's size less one (`0x021ea3ac`).
+        case 157:
+          put(0, facts.companions)
+          return 1
+        // 127, 128: flee attempts and flees, the records' `+0x34` and `+0x38` (`0x021e9d2c`, `0x021e9d60`).
+        case 127:
+          put(0, facts.fleeTries)
+          return 1
+        case 128:
+          put(0, facts.flees)
+          return 1
         // 129: the records' `+0x3c`, low 24 bits — battles fought (`0x021e9d94`).
         case 129:
           put(0, facts.battles)
+          return 1
+        // 130: `+0x08` — battles won (`0x021e9dc8`).
+        case 130:
+          put(0, facts.victories)
+          return 1
+        // 134: `+0x40` — wipe-outs (`0x021e9e98`).
+        case 134:
+          put(0, facts.wipeouts)
           return 1
         // 169: the records' `+0x20`, high half — comments given (`0x021ea8b8`).
         case 169:

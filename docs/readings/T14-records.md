@@ -191,23 +191,31 @@ entry's (`+0xb16`) text message (`+0xb14`), the man's or the woman's line by
 the Hero's sex (`func_ov008_02185dc0`, `0x02185fe8`–`0x0218604c`).
 
 **Built, 11 October 2026** (`apps/game/src/comments.ts`): the scripts run
-in that order as the Records open, the line given by the Hero's sex. The
-header's tests ask only functions 51, 53, 129 (battles fought), 169
-(comments given) and 171, so **the header is whole**. The stage entries ask
-many more; there, a test asking a function not modelled ends the run with no
-comment, rather than passing over it to one the game would not yet give.
-Functions still to read for them, by how many candidates ask:
+in that order as the Records open, the line given by the Hero's sex. **495 of
+the 620 candidates are answerable**, the header's 59 among them; a test that
+asks a function not modelled ends the run with no comment, rather than passing
+over it to one the game would not yet give. The functions modelled, each read
+from its handler:
 
-| function | asked by | reads |
+| function | reads | here |
 |---|---|---|
-| 157 | 152 | `func_02011494` − 1 |
-| 107, 108 | 127, 88 | a member's `+0x130` halfwords 4 and 6 (INFERRED HP and MP) |
-| 134, 127, 128 | 34, 23, 20 | the records' `+0x40` wipe-outs, `+0x34` flee attempts, `+0x38` flees (below) |
-| 130 | 26 | the records' `+0x08` low 24 bits, victories (below) |
-| 123 | 62 | the records' first word, through `func_ov023_021e8fe8` |
-| 177 | 56 | `func_02086aec(party, n)`: how many of an item the party holds (INFERRED from its other callers) |
-| 174 | 35 | bit 4 of `func_02012fe4()`'s `+0x8` |
-| 165, 158, 140 | 31, 22, 21 | a member (`func_020100a8`, `func_0200ff1c`); `func_02011494`; the records' first halfword |
+| 51, 52, 53 | the records' `+0x4c` bit; the Story So Far's page | `commentsShown`, `storySoFar` |
+| 101 | a member's vocation, its level, the experience in it | — |
+| 107, 108 | a member's `+0x130` halfwords 4 and 6: HP and MP (`func_020482bc` writes 6 against the maximum MP) | — |
+| 110 | grottoes cleared | 0: no boss is built |
+| 117, 175 | the party's `+0xf68` banked and `+0xf6c` carried (the bank shows both in thousands, `func_ov003_02168b50`) | — |
+| 123, 124 | time played and time in multiplayer: the records' first two hours-and-minutes, with the session's added (`func_ov023_021e8fe8`) | `playedMs`; multiplayer 0 |
+| 127, 128, 129, 130, 134, 169 | the counters below | `recordCounts` |
+| 157, 158–162, 165 | the player's party (`func_02011494`, filled by `func_ov017_02191234`): its size less one; the fallen but its first; those in vocations 1, 4, 7, 9 and in 2, 3, 10; the living and the fallen; the player's own standing | story guests left out (INFERRED) |
+| 166 | the player's experience in all thirteen vocations | — |
+| 170, 171 | the wireless session | none |
+| 177 | how many of an item the party holds, carried, worn and in the bag (`func_02086aec`) | — |
+
+**Left**, by how many candidates ask: 174 (35) — bit 4 of the byte at
+`[data_020fb3f0+8]+0xc`, whose low four bits the grotto entrance's code tests;
+140 and 141 (21, 18) — the second set's two times; 138 (9) — the records'
+`+0x44`; 139 (5) — `+0x48`, the experience a victory shares out
+(`func_ov023_021f4098`) and something of overlay 17's; and a tail of others.
 
 The script machine's opcode `0x0A`, modulo, was read for them (interpreter
 case 10, `0x021d5bbc`); no event script uses it.

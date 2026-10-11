@@ -41,7 +41,22 @@ describe.skipIf(!romPath)('Stella’s header comment, on a real cartridge', () =
   const run = (facts: { storySoFar: number; battles: number; heard: number; shown: number[] }) => {
     const header = commentEntryOf(rom, HEADER_ENTRY)
     if (!header) throw new Error('no header')
-    const out = runComment(header.script, { ...facts, shown: (bit) => facts.shown.includes(bit) })
+    const out = runComment(header.script, {
+      ...facts,
+      victories: 0,
+      wipeouts: 0,
+      fleeTries: 0,
+      flees: 0,
+      member: () => undefined,
+      companions: 0,
+      played: 0,
+      held: () => 0,
+      party: [],
+      gold: 0,
+      banked: 0,
+      allExp: 0,
+      shown: (bit) => facts.shown.includes(bit),
+    })
     return 'line' in out ? header.lines.get(out.line)?.[0] : out
   }
 
@@ -53,5 +68,36 @@ describe.skipIf(!romPath)('Stella’s header comment, on a real cartridge', () =
     expect(run({ storySoFar: 20, battles: 5, heard: 1, shown: [0, 3] })).toMatch(
       /^That<1>s it<,> keep up the good work/,
     )
+  })
+
+  it('gives a page’s own comment by the records’ counts: wipe-outs, time played', () => {
+    const page = commentEntryOf(rom, 13)
+    if (!page) throw new Error('no entry 13')
+    const facts = {
+      storySoFar: 13,
+      battles: 3,
+      heard: 1,
+      victories: 3,
+      wipeouts: 0,
+      fleeTries: 0,
+      flees: 0,
+      played: 30,
+      companions: 0,
+      party: [{ hp: 20, vocation: 6 }],
+      gold: 100,
+      banked: 0,
+      allExp: 5000,
+      held: () => 0,
+      member: () => ({ hp: 20, mp: 5, vocation: 6, level: 12, exp: 5000 }),
+      // Its first two, given once, already given.
+      shown: (bit: number) => bit === 59 || bit === 60,
+    }
+    const line = (over: Partial<typeof facts>) => {
+      const out = runComment(page.script, { ...facts, ...over })
+      return 'line' in out ? page.lines.get(out.line)?.[0] : undefined
+    }
+    expect(line({})).toMatch(/^You still haven<1>t been wiped out once/)
+    expect(line({ wipeouts: 2 })).toMatch(/^Will you stop getting wiped out/)
+    expect(line({ played: 600 })).toMatch(/^You<1>ve spent a lot of time down here/)
   })
 })

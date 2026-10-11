@@ -1784,7 +1784,9 @@ let battlesFought = 0
  * battles fought (`+0x3c`, counted as each is set up), victories (`+0x08`),
  * wipe-outs (`+0x40`) and comments given (`+0x20`'s high half). Saved.
  */
-let recordCounts = { battles: 0, victories: 0, wipeouts: 0, heard: 0 }
+let recordCounts = { battles: 0, victories: 0, wipeouts: 0, heard: 0, fleeTries: 0, flees: 0 }
+/** Time played, in milliseconds — see `keepTime`. */
+let playedMs = 0
 /** Stella's comments given that are not given again: the records' `+0x4c` bits — see `comments.ts`. */
 let commentsShown = new Set<number>()
 /**
@@ -2532,8 +2534,17 @@ function restore(game: SaveGame): void {
   volumes = game.volume ? { ...game.volume } : DEFAULT_VOLUMES
   hearVolumes()
   defeatedList = defeatedRestored(game.defeated)
-  recordCounts = { battles: 0, victories: 0, wipeouts: 0, heard: 0, ...game.counts }
+  recordCounts = {
+    battles: 0,
+    victories: 0,
+    wipeouts: 0,
+    heard: 0,
+    fleeTries: 0,
+    flees: 0,
+    ...game.counts,
+  }
   commentsShown = new Set(game.comments ?? [])
+  playedMs = (game.played ?? 0) * 1000
   storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
   storyStep = game.step ?? 0
   storyFlags.clear()
@@ -2725,6 +2736,7 @@ function snapshot(): SaveGame | undefined {
     volume: { ...volumes },
     ...(defeatedList.size > 0 ? { defeated: defeatedSaved(defeatedList) } : {}),
     counts: { ...recordCounts },
+    played: Math.floor(playedMs / 1000),
     ...(commentsShown.size > 0 ? { comments: [...commentsShown].sort((a, b) => a - b) } : {}),
   }
   return game
@@ -5248,6 +5260,10 @@ function timeNow(): TimeOfDay {
 function keepTime(elapsedMs: number): void {
   const here = loaded
   if (!here || !self) return
+  // **Time played**, the records' first word with the session's own added
+  // (`func_ov023_021e8fe8`) — real time while a game is up, a frame's worth
+  // at most at a time. Saved; see `recordCounts`.
+  playedMs += Math.min(elapsedMs, 250)
   // **The clock runs on a field, the ocean or the sky** — a second a second,
   // whatever else is going on there (INFERRED: the game has no gate for
   // menus, talk, scenes or battles) — and nowhere else. See `Clock`.
@@ -7560,6 +7576,33 @@ function stellaSays(entry: number): string | false | undefined {
     storySoFar,
     battles: recordCounts.battles,
     heard: recordCounts.heard,
+    victories: recordCounts.victories,
+    wipeouts: recordCounts.wipeouts,
+    fleeTries: recordCounts.fleeTries,
+    flees: recordCounts.flees,
+    member: (which) => {
+      const member = which === -1 ? leader() : which >= 0 ? members[which] : undefined
+      const row = member ? levelOf(member) : undefined
+      if (!member || !row) return undefined
+      return {
+        hp: member.hp ?? row.maxHp,
+        mp: member.mp ?? row.maxMp,
+        vocation: member.vocation,
+        level: row.level,
+        exp: expOf(member),
+      }
+    },
+    companions: Math.max(0, members.filter((m) => m.attnpc === undefined).length - 1),
+    gold: bag.gold,
+    banked: goldBanked,
+    allExp: [...leader().exp.values()].reduce((a, b) => a + b, 0),
+    party: members
+      .filter((m) => m.attnpc === undefined)
+      .map((m) => ({ hp: m.hp ?? levelOf(m)?.maxHp ?? 0, vocation: m.vocation })),
+    played: Math.floor(playedMs / 60_000),
+    held: (item) =>
+      heldAll(bag, carriers(), item) +
+      members.reduce((n, m) => n + [...wornBy(m).values()].filter((id) => id === item).length, 0),
   })
   if ('stopped' in run) {
     log(`Stella's comment ${entry}: stopped at ${run.stopped}, not modelled`)
@@ -12383,6 +12426,12 @@ function settleBattle(): void {
   /** What each of a victory's pages opens on the bottom screen, and sounds — see `resultsQueue`. */
   const slots: ResultsSlot[] = []
   if (eventFight) eventFight = { ...eventFight, won: battle.state.outcome === 'won' }
+  // Flee attempts and flees, counted (`func_ov026_021dd3dc`: `+0x34` each try,
+  // `+0x38` a flight that held). **Ours**: the flight is counted whatever its
+  // foes — the game counts it only where none passes `func_02010088`, a bit
+  // of `[+0x138]+0x14` not read.
+  recordCounts.fleeTries += battle.state.fleeAttempts ?? 0
+  if (battle.state.outcome === 'fled') recordCounts.flees++
   /** Hit points each companion's level brought, by place — added to their wounds below. */
   const grown = new Map<number, number>()
   if (battle.state.outcome === 'won' && hero && levels) {

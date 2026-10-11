@@ -877,12 +877,10 @@ For any session, not only one reading assembly:
   Quest List moved in from the top menu, Accolades Earnt, and **the
   Wardrobe and the Item List** (game-wide flags `0xc76 +` an item's list
   number, found the same day). **Left**: the Completion Records.
-- **Stella's comments, built 11 October 2026** (`comments.ts`): the header
-  whole, the Story So Far's entries and TailC as far as the functions read —
-  a test asking one not read ends the run with nothing said. Left: the
-  functions the stage entries ask (`docs/readings/T14-records.md`, "Stella's
-  comments", has them by how often they are asked), and the counters not yet
-  kept.
+- **Stella's comments, built 11 October 2026** (`comments.ts`): 495 of the
+  620 candidates answerable, the header's whole — a test asking a function
+  not read ends the run with nothing said. Left: the functions in
+  `docs/readings/T14-records.md`, "Stella's comments", led by 174.
 
 **Out of scope, as multiplayer or online**: the Rapportal and Pavo,
 Canvass and the Guestbook, the DQVC shop and its special guests, map

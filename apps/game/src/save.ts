@@ -292,9 +292,13 @@ export interface SaveGame {
     readonly victories: number
     readonly wipeouts: number
     readonly heard: number
+    readonly fleeTries?: number
+    readonly flees?: number
   }
   /** Stella's comments given that are not given again, by their bits — see `comments.ts`. */
   readonly comments?: readonly number[]
+  /** Time played, in seconds — the records' first word. Absent from saves made before: 0. */
+  readonly played?: number
 }
 
 export class SaveError extends Error {
@@ -491,9 +495,13 @@ export function decodeSave(text: string): SaveGame {
     counts !== undefined &&
     (typeof counts !== 'object' ||
       counts === null ||
-      !['battles', 'victories', 'wipeouts', 'heard'].every((k) => isCount(counts[k])))
+      !['battles', 'victories', 'wipeouts', 'heard'].every((k) => isCount(counts[k])) ||
+      !['fleeTries', 'flees'].every((k) => counts[k] === undefined || isCount(counts[k])))
   ) {
     throw new SaveError('the save has record counts that do not read')
+  }
+  if (s.played !== undefined && !isCount(s.played)) {
+    throw new SaveError('the save has a time played that does not read')
   }
   if (s.comments !== undefined && !(Array.isArray(s.comments) && s.comments.every(isCount))) {
     throw new SaveError('the save has comments that do not read')
