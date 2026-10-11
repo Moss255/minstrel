@@ -101,6 +101,10 @@ written up on the wiki; each says so under its heading.
   game's (0.0625 here, was 0.025), and the development fit stopped rebuilding
   the meshes when it changes nothing. FORMAT.md, "The attribute word", "The
   trailing records"; `docs/decomp-contributions.md`, "The field's walls".
+- **Task 19 is done in part**, 11 October 2026: a grotto floor laid out by the
+  game's own generator on every seed, its tiles given their pieces and turns,
+  the `.bpos` read; building and entering the floor is the next step, written
+  under the task.
 - **Zoom and Evac land where the game lands them**, 11 October 2026: both
   tables give a place in the map's own units, as a doorway's arrival does,
   and they reached the map unscaled — eight times as far out, off the floor,
@@ -777,6 +781,36 @@ and Mist Me's is read); riders 5, 6, 9, 10, 12–14, 19, 21; Crosscutter
 Throw; M-Pathy.
 
 ## 19. The grotto generator — translate
+
+**Done in part, 11 October 2026**: the floor's layout, by the game's own
+generator, held to it on every seed (`packages/sim/src/grotto/floor.ts`,
+`tools/grotto-oracle` — the decomp's complete C++ built for this machine; all
+65,536 seeds, floors 1 to 16, agree tile for tile); the floor's size and seed
+(`srand(map seed + floor)`, the size by the floor's band, square); each tile's
+piece and quarter turn from its neighbours (`func_02019728`, `tiles.ts`); and
+the `.bpos` read — **the tiles' places, not the generator's**: where on a tile
+of each kind something may stand and which ways it may face, used to put
+objects down (`readTilePlacements`, `placeOnTile`; FORMAT.md, "`.bpos`").
+
+**Left, the next step** — the floor built and walked:
+
+- **The floor drawn and stood on**: each tile's piece from the environment's
+  `Z0nM01.amdj`, by the number `func_020196fc` walks to (the archive
+  backwards — INFERRED, see `tiles.ts`), turned and put at (x · 8, 0, y · 8);
+  its collision likewise. The game collides with **only the tile under the
+  character** (the map's `+0x23b8` mode in `func_02017d90`, a tile's
+  position and angle at its entry's `+0x3c`, `+0x44`, `+0x38`), and a stairs
+  piece as a mesh of its own (index `0x100`) — `walls.ts` and the world take
+  no turn yet.
+- **What stands on it**: `func_0201a600` (US ARM9, 586 lines, unread) seeds
+  `rand` again and puts the chests and stairs down through
+  `GenerateGrottoObjectPositionOrientation`.
+- **Getting in**: a grotto's maps are 40001 to 41505 (`func_0201b588`), its
+  floor the map's id modulo 20 (`Zone3D::SwitchZone`); the seed is the
+  treasure map's own (`SeedOrMinTurns`), and its environment, floor count,
+  name and boss come from `ExportDetailedTreasureMapData` (the decomp's
+  `DetailedTreasureMapData.cpp`, complete) over `data/tmap/tdata.gp2`. The
+  boss floor is `Z0nM99`.
 
 The longest pure translation job in the project, and it needs no map or story
 to exist. `FloorMapGenerator` is named in the US symbols: `Initialize`,

@@ -1433,3 +1433,25 @@ the sea's battle request with no roamer chooses its monsters.
 **Open**: what a trailing record's kinds 1 to 4 do; the entries' margins; the
 sweep's comparison against the last wall's normal before one has been set
 (`sp+0x108`, never written — whatever the stack held).
+
+### Task 19 — the grotto floor (11 October 2026)
+
+`packages/sim/src/grotto/floor.ts` and `tiles.ts`; tests in
+`packages/sim/test/grotto-floor.test.ts`, `grotto-tiles.test.ts` and, on the
+cartridge, `tools/harness/test/grotto-tiles.test.ts`. The generator itself is
+the decomp's own (`FloorMapGenerator.cpp`, `FloorMap.cpp`, complete), held to
+by `tools/grotto-oracle`. USA addresses.
+
+| address | what it does | name proposed |
+|---|---|---|
+| arm9 `0x02003d14`, `0x02003d48` | `rand`, `srand`: `next · 0x41c64e6d + 12345`, bits 16–30 | (already named) |
+| arm9 `_s32_div_f` `0x0200cf44` | a zero divisor: quotient the dividend, remainder 0 — `RandRange(a, a − 1)` answers `a` | (already named) |
+| arm9 `Calculate` `0x020905e4`–`0x02090604` | r4–r7 at `RoutineK`: the floor, the generator, 1, 0 — the four locals `RoutineK` never sets | — |
+| arm9 `func_02019728` | each tile's piece: its adjacency byte to a kind and name (15 names, `data_020ef26f`…), a quarter turn and its matrix, the kind's `.bpos` record turned, the tile at (x · 8, 0, y · 8); a byte not named keeps the last name | `Zone3D::BuildGrottoTiles` |
+| arm9 `func_020196fc` | the map's n-th piece group (`+0x41c`, next at `+0x54`) | `Zone3D::GetPieceByIndex` |
+| arm9 `func_0201e434` | a `.bpos` record by name (`strstr` at `+0xb`, 16-byte records at `+0x30`, count `+0x34`) | `TileFeatures::Find` |
+| arm9 `func_02019f24`, `func_02019f6c`, `func_0201a108` | the record copied; its nine places turned; one place's four ways turned | `TileFeatures::Copy`, `::Turn`, `::TurnWays` |
+
+**Open**: the loader's own order for the map's pieces (`func_02014108`,
+`func_0201403c`, `func_02014b04`), which would confirm the archive-backwards
+numbering; `func_0201a600`, the chests and stairs put down.

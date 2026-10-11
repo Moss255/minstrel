@@ -1883,22 +1883,36 @@ the door pieces, and `in` on `C01I00`. So a `.bcfg` is the list of states its
 piece can be in, with three numbers each — plausibly a frame range and a speed,
 though nothing here confirms that.
 
-## `.bpos` — a grid of codes, on the `Z` maps only
+## `.bpos` — where things may stand on a grotto's tiles
 
-**5 files, 1,056 bytes each**, all `Z01M0100`..`Z05M0100`.
+**5 files, 1,056 bytes each**, `Z01M0100`..`Z05M0100`, one for each of the
+grottoes' environments. Read 11 October 2026 from the game's code;
+`readTilePlacements`.
 
 | tag | values | meaning |
 |---|---|---|
 | `125` | 1 | `18`, the number of `126` records |
-| `126` | 11 | eleven codes |
+| `126` | 11 | a tile kind: a number, its name, and nine masks |
 
-Eighteen records of eleven values is an **11 by 18 grid**, and most values
-resolve to four-character codes: `W01A` overwhelmingly, then `W02A`, `W03A`,
-`W04A`, `R01A`..`R04A` and `E01A`. `W`, `R` and `E` reading as wall, room and
-entrance is the obvious guess and is **not confirmed**.
+**One record for each of the 18 tile pieces** in the environment's
+`Z0nM01.amdj` — `R04A` open all round, `E01A` a dead end, `W01A`..`W04A`
+corridors, `D01A`..`D04A` a room's edge, `S01A`, `S02A`, `O01A`, `F01A` —
+named by value 1, a string; all five files name exactly their archive's
+eighteen. Values 2 to 10 are the tile's nine places, rows north to south, each
+west to east: **the ways something standing there may face**, bit 0 up, 1
+right, 2 down, 3 left, 0 where nothing may stand. Value 0 is a number from 0
+to 17, each once, in a different order in each file; the game copies it with
+the masks and nothing read uses it.
 
-The `Z` maps are outside this repository's slice, so this is recorded rather
-than pursued.
+What reads it: the floor's tiles are each given their kind's record by name
+(`func_0201e434`, a `strstr` of the name over the records the game builds,
+16 bytes each — the decomp's `TileFeaturePlacementData`), turned a quarter at
+a time with the tile (`func_02019f6c`, `func_0201a108`); an object put on a
+tile takes one of its places with any way to face, and one of those ways
+(`GenerateGrottoObjectPositionOrientation`). The floor's generator does not
+read it. **Corrected:** this was read as a grid of codes whose values were
+mostly names, with `W`, `R` and `E` guessed as wall, room and entrance; the
+values are masks, and only value 1 is a name.
 
 ## `.bmed` — the `E1` pieces
 
