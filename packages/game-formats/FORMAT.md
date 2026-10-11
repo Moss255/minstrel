@@ -367,13 +367,23 @@ Anything the game needs collision for that is bigger than sixteen units across
 therefore cannot be stored at the size its models are drawn at. Whatever
 reconciles the two is not in this file — see below.
 
-### The attribute word is not established
+### The attribute word — read 11 October 2026
 
-Its values look like packed nibbles — `0x21`, `0x24`, `0x51`, `0x221` in the
-high half, `0x213`, `0x3210`, `0x513` in the low — and terrain kind is very
-likely among them, which is what a walkable/water/marsh distinction would need.
-Reading it properly means watching what the game does with it, which is the
-emulator work this repository does not do. It is carried through whole.
+Read from the game's grid query, `func_0204c030` (US ARM9, `0x0204c3b8`–
+`0x0204c444` and `0x0204c524`–`0x0204c54c`):
+
+| bits | meaning |
+|---|---|
+| 0–23 | **the triangle's own box**, as six nibbles, each an index 0–8 into the triangle's nine stored coordinates (vertex × 3 + axis): the first three its least x, y and z, the last three its greatest |
+| 24 | the query's mark that it has looked at the triangle, set and cleared as it goes; 0 in every file |
+| 25–31 | **which trailing record** the triangle is in (kind-3 files; see below) |
+
+**The nibbles name exactly the corners' own extent on 109,122 of 109,122
+triangles** — each first nibble's index is its axis, 3 or 6 more for the second
+or third corner, which is what the earlier "only ever from one of {0, 3, 6},
+{1, 4, 7} and {2, 5, 8}" was. Nothing in the word is terrain; what a triangle
+is lies in its record, and in which way its normal points (`packages/sim`'s
+`walls.ts`). Bit 24 is 0 on all 109,122.
 
 ## The grid index
 
@@ -414,21 +424,31 @@ minZ` on **1,178 of 1,178**, and on 77.7% one cell fewer would not cover it. So
 the header describes a grid of `cellSize` squares laid over the mesh's own
 bounding box, with the rows staggered as the cell count says.
 
-**Where cell (0, 0) sits is still not established**, and the staggering is the
-likely reason a rectangular reading fails. Taking the grid's corner as the
-mesh's minimum and indexing row-major puts only **36%** of the index references
-inside the square that names them; column-major gives 26%, and an origin at zero
-4%. Until that is settled the cells are parsed and carried but not used to look
-a position up — `packages/sim` builds a uniform grid of its own instead.
+**Where each cell sits — read 11 October 2026** from the game's query,
+`func_0204c030` (`0x0204c0d4`–`0x0204c37c`). Row `r` is `(z − minZ) / cellSize`;
+**even rows hold `gridX` cells from `minX`, odd rows `gridX + 1` from half a
+cell to the left of it**, and the cell is `r · gridX + column + ⌊r / 2⌋`. The
+division is `fix32_Divide` taken out of fixed point and truncated. A query
+looks in the cell under its box's middle, then the two it shares an edge with
+in the row above, the two below, and the one either side; a mesh of seven
+cells or fewer has all of them looked in (`data_020e7bb8`, 0 to 6). That is
+why a plain rectangle read only 36% of the references into their own square.
+Read so on `F01`, the grid finds the same floor as a search of every triangle
+at every one of 6,453 points over its drawn ground. `packages/sim` takes the
+walls through it (`walls.ts`), and still finds the ground through a grid of its
+own.
 
 The cell size is a power of two on **1,178 of 1,178**: 8192 on 667 files, 2048
 on 262, 4096 on 173 and 1024 on 76.
 
 ## A mesh is stored halved `shift` times
 
-**INFERRED**, from three measurements that agree. No published reference for
-`.col2` is known to this project; the parser carries the value as `shift` and
-applies nothing.
+First **INFERRED**, from the three measurements below, and **since read in the
+game's code** (11 October 2026): the loader widens the box by `<< shift`
+(`func_0204bf44`), the query brings its box down by `>> shift` (`func_0204c030`),
+and the field's mover scales every corner it is handed by `1 << shift`
+(`func_ov017_02192b48`). The parser carries the value as `shift` and applies
+nothing.
 
 `+0x04` runs 0 to 5. On every one of the 511 files where it is not zero, the
 mesh's largest coordinate lies in the top octave of an `s16`, 16,384 to 32,768,
@@ -694,8 +714,23 @@ a median 3.5 units from the arrival.
 
 Eight bytes each, counted at `+0x34`, which divides the section exactly on
 **1,178 of 1,178**. 1,699 records in all, and they repeat: `0,0,0,0` on 488,
-`23254,0,0,0` on 240, `23254,9513,32767,0` on 115. `32767` is the largest
-positive `s16`, which suggests a sentinel. **Not established.**
+`23254,0,0,0` on 240, `23254,9513,32767,0` on 115.
+
+**A triangle names its record by the attribute word's top seven bits**, and the
+game reads them only from a kind-3 file (`func_0204bf44` sets their pointer only
+then; every file on the cartridge is kind 3). Read so far, by halfword:
+
+| halfword | read by | meaning |
+|---|---|---|
+| 0 | `func_0204bd7c`, `func_0204bea0`, `func_0204bef4` | three five-bit digits, low first: the battle stage, 30000 + 100a + 10b + c ("Where a battle is fought"); in the sky, the field map, 20000 + … |
+| 1, bits 0–4 | `func_0204bdc0`…`func_0204be08` | a kind, asked as 1, 2, 3 or 4 — **what each is, not established** |
+| 1, bits 5–9 | `func_0204be78`, `func_0204bedc`, `func_0204be20` | whether a ship or the Express may land ("The Starflight Express in flight") |
+| 2 | `func_0204be3c` | an encounter zone, 100a + 10b + c, at sea |
+
+On `F01` the two records are 30116 "F01 - Field" and 30117 "F01 - Forest", their
+second halfwords 0. The forest is walked through — a let's play has the party
+in it — and its record also runs on under the mountains and out past the drawn
+map; what keeps the Hero in is the walls.
 
 ## Evidence
 
@@ -705,6 +740,7 @@ positive `s16`, which suggests a sentinel. **Not established.**
 | triangles | 109,122 |
 | **stored normal == the normalised cross product of its own triangle** | **108,471 / 108,471 with area** |
 | **the header box encloses every triangle** | **1,178 / 1,178** (exact on 1,038) |
+| **the attribute word's six nibbles name the triangle's own box** | **109,122 / 109,122**; bit 24 clear on all |
 | **the cells tile the triangle-index list** | **1,178 / 1,178** |
 | **cells == `floor(gridZ * (gridX + 1/2))`** | **1,178 / 1,178** |
 | **the grid covers the header box on both axes** | **1,178 / 1,178** (tight on 77.7%) |
@@ -4449,10 +4485,9 @@ The `0x67` records' second value is a float on some — 0.85 and 0.9 in `F06`
 
 - **The collision triangles' attribute word.** Bits 25 up, read as an index
   into the map's zones, match the zone count on only 41 of 109 field and
-  dungeon maps, and on 61 run past the last zone. The rest is no better: the
-  low 24 bits are six nibbles, each only ever from one of {0, 3, 6},
-  {1, 4, 7} and {2, 5, 8} — per-edge data, by the look of it — on `F01`,
-  `F02`, `F06`, `F17`, `F18` and `D01M02` alike.
+  dungeon maps, and on 61 run past the last zone — they index the collision's
+  own trailing records instead. The low 24 bits are the triangle's own box
+  (see "The attribute word").
 - **Night pieces, for kind 1 as the night.** Fields have none: 36 of the 37
   maps with a pair build the same by night, so the test cannot decide it.
 - **The `0x69` record's other four values**: 0 on all 210.

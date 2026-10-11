@@ -10,7 +10,7 @@ worked example: `<DAMA>` found on Jack's line, overlay 3's service 46 read,
 then built — `abbey.ts`, and `docs/party-and-vocations.md`, "The Abbey's
 own flow".
 
-## Where it stands — 8 October 2026
+## Where it stands — 11 October 2026
 
 **Tasks 1 to 10 are done**, each built, checked in the browser, committed and
 written up on the wiki; each says so under its heading.
@@ -90,6 +90,17 @@ written up on the wiki; each says so under its heading.
   Burn, Extreme Makeover, Eyes on Me, Whistle, Mercy (read, not built — §15),
   Twocus Pocus; riders 5 and 6 (the items'), 9 on the monsters' attack 232,
   12, 13 and 21; Crosscutter Throw.
+- **The walls are the game's**, 11 October 2026 (not a numbered task): on
+  `F01` the Hero could walk through the corner two walls make at about
+  (8.5, −1.0) and out under the mountains, on to collision floor no piece is
+  drawn over — the "missing ground near the Hexagon". The field's mover and the
+  ARM9's sweep are read and translated (`packages/sim/src/walls.ts`): a sphere
+  of radius `0x800`, walls one-sided, taken through each file's own grid,
+  whose layout is now read. Along the way: the attribute word is read whole
+  (the triangle's box, a mark, its record), the Hero's wall radius is the
+  game's (0.0625 here, was 0.025), and the development fit stopped rebuilding
+  the meshes when it changes nothing. FORMAT.md, "The attribute word", "The
+  trailing records"; `docs/decomp-contributions.md`, "The field's walls".
 - **Built this week and still ours**, listed in `docs/still-open.md` §2: eight
   coups (kinds 10, 26, 68–70, 72–74) say their opening line and do nothing;
   the camera easing in for a party trick;

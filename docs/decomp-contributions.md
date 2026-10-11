@@ -1406,3 +1406,30 @@ the sea's battle request with no roamer chooses its monsters.
 | arm9 `func_020881c4`, `02088220`, `02088150` | may take tension; tension set; tension to the most | `Status::CanTakeTension` … |
 | ov000 `func_ov000_02155184` | a monster's experience and gold added to the battle's totals (`+0x8e28`, `+0x8e2c`), from `0215a004` alone | `Battle::AddSpoils` |
 | `func_ov024_021ea4d0`, `021ea500` | a critical rolled once for all: a reach of 3 or 4 with no hit code; the party's Attack with a weapon striking all | `IsOnceForAll`, `IsWeaponOnceForAll` |
+
+### The field's walls — ARM9 and overlay 17 (11 October 2026)
+
+`packages/sim/src/walls.ts` translates the sweep and the gathering; its tests are
+`packages/sim/test/walls.test.ts` and, on the cartridge,
+`tools/harness/test/field-walls.test.ts`. USA addresses.
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov017 `func_ov017_0218e210` | a field object moved (`func_02037d88`) and then put right: the place before the move kept; the leader's step split in two past `0x333` a tick; `0219344c` with that place | `Field::MoveObject` |
+| ov017 `func_ov017_0219344c` | the box about the object (half its radius either side, `0xa000` below, its height above), then every collision mesh of the map in turn: its triangles near (`func_02017d90`), the mover; gravity `0x51` a frame to `0x1000` where no floor was taken | `Field::Collide` |
+| ov017 `func_ov017_02192b48` | the mover, one mesh: the hits scaled by `1 << shift`, the place into the mesh's frame; the floor by a ray from `+0x1800` to `−0xa000`; a drop of `0x800` or more tried by eight probes (`data_ov017_021d62d8`, `021d62f8`) before it is let fall; then the walls, a sphere of `0x800` at `+0x800` (`radius / 4` for flag `0x20` where larger), x and z only | `Field::CollideMesh` |
+| ov017 `func_ov017_0218f064` | a party member's field object: turn speed `0x324`, speed `0x189`, height `0x1800`, radius `0x1000` | `Field::CreatePartyMember` |
+| arm9 `func_02017d90` | one collision entry's triangles in a box: the entry's place and margins (`+0x58`–`+0x6c`) taken off, `func_0204c030`, its angle (`+0x6`) kept at `out+0x918`; a second mode (`+0x23b8`) for maps in 16 × 16 blocks of 8 | `Map::QueryCollision` |
+| arm9 `func_0204c030` | the file's grid: the cell under the box's middle — rows alternating `gridX` and `gridX + 1` cells, the longer starting half a cell left — and its six neighbours (all cells of a mesh of seven or fewer, `data_020e7bb8`); each triangle once (`+0x1b` bit 0, cleared after), its box from the attribute word's six nibbles against the query's; at most 96 kept, 192 looked at; a kind-3 file's record index (`+0x1b >> 1`) kept per hit at `+0x920` | `CollisionMesh::Query` |
+| arm9 `func_0204bf44` | a `.col2` taken in: section pointers, the trailing records only for kind 3, the box `<< shift`, the cell count `gridX · gridZ + gridZ / 2` | `CollisionMesh::Initialize` |
+| arm9 `func_0204bdc0`, `0204bdd8`, `0204bdf0`, `0204be08`, `0204be20` | a trailing record's second halfword: bits 0–4 equal to 1, 2, 3, 4; bits 5–9 equal to 2 | `CollisionRecord::IsKind1` … — what the kinds are is open |
+| arm9 `func_020315b8` | the sweep: faces first (a segment from the centre a radius back along the normal, through `02031b84`), then edges and corners (`02031d20`); walls only where the stored normal's y is at most `0x800`; the corner rule, refusing a move between two walls 15° to 60° apart | `Collision::PushSphere` |
+| arm9 `func_02031b84` | `IntersectSegmentTriangle` (Real-Time Collision Detection), fixed point: 1 through, 0 short of the plane, −1 through it outside | `Collision::SegmentTriangle` |
+| arm9 `func_02031d20` | `ClosestPtPointTriangle`, fixed point — inside, the point itself | `Collision::ClosestPoint` |
+| arm9 `func_020312bc`, `02032090` | the floor ray over the hits, and a segment against a plane | `Collision::RayDown`, `::SegmentPlane` |
+| arm9 `func_02031188` | a hit's corners and normal widened to `Vector3i` | `Collision::LoadHit` |
+| arm9 `func_02018fbc`, `02019210` | over every mesh: the floor under a point, from `+0x1000` to `−0xa000`; a moving point swept (battle, `ov000`) | `Map::FloorAt`, `Map::Sweep` |
+
+**Open**: what a trailing record's kinds 1 to 4 do; the entries' margins; the
+sweep's comparison against the last wall's normal before one has been set
+(`sp+0x108`, never written — whatever the stack held).

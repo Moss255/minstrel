@@ -42,9 +42,11 @@ export interface CollisionTriangle {
    */
   readonly normal: readonly [number, number, number]
   /**
-   * Trailing word. Its fields are not established — the values look like packed
-   * nibbles, and reading them would take the runtime work this repository does
-   * not do. Carried through whole.
+   * Trailing word, read from the game's query (`func_0204c030`): bits 0–23 are
+   * six nibbles naming the triangle's own box, each an index into its nine
+   * coordinates — least x, y, z, then greatest — and exact on every triangle of
+   * the cartridge; bit 24 is the query's mark, clear on file; bits 25–31 are
+   * which of {@link CollisionMesh.trailing} it belongs to. Carried through whole.
    */
   readonly attributes: number
 }
@@ -80,30 +82,32 @@ export interface CollisionMesh {
    * more on every other row, so the rows alternate `gridX` and `gridX + 1`
    * wide.
    *
-   * **Where cell (0, 0) sits is not established**, and the staggering is
-   * probably why: taking the grid's corner as the mesh's own minimum and
-   * reading it as a plain rectangle puts only 36% of the index references
-   * inside the cell that names them, and column-major or an origin at zero do
-   * worse. So the cells are read and carried, and nothing here uses them to
-   * look a position up.
+   * Where each lies is read from the game's query (`func_0204c030`): row `r`
+   * from `minZ`, even rows `gridX` cells from `minX` and odd rows `gridX + 1`
+   * from half a cell to its left, cell `r · gridX + column + ⌊r / 2⌋`.
+   * `packages/sim`'s `walls.ts` looks walls up through it.
    */
   readonly cells: readonly CollisionCell[]
   /** Triangle indices, addressed through {@link CollisionMesh.cells}. */
   readonly cellTriangles: readonly number[]
-  /** Eight-byte records after the index. Their meaning is not established. */
+  /**
+   * Eight-byte records after the index, one per region of the mesh, which a
+   * triangle's top seven bits pick: the first halfword's three five-bit digits
+   * the battle stage (or, in the sky, the field map), the second's low bits a
+   * kind not yet established and bits 5–9 whether a vehicle may land, the
+   * third an encounter zone at sea. FORMAT.md, "The trailing records".
+   */
   readonly trailing: readonly Uint8Array[]
   /**
    * How many times the mesh's coordinates were halved to be stored, so the
    * mesh's own size is its stored coordinates times `2 ** shift`.
    *
-   * INFERRED, not read from any published reference: every one of the 511
-   * files on the reference cartridge with a non-zero shift has its largest
-   * coordinate between 16,384 and 32,768 — the top octave of an `s16` — while
-   * files with a shift of zero run as low as 3,684. That is what halving a
-   * mesh until it fits the format leaves behind, and nothing else read so far
-   * explains it. The size it gives agrees with the drawn geometry and with the
-   * doorways across the cartridge; `FORMAT.md` has the figures. This parser
-   * carries the value and applies nothing.
+   * First INFERRED — every one of the 511 files on the reference cartridge
+   * with a non-zero shift has its largest coordinate between 16,384 and
+   * 32,768, the top octave of an `s16` — and since read in the game's code,
+   * which widens the box by it (`func_0204bf44`) and scales the corners it
+   * collides with by `1 << shift` (`func_ov017_02192b48`); `FORMAT.md` has the
+   * figures. This parser carries the value and applies nothing.
    */
   readonly shift: number
   readonly unknown_0x1a: number
