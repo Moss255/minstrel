@@ -1,5 +1,6 @@
 import { add, type Fx32, fx32, mul, sub } from '@minstrel/fixed'
 import type { CollisionBounds, CollisionMesh, CollisionTriangle } from '@minstrel/game-formats'
+import type { WallPiece } from './walls.ts'
 
 /**
  * The world the player walks on.
@@ -14,13 +15,12 @@ import type { CollisionBounds, CollisionMesh, CollisionTriangle } from '@minstre
  * with a few triangles in it and no ground to stand on. They are merged here,
  * so a world is built from all of a map's collision or from none of it.
  *
- * **The index is ours, not the file's.** `.col2` carries a grid of its own, and
- * that grid's cells tile its triangle list exactly, but which region of the map
- * each cell covers is not established — the two header fields that look like
- * grid dimensions do not account for the cell count on most files. Using it
- * would mean guessing the mapping, so the world builds a uniform grid of its
- * own instead. The file's index is left parsed and unused until its own
- * dimensions are understood.
+ * **The ground's index is ours, not the file's.** `.col2` carries a grid of
+ * its own, and it is now read — the game's query, `func_0204c030`, says where
+ * each cell lies (see `walls.ts`) — but the ground here is looked up through a
+ * uniform grid the world builds itself, which finds the same floors: at every
+ * one of 6,453 points over `F01`'s drawn ground. The walls go through the
+ * file's grid, as the game's do, because there the order matters.
  */
 export interface CollisionWorld {
   /** Every triangle, from every mesh the world was built from. */
@@ -36,6 +36,12 @@ export interface CollisionWorld {
   readonly originZ: number
   /** Triangle indices per cell, row-major by z then x. */
   readonly cells: readonly (readonly number[])[]
+  /**
+   * The meshes as they were given, each where it stands and at its size: what
+   * the walls are resolved against, through each file's own grid, as the game
+   * does — see `walls.ts`.
+   */
+  readonly pieces: readonly WallPiece[]
 }
 
 /** Where the ground is under a point, and which triangle it belongs to. */
@@ -183,7 +189,22 @@ export function createCollisionWorld(
     }
   })
 
-  return { triangles, bounds, cellSize, cellsX, cellsZ, originX: minX, originZ: minZ, cells }
+  const pieces = placed.map(({ mesh, offset, scale }) => ({
+    mesh,
+    offset: offset ?? ZERO,
+    scale: scale ?? 1,
+  }))
+  return {
+    triangles,
+    bounds,
+    cellSize,
+    cellsX,
+    cellsZ,
+    originX: minX,
+    originZ: minZ,
+    cells,
+    pieces,
+  }
 }
 
 function cellOf(value: number, origin: number, size: number, count: number): number {
@@ -254,8 +275,9 @@ export function groundBelow(
     } else if (wa > 0 || wb > 0 || wc > 0) continue
 
     // Interpolate the height. The weights and the area are both twice the real
-    // areas, so the factors of two cancel.
-    const height = fx32(Math.round((wa * ay + wb * by + wc * cy) / area))
+    // areas, so the factors of two cancel. `| 0` folds the −0 a floor wound the
+    // other way gives at height 0.
+    const height = fx32(Math.round((wa * ay + wb * by + wc * cy) / area) | 0)
     if (height > ceiling) continue
     if (best === undefined || height > best.y) {
       best = { y: height, triangle: index, slope: slopeOf(triangle) }

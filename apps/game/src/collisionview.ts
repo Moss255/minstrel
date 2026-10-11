@@ -95,7 +95,14 @@ export function fitLine(code: string, fit: CollisionFit): string {
  * placed mesh carries.
  */
 export function fitMeshes(meshes: readonly PlacedMesh[], fit: CollisionFit): PlacedMesh[] {
-  if (fit === NO_FIT) return meshes as PlacedMesh[]
+  // **A fit that changes nothing hands the meshes on as they are**, compared by
+  // value: the caller builds its fit afresh, scaled by the world's, so it is
+  // never `NO_FIT` itself. Rebuilt, a mesh would keep its file's grid and
+  // `shift` while its corners moved, and the walls look up through that grid
+  // (`walls.ts`): on 11 October 2026 that let the Hero through `F01`'s walls.
+  if (fit.sx === 1 && fit.sy === 1 && fit.sz === 1 && fit.x === 0 && fit.y === 0 && fit.z === 0) {
+    return meshes as PlacedMesh[]
+  }
   // `PlacedMesh.scale` is one number, so a per-axis fit is applied to the
   // triangles here instead and the mesh handed on already stretched.
   return meshes.map((placed) => {
@@ -108,6 +115,12 @@ export function fitMeshes(meshes: readonly PlacedMesh[], fit: CollisionFit): Pla
     return {
       mesh: {
         ...placed.mesh,
+        // Stretched, the file's grid and `shift` describe another mesh, so
+        // they go, and the walls look at every triangle — **ours**, for this
+        // development fit only.
+        cells: [],
+        cellTriangles: [],
+        shift: 0,
         triangles: placed.mesh.triangles.map((t) => ({
           ...t,
           vertices: [

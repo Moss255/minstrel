@@ -65,13 +65,13 @@ function floor(n: number, y = 0): readonly [Point, Point, Point][] {
   return [
     [
       [-s, h, -s],
-      [s, h, -s],
       [-s, h, s],
+      [s, h, -s],
     ],
     [
       [s, h, -s],
-      [s, h, s],
       [-s, h, s],
+      [s, h, s],
     ],
   ]
 }
@@ -88,30 +88,35 @@ function slab(
   return [
     [
       [x0 * U, h, z0 * U],
-      [x1 * U, h, z0 * U],
       [x0 * U, h, z1 * U],
+      [x1 * U, h, z0 * U],
     ],
     [
       [x1 * U, h, z0 * U],
-      [x1 * U, h, z1 * U],
       [x0 * U, h, z1 * U],
+      [x1 * U, h, z1 * U],
     ],
   ]
 }
 
-/** A vertical wall across x, running from `z0` to `z1`, `height` tall. */
+/**
+ * A vertical wall across x, running from `z0` to `z1`, `height` tall, facing
+ * −x — toward the origin, where the tests stand. **A wall has one face**: the
+ * game pushes only off the side its normal points to, so the cartridge's walls
+ * face the ground they hem in, and these do the same.
+ */
 function wall(x: number, z0: number, z1: number, height: number): readonly [Point, Point, Point][] {
   const wx = x * U
   return [
     [
       [wx, 0, z0 * U],
-      [wx, height * U, z0 * U],
       [wx, 0, z1 * U],
+      [wx, height * U, z0 * U],
     ],
     [
       [wx, height * U, z0 * U],
-      [wx, height * U, z1 * U],
       [wx, 0, z1 * U],
+      [wx, height * U, z1 * U],
     ],
   ]
 }
@@ -205,13 +210,13 @@ describe('slopes', () => {
         ...floor(20),
         [
           [0, 0, -10 * U],
-          [10 * U, rise * U, -10 * U],
           [0, 0, 10 * U],
+          [10 * U, rise * U, -10 * U],
         ],
         [
           [10 * U, rise * U, -10 * U],
-          [10 * U, rise * U, 10 * U],
           [0, 0, 10 * U],
+          [10 * U, rise * U, 10 * U],
         ],
       ]),
     )
@@ -227,10 +232,13 @@ describe('slopes', () => {
   })
 
   it('is stopped by one too steep to stand on', () => {
-    // Rising 40 over 10 is about 76 degrees, well past the limit.
+    // Rising 40 over 10 is about 76 degrees, well past the limit. The walls
+    // look only at where a step ends, as the game's do, so the steps are a
+    // quarter of the radius — the game walks a fifth of its own (`0x189` a
+    // tick against `0x800`); a step of a whole radius goes through.
     const world = ramp(40)
     let state: StepResult = step(world, standing(-5, 0, 0), fx32(0), fx32(0), shape)
-    for (let i = 0; i < 20; i++) state = step(world, state, fromInt(1), fx32(0), shape)
+    for (let i = 0; i < 80; i++) state = step(world, state, fx32(U / 4), fx32(0), shape)
     expect(state.hitWall).toBe(true)
     expect(toFloat(state.y)).toBeLessThan(2)
   })

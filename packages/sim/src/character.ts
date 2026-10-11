@@ -1,13 +1,7 @@
 import { add, FX32_ONE, type Fx32, fx32, sub } from '@minstrel/fixed'
-import type { CollisionTriangle } from '@minstrel/game-formats'
-import {
-  type CollisionWorld,
-  groundBelow,
-  longestProjectedEdge,
-  slopeOf,
-  triangleAt,
-} from './collision.ts'
+import { type CollisionWorld, groundBelow } from './collision.ts'
 import { SimError } from './errors.ts'
+import { againstWalls, WALL_REACH } from './walls.ts'
 
 /**
  * A character standing in the world.
@@ -67,9 +61,6 @@ export interface StepResult extends CharacterState {
   readonly slope: Fx32
 }
 
-/** How many times a step re-resolves against walls before giving up. */
-const RESOLVE_PASSES = 4
-
 /**
  * Advance a character by one simulation tick.
  *
@@ -80,6 +71,10 @@ const RESOLVE_PASSES = 4
  * character sliding along a wall keeps the part of its movement the wall does
  * not oppose. Only then is the ground consulted, because where the feet end up
  * horizontally is what decides which ground is under them.
+ *
+ * **The walls are the game's**: a sphere pushed out of them, mesh by mesh,
+ * through each file's own grid — see `walls.ts`. The ground and the fall are
+ * still ours.
  *
  * The ground has the last word as well as the second: a step whose landing has
  * no surface anywhere beneath it is refused rather than taken, which is what
@@ -163,12 +158,7 @@ export function step(
   return { x, y, z, fallSpeed, grounded: false, hitWall, slope: FX32_ONE }
 }
 
-/**
- * Where a horizontal move ends up once the walls have had their say.
- *
- * Several passes, because escaping one wall in a corner can push straight into
- * the other.
- */
+/** Where a horizontal move ends up once the walls have had their say. */
 function slide(
   world: CollisionWorld,
   from: { x: Fx32; z: Fx32 },
@@ -177,111 +167,16 @@ function slide(
   feetY: Fx32,
   shape: CharacterShape,
 ): { x: Fx32; z: Fx32; hitWall: boolean } {
-  let x = add(from.x, dx)
-  let z = add(from.z, dz)
-  let hitWall = false
-  for (let pass = 0; pass < RESOLVE_PASSES; pass++) {
-    const pushed = pushOutOfWalls(world, from, x, feetY, z, shape)
-    if (pushed === undefined) break
-    x = pushed.x
-    z = pushed.z
-    hitWall = true
-  }
-  return { x, z, hitWall }
-}
-
-/**
- * Push a position out of any wall it overlaps.
- *
- * A wall is any surface too steep to stand on, which is the same test the
- * ground query uses — so an unclimbable slope stops a character exactly as a
- * building does, without either being a special case.
- *
- * **Which side to leave by comes from where the character was, not from where
- * it is.** Resolving from the current position alone has no answer when the
- * character has landed exactly on the wall's plane, and gives the wrong one
- * when a fast step has carried it through: both cases push it out of the far
- * side, which reads as walking through the wall. The previous position says
- * which side it belongs on, and that is well defined in both.
- *
- * Returns `undefined` when nothing overlapped, so the caller can stop early.
- */
-function pushOutOfWalls(
-  world: CollisionWorld,
-  from: { x: Fx32; z: Fx32 },
-  x: Fx32,
-  feetY: Fx32,
-  z: Fx32,
-  shape: CharacterShape,
-): { x: Fx32; z: Fx32 } | undefined {
-  const radius = shape.radius
-  // A wall below the step-up height is a lip to walk over, and one above the
-  // head is something to walk under. Neither is in the way.
-  const low = add(feetY, shape.stepUp)
-  const high = add(feetY, shape.height)
-
-  let deepest = 0
-  let pushX = 0
-  let pushZ = 0
-
-  for (const index of triangleAt(world, x, z)) {
-    const triangle = world.triangles[index] as CollisionTriangle
-    if (slopeOf(triangle) >= shape.maxSlope) continue
-    const [a, b, c] = triangle.vertices
-    if (Math.max(a[1], b[1], c[1]) <= low) continue
-    if (Math.min(a[1], b[1], c[1]) >= high) continue
-
-    // A steep face projects to a thin triangle on the ground; the two vertices
-    // furthest apart in projection are the segment to keep away from.
-    const segment = longestProjectedEdge(triangle)
-    const edgeX = segment.bx - segment.ax
-    const edgeZ = segment.bz - segment.az
-    const edgeLength = Math.hypot(edgeX, edgeZ)
-    if (edgeLength === 0) continue
-
-    // Where along the wall the character is. Outside its ends, the wall is a
-    // post to walk around rather than a face to be stopped by.
-    const along = ((x - segment.ax) * edgeX + (z - segment.az) * edgeZ) / (edgeLength * edgeLength)
-    let dirX: number
-    let dirZ: number
-    let distance: number
-
-    if (along >= 0 && along <= 1) {
-      // The wall's own normal in the ground plane, turned to face the side the
-      // character came from.
-      let nx = -edgeZ / edgeLength
-      let nz = edgeX / edgeLength
-      const wasOn = (from.x - segment.ax) * nx + (from.z - segment.az) * nz
-      if (wasOn < 0) {
-        nx = -nx
-        nz = -nz
-      }
-      dirX = nx
-      dirZ = nz
-      distance = (x - segment.ax) * nx + (z - segment.az) * nz
-    } else {
-      // Rounding the end: keep clear of the nearer corner.
-      const cornerX = along < 0 ? segment.ax : segment.bx
-      const cornerZ = along < 0 ? segment.az : segment.bz
-      const offsetX = x - cornerX
-      const offsetZ = z - cornerZ
-      distance = Math.hypot(offsetX, offsetZ)
-      if (distance === 0) continue
-      dirX = offsetX / distance
-      dirZ = offsetZ / distance
-    }
-
-    // A negative distance means the step carried the character through.
-    if (distance >= radius) continue
-    const depth = radius - distance
-    if (depth <= deepest) continue
-    deepest = depth
-    pushX = dirX * depth
-    pushZ = dirZ * depth
-  }
-
-  if (deepest === 0) return undefined
-  return { x: fx32(Math.round(x + pushX)), z: fx32(Math.round(z + pushZ)) }
+  const { x, z, hitWall } = againstWalls(
+    world.pieces,
+    from,
+    add(from.x, dx),
+    add(from.z, dz),
+    feetY,
+    shape.radius,
+    shape.height,
+  )
+  return { x: fx32(x), z: fx32(z), hitWall }
 }
 
 /**
@@ -348,21 +243,21 @@ function pushOutOfWalls(
  * the height is revised — a terminal speed near a character's own height per
  * tick would look like teleporting rather than falling.
  *
- * These are **not** the game's own constants, which live in code this
- * repository does not read. What is measured is the scale they sit at; the
- * proportions within it are tuned by eye, and they are gathered here so one
- * edit replaces them when the real numbers turn up.
+ * These are **not** the game's own constants, but for the radius and the
+ * slope limit, read from its code on 11 October 2026 (see each). What is
+ * measured is the scale they sit at; the rest are tuned by eye, and they are
+ * gathered here so one edit replaces them when the real numbers turn up.
  */
 export const PERSON: CharacterShape = {
+  // The game gives the party's field characters 0x1800 (`func_ov017_0218f064`),
+  // 0.1875 here; this stays at the figure set by eye until what else hangs off
+  // it — the walking pace, the camera — is moved with it.
   height: fx32(Math.round(0.18 * FX32_ONE)),
-  // 0.14 of the height, which is about a person: shoulders half a metre across
-  // on a body 1.7 tall. It was 0.04 — 0.22 of the height, a character twice as
-  // wide as they should be — and nothing caught it while interiors were being
-  // built eight times too big, because nothing was ever a tight fit. Against
-  // interiors at their own scale it costs most of the room: walking every way
-  // out of the doorway of `M01M08` reached 1,944 distinct spots at 0.04 and
-  // 6,076 at 0.025.
-  radius: fx32(Math.round(0.025 * FX32_ONE)),
+  // **The game's**: the sweep that keeps a character out of the walls has a
+  // radius of 0x800 in its units (`func_ov017_02192b48`), an eighth of that
+  // here (`WORLD_SCALE`) — 0.0625. It was 0.025 and 0.04 when set by eye,
+  // against interiors then drawn eight times too big.
+  radius: fx32(WALL_REACH / 8),
   stepUp: fx32(Math.round(0.1 * FX32_ONE)),
   // Exactly 60 degrees from flat — and this one is **read off the cartridge's
   // own collision**, not chosen by eye.
@@ -374,6 +269,9 @@ export const PERSON: CharacterShape = {
   // authors sloped ground up to 60 and stood walls from 79, and left the
   // middle empty. The limit belongs in that gap, and `stepUp` fixes which end
   // of it: 60 is the steepest a 0.1 step can still climb.
+  //
+  // The game's code agrees: its wall sweep takes a face as a wall when its
+  // stored normal has y at most 0x800, 0.5 (`func_020315b8`).
   //
   // At 50 degrees, where this sat while it was set by eye, the village's one
   // way back up to the Guardian statue — a single face at 56.7 degrees — read

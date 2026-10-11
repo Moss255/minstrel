@@ -42,6 +42,7 @@ function world(...triangles: ReturnType<typeof slab>[number][][]) {
     gridZ: 1,
     triangles: all,
     cells: [],
+    shift: 0,
   } as unknown as CollisionMesh
   return createCollisionWorld(mesh)
 }
@@ -67,6 +68,7 @@ describe('findSpawn', () => {
         gridZ: 1,
         triangles: slab(-4, -4, 4, 4, 1),
         cells: [],
+        shift: 0,
       } as unknown as CollisionMesh,
       offset: undefined,
       scale: 0.125,

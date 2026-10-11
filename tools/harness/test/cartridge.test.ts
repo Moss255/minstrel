@@ -1444,6 +1444,7 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     let tiled = 0
     let counted = 0
     let covered = 0
+    let boxed = 0
 
     for (const file of walkFiles(fs.root)) {
       const bytes = fs.read(file)
@@ -1475,6 +1476,26 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
               high[c] = Math.max(high[c] as number, point[c] as number)
             }
           }
+          // The attribute word's six nibbles each pick one of the nine stored
+          // coordinates: the triangle's least x, y and z, then its greatest
+          // (`func_0204c030`). Bit 24 is the query's own mark, clear on file.
+          const coordinate = (pick: number) =>
+            triangle.vertices[Math.floor(pick / 3)]?.[pick % 3] ?? Number.NaN
+          const named = [0, 1, 2, 3, 4, 5].map((k) =>
+            coordinate((triangle.attributes >>> (4 * k)) & 0xf),
+          )
+          const own = [0, 1, 2].map((axis) =>
+            Math.min(...triangle.vertices.map((v) => v[axis] as number)),
+          )
+          own.push(
+            ...[0, 1, 2].map((axis) =>
+              Math.max(...triangle.vertices.map((v) => v[axis] as number)),
+            ),
+          )
+          if (named.every((v, i) => v === own[i]) && ((triangle.attributes >>> 24) & 1) === 0)
+            boxed++
+          else failures.push(`${path}: a triangle's attribute word names another box`)
+
           const [a, b, c] = triangle.vertices
           const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
           const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]]
@@ -1543,6 +1564,7 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     expect(meshes).toBeGreaterThan(500)
     expect(triangles).toBeGreaterThan(50000)
     expect(normals).toBe(triangles - degenerate)
+    expect(boxed).toBe(triangles)
     expect(enclosed).toBe(meshes)
     expect(counted).toBe(meshes)
     expect(covered).toBe(meshes)
@@ -3081,8 +3103,10 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // standing vertically with nothing to stand on. The village has eleven:
     // one across each of its ten doorways, plus a four-by-six quad standing in
     // the middle of the map. None of them is ground, so none of them belongs in
-    // the world the character walks — which is what this pins.
-    const speed = Math.round(0.05 * 4096)
+    // the world the character walks — which is what this pins. The village is
+    // built at the world's own scale, as `assembleMap` builds it, and walked in
+    // steps well inside the walls' reach: they look only at where a step ends.
+    const speed = Math.round(0.025 * 4096)
     const reach = (world: ReturnType<typeof createCollisionWorld>) => {
       const cell = Math.round(0.15 * 4096)
       const key = (x: number, z: number) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`
@@ -3121,7 +3145,7 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
         for (let d = 0; d < 8; d++) {
           const angle = (d * Math.PI) / 4
           let state = at
-          for (let i = 0; i < 4; i++) {
+          for (let i = 0; i < 8; i++) {
             state = step(
               world,
               state,
@@ -3163,20 +3187,21 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
       for (const { resource, files } of resolveMapResources(manifest, members.keys())) {
         const place = placementOf(manifest, resource)
         const offset = {
-          x: Math.round(place.x * 4096),
-          y: Math.round(place.y * 4096),
-          z: Math.round(place.z * 4096),
+          x: Math.round(place.x * WORLD_SCALE * 4096),
+          y: Math.round(place.y * WORLD_SCALE * 4096),
+          z: Math.round(place.z * WORLD_SCALE * 4096),
         }
         for (const built of files) {
           const bytes = members.get(built) as Uint8Array
           if (!isCollisionMesh(bytes)) continue
           const mesh = readCollisionMesh(bytes)
-          all.push({ mesh, offset })
+          const scale = WORLD_SCALE * 2 ** mesh.shift
+          all.push({ mesh, offset, scale })
           if (isMarkerVolume(mesh)) {
             markers++
             if (!mesh.triangles.some((t) => t.normal[1] !== 0)) standless++
           } else {
-            kept.push({ mesh, offset })
+            kept.push({ mesh, offset, scale })
           }
         }
       }
@@ -3207,10 +3232,23 @@ describe.skipIf(!romPath)('a real cartridge', { timeout: 120_000 }, () => {
     // maps, so there was little behind them to cut off.
     //
     // What still has signal is the pair above — eleven quads, none of them with
-    // anywhere to stand — and that the open map is nearly all reachable. The
-    // ledge has a test of its own in `angel-falls-path.test.ts`.
-    expect(open).toBeGreaterThan(0.9)
-    expect(sealed).toBeGreaterThan(0.9)
+    // anywhere to stand — and that taking them out loses nothing. The ledge has
+    // a test of its own in `angel-falls-path.test.ts`.
+    //
+    // **Two-thirds, not nearly all**, since 11 October 2026, and for two
+    // reasons. The village is built at the world's own scale now, as
+    // `assembleMap` builds it; this used to walk it at eight times that, where
+    // a character is an eighth of its size against the walls. And the walls are
+    // the game's (`walls.ts`): one-sided, holding a sphere of the game's radius
+    // at their corners. The old push let a character slip past a corner into
+    // floor no wall faces — at x 0 to 0.6, z 0.8 to 2.8, behind the corner at
+    // (0.09, 0.74), the walls about it all face away — and counted that floor
+    // as reached. What is left out is floor that only that slipping reached;
+    // every one of the village's nine doorways is reached from its middle.
+    expect(open).toBeGreaterThan(0.65)
+    // And the markers still seal almost nothing: 0.637 against 0.671.
+    expect(open).toBeGreaterThanOrEqual(sealed)
+    expect(sealed).toBeGreaterThan(open - 0.05)
   }, 120_000)
 
   it('does not put a character down in the water', () => {
