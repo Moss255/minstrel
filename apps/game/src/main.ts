@@ -245,6 +245,7 @@ import {
   POT_LABELS,
   POT_SAYS,
   potList,
+  RECIPE_MADE,
   recipeKnown,
   tryYourLuck,
 } from './alchemy.ts'
@@ -597,6 +598,8 @@ import {
   questsAfter,
 } from './quests.ts'
 import {
+  COMPLETION_WHOLES,
+  completion,
   countDefeated,
   countDropped,
   type DefeatedList,
@@ -606,6 +609,7 @@ import {
   itemRows,
   MONSTER_LIST_WORDS,
   monsterRows,
+  tableOfKind,
 } from './records.ts'
 import {
   applyFor,
@@ -7439,6 +7443,8 @@ function recordsContext(): MenuContext['records'] {
       value(122, accoladesEarned.size, 'Accolades Earnt'),
       value(123, questBook.cleared.size, 'Quests Completed'),
       value(124, 0, 'Grottoes Completed'),
+      // The four completions (`str_jr` 130–133, 140–143) — see `completion`.
+      ...completionLines(words),
     ],
     listTitle: listed ? (loaded.accolades.listWords.get(0) ?? 'Accolades Earnt') : undefined,
     empty: loaded.accolades.listWords.get(100) ?? 'This list is currently empty.',
@@ -7465,6 +7471,38 @@ function recordsContext(): MenuContext['records'] {
     ],
     tables: recordsTables(),
   }
+}
+
+/** The summary's four completions, each its line and its share — see `completion` in `records.ts`. */
+function completionLines(words: ReadonlyMap<number, string>): string[] {
+  const here = loaded
+  if (!here) return []
+  const found = (table: ItemTable) =>
+    [...here.itemDefs.values()].filter(
+      (d) =>
+        d.listNumber > 0 &&
+        tableOfKind(d.kind) === table &&
+        storyGlobals.has(FOUND_FLAG_BASE + d.listNumber),
+    ).length
+  const counts = [
+    [...defeatedList.values()].filter((one) => one.count > 0).length,
+    found('wardrobe'),
+    found('items'),
+    [...recipesKnown.values()].filter((bits) => (bits & RECIPE_MADE) !== 0).length,
+  ]
+  const wholes = [
+    COMPLETION_WHOLES.monsters,
+    COMPLETION_WHOLES.wardrobe,
+    COMPLETION_WHOLES.items,
+    COMPLETION_WHOLES.recipes,
+  ]
+  const ours = ['Defeated Monster List', 'Wardrobe', 'Item List', 'Alchenomicon']
+  return counts.map((count, k) => {
+    const share = completion(count, wholes[k] as number)
+    const label = words.get(130 + k) ?? `${ours[k]} Completion:`
+    const percent = (words.get(140 + k) ?? `<val_${k + 1}>%`).replace(/<val_\d+>/, String(share))
+    return plainMarkup(`${label} ${percent}`, heroName())
+  })
 }
 
 /** A completion's line, `str_jr` 130 on, as a list's name: "Defeated Monster List Completion:" less its last word. */

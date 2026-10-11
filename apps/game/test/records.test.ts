@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { itemDefsOf } from '../src/load.ts'
 import { back, choose, type MenuContext, menuSelect, moveCursor, panelLines } from '../src/menu.ts'
 import {
+  COMPLETION_WHOLES,
+  completion,
   countDefeated,
   countDropped,
   type DefeatedList,
@@ -149,5 +151,15 @@ describe.skipIf(!romPath)('the list numbers, on a real cartridge', () => {
     expect(Math.min(...equipment)).toBe(1)
     expect(Math.max(...equipment)).toBe(944)
     expect(equipment).toHaveLength(944)
+  })
+})
+
+describe('the completions', () => {
+  it('are the share of a whole, truncated, and 1 where something is counted but rounds to nothing', () => {
+    expect(completion(0, COMPLETION_WHOLES.monsters)).toBe(0)
+    expect(completion(1, COMPLETION_WHOLES.monsters)).toBe(1)
+    expect(completion(154, COMPLETION_WHOLES.monsters)).toBe(50)
+    expect(completion(944, COMPLETION_WHOLES.wardrobe)).toBe(100)
+    expect(completion(5, COMPLETION_WHOLES.items)).toBe(2)
   })
 })

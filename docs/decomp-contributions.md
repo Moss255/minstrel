@@ -1580,3 +1580,15 @@ tests in `apps/game/test/comments.test.ts`, `packages/game-formats/test/comments
 | ov017 `0x021d5bbc` | the script machine's opcode `0x0A`: the remainder of the second value by the top, as integers | `ScriptVM::Modulo` |
 | ov023 `func_ov023_021e9d94`, `021ea8b8`, `021ea920`, `021ea8e8` | functions 129, 169, 171, 170: battles fought, comments given, the session's two states | — |
 | arm9 `func_020a0300`–`func_020a0858`, `func_020a0038`–`func_020a02d0` | the records' counters and the second set's, each added to and held | `BattleRecords::Add*` |
+
+### The Records' completions (11 October 2026)
+
+`completion` and `COMPLETION_WHOLES` in `apps/game/src/records.ts`.
+
+| address | what it does | name proposed |
+|---|---|---|
+| arm9 `func_020a0870` | monster kinds defeated (`+0x14` bits 0–8) × 100 ÷ 307, 1 at least once one is counted | `BattleRecords::MonsterCompletion` |
+| arm9 `func_020a08d8` | equipment found (bits 18–28) × 100 ÷ 944 | `BattleRecords::WardrobeCompletion` |
+| arm9 `func_020a08a4` | items found (bits 9–17) × 100 ÷ 232 | `BattleRecords::ItemCompletion` |
+| arm9 `func_020a090c` | recipes made (`+0x10` bits 23–31) × 100 ÷ 448 | `BattleRecords::AlchenomiconCompletion` |
+| ov008 `0x0218860c`–`0x02188688` | the summary's four shares drawn, `str_jr` 140–143 | — |

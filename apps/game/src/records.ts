@@ -188,3 +188,20 @@ export function itemRows(
   rows.sort((a, b) => a.number - b.number)
   return order === 'number' ? rows : byName(rows)
 }
+
+/**
+ * **The four completions** the Records' summary shows, `str_jr` 130 to 133
+ * with 140 to 143 "<val_n>%" — read 11 October 2026: each is the records'
+ * count × 100 ÷ a whole, truncated, and **1 where the count is not 0 but the
+ * share rounds to 0** (`func_020a0870`, `func_020a08d8`, `func_020a08a4`,
+ * `func_020a090c`). The wholes are the code's: 307 monster kinds, 944 pieces
+ * of equipment, 232 items, 448 recipes — the equipment and the items exactly
+ * the list numbers' two runs.
+ */
+export const COMPLETION_WHOLES = { monsters: 307, wardrobe: 944, items: 232, recipes: 448 } as const
+
+/** A completion's percentage, as the game works it out. */
+export function completion(count: number, whole: number): number {
+  const share = Math.floor((count * 100) / whole)
+  return share === 0 && count > 0 ? 1 : share
+}
