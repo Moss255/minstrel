@@ -1505,3 +1505,23 @@ and `packages/game-formats/test/personalcolours.test.ts`. USA addresses.
 **Open**: which of a colour palette's sixteen is drawn on what; which of the
 game's players the music is on, so whether both of its scalings apply; how the
 title takes a quick save back.
+
+### Organise Items and the bag's sort (11 October 2026)
+
+`organise` and `sortBag` in `apps/game/src/inventory.ts`, the states in
+`items-menu.ts`; tests in `apps/game/test/inventory.test.ts` and
+`organise.test.ts`. USA addresses.
+
+| address | what it does | name proposed |
+|---|---|---|
+| ov002 `func_ov002_0215c72c` | the Items whose list: the members, Bag (`str_tm` 1101), Organise Items (1102) | `FieldMenu::DrawItemOwners` |
+| ov002 `func_ov002_02162964` | the whose list each frame: SELECT (or a touch) on the Bag's row sorts; Organise Items asks whose (state `0xb`) with a party of more than one, else 9101 at once (state `0x26`, Yes or No) | `FieldMenu::UpdateItemOwners` |
+| ov002 `func_ov002_0215e250` | Organise's whose list drawn: the members, then "Whole Party" (`strstd` 26) | `FieldMenu::DrawOrganiseWho` |
+| ov002 `func_ov002_0215a658` | everything put in the bag: for a member, or all (4), each carried item but one whose `+0x08` bit 20 is set; item `0x570a` put out of use first when in use | `FieldMenu::OrganiseItems` |
+| ov002 `func_ov002_0215753c` | the line after a step of the Items panel: 9102 after Organise, 9062 after a discard, 4701 in Quick Save | — |
+| ov002 `func_ov002_0215b2c8` | the item names reloaded for the lists after a change | `FieldMenu::ReloadItemNames` |
+| ov002 `func_ov002_0215b458` | the bag sorted: by `itemsort`'s first order and by its second, in turn (`+0x248d`), and copied back | `FieldMenu::SortBag` |
+| ov023 `func_ov023_021e133c`, `func_ov023_021e11ec`, `func_ov023_021e1410` | `itemsort` run as a `Script` over the items wanted: an entry's id `+0x8`, the two orders `+0xa`, `+0xc`, the category `+0xe` bits 2–7, the subtype `+0xf` | `ItemSort::Load`, `::OnRecord`, `::Add` |
+| ov023 `func_ov023_021e1814`, `func_ov023_021e1870` (`021e18cc`, `021e19ec`) | the list sorted by taking the least by `+0xa`, or by `+0xc` | `ItemSort::ByType`, `::ByName` |
+
+**Open**: what item `0x570a` does in use; the equipment's sort (9106–9108).

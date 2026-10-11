@@ -42,6 +42,7 @@ import {
   flagsHold,
   GRANTS_REGARDLESS,
   ITEM_EXPERIENCE_BONUS,
+  ITEM_KIND_EVERYDAY,
   type ItemDef,
   inArea,
   inTalkBox,
@@ -473,8 +474,18 @@ import {
   VOCATION_WORDS,
   weaponTurn,
 } from './hero.ts'
-import { type Carriers, heldAll, obtain, removeSlot, takeOne, transfer } from './inventory.ts'
-import { type Held, itemsRows } from './items-menu.ts'
+import {
+  type BagSort,
+  type Carriers,
+  heldAll,
+  obtain,
+  organise,
+  removeSlot,
+  sortBag,
+  takeOne,
+  transfer,
+} from './inventory.ts'
+import { type Held, ITEMS_WORDS, itemsRows } from './items-menu.ts'
 import {
   CHURCH_JINGLE,
   CHURCH_SAYS,
@@ -528,6 +539,7 @@ import {
   type MenuSpell,
   type MenuState,
   menuCommands,
+  menuSelect,
   moveAcross,
   moveCursor,
   openMenu,
@@ -7964,7 +7976,10 @@ function menuContext(): MenuContext {
       })),
       bag,
       kindOf: (id) => loaded?.itemDefs.get(id)?.kind,
+      standard: (n) => loaded?.standardWords.get(n),
+      organiseAsk: (who) => menuSay(ITEMS_WORDS.organiseAsk, organiseTelling(who)),
     },
+    bagSort: bagSortNext,
     equipped: wornBy(leader()),
     numbersOf: (id) => loaded?.itemStats.get(id),
     itemName: nameOf,
@@ -8956,6 +8971,48 @@ function discardInField(held: Held): string[] {
  * `inventory.ts`. **Ours**: the words said; the game's are `str_tm` 9051 to
  * 9070, by who gives and who takes, and are not yet taken.
  */
+/** Which way the bag is sorted next: by type first, then the two take turns (`func_ov002_0215b458`). */
+let bagSortNext: BagSort = 'type'
+
+/** How Organise's question and answer tell whose: one member, or the party (`<IF_SING val_1>`). */
+function organiseTelling(who: number | 'all') {
+  const member = who === 'all' ? undefined : members[who]
+  return {
+    actor:
+      member && who !== 0
+        ? { name: nameFor(member), ...(member.sex === undefined ? {} : { gender: member.sex }) }
+        : heroNamed(),
+    values: { val_1: who === 'all' ? members.length : 1 },
+  }
+}
+
+/** **Organise Items**: their items put in the bag — see `organise` in `inventory.ts`. */
+function organiseInField(who: number | 'all'): string[] {
+  bag = organise(bag, carriers(), who, (id) => loaded?.itemDefs.get(id)?.kept === true)
+  return [
+    menuSay(ITEMS_WORDS.organised, organiseTelling(who)) ??
+      'The unimportant unequipped items are placed in the bag.',
+  ]
+}
+
+/** **The bag sorted**, by type or by name — see `sortBag` in `inventory.ts`. */
+function sortInField(by: BagSort): string[] {
+  const kinds = loaded?.itemKinds
+  bag = sortBag(
+    bag,
+    (id) => {
+      const kind = loaded?.itemDefs.get(id)?.kind
+      return kind === undefined || kind === ITEM_KIND_EVERYDAY
+    },
+    (id) => {
+      const kind = kinds?.get(id)
+      return by === 'type' ? kind?.byType : kind?.byName
+    },
+  )
+  bagSortNext = by === 'type' ? 'name' : 'type'
+  return [menuSay(ITEMS_WORDS.sorted, {}) ?? 'The items in the bag are now sorted.']
+}
+
 function transferInField(move: NonNullable<Taken['transfer']>): string[] {
   const after = transfer(bag, carriers(), move.held, move.to)
   if (!after) return ['That will not go there.']
@@ -14731,6 +14788,8 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
   if (menu) {
     if (action === 'up') menu = moveCursor(menu, -1, menuContext())
     else if (action === 'down') menu = moveCursor(menu, 1, menuContext())
+    // SELECT on the Bag's row asks to sort it — see `menuSelect`.
+    else if (action === 'select') menu = menuSelect(menu, menuContext())
     // Left and right cross the Tactics screen's columns — see `moveAcross`.
     else if (action === 'left' || action === 'right')
       menu = moveAcross(menu, action === 'left' ? -1 : 1, menuContext())
@@ -14749,9 +14808,13 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
             ? discardInField(taken.discard)
             : taken.transfer !== undefined
               ? transferInField(taken.transfer)
-              : taken.cast !== undefined
-                ? castInField(taken.cast)
-                : undefined
+              : taken.organise !== undefined
+                ? organiseInField(taken.organise)
+                : taken.sort !== undefined
+                  ? sortInField(taken.sort)
+                  : taken.cast !== undefined
+                    ? castInField(taken.cast)
+                    : undefined
       if (said && menu) menu = { ...keptInBag(menu), said }
       if (taken.equip) {
         // **Whoever the attributes panel chose**, not always the Hero — the

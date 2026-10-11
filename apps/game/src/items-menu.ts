@@ -1,6 +1,6 @@
 import { ITEM_KIND_EVERYDAY, ITEM_KIND_IMPORTANT } from '@minstrel/game-formats'
 import type { Bag } from './bag.ts'
-import { CARRIED_MOST, type Owner } from './inventory.ts'
+import { type BagSort, CARRIED_MOST, type Owner } from './inventory.ts'
 
 /**
  * **The field menu's Items**, as overlay 2 lays it out (read 2 October 2026,
@@ -12,8 +12,15 @@ import { CARRIED_MOST, type Owner } from './inventory.ts'
  * member, to which of their rows (1400): an empty one takes it, an occupied one
  * changes places (`func_ov002_02164748`).
  *
- * **Ours**: Organise Items (1102) and Treasure Maps (1004) are not offered;
- * an important item's own commands are not read, so it is listed only.
+ * **Organise Items** (1102), the whose list's last row, read 11 October
+ * 2026: with a party of more than one it asks whose — each member, then
+ * "Whole Party" (`strstd` 26; field-menu state `0xb`, a column of party + 1)
+ * — then Yes or No to 9101; Yes puts their items in the bag (`organise` in
+ * `inventory.ts`). With a party of one it asks at once. **The SELECT Button
+ * on the Bag's row** sorts the bag, asking 9103 or 9104 first (`sortBag`).
+ *
+ * **Ours**: Treasure Maps (1004) is not offered; an important item's own
+ * commands are not read, so it is listed only.
  */
 export type ItemsWhere =
   | { readonly at: 'kinds' }
@@ -22,6 +29,10 @@ export type ItemsWhere =
   | { readonly at: 'act'; readonly held: Held }
   | { readonly at: 'toWho'; readonly held: Held }
   | { readonly at: 'toWhere'; readonly held: Held; readonly to: number }
+  /** Organise Items' and the sort's questions; `from` is the whose list's row they go back to. */
+  | { readonly at: 'organiseWho'; readonly from: number }
+  | { readonly at: 'organiseAsk'; readonly who: number | 'all'; readonly from: number }
+  | { readonly at: 'sortAsk'; readonly by: BagSort; readonly from: number }
 
 /** An item where it is: whose, which row, and what. */
 export interface Held {
@@ -35,6 +46,10 @@ export interface ItemsView {
   readonly members: readonly { readonly name: string; readonly carried: readonly number[] }[]
   readonly bag: Bag
   readonly kindOf: (id: number) => number | undefined
+  /** A standard word, `strstd` — Whole Party, Yes, No. */
+  readonly standard?: ((n: number) => string | undefined) | undefined
+  /** Organise's question, 9101, told of a member or the whole party. */
+  readonly organiseAsk?: ((who: number | 'all') => string | undefined) | undefined
 }
 
 /** `str_tm`'s words for the panel. */
@@ -49,6 +64,14 @@ export const ITEMS_WORDS = {
   cancel: 1204,
   toWho: 1300,
   toWhere: 1400,
+  organise: 1102,
+  /** "Put all of …'s unimportant unequipped items in the bag?", then 9102 done. */
+  organiseAsk: 9101,
+  organised: 9102,
+  /** "Sort the items in the bag by type?", "… by name?", then 9105 done. */
+  sortByType: 9103,
+  sortByName: 9104,
+  sorted: 9105,
   /** "…doesn't have any items." */
   carriesNone: 9050,
   /** "The bag is currently empty." */
@@ -66,7 +89,13 @@ export const ITEMS_LABELS: Readonly<Record<number, string>> = {
   [ITEMS_WORDS.transfer]: 'Transfer',
   [ITEMS_WORDS.discard]: 'Discard',
   [ITEMS_WORDS.cancel]: 'Cancel',
+  [ITEMS_WORDS.organise]: 'Organise Items',
 }
+
+/** Whole Party, Yes and No, in `strstd`. */
+const WHOLE_PARTY = 26
+const YES = 27
+const NO = 28
 
 /** The actions on an item, in the game's order. */
 export const ITEM_ACTS = ['use', 'transfer', 'discard', 'cancel'] as const
@@ -94,8 +123,21 @@ export function itemsRows(where: ItemsWhere, view: ItemsView): ItemsRow[] {
     case 'kinds':
       return [{ word: ITEMS_WORDS.everyday }, { word: ITEMS_WORDS.important }]
     case 'whose':
+      return [
+        ...view.members.map((m) => ({ name: m.name })),
+        { word: ITEMS_WORDS.bag },
+        { word: ITEMS_WORDS.organise },
+      ]
     case 'toWho':
       return [...view.members.map((m) => ({ name: m.name })), { word: ITEMS_WORDS.bag }]
+    case 'organiseWho':
+      return [
+        ...view.members.map((m) => ({ name: m.name })),
+        { name: view.standard?.(WHOLE_PARTY) ?? 'Whole Party' },
+      ]
+    case 'organiseAsk':
+    case 'sortAsk':
+      return [{ name: view.standard?.(YES) ?? 'Yes' }, { name: view.standard?.(NO) ?? 'No' }]
     case 'list': {
       if (where.owner === 'bag' || where.owner === 'important') {
         return bagPage(view, where.owner === 'important').map((item) => ({
@@ -129,6 +171,10 @@ export interface ItemsTaken {
     readonly held: Held
     readonly to: { readonly owner: Owner; readonly slot: number }
   }
+  /** Put this member's items, or everyone's, in the bag — see `organise`. */
+  readonly organise?: number | 'all'
+  /** Sort the bag this way — see `sortBag`. */
+  readonly sort?: BagSort
 }
 
 /** Take the row. */
@@ -139,8 +185,31 @@ export function chooseItems(where: ItemsWhere, row: number, view: ItemsView): It
         ? { where: { at: 'whose' }, row: 0 }
         : { where: { at: 'list', owner: 'important' }, row: 0 }
     case 'whose': {
+      // Organise Items: whose, unless the party is one.
+      if (row > view.members.length) {
+        return view.members.length > 1
+          ? { where: { at: 'organiseWho', from: row }, row: 0 }
+          : { where: { at: 'organiseAsk', who: 0, from: row }, row: 0 }
+      }
       const owner: Owner = row < view.members.length ? row : 'bag'
       return { where: { at: 'list', owner }, row: 0 }
+    }
+    case 'organiseWho':
+      return {
+        where: {
+          at: 'organiseAsk',
+          who: row < view.members.length ? row : 'all',
+          from: where.from,
+        },
+        row: 0,
+      }
+    case 'organiseAsk': {
+      const back = { where: { at: 'whose' as const }, row: where.from }
+      return row === 0 ? { ...back, organise: where.who } : back
+    }
+    case 'sortAsk': {
+      const back = { where: { at: 'whose' as const }, row: where.from }
+      return row === 0 ? { ...back, sort: where.by } : back
     }
     case 'list': {
       if (where.owner === 'important') return { where, row }
@@ -179,9 +248,28 @@ export function chooseItems(where: ItemsWhere, row: number, view: ItemsView): It
   }
 }
 
+/**
+ * **The SELECT Button** in the panel: on the Bag's row of the whose list, it
+ * asks to sort the bag, `next` the way it will go. Anywhere else, nothing.
+ */
+export function selectItems(
+  where: ItemsWhere,
+  row: number,
+  view: ItemsView,
+  next: BagSort,
+): { where: ItemsWhere; row: number } | undefined {
+  if (where.at !== 'whose' || row !== view.members.length) return undefined
+  return { where: { at: 'sortAsk', by: next, from: row }, row: 0 }
+}
+
 /** Go back a level; undefined leaves the panel. */
 export function backItems(where: ItemsWhere): { where: ItemsWhere | undefined; row: number } {
   switch (where.at) {
+    // Back to the whose list, on the row they were asked from.
+    case 'organiseWho':
+    case 'organiseAsk':
+    case 'sortAsk':
+      return { where: { at: 'whose' }, row: where.from }
     case 'kinds':
       return { where: undefined, row: 0 }
     case 'whose':

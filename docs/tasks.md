@@ -866,7 +866,10 @@ For any session, not only one reading assembly:
   so), **Volume Settings** (`volume.ts`, the save keeps the levels) and
   **Quick Save**. Read rather than only drawn; the functions are in
   `docs/decomp-contributions.md`, what is ours in `docs/still-open.md`.
-- **Organise Items** (p. 7), over `inventory.ts`.
+- **Done, 11 October 2026: Organise Items** (p. 7) — whose, Yes or No, and
+  everything not kept by its carrier into the bag (`organise`); the SELECT
+  Button on the Bag's row sorts it by type, then by name (`sortBag`), which
+  read `itemsort`'s two orders.
 - **The battle's Equipment command**: done with task 8.
 - **Battle Records' monster and item lists**: where the game keeps them is
   read (`docs/readings/T14-records.md` — `GameState+0x75f0` and `+0x7ac4`);

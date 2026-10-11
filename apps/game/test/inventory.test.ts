@@ -1,7 +1,7 @@
 import type { ItemDef } from '@minstrel/game-formats'
 import { describe, expect, it } from 'vitest'
 import { EMPTY_BAG, take } from '../src/bag.ts'
-import { CARRIED_MOST, obtain, takeOne, transfer } from '../src/inventory.ts'
+import { CARRIED_MOST, obtain, organise, sortBag, takeOne, transfer } from '../src/inventory.ts'
 
 const def = (id: number, over: Partial<ItemDef> = {}): ItemDef => ({
   id,
@@ -87,5 +87,31 @@ describe('who carries an item, as the game decides (`func_0207d300`)', () => {
     expect(carried[0]).toEqual([9])
     expect(swapped?.items.get(7)).toBe(1)
     expect(swapped?.items.get(9)).toBeUndefined()
+  })
+})
+
+describe('Organise Items (`func_ov002_0215a658`, `func_ov002_0215b458`)', () => {
+  it('puts a member’s items, or everyone’s, in the bag, but one kept by its carrier', () => {
+    const KEPT = 22500
+    const carried = [[HERB, KEPT, WING], [HERB]]
+    const kept = (id: number) => id === KEPT
+    const one = organise(EMPTY_BAG, { carried }, 0, kept)
+    expect(carried).toEqual([[KEPT], [HERB]])
+    expect([...one.items]).toEqual([
+      [HERB, 1],
+      [WING, 1],
+    ])
+    const all = organise(one, { carried }, 'all', kept)
+    expect(carried).toEqual([[KEPT], []])
+    expect(all.items.get(HERB)).toBe(2)
+  })
+
+  it('sorts the bag’s everyday items by a key, the rest after them in their order', () => {
+    let bag = EMPTY_BAG
+    for (const item of [5, 900, 3, 1, 901]) bag = take(bag, { item })
+    const everyday = (id: number) => id < 900
+    const sorted = sortBag(bag, everyday, (id) => (id === 1 ? undefined : -id))
+    // By the key, 5 before 3; one with no key last of them; equipment after.
+    expect([...sorted.items.keys()]).toEqual([5, 3, 1, 900, 901])
   })
 })

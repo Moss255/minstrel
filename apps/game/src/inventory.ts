@@ -148,3 +148,68 @@ export function transfer(
 export function removeSlot(list: number[], slot: number): void {
   if (slot >= 0 && slot < list.length) list.splice(slot, 1)
 }
+
+/**
+ * **Organise Items: everything put in the bag** — `func_ov002_0215a658`,
+ * read 11 October 2026: for the member at `who`, or everyone (`'all'`, the
+ * game's 4), each carried item goes into the bag, but one whose record keeps
+ * it with its carrier (`+0x08` bit 20, `ItemDef.kept`), which stays and is
+ * packed to the front. The words are `str_tm` 9101, "Put all of …'s
+ * unimportant unequipped items in the bag?", and 9102 when it is done.
+ *
+ * Not modelled: item `0x570a`, when its carrier has it in use
+ * (`func_02083994`), is first put out of use (`func_ov017_021c9e00`) — what
+ * that item does in use is not read. Returns the bag after; the carried lists
+ * are changed in place.
+ */
+export function organise(
+  bag: Bag,
+  carriers: Carriers,
+  who: number | 'all',
+  kept: (id: number) => boolean,
+): Bag {
+  let after = bag
+  for (const [m, list] of carriers.carried.entries()) {
+    if (who !== 'all' && who !== m) continue
+    const staying: number[] = []
+    for (const id of list) {
+      if (kept(id)) staying.push(id)
+      else after = take(after, { item: id })
+    }
+    list.splice(0, list.length, ...staying)
+  }
+  return after
+}
+
+/** Which order the bag is put in — see {@link sortBag}. */
+export type BagSort = 'type' | 'name'
+
+/**
+ * **The bag's everyday items sorted** — the SELECT Button on the Bag's row
+ * (`func_ov002_0215b458`, read 11 October 2026): by type, by `itemsort`'s
+ * first order (`func_ov023_021e18cc`, the entry's `+0xa`), or by name, its
+ * second (`func_ov023_021e19ec`, `+0xc`) — `ItemKind.byType` and
+ * `byName`, which the record's handler (`func_ov023_021e11ec`) puts
+ * there. The two take turns, by type first; the words are `str_tm` 9103
+ * or 9104 to ask, 9105 when done.
+ *
+ * Only the everyday items are reordered; equipment and the important items
+ * keep their order after them, which is **ours** — they are separate stores
+ * in the game (see above), with a sort of their own on the equipment's side.
+ * An item `itemsort` has no place for goes last.
+ */
+export function sortBag(
+  bag: Bag,
+  everyday: (id: number) => boolean,
+  keyOf: (id: number) => number | undefined,
+): Bag {
+  const ids = [...bag.items.keys()]
+  const sorted = ids
+    .filter(everyday)
+    .sort((a, b) => (keyOf(a) ?? Number.MAX_SAFE_INTEGER) - (keyOf(b) ?? Number.MAX_SAFE_INTEGER))
+  const rest = ids.filter((id) => !everyday(id))
+  return {
+    ...bag,
+    items: new Map([...sorted, ...rest].map((id) => [id, bag.items.get(id) ?? 0])),
+  }
+}

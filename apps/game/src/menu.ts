@@ -13,6 +13,7 @@ import type { Bag } from './bag.ts'
 import { choicesFor, type Equipped, SLOTS, type Slot } from './equipment.ts'
 import { conductorLine, EXPRESS_WORDS } from './express.ts'
 import type { Standing } from './hero.ts'
+import type { BagSort } from './inventory.ts'
 import {
   backItems,
   chooseItems,
@@ -23,6 +24,7 @@ import {
   type ItemsView,
   type ItemsWhere,
   itemsRows,
+  selectItems,
 } from './items-menu.ts'
 import { LIST_MOST, PATTY_LABELS, PATTY_SAYS, pattyVocation, RECRUIT_VOCATIONS } from './recruit.ts'
 import type { SkillTreeView } from './skills.ts'
@@ -663,6 +665,8 @@ export interface MenuContext {
   readonly standardWords?: ReadonlyMap<number, string> | undefined
   /** The music's and the effects' levels now — see `volume.ts`. */
   readonly volume?: Volumes | undefined
+  /** Which way the bag will be sorted next — see `sortBag` in `inventory.ts`. */
+  readonly bagSort?: BagSort | undefined
 }
 
 /** Yes and No, `strstd` 27 and 28. */
@@ -882,6 +886,17 @@ export function moveAcross(state: MenuState, by: number, context?: MenuContext):
   return { ...state, tactics: { column } }
 }
 
+/**
+ * **The SELECT Button** with the menu up: in the Items panel, on the Bag's
+ * row, it asks to sort the bag — see `selectItems`. Anywhere else, nothing.
+ */
+export function menuSelect(state: MenuState, context?: MenuContext): MenuState {
+  const view = context?.itemsView
+  if (state.panel !== 'items' || !state.items || !view) return state
+  const went = selectItems(state.items, state.row, view, context?.bagSort ?? 'type')
+  return went ? { ...state, items: went.where, row: went.row, said: undefined } : state
+}
+
 /** What taking a row asks for: talking, putting something on, using or discarding an item, casting. */
 export interface Taken {
   readonly state: MenuState | undefined
@@ -898,6 +913,10 @@ export interface Taken {
   readonly discard?: Held
   /** Move this item — see `transfer` in `inventory.ts`. */
   readonly transfer?: ItemsTaken['transfer']
+  /** Put a member's items, or everyone's, in the bag — see `organise` in `inventory.ts`. */
+  readonly organise?: ItemsTaken['organise']
+  /** Sort the bag — see `sortBag` in `inventory.ts`. */
+  readonly sort?: ItemsTaken['sort']
   /** Cast this spell, by its action. */
   readonly cast?: number
   /** Put points into this tree until they reach this panel, by its id — see `buy` in `skills.ts`. */
@@ -967,6 +986,8 @@ export function choose(state: MenuState, context?: MenuContext): Taken {
       ...(taken.use ? { use: taken.use } : {}),
       ...(taken.discard ? { discard: taken.discard } : {}),
       ...(taken.transfer ? { transfer: taken.transfer } : {}),
+      ...(taken.organise !== undefined ? { organise: taken.organise } : {}),
+      ...(taken.sort ? { sort: taken.sort } : {}),
     }
   }
   if (state.panel === 'spells') {
@@ -1311,21 +1332,34 @@ export function panelLines(
       const said = (n: number, fallback: string) => word(n, fallback)
       const rows = itemsRows(where, view)
       const head: string[] =
-        where.at === 'act'
-          ? [nameOf(where.held.item), said(ITEMS_WORDS.whatToDo, 'What would you like to do?')]
-          : where.at === 'toWho'
-            ? [said(ITEMS_WORDS.toWho, 'To who?')]
-            : where.at === 'toWhere'
-              ? [said(ITEMS_WORDS.toWhere, 'To where?')]
-              : where.at === 'list'
+        where.at === 'organiseWho'
+          ? [said(ITEMS_WORDS.organise, 'Organise Items')]
+          : where.at === 'organiseAsk'
+            ? [view.organiseAsk?.(where.who) ?? 'Put the unimportant items in the bag?']
+            : where.at === 'sortAsk'
+              ? [
+                  where.by === 'type'
+                    ? said(ITEMS_WORDS.sortByType, 'Sort the items in the bag by type?')
+                    : said(ITEMS_WORDS.sortByName, 'Sort the items in the bag by name?'),
+                ]
+              : where.at === 'act'
                 ? [
-                    where.owner === 'bag'
-                      ? said(ITEMS_WORDS.bag, 'Bag')
-                      : where.owner === 'important'
-                        ? said(ITEMS_WORDS.important, 'Important Items')
-                        : (view.members[where.owner]?.name ?? ''),
+                    nameOf(where.held.item),
+                    said(ITEMS_WORDS.whatToDo, 'What would you like to do?'),
                   ]
-                : [`${context.bag?.gold ?? 0} G`]
+                : where.at === 'toWho'
+                  ? [said(ITEMS_WORDS.toWho, 'To who?')]
+                  : where.at === 'toWhere'
+                    ? [said(ITEMS_WORDS.toWhere, 'To where?')]
+                    : where.at === 'list'
+                      ? [
+                          where.owner === 'bag'
+                            ? said(ITEMS_WORDS.bag, 'Bag')
+                            : where.owner === 'important'
+                              ? said(ITEMS_WORDS.important, 'Important Items')
+                              : (view.members[where.owner]?.name ?? ''),
+                        ]
+                      : [`${context.bag?.gold ?? 0} G`]
       const lines = rows.map((r, i) => {
         const text =
           'word' in r

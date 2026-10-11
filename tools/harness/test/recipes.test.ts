@@ -214,8 +214,8 @@ describe.skipIf(!romPath)('the alchemy recipes on a real cartridge', { timeout: 
     const byRank = [...recipes].sort((a, b) => a.alphabetical - b.alphabetical)
     let rising = 0
     for (let i = 1; i < byRank.length; i++) {
-      const before = kinds.get(byRank[i - 1]?.makes as number)?.unknown_2
-      const after = kinds.get(byRank[i]?.makes as number)?.unknown_2
+      const before = kinds.get(byRank[i - 1]?.makes as number)?.byName
+      const after = kinds.get(byRank[i]?.makes as number)?.byName
       if (before !== undefined && after !== undefined && after > before) rising++
     }
     expect(rising).toBe(byRank.length - 1)

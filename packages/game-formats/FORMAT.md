@@ -5607,14 +5607,14 @@ business — see the game's `talk.ts`.
 
 In `/data/prm/itemsort.gp2`. **A tagged table** (see "The tagged data table"):
 after its date and version records, one record of tag `0x67` for each item —
-1,178 in English — of five integers: the item's id, two values not read, the
-category and the subtype. Read by `itemsort.ts`.
+1,178 in English — of five integers: the item's id, its places in the bag's
+two orders, the category and the subtype. Read by `itemsort.ts`.
 
 | value | meaning | evidence |
 |---|---|---|
 | 0 | the item's id | every one is an id in `itemname_en.nat`, each once |
-| 1 | `unknown_1` | **an order over the whole bag**, INFERRED: each category a run of its own — the weapons 1 to 268, the shields 269 to 313, the headgear 314 to 445, the armour 446 to 628, the gloves 629 to 706, the legwear 707 to 793, the footwear 794 to 894, the accessories 895 to 946, the tools from 947 — and 9,999 on the blarney stone alone |
-| 2 | `unknown_2` | 1 to 1,178, each once: **alphabetical order by English name**, INFERRED — the names rise along it at 1,159 of 1,177 steps; the skill books, whose names open with markup, come first |
+| 1 | `byType` | **the bag's order by type** — read 11 October 2026: the record's handler (`func_ov023_021e11ec`) keeps it at an entry's `+0xa`, which the sort by type (`func_ov023_021e18cc`, `str_tm` 9103) takes the least of: each category a run of its own — the weapons 1 to 268, the shields 269 to 313, the headgear 314 to 445, the armour 446 to 628, the gloves 629 to 706, the legwear 707 to 793, the footwear 794 to 894, the accessories 895 to 946, the tools from 947 — and 9,999 on the blarney stone alone |
+| 2 | `byName` | 1 to 1,178, each once: **the bag's order by name** — kept at `+0xc`, which the sort by name (`func_ov023_021e19ec`, 9104) takes; the English names rise along it at 1,159 of 1,177 steps; the skill books, whose names open with markup, come first |
 | 3 | the category | 0 on the 268 weapons, 1 the 45 shields, 2 the 183 armour, 3 the 85 legwear, 4 the 132 headgear, 5 the 78 gloves, 6 the 101 footwear, 7 the 52 accessories, 8 and 9 the 234 tools — **exactly the item tables' members** |
 | 4 | the subtype | 0 to 31, below |
 
@@ -5632,7 +5632,7 @@ a bow — and cell 13, a shield, is subtype 12's. The equipment screen draws a
 weapon's kind with them.
 
 Neither follows price in any category — 0.33 at best, the shields'
-`unknown_1`, by the sign test over neighbours in price order — so neither is
+`byType`, by the sign test over neighbours in price order — so neither is
 a stat.
 
 Not established: where an item's numbers, rarity and who may use it are kept

@@ -37,7 +37,7 @@ describe('the item kinds', () => {
       ]),
     )
     expect(kinds.size).toBe(2)
-    expect(kinds.get(20004)).toEqual({ category: 0, subtype: 0, unknown_1: 1, unknown_2: 225 })
+    expect(kinds.get(20004)).toEqual({ category: 0, subtype: 0, byType: 1, byName: 225 })
     expect(kinds.get(21390)?.subtype).toBe(12)
   })
 
