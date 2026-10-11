@@ -577,6 +577,7 @@ import {
   TEXT_JINGLE,
 } from './music.ts'
 import { NAME_MOST, rollName, tidyName } from './naming.ts'
+import { hidePieces } from './pieces.ts'
 import {
   advance,
   advanceMotion,
@@ -1896,6 +1897,9 @@ let cabinets: Cabinet[] = []
 /** Talk-target ids from here on are cabinets, so they cannot be taken for a placed treasure. */
 const CABINET_TARGET = 10_000
 
+/** The loaded map's pieces a record has hidden, by their own ids — see `pieces.ts`. */
+const piecesOff = new Set<number>()
+
 /** Draw the map for one frame of its own animations. */
 function poseMap(frame: number): void {
   if (!loaded) return
@@ -1906,6 +1910,8 @@ function poseMap(frame: number): void {
   const cat = loaded.catalogue
   const drawn: Piece[] = []
   for (const [pieceIndex, piece] of loaded.map.pieces.entries()) {
+    // A piece a record has hidden — see `pieces.ts`.
+    if (piece.instance !== undefined && piecesOff.has(piece.instance)) continue
     const { model, animation } = piece
     const swung = doors.find((door) => door.piece === pieceIndex)?.angle ?? 0
     const slid = slides.find((slide) => slide.piece === pieceIndex)?.offset
@@ -2991,6 +2997,7 @@ function enter(map: string, arrival?: Arrival | 'start', forScene = false): bool
   refreshTreasures()
   doors = doorsOf(opened.map)
   slides = startSlides(opened.slides, (id) => standingIn(opened.cast, id))
+  piecesOff.clear()
   areaIn.triggers = undefined
   areaIn.map = undefined
   areaIn.doorway = undefined
@@ -5562,6 +5569,8 @@ function refit(): void {
   // piece's goes where the piece does.
   const standing = loaded.map.meshes.flatMap((placed, index) => {
     if (doors.some((door) => door.mesh === index && !doorShut(door))) return []
+    // A hidden piece's own collision goes with it — see `pieces.ts`.
+    if (placed.attachedTo !== undefined && piecesOff.has(placed.attachedTo)) return []
     const slid = slides.find((slide) => slide.mesh === index)?.offset
     if (!slid || (slid.x === 0 && slid.z === 0)) return [placed]
     const at = placed.offset ?? { x: 0, y: 0, z: 0 }
@@ -13604,6 +13613,8 @@ function storyFromRecord(outcome: EventOutcome): void {
   )
   storyStage = story.stage
   storyStep = story.step
+  // The map's pieces it hides or shows — see `pieces.ts`.
+  if (hidePieces(piecesOff, outcome.actions)) refit()
   // **The day's clock**, as a record sets it (`func_02061c04`): `110 : p`
   // puts it at phase p's start; `177 : a, v` starts it when a is 0 or stops
   // it, and puts it at phase v. See `Clock`.
