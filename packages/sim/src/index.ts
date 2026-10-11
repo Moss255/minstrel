@@ -191,6 +191,7 @@ export {
   withField,
   wordField,
 } from './gathering.ts'
+export { floorSize as grottoFloorSize, type GrottoFloor, grottoFloor } from './grotto/floor.ts'
 export {
   ALONG,
   CLIMB_STEP,

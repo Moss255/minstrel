@@ -30,3 +30,6 @@ dq9-slice1-angel-falls.md
 
 # Screenshots of the game, kept for reference: never committed.
 evidence/
+
+# The grotto oracle's build: the decomp's source, copied in to compile — never committed.
+tools/grotto-oracle/build/
