@@ -876,8 +876,12 @@ For any session, not only one reading assembly:
   at the victory, its drops as they are given, by number and by name), the
   Quest List moved in from the top menu, and Accolades Earnt. **Left**: the
   Item List and the Wardrobe, whose keeping is not found — `+0x7ac4` turned
-  out to be the Alchenomicon's recipes; the Completion Records; and Stella's
-  comments (`cmtFileTbl.bin`).
+  out to be the Alchenomicon's recipes; and the Completion Records.
+- **Stella's comments** are read — the files, the scripts and overlay 8's
+  flow (`docs/readings/T14-records.md`, "Stella's comments") — and **not
+  built**: 58 of the header's 59 tests ask functions not read, mostly the
+  records block's counters. Reading what those counters count is assembly
+  work, and the next step.
 
 **Out of scope, as multiplayer or online**: the Rapportal and Pavo,
 Canvass and the Guestbook, the DQVC shop and its special guests, map

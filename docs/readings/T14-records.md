@@ -156,3 +156,53 @@ Canvassed; 130–133 the four completions. The list's are `str_tl`: 0
   block's other fields are not tied to them.
 - What `+0x7ac0` holds, and the item list's two flag bits.
 - Title functions 119–177 and 202–215, and the comment scripts' choosing.
+
+## Stella's comments (read 11 October 2026)
+
+**The files.** `data/scenario/cmtFileTbl.bin` is a command file run as a
+`Script` (`func_020727f8`, opcode table `0x020f0cc8`): tag `0x103` records
+of an entry number and three strings — the entry's text archive, its member
+(`B13_<LG>.bin`) and its script (`cmtB13.stb`). Entries 1 to 148 are the
+Story So Far's numbers (147 has none); 1000 Header, 1001 Clear, 1002 TailC,
+1003 TailG. A text member is a command file of tag `0x67` records: kind, a
+message number, the man's line and the woman's.
+
+**The scripts.** Each entry's section 100 is a run of candidates, as the
+title scripts are: call a test routine; when it returns 1, function 50 with a
+message number (the header's 1001 on, B13's 2001 on), function 52 with the
+candidate's bit (the records' `+0x4c` bits; 0 to 58 the header's, 59 on the
+next file's), and return 1 — the first that holds is the comment. The tests
+ask function 53 (the Story So Far's number) for a range, function 171 — the
+wireless session (`func_0202ae18` → `func_0202c540`), which must be 0 — and
+function 51, whether the bit is already set; and many ask more (below).
+
+**Overlay 8's flow** (`func_ov008_02184a4c`): as the Records open, with
+`0x113b` clear (Stella not away), the header (entry 1000) runs — or
+`title_clr` after the ending (its flag `0x2`). Its list's first number
+(`+0x6a`, count `+0x68`) is the comment. With none, `title_gyalel` may
+award. Then, with no comment yet (`+0xb14` ≤ 0), the entry numbered by the
+Story So Far (`func_0201081c`) runs; with none from it, TailC (1002; TailG
+1003 in a wireless session), once (flag `0x100`). The comment shown is the
+entry's (`+0xb16`) text message (`+0xb14`), the man's or the woman's line by
+the Hero's sex (`func_ov008_02185dc0`, `0x02185fe8`–`0x0218604c`).
+
+**Why it is not built.** 620 candidates in all; with the functions read
+(0, 1, 50–53, 101, 102, 106, 110, 170, 171, 252, 253), 104 can be answered —
+and only 1 of the header's 59. Since the first that holds is shown, a test
+not answerable cannot be passed over without showing a comment the game
+would not yet give. The functions most asked, and what they read:
+
+| function | asked by | reads |
+|---|---|---|
+| 157 | 152 | `func_02011494` − 1 |
+| 107, 108 | 127, 88 | a member's `+0x130` halfwords 4 and 6 |
+| 129, 134, 127, 128 | 94, 34, 23, 20 | the records block's `+0x3c`, `+0x40`, `+0x34`, `+0x38`, low 24 bits |
+| 130 | 26 | the records' `+0x08`, low 24 bits |
+| 123 | 62 | the records' first word, through `func_ov023_021e8fe8` |
+| 169 | 61 | the records' `+0x20`, high half |
+| 177 | 56 | `func_02086aec(party, n)`: how many of an item the party holds (INFERRED from its other callers) |
+| 174 | 35 | bit 4 of `func_02012fe4()`'s `+0x8` |
+| 165, 158, 140 | 31, 22, 21 | a member (`func_020100a8`, `func_0200ff1c`); `func_02011494`; the records' first halfword |
+
+What the records' counters count is the open question — the summary's
+victories, alchemy and guests among them (task 14's "not found").
