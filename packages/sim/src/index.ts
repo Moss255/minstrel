@@ -192,6 +192,7 @@ export {
   wordField,
 } from './gathering.ts'
 export { floorSize as grottoFloorSize, type GrottoFloor, grottoFloor } from './grotto/floor.ts'
+export { type GrottoDetails, type GrottoPlace, grottoDetails, grottoPlace } from './grotto/map.ts'
 export {
   floorTiles,
   type GrottoTile,

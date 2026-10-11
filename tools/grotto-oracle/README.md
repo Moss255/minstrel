@@ -21,6 +21,17 @@ tools/grotto-oracle/build/grotto-oracle 0 12345 1   # seed 12345, floor 1
 tools/grotto-oracle/build/grotto-oracle 1 2000      # the tests' checksum
 ```
 
+and the regular treasure map's details: `RegularMapData::Populate` and its US
+helpers, cut out of `DetailedTreasureMapData.cpp` by their own lines, with
+`RandATRangeModular`, reading a `tdata_<LG>.pac` named on the command line
+(taken from your own cartridge; English word order, and the level's words, the
+game's string 1011, stood in by `Lv. `):
+
+```sh
+tools/grotto-oracle/build/grotto-oracle 2 tdata_en.pac 1 50   # seed 1, quality 50
+tools/grotto-oracle/build/grotto-oracle 3 tdata_en.pac 97     # checksum, seeds in steps of 97
+```
+
 Mode 1 hashes the floors of the seeds 131·n mod 65,536 for n below its argument,
 floors 1 to 16; 65,536 gives every seed, and the port agreed on all of them on
 11 October 2026.

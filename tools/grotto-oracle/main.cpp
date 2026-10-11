@@ -1,4 +1,5 @@
 #include "Grotto/Main/FloorMapGenerator.h"
+#include "details-prelude.h"
 #include <cstdio>
 
 // The generator from the game, its rand, and one floor or a checksum over many.
@@ -8,6 +9,23 @@ static unsigned int next_;
 int rand() { next_ = next_ * 0x41c64e6du + 0x3039u; return (int)((next_ >> 16) & 0x7fff); }
 void srand(int seed) { next_ = (unsigned int)seed; }
 int g_floor;
+// The treasure maps' tables, read from a tdata_<LG>.pac named on the command line.
+static unsigned char pac[65536];
+static TreasureMapLanguageDataOffsets offsets;
+static GameResources resources = { &offsets };
+static GameState state;
+GameResources* func_ov017_0218b5b0() { return &resources; }
+GameState* GameState::GetInstance() { return &state; }
+unsigned char* GameState::GetTreasureMapLanguageData() { return pac; }
+static void loadPac(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (!f) { printf("no %s\n", path); return; }
+  fread(pac, 1, sizeof(pac), f);
+  fclose(f);
+  memcpy(&offsets, pac + 4, sizeof(offsets));
+}
+static unsigned int fnv = 2166136261u;
+static void mix(unsigned int b) { fnv ^= (b & 0xff); fnv *= 16777619u; }
 static int dimension(int lo, int hi, int seed, int floor) { if (lo == hi) return lo; return lo + (seed + floor) % (hi - lo + 1); }
 static int widthOf(int seed, int floor) {
   if (floor >= 0 && floor <= 4) return dimension(10, 14, seed, floor);
@@ -19,6 +37,26 @@ static unsigned char buffers[512];
 static FloorMapGenerator gen;
 int main(int argc, char** argv) {
   int mode = argc > 1 ? toInt(argv[1]) : 0;
+  if (mode == 2 || mode == 3) {
+    loadPac(argv[2]);
+    DetailedTreasureMapData::RegularMapData r;
+    if (mode == 2) {
+      r.Populate((unsigned short)toInt(argv[3]), (unsigned char)toInt(argv[4]));
+      printf("env %d floors %d rank %d boss %d monster %d prefix %d suffix %d locale %d level %d u66 %d name %s|\n",
+        r.environ_, r.floorCount_, r.startingMonsterRank_, r.bossID_, r.bossMonsterID_, r.prefix_, r.suffix_, r.localeRank_, r.level_, r.unknown_66_, r.nameNoLevel_);
+      return 0;
+    }
+    // Mode 3: every seed in steps of the argument, every quality 0 to 255.
+    int step = toInt(argv[3]);
+    for (int seed = 0; seed < 65536; seed += step) for (int q = 0; q < 256; q++) {
+      r.Populate((unsigned short)seed, (unsigned char)q);
+      unsigned int v[] = { r.environ_, r.floorCount_, r.startingMonsterRank_, r.bossID_, r.bossMonsterID_, (unsigned)r.bossMonsterID_ >> 8, r.prefix_, r.suffix_, r.localeRank_, r.level_, (unsigned char)r.unknown_66_ };
+      for (unsigned int b : v) mix(b);
+      for (const char* c = r.nameNoLevel_; *c; c++) mix((unsigned char)*c);
+    }
+    printf("%u\n", fnv);
+    return 0;
+  }
   if (mode == 0) {
     int seed = toInt(argv[2]), floor = toInt(argv[3]);
     FloorMap map; map.Clear(); map.pMapData = buffers; map.pMapAdjacencyData = buffers + 256;

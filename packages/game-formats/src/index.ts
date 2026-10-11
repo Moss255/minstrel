@@ -460,6 +460,12 @@ export {
 } from './table.ts'
 export { readTalk, type TalkLine } from './talk.ts'
 export {
+  readTreasureMapTables,
+  TMAP_TABLES,
+  type TmapTable,
+  type TreasureMapTables,
+} from './tmap.ts'
+export {
   type Bookcase,
   type DoorwayRegion,
   type LadderEnd,

@@ -27,5 +27,29 @@ s = s.replace("    return minimum + (rand() % (maximum - minimum + 1));",
               "    int r = rand();\n    int d = maximum - minimum + 1;\n    return minimum + (d == 0 ? 0 : r % d);")
 open(p, "w").write(s)
 PY
-g++ -std=c++17 -O1 -I"$out/include" -o "$out/grotto-oracle" "$here/main.cpp" "$out/src/FloorMapGenerator.cpp" "$out/src/FloorMap.cpp"
+cp "$decomp/include/Grotto/Main/DetailedTreasureMapData.h" "$decomp/include/Grotto/Main/TreasureMapMetadata.h" "$out/include/Grotto/Main/"
+# The regular map's details: Populate and its US helpers, cut out by their own
+# lines, and RandATRangeModular — nothing else of the file.
+python3 - "$decomp/src/Grotto/Main/DetailedTreasureMapData.cpp" "$decomp/src/Grotto/Main/TreasureMapDataStructs.cpp" "$out/src/details.cpp" <<'PY'
+import sys
+src = open(sys.argv[1]).read().split("\n")
+def block(start):
+    i = next(n for n, line in enumerate(src) if line.startswith(start))
+    j = i
+    while src[j] != "}":
+        j += 1
+    return "\n".join(src[i:j + 1])
+first = next(n for n, line in enumerate(src) if line.startswith("void DetailedTreasureMapData::RegularMapData::GenerateUnknownData"))
+last = next(n for n in range(first, len(src)) if src[n].startswith("#elif defined(jpn)"))
+usa = "\n".join(line for line in src[first:last] if not line.startswith("extern"))
+# The cut ends inside the file's own `#if defined(usa)`; close it.
+if usa.count("#if") > usa.count("#endif"):
+    usa += "\n#endif"
+structs = open(sys.argv[2]).read().split("\n")
+k = next(n for n, line in enumerate(structs) if line.startswith("unsigned int RandATRangeModular"))
+modular = "\n".join(structs[k:k + 4])
+out = '#include "details-prelude.h"\n' + block("void DetailedTreasureMapData::RegularMapData::Populate") + "\n" + usa + "\n" + modular + "\n"
+open(sys.argv[3], "w").write(out)
+PY
+g++ -std=c++17 -O1 -Dusa -I"$out/include" -o "$out/grotto-oracle" "$here/main.cpp" "$out/src/FloorMapGenerator.cpp" "$out/src/FloorMap.cpp" "$out/src/details.cpp"
 echo "built $out/grotto-oracle"
