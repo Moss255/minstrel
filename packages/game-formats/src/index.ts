@@ -110,6 +110,7 @@ export {
   VARIANTS,
 } from './gathering.ts'
 export { type Grammar, readGrammar } from './grammar.ts'
+export { readTilePlacements, type TilePlacement } from './grotto.ts'
 export {
   FAMILY_BONUS_FIELDS,
   ITEM_EXPERIENCE_BONUS,

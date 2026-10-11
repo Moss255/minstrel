@@ -193,6 +193,13 @@ export {
 } from './gathering.ts'
 export { floorSize as grottoFloorSize, type GrottoFloor, grottoFloor } from './grotto/floor.ts'
 export {
+  floorTiles,
+  type GrottoTile,
+  placeOnTile,
+  type TileObject,
+  turnPlaces,
+} from './grotto/tiles.ts'
+export {
   ALONG,
   CLIMB_STEP,
   type Climb,
