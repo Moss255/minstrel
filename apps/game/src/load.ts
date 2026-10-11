@@ -21,6 +21,7 @@ import {
   type BuildTable,
   type CharaColours,
   type CharacterPreset,
+  type CommentEntry,
   castAtPoint,
   type DoorwayRegion,
   type EvacRecord,
@@ -82,6 +83,8 @@ import {
   readBuildTable,
   readCharaColours,
   readCharacterPresets,
+  readCommentLines,
+  readCommentTable,
   readDataTable,
   readEvacTable,
   readEventBattles,
@@ -1838,6 +1841,56 @@ function accoladesOf(rom: Uint8Array): Accolades {
   }
   accoladesKept.set(rom, out)
   return out
+}
+
+/** One of Stella's comment entries: its script and its English lines — see `comments.ts`. */
+export interface CommentFiles {
+  readonly script: Script
+  readonly lines: ReadonlyMap<number, readonly [string | undefined, string | undefined]>
+}
+
+const commentsKept = new WeakMap<Uint8Array, Map<number, CommentFiles | undefined>>()
+const commentTables = new WeakMap<Uint8Array, ReadonlyMap<number, CommentEntry>>()
+
+/**
+ * **A comment entry's files** (`cmtFileTbl.bin`, see `readCommentTable`),
+ * read the first time it is asked for. Undefined where the entry has none or
+ * they will not read.
+ */
+export function commentEntryOf(rom: Uint8Array, number: number): CommentFiles | undefined {
+  let kept = commentsKept.get(rom)
+  if (!kept) {
+    kept = new Map()
+    commentsKept.set(rom, kept)
+  }
+  if (kept.has(number)) return kept.get(number)
+  let table = commentTables.get(rom)
+  if (!table) {
+    const bytes = looseFile(rom, '/data/scenario/cmtFileTbl.bin')
+    try {
+      table = bytes ? readCommentTable(bytes) : new Map()
+    } catch {
+      table = new Map()
+    }
+    commentTables.set(rom, table)
+  }
+  const entry = table.get(number)
+  let files: CommentFiles | undefined
+  if (entry) {
+    const script = looseFile(rom, `/${entry.script}`)
+    const lines = englishBytes(
+      rom,
+      `/${entry.archive}`,
+      entry.member.replace('<LG>', 'en').toLowerCase(),
+    )
+    try {
+      if (script && lines) files = { script: readScript(script), lines: readCommentLines(lines) }
+    } catch {
+      files = undefined
+    }
+  }
+  kept.set(number, files)
+  return files
 }
 
 /** One English member of an archive, as bytes. */

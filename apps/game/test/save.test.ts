@@ -115,6 +115,16 @@ describe('saves', () => {
     )
   })
 
+  it('keep the Battle Records’ counts and Stella’s comments given', () => {
+    const counts = { battles: 12, victories: 10, wipeouts: 1, heard: 3 }
+    const kept = decodeSave(encodeSave({ ...game, counts, comments: [0, 3, 59] }))
+    expect(kept.counts).toEqual(counts)
+    expect(kept.comments).toEqual([0, 3, 59])
+    expect(() => decodeSave(encodeSave({ ...game, counts: { ...counts, heard: -1 } }))).toThrow(
+      /record counts/,
+    )
+  })
+
   it('are refused whole, saying why, when a field does not read', () => {
     expect(() => decodeSave('not json')).toThrow(/not JSON/)
     expect(() => decodeSave(encodeSave({ ...game, version: 6 as 5 }))).toThrow(/version 6/)

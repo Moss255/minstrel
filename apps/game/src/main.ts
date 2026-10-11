@@ -365,6 +365,7 @@ import {
   fitMeshes,
   NO_FIT,
 } from './collisionview.ts'
+import { HEADER_ENTRY, runComment, TAIL_ENTRY } from './comments.ts'
 import {
   attendingStanding,
   COLOUR_BY_EYES,
@@ -509,6 +510,7 @@ import {
   actionScripts,
   allTriggers,
   battleSheets,
+  commentEntryOf,
   entranceOf,
   gatheringOf,
   givenNamesFrom,
@@ -1777,6 +1779,15 @@ let battleMembers: readonly Member[] = []
 /** Battles fought this session, which seeds the next one's numbers. */
 let battlesFought = 0
 /**
+ * **The Battle Records' counts kept here** — the records block's
+ * (`GameState+0x7540`; `docs/readings/T14-records.md`, "The counters"):
+ * battles fought (`+0x3c`, counted as each is set up), victories (`+0x08`),
+ * wipe-outs (`+0x40`) and comments given (`+0x20`'s high half). Saved.
+ */
+let recordCounts = { battles: 0, victories: 0, wipeouts: 0, heard: 0 }
+/** Stella's comments given that are not given again: the records' `+0x4c` bits — see `comments.ts`. */
+let commentsShown = new Set<number>()
+/**
  * The monsters `p` fights: `?fight=` codes, or two slimes. A stand-in while
  * encounters are not read — they are M6's. Read when the key is pressed, as
  * the page's parameters are declared further down.
@@ -2521,6 +2532,8 @@ function restore(game: SaveGame): void {
   volumes = game.volume ? { ...game.volume } : DEFAULT_VOLUMES
   hearVolumes()
   defeatedList = defeatedRestored(game.defeated)
+  recordCounts = { battles: 0, victories: 0, wipeouts: 0, heard: 0, ...game.counts }
+  commentsShown = new Set(game.comments ?? [])
   storyStage = game.stage ? { major: game.stage.major, minor: game.stage.minor } : undefined
   storyStep = game.step ?? 0
   storyFlags.clear()
@@ -2711,6 +2724,8 @@ function snapshot(): SaveGame | undefined {
     ship: { ...shipKeep },
     volume: { ...volumes },
     ...(defeatedList.size > 0 ? { defeated: defeatedSaved(defeatedList) } : {}),
+    counts: { ...recordCounts },
+    ...(commentsShown.size > 0 ? { comments: [...commentsShown].sort((a, b) => a - b) } : {}),
   }
   return game
 }
@@ -7399,11 +7414,12 @@ function recordsContext(): MenuContext['records'] {
   const listed = storyGlobals.has(FLAG_ACCOLADES_LISTED)
   return {
     title: loaded.systemStrings?.get(21) ?? 'Battle Records',
-    // The summary's lines the game's records hold that are kept here. **Ours**:
-    // the quests cleared are counted from the quest book, where the game keeps
-    // its own count in the records (not read); the rest — victories, alchemy,
-    // guests — are not kept, and are left out.
+    // The summary's lines the game's records hold that are kept here — the
+    // victories now among them (`recordCounts`). **Ours**: the quests cleared
+    // are counted from the quest book, where the game keeps its own count in
+    // the records; alchemy performed and guests are not kept, and are left out.
     summary: [
+      value(120, recordCounts.victories, 'Battle Victories'),
       value(122, accoladesEarned.size, 'Accolades Earnt'),
       value(123, questBook.cleared.size, 'Quests Completed'),
       value(124, 0, 'Grottoes Completed'),
@@ -7498,15 +7514,26 @@ function recordsTables(): NonNullable<MenuContext['records']>['tables'] {
 
 /**
  * **Open the Battle Records** — the SELECT Button in the field, or the menu's
- * row. As they open, `title_gyalel` runs (overlay 8, step 0 to 2) and what it
- * awards is said. **Ours**: Stella's comment, which the game gives first
- * (`cmtFileTbl.bin`, `cmtHeader.stb` and the stage's own), is not built, and
- * the game runs `title_gyalel` only when she has none; the award is said
- * before the panel, which opens on the next press.
+ * row — as overlay 8 does (`func_ov008_02184a4c`; `docs/readings/T14-records.md`,
+ * "Stella's comments"): unless Stella is away (game-wide flag `0x113b`), her
+ * header comment (entry 1000); with none, `title_gyalel`'s awards, then the
+ * comment of the Story So Far's page, then TailC's (1002) — see `comments.ts`.
+ * What she says and what is awarded are said before the panel, which opens on
+ * the next press. **Ours**: the order they are said in, and that a test asking
+ * for a function not modelled leaves her saying nothing.
  */
 function openRecords(): void {
   if (!loaded || !storyGlobals.has(FLAG_RECORDS)) return
-  const lines = award('records')
+  const lines: string[] = []
+  if (!storyGlobals.has(FLAG_STELLA_AWAY)) {
+    let comment = stellaSays(HEADER_ENTRY)
+    if (comment === undefined) {
+      lines.push(...award('records'))
+      comment = stellaSays(storySoFar)
+      if (comment === undefined) comment = stellaSays(TAIL_ENTRY)
+    }
+    if (typeof comment === 'string') lines.push(comment)
+  }
   if (lines.length > 0) {
     sayAwards(lines)
     return
@@ -7514,6 +7541,36 @@ function openRecords(): void {
   self?.held.clear()
   menu = { ...openMenu(), panel: 'records', records: { at: 'top' } }
   showMenu()
+}
+
+/** Stella's away: no comment and no award as the Records open (`0x113b`, trigger action `162`). */
+const FLAG_STELLA_AWAY = 0x113b
+
+/**
+ * **One comment entry run** — its line, by the Hero's sex, given and counted;
+ * undefined when it has none; `false` when a test asked for what is not
+ * modelled, which ends the search with nothing said.
+ */
+function stellaSays(entry: number): string | false | undefined {
+  if (!cartridge || !loaded) return false
+  const files = commentEntryOf(cartridge, entry)
+  if (!files) return undefined
+  const run = runComment(files.script, {
+    shown: (bit) => commentsShown.has(bit),
+    storySoFar,
+    battles: recordCounts.battles,
+    heard: recordCounts.heard,
+  })
+  if ('stopped' in run) {
+    log(`Stella's comment ${entry}: stopped at ${run.stopped}, not modelled`)
+    return false
+  }
+  if ('none' in run) return undefined
+  if (run.bit !== undefined) commentsShown.add(run.bit)
+  recordCounts.heard++
+  const pair = files.lines.get(run.line)
+  const text = (leader().sex === SEX.female ? pair?.[1] : pair?.[0]) ?? pair?.[0] ?? pair?.[1]
+  return text === undefined ? undefined : plainMarkup(text, heroName())
 }
 /** Whether its page is up, on the bottom screen. */
 let storyPageOpen = false
@@ -9910,6 +9967,8 @@ function openFight(codes: readonly string[], canFlee: boolean, opening: Opening 
     hp.set(i + 1, member.hp ?? max)
   }
   battlesFought++
+  // Every battle counted as it is set up (`func_ov000_021643d4`, `func_020a07e0`).
+  recordCounts.battles++
   // **The stage the fight is on**, and everyone's place on it — see `stage.ts`.
   // Without one, the monsters line up on the field ahead of the Hero, as they
   // did before the stages were read: ours.
@@ -12327,6 +12386,8 @@ function settleBattle(): void {
   /** Hit points each companion's level brought, by place — added to their wounds below. */
   const grown = new Map<number, number>()
   if (battle.state.outcome === 'won' && hero && levels) {
+    // A victory, counted (`func_ov023_021eefd0`, `func_020a0330`).
+    recordCounts.victories++
     // **The Defeated Monster List**: each one beaten, by its number — see `records.ts`.
     countDefeated(
       defeatedList,
@@ -12489,6 +12550,8 @@ function settleBattle(): void {
     if (storyStage?.major === 16 && storyStage.minor === 2 && stepNow() === 1)
       storyGlobals.delete(FLAG_NO_ZOOM)
     wakeInChurch = true
+    // A wipe-out, counted (`func_ov017_021b790c`, `func_020a0810`).
+    recordCounts.wipeouts++
   } else if (hero) {
     leader().hp = hero.hp
     leader().mp = hero.mp >= hero.maxMp ? undefined : hero.mp

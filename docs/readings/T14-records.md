@@ -190,23 +190,54 @@ Story So Far (`func_0201081c`) runs; with none from it, TailC (1002; TailG
 entry's (`+0xb16`) text message (`+0xb14`), the man's or the woman's line by
 the Hero's sex (`func_ov008_02185dc0`, `0x02185fe8`–`0x0218604c`).
 
-**Why it is not built.** 620 candidates in all; with the functions read
-(0, 1, 50–53, 101, 102, 106, 110, 170, 171, 252, 253), 104 can be answered —
-and only 1 of the header's 59. Since the first that holds is shown, a test
-not answerable cannot be passed over without showing a comment the game
-would not yet give. The functions most asked, and what they read:
+**Built, 11 October 2026** (`apps/game/src/comments.ts`): the scripts run
+in that order as the Records open, the line given by the Hero's sex. The
+header's tests ask only functions 51, 53, 129 (battles fought), 169
+(comments given) and 171, so **the header is whole**. The stage entries ask
+many more; there, a test asking a function not modelled ends the run with no
+comment, rather than passing over it to one the game would not yet give.
+Functions still to read for them, by how many candidates ask:
 
 | function | asked by | reads |
 |---|---|---|
 | 157 | 152 | `func_02011494` − 1 |
-| 107, 108 | 127, 88 | a member's `+0x130` halfwords 4 and 6 |
-| 129, 134, 127, 128 | 94, 34, 23, 20 | the records block's `+0x3c`, `+0x40`, `+0x34`, `+0x38`, low 24 bits |
-| 130 | 26 | the records' `+0x08`, low 24 bits |
+| 107, 108 | 127, 88 | a member's `+0x130` halfwords 4 and 6 (INFERRED HP and MP) |
+| 134, 127, 128 | 34, 23, 20 | the records' `+0x40` wipe-outs, `+0x34` flee attempts, `+0x38` flees (below) |
+| 130 | 26 | the records' `+0x08` low 24 bits, victories (below) |
 | 123 | 62 | the records' first word, through `func_ov023_021e8fe8` |
-| 169 | 61 | the records' `+0x20`, high half |
 | 177 | 56 | `func_02086aec(party, n)`: how many of an item the party holds (INFERRED from its other callers) |
 | 174 | 35 | bit 4 of `func_02012fe4()`'s `+0x8` |
 | 165, 158, 140 | 31, 22, 21 | a member (`func_020100a8`, `func_0200ff1c`); `func_02011494`; the records' first halfword |
 
-What the records' counters count is the open question — the summary's
+The script machine's opcode `0x0A`, modulo, was read for them (interpreter
+case 10, `0x021d5bbc`); no event script uses it.
+
+## The counters (read 11 October 2026)
+
+The records block (`GameState+0x7540`, 0xB0 bytes) holds counters each with
+its own adder, `func_020a0300`–`func_020a0858`, held at a cap; and a second
+set of the same kind at its `+0x68` (`func_020a0038`–`func_020a02d0`),
+counted alongside by the same callers — what distinguishes the two is not
+read. Those whose callers say what they count:
+
+| field | adder | caller | counts |
+|---|---|---|---|
+| `+0x08` bits 0–23 (to 99,999) | `func_020a0330` | the victory, `func_ov023_021eefd0` | **battles won** — `str_jr` 120 |
+| `+0x0c` bits 14–27 (to 9,999) | `func_020a0388` | the victory | grottoes cleared (task 14) |
+| `+0x10` bits 0–8 | `func_020a03c4` | `func_ov023_021ed724` | accolades earned (task 14) |
+| `+0x10` bits 9–22 (to 9,999) | `func_020a03f8` | overlay 3 `func_ov003_0216c00c` | not read |
+| `+0x10` bits 23–31 (to 500) | `func_020a0434` | `func_020ac104` | Alchenomicon recipes made |
+| `+0x14` bits 0–8 (to 500) | `func_020a0460` | `func_020abe84` | monster kinds defeated |
+| `+0x14` bits 9–17 (to 500) | `func_020a0494` | `func_0207cc18` | items found (the Item List) |
+| `+0x14` bits 18–28 (to 1,500) | `func_020a04c8` | `func_0207cc18`, `func_0206e424` | equipment found (the Wardrobe) |
+| `+0x20` bits 16–31 | `func_020a05d8` | overlay 8 `func_ov008_02185dc0` | **Stella's comments given** |
+| `+0x2c`, `+0x30` | `func_020a0720`, `func_020a0750` | `func_ov024_021df924`, a theft | not read which |
+| `+0x34` | `func_020a0780` | the Flee command, `func_ov026_021dd3dc` | **flee attempts** |
+| `+0x38` | `func_020a07b0` | the same, on a flight that held where no foe passes `func_02010088` | **flees** |
+| `+0x3c` | `func_020a07e0` | a battle's set-up, `func_ov000_021643d4` | **battles fought** |
+| `+0x40` | `func_020a0810` | a wipe-out, `func_ov017_021b790c` | **wipe-outs** |
+| `+0x44`, `+0x48` | `func_020a0840`, `func_020a0858` | the battle (`func_ov000_021554f4`); the victory and `func_ov017_021cd608` | not read |
+
+Kept here (`recordCounts` in `main.ts`): battles fought, battles won,
+wipe-outs and comments given.
 victories, alchemy and guests among them (task 14's "not found").

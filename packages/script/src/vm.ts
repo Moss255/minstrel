@@ -19,6 +19,7 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * | `0x07` | subtract | | read from use |
  * | `0x08` | multiply | the second event folder's: 4,761 of its 4,777 follow `1 negate`; `3.14 1.5` makes a three-quarter turn | read from use |
  * | `0x09` | divide | the second, by the top — `4.5 180 divide 3.14 multiply` turns degrees to radians | read from use |
+ * | `0x0A` | modulo | the second, as an integer, by the top, as one: the remainder, `_s32_div_f`'s `r1` (case 10 of the interpreter, `0x021d5bbc`; read 11 October 2026 — Stella's comment scripts use it) | read from the interpreter |
  * | `0x0B` | negate | the value on top; coordinates are stored positive and negated | read from use |
  * | `0x0E c` | compare | 40 `==`, 41 `!=`, 42 `<`, 43 `<=`, 44 `>`, 45 `>=`, the second value against the top; an integer against a float compares as floats | read from the interpreter |
  * | `0x0F` | return | with the value on top | established |
@@ -38,8 +39,8 @@ import { ROUTINE_HEADER, type Script, type ScriptRoutine } from '@minstrel/game-
  * **The interpreter** is overlay 17's `func_ov017_021d4e38` (USA), a jump
  * table on the opcode from `0x021d4e5c`, 0 to `0x1E`; read 6 October 2026.
  * The comparison's six are its sub-table at `0x021d55a4`; `0x18` is an `and`
- * (`0x021d5c2c`) that no script on the cartridge uses, and `0x0A`, `0x0C`,
- * `0x0D`, `0x1B` and `0x1C` are cases no script uses either, left unread.
+ * (`0x021d5c2c`) that no script on the cartridge uses, and `0x0C`, `0x0D`,
+ * `0x1B` and `0x1C` are cases no script uses either, left unread.
  * Anything not in the table above stops the machine with a `ScriptError`
  * rather than being guessed at.
  *
@@ -64,6 +65,7 @@ export const OP = {
   SUBTRACT: 0x07,
   MULTIPLY: 0x08,
   DIVIDE: 0x09,
+  MODULO: 0x0a,
   NEGATE: 0x0b,
   COMPARE: 0x0e,
   RETURN: 0x0f,
@@ -285,6 +287,14 @@ export class ScriptThread {
         // does — truncate or not — is not seen, and a float's is kept.
         const right = this.popNumber(at)
         this.stack.push(this.popNumber(at) / right)
+        return false
+      }
+      case OP.MODULO: {
+        // Both as integers (`func_ov017_021d4980`), and the remainder kept:
+        // `_s32_div_f` leaves it in `r1`, which is what is pushed.
+        const right = Math.trunc(this.popNumber(at))
+        const left = Math.trunc(this.popNumber(at))
+        this.stack.push(right === 0 ? 0 : left % right)
         return false
       }
       case OP.OR: {

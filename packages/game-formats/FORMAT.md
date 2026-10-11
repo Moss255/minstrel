@@ -5991,6 +5991,29 @@ this was first taken): the face's brows, eyes and skin at `+0x24`, `+0x28`,
 `GetItemSkinShades(rec, 0, sex)` — bits 11–14 a man, 19–22 a woman. Not drawn
 here.
 
+# Stella's comments — `data/scenario/cmtFileTbl.bin` and `cmt*`
+
+Read 11 October 2026; `src/comments.ts`, and `docs/readings/T14-records.md`,
+"Stella's comments", for the code.
+
+**`cmtFileTbl.bin`** is a command file (the tagged data table): `0x65` a date,
+`0x64` a version, `0x66` a count (152), and **`0x67`, an entry**: its number,
+then three strings — an archive (`data/scenario/cmtB13.gp2`), its member
+(`B13_<LG>.bin`) and a script (`data/scenario/cmtB13.stb`). 129 entries on
+the European cartridge: 1 to 148 by the Story So Far's page (some sharing a
+script — 141 to 146 are all `cmtO134O139`; 147 has none, its strings −1),
+1000 Header, 1001 Clear, 1002 TailC, 1003 TailG.
+
+**An entry's lines** (`B13_en.bin`) are a command file: `0x65` a date, `0x64`
+a version, `0x66` a count, and **`0x67`, a line**: its number (the header's
+1001 on, B13's 2001 on), the man's line and the woman's — −1 where that sex
+has none (the header's 117 and 120 are a woman's alone). 771 lines in all.
+
+**An entry's script** is an `SB2` script whose section 100 is a run of
+candidates — a test routine; when it returns 1, engine function 50 with a line
+number, 52 with a bit on most, and a return. 620 candidates across the 24
+scripts. See `docs/readings/T14-records.md` for the functions the tests ask.
+
 # Personal colours — `/data/bin/percol.bin`
 
 Read 11 October 2026 from the US ARM9; `src/personalcolours.ts`.

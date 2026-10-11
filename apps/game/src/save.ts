@@ -282,6 +282,19 @@ export interface SaveGame {
    * saves made before, which have it empty.
    */
   readonly defeated?: readonly (readonly [number, number, number, number])[]
+  /**
+   * **The Battle Records' counts kept**: battles fought, victories, wipe-outs
+   * and Stella's comments given — see `recordCounts` in `main.ts`. Absent
+   * from saves made before, which count from 0.
+   */
+  readonly counts?: {
+    readonly battles: number
+    readonly victories: number
+    readonly wipeouts: number
+    readonly heard: number
+  }
+  /** Stella's comments given that are not given again, by their bits — see `comments.ts`. */
+  readonly comments?: readonly number[]
 }
 
 export class SaveError extends Error {
@@ -472,6 +485,18 @@ export function decodeSave(text: string): SaveGame {
     )
   ) {
     throw new SaveError('the save has a monster list that does not read')
+  }
+  const counts = s.counts as Record<string, unknown> | null | undefined
+  if (
+    counts !== undefined &&
+    (typeof counts !== 'object' ||
+      counts === null ||
+      !['battles', 'victories', 'wipeouts', 'heard'].every((k) => isCount(counts[k])))
+  ) {
+    throw new SaveError('the save has record counts that do not read')
+  }
+  if (s.comments !== undefined && !(Array.isArray(s.comments) && s.comments.every(isCount))) {
+    throw new SaveError('the save has comments that do not read')
   }
   if (s.lastField !== undefined && !isCount(s.lastField)) {
     throw new SaveError('the save has a last field that does not read')

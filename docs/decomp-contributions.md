@@ -1563,3 +1563,20 @@ The obtaining paths that call `func_0207cc18`: `func_0207ccf0`, `func_0207cf30`,
 `func_ov003_0217599c`, overlay 17 `func_ov017_021b0bc0`; `func_0206e424`'s:
 overlay 17 `0x0218b688` (the Hero, as the field starts), `func_ov017_021b688c`
 (the party), overlay 3 `func_ov003_02166a90` (Patty).
+
+### Stella's comments and the records' counters (11 October 2026)
+
+`apps/game/src/comments.ts`, `readCommentTable`/`readCommentLines` in
+`packages/game-formats/src/comments.ts`, opcode `0x0A` in `packages/script/src/vm.ts`;
+tests in `apps/game/test/comments.test.ts`, `packages/game-formats/test/comments.test.ts`,
+`packages/script/test/vm.test.ts`. The counters' table is in
+`docs/readings/T14-records.md`, "The counters".
+
+| address | what it does | name proposed |
+|---|---|---|
+| arm9 `func_020727f8`, `func_02072928` | `cmtFileTbl.bin` run as a `Script` (opcodes `0x020f0cc8`): an entry's script path (mode 2), its archive and member (modes 0, 1) | `CommentTable::Lookup` |
+| ov008 `func_ov008_02184a4c` | the Records' opening: the header (1000) or `title_clr`, then `title_gyalel`, then the Story So Far's entry, then TailC (1002; TailG 1003 in a session) | `BattleRecords::Update` |
+| ov008 `func_ov008_02185dc0` | the comment shown: the entry's line by the Hero's sex; the comments-given count raised | `BattleRecords::ShowComment` |
+| ov017 `0x021d5bbc` | the script machine's opcode `0x0A`: the remainder of the second value by the top, as integers | `ScriptVM::Modulo` |
+| ov023 `func_ov023_021e9d94`, `021ea8b8`, `021ea920`, `021ea8e8` | functions 129, 169, 171, 170: battles fought, comments given, the session's two states | — |
+| arm9 `func_020a0300`–`func_020a0858`, `func_020a0038`–`func_020a02d0` | the records' counters and the second set's, each added to and held | `BattleRecords::Add*` |

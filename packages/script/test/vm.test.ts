@@ -141,6 +141,20 @@ describe('the script machine', () => {
     expect(calls.map((c) => c.args)).toEqual([[8, -1.5, 20]])
   })
 
+  it('takes the remainder, the second value by the top, as integers', () => {
+    const script = assemble([
+      {
+        code: [
+          ...engine(206, [int(17), int(5), [OP.MODULO]], [int(-7), int(2), [OP.MODULO]]),
+          [OP.RETURN],
+        ],
+      },
+    ])
+    const { host, calls } = recorder()
+    run(script, host)
+    expect(calls[0]?.args).toEqual([2, -1])
+  })
+
   it('multiplies and divides, the second value by the top, as the second event folder writes them', () => {
     const script = assemble([
       {

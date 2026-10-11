@@ -55,6 +55,11 @@ export {
   readCollisionMesh,
 } from './collision.ts'
 export {
+  type CommentEntry,
+  readCommentLines,
+  readCommentTable,
+} from './comments.ts'
+export {
   type BattleZone,
   type BattleZoneMonster,
   type FieldZone,
