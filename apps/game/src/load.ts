@@ -128,6 +128,7 @@ import {
   readTableMessages,
   readTalk,
   readTreasure,
+  readTreasureMapTables,
   readTriggers,
   readVocationTrees,
   readWeaponPlaces,
@@ -141,6 +142,7 @@ import {
   type StoryArea,
   type TalkLine,
   type Treasure,
+  type TreasureMapTables,
   type Trigger,
   type VocationTrees,
   type WeaponPlaces,
@@ -154,6 +156,9 @@ import {
   type AiRecord,
   type CollisionWorld,
   createCollisionWorld,
+  type GrottoDetails,
+  grottoDetails,
+  grottoPlace,
   groundBelow,
   PERSON,
   type ScaleBy,
@@ -164,6 +169,7 @@ import { TITLE_SCRIPTS, type TitleScript } from './accolades.ts'
 import type { BattleWords } from './battle-scene.ts'
 import { type Cast, cast, forgetSheets, type GroundAt } from './cast.ts'
 import { CHEST_ARCHIVE, type ChestLook, chestModelsOf } from './chests.ts'
+import { buildGrottoFloor, type GrottoVisit, grottoFloorNumber } from './grotto.ts'
 import { heroOutfit, LEVELS_FOLDER } from './hero.ts'
 import { speedsOf } from './motion-speed.ts'
 import { type GivenNames, givenNamesOf } from './naming.ts'
@@ -433,7 +439,10 @@ export interface Loaded {
   readonly ladders: readonly LadderEnd[]
   /** The map's moorings for the ship, from its link table — see `mapMoorings`. */
   readonly moorings: readonly Mooring[]
-  /** Where a party asked in with no place stands — a wipe-out's — in the file's own units; see `mapStart`. */
+  /**
+   * Where a party asked in with no place stands — a wipe-out's — in world
+   * units; see `mapStart`. A grotto floor's is in front of its way up.
+   */
   readonly start: MapStart | undefined
   /** Which archive the map came out of, for the status line. */
   readonly archive: string
@@ -630,6 +639,8 @@ export interface LoadOptions {
    */
   readonly lighting?: MapLighting
   readonly onProgress?: (what: string) => void
+  /** The active grotto: a `Z00Mnn` map is its floor, built — see `grotto.ts`. */
+  readonly grotto?: GrottoVisit
 }
 
 /**
@@ -2604,6 +2615,54 @@ function doorwayInWorld(door: MapTransition): MapTransition {
   }
 }
 
+/**
+ * A map's start point in world units: the file's own, times {@link WORLD_SCALE},
+ * as a doorway's arrival is. Passed through unscaled, a wipe-out came round
+ * eight times as far from the map's middle — the church's, (0, −2.64), is
+ * (0, −0.33) — and was put on the floor nearest that, wherever it was.
+ */
+function startInWorld(start: MapStart): MapStart {
+  return {
+    ...start,
+    x: start.x * WORLD_SCALE,
+    y: start.y * WORLD_SCALE,
+    z: start.z * WORLD_SCALE,
+  }
+}
+
+/**
+ * **The active grotto from a treasure map's three numbers** — its seed, its
+ * quality and its place, 1 to 150 — as the Treasure Maps menu makes it
+ * (`func_ov004_02164928`): the details by `grottoDetails`, the entrance by
+ * `grottoPlace`. Undefined where the tables or the field will not read.
+ */
+export function grottoVisitOf(
+  rom: Uint8Array,
+  seed: number,
+  quality: number,
+  location: number,
+): (GrottoVisit & { readonly details: GrottoDetails }) | undefined {
+  const { cat } = walkOnce(rom, ['/data/tmap/tdata.gp2', '/data/map/'])
+  let tables: TreasureMapTables | undefined
+  for (const [, files] of cat.members) {
+    for (const [name, bytes] of files) {
+      if (name.toLowerCase().endsWith('tdata_en.pac')) tables = readTreasureMapTables(bytes)
+    }
+  }
+  if (!tables) return undefined
+  const details = grottoDetails(tables, seed, quality)
+  const place = grottoPlace(tables, location)
+  const code = place && codeOf(cat)(place.map)
+  if (!place || !code || details.environment === 0) return undefined
+  return {
+    seed: details.seed,
+    environment: details.environment,
+    floors: details.floors,
+    entrance: { code, x: place.x, y: place.y, z: place.z },
+    details,
+  }
+}
+
 /** A character's placement in world units: the file's own, times {@link WORLD_SCALE}. */
 function placementInWorld(placement: NpcPlacement): NpcPlacement {
   return {
@@ -3022,17 +3081,25 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   // By the archive's own name, not by a substring of its path: 'M01' appears in
   // 'B02M01.amdj' and a dozen others, and a plain substring match opens the
   // first of those instead of the village.
-  const paths = [...manifests.keys()]
+  // **A grotto's floor**, built rather than opened: it has no archive of its own.
+  const floorNumber = grottoFloorNumber(wanted)
+  const grotto =
+    options.grotto && floorNumber !== undefined
+      ? buildGrottoFloor(cat, options.grotto, floorNumber)
+      : undefined
+  const paths = grotto ? [] : [...manifests.keys()]
   const matching = [
     ...paths.filter((path) => stemOf(path) === wanted),
     ...paths.filter((path) => stemOf(path) !== wanted && stemOf(path).includes(wanted)),
   ]
-  if (matching.length === 0) throw new Error(`no map matching '${options.map}' in this cartridge`)
+  if (matching.length === 0 && !grotto) {
+    throw new Error(`no map matching '${options.map}' in this cartridge`)
+  }
   // A map can have more than one archive with a descriptor: `M01M12.ambl`'s
   // names only its textures, and `M01M12.amdj`'s its models. The one opened is
   // the first whose descriptor names a model that reads.
-  let archive: string | undefined
-  let map: AssembledMap | undefined
+  let archive: string | undefined = grotto?.archive
+  let map: AssembledMap | undefined = grotto?.map
   for (const path of matching) {
     const manifest = manifests.get(path)
     const members = cat.members.get(path)
@@ -3055,7 +3122,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   // named by its link table (`O01.bmbl`) and both placed at the origin — the
   // whole world in two halves, the collision in the second. Every archive the
   // link table names is assembled, and the map is all of them.
-  for (const sibling of siblingArchives(cat, wanted, archive)) {
+  for (const sibling of grotto ? [] : siblingArchives(cat, wanted, archive)) {
     const manifest = manifests.get(sibling)
     const members = cat.members.get(sibling)
     if (!manifest || !members) continue
@@ -3073,7 +3140,7 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
   }
 
   // The map's own code — `O01`, not the half `O01a` that was opened first.
-  const opened = stemOf(archive)
+  const opened = grotto ? wanted : stemOf(archive)
   const code = (
     opened.length === wanted.length + 1 && opened.startsWith(wanted) ? wanted : opened
   ).toUpperCase()
@@ -3226,17 +3293,19 @@ export function load(rom: Uint8Array, options: LoadOptions): Loaded {
     figure,
     pieces: figurePieces(figure),
     wardrobe: parts,
-    doorways: doorwaysOf(cat, code),
+    doorways: grotto ? grotto.doorways : doorwaysOf(cat, code),
     mapAreas: mapAreasOf(cat, code),
     bookcases: fromLinkTable(cat, code, mapBookcases),
     bookshelves: bookshelvesOf(rom, code),
     doorwayRegions: doorwayRegionsOf(cat, code),
     ladders: fromLinkTable(cat, code, mapLadders),
     moorings: fromLinkTable(cat, code, mapMoorings),
-    start: fromLinkTable(cat, code, (bytes) => {
-      const start = mapStart(bytes)
-      return start ? [start] : []
-    })[0],
+    start: grotto
+      ? grotto.down
+      : fromLinkTable(cat, code, (bytes) => {
+          const start = mapStart(bytes)
+          return start ? [startInWorld(start)] : []
+        })[0],
     archive,
     code,
   }

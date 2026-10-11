@@ -451,6 +451,7 @@ import {
 } from './flight.ts'
 import { fpsLine, fpsMeter, LONG_FRAME_MS, resetFps, tickFps } from './fps-meter.ts'
 import { axesFrom, lastSearch, readSticks, type Sticks } from './gamepad.ts'
+import { grottoCode } from './grotto.ts'
 import { HEALS, type Healer, healAll } from './heal-all.ts'
 import {
   CARRY_BONES,
@@ -496,6 +497,7 @@ import {
   entranceOf,
   gatheringOf,
   givenNamesFrom,
+  grottoVisitOf,
   itemDefsOf,
   keeperWords,
   type Loaded,
@@ -1827,6 +1829,8 @@ function poseMap(frame: number): void {
       x: (piece.place.x + (slid?.x ?? 0)) * grow,
       y: piece.place.y * grow,
       z: (piece.place.z + (slid?.z ?? 0)) * grow,
+      // A grotto's tile is turned — see `assembleGrottoFloor`.
+      turn: piece.place.turn ?? 0,
     }
     // Each shape has its own matrix stack, because a model reuses slots between
     // shapes. A map's models each drive themselves.
@@ -2171,6 +2175,34 @@ function openWorld(map: string): void {
   // `?ivor=1` opens it with Ivor in the party, as his call leaves him, for
   // looking at a stage he goes along over; an event's record may send him away.
   if (params.get('ivor') === '1' && !memberOf(IVOR)) members.push(freshMember(IVOR))
+  // `?grotto=seed,quality,place` makes that treasure map the active one, not
+  // yet discovered, and opens the game at its place in the field; with
+  // `&floor=n`, on its floor n, in front of the way up. Ours, a development
+  // parameter: in the game a map is made active in the Treasure Maps menu.
+  const wantedGrotto = /^(\d+),(\d+),(\d+)$/.exec(params.get('grotto') ?? '')
+  if (wantedGrotto && cartridge) {
+    activeGrotto = grottoVisitOf(
+      cartridge,
+      Number(wantedGrotto[1]),
+      Number(wantedGrotto[2]),
+      Number(wantedGrotto[3]),
+    )
+    grottoDiscovery = DISCOVERY.undiscovered
+    const floor = Number(params.get('floor'))
+    if (activeGrotto) {
+      const d = activeGrotto.details
+      const e = activeGrotto.entrance
+      const w = WORLD_SCALE / 4096
+      const opened =
+        Number.isInteger(floor) && floor >= 1 && floor <= activeGrotto.floors
+          ? enter(grottoCode(floor), 'start')
+          : enter(e.code, { x: e.x * w, y: e.y * w, z: (e.z + 0x2000) * w, facing: 0 })
+      if (opened) {
+        status(`${d.name} Lv. ${d.level}: ${d.floors} floors, environment ${d.environment}`)
+        return
+      }
+    }
+  }
   // `?at=x,z` stands the Hero there, in world units, on the highest floor —
   // ours, for looking at a spot a headless browser cannot walk to.
   const spot = /^(-?[\d.]+),(-?[\d.]+)$/.exec(params.get('at') ?? '')
@@ -2651,7 +2683,12 @@ function enter(map: string, arrival?: Arrival | 'start', forScene = false): bool
   heroFallenOnArrival = leader().hp === 0
   let opened: Loaded
   try {
-    opened = load(cartridge, { map, lighting: wantedLighting, onProgress: status })
+    opened = load(cartridge, {
+      map,
+      lighting: wantedLighting,
+      onProgress: status,
+      ...(activeGrotto ? { grotto: activeGrotto } : {}),
+    })
   } catch (error) {
     status(error instanceof Error ? error.message : String(error))
     loaded = previous
@@ -4949,6 +4986,52 @@ let roomScale = Number(params.get('room')) > 0 ? Number(params.get('room')) : 1
  * `?world=` sets it, `g` and `h` move it.
  */
 let worldScale = Number(params.get('world')) > 0 ? Number(params.get('world')) : 1
+
+/**
+ * **The active grotto** — the treasure map made active, its floors built
+ * when its `Z00Mnn` maps are entered (see `grotto.ts`). Not kept in the save
+ * yet.
+ */
+let activeGrotto: ReturnType<typeof grottoVisitOf>
+
+/** A treasure map's discovery state (`eDiscoveryState`): the active one's. Not kept in the save yet. */
+const DISCOVERY = { undiscovered: 1, discovered: 2, cleared: 3 } as const
+let grottoDiscovery: number = DISCOVERY.undiscovered
+
+/**
+ * **A treasure map's place, in the field** (`func_ov017_02198aa0`, ov017, run
+ * every frame): with the active map's entrance on this field, and the Hero
+ * within `0x2666` of it across and deep and `0x1000` up or down, in the
+ * game's units, A (or a touch on the screen's middle) —
+ *
+ * - **discovers it**, the first time (`func_ov017_021be0a0` and its task):
+ *   the screen fades, the map is marked discovered with the Hero's name as
+ *   its finder, the entrance's model is shown at the place
+ *   (`func_0208f748`), and a line is said; the party stays in the field;
+ * - **takes the party down** once it is discovered or cleared: to the first
+ *   floor, 40001, put in front of the way up (`func_0201a600`).
+ *
+ * **Ours**: the line said on discovering it is not read (string `0x3f` of
+ * `func_020e51cc`'s table), and the entrance's model is not drawn.
+ */
+function grottoHere(): boolean {
+  const visit = activeGrotto
+  if (!visit || !loaded || !self || loaded.code !== visit.entrance.code) return false
+  const game = 4096 / WORLD_SCALE
+  const e = visit.entrance
+  const x = toFloat(self.state.x) * game
+  const y = toFloat(self.state.y) * game
+  const z = toFloat(self.state.z) * game
+  const near = (a: number, b: number, reach: number) => b - reach < a && a < b + reach
+  if (!(near(x, e.x, 0x2666) && near(z, e.z, 0x2666) && near(y, e.y, 0x1000))) return false
+  if (grottoDiscovery === DISCOVERY.undiscovered) {
+    grottoDiscovery = DISCOVERY.discovered
+    status(`${heroName()} has found ${visit.details.name}!`)
+    return true
+  }
+  if (enter(grottoCode(1), 'start')) status(`${visit.details.name}, floor 1`)
+  return true
+}
 /**
  * A scale on the **character**, leaving the world exactly as the file has it.
  *
@@ -5924,6 +6007,7 @@ function talk(everyLine = false): void {
   )[0]
   const who = picked?.who
   if (!who) {
+    if (grottoHere()) return
     if (boardShip()) return
     if (openTreasureAhead()) return
     if (readBookcaseAhead()) return
@@ -9156,7 +9240,12 @@ function footingOf(walked: CollisionWorld): OpenGround | undefined {
   if (footing?.map !== here || footing.grow !== grow) {
     const pieces = here.map.pieces.map((piece) => ({
       ...piece,
-      place: { x: piece.place.x * grow, y: piece.place.y * grow, z: piece.place.z * grow },
+      place: {
+        x: piece.place.x * grow,
+        y: piece.place.y * grow,
+        z: piece.place.z * grow,
+        turn: piece.place.turn ?? 0,
+      },
       scale: piece.scale * grow,
     }))
     footing = { map: here, grow, ground: openGround(pieces, walked) }

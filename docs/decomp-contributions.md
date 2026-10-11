@@ -1452,6 +1452,25 @@ by `tools/grotto-oracle`. USA addresses.
 | arm9 `func_0201e434` | a `.bpos` record by name (`strstr` at `+0xb`, 16-byte records at `+0x30`, count `+0x34`) | `TileFeatures::Find` |
 | arm9 `func_02019f24`, `func_02019f6c`, `func_0201a108` | the record copied; its nine places turned; one place's four ways turned | `TileFeatures::Copy`, `::Turn`, `::TurnWays` |
 
+Then the floor built, its ways, and getting in — `packages/sim/src/grotto/stairs.ts`,
+`packages/world/src/grotto.ts`, `apps/game/src/grotto.ts`; tests in
+`packages/sim/test/grotto-stairs.test.ts`, `walls.test.ts` and, on the
+cartridge, `apps/game/test/grotto.test.ts`.
+
+| address | what it does | name proposed |
+|---|---|---|
+| arm9 `func_0201a600` | a floor's ways put down as it is entered: `srand(map seed)` and `GenerateGrottoObjectPositionOrientation` for each, facing down first; the way up `S02A` turned by its facing (`0x3243`, `0x1921`, 0, `0x4b65`), the way down `S01A` not; `0x666` higher in environment 2 on the 15 bytes of `data_020e6e44`; their regions (up ±`0x800` × ±`0x400`, centre `0x1800` high ±`0x1800`; down ±`0xc00` each way, −`0x1000` to `0x2000`), where each leads (id − 1, the field at the entrance + `0x2000` z from floor 1, id + 1, the boss floor from the last), and the arrival `0x1800` in front of the other way; a boss floor's way up at (0, `0x11000`), ±`0x2000` | `Zone3D::PlaceGrottoStairs` |
+| arm9 `func_ov004_02164928` | the Treasure Maps menu's choosing a map: the active record from the map's detailed data — entrance zone and place, environment, starting rank (both 0 for a legacy map), level `+7`, `+0xa`, the name — and `+8` from `func_02090294` | `TreasureMapMenu::SetActive` |
+| arm9 `func_0201165c` | the record's map copied in (`+0x6c`, 28 bytes), the entrance (`+0xc`–`+0x18`), environment `+5`, rank `+6`, `+0`/`+1` set | `ActiveGrottoClass::Set` |
+| arm9 `func_02090294` | a count of 0 to 4 kept in the save that steps on each call, passing over values four records' `+0xd` hold (what those are is not known) | — |
+| ov017 `func_ov017_02198aa0` | the field's check for the active map's place each frame: the entrance zone, ±`0x2666` across and deep and ±`0x1000` up, A or a touch at the screen's middle; discovered or cleared, the zone change to 40001 (a legacy map's to its boss floor, `0xa08d` + 100 · (env − 1) + `+8`) at angle `0x323d`; undiscovered, `func_ov017_021be0a0` | `FieldGrotto::CheckEntrance` |
+| ov017 `func_ov017_021be0a0`, `func_ov017_021be0c4` | discovering a map: a fade, the entrance model shown (`func_0208f748`), the map marked discovered with the Hero's name as finder, string `0x3f` said; the party stays in the field | `FieldGrotto::Discover` |
+| arm9 `func_0208f748` | the entrance's model put at the record's entrance place, scaled, visible | `GrottoEntrance::Show` |
+| ov017 `func_ov017_021cf730`, `func_ov017_021cf86c`, `func_ov017_021be468` | the active record packed for, and unpacked from, another player's console — not where a single player's is set | — |
+| maplist `Z00M01`–`Z00Mnn` | a grotto's floors in the map index, ids 40001 on, label "Treasure Map - Lv n", kind 6: no archive of their own | — |
+
 **Open**: the loader's own order for the map's pieces (`func_02014108`,
 `func_0201403c`, `func_02014b04`), which would confirm the archive-backwards
-numbering; `func_0201a600`, the chests and stairs put down.
+numbering; the chests `func_0201a600` puts down after the ways; the entrance's
+model and the discovery line (string `0x3f`); what the four records
+`func_02090294` passes over are.

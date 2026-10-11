@@ -65,6 +65,8 @@ is one the menu will not know about.
 | `make=1` | open the appearance *editor* — turns one knob on a character who already exists. The game has no equivalent; creation itself is a scene, reached by `?create=1` above or, for a recruit, through Patty |
 | `look=0:sex=1,hair=7,build=2` | set a member's appearance knob by knob — see `docs/party-and-vocations.md` §3a. Several members with `;` between |
 | `save=1` | write a save where you stand. The church is otherwise the only way |
+| `grotto=12345,50,1` | make the treasure map of that seed, quality and place (1 to 150) the active one, not yet discovered, and open at its place in the field: A there discovers it, and A again goes down. In the game a map is made active in the Treasure Maps menu, which is not built — see `apps/game/src/grotto.ts` |
+| `floor=3` | with `grotto=`, open on that floor of it instead, in front of its way up |
 | `fight=z000a,z000a` | the monsters `p` fights |
 | `heromotion=attack1b` | in a battle, hold the Hero in one motion, looping, and the camera on their close-up — to look at a motion and what the Hero holds through it |
 | `bgm=BG_001`, `se=113` | play a track or an effect |
