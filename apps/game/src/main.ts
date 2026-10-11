@@ -37,6 +37,7 @@ import {
   FACILITY_DQVC_ONLINE,
   FACILITY_MEDALS,
   FLAG_NO_ZOOM,
+  FOUND_FLAG_BASE,
   facilityFor,
   fixedShotFor,
   flagsHold,
@@ -241,6 +242,7 @@ import {
   FLAG_POT_USED,
   learnRecipe,
   OP_LEARN_RECIPE,
+  POT_LABELS,
   POT_SAYS,
   potList,
   recipeKnown,
@@ -547,6 +549,7 @@ import {
   openPot,
   panelLines,
   QUICK_SAVE_WORDS,
+  type RecordsTableView,
   type Taken,
 } from './menu.ts'
 import {
@@ -597,6 +600,8 @@ import {
   type DefeatedList,
   defeatedRestored,
   defeatedSaved,
+  type ItemTable,
+  itemRows,
   MONSTER_LIST_WORDS,
   monsterRows,
 } from './records.ts'
@@ -1159,6 +1164,35 @@ function carriers(): Carriers {
 /** An item obtained, the game's way — see `obtain`. */
 function give(id: number, count = 1, skipFallen = false): void {
   bag = obtain(bag, carriers(), loaded?.itemDefs.get(id), id, count, skipFallen).bag
+  noteFound(id)
+}
+
+/**
+ * **An item found**, for the Wardrobe and the Item List: game-wide flag
+ * `0xc76 +` its list number, set the first time it is obtained
+ * (`func_0207cc18`) — see `FOUND_FLAG_BASE`.
+ */
+function noteFound(id: number): void {
+  const n = loaded?.itemDefs.get(id)?.listNumber
+  if (n) storyGlobals.add(FOUND_FLAG_BASE + n)
+}
+
+/**
+ * **Everything the party holds, found** — the bag, what each carries and
+ * what each wears. The game marks an item as it is obtained, and a member's
+ * worn equipment as the field starts and the party changes
+ * (`func_0206e424`, overlay 17 `0x0218b688` and `func_ov017_021b688c`,
+ * overlay 3's Patty); **ours** is doing it by looking over what is held
+ * after a shop, the pot and a change of dress, rather than at each of the
+ * game's own calls.
+ */
+function noteHeld(): void {
+  if (!loaded) return
+  for (const id of bag.items.keys()) noteFound(id)
+  for (const member of members) {
+    for (const id of member.carried ?? []) noteFound(id)
+    for (const id of wornBy(member).values()) noteFound(id)
+  }
 }
 
 /** One of an item taken from the party, the game's way — see `takeOne`; false when nobody has one. */
@@ -7383,6 +7417,8 @@ function recordsContext(): MenuContext['records'] {
     // Their labels are ours: the game's entries are pictures.
     lists: [
       { id: 'monsters' as const, label: listLabel(words.get(130), 'Defeated Monster List') },
+      { id: 'wardrobe' as const, label: listLabel(words.get(131), 'Wardrobe') },
+      { id: 'items' as const, label: listLabel(words.get(132), 'Item List') },
       ...(storyGlobals.has(FLAG_QUESTS_LISTED)
         ? [{ id: 'quests' as const, label: loaded.menuWords.get(4007) ?? 'Quest List' }]
         : []),
@@ -7395,7 +7431,7 @@ function recordsContext(): MenuContext['records'] {
           ]
         : []),
     ],
-    monsters: monsterList(),
+    tables: recordsTables(),
   }
 }
 
@@ -7406,27 +7442,57 @@ const listLabel = (line: string | undefined, ours: string) =>
 /** The Defeated Monster List — see `records.ts`. */
 let defeatedList: DefeatedList = new Map()
 
-/** The Defeated Monster List as the Records show it, in `str_sml`'s words. */
-function monsterList(): NonNullable<NonNullable<MenuContext['records']>['monsters']> | undefined {
+/** The Records' three tables, in the cartridge's words where it has them — see `records.ts`. */
+function recordsTables(): NonNullable<MenuContext['records']>['tables'] {
   if (!loaded) return undefined
+  const here = loaded
   // A name begins with a capital in a list, as `<Cap>` gives it in a line.
-  const names = new Map(
-    [...loaded.monsterNames].map(([n, name]) => [n, name.charAt(0).toUpperCase() + name.slice(1)]),
-  )
-  const sml = loaded.monsterListWords
+  const capital = (name: string) => name.charAt(0).toUpperCase() + name.slice(1)
+  const names = new Map([...here.monsterNames].map(([n, name]) => [n, capital(name)]))
+  const sml = here.monsterListWords
+  const words = here.accolades.recordWords
+  const unknown = sml.get(MONSTER_LIST_WORDS.unknown) ?? '?????????'
+  const byName = sml.get(MONSTER_LIST_WORDS.byName) ?? 'By Name'
+  const found = (n: number) => storyGlobals.has(FOUND_FLAG_BASE + n)
+  const itemName = (id: number) => capital(nameOf(id))
+  const itemTable = (table: ItemTable, line: number, ours: string): RecordsTableView => ({
+    title: listLabel(words.get(line), ours),
+    orders: [here.potLabels.get(POT_LABELS.byType) ?? 'By Type', byName],
+    rows: [
+      itemRows(here.itemDefs, table, found, itemName, 'number'),
+      itemRows(here.itemDefs, table, found, itemName, 'name'),
+    ],
+    unknown,
+    // An item's numbers, as the equipment lists show them — the words ours.
+    detail: (row) => {
+      const stats = row.item === undefined ? undefined : here.itemStats.get(row.item)
+      if (!stats) return []
+      const said = [
+        stats.attack ? `attack ${stats.attack}` : '',
+        stats.defence ? `defence ${stats.defence}` : '',
+        stats.agility ? `agility ${stats.agility}` : '',
+      ].filter(Boolean)
+      return said.length > 0 ? [said.join(', ')] : []
+    },
+  })
   return {
-    title: listLabel(loaded.accolades.recordWords.get(130), 'Defeated Monster List'),
-    byNumber: sml.get(MONSTER_LIST_WORDS.byNumber) ?? 'By Number',
-    byName: sml.get(MONSTER_LIST_WORDS.byName) ?? 'By Name',
-    unknown: sml.get(MONSTER_LIST_WORDS.unknown) ?? '?????????',
-    rows: {
-      number: monsterRows(defeatedList, names, 'number'),
-      name: monsterRows(defeatedList, names, 'name'),
+    monsters: {
+      title: listLabel(words.get(130), 'Defeated Monster List'),
+      orders: [sml.get(MONSTER_LIST_WORDS.byNumber) ?? 'By Number', byName],
+      rows: [monsterRows(defeatedList, names, 'number'), monsterRows(defeatedList, names, 'name')],
+      unknown,
+      // Its two drops, each named once it has dropped.
+      detail: (row) => {
+        const record = here.monsterBattle.get(row.number)
+        if (!record) return []
+        return record.drops.map((item, k) => {
+          const times = row.drops?.[k] ?? 0
+          return times > 0 ? `${itemName(item)} ×${times}` : unknown
+        })
+      },
     },
-    drops: (number) => {
-      const record = loaded?.monsterBattle.get(number)
-      return record ? [nameOf(record.drops[0]), nameOf(record.drops[1])] : undefined
-    },
+    wardrobe: itemTable('wardrobe', 131, 'Wardrobe'),
+    items: itemTable('items', 132, 'Item List'),
   }
 }
 
@@ -13563,6 +13629,7 @@ let dressed: (Dressed | undefined)[] = []
  */
 function dressParty(): void {
   if (!loaded) return
+  noteHeld()
   const wardrobe = loaded.wardrobe
   const has = (name: string) => wardrobe.parts.has(name) || wardrobe.textures.has(name)
   const carry: Carry = battle ? 'hands' : 'back'
@@ -14829,6 +14896,7 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
       const outcome = chooseInVisit(visit, bag, told)
       bag = outcome.bag
       visit = outcome.visit
+      noteHeld()
       // The bank's number window hands its value back to the bank — see `bankAmount`.
       if (digits) bankAmount(outcome.digitsPick)
       // A keeper's window hands its choice back to the keeper's flow — see `keeperPicked`.
@@ -14899,7 +14967,10 @@ function onAction(action: Action | undefined, key: string, shift: boolean): bool
         }
       }
       if (taken.buy) menu = buyPanel(taken.buy.tree, taken.buy.panel, menu)
-      if (taken.cook !== undefined) menu = cookRecipe(taken.cook, menu)
+      if (taken.cook !== undefined) {
+        menu = cookRecipe(taken.cook, menu)
+        noteHeld()
+      }
       if (taken.luck) menu = tryLuck(taken.luck, menu)
       if (taken.patty) menu = askPatty(taken.patty, menu)
       if (taken.turn) menu = turnLook(taken.turn.knob, taken.turn.by, menu)

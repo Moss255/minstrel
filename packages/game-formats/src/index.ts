@@ -122,6 +122,7 @@ export {
   wornResistances,
 } from './itembattle.ts'
 export {
+  FOUND_FLAG_BASE,
   ITEM_KIND_EVERYDAY,
   ITEM_KIND_IMPORTANT,
   ITEM_KIND_PART,

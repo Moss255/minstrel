@@ -1547,3 +1547,19 @@ reading of `+0x7ac4` (`docs/readings/T14-records.md`).
 
 **Open**: what bit 10 of a monster's word means; `mons_info2.nat`'s other
 fields and its tail; where the Item List and the Wardrobe are kept.
+
+### The Wardrobe and the Item List (11 October 2026)
+
+`ItemDef.listNumber` and `FOUND_FLAG_BASE` in `packages/game-formats/src/itemdefs.ts`,
+`itemRows` in `apps/game/src/records.ts`; tests in `apps/game/test/records.test.ts`.
+
+| address | what it does | name proposed |
+|---|---|---|
+| arm9 `func_0207cc18` | an item obtained: its list number (`itemdt` `+0x0C` bits 12–22); game-wide flag `0xc76 +` it set the first time, and the records' equipment count (`func_020a04c8`) or item count (`func_020a0494`) raised | `ItemList::NoteFound` |
+| arm9 `func_0206e424` | a member's worn equipment noted the same way, the equipment count raised by the new | `Wardrobe::NoteWorn` |
+
+The obtaining paths that call `func_0207cc18`: `func_0207ccf0`, `func_0207cf30`,
+`func_0207d134`, `func_0207d200`, overlay 4 `func_ov004_02157a28`, overlay 3
+`func_ov003_0217599c`, overlay 17 `func_ov017_021b0bc0`; `func_0206e424`'s:
+overlay 17 `0x0218b688` (the Hero, as the field starts), `func_ov017_021b688c`
+(the party), overlay 3 `func_ov003_02166a90` (Patty).

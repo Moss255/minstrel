@@ -150,8 +150,12 @@ Canvassed; 130–133 the four completions. The list's are `str_tl`: 0
 ## Not found, and where the search stopped
 
 - What sets `0x119a`, `0x119b` and the records' `+0x2000` (above).
-- Where the Item List and the Wardrobe are kept — not at `+0x7ac4`, which is
-  the Alchenomicon's (above, corrected 11 October 2026).
+- ~~Where the Item List and the Wardrobe are kept~~ — found 11 October 2026:
+  game-wide flags `0xc76 +` an item's list number (`itemdt` `+0x0C` bits
+  12–22), set as it is obtained (`func_0207cc18`) or worn
+  (`func_0206e424`), the first time adding to the records' `+0x14` bits
+  9–17 (items, to 500) or 18–28 (equipment, to 1,500). Not `+0x7ac4`, which
+  is the Alchenomicon's.
 - Where the records' victories, alchemy count and guests are kept: the
   block's other fields are not tied to them.
 - What `+0x7ac0` holds, and the item list's two flag bits.

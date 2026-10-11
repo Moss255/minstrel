@@ -80,13 +80,18 @@ export function countDropped(list: DefeatedList, number: number, rare: boolean):
   one.drops[slot] = Math.min(DROPPED_MOST, one.drops[slot] + 1)
 }
 
-/** One row of the list, as it is shown. */
-export interface MonsterRow {
+/** One row of a Records table, as it is shown. */
+export interface RecordsRow {
+  /** Its number in the list: a monster's own, an item's list number. */
   readonly number: number
-  /** Its name, once one has been defeated; undefined before. */
+  /** Its name, once known; undefined before. */
   readonly name: string | undefined
-  readonly count: number
-  readonly drops: readonly [number, number]
+  /** How many have been defeated, for a monster. */
+  readonly count?: number
+  /** Times its two drops have dropped, for a monster. */
+  readonly drops?: readonly [number, number]
+  /** The item, for an item's row. */
+  readonly item?: number
 }
 
 /**
@@ -99,8 +104,8 @@ export function monsterRows(
   list: DefeatedList,
   names: ReadonlyMap<number, string>,
   by: 'number' | 'name',
-): MonsterRow[] {
-  const rows: MonsterRow[] = []
+): RecordsRow[] {
+  const rows: RecordsRow[] = []
   for (let number = 1; number <= LISTED_MOST; number++) {
     const name = names.get(number)
     if (name === undefined) continue
@@ -114,10 +119,14 @@ export function monsterRows(
     })
   }
   if (by === 'number') return rows
-  return rows
+  return byName(rows)
+}
+
+/** Those known, by name. **Ours**: the order by name leaves out those not known, and sorts as the browser compares. */
+const byName = (rows: readonly RecordsRow[]) =>
+  rows
     .filter((row) => row.name !== undefined)
     .sort((a, b) => (a.name as string).localeCompare(b.name as string))
-}
 
 /** The list as a save keeps it: `[number, count, ordinary, rare]`, those with anything. */
 export function defeatedSaved(list: DefeatedList): [number, number, number, number][] {
@@ -134,4 +143,48 @@ export function defeatedRestored(
   return new Map(
     (kept ?? []).map(([number, count, a, b]) => [number, { count, drops: [a, b] }] as const),
   )
+}
+
+/**
+ * **The Wardrobe and the Item List** — read 11 October 2026. Every item has a
+ * list number, `itemdt` `+0x0C` bits 12–22 (`ItemDef.listNumber`): the 944
+ * pieces of equipment 1 to 944, then the everyday and the important items to
+ * 1,176. **Game-wide flag `0xc76 +` it is set the first time the item is
+ * obtained** (`func_0207cc18`, which every way of obtaining one calls) and,
+ * for equipment, worn (`func_0206e424`); the first time, a count in the
+ * records goes up — the equipment's at `+0x14` bits 18–28 (to 1,500), the
+ * items' at bits 9–17 (to 500). So the Wardrobe is the equipment found and
+ * the Item List the items: INFERRED from the counts and the completions'
+ * names, `str_jr` 131 and 132.
+ *
+ * **Ours**: the two orders, the list number (which rises with `itemsort`'s
+ * order by type on every item) and by name, and what the lists show of an
+ * item — its name, and for equipment its numbers; the game's "Found In" and
+ * "Dropped By" are not read.
+ */
+export type ItemTable = 'wardrobe' | 'items'
+
+/** An item's table: equipment the Wardrobe's, everyday and important items the Item List's. */
+export const tableOfKind = (kind: number): ItemTable | undefined =>
+  kind <= 7 ? 'wardrobe' : kind === 8 || kind === 9 ? 'items' : undefined
+
+/** A table's rows: every item of it by list number, the unfound without a name; or the found by name. */
+export function itemRows(
+  defs: ReadonlyMap<number, { readonly kind: number; readonly listNumber: number }>,
+  table: ItemTable,
+  found: (listNumber: number) => boolean,
+  nameOf: (id: number) => string,
+  order: 'number' | 'name',
+): RecordsRow[] {
+  const rows: RecordsRow[] = []
+  for (const [id, def] of defs) {
+    if (def.listNumber === 0 || tableOfKind(def.kind) !== table) continue
+    rows.push({
+      number: def.listNumber,
+      name: found(def.listNumber) ? nameOf(id) : undefined,
+      item: id,
+    })
+  }
+  rows.sort((a, b) => a.number - b.number)
+  return order === 'number' ? rows : byName(rows)
 }

@@ -874,9 +874,9 @@ For any session, not only one reading assembly:
 - **Done, 11 October 2026: the Battle Records' lists** — their menu as
   overlay 8 builds it, **the Defeated Monster List** (`records.ts`: counted
   at the victory, its drops as they are given, by number and by name), the
-  Quest List moved in from the top menu, and Accolades Earnt. **Left**: the
-  Item List and the Wardrobe, whose keeping is not found — `+0x7ac4` turned
-  out to be the Alchenomicon's recipes; and the Completion Records.
+  Quest List moved in from the top menu, Accolades Earnt, and **the
+  Wardrobe and the Item List** (game-wide flags `0xc76 +` an item's list
+  number, found the same day). **Left**: the Completion Records.
 - **Stella's comments** are read — the files, the scripts and overlay 8's
   flow (`docs/readings/T14-records.md`, "Stella's comments") — and **not
   built**: 58 of the header's 59 tests ask functions not read, mostly the

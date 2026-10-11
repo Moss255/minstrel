@@ -25,6 +25,13 @@ describe('the items as the code holds them', () => {
     expect(defs.get(22265)).toMatchObject({ kind: 8, usedUp: false, kept: true, toBag: true })
   })
 
+  it('reads its list number, bits 12–22 of `+0x0C`, the Wardrobe’s and the Item List’s', () => {
+    const out = table([{ id: 22000, word: 8 }])
+    // Bit 11 and bit 23 set around it, to be left out.
+    new DataView(out.buffer).setUint32(0x0c + 0x0c, (945 << 12) | (1 << 11) | (1 << 23), true)
+    expect(readItemDefs(out).get(22000)?.listNumber).toBe(945)
+  })
+
   it('reads how many shades of skin a part takes, by sex, from its block', () => {
     // Three records — plain clothes, a sword, the bare body — then their blocks.
     const records = [

@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { itemDefsOf } from '../src/load.ts'
 import { back, choose, type MenuContext, menuSelect, moveCursor, panelLines } from '../src/menu.ts'
 import {
   countDefeated,
@@ -6,6 +8,7 @@ import {
   type DefeatedList,
   defeatedRestored,
   defeatedSaved,
+  itemRows,
   monsterRows,
 } from '../src/records.ts'
 
@@ -62,16 +65,17 @@ describe('the Battle Records’ lists', () => {
         { id: 'quests', label: 'Quest List' },
         { id: 'accolades', label: 'Accolades Earnt' },
       ],
-      monsters: {
-        title: 'Defeated Monster List',
-        byNumber: 'By Number',
-        byName: 'By Name',
-        unknown: '?????????',
-        rows: {
-          number: monsterRows(list, names, 'number'),
-          name: monsterRows(list, names, 'name'),
+      tables: {
+        monsters: {
+          title: 'Defeated Monster List',
+          orders: ['By Number', 'By Name'],
+          unknown: '?????????',
+          rows: [monsterRows(list, names, 'number'), monsterRows(list, names, 'name')],
+          detail: (row) => [
+            (row.drops?.[0] ?? 0) > 0 ? `Medicinal herb ×${row.drops?.[0]}` : '?????????',
+            '?????????',
+          ],
         },
-        drops: () => ['Medicinal herb', 'Slime earring'],
       },
     },
   }
@@ -102,7 +106,7 @@ describe('the Battle Records’ lists', () => {
       '?????????',
     ])
     // SELECT turns the order; B goes back to the menu, on the list's row.
-    expect(menuSelect(monsters, context).records).toEqual({ at: 'monsters', by: 'name' })
+    expect(menuSelect(monsters, context).records).toEqual({ at: 'monsters', order: 1, from: 0 })
     expect(back(monsters)).toMatchObject({ panel: 'records', records: { at: 'top' }, row: 0 })
   })
 
@@ -110,5 +114,40 @@ describe('the Battle Records’ lists', () => {
     const quests = choose(moveCursor(top, 1, context), context).state
     expect(quests).toMatchObject({ panel: 'quests', fromRecords: 1 })
     expect(quests && back(quests)).toMatchObject({ panel: 'records', row: 1 })
+  })
+})
+
+describe('the Wardrobe and the Item List', () => {
+  it('list each table’s items by list number, the unfound unnamed, and the found by name', () => {
+    const defs = new Map([
+      [20004, { kind: 0, listNumber: 2 }],
+      [20000, { kind: 0, listNumber: 1 }],
+      [22000, { kind: 8, listNumber: 945 }],
+      [22001, { kind: 9, listNumber: 1090 }],
+      [1000, { kind: 11, listNumber: 0 }],
+    ])
+    const found = (n: number) => n === 2 || n === 1090
+    const name = (id: number) => ({ 20004: 'Copper sword', 22001: 'Agate of evolution' })[id] ?? '?'
+    expect(itemRows(defs, 'wardrobe', found, name, 'number')).toEqual([
+      { number: 1, name: undefined, item: 20000 },
+      { number: 2, name: 'Copper sword', item: 20004 },
+    ])
+    expect(itemRows(defs, 'items', found, name, 'name').map((r) => r.item)).toEqual([22001])
+  })
+})
+
+const romPath = process.env.MINSTREL_TEST_ROM
+
+describe.skipIf(!romPath)('the list numbers, on a real cartridge', () => {
+  it('number 1,176 items once each: the equipment 1 to 944, then the rest', () => {
+    const rom = romPath ? new Uint8Array(readFileSync(romPath)) : new Uint8Array()
+    const defs = itemDefsOf(rom)
+    const numbered = [...defs.values()].filter((d) => d.listNumber > 0)
+    const numbers = numbered.map((d) => d.listNumber).sort((a, b) => a - b)
+    expect(numbers).toEqual(Array.from({ length: 1176 }, (_, i) => i + 1))
+    const equipment = numbered.filter((d) => d.kind <= 7).map((d) => d.listNumber)
+    expect(Math.min(...equipment)).toBe(1)
+    expect(Math.max(...equipment)).toBe(944)
+    expect(equipment).toHaveLength(944)
   })
 })

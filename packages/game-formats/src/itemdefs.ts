@@ -23,6 +23,7 @@ import { GameFormatError } from './errors.ts'
  * | `+0x10` bits 0–9, 10–19 | its **model's number** for a man and for a woman; 999 means the other's | `func_020de234` (read 4 October 2026) |
  * | `+0x10` bits 20–27 | its **model's letter**, a character code: `h` on 9000–9013, `f` on 9020–9033 | the hair's and the face's names, `CharaParts_GetPartNumbers` |
  * | `+0x14` | on a skill book, the skill panel it grants while carried | `func_ov026_021dc8fc` `0x021dc9e4` |
+ * | `+0x0C` bits 12–22 | its **list number**, 1 to 1,176 — the Wardrobe's and the Item List's: game-wide flag `0xc76 +` it is set the first time the item is obtained or worn | `func_0207cc18`, `func_0206e424` (read 11 October 2026) |
  * | `+0x18` | `u16`, its id | `func_020de56c` |
  * | `+0x00` | `s32`, a **block** after the records: `0x0C + count × 32 + index × 32`, −1 for none | `func_020de5b0`, `0x020de5d0` |
  *
@@ -46,6 +47,12 @@ export interface ItemDef {
   readonly book: boolean
   /** On a skill book, the skill panel it grants while carried; otherwise what `+0x14` holds. */
   readonly panel: number
+  /**
+   * Its place in the Battle Records' Wardrobe and Item List, 1 to 1,176 — the
+   * equipment 1 to 944, then the everyday and the important items; 0 for
+   * none. Its flag is `0xc76 +` it — see {@link FOUND_FLAG_BASE}.
+   */
+  readonly listNumber: number
   /** How many shades of skin the part takes, by sex: 1, 2 or 4 (a ramp of 2, 4 or 8), 0 none — see above. */
   readonly skinShades: { readonly man: number; readonly woman: number }
   /** Its model, `+0x10`: a letter and a number by sex, 999 for the other's — see {@link modelNumber}. */
@@ -85,6 +92,15 @@ export const ITEM_KIND_IMPORTANT = 9
 const HEAD = 0x0c
 const RECORD = 32
 
+/**
+ * **The game-wide flag an item's list number is counted from**: flag
+ * `0xc76 + listNumber` is set the first time the item is obtained
+ * (`func_0207cc18`, which every way of obtaining one calls) or, for
+ * equipment, worn (`func_0206e424`) — and that is what the Wardrobe and the
+ * Item List show.
+ */
+export const FOUND_FLAG_BASE = 0xc76
+
 export function readItemDefs(bytes: Uint8Array): Map<number, ItemDef> {
   if (bytes.length < HEAD)
     throw new GameFormatError(`item defs are ${bytes.length} bytes, shorter than their head`)
@@ -116,6 +132,7 @@ export function readItemDefs(bytes: Uint8Array): Map<number, ItemDef> {
       toBag: ((word >>> 25) & 1) === 1,
       book: ((word >>> 4) & 31) === 31,
       panel: view.getUint16(at + 0x14, true),
+      listNumber: (view.getUint32(at + 0x0c, true) >>> 12) & 0x7ff,
       skinShades: { man: (shades >>> 15) & 15, woman: (shades >>> 23) & 15 },
       model: {
         letter: String.fromCharCode((model >>> 20) & 0xff),

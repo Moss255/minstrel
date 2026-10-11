@@ -934,6 +934,13 @@ meaning the other's; bits 20–27 the model's **letter**, a character code —
 `p_f004` on a man and `p_f014` on a woman, and hair 9006 `p_h060` and
 `p_h180`. `ItemDef.model`, `modelName`.
 
+**`itemdt_<lang>.nat`'s `+0x0C` bits 12–22** (read 11 October 2026,
+`func_0207cc18`, `func_0206e424`): the item's **list number**, the Battle
+Records' Wardrobe's and Item List's — on the European cartridge 1 to 1,176,
+each once: the 944 pieces of equipment 1 to 944, then the everyday items and
+the important ones. Game-wide flag `0xc76 +` it is set the first time the
+item is obtained or (equipment) worn. `ItemDef.listNumber`, `FOUND_FLAG_BASE`.
+
 **A record begins four bytes before its id.** It was first read from the id,
 behind a 36-byte head, and then each record's last four bytes held the *next*
 item's actions: the medicinal herb's ended `(256, 256)`, strong medicine's
