@@ -876,7 +876,8 @@ For any session, not only one reading assembly:
   at the victory, its drops as they are given, by number and by name), the
   Quest List moved in from the top menu, Accolades Earnt, and **the
   Wardrobe and the Item List** (game-wide flags `0xc76 +` an item's list
-  number, found the same day). **Left**: the Completion Records.
+  number, found the same day), the Alchenomicon, and the summary's four
+  completions. **Left**: entry 4 and the Completion Records.
 - **Stella's comments, built 11 October 2026** (`comments.ts`): 495 of the
   620 candidates answerable, the header's whole — a test asking a function
   not read ends the run with nothing said. Left: the functions in

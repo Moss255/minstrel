@@ -7457,6 +7457,10 @@ function recordsContext(): MenuContext['records'] {
       { id: 'monsters' as const, label: listLabel(words.get(130), 'Defeated Monster List') },
       { id: 'wardrobe' as const, label: listLabel(words.get(131), 'Wardrobe') },
       { id: 'items' as const, label: listLabel(words.get(132), 'Item List') },
+      // The Alchenomicon, once the Krak Pot's book is had (game-wide flag `0x1198`).
+      ...(storyGlobals.has(0x1198)
+        ? [{ id: 'recipes' as const, label: listLabel(words.get(133), 'Alchenomicon') }]
+        : []),
       ...(storyGlobals.has(FLAG_QUESTS_LISTED)
         ? [{ id: 'quests' as const, label: loaded.menuWords.get(4007) ?? 'Quest List' }]
         : []),
@@ -7512,7 +7516,54 @@ const listLabel = (line: string | undefined, ours: string) =>
 /** The Defeated Monster List — see `records.ts`. */
 let defeatedList: DefeatedList = new Map()
 
-/** The Records' three tables, in the cartridge's words where it has them — see `records.ts`. */
+/**
+ * **The Alchenomicon in the Battle Records**: every recipe by its number, named
+ * once it is known, its ingredients under it, and those made marked — the
+ * list the Krak Pot's book keeps (`alchemy.ts`, the records' `+0x7ac4`). The
+ * book's own pages (categories, its layout) are the pot's; this table and
+ * what it shows of a recipe are **ours**.
+ */
+function recipeTable(): RecordsTableView | undefined {
+  const here = loaded
+  if (!here) return undefined
+  const capital = (name: string) => name.charAt(0).toUpperCase() + name.slice(1)
+  const rows = here.recipes
+    .map((recipe) => {
+      const bits = recipesKnown.get(recipe.id) ?? 0
+      return {
+        number: recipe.id,
+        name:
+          bits === 0
+            ? undefined
+            : `${capital(nameOf(recipe.makes))}${(bits & RECIPE_MADE) !== 0 ? ' ✓' : ''}`,
+        item: recipe.makes,
+      }
+    })
+    .sort((a, b) => a.number - b.number)
+  const sml = here.monsterListWords
+  return {
+    title: listLabel(here.accolades.recordWords.get(133), 'Alchenomicon'),
+    orders: [
+      sml.get(MONSTER_LIST_WORDS.byNumber) ?? 'By Number',
+      sml.get(MONSTER_LIST_WORDS.byName) ?? 'By Name',
+    ],
+    rows: [
+      rows,
+      rows
+        .filter((row) => row.name !== undefined)
+        .sort((a, b) => (a.name as string).localeCompare(b.name as string)),
+    ],
+    unknown: sml.get(MONSTER_LIST_WORDS.unknown) ?? '?????????',
+    detail: (row) => {
+      const recipe = here.recipes.find((one) => one.id === row.number)
+      return recipe
+        ? recipe.ingredients.map((one) => `${capital(nameOf(one.item))} ×${one.count}`)
+        : []
+    },
+  }
+}
+
+/** The Records' tables, in the cartridge's words where it has them — see `records.ts`. */
 function recordsTables(): NonNullable<MenuContext['records']>['tables'] {
   if (!loaded) return undefined
   const here = loaded
@@ -7545,6 +7596,7 @@ function recordsTables(): NonNullable<MenuContext['records']>['tables'] {
       return said.length > 0 ? [said.join(', ')] : []
     },
   })
+  const recipes = recipeTable()
   return {
     monsters: {
       title: listLabel(words.get(130), 'Defeated Monster List'),
@@ -7563,6 +7615,7 @@ function recordsTables(): NonNullable<MenuContext['records']>['tables'] {
     },
     wardrobe: itemTable('wardrobe', 131, 'Wardrobe'),
     items: itemTable('items', 132, 'Item List'),
+    ...(recipes ? { recipes } : {}),
   }
 }
 

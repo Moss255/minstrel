@@ -686,11 +686,11 @@ export interface MenuContext {
  * and from the flags for the rest: 5 the Quest List, 6 Accolades Earnt, 7
  * Completion Records.
  *
- * **Built**: the Defeated Monster List, the Wardrobe and the Item List (see
- * `records.ts`), the Quest List and Accolades Earnt. Not: the Alchenomicon,
- * which is the Krak Pot's book here; entry 4; and the Completion Records.
+ * **Built**: the Defeated Monster List, the Wardrobe, the Item List and the
+ * Alchenomicon (see `records.ts`), the Quest List and Accolades Earnt. Not:
+ * entry 4, and the Completion Records.
  */
-export type RecordsTable = 'monsters' | 'wardrobe' | 'items'
+export type RecordsTable = 'monsters' | 'wardrobe' | 'items' | 'recipes'
 export type RecordsList = RecordsTable | 'quests' | 'accolades'
 
 /**
@@ -713,7 +713,7 @@ export type RecordsWhere =
   | { readonly at: 'accolades'; readonly from: number }
 
 const isTable = (at: string): at is RecordsTable =>
-  at === 'monsters' || at === 'wardrobe' || at === 'items'
+  at === 'monsters' || at === 'wardrobe' || at === 'items' || at === 'recipes'
 
 /** How many of a table's rows a page shows. **Ours.** */
 export const RECORDS_PAGE = 10
